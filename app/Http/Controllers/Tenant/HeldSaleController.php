@@ -31,7 +31,7 @@ class HeldSaleController extends Controller
         $terminals     = Terminal::orderBy('name')->get();
         $customers     = Customer::where('status', 'active')->orderBy('name')->get();
         $products      = Product::with(['barcodes', 'variants', 'branchPrices'])
-            ->where('is_active', true)
+            ->where('status', 'active')
             ->orderBy('name')
             ->get();
         $tableSessions = RestaurantTableSession::with(['table.floor', 'waiter'])

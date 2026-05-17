@@ -8,7 +8,9 @@ use App\Models\Tenant\Category;
 use App\Models\Tenant\Customer;
 use App\Models\Tenant\PaymentMethod;
 use App\Models\Tenant\Product;
+use App\Models\Tenant\RestaurantFloor;
 use App\Models\Tenant\RestaurantTableSession;
+use App\Models\Tenant\RestaurantWaiter;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\StockBalance;
 use App\Models\Tenant\Terminal;
@@ -18,8 +20,27 @@ class POSController extends Controller
 {
     public function index(Request $request)
     {
-        $branches         = Branch::where('status', 'active')->orderBy('name')->get();
-        $selectedBranchId = (int) ($request->branch_id ?: optional($branches->first())->id);
+        $branches = Branch::where('status', 'active')->orderBy('name')->get();
+
+        $selectedBranchId = (int) (
+            $request->branch_id
+            ?: optional($branches->first())->id
+        );
+
+        $heldSale = null;
+
+        if ($request->filled('held_sale_id')) {
+            $heldSale = SalesOrder::with([
+                    'lines',
+                    'customer',
+                    'restaurantTableSession.table.floor',
+                    'restaurantTableSession.waiter',
+                    'restaurantTable',
+                    'restaurantWaiter',
+                ])
+                ->where('status', 'held')
+                ->find($request->held_sale_id);
+        }
 
         $tableSession = null;
 
@@ -29,13 +50,31 @@ class POSController extends Controller
                 ->find($request->table_session_id);
         }
 
-        $heldSale = null;
-
-        if ($request->filled('held_sale_id')) {
-            $heldSale = SalesOrder::with(['lines', 'customer', 'restaurantTableSession.table', 'restaurantWaiter'])
-                ->where('status', 'held')
-                ->find($request->held_sale_id);
+        if (!$tableSession && $heldSale?->restaurant_table_session_id) {
+            $tableSession = RestaurantTableSession::with(['table.floor', 'waiter'])
+                ->whereIn('status', ['open', 'bill_requested'])
+                ->find($heldSale->restaurant_table_session_id);
         }
+
+        $floors = RestaurantFloor::with([
+                'tables.openSession.waiter',
+                'tables.openSession.salesOrders' => function ($query) {
+                    $query->whereIn('status', ['held', 'paid']);
+                },
+            ])
+            ->where('branch_id', $selectedBranchId)
+            ->where('status', 'active')
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get();
+
+        $waiters = RestaurantWaiter::where(function ($query) use ($selectedBranchId) {
+                $query->whereNull('branch_id')
+                    ->orWhere('branch_id', $selectedBranchId);
+            })
+            ->where('status', 'active')
+            ->orderBy('name')
+            ->get();
 
         $products = Product::with([
                 'category',
@@ -65,7 +104,7 @@ class POSController extends Controller
             $branchPrices = $product->branchPrices
                 ? $product->branchPrices->map(function ($price) {
                     return [
-                        'branch_id'         => (int) $price->branch_id,
+                        'branch_id'          => (int) $price->branch_id,
                         'product_variant_id' => $price->product_variant_id ? (int) $price->product_variant_id : null,
                         'selling_price'      => (float) $price->selling_price,
                     ];
@@ -77,8 +116,10 @@ class POSController extends Controller
 
                 foreach ($stockByProduct as $rows) {
                     foreach ($rows as $row) {
-                        if ((int) $row->product_id === (int) $product->id
-                            && (int) ($row->product_variant_id ?: 0) === (int) $variant->id) {
+                        if (
+                            (int) $row->product_id === (int) $product->id
+                            && (int) ($row->product_variant_id ?: 0) === (int) $variant->id
+                        ) {
                             $stockMap[(int) $row->branch_id] = (float) $row->qty;
                         }
                     }
@@ -97,27 +138,29 @@ class POSController extends Controller
 
             foreach ($stockByProduct as $rows) {
                 foreach ($rows as $row) {
-                    if ((int) $row->product_id === (int) $product->id
-                        && (int) ($row->product_variant_id ?: 0) === 0) {
+                    if (
+                        (int) $row->product_id === (int) $product->id
+                        && (int) ($row->product_variant_id ?: 0) === 0
+                    ) {
                         $stockMap[(int) $row->branch_id] = (float) $row->qty;
                     }
                 }
             }
 
             return [
-                'id'              => (int) $product->id,
-                'name'            => $product->name,
-                'sku'             => $product->sku,
-                'category_id'     => $product->category_id ? (int) $product->category_id : null,
-                'category_name'   => $product->category?->name,
-                'price'           => (float) ($defaultVariant?->selling_price ?? $product->default_selling_price ?? $product->selling_price ?? 0),
+                'id'               => (int) $product->id,
+                'name'             => $product->name,
+                'sku'              => $product->sku,
+                'category_id'      => $product->category_id ? (int) $product->category_id : null,
+                'category_name'    => $product->category?->name,
+                'price'            => (float) ($defaultVariant?->selling_price ?? $product->default_selling_price ?? $product->selling_price ?? 0),
                 'is_stock_tracked' => (bool) $product->is_stock_tracked,
-                'is_taxable'      => (bool) ($product->is_taxable ?? false),
+                'is_taxable'       => (bool) ($product->is_taxable ?? false),
                 'tax_rate_percent' => (float) ($product->tax_rate_percent ?? 0),
-                'barcodes'        => $barcodes,
-                'branch_prices'   => $branchPrices,
-                'variants'        => $variants,
-                'stock_by_branch' => $stockMap,
+                'barcodes'         => $barcodes,
+                'branch_prices'    => $branchPrices,
+                'variants'         => $variants,
+                'stock_by_branch'  => $stockMap,
             ];
         })->values();
 
@@ -134,8 +177,13 @@ class POSController extends Controller
                 ->get(),
             'productsPayload'  => $productsPayload,
             'paymentMethods'   => PaymentMethod::where('is_active', true)->orderBy('name')->get(),
+            'floors'           => $floors,
+            'waiters'          => $waiters,
             'tableSession'     => $tableSession,
             'heldSale'         => $heldSale,
+            'activeMode'       => $tableSession || $heldSale?->restaurant_table_session_id
+                ? 'dine_in'
+                : ($request->input('mode', 'quick_sale')),
         ]);
     }
 }

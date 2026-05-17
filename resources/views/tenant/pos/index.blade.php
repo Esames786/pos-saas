@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Modern POS')
+@section('title', 'Restaurant POS')
 
 @section('content')
 <style>
@@ -17,6 +17,29 @@
         box-shadow: 0 12px 34px rgba(15, 23, 42, .06);
     }
 
+    .mode-tabs {
+        display: flex;
+        gap: .65rem;
+        overflow-x: auto;
+        padding-bottom: .25rem;
+    }
+
+    .mode-tab {
+        border: 1px solid #e9ecef;
+        background: #fff;
+        border-radius: 999px;
+        padding: .75rem 1.1rem;
+        font-weight: 800;
+        white-space: nowrap;
+        cursor: pointer;
+    }
+
+    .mode-tab.active {
+        background: #111827;
+        color: #fff;
+        border-color: #111827;
+    }
+
     .category-strip {
         display: flex;
         gap: .6rem;
@@ -28,7 +51,7 @@
         border: 1px solid #e9ecef;
         background: #fff;
         border-radius: 999px;
-        padding: .6rem 1rem;
+        padding: .55rem .95rem;
         font-weight: 700;
         white-space: nowrap;
         cursor: pointer;
@@ -40,11 +63,45 @@
         border-color: #111827;
     }
 
+    .restaurant-board-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+        gap: .75rem;
+        max-height: 360px;
+        overflow-y: auto;
+    }
+
+    .restaurant-table-tile {
+        border: 1px solid #edf0f4;
+        border-radius: 20px;
+        background: linear-gradient(180deg, #fff, #fbfcfd);
+        padding: .85rem;
+        text-align: left;
+        transition: .15s ease;
+    }
+
+    .restaurant-table-tile:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 12px 28px rgba(15, 23, 42, .10);
+    }
+
+    .restaurant-table-tile.available     { border-left: 6px solid #20c997; }
+    .restaurant-table-tile.occupied      { border-left: 6px solid #fd7e14; }
+    .restaurant-table-tile.bill_requested{ border-left: 6px solid #0d6efd; }
+
+    .status-chip {
+        border-radius: 999px;
+        background: #f8fafc;
+        padding: .25rem .55rem;
+        font-size: .72rem;
+        font-weight: 800;
+    }
+
     .product-grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(165px, 1fr));
         gap: .85rem;
-        max-height: calc(100vh - 340px);
+        max-height: calc(100vh - 430px);
         overflow-y: auto;
         padding-right: .25rem;
     }
@@ -75,7 +132,7 @@
         display: grid;
         place-items: center;
         background: #f1f5f9;
-        font-weight: 800;
+        font-weight: 900;
         margin-bottom: .65rem;
     }
 
@@ -84,21 +141,15 @@
         background: #f8fafc;
         padding: .22rem .5rem;
         font-size: .75rem;
-        font-weight: 700;
+        font-weight: 800;
     }
 
-    .stock-low { background: #fff3cd; color: #7a5200; }
-    .stock-out { background: #fee2e2; color: #991b1b; }
+    .stock-low  { background: #fff3cd; color: #7a5200; }
+    .stock-out  { background: #fee2e2; color: #991b1b; }
 
-    .cart-panel {
-        position: sticky;
-        top: 88px;
-    }
+    .cart-panel { position: sticky; top: 88px; }
 
-    .cart-items {
-        max-height: calc(100vh - 475px);
-        overflow-y: auto;
-    }
+    .cart-items { max-height: calc(100vh - 500px); overflow-y: auto; }
 
     .cart-row {
         border-bottom: 1px solid #eef0f3;
@@ -111,7 +162,7 @@
         border-radius: 10px;
         border: 1px solid #dee2e6;
         background: #fff;
-        font-weight: 800;
+        font-weight: 900;
         cursor: pointer;
     }
 
@@ -120,7 +171,7 @@
         background: #f8fafc;
         padding: .35rem .65rem;
         font-size: .75rem;
-        font-weight: 700;
+        font-weight: 800;
     }
 
     .pos-total-line {
@@ -142,27 +193,27 @@
         background: #fff;
         border-radius: 14px;
         padding: .75rem;
-        font-weight: 800;
+        font-weight: 900;
         cursor: pointer;
     }
 
     @media (max-width: 1199px) {
-        .pos-shell { grid-template-columns: 1fr; }
-        .cart-panel { position: static; }
+        .pos-shell      { grid-template-columns: 1fr; }
+        .cart-panel     { position: static; }
     }
 </style>
 
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-3">
     <div>
-        <h1 class="mb-1">Modern POS</h1>
-        <p class="fw-medium mb-0">Quick sale, takeaway, barcode search, hold and recall.</p>
+        <h1 class="mb-1">Restaurant POS</h1>
+        <p class="fw-medium mb-0">Dine-in, takeaway, quick sale, delivery, table orders, and fast checkout.</p>
     </div>
     <div class="d-flex flex-wrap gap-2">
         <span class="shortcut-chip">F2 Search</span>
-        <span class="shortcut-chip">F4 Hold</span>
+        <span class="shortcut-chip">F4 Save Order</span>
         <span class="shortcut-chip">F6 Payment</span>
-        <span class="shortcut-chip">F8 Complete</span>
-        <span class="shortcut-chip">F9 Calc</span>
+        <span class="shortcut-chip">F8 Pay Bill</span>
+        <span class="shortcut-chip">F9 Calculator</span>
     </div>
 </div>
 
@@ -176,9 +227,9 @@
 
 @if($tableSession)
     <div class="alert alert-info" role="status">
-        Table session loaded: <strong>{{ $tableSession->session_no }}</strong>
-        · Table <strong>{{ $tableSession->table?->table_no }}</strong>
-        · Waiter <strong>{{ $tableSession->waiter?->name ?? 'No waiter' }}</strong>
+        Active table: <strong>{{ $tableSession->table?->table_no }}</strong>
+        &middot; Session <strong>{{ $tableSession->session_no }}</strong>
+        &middot; Waiter <strong>{{ $tableSession->waiter?->name ?? 'No waiter' }}</strong>
     </div>
 @endif
 
@@ -188,27 +239,96 @@
     </div>
 @endif
 
+{{-- Mode tabs --}}
+<div class="pos-card p-3 mb-3">
+    <div class="mode-tabs" role="tablist" aria-label="POS Modes">
+        <button type="button" class="mode-tab {{ $activeMode === 'dine_in'    ? 'active' : '' }}" data-mode-tab="dine_in">Dine In</button>
+        <button type="button" class="mode-tab {{ $activeMode === 'takeaway'   ? 'active' : '' }}" data-mode-tab="takeaway">Takeaway</button>
+        <button type="button" class="mode-tab {{ $activeMode === 'quick_sale' ? 'active' : '' }}" data-mode-tab="quick_sale">Quick Sale</button>
+        <button type="button" class="mode-tab {{ $activeMode === 'delivery'   ? 'active' : '' }}" data-mode-tab="delivery">Delivery</button>
+    </div>
+</div>
+
+{{-- Live table board --}}
+<div id="dine-in-board" class="pos-card p-3 mb-3" style="{{ $activeMode === 'dine_in' ? '' : 'display:none;' }}">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+        <div>
+            <h2 class="h5 mb-1">Live Table Board</h2>
+            <p class="text-muted mb-0">Open table, select an active table, then save order or close bill.</p>
+        </div>
+        @can('tenant.restaurant.board')
+            <a href="{{ url('/restaurant/board?branch_id=' . $selectedBranchId) }}" class="btn btn-sm btn-light">Full Board</a>
+        @endcan
+    </div>
+
+    @forelse($floors as $floor)
+        <div class="mb-3">
+            <h3 class="h6 mb-2">{{ $floor->name }}</h3>
+            <div class="restaurant-board-grid">
+                @foreach($floor->tables->sortBy('sort_order') as $table)
+                    @php
+                        $session      = $table->openSession;
+                        $sessionTotal = $session ? $session->salesOrders->sum('grand_total') : 0;
+                    @endphp
+                    <div class="restaurant-table-tile {{ $table->status }}">
+                        <div class="d-flex justify-content-between gap-2 mb-2">
+                            <div>
+                                <div class="fw-bold">{{ $table->table_no }}</div>
+                                <div class="small text-muted">{{ $table->capacity }} seats</div>
+                            </div>
+                            <span class="status-chip">{{ str_replace('_', ' ', ucfirst($table->status)) }}</span>
+                        </div>
+
+                        @if($session)
+                            <div class="small mb-2">
+                                <div><strong>Session:</strong> {{ $session->session_no }}</div>
+                                <div><strong>Waiter:</strong> {{ $session->waiter?->name ?? '-' }}</div>
+                                <div><strong>Total:</strong> {{ number_format($sessionTotal, 2) }}</div>
+                            </div>
+                            <a href="{{ url('/pos?table_session_id=' . $session->id . '&mode=dine_in&branch_id=' . $selectedBranchId) }}"
+                               class="btn btn-sm btn-primary w-100 mb-1">Select Table</a>
+                            @if($session->salesOrders->where('status', 'held')->count())
+                                <a href="{{ url('/held-sales') }}" class="btn btn-sm btn-outline-dark w-100">View Held Orders</a>
+                            @endif
+                        @else
+                            @can('tenant.restaurant.table-sessions.open')
+                                <button type="button" class="btn btn-sm btn-success w-100"
+                                    data-bs-toggle="modal" data-bs-target="#openTableModal"
+                                    data-table-id="{{ $table->id }}" data-table-no="{{ $table->table_no }}">
+                                    Open Table
+                                </button>
+                            @else
+                                <span class="text-muted small">Available</span>
+                            @endcan
+                        @endif
+                    </div>
+                @endforeach
+            </div>
+        </div>
+    @empty
+        <div class="alert alert-info" role="status">No active floors/tables found for this branch.</div>
+    @endforelse
+</div>
+
+{{-- POS form --}}
 <form id="pos-sale-form" method="POST" action="{{ url('/pos') }}">
     @csrf
-
-    <input type="hidden" name="order_source" value="pos">
-    <input type="hidden" name="held_sale_id" value="{{ $heldSale?->id }}">
-    <input type="hidden" name="restaurant_table_session_id" value="{{ $tableSession?->id ?? $heldSale?->restaurant_table_session_id }}">
-    <input type="hidden" name="discount_type" value="none">
-    <input type="hidden" name="discount_value" value="0">
-
+    <input type="hidden" name="order_source"                id="pos-order-source"      value="pos">
+    <input type="hidden" name="held_sale_id"                                            value="{{ $heldSale?->id }}">
+    <input type="hidden" name="restaurant_table_session_id"                             value="{{ $tableSession?->id ?? $heldSale?->restaurant_table_session_id }}">
+    <input type="hidden" name="discount_type"                                           value="none">
+    <input type="hidden" name="discount_value"                                          value="0">
     <div id="dynamic-pos-inputs"></div>
 
     <div class="pos-shell">
-        {{-- Left: product browser --}}
+        {{-- LEFT: products --}}
         <section class="pos-card p-3" aria-labelledby="products_heading">
             <div class="row g-2 mb-3">
                 <div class="col-md-3">
-                    <label for="branch_id" class="form-label">Branch</label>
+                    <label for="branch_id" class="form-label required">Branch</label>
                     <select id="branch_id" name="branch_id" class="form-select" required>
                         @foreach($branches as $branch)
-                            <option value="{{ $branch->id }}"
-                                    @selected((int) $selectedBranchId === (int) $branch->id)>
+                            <option value="{{ $branch->id }}" @selected((int) $selectedBranchId === (int) $branch->id)>
                                 {{ $branch->name }}
                             </option>
                         @endforeach
@@ -219,19 +339,17 @@
                     <select id="terminal_id" name="terminal_id" class="form-select">
                         <option value="">No Terminal</option>
                         @foreach($terminals as $terminal)
-                            <option value="{{ $terminal->id }}">
-                                {{ $terminal->name }} — {{ $terminal->branch?->name }}
-                            </option>
+                            <option value="{{ $terminal->id }}">{{ $terminal->name }} &mdash; {{ $terminal->branch?->name }}</option>
                         @endforeach
                     </select>
                 </div>
                 <div class="col-md-3">
-                    <label for="order_type" class="form-label">Mode</label>
+                    <label for="order_type" class="form-label required">Order Type</label>
                     <select id="order_type" name="order_type" class="form-select" required>
-                        <option value="quick_sale" @selected(!$tableSession && !$heldSale)>Quick Sale</option>
-                        <option value="takeaway">Takeaway</option>
-                        <option value="delivery">Delivery</option>
-                        <option value="dine_in" @selected($tableSession || $heldSale?->restaurant_table_session_id)>Dine In</option>
+                        <option value="dine_in"    @selected($activeMode === 'dine_in')>Dine In</option>
+                        <option value="takeaway"   @selected($activeMode === 'takeaway')>Takeaway</option>
+                        <option value="quick_sale" @selected($activeMode === 'quick_sale')>Quick Sale</option>
+                        <option value="delivery"   @selected($activeMode === 'delivery')>Delivery</option>
                     </select>
                 </div>
                 <div class="col-md-3">
@@ -240,26 +358,24 @@
                         <select id="customer_id" name="customer_id" class="form-select">
                             <option value="">Walk-in</option>
                             @foreach($customers as $customer)
-                                <option value="{{ $customer->id }}"
-                                        @selected($heldSale?->customer_id === $customer->id)>
+                                <option value="{{ $customer->id }}" @selected($heldSale?->customer_id === $customer->id)>
                                     {{ $customer->name }}{{ $customer->phone ? ' — ' . $customer->phone : '' }}
                                 </option>
                             @endforeach
                         </select>
                         <button class="btn btn-outline-primary" type="button"
-                                data-bs-toggle="modal" data-bs-target="#quickCustomerModal">+</button>
+                            data-bs-toggle="modal" data-bs-target="#quickCustomerModal">+</button>
                     </div>
                 </div>
             </div>
 
             <div class="row g-2 mb-3">
                 <div class="col-md-8">
-                    <label for="pos_search" class="form-label">Barcode / Search</label>
-                    <input id="pos_search" class="form-control form-control-lg"
-                           placeholder="Scan barcode or type product name / SKU" autocomplete="off">
+                    <label for="pos_search" class="form-label">Barcode / Product Search</label>
+                    <input id="pos_search" class="form-control form-control-lg" placeholder="Scan barcode or type product name / SKU">
                 </div>
                 <div class="col-md-4">
-                    <label for="customer_phone" class="form-label">Phone (optional)</label>
+                    <label for="customer_phone" class="form-label">Optional Phone</label>
                     <input id="customer_phone" name="customer_phone" class="form-control form-control-lg"
                            value="{{ $heldSale?->customer_phone }}">
                 </div>
@@ -284,13 +400,20 @@
             <div class="product-grid" id="product-grid" aria-live="polite"></div>
         </section>
 
-        {{-- Right: cart + payment --}}
+        {{-- RIGHT: cart + payment --}}
         <aside class="cart-panel">
             <section class="pos-card p-3 mb-3" aria-labelledby="cart_heading">
                 <div class="d-flex justify-content-between align-items-center mb-2">
-                    <h2 id="cart_heading" class="h5 mb-0">Cart</h2>
+                    <h2 id="cart_heading" class="h5 mb-0">{{ $tableSession ? 'Table Cart' : 'Cart' }}</h2>
                     <button type="button" class="btn btn-sm btn-outline-danger" id="clear-cart-btn">Clear</button>
                 </div>
+                @if($tableSession)
+                    <div class="alert alert-light border small mb-2">
+                        Table <strong>{{ $tableSession->table?->table_no }}</strong>
+                        &middot; {{ $tableSession->guest_count }} guests
+                        &middot; {{ $tableSession->waiter?->name ?? 'No waiter' }}
+                    </div>
+                @endif
                 <div class="cart-items" id="cart-items">
                     <p class="text-muted mb-0">No items added.</p>
                 </div>
@@ -299,22 +422,20 @@
             <section class="pos-card p-3 mb-3" aria-labelledby="payment_heading">
                 <h2 id="payment_heading" class="h5 mb-3">Payment</h2>
                 <div class="mb-3">
-                    <label for="payment_method_id" class="form-label">Method</label>
-                    <select id="payment_method_id" class="form-select">
+                    <label for="payment_method_id" class="form-label required">Payment Method</label>
+                    <select id="payment_method_id" class="form-select" required>
                         @foreach($paymentMethods as $method)
-                            <option value="{{ $method->id }}" data-type="{{ $method->method_type }}">
-                                {{ $method->name }}
-                            </option>
+                            <option value="{{ $method->id }}" data-type="{{ $method->method_type }}">{{ $method->name }}</option>
                         @endforeach
                     </select>
                 </div>
                 <div class="mb-3">
-                    <label for="tendered_amount" class="form-label">Tendered</label>
+                    <label for="tendered_amount" class="form-label">Tendered Amount</label>
                     <input id="tendered_amount" type="number" step="0.01" min="0" class="form-control form-control-lg">
                 </div>
                 <div class="mb-3">
-                    <label for="transaction_ref" class="form-label">Reference</label>
-                    <input id="transaction_ref" class="form-control" placeholder="Card / bank ref (optional)">
+                    <label for="transaction_ref" class="form-label">Reference / Card / Bank</label>
+                    <input id="transaction_ref" class="form-control" placeholder="Optional reference">
                 </div>
                 <div class="pos-total-line"><span>Subtotal</span><strong id="subtotal-view">0.00</strong></div>
                 <div class="pos-total-line"><span>Discount</span><strong id="discount-view">0.00</strong></div>
@@ -327,30 +448,79 @@
                 <div class="pos-total-line"><span>Change</span><strong id="change-view">0.00</strong></div>
             </section>
 
-            <section class="pos-card p-3 mb-3" id="calculator-panel" style="display:none;" aria-labelledby="calc_heading">
-                <h2 id="calc_heading" class="h6 mb-2">Calculator</h2>
+            <section class="pos-card p-3 mb-3" id="calculator-panel" style="display:none;" aria-labelledby="calculator_heading">
+                <h2 id="calculator_heading" class="h6 mb-2">Touch Keypad / Calculator</h2>
                 <input id="calc-display" class="form-control mb-2" readonly>
                 <div class="keypad">
                     @foreach(['7','8','9','/','4','5','6','*','1','2','3','-','0','.','C','+'] as $key)
                         <button type="button" data-key="{{ $key }}">{{ $key }}</button>
                     @endforeach
-                    <button type="button" data-key="=" style="grid-column: span 4; background:#111827; color:#fff; border-color:#111827;">=</button>
+                    <button type="button" data-key="=" class="btn btn-dark" style="grid-column: span 4;">=</button>
                 </div>
             </section>
 
             <div class="d-grid gap-2">
                 <button type="button" class="btn btn-warning btn-lg" id="hold-sale-btn">
-                    <i class="ti ti-player-pause me-1"></i> Hold Sale (F4)
+                    {{ $tableSession ? 'Save Order To Table' : 'Hold Sale' }}
                 </button>
                 <button type="button" class="btn btn-primary btn-lg" id="complete-sale-btn">
-                    <i class="ti ti-circle-check me-1"></i> Complete Sale (F8)
+                    {{ $tableSession ? 'Close & Pay Table Bill' : 'Complete Sale' }}
                 </button>
+                @if($tableSession)
+                    @can('tenant.restaurant.table-sessions.bill-requested')
+                        <form method="POST" action="{{ url('/restaurant/table-sessions/' . $tableSession->id . '/bill-requested') }}">
+                            @csrf
+                            <button class="btn btn-info btn-lg w-100" type="submit">Mark Bill Requested</button>
+                        </form>
+                    @endcan
+                @endif
             </div>
         </aside>
     </div>
 </form>
 
-{{-- Quick customer modal --}}
+{{-- Open Table Modal --}}
+<div class="modal fade" id="openTableModal" tabindex="-1" aria-labelledby="openTableModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <form id="open-table-form" method="POST" action="#" class="modal-content">
+            @csrf
+            <div class="modal-header">
+                <h2 class="modal-title h5" id="openTableModalLabel">Open Table</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body row g-3">
+                <div class="col-12">
+                    <div class="alert alert-light border mb-0">
+                        Opening table: <strong id="open-table-no">-</strong>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <label for="restaurant_waiter_id" class="form-label">Waiter</label>
+                    <select id="restaurant_waiter_id" name="restaurant_waiter_id" class="form-select">
+                        <option value="">No Waiter</option>
+                        @foreach($waiters as $waiter)
+                            <option value="{{ $waiter->id }}">{{ $waiter->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="col-12">
+                    <label for="guest_count" class="form-label required">Guests</label>
+                    <input id="guest_count" type="number" min="1" max="100" name="guest_count" value="1" class="form-control" required>
+                </div>
+                <div class="col-12">
+                    <label for="table_notes" class="form-label">Notes</label>
+                    <input id="table_notes" name="notes" class="form-control">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-light" type="button" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-success" type="submit">Open Table</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{{-- Quick Customer Modal --}}
 <div class="modal fade" id="quickCustomerModal" tabindex="-1" aria-labelledby="quickCustomerModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <form method="POST" action="{{ url('/pos/customers/quick-store') }}" class="modal-content">
@@ -361,7 +531,7 @@
             </div>
             <div class="modal-body row g-3">
                 <div class="col-12">
-                    <label for="quick_customer_name" class="form-label">Name <span class="text-danger">*</span></label>
+                    <label for="quick_customer_name" class="form-label required">Name</label>
                     <input id="quick_customer_name" name="name" class="form-control" required>
                 </div>
                 <div class="col-12">
@@ -388,7 +558,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const heldSale   = @json($heldSale ? [
         'id'    => $heldSale->id,
         'lines' => $heldSale->lines->map(fn ($l) => [
-            'product_id'         => (int)   $l->product_id,
+            'product_id'         => (int) $l->product_id,
             'product_variant_id' => $l->product_variant_id ? (int) $l->product_variant_id : null,
             'quantity'           => (float) $l->quantity,
             'unit_price'         => (float) $l->unit_price,
@@ -397,130 +567,146 @@ document.addEventListener('DOMContentLoaded', function () {
         ])->values(),
     ] : null);
 
-    const form              = document.getElementById('pos-sale-form');
-    const productGrid       = document.getElementById('product-grid');
-    const cartItems         = document.getElementById('cart-items');
-    const branchEl          = document.getElementById('branch_id');
-    const searchEl          = document.getElementById('pos_search');
-    const dynamicInputs     = document.getElementById('dynamic-pos-inputs');
-    const paymentMethodEl   = document.getElementById('payment_method_id');
-    const tenderedEl        = document.getElementById('tendered_amount');
-    const transactionRefEl  = document.getElementById('transaction_ref');
-    const calculatorPanel   = document.getElementById('calculator-panel');
-    const calcDisplay       = document.getElementById('calc-display');
+    const form             = document.getElementById('pos-sale-form');
+    const productGrid      = document.getElementById('product-grid');
+    const cartItemsEl      = document.getElementById('cart-items');
+    const branchEl         = document.getElementById('branch_id');
+    const searchEl         = document.getElementById('pos_search');
+    const dynamicInputs    = document.getElementById('dynamic-pos-inputs');
+    const paymentMethodEl  = document.getElementById('payment_method_id');
+    const tenderedEl       = document.getElementById('tendered_amount');
+    const transactionRefEl = document.getElementById('transaction_ref');
+    const calculatorPanel  = document.getElementById('calculator-panel');
+    const calcDisplay      = document.getElementById('calc-display');
+    const orderTypeEl      = document.getElementById('order_type');
 
     let selectedParentCategory = '';
     let selectedChildCategory  = '';
     let cart = [];
 
-    function money(v) { return Number(v || 0).toFixed(2); }
-    function selectedBranchId() { return Number(branchEl.value || 0); }
+    /* helpers */
+
+    function money(value) {
+        return Number(value || 0).toFixed(2);
+    }
+
+    function selectedBranchId() {
+        return Number(branchEl.value || 0);
+    }
 
     function productPrice(product, variant) {
-        const bid = selectedBranchId();
+        const branchId = selectedBranchId();
 
         if (variant) {
-            const vp = (product.branch_prices || []).find(p =>
-                Number(p.branch_id) === bid && Number(p.product_variant_id || 0) === Number(variant.id));
-            if (vp) return Number(vp.selling_price);
+            const exact = (product.branch_prices || []).find(function (p) {
+                return Number(p.branch_id) === branchId && Number(p.product_variant_id || 0) === Number(variant.id);
+            });
+            if (exact) return Number(exact.selling_price || 0);
         }
 
-        const pp = (product.branch_prices || []).find(p =>
-            Number(p.branch_id) === bid && !p.product_variant_id);
-        if (pp) return Number(pp.selling_price);
+        const base = (product.branch_prices || []).find(function (p) {
+            return Number(p.branch_id) === branchId && !p.product_variant_id;
+        });
+        if (base) return Number(base.selling_price || 0);
 
-        return Number((variant ? variant.selling_price : null) || product.price || 0);
+        if (variant) return Number(variant.selling_price || product.price || 0);
+
+        return Number(product.price || 0);
     }
 
     function availableQty(product, variant) {
         if (!product.is_stock_tracked) return null;
-        const bid = selectedBranchId();
-        if (variant && variant.stock_by_branch) return Number(variant.stock_by_branch[bid] || 0);
-        return Number((product.stock_by_branch || {})[bid] || 0);
+        const branchId = selectedBranchId();
+        if (variant && variant.stock_by_branch) return Number(variant.stock_by_branch[branchId] || 0);
+        return Number((product.stock_by_branch || {})[branchId] || 0);
     }
 
-    function calcTax(product, qty, price, discount) {
-        if (!product.is_taxable || !(product.tax_rate_percent > 0)) return 0;
-        return ((Math.max(qty * price - discount, 0)) * product.tax_rate_percent) / 100;
+    function lineTax(product, qty, price, discount) {
+        if (!product.is_taxable || Number(product.tax_rate_percent || 0) <= 0) return 0;
+        return (Math.max((qty * price) - discount, 0) * Number(product.tax_rate_percent || 0)) / 100;
     }
 
     function initials(name) {
-        return String(name || '?').split(' ').map(p => p[0]).join('').substring(0, 2).toUpperCase();
+        return String(name || '?').split(' ').map(function (p) { return p[0]; }).join('').substring(0, 2).toUpperCase();
     }
+
+    /* product grid */
 
     function renderProducts() {
         const query = searchEl.value.toLowerCase().trim();
 
-        const filtered = products.filter(function (p) {
-            const matchParent = !selectedParentCategory || Number(p.category_id) === Number(selectedParentCategory);
-            const matchChild  = !selectedChildCategory  || Number(p.category_id) === Number(selectedChildCategory);
+        const filtered = products.filter(function (product) {
+            const matchParent = !selectedParentCategory || Number(product.category_id) === Number(selectedParentCategory);
+            const matchChild  = !selectedChildCategory  || Number(product.category_id) === Number(selectedChildCategory);
 
-            const barcodeHit = (p.barcodes || []).some(b => String(b).toLowerCase().includes(query));
-            const textHit    = !query || p.name.toLowerCase().includes(query)
-                || String(p.sku || '').toLowerCase().includes(query) || barcodeHit;
+            const barcodeMatch = (product.barcodes || []).some(function (barcode) {
+                return String(barcode).toLowerCase().includes(query);
+            });
 
-            return textHit && (selectedChildCategory ? matchChild : matchParent);
+            const textMatch = !query
+                || String(product.name).toLowerCase().includes(query)
+                || String(product.sku || '').toLowerCase().includes(query)
+                || barcodeMatch;
+
+            return textMatch && (selectedChildCategory ? matchChild : matchParent);
         });
 
         productGrid.innerHTML = '';
 
-        if (!filtered.length) {
-            productGrid.innerHTML = '<div class="alert alert-info">No products found.</div>';
-            return;
-        }
-
         filtered.forEach(function (product) {
-            const variant = product.variants && product.variants.length ? product.variants[0] : null;
-            const qty     = availableQty(product, variant);
-            const price   = productPrice(product, variant);
-
+            const variant    = product.variants && product.variants.length ? product.variants[0] : null;
+            const qty        = availableQty(product, variant);
+            const price      = productPrice(product, variant);
             const stockClass = qty === null ? '' : qty <= 0 ? 'stock-out' : qty <= 5 ? 'stock-low' : '';
-            const stockText  = qty === null ? 'Service' : 'Qty ' + qty;
+            const stockText  = qty === null ? 'Service' : 'Stock ' + qty;
 
-            const btn = document.createElement('button');
-            btn.type      = 'button';
-            btn.className = 'product-tile';
-            btn.dataset.productId  = product.id;
-            btn.dataset.variantId  = variant ? variant.id : '';
+            const button     = document.createElement('button');
+            button.type      = 'button';
+            button.className = 'product-tile';
+            button.innerHTML =
+                '<div class="product-avatar">' + initials(product.name) + '</div>' +
+                '<div class="fw-bold mb-1">' + product.name + '</div>' +
+                '<div class="text-muted small mb-2">' + (product.sku || 'No SKU') + '</div>' +
+                '<div class="d-flex justify-content-between align-items-center">' +
+                    '<span class="fw-bold">' + money(price) + '</span>' +
+                    '<span class="stock-badge ' + stockClass + '">' + stockText + '</span>' +
+                '</div>' +
+                (product.is_taxable ? '<div class="small text-muted mt-2">Tax ' + product.tax_rate_percent + '%</div>' : '');
 
-            btn.innerHTML = `
-                <div class="product-avatar">${initials(product.name)}</div>
-                <div class="fw-bold mb-1">${product.name}</div>
-                <div class="text-muted small mb-2">${product.sku || '–'}</div>
-                <div class="d-flex justify-content-between align-items-center">
-                    <span class="fw-bold">${money(price)}</span>
-                    <span class="stock-badge ${stockClass}">${stockText}</span>
-                </div>
-                ${product.is_taxable ? `<div class="small text-muted mt-1">Tax ${product.tax_rate_percent}%</div>` : ''}
-            `;
-
-            btn.addEventListener('click', () => addToCart(product, variant));
-            productGrid.appendChild(btn);
+            button.addEventListener('click', function () { addToCart(product, variant); });
+            productGrid.appendChild(button);
         });
+
+        if (!filtered.length) {
+            productGrid.innerHTML = '<div class="alert alert-info" role="status">No products found.</div>';
+        }
     }
 
-    function addToCart(product, variant) {
-        const key = product.id + ':' + (variant ? variant.id : 0);
-        const existing = cart.find(i => i.key === key);
-        const qtyAvail = availableQty(product, variant);
+    /* cart */
 
-        if (qtyAvail !== null && qtyAvail <= 0) {
-            alert('This item is out of stock.');
-            return;
-        }
+    function addToCart(product, variant) {
+        const key      = product.id + ':' + (variant ? variant.id : 0);
+        const existing = cart.find(function (item) { return item.key === key; });
+        const qty      = availableQty(product, variant);
+
+        if (qty !== null && qty <= 0) { alert('This item is out of stock.'); return; }
 
         if (existing) {
             existing.quantity += 1;
         } else {
             const price = productPrice(product, variant);
             cart.push({
-                key, product_id: product.id,
+                key:                key,
+                product_id:         product.id,
                 product_variant_id: variant ? variant.id : null,
-                name: product.name,
-                variant_name: variant ? variant.name : null,
-                quantity: 1, unit_price: price, discount_amount: 0,
-                tax_amount: calcTax(product, 1, price, 0),
-                product, variant
+                name:               product.name,
+                variant_name:       variant ? variant.name : null,
+                quantity:           1,
+                unit_price:         price,
+                discount_amount:    0,
+                tax_amount:         lineTax(product, 1, price, 0),
+                product:            product,
+                variant:            variant || null,
             });
         }
 
@@ -528,106 +714,116 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function renderCart() {
-        cartItems.innerHTML = '';
+        cartItemsEl.innerHTML = '';
 
         if (!cart.length) {
-            cartItems.innerHTML = '<p class="text-muted mb-0">No items added.</p>';
+            cartItemsEl.innerHTML = '<p class="text-muted mb-0">No items added.</p>';
             updateTotals();
             return;
         }
 
-        cart.forEach(function (item, idx) {
-            item.tax_amount = calcTax(item.product, item.quantity, item.unit_price, item.discount_amount);
+        cart.forEach(function (item, index) {
+            item.tax_amount = lineTax(item.product, item.quantity, item.unit_price, item.discount_amount);
 
-            const row = document.createElement('div');
+            const row     = document.createElement('div');
             row.className = 'cart-row';
-            row.innerHTML = `
-                <div class="d-flex justify-content-between gap-2 mb-2">
-                    <div>
-                        <div class="fw-bold">${item.name}</div>
-                        <div class="small text-muted">${item.variant_name || 'Default'} · ${money(item.unit_price)}</div>
-                    </div>
-                    <button type="button" class="btn btn-sm btn-outline-danger px-2" data-remove="${idx}">×</button>
-                </div>
-                <div class="d-flex align-items-center justify-content-between gap-2">
-                    <div class="d-flex align-items-center gap-2">
-                        <button type="button" class="qty-btn" data-minus="${idx}">−</button>
-                        <strong>${item.quantity}</strong>
-                        <button type="button" class="qty-btn" data-plus="${idx}">+</button>
-                    </div>
-                    <strong>${money((item.quantity * item.unit_price) - item.discount_amount + item.tax_amount)}</strong>
-                </div>
-            `;
-            cartItems.appendChild(row);
+            row.innerHTML =
+                '<div class="d-flex justify-content-between gap-2 mb-2">' +
+                    '<div>' +
+                        '<div class="fw-bold">' + item.name + '</div>' +
+                        '<div class="small text-muted">' + (item.variant_name || 'Default') + ' &middot; ' + money(item.unit_price) + '</div>' +
+                    '</div>' +
+                    '<button type="button" class="btn btn-sm btn-outline-danger" data-remove="' + index + '">&times;</button>' +
+                '</div>' +
+                '<div class="d-flex align-items-center justify-content-between gap-2">' +
+                    '<div class="d-flex align-items-center gap-2">' +
+                        '<button type="button" class="qty-btn" data-minus="' + index + '">-</button>' +
+                        '<strong>' + item.quantity + '</strong>' +
+                        '<button type="button" class="qty-btn" data-plus="' + index + '">+</button>' +
+                    '</div>' +
+                    '<strong>' + money((item.quantity * item.unit_price) - item.discount_amount + item.tax_amount) + '</strong>' +
+                '</div>';
+
+            cartItemsEl.appendChild(row);
         });
 
-        cartItems.querySelectorAll('[data-plus]').forEach(btn =>
-            btn.addEventListener('click', () => { cart[+btn.dataset.plus].quantity++; renderCart(); }));
-        cartItems.querySelectorAll('[data-minus]').forEach(btn =>
-            btn.addEventListener('click', () => {
-                cart[+btn.dataset.minus].quantity--;
-                if (cart[+btn.dataset.minus].quantity <= 0) cart.splice(+btn.dataset.minus, 1);
+        cartItemsEl.querySelectorAll('[data-plus]').forEach(function (btn) {
+            btn.addEventListener('click', function () { cart[Number(btn.dataset.plus)].quantity += 1; renderCart(); });
+        });
+        cartItemsEl.querySelectorAll('[data-minus]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                const i = Number(btn.dataset.minus);
+                cart[i].quantity -= 1;
+                if (cart[i].quantity <= 0) cart.splice(i, 1);
                 renderCart();
-            }));
-        cartItems.querySelectorAll('[data-remove]').forEach(btn =>
-            btn.addEventListener('click', () => { cart.splice(+btn.dataset.remove, 1); renderCart(); }));
+            });
+        });
+        cartItemsEl.querySelectorAll('[data-remove]').forEach(function (btn) {
+            btn.addEventListener('click', function () { cart.splice(Number(btn.dataset.remove), 1); renderCart(); });
+        });
 
         updateTotals();
     }
 
+    /* totals */
+
     function totals() {
         let subtotal = 0, discount = 0, tax = 0;
-        cart.forEach(i => {
-            subtotal += i.quantity * i.unit_price;
-            discount += Number(i.discount_amount || 0);
-            tax      += Number(i.tax_amount || 0);
+        cart.forEach(function (item) {
+            subtotal += item.quantity * item.unit_price;
+            discount += Number(item.discount_amount || 0);
+            tax      += Number(item.tax_amount || 0);
         });
-        return { subtotal, discount, tax, total: Math.max(subtotal - discount + tax, 0) };
+        return { subtotal: subtotal, discount: discount, tax: tax, total: Math.max(subtotal - discount + tax, 0) };
     }
 
     function updateTotals() {
         const t = totals();
-        document.getElementById('subtotal-view').textContent   = money(t.subtotal);
-        document.getElementById('discount-view').textContent   = money(t.discount);
-        document.getElementById('tax-view').textContent        = money(t.tax);
+        document.getElementById('subtotal-view').textContent    = money(t.subtotal);
+        document.getElementById('discount-view').textContent    = money(t.discount);
+        document.getElementById('tax-view').textContent         = money(t.tax);
         document.getElementById('grand-total-view').textContent = money(t.total);
-
         if (!tenderedEl.dataset.manual) tenderedEl.value = money(t.total);
-
-        const change = Math.max(Number(tenderedEl.value || 0) - t.total, 0);
-        document.getElementById('change-view').textContent = money(change);
+        document.getElementById('change-view').textContent =
+            money(Math.max(Number(tenderedEl.value || 0) - t.total, 0));
     }
+
+    /* form build + submit */
 
     function buildInputs(includePayment) {
         dynamicInputs.innerHTML = '';
 
-        cart.forEach(function (item, i) {
-            const fields = {
-                product_id: item.product_id,
+        cart.forEach(function (item, index) {
+            var fields = {
+                product_id:         item.product_id,
                 product_variant_id: item.product_variant_id || '',
-                quantity: item.quantity,
-                unit_price: item.unit_price,
-                discount_amount: item.discount_amount || 0,
-                tax_amount: item.tax_amount || 0
+                quantity:           item.quantity,
+                unit_price:         item.unit_price,
+                discount_amount:    item.discount_amount || 0,
+                tax_amount:         item.tax_amount || 0,
             };
-            Object.keys(fields).forEach(function (k) {
-                const inp = document.createElement('input');
-                inp.type = 'hidden'; inp.name = `lines[${i}][${k}]`; inp.value = fields[k];
+            Object.keys(fields).forEach(function (field) {
+                var inp  = document.createElement('input');
+                inp.type = 'hidden';
+                inp.name = 'lines[' + index + '][' + field + ']';
+                inp.value = fields[field];
                 dynamicInputs.appendChild(inp);
             });
         });
 
         if (includePayment) {
             const t = totals();
-            const pf = {
+            var payFields = {
                 payment_method_id: paymentMethodEl.value,
-                amount: money(t.total),
-                tendered_amount: tenderedEl.value || money(t.total),
-                transaction_ref: transactionRefEl.value || ''
+                amount:            money(t.total),
+                tendered_amount:   tenderedEl.value || money(t.total),
+                transaction_ref:   transactionRefEl.value || '',
             };
-            Object.keys(pf).forEach(function (k) {
-                const inp = document.createElement('input');
-                inp.type = 'hidden'; inp.name = `payments[0][${k}]`; inp.value = pf[k];
+            Object.keys(payFields).forEach(function (field) {
+                var inp  = document.createElement('input');
+                inp.type = 'hidden';
+                inp.name = 'payments[0][' + field + ']';
+                inp.value = payFields[field];
                 dynamicInputs.appendChild(inp);
             });
         }
@@ -658,25 +854,50 @@ document.addEventListener('DOMContentLoaded', function () {
         updateTotals();
     });
 
-    branchEl.addEventListener('change', function () { renderProducts(); renderCart(); });
+    /* branch change → reload */
+
+    branchEl.addEventListener('change', function () {
+        window.location.href = '{{ url('/pos') }}?branch_id=' + branchEl.value + '&mode=' + orderTypeEl.value;
+    });
+
+    /* search / barcode scan */
 
     searchEl.addEventListener('input', function () {
         const query = searchEl.value.trim().toLowerCase();
 
-        const exact = products.find(p =>
-            (p.barcodes || []).some(b => String(b).toLowerCase() === query));
-        if (exact) {
-            addToCart(exact, exact.variants && exact.variants.length ? exact.variants[0] : null);
+        const barcodeProduct = products.find(function (product) {
+            return (product.barcodes || []).some(function (barcode) {
+                return String(barcode).toLowerCase() === query;
+            });
+        });
+
+        if (barcodeProduct) {
+            addToCart(barcodeProduct, barcodeProduct.variants && barcodeProduct.variants.length ? barcodeProduct.variants[0] : null);
             searchEl.value = '';
         }
 
         renderProducts();
     });
 
+    /* mode tabs */
+
+    document.querySelectorAll('[data-mode-tab]').forEach(function (button) {
+        button.addEventListener('click', function () {
+            const mode = button.dataset.modeTab;
+            orderTypeEl.value = mode;
+            document.querySelectorAll('[data-mode-tab]').forEach(function (b) { b.classList.remove('active'); });
+            button.classList.add('active');
+            document.getElementById('dine-in-board').style.display = mode === 'dine_in' ? '' : 'none';
+        });
+    });
+
+    /* parent category filter */
+
     document.querySelectorAll('[data-parent-category]').forEach(function (btn) {
         btn.addEventListener('click', function () {
-            document.querySelectorAll('[data-parent-category]').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('[data-parent-category]').forEach(function (b) { b.classList.remove('active'); });
             btn.classList.add('active');
+
             selectedParentCategory = btn.dataset.parentCategory;
             selectedChildCategory  = '';
 
@@ -684,33 +905,35 @@ document.addEventListener('DOMContentLoaded', function () {
             const strip = document.getElementById('child-category-strip');
             strip.innerHTML = '';
 
-            const parent = categories.find(c => Number(c.id) === Number(selectedParentCategory));
+            const parent = categories.find(function (c) { return Number(c.id) === Number(selectedParentCategory); });
 
             if (parent && parent.children && parent.children.length) {
                 wrap.style.display = '';
 
-                const allBtn = document.createElement('button');
-                allBtn.type = 'button'; allBtn.className = 'category-pill active';
+                const allBtn     = document.createElement('button');
+                allBtn.type      = 'button';
+                allBtn.className = 'category-pill active';
                 allBtn.textContent = 'All';
                 allBtn.addEventListener('click', function () {
                     selectedChildCategory = '';
-                    strip.querySelectorAll('.category-pill').forEach(b => b.classList.remove('active'));
+                    strip.querySelectorAll('.category-pill').forEach(function (b) { b.classList.remove('active'); });
                     allBtn.classList.add('active');
                     renderProducts();
                 });
                 strip.appendChild(allBtn);
 
                 parent.children.forEach(function (child) {
-                    const cb = document.createElement('button');
-                    cb.type = 'button'; cb.className = 'category-pill';
-                    cb.textContent = child.name;
-                    cb.addEventListener('click', function () {
+                    const childBtn     = document.createElement('button');
+                    childBtn.type      = 'button';
+                    childBtn.className = 'category-pill';
+                    childBtn.textContent = child.name;
+                    childBtn.addEventListener('click', function () {
                         selectedChildCategory = child.id;
-                        strip.querySelectorAll('.category-pill').forEach(b => b.classList.remove('active'));
-                        cb.classList.add('active');
+                        strip.querySelectorAll('.category-pill').forEach(function (b) { b.classList.remove('active'); });
+                        childBtn.classList.add('active');
                         renderProducts();
                     });
-                    strip.appendChild(cb);
+                    strip.appendChild(childBtn);
                 });
             } else {
                 wrap.style.display = 'none';
@@ -720,48 +943,69 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    document.addEventListener('keydown', function (e) {
-        if (e.key === 'F2') { e.preventDefault(); searchEl.focus(); }
-        if (e.key === 'F4') { e.preventDefault(); submitHeldSale(); }
-        if (e.key === 'F6') { e.preventDefault(); paymentMethodEl.focus(); }
-        if (e.key === 'F8') { e.preventDefault(); submitPaidSale(); }
-        if (e.key === 'F9') {
-            e.preventDefault();
-            calculatorPanel.style.display = calculatorPanel.style.display === 'none' ? '' : 'none';
-        }
+    /* open table modal */
+
+    document.getElementById('openTableModal').addEventListener('show.bs.modal', function (event) {
+        const trigger = event.relatedTarget;
+        if (!trigger) return;
+        document.getElementById('open-table-no').textContent     = trigger.getAttribute('data-table-no');
+        document.getElementById('open-table-form').action        = '{{ url('/restaurant/tables') }}/' + trigger.getAttribute('data-table-id') + '/open';
     });
+
+    /* calculator */
 
     document.querySelectorAll('[data-key]').forEach(function (btn) {
         btn.addEventListener('click', function () {
-            const k = btn.dataset.key;
-            if (k === 'C') { calcDisplay.value = ''; return; }
-            if (k === '=') {
-                try { calcDisplay.value = Function('"use strict"; return (' + calcDisplay.value + ')')(); }
-                catch (err) { calcDisplay.value = 'Error'; }
+            const key = btn.dataset.key;
+            if (key === 'C') { calcDisplay.value = ''; return; }
+            if (key === '=') {
+                try {
+                    calcDisplay.value = Function('"use strict"; return (' + calcDisplay.value + ')')();
+                } catch (e) {
+                    calcDisplay.value = 'Error';
+                }
                 return;
             }
-            calcDisplay.value += k;
+            calcDisplay.value += key;
         });
     });
 
+    /* keyboard shortcuts */
+
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'F2')  { event.preventDefault(); searchEl.focus(); }
+        if (event.key === 'F4')  { event.preventDefault(); submitHeldSale(); }
+        if (event.key === 'F6')  { event.preventDefault(); paymentMethodEl.focus(); }
+        if (event.key === 'F8')  { event.preventDefault(); submitPaidSale(); }
+        if (event.key === 'F9')  { event.preventDefault(); calculatorPanel.style.display = calculatorPanel.style.display === 'none' ? '' : 'none'; }
+    });
+
+    /* preload held sale */
+
     if (heldSale && heldSale.lines) {
         heldSale.lines.forEach(function (line) {
-            const p = products.find(x => Number(x.id) === Number(line.product_id));
-            if (!p) return;
-            const v = (p.variants || []).find(x => Number(x.id) === Number(line.product_variant_id));
+            const product = products.find(function (p) { return Number(p.id) === Number(line.product_id); });
+            if (!product) return;
+
+            const variant = (product.variants || []).find(function (v) { return Number(v.id) === Number(line.product_variant_id); });
+
             cart.push({
-                key: p.id + ':' + (v ? v.id : 0),
-                product_id: p.id, product_variant_id: v ? v.id : null,
-                name: p.name, variant_name: v ? v.name : null,
-                quantity: Number(line.quantity || 1),
-                unit_price: Number(line.unit_price || productPrice(p, v)),
-                discount_amount: Number(line.discount_amount || 0),
-                tax_amount: Number(line.tax_amount || 0),
-                product: p, variant: v || null
+                key:                product.id + ':' + (variant ? variant.id : 0),
+                product_id:         product.id,
+                product_variant_id: variant ? variant.id : null,
+                name:               product.name,
+                variant_name:       variant ? variant.name : null,
+                quantity:           Number(line.quantity || 1),
+                unit_price:         Number(line.unit_price || productPrice(product, variant)),
+                discount_amount:    Number(line.discount_amount || 0),
+                tax_amount:         Number(line.tax_amount || 0),
+                product:            product,
+                variant:            variant || null,
             });
         });
     }
 
+    /* initial render */
     renderProducts();
     renderCart();
 });
