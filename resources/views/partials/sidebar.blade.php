@@ -1,3 +1,7 @@
+@php
+    $isTenant = app()->bound('tenant');
+@endphp
+
 <div class="sidebar" id="sidebar">
     <div class="sidebar-logo">
         <a href="{{ url('/dashboard') }}" class="logo logo-normal">
@@ -6,53 +10,447 @@
         <a href="{{ url('/dashboard') }}" class="logo logo-white">
             <img src="{{ asset('assets/img/logo-white.svg') }}" alt="Logo">
         </a>
+        <a href="{{ url('/dashboard') }}" class="logo-small">
+            <img src="{{ asset('assets/img/logo-small.png') }}" alt="Logo">
+        </a>
+
         <a id="toggle_btn" href="javascript:void(0);">
-            <i data-feather="chevrons-left" class="feather-16"></i>
+            <i data-feather="chevrons-left" class="feather-16" width="16" height="16"></i>
         </a>
     </div>
 
     <div class="sidebar-inner slimscroll">
         <div id="sidebar-menu" class="sidebar-menu">
             <ul>
+                {{-- Main section --}}
                 <li class="submenu-open">
-                    <h6 class="submenu-hdr">Main</h6>
+                    <h6 class="submenu-hdr">{{ __('sidebar.main') }}</h6>
                     <ul>
-                        @can('central.dashboard')
-                            <li>
-                                <a href="{{ route('central.dashboard') }}">
-                                    <i class="ti ti-layout-grid fs-16 me-2"></i>
-                                    <span>Central Dashboard</span>
-                                </a>
-                            </li>
-                        @endcan
+                        @if(!$isTenant)
+                            @can('central.dashboard')
+                                <li class="{{ request()->is('dashboard') ? 'active' : '' }}">
+                                    <a href="{{ url('/dashboard') }}">
+                                        <i class="ti ti-layout-grid fs-16 me-2"></i>
+                                        <span>{{ __('sidebar.central_dashboard') }}</span>
+                                    </a>
+                                </li>
+                            @endcan
+                        @endif
 
-                        @can('tenant.dashboard')
-                            <li>
-                                <a href="{{ url('/dashboard') }}">
-                                    <i class="ti ti-layout-grid fs-16 me-2"></i>
-                                    <span>Dashboard</span>
-                                </a>
-                            </li>
-                        @endcan
+                        @if($isTenant)
+                            @can('tenant.dashboard')
+                                <li class="{{ request()->is('dashboard') ? 'active' : '' }}">
+                                    <a href="{{ url('/dashboard') }}">
+                                        <i class="ti ti-layout-grid fs-16 me-2"></i>
+                                        <span>{{ __('sidebar.tenant_dashboard') }}</span>
+                                    </a>
+                                </li>
+                            @endcan
+                        @endif
                     </ul>
                 </li>
 
-                @can('central.routes.sync')
+                {{-- Central platform section --}}
+                @if(!$isTenant)
                     <li class="submenu-open">
-                        <h6 class="submenu-hdr">Platform</h6>
+                        <h6 class="submenu-hdr">{{ __('sidebar.platform') }}</h6>
                         <ul>
-                            <li>
-                                <form method="POST" action="{{ route('central.routes.sync') }}">
-                                    @csrf
-                                    <button class="btn btn-link text-start w-100 text-decoration-none">
-                                        <i class="ti ti-refresh fs-16 me-2"></i>
-                                        <span>Sync Routes</span>
-                                    </button>
-                                </form>
-                            </li>
+                            @can('central.tenants.index')
+                                <li class="{{ request()->is('tenants*') ? 'active' : '' }}">
+                                    <a href="{{ url('/tenants') }}">
+                                        <i class="ti ti-building-store fs-16 me-2"></i>
+                                        <span>{{ __('sidebar.tenants') }}</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('central.routes.index')
+                                <li class="{{ request()->is('routes*') ? 'active' : '' }}">
+                                    <a href="{{ url('/routes') }}">
+                                        <i class="ti ti-route fs-16 me-2"></i>
+                                        <span>Route Catalog</span>
+                                    </a>
+                                </li>
+                            @endcan
                         </ul>
                     </li>
-                @endcan
+                @endif
+
+                {{-- Tenant operations section --}}
+                @if($isTenant)
+                    {{-- Administration section --}}
+                    @canany(['tenant.users.index', 'tenant.roles.index'])
+                    <li class="submenu-open">
+                        <h6 class="submenu-hdr">Administration</h6>
+                        <ul>
+                            @can('tenant.users.index')
+                                <li class="{{ request()->is('users*') ? 'active' : '' }}">
+                                    <a href="{{ url('/users') }}">
+                                        <i class="ti ti-user-cog fs-16 me-2"></i>
+                                        <span>Users</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.roles.index')
+                                <li class="{{ request()->is('roles*') ? 'active' : '' }}">
+                                    <a href="{{ url('/roles') }}">
+                                        <i class="ti ti-shield-lock fs-16 me-2"></i>
+                                        <span>Roles &amp; Permissions</span>
+                                    </a>
+                                </li>
+                            @endcan
+                        </ul>
+                    </li>
+                    @endcanany
+
+                    <li class="submenu-open">
+                        <h6 class="submenu-hdr">{{ __('sidebar.operations') }}</h6>
+                        <ul>
+                            @can('tenant.branches.index')
+                                <li class="{{ request()->is('branches*') ? 'active' : '' }}">
+                                    <a href="{{ url('/branches') }}">
+                                        <i class="ti ti-building-store fs-16 me-2"></i>
+                                        <span>{{ __('sidebar.branches') }}</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.terminals.index')
+                                <li class="{{ request()->is('terminals*') ? 'active' : '' }}">
+                                    <a href="{{ url('/terminals') }}">
+                                        <i class="ti ti-device-desktop fs-16 me-2"></i>
+                                        <span>Terminals</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.shifts.index')
+                                <li class="{{ request()->is('shifts*') ? 'active' : '' }}">
+                                    <a href="{{ url('/shifts') }}">
+                                        <i class="ti ti-clock-hour-4 fs-16 me-2"></i>
+                                        <span>Shifts</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.daily-closings.index')
+                                <li class="{{ request()->is('daily-closings*') ? 'active' : '' }}">
+                                    <a href="{{ url('/daily-closings') }}">
+                                        <i class="ti ti-cash-banknote fs-16 me-2"></i>
+                                        <span>Daily Closing</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.currencies.index')
+                                <li class="{{ request()->is('currencies*') ? 'active' : '' }}">
+                                    <a href="{{ url('/currencies') }}">
+                                        <i class="ti ti-coins fs-16 me-2"></i>
+                                        <span>Currencies</span>
+                                    </a>
+                                </li>
+                            @endcan
+                        </ul>
+                    </li>
+
+                    {{-- Inventory section --}}
+                    @canany([
+                        'tenant.inventory.index',
+                        'tenant.stock-adjustments.index',
+                        'tenant.stock-transfers.index',
+                    ])
+                    <li class="submenu-open">
+                        <h6 class="submenu-hdr">Inventory</h6>
+                        <ul>
+                            @can('tenant.inventory.index')
+                                <li class="{{ request()->is('inventory') ? 'active' : '' }}">
+                                    <a href="{{ url('/inventory') }}">
+                                        <i class="ti ti-box fs-16 me-2"></i>
+                                        <span>Stock Balances</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.inventory.movements')
+                                <li class="{{ request()->is('inventory/movements') ? 'active' : '' }}">
+                                    <a href="{{ url('/inventory/movements') }}">
+                                        <i class="ti ti-arrows-exchange fs-16 me-2"></i>
+                                        <span>Movements</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.inventory.batches')
+                                <li class="{{ request()->is('inventory/batches') ? 'active' : '' }}">
+                                    <a href="{{ url('/inventory/batches') }}">
+                                        <i class="ti ti-stack fs-16 me-2"></i>
+                                        <span>Batches</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.inventory.low-stock')
+                                <li class="{{ request()->is('inventory/low-stock') ? 'active' : '' }}">
+                                    <a href="{{ url('/inventory/low-stock') }}">
+                                        <i class="ti ti-alert-triangle fs-16 me-2"></i>
+                                        <span>Low Stock</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.inventory.expiry-alerts')
+                                <li class="{{ request()->is('inventory/expiry-alerts') ? 'active' : '' }}">
+                                    <a href="{{ url('/inventory/expiry-alerts') }}">
+                                        <i class="ti ti-clock-exclamation fs-16 me-2"></i>
+                                        <span>Expiry Alerts</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.stock-adjustments.index')
+                                <li class="{{ request()->is('stock-adjustments*') ? 'active' : '' }}">
+                                    <a href="{{ url('/stock-adjustments') }}">
+                                        <i class="ti ti-adjustments-horizontal fs-16 me-2"></i>
+                                        <span>Adjustments</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.stock-transfers.index')
+                                <li class="{{ request()->is('stock-transfers*') ? 'active' : '' }}">
+                                    <a href="{{ url('/stock-transfers') }}">
+                                        <i class="ti ti-transfer fs-16 me-2"></i>
+                                        <span>Transfers</span>
+                                    </a>
+                                </li>
+                            @endcan
+                        </ul>
+                    </li>
+                    @endcanany
+
+                    {{-- Sales section --}}
+                    @canany([
+                        'tenant.pos.index',
+                        'tenant.sales-orders.index',
+                        'tenant.customers.index',
+                        'tenant.payment-methods.index',
+                        'tenant.sales-ledger.index',
+                        'tenant.sales-returns.index',
+                    ])
+                    <li class="submenu-open">
+                        <h6 class="submenu-hdr">Sales</h6>
+                        <ul>
+                            @can('tenant.pos.index')
+                                <li class="{{ request()->is('pos') ? 'active' : '' }}">
+                                    <a href="{{ url('/pos') }}">
+                                        <i class="ti ti-device-tablet fs-16 me-2" aria-hidden="true"></i>
+                                        <span>POS</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.sales-orders.index')
+                                <li class="{{ request()->is('sales-orders*') ? 'active' : '' }}">
+                                    <a href="{{ url('/sales-orders') }}">
+                                        <i class="ti ti-receipt fs-16 me-2" aria-hidden="true"></i>
+                                        <span>Sales Orders</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.customers.index')
+                                <li class="{{ request()->is('customers*') ? 'active' : '' }}">
+                                    <a href="{{ url('/customers') }}">
+                                        <i class="ti ti-users fs-16 me-2" aria-hidden="true"></i>
+                                        <span>Customers</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.payment-methods.index')
+                                <li class="{{ request()->is('payment-methods*') ? 'active' : '' }}">
+                                    <a href="{{ url('/payment-methods') }}">
+                                        <i class="ti ti-credit-card fs-16 me-2" aria-hidden="true"></i>
+                                        <span>Payment Methods</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.sales-ledger.index')
+                                <li class="{{ request()->is('sales-ledger*') ? 'active' : '' }}">
+                                    <a href="{{ url('/sales-ledger') }}">
+                                        <i class="ti ti-report-money fs-16 me-2" aria-hidden="true"></i>
+                                        <span>Sales Ledger</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.sales-returns.index')
+                                <li class="{{ request()->is('sales-returns*') ? 'active' : '' }}">
+                                    <a href="{{ url('/sales-returns') }}">
+                                        <i class="ti ti-arrow-back-up fs-16 me-2" aria-hidden="true"></i>
+                                        <span>Sales Returns</span>
+                                    </a>
+                                </li>
+                            @endcan
+                        </ul>
+                    </li>
+                    @endcanany
+
+                    {{-- Purchasing section --}}
+                    @canany([
+                        'tenant.suppliers.index',
+                        'tenant.purchase-orders.index',
+                        'tenant.goods-receipts.index',
+                        'tenant.purchase-bills.index',
+                        'tenant.supplier-payments.index',
+                    ])
+                    <li class="submenu-open">
+                        <h6 class="submenu-hdr">Purchasing</h6>
+                        <ul>
+                            @can('tenant.suppliers.index')
+                                <li class="{{ request()->is('suppliers*') ? 'active' : '' }}">
+                                    <a href="{{ url('/suppliers') }}">
+                                        <i class="ti ti-users fs-16 me-2" aria-hidden="true"></i>
+                                        <span>Suppliers</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.purchase-orders.index')
+                                <li class="{{ request()->is('purchase-orders*') ? 'active' : '' }}">
+                                    <a href="{{ url('/purchase-orders') }}">
+                                        <i class="ti ti-clipboard-list fs-16 me-2" aria-hidden="true"></i>
+                                        <span>Purchase Orders</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.goods-receipts.index')
+                                <li class="{{ request()->is('goods-receipts*') ? 'active' : '' }}">
+                                    <a href="{{ url('/goods-receipts') }}">
+                                        <i class="ti ti-truck-delivery fs-16 me-2" aria-hidden="true"></i>
+                                        <span>GRN</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.purchase-bills.index')
+                                <li class="{{ request()->is('purchase-bills*') ? 'active' : '' }}">
+                                    <a href="{{ url('/purchase-bills') }}">
+                                        <i class="ti ti-file-invoice fs-16 me-2" aria-hidden="true"></i>
+                                        <span>Purchase Bills</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.supplier-payments.index')
+                                <li class="{{ request()->is('supplier-payments*') ? 'active' : '' }}">
+                                    <a href="{{ url('/supplier-payments') }}">
+                                        <i class="ti ti-cash fs-16 me-2" aria-hidden="true"></i>
+                                        <span>Supplier Payments</span>
+                                    </a>
+                                </li>
+                            @endcan
+                        </ul>
+                    </li>
+                    @endcanany
+
+                    {{-- Restaurant section --}}
+                    @canany([
+                        'tenant.restaurant.board',
+                        'tenant.restaurant.floors.index',
+                        'tenant.restaurant.tables.index',
+                        'tenant.restaurant.waiters.index',
+                        'tenant.held-sales.index',
+                    ])
+                    <li class="submenu-open">
+                        <h6 class="submenu-hdr">Restaurant</h6>
+                        <ul>
+                            @can('tenant.restaurant.board')
+                                <li class="{{ request()->is('restaurant/board') ? 'active' : '' }}">
+                                    <a href="{{ url('/restaurant/board') }}">
+                                        <i class="ti ti-layout-board-split fs-16 me-2" aria-hidden="true"></i>
+                                        <span>Table Board</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.restaurant.floors.index')
+                                <li class="{{ request()->is('restaurant/floors*') ? 'active' : '' }}">
+                                    <a href="{{ url('/restaurant/floors') }}">
+                                        <i class="ti ti-building fs-16 me-2" aria-hidden="true"></i>
+                                        <span>Floors</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.restaurant.tables.index')
+                                <li class="{{ request()->is('restaurant/tables*') ? 'active' : '' }}">
+                                    <a href="{{ url('/restaurant/tables') }}">
+                                        <i class="ti ti-armchair fs-16 me-2" aria-hidden="true"></i>
+                                        <span>Tables</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.restaurant.waiters.index')
+                                <li class="{{ request()->is('restaurant/waiters*') ? 'active' : '' }}">
+                                    <a href="{{ url('/restaurant/waiters') }}">
+                                        <i class="ti ti-user-check fs-16 me-2" aria-hidden="true"></i>
+                                        <span>Waiters</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.held-sales.index')
+                                <li class="{{ request()->is('held-sales*') ? 'active' : '' }}">
+                                    <a href="{{ url('/held-sales') }}">
+                                        <i class="ti ti-player-pause fs-16 me-2" aria-hidden="true"></i>
+                                        <span>Held Sales</span>
+                                    </a>
+                                </li>
+                            @endcan
+                        </ul>
+                    </li>
+                    @endcanany
+
+                    {{-- Catalog section --}}
+                    @canany(['tenant.units.index', 'tenant.categories.index', 'tenant.products.index'])
+                    <li class="submenu-open">
+                        <h6 class="submenu-hdr">Catalog</h6>
+                        <ul>
+                            @can('tenant.units.index')
+                                <li class="{{ request()->is('units*') ? 'active' : '' }}">
+                                    <a href="{{ url('/units') }}">
+                                        <i class="ti ti-ruler-measure fs-16 me-2"></i>
+                                        <span>Units of Measure</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.categories.index')
+                                <li class="{{ request()->is('categories*') ? 'active' : '' }}">
+                                    <a href="{{ url('/categories') }}">
+                                        <i class="ti ti-category fs-16 me-2"></i>
+                                        <span>Categories</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.products.index')
+                                <li class="{{ request()->is('products*') || request()->is('product-variants*') || request()->is('product-barcodes*') || request()->is('products-bulk-import*') ? 'active' : '' }}">
+                                    <a href="{{ url('/products') }}">
+                                        <i class="ti ti-package fs-16 me-2"></i>
+                                        <span>Products</span>
+                                    </a>
+                                </li>
+                            @endcan
+                        </ul>
+                    </li>
+                    @endcanany
+                @endif
             </ul>
         </div>
     </div>
