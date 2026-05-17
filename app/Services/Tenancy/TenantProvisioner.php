@@ -360,6 +360,7 @@ class TenantProvisioner
             // POS
             'tenant.pos.index',
             'tenant.pos.store',
+            'tenant.pos.customers.quick-store',
 
             // Sales Orders
             'tenant.sales-orders.index',
