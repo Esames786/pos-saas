@@ -1,5 +1,6 @@
 @php
-    $guard = app()->bound('tenant') ? 'tenant' : 'central';
+    $isTenant = app()->bound('tenant');
+    $guard = $isTenant ? 'tenant' : 'central';
     $user = auth($guard)->user();
 @endphp
 
@@ -26,21 +27,24 @@
         </a>
 
         <ul class="nav user-menu">
-            <li class="nav-item pos-nav">
-                @can('tenant.dashboard')
-                    <a href="{{ url('/dashboard') }}" class="btn btn-dark btn-md d-inline-flex align-items-center">
-                        <i class="ti ti-device-laptop me-1"></i>POS
-                    </a>
-                @endcan
-            </li>
+            @if($isTenant)
+                <li class="nav-item pos-nav">
+                    @can('tenant.dashboard')
+                        <a href="{{ url('/dashboard') }}" class="btn btn-dark btn-md d-inline-flex align-items-center">
+                            <i class="ti ti-device-laptop me-1"></i>POS
+                        </a>
+                    @endcan
+                </li>
+            @endif
 
             <li class="nav-item dropdown has-arrow flag-nav nav-item-box">
                 <a class="nav-link dropdown-toggle" data-bs-toggle="dropdown" href="javascript:void(0);" role="button">
                     <img src="{{ asset('assets/img/flags/us-flag.svg') }}" alt="Language" class="img-fluid">
                 </a>
                 <div class="dropdown-menu dropdown-menu-right">
-                    <a href="javascript:void(0);" class="dropdown-item">
-                        <img src="{{ asset('assets/img/flags/english.svg') }}" alt="English" height="16">English
+                    <a href="{{ url('/locale/en') }}" class="dropdown-item">
+                        <img src="{{ asset('assets/img/flags/english.svg') }}" alt="English" height="16">
+                        {{ __('common.english') }}
                     </a>
                 </div>
             </li>
@@ -67,16 +71,20 @@
                         </span>
                         <div>
                             <h6 class="fw-medium">{{ $user?->name }}</h6>
-                            <p>{{ app()->bound('tenant') ? 'Tenant User' : 'Central Admin' }}</p>
+                            <p>{{ $isTenant ? 'Tenant User' : 'Central Admin' }}</p>
                         </div>
                     </div>
+
+                    <a class="dropdown-item" href="{{ url('/password/change') }}">
+                        <i class="ti ti-lock me-2"></i>{{ __('common.change_password') }}
+                    </a>
 
                     <hr class="my-2">
 
                     <form method="POST" action="{{ url('/logout') }}">
                         @csrf
                         <button type="submit" class="dropdown-item logout border-0 bg-transparent">
-                            <i class="ti ti-logout me-2"></i>Logout
+                            <i class="ti ti-logout me-2"></i>{{ __('common.logout') }}
                         </button>
                     </form>
                 </div>

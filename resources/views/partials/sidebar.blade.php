@@ -416,6 +416,47 @@
                     </li>
                     @endcanany
 
+                    {{-- Kitchen Inventory section --}}
+                    @canany(['tenant.unit-conversions.index', 'tenant.recipes.index', 'tenant.kitchen.productions.index', 'tenant.kitchen.wastages.index'])
+                    <li class="submenu-open">
+                        <h6 class="submenu-hdr">Kitchen Inventory</h6>
+                        <ul>
+                            @can('tenant.recipes.index')
+                                <li class="{{ request()->is('recipes*') ? 'active' : '' }}">
+                                    <a href="{{ url('/recipes') }}">
+                                        <i class="ti ti-clipboard-list fs-16 me-2"></i>
+                                        <span>Recipes / BOM</span>
+                                    </a>
+                                </li>
+                            @endcan
+                            @can('tenant.unit-conversions.index')
+                                <li class="{{ request()->is('unit-conversions*') ? 'active' : '' }}">
+                                    <a href="{{ url('/unit-conversions') }}">
+                                        <i class="ti ti-arrows-exchange fs-16 me-2"></i>
+                                        <span>Unit Conversions</span>
+                                    </a>
+                                </li>
+                            @endcan
+                            @can('tenant.kitchen.productions.index')
+                                <li class="{{ request()->is('kitchen/productions*') ? 'active' : '' }}">
+                                    <a href="{{ url('/kitchen/productions') }}">
+                                        <i class="ti ti-tools-kitchen-2 fs-16 me-2"></i>
+                                        <span>Productions</span>
+                                    </a>
+                                </li>
+                            @endcan
+                            @can('tenant.kitchen.wastages.index')
+                                <li class="{{ request()->is('kitchen/wastages*') ? 'active' : '' }}">
+                                    <a href="{{ url('/kitchen/wastages') }}">
+                                        <i class="ti ti-trash fs-16 me-2"></i>
+                                        <span>Wastages</span>
+                                    </a>
+                                </li>
+                            @endcan
+                        </ul>
+                    </li>
+                    @endcanany
+
                     {{-- Catalog section --}}
                     @canany(['tenant.units.index', 'tenant.categories.index', 'tenant.products.index'])
                     <li class="submenu-open">

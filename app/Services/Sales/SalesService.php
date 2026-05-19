@@ -8,13 +8,15 @@ use App\Models\Tenant\SalesLedger;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\Shift;
 use App\Services\Inventory\InventoryService;
+use App\Services\Kitchen\RecipeConsumptionService;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 class SalesService
 {
     public function __construct(
-        private readonly InventoryService $inventoryService
+        private readonly InventoryService $inventoryService,
+        private readonly RecipeConsumptionService $recipeConsumptionService,
     ) {
     }
 
@@ -44,30 +46,37 @@ class SalesService
                 foreach ($sale->lines as $line) {
                     $product = $line->product;
 
-                    if (!$product || !$product->is_stock_tracked) {
+                    if (!$product) {
                         continue;
                     }
 
-                    $ledgers = $this->inventoryService->postOutFefo(
-                        branch: $sale->branch,
-                        product: $product,
-                        variant: $line->variant,
-                        quantity: (float) $line->quantity,
-                        movementType: 'sale',
-                        referenceType: 'sales_order',
-                        referenceId: $sale->id,
-                        referenceNo: $sale->sale_no,
-                        notes: 'Sale stock out',
-                        userId: $sale->created_by_user_id
-                    );
+                    $consumptionMethod = $product->inventory_consumption_method ?? 'stock_item';
 
-                    $costTotal = collect($ledgers)->sum(fn ($ledger) => (float) $ledger->total_cost);
-                    $unitCost = (float) $line->quantity > 0 ? $costTotal / (float) $line->quantity : 0;
+                    if ($consumptionMethod === 'recipe') {
+                        $this->recipeConsumptionService->consumeForSalesOrderLine($sale, $line, $sale->branch);
+                    } elseif ($consumptionMethod === 'stock_item' && $product->is_stock_tracked) {
+                        $ledgers = $this->inventoryService->postOutFefo(
+                            branch: $sale->branch,
+                            product: $product,
+                            variant: $line->variant,
+                            quantity: (float) $line->quantity,
+                            movementType: 'sale',
+                            referenceType: 'sales_order',
+                            referenceId: $sale->id,
+                            referenceNo: $sale->sale_no,
+                            notes: 'Sale stock out',
+                            userId: $sale->created_by_user_id
+                        );
 
-                    $line->update([
-                        'unit_cost'  => $unitCost,
-                        'cost_total' => $costTotal,
-                    ]);
+                        $costTotal = collect($ledgers)->sum(fn ($ledger) => (float) $ledger->total_cost);
+                        $unitCost  = (float) $line->quantity > 0 ? $costTotal / (float) $line->quantity : 0;
+
+                        $line->update([
+                            'unit_cost'  => $unitCost,
+                            'cost_total' => $costTotal,
+                        ]);
+                    }
+                    // 'none': skip inventory entirely
                 }
             }
 

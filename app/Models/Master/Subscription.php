@@ -26,4 +26,9 @@ class Subscription extends Model
             'current_period_ends_at' => 'datetime',
         ];
     }
+
+    public function plan()
+    {
+        return $this->belongsTo(Plan::class);
+    }
 }

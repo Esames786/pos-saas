@@ -103,8 +103,29 @@ class MasterSeeder extends Seeder
 
         $permissions = [
             'central.dashboard',
+            'central.routes.index',
             'central.routes.sync',
             'central.routes.publish',
+            'central.routes.unpublish',
+            'central.routes.publish-all',
+            'central.routes.sync-permissions',
+
+            'central.tenants.index',
+            'central.tenants.create',
+            'central.tenants.store',
+            'central.tenants.show',
+            'central.tenants.edit',
+            'central.tenants.update',
+            'central.tenants.provision',
+            'central.tenants.activate',
+            'central.tenants.suspend',
+            'central.tenants.cancel',
+
+            'central.tenant-domains.store',
+            'central.tenant-domains.primary',
+            'central.tenant-domains.activate',
+            'central.tenant-domains.deactivate',
+            'central.tenant-domains.destroy',
         ];
 
         foreach ($permissions as $permission) {
@@ -114,6 +135,6 @@ class MasterSeeder extends Seeder
         $role = Role::findOrCreate('Super Admin', 'central');
         $role->syncPermissions($permissions);
 
-        $admin->assignRole($role);
+        $admin->syncRoles([$role]);
     }
 }

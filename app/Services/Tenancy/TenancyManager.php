@@ -38,5 +38,15 @@ class TenancyManager
         )]);
 
         DB::purge('tenant');
+        DB::reconnect('tenant');
+    }
+
+    public function deactivate(): void
+    {
+        app()->forgetInstance('tenant');
+        app()->forgetInstance('tenantId');
+
+        DB::disconnect('tenant');
+        DB::setDefaultConnection(config('tenancy.master_connection', 'master'));
     }
 }

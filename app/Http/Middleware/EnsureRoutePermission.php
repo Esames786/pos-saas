@@ -19,9 +19,11 @@ class EnsureRoutePermission
             'central.login',
             'central.logout',
             'central.password',
+            'central.locale',
             'tenant.login',
             'tenant.logout',
             'tenant.password',
+            'tenant.locale',
         ];
 
         foreach ($allowedPrefixes as $prefix) {

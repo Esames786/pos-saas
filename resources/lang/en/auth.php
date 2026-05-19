@@ -12,4 +12,11 @@ return [
     'remember_me'      => 'Remember Me',
     'forgot_password'  => 'Forgot Password?',
     'sign_in'          => 'Sign In',
+
+    'change_password'   => 'Change Password',
+    'old_password'      => 'Old Password',
+    'new_password'      => 'New Password',
+    'confirm_password'  => 'Confirm Password',
+    'password_updated'  => 'Password updated successfully.',
+    'old_password_wrong' => 'Old password is incorrect.',
 ];

@@ -417,6 +417,34 @@ class TenantProvisioner
             'tenant.restaurant.table-sessions.bill-preview',
             'tenant.restaurant.table-sessions.move',
             'tenant.restaurant.table-sessions.merge',
+
+            // Unit Conversions
+            'tenant.unit-conversions.index',
+            'tenant.unit-conversions.store',
+            'tenant.unit-conversions.update',
+            'tenant.unit-conversions.destroy',
+
+            // Recipes / BOM
+            'tenant.recipes.index',
+            'tenant.recipes.create',
+            'tenant.recipes.store',
+            'tenant.recipes.show',
+            'tenant.recipes.edit',
+            'tenant.recipes.update',
+            'tenant.recipes.destroy',
+
+            // Kitchen Productions
+            'tenant.kitchen.productions.index',
+            'tenant.kitchen.productions.create',
+            'tenant.kitchen.productions.store',
+            'tenant.kitchen.productions.show',
+            'tenant.kitchen.productions.complete',
+
+            // Kitchen Wastages
+            'tenant.kitchen.wastages.index',
+            'tenant.kitchen.wastages.create',
+            'tenant.kitchen.wastages.store',
+            'tenant.kitchen.wastages.show',
         ];
 
         \App\Models\Tenant\Customer::updateOrCreate(

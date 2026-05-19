@@ -4,44 +4,82 @@ namespace App\Http\Controllers\Central;
 
 use App\Http\Controllers\Controller;
 use App\Models\Master\RouteCatalog;
-use Illuminate\Support\Facades\Route;
-use Illuminate\Support\Str;
-use Spatie\Permission\Models\Permission;
+use App\Services\Permissions\PermissionSyncService;
+use Illuminate\Http\Request;
 
 class RouteCatalogController extends Controller
 {
-    public function sync()
+    public function index(Request $request)
     {
-        foreach (Route::getRoutes() as $route) {
-            $name = $route->getName();
+        $query = RouteCatalog::query()->latest('synced_at');
 
-            if (!$name) {
-                continue;
-            }
-
-            RouteCatalog::updateOrCreate(
-                ['route_name' => $name],
-                [
-                    'uri' => $route->uri(),
-                    'method' => implode('|', $route->methods()),
-                    'module_key' => Str::before($name, '.'),
-                    'action_key' => Str::after($name, '.'),
-                    'synced_at' => now(),
-                ]
-            );
+        if ($request->filled('search')) {
+            $search = trim($request->search);
+            $query->where(function ($q) use ($search) {
+                $q->where('route_name', 'like', "%{$search}%")
+                    ->orWhere('uri', 'like', "%{$search}%")
+                    ->orWhere('module_key', 'like', "%{$search}%");
+            });
         }
 
-        return back()->with('status', 'Routes synced successfully.');
+        if ($request->filled('guard')) {
+            $query->where('route_name', 'like', $request->guard . '.%');
+        }
+
+        if ($request->filled('published')) {
+            $query->where('is_published', (bool) $request->published);
+        }
+
+        $routes = $query->paginate(25)->withQueryString();
+
+        return view('central.routes.index', compact('routes'));
     }
 
-    public function publish()
+    public function sync(PermissionSyncService $syncService)
     {
-        $routes = RouteCatalog::where('is_published', true)->get();
+        $count = $syncService->syncRouteCatalog();
 
-        foreach ($routes as $route) {
-            Permission::findOrCreate($route->route_name, 'central');
-        }
+        return back()->with('status', "Routes synced successfully. Total: {$count}");
+    }
 
-        return back()->with('status', 'Published routes converted to permissions.');
+    public function publish(Request $request, PermissionSyncService $syncService)
+    {
+        RouteCatalog::query()
+            ->whereIn('id', $request->input('route_ids', []))
+            ->update(['is_published' => true]);
+
+        $centralCount = $syncService->syncCentralPermissions();
+
+        return back()->with('status', "Selected routes published. Central permissions synced: {$centralCount}");
+    }
+
+    public function unpublish(Request $request)
+    {
+        RouteCatalog::query()
+            ->whereIn('id', $request->input('route_ids', []))
+            ->update(['is_published' => false]);
+
+        return back()->with('status', 'Selected routes unpublished successfully.');
+    }
+
+    public function publishAll(PermissionSyncService $syncService)
+    {
+        RouteCatalog::query()
+            ->where(function ($q) {
+                $q->where('route_name', 'like', 'central.%')
+                    ->orWhere('route_name', 'like', 'tenant.%');
+            })
+            ->update(['is_published' => true]);
+
+        $centralCount = $syncService->syncCentralPermissions();
+
+        return back()->with('status', "All central/tenant routes published. Central permissions synced: {$centralCount}");
+    }
+
+    public function syncPermissions(PermissionSyncService $syncService)
+    {
+        $centralCount = $syncService->syncCentralPermissions();
+
+        return back()->with('status', "Central permissions synced: {$centralCount}");
     }
 }

@@ -1,0 +1,51 @@
+.skip-link {
+    position: absolute;
+    top: -40px;
+    left: 12px;
+    z-index: 9999;
+    background: #111827;
+    color: #ffffff;
+    padding: 10px 14px;
+    border-radius: 6px;
+    text-decoration: none;
+}
+
+.skip-link:focus {
+    top: 12px;
+}
+
+:focus-visible {
+    outline: 3px solid #2563eb;
+    outline-offset: 2px;
+}
+
+.required::after {
+    content: " *";
+    color: #dc3545;
+}
+
+.table caption {
+    caption-side: top;
+    font-weight: 600;
+    color: #111827;
+    padding-bottom: 8px;
+}
+
+.form-help {
+    font-size: 0.875rem;
+    color: #6b7280;
+}
+
+.action-toolbar {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+/* Prevent Feather.js SVG icons from rendering at unconstrained size */
+.feather-16 svg,
+.feather-16 { width: 16px !important; height: 16px !important; }
+.feather-14 svg,
+.feather-14 { width: 14px !important; height: 14px !important; }
+#toggle_btn svg { width: 16px !important; height: 16px !important; }
+.sidebar-logo svg { width: 16px !important; height: 16px !important; }

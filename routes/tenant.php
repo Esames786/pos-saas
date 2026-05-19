@@ -36,6 +36,10 @@ use App\Http\Controllers\Tenant\RestaurantWaiterController;
 use App\Http\Controllers\Tenant\RestaurantTableSessionController;
 use App\Http\Controllers\Tenant\HeldSaleController;
 use App\Http\Controllers\Tenant\SplitBillController;
+use App\Http\Controllers\Tenant\UnitConversionController;
+use App\Http\Controllers\Tenant\RecipeController;
+use App\Http\Controllers\Tenant\KitchenProductionController;
+use App\Http\Controllers\Tenant\KitchenWastageController;
 use Illuminate\Support\Facades\Route;
 
 Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
@@ -314,6 +318,34 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/held-sales/create', [HeldSaleController::class, 'create'])->name('tenant.held-sales.create');
                 Route::post('/held-sales', [HeldSaleController::class, 'store'])->name('tenant.held-sales.store');
                 Route::post('/held-sales/{salesOrder}/cancel', [HeldSaleController::class, 'cancel'])->name('tenant.held-sales.cancel');
+
+                // Unit Conversions
+                Route::get('/unit-conversions', [UnitConversionController::class, 'index'])->name('tenant.unit-conversions.index');
+                Route::post('/unit-conversions', [UnitConversionController::class, 'store'])->name('tenant.unit-conversions.store');
+                Route::put('/unit-conversions/{unitConversion}', [UnitConversionController::class, 'update'])->name('tenant.unit-conversions.update');
+                Route::delete('/unit-conversions/{unitConversion}', [UnitConversionController::class, 'destroy'])->name('tenant.unit-conversions.destroy');
+
+                // Recipes / BOM
+                Route::get('/recipes', [RecipeController::class, 'index'])->name('tenant.recipes.index');
+                Route::get('/recipes/create', [RecipeController::class, 'create'])->name('tenant.recipes.create');
+                Route::post('/recipes', [RecipeController::class, 'store'])->name('tenant.recipes.store');
+                Route::get('/recipes/{recipe}', [RecipeController::class, 'show'])->name('tenant.recipes.show');
+                Route::get('/recipes/{recipe}/edit', [RecipeController::class, 'edit'])->name('tenant.recipes.edit');
+                Route::put('/recipes/{recipe}', [RecipeController::class, 'update'])->name('tenant.recipes.update');
+                Route::delete('/recipes/{recipe}', [RecipeController::class, 'destroy'])->name('tenant.recipes.destroy');
+
+                // Kitchen Productions
+                Route::get('/kitchen/productions', [KitchenProductionController::class, 'index'])->name('tenant.kitchen.productions.index');
+                Route::get('/kitchen/productions/create', [KitchenProductionController::class, 'create'])->name('tenant.kitchen.productions.create');
+                Route::post('/kitchen/productions', [KitchenProductionController::class, 'store'])->name('tenant.kitchen.productions.store');
+                Route::get('/kitchen/productions/{kitchenProduction}', [KitchenProductionController::class, 'show'])->name('tenant.kitchen.productions.show');
+                Route::post('/kitchen/productions/{kitchenProduction}/complete', [KitchenProductionController::class, 'complete'])->name('tenant.kitchen.productions.complete');
+
+                // Kitchen Wastages
+                Route::get('/kitchen/wastages', [KitchenWastageController::class, 'index'])->name('tenant.kitchen.wastages.index');
+                Route::get('/kitchen/wastages/create', [KitchenWastageController::class, 'create'])->name('tenant.kitchen.wastages.create');
+                Route::post('/kitchen/wastages', [KitchenWastageController::class, 'store'])->name('tenant.kitchen.wastages.store');
+                Route::get('/kitchen/wastages/{kitchenWastage}', [KitchenWastageController::class, 'show'])->name('tenant.kitchen.wastages.show');
             });
         });
     });

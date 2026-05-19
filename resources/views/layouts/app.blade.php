@@ -19,10 +19,12 @@
     <link rel="stylesheet" href="{{ asset('assets/plugins/fontawesome/css/fontawesome.min.css') }}">
     <link rel="stylesheet" href="{{ asset('assets/plugins/fontawesome/css/all.min.css') }}">
     <link rel="stylesheet" href="{{ asset('assets/css/style.css') }}">
+    <link rel="stylesheet" href="{{ asset('assets/css/a11y-custom.css') }}">
     @stack('styles')
 </head>
 
 <body>
+<a href="#main-content" class="skip-link">Skip to main content</a>
 <div id="global-loader">
     <div class="whirly-loader"></div>
 </div>
@@ -32,7 +34,12 @@
     @include('partials.sidebar')
 
     <div class="page-wrapper">
-        <div class="content">
+        <div class="content" id="main-content" tabindex="-1">
+            @if(session('status'))
+                <div class="alert alert-success" role="status" aria-live="polite">
+                    {{ session('status') }}
+                </div>
+            @endif
             @yield('content')
         </div>
     </div>
