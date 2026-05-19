@@ -55,6 +55,16 @@
                                         <a href="{{ url('/pos?held_sale_id=' . $sale->id) }}"
                                            class="btn btn-sm btn-success">Recall</a>
                                         @endcan
+                                        @can('tenant.sales-orders.split-bill')
+                                        <a href="{{ url('/sales-orders/' . $sale->id . '/split-bill') }}"
+                                           class="btn btn-sm btn-warning">Split</a>
+                                        @endcan
+                                        @if($sale->restaurant_table_session_id)
+                                            @can('tenant.restaurant.table-sessions.bill-preview')
+                                            <a href="{{ url('/restaurant/table-sessions/' . $sale->restaurant_table_session_id . '/bill-preview') }}"
+                                               class="btn btn-sm btn-dark">Bill</a>
+                                            @endcan
+                                        @endif
                                         @can('tenant.held-sales.cancel')
                                         <form method="POST" action="{{ url('/held-sales/' . $sale->id . '/cancel') }}"
                                               class="d-inline"

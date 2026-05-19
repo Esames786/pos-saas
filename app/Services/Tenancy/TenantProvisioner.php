@@ -408,6 +408,15 @@ class TenantProvisioner
             'tenant.held-sales.create',
             'tenant.held-sales.store',
             'tenant.held-sales.cancel',
+
+            // Split Bill
+            'tenant.sales-orders.split-bill',
+            'tenant.sales-orders.split-bill.store',
+
+            // Table Session Extra
+            'tenant.restaurant.table-sessions.bill-preview',
+            'tenant.restaurant.table-sessions.move',
+            'tenant.restaurant.table-sessions.merge',
         ];
 
         \App\Models\Tenant\Customer::updateOrCreate(

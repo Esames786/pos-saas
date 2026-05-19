@@ -35,6 +35,7 @@ use App\Http\Controllers\Tenant\RestaurantTableController;
 use App\Http\Controllers\Tenant\RestaurantWaiterController;
 use App\Http\Controllers\Tenant\RestaurantTableSessionController;
 use App\Http\Controllers\Tenant\HeldSaleController;
+use App\Http\Controllers\Tenant\SplitBillController;
 use Illuminate\Support\Facades\Route;
 
 Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
@@ -300,6 +301,13 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::post('/restaurant/table-sessions/{restaurantTableSession}/bill-requested', [RestaurantTableSessionController::class, 'billRequested'])->name('tenant.restaurant.table-sessions.bill-requested');
                 Route::post('/restaurant/table-sessions/{restaurantTableSession}/close', [RestaurantTableSessionController::class, 'close'])->name('tenant.restaurant.table-sessions.close');
                 Route::get('/restaurant/table-sessions/{restaurantTableSession}', [RestaurantTableSessionController::class, 'show'])->name('tenant.restaurant.table-sessions.show');
+                Route::get('/restaurant/table-sessions/{restaurantTableSession}/bill-preview', [RestaurantTableSessionController::class, 'billPreview'])->name('tenant.restaurant.table-sessions.bill-preview');
+                Route::post('/restaurant/table-sessions/{restaurantTableSession}/move', [RestaurantTableSessionController::class, 'move'])->name('tenant.restaurant.table-sessions.move');
+                Route::post('/restaurant/table-sessions/{restaurantTableSession}/merge', [RestaurantTableSessionController::class, 'merge'])->name('tenant.restaurant.table-sessions.merge');
+
+                // Split Bill
+                Route::get('/sales-orders/{salesOrder}/split-bill', [SplitBillController::class, 'create'])->name('tenant.sales-orders.split-bill');
+                Route::post('/sales-orders/{salesOrder}/split-bill', [SplitBillController::class, 'store'])->name('tenant.sales-orders.split-bill.store');
 
                 // Held Sales
                 Route::get('/held-sales', [HeldSaleController::class, 'index'])->name('tenant.held-sales.index');

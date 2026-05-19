@@ -176,10 +176,19 @@ class SalesService
             return;
         }
 
+        $remainingHeld = SalesOrder::where('restaurant_table_session_id', $session->id)
+            ->where('status', 'held')
+            ->where('id', '!=', $sale->id)
+            ->exists();
+
+        if ($remainingHeld) {
+            return;
+        }
+
         $session->update([
-            'status'              => 'closed',
-            'closed_at'           => now(),
-            'closed_by_user_id'   => $sale->created_by_user_id,
+            'status'            => 'closed',
+            'closed_at'         => now(),
+            'closed_by_user_id' => $sale->created_by_user_id,
         ]);
 
         $session->table?->update(['status' => 'available']);

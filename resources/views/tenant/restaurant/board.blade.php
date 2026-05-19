@@ -79,6 +79,10 @@
                                 <a href="{{ url('/restaurant/table-sessions/' . $session->id) }}"
                                    class="btn btn-sm btn-outline-primary">View Orders</a>
                                 @endcan
+                                @can('tenant.restaurant.table-sessions.bill-preview')
+                                <a href="{{ url('/restaurant/table-sessions/' . $session->id . '/bill-preview') }}"
+                                   class="btn btn-sm btn-dark">Bill Preview</a>
+                                @endcan
                                 @if($session->status === 'open')
                                     @can('tenant.restaurant.table-sessions.bill-requested')
                                     <form method="POST" action="{{ url('/restaurant/table-sessions/' . $session->id . '/bill-requested') }}">
@@ -98,6 +102,22 @@
                                     <input type="hidden" name="status" value="cancelled">
                                     <button class="btn btn-sm btn-outline-danger w-100"
                                             onclick="return confirm('Cancel this session?')">Cancel</button>
+                                </form>
+                                @endcan
+                                @can('tenant.restaurant.table-sessions.move')
+                                <form method="POST" action="{{ url('/restaurant/table-sessions/' . $session->id . '/move') }}" class="w-100 mt-1">
+                                    @csrf
+                                    <div class="input-group input-group-sm">
+                                        <select name="target_table_id" class="form-select" required>
+                                            <option value="">Move to…</option>
+                                            @foreach($floor->tables->where('status', 'available') as $targetTable)
+                                                @if($targetTable->id !== $table->id)
+                                                    <option value="{{ $targetTable->id }}">{{ $targetTable->table_no }}</option>
+                                                @endif
+                                            @endforeach
+                                        </select>
+                                        <button class="btn btn-outline-secondary" type="submit" onclick="return confirm('Move table session?')">Go</button>
+                                    </div>
                                 </form>
                                 @endcan
                             </div>
