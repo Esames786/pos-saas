@@ -445,6 +445,32 @@ class TenantProvisioner
             'tenant.kitchen.wastages.create',
             'tenant.kitchen.wastages.store',
             'tenant.kitchen.wastages.show',
+
+            // Printing — Printers
+            'tenant.printing.printers.index',
+            'tenant.printing.printers.store',
+            'tenant.printing.printers.update',
+            'tenant.printing.printers.destroy',
+            'tenant.printing.terminal-settings.save',
+
+            // Printing — Category Mappings
+            'tenant.printing.category-mappings.index',
+            'tenant.printing.category-mappings.store',
+            'tenant.printing.category-mappings.destroy',
+
+            // Printing — Layouts
+            'tenant.printing.layouts.index',
+            'tenant.printing.layouts.store',
+
+            // Printing — Jobs
+            'tenant.printing.jobs.index',
+            'tenant.printing.jobs.queue-receipt',
+            'tenant.printing.jobs.queue-kot',
+            'tenant.printing.jobs.mark-printed',
+            'tenant.printing.jobs.retry',
+
+            // Printing — Documents
+            'tenant.printing.documents.preview',
         ];
 
         \App\Models\Tenant\Customer::updateOrCreate(

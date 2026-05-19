@@ -34,6 +34,22 @@
                 </form>
             @endcan
         @endif
+        @can('tenant.printing.jobs.queue-receipt')
+            <form method="POST" action="{{ url('/printing/jobs/receipt/' . $salesOrder->id) }}" target="_blank">
+                @csrf
+                <button type="submit" class="btn btn-outline-secondary">
+                    <i class="ti ti-printer me-1"></i> Print Receipt
+                </button>
+            </form>
+        @endcan
+        @can('tenant.printing.jobs.queue-kot')
+            <form method="POST" action="{{ url('/printing/jobs/kot/' . $salesOrder->id) }}" target="_blank">
+                @csrf
+                <button type="submit" class="btn btn-outline-secondary">
+                    <i class="ti ti-chef-hat me-1"></i> Send KOT
+                </button>
+            </form>
+        @endcan
         <a href="{{ url('/sales-orders') }}" class="btn btn-light">Back</a>
     </div>
 </div>

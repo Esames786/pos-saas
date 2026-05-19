@@ -40,6 +40,11 @@ use App\Http\Controllers\Tenant\UnitConversionController;
 use App\Http\Controllers\Tenant\RecipeController;
 use App\Http\Controllers\Tenant\KitchenProductionController;
 use App\Http\Controllers\Tenant\KitchenWastageController;
+use App\Http\Controllers\Tenant\PrinterController;
+use App\Http\Controllers\Tenant\CategoryPrinterMappingController;
+use App\Http\Controllers\Tenant\ReceiptLayoutController;
+use App\Http\Controllers\Tenant\PrintJobController;
+use App\Http\Controllers\Tenant\PrintDocumentController;
 use Illuminate\Support\Facades\Route;
 
 Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
@@ -346,6 +351,32 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/kitchen/wastages/create', [KitchenWastageController::class, 'create'])->name('tenant.kitchen.wastages.create');
                 Route::post('/kitchen/wastages', [KitchenWastageController::class, 'store'])->name('tenant.kitchen.wastages.store');
                 Route::get('/kitchen/wastages/{kitchenWastage}', [KitchenWastageController::class, 'show'])->name('tenant.kitchen.wastages.show');
+
+                // Printing — Printers
+                Route::get('/printing/printers', [PrinterController::class, 'index'])->name('tenant.printing.printers.index');
+                Route::post('/printing/printers', [PrinterController::class, 'store'])->name('tenant.printing.printers.store');
+                Route::put('/printing/printers/{printer}', [PrinterController::class, 'update'])->name('tenant.printing.printers.update');
+                Route::delete('/printing/printers/{printer}', [PrinterController::class, 'destroy'])->name('tenant.printing.printers.destroy');
+                Route::post('/printing/terminal-settings', [PrinterController::class, 'saveTerminalSettings'])->name('tenant.printing.terminal-settings.save');
+
+                // Printing — Category Mappings
+                Route::get('/printing/category-mappings', [CategoryPrinterMappingController::class, 'index'])->name('tenant.printing.category-mappings.index');
+                Route::post('/printing/category-mappings', [CategoryPrinterMappingController::class, 'store'])->name('tenant.printing.category-mappings.store');
+                Route::delete('/printing/category-mappings/{categoryPrinterMapping}', [CategoryPrinterMappingController::class, 'destroy'])->name('tenant.printing.category-mappings.destroy');
+
+                // Printing — Layouts
+                Route::get('/printing/layouts', [ReceiptLayoutController::class, 'index'])->name('tenant.printing.layouts.index');
+                Route::post('/printing/layouts', [ReceiptLayoutController::class, 'store'])->name('tenant.printing.layouts.store');
+
+                // Printing — Jobs
+                Route::get('/printing/jobs', [PrintJobController::class, 'index'])->name('tenant.printing.jobs.index');
+                Route::post('/printing/jobs/receipt/{salesOrder}', [PrintJobController::class, 'queueReceipt'])->name('tenant.printing.jobs.queue-receipt');
+                Route::post('/printing/jobs/kot/{salesOrder}', [PrintJobController::class, 'queueKot'])->name('tenant.printing.jobs.queue-kot');
+                Route::post('/printing/jobs/{printJob}/mark-printed', [PrintJobController::class, 'markPrinted'])->name('tenant.printing.jobs.mark-printed');
+                Route::post('/printing/jobs/{printJob}/retry', [PrintJobController::class, 'retry'])->name('tenant.printing.jobs.retry');
+
+                // Printing — Document preview
+                Route::get('/printing/documents/{printJob}/preview', [PrintDocumentController::class, 'preview'])->name('tenant.printing.documents.preview');
             });
         });
     });

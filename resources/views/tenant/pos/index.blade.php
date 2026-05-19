@@ -1112,7 +1112,9 @@ document.addEventListener('DOMContentLoaded', function () {
     /* keyboard shortcuts (Ctrl+key) */
 
     function toggleCalculator() {
-        calculatorPanel.style.display = calculatorPanel.style.display === 'none' ? '' : 'none';
+        const isHidden = calculatorPanel.style.display === 'none';
+        calculatorPanel.style.display = isHidden ? '' : 'none';
+        if (isHidden) { calcDisplay.focus(); }
     }
 
     document.getElementById('toggle-calc-btn').addEventListener('click', toggleCalculator);

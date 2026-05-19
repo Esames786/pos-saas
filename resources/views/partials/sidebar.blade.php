@@ -457,6 +457,47 @@
                     </li>
                     @endcanany
 
+                    {{-- Printing section --}}
+                    @canany(['tenant.printing.printers.index', 'tenant.printing.category-mappings.index', 'tenant.printing.layouts.index', 'tenant.printing.jobs.index'])
+                    <li class="submenu-open">
+                        <h6 class="submenu-hdr">Printing</h6>
+                        <ul>
+                            @can('tenant.printing.printers.index')
+                                <li class="{{ request()->is('printing/printers*') ? 'active' : '' }}">
+                                    <a href="{{ url('/printing/printers') }}">
+                                        <i class="ti ti-printer fs-16 me-2"></i>
+                                        <span>Printers</span>
+                                    </a>
+                                </li>
+                            @endcan
+                            @can('tenant.printing.category-mappings.index')
+                                <li class="{{ request()->is('printing/category-mappings*') ? 'active' : '' }}">
+                                    <a href="{{ url('/printing/category-mappings') }}">
+                                        <i class="ti ti-map-2 fs-16 me-2"></i>
+                                        <span>KOT Routing</span>
+                                    </a>
+                                </li>
+                            @endcan
+                            @can('tenant.printing.layouts.index')
+                                <li class="{{ request()->is('printing/layouts*') ? 'active' : '' }}">
+                                    <a href="{{ url('/printing/layouts') }}">
+                                        <i class="ti ti-layout fs-16 me-2"></i>
+                                        <span>Layouts</span>
+                                    </a>
+                                </li>
+                            @endcan
+                            @can('tenant.printing.jobs.index')
+                                <li class="{{ request()->is('printing/jobs*') ? 'active' : '' }}">
+                                    <a href="{{ url('/printing/jobs') }}">
+                                        <i class="ti ti-file-text fs-16 me-2"></i>
+                                        <span>Print Jobs</span>
+                                    </a>
+                                </li>
+                            @endcan
+                        </ul>
+                    </li>
+                    @endcanany
+
                     {{-- Catalog section --}}
                     @canany(['tenant.units.index', 'tenant.categories.index', 'tenant.products.index'])
                     <li class="submenu-open">
