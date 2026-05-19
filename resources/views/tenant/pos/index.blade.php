@@ -209,11 +209,11 @@
         <p class="fw-medium mb-0">Dine-in, takeaway, quick sale, delivery, table orders, and fast checkout.</p>
     </div>
     <div class="d-flex flex-wrap gap-2">
-        <span class="shortcut-chip">F2 Search</span>
-        <span class="shortcut-chip">F4 Save Order</span>
-        <span class="shortcut-chip">F6 Payment</span>
-        <span class="shortcut-chip">F8 Pay Bill</span>
-        <span class="shortcut-chip">F9 Calculator</span>
+        <span class="shortcut-chip">Ctrl+F Search</span>
+        <span class="shortcut-chip">Ctrl+H Hold</span>
+        <span class="shortcut-chip">Ctrl+P Payment</span>
+        <span class="shortcut-chip">Ctrl+Enter Pay</span>
+        <span class="shortcut-chip">Ctrl+M Calc</span>
     </div>
 </div>
 
@@ -442,7 +442,10 @@
             <section class="pos-card p-3 mb-3" aria-labelledby="cart_heading">
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <h2 id="cart_heading" class="h5 mb-0">{{ $tableSession ? 'Table Cart' : 'Cart' }}</h2>
-                    <button type="button" class="btn btn-sm btn-outline-danger" id="clear-cart-btn">Clear</button>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="toggle-calc-btn" title="Toggle Calculator (Ctrl+M)">Calc</button>
+                        <button type="button" class="btn btn-sm btn-outline-danger" id="clear-cart-btn">Clear</button>
+                    </div>
                 </div>
                 @if($tableSession)
                     <div class="alert alert-light border small mb-2">
@@ -552,7 +555,7 @@
             </div>
             <div class="modal-footer">
                 <button class="btn btn-light" type="button" data-bs-dismiss="modal">Cancel</button>
-                <button class="btn btn-success" type="submit">Open Table</button>
+                <button class="btn btn-success" type="submit" id="open-table-submit">Open Table</button>
             </div>
         </form>
     </div>
@@ -1029,13 +1032,63 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    /* open table modal */
+    /* open table modal — populate table info */
 
     document.getElementById('openTableModal').addEventListener('show.bs.modal', function (event) {
         const trigger = event.relatedTarget;
         if (!trigger) return;
-        document.getElementById('open-table-no').textContent     = trigger.getAttribute('data-table-no');
-        document.getElementById('open-table-form').action        = '{{ url('/restaurant/tables') }}/' + trigger.getAttribute('data-table-id') + '/open';
+        document.getElementById('open-table-no').textContent = trigger.getAttribute('data-table-no');
+        document.getElementById('open-table-form').action   = '{{ url('/restaurant/tables') }}/' + trigger.getAttribute('data-table-id') + '/open';
+        const errEl = document.getElementById('open-table-error');
+        if (errEl) errEl.remove();
+        const openBtn = document.getElementById('open-table-submit');
+        if (openBtn) { openBtn.disabled = false; openBtn.textContent = 'Open Table'; }
+    });
+
+    /* open table modal — AJAX submit (stay on POS, land on session) */
+
+    document.getElementById('open-table-form').addEventListener('submit', function (event) {
+        event.preventDefault();
+        const form    = this;
+        const openBtn = document.getElementById('open-table-submit');
+        const errEl   = document.getElementById('open-table-error');
+        if (errEl) errEl.remove();
+
+        openBtn.disabled    = true;
+        openBtn.textContent = 'Opening…';
+
+        fetch(form.action, {
+            method:  'POST',
+            headers: {
+                'Accept':       'application/json',
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+            },
+            body: new FormData(form),
+        })
+        .then(function (res) {
+            return res.json().then(function (data) { return { ok: res.ok, data: data }; });
+        })
+        .then(function (result) {
+            if (result.ok && result.data.session_id) {
+                window.location.href = '{{ url('/pos') }}?table_session_id=' + result.data.session_id +
+                    '&mode=dine_in&branch_id=' + result.data.branch_id;
+            } else {
+                const errors  = result.data.errors || {};
+                const message = Object.values(errors).flat().join(' ') || result.data.message || 'Failed to open table.';
+                const div     = document.createElement('div');
+                div.id        = 'open-table-error';
+                div.className = 'alert alert-danger mt-2 mb-0';
+                div.textContent = message;
+                form.querySelector('.modal-body').appendChild(div);
+                openBtn.disabled    = false;
+                openBtn.textContent = 'Open Table';
+            }
+        })
+        .catch(function () {
+            openBtn.disabled    = false;
+            openBtn.textContent = 'Open Table';
+            alert('Network error. Please try again.');
+        });
     });
 
     /* calculator */
@@ -1056,14 +1109,21 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    /* keyboard shortcuts */
+    /* keyboard shortcuts (Ctrl+key) */
+
+    function toggleCalculator() {
+        calculatorPanel.style.display = calculatorPanel.style.display === 'none' ? '' : 'none';
+    }
+
+    document.getElementById('toggle-calc-btn').addEventListener('click', toggleCalculator);
 
     document.addEventListener('keydown', function (event) {
-        if (event.key === 'F2')  { event.preventDefault(); searchEl.focus(); }
-        if (event.key === 'F4')  { event.preventDefault(); submitHeldSale(); }
-        if (event.key === 'F6')  { event.preventDefault(); paymentMethodEl.focus(); }
-        if (event.key === 'F8')  { event.preventDefault(); submitPaidSale(); }
-        if (event.key === 'F9')  { event.preventDefault(); calculatorPanel.style.display = calculatorPanel.style.display === 'none' ? '' : 'none'; }
+        if (!event.ctrlKey) return;
+        if (event.key === 'f')     { event.preventDefault(); searchEl.focus(); }
+        if (event.key === 'h')     { event.preventDefault(); submitHeldSale(); }
+        if (event.key === 'p')     { event.preventDefault(); paymentMethodEl.focus(); }
+        if (event.key === 'Enter') { event.preventDefault(); submitPaidSale(); }
+        if (event.key === 'm')     { event.preventDefault(); toggleCalculator(); }
     });
 
     /* preload held sale */

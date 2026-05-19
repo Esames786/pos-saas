@@ -48,6 +48,9 @@ class RestaurantTableSessionController extends Controller
         if (!empty($data['restaurant_waiter_id'])) {
             $waiter = RestaurantWaiter::find($data['restaurant_waiter_id']);
             if ($waiter && $waiter->branch_id && (int) $waiter->branch_id !== (int) $restaurantTable->branch_id) {
+                if ($request->expectsJson()) {
+                    return response()->json(['message' => 'Selected waiter does not belong to this branch.'], 422);
+                }
                 return back()->withErrors(['restaurant_waiter_id' => 'Selected waiter does not belong to this branch.']);
             }
         }
@@ -77,7 +80,20 @@ class RestaurantTableSessionController extends Controller
                 $table->update(['status' => 'occupied']);
             });
         } catch (\RuntimeException $e) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => $e->getMessage()], 422);
+            }
             return back()->withErrors(['table' => $e->getMessage()]);
+        }
+
+        if ($request->expectsJson()) {
+            $session = RestaurantTableSession::where('session_no', $sessionNo)
+                ->where('restaurant_table_id', $restaurantTable->id)
+                ->first();
+            return response()->json([
+                'session_id' => $session?->id,
+                'branch_id'  => $restaurantTable->branch_id,
+            ]);
         }
 
         return redirect(url('/restaurant/board?branch_id=' . $restaurantTable->branch_id))
