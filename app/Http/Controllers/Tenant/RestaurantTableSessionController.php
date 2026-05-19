@@ -45,25 +45,40 @@ class RestaurantTableSessionController extends Controller
             'notes'                => 'nullable|string|max:255',
         ]);
 
-        if ($restaurantTable->openSession()->exists()) {
-            return back()->withErrors(['table' => 'Table already has an open session.']);
+        if (!empty($data['restaurant_waiter_id'])) {
+            $waiter = RestaurantWaiter::find($data['restaurant_waiter_id']);
+            if ($waiter && $waiter->branch_id && (int) $waiter->branch_id !== (int) $restaurantTable->branch_id) {
+                return back()->withErrors(['restaurant_waiter_id' => 'Selected waiter does not belong to this branch.']);
+            }
         }
 
         $sessionNo = 'TS-' . now()->format('YmdHis') . '-' . random_int(100, 999);
 
-        RestaurantTableSession::create([
-            'session_no'           => $sessionNo,
-            'branch_id'            => $restaurantTable->branch_id,
-            'restaurant_table_id'  => $restaurantTable->id,
-            'restaurant_waiter_id' => $data['restaurant_waiter_id'] ?? null,
-            'opened_by_user_id'    => Auth::id(),
-            'guest_count'          => $data['guest_count'],
-            'status'               => 'open',
-            'opened_at'            => now(),
-            'notes'                => $data['notes'] ?? null,
-        ]);
+        try {
+            DB::connection('tenant')->transaction(function () use ($restaurantTable, $data, $sessionNo) {
+                $table = RestaurantTable::lockForUpdate()->findOrFail($restaurantTable->id);
 
-        $restaurantTable->update(['status' => 'occupied']);
+                if ($table->openSession()->exists()) {
+                    throw new \RuntimeException('Table already has an open session.');
+                }
+
+                RestaurantTableSession::create([
+                    'session_no'           => $sessionNo,
+                    'branch_id'            => $table->branch_id,
+                    'restaurant_table_id'  => $table->id,
+                    'restaurant_waiter_id' => $data['restaurant_waiter_id'] ?? null,
+                    'opened_by_user_id'    => Auth::id(),
+                    'guest_count'          => $data['guest_count'],
+                    'status'               => 'open',
+                    'opened_at'            => now(),
+                    'notes'                => $data['notes'] ?? null,
+                ]);
+
+                $table->update(['status' => 'occupied']);
+            });
+        } catch (\RuntimeException $e) {
+            return back()->withErrors(['table' => $e->getMessage()]);
+        }
 
         return redirect(url('/restaurant/board?branch_id=' . $restaurantTable->branch_id))
             ->with('status', "Table {$restaurantTable->table_no} session opened.");
@@ -168,27 +183,41 @@ class RestaurantTableSessionController extends Controller
             return back()->withErrors(['table' => 'Target table is not available.']);
         }
 
-        DB::connection('tenant')->transaction(function () use ($restaurantTableSession, $targetTable) {
-            $oldTable = $restaurantTableSession->table;
+        try {
+            DB::connection('tenant')->transaction(function () use ($restaurantTableSession, $targetTable) {
+                $sourceTableLocked = RestaurantTable::lockForUpdate()->find($restaurantTableSession->restaurant_table_id);
+                $targetTableLocked = RestaurantTable::lockForUpdate()->find($targetTable->id);
 
-            $restaurantTableSession->update([
-                'restaurant_table_id' => $targetTable->id,
-            ]);
+                $targetHasSession = RestaurantTableSession::where('restaurant_table_id', $targetTableLocked->id)
+                    ->whereIn('status', ['open', 'bill_requested'])
+                    ->lockForUpdate()
+                    ->exists();
 
-            SalesOrder::where('restaurant_table_session_id', $restaurantTableSession->id)
-                ->update([
-                    'restaurant_floor_id' => $targetTable->restaurant_floor_id,
-                    'restaurant_table_id' => $targetTable->id,
+                if ($targetHasSession || !in_array($targetTableLocked->status, ['available', 'cleaning'], true)) {
+                    throw new \RuntimeException('Target table is no longer available.');
+                }
+
+                $restaurantTableSession->update([
+                    'restaurant_table_id' => $targetTableLocked->id,
                 ]);
 
-            $oldTable?->update(['status' => 'available']);
+                SalesOrder::where('restaurant_table_session_id', $restaurantTableSession->id)
+                    ->update([
+                        'restaurant_floor_id' => $targetTableLocked->restaurant_floor_id,
+                        'restaurant_table_id' => $targetTableLocked->id,
+                    ]);
 
-            $targetTable->update([
-                'status' => $restaurantTableSession->status === 'bill_requested'
-                    ? 'bill_requested'
-                    : 'occupied',
-            ]);
-        });
+                $sourceTableLocked?->update(['status' => 'available']);
+
+                $targetTableLocked->update([
+                    'status' => $restaurantTableSession->status === 'bill_requested'
+                        ? 'bill_requested'
+                        : 'occupied',
+                ]);
+            });
+        } catch (\RuntimeException $e) {
+            return back()->withErrors(['table' => $e->getMessage()]);
+        }
 
         return back()->with('status', 'Table moved successfully.');
     }

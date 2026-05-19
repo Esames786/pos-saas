@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Tenant\PaymentMethod;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\SalesOrderLine;
+use App\Models\Tenant\Shift;
 use App\Services\Sales\SalesService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -63,11 +64,23 @@ class SplitBillController extends Controller
                     throw new RuntimeException('Only held sales can be split.');
                 }
 
+                $terminalId = $salesOrder->terminal_id;
+                $shiftId    = $salesOrder->shift_id;
+
+                if (!$shiftId) {
+                    $openShift = Shift::where('branch_id', $salesOrder->branch_id)
+                        ->where('status', 'open')
+                        ->when($terminalId, fn ($q) => $q->where('terminal_id', $terminalId))
+                        ->latest('opened_at')
+                        ->first();
+                    $shiftId = $openShift?->id;
+                }
+
                 $newSale = SalesOrder::create([
                     'sale_no'                     => $salesService->nextSaleNo(),
                     'branch_id'                   => $salesOrder->branch_id,
-                    'terminal_id'                 => $salesOrder->terminal_id,
-                    'shift_id'                    => $salesOrder->shift_id,
+                    'terminal_id'                 => $terminalId,
+                    'shift_id'                    => $shiftId,
                     'customer_id'                 => $salesOrder->customer_id,
                     'restaurant_floor_id'          => $salesOrder->restaurant_floor_id,
                     'restaurant_table_id'          => $salesOrder->restaurant_table_id,
@@ -170,11 +183,15 @@ class SplitBillController extends Controller
                     ? (float) $data['tendered_amount']
                     : $grandTotal;
 
+                $paymentMethod = PaymentMethod::find($data['payment_method_id']);
+                $isCash        = $paymentMethod?->method_type === 'cash';
+                $changeAmount  = $isCash ? max($tendered - $grandTotal, 0) : 0;
+
                 $newSale->payments()->create([
                     'payment_method_id' => $data['payment_method_id'],
                     'amount'            => $grandTotal,
                     'tendered_amount'   => $tendered,
-                    'change_amount'     => max($tendered - $grandTotal, 0),
+                    'change_amount'     => $changeAmount,
                     'transaction_ref'   => $data['transaction_ref'] ?? null,
                 ]);
 

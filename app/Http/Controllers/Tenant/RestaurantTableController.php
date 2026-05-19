@@ -48,6 +48,14 @@ class RestaurantTableController extends Controller
             'status'              => 'in:available,occupied,reserved,bill_requested,cleaning,inactive',
         ]);
 
+        $floor = RestaurantFloor::where('id', $data['restaurant_floor_id'])
+            ->where('branch_id', $data['branch_id'])
+            ->first();
+
+        if (!$floor) {
+            return back()->withErrors(['restaurant_floor_id' => 'Selected floor does not belong to the chosen branch.'])->withInput();
+        }
+
         $data['capacity']   = $data['capacity'] ?? 4;
         $data['sort_order'] = $data['sort_order'] ?? 0;
         $data['status']     = $data['status'] ?? 'available';
@@ -68,6 +76,14 @@ class RestaurantTableController extends Controller
             'sort_order'          => 'nullable|integer|min:0',
             'status'              => 'in:available,occupied,reserved,bill_requested,cleaning,inactive',
         ]);
+
+        $floor = RestaurantFloor::where('id', $data['restaurant_floor_id'])
+            ->where('branch_id', $data['branch_id'])
+            ->first();
+
+        if (!$floor) {
+            return back()->withErrors(['restaurant_floor_id' => 'Selected floor does not belong to the chosen branch.'])->withInput();
+        }
 
         $data['capacity']   = $data['capacity'] ?? 4;
         $data['sort_order'] = $data['sort_order'] ?? 0;

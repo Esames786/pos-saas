@@ -15,12 +15,17 @@ use Illuminate\Support\Facades\Auth;
 
 class HeldSaleController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $heldSales = SalesOrder::with(['branch', 'customer', 'restaurantTable', 'restaurantWaiter'])
+        $query = SalesOrder::with(['branch', 'customer', 'restaurantTable', 'restaurantWaiter'])
             ->where('status', 'held')
-            ->orderByDesc('updated_at')
-            ->paginate(25);
+            ->orderByDesc('updated_at');
+
+        if ($request->filled('table_session_id')) {
+            $query->where('restaurant_table_session_id', $request->table_session_id);
+        }
+
+        $heldSales = $query->paginate(25);
 
         return view('tenant.held-sales.index', compact('heldSales'));
     }

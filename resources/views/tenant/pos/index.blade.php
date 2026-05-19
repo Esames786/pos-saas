@@ -226,10 +226,26 @@
 @endif
 
 @if($tableSession)
-    <div class="alert alert-info" role="status">
-        Active table: <strong>{{ $tableSession->table?->table_no }}</strong>
-        &middot; Session <strong>{{ $tableSession->session_no }}</strong>
-        &middot; Waiter <strong>{{ $tableSession->waiter?->name ?? 'No waiter' }}</strong>
+    <div class="pos-card p-3 mb-3 d-flex flex-wrap align-items-center gap-2">
+        <div>
+            <strong>Table {{ $tableSession->table?->table_no }}</strong>
+            <span class="text-muted ms-1">{{ $tableSession->session_no }}</span>
+            &middot; {{ $tableSession->waiter?->name ?? 'No waiter' }}
+            &middot; {{ $tableSession->guest_count }} guests
+        </div>
+        <div class="d-flex gap-2 ms-auto flex-wrap">
+            @can('tenant.restaurant.table-sessions.bill-preview')
+                <a href="{{ url('/restaurant/table-sessions/' . $tableSession->id . '/bill-preview') }}" class="btn btn-sm btn-dark">Bill Preview</a>
+            @endcan
+            @can('tenant.restaurant.table-sessions.bill-requested')
+                @if($tableSession->status === 'open')
+                    <form method="POST" action="{{ url('/restaurant/table-sessions/' . $tableSession->id . '/bill-requested') }}" class="d-inline">
+                        @csrf
+                        <button class="btn btn-sm btn-info" type="submit">Request Bill</button>
+                    </form>
+                @endif
+            @endcan
+        </div>
     </div>
 @endif
 
@@ -261,7 +277,17 @@
         @endcan
     </div>
 
+    @if($floors->count() > 1)
+        <div class="category-strip mb-3" id="floor-tab-strip">
+            <button type="button" class="category-pill active" data-floor-tab="">All Floors</button>
+            @foreach($floors as $floor)
+                <button type="button" class="category-pill" data-floor-tab="{{ $floor->id }}">{{ $floor->name }}</button>
+            @endforeach
+        </div>
+    @endif
+
     @forelse($floors as $floor)
+        <div data-floor-panel="{{ $floor->id }}">
         <div class="mb-3">
             <h3 class="h6 mb-2">{{ $floor->name }}</h3>
             <div class="restaurant-board-grid">
@@ -287,8 +313,18 @@
                             </div>
                             <a href="{{ url('/pos?table_session_id=' . $session->id . '&mode=dine_in&branch_id=' . $selectedBranchId) }}"
                                class="btn btn-sm btn-primary w-100 mb-1">Select Table</a>
-                            @if($session->salesOrders->where('status', 'held')->count())
-                                <a href="{{ url('/held-sales') }}" class="btn btn-sm btn-outline-dark w-100">View Held Orders</a>
+                            @can('tenant.restaurant.table-sessions.bill-preview')
+                                <a href="{{ url('/restaurant/table-sessions/' . $session->id . '/bill-preview') }}"
+                                   class="btn btn-sm btn-dark w-100 mb-1">Bill Preview</a>
+                            @endcan
+                            @php $firstHeld = $session->salesOrders->where('status', 'held')->first(); @endphp
+                            @if($firstHeld)
+                                @can('tenant.sales-orders.split-bill')
+                                    <a href="{{ url('/sales-orders/' . $firstHeld->id . '/split-bill') }}"
+                                       class="btn btn-sm btn-warning w-100 mb-1">Split Bill</a>
+                                @endcan
+                                <a href="{{ url('/held-sales?table_session_id=' . $session->id) }}"
+                                   class="btn btn-sm btn-outline-dark w-100">Held Orders</a>
                             @endif
                         @else
                             @can('tenant.restaurant.table-sessions.open')
@@ -305,6 +341,7 @@
                 @endforeach
             </div>
         </div>
+        </div>{{-- /data-floor-panel --}}
     @empty
         <div class="alert alert-info" role="status">No active floors/tables found for this branch.</div>
     @endforelse
@@ -425,13 +462,14 @@
                     <label for="payment_method_id" class="form-label required">Payment Method</label>
                     <select id="payment_method_id" class="form-select" required>
                         @foreach($paymentMethods as $method)
-                            <option value="{{ $method->id }}" data-type="{{ $method->method_type }}">{{ $method->name }}</option>
+                            <option value="{{ $method->id }}" data-type="{{ $method->method_type }}" @selected($method->method_type === 'cash')>{{ $method->name }}</option>
                         @endforeach
                     </select>
                 </div>
                 <div class="mb-3">
                     <label for="tendered_amount" class="form-label">Tendered Amount</label>
                     <input id="tendered_amount" type="number" step="0.01" min="0" class="form-control form-control-lg">
+                    <div class="d-flex gap-1 flex-wrap mt-1" id="quick-cash-buttons"></div>
                 </div>
                 <div class="mb-3">
                     <label for="transaction_ref" class="form-label">Reference / Card / Bank</label>
@@ -551,11 +589,8 @@
     </div>
 </div>
 
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    const products   = @json($productsPayload);
-    const categories = @json($categories);
-    const heldSale   = @json($heldSale ? [
+@php
+    $heldSaleJson = $heldSale ? [
         'id'    => $heldSale->id,
         'lines' => $heldSale->lines->map(fn ($l) => [
             'product_id'         => (int) $l->product_id,
@@ -564,8 +599,15 @@ document.addEventListener('DOMContentLoaded', function () {
             'unit_price'         => (float) $l->unit_price,
             'discount_amount'    => (float) $l->discount_amount,
             'tax_amount'         => (float) $l->tax_amount,
-        ])->values(),
-    ] : null);
+        ])->values()->toArray(),
+    ] : null;
+@endphp
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const products   = @json($productsPayload);
+    const categories = @json($categories);
+    const heldSale   = @json($heldSaleJson);
 
     const form             = document.getElementById('pos-sale-form');
     const productGrid      = document.getElementById('product-grid');
@@ -777,6 +819,36 @@ document.addEventListener('DOMContentLoaded', function () {
         return { subtotal: subtotal, discount: discount, tax: tax, total: Math.max(subtotal - discount + tax, 0) };
     }
 
+    function updateQuickCash(total) {
+        const container = document.getElementById('quick-cash-buttons');
+        if (!container) return;
+        container.innerHTML = '';
+
+        const amounts = [total];
+        const roundings = [10, 50, 100, 500, 1000, 2000, 5000, 10000];
+
+        for (const r of roundings) {
+            const rounded = Math.ceil(total / r) * r;
+            if (rounded > total && !amounts.includes(rounded)) {
+                amounts.push(rounded);
+                if (amounts.length >= 5) break;
+            }
+        }
+
+        amounts.forEach(function (amount) {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'btn btn-sm btn-outline-secondary';
+            b.textContent = money(amount);
+            b.addEventListener('click', function () {
+                tenderedEl.value = money(amount);
+                tenderedEl.dataset.manual = '1';
+                updateTotals();
+            });
+            container.appendChild(b);
+        });
+    }
+
     function updateTotals() {
         const t = totals();
         document.getElementById('subtotal-view').textContent    = money(t.subtotal);
@@ -786,6 +858,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!tenderedEl.dataset.manual) tenderedEl.value = money(t.total);
         document.getElementById('change-view').textContent =
             money(Math.max(Number(tenderedEl.value || 0) - t.total, 0));
+        updateQuickCash(t.total);
     }
 
     /* form build + submit */
@@ -940,6 +1013,19 @@ document.addEventListener('DOMContentLoaded', function () {
             }
 
             renderProducts();
+        });
+    });
+
+    /* floor tabs */
+
+    document.querySelectorAll('[data-floor-tab]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            document.querySelectorAll('[data-floor-tab]').forEach(function (b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+            const floorId = btn.dataset.floorTab;
+            document.querySelectorAll('[data-floor-panel]').forEach(function (panel) {
+                panel.style.display = (!floorId || panel.dataset.floorPanel === floorId) ? '' : 'none';
+            });
         });
     });
 

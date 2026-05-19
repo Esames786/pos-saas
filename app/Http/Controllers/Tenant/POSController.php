@@ -176,7 +176,10 @@ class POSController extends Controller
                 ->orderBy('name')
                 ->get(),
             'productsPayload'  => $productsPayload,
-            'paymentMethods'   => PaymentMethod::where('is_active', true)->orderBy('name')->get(),
+            'paymentMethods'   => PaymentMethod::where('is_active', true)
+                ->orderByRaw("CASE WHEN method_type = 'cash' THEN 0 ELSE 1 END")
+                ->orderBy('name')
+                ->get(),
             'floors'           => $floors,
             'waiters'          => $waiters,
             'tableSession'     => $tableSession,
