@@ -471,6 +471,12 @@ class TenantProvisioner
 
             // Printing — Documents
             'tenant.printing.documents.preview',
+
+            // Printing — Print Agents
+            'tenant.print-agents.index',
+            'tenant.print-agents.store',
+            'tenant.print-agents.regenerate-token',
+            'tenant.print-agents.deactivate',
         ];
 
         \App\Models\Tenant\Customer::updateOrCreate(

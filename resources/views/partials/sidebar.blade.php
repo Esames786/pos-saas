@@ -458,7 +458,7 @@
                     @endcanany
 
                     {{-- Printing section --}}
-                    @canany(['tenant.printing.printers.index', 'tenant.printing.category-mappings.index', 'tenant.printing.layouts.index', 'tenant.printing.jobs.index'])
+                    @canany(['tenant.printing.printers.index', 'tenant.printing.category-mappings.index', 'tenant.printing.layouts.index', 'tenant.printing.jobs.index', 'tenant.print-agents.index'])
                     <li class="submenu-open">
                         <h6 class="submenu-hdr">Printing</h6>
                         <ul>
@@ -491,6 +491,14 @@
                                     <a href="{{ url('/printing/jobs') }}">
                                         <i class="ti ti-file-text fs-16 me-2"></i>
                                         <span>Print Jobs</span>
+                                    </a>
+                                </li>
+                            @endcan
+                            @can('tenant.print-agents.index')
+                                <li class="{{ request()->is('print/agents*') ? 'active' : '' }}">
+                                    <a href="{{ url('/print/agents') }}">
+                                        <i class="ti ti-device-desktop-cog fs-16 me-2"></i>
+                                        <span>Print Agents</span>
                                     </a>
                                 </li>
                             @endcan

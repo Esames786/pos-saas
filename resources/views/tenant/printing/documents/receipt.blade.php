@@ -74,8 +74,8 @@
 
 <div>Date: {{ $salesOrder->created_at?->format('d/m/Y H:i') }}</div>
 
-@if(!($layout?->show_cashier_name === false) && $salesOrder->cashier)
-<div>Cashier: {{ $salesOrder->cashier->name }}</div>
+@if(!($layout?->show_cashier_name === false) && $salesOrder->createdBy)
+<div>Cashier: {{ $salesOrder->createdBy->name }}</div>
 @endif
 
 @if(!($layout?->show_customer_name === false) && $salesOrder->customer)

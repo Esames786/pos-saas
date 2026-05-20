@@ -10,9 +10,10 @@ class PrintJob extends Model
 
     protected $fillable = [
         'job_no', 'branch_id', 'terminal_id', 'printer_id',
+        'claimed_by_agent_id', 'claimed_at',
         'document_type', 'print_status', 'reference_type', 'reference_id',
-        'reference_no', 'payload', 'attempts', 'printed_at', 'failed_at',
-        'error_message', 'created_by_user_id',
+        'reference_no', 'payload', 'raw_payload', 'attempts',
+        'printed_at', 'failed_at', 'error_message', 'created_by_user_id',
     ];
 
     protected function casts(): array
@@ -21,6 +22,7 @@ class PrintJob extends Model
             'payload'    => 'array',
             'printed_at' => 'datetime',
             'failed_at'  => 'datetime',
+            'claimed_at' => 'datetime',
             'attempts'   => 'integer',
         ];
     }
@@ -38,5 +40,10 @@ class PrintJob extends Model
     public function createdBy()
     {
         return $this->belongsTo(User::class, 'created_by_user_id');
+    }
+
+    public function claimedByAgent()
+    {
+        return $this->belongsTo(PrintAgent::class, 'claimed_by_agent_id');
     }
 }

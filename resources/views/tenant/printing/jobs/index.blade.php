@@ -54,6 +54,7 @@
                     <th>Type</th>
                     <th>Reference</th>
                     <th>Printer</th>
+                    <th>Agent</th>
                     <th>Status</th>
                     <th>Attempts</th>
                     <th>Created By</th>
@@ -74,6 +75,12 @@
                         @endif
                     </td>
                     <td>{{ $j->printer?->name ?? '—' }}</td>
+                    <td>
+                        {{ $j->claimedByAgent?->name ?? '—' }}
+                        @if($j->claimed_at)
+                            <small class="d-block text-muted">{{ $j->claimed_at->format('H:i:s') }}</small>
+                        @endif
+                    </td>
                     <td>
                         @php
                             $statusColor = match($j->print_status) {
@@ -111,7 +118,7 @@
                     </td>
                 </tr>
                 @empty
-                <tr><td colspan="9" class="text-center text-muted py-4">No print jobs found.</td></tr>
+                <tr><td colspan="10" class="text-center text-muted py-4">No print jobs found.</td></tr>
                 @endforelse
             </tbody>
         </table>

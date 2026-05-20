@@ -19,11 +19,12 @@ class PrintDocumentController extends Controller
         }
 
         $salesOrder = SalesOrder::with([
-            'branch', 'cashier', 'customer',
+            'branch', 'createdBy', 'customer',
             'lines.product.category', 'lines.variant',
             'payments.method',
             'restaurantTable.floor',
             'restaurantTableSession.waiter',
+            'restaurantWaiter',
         ])->findOrFail($salesOrderId);
 
         $layout = ReceiptLayoutSetting::where('branch_id', $salesOrder->branch_id)

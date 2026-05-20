@@ -19,7 +19,7 @@ class PrintJobController extends Controller
 
     public function index(Request $request)
     {
-        $query = PrintJob::with(['branch', 'printer', 'createdBy'])
+        $query = PrintJob::with(['branch', 'printer', 'createdBy', 'claimedByAgent'])
             ->orderByDesc('id');
 
         if ($request->filled('branch_id')) {

@@ -18,38 +18,50 @@ class PrintJobService
 
     public function queueReceipt(SalesOrder $sale, ?Printer $printer, ?string $terminalId = null): PrintJob
     {
-        return PrintJob::create([
+        $job = PrintJob::create([
             'job_no'             => $this->nextJobNo(),
             'branch_id'          => $sale->branch_id,
             'terminal_id'        => $terminalId,
             'printer_id'         => $printer?->id,
             'document_type'      => 'receipt',
             'print_status'       => 'queued',
-            'reference_type'     => SalesOrder::class,
+            'reference_type'     => 'sales_order',
             'reference_id'       => $sale->id,
-            'reference_no'       => $sale->order_no,
+            'reference_no'       => $sale->sale_no,
             'payload'            => ['sales_order_id' => $sale->id],
             'attempts'           => 0,
             'created_by_user_id' => Auth::id(),
         ]);
+
+        $job->update([
+            'raw_payload' => app(EscPosPayloadService::class)->build($job),
+        ]);
+
+        return $job;
     }
 
     public function queueKot(SalesOrder $sale, ?Printer $printer, array $lineIds = [], ?string $terminalId = null): PrintJob
     {
-        return PrintJob::create([
+        $job = PrintJob::create([
             'job_no'             => $this->nextJobNo(),
             'branch_id'          => $sale->branch_id,
             'terminal_id'        => $terminalId,
             'printer_id'         => $printer?->id,
             'document_type'      => 'kot',
             'print_status'       => 'queued',
-            'reference_type'     => SalesOrder::class,
+            'reference_type'     => 'sales_order',
             'reference_id'       => $sale->id,
-            'reference_no'       => $sale->order_no,
+            'reference_no'       => $sale->sale_no,
             'payload'            => ['sales_order_id' => $sale->id, 'line_ids' => $lineIds],
             'attempts'           => 0,
             'created_by_user_id' => Auth::id(),
         ]);
+
+        $job->update([
+            'raw_payload' => app(EscPosPayloadService::class)->build($job),
+        ]);
+
+        return $job;
     }
 
     public function markPrinted(PrintJob $job): void

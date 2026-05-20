@@ -45,6 +45,8 @@ use App\Http\Controllers\Tenant\CategoryPrinterMappingController;
 use App\Http\Controllers\Tenant\ReceiptLayoutController;
 use App\Http\Controllers\Tenant\PrintJobController;
 use App\Http\Controllers\Tenant\PrintDocumentController;
+use App\Http\Controllers\Tenant\PrintAgentController;
+use App\Http\Controllers\Tenant\Api\PrintAgentApiController;
 use Illuminate\Support\Facades\Route;
 
 Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
@@ -377,6 +379,20 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
 
                 // Printing — Document preview
                 Route::get('/printing/documents/{printJob}/preview', [PrintDocumentController::class, 'preview'])->name('tenant.printing.documents.preview');
+
+                // Printing — Print Agents (web management)
+                Route::get('/print/agents', [PrintAgentController::class, 'index'])->name('tenant.print-agents.index');
+                Route::post('/print/agents', [PrintAgentController::class, 'store'])->name('tenant.print-agents.store');
+                Route::post('/print/agents/{printAgent}/regenerate-token', [PrintAgentController::class, 'regenerateToken'])->name('tenant.print-agents.regenerate-token');
+                Route::post('/print/agents/{printAgent}/deactivate', [PrintAgentController::class, 'deactivate'])->name('tenant.print-agents.deactivate');
             });
+        });
+
+        // Print agent API — token-based auth, no session/cookie required
+        Route::prefix('/api/print-agent')->group(function () {
+            Route::post('/heartbeat', [PrintAgentApiController::class, 'heartbeat'])->name('tenant.api.print-agent.heartbeat');
+            Route::get('/pending', [PrintAgentApiController::class, 'pending'])->name('tenant.api.print-agent.pending');
+            Route::post('/jobs/{printJob}/printed', [PrintAgentApiController::class, 'printed'])->name('tenant.api.print-agent.jobs.printed');
+            Route::post('/jobs/{printJob}/failed', [PrintAgentApiController::class, 'failed'])->name('tenant.api.print-agent.jobs.failed');
         });
     });
