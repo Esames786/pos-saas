@@ -29,6 +29,8 @@ use App\Models\Tenant\SupplierPayment;
 use App\Models\Tenant\Terminal;
 use App\Models\Tenant\Unit;
 use App\Models\Tenant\User;
+use App\Models\Tenant\Printer;
+use App\Models\Tenant\PrintAgent;
 use App\Services\Inventory\InventoryService;
 use App\Services\Sales\SalesService;
 use App\Services\Tenancy\TenancyManager;
@@ -75,6 +77,7 @@ class TenantDemoSeeder extends Seeder
         $this->seedSalesOrders();
         $this->seedStockTransfer();
         $this->seedDailyClosing();
+        $this->seedPrintersAndAgent();
 
         app(TenancyManager::class)->deactivate();
 
@@ -1594,5 +1597,73 @@ class TenantDemoSeeder extends Seeder
         ]);
 
         $this->command->line('  Daily closing seeded: yesterday, Main branch.');
+    }
+
+    // ── Printers & Print Agent ───────────────────────────────────────────────
+
+    private function seedPrintersAndAgent(): void
+    {
+        if (Printer::count() > 0) {
+            $this->command->line('  Printers already exist, skipping.');
+            return;
+        }
+
+        $main     = Branch::where('code', 'MAIN')->first();
+        $terminal = Terminal::first();
+
+        // Fake KOT printer — use 127.0.0.1:9100 (run fake-printer.js locally)
+        $kotPrinter = Printer::create([
+            'branch_id'           => $main?->id,
+            'name'                => 'Fake Kitchen Printer',
+            'code'                => 'FAKE-KOT',
+            'printer_type'        => 'network',
+            'print_role'          => 'kot',
+            'ip_address'          => '127.0.0.1',
+            'port'                => 9100,
+            'paper_size'          => '80mm',
+            'characters_per_line' => 42,
+            'is_default'          => true,
+            'is_active'           => true,
+            'agent_enabled'       => true,
+            'notes'               => 'Fake printer for local testing — run fake-printer.js',
+        ]);
+
+        // Fake receipt printer
+        $receiptPrinter = Printer::create([
+            'branch_id'           => $main?->id,
+            'name'                => 'Fake Receipt Printer',
+            'code'                => 'FAKE-RECEIPT',
+            'printer_type'        => 'network',
+            'print_role'          => 'receipt',
+            'ip_address'          => '127.0.0.1',
+            'port'                => 9100,
+            'paper_size'          => '80mm',
+            'characters_per_line' => 42,
+            'is_default'          => true,
+            'is_active'           => true,
+            'agent_enabled'       => true,
+            'notes'               => 'Fake printer for local testing — run fake-printer.js',
+        ]);
+
+        // Demo print agent — fixed token for easy local testing
+        $plainToken = 'demo-local-agent-token-for-testing-only-change-in-prod';
+
+        if (!PrintAgent::where('agent_code', 'AG-DEMO-LOCAL')->exists()) {
+            PrintAgent::create([
+                'name'         => 'Demo Local Agent',
+                'agent_code'   => 'AG-DEMO-LOCAL',
+                'branch_id'    => $main?->id,
+                'terminal_id'  => $terminal?->id,
+                'token_hash'   => Hash::make($plainToken),
+                'device_name'  => 'Developer PC',
+                'device_os'    => 'Windows (Laragon)',
+                'local_ip'     => '127.0.0.1',
+                'is_active'    => true,
+            ]);
+        }
+
+        $this->command->line('  Printers seeded: Fake KOT + Fake Receipt (127.0.0.1:9100).');
+        $this->command->line('  Print Agent seeded: AG-DEMO-LOCAL');
+        $this->command->line('  Token: ' . $plainToken);
     }
 }
