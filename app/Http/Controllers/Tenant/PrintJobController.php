@@ -117,7 +117,10 @@ class PrintJobController extends Controller
                 'document_type' => $j->document_type,
                 'print_status'  => $j->print_status,
                 'printer_name'  => $j->printer?->name ?? 'Default Printer',
+                'printer_type'  => $j->printer?->printer_type ?? 'browser',
                 'line_count'    => count($j->payload['line_ids'] ?? []),
+                'fallback'      => empty($j->printer_id),
+                'preview_url'   => url('/printing/documents/' . $j->id . '/' . $j->document_type),
                 'created_at'    => $j->created_at->diffForHumans(),
             ])->values()->all(),
         ]);
@@ -134,9 +137,12 @@ class PrintJobController extends Controller
         return back()->with('status', 'Job marked as printed.');
     }
 
-    public function retry(PrintJob $printJob)
+    public function retry(Request $request, PrintJob $printJob)
     {
         if (!in_array($printJob->print_status, ['failed', 'cancelled'])) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'Only failed or cancelled jobs can be retried.'], 422);
+            }
             return back()->withErrors(['job' => 'Only failed or cancelled jobs can be retried.']);
         }
 
@@ -147,6 +153,10 @@ class PrintJobController extends Controller
             'claimed_by_agent_id' => null,
             'claimed_at'          => null,
         ]);
+
+        if ($request->expectsJson()) {
+            return response()->json(['status' => 'queued', 'job_no' => $printJob->job_no]);
+        }
 
         return back()->with('status', 'Job re-queued.');
     }

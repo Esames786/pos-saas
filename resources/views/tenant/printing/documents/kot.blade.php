@@ -76,10 +76,21 @@
     <tbody>
         @foreach($kotLines as $line)
         @php
-            $totalQty   = (float) $line->quantity;
-            $sentQty    = (float) ($line->kot_sent_quantity ?? 0);
-            $displayQty = $isReprint ? $totalQty : ($totalQty - $sentQty);
-            $isAddition = !$isReprint && $sentQty > 0;
+            $totalQty = (float) $line->quantity;
+
+            if ($isReprint) {
+                $displayQty = $totalQty;
+                $isAddition = false;
+            } elseif (isset($lineQuantities) && $lineQuantities->has((string) $line->id)) {
+                // Use exact quantity stored in payload at job creation time.
+                $displayQty = (float) $lineQuantities->get((string) $line->id);
+                $isAddition = $totalQty > $displayQty;  // more was ordered than this delta
+            } else {
+                // Fallback for old jobs without line_quantities in payload.
+                $sentQty    = (float) ($line->kot_sent_quantity ?? 0);
+                $displayQty = max($totalQty - $sentQty, 0);
+                $isAddition = $sentQty > 0;
+            }
         @endphp
         <tr>
             <td class="item-qty bold" style="font-size:{{ $fontSize + 2 }}px">

@@ -1714,11 +1714,24 @@ document.addEventListener('DOMContentLoaded', function () {
                 '<th>Items</th><th>Time</th><th class="pe-3 text-end">Action</th>' +
                 '</tr></thead><tbody>';
 
+            let hasFailed = false;
+
             data.jobs.forEach(function (j) {
+                if (j.print_status === 'failed') hasFailed = true;
+
                 const itemsCell = j.document_type === 'kot'
                     ? (j.line_count > 0 ? j.line_count + ' item' + (j.line_count !== 1 ? 's' : '') : 'All items')
                     : '—';
-                html += '<tr>' +
+
+                const viewBtn = j.fallback
+                    ? '<a href="' + j.preview_url + '" target="_blank" class="btn btn-sm btn-outline-info py-0 me-1"><i class="ti ti-eye me-1"></i>View</a>'
+                    : '';
+
+                const retryBtn = j.print_status === 'failed'
+                    ? '<button class="btn btn-sm btn-danger py-0 me-1" data-retry-job="' + j.id + '"><i class="ti ti-refresh me-1"></i>Retry</button>'
+                    : '';
+
+                html += '<tr' + (j.print_status === 'failed' ? ' class="table-danger"' : '') + '>' +
                     '<td class="ps-3 fw-semibold small">' + j.job_no + '</td>' +
                     '<td>' + typeBadge(j.document_type) + '</td>' +
                     '<td>' + statusBadge(j.print_status) + '</td>' +
@@ -1726,6 +1739,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     '<td class="text-muted small">' + itemsCell + '</td>' +
                     '<td class="text-muted small">' + j.created_at + '</td>' +
                     '<td class="pe-3 text-end">' +
+                        viewBtn +
+                        retryBtn +
                         '<button class="btn btn-sm btn-outline-secondary py-0" data-requeue-job="' + j.id + '" data-job-type="' + j.document_type + '">' +
                             '<i class="ti ti-printer me-1"></i>Reprint' +
                         '</button>' +
@@ -1736,10 +1751,25 @@ document.addEventListener('DOMContentLoaded', function () {
             html += '</tbody></table></div>';
             body.innerHTML = html;
 
+            // Printer button turns red if any failed jobs exist for this sale
+            const printerBtn = document.getElementById('last-print-btn');
+            if (printerBtn) {
+                printerBtn.classList.toggle('btn-outline-danger', hasFailed);
+                printerBtn.classList.toggle('btn-outline-secondary', !hasFailed);
+                printerBtn.title = hasFailed ? 'Failed print jobs — click to retry' : 'Reprint Last KOT';
+            }
+
             // Wire per-row reprint buttons
             body.querySelectorAll('[data-requeue-job]').forEach(function (btn) {
                 btn.addEventListener('click', function () {
                     requeueSingleJob(Number(btn.dataset.requeueJob), btn.dataset.jobType, btn);
+                });
+            });
+
+            // Wire per-row retry buttons
+            body.querySelectorAll('[data-retry-job]').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    retryPrintJob(Number(btn.dataset.retryJob), btn);
                 });
             });
         })
@@ -1792,6 +1822,32 @@ document.addEventListener('DOMContentLoaded', function () {
                 loadRecentPrintJobs();
             }).catch(function () { btn.disabled = false; btn.innerHTML = orig; toast('error', 'Failed'); });
         }
+    }
+
+    function retryPrintJob(jobId, btn) {
+        const orig = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+        fetch('{{ url('/printing/jobs') }}/' + jobId + '/retry', {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
+        })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+            btn.disabled = false;
+            btn.innerHTML = orig;
+            if (data.status === 'queued') {
+                toast('success', 'Re-queued: ' + data.job_no);
+                loadRecentPrintJobs();
+            } else {
+                toast('warning', data.message || 'Could not retry job');
+            }
+        })
+        .catch(function () {
+            btn.disabled = false;
+            btn.innerHTML = orig;
+            toast('error', 'Retry failed');
+        });
     }
 
     document.getElementById('last-print-btn').addEventListener('click', openRecentPrints);

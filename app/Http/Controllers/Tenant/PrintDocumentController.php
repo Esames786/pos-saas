@@ -33,25 +33,37 @@ class PrintDocumentController extends Controller
             ->first();
 
         if ($printJob->document_type === 'kot') {
-            $lineIds   = $printJob->payload['line_ids'] ?? [];
-            $isReprint = $printJob->payload['is_reprint'] ?? false;
+            $lineIds        = $printJob->payload['line_ids'] ?? [];
+            $lineQuantities = collect($printJob->payload['line_quantities'] ?? []);
+            $isReprint      = $printJob->payload['is_reprint'] ?? false;
 
             $kotLines = $lineIds
                 ? $salesOrder->lines->whereIn('id', $lineIds)->values()
                 : $salesOrder->lines;
 
             if (!$isReprint) {
-                $kotLines = $kotLines->filter(
-                    fn ($l) => ((float) $l->quantity - (float) ($l->kot_sent_quantity ?? 0)) > 0
-                )->values();
+                if ($lineQuantities->isNotEmpty()) {
+                    // Use payload quantities as source of truth.
+                    // The model's kot_sent_quantity may already be stamped (network jobs),
+                    // so recalculating delta from model would show empty lines.
+                    $kotLines = $kotLines->filter(
+                        fn ($l) => (float) $lineQuantities->get((string) $l->id, 0) > 0
+                    )->values();
+                } else {
+                    // Backward compat: jobs created before line_quantities was added to payload.
+                    $kotLines = $kotLines->filter(
+                        fn ($l) => ((float) $l->quantity - (float) ($l->kot_sent_quantity ?? 0)) > 0
+                    )->values();
+                }
             }
 
             return view('tenant.printing.documents.kot', [
-                'job'        => $printJob,
-                'salesOrder' => $salesOrder,
-                'kotLines'   => $kotLines,
-                'layout'     => $layout,
-                'isReprint'  => $isReprint,
+                'job'            => $printJob,
+                'salesOrder'     => $salesOrder,
+                'kotLines'       => $kotLines,
+                'layout'         => $layout,
+                'isReprint'      => $isReprint,
+                'lineQuantities' => $lineQuantities,
             ]);
         }
 
