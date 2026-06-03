@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Tenant\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\PrintAgent;
 use App\Models\Tenant\PrintJob;
+use App\Services\Printing\PrintJobService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -45,6 +46,12 @@ class PrintAgentApiController extends Controller
         $jobs = DB::connection('tenant')->transaction(function () use ($agent) {
             $query = PrintJob::with('printer')
                 ->where('print_status', 'queued')
+                ->whereNotNull('printer_id')
+                ->whereHas('printer', function ($q) {
+                    $q->where('is_active', true)
+                      ->where('printer_type', 'network')
+                      ->whereNotNull('ip_address');
+                })
                 ->where(function ($q) use ($agent) {
                     if ($agent->branch_id) {
                         $q->whereNull('branch_id')->orWhere('branch_id', $agent->branch_id);
@@ -95,7 +102,7 @@ class PrintAgentApiController extends Controller
         ]);
     }
 
-    public function printed(Request $request, PrintJob $printJob): JsonResponse
+    public function printed(Request $request, PrintJob $printJob, PrintJobService $printJobService): JsonResponse
     {
         $agent = $this->authenticate($request);
 
@@ -103,22 +110,14 @@ class PrintAgentApiController extends Controller
             abort(403, 'Job claimed by another agent.');
         }
 
-        $printJob->update([
-            'print_status'  => 'printed',
-            'printed_at'    => now(),
-            'error_message' => null,
-            'attempts'      => $printJob->attempts + 1,
-        ]);
+        $printJobService->markPrinted($printJob);
 
-        $printJob->printer?->update([
-            'last_seen_at' => now(),
-            'last_error'   => null,
-        ]);
+        $printJob->printer?->update(['last_seen_at' => now(), 'last_error' => null]);
 
         return response()->json(['ok' => true]);
     }
 
-    public function failed(Request $request, PrintJob $printJob): JsonResponse
+    public function failed(Request $request, PrintJob $printJob, PrintJobService $printJobService): JsonResponse
     {
         $agent = $this->authenticate($request);
 
@@ -130,12 +129,7 @@ class PrintAgentApiController extends Controller
             abort(403, 'Job claimed by another agent.');
         }
 
-        $printJob->update([
-            'print_status'  => 'failed',
-            'failed_at'     => now(),
-            'attempts'      => $printJob->attempts + 1,
-            'error_message' => $data['error_message'],
-        ]);
+        $printJobService->markFailed($printJob, $data['error_message']);
 
         $printJob->printer?->update(['last_error' => $data['error_message']]);
         $agent->update(['last_error' => $data['error_message']]);

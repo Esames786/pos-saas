@@ -106,6 +106,20 @@
         padding-right: .25rem;
     }
 
+    /* Recalled-order lock */
+    .pos-controls-locked {
+        opacity: .45;
+        pointer-events: none;
+        user-select: none;
+        position: relative;
+    }
+    .pos-controls-locked::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        cursor: not-allowed;
+    }
+
     .product-tile {
         border: 1px solid #edf0f4;
         border-radius: 20px;
@@ -211,6 +225,7 @@
     <div class="d-flex flex-wrap gap-2">
         <span class="shortcut-chip">Ctrl+F Search</span>
         <span class="shortcut-chip">Ctrl+H Hold</span>
+        <span class="shortcut-chip">Ctrl+L Orders</span>
         <span class="shortcut-chip">Ctrl+P Payment</span>
         <span class="shortcut-chip">Ctrl+Enter Pay</span>
         <span class="shortcut-chip">Ctrl+M Calc</span>
@@ -257,7 +272,7 @@
 
 {{-- Mode tabs --}}
 <div class="pos-card p-3 mb-3">
-    <div class="mode-tabs" role="tablist" aria-label="POS Modes">
+    <div class="mode-tabs" id="mode-tabs-wrapper" role="tablist" aria-label="POS Modes">
         <button type="button" class="mode-tab {{ $activeMode === 'dine_in'    ? 'active' : '' }}" data-mode-tab="dine_in">Dine In</button>
         <button type="button" class="mode-tab {{ $activeMode === 'takeaway'   ? 'active' : '' }}" data-mode-tab="takeaway">Takeaway</button>
         <button type="button" class="mode-tab {{ $activeMode === 'quick_sale' ? 'active' : '' }}" data-mode-tab="quick_sale">Quick Sale</button>
@@ -352,7 +367,8 @@
     @csrf
     <input type="hidden" name="order_source"                id="pos-order-source"      value="pos">
     <input type="hidden" name="held_sale_id"                                            value="{{ $heldSale?->id }}">
-    <input type="hidden" name="restaurant_table_session_id"                             value="{{ $tableSession?->id ?? $heldSale?->restaurant_table_session_id }}">
+    <input type="hidden" name="restaurant_table_session_id" id="restaurant_table_session_id" value="{{ $tableSession?->id ?? $heldSale?->restaurant_table_session_id }}">
+    <input type="hidden" name="restaurant_table_id"         id="restaurant_table_id"         value="{{ $heldSale?->restaurant_table_id }}">
     <input type="hidden" name="discount_type"                                           value="none">
     <input type="hidden" name="discount_value"                                          value="0">
     <div id="dynamic-pos-inputs"></div>
@@ -360,7 +376,7 @@
     <div class="pos-shell">
         {{-- LEFT: products --}}
         <section class="pos-card p-3" aria-labelledby="products_heading">
-            <div class="row g-2 mb-3">
+            <div class="row g-2 mb-3" id="order-controls-row">
                 <div class="col-md-3">
                     <label for="branch_id" class="form-label required">Branch</label>
                     <select id="branch_id" name="branch_id" class="form-select" required>
@@ -500,13 +516,57 @@
                 </div>
             </section>
 
+            {{-- Recalled order indicator --}}
+            <div id="recalled-order-bar" style="display:none" class="rounded-3 mb-2 px-3 py-2 d-flex align-items-center justify-content-between gap-2"
+                 style="background:#fff3cd;border:1px solid #ffc107;">
+                <div class="small fw-semibold text-warning-emphasis">
+                    <i class="ti ti-lock me-1"></i>Recalled: <span id="recalled-order-no">—</span>
+                </div>
+                <div class="d-flex gap-1">
+                    <button type="button" class="btn btn-sm btn-warning py-0 px-2" id="edit-order-btn"
+                            style="font-size:.73rem;white-space:nowrap"
+                            data-bs-toggle="modal" data-bs-target="#changeOrderModal"
+                            disabled>
+                        <i class="ti ti-settings me-1"></i>Edit Order
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-dark py-0 px-2" id="start-fresh-btn"
+                            style="font-size:.73rem;white-space:nowrap">
+                        <i class="ti ti-plus me-1"></i>New Order
+                    </button>
+                </div>
+            </div>
+
             <div class="d-grid gap-2">
-                <button type="button" class="btn btn-warning btn-lg" id="hold-sale-btn">
-                    {{ $tableSession ? 'Save Order To Table' : 'Hold Sale' }}
-                </button>
+                <div class="row g-2">
+                    <div class="col">
+                        <button type="button" class="btn btn-warning btn-lg w-100" id="hold-sale-btn">
+                            {{ $tableSession ? 'Save Order' : 'Hold Sale' }}
+                        </button>
+                    </div>
+                    <div class="col-auto">
+                        <button type="button" class="btn btn-outline-secondary btn-lg px-3" id="held-orders-btn"
+                                title="Held Orders (Ctrl+L)">
+                            <i class="ti ti-layout-list"></i>
+                        </button>
+                    </div>
+                </div>
                 <button type="button" class="btn btn-primary btn-lg" id="complete-sale-btn">
                     {{ $tableSession ? 'Close & Pay Table Bill' : 'Complete Sale' }}
                 </button>
+                <div class="row g-2">
+                    <div class="col">
+                        <button type="button" class="btn btn-outline-danger btn-lg w-100" id="cancel-order-btn">Cancel Order</button>
+                    </div>
+                    <div class="col" id="split-bill-wrap" style="display:none">
+                        <a href="#" class="btn btn-outline-info btn-lg w-100" id="split-bill-link">Split Bill</a>
+                    </div>
+                    <div class="col-auto">
+                        <button type="button" class="btn btn-outline-secondary btn-lg px-3" id="last-print-btn"
+                                title="Reprint Last KOT">
+                            <i class="ti ti-printer"></i>
+                        </button>
+                    </div>
+                </div>
                 @if($tableSession)
                     @can('tenant.restaurant.table-sessions.bill-requested')
                         <form method="POST" action="{{ url('/restaurant/table-sessions/' . $tableSession->id . '/bill-requested') }}">
@@ -561,6 +621,122 @@
     </div>
 </div>
 
+{{-- Held Sales Modal --}}
+<div class="modal fade" id="heldSalesModal" tabindex="-1" aria-labelledby="heldSalesModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title h5" id="heldSalesModalLabel">
+                    <i class="ti ti-layout-list me-2"></i>Held Orders
+                </h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0" id="held-sales-modal-body">
+                <div class="text-center py-5">
+                    <div class="spinner-border text-secondary" role="status"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{-- Recent Prints Modal --}}
+<div class="modal fade" id="lastPrintModal" tabindex="-1" aria-labelledby="lastPrintModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h2 class="modal-title h5 mb-0" id="lastPrintModalLabel">
+                        <i class="ti ti-printer me-2"></i>Recent Prints
+                    </h2>
+                    <p class="text-muted small mb-0 mt-1">Sale: <strong id="last-print-sale-no">—</strong></p>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0" id="last-print-modal-body">
+                <div class="text-center py-5">
+                    <div class="spinner-border text-secondary" role="status"></div>
+                </div>
+            </div>
+            <div class="modal-footer d-flex justify-content-between">
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-outline-warning btn-sm" id="reprint-all-kot-btn">
+                        <i class="ti ti-tool-kitchen-2 me-1"></i>Reprint All KOT
+                    </button>
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="reprint-receipt-btn">
+                        <i class="ti ti-receipt me-1"></i>Reprint Receipt
+                    </button>
+                </div>
+                <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{-- Change Order Details Modal --}}
+<div class="modal fade" id="changeOrderModal" tabindex="-1" aria-labelledby="changeOrderModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title h5" id="changeOrderModalLabel">
+                    <i class="ti ti-settings me-2"></i>Edit Order Details
+                </h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body row g-3">
+                {{-- Order Type --}}
+                <div class="col-12">
+                    <label class="form-label fw-semibold required">Order Type</label>
+                    <div class="d-flex flex-wrap gap-2" id="co-type-btns">
+                        @foreach(['quick_sale' => 'Quick Sale','takeaway' => 'Takeaway','dine_in' => 'Dine In','delivery' => 'Delivery'] as $val => $label)
+                            <button type="button" class="btn btn-outline-secondary px-3 py-2 co-type-btn" data-co-type="{{ $val }}">
+                                {{ $label }}
+                            </button>
+                        @endforeach
+                    </div>
+                    <input type="hidden" id="co-order-type" value="">
+                </div>
+                {{-- Table Session (Dine In only) --}}
+                <div class="col-12" id="co-table-wrap" style="display:none">
+                    <label class="form-label required">Table Session</label>
+                    <select id="co-table-session" class="form-select">
+                        <option value="">— Select Table —</option>
+                    </select>
+                    <div class="text-muted small mt-1">Only open/active sessions are shown.</div>
+                </div>
+                {{-- Terminal --}}
+                <div class="col-12">
+                    <label class="form-label">Terminal</label>
+                    <select id="co-terminal" class="form-select">
+                        <option value="">No Terminal</option>
+                        @foreach($terminals as $terminal)
+                            <option value="{{ $terminal->id }}">{{ $terminal->name }} &mdash; {{ $terminal->branch?->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                {{-- Branch --}}
+                <div class="col-12">
+                    <label class="form-label">Branch</label>
+                    <select id="co-branch" class="form-select">
+                        @foreach($branches as $branch)
+                            <option value="{{ $branch->id }}">{{ $branch->name }}</option>
+                        @endforeach
+                    </select>
+                    <div class="text-muted small mt-1">
+                        <i class="ti ti-alert-triangle text-warning me-1"></i>Changing branch reloads the page and clears the cart.
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="co-apply-btn">
+                    <i class="ti ti-check me-1"></i>Apply Changes
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {{-- Quick Customer Modal --}}
 <div class="modal fade" id="quickCustomerModal" tabindex="-1" aria-labelledby="quickCustomerModalLabel" aria-hidden="true">
     <div class="modal-dialog">
@@ -594,8 +770,9 @@
 
 @php
     $heldSaleJson = $heldSale ? [
-        'id'    => $heldSale->id,
-        'lines' => $heldSale->lines->map(fn ($l) => [
+        'id'      => $heldSale->id,
+        'sale_no' => $heldSale->sale_no,
+        'lines'   => $heldSale->lines->map(fn ($l) => [
             'product_id'         => (int) $l->product_id,
             'product_variant_id' => $l->product_variant_id ? (int) $l->product_variant_id : null,
             'quantity'           => (float) $l->quantity,
@@ -624,6 +801,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const calculatorPanel  = document.getElementById('calculator-panel');
     const calcDisplay      = document.getElementById('calc-display');
     const orderTypeEl      = document.getElementById('order_type');
+    const terminalEl       = document.getElementById('terminal_id');
 
     let selectedParentCategory = '';
     let selectedChildCategory  = '';
@@ -905,24 +1083,758 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    function submitPaidSale() {
-        if (!cart.length) { alert('Please add at least one item.'); return; }
-        buildInputs(true);
-        form.action = '{{ url('/pos') }}';
-        form.submit();
+    /* ── SweetAlert2 toast helper ─────────────────────────────────────── */
+
+    const Toast = (typeof Swal !== 'undefined') ? Swal.mixin({
+        toast:             true,
+        position:          'top-end',
+        showConfirmButton: false,
+        timer:             3000,
+        timerProgressBar:  true,
+    }) : null;
+
+    function toast(icon, title) {
+        if (Toast) { Toast.fire({ icon: icon, title: title }); }
     }
 
-    function submitHeldSale() {
-        if (!cart.length) { alert('Please add at least one item.'); return; }
-        buildInputs(false);
-        form.action = '{{ url('/held-sales') }}';
-        form.submit();
+    /* ── State ────────────────────────────────────────────────────────── */
+
+    let _currentHeldSaleId = null;   // held sale ID currently loaded in cart
+    let _currentHeldSaleNo = null;
+    let _lastSaleId        = null;   // last processed sale (for reprint)
+    let _lastSaleNo        = null;
+    let _lastPrintModal    = null;
+
+    /* ── Cart clear helper ────────────────────────────────────────────── */
+
+    function clearCart() {
+        cart = [];
+        _currentHeldSaleId = null;
+        _currentHeldSaleNo = null;
+        const heldInput = document.querySelector('input[name="held_sale_id"]');
+        if (heldInput) heldInput.value = '';
+        const tblSessionInput = document.getElementById('restaurant_table_session_id');
+        if (tblSessionInput) tblSessionInput.value = '';
+        const tblIdInput = document.getElementById('restaurant_table_id');
+        if (tblIdInput) tblIdInput.value = '';
+        renderCart();
+        updateSplitBillBtn();
+        updateRecalledBar();
+        unlockOrderControls();
     }
+
+    function updateSplitBillBtn() {
+        const wrap = document.getElementById('split-bill-wrap');
+        const link = document.getElementById('split-bill-link');
+        if (!wrap || !link) return;
+        if (_currentHeldSaleId) {
+            link.href       = '{{ url('/sales-orders') }}/' + _currentHeldSaleId + '/split-bill';
+            wrap.style.display = '';
+        } else {
+            wrap.style.display = 'none';
+        }
+    }
+
+    function updateRecalledBar() {
+        const bar        = document.getElementById('recalled-order-bar');
+        const noEl       = document.getElementById('recalled-order-no');
+        const editBtn    = document.getElementById('edit-order-btn');
+        if (!bar) return;
+        if (_currentHeldSaleId) {
+            if (noEl) noEl.textContent = _currentHeldSaleNo || ('#' + _currentHeldSaleId);
+            bar.style.display = '';
+            if (editBtn) editBtn.disabled = false;
+        } else {
+            bar.style.display = 'none';
+            if (editBtn) editBtn.disabled = true;
+        }
+    }
+
+    function lockOrderControls() {
+        const modeTabs = document.getElementById('mode-tabs-wrapper');
+        const ctrlRow  = document.getElementById('order-controls-row');
+        if (modeTabs) modeTabs.classList.add('pos-controls-locked');
+        if (ctrlRow)  ctrlRow.classList.add('pos-controls-locked');
+    }
+
+    function unlockOrderControls() {
+        const modeTabs = document.getElementById('mode-tabs-wrapper');
+        const ctrlRow  = document.getElementById('order-controls-row');
+        if (modeTabs) modeTabs.classList.remove('pos-controls-locked');
+        if (ctrlRow)  ctrlRow.classList.remove('pos-controls-locked');
+    }
+
+    /* ── Terminal auto-print config ───────────────────────────────────── */
+
+    const terminalPrintConfig = @json($terminalPrintConfig);
+
+    function terminalAutoKot(terminalId) {
+        if (!terminalId) return false;  // No terminal selected → always ask
+        const cfg = terminalPrintConfig[terminalId];
+        return cfg ? cfg.auto_print_kot : false;
+    }
+
+    function fireKotSilently(saleId, terminalId) {
+        const query = terminalId ? '?terminal_id=' + encodeURIComponent(terminalId) : '';
+        fetch('{{ url('/printing/jobs/kot') }}/' + saleId + query, {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
+        })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+            (data.jobs || []).forEach(function (job) {
+                if (job.fallback || job.printer_type === 'browser') {
+                    toast('warning', 'No printer found — opening KOT for manual print');
+                    window.open(job.preview_url, '_blank');
+                }
+            });
+        })
+        .catch(function () {});
+    }
+
+    function handleKotAfterSale(saleId, saleNo, terminalId) {
+        if (terminalAutoKot(terminalId)) {
+            fireKotSilently(saleId, terminalId);
+            toast('info', '<i class="ti ti-printer me-1"></i> KOT sent to kitchen');
+        } else if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                title:              'Print Kitchen Order?',
+                html:               'Sale <strong>' + saleNo + '</strong> saved.',
+                icon:               'question',
+                showCancelButton:   true,
+                confirmButtonText:  'Print KOT',
+                cancelButtonText:   'Skip',
+                confirmButtonColor: '#0d6efd',
+                reverseButtons:     true,
+            }).then(function (result) {
+                if (result.isConfirmed) {
+                    fireKotSilently(saleId, terminalId);
+                    toast('success', 'KOT sent to kitchen');
+                }
+            });
+        }
+    }
+
+    /* ── Complete sale ────────────────────────────────────────────────── */
+
+    function submitPaidSale() {
+        if (!cart.length) { toast('warning', 'Add at least one item'); return; }
+        buildInputs(true);
+
+        const submitBtn  = document.getElementById('complete-sale-btn');
+        const origLabel  = submitBtn.textContent;
+        const terminalId = (document.getElementById('terminal_id') || {}).value || '';
+        const printQuery = terminalId ? '?terminal_id=' + encodeURIComponent(terminalId) : '';
+        submitBtn.disabled    = true;
+        submitBtn.textContent = 'Processing…';
+
+        fetch('{{ url('/pos') }}', {
+            method:  'POST',
+            headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+            body:    new FormData(form),
+        })
+        .then(function (res) { return res.json().then(function (d) { return { ok: res.ok, data: d }; }); })
+        .then(function (result) {
+            submitBtn.disabled    = false;
+            submitBtn.textContent = origLabel;
+
+            if (!result.ok) {
+                toast('error', result.data.message || 'Sale failed. Please try again.');
+                return;
+            }
+
+            const saleId = result.data.sale_id;
+            const saleNo = result.data.sale_no;
+
+            _lastSaleId = saleId;
+            _lastSaleNo = saleNo;
+
+            // Receipt fires silently
+            fetch('{{ url('/printing/jobs/receipt') }}/' + saleId + printQuery, {
+                method: 'POST', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
+            }).catch(function () {});
+
+            // KOT — auto or ask
+            handleKotAfterSale(saleId, saleNo, terminalId);
+
+            // Clear cart and stay on POS
+            clearCart();
+            toast('success', 'Sale complete! ' + saleNo);
+        })
+        .catch(function () {
+            submitBtn.disabled    = false;
+            submitBtn.textContent = origLabel;
+            toast('error', 'Network error. Please try again.');
+        });
+    }
+
+    /* ── Hold sale ────────────────────────────────────────────────────── */
+
+    function submitHeldSale() {
+        if (!cart.length) { toast('warning', 'Add at least one item'); return; }
+
+        // Sync any current held sale ID into the form
+        const heldInput = document.querySelector('input[name="held_sale_id"]');
+        if (heldInput && _currentHeldSaleId) heldInput.value = _currentHeldSaleId;
+
+        buildInputs(false);
+
+        const holdBtn    = document.getElementById('hold-sale-btn');
+        const origLabel  = holdBtn.textContent;
+        const terminalId = (document.getElementById('terminal_id') || {}).value || '';
+        holdBtn.disabled    = true;
+        holdBtn.textContent = 'Saving…';
+
+        fetch('{{ url('/held-sales') }}', {
+            method:  'POST',
+            headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+            body:    new FormData(form),
+        })
+        .then(function (res) { return res.json().then(function (d) { return { ok: res.ok, data: d }; }); })
+        .then(function (result) {
+            holdBtn.disabled    = false;
+            holdBtn.textContent = origLabel;
+
+            if (!result.ok) {
+                toast('error', result.data.message || 'Failed to hold sale.');
+                return;
+            }
+
+            const saleId = result.data.sale_id;
+            const saleNo = result.data.sale_no;
+
+            // Update held sale state — keep cart loaded so user can add more
+            _currentHeldSaleId = saleId;
+            _currentHeldSaleNo = saleNo;
+            _lastSaleId        = saleId;
+            _lastSaleNo        = saleNo;
+            if (heldInput) heldInput.value = saleId;
+
+            // If backend auto-created a table session, sync the hidden input now
+            if (result.data.restaurant_table_session_id) {
+                const tblSessInput = document.getElementById('restaurant_table_session_id');
+                if (tblSessInput) tblSessInput.value = result.data.restaurant_table_session_id;
+            }
+
+            updateSplitBillBtn();
+            updateRecalledBar();
+            lockOrderControls();
+            toast('success', 'Held: ' + saleNo);
+            handleKotAfterSale(saleId, saleNo, terminalId);
+        })
+        .catch(function () {
+            holdBtn.disabled    = false;
+            holdBtn.textContent = origLabel;
+            toast('error', 'Network error. Please try again.');
+        });
+    }
+
+    /* ── Cancel order button ──────────────────────────────────────────── */
+
+    document.getElementById('cancel-order-btn').addEventListener('click', function () {
+        if (!cart.length && !_currentHeldSaleId) {
+            toast('warning', 'Nothing to cancel');
+            return;
+        }
+        const msg = _currentHeldSaleId
+            ? 'Cancel held sale ' + _currentHeldSaleNo + '?'
+            : 'Clear the current cart?';
+
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                title:              'Cancel Order?',
+                text:               msg,
+                icon:               'warning',
+                showCancelButton:   true,
+                confirmButtonText:  'Yes, Cancel',
+                cancelButtonText:   'No',
+                confirmButtonColor: '#dc3545',
+                reverseButtons:     true,
+            }).then(function (res) {
+                if (!res.isConfirmed) return;
+                if (_currentHeldSaleId) {
+                    fetch('{{ url('/held-sales') }}/' + _currentHeldSaleId + '/cancel', {
+                        method:  'POST',
+                        headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
+                        body:    '{}',
+                    }).then(function () {
+                        clearCart();
+                        toast('success', 'Order cancelled');
+                    }).catch(function () {
+                        toast('error', 'Failed to cancel. Try again.');
+                    });
+                } else {
+                    clearCart();
+                    toast('info', 'Cart cleared');
+                }
+            });
+        } else {
+            if (!confirm(msg)) return;
+            clearCart();
+        }
+    });
+
+    /* ── Held orders modal ────────────────────────────────────────────── */
+
+    const heldSalesModalEl = document.getElementById('heldSalesModal');
+
+    heldSalesModalEl.addEventListener('show.bs.modal', loadHeldSales);
+
+    function loadHeldSales() {
+        const body     = document.getElementById('held-sales-modal-body');
+        const branchId = document.getElementById('branch_id').value;
+        body.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-secondary" role="status"></div></div>';
+
+        fetch('{{ url('/api/pos/held-sales') }}?branch_id=' + encodeURIComponent(branchId), {
+            headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (!data.sales || !data.sales.length) {
+                body.innerHTML = '<p class="text-muted text-center py-5 mb-0">No held orders for this branch.</p>';
+                return;
+            }
+            let html = '<div class="table-responsive"><table class="table table-hover align-middle mb-0">' +
+                '<thead class="table-light"><tr>' +
+                '<th>Sale No</th><th>Type</th><th>Customer</th><th class="text-end">Items</th>' +
+                '<th class="text-end">Total</th><th>Time</th><th></th>' +
+                '</tr></thead><tbody>';
+
+            data.sales.forEach(function (s) {
+                html += '<tr>' +
+                    '<td><strong>' + s.sale_no + '</strong></td>' +
+                    '<td><span class="badge bg-secondary text-capitalize">' + s.order_type.replace('_', ' ') + '</span></td>' +
+                    '<td>' + s.customer + '</td>' +
+                    '<td class="text-end">' + s.items + '</td>' +
+                    '<td class="text-end fw-bold">' + s.total + '</td>' +
+                    '<td class="text-muted small">' + s.time + '</td>' +
+                    '<td class="text-end">' +
+                        '<button class="btn btn-sm btn-primary me-1" data-recall-id="' + s.id + '">Recall</button>' +
+                        '<button class="btn btn-sm btn-outline-danger" data-cancel-id="' + s.id + '" data-cancel-no="' + s.sale_no + '">Cancel</button>' +
+                    '</td>' +
+                    '</tr>';
+            });
+            html += '</tbody></table></div>';
+            body.innerHTML = html;
+
+            // Store full sales data for recall
+            const salesMap = {};
+            data.sales.forEach(function (s) { salesMap[s.id] = s; });
+
+            body.querySelectorAll('[data-recall-id]').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    recallHeldSale(salesMap[Number(btn.dataset.recallId)]);
+                });
+            });
+            body.querySelectorAll('[data-cancel-id]').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    cancelHeldSaleFromModal(Number(btn.dataset.cancelId), btn.dataset.cancelNo, btn);
+                });
+            });
+        })
+        .catch(function () {
+            body.innerHTML = '<div class="alert alert-danger m-3">Failed to load held orders.</div>';
+        });
+    }
+
+    function recallHeldSale(sale) {
+        bootstrap.Modal.getInstance(heldSalesModalEl).hide();
+
+        // Rebuild cart from recalled sale
+        cart = [];
+        sale.lines.forEach(function (line) {
+            const product = products.find(function (p) { return Number(p.id) === Number(line.product_id); });
+            if (!product) return;
+            const variant = (product.variants || []).find(function (v) {
+                return Number(v.id) === Number(line.product_variant_id);
+            });
+            cart.push({
+                key:                product.id + ':' + (variant ? variant.id : 0),
+                product_id:         product.id,
+                product_variant_id: variant ? variant.id : null,
+                name:               line.product_name || product.name,
+                variant_name:       line.variant_name || (variant ? variant.name : null),
+                quantity:           Number(line.quantity || 1),
+                unit_price:         Number(line.unit_price || productPrice(product, variant)),
+                discount_amount:    Number(line.discount_amount || 0),
+                tax_amount:         Number(line.tax_amount || 0),
+                product:            product,
+                variant:            variant || null,
+            });
+        });
+
+        _currentHeldSaleId = sale.id;
+        _currentHeldSaleNo = sale.sale_no;
+        _lastSaleId        = sale.id;
+        _lastSaleNo        = sale.sale_no;
+        const heldInput = document.querySelector('input[name="held_sale_id"]');
+        if (heldInput) heldInput.value = sale.id;
+
+        // Sync order type from the recalled sale
+        if (sale.order_type && orderTypeEl) {
+            orderTypeEl.value = sale.order_type;
+            document.querySelectorAll('[data-mode-tab]').forEach(function (b) {
+                b.classList.toggle('active', b.dataset.modeTab === sale.order_type);
+            });
+            const dineBoard = document.getElementById('dine-in-board');
+            if (dineBoard) dineBoard.style.display = sale.order_type === 'dine_in' ? '' : 'none';
+        }
+
+        // Sync terminal if provided
+        if (sale.terminal_id !== undefined && terminalEl) {
+            terminalEl.value = sale.terminal_id || '';
+        }
+
+        // Sync table session and table for dine-in
+        const tableSessionInput = document.querySelector('input[name="restaurant_table_session_id"]');
+        if (tableSessionInput) tableSessionInput.value = sale.restaurant_table_session_id || '';
+        const tableIdInput = document.querySelector('input[name="restaurant_table_id"]');
+        if (tableIdInput) tableIdInput.value = sale.restaurant_table_id || '';
+
+        renderCart();
+        updateSplitBillBtn();
+        updateRecalledBar();
+        lockOrderControls();
+        toast('info', 'Recalled: ' + sale.sale_no);
+    }
+
+    function cancelHeldSaleFromModal(saleId, saleNo, btn) {
+        if (!confirm('Cancel ' + saleNo + '?')) return;
+        btn.disabled    = true;
+        btn.textContent = '…';
+
+        fetch('{{ url('/held-sales') }}/' + saleId + '/cancel', {
+            method:  'POST',
+            headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
+            body:    '{}',
+        })
+        .then(function (r) { return r.json(); })
+        .then(function () {
+            const row = btn.closest('tr');
+            if (row) row.remove();
+            // If we just cancelled the currently-recalled sale, clear the cart
+            if (_currentHeldSaleId === saleId) clearCart();
+            toast('success', saleNo + ' cancelled');
+        })
+        .catch(function () {
+            btn.disabled    = false;
+            btn.textContent = 'Cancel';
+        });
+    }
+
+    document.getElementById('held-orders-btn').addEventListener('click', function () {
+        new bootstrap.Modal(heldSalesModalEl).show();
+    });
+
+    document.getElementById('start-fresh-btn').addEventListener('click', function () {
+        Swal.fire({
+            title: 'Start Fresh Order?',
+            html: 'This will unload recalled order <strong>' + _currentHeldSaleNo + '</strong> from the cart.<br>The held sale is still saved and can be recalled again.',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, New Order',
+            cancelButtonText: 'Cancel',
+            confirmButtonColor: '#dc3545',
+            reverseButtons: true,
+        }).then(function (r) { if (r.isConfirmed) clearCart(); });
+    });
+
+    /* ── Change Order Details modal ──────────────────────────────────── */
+
+    const changeOrderModalEl = document.getElementById('changeOrderModal');
+    const coOrderTypeEl      = document.getElementById('co-order-type');
+    const coTableWrapEl      = document.getElementById('co-table-wrap');
+    const coTableSessionEl   = document.getElementById('co-table-session');
+    const coTerminalEl       = document.getElementById('co-terminal');
+    const coBranchEl         = document.getElementById('co-branch');
+
+    function coSetActiveType(type) {
+        coOrderTypeEl.value = type;
+        document.querySelectorAll('.co-type-btn').forEach(function (b) {
+            b.classList.toggle('btn-primary',   b.dataset.coType === type);
+            b.classList.toggle('btn-outline-secondary', b.dataset.coType !== type);
+        });
+        const isDine = type === 'dine_in';
+        coTableWrapEl.style.display = isDine ? '' : 'none';
+        if (isDine) coLoadTableSessions();
+    }
+
+    function coLoadTableSessions() {
+        const branchId = coBranchEl.value;
+        coTableSessionEl.innerHTML = '<option value="">Loading…</option>';
+        fetch('{{ url('/api/pos/table-sessions') }}?branch_id=' + encodeURIComponent(branchId), {
+            headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            const currentTableId = (document.getElementById('restaurant_table_id') || {}).value || '';
+            if (!data.sessions || !data.sessions.length) {
+                coTableSessionEl.innerHTML = '<option value="">No tables found for this branch</option>';
+                return;
+            }
+            coTableSessionEl.innerHTML = '<option value="">— Select Table —</option>' +
+                (data.sessions || []).map(function (s) {
+                    const waiter  = s.waiter ? ' (' + s.waiter + ')' : '';
+                    const status  = s.has_session ? '' : ' ✦ New';
+                    const sel     = s.table_id == currentTableId ? ' selected' : '';
+                    return '<option value="' + s.table_id + '"' +
+                           ' data-session-id="' + (s.session_id || '') + '"' +
+                           sel + '>' + s.label + waiter + status + '</option>';
+                }).join('');
+        })
+        .catch(function () {
+            coTableSessionEl.innerHTML = '<option value="">Failed to load tables</option>';
+        });
+    }
+
+    // Populate modal when it opens
+    changeOrderModalEl.addEventListener('show.bs.modal', function () {
+        coTerminalEl.value = terminalEl ? terminalEl.value : '';
+        coBranchEl.value   = branchEl  ? branchEl.value  : '';
+
+        const currentType = orderTypeEl ? orderTypeEl.value : 'quick_sale';
+        coSetActiveType(currentType);
+    });
+
+    // Order type button clicks
+    document.querySelectorAll('.co-type-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            coSetActiveType(btn.dataset.coType);
+        });
+    });
+
+    // Branch change inside modal triggers table session reload when dine_in
+    coBranchEl.addEventListener('change', function () {
+        if (coOrderTypeEl.value === 'dine_in') coLoadTableSessions();
+    });
+
+    // Apply Changes
+    document.getElementById('co-apply-btn').addEventListener('click', function () {
+        const newType     = coOrderTypeEl.value;
+        const newTerminal = coTerminalEl.value;
+        const newBranch   = coBranchEl.value;
+
+        // For dine_in: table_id is the option value; session_id is in the data attribute
+        const isDineIn    = newType === 'dine_in';
+        const newTableId  = isDineIn ? coTableSessionEl.value : '';
+        const selectedOpt = isDineIn ? coTableSessionEl.options[coTableSessionEl.selectedIndex] : null;
+        const newSessionId = (selectedOpt && selectedOpt.dataset.sessionId) ? selectedOpt.dataset.sessionId : '';
+
+        if (!newType) { toast('warning', 'Please select an order type'); return; }
+        if (isDineIn && !newTableId) { toast('warning', 'Please select a table'); return; }
+
+        const branchChanged = branchEl && newBranch && newBranch !== branchEl.value;
+
+        if (branchChanged) {
+            bootstrap.Modal.getInstance(changeOrderModalEl).hide();
+            Swal.fire({
+                title: 'Change Branch?',
+                html: 'Changing branch will reload the POS page.<br>The current cart will be cleared.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Yes, change branch',
+                cancelButtonText: 'Cancel',
+                confirmButtonColor: '#dc3545',
+                reverseButtons: true,
+            }).then(function (r) {
+                if (r.isConfirmed) {
+                    window.location.href = '{{ url('/pos') }}?branch_id=' + newBranch + '&mode=' + newType;
+                }
+            });
+            return;
+        }
+
+        // Apply order type
+        if (orderTypeEl) orderTypeEl.value = newType;
+
+        // Sync mode tabs visual state
+        document.querySelectorAll('[data-mode-tab]').forEach(function (b) {
+            b.classList.toggle('active', b.dataset.modeTab === newType);
+        });
+
+        // Show/hide dine-in board
+        const dineBoard = document.getElementById('dine-in-board');
+        if (dineBoard) dineBoard.style.display = newType === 'dine_in' ? '' : 'none';
+
+        // Apply terminal
+        if (terminalEl) terminalEl.value = newTerminal;
+
+        // Apply table + session (session may be '' — backend auto-creates when table_id is set)
+        const tableSessionInput = document.getElementById('restaurant_table_session_id');
+        if (tableSessionInput) tableSessionInput.value = newSessionId;
+        const tableIdInput = document.getElementById('restaurant_table_id');
+        if (tableIdInput) tableIdInput.value = newTableId;
+
+        // Re-lock controls (they should already be locked, but ensure)
+        lockOrderControls();
+
+        bootstrap.Modal.getInstance(changeOrderModalEl).hide();
+        toast('success', 'Order details updated');
+    });
+
+    /* ── Recent Prints modal ─────────────────────────────────────────── */
+
+    const lastPrintModalEl = document.getElementById('lastPrintModal');
+
+    function openRecentPrints() {
+        if (!_lastSaleId) { toast('warning', 'No recent sale to reprint'); return; }
+        document.getElementById('last-print-sale-no').textContent = _lastSaleNo || _lastSaleId;
+        if (!_lastPrintModal) _lastPrintModal = new bootstrap.Modal(lastPrintModalEl);
+        loadRecentPrintJobs();
+        _lastPrintModal.show();
+    }
+
+    function loadRecentPrintJobs() {
+        const body = document.getElementById('last-print-modal-body');
+        body.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-secondary" role="status"></div></div>';
+
+        fetch('{{ url('/api/pos/print-jobs') }}/' + _lastSaleId, {
+            headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (!data.jobs || !data.jobs.length) {
+                body.innerHTML = '<p class="text-muted text-center py-5 mb-0">No print jobs found for this order.</p>';
+                return;
+            }
+
+            const statusBadge = function (s) {
+                const map = { printed: 'success', queued: 'secondary', claimed: 'info', failed: 'danger', cancelled: 'warning' };
+                return '<span class="badge bg-' + (map[s] || 'secondary') + '">' + s + '</span>';
+            };
+            const typeBadge = function (t) {
+                return t === 'kot'
+                    ? '<span class="badge bg-warning text-dark"><i class="ti ti-tool-kitchen-2 me-1"></i>KOT</span>'
+                    : '<span class="badge bg-primary"><i class="ti ti-receipt me-1"></i>Receipt</span>';
+            };
+
+            let html = '<div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0">' +
+                '<thead class="table-light"><tr>' +
+                '<th class="ps-3">Job No</th><th>Type</th><th>Status</th><th>Printer</th>' +
+                '<th>Items</th><th>Time</th><th class="pe-3 text-end">Action</th>' +
+                '</tr></thead><tbody>';
+
+            data.jobs.forEach(function (j) {
+                const itemsCell = j.document_type === 'kot'
+                    ? (j.line_count > 0 ? j.line_count + ' item' + (j.line_count !== 1 ? 's' : '') : 'All items')
+                    : '—';
+                html += '<tr>' +
+                    '<td class="ps-3 fw-semibold small">' + j.job_no + '</td>' +
+                    '<td>' + typeBadge(j.document_type) + '</td>' +
+                    '<td>' + statusBadge(j.print_status) + '</td>' +
+                    '<td class="text-muted small">' + j.printer_name + '</td>' +
+                    '<td class="text-muted small">' + itemsCell + '</td>' +
+                    '<td class="text-muted small">' + j.created_at + '</td>' +
+                    '<td class="pe-3 text-end">' +
+                        '<button class="btn btn-sm btn-outline-secondary py-0" data-requeue-job="' + j.id + '" data-job-type="' + j.document_type + '">' +
+                            '<i class="ti ti-printer me-1"></i>Reprint' +
+                        '</button>' +
+                    '</td>' +
+                '</tr>';
+            });
+
+            html += '</tbody></table></div>';
+            body.innerHTML = html;
+
+            // Wire per-row reprint buttons
+            body.querySelectorAll('[data-requeue-job]').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    requeueSingleJob(Number(btn.dataset.requeueJob), btn.dataset.jobType, btn);
+                });
+            });
+        })
+        .catch(function () {
+            body.innerHTML = '<div class="alert alert-danger m-3">Failed to load print jobs.</div>';
+        });
+    }
+
+    /* Open browser preview tabs for any fallback jobs in a server response.
+       KOT responses: { jobs: [{fallback, preview_url, ...}] }
+       Receipt responses: { fallback, preview_url, ... } */
+    function openFallbackPreviews(data) {
+        (data.jobs || []).forEach(function (job) {
+            if (job.fallback || job.printer_type === 'browser') {
+                toast('warning', 'No printer found — opening for manual print');
+                window.open(job.preview_url, '_blank');
+            }
+        });
+        if ((data.fallback || data.printer_type === 'browser') && data.preview_url) {
+            toast('warning', 'No printer found — opening for manual print');
+            window.open(data.preview_url, '_blank');
+        }
+    }
+
+    function requeueSingleJob(jobId, jobType, btn) {
+        const terminalId = (document.getElementById('terminal_id') || {}).value || '';
+        const orig = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+        if (jobType === 'kot') {
+            const base  = '{{ url('/printing/jobs/kot') }}/' + _lastSaleId;
+            const query = '?reprint=1' + (terminalId ? '&terminal_id=' + encodeURIComponent(terminalId) : '');
+            fetch(base + query, { method: 'POST', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' } })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                btn.disabled = false; btn.innerHTML = orig;
+                openFallbackPreviews(data);
+                toast('success', 'KOT re-queued');
+                loadRecentPrintJobs();
+            }).catch(function () { btn.disabled = false; btn.innerHTML = orig; toast('error', 'Failed'); });
+        } else {
+            const q = terminalId ? '?terminal_id=' + encodeURIComponent(terminalId) : '';
+            fetch('{{ url('/printing/jobs/receipt') }}/' + _lastSaleId + q, { method: 'POST', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' } })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                btn.disabled = false; btn.innerHTML = orig;
+                openFallbackPreviews(data);
+                toast('success', 'Receipt re-queued');
+                loadRecentPrintJobs();
+            }).catch(function () { btn.disabled = false; btn.innerHTML = orig; toast('error', 'Failed'); });
+        }
+    }
+
+    document.getElementById('last-print-btn').addEventListener('click', openRecentPrints);
+
+    document.getElementById('reprint-all-kot-btn').addEventListener('click', function () {
+        const terminalId = (document.getElementById('terminal_id') || {}).value || '';
+        const base  = '{{ url('/printing/jobs/kot') }}/' + _lastSaleId;
+        const query = '?reprint=1' + (terminalId ? '&terminal_id=' + encodeURIComponent(terminalId) : '');
+        fetch(base + query, { method: 'POST', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' } })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+            openFallbackPreviews(data);
+            toast('success', 'All KOT re-queued for ' + _lastSaleNo);
+            loadRecentPrintJobs();
+        })
+        .catch(function () { toast('error', 'Failed to reprint KOT'); });
+    });
+
+    document.getElementById('reprint-receipt-btn').addEventListener('click', function () {
+        const terminalId = (document.getElementById('terminal_id') || {}).value || '';
+        const q = terminalId ? '?terminal_id=' + encodeURIComponent(terminalId) : '';
+        fetch('{{ url('/printing/jobs/receipt') }}/' + _lastSaleId + q, { method: 'POST', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' } })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+            openFallbackPreviews(data);
+            toast('success', 'Receipt re-queued for ' + _lastSaleNo);
+            loadRecentPrintJobs();
+        })
+        .catch(function () { toast('error', 'Failed to reprint receipt'); });
+    });
 
     document.getElementById('complete-sale-btn').addEventListener('click', submitPaidSale);
     document.getElementById('hold-sale-btn').addEventListener('click', submitHeldSale);
     document.getElementById('clear-cart-btn').addEventListener('click', function () {
-        if (confirm('Clear cart?')) { cart = []; renderCart(); }
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                title: 'Clear Cart?', icon: 'question',
+                showCancelButton: true, confirmButtonText: 'Clear', cancelButtonText: 'No',
+                confirmButtonColor: '#dc3545', reverseButtons: true,
+            }).then(function (r) { if (r.isConfirmed) clearCart(); });
+        } else if (confirm('Clear cart?')) {
+            clearCart();
+        }
     });
 
     tenderedEl.addEventListener('input', function () {
@@ -930,11 +1842,13 @@ document.addEventListener('DOMContentLoaded', function () {
         updateTotals();
     });
 
-    /* branch change → reload */
+    /* branch change → reload (controls are CSS-locked when recalled; no Swal needed here) */
 
-    branchEl.addEventListener('change', function () {
-        window.location.href = '{{ url('/pos') }}?branch_id=' + branchEl.value + '&mode=' + orderTypeEl.value;
-    });
+    if (branchEl) {
+        branchEl.addEventListener('change', function () {
+            window.location.href = '{{ url('/pos') }}?branch_id=' + branchEl.value + '&mode=' + orderTypeEl.value;
+        });
+    }
 
     /* search / barcode scan */
 
@@ -955,16 +1869,18 @@ document.addEventListener('DOMContentLoaded', function () {
         renderProducts();
     });
 
-    /* mode tabs */
+    /* mode tabs — CSS-locked when recalled; click → apply directly when unlocked */
+
+    function applyModeTab(button) {
+        const mode = button.dataset.modeTab;
+        orderTypeEl.value = mode;
+        document.querySelectorAll('[data-mode-tab]').forEach(function (b) { b.classList.remove('active'); });
+        button.classList.add('active');
+        document.getElementById('dine-in-board').style.display = mode === 'dine_in' ? '' : 'none';
+    }
 
     document.querySelectorAll('[data-mode-tab]').forEach(function (button) {
-        button.addEventListener('click', function () {
-            const mode = button.dataset.modeTab;
-            orderTypeEl.value = mode;
-            document.querySelectorAll('[data-mode-tab]').forEach(function (b) { b.classList.remove('active'); });
-            button.classList.add('active');
-            document.getElementById('dine-in-board').style.display = mode === 'dine_in' ? '' : 'none';
-        });
+        button.addEventListener('click', function () { applyModeTab(button); });
     });
 
     /* parent category filter */
@@ -1123,14 +2039,18 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!event.ctrlKey) return;
         if (event.key === 'f')     { event.preventDefault(); searchEl.focus(); }
         if (event.key === 'h')     { event.preventDefault(); submitHeldSale(); }
+        if (event.key === 'l')     { event.preventDefault(); new bootstrap.Modal(heldSalesModalEl).show(); }
         if (event.key === 'p')     { event.preventDefault(); paymentMethodEl.focus(); }
         if (event.key === 'Enter') { event.preventDefault(); submitPaidSale(); }
         if (event.key === 'm')     { event.preventDefault(); toggleCalculator(); }
     });
 
-    /* preload held sale */
+    /* preload held sale (page-load recall via ?held_sale_id=) */
 
     if (heldSale && heldSale.lines) {
+        _currentHeldSaleId = heldSale.id;
+        _currentHeldSaleNo = heldSale.sale_no || '';
+
         heldSale.lines.forEach(function (line) {
             const product = products.find(function (p) { return Number(p.id) === Number(line.product_id); });
             if (!product) return;
@@ -1153,9 +2073,22 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    /* preload: also track last sale for reprint if page-loaded with held sale */
+    if (heldSale) {
+        _lastSaleId = heldSale.id;
+        _lastSaleNo = heldSale.sale_no || '';
+    }
+
     /* initial render */
     renderProducts();
     renderCart();
+    updateSplitBillBtn();
+    updateRecalledBar();
+    if (_currentHeldSaleId) lockOrderControls();
 });
 </script>
+
+@push('scripts')
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
+@endpush
 @endsection

@@ -1,0 +1,14 @@
+{
+  "name": "pos-print-agent",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "bin": {
+    "pos-test-agent":  "./pos-test-agent.js",
+    "pos-print-agent": "./print-agent.js"
+  },
+  "pkg": {
+    "targets": ["node18-win-x64"],
+    "assets": [],
+    "outputPath": "dist"
+  }
+}

@@ -32,6 +32,9 @@
 <body>
 
 <div class="center bold" style="font-size:{{ $fontSize + 4 }}px">KOT</div>
+@if($isReprint)
+<div class="center bold">** REPRINT **</div>
+@endif
 
 <hr>
 
@@ -72,12 +75,26 @@
     </thead>
     <tbody>
         @foreach($kotLines as $line)
+        @php
+            $totalQty   = (float) $line->quantity;
+            $sentQty    = (float) ($line->kot_sent_quantity ?? 0);
+            $displayQty = $isReprint ? $totalQty : ($totalQty - $sentQty);
+            $isAddition = !$isReprint && $sentQty > 0;
+        @endphp
         <tr>
-            <td class="item-qty bold" style="font-size:{{ $fontSize + 2 }}px">{{ $line->quantity }}</td>
+            <td class="item-qty bold" style="font-size:{{ $fontSize + 2 }}px">
+                @if($isAddition)
+                    <span style="font-size:{{ $fontSize - 1 }}px">ADD</span><br>
+                @endif
+                {{ number_format($displayQty, 2) }}
+                @if($isAddition)
+                    <br><small style="font-weight:normal">(T:{{ number_format($totalQty, 2) }})</small>
+                @endif
+            </td>
             <td class="item-name">
-                <span class="bold">{{ $line->product?->name }}</span>
-                @if($line->variant)
-                    <br><small>{{ $line->variant->name }}</small>
+                <span class="bold">{{ $line->product_name }}</span>
+                @if($line->variant_name)
+                    <br><small>{{ $line->variant_name }}</small>
                 @endif
                 @if($line->kitchen_note)
                     <br><small>⚑ {{ $line->kitchen_note }}</small>
@@ -94,7 +111,13 @@
 <div class="center">{{ $layout->footer_text }}</div>
 @endif
 
-<button class="print-btn no-print" onclick="window.print()">🖨 Print KOT</button>
+<div class="no-print" style="text-align:center;margin:12px 0;display:flex;gap:8px;justify-content:center">
+    <button class="print-btn" style="margin:0" onclick="window.print()">🖨 Print KOT</button>
+    <form method="POST" action="{{ url('/printing/jobs/' . $job->id . '/mark-printed') }}" style="display:inline">
+        @csrf
+        <button type="submit" class="print-btn" style="margin:0;background:#198754;color:#fff;border:none;cursor:pointer">✔ Mark Printed</button>
+    </form>
+</div>
 
 @if($job->printer?->printer_type === 'browser')
 <script>

@@ -40,6 +40,11 @@ return Application::configure(basePath: dirname(__DIR__))
             \Illuminate\Auth\Middleware\Authorize::class,
         ]);
 
+        $middleware->validateCsrfTokens(except: [
+            '*/api/print-agent/*',
+            '*/api/print-agent/heartbeat',
+        ]);
+
         $middleware->redirectGuestsTo('/login');
 
         $middleware->alias([

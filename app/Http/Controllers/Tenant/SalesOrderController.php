@@ -72,10 +72,16 @@ class SalesOrderController extends Controller
             ->values();
 
         if ($lines->isEmpty()) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'At least one product line is required.'], 422);
+            }
             return back()->withErrors(['lines' => 'At least one product line is required.'])->withInput();
         }
 
         if ($payments->isEmpty()) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'At least one payment line is required.'], 422);
+            }
             return back()->withErrors(['payments' => 'At least one payment line is required.'])->withInput();
         }
 
@@ -94,6 +100,14 @@ class SalesOrderController extends Controller
                     $tableSession = RestaurantTableSession::with(['table.floor', 'waiter'])
                         ->whereIn('status', ['open', 'bill_requested'])
                         ->findOrFail($data['restaurant_table_session_id']);
+                } elseif (!empty($data['held_sale_id'])) {
+                    // If the held sale already has a session (auto-created on hold), inherit it
+                    $heldForSession = SalesOrder::find($data['held_sale_id']);
+                    if ($heldForSession?->restaurant_table_session_id) {
+                        $tableSession = RestaurantTableSession::with(['table.floor', 'waiter'])
+                            ->whereIn('status', ['open', 'bill_requested'])
+                            ->find($heldForSession->restaurant_table_session_id);
+                    }
                 }
 
                 if (!empty($data['held_sale_id'])) {
@@ -216,7 +230,18 @@ class SalesOrderController extends Controller
                 return $salesService->finalizePaidSale($sale);
             });
         } catch (RuntimeException $e) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => $e->getMessage()], 422);
+            }
             return back()->withErrors(['sale' => $e->getMessage()])->withInput();
+        }
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'sale_id'  => $sale->id,
+                'sale_no'  => $sale->sale_no,
+                'redirect' => url('/sales-orders/' . $sale->id),
+            ]);
         }
 
         return redirect(url('/sales-orders/' . $sale->id))->with('status', 'Sale posted successfully.');

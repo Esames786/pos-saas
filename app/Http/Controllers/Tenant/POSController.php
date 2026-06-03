@@ -14,6 +14,7 @@ use App\Models\Tenant\RestaurantWaiter;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\StockBalance;
 use App\Models\Tenant\Terminal;
+use App\Models\Tenant\TerminalPrinterSetting;
 use Illuminate\Http\Request;
 
 class POSController extends Controller
@@ -180,10 +181,16 @@ class POSController extends Controller
                 ->orderByRaw("CASE WHEN method_type = 'cash' THEN 0 ELSE 1 END")
                 ->orderBy('name')
                 ->get(),
-            'floors'           => $floors,
-            'waiters'          => $waiters,
-            'tableSession'     => $tableSession,
-            'heldSale'         => $heldSale,
+            'floors'              => $floors,
+            'waiters'             => $waiters,
+            'tableSession'        => $tableSession,
+            'heldSale'            => $heldSale,
+            'terminalPrintConfig' => TerminalPrinterSetting::all()
+                ->keyBy('terminal_id')
+                ->map(fn ($s) => [
+                    'auto_print_receipt' => (bool) $s->auto_print_receipt,
+                    'auto_print_kot'     => (bool) $s->auto_print_kot,
+                ]),
             'activeMode'       => $tableSession || $heldSale?->restaurant_table_session_id
                 ? 'dine_in'
                 : ($request->input('mode', 'quick_sale')),

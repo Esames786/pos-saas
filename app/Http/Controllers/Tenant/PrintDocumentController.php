@@ -13,7 +13,7 @@ class PrintDocumentController extends Controller
     {
         $printJob->load(['branch', 'printer']);
 
-        $salesOrderId = $printJob->payload['sales_order_id'] ?? null;
+        $salesOrderId = $printJob->reference_id ?: ($printJob->payload['sales_order_id'] ?? null);
         if (!$salesOrderId) {
             abort(404, 'No sales order reference in print job.');
         }
@@ -34,15 +34,24 @@ class PrintDocumentController extends Controller
 
         if ($printJob->document_type === 'kot') {
             $lineIds   = $printJob->payload['line_ids'] ?? [];
-            $kotLines  = $lineIds
+            $isReprint = $printJob->payload['is_reprint'] ?? false;
+
+            $kotLines = $lineIds
                 ? $salesOrder->lines->whereIn('id', $lineIds)->values()
                 : $salesOrder->lines;
+
+            if (!$isReprint) {
+                $kotLines = $kotLines->filter(
+                    fn ($l) => ((float) $l->quantity - (float) ($l->kot_sent_quantity ?? 0)) > 0
+                )->values();
+            }
 
             return view('tenant.printing.documents.kot', [
                 'job'        => $printJob,
                 'salesOrder' => $salesOrder,
                 'kotLines'   => $kotLines,
                 'layout'     => $layout,
+                'isReprint'  => $isReprint,
             ]);
         }
 

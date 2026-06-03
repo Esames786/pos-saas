@@ -44,7 +44,8 @@ async function heartbeat() {
     });
 
     if (!res.ok) {
-        throw new Error(`Heartbeat failed: HTTP ${res.status}`);
+        const body = await res.text().catch(() => '');
+        throw new Error(`Heartbeat failed: HTTP ${res.status} — ${body.slice(0, 300)}`);
     }
 }
 
@@ -55,7 +56,8 @@ async function getPendingJobs() {
     });
 
     if (!res.ok) {
-        throw new Error(`Pending jobs fetch failed: HTTP ${res.status}`);
+        const body = await res.text().catch(() => '');
+        throw new Error(`Pending jobs fetch failed: HTTP ${res.status} — ${body.slice(0, 300)}`);
     }
 
     return await res.json();
@@ -103,13 +105,16 @@ async function markFailed(jobId, message) {
 }
 
 async function processJob(job) {
+    const printer = job.printer || {};
     try {
-        const printer = job.printer || {};
-
-        if (printer.printer_type === 'browser') {
-            throw new Error('Browser-type printer jobs must be printed from the web preview.');
+        if (!printer.id) {
+            console.log(`[SKIP]  ${job.job_no}: browser/manual fallback job`);
+            return;
         }
-
+        if (printer.printer_type !== 'network') {
+            console.log(`[SKIP]  ${job.job_no}: non-network printer (${printer.printer_type})`);
+            return;
+        }
         if (!printer.ip_address) {
             throw new Error('No IP address configured for this printer.');
         }
@@ -129,17 +134,27 @@ async function processJob(job) {
     }
 }
 
+let idleCounter = 0;
+
 async function tick() {
     try {
         await heartbeat();
 
         const data = await getPendingJobs();
+        const jobs = data.jobs || [];
 
-        if (data.jobs && data.jobs.length > 0) {
-            console.log(`[POLL]  ${data.jobs.length} job(s) to process`);
-            for (const job of data.jobs) {
+        if (jobs.length > 0) {
+            idleCounter = 0;
+            console.log(`[POLL]  ${jobs.length} job(s) to process`);
+            for (const job of jobs) {
                 await processJob(job);
             }
+            return;
+        }
+
+        idleCounter++;
+        if (idleCounter === 1 || idleCounter % 20 === 0) {
+            console.log('[IDLE]  No pending network print jobs');
         }
     } catch (err) {
         console.error(`[ERR]   ${err.message}`);

@@ -24,14 +24,15 @@
         hr       { border: none; border-top: 1px dashed #000; margin: 4px 0; }
         table    { width: 100%; border-collapse: collapse; }
         td       { vertical-align: top; }
-        .item-name  { width: 55%; }
-        .item-qty   { width: 10%; text-align: right; }
-        .item-price { width: 17%; text-align: right; }
-        .item-total { width: 18%; text-align: right; }
+        .item-name  { width: 48%; }
+        .item-qty   { width: 10%; text-align: right; white-space: nowrap; }
+        .item-price { width: 21%; text-align: right; white-space: nowrap; }
+        .item-total { width: 21%; text-align: right; white-space: nowrap; }
         .totals td:first-child { width: 60%; text-align: right; padding-right: 4px; }
-        .totals td:last-child  { width: 40%; text-align: right; }
+        .totals td:last-child  { width: 40%; text-align: right; white-space: nowrap; }
         .print-btn { display: block; margin: 12px auto; padding: 8px 24px; cursor: pointer; font-size: 14px; }
-        @media print { .print-btn, .no-print { display: none !important; } }
+        @media screen { body { width: 320px; } }
+        @media print  { .print-btn, .no-print { display: none !important; } }
     </style>
 </head>
 <body>
@@ -72,7 +73,7 @@
 <div>Order: <span class="bold">{{ $salesOrder->sale_no ?? $salesOrder->order_no }}</span></div>
 @endif
 
-<div>Date: {{ $salesOrder->created_at?->format('d/m/Y H:i') }}</div>
+<div>Date: {{ ($salesOrder->sale_date ?? $salesOrder->created_at)?->format('d/m/Y H:i') }}</div>
 
 @if(!($layout?->show_cashier_name === false) && $salesOrder->createdBy)
 <div>Cashier: {{ $salesOrder->createdBy->name }}</div>
@@ -111,9 +112,9 @@
                 @if(!($layout?->show_item_codes === false) && $line->product?->barcode)
                     <small>{{ $line->product->barcode }}</small><br>
                 @endif
-                {{ $line->product?->name }}
-                @if($line->variant)
-                    <small>({{ $line->variant->name }})</small>
+                {{ $line->product_name }}
+                @if($line->variant_name)
+                    <small>({{ $line->variant_name }})</small>
                 @endif
                 @if($line->kitchen_note)
                     <br><small>* {{ $line->kitchen_note }}</small>
@@ -148,8 +149,20 @@
     @endif
     <tr>
         <td class="bold">Total:</td>
-        <td class="bold">{{ number_format($salesOrder->total_amount, 2) }}</td>
+        <td class="bold">{{ number_format($salesOrder->grand_total, 2) }}</td>
     </tr>
+    @if($salesOrder->paid_amount > 0)
+    <tr>
+        <td>Paid:</td>
+        <td>{{ number_format($salesOrder->paid_amount, 2) }}</td>
+    </tr>
+    @endif
+    @if($salesOrder->change_amount > 0)
+    <tr>
+        <td>Change:</td>
+        <td>{{ number_format($salesOrder->change_amount, 2) }}</td>
+    </tr>
+    @endif
 </table>
 
 @if(!($layout?->show_payment_breakdown === false) && $salesOrder->payments->isNotEmpty())
@@ -174,10 +187,16 @@
 @endif
 
 <div class="center" style="margin-top:4px; font-size:10px">
-    {{ $salesOrder->created_at?->format('d/m/Y H:i:s') }}
+    {{ ($salesOrder->sale_date ?? $salesOrder->created_at)?->format('d/m/Y H:i:s') }}
 </div>
 
-<button class="print-btn no-print" onclick="window.print()">🖨 Print</button>
+<div class="no-print" style="text-align:center;margin:12px 0;display:flex;gap:8px;justify-content:center">
+    <button class="print-btn" style="margin:0" onclick="window.print()">🖨 Print</button>
+    <form method="POST" action="{{ url('/printing/jobs/' . $job->id . '/mark-printed') }}" style="display:inline">
+        @csrf
+        <button type="submit" class="print-btn" style="margin:0;background:#198754;color:#fff;border:none;cursor:pointer">✔ Mark Printed</button>
+    </form>
+</div>
 
 @if($job->printer?->printer_type === 'browser')
 <script>

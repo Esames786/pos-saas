@@ -25,6 +25,9 @@ class EnsureRoutePermission
             'tenant.password',
             'tenant.locale',
             'tenant.api.print-agent',
+            'tenant.api.pos',
+            'tenant.printing.documents',
+            'tenant.printing.jobs',
         ];
 
         foreach ($allowedPrefixes as $prefix) {

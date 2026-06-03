@@ -31,6 +31,7 @@ use App\Models\Tenant\Unit;
 use App\Models\Tenant\User;
 use App\Models\Tenant\Printer;
 use App\Models\Tenant\PrintAgent;
+use App\Models\Tenant\TerminalPrinterSetting;
 use App\Services\Inventory\InventoryService;
 use App\Services\Sales\SalesService;
 use App\Services\Tenancy\TenancyManager;
@@ -1603,47 +1604,49 @@ class TenantDemoSeeder extends Seeder
 
     private function seedPrintersAndAgent(): void
     {
+        $main = Branch::where('code', 'MAIN')->first();
+
         if (Printer::count() > 0) {
-            $this->command->line('  Printers already exist, skipping.');
-            return;
+            $this->command->line('  Printers already exist, skipping creation.');
+            $kotPrinter     = Printer::where('code', 'FAKE-KOT')->first();
+            $receiptPrinter = Printer::where('code', 'FAKE-RECEIPT')->first();
+        } else {
+            // Fake KOT printer — use 127.0.0.1:9100 (run fake-printer.js locally)
+            $kotPrinter = Printer::create([
+                'branch_id'           => $main?->id,
+                'name'                => 'Fake Kitchen Printer',
+                'code'                => 'FAKE-KOT',
+                'printer_type'        => 'network',
+                'print_role'          => 'kot',
+                'ip_address'          => '127.0.0.1',
+                'port'                => 9100,
+                'paper_size'          => '80mm',
+                'characters_per_line' => 42,
+                'is_default'          => true,
+                'is_active'           => true,
+                'agent_enabled'       => true,
+                'notes'               => 'Fake printer for local testing — run fake-printer.js',
+            ]);
+
+            // Fake receipt printer
+            $receiptPrinter = Printer::create([
+                'branch_id'           => $main?->id,
+                'name'                => 'Fake Receipt Printer',
+                'code'                => 'FAKE-RECEIPT',
+                'printer_type'        => 'network',
+                'print_role'          => 'receipt',
+                'ip_address'          => '127.0.0.1',
+                'port'                => 9100,
+                'paper_size'          => '80mm',
+                'characters_per_line' => 42,
+                'is_default'          => true,
+                'is_active'           => true,
+                'agent_enabled'       => true,
+                'notes'               => 'Fake printer for local testing — run fake-printer.js',
+            ]);
+
+            $this->command->line('  Printers seeded: Fake KOT + Fake Receipt (127.0.0.1:9100).');
         }
-
-        $main     = Branch::where('code', 'MAIN')->first();
-        $terminal = Terminal::first();
-
-        // Fake KOT printer — use 127.0.0.1:9100 (run fake-printer.js locally)
-        $kotPrinter = Printer::create([
-            'branch_id'           => $main?->id,
-            'name'                => 'Fake Kitchen Printer',
-            'code'                => 'FAKE-KOT',
-            'printer_type'        => 'network',
-            'print_role'          => 'kot',
-            'ip_address'          => '127.0.0.1',
-            'port'                => 9100,
-            'paper_size'          => '80mm',
-            'characters_per_line' => 42,
-            'is_default'          => true,
-            'is_active'           => true,
-            'agent_enabled'       => true,
-            'notes'               => 'Fake printer for local testing — run fake-printer.js',
-        ]);
-
-        // Fake receipt printer
-        $receiptPrinter = Printer::create([
-            'branch_id'           => $main?->id,
-            'name'                => 'Fake Receipt Printer',
-            'code'                => 'FAKE-RECEIPT',
-            'printer_type'        => 'network',
-            'print_role'          => 'receipt',
-            'ip_address'          => '127.0.0.1',
-            'port'                => 9100,
-            'paper_size'          => '80mm',
-            'characters_per_line' => 42,
-            'is_default'          => true,
-            'is_active'           => true,
-            'agent_enabled'       => true,
-            'notes'               => 'Fake printer for local testing — run fake-printer.js',
-        ]);
 
         // Demo print agent — fixed token for easy local testing
         $plainToken = 'demo-local-agent-token-for-testing-only-change-in-prod';
@@ -1652,18 +1655,33 @@ class TenantDemoSeeder extends Seeder
             PrintAgent::create([
                 'name'         => 'Demo Local Agent',
                 'agent_code'   => 'AG-DEMO-LOCAL',
-                'branch_id'    => $main?->id,
-                'terminal_id'  => $terminal?->id,
+                'branch_id'    => null,   // null = handles all branches
+                'terminal_id'  => null,   // null = handles all terminals
                 'token_hash'   => Hash::make($plainToken),
                 'device_name'  => 'Developer PC',
                 'device_os'    => 'Windows (Laragon)',
                 'local_ip'     => '127.0.0.1',
                 'is_active'    => true,
             ]);
+            $this->command->line('  Print Agent seeded: AG-DEMO-LOCAL');
+            $this->command->line('  Token: ' . $plainToken);
         }
 
-        $this->command->line('  Printers seeded: Fake KOT + Fake Receipt (127.0.0.1:9100).');
-        $this->command->line('  Print Agent seeded: AG-DEMO-LOCAL');
-        $this->command->line('  Token: ' . $plainToken);
+        // ── Terminal Printer Settings (idempotent — safe to re-run) ─────────
+        if ($kotPrinter && $receiptPrinter) {
+            $terminals = Terminal::all();
+            foreach ($terminals as $t) {
+                TerminalPrinterSetting::updateOrCreate(
+                    ['terminal_id' => $t->id],
+                    [
+                        'receipt_printer_id' => $receiptPrinter->id,
+                        'kot_printer_id'     => $kotPrinter->id,
+                        'auto_print_receipt' => true,
+                        'auto_print_kot'     => true,
+                    ]
+                );
+            }
+            $this->command->line('  Terminal printer settings configured for ' . $terminals->count() . ' terminal(s).');
+        }
     }
 }

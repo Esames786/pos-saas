@@ -29,9 +29,9 @@ class EscPosPayloadService
         }
 
         return match ($job->document_type) {
-            'kot'               => $this->kot($sale),
+            'kot'                => $this->kot($sale, $job),
             'receipt', 'invoice' => $this->receipt($sale),
-            default             => $this->receipt($sale),
+            default              => $this->receipt($sale),
         };
     }
 
@@ -101,11 +101,27 @@ class EscPosPayloadService
         return $out;
     }
 
-    private function kot(SalesOrder $sale): string
+    private function kot(SalesOrder $sale, PrintJob $job): string
     {
+        $payload        = $job->payload ?? [];
+        $isReprint      = !empty($payload['is_reprint']);
+        $lineQuantities = collect($payload['line_quantities'] ?? []);
+
+        $lineIds = collect($payload['line_ids'] ?? [])
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->values();
+
+        $lines = $lineIds->isNotEmpty()
+            ? $sale->lines->whereIn('id', $lineIds)->values()
+            : $sale->lines;
+
         $out = '';
 
         $out .= $this->center('*** KOT ***') . "\n";
+        if ($isReprint) {
+            $out .= $this->center('** REPRINT **') . "\n";
+        }
         $out .= $this->center($sale->sale_no ?? '') . "\n";
         $out .= str_repeat('-', 42) . "\n";
 
@@ -120,9 +136,18 @@ class EscPosPayloadService
         $out .= 'TIME: ' . now()->format('Y-m-d H:i') . "\n";
         $out .= str_repeat('-', 42) . "\n";
 
-        foreach ($sale->lines as $line) {
+        foreach ($lines as $line) {
+            // Use stored quantity from payload when available; fall back to model quantity.
+            $qtyToPrint = $lineQuantities->has((string) $line->id)
+                ? (float) $lineQuantities->get((string) $line->id)
+                : (float) $line->quantity;
+
+            if ($qtyToPrint <= 0) {
+                continue;
+            }
+
             $out .= strtoupper($line->product_name ?? '') . "\n";
-            $out .= 'QTY: ' . number_format((float) $line->quantity, 2) . "\n";
+            $out .= 'QTY: ' . number_format($qtyToPrint, 2) . "\n";
 
             if ($line->variant_name) {
                 $out .= "Variant: {$line->variant_name}\n";

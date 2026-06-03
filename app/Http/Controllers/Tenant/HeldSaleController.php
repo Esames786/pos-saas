@@ -7,6 +7,7 @@ use App\Models\Tenant\Branch;
 use App\Models\Tenant\Customer;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\ProductVariant;
+use App\Models\Tenant\RestaurantTable;
 use App\Models\Tenant\RestaurantTableSession;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\Terminal;
@@ -28,6 +29,71 @@ class HeldSaleController extends Controller
         $heldSales = $query->paginate(25);
 
         return view('tenant.held-sales.index', compact('heldSales'));
+    }
+
+    /** AJAX: list held sales for a branch (used by POS modal) */
+    public function ajaxList(Request $request)
+    {
+        $branchId = $request->integer('branch_id');
+
+        $sales = SalesOrder::with(['customer', 'lines'])
+            ->where('status', 'held')
+            ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
+            ->orderByDesc('updated_at')
+            ->limit(50)
+            ->get();
+
+        return response()->json([
+            'sales' => $sales->map(fn ($s) => [
+                'id'                          => $s->id,
+                'sale_no'                     => $s->sale_no,
+                'order_type'                  => $s->order_type,
+                'branch_id'                   => (int) $s->branch_id,
+                'terminal_id'                 => $s->terminal_id,
+                'restaurant_table_session_id' => $s->restaurant_table_session_id,
+                'restaurant_table_id'         => $s->restaurant_table_id,
+                'customer'                    => $s->customer_name ?: $s->customer?->name ?: 'Walk-in',
+                'total'                       => number_format($s->grand_total, 2),
+                'items'                       => (int) $s->lines->sum('quantity'),
+                'time'                        => $s->created_at->diffForHumans(),
+                'notes'                       => $s->notes,
+                'lines'                       => $s->lines->map(fn ($l) => [
+                    'product_id'         => (int) $l->product_id,
+                    'product_variant_id' => $l->product_variant_id ? (int) $l->product_variant_id : null,
+                    'quantity'           => (float) $l->quantity,
+                    'unit_price'         => (float) $l->unit_price,
+                    'discount_amount'    => (float) $l->discount_amount,
+                    'tax_amount'         => (float) $l->tax_amount,
+                    'product_name'       => $l->product_name,
+                    'variant_name'       => $l->variant_name,
+                ])->values(),
+            ]),
+        ]);
+    }
+
+    /** AJAX: tables for branch (used by Change Order modal — auto-creates session on hold) */
+    public function ajaxTableSessions(Request $request)
+    {
+        $branchId = $request->integer('branch_id');
+
+        $tables = RestaurantTable::with(['openSession.waiter', 'floor'])
+            ->where('status', 'active')
+            ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
+            ->orderBy('table_no')
+            ->limit(100)
+            ->get();
+
+        return response()->json([
+            'sessions' => $tables->map(fn ($t) => [
+                'table_id'   => $t->id,
+                'session_id' => $t->openSession?->id,
+                'label'      => 'Table ' . $t->table_no
+                              . ($t->floor ? ' — ' . $t->floor->name : '')
+                              . ($t->name && $t->name !== $t->table_no ? ' (' . $t->name . ')' : ''),
+                'waiter'     => $t->openSession?->waiter?->name,
+                'has_session' => !is_null($t->openSession),
+            ])->values()->all(),
+        ]);
     }
 
     public function create()
@@ -52,10 +118,12 @@ class HeldSaleController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
+            'held_sale_id'                => 'nullable|exists:sales_orders,id',
             'branch_id'                   => 'required|exists:branches,id',
             'terminal_id'                 => 'nullable|exists:terminals,id',
             'order_type'                  => 'required|in:quick_sale,takeaway,dine_in,delivery',
             'restaurant_table_session_id' => 'nullable|exists:restaurant_table_sessions,id',
+            'restaurant_table_id'         => 'nullable|exists:restaurant_tables,id',
             'customer_id'                 => 'nullable|exists:customers,id',
             'customer_name'               => 'nullable|string|max:200',
             'customer_phone'              => 'nullable|string|max:50',
@@ -73,6 +141,9 @@ class HeldSaleController extends Controller
         $lines = collect($data['lines'])->filter(fn ($l) => !empty($l['product_id']) && !empty($l['quantity']));
 
         if ($lines->isEmpty()) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'At least one product line is required.'], 422);
+            }
             return back()->withErrors(['lines' => 'At least one product line is required.'])->withInput();
         }
 
@@ -94,36 +165,96 @@ class HeldSaleController extends Controller
         if (!empty($data['restaurant_table_session_id'])) {
             $tableSession = RestaurantTableSession::with('table')->find($data['restaurant_table_session_id']);
             $data['order_type'] = 'dine_in';
+        } elseif (!empty($data['restaurant_table_id'])) {
+            // Find the open session for this table, or create a new one
+            $tableSession = RestaurantTableSession::with('table')
+                ->where('restaurant_table_id', $data['restaurant_table_id'])
+                ->whereIn('status', ['open', 'bill_requested'])
+                ->latest('opened_at')
+                ->first();
+
+            if (!$tableSession) {
+                $tableSession = RestaurantTableSession::create([
+                    'session_no'          => 'SES-' . now()->format('YmdHis') . '-' . random_int(100, 999),
+                    'branch_id'           => $data['branch_id'],
+                    'restaurant_table_id' => $data['restaurant_table_id'],
+                    'opened_by_user_id'   => Auth::id(),
+                    'status'              => 'open',
+                    'opened_at'           => now(),
+                ]);
+                $tableSession->load('table');
+            }
+
+            $data['order_type'] = 'dine_in';
         }
 
-        $saleNo = 'HS-' . now()->format('YmdHis') . '-' . random_int(100, 999);
+        $kotSentKeys = [];
 
-        $sale = SalesOrder::create([
-            'sale_no'                     => $saleNo,
-            'branch_id'                   => $data['branch_id'],
-            'terminal_id'                 => $data['terminal_id'] ?? null,
-            'order_source'                => 'pos',
-            'order_type'                  => $data['order_type'],
-            'customer_id'                 => $data['customer_id'] ?? null,
-            'customer_name'               => $data['customer_name'] ?? null,
-            'customer_phone'              => $data['customer_phone'] ?? null,
-            'customer_email'              => $data['customer_email'] ?? null,
-            'sale_date'                   => now(),
-            'subtotal'                    => $subtotal,
-            'discount_type'               => $data['discount_type'],
-            'discount_value'              => $discountValue,
-            'discount_amount'             => $discountAmount,
-            'tax_amount'                  => 0,
-            'grand_total'                 => $grandTotal,
-            'status'                      => 'held',
-            'inventory_posted'            => false,
-            'created_by_user_id'          => Auth::id(),
-            'notes'                       => $data['notes'] ?? null,
-            'restaurant_table_session_id' => $tableSession?->id,
-            'restaurant_table_id'         => $tableSession?->restaurant_table_id,
-            'restaurant_floor_id'         => $tableSession?->table?->restaurant_floor_id,
-            'restaurant_waiter_id'        => $tableSession?->restaurant_waiter_id,
-        ]);
+        // Update existing held sale if held_sale_id provided, otherwise create new
+        if (!empty($data['held_sale_id'])) {
+            $sale = SalesOrder::where('status', 'held')->findOrFail($data['held_sale_id']);
+
+            // Remember how much of each product was already sent to kitchen
+            $kotSentKeys = $sale->lines()
+                ->where('kot_sent', true)
+                ->get(['product_id', 'product_variant_id', 'quantity', 'kot_sent_quantity'])
+                ->mapWithKeys(function ($l) {
+                    // If kot_sent_quantity was set use it; otherwise fall back to quantity (pre-migration rows)
+                    $sentQty = (float) $l->kot_sent_quantity > 0
+                        ? (float) $l->kot_sent_quantity
+                        : (float) $l->quantity;
+                    return [$l->product_id . ':' . ($l->product_variant_id ?? 0) => $sentQty];
+                })
+                ->all();
+
+            $sale->lines()->delete();
+            $sale->update([
+                'branch_id'                   => $data['branch_id'],
+                'terminal_id'                 => $data['terminal_id'] ?? null,
+                'order_type'                  => $data['order_type'],
+                'customer_id'                 => $data['customer_id'] ?? null,
+                'customer_name'               => $data['customer_name'] ?? null,
+                'customer_phone'              => $data['customer_phone'] ?? null,
+                'customer_email'              => $data['customer_email'] ?? null,
+                'subtotal'                    => $subtotal,
+                'discount_type'               => $data['discount_type'],
+                'discount_value'              => $discountValue,
+                'discount_amount'             => $discountAmount,
+                'tax_amount'                  => 0,
+                'grand_total'                 => $grandTotal,
+                'notes'                       => $data['notes'] ?? null,
+                'restaurant_table_session_id' => $tableSession?->id ?? $sale->restaurant_table_session_id,
+                'restaurant_table_id'         => $tableSession?->restaurant_table_id ?? $sale->restaurant_table_id,
+            ]);
+        } else {
+            $saleNo = 'HS-' . now()->format('YmdHis') . '-' . random_int(100, 999);
+            $sale = SalesOrder::create([
+                'sale_no'                     => $saleNo,
+                'branch_id'                   => $data['branch_id'],
+                'terminal_id'                 => $data['terminal_id'] ?? null,
+                'order_source'                => 'pos',
+                'order_type'                  => $data['order_type'],
+                'customer_id'                 => $data['customer_id'] ?? null,
+                'customer_name'               => $data['customer_name'] ?? null,
+                'customer_phone'              => $data['customer_phone'] ?? null,
+                'customer_email'              => $data['customer_email'] ?? null,
+                'sale_date'                   => now(),
+                'subtotal'                    => $subtotal,
+                'discount_type'               => $data['discount_type'],
+                'discount_value'              => $discountValue,
+                'discount_amount'             => $discountAmount,
+                'tax_amount'                  => 0,
+                'grand_total'                 => $grandTotal,
+                'status'                      => 'held',
+                'inventory_posted'            => false,
+                'created_by_user_id'          => Auth::id(),
+                'notes'                       => $data['notes'] ?? null,
+                'restaurant_table_session_id' => $tableSession?->id,
+                'restaurant_table_id'         => $tableSession?->restaurant_table_id,
+                'restaurant_floor_id'         => $tableSession?->table?->restaurant_floor_id,
+                'restaurant_waiter_id'        => $tableSession?->restaurant_waiter_id,
+            ]);
+        }
 
         foreach ($lines as $line) {
             $product = Product::find($line['product_id']);
@@ -132,6 +263,14 @@ class HeldSaleController extends Controller
                 : null;
 
             $lineTotal = (float) $line['quantity'] * (float) ($line['unit_price'] ?? 0);
+
+            // Determine delta: if qty grew since last KOT, mark unsent so kitchen gets the extra
+            $kotKey    = $line['product_id'] . ':' . (($line['product_variant_id'] ?? null) ?? 0);
+            $sentQty   = $kotSentKeys[$kotKey] ?? 0;
+            $newQty    = (float) $line['quantity'];
+            // kot_sent=true only when nothing new was added; if qty increased, mark false so KOT fires
+            $kotSent      = $sentQty > 0 && $newQty <= $sentQty;
+            $kotSentQty   = min($sentQty, $newQty); // preserve sent portion
 
             $sale->lines()->create([
                 'product_id'         => $line['product_id'],
@@ -145,19 +284,36 @@ class HeldSaleController extends Controller
                 'discount_amount'    => 0,
                 'tax_amount'         => 0,
                 'line_total'         => $lineTotal,
+                'kot_sent'           => $kotSent,
+                'kot_sent_quantity'  => $kotSentQty,
             ]);
         }
 
-        return redirect(url('/held-sales'))->with('status', "Held sale {$sale->sale_no} created.");
+        if ($request->expectsJson()) {
+            return response()->json([
+                'sale_id'                     => $sale->id,
+                'sale_no'                     => $sale->sale_no,
+                'restaurant_table_session_id' => $sale->restaurant_table_session_id,
+            ]);
+        }
+
+        return redirect(url('/held-sales'))->with('status', "Held sale {$sale->sale_no} saved.");
     }
 
     public function cancel(SalesOrder $salesOrder)
     {
         if ($salesOrder->status !== 'held') {
+            if (request()->expectsJson()) {
+                return response()->json(['message' => 'Only held sales can be cancelled.'], 422);
+            }
             return back()->withErrors(['sale' => 'Only held sales can be cancelled.']);
         }
 
         $salesOrder->update(['status' => 'cancelled']);
+
+        if (request()->expectsJson()) {
+            return response()->json(['ok' => true]);
+        }
 
         return redirect(url('/held-sales'))->with('status', 'Held sale cancelled.');
     }

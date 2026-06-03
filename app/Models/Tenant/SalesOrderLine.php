@@ -21,7 +21,10 @@ class SalesOrderLine extends Model
         'discount_amount',
         'tax_amount',
         'line_total',
+        'kitchen_note',
         'returned_quantity',
+        'kot_sent',
+        'kot_sent_quantity',
     ];
 
     protected function casts(): array
@@ -35,6 +38,8 @@ class SalesOrderLine extends Model
             'tax_amount'        => 'decimal:2',
             'line_total'        => 'decimal:2',
             'returned_quantity' => 'decimal:3',
+            'kot_sent'          => 'boolean',
+            'kot_sent_quantity' => 'decimal:6',
         ];
     }
 

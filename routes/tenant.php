@@ -325,6 +325,9 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/held-sales/create', [HeldSaleController::class, 'create'])->name('tenant.held-sales.create');
                 Route::post('/held-sales', [HeldSaleController::class, 'store'])->name('tenant.held-sales.store');
                 Route::post('/held-sales/{salesOrder}/cancel', [HeldSaleController::class, 'cancel'])->name('tenant.held-sales.cancel');
+                Route::get('/api/pos/held-sales', [HeldSaleController::class, 'ajaxList'])->name('tenant.api.pos.held-sales');
+                Route::get('/api/pos/table-sessions', [HeldSaleController::class, 'ajaxTableSessions'])->name('tenant.api.pos.table-sessions');
+                Route::get('/api/pos/print-jobs/{saleId}', [PrintJobController::class, 'ajaxForSale'])->name('tenant.api.pos.print-jobs');
 
                 // Unit Conversions
                 Route::get('/unit-conversions', [UnitConversionController::class, 'index'])->name('tenant.unit-conversions.index');
@@ -377,7 +380,9 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::post('/printing/jobs/{printJob}/mark-printed', [PrintJobController::class, 'markPrinted'])->name('tenant.printing.jobs.mark-printed');
                 Route::post('/printing/jobs/{printJob}/retry', [PrintJobController::class, 'retry'])->name('tenant.printing.jobs.retry');
 
-                // Printing — Document preview
+                // Printing — Document preview (receipt / KOT browser print)
+                Route::get('/printing/documents/{printJob}/receipt', [PrintDocumentController::class, 'preview'])->name('tenant.printing.documents.receipt');
+                Route::get('/printing/documents/{printJob}/kot', [PrintDocumentController::class, 'preview'])->name('tenant.printing.documents.kot');
                 Route::get('/printing/documents/{printJob}/preview', [PrintDocumentController::class, 'preview'])->name('tenant.printing.documents.preview');
 
                 // Printing — Print Agents (web management)
