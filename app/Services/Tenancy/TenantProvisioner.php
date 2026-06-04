@@ -505,6 +505,13 @@ class TenantProvisioner
             // Manager PIN
             'tenant.users.manager-pin',
             'tenant.users.manager-pin.store',
+
+            // Reports — Phase 1
+            'tenant.reports.sales.summary',
+            'tenant.reports.sales.items',
+            'tenant.reports.sales.payments',
+            'tenant.reports.shifts',
+            'tenant.reports.inventory.valuation',
         ];
 
         \App\Models\Tenant\Customer::updateOrCreate(

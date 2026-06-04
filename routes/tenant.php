@@ -51,6 +51,9 @@ use App\Http\Controllers\Tenant\PromotionController;
 use App\Http\Controllers\Tenant\ServiceChargeSettingController;
 use App\Http\Controllers\Tenant\VoidReasonController;
 use App\Http\Controllers\Tenant\ManagerApprovalController;
+use App\Http\Controllers\Tenant\Reports\SalesReportController;
+use App\Http\Controllers\Tenant\Reports\ShiftReportController;
+use App\Http\Controllers\Tenant\Reports\InventoryReportController;
 use Illuminate\Support\Facades\Route;
 
 Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
@@ -420,6 +423,13 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 // API — Manager Approvals
                 Route::post('/api/manager-approvals/verify', [ManagerApprovalController::class, 'verify'])->name('tenant.api.manager-approvals.verify');
                 Route::post('/api/pos/promotions/quote', [PromotionController::class, 'quote'])->name('tenant.api.pos.promotions.quote');
+
+                // Reports — Phase 1
+                Route::get('/reports/sales/summary',  [SalesReportController::class, 'summary'])->name('tenant.reports.sales.summary');
+                Route::get('/reports/sales/items',    [SalesReportController::class, 'items'])->name('tenant.reports.sales.items');
+                Route::get('/reports/sales/payments', [SalesReportController::class, 'payments'])->name('tenant.reports.sales.payments');
+                Route::get('/reports/shifts',         [ShiftReportController::class, 'index'])->name('tenant.reports.shifts');
+                Route::get('/reports/inventory/valuation', [InventoryReportController::class, 'valuation'])->name('tenant.reports.inventory.valuation');
             });
         });
 
