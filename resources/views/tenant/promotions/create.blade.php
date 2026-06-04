@@ -1,0 +1,1 @@
+@include('tenant.promotions.form')

@@ -1,0 +1,126 @@
+﻿===== app\Services\Printing\PrintRoutingService.php =====
+
+<?php
+
+namespace App\Services\Printing;
+
+use App\Models\Tenant\CategoryPrinterMapping;
+use App\Models\Tenant\Printer;
+use App\Models\Tenant\SalesOrder;
+use App\Models\Tenant\TerminalPrinterSetting;
+
+class PrintRoutingService
+{
+    public function receiptPrinter(SalesOrder $sale): ?Printer
+    {
+        if ($sale->terminal_id) {
+            $setting = TerminalPrinterSetting::where('terminal_id', $sale->terminal_id)->first();
+            if ($setting?->receipt_printer_id) {
+                $printer = Printer::find($setting->receipt_printer_id);
+                if ($printer?->is_active) {
+                    return $printer;
+                }
+            }
+        }
+
+        return Printer::where(function ($q) use ($sale) {
+                $q->whereNull('branch_id')->orWhere('branch_id', $sale->branch_id);
+            })
+            ->where('is_active', true)
+            ->whereIn('print_role', ['receipt', 'both'])
+            ->orderByDesc('is_default')
+            ->first();
+    }
+
+    public function defaultKotPrinter(SalesOrder $sale): ?Printer
+    {
+        if ($sale->terminal_id) {
+            $setting = TerminalPrinterSetting::where('terminal_id', $sale->terminal_id)->first();
+            if ($setting?->kot_printer_id) {
+                $printer = Printer::find($setting->kot_printer_id);
+                if ($printer?->is_active) {
+                    return $printer;
+                }
+            }
+        }
+
+        return Printer::where(function ($q) use ($sale) {
+                $q->whereNull('branch_id')->orWhere('branch_id', $sale->branch_id);
+            })
+            ->where('is_active', true)
+            ->whereIn('print_role', ['kot', 'both'])
+            ->orderByDesc('is_default')
+            ->first();
+    }
+
+    /**
+     * Resolve KOT printer routes for a sale.
+     * Returns array of [printer, line_ids, line_quantities] groups.
+     * Priority per line: category mapping â†’ terminal KOT printer â†’ branch default â†’ browser fallback.
+     */
+    public function kotRoutesForSale(SalesOrder $sale, array $onlyLineIds = [], bool $isReprint = false): array
+    {
+        $sale->loadMissing(['lines.product.category']);
+
+        $lines = $sale->lines;
+
+        if (!empty($onlyLineIds)) {
+            $onlyLineIds = collect($onlyLineIds)->map(fn ($id) => (int) $id)->all();
+            $lines = $lines->whereIn('id', $onlyLineIds);
+        }
+
+        $routes = [];
+
+        foreach ($lines as $line) {
+            $qtyToPrint = $isReprint
+                ? (float) $line->quantity
+                : max((float) $line->quantity - (float) ($line->kot_sent_quantity ?? 0), 0);
+
+            if ($qtyToPrint <= 0) {
+                continue;
+            }
+
+            $printers  = collect();
+            $categoryId = $line->product?->category_id;
+
+            if ($categoryId) {
+                $printerIds = CategoryPrinterMapping::where(function ($q) use ($sale) {
+                        $q->whereNull('branch_id')->orWhere('branch_id', $sale->branch_id);
+                    })
+                    ->where('category_id', $categoryId)
+                    ->whereIn('print_role', ['kot', 'both'])
+                    ->where('is_active', true)
+                    ->pluck('printer_id');
+
+                if ($printerIds->isNotEmpty()) {
+                    $printers = Printer::whereIn('id', $printerIds)->where('is_active', true)->get();
+                }
+            }
+
+            if ($printers->isEmpty()) {
+                $default = $this->defaultKotPrinter($sale);
+                if ($default) {
+                    $printers = collect([$default]);
+                }
+            }
+
+            if ($printers->isEmpty()) {
+                $key = 'browser';
+                $routes[$key]['printer']                           = null;
+                $routes[$key]['line_ids'][]                        = $line->id;
+                $routes[$key]['line_quantities'][(string) $line->id] = $qtyToPrint;
+                continue;
+            }
+
+            foreach ($printers as $printer) {
+                $key = 'printer_' . $printer->id;
+                $routes[$key]['printer']                           = $printer;
+                $routes[$key]['line_ids'][]                        = $line->id;
+                $routes[$key]['line_quantities'][(string) $line->id] = $qtyToPrint;
+            }
+        }
+
+        return array_values($routes);
+    }
+}
+

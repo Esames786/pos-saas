@@ -477,6 +477,34 @@ class TenantProvisioner
             'tenant.print-agents.store',
             'tenant.print-agents.regenerate-token',
             'tenant.print-agents.deactivate',
+
+            // Sales Controls — Promotions
+            'tenant.promotions.index',
+            'tenant.promotions.create',
+            'tenant.promotions.store',
+            'tenant.promotions.edit',
+            'tenant.promotions.update',
+            'tenant.promotions.destroy',
+
+            // Sales Controls — Service Charge
+            'tenant.service-charge-settings.index',
+            'tenant.service-charge-settings.store',
+
+            // Sales Controls — Void Reasons
+            'tenant.void-reasons.index',
+            'tenant.void-reasons.create',
+            'tenant.void-reasons.store',
+            'tenant.void-reasons.edit',
+            'tenant.void-reasons.update',
+            'tenant.void-reasons.destroy',
+
+            // Manager Approvals
+            'tenant.api.manager-approvals.verify',
+            'tenant.api.pos.promotions.quote',
+
+            // Manager PIN
+            'tenant.users.manager-pin',
+            'tenant.users.manager-pin.store',
         ];
 
         \App\Models\Tenant\Customer::updateOrCreate(

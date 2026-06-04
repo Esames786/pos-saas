@@ -47,6 +47,10 @@ use App\Http\Controllers\Tenant\PrintJobController;
 use App\Http\Controllers\Tenant\PrintDocumentController;
 use App\Http\Controllers\Tenant\PrintAgentController;
 use App\Http\Controllers\Tenant\Api\PrintAgentApiController;
+use App\Http\Controllers\Tenant\PromotionController;
+use App\Http\Controllers\Tenant\ServiceChargeSettingController;
+use App\Http\Controllers\Tenant\VoidReasonController;
+use App\Http\Controllers\Tenant\ManagerApprovalController;
 use Illuminate\Support\Facades\Route;
 
 Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
@@ -80,6 +84,8 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::post('/users/{user}/reset-password', [TenantUserController::class, 'resetPassword'])->name('tenant.users.reset-password');
                 Route::post('/users/{user}/activate', [TenantUserController::class, 'activate'])->name('tenant.users.activate');
                 Route::delete('/users/{user}', [TenantUserController::class, 'destroy'])->name('tenant.users.destroy');
+                Route::get('/users/{user}/manager-pin', [TenantUserController::class, 'managerPinForm'])->name('tenant.users.manager-pin');
+                Route::post('/users/{user}/manager-pin', [TenantUserController::class, 'managerPinStore'])->name('tenant.users.manager-pin.store');
 
                 // Roles & Permissions
                 Route::get('/roles', [RoleController::class, 'index'])->name('tenant.roles.index');
@@ -390,6 +396,30 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::post('/print/agents', [PrintAgentController::class, 'store'])->name('tenant.print-agents.store');
                 Route::post('/print/agents/{printAgent}/regenerate-token', [PrintAgentController::class, 'regenerateToken'])->name('tenant.print-agents.regenerate-token');
                 Route::post('/print/agents/{printAgent}/deactivate', [PrintAgentController::class, 'deactivate'])->name('tenant.print-agents.deactivate');
+
+                // Sales Controls — Promotions
+                Route::get('/promotions', [PromotionController::class, 'index'])->name('tenant.promotions.index');
+                Route::get('/promotions/create', [PromotionController::class, 'create'])->name('tenant.promotions.create');
+                Route::post('/promotions', [PromotionController::class, 'store'])->name('tenant.promotions.store');
+                Route::get('/promotions/{promotion}/edit', [PromotionController::class, 'edit'])->name('tenant.promotions.edit');
+                Route::put('/promotions/{promotion}', [PromotionController::class, 'update'])->name('tenant.promotions.update');
+                Route::delete('/promotions/{promotion}', [PromotionController::class, 'destroy'])->name('tenant.promotions.destroy');
+
+                // Sales Controls — Service Charge
+                Route::get('/service-charge-settings', [ServiceChargeSettingController::class, 'index'])->name('tenant.service-charge-settings.index');
+                Route::post('/service-charge-settings', [ServiceChargeSettingController::class, 'store'])->name('tenant.service-charge-settings.store');
+
+                // Sales Controls — Void Reasons
+                Route::get('/void-reasons', [VoidReasonController::class, 'index'])->name('tenant.void-reasons.index');
+                Route::get('/void-reasons/create', [VoidReasonController::class, 'create'])->name('tenant.void-reasons.create');
+                Route::post('/void-reasons', [VoidReasonController::class, 'store'])->name('tenant.void-reasons.store');
+                Route::get('/void-reasons/{voidReason}/edit', [VoidReasonController::class, 'edit'])->name('tenant.void-reasons.edit');
+                Route::put('/void-reasons/{voidReason}', [VoidReasonController::class, 'update'])->name('tenant.void-reasons.update');
+                Route::delete('/void-reasons/{voidReason}', [VoidReasonController::class, 'destroy'])->name('tenant.void-reasons.destroy');
+
+                // API — Manager Approvals
+                Route::post('/api/manager-approvals/verify', [ManagerApprovalController::class, 'verify'])->name('tenant.api.manager-approvals.verify');
+                Route::post('/api/pos/promotions/quote', [PromotionController::class, 'quote'])->name('tenant.api.pos.promotions.quote');
             });
         });
 

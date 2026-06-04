@@ -5,12 +5,14 @@ namespace App\Http\Controllers\Tenant;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\Customer;
+use App\Models\Tenant\ManagerApproval;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\ProductVariant;
 use App\Models\Tenant\RestaurantTable;
 use App\Models\Tenant\RestaurantTableSession;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\Terminal;
+use App\Services\Sales\SalesTotalsService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -58,14 +60,19 @@ class HeldSaleController extends Controller
                 'time'                        => $s->created_at->diffForHumans(),
                 'notes'                       => $s->notes,
                 'lines'                       => $s->lines->map(fn ($l) => [
+                    'id'                 => (int) $l->id,
                     'product_id'         => (int) $l->product_id,
                     'product_variant_id' => $l->product_variant_id ? (int) $l->product_variant_id : null,
                     'quantity'           => (float) $l->quantity,
                     'unit_price'         => (float) $l->unit_price,
                     'discount_amount'    => (float) $l->discount_amount,
                     'tax_amount'         => (float) $l->tax_amount,
+                    'line_total'         => (float) $l->line_total,
                     'product_name'       => $l->product_name,
                     'variant_name'       => $l->variant_name,
+                    'kot_sent'           => (bool) $l->kot_sent,
+                    'kot_sent_quantity'  => (float) ($l->kot_sent_quantity ?? 0),
+                    'kitchen_note'       => $l->kitchen_note,
                 ])->values(),
             ]),
         ]);
@@ -115,7 +122,7 @@ class HeldSaleController extends Controller
         ));
     }
 
-    public function store(Request $request)
+    public function store(Request $request, SalesTotalsService $totalsService)
     {
         $data = $request->validate([
             'held_sale_id'                => 'nullable|exists:sales_orders,id',
@@ -130,12 +137,18 @@ class HeldSaleController extends Controller
             'customer_email'              => 'nullable|email',
             'discount_type'               => 'required|in:none,fixed,percent',
             'discount_value'              => 'nullable|numeric|min:0',
+            'promo_code'                  => 'nullable|string|max:50',
             'notes'                       => 'nullable|string',
             'lines'                       => 'required|array|min:1',
             'lines.*.product_id'          => 'required_with:lines.*.quantity|nullable|exists:products,id',
             'lines.*.product_variant_id'  => 'nullable|exists:product_variants,id',
             'lines.*.quantity'            => 'nullable|numeric|min:0.001',
             'lines.*.unit_price'          => 'nullable|numeric|min:0',
+            'void_items'                  => 'nullable|array',
+            'void_items.*.old_line_id'    => 'nullable|integer',
+            'void_items.*.reason_id'      => 'nullable|exists:void_reasons,id',
+            'void_items.*.manager_approval_id' => 'nullable|exists:manager_approvals,id',
+            'void_items.*.product_name'   => 'nullable|string',
         ]);
 
         $lines = collect($data['lines'])->filter(fn ($l) => !empty($l['product_id']) && !empty($l['quantity']));
@@ -147,26 +160,30 @@ class HeldSaleController extends Controller
             return back()->withErrors(['lines' => 'At least one product line is required.'])->withInput();
         }
 
-        $subtotal = 0;
-        foreach ($lines as $line) {
-            $subtotal += (float) $line['quantity'] * (float) ($line['unit_price'] ?? 0);
-        }
+        // Build resolved lines for totals calculation (held sales use submitted prices)
+        $resolvedLines = $lines->map(fn ($l) => [
+            'quantity'        => (float) ($l['quantity'] ?? 0),
+            'unit_price'      => (float) ($l['unit_price'] ?? 0),
+            'discount_amount' => 0,
+            'tax_amount'      => 0,
+        ])->values()->toArray();
 
-        $discountValue  = (float) ($data['discount_value'] ?? 0);
-        $discountAmount = match ($data['discount_type']) {
-            'fixed'   => min($discountValue, $subtotal),
-            'percent' => round($subtotal * $discountValue / 100, 2),
-            default   => 0,
-        };
-
-        $grandTotal = $subtotal - $discountAmount;
+        // Tip is always 0 on held sales — only applied at payment time
+        $totals = $totalsService->calculate(
+            resolvedLines: $resolvedLines,
+            discountType:  $data['discount_type'],
+            discountValue: (float) ($data['discount_value'] ?? 0),
+            branchId:      (int) $data['branch_id'],
+            orderType:     $data['order_type'],
+            promoCode:     $data['promo_code'] ?? null,
+            tipAmount:     0,
+        );
 
         $tableSession = null;
         if (!empty($data['restaurant_table_session_id'])) {
             $tableSession = RestaurantTableSession::with('table')->find($data['restaurant_table_session_id']);
             $data['order_type'] = 'dine_in';
         } elseif (!empty($data['restaurant_table_id'])) {
-            // Find the open session for this table, or create a new one
             $tableSession = RestaurantTableSession::with('table')
                 ->where('restaurant_table_id', $data['restaurant_table_id'])
                 ->whereIn('status', ['open', 'bill_requested'])
@@ -190,16 +207,38 @@ class HeldSaleController extends Controller
 
         $kotSentKeys = [];
 
-        // Update existing held sale if held_sale_id provided, otherwise create new
         if (!empty($data['held_sale_id'])) {
             $sale = SalesOrder::where('status', 'held')->findOrFail($data['held_sale_id']);
 
-            // Remember how much of each product was already sent to kitchen
+            // Audit removed KOT-sent lines BEFORE deleting them
+            $voidItems = collect($data['void_items'] ?? []);
+            foreach ($voidItems as $voidItem) {
+                ManagerApproval::create([
+                    'approval_no'           => 'VOID-' . now()->format('YmdHis') . '-' . random_int(100, 999),
+                    'action_type'           => 'void_item',
+                    'reference_type'        => 'sales_order_line',
+                    'reference_id'          => $voidItem['old_line_id'] ?? null,
+                    'requested_by_user_id'  => Auth::id(),
+                    'approved_by_user_id'   => $voidItem['manager_approval_id']
+                        ? \App\Models\Tenant\ManagerApproval::find($voidItem['manager_approval_id'])?->approved_by_user_id
+                        : null,
+                    'payload'               => [
+                        'sales_order_id'       => $sale->id,
+                        'sale_no'              => $sale->sale_no,
+                        'product_name'         => $voidItem['product_name'] ?? null,
+                        'void_reason_id'       => $voidItem['reason_id'] ?? null,
+                        'manager_approval_id'  => $voidItem['manager_approval_id'] ?? null,
+                    ],
+                    'reason'                => 'Item removed from held order',
+                    'approved_at'           => now(),
+                ]);
+            }
+
+            // Remember KOT-sent quantities before deleting lines
             $kotSentKeys = $sale->lines()
                 ->where('kot_sent', true)
                 ->get(['product_id', 'product_variant_id', 'quantity', 'kot_sent_quantity'])
                 ->mapWithKeys(function ($l) {
-                    // If kot_sent_quantity was set use it; otherwise fall back to quantity (pre-migration rows)
                     $sentQty = (float) $l->kot_sent_quantity > 0
                         ? (float) $l->kot_sent_quantity
                         : (float) $l->quantity;
@@ -216,12 +255,16 @@ class HeldSaleController extends Controller
                 'customer_name'               => $data['customer_name'] ?? null,
                 'customer_phone'              => $data['customer_phone'] ?? null,
                 'customer_email'              => $data['customer_email'] ?? null,
-                'subtotal'                    => $subtotal,
+                'promotion_id'                => $totals['promotion_id'],
+                'promo_code'                  => $totals['promo_code'],
+                'subtotal'                    => $totals['subtotal'],
                 'discount_type'               => $data['discount_type'],
-                'discount_value'              => $discountValue,
-                'discount_amount'             => $discountAmount,
-                'tax_amount'                  => 0,
-                'grand_total'                 => $grandTotal,
+                'discount_value'              => $data['discount_value'] ?? 0,
+                'discount_amount'             => $totals['discount_amount'],
+                'tax_amount'                  => $totals['tax_amount'],
+                'service_charge_amount'       => $totals['service_charge_amount'],
+                'tip_amount'                  => 0,
+                'grand_total'                 => $totals['grand_total'],
                 'notes'                       => $data['notes'] ?? null,
                 'restaurant_table_session_id' => $tableSession?->id ?? $sale->restaurant_table_session_id,
                 'restaurant_table_id'         => $tableSession?->restaurant_table_id ?? $sale->restaurant_table_id,
@@ -238,13 +281,17 @@ class HeldSaleController extends Controller
                 'customer_name'               => $data['customer_name'] ?? null,
                 'customer_phone'              => $data['customer_phone'] ?? null,
                 'customer_email'              => $data['customer_email'] ?? null,
+                'promotion_id'                => $totals['promotion_id'],
+                'promo_code'                  => $totals['promo_code'],
                 'sale_date'                   => now(),
-                'subtotal'                    => $subtotal,
+                'subtotal'                    => $totals['subtotal'],
                 'discount_type'               => $data['discount_type'],
-                'discount_value'              => $discountValue,
-                'discount_amount'             => $discountAmount,
-                'tax_amount'                  => 0,
-                'grand_total'                 => $grandTotal,
+                'discount_value'              => $data['discount_value'] ?? 0,
+                'discount_amount'             => $totals['discount_amount'],
+                'tax_amount'                  => $totals['tax_amount'],
+                'service_charge_amount'       => $totals['service_charge_amount'],
+                'tip_amount'                  => 0,
+                'grand_total'                 => $totals['grand_total'],
                 'status'                      => 'held',
                 'inventory_posted'            => false,
                 'created_by_user_id'          => Auth::id(),
@@ -264,13 +311,11 @@ class HeldSaleController extends Controller
 
             $lineTotal = (float) $line['quantity'] * (float) ($line['unit_price'] ?? 0);
 
-            // Determine delta: if qty grew since last KOT, mark unsent so kitchen gets the extra
             $kotKey    = $line['product_id'] . ':' . (($line['product_variant_id'] ?? null) ?? 0);
             $sentQty   = $kotSentKeys[$kotKey] ?? 0;
             $newQty    = (float) $line['quantity'];
-            // kot_sent=true only when nothing new was added; if qty increased, mark false so KOT fires
-            $kotSent      = $sentQty > 0 && $newQty <= $sentQty;
-            $kotSentQty   = min($sentQty, $newQty); // preserve sent portion
+            $kotSent   = $sentQty > 0 && $newQty <= $sentQty;
+            $kotSentQty = min($sentQty, $newQty);
 
             $sale->lines()->create([
                 'product_id'         => $line['product_id'],

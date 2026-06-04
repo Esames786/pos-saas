@@ -180,6 +180,19 @@
         </div>
         @endif
         @endcan
+
+        {{-- Manager PIN --}}
+        @can('tenant.users.manager-pin')
+        <div class="card mb-3">
+            <div class="card-header"><strong>Manager PIN</strong></div>
+            <div class="card-body">
+                <p class="text-muted small mb-3">Set or update a 4–8 digit PIN that allows this user to approve POS actions such as manual discounts and void items.</p>
+                <a href="{{ url('/users/' . $user->id . '/manager-pin') }}" class="btn btn-outline-primary w-100">
+                    <i class="ti ti-lock me-1"></i>Set Manager PIN
+                </a>
+            </div>
+        </div>
+        @endcan
     </div>
 </div>
 @endsection

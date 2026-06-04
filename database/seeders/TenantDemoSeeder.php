@@ -32,6 +32,9 @@ use App\Models\Tenant\User;
 use App\Models\Tenant\Printer;
 use App\Models\Tenant\PrintAgent;
 use App\Models\Tenant\TerminalPrinterSetting;
+use App\Models\Tenant\Promotion;
+use App\Models\Tenant\ServiceChargeSetting;
+use App\Models\Tenant\VoidReason;
 use App\Services\Inventory\InventoryService;
 use App\Services\Sales\SalesService;
 use App\Services\Tenancy\TenancyManager;
@@ -1683,5 +1686,58 @@ class TenantDemoSeeder extends Seeder
             }
             $this->command->line('  Terminal printer settings configured for ' . $terminals->count() . ' terminal(s).');
         }
+
+        $this->seedSalesControls();
+    }
+
+    private function seedSalesControls(): void
+    {
+        $main = Branch::where('code', 'MAIN')->first();
+        if (!$main) return;
+
+        // Promotion
+        Promotion::updateOrCreate(
+            ['code' => 'BURGER10'],
+            [
+                'branch_id'      => $main->id,
+                'name'           => '10% Burger Discount',
+                'promotion_type' => 'order',
+                'discount_type'  => 'percent',
+                'discount_value' => 10,
+                'order_types'    => ['dine_in', 'takeaway'],
+                'requires_code'  => true,
+                'status'         => 'active',
+                'priority'       => 100,
+            ]
+        );
+
+        // Void Reasons
+        $voidReasons = [
+            ['name' => 'Wrong Item', 'reason_type' => 'void'],
+            ['name' => 'Customer Changed Mind', 'reason_type' => 'return'],
+            ['name' => 'Kitchen Unavailable', 'reason_type' => 'cancel'],
+            ['name' => 'Staff Mistake', 'reason_type' => 'void', 'requires_manager_approval' => true],
+        ];
+
+        foreach ($voidReasons as $reason) {
+            VoidReason::updateOrCreate(
+                ['name' => $reason['name']],
+                array_merge($reason, ['is_active' => true])
+            );
+        }
+
+        // Service Charge
+        ServiceChargeSetting::updateOrCreate(
+            ['branch_id' => $main->id],
+            [
+                'charge_type'  => 'percent',
+                'charge_value' => 5,
+                'order_types'  => ['dine_in'],
+                'is_taxable'   => false,
+                'is_active'    => true,
+            ]
+        );
+
+        $this->command->line('  Sales controls (promotions, void reasons, service charge) seeded.');
     }
 }

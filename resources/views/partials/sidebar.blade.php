@@ -506,6 +506,39 @@
                     </li>
                     @endcanany
 
+                    {{-- Sales Controls section --}}
+                    @canany(['tenant.promotions.index', 'tenant.service-charge-settings.index', 'tenant.void-reasons.index'])
+                    <li class="submenu-open">
+                        <h6 class="submenu-hdr">Sales Controls</h6>
+                        <ul>
+                            @can('tenant.promotions.index')
+                                <li class="{{ request()->is('promotions*') ? 'active' : '' }}">
+                                    <a href="{{ url('/promotions') }}">
+                                        <i class="ti ti-discount-2 fs-16 me-2" aria-hidden="true"></i>
+                                        <span>Promotions</span>
+                                    </a>
+                                </li>
+                            @endcan
+                            @can('tenant.service-charge-settings.index')
+                                <li class="{{ request()->is('service-charge-settings*') ? 'active' : '' }}">
+                                    <a href="{{ url('/service-charge-settings') }}">
+                                        <i class="ti ti-percentage fs-16 me-2" aria-hidden="true"></i>
+                                        <span>Service Charge</span>
+                                    </a>
+                                </li>
+                            @endcan
+                            @can('tenant.void-reasons.index')
+                                <li class="{{ request()->is('void-reasons*') ? 'active' : '' }}">
+                                    <a href="{{ url('/void-reasons') }}">
+                                        <i class="ti ti-ban fs-16 me-2" aria-hidden="true"></i>
+                                        <span>Void Reasons</span>
+                                    </a>
+                                </li>
+                            @endcan
+                        </ul>
+                    </li>
+                    @endcanany
+
                     {{-- Catalog section --}}
                     @canany(['tenant.units.index', 'tenant.categories.index', 'tenant.products.index'])
                     <li class="submenu-open">

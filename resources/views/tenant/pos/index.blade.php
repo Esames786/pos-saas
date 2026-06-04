@@ -371,6 +371,9 @@
     <input type="hidden" name="restaurant_table_id"         id="restaurant_table_id"         value="{{ $heldSale?->restaurant_table_id }}">
     <input type="hidden" name="discount_type"                                           value="none">
     <input type="hidden" name="discount_value"                                          value="0">
+    <input type="hidden" name="promo_code"          id="pos-promo-code"                 value="">
+    <input type="hidden" name="tip_amount"          id="pos-tip-amount"                 value="0">
+    <input type="hidden" name="manager_approval_id" id="pos-manager-approval-id"        value="">
     <div id="dynamic-pos-inputs"></div>
 
     <div class="pos-shell">
@@ -494,9 +497,31 @@
                     <label for="transaction_ref" class="form-label">Reference / Card / Bank</label>
                     <input id="transaction_ref" class="form-control" placeholder="Optional reference">
                 </div>
+                {{-- Promo Code Input --}}
+                <div class="mb-2 d-flex gap-1" id="promo-row">
+                    <input type="text" id="promo-code-input" class="form-control form-control-sm" placeholder="Promo code" style="text-transform:uppercase">
+                    <button type="button" class="btn btn-sm btn-outline-primary px-2" id="apply-promo-btn">Apply</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary px-2 d-none" id="remove-promo-btn">✕</button>
+                </div>
+                <div id="promo-feedback" class="small mb-2"></div>
+
+                {{-- Tip Buttons --}}
+                <div class="mb-2">
+                    <div class="d-flex gap-1 flex-wrap">
+                        <span class="small text-muted me-1 align-self-center">Tip:</span>
+                        <button type="button" class="btn btn-xs btn-outline-secondary tip-btn" data-tip-type="percent" data-tip-value="0">No Tip</button>
+                        <button type="button" class="btn btn-xs btn-outline-secondary tip-btn" data-tip-type="percent" data-tip-value="5">5%</button>
+                        <button type="button" class="btn btn-xs btn-outline-secondary tip-btn" data-tip-type="percent" data-tip-value="10">10%</button>
+                        <button type="button" class="btn btn-xs btn-outline-secondary tip-btn" data-tip-type="custom">Custom</button>
+                    </div>
+                </div>
+
                 <div class="pos-total-line"><span>Subtotal</span><strong id="subtotal-view">0.00</strong></div>
+                <div class="pos-total-line d-none" id="promo-discount-row"><span id="promo-discount-label">Promo</span><strong id="promo-discount-view" class="text-success">−0.00</strong></div>
                 <div class="pos-total-line"><span>Discount</span><strong id="discount-view">0.00</strong></div>
                 <div class="pos-total-line"><span>Tax</span><strong id="tax-view">0.00</strong></div>
+                <div class="pos-total-line d-none" id="service-charge-row"><span>Service Charge</span><strong id="service-charge-view">0.00</strong></div>
+                <div class="pos-total-line d-none" id="tip-row"><span>Tip</span><strong id="tip-view">0.00</strong></div>
                 <hr>
                 <div class="pos-total-line">
                     <span class="pos-grand-total">Total</span>
@@ -773,12 +798,15 @@
         'id'      => $heldSale->id,
         'sale_no' => $heldSale->sale_no,
         'lines'   => $heldSale->lines->map(fn ($l) => [
+            'id'                 => (int) $l->id,
             'product_id'         => (int) $l->product_id,
             'product_variant_id' => $l->product_variant_id ? (int) $l->product_variant_id : null,
             'quantity'           => (float) $l->quantity,
             'unit_price'         => (float) $l->unit_price,
             'discount_amount'    => (float) $l->discount_amount,
             'tax_amount'         => (float) $l->tax_amount,
+            'kot_sent'           => (bool) $l->kot_sent,
+            'product_name'       => $l->product_name,
         ])->values()->toArray(),
     ] : null;
 @endphp
@@ -982,13 +1010,42 @@ document.addEventListener('DOMContentLoaded', function () {
             });
         });
         cartItemsEl.querySelectorAll('[data-remove]').forEach(function (btn) {
-            btn.addEventListener('click', function () { cart.splice(Number(btn.dataset.remove), 1); renderCart(); });
+            btn.addEventListener('click', function () {
+                const idx = Number(btn.dataset.remove);
+                const item = cart[idx];
+                // If KOT already sent for this item, require void reason
+                if (item && (item.kot_sent || item._dbLineId) && voidReasons.length > 0) {
+                    showVoidReasonModal(idx, function (voidData) {
+                        if (voidData) {
+                            // Record the void for submission
+                            if (!window._voidItems) window._voidItems = [];
+                            window._voidItems.push({
+                                old_line_id:         item._dbLineId || null,
+                                reason_id:           voidData.reason_id,
+                                manager_approval_id: voidData.manager_approval_id,
+                                product_name:        item.product_name || item.product?.name || '',
+                            });
+                        }
+                        cart.splice(idx, 1);
+                        renderCart();
+                    });
+                } else {
+                    cart.splice(idx, 1);
+                    renderCart();
+                }
+            });
         });
 
         updateTotals();
     }
 
     /* totals */
+
+    let _promoDiscountAmount = 0;
+    let _promoCode = '';
+    let _promoName = '';
+    let _tipAmount = 0;
+    let _serviceChargeAmount = 0;
 
     function totals() {
         let subtotal = 0, discount = 0, tax = 0;
@@ -997,7 +1054,18 @@ document.addEventListener('DOMContentLoaded', function () {
             discount += Number(item.discount_amount || 0);
             tax      += Number(item.tax_amount || 0);
         });
-        return { subtotal: subtotal, discount: discount, tax: tax, total: Math.max(subtotal - discount + tax, 0) };
+        const promoDiscount = _promoDiscountAmount;
+        const totalDiscount = discount + promoDiscount;
+        const total = Math.max(subtotal - totalDiscount + tax + _serviceChargeAmount + _tipAmount, 0);
+        return {
+            subtotal:       subtotal,
+            discount:       discount,
+            promoDiscount:  promoDiscount,
+            tax:            tax,
+            serviceCharge:  _serviceChargeAmount,
+            tip:            _tipAmount,
+            total:          total,
+        };
     }
 
     function updateQuickCash(total) {
@@ -1036,6 +1104,39 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('discount-view').textContent    = money(t.discount);
         document.getElementById('tax-view').textContent         = money(t.tax);
         document.getElementById('grand-total-view').textContent = money(t.total);
+
+        // Promo discount row
+        const promoRow = document.getElementById('promo-discount-row');
+        if (t.promoDiscount > 0) {
+            document.getElementById('promo-discount-view').textContent = '−' + money(t.promoDiscount);
+            document.getElementById('promo-discount-label').textContent = _promoName || 'Promo';
+            promoRow.classList.remove('d-none');
+        } else {
+            promoRow.classList.add('d-none');
+        }
+
+        // Service charge row
+        const scRow = document.getElementById('service-charge-row');
+        if (t.serviceCharge > 0) {
+            document.getElementById('service-charge-view').textContent = money(t.serviceCharge);
+            scRow.classList.remove('d-none');
+        } else {
+            scRow.classList.add('d-none');
+        }
+
+        // Tip row
+        const tipRow = document.getElementById('tip-row');
+        if (t.tip > 0) {
+            document.getElementById('tip-view').textContent = money(t.tip);
+            tipRow.classList.remove('d-none');
+        } else {
+            tipRow.classList.add('d-none');
+        }
+
+        // Sync hidden inputs
+        document.getElementById('pos-promo-code').value = _promoCode;
+        document.getElementById('pos-tip-amount').value = _tipAmount.toFixed(2);
+
         if (!tenderedEl.dataset.manual) tenderedEl.value = money(t.total);
         document.getElementById('change-view').textContent =
             money(Math.max(Number(tenderedEl.value || 0) - t.total, 0));
@@ -1081,6 +1182,20 @@ document.addEventListener('DOMContentLoaded', function () {
                 dynamicInputs.appendChild(inp);
             });
         }
+
+        // Append void_items collected during this session
+        const voidItems = window._voidItems || [];
+        voidItems.forEach(function (vi, i) {
+            ['old_line_id', 'reason_id', 'manager_approval_id', 'product_name'].forEach(function (f) {
+                if (vi[f] !== null && vi[f] !== undefined) {
+                    var inp  = document.createElement('input');
+                    inp.type = 'hidden';
+                    inp.name = 'void_items[' + i + '][' + f + ']';
+                    inp.value = vi[f];
+                    dynamicInputs.appendChild(inp);
+                }
+            });
+        });
     }
 
     /* ── SweetAlert2 toast helper ─────────────────────────────────────── */
@@ -1097,6 +1212,149 @@ document.addEventListener('DOMContentLoaded', function () {
         if (Toast) { Toast.fire({ icon: icon, title: title }); }
     }
 
+    /* ── Promo Code ────────────────────────────────────────────────── */
+
+    document.getElementById('apply-promo-btn').addEventListener('click', function () {
+        const code = document.getElementById('promo-code-input').value.trim().toUpperCase();
+        if (!code) return;
+        const t = totals();
+        const branchId = document.getElementById('pos-branch-id')?.value || '';
+        const orderType = document.getElementById('pos-order-type')?.value || 'quick_sale';
+        fetch('{{ url('/api/pos/promotions/quote') }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
+            body: JSON.stringify({ promo_code: code, branch_id: branchId, order_type: orderType, subtotal: t.subtotal }),
+        })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+            const fb = document.getElementById('promo-feedback');
+            if (data.valid) {
+                _promoDiscountAmount = data.discount_amount;
+                _promoCode = data.promo_code;
+                _promoName = data.promotion_name || 'Promo';
+                fb.innerHTML = '<span class="text-success"><i class="ti ti-check me-1"></i>' + data.promotion_name + ' applied</span>';
+                document.getElementById('remove-promo-btn').classList.remove('d-none');
+                document.getElementById('apply-promo-btn').classList.add('d-none');
+            } else {
+                fb.innerHTML = '<span class="text-danger">' + (data.message || 'Invalid promo code') + '</span>';
+            }
+            updateTotals();
+        })
+        .catch(function () {
+            document.getElementById('promo-feedback').innerHTML = '<span class="text-danger">Failed to validate promo code.</span>';
+        });
+    });
+
+    document.getElementById('remove-promo-btn').addEventListener('click', function () {
+        _promoDiscountAmount = 0;
+        _promoCode = '';
+        _promoName = '';
+        document.getElementById('promo-code-input').value = '';
+        document.getElementById('promo-feedback').innerHTML = '';
+        document.getElementById('remove-promo-btn').classList.add('d-none');
+        document.getElementById('apply-promo-btn').classList.remove('d-none');
+        updateTotals();
+    });
+
+    /* ── Tip Buttons ────────────────────────────────────────────────── */
+
+    document.querySelectorAll('.tip-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            document.querySelectorAll('.tip-btn').forEach(function (b) { b.classList.remove('active', 'btn-primary'); b.classList.add('btn-outline-secondary'); });
+            btn.classList.add('active', 'btn-primary');
+            btn.classList.remove('btn-outline-secondary');
+
+            if (btn.dataset.tipType === 'custom') {
+                const custom = parseFloat(prompt('Enter tip amount:') || '0');
+                _tipAmount = isNaN(custom) ? 0 : Math.max(custom, 0);
+            } else if (btn.dataset.tipType === 'percent') {
+                const pct = parseFloat(btn.dataset.tipValue || '0');
+                const t = totals();
+                _tipAmount = pct > 0 ? Math.round(t.subtotal * pct / 100 * 100) / 100 : 0;
+            }
+            updateTotals();
+        });
+    });
+
+    /* ── Void Reason Modal (for KOT-sent items) ─────────────────────── */
+
+    @php $voidReasons = \App\Models\Tenant\VoidReason::where('is_active', true)->get(['id','name','requires_manager_approval']); @endphp
+    const voidReasons = @json($voidReasons->values());
+
+    function showVoidReasonModal(lineIndex, callback) {
+        const line = cart[lineIndex];
+        let html = '<div class="mb-3"><strong>' + (line.product_name || line.product?.name || 'Item') + '</strong><br><small class="text-muted">This item was already sent to kitchen (KOT). Please select a void reason.</small></div>';
+        if (!voidReasons.length) {
+            callback({ reason_id: null, manager_approval_id: null });
+            return;
+        }
+        html += '<div class="list-group">';
+        voidReasons.forEach(function (r) {
+            html += '<button type="button" class="list-group-item list-group-item-action void-reason-item" data-reason-id="' + r.id + '" data-requires-pin="' + (r.requires_manager_approval ? '1' : '0') + '">' +
+                r.name + (r.requires_manager_approval ? ' <span class="badge bg-warning text-dark ms-1">PIN Required</span>' : '') +
+                '</button>';
+        });
+        html += '</div>';
+
+        Swal.fire({
+            title: 'Void Reason',
+            html: html,
+            showConfirmButton: false,
+            showCancelButton: true,
+            cancelButtonText: 'Cancel',
+            didOpen: function (popup) {
+                popup.querySelectorAll('.void-reason-item').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        const reasonId = btn.dataset.reasonId;
+                        const requiresPin = btn.dataset.requiresPin === '1';
+                        Swal.close();
+                        if (requiresPin) {
+                            showManagerPinModal('void_item', function (approvalId) {
+                                callback({ reason_id: reasonId, manager_approval_id: approvalId });
+                            }, function () { /* cancelled — do not remove */ });
+                        } else {
+                            callback({ reason_id: reasonId, manager_approval_id: null });
+                        }
+                    });
+                });
+            },
+        });
+    }
+
+    /* ── Manager PIN Modal ──────────────────────────────────────────── */
+
+    function showManagerPinModal(actionType, onSuccess, onCancel) {
+        Swal.fire({
+            title: 'Manager Approval',
+            html: '<p class="text-muted small mb-3">Enter manager PIN to approve this action.</p>' +
+                  '<input type="password" id="swal-manager-pin" class="swal2-input" placeholder="PIN" inputmode="numeric" maxlength="8">',
+            confirmButtonText: 'Verify',
+            cancelButtonText: 'Cancel',
+            showCancelButton: true,
+            preConfirm: function () {
+                const pin = document.getElementById('swal-manager-pin').value;
+                if (!pin) { Swal.showValidationMessage('Enter PIN'); return false; }
+                return fetch('{{ url('/api/manager-approvals/verify') }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
+                    body: JSON.stringify({ pin: pin, action_type: actionType }),
+                })
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    if (!data.ok) { Swal.showValidationMessage(data.message || 'Invalid PIN'); return false; }
+                    return data;
+                })
+                .catch(function () { Swal.showValidationMessage('Verification failed'); return false; });
+            },
+        }).then(function (result) {
+            if (result.isConfirmed && result.value) {
+                onSuccess(result.value.approval_id);
+            } else if (result.isDismissed) {
+                if (onCancel) onCancel();
+            }
+        });
+    }
+
     /* ── State ────────────────────────────────────────────────────────── */
 
     let _currentHeldSaleId = null;   // held sale ID currently loaded in cart
@@ -1111,6 +1369,16 @@ document.addEventListener('DOMContentLoaded', function () {
         cart = [];
         _currentHeldSaleId = null;
         _currentHeldSaleNo = null;
+        window._voidItems  = [];
+        _promoDiscountAmount = 0;
+        _promoCode = '';
+        _promoName = '';
+        _tipAmount = 0;
+        document.getElementById('promo-code-input').value = '';
+        document.getElementById('promo-feedback').innerHTML = '';
+        document.getElementById('remove-promo-btn').classList.add('d-none');
+        document.getElementById('apply-promo-btn').classList.remove('d-none');
+        document.querySelectorAll('.tip-btn').forEach(function (b) { b.classList.remove('active','btn-primary'); b.classList.add('btn-outline-secondary'); });
         const heldInput = document.querySelector('input[name="held_sale_id"]');
         if (heldInput) heldInput.value = '';
         const tblSessionInput = document.getElementById('restaurant_table_session_id');
@@ -2118,6 +2386,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 product_id:         product.id,
                 product_variant_id: variant ? variant.id : null,
                 name:               product.name,
+                product_name:       product.name,
                 variant_name:       variant ? variant.name : null,
                 quantity:           Number(line.quantity || 1),
                 unit_price:         Number(line.unit_price || productPrice(product, variant)),
@@ -2125,6 +2394,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 tax_amount:         Number(line.tax_amount || 0),
                 product:            product,
                 variant:            variant || null,
+                _dbLineId:          line.id || null,
+                kot_sent:           !!line.kot_sent,
             });
         });
     }

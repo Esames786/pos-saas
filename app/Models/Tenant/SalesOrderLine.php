@@ -25,6 +25,8 @@ class SalesOrderLine extends Model
         'returned_quantity',
         'kot_sent',
         'kot_sent_quantity',
+        'void_reason_id',
+        'manager_approval_id',
     ];
 
     protected function casts(): array

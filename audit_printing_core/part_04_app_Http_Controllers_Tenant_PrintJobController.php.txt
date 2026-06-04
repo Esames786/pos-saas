@@ -1,0 +1,156 @@
+﻿===== app\Http\Controllers\Tenant\PrintJobController.php =====
+
+<?php
+
+namespace App\Http\Controllers\Tenant;
+
+use App\Http\Controllers\Controller;
+use App\Models\Tenant\Branch;
+use App\Models\Tenant\PrintJob;
+use App\Models\Tenant\SalesOrder;
+use App\Services\Printing\PrintJobService;
+use Illuminate\Http\Request;
+
+class PrintJobController extends Controller
+{
+    public function __construct(
+        private PrintJobService $printJobService,
+    ) {}
+
+    public function index(Request $request)
+    {
+        $query = PrintJob::with(['branch', 'printer', 'createdBy', 'claimedByAgent'])
+            ->orderByDesc('id');
+
+        if ($request->filled('branch_id')) {
+            $query->where('branch_id', $request->branch_id);
+        }
+        if ($request->filled('document_type')) {
+            $query->where('document_type', $request->document_type);
+        }
+        if ($request->filled('print_status')) {
+            $query->where('print_status', $request->print_status);
+        }
+
+        $jobs     = $query->paginate(30)->withQueryString();
+        $branches = Branch::where('status', 'active')->orderBy('name')->get();
+
+        return view('tenant.printing.jobs.index', compact('jobs', 'branches'));
+    }
+
+    public function queueReceipt(Request $request, SalesOrder $salesOrder)
+    {
+        $job = $this->printJobService->queueReceipt($salesOrder);
+
+        $previewUrl = url('/printing/documents/' . $job->id . '/receipt');
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'job_id'       => $job->id,
+                'job_no'       => $job->job_no,
+                'printer_type' => $job->printer?->printer_type ?? 'browser',
+                'preview_url'  => $previewUrl,
+                'fallback'     => empty($job->printer_id),
+            ]);
+        }
+
+        return redirect($previewUrl);
+    }
+
+    public function queueKot(Request $request, SalesOrder $salesOrder)
+    {
+        $isReprint = $request->boolean('reprint');
+
+        $lineIds = collect($request->input('line_ids', []))
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->values()
+            ->all();
+
+        $jobs = $this->printJobService->queueKot(
+            sale:       $salesOrder,
+            printer:    null,
+            lineIds:    $lineIds,
+            terminalId: null,
+            isReprint:  $isReprint,
+        );
+
+        if (empty($jobs)) {
+            if ($request->expectsJson()) {
+                return response()->json(['jobs' => [], 'message' => 'No new items to send to kitchen']);
+            }
+            return back()->with('status', 'No new items to send to kitchen.');
+        }
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'jobs' => collect($jobs)->map(fn ($j) => [
+                    'job_id'       => $j->id,
+                    'job_no'       => $j->job_no,
+                    'printer_type' => $j->printer?->printer_type ?? 'browser',
+                    'preview_url'  => url('/printing/documents/' . $j->id . '/kot'),
+                    'fallback'     => empty($j->printer_id),
+                ])->values()->all(),
+            ]);
+        }
+
+        $first = collect($jobs)->first();
+
+        if (!$first->printer_id) {
+            return redirect(url('/printing/documents/' . $first->id . '/kot'))
+                ->with('status', 'KOT preview opened â€” use Print / Ctrl+P for USB printer.');
+        }
+
+        return back()->with('status', count($jobs) . ' KOT print job(s) queued.');
+    }
+
+    public function ajaxForSale(Request $request, int $saleId)
+    {
+        $jobs = PrintJob::where('reference_id', $saleId)
+            ->where('reference_type', 'sales_order')
+            ->with('printer')
+            ->orderByDesc('id')
+            ->get();
+
+        return response()->json([
+            'jobs' => $jobs->map(fn ($j) => [
+                'id'            => $j->id,
+                'job_no'        => $j->job_no,
+                'document_type' => $j->document_type,
+                'print_status'  => $j->print_status,
+                'printer_name'  => $j->printer?->name ?? 'Default Printer',
+                'line_count'    => count($j->payload['line_ids'] ?? []),
+                'created_at'    => $j->created_at->diffForHumans(),
+            ])->values()->all(),
+        ]);
+    }
+
+    public function markPrinted(Request $request, PrintJob $printJob)
+    {
+        $this->printJobService->markPrinted($printJob);
+
+        if ($request->expectsJson()) {
+            return response()->json(['status' => 'printed']);
+        }
+
+        return back()->with('status', 'Job marked as printed.');
+    }
+
+    public function retry(PrintJob $printJob)
+    {
+        if (!in_array($printJob->print_status, ['failed', 'cancelled'])) {
+            return back()->withErrors(['job' => 'Only failed or cancelled jobs can be retried.']);
+        }
+
+        $printJob->update([
+            'print_status'        => 'queued',
+            'error_message'       => null,
+            'failed_at'           => null,
+            'claimed_by_agent_id' => null,
+            'claimed_at'          => null,
+        ]);
+
+        return back()->with('status', 'Job re-queued.');
+    }
+}
+

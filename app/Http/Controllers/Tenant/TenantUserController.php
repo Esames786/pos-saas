@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Tenant;
 
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Branch;
+use App\Models\Tenant\ManagerPin;
 use App\Models\Tenant\Terminal;
 use App\Models\Tenant\User;
 use Illuminate\Http\Request;
@@ -177,6 +178,31 @@ class TenantUserController extends Controller
         $user->update(['status' => 'inactive']);
 
         return redirect(url('/users'))->with('status', 'User deactivated.');
+    }
+
+    public function managerPinForm(User $user)
+    {
+        $hasPin = ManagerPin::where('user_id', $user->id)->where('is_active', true)->exists();
+        return view('tenant.users.manager-pin', compact('user', 'hasPin'));
+    }
+
+    public function managerPinStore(Request $request, User $user)
+    {
+        $request->validate([
+            'pin'             => ['required', 'string', 'min:4', 'max:8', 'regex:/^\d+$/'],
+            'pin_confirmation' => ['required', 'same:pin'],
+        ]);
+
+        ManagerPin::updateOrCreate(
+            ['user_id' => $user->id],
+            [
+                'pin_hash'  => Hash::make($request->pin),
+                'is_active' => true,
+            ]
+        );
+
+        return redirect(url('/users/' . $user->id))
+            ->with('status', 'Manager PIN set successfully for ' . $user->name . '.');
     }
 
     private function syncAccess(User $user, array $data): void

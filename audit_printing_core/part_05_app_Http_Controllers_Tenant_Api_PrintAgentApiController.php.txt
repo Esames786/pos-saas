@@ -1,0 +1,159 @@
+﻿===== app\Http\Controllers\Tenant\Api\PrintAgentApiController.php =====
+
+<?php
+
+namespace App\Http\Controllers\Tenant\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\Tenant\PrintAgent;
+use App\Models\Tenant\PrintJob;
+use App\Services\Printing\PrintJobService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+
+class PrintAgentApiController extends Controller
+{
+    public function heartbeat(Request $request): JsonResponse
+    {
+        $agent = $this->authenticate($request);
+
+        $data = $request->validate([
+            'device_name' => ['nullable', 'string', 'max:190'],
+            'device_os'   => ['nullable', 'string', 'max:190'],
+            'local_ip'    => ['nullable', 'string', 'max:100'],
+        ]);
+
+        $agent->update([
+            'device_name'  => $data['device_name'] ?? $agent->device_name,
+            'device_os'    => $data['device_os']   ?? $agent->device_os,
+            'local_ip'     => $data['local_ip']    ?? $agent->local_ip,
+            'last_seen_at' => now(),
+            'last_error'   => null,
+        ]);
+
+        return response()->json([
+            'ok'          => true,
+            'server_time' => now()->toDateTimeString(),
+        ]);
+    }
+
+    public function pending(Request $request): JsonResponse
+    {
+        $agent = $this->authenticate($request);
+
+        $agent->update(['last_seen_at' => now(), 'last_error' => null]);
+
+        $jobs = DB::connection('tenant')->transaction(function () use ($agent) {
+            $query = PrintJob::with('printer')
+                ->where('print_status', 'queued')
+                ->whereNotNull('printer_id')
+                ->whereHas('printer', function ($q) {
+                    $q->where('is_active', true)
+                      ->where('printer_type', 'network')
+                      ->whereNotNull('ip_address');
+                })
+                ->where(function ($q) use ($agent) {
+                    if ($agent->branch_id) {
+                        $q->whereNull('branch_id')->orWhere('branch_id', $agent->branch_id);
+                    }
+                })
+                ->where(function ($q) use ($agent) {
+                    if ($agent->terminal_id) {
+                        $q->whereNull('terminal_id')->orWhere('terminal_id', $agent->terminal_id);
+                    }
+                })
+                ->where(function ($q) {
+                    $q->whereNull('claimed_at')
+                      ->orWhere('claimed_at', '<', now()->subMinutes(2));
+                })
+                ->orderBy('created_at')
+                ->limit(10)
+                ->lockForUpdate()
+                ->get();
+
+            foreach ($query as $job) {
+                $job->update([
+                    'claimed_by_agent_id' => $agent->id,
+                    'claimed_at'          => now(),
+                ]);
+            }
+
+            return $query;
+        });
+
+        return response()->json([
+            'ok'   => true,
+            'jobs' => $jobs->map(fn (PrintJob $job) => [
+                'id'            => $job->id,
+                'job_no'        => $job->job_no,
+                'document_type' => $job->document_type,
+                'reference_no'  => $job->reference_no,
+                'printer'       => [
+                    'id'           => $job->printer?->id,
+                    'name'         => $job->printer?->name,
+                    'printer_type' => $job->printer?->printer_type,
+                    'ip_address'   => $job->printer?->ip_address,
+                    'port'         => $job->printer?->port,
+                    'paper_size'   => $job->printer?->paper_size,
+                ],
+                'raw_payload' => $job->raw_payload,
+                'payload'     => $job->payload,
+            ])->values(),
+        ]);
+    }
+
+    public function printed(Request $request, PrintJob $printJob, PrintJobService $printJobService): JsonResponse
+    {
+        $agent = $this->authenticate($request);
+
+        if ($printJob->claimed_by_agent_id && (int) $printJob->claimed_by_agent_id !== (int) $agent->id) {
+            abort(403, 'Job claimed by another agent.');
+        }
+
+        $printJobService->markPrinted($printJob);
+
+        $printJob->printer?->update(['last_seen_at' => now(), 'last_error' => null]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    public function failed(Request $request, PrintJob $printJob, PrintJobService $printJobService): JsonResponse
+    {
+        $agent = $this->authenticate($request);
+
+        $data = $request->validate([
+            'error_message' => ['required', 'string'],
+        ]);
+
+        if ($printJob->claimed_by_agent_id && (int) $printJob->claimed_by_agent_id !== (int) $agent->id) {
+            abort(403, 'Job claimed by another agent.');
+        }
+
+        $printJobService->markFailed($printJob, $data['error_message']);
+
+        $printJob->printer?->update(['last_error' => $data['error_message']]);
+        $agent->update(['last_error' => $data['error_message']]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    private function authenticate(Request $request): PrintAgent
+    {
+        $agentCode = $request->header('X-Print-Agent-Code');
+        $token     = $request->header('X-Print-Agent-Token');
+
+        abort_if(!$agentCode || !$token, 401, 'Missing print agent credentials.');
+
+        $agent = PrintAgent::where('agent_code', $agentCode)
+            ->where('is_active', true)
+            ->first();
+
+        abort_if(!$agent, 401, 'Invalid print agent.');
+        abort_if(!Hash::check($token, $agent->token_hash), 401, 'Invalid print token.');
+
+        return $agent;
+    }
+}
+

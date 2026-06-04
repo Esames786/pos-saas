@@ -171,6 +171,42 @@ class SalesService
                 ]
             );
         }
+
+        if ((float) ($sale->service_charge_amount ?? 0) > 0) {
+            SalesLedger::firstOrCreate(
+                [
+                    'sales_order_id' => $sale->id,
+                    'entry_type'     => 'service_charge',
+                ],
+                [
+                    'branch_id'          => $sale->branch_id,
+                    'sale_payment_id'    => null,
+                    'direction'          => 'credit',
+                    'amount'             => $sale->service_charge_amount,
+                    'reference_no'       => $sale->sale_no,
+                    'created_by_user_id' => $sale->created_by_user_id,
+                    'notes'              => 'Service charge',
+                ]
+            );
+        }
+
+        if ((float) ($sale->tip_amount ?? 0) > 0) {
+            SalesLedger::firstOrCreate(
+                [
+                    'sales_order_id' => $sale->id,
+                    'entry_type'     => 'tip',
+                ],
+                [
+                    'branch_id'          => $sale->branch_id,
+                    'sale_payment_id'    => null,
+                    'direction'          => 'credit',
+                    'amount'             => $sale->tip_amount,
+                    'reference_no'       => $sale->sale_no,
+                    'created_by_user_id' => $sale->created_by_user_id,
+                    'notes'              => 'Tip',
+                ]
+            );
+        }
     }
 
     private function closeRestaurantTableSession(SalesOrder $sale): void
