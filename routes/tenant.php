@@ -54,6 +54,11 @@ use App\Http\Controllers\Tenant\ManagerApprovalController;
 use App\Http\Controllers\Tenant\Reports\SalesReportController;
 use App\Http\Controllers\Tenant\Reports\ShiftReportController;
 use App\Http\Controllers\Tenant\Reports\InventoryReportController;
+use App\Http\Controllers\Tenant\Reports\PurchaseReportController;
+use App\Http\Controllers\Tenant\Reports\RestaurantReportController;
+use App\Http\Controllers\Tenant\Reports\KitchenReportController;
+use App\Http\Controllers\Tenant\Reports\AuditReportController;
+use App\Http\Controllers\Tenant\Reports\PrintReportController;
 use Illuminate\Support\Facades\Route;
 
 Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
@@ -430,6 +435,23 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/reports/sales/payments', [SalesReportController::class, 'payments'])->name('tenant.reports.sales.payments');
                 Route::get('/reports/shifts',         [ShiftReportController::class, 'index'])->name('tenant.reports.shifts');
                 Route::get('/reports/inventory/valuation', [InventoryReportController::class, 'valuation'])->name('tenant.reports.inventory.valuation');
+
+                // Reports — Phase 2
+                Route::get('/reports/daily-closings', [ShiftReportController::class, 'dailyClosings'])->name('tenant.reports.daily-closings');
+                Route::get('/reports/inventory/movements', [InventoryReportController::class, 'movements'])->name('tenant.reports.inventory.movements');
+                Route::get('/reports/inventory/low-stock', [InventoryReportController::class, 'lowStock'])->name('tenant.reports.inventory.low-stock');
+                Route::get('/reports/inventory/expiry', [InventoryReportController::class, 'expiry'])->name('tenant.reports.inventory.expiry');
+                Route::get('/reports/purchases/summary', [PurchaseReportController::class, 'summary'])->name('tenant.reports.purchases.summary');
+                Route::get('/reports/purchases/suppliers', [PurchaseReportController::class, 'suppliers'])->name('tenant.reports.purchases.suppliers');
+                Route::get('/reports/purchases/payables', [PurchaseReportController::class, 'payables'])->name('tenant.reports.purchases.payables');
+                Route::get('/reports/restaurant/tables', [RestaurantReportController::class, 'tables'])->name('tenant.reports.restaurant.tables');
+                Route::get('/reports/restaurant/waiters', [RestaurantReportController::class, 'waiters'])->name('tenant.reports.restaurant.waiters');
+                Route::get('/reports/restaurant/order-types', [RestaurantReportController::class, 'orderTypes'])->name('tenant.reports.restaurant.order-types');
+                Route::get('/reports/kitchen/recipe-consumption', [KitchenReportController::class, 'recipeConsumption'])->name('tenant.reports.kitchen.recipe-consumption');
+                Route::get('/reports/kitchen/wastage', [KitchenReportController::class, 'wastage'])->name('tenant.reports.kitchen.wastage');
+                Route::get('/reports/kitchen/production', [KitchenReportController::class, 'production'])->name('tenant.reports.kitchen.production');
+                Route::get('/reports/audit/manager-approvals', [AuditReportController::class, 'managerApprovals'])->name('tenant.reports.audit.manager-approvals');
+                Route::get('/reports/printing/jobs', [PrintReportController::class, 'jobs'])->name('tenant.reports.printing.jobs');
             });
         });
 

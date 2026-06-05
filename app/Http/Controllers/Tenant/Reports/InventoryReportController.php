@@ -30,6 +30,47 @@ class InventoryReportController extends Controller
         return view('tenant.reports.inventory.valuation', compact('rows', 'totals', 'filters', 'branches'));
     }
 
+    public function movements(Request $request)
+    {
+        $filters = [
+            'branch_id'     => $request->input('branch_id'),
+            'product_id'    => $request->input('product_id'),
+            'movement_type' => $request->input('movement_type'),
+            'date_from'     => $request->input('date_from', today()->format('Y-m-d')),
+            'date_to'       => $request->input('date_to',   today()->format('Y-m-d')),
+        ];
+
+        $rows     = $this->service->movements($filters);
+        $branches = Branch::where('status', 'active')->orderBy('name')->get();
+        $movementTypes = ['purchase_receive', 'sale', 'sale_return', 'adjustment',
+                          'transfer_in', 'transfer_out', 'recipe_consumption',
+                          'production_in', 'production_out', 'wastage'];
+
+        return view('tenant.reports.inventory.movements', compact('rows', 'filters', 'branches', 'movementTypes'));
+    }
+
+    public function lowStock(Request $request)
+    {
+        $filters  = ['branch_id' => $request->input('branch_id')];
+        $products = $this->service->lowStock($filters);
+        $branches = Branch::where('status', 'active')->orderBy('name')->get();
+
+        return view('tenant.reports.inventory.low-stock', compact('products', 'filters', 'branches'));
+    }
+
+    public function expiry(Request $request)
+    {
+        $filters = [
+            'branch_id' => $request->input('branch_id'),
+            'days'      => $request->input('days', 30),
+        ];
+
+        $batches  = $this->service->expiry($filters);
+        $branches = Branch::where('status', 'active')->orderBy('name')->get();
+
+        return view('tenant.reports.inventory.expiry', compact('batches', 'filters', 'branches'));
+    }
+
     private function csvValuation($rows): StreamedResponse
     {
         return response()->streamDownload(function () use ($rows) {

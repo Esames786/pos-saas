@@ -512,6 +512,23 @@ class TenantProvisioner
             'tenant.reports.sales.payments',
             'tenant.reports.shifts',
             'tenant.reports.inventory.valuation',
+
+            // Reports — Phase 2
+            'tenant.reports.daily-closings',
+            'tenant.reports.inventory.movements',
+            'tenant.reports.inventory.low-stock',
+            'tenant.reports.inventory.expiry',
+            'tenant.reports.purchases.summary',
+            'tenant.reports.purchases.suppliers',
+            'tenant.reports.purchases.payables',
+            'tenant.reports.restaurant.tables',
+            'tenant.reports.restaurant.waiters',
+            'tenant.reports.restaurant.order-types',
+            'tenant.reports.kitchen.recipe-consumption',
+            'tenant.reports.kitchen.wastage',
+            'tenant.reports.kitchen.production',
+            'tenant.reports.audit.manager-approvals',
+            'tenant.reports.printing.jobs',
         ];
 
         \App\Models\Tenant\Customer::updateOrCreate(
