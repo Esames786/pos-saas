@@ -1,0 +1,7 @@
+@extends('layouts.tenant')
+@section('title', 'Recipe Consumption Report')
+@section('content')
+<div class="page-wrapper"><div class="content"><div class="page-header"><div class="page-title"><h4>Recipe Consumption</h4></div></div>
+@include('tenant.reports.partials.filters', ['showTerminal' => false, 'showOrderType' => false, 'showCsvExport' => false])
+<div class="card border-0 shadow-sm"><div class="card-body p-0"><table class="table table-sm mb-0"><caption class="visually-hidden">Recipe ingredient consumption</caption><thead class="table-light"><tr><th scope="col">Date</th><th scope="col">Sale No</th><th scope="col">Finished Product</th><th scope="col">Ingredient</th><th scope="col" class="text-end">Qty</th><th scope="col">Unit</th><th scope="col">Branch</th></tr></thead><tbody>@forelse($rows as $rc)<tr><td>{{ $rc->consumed_at->format('d/m H:i') }}</td><td><code class="small">{{ $rc->salesOrder?->sale_no ?? '—' }}</code></td><td>{{ $rc->recipe?->product?->name ?? '—' }}</td><td>{{ $rc->product?->name ?? '—' }}</td><td class="text-end">{{ number_format($rc->quantity_consumed, 3) }}</td><td class="text-muted small">{{ $rc->unit?->name ?? '—' }}</td><td class="text-muted small">{{ $rc->salesOrder?->branch?->name ?? '—' }}</td></tr>@empty<tr><td colspan="7" class="text-center text-muted py-4">No consumption data.</td></tr>@endforelse</tbody></table></div><div class="p-3">{{ $rows->links() }}</div></div></div></div>
+@endsection

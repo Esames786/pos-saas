@@ -1,0 +1,7 @@
+@extends('layouts.tenant')
+@section('title', 'Kitchen Wastage Report')
+@section('content')
+<div class="page-wrapper"><div class="content"><div class="page-header"><div class="page-title"><h4>Kitchen Wastage</h4></div></div>
+@include('tenant.reports.partials.filters', ['showTerminal' => false, 'showOrderType' => false, 'showCsvExport' => false])
+<div class="card border-0 shadow-sm"><div class="card-body p-0"><table class="table table-sm mb-0"><caption class="visually-hidden">Kitchen wastage log</caption><thead class="table-light"><tr><th scope="col">Date</th><th scope="col">Branch</th><th scope="col">Product</th><th scope="col">Variant</th><th scope="col" class="text-end">Qty</th><th scope="col">Unit</th><th scope="col">Reason</th><th scope="col">Recorded By</th></tr></thead><tbody>@forelse($rows as $w)<tr><td>{{ $w->wastage_date->format('d/m/Y') }}</td><td>{{ $w->branch?->name }}</td><td>{{ $w->product?->name }}</td><td class="text-muted small">{{ $w->variant?->name ?? '—' }}</td><td class="text-end">{{ number_format($w->quantity, 3) }}</td><td class="text-muted small">{{ $w->unit?->name ?? '—' }}</td><td class="text-muted small">{{ $w->reason ?? '—' }}</td><td class="text-muted small">{{ $w->recordedBy?->name ?? '—' }}</td></tr>@empty<tr><td colspan="8" class="text-center text-muted py-4">No wastage recorded.</td></tr>@endforelse</tbody></table></div><div class="p-3">{{ $rows->links() }}</div></div></div></div>
+@endsection

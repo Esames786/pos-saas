@@ -507,7 +507,7 @@
                     @endcanany
 
                     {{-- Reports section --}}
-                    @canany(['tenant.reports.sales.summary', 'tenant.reports.shifts', 'tenant.reports.inventory.valuation'])
+                    @canany(['tenant.reports.sales.summary', 'tenant.reports.shifts', 'tenant.reports.inventory.valuation', 'tenant.reports.purchases.payables', 'tenant.reports.restaurant.tables', 'tenant.reports.kitchen.recipe-consumption', 'tenant.reports.audit.manager-approvals', 'tenant.reports.printing.jobs'])
                     <li class="submenu-open">
                         <h6 class="submenu-hdr">Reports</h6>
                         <ul>
@@ -523,7 +523,7 @@
                                 <li class="{{ request()->is('reports/shifts*') ? 'active' : '' }}">
                                     <a href="{{ url('/reports/shifts') }}">
                                         <i class="ti ti-clock-dollar fs-16 me-2" aria-hidden="true"></i>
-                                        <span>Shift Report</span>
+                                        <span>Shift Reports</span>
                                     </a>
                                 </li>
                             @endcan
@@ -531,7 +531,47 @@
                                 <li class="{{ request()->is('reports/inventory*') ? 'active' : '' }}">
                                     <a href="{{ url('/reports/inventory/valuation') }}">
                                         <i class="ti ti-box fs-16 me-2" aria-hidden="true"></i>
-                                        <span>Stock Valuation</span>
+                                        <span>Inventory Reports</span>
+                                    </a>
+                                </li>
+                            @endcan
+                            @can('tenant.reports.purchases.payables')
+                                <li class="{{ request()->is('reports/purchases*') ? 'active' : '' }}">
+                                    <a href="{{ url('/reports/purchases/payables') }}">
+                                        <i class="ti ti-file-invoice fs-16 me-2" aria-hidden="true"></i>
+                                        <span>Purchase Reports</span>
+                                    </a>
+                                </li>
+                            @endcan
+                            @can('tenant.reports.restaurant.tables')
+                                <li class="{{ request()->is('reports/restaurant*') ? 'active' : '' }}">
+                                    <a href="{{ url('/reports/restaurant/tables') }}">
+                                        <i class="ti ti-utensils fs-16 me-2" aria-hidden="true"></i>
+                                        <span>Restaurant Reports</span>
+                                    </a>
+                                </li>
+                            @endcan
+                            @can('tenant.reports.kitchen.recipe-consumption')
+                                <li class="{{ request()->is('reports/kitchen*') ? 'active' : '' }}">
+                                    <a href="{{ url('/reports/kitchen/recipe-consumption') }}">
+                                        <i class="ti ti-pot fs-16 me-2" aria-hidden="true"></i>
+                                        <span>Kitchen Reports</span>
+                                    </a>
+                                </li>
+                            @endcan
+                            @can('tenant.reports.audit.manager-approvals')
+                                <li class="{{ request()->is('reports/audit*') ? 'active' : '' }}">
+                                    <a href="{{ url('/reports/audit/manager-approvals') }}">
+                                        <i class="ti ti-shield-check fs-16 me-2" aria-hidden="true"></i>
+                                        <span>Audit Reports</span>
+                                    </a>
+                                </li>
+                            @endcan
+                            @can('tenant.reports.printing.jobs')
+                                <li class="{{ request()->is('reports/printing*') ? 'active' : '' }}">
+                                    <a href="{{ url('/reports/printing/jobs') }}">
+                                        <i class="ti ti-printer fs-16 me-2" aria-hidden="true"></i>
+                                        <span>Print Reports</span>
                                     </a>
                                 </li>
                             @endcan
