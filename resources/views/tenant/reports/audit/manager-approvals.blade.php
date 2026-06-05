@@ -1,8 +1,85 @@
 @extends('layouts.app')
 @section('title', 'Manager Approvals Audit')
 @section('content')
-<div class="page-wrapper"><div class="content"><div class="page-header"><div class="page-title"><h4>Manager Approvals</h4><h6>Approval audit trail</h6></div><div class="page-btn"><form method="GET" class="d-flex gap-2"><button type="submit" name="export_csv" value="1" class="btn btn-outline-success btn-sm"><i class="ti ti-download me-1"></i>CSV</button></form></div></div>
-@php $statuses = ['manual_discount' => 'warning', 'void_item' => 'danger', 'refund' => 'info', 'override' => 'secondary']; @endphp
-<div class="card border-0 shadow-sm mb-3"><div class="card-body py-2"><form method="GET" class="row g-2 align-items-end"><div class="col-md-2"><input type="date" name="date_from" class="form-control form-control-sm" value="{{ request('date_from', today()->subDays(29)->format('Y-m-d')) }}"></div><div class="col-md-2"><input type="date" name="date_to" class="form-control form-control-sm" value="{{ request('date_to', today()->format('Y-m-d')) }}"></div><div class="col-md-2"><select name="action_type" class="form-select form-select-sm"><option value="">All Types</option>@foreach($actionTypes as $at)<option value="{{ $at }}" {{ request('action_type') == $at ? 'selected' : '' }}>{{ ucfirst(str_replace('_', ' ', $at)) }}</option>@endforeach</select></div><div class="col-md-auto"><button type="submit" class="btn btn-primary btn-sm">Apply</button></div></form></div></div>
-<div class="card border-0 shadow-sm"><div class="card-body p-0"><table class="table table-sm mb-0"><caption class="visually-hidden">Manager approvals</caption><thead class="table-light"><tr><th scope="col">No</th><th scope="col">Type</th><th scope="col">Requested By</th><th scope="col">Approved By</th><th scope="col" class="text-end">Amount</th><th scope="col">Reason</th><th scope="col">Approved At</th></tr></thead><tbody>@forelse($approvals as $a)<tr><td><code class="small">{{ $a->approval_no }}</code></td><td><span class="badge bg-{{ $statuses[$a->action_type] ?? 'secondary' }}">{{ ucfirst(str_replace('_', ' ', $a->action_type)) }}</span></td><td>{{ $a->requestedBy?->name ?? '—' }}</td><td>{{ $a->approvedBy?->name ?? '—' }}</td><td class="text-end">{{ number_format($a->amount ?? 0, 2) }}</td><td class="text-muted small">{{ $a->reason ?? '—' }}</td><td>{{ $a->approved_at?->format('d/m H:i') ?? '—' }}</td></tr>@empty<tr><td colspan="7" class="text-center text-muted py-4">No approvals.</td></tr>@endforelse</tbody></table></div><div class="p-3">{{ $approvals->links() }}</div></div></div></div>
+@php $badgeMap = ['manual_discount' => 'warning', 'void_item' => 'danger', 'refund' => 'info', 'override' => 'secondary']; @endphp
+<div class="page-header">
+    <div class="page-title">
+        <h4>Manager Approvals</h4>
+        <h6>Approval audit trail</h6>
+    </div>
+    <div class="page-btn">
+        <form method="GET">
+            <button type="submit" name="export_csv" value="1" class="btn btn-outline-success btn-sm">
+                <i class="ti ti-download me-1"></i>CSV
+            </button>
+        </form>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-2">
+        <form method="GET" class="row g-2 align-items-end">
+            <div class="col-md-2">
+                <label class="form-label small mb-1">From</label>
+                <input type="date" name="date_from" class="form-control form-control-sm"
+                    value="{{ request('date_from', today()->subDays(29)->format('Y-m-d')) }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small mb-1">To</label>
+                <input type="date" name="date_to" class="form-control form-control-sm"
+                    value="{{ request('date_to', today()->format('Y-m-d')) }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small mb-1">Action Type</label>
+                <select name="action_type" class="form-select form-select-sm">
+                    <option value="">All Types</option>
+                    @foreach($actionTypes as $at)
+                    <option value="{{ $at }}" {{ request('action_type') == $at ? 'selected' : '' }}>
+                        {{ ucfirst(str_replace('_', ' ', $at)) }}
+                    </option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="col-md-auto">
+                <button type="submit" class="btn btn-primary btn-sm">Apply</button>
+                <a href="{{ url('/reports/audit/manager-approvals') }}" class="btn btn-outline-secondary btn-sm ms-1">Reset</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+            <caption class="visually-hidden">Manager approvals audit</caption>
+            <thead class="table-light">
+                <tr>
+                    <th scope="col">No</th>
+                    <th scope="col">Type</th>
+                    <th scope="col">Requested By</th>
+                    <th scope="col">Approved By</th>
+                    <th scope="col" class="text-end">Amount</th>
+                    <th scope="col">Reason</th>
+                    <th scope="col">Approved At</th>
+                </tr>
+            </thead>
+            <tbody>
+                @forelse($approvals as $a)
+                <tr>
+                    <td><code class="small">{{ $a->approval_no }}</code></td>
+                    <td><span class="badge bg-{{ $badgeMap[$a->action_type] ?? 'secondary' }}">{{ ucfirst(str_replace('_', ' ', $a->action_type)) }}</span></td>
+                    <td>{{ $a->requestedBy?->name ?? '—' }}</td>
+                    <td>{{ $a->approvedBy?->name ?? '—' }}</td>
+                    <td class="text-end">{{ number_format($a->amount ?? 0, 2) }}</td>
+                    <td class="text-muted small">{{ $a->reason ?? '—' }}</td>
+                    <td>{{ $a->approved_at?->format('d/m H:i') ?? '—' }}</td>
+                </tr>
+                @empty
+                <tr><td colspan="7" class="text-center text-muted py-4">No approvals found.</td></tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
+    <div class="p-3">{{ $approvals->links() }}</div>
+</div>
 @endsection

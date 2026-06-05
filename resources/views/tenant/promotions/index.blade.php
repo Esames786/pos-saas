@@ -3,8 +3,6 @@
 @section('title', 'Promotions')
 
 @section('content')
-<div class="page-wrapper">
-    <div class="content">
         <div class="page-header">
             <div class="page-title">
                 <h4>Promotions</h4>
@@ -89,6 +87,4 @@
                 <div class="mt-3">{{ $promotions->links() }}</div>
             </div>
         </div>
-    </div>
-</div>
 @endsection

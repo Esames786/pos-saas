@@ -3,8 +3,6 @@
 @section('title', 'Shift Report')
 
 @section('content')
-<div class="page-wrapper">
-    <div class="content">
         <div class="page-header">
             <div class="page-title"><h4>Shift Report</h4><h6>Cash, sales and variance by shift</h6></div>
         </div>
@@ -147,6 +145,4 @@
                 <div class="p-3">{{ $shifts->links() }}</div>
             </div>
         </div>
-    </div>
-</div>
 @endsection

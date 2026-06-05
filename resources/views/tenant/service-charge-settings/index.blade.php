@@ -3,8 +3,6 @@
 @section('title', 'Service Charge Settings')
 
 @section('content')
-<div class="page-wrapper">
-    <div class="content">
         <div class="page-header">
             <div class="page-title">
                 <h4>Service Charge Settings</h4>
@@ -107,6 +105,4 @@
             </div>
         </div>
         @endif
-    </div>
-</div>
 @endsection

@@ -1,9 +1,7 @@
 @extends('layouts.app')
 @section('title', 'Stock Movement Report')
 @section('content')
-<div class="page-wrapper"><div class="content">
 <div class="page-header"><div class="page-title"><h4>Stock Movements</h4><h6>Inventory movement ledger</h6></div></div>
 @include('tenant.reports.partials.filters', ['showOrderType' => false, 'showCsvExport' => false])
 <div class="card border-0 shadow-sm"><div class="card-body p-0"><div class="table-responsive"><table class="table table-hover table-sm mb-0"><caption class="visually-hidden">Stock movements</caption><thead class="table-light"><tr><th scope="col">Date</th><th scope="col">Branch</th><th scope="col">Product</th><th scope="col">Type</th><th scope="col" class="text-end">In</th><th scope="col" class="text-end">Out</th><th scope="col" class="text-end">Balance</th><th scope="col">Reference</th><th scope="col">User</th></tr></thead><tbody>@forelse($rows as $r)<tr><td>{{ $r->created_at->format('d/m H:i') }}</td><td>{{ $r->branch?->name }}</td><td>{{ $r->product?->name }} @if($r->variant)<br><small class="text-muted">{{ $r->variant->name }}</small>@endif</td><td><code class="small">{{ $r->movement_type }}</code></td><td class="text-end">{{ $r->direction === 'in' ? number_format($r->quantity, 3) : '—' }}</td><td class="text-end">{{ $r->direction === 'out' ? number_format($r->quantity, 3) : '—' }}</td><td class="text-end fw-semibold">{{ number_format($r->balance_after, 3) }}</td><td class="small">{{ $r->reference_no ?? '—' }}</td><td class="small">{{ $r->createdBy?->name ?? '—' }}</td></tr>@empty<tr><td colspan="9" class="text-center text-muted py-4">No movements in range.</td></tr>@endforelse</tbody></table></div><div class="p-3">{{ $rows->links() }}</div></div></div>
-</div></div>
 @endsection

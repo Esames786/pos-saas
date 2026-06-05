@@ -3,8 +3,6 @@
 @section('title', 'Sales Summary Report')
 
 @section('content')
-<div class="page-wrapper">
-    <div class="content">
         <div class="page-header">
             <div class="page-title"><h4>Sales Summary</h4><h6>Daily breakdown of sales, discounts and collections</h6></div>
             <div class="page-btn d-flex gap-2">
@@ -122,6 +120,4 @@
                 </div>
             </div>
         </div>
-    </div>
-</div>
 @endsection

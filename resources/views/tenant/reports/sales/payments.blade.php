@@ -3,8 +3,6 @@
 @section('title', 'Payment Method Report')
 
 @section('content')
-<div class="page-wrapper">
-    <div class="content">
         <div class="page-header">
             <div class="page-title"><h4>Payment Methods</h4><h6>Sales collected by payment method</h6></div>
             <div class="page-btn">
@@ -67,6 +65,4 @@
                 </table>
             </div>
         </div>
-    </div>
-</div>
 @endsection

@@ -3,8 +3,6 @@
 @section('title', 'Stock Valuation Report')
 
 @section('content')
-<div class="page-wrapper">
-    <div class="content">
         <div class="page-header">
             <div class="page-title"><h4>Stock Valuation</h4><h6>Current inventory value by product</h6></div>
         </div>
@@ -95,6 +93,4 @@
                 </div>
             </div>
         </div>
-    </div>
-</div>
 @endsection

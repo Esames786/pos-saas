@@ -1,6 +1,47 @@
 @extends('layouts.app')
 @section('title', 'Supplier Payables')
 @section('content')
-<div class="page-wrapper"><div class="content"><div class="page-header"><div class="page-title"><h4>Supplier Payables</h4><h6>Outstanding supplier balances</h6></div><div class="page-btn"><form method="GET" class="d-flex gap-2"><div><button type="submit" name="export_csv" value="1" class="btn btn-outline-success btn-sm"><i class="ti ti-download me-1"></i>CSV</button></div></form></div></div>
-<div class="card border-0 shadow-sm"><div class="card-body p-0"><table class="table table-sm mb-0"><caption class="visually-hidden">Supplier payables</caption><thead class="table-light"><tr><th scope="col">Supplier</th><th scope="col">Phone</th><th scope="col">Email</th><th scope="col" class="text-end">Outstanding</th><th scope="col">Status</th></tr></thead><tbody>@forelse($rows as $s)<tr><td>{{ $s->name }}</td><td class="text-muted small">{{ $s->phone ?? '—' }}</td><td class="text-muted small">{{ $s->email ?? '—' }}</td><td class="text-end fw-semibold text-warning">{{ number_format($s->current_balance, 2) }}</td><td><span class="badge bg-secondary">{{ ucfirst($s->status) }}</span></td></tr>@empty<tr><td colspan="5" class="text-center text-muted py-4">No outstanding payables.</td></tr>@endforelse</tbody></table></div></div></div></div>
+<div class="page-header">
+    <div class="page-title">
+        <h4>Supplier Payables</h4>
+        <h6>Outstanding supplier balances</h6>
+    </div>
+    <div class="page-btn">
+        <form method="GET">
+            <button type="submit" name="export_csv" value="1" class="btn btn-outline-success btn-sm">
+                <i class="ti ti-download me-1"></i>CSV
+            </button>
+        </form>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+            <caption class="visually-hidden">Supplier payables</caption>
+            <thead class="table-light">
+                <tr>
+                    <th scope="col">Supplier</th>
+                    <th scope="col">Phone</th>
+                    <th scope="col">Email</th>
+                    <th scope="col" class="text-end">Outstanding</th>
+                    <th scope="col">Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                @forelse($rows as $s)
+                <tr>
+                    <td>{{ $s->name }}</td>
+                    <td class="text-muted small">{{ $s->phone ?? '—' }}</td>
+                    <td class="text-muted small">{{ $s->email ?? '—' }}</td>
+                    <td class="text-end fw-semibold text-warning">{{ number_format($s->current_balance, 2) }}</td>
+                    <td><span class="badge bg-secondary">{{ ucfirst($s->status) }}</span></td>
+                </tr>
+                @empty
+                <tr><td colspan="5" class="text-center text-muted py-4">No outstanding payables.</td></tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
+</div>
 @endsection

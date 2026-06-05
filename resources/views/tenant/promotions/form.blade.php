@@ -4,8 +4,6 @@
 @section('title', $editing ? 'Edit Promotion' : 'Create Promotion')
 
 @section('content')
-<div class="page-wrapper">
-    <div class="content">
         <div class="page-header">
             <div class="page-title">
                 <h4>{{ $editing ? 'Edit Promotion' : 'New Promotion' }}</h4>
@@ -141,6 +139,4 @@
                 </form>
             </div>
         </div>
-    </div>
-</div>
 @endsection

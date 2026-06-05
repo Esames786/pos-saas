@@ -3,8 +3,6 @@
 @section('title', 'Daily Closing Report')
 
 @section('content')
-<div class="page-wrapper">
-    <div class="content">
         <div class="page-header">
             <div class="page-title"><h4>Daily Closings</h4><h6>Daily closing reconciliation</h6></div>
         </div>
@@ -81,6 +79,4 @@
                 <div class="p-3">{{ $closings->links() }}</div>
             </div>
         </div>
-    </div>
-</div>
 @endsection

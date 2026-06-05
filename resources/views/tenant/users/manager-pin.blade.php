@@ -3,8 +3,6 @@
 @section('title', 'Set Manager PIN — ' . $user->name)
 
 @section('content')
-<div class="page-wrapper">
-    <div class="content">
         <div class="page-header">
             <div class="page-title">
                 <h4>Manager PIN — {{ $user->name }}</h4>
@@ -49,6 +47,4 @@
                 </form>
             </div>
         </div>
-    </div>
-</div>
 @endsection

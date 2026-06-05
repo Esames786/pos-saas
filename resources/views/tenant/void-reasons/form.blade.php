@@ -4,8 +4,6 @@
 @section('title', $editing ? 'Edit Void Reason' : 'Create Void Reason')
 
 @section('content')
-<div class="page-wrapper">
-    <div class="content">
         <div class="page-header">
             <div class="page-title">
                 <h4>{{ $editing ? 'Edit Void Reason' : 'New Void Reason' }}</h4>
@@ -66,6 +64,4 @@
                 </form>
             </div>
         </div>
-    </div>
-</div>
 @endsection

@@ -3,8 +3,6 @@
 @section('title', 'Dashboard')
 
 @section('content')
-<div class="page-wrapper">
-    <div class="content">
 
         {{-- Header --}}
         <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
@@ -226,6 +224,4 @@
             </div>
         </div>
 
-    </div>
-</div>
 @endsection

@@ -3,8 +3,6 @@
 @section('title', 'Sales by Item Report')
 
 @section('content')
-<div class="page-wrapper">
-    <div class="content">
         <div class="page-header">
             <div class="page-title"><h4>Sales by Item</h4><h6>Product-level sales breakdown</h6></div>
             <div class="page-btn">
@@ -71,6 +69,4 @@
                 </div>
             </div>
         </div>
-    </div>
-</div>
 @endsection
