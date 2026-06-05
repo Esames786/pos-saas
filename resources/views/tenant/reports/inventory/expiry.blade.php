@@ -1,4 +1,4 @@
-@extends('layouts.tenant')
+@extends('layouts.app')
 @section('title', 'Expiry Report')
 @section('content')
 <div class="page-wrapper"><div class="content"><div class="page-header"><div class="page-title"><h4>Expiry Alerts</h4><h6>Batches expiring soon</h6></div></div>

@@ -1,4 +1,4 @@
-@extends('layouts.tenant')
+@extends('layouts.app')
 
 @section('title', 'Set Manager PIN — ' . $user->name)
 

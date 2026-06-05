@@ -1,4 +1,4 @@
-@extends('layouts.tenant')
+@extends('layouts.app')
 @section('title', 'Restaurant Table Report')
 @section('content')
 <div class="page-wrapper"><div class="content"><div class="page-header"><div class="page-title"><h4>Table Performance</h4></div></div>

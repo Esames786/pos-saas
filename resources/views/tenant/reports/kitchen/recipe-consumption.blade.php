@@ -1,4 +1,4 @@
-@extends('layouts.tenant')
+@extends('layouts.app')
 @section('title', 'Recipe Consumption Report')
 @section('content')
 <div class="page-wrapper"><div class="content"><div class="page-header"><div class="page-title"><h4>Recipe Consumption</h4></div></div>

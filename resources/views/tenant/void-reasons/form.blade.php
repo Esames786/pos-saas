@@ -1,5 +1,5 @@
 @php $editing = isset($reason); @endphp
-@extends('layouts.tenant')
+@extends('layouts.app')
 
 @section('title', $editing ? 'Edit Void Reason' : 'Create Void Reason')
 

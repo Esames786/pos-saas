@@ -1,4 +1,4 @@
-@extends('layouts.tenant')
+@extends('layouts.app')
 @section('title', 'Manager Approvals Audit')
 @section('content')
 <div class="page-wrapper"><div class="content"><div class="page-header"><div class="page-title"><h4>Manager Approvals</h4><h6>Approval audit trail</h6></div><div class="page-btn"><form method="GET" class="d-flex gap-2"><button type="submit" name="export_csv" value="1" class="btn btn-outline-success btn-sm"><i class="ti ti-download me-1"></i>CSV</button></form></div></div>

@@ -1,5 +1,5 @@
 @php $editing = isset($promotion); @endphp
-@extends('layouts.tenant')
+@extends('layouts.app')
 
 @section('title', $editing ? 'Edit Promotion' : 'Create Promotion')
 
