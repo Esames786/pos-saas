@@ -30,7 +30,7 @@
                     <td>{{ $p->production_date->format('d/m/Y') }}</td>
                     <td>{{ $p->branch?->name }}</td>
                     <td>{{ $p->recipe?->product?->name ?? '—' }}</td>
-                    <td class="text-end">{{ number_format($p->quantity_produced, 2) }}</td>
+                    <td class="text-end">{{ number_format($p->quantity_produced, 3) }}</td>
                     <td><span class="badge bg-secondary">{{ ucfirst(str_replace('_', ' ', $p->status)) }}</span></td>
                     <td class="text-muted small">{{ $p->producedBy?->name ?? '—' }}</td>
                 </tr>

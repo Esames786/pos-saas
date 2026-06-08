@@ -14,6 +14,7 @@ class SalesOrderLine extends Model
         'product_variant_id',
         'product_name',
         'variant_name',
+        'unit_code',
         'quantity',
         'unit_price',
         'unit_cost',

@@ -80,6 +80,7 @@ class POSController extends Controller
 
         $products = Product::with([
                 'category',
+                'unit',
                 'defaultVariant',
                 'variants',
                 'barcodes',
@@ -150,19 +151,25 @@ class POSController extends Controller
             }
 
             return [
-                'id'               => (int) $product->id,
-                'name'             => $product->name,
-                'sku'              => $product->sku,
-                'category_id'      => $product->category_id ? (int) $product->category_id : null,
-                'category_name'    => $product->category?->name,
-                'price'            => (float) ($defaultVariant?->selling_price ?? $product->default_selling_price ?? $product->selling_price ?? 0),
-                'is_stock_tracked' => (bool) $product->is_stock_tracked,
-                'is_taxable'       => (bool) ($product->is_taxable ?? false),
-                'tax_rate_percent' => (float) ($product->tax_rate_percent ?? 0),
-                'barcodes'         => $barcodes,
-                'branch_prices'    => $branchPrices,
-                'variants'         => $variants,
-                'stock_by_branch'  => $stockMap,
+                'id'                => (int) $product->id,
+                'name'              => $product->name,
+                'sku'               => $product->sku,
+                'category_id'       => $product->category_id ? (int) $product->category_id : null,
+                'category_name'     => $product->category?->name,
+                'unit_id'           => $product->unit_id ? (int) $product->unit_id : null,
+                'unit_name'         => $product->unit?->name,
+                'unit_code'         => $product->unit?->code,
+                'unit_type'         => $product->unit?->unit_type ?? 'quantity',
+                'allow_decimal_qty' => $product->unit && $product->unit->unit_type !== 'quantity',
+                'quantity_step'     => $product->unit && $product->unit->unit_type !== 'quantity' ? 0.001 : 1,
+                'price'             => (float) ($defaultVariant?->selling_price ?? $product->default_selling_price ?? $product->selling_price ?? 0),
+                'is_stock_tracked'  => (bool) $product->is_stock_tracked,
+                'is_taxable'        => (bool) ($product->is_taxable ?? false),
+                'tax_rate_percent'  => (float) ($product->tax_rate_percent ?? 0),
+                'barcodes'          => $barcodes,
+                'branch_prices'     => $branchPrices,
+                'variants'          => $variants,
+                'stock_by_branch'   => $stockMap,
             ];
         })->values();
 

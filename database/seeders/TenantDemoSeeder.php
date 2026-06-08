@@ -436,6 +436,8 @@ class TenantDemoSeeder extends Seeder
         $btl  = Unit::where('code', 'BTL')->first();
         $pkt  = Unit::where('code', 'PKT')->first();
         $kg   = Unit::where('code', 'KG')->first();
+        $litre = Unit::where('code', 'L')->first();
+        $mtr  = Unit::where('code', 'MTR')->first();
 
         $cold       = Category::where('code', 'COLD')->first();
         $hot        = Category::where('code', 'HOT')->first();
@@ -500,9 +502,20 @@ class TenantDemoSeeder extends Seeder
             ['sku' => 'PIZZA-C',    'name' => 'Pizza Chicken (M)',     'category' => $fastFood,   'unit' => $pcs, 'buy' => 400,  'sell' => 850,   'is_stock_tracked' => false],
             ['sku' => 'SHAWARMA',   'name' => 'Chicken Shawarma',      'category' => $fastFood,   'unit' => $pcs, 'buy' => 100,  'sell' => 220,   'is_stock_tracked' => false],
             // ── Desserts ─────────────────────────────────────────────────
-            ['sku' => 'GULAB-J',    'name' => 'Gulab Jamun (2 pcs)',   'category' => $dessert,    'unit' => $pcs, 'buy' => 40,   'sell' => 100,   'is_stock_tracked' => false],
-            ['sku' => 'ICECREAM',   'name' => 'Ice Cream (Scoop)',     'category' => $dessert,    'unit' => $pcs, 'buy' => 50,   'sell' => 120,   'is_stock_tracked' => false],
-            ['sku' => 'KHEER',      'name' => 'Kheer (Bowl)',          'category' => $dessert,    'unit' => $pcs, 'buy' => 60,   'sell' => 140,   'is_stock_tracked' => false],
+            ['sku' => 'GULAB-J',    'name' => 'Gulab Jamun (2 pcs)',   'category' => $dessert,    'unit' => $pcs,   'buy' => 40,   'sell' => 100,   'is_stock_tracked' => false],
+            ['sku' => 'ICECREAM',   'name' => 'Ice Cream (Scoop)',     'category' => $dessert,    'unit' => $pcs,   'buy' => 50,   'sell' => 120,   'is_stock_tracked' => false],
+            ['sku' => 'KHEER',      'name' => 'Kheer (Bowl)',          'category' => $dessert,    'unit' => $pcs,   'buy' => 60,   'sell' => 140,   'is_stock_tracked' => false],
+            // ── Measurable / Weighted (mart demo) ────────────────────────
+            ['sku' => 'TOMATO-KG',  'name' => 'Tomatoes',              'category' => $groc,       'unit' => $kg,    'buy' => 60,   'sell' => 120,   'stock' => 20.000],
+            ['sku' => 'POTATO-KG',  'name' => 'Potatoes',              'category' => $groc,       'unit' => $kg,    'buy' => 40,   'sell' => 80,    'stock' => 30.000],
+            ['sku' => 'ONION-KG',   'name' => 'Onions',                'category' => $groc,       'unit' => $kg,    'buy' => 50,   'sell' => 100,   'stock' => 25.000],
+            ['sku' => 'CHICKEN-KG', 'name' => 'Fresh Chicken',         'category' => $groc,       'unit' => $kg,    'buy' => 550,  'sell' => 700,   'stock' => 15.000, 'has_expiry' => true],
+            ['sku' => 'BEEF-KG',    'name' => 'Beef Mince',            'category' => $groc,       'unit' => $kg,    'buy' => 900,  'sell' => 1200,  'stock' => 10.000, 'has_expiry' => true],
+            ['sku' => 'RICE-LOOSE', 'name' => 'Loose Basmati Rice',    'category' => $groc,       'unit' => $kg,    'buy' => 180,  'sell' => 280,   'stock' => 50.000],
+            ['sku' => 'SUGAR-LOSE', 'name' => 'Loose Sugar',           'category' => $groc,       'unit' => $kg,    'buy' => 100,  'sell' => 150,   'stock' => 40.000],
+            ['sku' => 'FLOUR-KG',   'name' => 'Wheat Flour',           'category' => $groc,       'unit' => $kg,    'buy' => 80,   'sell' => 130,   'stock' => 60.000],
+            ['sku' => 'OIL-LOOSE',  'name' => 'Loose Cooking Oil',     'category' => $groc,       'unit' => $litre, 'buy' => 340,  'sell' => 420,   'stock' => 20.000],
+            ['sku' => 'FABRIC-MTR', 'name' => 'Cotton Fabric (White)', 'category' => $groc,       'unit' => $mtr,   'buy' => 250,  'sell' => 450,   'stock' => 50.000],
         ];
 
         $count = 0;
@@ -699,7 +712,18 @@ class TenantDemoSeeder extends Seeder
             'SUGAR-1KG'  => ['qty' => 40,  'cost' => 120],
             'OIL-1L'     => ['qty' => 24,  'cost' => 380],
             'SALT-1KG'   => ['qty' => 30,  'cost' => 60],
-            'CIG-GOLD'   => ['qty' => 50,  'cost' => 270],
+            'CIG-GOLD'   => ['qty' => 50,    'cost' => 270],
+            // Measurable/weighted items
+            'TOMATO-KG'  => ['qty' => 20.000, 'cost' => 60],
+            'POTATO-KG'  => ['qty' => 30.000, 'cost' => 40],
+            'ONION-KG'   => ['qty' => 25.000, 'cost' => 50],
+            'CHICKEN-KG' => ['qty' => 15.000, 'cost' => 550, 'expiry' => now()->addDays(3)->toDateString()],
+            'BEEF-KG'    => ['qty' => 10.000, 'cost' => 900, 'expiry' => now()->addDays(3)->toDateString()],
+            'RICE-LOOSE' => ['qty' => 50.000, 'cost' => 180],
+            'SUGAR-LOSE' => ['qty' => 40.000, 'cost' => 100],
+            'FLOUR-KG'   => ['qty' => 60.000, 'cost' => 80],
+            'OIL-LOOSE'  => ['qty' => 20.000, 'cost' => 340],
+            'FABRIC-MTR' => ['qty' => 50.000, 'cost' => 250],
         ];
 
         $cityQtys = [

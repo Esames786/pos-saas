@@ -1,3 +1,259 @@
+
+===== FILE: app/Http/Controllers/Tenant/POSController.php =====
+<?php
+
+namespace App\Http\Controllers\Tenant;
+
+use App\Http\Controllers\Controller;
+use App\Models\Tenant\Branch;
+use App\Models\Tenant\Category;
+use App\Models\Tenant\Customer;
+use App\Models\Tenant\PaymentMethod;
+use App\Models\Tenant\Product;
+use App\Models\Tenant\RestaurantFloor;
+use App\Models\Tenant\RestaurantTableSession;
+use App\Models\Tenant\RestaurantWaiter;
+use App\Models\Tenant\SalesOrder;
+use App\Models\Tenant\StockBalance;
+use App\Models\Tenant\Terminal;
+use App\Models\Tenant\TerminalPrinterSetting;
+use App\Services\Sales\SalesTotalsService;
+use Illuminate\Http\Request;
+
+class POSController extends Controller
+{
+    public function index(Request $request)
+    {
+        $branches = Branch::where('status', 'active')->orderBy('name')->get();
+
+        $selectedBranchId = (int) (
+            $request->branch_id
+            ?: optional($branches->first())->id
+        );
+
+        $heldSale = null;
+
+        if ($request->filled('held_sale_id')) {
+            $heldSale = SalesOrder::with([
+                    'lines',
+                    'customer',
+                    'restaurantTableSession.table.floor',
+                    'restaurantTableSession.waiter',
+                    'restaurantTable',
+                    'restaurantWaiter',
+                ])
+                ->where('status', 'held')
+                ->find($request->held_sale_id);
+        }
+
+        $tableSession = null;
+
+        if ($request->filled('table_session_id')) {
+            $tableSession = RestaurantTableSession::with(['table.floor', 'waiter'])
+                ->whereIn('status', ['open', 'bill_requested'])
+                ->find($request->table_session_id);
+        }
+
+        if (!$tableSession && $heldSale?->restaurant_table_session_id) {
+            $tableSession = RestaurantTableSession::with(['table.floor', 'waiter'])
+                ->whereIn('status', ['open', 'bill_requested'])
+                ->find($heldSale->restaurant_table_session_id);
+        }
+
+        $floors = RestaurantFloor::with([
+                'tables.openSession.waiter',
+                'tables.openSession.salesOrders' => function ($query) {
+                    $query->whereIn('status', ['held', 'paid']);
+                },
+            ])
+            ->where('branch_id', $selectedBranchId)
+            ->where('status', 'active')
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get();
+
+        $waiters = RestaurantWaiter::where(function ($query) use ($selectedBranchId) {
+                $query->whereNull('branch_id')
+                    ->orWhere('branch_id', $selectedBranchId);
+            })
+            ->where('status', 'active')
+            ->orderBy('name')
+            ->get();
+
+        $products = Product::with([
+                'category',
+                'defaultVariant',
+                'variants',
+                'barcodes',
+                'branchPrices',
+            ])
+            ->where('status', 'active')
+            ->where('is_sellable', true)
+            ->orderBy('name')
+            ->get();
+
+        $stockByProduct = StockBalance::query()
+            ->selectRaw('branch_id, product_id, product_variant_id, SUM(quantity_on_hand) as qty')
+            ->groupBy('branch_id', 'product_id', 'product_variant_id')
+            ->get()
+            ->groupBy(fn ($row) => $row->branch_id . ':' . $row->product_id . ':' . ($row->product_variant_id ?: 0));
+
+        $productsPayload = $products->map(function ($product) use ($stockByProduct) {
+            $defaultVariant = $product->defaultVariant ?: $product->variants->first();
+
+            $barcodes = $product->barcodes
+                ? $product->barcodes->pluck('barcode')->filter()->values()
+                : collect();
+
+            $branchPrices = $product->branchPrices
+                ? $product->branchPrices->map(function ($price) {
+                    return [
+                        'branch_id'          => (int) $price->branch_id,
+                        'product_variant_id' => $price->product_variant_id ? (int) $price->product_variant_id : null,
+                        'selling_price'      => (float) $price->selling_price,
+                    ];
+                })->values()
+                : collect();
+
+            $variants = $product->variants->map(function ($variant) use ($product, $stockByProduct) {
+                $stockMap = [];
+
+                foreach ($stockByProduct as $rows) {
+                    foreach ($rows as $row) {
+                        if (
+                            (int) $row->product_id === (int) $product->id
+                            && (int) ($row->product_variant_id ?: 0) === (int) $variant->id
+                        ) {
+                            $stockMap[(int) $row->branch_id] = (float) $row->qty;
+                        }
+                    }
+                }
+
+                return [
+                    'id'             => (int) $variant->id,
+                    'name'           => $variant->name,
+                    'sku'            => $variant->sku,
+                    'selling_price'  => (float) ($variant->selling_price ?? $product->default_selling_price ?? $product->selling_price ?? 0),
+                    'stock_by_branch' => $stockMap,
+                ];
+            })->values();
+
+            $stockMap = [];
+
+            foreach ($stockByProduct as $rows) {
+                foreach ($rows as $row) {
+                    if (
+                        (int) $row->product_id === (int) $product->id
+                        && (int) ($row->product_variant_id ?: 0) === 0
+                    ) {
+                        $stockMap[(int) $row->branch_id] = (float) $row->qty;
+                    }
+                }
+            }
+
+            return [
+                'id'               => (int) $product->id,
+                'name'             => $product->name,
+                'sku'              => $product->sku,
+                'category_id'      => $product->category_id ? (int) $product->category_id : null,
+                'category_name'    => $product->category?->name,
+                'price'            => (float) ($defaultVariant?->selling_price ?? $product->default_selling_price ?? $product->selling_price ?? 0),
+                'is_stock_tracked' => (bool) $product->is_stock_tracked,
+                'is_taxable'       => (bool) ($product->is_taxable ?? false),
+                'tax_rate_percent' => (float) ($product->tax_rate_percent ?? 0),
+                'barcodes'         => $barcodes,
+                'branch_prices'    => $branchPrices,
+                'variants'         => $variants,
+                'stock_by_branch'  => $stockMap,
+            ];
+        })->values();
+
+        return view('tenant.pos.index', [
+            'branches'         => $branches,
+            'selectedBranchId' => $selectedBranchId,
+            'terminals'        => Terminal::where('status', 'active')->with('branch')->orderBy('name')->get(),
+            'customers'        => Customer::where('status', 'active')->orderBy('name')->get(),
+            'categories'       => Category::with('children')
+                ->whereNull('parent_id')
+                ->where('is_active', true)
+                ->orderBy('sort_order')
+                ->orderBy('name')
+                ->get(),
+            'productsPayload'  => $productsPayload,
+            'paymentMethods'   => PaymentMethod::where('is_active', true)
+                ->orderByRaw("CASE WHEN method_type = 'cash' THEN 0 ELSE 1 END")
+                ->orderBy('name')
+                ->get(),
+            'floors'              => $floors,
+            'waiters'             => $waiters,
+            'tableSession'        => $tableSession,
+            'heldSale'            => $heldSale,
+            'terminalPrintConfig' => TerminalPrinterSetting::all()
+                ->keyBy('terminal_id')
+                ->map(fn ($s) => [
+                    'auto_print_receipt' => (bool) $s->auto_print_receipt,
+                    'auto_print_kot'     => (bool) $s->auto_print_kot,
+                ]),
+            'activeMode'       => $tableSession || $heldSale?->restaurant_table_session_id
+                ? 'dine_in'
+                : ($request->input('mode', 'quick_sale')),
+        ]);
+    }
+
+    public function quoteTotals(Request $request, SalesTotalsService $totalsService)
+    {
+        $data = $request->validate([
+            'branch_id'               => ['required', 'exists:branches,id'],
+            'order_type'              => ['required', 'in:quick_sale,takeaway,dine_in,delivery'],
+            'discount_type'           => ['nullable', 'in:none,fixed,percent'],
+            'discount_value'          => ['nullable', 'numeric', 'min:0'],
+            'promo_code'              => ['nullable', 'string', 'max:50'],
+            'tip_amount'              => ['nullable', 'numeric', 'min:0'],
+            'lines'                   => ['nullable', 'array'],
+            'lines.*.quantity'        => ['nullable', 'numeric', 'min:0'],
+            'lines.*.unit_price'      => ['nullable', 'numeric', 'min:0'],
+            'lines.*.discount_amount' => ['nullable', 'numeric', 'min:0'],
+            'lines.*.tax_amount'      => ['nullable', 'numeric', 'min:0'],
+        ]);
+
+        $resolvedLines = collect($data['lines'] ?? [])
+            ->filter(fn ($line) => (float) ($line['quantity'] ?? 0) > 0)
+            ->map(fn ($line) => [
+                'quantity'        => (float) ($line['quantity'] ?? 0),
+                'unit_price'      => (float) ($line['unit_price'] ?? 0),
+                'discount_amount' => (float) ($line['discount_amount'] ?? 0),
+                'tax_amount'      => (float) ($line['tax_amount'] ?? 0),
+            ])
+            ->values()
+            ->toArray();
+
+        $totals = $totalsService->calculate(
+            resolvedLines: $resolvedLines,
+            discountType:  $data['discount_type'] ?? 'none',
+            discountValue: (float) ($data['discount_value'] ?? 0),
+            branchId:      (int) $data['branch_id'],
+            orderType:     $data['order_type'],
+            promoCode:     $data['promo_code'] ?? null,
+            tipAmount:     (float) ($data['tip_amount'] ?? 0),
+        );
+
+        return response()->json([
+            'ok'                         => true,
+            'subtotal'                   => $totals['subtotal'],
+            'discount_amount'            => $totals['discount_amount'],
+            'promotion_id'               => $totals['promotion_id'],
+            'promo_code'                 => $totals['promo_code'],
+            'promotion_discount_amount'  => $totals['promotion_discount_amount'],
+            'tax_amount'                 => $totals['tax_amount'],
+            'service_charge_amount'      => $totals['service_charge_amount'],
+            'tip_amount'                 => $totals['tip_amount'],
+            'grand_total'                => $totals['grand_total'],
+        ]);
+    }
+}
+
+
+===== FILE: resources/views/tenant/pos/index.blade.php =====
 @extends('layouts.app')
 
 @section('title', 'Restaurant POS')
@@ -802,43 +1058,6 @@
     </div>
 </div>
 
-{{-- Quantity Entry Modal (measurable/weighted items) --}}
-<div class="modal fade" id="qtyEntryModal" tabindex="-1" aria-labelledby="qtyEntryModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-sm modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2 class="modal-title h5" id="qtyEntryModalLabel">Enter Quantity</h2>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <div class="alert alert-light border small mb-3 py-2">
-                    <strong id="qty-modal-product-name"></strong>
-                    <div class="text-muted" id="qty-modal-price-hint"></div>
-                </div>
-                <div class="mb-3">
-                    <label for="qty-modal-input" class="form-label">
-                        Quantity <span id="qty-modal-unit" class="text-muted fw-normal"></span>
-                    </label>
-                    <input type="number" id="qty-modal-input"
-                           class="form-control form-control-lg text-end"
-                           step="0.001" min="0.001" placeholder="0.000">
-                </div>
-                <div class="mb-0">
-                    <label for="qty-modal-amount-input" class="form-label small text-muted">Or enter amount</label>
-                    <input type="number" id="qty-modal-amount-input"
-                           class="form-control text-end"
-                           step="0.01" min="0" placeholder="Amount (Rs)">
-                    <div class="form-text">Amount ÷ price/unit = quantity</div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-light" type="button" data-bs-dismiss="modal">Cancel</button>
-                <button class="btn btn-primary" type="button" id="qty-modal-confirm">Add to Cart</button>
-            </div>
-        </div>
-    </div>
-</div>
-
 @php
     $heldSaleJson = $heldSale ? [
         'id'      => $heldSale->id,
@@ -853,7 +1072,6 @@
             'tax_amount'         => (float) $l->tax_amount,
             'kot_sent'           => (bool) $l->kot_sent,
             'product_name'       => $l->product_name,
-            'unit_code'          => $l->unit_code,
         ])->values()->toArray(),
     ] : null;
 @endphp
@@ -911,24 +1129,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function money(value) {
         return Number(value || 0).toFixed(2);
-    }
-
-    function isMeasurableProduct(product) {
-        return !!(product && (product.allow_decimal_qty || ['weight', 'volume', 'length'].indexOf(product.unit_type) !== -1));
-    }
-
-    function qtyStep(product) {
-        return isMeasurableProduct(product) ? 0.001 : 1;
-    }
-
-    function formatQty(qty, product) {
-        return isMeasurableProduct(product)
-            ? Number(qty || 0).toFixed(3)
-            : String(Math.round(Number(qty || 0)));
-    }
-
-    function lineUnitLabel(item) {
-        return item.unit_code || (item.product && item.product.unit_code) || '';
     }
 
     function selectedBranchId() {
@@ -1025,98 +1225,27 @@ document.addEventListener('DOMContentLoaded', function () {
 
     /* cart */
 
-    var _qtyModal = null;
-    var _qtyModalProduct = null;
-    var _qtyModalVariant = null;
+    function addToCart(product, variant) {
+        const key      = product.id + ':' + (variant ? variant.id : 0);
+        const existing = cart.find(function (item) { return item.key === key; });
+        const qty      = availableQty(product, variant);
 
-    function openQtyModal(product, variant) {
-        _qtyModalProduct = product;
-        _qtyModalVariant = variant || null;
-
-        var price = productPrice(product, variant);
-        var unit  = product.unit_code || 'unit';
-
-        document.getElementById('qty-modal-product-name').textContent = product.name;
-        document.getElementById('qty-modal-unit').textContent = unit ? '(' + unit + ')' : '';
-        document.getElementById('qty-modal-price-hint').textContent = money(price) + ' per ' + unit;
-
-        var qtyInput    = document.getElementById('qty-modal-input');
-        var amountInput = document.getElementById('qty-modal-amount-input');
-        qtyInput.step   = product.quantity_step || 0.001;
-        qtyInput.min    = product.quantity_step || 0.001;
-        qtyInput.value  = '';
-        amountInput.value = '';
-
-        if (!_qtyModal) {
-            _qtyModal = new bootstrap.Modal(document.getElementById('qtyEntryModal'));
-        }
-        _qtyModal.show();
-        setTimeout(function () { qtyInput.focus(); }, 250);
-    }
-
-    document.getElementById('qty-modal-amount-input').addEventListener('input', function () {
-        if (!_qtyModalProduct) return;
-        var amount = parseFloat(this.value) || 0;
-        var price  = productPrice(_qtyModalProduct, _qtyModalVariant);
-        if (price > 0 && amount > 0) {
-            document.getElementById('qty-modal-input').value = (amount / price).toFixed(3);
-        }
-    });
-
-    document.getElementById('qty-modal-confirm').addEventListener('click', function () {
-        var qty = parseFloat(document.getElementById('qty-modal-input').value) || 0;
-        if (qty <= 0) { document.getElementById('qty-modal-input').focus(); return; }
-        if (_qtyModal) _qtyModal.hide();
-        addToCart(_qtyModalProduct, _qtyModalVariant, qty);
-    });
-
-    document.getElementById('qty-modal-input').addEventListener('keydown', function (event) {
-        if (event.key === 'Enter') { event.preventDefault(); document.getElementById('qty-modal-confirm').click(); }
-    });
-
-    function addToCart(product, variant, forceQty) {
-        var key       = product.id + ':' + (variant ? variant.id : 0);
-        var existing  = cart.find(function (item) { return item.key === key; });
-        var stockQty  = availableQty(product, variant);
-        var measurable = isMeasurableProduct(product);
-
-        if (stockQty !== null && stockQty <= 0) { alert('This item is out of stock.'); return; }
-
-        if (forceQty === undefined && measurable) {
-            openQtyModal(product, variant);
-            return;
-        }
-
-        var addQty = forceQty !== undefined ? parseFloat(forceQty) : 1;
-        if (!measurable) { addQty = Math.max(Math.round(addQty || 1), 1); }
-        if (!addQty || addQty <= 0) return;
+        if (qty !== null && qty <= 0) { alert('This item is out of stock.'); return; }
 
         if (existing) {
-            var newQty = measurable
-                ? parseFloat((Number(existing.quantity || 0) + addQty).toFixed(3))
-                : Number(existing.quantity || 0) + addQty;
-            if (stockQty !== null && newQty > stockQty + 0.0001) {
-                alert('Insufficient stock. Available: ' + stockQty);
-                return;
-            }
-            existing.quantity = newQty;
+            existing.quantity += 1;
         } else {
-            if (stockQty !== null && addQty > stockQty + 0.0001) {
-                alert('Insufficient stock. Available: ' + stockQty);
-                return;
-            }
-            var price = productPrice(product, variant);
+            const price = productPrice(product, variant);
             cart.push({
                 key:                key,
                 product_id:         product.id,
                 product_variant_id: variant ? variant.id : null,
                 name:               product.name,
                 variant_name:       variant ? variant.name : null,
-                unit_code:          product.unit_code || '',
-                quantity:           measurable ? parseFloat(addQty.toFixed(3)) : addQty,
+                quantity:           1,
                 unit_price:         price,
                 discount_amount:    0,
-                tax_amount:         lineTax(product, addQty, price, 0),
+                tax_amount:         lineTax(product, 1, price, 0),
                 product:            product,
                 variant:            variant || null,
             });
@@ -1143,19 +1272,14 @@ document.addEventListener('DOMContentLoaded', function () {
                 '<div class="d-flex justify-content-between gap-2 mb-2">' +
                     '<div>' +
                         '<div class="fw-bold">' + item.name + '</div>' +
-                        '<div class="small text-muted">' + (item.variant_name || 'Default') + ' &middot; ' + money(item.unit_price) + (lineUnitLabel(item) ? ' / ' + lineUnitLabel(item) : '') + '</div>' +
+                        '<div class="small text-muted">' + (item.variant_name || 'Default') + ' &middot; ' + money(item.unit_price) + '</div>' +
                     '</div>' +
                     '<button type="button" class="btn btn-sm btn-outline-danger" data-remove="' + index + '">&times;</button>' +
                 '</div>' +
                 '<div class="d-flex align-items-center justify-content-between gap-2">' +
                     '<div class="d-flex align-items-center gap-2">' +
                         '<button type="button" class="qty-btn" data-minus="' + index + '">-</button>' +
-                        '<input type="number" class="form-control form-control-sm text-end" style="width:80px" ' +
-                            'data-qty-input="' + index + '" ' +
-                            'step="' + qtyStep(item.product) + '" ' +
-                            'min="' + qtyStep(item.product) + '" ' +
-                            'value="' + formatQty(item.quantity, item.product) + '">' +
-                        (lineUnitLabel(item) ? '<span class="small text-muted">' + lineUnitLabel(item) + '</span>' : '') +
+                        '<strong>' + item.quantity + '</strong>' +
                         '<button type="button" class="qty-btn" data-plus="' + index + '">+</button>' +
                     '</div>' +
                     '<strong>' + money((item.quantity * item.unit_price) - item.discount_amount + item.tax_amount) + '</strong>' +
@@ -1164,49 +1288,14 @@ document.addEventListener('DOMContentLoaded', function () {
             cartItemsEl.appendChild(row);
         });
 
-        cartItemsEl.querySelectorAll('[data-qty-input]').forEach(function (input) {
-            input.addEventListener('change', function () {
-                var i    = Number(input.dataset.qtyInput);
-                var item = cart[i];
-                if (!item) return;
-                var newQty = parseFloat(input.value) || 0;
-                if (!isMeasurableProduct(item.product)) {
-                    newQty = Math.round(newQty);
-                } else {
-                    newQty = parseFloat(newQty.toFixed(3));
-                }
-                if (newQty <= 0.0001) { cart.splice(i, 1); renderCart(); return; }
-                var stockQty = availableQty(item.product, item.variant);
-                if (stockQty !== null && newQty > stockQty + 0.0001) {
-                    alert('Insufficient stock. Available: ' + stockQty);
-                    input.value = formatQty(item.quantity, item.product);
-                    return;
-                }
-                item.quantity = newQty;
-                renderCart();
-            });
-        });
-
         cartItemsEl.querySelectorAll('[data-plus]').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                var i    = Number(btn.dataset.plus);
-                var item = cart[i];
-                var step = qtyStep(item.product);
-                item.quantity = isMeasurableProduct(item.product)
-                    ? parseFloat((Number(item.quantity || 0) + step).toFixed(3))
-                    : Number(item.quantity || 0) + 1;
-                renderCart();
-            });
+            btn.addEventListener('click', function () { cart[Number(btn.dataset.plus)].quantity += 1; renderCart(); });
         });
         cartItemsEl.querySelectorAll('[data-minus]').forEach(function (btn) {
             btn.addEventListener('click', function () {
-                var i    = Number(btn.dataset.minus);
-                var item = cart[i];
-                var step = qtyStep(item.product);
-                item.quantity = isMeasurableProduct(item.product)
-                    ? parseFloat((Number(item.quantity || 0) - step).toFixed(3))
-                    : Number(item.quantity || 0) - 1;
-                if (item.quantity <= 0.0001) { cart.splice(i, 1); }
+                const i = Number(btn.dataset.minus);
+                cart[i].quantity -= 1;
+                if (cart[i].quantity <= 0) cart.splice(i, 1);
                 renderCart();
             });
         });
@@ -2054,7 +2143,6 @@ document.addEventListener('DOMContentLoaded', function () {
                 product_variant_id: variant ? variant.id : null,
                 name:               line.product_name || product.name,
                 variant_name:       line.variant_name || (variant ? variant.name : null),
-                unit_code:          line.unit_code || product.unit_code || '',
                 quantity:           Number(line.quantity || 1),
                 unit_price:         Number(line.unit_price || productPrice(product, variant)),
                 discount_amount:    Number(line.discount_amount || 0),
@@ -2759,7 +2847,6 @@ document.addEventListener('DOMContentLoaded', function () {
                 name:               product.name,
                 product_name:       product.name,
                 variant_name:       variant ? variant.name : null,
-                unit_code:          line.unit_code || product.unit_code || '',
                 quantity:           Number(line.quantity || 1),
                 unit_price:         Number(line.unit_price || productPrice(product, variant)),
                 discount_amount:    Number(line.discount_amount || 0),
@@ -2791,3 +2878,2258 @@ document.addEventListener('DOMContentLoaded', function () {
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
 @endpush
 @endsection
+
+
+===== FILE: app/Models/Tenant/Product.php =====
+<?php
+
+namespace App\Models\Tenant;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Product extends Model
+{
+    protected $connection = 'tenant';
+
+    protected $fillable = [
+        'category_id', 'unit_id', 'sku', 'name', 'slug', 'product_type',
+        'item_kind', 'inventory_consumption_method', 'is_perishable',
+        'storage_type', 'shelf_life_days', 'default_wastage_percent',
+        'is_sellable', 'is_purchasable', 'is_stock_tracked', 'has_variants',
+        'has_expiry', 'requires_batch', 'default_purchase_price',
+        'default_selling_price', 'is_taxable', 'tax_rate_percent',
+        'description', 'image_path', 'status',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'is_perishable'              => 'boolean',
+            'shelf_life_days'            => 'integer',
+            'default_wastage_percent'    => 'decimal:2',
+            'is_sellable'                => 'boolean',
+            'is_purchasable'             => 'boolean',
+            'is_stock_tracked'           => 'boolean',
+            'has_variants'               => 'boolean',
+            'has_expiry'                 => 'boolean',
+            'requires_batch'             => 'boolean',
+            'default_purchase_price'     => 'decimal:2',
+            'default_selling_price'      => 'decimal:2',
+            'is_taxable'                 => 'boolean',
+            'tax_rate_percent'           => 'decimal:4',
+        ];
+    }
+
+    public function category()
+    {
+        return $this->belongsTo(Category::class);
+    }
+
+    public function unit()
+    {
+        return $this->belongsTo(Unit::class);
+    }
+
+    public function translations()
+    {
+        return $this->hasMany(ProductTranslation::class);
+    }
+
+    public function variants()
+    {
+        return $this->hasMany(ProductVariant::class);
+    }
+
+    public function defaultVariant()
+    {
+        return $this->hasOne(ProductVariant::class)->where('is_default', true);
+    }
+
+    public function barcodes()
+    {
+        return $this->hasMany(ProductBarcode::class);
+    }
+
+    public function branchPrices()
+    {
+        return $this->hasMany(ProductBranchPrice::class);
+    }
+
+    public function stockBalances()
+    {
+        return $this->hasMany(StockBalance::class);
+    }
+
+    public function stockLedgers()
+    {
+        return $this->hasMany(StockLedger::class);
+    }
+
+    public function inventoryBatches()
+    {
+        return $this->hasMany(InventoryBatch::class);
+    }
+
+    public function salesOrderLines()
+    {
+        return $this->hasMany(SalesOrderLine::class);
+    }
+
+    public function recipes()
+    {
+        return $this->hasMany(Recipe::class);
+    }
+
+    public function activeRecipe()
+    {
+        return $this->hasOne(Recipe::class)->where('is_active', true)->latest();
+    }
+
+    public function recipeIngredientUses()
+    {
+        return $this->hasMany(RecipeIngredient::class);
+    }
+
+    public function isRecipeBased(): bool
+    {
+        return $this->inventory_consumption_method === 'recipe';
+    }
+
+    public function isStockItem(): bool
+    {
+        return $this->inventory_consumption_method === 'stock_item';
+    }
+}
+
+
+===== FILE: app/Models/Tenant/Unit.php =====
+<?php
+
+namespace App\Models\Tenant;
+
+use Illuminate\Database\Eloquent\Model;
+
+class Unit extends Model
+{
+    protected $connection = 'tenant';
+
+    protected $fillable = ['code', 'name', 'unit_type', 'base_factor', 'is_base', 'is_active'];
+
+    protected function casts(): array
+    {
+        return [
+            'base_factor' => 'decimal:6',
+            'is_base'     => 'boolean',
+            'is_active'   => 'boolean',
+        ];
+    }
+
+    public function products()
+    {
+        return $this->hasMany(Product::class);
+    }
+}
+
+
+===== FILE: database/migrations/tenant/0001_01_01_000005_create_catalog_tables.php =====
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::connection('tenant')->create('units', function (Blueprint $table) {
+            $table->id();
+            $table->string('code', 50)->unique();
+            $table->string('name');
+            $table->enum('unit_type', ['quantity', 'weight', 'volume', 'length'])->default('quantity');
+            $table->decimal('base_factor', 14, 6)->default(1);
+            $table->boolean('is_base')->default(false);
+            $table->boolean('is_active')->default(true);
+            $table->timestamps();
+        });
+
+        Schema::connection('tenant')->create('categories', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('parent_id')->nullable()->constrained('categories')->nullOnDelete();
+            $table->string('code', 50)->nullable()->unique();
+            $table->string('name');
+            $table->string('slug')->unique();
+            $table->unsignedInteger('sort_order')->default(0);
+            $table->boolean('is_active')->default(true);
+            $table->timestamps();
+
+            $table->index(['parent_id', 'is_active']);
+        });
+
+        Schema::connection('tenant')->create('category_translations', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('category_id')->constrained('categories')->cascadeOnDelete();
+            $table->string('language_code', 10)->default('en');
+            $table->string('name');
+            $table->text('description')->nullable();
+            $table->timestamps();
+
+            $table->unique(['category_id', 'language_code']);
+        });
+
+        Schema::connection('tenant')->create('products', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('category_id')->nullable()->constrained('categories')->nullOnDelete();
+            $table->foreignId('unit_id')->nullable()->constrained('units')->nullOnDelete();
+            $table->string('sku')->unique();
+            $table->string('name');
+            $table->string('slug')->unique();
+            $table->enum('product_type', ['simple', 'recipe', 'hybrid', 'service'])->default('simple');
+            $table->boolean('is_sellable')->default(true);
+            $table->boolean('is_purchasable')->default(true);
+            $table->boolean('is_stock_tracked')->default(true);
+            $table->boolean('has_variants')->default(false);
+            $table->boolean('has_expiry')->default(false);
+            $table->boolean('requires_batch')->default(false);
+            $table->decimal('default_purchase_price', 14, 2)->default(0);
+            $table->decimal('default_selling_price', 14, 2)->default(0);
+            $table->boolean('is_taxable')->default(false);
+            $table->decimal('tax_rate_percent', 8, 4)->nullable();
+            $table->text('description')->nullable();
+            $table->string('image_path')->nullable();
+            $table->enum('status', ['active', 'inactive'])->default('active');
+            $table->timestamps();
+
+            $table->index(['category_id', 'status']);
+            $table->index(['product_type', 'is_stock_tracked']);
+        });
+
+        Schema::connection('tenant')->create('product_translations', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('product_id')->constrained('products')->cascadeOnDelete();
+            $table->string('language_code', 10)->default('en');
+            $table->string('name');
+            $table->text('description')->nullable();
+            $table->timestamps();
+
+            $table->unique(['product_id', 'language_code']);
+        });
+
+        Schema::connection('tenant')->create('product_variants', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('product_id')->constrained('products')->cascadeOnDelete();
+            $table->string('sku')->unique();
+            $table->string('name');
+            $table->string('barcode')->nullable()->unique();
+            $table->decimal('purchase_price', 14, 2)->default(0);
+            $table->decimal('selling_price', 14, 2)->default(0);
+            $table->decimal('reorder_level', 14, 3)->default(0);
+            $table->decimal('reorder_quantity', 14, 3)->default(0);
+            $table->boolean('is_default')->default(false);
+            $table->boolean('is_active')->default(true);
+            $table->timestamps();
+
+            $table->index(['product_id', 'is_active']);
+        });
+
+        Schema::connection('tenant')->create('product_variant_translations', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('product_variant_id')->constrained('product_variants')->cascadeOnDelete();
+            $table->string('language_code', 10)->default('en');
+            $table->string('name');
+            $table->timestamps();
+
+            $table->unique(['product_variant_id', 'language_code'], 'pvt_lang_unique');
+        });
+
+        Schema::connection('tenant')->create('product_barcodes', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('product_id')->nullable()->constrained('products')->cascadeOnDelete();
+            $table->foreignId('product_variant_id')->nullable()->constrained('product_variants')->cascadeOnDelete();
+            $table->string('barcode')->unique();
+            $table->enum('barcode_type', ['manual', 'system', 'supplier'])->default('manual');
+            $table->boolean('is_primary')->default(false);
+            $table->timestamps();
+
+            $table->index(['product_id', 'product_variant_id']);
+        });
+
+        Schema::connection('tenant')->create('product_branch_prices', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('branch_id')->constrained('branches')->cascadeOnDelete();
+            $table->foreignId('product_id')->constrained('products')->cascadeOnDelete();
+            $table->foreignId('product_variant_id')->nullable()->constrained('product_variants')->cascadeOnDelete();
+            $table->decimal('selling_price', 14, 2)->default(0);
+            $table->decimal('minimum_selling_price', 14, 2)->nullable();
+            $table->boolean('is_available')->default(true);
+            $table->timestamps();
+
+            $table->unique(['branch_id', 'product_id', 'product_variant_id'], 'branch_product_variant_unique');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::connection('tenant')->dropIfExists('product_branch_prices');
+        Schema::connection('tenant')->dropIfExists('product_barcodes');
+        Schema::connection('tenant')->dropIfExists('product_variant_translations');
+        Schema::connection('tenant')->dropIfExists('product_variants');
+        Schema::connection('tenant')->dropIfExists('product_translations');
+        Schema::connection('tenant')->dropIfExists('products');
+        Schema::connection('tenant')->dropIfExists('category_translations');
+        Schema::connection('tenant')->dropIfExists('categories');
+        Schema::connection('tenant')->dropIfExists('units');
+    }
+};
+
+
+===== FILE: app/Http/Controllers/Tenant/SalesOrderController.php =====
+<?php
+
+namespace App\Http\Controllers\Tenant;
+
+use App\Http\Controllers\Controller;
+use App\Models\Tenant\Branch;
+use App\Models\Tenant\Customer;
+use App\Models\Tenant\PaymentMethod;
+use App\Models\Tenant\Product;
+use App\Models\Tenant\RestaurantTableSession;
+use App\Models\Tenant\SalesOrder;
+use App\Models\Tenant\Shift;
+use App\Models\Tenant\Terminal;
+use App\Services\Inventory\InventoryService;
+use App\Services\Sales\SalesService;
+use App\Services\Sales\SalesTotalsService;
+use App\Services\Sales\PromotionService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
+use RuntimeException;
+
+class SalesOrderController extends Controller
+{
+    public function index(Request $request)
+    {
+        $query = SalesOrder::with(['branch', 'terminal', 'customer', 'createdBy'])
+            ->orderByDesc('sale_date')
+            ->orderByDesc('id');
+
+        if ($request->filled('branch_id')) {
+            $query->where('branch_id', $request->branch_id);
+        }
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        if ($request->filled('order_type')) {
+            $query->where('order_type', $request->order_type);
+        }
+
+        return view('tenant.sales-orders.index', [
+            'orders'   => $query->paginate(15)->withQueryString(),
+            'branches' => Branch::where('status', 'active')->orderBy('name')->get(),
+        ]);
+    }
+
+    public function create()
+    {
+        return view('tenant.sales-orders.create', [
+            'branches'       => Branch::where('status', 'active')->orderBy('name')->get(),
+            'terminals'      => Terminal::where('status', 'active')->with('branch')->orderBy('name')->get(),
+            'customers'      => Customer::where('status', 'active')->orderBy('name')->get(),
+            'products'       => Product::with(['defaultVariant', 'variants', 'barcodes', 'branchPrices'])
+                ->where('status', 'active')
+                ->where('is_sellable', true)
+                ->orderBy('name')
+                ->get(),
+            'paymentMethods' => PaymentMethod::where('is_active', true)->orderBy('name')->get(),
+        ]);
+    }
+
+    public function store(Request $request, SalesService $salesService, InventoryService $inventoryService, SalesTotalsService $totalsService)
+    {
+        $data = $this->validateSale($request);
+
+        $lines = collect($data['lines'])
+            ->filter(fn ($line) => !empty($line['product_id']) && !empty($line['quantity']))
+            ->values();
+
+        $payments = collect($data['payments'])
+            ->filter(fn ($payment) => !empty($payment['payment_method_id']) && !empty($payment['amount']))
+            ->values();
+
+        if ($lines->isEmpty()) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'At least one product line is required.'], 422);
+            }
+            return back()->withErrors(['lines' => 'At least one product line is required.'])->withInput();
+        }
+
+        if ($payments->isEmpty()) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'At least one payment line is required.'], 422);
+            }
+            return back()->withErrors(['payments' => 'At least one payment line is required.'])->withInput();
+        }
+
+        try {
+            $sale = DB::connection('tenant')->transaction(function () use (
+                $data, $lines, $payments, $salesService, $inventoryService, $totalsService
+            ) {
+                $branch   = Branch::findOrFail($data['branch_id']);
+                $terminal = !empty($data['terminal_id']) ? Terminal::find($data['terminal_id']) : null;
+                $shift    = $this->resolveOpenShift($terminal);
+                $orderType = $data['order_type'];
+
+                // Resolve line prices first so SalesTotalsService gets accurate per-line data
+                $resolvedLines = $lines->map(function ($line) use ($branch, $inventoryService) {
+                    $product = Product::findOrFail($line['product_id']);
+                    $variant = $inventoryService->resolveVariant($product, $line['product_variant_id'] ?? null);
+                    $qty     = (float) $line['quantity'];
+                    $price   = $this->resolveSellingPrice($product, $variant, $branch->id,
+                        isset($line['unit_price']) ? (float) $line['unit_price'] : null);
+                    $disc    = (float) ($line['discount_amount'] ?? 0);
+                    $tax     = $this->resolveTaxAmount($product, $qty, $price, $disc,
+                        isset($line['tax_amount']) ? (float) $line['tax_amount'] : null);
+
+                    return array_merge($line->toArray(), [
+                        '_product' => $product,
+                        '_variant' => $variant,
+                        'unit_price'      => $price,
+                        'discount_amount' => $disc,
+                        'tax_amount'      => $tax,
+                    ]);
+                })->values()->toArray();
+
+                $totals = $totalsService->calculate(
+                    resolvedLines: $resolvedLines,
+                    discountType:  $data['discount_type'],
+                    discountValue: (float) ($data['discount_value'] ?? 0),
+                    branchId:      $branch->id,
+                    orderType:     $orderType,
+                    promoCode:     $data['promo_code'] ?? null,
+                    tipAmount:     (float) ($data['tip_amount'] ?? 0),
+                );
+
+                $tableSession = null;
+
+                if (!empty($data['restaurant_table_session_id'])) {
+                    $tableSession = RestaurantTableSession::with(['table.floor', 'waiter'])
+                        ->whereIn('status', ['open', 'bill_requested'])
+                        ->findOrFail($data['restaurant_table_session_id']);
+                } elseif (!empty($data['held_sale_id'])) {
+                    // If the held sale already has a session (auto-created on hold), inherit it
+                    $heldForSession = SalesOrder::find($data['held_sale_id']);
+                    if ($heldForSession?->restaurant_table_session_id) {
+                        $tableSession = RestaurantTableSession::with(['table.floor', 'waiter'])
+                            ->whereIn('status', ['open', 'bill_requested'])
+                            ->find($heldForSession->restaurant_table_session_id);
+                    }
+                }
+
+                // Guard: block accidental direct-pay against a table that still has open held orders
+                if (
+                    $tableSession
+                    && empty($data['held_sale_id'])
+                    && empty($data['create_separate_order'])
+                ) {
+                    $hasOpenHeldOrders = SalesOrder::where('restaurant_table_session_id', $tableSession->id)
+                        ->where('status', 'held')
+                        ->exists();
+
+                    if ($hasOpenHeldOrders) {
+                        throw new RuntimeException('This table already has open held orders. Recall an existing order or intentionally create a separate order.');
+                    }
+                }
+
+                $saleFields = [
+                    'branch_id'                   => $branch->id,
+                    'terminal_id'                 => $terminal?->id,
+                    'shift_id'                    => $shift?->id,
+                    'customer_id'                 => $data['customer_id'] ?? null,
+                    'promotion_id'                => $totals['promotion_id'],
+                    'promo_code'                  => $totals['promo_code'],
+                    'restaurant_floor_id'         => $tableSession?->table?->restaurant_floor_id,
+                    'restaurant_table_id'         => $tableSession?->restaurant_table_id,
+                    'restaurant_table_session_id' => $tableSession?->id,
+                    'restaurant_waiter_id'        => $tableSession?->restaurant_waiter_id,
+                    'customer_name'               => $data['customer_name'] ?? null,
+                    'customer_phone'              => $data['customer_phone'] ?? null,
+                    'customer_email'              => $data['customer_email'] ?? null,
+                    'order_source'                => $data['order_source'] ?? 'pos',
+                    'order_type'                  => $tableSession ? 'dine_in' : $orderType,
+                    'sale_date'                   => now(),
+                    'subtotal'                    => $totals['subtotal'],
+                    'discount_type'               => $data['discount_type'],
+                    'discount_value'              => $data['discount_value'] ?? 0,
+                    'discount_amount'             => $totals['discount_amount'],
+                    'tax_amount'                  => $totals['tax_amount'],
+                    'service_charge_amount'       => $totals['service_charge_amount'],
+                    'tip_amount'                  => $totals['tip_amount'],
+                    'grand_total'                 => $totals['grand_total'],
+                    'notes'                       => $data['notes'] ?? null,
+                ];
+
+                if (!empty($data['held_sale_id'])) {
+                    $sale = SalesOrder::where('status', 'held')->findOrFail($data['held_sale_id']);
+                    $sale->lines()->delete();
+                    $sale->payments()->delete();
+                    $sale->update(array_merge($saleFields, [
+                        'paid_amount'      => 0,
+                        'change_amount'    => 0,
+                        'status'           => 'draft',
+                        'inventory_posted' => false,
+                        'completed_at'     => null,
+                    ]));
+                } else {
+                    $sale = SalesOrder::create(array_merge($saleFields, [
+                        'sale_no'             => $salesService->nextSaleNo(),
+                        'status'              => 'draft',
+                        'created_by_user_id'  => auth('tenant')->id(),
+                    ]));
+                }
+
+                // Increment promo usage count once sale is committed
+                if ($totals['promotion_id']) {
+                    \App\Models\Tenant\Promotion::where('id', $totals['promotion_id'])->increment('used_count');
+                }
+
+                // Create lines using resolved prices
+                foreach ($resolvedLines as $line) {
+                    $product   = $line['_product'];
+                    $variant   = $line['_variant'];
+                    $qty       = (float) $line['quantity'];
+                    $unitPrice = (float) $line['unit_price'];
+                    $disc      = (float) $line['discount_amount'];
+                    $lineTax   = (float) $line['tax_amount'];
+                    $lineTotal = ($qty * $unitPrice) - $disc + $lineTax;
+
+                    $sale->lines()->create([
+                        'product_id'         => $product->id,
+                        'product_variant_id' => $variant?->id,
+                        'product_name'       => $product->name,
+                        'variant_name'       => $variant?->name,
+                        'quantity'           => $qty,
+                        'unit_price'         => $unitPrice,
+                        'unit_cost'          => 0,
+                        'cost_total'         => 0,
+                        'discount_amount'    => $disc,
+                        'tax_amount'         => $lineTax,
+                        'line_total'         => $lineTotal,
+                    ]);
+                }
+
+                foreach ($payments as $payment) {
+                    $method   = PaymentMethod::findOrFail($payment['payment_method_id']);
+                    $amount   = (float) $payment['amount'];
+                    $tendered = isset($payment['tendered_amount']) && $payment['tendered_amount'] !== null
+                        ? (float) $payment['tendered_amount']
+                        : null;
+
+                    $sale->payments()->create([
+                        'payment_method_id' => $method->id,
+                        'amount'            => $amount,
+                        'tendered_amount'   => $tendered,
+                        'change_amount'     => $method->method_type === 'cash' && $tendered !== null
+                            ? max($tendered - $amount, 0)
+                            : 0,
+                        'bank_name'         => $payment['bank_name'] ?? null,
+                        'account_no'        => $payment['account_no'] ?? null,
+                        'transaction_ref'   => $payment['transaction_ref'] ?? null,
+                        'card_last_four'    => $payment['card_last_four'] ?? null,
+                        'cheque_no'         => $payment['cheque_no'] ?? null,
+                        'cheque_date'       => $payment['cheque_date'] ?? null,
+                        'notes'             => $payment['notes'] ?? null,
+                    ]);
+                }
+
+                return $salesService->finalizePaidSale($sale);
+            });
+        } catch (RuntimeException $e) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => $e->getMessage()], 422);
+            }
+            return back()->withErrors(['sale' => $e->getMessage()])->withInput();
+        }
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'sale_id'  => $sale->id,
+                'sale_no'  => $sale->sale_no,
+                'redirect' => url('/sales-orders/' . $sale->id),
+            ]);
+        }
+
+        return redirect(url('/sales-orders/' . $sale->id))->with('status', 'Sale posted successfully.');
+    }
+
+    public function show(SalesOrder $salesOrder)
+    {
+        $salesOrder->load([
+            'branch',
+            'terminal',
+            'shift',
+            'customer',
+            'createdBy',
+            'lines.product',
+            'lines.variant',
+            'payments.method',
+            'ledgerEntries',
+        ]);
+
+        return view('tenant.sales-orders.show', compact('salesOrder'));
+    }
+
+    public function cancel(SalesOrder $salesOrder)
+    {
+        if ($salesOrder->status === 'paid' || $salesOrder->inventory_posted) {
+            return back()->withErrors([
+                'sale' => 'Paid sale cannot be cancelled. Use sales return flow.',
+            ]);
+        }
+
+        $salesOrder->update(['status' => 'cancelled']);
+
+        return back()->with('status', 'Sale cancelled successfully.');
+    }
+
+    private function validateSale(Request $request): array
+    {
+        return $request->validate([
+            'branch_id'    => ['required', 'exists:branches,id'],
+            'terminal_id'  => ['nullable', 'exists:terminals,id'],
+            'customer_id'  => ['nullable', 'exists:customers,id'],
+            'customer_name'  => ['nullable', 'string', 'max:190'],
+            'customer_phone' => ['nullable', 'string', 'max:50'],
+            'customer_email' => ['nullable', 'email', 'max:190'],
+            'held_sale_id'                => ['nullable', 'exists:sales_orders,id'],
+            'restaurant_table_session_id' => ['nullable', 'exists:restaurant_table_sessions,id'],
+            'create_separate_order'       => ['nullable', 'boolean'],
+            'order_source'        => ['nullable', Rule::in(['pos', 'manual'])],
+            'order_type'          => ['required', Rule::in(['quick_sale', 'takeaway', 'dine_in', 'delivery'])],
+            'discount_type'       => ['required', Rule::in(['none', 'fixed', 'percent'])],
+            'discount_value'      => ['nullable', 'numeric', 'min:0'],
+            'promo_code'          => ['nullable', 'string', 'max:50'],
+            'tip_amount'          => ['nullable', 'numeric', 'min:0'],
+            'manager_approval_id' => ['nullable', 'exists:manager_approvals,id'],
+            'notes'               => ['nullable', 'string'],
+
+            'lines'                      => ['required', 'array'],
+            'lines.*.product_id'         => ['nullable', 'exists:products,id'],
+            'lines.*.product_variant_id' => ['nullable', 'exists:product_variants,id'],
+            'lines.*.quantity'           => ['nullable', 'numeric', 'min:0.001'],
+            'lines.*.unit_price'         => ['nullable', 'numeric', 'min:0'],
+            'lines.*.discount_amount'    => ['nullable', 'numeric', 'min:0'],
+            'lines.*.tax_amount'         => ['nullable', 'numeric', 'min:0'],
+
+            'payments'                         => ['required', 'array'],
+            'payments.*.payment_method_id'     => ['nullable', 'exists:payment_methods,id'],
+            'payments.*.amount'                => ['nullable', 'numeric', 'min:0.01'],
+            'payments.*.tendered_amount'       => ['nullable', 'numeric', 'min:0'],
+            'payments.*.bank_name'             => ['nullable', 'string', 'max:190'],
+            'payments.*.account_no'            => ['nullable', 'string', 'max:190'],
+            'payments.*.transaction_ref'       => ['nullable', 'string', 'max:190'],
+            'payments.*.card_last_four'        => ['nullable', 'string', 'max:10'],
+            'payments.*.cheque_no'             => ['nullable', 'string', 'max:190'],
+            'payments.*.cheque_date'           => ['nullable', 'date'],
+            'payments.*.notes'                 => ['nullable', 'string'],
+        ]);
+    }
+
+    private function resolveSellingPrice(Product $product, $variant, int $branchId, ?float $submittedPrice): float
+    {
+        if ($submittedPrice !== null && $submittedPrice > 0) {
+            return $submittedPrice;
+        }
+
+        $branchPrice = $product->branchPrices()
+            ->where('branch_id', $branchId)
+            ->where(function ($q) use ($variant) {
+                if ($variant) {
+                    $q->where('product_variant_id', $variant->id)->orWhereNull('product_variant_id');
+                } else {
+                    $q->whereNull('product_variant_id');
+                }
+            })
+            ->where('is_available', true)
+            ->orderByRaw('product_variant_id IS NULL')
+            ->first();
+
+        if ($branchPrice) {
+            return (float) $branchPrice->selling_price;
+        }
+
+        if ($variant && (float) ($variant->selling_price ?? 0) > 0) {
+            return (float) $variant->selling_price;
+        }
+
+        return (float) ($product->default_selling_price ?? 0);
+    }
+
+    private function resolveTaxAmount(Product $product, float $quantity, float $unitPrice, float $lineDiscount, ?float $submittedTax): float
+    {
+        if ($submittedTax !== null && $submittedTax > 0) {
+            return $submittedTax;
+        }
+
+        if (!(bool) ($product->is_taxable ?? false) || (float) ($product->tax_rate_percent ?? 0) <= 0) {
+            return 0;
+        }
+
+        $taxableAmount = max(($quantity * $unitPrice) - $lineDiscount, 0);
+
+        return round(($taxableAmount * (float) $product->tax_rate_percent) / 100, 2);
+    }
+
+    private function resolveOpenShift(?Terminal $terminal): ?Shift
+    {
+        if (!$terminal) {
+            return null;
+        }
+
+        $shift = Shift::where('terminal_id', $terminal->id)
+            ->where('status', 'open')
+            ->latest()
+            ->first();
+
+        if ($terminal->requires_shift && !$shift) {
+            throw new RuntimeException('Selected terminal requires an open shift.');
+        }
+
+        return $shift;
+    }
+}
+
+
+===== FILE: app/Http/Controllers/Tenant/HeldSaleController.php =====
+<?php
+
+namespace App\Http\Controllers\Tenant;
+
+use App\Http\Controllers\Controller;
+use App\Models\Tenant\Branch;
+use App\Models\Tenant\Customer;
+use App\Models\Tenant\ManagerApproval;
+use App\Models\Tenant\Product;
+use App\Models\Tenant\ProductVariant;
+use App\Models\Tenant\RestaurantTable;
+use App\Models\Tenant\RestaurantTableSession;
+use App\Models\Tenant\SalesOrder;
+use App\Models\Tenant\Terminal;
+use App\Services\Sales\SalesTotalsService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+
+class HeldSaleController extends Controller
+{
+    public function index(Request $request)
+    {
+        $query = SalesOrder::with(['branch', 'customer', 'restaurantTable', 'restaurantWaiter'])
+            ->where('status', 'held')
+            ->orderByDesc('updated_at');
+
+        if ($request->filled('table_session_id')) {
+            $query->where('restaurant_table_session_id', $request->table_session_id);
+        }
+
+        $heldSales = $query->paginate(25);
+
+        return view('tenant.held-sales.index', compact('heldSales'));
+    }
+
+    /** AJAX: list held sales for a branch (used by POS modal) */
+    public function ajaxList(Request $request)
+    {
+        $branchId = $request->integer('branch_id');
+
+        $sales = SalesOrder::with(['customer', 'lines'])
+            ->where('status', 'held')
+            ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
+            ->orderByDesc('updated_at')
+            ->limit(50)
+            ->get();
+
+        return response()->json([
+            'sales' => $sales->map(fn ($s) => [
+                'id'                          => $s->id,
+                'sale_no'                     => $s->sale_no,
+                'order_type'                  => $s->order_type,
+                'branch_id'                   => (int) $s->branch_id,
+                'terminal_id'                 => $s->terminal_id,
+                'restaurant_table_session_id' => $s->restaurant_table_session_id,
+                'restaurant_table_id'         => $s->restaurant_table_id,
+                'customer'                    => $s->customer_name ?: $s->customer?->name ?: 'Walk-in',
+                'total'                       => number_format($s->grand_total, 2),
+                'items'                       => (int) $s->lines->sum('quantity'),
+                'time'                        => $s->created_at->diffForHumans(),
+                'notes'                       => $s->notes,
+                'lines'                       => $s->lines->map(fn ($l) => [
+                    'id'                 => (int) $l->id,
+                    'product_id'         => (int) $l->product_id,
+                    'product_variant_id' => $l->product_variant_id ? (int) $l->product_variant_id : null,
+                    'quantity'           => (float) $l->quantity,
+                    'unit_price'         => (float) $l->unit_price,
+                    'discount_amount'    => (float) $l->discount_amount,
+                    'tax_amount'         => (float) $l->tax_amount,
+                    'line_total'         => (float) $l->line_total,
+                    'product_name'       => $l->product_name,
+                    'variant_name'       => $l->variant_name,
+                    'kot_sent'           => (bool) $l->kot_sent,
+                    'kot_sent_quantity'  => (float) ($l->kot_sent_quantity ?? 0),
+                    'kitchen_note'       => $l->kitchen_note,
+                ])->values(),
+            ]),
+        ]);
+    }
+
+    /** AJAX: tables for branch (used by Change Order modal — auto-creates session on hold) */
+    public function ajaxTableSessions(Request $request)
+    {
+        $branchId = $request->integer('branch_id');
+
+        $tables = RestaurantTable::with(['openSession.waiter', 'floor'])
+            ->where('status', 'active')
+            ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
+            ->orderBy('table_no')
+            ->limit(100)
+            ->get();
+
+        return response()->json([
+            'sessions' => $tables->map(fn ($t) => [
+                'table_id'   => $t->id,
+                'session_id' => $t->openSession?->id,
+                'label'      => 'Table ' . $t->table_no
+                              . ($t->floor ? ' — ' . $t->floor->name : '')
+                              . ($t->name && $t->name !== $t->table_no ? ' (' . $t->name . ')' : ''),
+                'waiter'     => $t->openSession?->waiter?->name,
+                'has_session' => !is_null($t->openSession),
+            ])->values()->all(),
+        ]);
+    }
+
+    /** AJAX: open held orders for a specific table session */
+    public function tableSessionOpenOrders(RestaurantTableSession $restaurantTableSession)
+    {
+        $orders = SalesOrder::with(['lines'])
+            ->where('restaurant_table_session_id', $restaurantTableSession->id)
+            ->where('status', 'held')
+            ->orderByDesc('updated_at')
+            ->get();
+
+        return response()->json([
+            'ok'               => true,
+            'table_session_id' => $restaurantTableSession->id,
+            'branch_id'        => $restaurantTableSession->branch_id,
+            'orders'           => $orders->map(fn ($sale) => [
+                'id'                    => $sale->id,
+                'sale_no'               => $sale->sale_no,
+                'grand_total'           => (float) $sale->grand_total,
+                'grand_total_formatted' => number_format((float) $sale->grand_total, 2),
+                'items_count'           => round((float) $sale->lines->sum('quantity'), 3),
+                'created_at'            => $sale->created_at?->format('d M Y H:i'),
+                'updated_at'            => $sale->updated_at?->diffForHumans(),
+                'recall_url'            => url('/pos?held_sale_id=' . $sale->id
+                    . '&table_session_id=' . $restaurantTableSession->id
+                    . '&mode=dine_in&branch_id=' . $restaurantTableSession->branch_id),
+            ])->values(),
+        ]);
+    }
+
+    public function create()
+    {
+        $branches      = Branch::where('status', 'active')->orderBy('name')->get();
+        $terminals     = Terminal::orderBy('name')->get();
+        $customers     = Customer::where('status', 'active')->orderBy('name')->get();
+        $products      = Product::with(['barcodes', 'variants', 'branchPrices'])
+            ->where('status', 'active')
+            ->orderBy('name')
+            ->get();
+        $tableSessions = RestaurantTableSession::with(['table.floor', 'waiter'])
+            ->where('status', 'open')
+            ->orderByDesc('opened_at')
+            ->get();
+
+        return view('tenant.held-sales.create', compact(
+            'branches', 'terminals', 'customers', 'products', 'tableSessions'
+        ));
+    }
+
+    public function store(Request $request, SalesTotalsService $totalsService)
+    {
+        $data = $request->validate([
+            'held_sale_id'                => 'nullable|exists:sales_orders,id',
+            'branch_id'                   => 'required|exists:branches,id',
+            'terminal_id'                 => 'nullable|exists:terminals,id',
+            'order_type'                  => 'required|in:quick_sale,takeaway,dine_in,delivery',
+            'restaurant_table_session_id' => 'nullable|exists:restaurant_table_sessions,id',
+            'restaurant_table_id'         => 'nullable|exists:restaurant_tables,id',
+            'customer_id'                 => 'nullable|exists:customers,id',
+            'customer_name'               => 'nullable|string|max:200',
+            'customer_phone'              => 'nullable|string|max:50',
+            'customer_email'              => 'nullable|email',
+            'discount_type'               => 'required|in:none,fixed,percent',
+            'discount_value'              => 'nullable|numeric|min:0',
+            'promo_code'                  => 'nullable|string|max:50',
+            'notes'                       => 'nullable|string',
+            'lines'                       => 'required|array|min:1',
+            'lines.*.product_id'          => 'required_with:lines.*.quantity|nullable|exists:products,id',
+            'lines.*.product_variant_id'  => 'nullable|exists:product_variants,id',
+            'lines.*.quantity'            => 'nullable|numeric|min:0.001',
+            'lines.*.unit_price'          => 'nullable|numeric|min:0',
+            'void_items'                  => 'nullable|array',
+            'void_items.*.old_line_id'    => 'nullable|integer',
+            'void_items.*.reason_id'      => 'nullable|exists:void_reasons,id',
+            'void_items.*.manager_approval_id' => 'nullable|exists:manager_approvals,id',
+            'void_items.*.product_name'   => 'nullable|string',
+            'create_separate_order'       => 'nullable|boolean',
+        ]);
+
+        $lines = collect($data['lines'])->filter(fn ($l) => !empty($l['product_id']) && !empty($l['quantity']));
+
+        if ($lines->isEmpty()) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'At least one product line is required.'], 422);
+            }
+            return back()->withErrors(['lines' => 'At least one product line is required.'])->withInput();
+        }
+
+        // Build resolved lines for totals calculation (held sales use submitted prices)
+        $resolvedLines = $lines->map(fn ($l) => [
+            'quantity'        => (float) ($l['quantity'] ?? 0),
+            'unit_price'      => (float) ($l['unit_price'] ?? 0),
+            'discount_amount' => 0,
+            'tax_amount'      => 0,
+        ])->values()->toArray();
+
+        // Tip is always 0 on held sales — only applied at payment time
+        $totals = $totalsService->calculate(
+            resolvedLines: $resolvedLines,
+            discountType:  $data['discount_type'],
+            discountValue: (float) ($data['discount_value'] ?? 0),
+            branchId:      (int) $data['branch_id'],
+            orderType:     $data['order_type'],
+            promoCode:     $data['promo_code'] ?? null,
+            tipAmount:     0,
+        );
+
+        $tableSession = null;
+        if (!empty($data['restaurant_table_session_id'])) {
+            $tableSession = RestaurantTableSession::with('table')->find($data['restaurant_table_session_id']);
+            $data['order_type'] = 'dine_in';
+        } elseif (!empty($data['restaurant_table_id'])) {
+            $tableSession = RestaurantTableSession::with('table')
+                ->where('restaurant_table_id', $data['restaurant_table_id'])
+                ->whereIn('status', ['open', 'bill_requested'])
+                ->latest('opened_at')
+                ->first();
+
+            if (!$tableSession) {
+                $tableSession = RestaurantTableSession::create([
+                    'session_no'          => 'SES-' . now()->format('YmdHis') . '-' . random_int(100, 999),
+                    'branch_id'           => $data['branch_id'],
+                    'restaurant_table_id' => $data['restaurant_table_id'],
+                    'opened_by_user_id'   => Auth::id(),
+                    'status'              => 'open',
+                    'opened_at'           => now(),
+                ]);
+                $tableSession->load('table');
+            }
+
+            $data['order_type'] = 'dine_in';
+        }
+
+        // Guard: prevent accidental duplicate held sales on the same table session
+        $createSeparateOrder = $request->boolean('create_separate_order');
+
+        if ($tableSession && empty($data['held_sale_id']) && !$createSeparateOrder) {
+            $openOrders = $this->tableOpenOrdersPayload($tableSession);
+
+            if ($openOrders->isNotEmpty()) {
+                if ($request->expectsJson()) {
+                    return response()->json([
+                        'ok'               => false,
+                        'code'             => 'TABLE_HAS_OPEN_ORDERS',
+                        'message'          => 'This table already has open held orders. Continue an existing order or intentionally create a separate order.',
+                        'table_session_id' => $tableSession->id,
+                        'branch_id'        => $tableSession->branch_id,
+                        'orders'           => $openOrders,
+                    ], 409);
+                }
+
+                return redirect(url('/restaurant/table-sessions/' . $tableSession->id . '/bill-preview'))
+                    ->withErrors(['table' => 'This table already has open held orders. Continue an existing order or create a separate order intentionally.']);
+            }
+        }
+
+        $kotSentKeys = [];
+
+        if (!empty($data['held_sale_id'])) {
+            $sale = SalesOrder::where('status', 'held')->findOrFail($data['held_sale_id']);
+
+            // Audit removed KOT-sent lines BEFORE deleting them
+            $voidItems = collect($data['void_items'] ?? []);
+            foreach ($voidItems as $voidItem) {
+                ManagerApproval::create([
+                    'approval_no'           => 'VOID-' . now()->format('YmdHis') . '-' . random_int(100, 999),
+                    'action_type'           => 'void_item',
+                    'reference_type'        => 'sales_order_line',
+                    'reference_id'          => $voidItem['old_line_id'] ?? null,
+                    'requested_by_user_id'  => Auth::id(),
+                    'approved_by_user_id'   => $voidItem['manager_approval_id']
+                        ? \App\Models\Tenant\ManagerApproval::find($voidItem['manager_approval_id'])?->approved_by_user_id
+                        : null,
+                    'payload'               => [
+                        'sales_order_id'       => $sale->id,
+                        'sale_no'              => $sale->sale_no,
+                        'product_name'         => $voidItem['product_name'] ?? null,
+                        'void_reason_id'       => $voidItem['reason_id'] ?? null,
+                        'manager_approval_id'  => $voidItem['manager_approval_id'] ?? null,
+                    ],
+                    'reason'                => 'Item removed from held order',
+                    'approved_at'           => now(),
+                ]);
+            }
+
+            // Remember KOT-sent quantities before deleting lines
+            $kotSentKeys = $sale->lines()
+                ->where('kot_sent', true)
+                ->get(['product_id', 'product_variant_id', 'quantity', 'kot_sent_quantity'])
+                ->mapWithKeys(function ($l) {
+                    $sentQty = (float) $l->kot_sent_quantity > 0
+                        ? (float) $l->kot_sent_quantity
+                        : (float) $l->quantity;
+                    return [$l->product_id . ':' . ($l->product_variant_id ?? 0) => $sentQty];
+                })
+                ->all();
+
+            $sale->lines()->delete();
+            $sale->update([
+                'branch_id'                   => $data['branch_id'],
+                'terminal_id'                 => $data['terminal_id'] ?? null,
+                'order_type'                  => $data['order_type'],
+                'customer_id'                 => $data['customer_id'] ?? null,
+                'customer_name'               => $data['customer_name'] ?? null,
+                'customer_phone'              => $data['customer_phone'] ?? null,
+                'customer_email'              => $data['customer_email'] ?? null,
+                'promotion_id'                => $totals['promotion_id'],
+                'promo_code'                  => $totals['promo_code'],
+                'subtotal'                    => $totals['subtotal'],
+                'discount_type'               => $data['discount_type'],
+                'discount_value'              => $data['discount_value'] ?? 0,
+                'discount_amount'             => $totals['discount_amount'],
+                'tax_amount'                  => $totals['tax_amount'],
+                'service_charge_amount'       => $totals['service_charge_amount'],
+                'tip_amount'                  => 0,
+                'grand_total'                 => $totals['grand_total'],
+                'notes'                       => $data['notes'] ?? null,
+                'restaurant_table_session_id' => $tableSession?->id ?? $sale->restaurant_table_session_id,
+                'restaurant_table_id'         => $tableSession?->restaurant_table_id ?? $sale->restaurant_table_id,
+            ]);
+        } else {
+            $saleNo = 'HS-' . now()->format('YmdHis') . '-' . random_int(100, 999);
+            $sale = SalesOrder::create([
+                'sale_no'                     => $saleNo,
+                'branch_id'                   => $data['branch_id'],
+                'terminal_id'                 => $data['terminal_id'] ?? null,
+                'order_source'                => 'pos',
+                'order_type'                  => $data['order_type'],
+                'customer_id'                 => $data['customer_id'] ?? null,
+                'customer_name'               => $data['customer_name'] ?? null,
+                'customer_phone'              => $data['customer_phone'] ?? null,
+                'customer_email'              => $data['customer_email'] ?? null,
+                'promotion_id'                => $totals['promotion_id'],
+                'promo_code'                  => $totals['promo_code'],
+                'sale_date'                   => now(),
+                'subtotal'                    => $totals['subtotal'],
+                'discount_type'               => $data['discount_type'],
+                'discount_value'              => $data['discount_value'] ?? 0,
+                'discount_amount'             => $totals['discount_amount'],
+                'tax_amount'                  => $totals['tax_amount'],
+                'service_charge_amount'       => $totals['service_charge_amount'],
+                'tip_amount'                  => 0,
+                'grand_total'                 => $totals['grand_total'],
+                'status'                      => 'held',
+                'inventory_posted'            => false,
+                'created_by_user_id'          => Auth::id(),
+                'notes'                       => $data['notes'] ?? null,
+                'restaurant_table_session_id' => $tableSession?->id,
+                'restaurant_table_id'         => $tableSession?->restaurant_table_id,
+                'restaurant_floor_id'         => $tableSession?->table?->restaurant_floor_id,
+                'restaurant_waiter_id'        => $tableSession?->restaurant_waiter_id,
+            ]);
+        }
+
+        foreach ($lines as $line) {
+            $product = Product::find($line['product_id']);
+            $variant = !empty($line['product_variant_id'])
+                ? ProductVariant::find($line['product_variant_id'])
+                : null;
+
+            $lineTotal = (float) $line['quantity'] * (float) ($line['unit_price'] ?? 0);
+
+            $kotKey    = $line['product_id'] . ':' . (($line['product_variant_id'] ?? null) ?? 0);
+            $sentQty   = $kotSentKeys[$kotKey] ?? 0;
+            $newQty    = (float) $line['quantity'];
+            $kotSent   = $sentQty > 0 && $newQty <= $sentQty;
+            $kotSentQty = min($sentQty, $newQty);
+
+            $sale->lines()->create([
+                'product_id'         => $line['product_id'],
+                'product_variant_id' => $line['product_variant_id'] ?? null,
+                'product_name'       => $product?->name ?? '',
+                'variant_name'       => $variant?->name ?? null,
+                'quantity'           => $line['quantity'],
+                'unit_price'         => $line['unit_price'] ?? 0,
+                'unit_cost'          => 0,
+                'cost_total'         => 0,
+                'discount_amount'    => 0,
+                'tax_amount'         => 0,
+                'line_total'         => $lineTotal,
+                'kot_sent'           => $kotSent,
+                'kot_sent_quantity'  => $kotSentQty,
+            ]);
+        }
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'sale_id'                     => $sale->id,
+                'sale_no'                     => $sale->sale_no,
+                'restaurant_table_session_id' => $sale->restaurant_table_session_id,
+            ]);
+        }
+
+        return redirect(url('/held-sales'))->with('status', "Held sale {$sale->sale_no} saved.");
+    }
+
+    private function tableOpenOrdersPayload(RestaurantTableSession $tableSession)
+    {
+        return SalesOrder::with(['lines'])
+            ->where('restaurant_table_session_id', $tableSession->id)
+            ->where('status', 'held')
+            ->orderByDesc('updated_at')
+            ->get()
+            ->map(fn ($sale) => [
+                'id'                    => $sale->id,
+                'sale_no'               => $sale->sale_no,
+                'grand_total'           => (float) $sale->grand_total,
+                'grand_total_formatted' => number_format((float) $sale->grand_total, 2),
+                'items_count'           => round((float) $sale->lines->sum('quantity'), 3),
+                'updated_at'            => $sale->updated_at?->diffForHumans(),
+                'recall_url'            => url('/pos?held_sale_id=' . $sale->id
+                    . '&table_session_id=' . $tableSession->id
+                    . '&mode=dine_in&branch_id=' . $tableSession->branch_id),
+            ])
+            ->values();
+    }
+
+    public function cancel(SalesOrder $salesOrder)
+    {
+        if ($salesOrder->status !== 'held') {
+            if (request()->expectsJson()) {
+                return response()->json(['message' => 'Only held sales can be cancelled.'], 422);
+            }
+            return back()->withErrors(['sale' => 'Only held sales can be cancelled.']);
+        }
+
+        $salesOrder->update(['status' => 'cancelled']);
+
+        if (request()->expectsJson()) {
+            return response()->json(['ok' => true]);
+        }
+
+        return redirect(url('/held-sales'))->with('status', 'Held sale cancelled.');
+    }
+}
+
+
+===== FILE: app/Services/Inventory/InventoryService.php =====
+<?php
+
+namespace App\Services\Inventory;
+
+use App\Models\Tenant\Branch;
+use App\Models\Tenant\InventoryBatch;
+use App\Models\Tenant\Product;
+use App\Models\Tenant\ProductVariant;
+use App\Models\Tenant\StockBalance;
+use App\Models\Tenant\StockLedger;
+use Illuminate\Support\Facades\DB;
+use RuntimeException;
+
+class InventoryService
+{
+    public function postIn(
+        Branch $branch,
+        Product $product,
+        ?ProductVariant $variant,
+        float $quantity,
+        float $unitCost,
+        string $movementType,
+        ?string $referenceType = null,
+        ?int $referenceId = null,
+        ?string $referenceNo = null,
+        ?string $batchNo = null,
+        ?string $expiryDate = null,
+        ?string $notes = null,
+        ?int $userId = null,
+    ): StockLedger {
+        $this->ensureStockTracked($product);
+
+        $batch = $this->findOrCreateBatch(
+            branch: $branch,
+            product: $product,
+            variant: $variant,
+            batchNo: $batchNo,
+            expiryDate: $expiryDate,
+            unitCost: $unitCost
+        );
+
+        return $this->postMovement(
+            branch: $branch,
+            product: $product,
+            variant: $variant,
+            batch: $batch,
+            movementType: $movementType,
+            direction: 'in',
+            quantity: $quantity,
+            unitCost: $unitCost,
+            referenceType: $referenceType,
+            referenceId: $referenceId,
+            referenceNo: $referenceNo,
+            notes: $notes,
+            userId: $userId,
+        );
+    }
+
+    public function postOutFefo(
+        Branch $branch,
+        Product $product,
+        ?ProductVariant $variant,
+        float $quantity,
+        string $movementType,
+        ?string $referenceType = null,
+        ?int $referenceId = null,
+        ?string $referenceNo = null,
+        ?string $notes = null,
+        ?int $userId = null,
+    ): array {
+        $this->ensureStockTracked($product);
+
+        return DB::transaction(function () use (
+            $branch, $product, $variant, $quantity, $movementType,
+            $referenceType, $referenceId, $referenceNo, $notes, $userId
+        ) {
+            $remaining = $quantity;
+            $ledgers = [];
+
+            $balances = StockBalance::query()
+                ->with('batch')
+                ->where('branch_id', $branch->id)
+                ->where('product_id', $product->id)
+                ->where('product_variant_id', $variant?->id)
+                ->where('quantity_on_hand', '>', 0)
+                ->get()
+                ->sortBy(function (StockBalance $balance) {
+                    return $balance->batch?->expiry_date?->format('Y-m-d') ?? '9999-12-31';
+                });
+
+            foreach ($balances as $balance) {
+                if ($remaining <= 0) {
+                    break;
+                }
+
+                $consumeQty = min((float) $balance->quantity_on_hand, $remaining);
+
+                $ledgers[] = $this->postMovement(
+                    branch: $branch,
+                    product: $product,
+                    variant: $variant,
+                    batch: $balance->batch,
+                    movementType: $movementType,
+                    direction: 'out',
+                    quantity: $consumeQty,
+                    unitCost: (float) $balance->average_cost,
+                    referenceType: $referenceType,
+                    referenceId: $referenceId,
+                    referenceNo: $referenceNo,
+                    notes: $notes,
+                    userId: $userId,
+                );
+
+                $remaining -= $consumeQty;
+            }
+
+            if ($remaining > 0.0001) {
+                throw new RuntimeException('Insufficient stock for ' . $product->name);
+            }
+
+            return $ledgers;
+        });
+    }
+
+    public function transfer(
+        Branch $fromBranch,
+        Branch $toBranch,
+        Product $product,
+        ?ProductVariant $variant,
+        float $quantity,
+        float $unitCost,
+        string $referenceType,
+        int $referenceId,
+        string $referenceNo,
+        ?string $notes = null,
+        ?int $userId = null,
+    ): void {
+        if ($fromBranch->id === $toBranch->id) {
+            throw new RuntimeException('Transfer branches must be different.');
+        }
+
+        DB::transaction(function () use (
+            $fromBranch, $toBranch, $product, $variant, $quantity, $unitCost,
+            $referenceType, $referenceId, $referenceNo, $notes, $userId
+        ) {
+            $outLedgers = $this->postOutFefo(
+                branch: $fromBranch,
+                product: $product,
+                variant: $variant,
+                quantity: $quantity,
+                movementType: 'transfer_out',
+                referenceType: $referenceType,
+                referenceId: $referenceId,
+                referenceNo: $referenceNo,
+                notes: $notes,
+                userId: $userId,
+            );
+
+            foreach ($outLedgers as $outLedger) {
+                $sourceBatch = $outLedger->batch;
+                $destBatch = null;
+
+                if ($sourceBatch) {
+                    $destBatch = $this->findOrCreateBatch(
+                        branch: $toBranch,
+                        product: $product,
+                        variant: $variant,
+                        batchNo: $sourceBatch->batch_no,
+                        expiryDate: $sourceBatch->expiry_date?->format('Y-m-d'),
+                        unitCost: (float) $outLedger->unit_cost
+                    );
+                }
+
+                $this->postMovement(
+                    branch: $toBranch,
+                    product: $product,
+                    variant: $variant,
+                    batch: $destBatch,
+                    movementType: 'transfer_in',
+                    direction: 'in',
+                    quantity: (float) $outLedger->quantity,
+                    unitCost: (float) ($outLedger->unit_cost ?: $unitCost),
+                    referenceType: $referenceType,
+                    referenceId: $referenceId,
+                    referenceNo: $referenceNo,
+                    notes: $notes,
+                    userId: $userId,
+                );
+            }
+        });
+    }
+
+    public function findOrCreateBatch(
+        Branch $branch,
+        Product $product,
+        ?ProductVariant $variant,
+        ?string $batchNo,
+        ?string $expiryDate,
+        float $unitCost = 0
+    ): ?InventoryBatch {
+        $batchRequired = $product->requires_batch || $product->has_expiry || filled($batchNo) || filled($expiryDate);
+
+        if (!$batchRequired) {
+            return null;
+        }
+
+        $batchNo = $batchNo ?: 'BATCH-' . now()->format('YmdHis') . '-' . random_int(100, 999);
+        $batchKey = $this->batchKey($branch->id, $product->id, $variant?->id, $batchNo);
+
+        return InventoryBatch::firstOrCreate(
+            ['batch_key' => $batchKey],
+            [
+                'branch_id'          => $branch->id,
+                'product_id'         => $product->id,
+                'product_variant_id' => $variant?->id,
+                'batch_no'           => $batchNo,
+                'expiry_date'        => $expiryDate ?: null,
+                'received_date'      => now()->toDateString(),
+                'unit_cost'          => $unitCost,
+                'status'             => 'active',
+            ]
+        );
+    }
+
+    public function resolveVariant(Product $product, ?int $variantId): ?ProductVariant
+    {
+        if ($variantId) {
+            return ProductVariant::where('product_id', $product->id)
+                ->where('id', $variantId)
+                ->firstOrFail();
+        }
+
+        return $product->defaultVariant()->first();
+    }
+
+    private function postMovement(
+        Branch $branch,
+        Product $product,
+        ?ProductVariant $variant,
+        ?InventoryBatch $batch,
+        string $movementType,
+        string $direction,
+        float $quantity,
+        float $unitCost,
+        ?string $referenceType,
+        ?int $referenceId,
+        ?string $referenceNo,
+        ?string $notes,
+        ?int $userId,
+    ): StockLedger {
+        if ($quantity <= 0) {
+            throw new RuntimeException('Quantity must be greater than zero.');
+        }
+
+        return DB::transaction(function () use (
+            $branch, $product, $variant, $batch, $movementType, $direction,
+            $quantity, $unitCost, $referenceType, $referenceId, $referenceNo, $notes, $userId
+        ) {
+            $balanceKey = $this->balanceKey($branch->id, $product->id, $variant?->id, $batch?->id);
+
+            $balance = StockBalance::firstOrCreate(
+                ['balance_key' => $balanceKey],
+                [
+                    'branch_id'           => $branch->id,
+                    'product_id'          => $product->id,
+                    'product_variant_id'  => $variant?->id,
+                    'inventory_batch_id'  => $batch?->id,
+                    'quantity_on_hand'    => 0,
+                    'average_cost'        => 0,
+                ]
+            );
+
+            $currentQty  = (float) $balance->quantity_on_hand;
+            $currentCost = (float) $balance->average_cost;
+
+            if ($direction === 'out' && $currentQty < $quantity) {
+                throw new RuntimeException('Insufficient stock for ' . $product->name);
+            }
+
+            if ($direction === 'in') {
+                $newQty = $currentQty + $quantity;
+                $newAverageCost = $newQty > 0
+                    ? (($currentQty * $currentCost) + ($quantity * $unitCost)) / $newQty
+                    : $unitCost;
+            } else {
+                $newQty = $currentQty - $quantity;
+                $newAverageCost = $currentCost;
+            }
+
+            $balance->update([
+                'quantity_on_hand' => $newQty,
+                'average_cost'     => $newAverageCost,
+            ]);
+
+            return StockLedger::create([
+                'branch_id'            => $branch->id,
+                'product_id'           => $product->id,
+                'product_variant_id'   => $variant?->id,
+                'inventory_batch_id'   => $batch?->id,
+                'movement_type'        => $movementType,
+                'direction'            => $direction,
+                'quantity'             => $quantity,
+                'unit_cost'            => $unitCost,
+                'total_cost'           => $quantity * $unitCost,
+                'balance_after'        => $newQty,
+                'reference_type'       => $referenceType,
+                'reference_id'         => $referenceId,
+                'reference_no'         => $referenceNo,
+                'notes'                => $notes,
+                'created_by_user_id'   => $userId,
+            ]);
+        });
+    }
+
+    private function ensureStockTracked(Product $product): void
+    {
+        if (!$product->is_stock_tracked) {
+            throw new RuntimeException($product->name . ' is not stock tracked.');
+        }
+    }
+
+    private function batchKey(int $branchId, int $productId, ?int $variantId, string $batchNo): string
+    {
+        return implode('-', [$branchId, $productId, $variantId ?: 0, strtolower(trim($batchNo))]);
+    }
+
+    private function balanceKey(int $branchId, int $productId, ?int $variantId, ?int $batchId): string
+    {
+        return implode('-', [$branchId, $productId, $variantId ?: 0, $batchId ?: 0]);
+    }
+}
+
+
+===== FILE: resources/views/tenant/printing/documents/receipt.blade.php =====
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Receipt — {{ $salesOrder->sale_no ?? $salesOrder->order_no }}</title>
+    <style>
+        @php
+            $fontSize  = $layout?->font_size ?? 12;
+            $paperSize = $layout?->paper_size ?? '80mm';
+            $width     = match($paperSize) { '58mm' => '52mm', '80mm' => '72mm', default => '180mm' };
+        @endphp
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: {{ $fontSize }}px;
+            width: {{ $width }};
+            margin: 0 auto;
+            padding: 4px;
+            color: #000;
+        }
+        .center  { text-align: center; }
+        .right   { text-align: right; }
+        .bold    { font-weight: bold; }
+        hr       { border: none; border-top: 1px dashed #000; margin: 4px 0; }
+        table    { width: 100%; border-collapse: collapse; }
+        td       { vertical-align: top; }
+        .item-name  { width: 48%; }
+        .item-qty   { width: 10%; text-align: right; white-space: nowrap; }
+        .item-price { width: 21%; text-align: right; white-space: nowrap; }
+        .item-total { width: 21%; text-align: right; white-space: nowrap; }
+        .totals td:first-child { width: 60%; text-align: right; padding-right: 4px; }
+        .totals td:last-child  { width: 40%; text-align: right; white-space: nowrap; }
+        .print-btn { display: block; margin: 12px auto; padding: 8px 24px; cursor: pointer; font-size: 14px; }
+        @media screen { body { width: 320px; } }
+        @media print  { .print-btn, .no-print { display: none !important; } }
+    </style>
+</head>
+<body>
+
+@if(!($layout?->show_logo === false) && $layout?->logo_path)
+<div class="center" style="margin-bottom:4px">
+    <img src="{{ asset('storage/' . $layout->logo_path) }}" style="max-width:80px;max-height:40px">
+</div>
+@endif
+
+@if(!($layout?->show_branch_name === false))
+<div class="center bold">{{ $salesOrder->branch?->name }}</div>
+@endif
+
+@if(!($layout?->show_branch_address === false) && $salesOrder->branch?->address)
+<div class="center">{{ $salesOrder->branch->address }}</div>
+@endif
+
+@if(!($layout?->show_branch_phone === false) && $salesOrder->branch?->phone)
+<div class="center">Tel: {{ $salesOrder->branch->phone }}</div>
+@endif
+
+@if(!($layout?->show_tax_number === false) && $salesOrder->branch?->tax_number)
+<div class="center">Tax No: {{ $salesOrder->branch->tax_number }}</div>
+@endif
+
+@if($layout?->header_text)
+<div class="center" style="margin-top:4px">{{ $layout->header_text }}</div>
+@endif
+
+<hr>
+
+<div class="bold center">RECEIPT</div>
+
+<hr>
+
+@if(!($layout?->show_order_no === false))
+<div>Order: <span class="bold">{{ $salesOrder->sale_no ?? $salesOrder->order_no }}</span></div>
+@endif
+
+<div>Date: {{ ($salesOrder->sale_date ?? $salesOrder->created_at)?->format('d/m/Y H:i') }}</div>
+
+@if(!($layout?->show_cashier_name === false) && $salesOrder->createdBy)
+<div>Cashier: {{ $salesOrder->createdBy->name }}</div>
+@endif
+
+@if(!($layout?->show_customer_name === false) && $salesOrder->customer)
+<div>Customer: {{ $salesOrder->customer->name }}</div>
+@endif
+
+@if(!($layout?->show_table_info === false) && $salesOrder->restaurantTable)
+<div>Table: {{ $salesOrder->restaurantTable->table_no }}
+    @if($salesOrder->restaurantTable->floor)
+        ({{ $salesOrder->restaurantTable->floor->name }})
+    @endif
+</div>
+@if($salesOrder->restaurantTableSession?->waiter)
+<div>Waiter: {{ $salesOrder->restaurantTableSession->waiter->name }}</div>
+@endif
+@endif
+
+<hr>
+
+<table>
+    <thead>
+        <tr>
+            <td class="item-name bold">Item</td>
+            <td class="item-qty bold">Qty</td>
+            <td class="item-price bold">Price</td>
+            <td class="item-total bold">Total</td>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach($salesOrder->lines as $line)
+        <tr>
+            <td class="item-name">
+                @if(!($layout?->show_item_codes === false) && $line->product?->barcode)
+                    <small>{{ $line->product->barcode }}</small><br>
+                @endif
+                {{ $line->product_name }}
+                @if($line->variant_name)
+                    <small>({{ $line->variant_name }})</small>
+                @endif
+                @if($line->kitchen_note)
+                    <br><small>* {{ $line->kitchen_note }}</small>
+                @endif
+            </td>
+            <td class="item-qty">{{ $line->quantity }}</td>
+            <td class="item-price">{{ number_format($line->unit_price, 2) }}</td>
+            <td class="item-total">{{ number_format($line->line_total, 2) }}</td>
+        </tr>
+        @endforeach
+    </tbody>
+</table>
+
+<hr>
+
+<table class="totals">
+    <tr>
+        <td>Subtotal:</td>
+        <td>{{ number_format($salesOrder->subtotal, 2) }}</td>
+    </tr>
+    @if($salesOrder->discount_amount > 0)
+    <tr>
+        <td>Discount:</td>
+        <td>-{{ number_format($salesOrder->discount_amount, 2) }}</td>
+    </tr>
+    @endif
+    @if($salesOrder->tax_amount > 0)
+    <tr>
+        <td>Tax:</td>
+        <td>{{ number_format($salesOrder->tax_amount, 2) }}</td>
+    </tr>
+    @endif
+    @if((float) ($salesOrder->service_charge_amount ?? 0) > 0)
+    <tr>
+        <td>Service Charge:</td>
+        <td>{{ number_format($salesOrder->service_charge_amount, 2) }}</td>
+    </tr>
+    @endif
+    @if((float) ($salesOrder->tip_amount ?? 0) > 0)
+    <tr>
+        <td>Tip:</td>
+        <td>{{ number_format($salesOrder->tip_amount, 2) }}</td>
+    </tr>
+    @endif
+    <tr>
+        <td class="bold">Total:</td>
+        <td class="bold">{{ number_format($salesOrder->grand_total, 2) }}</td>
+    </tr>
+    @if($salesOrder->paid_amount > 0)
+    <tr>
+        <td>Paid:</td>
+        <td>{{ number_format($salesOrder->paid_amount, 2) }}</td>
+    </tr>
+    @endif
+    @if($salesOrder->change_amount > 0)
+    <tr>
+        <td>Change:</td>
+        <td>{{ number_format($salesOrder->change_amount, 2) }}</td>
+    </tr>
+    @endif
+</table>
+
+@if(!($layout?->show_payment_breakdown === false) && $salesOrder->payments->isNotEmpty())
+<hr>
+<div class="bold">Payments:</div>
+@foreach($salesOrder->payments as $payment)
+<table class="totals">
+    <tr>
+        <td>{{ $payment->method?->name ?? ucfirst($payment->payment_method) }}:</td>
+        <td>{{ number_format($payment->amount, 2) }}</td>
+    </tr>
+</table>
+@endforeach
+@endif
+
+<hr>
+
+@if($layout?->footer_text)
+<div class="center" style="margin-top:4px">{{ $layout->footer_text }}</div>
+@else
+<div class="center">Thank you for your visit!</div>
+@endif
+
+<div class="center" style="margin-top:4px; font-size:10px">
+    {{ ($salesOrder->sale_date ?? $salesOrder->created_at)?->format('d/m/Y H:i:s') }}
+</div>
+
+<div class="no-print" style="text-align:center;margin:12px 0;display:flex;gap:8px;justify-content:center">
+    <button class="print-btn" style="margin:0" onclick="window.print()">🖨 Print</button>
+    <form method="POST" action="{{ url('/printing/jobs/' . $job->id . '/mark-printed') }}" style="display:inline">
+        @csrf
+        <button type="submit" class="print-btn" style="margin:0;background:#198754;color:#fff;border:none;cursor:pointer">✔ Mark Printed</button>
+    </form>
+</div>
+
+@if($job->printer?->printer_type === 'browser')
+<script>
+    window.addEventListener('load', function () {
+        setTimeout(function () { window.print(); }, 300);
+    });
+</script>
+@endif
+
+</body>
+</html>
+
+
+===== FILE: app/Services/Printing/EscPosPayloadService.php =====
+<?php
+
+namespace App\Services\Printing;
+
+use App\Models\Tenant\PrintJob;
+use App\Models\Tenant\SalesOrder;
+
+class EscPosPayloadService
+{
+    public function build(PrintJob $job): string
+    {
+        if ($job->reference_type !== 'sales_order') {
+            return '';
+        }
+
+        $sale = SalesOrder::with([
+            'branch',
+            'terminal',
+            'customer',
+            'createdBy',
+            'restaurantTable',
+            'restaurantWaiter',
+            'lines',
+            'payments.method',
+        ])->find($job->reference_id);
+
+        if (!$sale) {
+            return '';
+        }
+
+        return match ($job->document_type) {
+            'kot'                => $this->kot($sale, $job),
+            'receipt', 'invoice' => $this->receipt($sale),
+            default              => $this->receipt($sale),
+        };
+    }
+
+    private function receipt(SalesOrder $sale): string
+    {
+        $out = '';
+
+        $out .= $this->center($sale->branch?->name ?? 'Receipt') . "\n";
+        if ($sale->branch?->phone) {
+            $out .= $this->center($sale->branch->phone) . "\n";
+        }
+        $out .= str_repeat('-', 42) . "\n";
+        $out .= "Receipt: {$sale->sale_no}\n";
+        $out .= 'Date: ' . optional($sale->sale_date)->format('Y-m-d H:i') . "\n";
+        $out .= 'Cashier: ' . ($sale->createdBy?->name ?? '-') . "\n";
+
+        if ($sale->restaurantTable) {
+            $out .= 'Table: ' . $sale->restaurantTable->table_no . "\n";
+        }
+        if ($sale->restaurantWaiter) {
+            $out .= 'Waiter: ' . $sale->restaurantWaiter->name . "\n";
+        }
+
+        $out .= str_repeat('-', 42) . "\n";
+
+        foreach ($sale->lines as $line) {
+            $name  = mb_substr($line->product_name ?? '', 0, 24);
+            $qty   = number_format((float) $line->quantity, 2);
+            $total = number_format((float) $line->line_total, 2);
+
+            $out .= $name . "\n";
+            $out .= $this->columns(
+                "  {$qty} x " . number_format((float) $line->unit_price, 2),
+                $total,
+                42
+            ) . "\n";
+
+            if ($line->kitchen_note) {
+                $out .= "  * {$line->kitchen_note}\n";
+            }
+        }
+
+        $out .= str_repeat('-', 42) . "\n";
+        $out .= $this->columns('Subtotal', number_format((float) $sale->subtotal, 2), 42) . "\n";
+
+        if ((float) $sale->discount_amount > 0) {
+            $out .= $this->columns('Discount', '-' . number_format((float) $sale->discount_amount, 2), 42) . "\n";
+        }
+        if ((float) $sale->tax_amount > 0) {
+            $out .= $this->columns('Tax', number_format((float) $sale->tax_amount, 2), 42) . "\n";
+        }
+        if ((float) ($sale->service_charge_amount ?? 0) > 0) {
+            $out .= $this->columns('Service Charge', number_format((float) $sale->service_charge_amount, 2), 42) . "\n";
+        }
+        if ((float) ($sale->tip_amount ?? 0) > 0) {
+            $out .= $this->columns('Tip', number_format((float) $sale->tip_amount, 2), 42) . "\n";
+        }
+
+        $out .= $this->columns('TOTAL', number_format((float) $sale->grand_total, 2), 42) . "\n";
+        $out .= $this->columns('Paid', number_format((float) $sale->paid_amount, 2), 42) . "\n";
+        $out .= $this->columns('Change', number_format((float) $sale->change_amount, 2), 42) . "\n";
+
+        $out .= str_repeat('-', 42) . "\n";
+
+        foreach ($sale->payments as $payment) {
+            $methodName = $payment->method?->name ?? ucfirst($payment->payment_method ?? 'Payment');
+            $out .= $this->columns($methodName, number_format((float) $payment->amount, 2), 42) . "\n";
+        }
+
+        $out .= str_repeat('-', 42) . "\n";
+        $out .= $this->center('Thank you for your visit!') . "\n\n\n";
+
+        return $out;
+    }
+
+    private function kot(SalesOrder $sale, PrintJob $job): string
+    {
+        $payload        = $job->payload ?? [];
+        $isReprint      = !empty($payload['is_reprint']);
+        $lineQuantities = collect($payload['line_quantities'] ?? []);
+
+        $lineIds = collect($payload['line_ids'] ?? [])
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->values();
+
+        $lines = $lineIds->isNotEmpty()
+            ? $sale->lines->whereIn('id', $lineIds)->values()
+            : $sale->lines;
+
+        $out = '';
+
+        $out .= $this->center('*** KOT ***') . "\n";
+        if ($isReprint) {
+            $out .= $this->center('** REPRINT **') . "\n";
+        }
+        $out .= $this->center($sale->sale_no ?? '') . "\n";
+        $out .= str_repeat('-', 42) . "\n";
+
+        if ($sale->restaurantTable) {
+            $out .= 'TABLE: ' . $sale->restaurantTable->table_no . "\n";
+        }
+        if ($sale->restaurantWaiter) {
+            $out .= 'WAITER: ' . $sale->restaurantWaiter->name . "\n";
+        }
+
+        $out .= 'TYPE: ' . strtoupper(str_replace('_', ' ', $sale->order_type ?? 'SALE')) . "\n";
+        $out .= 'TIME: ' . now()->format('Y-m-d H:i') . "\n";
+        $out .= str_repeat('-', 42) . "\n";
+
+        foreach ($lines as $line) {
+            // Use stored quantity from payload when available; fall back to model quantity.
+            $qtyToPrint = $lineQuantities->has((string) $line->id)
+                ? (float) $lineQuantities->get((string) $line->id)
+                : (float) $line->quantity;
+
+            if ($qtyToPrint <= 0) {
+                continue;
+            }
+
+            $out .= strtoupper($line->product_name ?? '') . "\n";
+            $out .= 'QTY: ' . number_format($qtyToPrint, 2) . "\n";
+
+            if ($line->variant_name) {
+                $out .= "Variant: {$line->variant_name}\n";
+            }
+            if ($line->kitchen_note) {
+                $out .= "NOTE: {$line->kitchen_note}\n";
+            }
+
+            $out .= "\n";
+        }
+
+        if ($sale->notes) {
+            $out .= str_repeat('-', 42) . "\n";
+            $out .= "ORDER NOTE:\n{$sale->notes}\n";
+        }
+
+        $out .= str_repeat('-', 42) . "\n\n\n";
+
+        return $out;
+    }
+
+    private function center(string $text, int $width = 42): string
+    {
+        $text = trim($text);
+        if ($text === '') {
+            return '';
+        }
+        $padding = max((int) floor(($width - mb_strlen($text)) / 2), 0);
+        return str_repeat(' ', $padding) . $text;
+    }
+
+    private function columns(string $left, string $right, int $width = 42): string
+    {
+        $space = max($width - mb_strlen($left) - mb_strlen($right), 1);
+        return $left . str_repeat(' ', $space) . $right;
+    }
+}
+
+
+===== FILE: resources/views/tenant/reports/sales/items.blade.php =====
+@extends('layouts.app')
+
+@section('title', 'Sales by Item Report')
+
+@section('content')
+        <div class="page-header">
+            <div class="page-title"><h4>Sales by Item</h4><h6>Product-level sales breakdown</h6></div>
+            <div class="page-btn">
+                <a href="{{ url('/reports/sales/summary') }}" class="btn btn-outline-secondary btn-sm">Summary</a>
+            </div>
+        </div>
+
+        @include('tenant.reports.partials.filters', ['showOrderType' => true, 'showCsvExport' => true])
+
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm mb-0">
+                        <caption class="visually-hidden">Sales by product</caption>
+                        <thead class="table-light">
+                            <tr>
+                                <th scope="col">Product</th>
+                                <th scope="col">Variant</th>
+                                <th scope="col">Category</th>
+                                <th scope="col" class="text-end">Qty Sold</th>
+                                <th scope="col" class="text-end">Gross</th>
+                                <th scope="col" class="text-end">Discount</th>
+                                <th scope="col" class="text-end">Tax</th>
+                                <th scope="col" class="text-end">Net</th>
+                                <th scope="col" class="text-end">Cost</th>
+                                <th scope="col" class="text-end">Profit</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($rows as $row)
+                            <tr>
+                                <td>{{ $row->product_name }}</td>
+                                <td class="text-muted small">{{ $row->variant_name ?: '—' }}</td>
+                                <td class="text-muted small">{{ $row->category_name }}</td>
+                                <td class="text-end">{{ number_format($row->qty_sold, 2) }}</td>
+                                <td class="text-end">{{ number_format($row->gross_amount, 2) }}</td>
+                                <td class="text-end text-danger">{{ number_format($row->total_discount, 2) }}</td>
+                                <td class="text-end">{{ number_format($row->total_tax, 2) }}</td>
+                                <td class="text-end fw-semibold">{{ number_format($row->net_amount, 2) }}</td>
+                                <td class="text-end text-muted">{{ number_format($row->total_cost, 2) }}</td>
+                                <td class="text-end @if($row->profit > 0) text-success @elseif($row->profit < 0) text-danger @endif">
+                                    {{ number_format($row->profit, 2) }}
+                                </td>
+                            </tr>
+                            @empty
+                            <tr><td colspan="10" class="text-center text-muted py-4">No sales in selected range.</td></tr>
+                            @endforelse
+                        </tbody>
+                        @if($rows->isNotEmpty())
+                        <tfoot class="table-light fw-bold">
+                            <tr>
+                                <td colspan="3">Total</td>
+                                <td class="text-end">{{ number_format($rows->sum('qty_sold'), 2) }}</td>
+                                <td class="text-end">{{ number_format($rows->sum('gross_amount'), 2) }}</td>
+                                <td class="text-end text-danger">{{ number_format($rows->sum('total_discount'), 2) }}</td>
+                                <td class="text-end">{{ number_format($rows->sum('total_tax'), 2) }}</td>
+                                <td class="text-end">{{ number_format($rows->sum('net_amount'), 2) }}</td>
+                                <td class="text-end">{{ number_format($rows->sum('total_cost'), 2) }}</td>
+                                <td class="text-end text-success">{{ number_format($rows->sum('profit'), 2) }}</td>
+                            </tr>
+                        </tfoot>
+                        @endif
+                    </table>
+                </div>
+            </div>
+        </div>
+@endsection
+
+
+===== FILE: resources/views/tenant/goods-receipts/create.blade.php =====
+@extends('layouts.app')
+
+@section('title', 'Create GRN')
+
+@section('content')
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
+    <div>
+        <h1 class="mb-1">Create Goods Receipt Note</h1>
+        <p class="fw-medium">Receiving goods posts inventory purchase movements immediately.</p>
+    </div>
+    <a href="{{ url('/goods-receipts') }}" class="btn btn-light">Back</a>
+</div>
+
+@if($errors->any())
+    <div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>
+@endif
+
+@if($purchaseOrder)
+    <div class="alert alert-info" role="status">
+        Creating GRN from PO <strong>{{ $purchaseOrder->po_no }}</strong>. Lines are still editable.
+    </div>
+@endif
+
+<form method="POST" action="{{ url('/goods-receipts') }}" novalidate>
+    @csrf
+    @if($purchaseOrder)
+        <input type="hidden" name="purchase_order_id" value="{{ $purchaseOrder->id }}">
+    @endif
+
+    <div class="card mb-3">
+        <div class="card-header"><strong>Receipt Header</strong></div>
+        <div class="card-body row g-3">
+            <div class="col-md-4">
+                <label for="supplier_id" class="form-label required">Supplier</label>
+                <select id="supplier_id" name="supplier_id"
+                        class="form-select @error('supplier_id') is-invalid @enderror" required>
+                    <option value="">— Select —</option>
+                    @foreach($suppliers as $supplier)
+                        <option value="{{ $supplier->id }}"
+                                @selected(old('supplier_id', $purchaseOrder?->supplier_id) == $supplier->id)>
+                            {{ $supplier->name }}
+                        </option>
+                    @endforeach
+                </select>
+                @error('supplier_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
+            </div>
+
+            <div class="col-md-4">
+                <label for="branch_id" class="form-label required">Branch</label>
+                <select id="branch_id" name="branch_id"
+                        class="form-select @error('branch_id') is-invalid @enderror" required>
+                    <option value="">— Select —</option>
+                    @foreach($branches as $branch)
+                        <option value="{{ $branch->id }}"
+                                @selected(old('branch_id', $purchaseOrder?->branch_id) == $branch->id)>
+                            {{ $branch->name }}
+                        </option>
+                    @endforeach
+                </select>
+                @error('branch_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
+            </div>
+
+            <div class="col-md-4">
+                <label for="receipt_date" class="form-label required">Receipt Date</label>
+                <input id="receipt_date" type="date" name="receipt_date" required
+                       class="form-control @error('receipt_date') is-invalid @enderror"
+                       value="{{ old('receipt_date', now()->toDateString()) }}">
+                @error('receipt_date') <div class="invalid-feedback">{{ $message }}</div> @enderror
+            </div>
+
+            <div class="col-12">
+                <label for="notes" class="form-label">Notes</label>
+                <textarea id="notes" name="notes" rows="2"
+                          class="form-control @error('notes') is-invalid @enderror">{{ old('notes') }}</textarea>
+                @error('notes') <div class="invalid-feedback">{{ $message }}</div> @enderror
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header"><strong>Received Products</strong></div>
+        <div class="card-body">
+            <p class="text-muted small mb-3">Enter batch number and expiry date for products that require batch tracking.</p>
+            @include('tenant.purchasing.partials.product-lines', [
+                'products'        => $products,
+                'quantityField'   => 'quantity_received',
+                'showBatch'       => true,
+                'showDiscountTax' => false,
+                'showNotes'       => true,
+            ])
+        </div>
+    </div>
+
+    @error('lines') <div class="alert alert-danger" role="alert">{{ $message }}</div> @enderror
+
+    <div class="d-flex gap-2">
+        <button class="btn btn-primary" type="submit"
+                onclick="return confirm('Post this GRN and update stock?')">Post GRN</button>
+        <a href="{{ url('/goods-receipts') }}" class="btn btn-light">Cancel</a>
+    </div>
+</form>
+@endsection
+
+
+===== FILE: app/Http/Controllers/Tenant/GoodsReceiptController.php =====
+<?php
+
+namespace App\Http\Controllers\Tenant;
+
+use App\Http\Controllers\Controller;
+use App\Models\Tenant\Branch;
+use App\Models\Tenant\GoodsReceipt;
+use App\Models\Tenant\GoodsReceiptLine;
+use App\Models\Tenant\Product;
+use App\Models\Tenant\PurchaseOrder;
+use App\Models\Tenant\Supplier;
+use App\Services\Purchasing\PurchasingService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+
+class GoodsReceiptController extends Controller
+{
+    public function __construct(protected PurchasingService $purchasingService) {}
+
+    public function index(Request $request)
+    {
+        $query = GoodsReceipt::with(['branch', 'supplier', 'purchaseOrder', 'postedBy'])
+            ->orderByDesc('receipt_date')
+            ->orderByDesc('id');
+
+        if ($request->filled('supplier_id')) {
+            $query->where('supplier_id', $request->supplier_id);
+        }
+        if ($request->filled('branch_id')) {
+            $query->where('branch_id', $request->branch_id);
+        }
+
+        $receipts  = $query->paginate(20)->withQueryString();
+        $branches  = Branch::orderBy('name')->get();
+        $suppliers = Supplier::where('status', 'active')->orderBy('name')->get();
+
+        return view('tenant.goods-receipts.index', compact('receipts', 'branches', 'suppliers'));
+    }
+
+    public function create(Request $request)
+    {
+        $branches     = Branch::orderBy('name')->get();
+        $suppliers    = Supplier::where('status', 'active')->orderBy('name')->get();
+        $products     = Product::with('variants')->where('status', 'active')->orderBy('name')->get();
+        $openOrders   = PurchaseOrder::with(['supplier', 'lines.product'])
+            ->whereIn('status', ['approved'])
+            ->orderByDesc('order_date')
+            ->get();
+        $selectedPo   = null;
+
+        if ($request->filled('purchase_order_id')) {
+            $selectedPo = PurchaseOrder::with(['supplier', 'branch', 'lines.product', 'lines.variant'])
+                ->find($request->purchase_order_id);
+        }
+
+        return view('tenant.goods-receipts.create', [
+            'branches'      => $branches,
+            'suppliers'     => $suppliers,
+            'products'      => $products,
+            'openOrders'    => $openOrders,
+            'purchaseOrder' => $selectedPo,
+        ]);
+    }
+
+    public function store(Request $request)
+    {
+        $data = $request->validate([
+            'branch_id'                    => 'required|exists:tenant.branches,id',
+            'supplier_id'                  => 'required|exists:tenant.suppliers,id',
+            'purchase_order_id'            => 'nullable|exists:tenant.purchase_orders,id',
+            'receipt_date'                 => 'required|date',
+            'notes'                        => 'nullable|string|max:1000',
+            'lines'                        => 'required|array|min:1',
+            'lines.*.product_id'           => 'required|exists:tenant.products,id',
+            'lines.*.product_variant_id'   => 'nullable|exists:tenant.product_variants,id',
+            'lines.*.purchase_order_line_id' => 'nullable|exists:tenant.purchase_order_lines,id',
+            'lines.*.batch_no'             => 'nullable|string|max:100',
+            'lines.*.expiry_date'          => 'nullable|date',
+            'lines.*.quantity_received'    => 'required|numeric|min:0.001',
+            'lines.*.unit_cost'            => 'required|numeric|min:0',
+            'lines.*.discount_amount'      => 'nullable|numeric|min:0',
+            'lines.*.tax_amount'           => 'nullable|numeric|min:0',
+            'lines.*.notes'                => 'nullable|string|max:500',
+        ]);
+
+        $validLines = collect($data['lines'])->filter(fn($l) => !empty($l['product_id']));
+        if ($validLines->isEmpty()) {
+            return back()->withErrors(['lines' => 'At least one product line is required.'])->withInput();
+        }
+
+        $userId = auth('tenant')->id();
+
+        DB::connection('tenant')->transaction(function () use ($data, $validLines, $userId) {
+            $grn = GoodsReceipt::create([
+                'grn_no'            => $this->purchasingService->nextGrnNo(),
+                'purchase_order_id' => $data['purchase_order_id'] ?? null,
+                'branch_id'         => $data['branch_id'],
+                'supplier_id'       => $data['supplier_id'],
+                'receipt_date'      => $data['receipt_date'],
+                'status'            => 'posted',
+                'notes'             => $data['notes'] ?? null,
+                'posted_by_user_id' => $userId,
+                'posted_at'         => now(),
+            ]);
+
+            foreach ($validLines as $line) {
+                GoodsReceiptLine::create([
+                    'goods_receipt_id'        => $grn->id,
+                    'purchase_order_line_id'  => $line['purchase_order_line_id'] ?? null,
+                    'product_id'              => $line['product_id'],
+                    'product_variant_id'      => $line['product_variant_id'] ?? null,
+                    'batch_no'                => $line['batch_no'] ?? null,
+                    'expiry_date'             => $line['expiry_date'] ?? null,
+                    'quantity_received'       => $line['quantity_received'],
+                    'unit_cost'               => $line['unit_cost'],
+                    'discount_amount'         => $line['discount_amount'] ?? 0,
+                    'tax_amount'              => $line['tax_amount'] ?? 0,
+                    'notes'                   => $line['notes'] ?? null,
+                ]);
+            }
+
+            $grn->load('lines.product', 'lines.variant', 'branch');
+            $this->purchasingService->postGrn($grn, $userId);
+
+            if ($grn->purchase_order_id) {
+                $po = PurchaseOrder::find($grn->purchase_order_id);
+                if ($po && $po->status === 'approved') {
+                    $po->update(['status' => 'received']);
+                }
+            }
+        });
+
+        return redirect(url('/goods-receipts'))->with('status', 'Goods receipt posted.');
+    }
+
+    public function show(GoodsReceipt $goodsReceipt)
+    {
+        $goodsReceipt->load([
+            'branch', 'supplier', 'purchaseOrder', 'postedBy',
+            'lines.product', 'lines.variant',
+        ]);
+
+        $ledgers = \App\Models\Tenant\StockLedger::where('reference_type', GoodsReceipt::class)
+            ->where('reference_id', $goodsReceipt->id)
+            ->with(['branch', 'product'])
+            ->get();
+
+        return view('tenant.goods-receipts.show', compact('goodsReceipt', 'ledgers'));
+    }
+}
+
+
+===== FILE: resources/views/tenant/products/create.blade.php =====
+MISSING

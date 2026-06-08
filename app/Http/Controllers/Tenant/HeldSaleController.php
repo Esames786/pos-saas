@@ -70,6 +70,7 @@ class HeldSaleController extends Controller
                     'line_total'         => (float) $l->line_total,
                     'product_name'       => $l->product_name,
                     'variant_name'       => $l->variant_name,
+                    'unit_code'          => $l->unit_code,
                     'kot_sent'           => (bool) $l->kot_sent,
                     'kot_sent_quantity'  => (float) ($l->kot_sent_quantity ?? 0),
                     'kitchen_note'       => $l->kitchen_note,
@@ -356,7 +357,7 @@ class HeldSaleController extends Controller
         }
 
         foreach ($lines as $line) {
-            $product = Product::find($line['product_id']);
+            $product = Product::with('unit')->find($line['product_id']);
             $variant = !empty($line['product_variant_id'])
                 ? ProductVariant::find($line['product_variant_id'])
                 : null;
@@ -374,6 +375,7 @@ class HeldSaleController extends Controller
                 'product_variant_id' => $line['product_variant_id'] ?? null,
                 'product_name'       => $product?->name ?? '',
                 'variant_name'       => $variant?->name ?? null,
+                'unit_code'          => $product?->unit?->code,
                 'quantity'           => $line['quantity'],
                 'unit_price'         => $line['unit_price'] ?? 0,
                 'unit_cost'          => 0,

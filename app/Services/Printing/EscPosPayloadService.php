@@ -59,7 +59,8 @@ class EscPosPayloadService
 
         foreach ($sale->lines as $line) {
             $name  = mb_substr($line->product_name ?? '', 0, 24);
-            $qty   = number_format((float) $line->quantity, 2);
+            $qty   = number_format((float) $line->quantity, 3);
+            if ($line->unit_code) { $qty .= ' ' . $line->unit_code; }
             $total = number_format((float) $line->line_total, 2);
 
             $out .= $name . "\n";
@@ -153,7 +154,9 @@ class EscPosPayloadService
             }
 
             $out .= strtoupper($line->product_name ?? '') . "\n";
-            $out .= 'QTY: ' . number_format($qtyToPrint, 2) . "\n";
+            $kotQty = number_format($qtyToPrint, 3);
+            if ($line->unit_code) { $kotQty .= ' ' . $line->unit_code; }
+            $out .= 'QTY: ' . $kotQty . "\n";
 
             if ($line->variant_name) {
                 $out .= "Variant: {$line->variant_name}\n";

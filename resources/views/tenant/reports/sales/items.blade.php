@@ -37,7 +37,7 @@
                                 <td>{{ $row->product_name }}</td>
                                 <td class="text-muted small">{{ $row->variant_name ?: '—' }}</td>
                                 <td class="text-muted small">{{ $row->category_name }}</td>
-                                <td class="text-end">{{ number_format($row->qty_sold, 2) }}</td>
+                                <td class="text-end">{{ number_format($row->qty_sold, 3) }}</td>
                                 <td class="text-end">{{ number_format($row->gross_amount, 2) }}</td>
                                 <td class="text-end text-danger">{{ number_format($row->total_discount, 2) }}</td>
                                 <td class="text-end">{{ number_format($row->total_tax, 2) }}</td>

@@ -98,7 +98,7 @@ class SalesOrderController extends Controller
 
                 // Resolve line prices first so SalesTotalsService gets accurate per-line data
                 $resolvedLines = $lines->map(function ($line) use ($branch, $inventoryService) {
-                    $product = Product::findOrFail($line['product_id']);
+                    $product = Product::with('unit')->findOrFail($line['product_id']);
                     $variant = $inventoryService->resolveVariant($product, $line['product_variant_id'] ?? null);
                     $qty     = (float) $line['quantity'];
                     $price   = $this->resolveSellingPrice($product, $variant, $branch->id,
@@ -224,6 +224,7 @@ class SalesOrderController extends Controller
                         'product_variant_id' => $variant?->id,
                         'product_name'       => $product->name,
                         'variant_name'       => $variant?->name,
+                        'unit_code'          => $product->unit?->code,
                         'quantity'           => $qty,
                         'unit_price'         => $unitPrice,
                         'unit_cost'          => 0,

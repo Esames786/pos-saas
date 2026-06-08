@@ -120,7 +120,7 @@
                     <br><small>* {{ $line->kitchen_note }}</small>
                 @endif
             </td>
-            <td class="item-qty">{{ $line->quantity }}</td>
+            <td class="item-qty">{{ number_format((float) $line->quantity, 3) }}{{ $line->unit_code ? ' '.$line->unit_code : '' }}</td>
             <td class="item-price">{{ number_format($line->unit_price, 2) }}</td>
             <td class="item-total">{{ number_format($line->line_total, 2) }}</td>
         </tr>
