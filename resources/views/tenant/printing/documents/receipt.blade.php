@@ -147,6 +147,18 @@
         <td>{{ number_format($salesOrder->tax_amount, 2) }}</td>
     </tr>
     @endif
+    @if((float) ($salesOrder->service_charge_amount ?? 0) > 0)
+    <tr>
+        <td>Service Charge:</td>
+        <td>{{ number_format($salesOrder->service_charge_amount, 2) }}</td>
+    </tr>
+    @endif
+    @if((float) ($salesOrder->tip_amount ?? 0) > 0)
+    <tr>
+        <td>Tip:</td>
+        <td>{{ number_format($salesOrder->tip_amount, 2) }}</td>
+    </tr>
+    @endif
     <tr>
         <td class="bold">Total:</td>
         <td class="bold">{{ number_format($salesOrder->grand_total, 2) }}</td>

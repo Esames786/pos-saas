@@ -102,14 +102,25 @@ class RestaurantTableSessionController extends Controller
 
     public function billRequested(RestaurantTableSession $restaurantTableSession)
     {
-        if ($restaurantTableSession->status !== 'open') {
+        if (!in_array($restaurantTableSession->status, ['open', 'bill_requested'], true)) {
+            if (request()->expectsJson()) {
+                return response()->json(['message' => 'Session is not open.'], 422);
+            }
             return back()->withErrors(['session' => 'Session is not open.']);
         }
 
         $restaurantTableSession->update(['status' => 'bill_requested']);
         $restaurantTableSession->table->update(['status' => 'bill_requested']);
 
-        return redirect(url('/restaurant/board'))->with('status', 'Bill requested for table ' . $restaurantTableSession->table->table_no . '.');
+        if (request()->expectsJson()) {
+            return response()->json([
+                'ok'      => true,
+                'status'  => 'bill_requested',
+                'message' => 'Bill requested for table ' . $restaurantTableSession->table->table_no . '.',
+            ]);
+        }
+
+        return back()->with('status', 'Bill requested for table ' . $restaurantTableSession->table->table_no . '.');
     }
 
     public function close(Request $request, RestaurantTableSession $restaurantTableSession)

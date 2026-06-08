@@ -15,6 +15,7 @@ use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\StockBalance;
 use App\Models\Tenant\Terminal;
 use App\Models\Tenant\TerminalPrinterSetting;
+use App\Services\Sales\SalesTotalsService;
 use Illuminate\Http\Request;
 
 class POSController extends Controller
@@ -194,6 +195,57 @@ class POSController extends Controller
             'activeMode'       => $tableSession || $heldSale?->restaurant_table_session_id
                 ? 'dine_in'
                 : ($request->input('mode', 'quick_sale')),
+        ]);
+    }
+
+    public function quoteTotals(Request $request, SalesTotalsService $totalsService)
+    {
+        $data = $request->validate([
+            'branch_id'               => ['required', 'exists:branches,id'],
+            'order_type'              => ['required', 'in:quick_sale,takeaway,dine_in,delivery'],
+            'discount_type'           => ['nullable', 'in:none,fixed,percent'],
+            'discount_value'          => ['nullable', 'numeric', 'min:0'],
+            'promo_code'              => ['nullable', 'string', 'max:50'],
+            'tip_amount'              => ['nullable', 'numeric', 'min:0'],
+            'lines'                   => ['nullable', 'array'],
+            'lines.*.quantity'        => ['nullable', 'numeric', 'min:0'],
+            'lines.*.unit_price'      => ['nullable', 'numeric', 'min:0'],
+            'lines.*.discount_amount' => ['nullable', 'numeric', 'min:0'],
+            'lines.*.tax_amount'      => ['nullable', 'numeric', 'min:0'],
+        ]);
+
+        $resolvedLines = collect($data['lines'] ?? [])
+            ->filter(fn ($line) => (float) ($line['quantity'] ?? 0) > 0)
+            ->map(fn ($line) => [
+                'quantity'        => (float) ($line['quantity'] ?? 0),
+                'unit_price'      => (float) ($line['unit_price'] ?? 0),
+                'discount_amount' => (float) ($line['discount_amount'] ?? 0),
+                'tax_amount'      => (float) ($line['tax_amount'] ?? 0),
+            ])
+            ->values()
+            ->toArray();
+
+        $totals = $totalsService->calculate(
+            resolvedLines: $resolvedLines,
+            discountType:  $data['discount_type'] ?? 'none',
+            discountValue: (float) ($data['discount_value'] ?? 0),
+            branchId:      (int) $data['branch_id'],
+            orderType:     $data['order_type'],
+            promoCode:     $data['promo_code'] ?? null,
+            tipAmount:     (float) ($data['tip_amount'] ?? 0),
+        );
+
+        return response()->json([
+            'ok'                         => true,
+            'subtotal'                   => $totals['subtotal'],
+            'discount_amount'            => $totals['discount_amount'],
+            'promotion_id'               => $totals['promotion_id'],
+            'promo_code'                 => $totals['promo_code'],
+            'promotion_discount_amount'  => $totals['promotion_discount_amount'],
+            'tax_amount'                 => $totals['tax_amount'],
+            'service_charge_amount'      => $totals['service_charge_amount'],
+            'tip_amount'                 => $totals['tip_amount'],
+            'grand_total'                => $totals['grand_total'],
         ]);
     }
 }

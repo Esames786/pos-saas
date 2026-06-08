@@ -501,6 +501,8 @@ class TenantProvisioner
             // Manager Approvals
             'tenant.api.manager-approvals.verify',
             'tenant.api.pos.promotions.quote',
+            'tenant.api.pos.totals.quote',
+            'tenant.api.pos.table-sessions.open-orders',
 
             // Manager PIN
             'tenant.users.manager-pin',

@@ -103,6 +103,34 @@ class HeldSaleController extends Controller
         ]);
     }
 
+    /** AJAX: open held orders for a specific table session */
+    public function tableSessionOpenOrders(RestaurantTableSession $restaurantTableSession)
+    {
+        $orders = SalesOrder::with(['lines'])
+            ->where('restaurant_table_session_id', $restaurantTableSession->id)
+            ->where('status', 'held')
+            ->orderByDesc('updated_at')
+            ->get();
+
+        return response()->json([
+            'ok'               => true,
+            'table_session_id' => $restaurantTableSession->id,
+            'branch_id'        => $restaurantTableSession->branch_id,
+            'orders'           => $orders->map(fn ($sale) => [
+                'id'                    => $sale->id,
+                'sale_no'               => $sale->sale_no,
+                'grand_total'           => (float) $sale->grand_total,
+                'grand_total_formatted' => number_format((float) $sale->grand_total, 2),
+                'items_count'           => (int) $sale->lines->sum('quantity'),
+                'created_at'            => $sale->created_at?->format('d M Y H:i'),
+                'updated_at'            => $sale->updated_at?->diffForHumans(),
+                'recall_url'            => url('/pos?held_sale_id=' . $sale->id
+                    . '&table_session_id=' . $restaurantTableSession->id
+                    . '&mode=dine_in&branch_id=' . $restaurantTableSession->branch_id),
+            ])->values(),
+        ]);
+    }
+
     public function create()
     {
         $branches      = Branch::where('status', 'active')->orderBy('name')->get();
@@ -149,6 +177,7 @@ class HeldSaleController extends Controller
             'void_items.*.reason_id'      => 'nullable|exists:void_reasons,id',
             'void_items.*.manager_approval_id' => 'nullable|exists:manager_approvals,id',
             'void_items.*.product_name'   => 'nullable|string',
+            'create_separate_order'       => 'nullable|boolean',
         ]);
 
         $lines = collect($data['lines'])->filter(fn ($l) => !empty($l['product_id']) && !empty($l['quantity']));
@@ -203,6 +232,29 @@ class HeldSaleController extends Controller
             }
 
             $data['order_type'] = 'dine_in';
+        }
+
+        // Guard: prevent accidental duplicate held sales on the same table session
+        $createSeparateOrder = $request->boolean('create_separate_order');
+
+        if ($tableSession && empty($data['held_sale_id']) && !$createSeparateOrder) {
+            $openOrders = $this->tableOpenOrdersPayload($tableSession);
+
+            if ($openOrders->isNotEmpty()) {
+                if ($request->expectsJson()) {
+                    return response()->json([
+                        'ok'               => false,
+                        'code'             => 'TABLE_HAS_OPEN_ORDERS',
+                        'message'          => 'This table already has open held orders. Continue an existing order or intentionally create a separate order.',
+                        'table_session_id' => $tableSession->id,
+                        'branch_id'        => $tableSession->branch_id,
+                        'orders'           => $openOrders,
+                    ], 409);
+                }
+
+                return redirect(url('/restaurant/table-sessions/' . $tableSession->id . '/bill-preview'))
+                    ->withErrors(['table' => 'This table already has open held orders. Continue an existing order or create a separate order intentionally.']);
+            }
         }
 
         $kotSentKeys = [];
@@ -343,6 +395,27 @@ class HeldSaleController extends Controller
         }
 
         return redirect(url('/held-sales'))->with('status', "Held sale {$sale->sale_no} saved.");
+    }
+
+    private function tableOpenOrdersPayload(RestaurantTableSession $tableSession)
+    {
+        return SalesOrder::with(['lines'])
+            ->where('restaurant_table_session_id', $tableSession->id)
+            ->where('status', 'held')
+            ->orderByDesc('updated_at')
+            ->get()
+            ->map(fn ($sale) => [
+                'id'                    => $sale->id,
+                'sale_no'               => $sale->sale_no,
+                'grand_total'           => (float) $sale->grand_total,
+                'grand_total_formatted' => number_format((float) $sale->grand_total, 2),
+                'items_count'           => (int) $sale->lines->sum('quantity'),
+                'updated_at'            => $sale->updated_at?->diffForHumans(),
+                'recall_url'            => url('/pos?held_sale_id=' . $sale->id
+                    . '&table_session_id=' . $tableSession->id
+                    . '&mode=dine_in&branch_id=' . $tableSession->branch_id),
+            ])
+            ->values();
     }
 
     public function cancel(SalesOrder $salesOrder)

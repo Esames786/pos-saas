@@ -14,7 +14,7 @@
     </div>
     <div class="d-flex gap-2 flex-wrap">
         <a href="{{ url('/pos?table_session_id=' . $session->id . '&mode=dine_in&branch_id=' . $session->branch_id) }}" class="btn btn-primary">
-            Add / Pay Order
+            Continue / Add Order
         </a>
         <a href="{{ url('/restaurant/board?branch_id=' . $session->branch_id) }}" class="btn btn-light">
             Back To Board
@@ -95,10 +95,27 @@
                         <tr>
                             <td><code>{{ $sale->sale_no }}</code></td>
                             <td>{{ $sale->lines->count() }}</td>
-                            <td>{{ number_format($sale->grand_total, 2) }}</td>
+                            <td>
+                                <strong>{{ number_format($sale->grand_total, 2) }}</strong>
+                                <div class="small text-muted">
+                                    Sub {{ number_format($sale->subtotal, 2) }}
+                                    @if((float) $sale->discount_amount > 0)
+                                        · Disc -{{ number_format($sale->discount_amount, 2) }}
+                                    @endif
+                                    @if((float) $sale->tax_amount > 0)
+                                        · Tax {{ number_format($sale->tax_amount, 2) }}
+                                    @endif
+                                    @if((float) $sale->service_charge_amount > 0)
+                                        · Svc {{ number_format($sale->service_charge_amount, 2) }}
+                                    @endif
+                                    @if((float) $sale->tip_amount > 0)
+                                        · Tip {{ number_format($sale->tip_amount, 2) }}
+                                    @endif
+                                </div>
+                            </td>
                             <td class="text-end">
                                 @can('tenant.pos.index')
-                                    <a href="{{ url('/pos?held_sale_id=' . $sale->id . '&mode=dine_in&branch_id=' . $session->branch_id) }}" class="btn btn-sm btn-primary">
+                                    <a href="{{ url('/pos?held_sale_id=' . $sale->id . '&table_session_id=' . $session->id . '&mode=dine_in&branch_id=' . $session->branch_id) }}" class="btn btn-sm btn-primary">
                                         Recall / Pay
                                     </a>
                                 @endcan

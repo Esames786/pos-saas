@@ -142,6 +142,21 @@ class SalesOrderController extends Controller
                     }
                 }
 
+                // Guard: block accidental direct-pay against a table that still has open held orders
+                if (
+                    $tableSession
+                    && empty($data['held_sale_id'])
+                    && empty($data['create_separate_order'])
+                ) {
+                    $hasOpenHeldOrders = SalesOrder::where('restaurant_table_session_id', $tableSession->id)
+                        ->where('status', 'held')
+                        ->exists();
+
+                    if ($hasOpenHeldOrders) {
+                        throw new RuntimeException('This table already has open held orders. Recall an existing order or intentionally create a separate order.');
+                    }
+                }
+
                 $saleFields = [
                     'branch_id'                   => $branch->id,
                     'terminal_id'                 => $terminal?->id,
@@ -304,6 +319,7 @@ class SalesOrderController extends Controller
             'customer_email' => ['nullable', 'email', 'max:190'],
             'held_sale_id'                => ['nullable', 'exists:sales_orders,id'],
             'restaurant_table_session_id' => ['nullable', 'exists:restaurant_table_sessions,id'],
+            'create_separate_order'       => ['nullable', 'boolean'],
             'order_source'        => ['nullable', Rule::in(['pos', 'manual'])],
             'order_type'          => ['required', Rule::in(['quick_sale', 'takeaway', 'dine_in', 'delivery'])],
             'discount_type'       => ['required', Rule::in(['none', 'fixed', 'percent'])],
