@@ -121,7 +121,7 @@ class HeldSaleController extends Controller
                 'sale_no'               => $sale->sale_no,
                 'grand_total'           => (float) $sale->grand_total,
                 'grand_total_formatted' => number_format((float) $sale->grand_total, 2),
-                'items_count'           => (int) $sale->lines->sum('quantity'),
+                'items_count'           => round((float) $sale->lines->sum('quantity'), 3),
                 'created_at'            => $sale->created_at?->format('d M Y H:i'),
                 'updated_at'            => $sale->updated_at?->diffForHumans(),
                 'recall_url'            => url('/pos?held_sale_id=' . $sale->id
@@ -409,7 +409,7 @@ class HeldSaleController extends Controller
                 'sale_no'               => $sale->sale_no,
                 'grand_total'           => (float) $sale->grand_total,
                 'grand_total_formatted' => number_format((float) $sale->grand_total, 2),
-                'items_count'           => (int) $sale->lines->sum('quantity'),
+                'items_count'           => round((float) $sale->lines->sum('quantity'), 3),
                 'updated_at'            => $sale->updated_at?->diffForHumans(),
                 'recall_url'            => url('/pos?held_sale_id=' . $sale->id
                     . '&table_session_id=' . $tableSession->id
