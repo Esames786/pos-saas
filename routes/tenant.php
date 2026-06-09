@@ -432,6 +432,9 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::post('/api/manager-approvals/verify', [ManagerApprovalController::class, 'verify'])->name('tenant.api.manager-approvals.verify');
                 Route::post('/api/pos/promotions/quote', [PromotionController::class, 'quote'])->name('tenant.api.pos.promotions.quote');
 
+                // Catalog API — shared barcode/SKU lookup used by POS, GRN, stock screens
+                Route::post('/api/catalog/barcode/lookup', [ProductController::class, 'lookupBarcode'])->name('tenant.api.catalog.barcode.lookup');
+
                 // Reports — Phase 1
                 Route::get('/reports/sales/summary',  [SalesReportController::class, 'summary'])->name('tenant.reports.sales.summary');
                 Route::get('/reports/sales/items',    [SalesReportController::class, 'items'])->name('tenant.reports.sales.items');

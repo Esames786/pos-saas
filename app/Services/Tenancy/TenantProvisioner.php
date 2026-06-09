@@ -504,6 +504,7 @@ class TenantProvisioner
             'tenant.api.pos.promotions.quote',
             'tenant.api.pos.totals.quote',
             'tenant.api.pos.table-sessions.open-orders',
+            'tenant.api.catalog.barcode.lookup',
 
             // Manager PIN
             'tenant.users.manager-pin',

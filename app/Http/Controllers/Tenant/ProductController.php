@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Tenant;
 
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Branch;
+use App\Services\Catalog\BarcodeLookupService;
 use App\Models\Tenant\Category;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\ProductBarcode;
@@ -156,6 +157,21 @@ class ProductController extends Controller
         $product->delete();
 
         return redirect('/products')->with('status', 'Product deleted successfully.');
+    }
+
+    public function lookupBarcode(Request $request, BarcodeLookupService $service)
+    {
+        $data = $request->validate([
+            'branch_id' => ['required', 'exists:branches,id'],
+            'code'      => ['required', 'string', 'max:100'],
+        ]);
+
+        return response()->json(
+            $service->lookup(
+                code:     (string) $data['code'],
+                branchId: (int) $data['branch_id'],
+            )
+        );
     }
 
     private function validated(Request $request, ?Product $product = null): array

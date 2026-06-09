@@ -26,6 +26,7 @@ class EnsureRoutePermission
             'tenant.locale',
             'tenant.api.print-agent',
             'tenant.api.pos',
+            'tenant.api.catalog',
             'tenant.printing.documents',
             'tenant.printing.jobs',
             'tenant.printing.layouts.preview',
