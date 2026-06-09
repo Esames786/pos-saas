@@ -41,7 +41,10 @@ class GoodsReceiptController extends Controller
     {
         $branches     = Branch::orderBy('name')->get();
         $suppliers    = Supplier::where('status', 'active')->orderBy('name')->get();
-        $products     = Product::with('variants')->where('status', 'active')->orderBy('name')->get();
+        $products     = Product::with(['unit', 'variants'])
+            ->where('status', 'active')
+            ->orderBy('name')
+            ->get();
         $openOrders   = PurchaseOrder::with(['supplier', 'lines.product'])
             ->whereIn('status', ['approved'])
             ->orderByDesc('order_date')

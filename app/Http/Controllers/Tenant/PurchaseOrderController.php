@@ -43,7 +43,10 @@ class PurchaseOrderController extends Controller
     {
         $branches  = Branch::orderBy('name')->get();
         $suppliers = Supplier::where('status', 'active')->orderBy('name')->get();
-        $products  = Product::with('variants')->where('status', 'active')->orderBy('name')->get();
+        $products  = Product::with(['unit', 'variants'])
+            ->where('status', 'active')
+            ->orderBy('name')
+            ->get();
 
         return view('tenant.purchase-orders.create', compact('branches', 'suppliers', 'products'));
     }
