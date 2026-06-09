@@ -349,7 +349,18 @@ function loadTfVariants(selectEl, idx) {
 
         product.value = String(result.product_id || '');
         if (typeof loadTfVariants === 'function') loadTfVariants(product, idx);
-        if (variant && result.variant_id) variant.value = String(result.variant_id);
+
+        // loadTfVariants filters out is_default variants; add the matched variant
+        // explicitly so it appears selected even if it is the default variant
+        if (variant && result.variant_id) {
+            if (!variant.querySelector('option[value="' + result.variant_id + '"]')) {
+                var opt = document.createElement('option');
+                opt.value = result.variant_id;
+                opt.textContent = result.variant_name || result.name || ('Variant #' + result.variant_id);
+                variant.insertBefore(opt, variant.options[1] || null);
+            }
+            variant.value = String(result.variant_id);
+        }
 
         qty.value = result.allow_decimal ? '1.000' : '1';
         qty.step  = result.allow_decimal ? '0.001' : '1';

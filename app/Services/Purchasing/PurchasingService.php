@@ -64,7 +64,7 @@ class PurchasingService
                 $variant,
                 (float) $line->quantity_received,
                 (float) $line->unit_cost,
-                'purchase_receipt',
+                'purchase',
                 GoodsReceipt::class,
                 $grn->id,
                 $grn->grn_no,
