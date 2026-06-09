@@ -177,10 +177,16 @@ class ProductController extends Controller
             'has_variants'           => ['nullable', 'boolean'],
             'has_expiry'             => ['nullable', 'boolean'],
             'requires_batch'         => ['nullable', 'boolean'],
-            'is_taxable'             => ['nullable', 'boolean'],
-            'tax_rate_percent'       => ['nullable', 'numeric', 'min:0', 'max:100'],
-            'description'            => ['nullable', 'string'],
-            'status'                 => ['required', Rule::in(['active', 'inactive'])],
+            'is_taxable'                    => ['nullable', 'boolean'],
+            'tax_rate_percent'              => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'description'                  => ['nullable', 'string'],
+            'status'                       => ['required', Rule::in(['active', 'inactive'])],
+            'item_kind'                    => ['nullable', Rule::in(['ingredient', 'finished_good', 'both'])],
+            'inventory_consumption_method' => ['nullable', Rule::in(['stock_item', 'recipe', 'none'])],
+            'is_perishable'               => ['nullable', 'boolean'],
+            'storage_type'                => ['nullable', 'string', 'max:50'],
+            'shelf_life_days'             => ['nullable', 'integer', 'min:0', 'max:65535'],
+            'default_wastage_percent'     => ['nullable', 'numeric', 'min:0', 'max:100'],
         ]);
 
         $slugBase = Str::slug($data['name']);
@@ -211,9 +217,15 @@ class ProductController extends Controller
             'default_purchase_price' => $data['default_purchase_price'] ?? 0,
             'default_selling_price'  => $data['default_selling_price'],
             'is_taxable'             => !empty($data['is_taxable']),
-            'tax_rate_percent'       => $data['tax_rate_percent'] ?? null,
-            'description'            => $data['description'] ?? null,
-            'status'                 => $data['status'],
+            'tax_rate_percent'              => $data['tax_rate_percent'] ?? null,
+            'description'                  => $data['description'] ?? null,
+            'status'                       => $data['status'],
+            'item_kind'                    => $data['item_kind'] ?? 'finished_good',
+            'inventory_consumption_method' => $data['inventory_consumption_method'] ?? 'stock_item',
+            'is_perishable'               => $request->boolean('is_perishable'),
+            'storage_type'                => $data['storage_type'] ?? null,
+            'shelf_life_days'             => isset($data['shelf_life_days']) ? (int) $data['shelf_life_days'] : null,
+            'default_wastage_percent'     => $data['default_wastage_percent'] ?? 0,
         ];
     }
 }
