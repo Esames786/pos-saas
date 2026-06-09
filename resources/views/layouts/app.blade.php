@@ -54,5 +54,23 @@
 <script src="{{ asset('assets/plugins/select2/js/select2.min.js') }}"></script>
 <script src="{{ asset('assets/js/script.js') }}"></script>
 @stack('scripts')
+<script>
+(function () {
+    var KEY = 'sidebar_scroll_top';
+    var inner = document.querySelector('.sidebar-inner');
+    if (!inner) return;
+
+    // Restore on load
+    var saved = localStorage.getItem(KEY);
+    if (saved) {
+        setTimeout(function () { inner.scrollTop = parseInt(saved, 10); }, 50);
+    }
+
+    // Save on scroll
+    inner.addEventListener('scroll', function () {
+        localStorage.setItem(KEY, inner.scrollTop);
+    });
+})();
+</script>
 </body>
 </html>

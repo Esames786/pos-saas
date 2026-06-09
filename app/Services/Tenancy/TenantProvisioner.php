@@ -461,6 +461,7 @@ class TenantProvisioner
             // Printing — Layouts
             'tenant.printing.layouts.index',
             'tenant.printing.layouts.store',
+            'tenant.printing.layouts.preview',
 
             // Printing — Jobs
             'tenant.printing.jobs.index',

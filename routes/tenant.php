@@ -388,6 +388,7 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 // Printing — Layouts
                 Route::get('/printing/layouts', [ReceiptLayoutController::class, 'index'])->name('tenant.printing.layouts.index');
                 Route::post('/printing/layouts', [ReceiptLayoutController::class, 'store'])->name('tenant.printing.layouts.store');
+                Route::get('/printing/layouts/{receiptLayoutSetting}/preview', [ReceiptLayoutController::class, 'preview'])->name('tenant.printing.layouts.preview');
 
                 // Printing — Jobs
                 Route::get('/printing/jobs', [PrintJobController::class, 'index'])->name('tenant.printing.jobs.index');
