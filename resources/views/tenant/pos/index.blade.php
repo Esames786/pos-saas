@@ -2537,21 +2537,57 @@ document.addEventListener('DOMContentLoaded', function () {
 
     /* search / barcode scan */
 
-    searchEl.addEventListener('input', function () {
-        const query = searchEl.value.trim().toLowerCase();
+    function handlePosBarcodeScan(rawQuery) {
+        var query = (rawQuery || '').trim().toLowerCase();
+        if (!query) return false;
 
-        const barcodeProduct = products.find(function (product) {
-            return (product.barcodes || []).some(function (barcode) {
-                return String(barcode).toLowerCase() === query;
-            });
-        });
+        var matched = null;
+        var matchedVariant = null;
 
-        if (barcodeProduct) {
-            addToCart(barcodeProduct, barcodeProduct.variants && barcodeProduct.variants.length ? barcodeProduct.variants[0] : null);
-            searchEl.value = '';
+        for (var _i = 0; _i < products.length; _i++) {
+            var _p = products[_i];
+
+            // 1. Product-level barcodes
+            if ((_p.barcodes || []).some(function (b) { return String(b).toLowerCase() === query; })) {
+                matched = _p;
+                matchedVariant = _p.variants && _p.variants.length ? _p.variants[0] : null;
+                break;
+            }
+
+            // 2. Variant-level barcodes (picks the exact matching variant)
+            for (var _j = 0; _j < (_p.variants || []).length; _j++) {
+                var _v = _p.variants[_j];
+                if ((_v.barcodes || []).some(function (b) { return String(b).toLowerCase() === query; })) {
+                    matched = _p;
+                    matchedVariant = _v;
+                    break;
+                }
+            }
+            if (matched) break;
         }
 
+        if (matched) {
+            addToCart(matched, matchedVariant);
+            searchEl.value = '';
+            searchEl.focus();
+            renderProducts();
+            return true;
+        }
+
+        return false;
+    }
+
+    searchEl.addEventListener('input', function () {
+        handlePosBarcodeScan(searchEl.value);
         renderProducts();
+    });
+
+    // Enter key: explicit trigger for scanners that send Enter as terminator
+    searchEl.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            handlePosBarcodeScan(searchEl.value);
+        }
     });
 
     /* mode tabs — CSS-locked when recalled; click → apply directly when unlocked */

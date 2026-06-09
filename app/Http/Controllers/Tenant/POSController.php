@@ -82,7 +82,7 @@ class POSController extends Controller
                 'category',
                 'unit',
                 'defaultVariant',
-                'variants',
+                'variants.barcodes',
                 'barcodes',
                 'branchPrices',
             ])
@@ -129,11 +129,12 @@ class POSController extends Controller
                 }
 
                 return [
-                    'id'             => (int) $variant->id,
-                    'name'           => $variant->name,
-                    'sku'            => $variant->sku,
-                    'selling_price'  => (float) ($variant->selling_price ?? $product->default_selling_price ?? $product->selling_price ?? 0),
+                    'id'              => (int) $variant->id,
+                    'name'            => $variant->name,
+                    'sku'             => $variant->sku,
+                    'selling_price'   => (float) ($variant->selling_price ?? $product->default_selling_price ?? $product->selling_price ?? 0),
                     'stock_by_branch' => $stockMap,
+                    'barcodes'        => $variant->barcodes->pluck('barcode')->filter()->values(),
                 ];
             })->values();
 
