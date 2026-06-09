@@ -56,7 +56,7 @@ class HeldSaleController extends Controller
                 'restaurant_table_id'         => $s->restaurant_table_id,
                 'customer'                    => $s->customer_name ?: $s->customer?->name ?: 'Walk-in',
                 'total'                       => number_format($s->grand_total, 2),
-                'items'                       => (int) $s->lines->sum('quantity'),
+                'items'                       => round((float) $s->lines->sum('quantity'), 3),
                 'time'                        => $s->created_at->diffForHumans(),
                 'notes'                       => $s->notes,
                 'lines'                       => $s->lines->map(fn ($l) => [
