@@ -727,16 +727,33 @@ class TenantDemoSeeder extends Seeder
         ];
 
         $cityQtys = [
-            'COLA-500'   => ['qty' => 24,  'cost' => 40],
-            'PEPSI-500'  => ['qty' => 18,  'cost' => 38],
-            'WATER-1L'   => ['qty' => 30,  'cost' => 20],
-            'JUICE-MNG'  => ['qty' => 12,  'cost' => 25],
-            'MILK-1L'    => ['qty' => 15,  'cost' => 120, 'expiry' => now()->addDays(7)->toDateString()],
-            'BISCUIT-P'  => ['qty' => 20,  'cost' => 55],
-            'CHIPS-LAY'  => ['qty' => 25,  'cost' => 65],
-            'RICE-5KG'   => ['qty' => 10,  'cost' => 850],
-            'SUGAR-1KG'  => ['qty' => 20,  'cost' => 120],
-            'CIG-GOLD'   => ['qty' => 30,  'cost' => 270],
+            'COLA-500'   => ['qty' => 24,    'cost' => 40],
+            'PEPSI-500'  => ['qty' => 18,    'cost' => 38],
+            'SPRITE-500' => ['qty' => 12,    'cost' => 40],
+            'WATER-1L'   => ['qty' => 30,    'cost' => 20],
+            'JUICE-MNG'  => ['qty' => 12,    'cost' => 25],
+            'JUICE-ONG'  => ['qty' => 10,    'cost' => 25],
+            'MILK-1L'    => ['qty' => 15,    'cost' => 120, 'expiry' => now()->addDays(7)->toDateString()],
+            'BUTTER-200' => ['qty' => 8,     'cost' => 160, 'expiry' => now()->addDays(30)->toDateString()],
+            'YOGURT-500' => ['qty' => 10,    'cost' => 90,  'expiry' => now()->addDays(5)->toDateString()],
+            'BISCUIT-P'  => ['qty' => 20,    'cost' => 55],
+            'CHIPS-LAY'  => ['qty' => 25,    'cost' => 65],
+            'RICE-5KG'   => ['qty' => 10,    'cost' => 850],
+            'SUGAR-1KG'  => ['qty' => 20,    'cost' => 120],
+            'OIL-1L'     => ['qty' => 12,    'cost' => 380],
+            'SALT-1KG'   => ['qty' => 15,    'cost' => 60],
+            'CIG-GOLD'   => ['qty' => 30,    'cost' => 270],
+            // Measurable / weighted items at City branch
+            'TOMATO-KG'  => ['qty' => 10.000, 'cost' => 60],
+            'POTATO-KG'  => ['qty' => 15.000, 'cost' => 40],
+            'ONION-KG'   => ['qty' => 12.000, 'cost' => 50],
+            'CHICKEN-KG' => ['qty' => 8.000,  'cost' => 550, 'expiry' => now()->addDays(3)->toDateString()],
+            'BEEF-KG'    => ['qty' => 5.000,  'cost' => 900, 'expiry' => now()->addDays(3)->toDateString()],
+            'RICE-LOOSE' => ['qty' => 25.000, 'cost' => 180],
+            'SUGAR-LOSE' => ['qty' => 20.000, 'cost' => 100],
+            'FLOUR-KG'   => ['qty' => 30.000, 'cost' => 80],
+            'OIL-LOOSE'  => ['qty' => 10.000, 'cost' => 340],
+            'FABRIC-MTR' => ['qty' => 25.000, 'cost' => 250],
         ];
 
         $this->postOpeningForBranch($mainBranch, $mainQtys, 'Main');
