@@ -191,31 +191,37 @@
 @endcan
 
 {{-- Layout data for JS --}}
+@php
+$layoutsForJs = [];
+foreach ($layouts as $l) {
+    $layoutsForJs[$l->id] = [
+        'id'                     => $l->id,
+        'branch_id'              => $l->branch_id,
+        'branch_name'            => $l->branch?->name,
+        'document_type'          => $l->document_type,
+        'paper_size'             => $l->paper_size,
+        'font_size'              => $l->font_size,
+        'kot_font_size'          => $l->kot_font_size,
+        'header_text'            => $l->header_text,
+        'footer_text'            => $l->footer_text,
+        'show_logo'              => (bool)$l->show_logo,
+        'show_branch_name'       => (bool)$l->show_branch_name,
+        'show_branch_address'    => (bool)$l->show_branch_address,
+        'show_branch_phone'      => (bool)$l->show_branch_phone,
+        'show_tax_number'        => (bool)$l->show_tax_number,
+        'show_cashier_name'      => (bool)$l->show_cashier_name,
+        'show_customer_name'     => (bool)$l->show_customer_name,
+        'show_table_info'        => (bool)$l->show_table_info,
+        'show_order_no'          => (bool)$l->show_order_no,
+        'show_item_codes'        => (bool)$l->show_item_codes,
+        'show_payment_breakdown' => (bool)$l->show_payment_breakdown,
+        'is_active'              => (bool)$l->is_active,
+        'preview_url'            => url('/printing/layouts/' . $l->id . '/preview'),
+    ];
+}
+@endphp
 <script>
-var _layoutData = @json($layouts->keyBy('id')->map(fn($l) => [
-    'id'                     => $l->id,
-    'branch_id'              => $l->branch_id,
-    'branch_name'            => $l->branch?->name,
-    'document_type'          => $l->document_type,
-    'paper_size'             => $l->paper_size,
-    'font_size'              => $l->font_size,
-    'kot_font_size'          => $l->kot_font_size,
-    'header_text'            => $l->header_text,
-    'footer_text'            => $l->footer_text,
-    'show_logo'              => (bool)$l->show_logo,
-    'show_branch_name'       => (bool)$l->show_branch_name,
-    'show_branch_address'    => (bool)$l->show_branch_address,
-    'show_branch_phone'      => (bool)$l->show_branch_phone,
-    'show_tax_number'        => (bool)$l->show_tax_number,
-    'show_cashier_name'      => (bool)$l->show_cashier_name,
-    'show_customer_name'     => (bool)$l->show_customer_name,
-    'show_table_info'        => (bool)$l->show_table_info,
-    'show_order_no'          => (bool)$l->show_order_no,
-    'show_item_codes'        => (bool)$l->show_item_codes,
-    'show_payment_breakdown' => (bool)$l->show_payment_breakdown,
-    'is_active'              => (bool)$l->is_active,
-    'preview_url'            => url('/printing/layouts/' . $l->id . '/preview'),
-]));
+var _layoutData = @json($layoutsForJs);
 
 var _activeLayoutId = null;
 var _previewDebounce = null;
