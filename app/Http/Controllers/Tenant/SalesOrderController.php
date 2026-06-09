@@ -107,7 +107,7 @@ class SalesOrderController extends Controller
                     $tax     = $this->resolveTaxAmount($product, $qty, $price, $disc,
                         isset($line['tax_amount']) ? (float) $line['tax_amount'] : null);
 
-                    return array_merge($line->toArray(), [
+                    return array_merge((array) $line, [
                         '_product' => $product,
                         '_variant' => $variant,
                         'unit_price'      => $price,
