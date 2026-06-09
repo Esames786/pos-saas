@@ -31,6 +31,9 @@ use App\Models\Tenant\Unit;
 use App\Models\Tenant\User;
 use App\Models\Tenant\Printer;
 use App\Models\Tenant\PrintAgent;
+use App\Models\Tenant\ReceiptLayoutSetting;
+use App\Models\Tenant\Recipe;
+use App\Models\Tenant\RecipeIngredient;
 use App\Models\Tenant\TerminalPrinterSetting;
 use App\Models\Tenant\Promotion;
 use App\Models\Tenant\ServiceChargeSetting;
@@ -82,6 +85,8 @@ class TenantDemoSeeder extends Seeder
         $this->seedStockTransfer();
         $this->seedDailyClosing();
         $this->seedPrintersAndAgent();
+        $this->seedReceiptLayouts();
+        $this->seedRecipes();
 
         app(TenancyManager::class)->deactivate();
 
@@ -525,17 +530,27 @@ class TenantDemoSeeder extends Seeder
 
             $isTracked = $pd['is_stock_tracked'] ?? true;
 
+            // Recipe products: finished_good consumed via recipe; ingredient products: stock_item
+            $recipeSkus       = ['KARAHI-C', 'KARAHI-M', 'BIRYANI-C', 'BIRYANI-M', 'BURGER-C', 'BURGER-B'];
+            $ingredientSkus   = ['CHICKEN-KG', 'BEEF-KG', 'TOMATO-KG', 'POTATO-KG', 'ONION-KG', 'RICE-LOOSE', 'SUGAR-LOSE', 'FLOUR-KG', 'OIL-LOOSE'];
+            $consumptionMethod = in_array($pd['sku'], $recipeSkus)     ? 'recipe'
+                               : (in_array($pd['sku'], $ingredientSkus) ? 'stock_item' : ($isTracked ? 'stock_item' : 'none'));
+            $itemKind          = in_array($pd['sku'], $recipeSkus)     ? 'finished_good'
+                               : (in_array($pd['sku'], $ingredientSkus) ? 'ingredient'  : 'finished_good');
+
             $product = Product::updateOrCreate(
                 ['sku' => $pd['sku']],
                 [
-                    'category_id'            => $pd['category']?->id,
-                    'unit_id'                => $pd['unit']?->id,
-                    'name'                   => $pd['name'],
-                    'slug'                   => $slug,
-                    'product_type'           => $isTracked ? 'simple' : 'service',
-                    'is_sellable'            => true,
-                    'is_purchasable'         => $isTracked,
-                    'is_stock_tracked'       => $isTracked,
+                    'category_id'                    => $pd['category']?->id,
+                    'unit_id'                        => $pd['unit']?->id,
+                    'name'                           => $pd['name'],
+                    'slug'                           => $slug,
+                    'product_type'                   => in_array($pd['sku'], $recipeSkus) ? 'recipe' : ($isTracked ? 'simple' : 'service'),
+                    'item_kind'                      => $itemKind,
+                    'inventory_consumption_method'   => $consumptionMethod,
+                    'is_sellable'                    => true,
+                    'is_purchasable'                 => $isTracked && !in_array($pd['sku'], $recipeSkus),
+                    'is_stock_tracked'               => $isTracked,
                     'has_expiry'             => $pd['has_expiry'] ?? false,
                     'requires_batch'         => false,
                     'default_purchase_price' => $pd['buy'],
@@ -1780,5 +1795,144 @@ class TenantDemoSeeder extends Seeder
         );
 
         $this->command->line('  Sales controls (promotions, void reasons, service charge) seeded.');
+    }
+
+    // ── Receipt Layouts ──────────────────────────────────────────────────────
+
+    private function seedReceiptLayouts(): void
+    {
+        $branches = Branch::where('status', 'active')->get();
+
+        foreach ($branches as $branch) {
+            // Receipt layout
+            ReceiptLayoutSetting::updateOrCreate(
+                ['branch_id' => $branch->id, 'document_type' => 'receipt'],
+                [
+                    'paper_size'              => '80mm',
+                    'show_logo'               => false,
+                    'show_branch_name'        => true,
+                    'show_branch_address'     => true,
+                    'show_branch_phone'       => true,
+                    'show_tax_number'         => true,
+                    'show_cashier_name'       => true,
+                    'show_customer_name'      => false,
+                    'show_table_info'         => true,
+                    'show_order_no'           => true,
+                    'show_item_codes'         => false,
+                    'show_payment_breakdown'  => true,
+                    'header_text'             => 'Dreams POS — Demo Store' . "\n" . 'Thank you for shopping with us!',
+                    'footer_text'             => 'Exchange within 3 days with receipt.' . "\n" . 'No cash refund.',
+                    'font_size'               => 12,
+                    'is_active'               => true,
+                ]
+            );
+
+            // KOT layout
+            ReceiptLayoutSetting::updateOrCreate(
+                ['branch_id' => $branch->id, 'document_type' => 'kot'],
+                [
+                    'paper_size'              => '80mm',
+                    'show_logo'               => false,
+                    'show_branch_name'        => true,
+                    'show_branch_address'     => false,
+                    'show_branch_phone'       => false,
+                    'show_tax_number'         => false,
+                    'show_cashier_name'       => true,
+                    'show_customer_name'      => false,
+                    'show_table_info'         => true,
+                    'show_order_no'           => true,
+                    'show_item_codes'         => false,
+                    'show_payment_breakdown'  => false,
+                    'header_text'             => '*** KITCHEN ORDER TICKET ***',
+                    'footer_text'             => null,
+                    'font_size'               => 12,
+                    'kot_font_size'           => 14,
+                    'is_active'               => true,
+                ]
+            );
+        }
+
+        $this->command->line('  Receipt & KOT layouts seeded for ' . $branches->count() . ' branch(es).');
+    }
+
+    // ── Kitchen Recipes ──────────────────────────────────────────────────────
+
+    private function seedRecipes(): void
+    {
+        $kg  = Unit::where('code', 'KG')->first();
+        $pcs = Unit::where('code', 'PCS')->first();
+        $ltr = Unit::where('code', 'L')->first();
+
+        // Recipe 1: Chicken Karahi
+        $karahi = Product::where('sku', 'KARAHI-C')->first();
+        $chicken = Product::where('sku', 'CHICKEN-KG')->first();
+        $onion   = Product::where('sku', 'ONION-KG')->first();
+        $tomato  = Product::where('sku', 'TOMATO-KG')->first();
+        $oil     = Product::where('sku', 'OIL-LOOSE')->first();
+
+        if ($karahi && $chicken) {
+            $recipe1 = Recipe::updateOrCreate(
+                ['product_id' => $karahi->id, 'name' => 'Chicken Karahi (Half)'],
+                [
+                    'yield_quantity' => 1,
+                    'yield_unit_id'  => $pcs?->id,
+                    'is_active'      => true,
+                    'notes'          => 'Half karahi serving — approx 2 portions',
+                ]
+            );
+            // Clear and re-seed ingredients
+            $recipe1->ingredients()->delete();
+            $sort = 1;
+            if ($chicken) $recipe1->ingredients()->create(['product_id' => $chicken->id, 'quantity' => 0.500, 'unit_id' => $kg?->id,  'sort_order' => $sort++]);
+            if ($tomato)  $recipe1->ingredients()->create(['product_id' => $tomato->id,  'quantity' => 0.200, 'unit_id' => $kg?->id,  'sort_order' => $sort++]);
+            if ($onion)   $recipe1->ingredients()->create(['product_id' => $onion->id,   'quantity' => 0.100, 'unit_id' => $kg?->id,  'sort_order' => $sort++]);
+            if ($oil)     $recipe1->ingredients()->create(['product_id' => $oil->id,     'quantity' => 0.050, 'unit_id' => $ltr?->id, 'sort_order' => $sort++]);
+        }
+
+        // Recipe 2: Chicken Biryani
+        $biryani = Product::where('sku', 'BIRYANI-C')->first();
+        $rice    = Product::where('sku', 'RICE-LOOSE')->first();
+
+        if ($biryani && $chicken && $rice) {
+            $recipe2 = Recipe::updateOrCreate(
+                ['product_id' => $biryani->id, 'name' => 'Chicken Biryani (Plate)'],
+                [
+                    'yield_quantity' => 1,
+                    'yield_unit_id'  => $pcs?->id,
+                    'is_active'      => true,
+                    'notes'          => 'Single plate serving',
+                ]
+            );
+            $recipe2->ingredients()->delete();
+            $sort = 1;
+            if ($chicken) $recipe2->ingredients()->create(['product_id' => $chicken->id, 'quantity' => 0.200, 'unit_id' => $kg?->id, 'sort_order' => $sort++]);
+            if ($rice)    $recipe2->ingredients()->create(['product_id' => $rice->id,    'quantity' => 0.150, 'unit_id' => $kg?->id, 'sort_order' => $sort++]);
+            if ($onion)   $recipe2->ingredients()->create(['product_id' => $onion->id,   'quantity' => 0.050, 'unit_id' => $kg?->id, 'sort_order' => $sort++]);
+            if ($oil)     $recipe2->ingredients()->create(['product_id' => $oil->id,     'quantity' => 0.030, 'unit_id' => $ltr?->id, 'sort_order' => $sort++]);
+        }
+
+        // Recipe 3: Beef Burger
+        $burger  = Product::where('sku', 'BURGER-B')->first();
+        $beef    = Product::where('sku', 'BEEF-KG')->first();
+        $flour   = Product::where('sku', 'FLOUR-KG')->first();
+
+        if ($burger && $beef) {
+            $recipe3 = Recipe::updateOrCreate(
+                ['product_id' => $burger->id, 'name' => 'Beef Burger'],
+                [
+                    'yield_quantity' => 1,
+                    'yield_unit_id'  => $pcs?->id,
+                    'is_active'      => true,
+                    'notes'          => 'Beef patty burger with bun',
+                ]
+            );
+            $recipe3->ingredients()->delete();
+            $sort = 1;
+            if ($beef)  $recipe3->ingredients()->create(['product_id' => $beef->id,  'quantity' => 0.150, 'unit_id' => $kg?->id, 'sort_order' => $sort++]);
+            if ($flour) $recipe3->ingredients()->create(['product_id' => $flour->id, 'quantity' => 0.080, 'unit_id' => $kg?->id, 'sort_order' => $sort++]);
+            if ($oil)   $recipe3->ingredients()->create(['product_id' => $oil->id,   'quantity' => 0.020, 'unit_id' => $ltr?->id, 'sort_order' => $sort++]);
+        }
+
+        $this->command->line('  Recipes seeded: Chicken Karahi, Chicken Biryani, Beef Burger.');
     }
 }
