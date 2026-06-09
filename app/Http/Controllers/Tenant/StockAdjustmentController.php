@@ -39,7 +39,7 @@ class StockAdjustmentController extends Controller
     {
         return view('tenant.stock-adjustments.create', [
             'branches' => Branch::where('status', 'active')->orderBy('name')->get(),
-            'products' => Product::with('variants')
+            'products' => Product::with(['unit', 'variants'])
                 ->where('is_stock_tracked', true)
                 ->where('status', 'active')
                 ->orderBy('name')

@@ -71,6 +71,33 @@
                 <i class="ti ti-plus me-1"></i>Add Line
             </button>
         </div>
+        <div class="card-body">
+            <div class="border rounded p-3 mb-3 bg-light stock-adjustment-scanner-widget"
+                 data-lookup-url="{{ url('/api/catalog/barcode/lookup') }}">
+                <label class="form-label small fw-semibold" for="stock-adjustment-scanner">
+                    Scan Barcode / SKU
+                </label>
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+                            <path d="M1 1h2v14H1V1zm3 0h1v14H4V1zm2 0h2v14H6V1zm3 0h1v14H9V1zm2 0h1v14h-1V1zm2 0h2v14h-2V1z"/>
+                        </svg>
+                    </span>
+                    <input type="text"
+                           id="stock-adjustment-scanner"
+                           class="form-control"
+                           placeholder="Scan barcode or type SKU then press Enter"
+                           autocomplete="off"
+                           inputmode="text">
+                    <button class="btn btn-outline-primary" type="button" id="stock-adjustment-scan-btn">
+                        Add
+                    </button>
+                </div>
+                <div class="form-text">
+                    Scan product barcode/SKU to add an adjustment line, then enter counted adjustment quantity.
+                </div>
+            </div>
+        </div>
         <div class="card-body p-0">
             <div class="table-responsive">
                 <table class="table table-nowrap align-top mb-0" id="lines-table">
@@ -95,8 +122,26 @@
                                         class="form-select form-select-sm product-select" onchange="loadVariants(this, 0)">
                                     <option value="">— Select —</option>
                                     @foreach($products as $product)
-                                        <option value="{{ $product->id }}" data-variants="{{ $product->variants->toJson() }}">
-                                            {{ $product->name }} ({{ $product->sku }})
+                                        @php
+                                            $adjVarData = $product->variants->map(fn($v) => [
+                                                'id'             => (int) $v->id,
+                                                'name'           => $v->name,
+                                                'sku'            => $v->sku,
+                                                'barcode'        => $v->barcode,
+                                                'purchase_price' => (string) ($v->purchase_price ?? 0),
+                                                'selling_price'  => (string) ($v->selling_price ?? 0),
+                                                'is_default'     => (bool) $v->is_default,
+                                                'is_active'      => (bool) $v->is_active,
+                                            ])->values();
+                                        @endphp
+                                        <option value="{{ $product->id }}"
+                                                data-purchase-price="{{ $product->default_purchase_price ?? 0 }}"
+                                                data-unit-code="{{ $product->unit?->code }}"
+                                                data-unit-type="{{ $product->unit?->unit_type ?? 'quantity' }}"
+                                                data-requires-batch="{{ $product->requires_batch ? 1 : 0 }}"
+                                                data-has-expiry="{{ $product->has_expiry ? 1 : 0 }}"
+                                                data-variants="{{ $adjVarData->toJson() }}">
+                                            {{ $product->name }}{{ $product->sku ? ' — ' . $product->sku : '' }}
                                         </option>
                                     @endforeach
                                 </select>
@@ -164,13 +209,23 @@
 @push('scripts')
 @php
 $adjProductsJson = $products->map(fn($p) => [
-    'id'       => $p->id,
-    'name'     => $p->name,
-    'sku'      => $p->sku,
-    'variants' => $p->variants->map(fn($v) => [
-        'id'         => $v->id,
-        'name'       => $v->name,
-        'is_default' => $v->is_default,
+    'id'             => (int) $p->id,
+    'name'           => $p->name,
+    'sku'            => $p->sku,
+    'purchase_price' => (string) ($p->default_purchase_price ?? 0),
+    'unit_code'      => $p->unit?->code,
+    'unit_type'      => $p->unit?->unit_type ?? 'quantity',
+    'requires_batch' => (bool) $p->requires_batch,
+    'has_expiry'     => (bool) $p->has_expiry,
+    'variants'       => $p->variants->map(fn($v) => [
+        'id'             => (int) $v->id,
+        'name'           => $v->name,
+        'sku'            => $v->sku,
+        'barcode'        => $v->barcode,
+        'purchase_price' => (string) ($v->purchase_price ?? 0),
+        'selling_price'  => (string) ($v->selling_price ?? 0),
+        'is_default'     => (bool) $v->is_default,
+        'is_active'      => (bool) $v->is_active,
     ])->values(),
 ]);
 @endphp
@@ -184,7 +239,13 @@ function addLine() {
     const tbody = document.getElementById('lines-body');
 
     const productOptions = productsData.map(p =>
-        `<option value="${p.id}" data-variants='${JSON.stringify(p.variants)}'>${p.name} (${p.sku})</option>`
+        `<option value="${p.id}"
+                 data-purchase-price="${p.purchase_price || 0}"
+                 data-unit-code="${p.unit_code || ''}"
+                 data-unit-type="${p.unit_type || 'quantity'}"
+                 data-requires-batch="${p.requires_batch ? 1 : 0}"
+                 data-has-expiry="${p.has_expiry ? 1 : 0}"
+                 data-variants='${JSON.stringify(p.variants || [])}'>${p.name} (${p.sku})</option>`
     ).join('');
 
     const row = `
@@ -260,6 +321,140 @@ function loadVariants(selectEl, idx) {
         variantSelect.appendChild(o);
     });
 }
+
+// — Stock Adjustment barcode scanner —
+(function () {
+    function csrfToken() {
+        var meta = document.querySelector('meta[name="csrf-token"]');
+        if (meta) return meta.getAttribute('content');
+        var tokenInput = document.querySelector('input[name="_token"]');
+        return tokenInput ? tokenInput.value : '';
+    }
+
+    function notifyAdj(message, type) {
+        if (window.Swal) {
+            Swal.fire({ toast: true, position: 'top-end', timer: 2200,
+                showConfirmButton: false, icon: type || 'info', title: message });
+            return;
+        }
+        alert(message);
+    }
+
+    function moneyVal(value) {
+        var num = Number(value || 0);
+        return Number.isFinite(num) ? num : 0;
+    }
+
+    function adjBranchId() {
+        var b = document.querySelector('[name="branch_id"]');
+        return b ? b.value : '';
+    }
+
+    function adjRows() {
+        return Array.prototype.slice.call(
+            document.querySelectorAll('#lines-body tr[id^="line-"]'));
+    }
+
+    function adjRowIdx(row) {
+        var m = String(row ? row.id : '').match(/line-(\d+)/);
+        return m ? Number(m[1]) : null;
+    }
+
+    function findFreeAdjRow() {
+        var rows = adjRows();
+        for (var i = 0; i < rows.length; i++) {
+            var idx = adjRowIdx(rows[i]);
+            var p = document.getElementById('lines_' + idx + '_product');
+            if (p && !p.value) return rows[i];
+        }
+        return null;
+    }
+
+    function makeAdjRow() {
+        if (typeof addLine === 'function') addLine();
+        else throw new Error('addLine() not found.');
+        var rows = adjRows();
+        return rows[rows.length - 1] || null;
+    }
+
+    function ensureAdjRow() {
+        return findFreeAdjRow() || makeAdjRow();
+    }
+
+    function fillAdjLine(result) {
+        var row = ensureAdjRow();
+        var idx = adjRowIdx(row);
+        if (idx === null) { notifyAdj('Unable to find adjustment row.', 'error'); return; }
+
+        var product = document.getElementById('lines_' + idx + '_product');
+        var variant = document.getElementById('lines_' + idx + '_variant');
+        var qty     = document.getElementById('lines_' + idx + '_qty');
+        var cost    = document.getElementById('lines_' + idx + '_cost');
+        var batch   = document.getElementById('lines_' + idx + '_batch');
+        var expiry  = document.getElementById('lines_' + idx + '_expiry');
+
+        if (!product || !qty || !cost) { notifyAdj('Adjustment line fields missing.', 'error'); return; }
+
+        product.value = String(result.product_id || '');
+        if (typeof loadVariants === 'function') loadVariants(product, idx);
+        if (variant && result.variant_id) variant.value = String(result.variant_id);
+
+        qty.value = result.allow_decimal ? '1.000' : '1';
+        qty.step  = result.allow_decimal ? '0.001' : '1';
+        qty.min   = '0.001';
+        cost.value = moneyVal(result.purchase_price).toFixed(4);
+
+        if (batch && result.requires_batch)  batch.placeholder = 'Required';
+        if (expiry && result.has_expiry)     expiry.classList.add('border-warning');
+
+        var label = result.name || result.sku || 'Product';
+        notifyAdj(label + (result.unit_code ? ' ' + result.unit_code : '') + ' added. Enter quantity.', 'success');
+        setTimeout(function () { qty.focus(); qty.select(); }, 50);
+    }
+
+    function lookupAdj(code) {
+        var widget = document.querySelector('.stock-adjustment-scanner-widget');
+        var branchId = adjBranchId();
+        if (!widget) return;
+        if (!branchId) { notifyAdj('Select branch before scanning.', 'warning'); return; }
+
+        fetch(widget.dataset.lookupUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken() },
+            body: JSON.stringify({ branch_id: branchId, code: code })
+        })
+        .then(function (r) { if (!r.ok) throw new Error('Lookup failed.'); return r.json(); })
+        .then(function (result) {
+            if (!result || !result.found) {
+                notifyAdj(result && result.message ? result.message : 'Barcode not found.', 'warning');
+                return;
+            }
+            fillAdjLine(result);
+        })
+        .catch(function (e) { console.error(e); notifyAdj('Barcode lookup failed.', 'error'); });
+    }
+
+    function initAdjScanner() {
+        var scanner = document.getElementById('stock-adjustment-scanner');
+        var button  = document.getElementById('stock-adjustment-scan-btn');
+        if (!scanner || !button) return;
+
+        function handleScan() {
+            var code = scanner.value.trim();
+            if (!code) { scanner.focus(); return; }
+            scanner.value = '';
+            lookupAdj(code);
+        }
+
+        scanner.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') { e.preventDefault(); handleScan(); }
+        });
+        button.addEventListener('click', handleScan);
+        setTimeout(function () { scanner.focus(); }, 200);
+    }
+
+    initAdjScanner();
+})();
 </script>
 @endpush
 @endsection
