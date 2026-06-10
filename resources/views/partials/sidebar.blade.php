@@ -159,6 +159,7 @@
                         'tenant.inventory.index',
                         'tenant.stock-adjustments.index',
                         'tenant.stock-transfers.index',
+                        'tenant.stock-counts.index',
                     ])
                     <li class="submenu-open">
                         <h6 class="submenu-hdr">Inventory</h6>
@@ -222,6 +223,15 @@
                                     <a href="{{ url('/stock-transfers') }}">
                                         <i class="ti ti-transfer fs-16 me-2"></i>
                                         <span>Transfers</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.stock-counts.index')
+                                <li class="{{ request()->is('stock-counts*') ? 'active' : '' }}">
+                                    <a href="{{ url('/stock-counts') }}">
+                                        <i class="ti ti-clipboard-list fs-16 me-2"></i>
+                                        <span>Stock Counts</span>
                                     </a>
                                 </li>
                             @endcan

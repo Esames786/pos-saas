@@ -311,6 +311,16 @@ class TenantProvisioner
             'tenant.stock-transfers.store',
             'tenant.stock-transfers.show',
 
+            'tenant.stock-counts.index',
+            'tenant.stock-counts.create',
+            'tenant.stock-counts.store',
+            'tenant.stock-counts.show',
+            'tenant.stock-counts.lines.store',
+            'tenant.stock-counts.lines.update',
+            'tenant.stock-counts.lines.destroy',
+            'tenant.stock-counts.post',
+            'tenant.stock-counts.cancel',
+
             'tenant.suppliers.index',
             'tenant.suppliers.create',
             'tenant.suppliers.store',

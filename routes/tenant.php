@@ -27,6 +27,7 @@ use App\Http\Controllers\Tenant\RoleController;
 use App\Http\Controllers\Tenant\ShiftController;
 use App\Http\Controllers\Tenant\TenantUserController;
 use App\Http\Controllers\Tenant\StockAdjustmentController;
+use App\Http\Controllers\Tenant\StockCountController;
 use App\Http\Controllers\Tenant\StockTransferController;
 use App\Http\Controllers\Tenant\TerminalController;
 use App\Http\Controllers\Tenant\UnitController;
@@ -200,6 +201,17 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/stock-transfers/create', [StockTransferController::class, 'create'])->name('tenant.stock-transfers.create');
                 Route::post('/stock-transfers', [StockTransferController::class, 'store'])->name('tenant.stock-transfers.store');
                 Route::get('/stock-transfers/{stockTransfer}', [StockTransferController::class, 'show'])->name('tenant.stock-transfers.show');
+
+                // Stock Counts
+                Route::get('/stock-counts', [StockCountController::class, 'index'])->name('tenant.stock-counts.index');
+                Route::get('/stock-counts/create', [StockCountController::class, 'create'])->name('tenant.stock-counts.create');
+                Route::post('/stock-counts', [StockCountController::class, 'store'])->name('tenant.stock-counts.store');
+                Route::get('/stock-counts/{stockCountSession}', [StockCountController::class, 'show'])->name('tenant.stock-counts.show');
+                Route::post('/stock-counts/{stockCountSession}/lines', [StockCountController::class, 'addLine'])->name('tenant.stock-counts.lines.store');
+                Route::patch('/stock-counts/{stockCountSession}/lines/{line}', [StockCountController::class, 'updateLine'])->name('tenant.stock-counts.lines.update');
+                Route::delete('/stock-counts/{stockCountSession}/lines/{line}', [StockCountController::class, 'destroyLine'])->name('tenant.stock-counts.lines.destroy');
+                Route::post('/stock-counts/{stockCountSession}/post', [StockCountController::class, 'post'])->name('tenant.stock-counts.post');
+                Route::post('/stock-counts/{stockCountSession}/cancel', [StockCountController::class, 'cancel'])->name('tenant.stock-counts.cancel');
 
                 // Suppliers
                 Route::resource('suppliers', SupplierController::class)->names([
