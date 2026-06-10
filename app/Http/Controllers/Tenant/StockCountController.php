@@ -6,10 +6,15 @@ use App\Http\Controllers\Controller;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\ProductVariant;
+use App\Models\Tenant\StockAdjustment;
+use App\Models\Tenant\StockAdjustmentLine;
 use App\Models\Tenant\StockBalance;
 use App\Models\Tenant\StockCountLine;
 use App\Models\Tenant\StockCountSession;
+use App\Services\Inventory\InventoryService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
 class StockCountController extends Controller
 {
@@ -54,6 +59,8 @@ class StockCountController extends Controller
     {
         $stockCountSession->load([
             'branch',
+            'increaseAdjustment',
+            'decreaseAdjustment',
             'lines.product.unit',
             'lines.variant',
             'lines.unit',
@@ -183,11 +190,208 @@ class StockCountController extends Controller
             ->with('success', 'Stock count cancelled.');
     }
 
-    public function post(StockCountSession $stockCountSession)
+    public function post(StockCountSession $stockCountSession, InventoryService $inventoryService)
     {
-        // 13F-2 will implement actual variance posting into inventory ledger.
+        try {
+            $result = DB::transaction(function () use ($stockCountSession, $inventoryService) {
+                $session = StockCountSession::query()
+                    ->whereKey($stockCountSession->id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                if ($session->isLocked()) {
+                    throw new RuntimeException('This stock count is already locked.');
+                }
+
+                $session->load(['branch', 'lines.product', 'lines.variant']);
+
+                if ($session->lines->isEmpty()) {
+                    throw new RuntimeException('Add at least one product before posting stock count.');
+                }
+
+                $incompleteLine = $session->lines->first(
+                    fn (StockCountLine $line) => $line->counted_quantity === null
+                );
+
+                if ($incompleteLine) {
+                    throw new RuntimeException('Complete counted quantity for all lines before posting.');
+                }
+
+                foreach ($session->lines as $line) {
+                    $line->recalculate();
+                    $line->save();
+                }
+
+                $session->load(['branch', 'lines.product', 'lines.variant']);
+
+                $positiveLines = $session->lines->filter(
+                    fn (StockCountLine $line) => (float) $line->variance_quantity > 0.0004
+                );
+
+                $negativeLines = $session->lines->filter(
+                    fn (StockCountLine $line) => (float) $line->variance_quantity < -0.0004
+                );
+
+                $increaseAdjustment = $positiveLines->isNotEmpty()
+                    ? $this->createStockCountAdjustment(
+                        session: $session,
+                        adjustmentType: 'increase',
+                        movementType: 'adjustment_in',
+                        lines: $positiveLines,
+                        inventoryService: $inventoryService,
+                    )
+                    : null;
+
+                $decreaseAdjustment = $negativeLines->isNotEmpty()
+                    ? $this->createStockCountAdjustment(
+                        session: $session,
+                        adjustmentType: 'decrease',
+                        movementType: 'adjustment_out',
+                        lines: $negativeLines,
+                        inventoryService: $inventoryService,
+                    )
+                    : null;
+
+                $session->update([
+                    'status'                       => 'posted',
+                    'posted_by_user_id'            => auth('tenant')->id(),
+                    'posted_at'                    => now(),
+                    'increase_stock_adjustment_id' => $increaseAdjustment?->id,
+                    'decrease_stock_adjustment_id' => $decreaseAdjustment?->id,
+                ]);
+
+                return [
+                    'positive_count'         => $positiveLines->count(),
+                    'negative_count'         => $negativeLines->count(),
+                    'increase_adjustment_id' => $increaseAdjustment?->id,
+                    'decrease_adjustment_id' => $decreaseAdjustment?->id,
+                ];
+            });
+        } catch (RuntimeException $e) {
+            return redirect(url('/stock-counts/' . $stockCountSession->id))
+                ->with('error', $e->getMessage());
+        }
+
+        if (($result['positive_count'] + $result['negative_count']) === 0) {
+            $message = 'Stock count posted successfully. No variance was found.';
+        } else {
+            $message = 'Stock count posted successfully. '
+                . $result['positive_count'] . ' gain line(s), '
+                . $result['negative_count'] . ' loss line(s).';
+        }
+
         return redirect(url('/stock-counts/' . $stockCountSession->id))
-            ->with('warning', 'Posting stock count variance is not yet implemented. Coming in Prompt 13F-2.');
+            ->with('success', $message);
+    }
+
+    private function createStockCountAdjustment(
+        StockCountSession $session,
+        string $adjustmentType,
+        string $movementType,
+        $lines,
+        InventoryService $inventoryService,
+    ): StockAdjustment {
+        $adjustment = StockAdjustment::create([
+            'adjustment_no'     => $this->nextAdjustmentNo(),
+            'branch_id'         => $session->branch_id,
+            'adjustment_type'   => $adjustmentType,
+            'adjustment_date'   => now()->toDateString(),
+            'status'            => 'posted',
+            'posted_by_user_id' => auth('tenant')->id(),
+            'posted_at'         => now(),
+            'notes'             => 'Stock count ' . $session->count_no . ' variance posting.',
+        ]);
+
+        foreach ($lines as $line) {
+            $this->postStockCountAdjustmentLine(
+                session: $session,
+                adjustment: $adjustment,
+                line: $line,
+                adjustmentType: $adjustmentType,
+                movementType: $movementType,
+                inventoryService: $inventoryService,
+            );
+        }
+
+        return $adjustment;
+    }
+
+    private function postStockCountAdjustmentLine(
+        StockCountSession $session,
+        StockAdjustment $adjustment,
+        StockCountLine $line,
+        string $adjustmentType,
+        string $movementType,
+        InventoryService $inventoryService,
+    ): void {
+        if (!$line->product) {
+            throw new RuntimeException('Stock count line has missing product.');
+        }
+
+        $quantity = round(abs((float) $line->variance_quantity), 3);
+
+        if ($quantity <= 0.0004) {
+            return;
+        }
+
+        $unitCost = (float) ($line->average_cost ?? 0);
+
+        $adjustmentLine = StockAdjustmentLine::create([
+            'stock_adjustment_id' => $adjustment->id,
+            'product_id'          => $line->product_id,
+            'product_variant_id'  => $line->product_variant_id,
+            'quantity'            => $quantity,
+            'unit_cost'           => $unitCost,
+            'notes'               => 'From stock count ' . $session->count_no,
+        ]);
+
+        if ($adjustmentType === 'increase') {
+            $ledger = $inventoryService->postIn(
+                branch: $session->branch,
+                product: $line->product,
+                variant: $line->variant,
+                quantity: $quantity,
+                unitCost: $unitCost,
+                movementType: $movementType,
+                referenceType: 'stock_adjustment',
+                referenceId: (int) $adjustment->id,
+                referenceNo: $adjustment->adjustment_no,
+                batchNo: null,
+                expiryDate: null,
+                notes: 'Stock count ' . $session->count_no . ' gain',
+                userId: auth('tenant')->id(),
+            );
+
+            if ($ledger?->inventory_batch_id) {
+                $adjustmentLine->update(['inventory_batch_id' => $ledger->inventory_batch_id]);
+            }
+
+            return;
+        }
+
+        if ($adjustmentType === 'decrease') {
+            $inventoryService->postOutFefo(
+                branch: $session->branch,
+                product: $line->product,
+                variant: $line->variant,
+                quantity: $quantity,
+                movementType: $movementType,
+                referenceType: 'stock_adjustment',
+                referenceId: (int) $adjustment->id,
+                referenceNo: $adjustment->adjustment_no,
+                notes: 'Stock count ' . $session->count_no . ' loss',
+                userId: auth('tenant')->id(),
+            );
+
+            return;
+        }
+
+        throw new RuntimeException('Unsupported stock count adjustment type.');
+    }
+
+    private function nextAdjustmentNo(): string
+    {
+        return 'ADJ-' . now()->format('YmdHis') . '-' . random_int(100, 999);
     }
 
     private function stockSnapshot(int $branchId, int $productId, ?int $variantId): array

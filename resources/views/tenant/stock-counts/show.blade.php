@@ -33,8 +33,33 @@
 @if(session('warning'))
     <div class="alert alert-warning">{{ session('warning') }}</div>
 @endif
+@if(session('error'))
+    <div class="alert alert-danger">{{ session('error') }}</div>
+@endif
 @if($errors->any())
     <div class="alert alert-danger">{{ $errors->first() }}</div>
+@endif
+
+@if($session->status === 'posted' && ($session->increaseAdjustment || $session->decreaseAdjustment))
+    <div class="alert alert-info">
+        <strong>Posted adjustments:</strong>
+
+        @if($session->increaseAdjustment)
+            <a href="{{ url('/stock-adjustments/' . $session->increaseAdjustment->id) }}" class="alert-link">
+                Increase {{ $session->increaseAdjustment->adjustment_no }}
+            </a>
+        @endif
+
+        @if($session->increaseAdjustment && $session->decreaseAdjustment)
+            <span class="mx-1">|</span>
+        @endif
+
+        @if($session->decreaseAdjustment)
+            <a href="{{ url('/stock-adjustments/' . $session->decreaseAdjustment->id) }}" class="alert-link">
+                Decrease {{ $session->decreaseAdjustment->adjustment_no }}
+            </a>
+        @endif
+    </div>
 @endif
 
 @if($session->canEdit())
