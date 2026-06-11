@@ -84,8 +84,7 @@
     var firstLoad = true;
 
     function csrfToken() {
-        var meta = document.querySelector('meta[name="csrf-token"]');
-        return meta ? meta.getAttribute('content') : '';
+        return '{{ csrf_token() }}';
     }
 
     function escapeHtml(value) {

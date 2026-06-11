@@ -82,7 +82,7 @@ class KitchenDisplayController extends Controller
                 $order     = $firstLine->order;
 
                 $createdAt      = $order?->created_at ?? $firstLine->created_at;
-                $elapsedMinutes = $createdAt ? $createdAt->diffInMinutes(now()) : 0;
+                $elapsedMinutes = $createdAt ? (int) round($createdAt->diffInMinutes(now())) : 0;
 
                 $tableLabel = $order?->restaurantTable?->table_no
                     ?? $order?->restaurantTableSession?->table?->table_no;
