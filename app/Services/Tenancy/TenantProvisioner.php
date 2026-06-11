@@ -516,6 +516,11 @@ class TenantProvisioner
             'tenant.api.pos.table-sessions.open-orders',
             'tenant.api.catalog.barcode.lookup',
 
+            'tenant.kitchen-display.index',
+            'tenant.api.kitchen-display.orders',
+            'tenant.api.kitchen-display.lines.status',
+            'tenant.api.kitchen-display.orders.status',
+
             // Manager PIN
             'tenant.users.manager-pin',
             'tenant.users.manager-pin.store',

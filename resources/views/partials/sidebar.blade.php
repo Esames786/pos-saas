@@ -374,6 +374,7 @@
                         'tenant.restaurant.tables.index',
                         'tenant.restaurant.waiters.index',
                         'tenant.held-sales.index',
+                        'tenant.kitchen-display.index',
                     ])
                     <li class="submenu-open">
                         <h6 class="submenu-hdr">Restaurant</h6>
@@ -383,6 +384,15 @@
                                     <a href="{{ url('/restaurant/board') }}">
                                         <i class="ti ti-layout-board-split fs-16 me-2" aria-hidden="true"></i>
                                         <span>Table Board</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.kitchen-display.index')
+                                <li class="{{ request()->is('kitchen-display*') ? 'active' : '' }}">
+                                    <a href="{{ url('/kitchen-display') }}">
+                                        <i class="ti ti-tools-kitchen-2 fs-16 me-2" aria-hidden="true"></i>
+                                        <span>Kitchen Display</span>
                                     </a>
                                 </li>
                             @endcan

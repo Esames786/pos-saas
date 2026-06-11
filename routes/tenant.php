@@ -39,6 +39,7 @@ use App\Http\Controllers\Tenant\HeldSaleController;
 use App\Http\Controllers\Tenant\SplitBillController;
 use App\Http\Controllers\Tenant\UnitConversionController;
 use App\Http\Controllers\Tenant\RecipeController;
+use App\Http\Controllers\Tenant\KitchenDisplayController;
 use App\Http\Controllers\Tenant\KitchenProductionController;
 use App\Http\Controllers\Tenant\KitchenWastageController;
 use App\Http\Controllers\Tenant\PrinterController;
@@ -341,6 +342,12 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/restaurant/table-sessions/{restaurantTableSession}/bill-preview', [RestaurantTableSessionController::class, 'billPreview'])->name('tenant.restaurant.table-sessions.bill-preview');
                 Route::post('/restaurant/table-sessions/{restaurantTableSession}/move', [RestaurantTableSessionController::class, 'move'])->name('tenant.restaurant.table-sessions.move');
                 Route::post('/restaurant/table-sessions/{restaurantTableSession}/merge', [RestaurantTableSessionController::class, 'merge'])->name('tenant.restaurant.table-sessions.merge');
+
+                // Kitchen Display System (KDS)
+                Route::get('/kitchen-display', [KitchenDisplayController::class, 'index'])->name('tenant.kitchen-display.index');
+                Route::get('/api/kitchen-display/orders', [KitchenDisplayController::class, 'orders'])->name('tenant.api.kitchen-display.orders');
+                Route::post('/api/kitchen-display/lines/{line}/status', [KitchenDisplayController::class, 'updateLineStatus'])->name('tenant.api.kitchen-display.lines.status');
+                Route::post('/api/kitchen-display/orders/{salesOrder}/status', [KitchenDisplayController::class, 'updateOrderStatus'])->name('tenant.api.kitchen-display.orders.status');
 
                 // Split Bill
                 Route::get('/sales-orders/{salesOrder}/split-bill', [SplitBillController::class, 'create'])->name('tenant.sales-orders.split-bill');

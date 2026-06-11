@@ -23,6 +23,10 @@ class SalesOrderLine extends Model
         'tax_amount',
         'line_total',
         'kitchen_note',
+        'kitchen_status',
+        'kitchen_started_at',
+        'kitchen_ready_at',
+        'kitchen_completed_at',
         'returned_quantity',
         'kot_sent',
         'kot_sent_quantity',
@@ -43,6 +47,9 @@ class SalesOrderLine extends Model
             'returned_quantity' => 'decimal:3',
             'kot_sent'          => 'boolean',
             'kot_sent_quantity' => 'decimal:6',
+            'kitchen_started_at'   => 'datetime',
+            'kitchen_ready_at'     => 'datetime',
+            'kitchen_completed_at' => 'datetime',
         ];
     }
 
