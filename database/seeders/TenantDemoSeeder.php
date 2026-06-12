@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\Master\SubscriptionInvoice;
 use App\Models\Master\Tenant;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\Category;
@@ -89,6 +90,9 @@ class TenantDemoSeeder extends Seeder
         $this->seedRecipes();
 
         app(TenancyManager::class)->deactivate();
+
+        // Master-side demo billing sample (after tenant + subscription exist).
+        $this->seedDemoBilling($tenant);
 
         $this->command->info('Demo tenant seeding complete.');
     }
@@ -1934,5 +1938,49 @@ class TenantDemoSeeder extends Seeder
         }
 
         $this->command->line('  Recipes seeded: Chicken Karahi, Chicken Biryani, Beef Burger.');
+    }
+
+    /**
+     * Master-side demo billing sample: one ISSUED (unpaid) invoice for the demo
+     * tenant so the central Invoices list and tenant billing portal have data.
+     * Intentionally NOT paid — keeps the demo subscription in trial so the
+     * trial banner + module/limit demos remain meaningful. Idempotent.
+     */
+    private function seedDemoBilling(Tenant $tenant): void
+    {
+        $subscription = $tenant->subscription;
+        $plan = $subscription?->plan;
+
+        if (!$subscription || !$plan) {
+            $this->command->line('  Demo billing skipped (no subscription/plan).');
+            return;
+        }
+
+        $total = (float) $plan->price;
+
+        SubscriptionInvoice::updateOrCreate(
+            ['invoice_no' => 'INV-DEMO-0001'],
+            [
+                'tenant_id'       => $tenant->id,
+                'subscription_id' => $subscription->id,
+                'plan_id'         => $plan->id,
+                'invoice_type'    => 'subscription',
+                'status'          => 'issued',
+                'currency_code'   => $plan->currency_code ?? 'PKR',
+                'subtotal'        => $total,
+                'discount_amount' => 0,
+                'tax_amount'      => 0,
+                'total_amount'    => $total,
+                'paid_amount'     => 0,
+                'balance_amount'  => $total,
+                'period_start'    => now()->toDateString(),
+                'period_end'      => ($plan->billing_period === 'yearly' ? now()->addYear() : now()->addMonth())->toDateString(),
+                'due_date'        => now()->addDays(7)->toDateString(),
+                'issued_at'       => now(),
+                'notes'           => 'Demo sample invoice (unpaid).',
+            ]
+        );
+
+        $this->command->line('  Demo billing seeded: 1 issued invoice (INV-DEMO-0001).');
     }
 }
