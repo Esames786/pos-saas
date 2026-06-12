@@ -64,6 +64,24 @@
                                 </li>
                             @endcan
 
+                            @can('central.plans.index')
+                                <li class="{{ request()->is('plans*') ? 'active' : '' }}">
+                                    <a href="{{ url('/plans') }}">
+                                        <i class="ti ti-credit-card fs-16 me-2"></i>
+                                        <span>Plans</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('central.modules.index')
+                                <li class="{{ request()->is('modules*') ? 'active' : '' }}">
+                                    <a href="{{ url('/modules') }}">
+                                        <i class="ti ti-puzzle fs-16 me-2"></i>
+                                        <span>Modules</span>
+                                    </a>
+                                </li>
+                            @endcan
+
                             @can('central.routes.index')
                                 <li class="{{ request()->is('routes*') ? 'active' : '' }}">
                                     <a href="{{ url('/routes') }}">

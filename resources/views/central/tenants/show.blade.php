@@ -67,6 +67,60 @@
             </div>
         </div>
 
+        {{-- Subscription card --}}
+        @can('central.tenants.subscription.update')
+        <div class="card mb-3">
+            <div class="card-header"><h5 class="mb-0">Subscription</h5></div>
+            <div class="card-body">
+                <form method="POST" action="{{ url('/tenants/' . $tenant->id . '/subscription') }}">
+                    @csrf
+                    @method('PUT')
+
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label">Plan</label>
+                            <select name="plan_id" class="form-select">
+                                <option value="">No Plan</option>
+                                @foreach($plans as $plan)
+                                    <option value="{{ $plan->id }}" @selected(old('plan_id', $tenant->subscription?->plan_id) == $plan->id)>
+                                        {{ $plan->name }} ({{ $plan->code }})
+                                    </option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <div class="col-md-3">
+                            <label class="form-label">Subscription Status</label>
+                            <select name="status" class="form-select">
+                                @foreach(['trial', 'active', 'past_due', 'cancelled'] as $status)
+                                    <option value="{{ $status }}" @selected(old('status', $tenant->subscription?->status ?? 'trial') === $status)>
+                                        {{ ucfirst(str_replace('_', ' ', $status)) }}
+                                    </option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <div class="col-md-3">
+                            <label class="form-label">Trial Ends At</label>
+                            <input type="date" name="trial_ends_at" class="form-control"
+                                   value="{{ old('trial_ends_at', optional($tenant->subscription?->trial_ends_at)->format('Y-m-d')) }}">
+                        </div>
+
+                        <div class="col-md-3">
+                            <label class="form-label">Current Period Ends At</label>
+                            <input type="date" name="current_period_ends_at" class="form-control"
+                                   value="{{ old('current_period_ends_at', optional($tenant->subscription?->current_period_ends_at)->format('Y-m-d')) }}">
+                        </div>
+                    </div>
+
+                    <div class="text-end mt-3">
+                        <button class="btn btn-primary">Update Subscription</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        @endcan
+
         {{-- Domains card --}}
         <div class="card mb-3">
             <div class="card-header"><h5 class="mb-0">Domains</h5></div>

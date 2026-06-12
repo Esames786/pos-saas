@@ -128,6 +128,14 @@ class MasterSeeder extends Seeder
             'central.tenant-domains.activate',
             'central.tenant-domains.deactivate',
             'central.tenant-domains.destroy',
+
+            'central.plans.index',
+            'central.plans.edit',
+            'central.plans.update',
+            'central.modules.index',
+            'central.modules.edit',
+            'central.modules.update',
+            'central.tenants.subscription.update',
         ];
 
         foreach ($permissions as $permission) {

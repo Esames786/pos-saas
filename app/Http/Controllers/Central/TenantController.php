@@ -12,6 +12,7 @@ use App\Models\Master\Tenant;
 use App\Models\Master\TenantDomain;
 use App\Services\Tenancy\TenantProvisioner;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class TenantController extends Controller
 {
@@ -165,5 +166,28 @@ class TenantController extends Controller
         $tenant->update(['status' => 'cancelled']);
 
         return back()->with('status', 'Tenant cancelled successfully.');
+    }
+
+    public function updateSubscription(Request $request, Tenant $tenant)
+    {
+        $data = $request->validate([
+            'plan_id' => ['nullable', 'exists:plans,id'],
+            'status' => ['required', Rule::in(['trial', 'active', 'past_due', 'cancelled'])],
+            'trial_ends_at' => ['nullable', 'date'],
+            'current_period_ends_at' => ['nullable', 'date'],
+        ]);
+
+        Subscription::updateOrCreate(
+            ['tenant_id' => $tenant->id],
+            [
+                'plan_id' => $data['plan_id'] ?? null,
+                'status' => $data['status'],
+                'trial_ends_at' => $data['trial_ends_at'] ?? null,
+                'current_period_ends_at' => $data['current_period_ends_at'] ?? null,
+            ]
+        );
+
+        return redirect('/tenants/' . $tenant->id)
+            ->with('status', 'Tenant subscription updated successfully.');
     }
 }

@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Central\DashboardController;
+use App\Http\Controllers\Central\ModuleController;
+use App\Http\Controllers\Central\PlanController;
 use App\Http\Controllers\Central\RouteCatalogController;
 use App\Http\Controllers\Central\TenantController;
 use App\Http\Controllers\Central\TenantDomainController;
@@ -52,6 +54,19 @@ Route::domain(config('tenancy.central_domain'))
                     ->name('central.tenants.suspend');
                 Route::post('/tenants/{tenant}/cancel', [TenantController::class, 'cancel'])
                     ->name('central.tenants.cancel');
+
+                Route::put('/tenants/{tenant}/subscription', [TenantController::class, 'updateSubscription'])
+                    ->name('central.tenants.subscription.update');
+
+                // Plans
+                Route::get('/plans', [PlanController::class, 'index'])->name('central.plans.index');
+                Route::get('/plans/{plan}/edit', [PlanController::class, 'edit'])->name('central.plans.edit');
+                Route::put('/plans/{plan}', [PlanController::class, 'update'])->name('central.plans.update');
+
+                // Modules
+                Route::get('/modules', [ModuleController::class, 'index'])->name('central.modules.index');
+                Route::get('/modules/{module}/edit', [ModuleController::class, 'edit'])->name('central.modules.edit');
+                Route::put('/modules/{module}', [ModuleController::class, 'update'])->name('central.modules.update');
 
                 Route::post('/tenants/{tenant}/domains', [TenantDomainController::class, 'store'])
                     ->name('central.tenant-domains.store');
