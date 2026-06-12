@@ -48,4 +48,22 @@ class Plan extends Model
     {
         return $this->modules()->wherePivot('is_enabled', true);
     }
+
+    public function hasEnabledModuleKey(string $moduleKey): bool
+    {
+        return $this->enabledModules()
+            ->where('modules.key', $moduleKey)
+            ->exists();
+    }
+
+    public function hasEnabledRouteModuleKey(?string $routeModuleKey): bool
+    {
+        if (!$routeModuleKey) {
+            return true;
+        }
+
+        return $this->enabledModules()
+            ->whereJsonContains('modules.route_module_keys', $routeModuleKey)
+            ->exists();
+    }
 }

@@ -39,4 +39,22 @@ class Module extends Model
             ->withPivot(['is_enabled', 'limits'])
             ->withTimestamps();
     }
+
+    public function matchesRouteModuleKey(?string $routeModuleKey): bool
+    {
+        if (!$routeModuleKey) {
+            return false;
+        }
+
+        return in_array($routeModuleKey, $this->route_module_keys ?? [], true);
+    }
+
+    public function scopeForRouteModuleKey($query, ?string $routeModuleKey)
+    {
+        if (!$routeModuleKey) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->whereJsonContains('route_module_keys', $routeModuleKey);
+    }
 }
