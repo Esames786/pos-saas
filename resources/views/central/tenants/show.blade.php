@@ -121,6 +121,40 @@
         </div>
         @endcan
 
+        {{-- Billing / Invoices card --}}
+        @can('central.invoices.index')
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Billing</h5>
+                @can('central.tenants.invoices.create')
+                    <a href="{{ url('/tenants/' . $tenant->id . '/invoices/create') }}" class="btn btn-sm btn-primary">
+                        <i class="ti ti-plus me-1" aria-hidden="true"></i>Create Invoice
+                    </a>
+                @endcan
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-sm mb-0 align-middle">
+                    <thead>
+                        <tr><th>Invoice #</th><th>Status</th><th class="text-end">Total</th><th class="text-end">Balance</th><th class="text-end">Action</th></tr>
+                    </thead>
+                    <tbody>
+                    @forelse(($recentInvoices ?? []) as $invoice)
+                        <tr>
+                            <td><code>{{ $invoice->invoice_no }}</code></td>
+                            <td>{{ ucfirst(str_replace('_',' ',$invoice->status)) }}</td>
+                            <td class="text-end">{{ $invoice->currency_code }} {{ number_format((float) $invoice->total_amount, 2) }}</td>
+                            <td class="text-end">{{ number_format((float) $invoice->balance_amount, 2) }}</td>
+                            <td class="text-end"><a href="{{ url('/invoices/' . $invoice->id) }}" class="btn btn-sm btn-light">View</a></td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="5" class="text-center text-muted py-3">No invoices yet.</td></tr>
+                    @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        @endcan
+
         {{-- Domains card --}}
         <div class="card mb-3">
             <div class="card-header"><h5 class="mb-0">Domains</h5></div>

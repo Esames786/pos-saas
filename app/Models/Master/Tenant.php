@@ -41,4 +41,14 @@ class Tenant extends Model
     {
         return $this->hasOne(Subscription::class);
     }
+
+    public function invoices()
+    {
+        return $this->hasMany(SubscriptionInvoice::class);
+    }
+
+    public function subscriptionPayments()
+    {
+        return $this->hasMany(SubscriptionPayment::class);
+    }
 }

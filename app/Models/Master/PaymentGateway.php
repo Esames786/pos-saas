@@ -18,4 +18,9 @@ class PaymentGateway extends Model
     protected $casts = [
         'is_active' => 'boolean',
     ];
+
+    public function subscriptionPayments()
+    {
+        return $this->hasMany(SubscriptionPayment::class);
+    }
 }

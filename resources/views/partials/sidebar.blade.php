@@ -82,6 +82,15 @@
                                 </li>
                             @endcan
 
+                            @can('central.invoices.index')
+                                <li class="{{ request()->is('invoices*') ? 'active' : '' }}">
+                                    <a href="{{ url('/invoices') }}">
+                                        <i class="ti ti-file-invoice fs-16 me-2"></i>
+                                        <span>Invoices</span>
+                                    </a>
+                                </li>
+                            @endcan
+
                             @can('central.routes.index')
                                 <li class="{{ request()->is('routes*') ? 'active' : '' }}">
                                     <a href="{{ url('/routes') }}">

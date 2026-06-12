@@ -136,6 +136,13 @@ class MasterSeeder extends Seeder
             'central.modules.edit',
             'central.modules.update',
             'central.tenants.subscription.update',
+
+            'central.invoices.index',
+            'central.tenants.invoices.create',
+            'central.tenants.invoices.store',
+            'central.invoices.show',
+            'central.invoices.payments.store',
+            'central.invoices.void',
         ];
 
         foreach ($permissions as $permission) {

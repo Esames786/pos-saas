@@ -37,4 +37,9 @@ class Subscription extends Model
     {
         return $this->belongsTo(Tenant::class);
     }
+
+    public function invoices()
+    {
+        return $this->hasMany(SubscriptionInvoice::class);
+    }
 }

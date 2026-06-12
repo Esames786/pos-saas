@@ -86,9 +86,16 @@ class TenantController extends Controller
     {
         $tenant->load(['domains', 'database', 'subscription.plan']);
 
+        $recentInvoices = $tenant->invoices()
+            ->with('plan')
+            ->latest()
+            ->take(5)
+            ->get();
+
         return view('central.tenants.show', [
-            'tenant' => $tenant,
-            'plans'  => Plan::where('is_active', true)->orderBy('name')->get(),
+            'tenant'         => $tenant,
+            'plans'          => Plan::where('is_active', true)->orderBy('name')->get(),
+            'recentInvoices' => $recentInvoices,
         ]);
     }
 

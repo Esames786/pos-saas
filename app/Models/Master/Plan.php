@@ -66,4 +66,9 @@ class Plan extends Model
             ->whereJsonContains('modules.route_module_keys', $routeModuleKey)
             ->exists();
     }
+
+    public function invoices()
+    {
+        return $this->hasMany(SubscriptionInvoice::class);
+    }
 }

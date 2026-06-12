@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Central\DashboardController;
+use App\Http\Controllers\Central\InvoiceController;
 use App\Http\Controllers\Central\ModuleController;
 use App\Http\Controllers\Central\PlanController;
 use App\Http\Controllers\Central\RouteCatalogController;
@@ -67,6 +68,14 @@ Route::domain(config('tenancy.central_domain'))
                 Route::get('/modules', [ModuleController::class, 'index'])->name('central.modules.index');
                 Route::get('/modules/{module}/edit', [ModuleController::class, 'edit'])->name('central.modules.edit');
                 Route::put('/modules/{module}', [ModuleController::class, 'update'])->name('central.modules.update');
+
+                // Billing — subscription invoices + manual payments
+                Route::get('/invoices', [InvoiceController::class, 'index'])->name('central.invoices.index');
+                Route::get('/tenants/{tenant}/invoices/create', [InvoiceController::class, 'create'])->name('central.tenants.invoices.create');
+                Route::post('/tenants/{tenant}/invoices', [InvoiceController::class, 'store'])->name('central.tenants.invoices.store');
+                Route::get('/invoices/{invoice}', [InvoiceController::class, 'show'])->name('central.invoices.show');
+                Route::post('/invoices/{invoice}/payments', [InvoiceController::class, 'storePayment'])->name('central.invoices.payments.store');
+                Route::post('/invoices/{invoice}/void', [InvoiceController::class, 'void'])->name('central.invoices.void');
 
                 Route::post('/tenants/{tenant}/domains', [TenantDomainController::class, 'store'])
                     ->name('central.tenant-domains.store');
