@@ -67,6 +67,13 @@ class TenantUserController extends Controller
             'roles.*'               => 'string',
         ]);
 
+        $limit = app(\App\Services\Saas\TenantSubscriptionAccessService::class)
+            ->checkLimit(app('tenant'), 'users');
+
+        if (!$limit['allowed']) {
+            return back()->withInput()->withErrors(['limit' => $limit['message']]);
+        }
+
         DB::connection('tenant')->transaction(function () use ($data) {
             $user = User::create([
                 'name'                  => $data['name'],

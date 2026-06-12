@@ -5,6 +5,9 @@ namespace App\Services\Saas;
 use App\Models\Master\Module;
 use App\Models\Master\RouteCatalog;
 use App\Models\Master\Tenant;
+use App\Models\Tenant\Branch;
+use App\Models\Tenant\Terminal;
+use App\Models\Tenant\User;
 use Illuminate\Support\Carbon;
 
 class TenantSubscriptionAccessService
@@ -197,5 +200,115 @@ class TenantSubscriptionAccessService
         }
 
         return false;
+    }
+
+    public function featureLimit(Tenant $tenant, string $featureKey): ?int
+    {
+        $subscription = $tenant->subscription?->loadMissing(['plan.features']);
+
+        if (!$subscription || !$subscription->plan) {
+            // No usable subscription/plan: block creation safely (limit 0).
+            return 0;
+        }
+
+        $feature = $subscription->plan->features
+            ->firstWhere('feature_key', $featureKey);
+
+        $value = $feature?->feature_value;
+
+        // Missing/blank feature = unlimited (allow).
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $limit = (int) $value;
+
+        // Negative = treat as unlimited.
+        if ($limit < 0) {
+            return null;
+        }
+
+        return $limit;
+    }
+
+    public function currentTenantUsage(string $resourceKey): int
+    {
+        return match ($resourceKey) {
+            'branches'  => Branch::query()->count(),
+            'users'     => User::query()->count(),
+            'terminals' => Terminal::query()->count(),
+            default     => 0,
+        };
+    }
+
+    public function checkLimit(Tenant $tenant, string $resourceKey): array
+    {
+        $featureKey = match ($resourceKey) {
+            'branches'  => 'branch_limit',
+            'users'     => 'user_limit',
+            'terminals' => 'terminal_limit',
+            default     => null,
+        };
+
+        if (!$featureKey) {
+            return [
+                'allowed'  => true,
+                'limit'    => null,
+                'used'     => 0,
+                'resource' => $resourceKey,
+                'message'  => null,
+            ];
+        }
+
+        $limit = $this->featureLimit($tenant, $featureKey);
+
+        // Unlimited (missing/negative feature) — allow.
+        if ($limit === null) {
+            return [
+                'allowed'  => true,
+                'limit'    => null,
+                'used'     => $this->currentTenantUsage($resourceKey),
+                'resource' => $resourceKey,
+                'message'  => null,
+            ];
+        }
+
+        $used = $this->currentTenantUsage($resourceKey);
+
+        if ($used < $limit) {
+            return [
+                'allowed'  => true,
+                'limit'    => $limit,
+                'used'     => $used,
+                'resource' => $resourceKey,
+                'message'  => null,
+            ];
+        }
+
+        $label = match ($resourceKey) {
+            'branches'  => 'branch',
+            'users'     => 'user',
+            'terminals' => 'terminal',
+            default     => 'resource',
+        };
+
+        $plural = match ($resourceKey) {
+            'branches'  => 'branches',
+            'users'     => 'users',
+            'terminals' => 'terminals',
+            default     => 'resources',
+        };
+
+        $message = $used > $limit
+            ? "Your plan allows only {$limit} {$label}, but you currently have {$used}. Existing {$plural} remain available, but you cannot add more until you upgrade your plan."
+            : "Your current plan allows only {$limit} {$label}. Please upgrade your plan to add more {$plural}.";
+
+        return [
+            'allowed'  => false,
+            'limit'    => $limit,
+            'used'     => $used,
+            'resource' => $resourceKey,
+            'message'  => $message,
+        ];
     }
 }

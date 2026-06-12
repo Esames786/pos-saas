@@ -41,7 +41,16 @@ class TerminalController extends Controller
 
     public function store(Request $request)
     {
-        Terminal::create($this->validateTerminal($request));
+        $data = $this->validateTerminal($request);
+
+        $limit = app(\App\Services\Saas\TenantSubscriptionAccessService::class)
+            ->checkLimit(app('tenant'), 'terminals');
+
+        if (!$limit['allowed']) {
+            return back()->withInput()->withErrors(['limit' => $limit['message']]);
+        }
+
+        Terminal::create($data);
 
         return redirect('/terminals')->with('status', 'Terminal created successfully.');
     }

@@ -36,6 +36,13 @@ class BranchController extends Controller
     {
         $data = $this->validateBranch($request);
 
+        $limit = app(\App\Services\Saas\TenantSubscriptionAccessService::class)
+            ->checkLimit(app('tenant'), 'branches');
+
+        if (!$limit['allowed']) {
+            return back()->withInput()->withErrors(['limit' => $limit['message']]);
+        }
+
         Branch::create($data);
 
         return redirect('/branches')->with('status', 'Branch created successfully.');
