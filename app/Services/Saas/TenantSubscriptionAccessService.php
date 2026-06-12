@@ -177,7 +177,10 @@ class TenantSubscriptionAccessService
     private function subscriptionIsUsable($subscription): bool
     {
         if ($subscription->status === 'active') {
-            return true;
+            // Defense-in-depth: an active subscription past its billing period is
+            // not usable, even before the daily expiry sweep flips it to past_due.
+            return !$subscription->current_period_ends_at
+                || Carbon::parse($subscription->current_period_ends_at)->isFuture();
         }
 
         if ($subscription->status === 'trial') {
