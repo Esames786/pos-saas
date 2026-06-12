@@ -3,8 +3,10 @@
 namespace Database\Seeders;
 
 use App\Models\Master\CentralUser;
+use App\Models\Master\Module;
 use App\Models\Master\Plan;
 use App\Models\Master\PlanFeature;
+use App\Models\Master\PlanModule;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -136,5 +138,246 @@ class MasterSeeder extends Seeder
         $role->syncPermissions($permissions);
 
         $admin->syncRoles([$role]);
+
+        $this->seedCommercialModules();
+    }
+
+    private function seedCommercialModules(): void
+    {
+        $modules = [
+            [
+                'key' => 'pos',
+                'name' => 'POS',
+                'category' => 'Sales',
+                'description' => 'Quick sale, cart, checkout, payments, held sales and POS APIs.',
+                'route_module_keys' => ['pos', 'api.pos', 'held-sales', 'sales-orders', 'sales-returns'],
+                'sort_order' => 10,
+                'is_core' => true,
+            ],
+            [
+                'key' => 'catalog',
+                'name' => 'Catalog',
+                'category' => 'Core',
+                'description' => 'Products, categories, units, barcodes and product pricing.',
+                'route_module_keys' => ['products', 'categories', 'units', 'api.catalog'],
+                'sort_order' => 20,
+                'is_core' => true,
+            ],
+            [
+                'key' => 'inventory',
+                'name' => 'Inventory',
+                'category' => 'Inventory',
+                'description' => 'Stock balances, ledgers, adjustments and transfers.',
+                'route_module_keys' => ['inventory', 'stock-adjustments', 'stock-transfers', 'stock-ledgers', 'stock-balances'],
+                'sort_order' => 30,
+                'is_core' => false,
+            ],
+            [
+                'key' => 'stock_count',
+                'name' => 'Stock Count',
+                'category' => 'Inventory',
+                'description' => 'Physical inventory counting and variance posting.',
+                'route_module_keys' => ['stock-counts'],
+                'sort_order' => 40,
+                'is_core' => false,
+            ],
+            [
+                'key' => 'purchasing',
+                'name' => 'Purchasing',
+                'category' => 'Purchasing',
+                'description' => 'Suppliers, purchase orders, goods receipts and purchase bills.',
+                'route_module_keys' => ['suppliers', 'purchase-orders', 'goods-receipts', 'purchase-bills', 'supplier-payments'],
+                'sort_order' => 50,
+                'is_core' => false,
+            ],
+            [
+                'key' => 'restaurant',
+                'name' => 'Restaurant',
+                'category' => 'Restaurant',
+                'description' => 'Tables, floors, waiters, dine-in orders and restaurant board.',
+                'route_module_keys' => ['restaurant', 'restaurant-floors', 'restaurant-tables', 'restaurant-waiters'],
+                'sort_order' => 60,
+                'is_core' => false,
+            ],
+            [
+                'key' => 'kitchen_display',
+                'name' => 'Kitchen Display',
+                'category' => 'Restaurant',
+                'description' => 'Kitchen display board with line/order cooking status.',
+                'route_module_keys' => ['kitchen-display', 'api.kitchen-display'],
+                'sort_order' => 70,
+                'is_core' => false,
+            ],
+            [
+                'key' => 'kitchen_inventory',
+                'name' => 'Kitchen Inventory',
+                'category' => 'Restaurant',
+                'description' => 'Recipes, kitchen production and wastage tracking.',
+                'route_module_keys' => ['kitchen', 'recipes', 'kitchen.productions', 'kitchen.wastages'],
+                'sort_order' => 80,
+                'is_core' => false,
+            ],
+            [
+                'key' => 'printing',
+                'name' => 'Printing',
+                'category' => 'Operations',
+                'description' => 'Printers, KOT/receipt layouts, print jobs and local print agent.',
+                'route_module_keys' => ['printing', 'print-agents', 'api.print-agent'],
+                'sort_order' => 90,
+                'is_core' => false,
+            ],
+            [
+                'key' => 'reports',
+                'name' => 'Reports',
+                'category' => 'Analytics',
+                'description' => 'Sales, inventory, purchasing, restaurant and kitchen reports.',
+                'route_module_keys' => ['reports', 'dashboard'],
+                'sort_order' => 100,
+                'is_core' => false,
+            ],
+            [
+                'key' => 'sales_controls',
+                'name' => 'Sales Controls',
+                'category' => 'Controls',
+                'description' => 'Promotions, void reasons, manager approvals, service charge and tips.',
+                'route_module_keys' => ['sales-controls', 'promotions', 'void-reasons', 'service-charge'],
+                'sort_order' => 110,
+                'is_core' => false,
+            ],
+            [
+                'key' => 'multi_branch',
+                'name' => 'Multi Branch',
+                'category' => 'Core',
+                'description' => 'Branches, terminals, shifts and branch-level configuration.',
+                'route_module_keys' => ['branches', 'terminals', 'shifts', 'daily-closings'],
+                'sort_order' => 120,
+                'is_core' => false,
+            ],
+            [
+                'key' => 'users_roles',
+                'name' => 'Users & Roles',
+                'category' => 'Administration',
+                'description' => 'Tenant users, roles and permission management.',
+                'route_module_keys' => ['users', 'roles', 'permissions'],
+                'sort_order' => 130,
+                'is_core' => true,
+            ],
+        ];
+
+        foreach ($modules as $module) {
+            Module::updateOrCreate(
+                ['key' => $module['key']],
+                [
+                    'name' => $module['name'],
+                    'category' => $module['category'],
+                    'description' => $module['description'],
+                    'route_module_keys' => $module['route_module_keys'],
+                    'sort_order' => $module['sort_order'],
+                    'is_core' => $module['is_core'],
+                    'is_active' => true,
+                ]
+            );
+        }
+
+        $quickSaleEnabled = [
+            'pos',
+            'catalog',
+            'printing',
+            'reports',
+            'users_roles',
+        ];
+
+        $standardEnabled = [
+            'pos',
+            'catalog',
+            'inventory',
+            'stock_count',
+            'purchasing',
+            'restaurant',
+            'kitchen_display',
+            'kitchen_inventory',
+            'printing',
+            'reports',
+            'sales_controls',
+            'multi_branch',
+            'users_roles',
+        ];
+
+        $planModuleMap = [
+            'quick_sale' => $quickSaleEnabled,
+            'standard' => $standardEnabled,
+        ];
+
+        foreach ($planModuleMap as $planCode => $enabledKeys) {
+            $plan = Plan::where('code', $planCode)->first();
+
+            if (!$plan) {
+                continue;
+            }
+
+            foreach (Module::orderBy('sort_order')->get() as $module) {
+                $enabled = in_array($module->key, $enabledKeys, true);
+
+                $limits = null;
+
+                if ($planCode === 'quick_sale' && $module->key === 'reports') {
+                    $limits = ['level' => 'basic'];
+                }
+
+                if ($planCode === 'quick_sale' && $module->key === 'multi_branch') {
+                    $limits = ['branch_limit' => 1];
+                }
+
+                if ($planCode === 'standard' && $module->key === 'multi_branch') {
+                    $limits = ['branch_limit' => 3];
+                }
+
+                PlanModule::updateOrCreate(
+                    [
+                        'plan_id' => $plan->id,
+                        'module_id' => $module->id,
+                    ],
+                    [
+                        'is_enabled' => $enabled,
+                        'limits' => $limits,
+                    ]
+                );
+            }
+        }
+
+        // Keep plan_features as the legacy/flexible limits bag for now.
+        // Enforcement in 14A-2 can read plan_modules for modules and plan_features for numeric limits.
+        $limitFeatures = [
+            'quick_sale' => [
+                'branch_limit' => '1',
+                'user_limit' => '2',
+                'terminal_limit' => '1',
+            ],
+            'standard' => [
+                'branch_limit' => '3',
+                'user_limit' => '10',
+                'terminal_limit' => '4',
+            ],
+        ];
+
+        foreach ($limitFeatures as $planCode => $features) {
+            $plan = Plan::where('code', $planCode)->first();
+
+            if (!$plan) {
+                continue;
+            }
+
+            foreach ($features as $key => $value) {
+                PlanFeature::updateOrCreate(
+                    [
+                        'plan_id' => $plan->id,
+                        'feature_key' => $key,
+                    ],
+                    [
+                        'feature_value' => $value,
+                    ]
+                );
+            }
+        }
     }
 }
