@@ -24,7 +24,10 @@ class BranchController extends Controller
 
         $branches = $query->paginate(15)->withQueryString();
 
-        return view('tenant.branches.index', compact('branches'));
+        $usage = app(\App\Services\Saas\TenantSubscriptionAccessService::class)
+            ->checkLimit(app('tenant'), 'branches');
+
+        return view('tenant.branches.index', compact('branches', 'usage'));
     }
 
     public function create()

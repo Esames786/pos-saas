@@ -29,6 +29,8 @@ class TerminalController extends Controller
         return view('tenant.terminals.index', [
             'terminals' => $query->paginate(15)->withQueryString(),
             'branches'  => Branch::where('status', 'active')->orderBy('name')->get(),
+            'usage'     => app(\App\Services\Saas\TenantSubscriptionAccessService::class)
+                ->checkLimit(app('tenant'), 'terminals'),
         ]);
     }
 

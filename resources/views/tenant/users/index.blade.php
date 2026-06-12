@@ -7,16 +7,31 @@
     <div>
         <h1 class="mb-1">Users</h1>
         <p class="fw-medium">Manage tenant user accounts and access.</p>
+        @isset($usage)
+            <span class="badge {{ $usage['allowed'] ? 'bg-light text-dark border' : 'bg-danger' }}">
+                Users: {{ $usage['used'] }} / {{ $usage['limit'] ?? 'Unlimited' }}
+            </span>
+        @endisset
     </div>
     @can('tenant.users.create')
-        <a href="{{ url('/users/create') }}" class="btn btn-primary">
-            <i class="ti ti-plus me-1" aria-hidden="true"></i>New User
-        </a>
+        @if(!isset($usage) || $usage['allowed'])
+            <a href="{{ url('/users/create') }}" class="btn btn-primary">
+                <i class="ti ti-plus me-1" aria-hidden="true"></i>New User
+            </a>
+        @else
+            <span class="btn btn-secondary disabled" aria-disabled="true">
+                <i class="ti ti-lock me-1" aria-hidden="true"></i>Plan limit reached
+            </span>
+        @endif
     @endcan
 </div>
 
 @if(session('status'))
     <div class="alert alert-success" role="alert" aria-live="polite">{{ session('status') }}</div>
+@endif
+
+@if(isset($usage) && !$usage['allowed'])
+    <div class="alert alert-warning" role="alert">{{ $usage['message'] }}</div>
 @endif
 
 @if($errors->any())

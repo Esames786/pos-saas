@@ -7,14 +7,29 @@
     <div>
         <h1 class="mb-1">Branches</h1>
         <p class="fw-medium">Manage business locations, tax settings, and receipt options.</p>
+        @isset($usage)
+            <span class="badge {{ $usage['allowed'] ? 'bg-light text-dark border' : 'bg-danger' }}">
+                Branches: {{ $usage['used'] }} / {{ $usage['limit'] ?? 'Unlimited' }}
+            </span>
+        @endisset
     </div>
 
     @can('tenant.branches.create')
-        <a href="{{ url('/branches/create') }}" class="btn btn-primary">
-            <i class="ti ti-plus me-1" aria-hidden="true"></i>Create Branch
-        </a>
+        @if(!isset($usage) || $usage['allowed'])
+            <a href="{{ url('/branches/create') }}" class="btn btn-primary">
+                <i class="ti ti-plus me-1" aria-hidden="true"></i>Create Branch
+            </a>
+        @else
+            <span class="btn btn-secondary disabled" aria-disabled="true">
+                <i class="ti ti-lock me-1" aria-hidden="true"></i>Plan limit reached
+            </span>
+        @endif
     @endcan
 </div>
+
+@if(isset($usage) && !$usage['allowed'])
+    <div class="alert alert-warning" role="alert">{{ $usage['message'] }}</div>
+@endif
 
 @if($errors->any())
     <div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>

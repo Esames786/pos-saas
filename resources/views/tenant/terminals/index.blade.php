@@ -7,14 +7,29 @@
     <div>
         <h1 class="mb-1">Terminals</h1>
         <p class="fw-medium">Manage POS terminals assigned to branches.</p>
+        @isset($usage)
+            <span class="badge {{ $usage['allowed'] ? 'bg-light text-dark border' : 'bg-danger' }}">
+                Terminals: {{ $usage['used'] }} / {{ $usage['limit'] ?? 'Unlimited' }}
+            </span>
+        @endisset
     </div>
 
     @can('tenant.terminals.create')
-        <a href="{{ url('/terminals/create') }}" class="btn btn-primary">
-            <i class="ti ti-plus me-1" aria-hidden="true"></i>Create Terminal
-        </a>
+        @if(!isset($usage) || $usage['allowed'])
+            <a href="{{ url('/terminals/create') }}" class="btn btn-primary">
+                <i class="ti ti-plus me-1" aria-hidden="true"></i>Create Terminal
+            </a>
+        @else
+            <span class="btn btn-secondary disabled" aria-disabled="true">
+                <i class="ti ti-lock me-1" aria-hidden="true"></i>Plan limit reached
+            </span>
+        @endif
     @endcan
 </div>
+
+@if(isset($usage) && !$usage['allowed'])
+    <div class="alert alert-warning" role="alert">{{ $usage['message'] }}</div>
+@endif
 
 @if($errors->any())
     <div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>

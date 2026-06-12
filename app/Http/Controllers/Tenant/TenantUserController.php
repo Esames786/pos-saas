@@ -35,7 +35,10 @@ class TenantUserController extends Controller
 
         $users = $query->paginate(20)->withQueryString();
 
-        return view('tenant.users.index', compact('users'));
+        $usage = app(\App\Services\Saas\TenantSubscriptionAccessService::class)
+            ->checkLimit(app('tenant'), 'users');
+
+        return view('tenant.users.index', compact('users', 'usage'));
     }
 
     public function create()
