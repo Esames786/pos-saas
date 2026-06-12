@@ -527,6 +527,12 @@ class TenantProvisioner
             'tenant.billing.invoices.payments.store',
             'tenant.billing.invoices.payments.proof',
 
+            // Plan upgrade requests
+            'tenant.billing.upgrade.create',
+            'tenant.billing.upgrade.store',
+            'tenant.billing.upgrade.show',
+            'tenant.billing.upgrade.cancel',
+
             // Manager PIN
             'tenant.users.manager-pin',
             'tenant.users.manager-pin.store',

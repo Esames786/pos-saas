@@ -72,6 +72,11 @@ class SubscriptionInvoice extends Model
         return $this->belongsTo(CentralUser::class, 'created_by_user_id');
     }
 
+    public function changeRequest(): HasMany
+    {
+        return $this->hasMany(SubscriptionChangeRequest::class, 'related_invoice_id');
+    }
+
     public function isPaid(): bool
     {
         return $this->status === 'paid';

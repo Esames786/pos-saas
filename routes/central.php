@@ -6,6 +6,7 @@ use App\Http\Controllers\Central\InvoiceController;
 use App\Http\Controllers\Central\ModuleController;
 use App\Http\Controllers\Central\PlanController;
 use App\Http\Controllers\Central\RouteCatalogController;
+use App\Http\Controllers\Central\SubscriptionRequestController;
 use App\Http\Controllers\Central\TenantController;
 use App\Http\Controllers\Central\TenantDomainController;
 use Illuminate\Support\Facades\Route;
@@ -79,6 +80,12 @@ Route::domain(config('tenancy.central_domain'))
                 Route::get('/invoices/{invoice}/payments/{payment}/proof', [InvoiceController::class, 'downloadPaymentProof'])->name('central.invoices.payments.proof');
                 Route::post('/invoices/{invoice}/payments/{payment}/verify', [InvoiceController::class, 'verifyPayment'])->name('central.invoices.payments.verify');
                 Route::post('/invoices/{invoice}/payments/{payment}/reject', [InvoiceController::class, 'rejectPayment'])->name('central.invoices.payments.reject');
+
+                // Subscription change requests (plan upgrades)
+                Route::get('/subscription-requests', [SubscriptionRequestController::class, 'index'])->name('central.subscription-requests.index');
+                Route::get('/subscription-requests/{subscriptionRequest}', [SubscriptionRequestController::class, 'show'])->name('central.subscription-requests.show');
+                Route::post('/subscription-requests/{subscriptionRequest}/approve', [SubscriptionRequestController::class, 'approve'])->name('central.subscription-requests.approve');
+                Route::post('/subscription-requests/{subscriptionRequest}/reject', [SubscriptionRequestController::class, 'reject'])->name('central.subscription-requests.reject');
 
                 Route::post('/tenants/{tenant}/domains', [TenantDomainController::class, 'store'])
                     ->name('central.tenant-domains.store');

@@ -71,4 +71,9 @@ class Plan extends Model
     {
         return $this->hasMany(SubscriptionInvoice::class);
     }
+
+    public function requestedChangeRequests(): HasMany
+    {
+        return $this->hasMany(SubscriptionChangeRequest::class, 'requested_plan_id');
+    }
 }

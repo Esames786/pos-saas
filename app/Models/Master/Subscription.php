@@ -42,4 +42,9 @@ class Subscription extends Model
     {
         return $this->hasMany(SubscriptionInvoice::class);
     }
+
+    public function changeRequests()
+    {
+        return $this->hasMany(SubscriptionChangeRequest::class);
+    }
 }

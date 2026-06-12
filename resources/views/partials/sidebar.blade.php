@@ -91,6 +91,15 @@
                                 </li>
                             @endcan
 
+                            @can('central.subscription-requests.index')
+                                <li class="{{ request()->is('subscription-requests*') ? 'active' : '' }}">
+                                    <a href="{{ url('/subscription-requests') }}">
+                                        <i class="ti ti-arrow-up-circle fs-16 me-2"></i>
+                                        <span>Upgrade Requests</span>
+                                    </a>
+                                </li>
+                            @endcan
+
                             @can('central.routes.index')
                                 <li class="{{ request()->is('routes*') ? 'active' : '' }}">
                                     <a href="{{ url('/routes') }}">

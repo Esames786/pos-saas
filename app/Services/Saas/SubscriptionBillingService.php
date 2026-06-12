@@ -132,6 +132,10 @@ class SubscriptionBillingService
             'plan_id'                => $invoice->plan_id ?: $subscription->plan_id,
             'current_period_ends_at' => $invoice->period_end ?: $subscription->current_period_ends_at,
         ]);
+
+        // Close out any plan-change request that this invoice was created for.
+        // Resolved lazily to avoid a circular constructor dependency.
+        app(SubscriptionChangeRequestService::class)->markInvoiceRequestPaid($invoice);
     }
 
     public function recordTenantProofPayment(

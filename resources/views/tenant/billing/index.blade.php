@@ -16,6 +16,9 @@
         <h1 class="mb-1">Billing</h1>
         <p class="text-muted mb-0">Your subscription invoices and payments.</p>
     </div>
+    <div>
+        <a href="{{ url('/billing/upgrade') }}" class="btn btn-success">Upgrade Plan</a>
+    </div>
 </div>
 
 @if(session('status'))

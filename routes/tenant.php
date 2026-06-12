@@ -42,6 +42,7 @@ use App\Http\Controllers\Tenant\RecipeController;
 use App\Http\Controllers\Tenant\KitchenDisplayController;
 use App\Http\Controllers\Tenant\KitchenProductionController;
 use App\Http\Controllers\Tenant\TenantBillingController;
+use App\Http\Controllers\Tenant\TenantUpgradeController;
 use App\Http\Controllers\Tenant\KitchenWastageController;
 use App\Http\Controllers\Tenant\PrinterController;
 use App\Http\Controllers\Tenant\CategoryPrinterMappingController;
@@ -355,6 +356,12 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/billing/invoices/{invoice}', [TenantBillingController::class, 'show'])->name('tenant.billing.invoices.show');
                 Route::post('/billing/invoices/{invoice}/payments', [TenantBillingController::class, 'uploadPaymentProof'])->name('tenant.billing.invoices.payments.store');
                 Route::get('/billing/invoices/{invoice}/payments/{payment}/proof', [TenantBillingController::class, 'downloadProof'])->name('tenant.billing.invoices.payments.proof');
+
+                // Plan upgrade requests (always-allowed prefix tenant.billing — reachable when lapsed)
+                Route::get('/billing/upgrade', [TenantUpgradeController::class, 'create'])->name('tenant.billing.upgrade.create');
+                Route::post('/billing/upgrade', [TenantUpgradeController::class, 'store'])->name('tenant.billing.upgrade.store');
+                Route::get('/billing/upgrade/{requestModel}', [TenantUpgradeController::class, 'show'])->name('tenant.billing.upgrade.show');
+                Route::post('/billing/upgrade/{requestModel}/cancel', [TenantUpgradeController::class, 'cancel'])->name('tenant.billing.upgrade.cancel');
 
                 // Split Bill
                 Route::get('/sales-orders/{salesOrder}/split-bill', [SplitBillController::class, 'create'])->name('tenant.sales-orders.split-bill');
