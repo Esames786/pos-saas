@@ -41,6 +41,7 @@ use App\Http\Controllers\Tenant\UnitConversionController;
 use App\Http\Controllers\Tenant\RecipeController;
 use App\Http\Controllers\Tenant\KitchenDisplayController;
 use App\Http\Controllers\Tenant\KitchenProductionController;
+use App\Http\Controllers\Tenant\TenantBillingController;
 use App\Http\Controllers\Tenant\KitchenWastageController;
 use App\Http\Controllers\Tenant\PrinterController;
 use App\Http\Controllers\Tenant\CategoryPrinterMappingController;
@@ -348,6 +349,12 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/api/kitchen-display/orders', [KitchenDisplayController::class, 'orders'])->name('tenant.api.kitchen-display.orders');
                 Route::post('/api/kitchen-display/lines/{line}/status', [KitchenDisplayController::class, 'updateLineStatus'])->name('tenant.api.kitchen-display.lines.status');
                 Route::post('/api/kitchen-display/orders/{salesOrder}/status', [KitchenDisplayController::class, 'updateOrderStatus'])->name('tenant.api.kitchen-display.orders.status');
+
+                // Billing portal (tenant) — reachable even when subscription lapsed (see TenantSubscriptionAccessService always-allowed)
+                Route::get('/billing', [TenantBillingController::class, 'index'])->name('tenant.billing.index');
+                Route::get('/billing/invoices/{invoice}', [TenantBillingController::class, 'show'])->name('tenant.billing.invoices.show');
+                Route::post('/billing/invoices/{invoice}/payments', [TenantBillingController::class, 'uploadPaymentProof'])->name('tenant.billing.invoices.payments.store');
+                Route::get('/billing/invoices/{invoice}/payments/{payment}/proof', [TenantBillingController::class, 'downloadProof'])->name('tenant.billing.invoices.payments.proof');
 
                 // Split Bill
                 Route::get('/sales-orders/{salesOrder}/split-bill', [SplitBillController::class, 'create'])->name('tenant.sales-orders.split-bill');

@@ -76,6 +76,9 @@ Route::domain(config('tenancy.central_domain'))
                 Route::get('/invoices/{invoice}', [InvoiceController::class, 'show'])->name('central.invoices.show');
                 Route::post('/invoices/{invoice}/payments', [InvoiceController::class, 'storePayment'])->name('central.invoices.payments.store');
                 Route::post('/invoices/{invoice}/void', [InvoiceController::class, 'void'])->name('central.invoices.void');
+                Route::get('/invoices/{invoice}/payments/{payment}/proof', [InvoiceController::class, 'downloadPaymentProof'])->name('central.invoices.payments.proof');
+                Route::post('/invoices/{invoice}/payments/{payment}/verify', [InvoiceController::class, 'verifyPayment'])->name('central.invoices.payments.verify');
+                Route::post('/invoices/{invoice}/payments/{payment}/reject', [InvoiceController::class, 'rejectPayment'])->name('central.invoices.payments.reject');
 
                 Route::post('/tenants/{tenant}/domains', [TenantDomainController::class, 'store'])
                     ->name('central.tenant-domains.store');

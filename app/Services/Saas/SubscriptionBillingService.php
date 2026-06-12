@@ -5,8 +5,11 @@ namespace App\Services\Saas;
 use App\Models\Master\SubscriptionInvoice;
 use App\Models\Master\SubscriptionPayment;
 use App\Models\Master\Tenant;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use RuntimeException;
 
 class SubscriptionBillingService
@@ -129,6 +132,86 @@ class SubscriptionBillingService
             'plan_id'                => $invoice->plan_id ?: $subscription->plan_id,
             'current_period_ends_at' => $invoice->period_end ?: $subscription->current_period_ends_at,
         ]);
+    }
+
+    public function recordTenantProofPayment(
+        SubscriptionInvoice $invoice,
+        Tenant $tenant,
+        array $data,
+        UploadedFile $proof
+    ): SubscriptionPayment {
+        if ((int) $invoice->tenant_id !== (int) $tenant->id) {
+            throw new RuntimeException('Invoice not found for this tenant.');
+        }
+
+        if ($invoice->isPaid() || $invoice->isVoid()) {
+            throw new RuntimeException('This invoice is not accepting payment proofs.');
+        }
+
+        $amount = round((float) ($data['amount'] ?? 0), 2);
+
+        if ($amount <= 0) {
+            throw new RuntimeException('Payment amount must be greater than zero.');
+        }
+
+        return DB::connection('master')->transaction(function () use ($invoice, $tenant, $data, $proof, $amount) {
+            $payment = SubscriptionPayment::create([
+                'subscription_invoice_id'   => $invoice->id,
+                'tenant_id'                 => $tenant->id,
+                'payment_gateway_id'        => null,
+                'payment_method_code'       => $data['payment_method_code'] ?? 'manual',
+                'amount'                    => $amount,
+                'currency_code'             => strtoupper($data['currency_code'] ?? $invoice->currency_code),
+                'payment_date'              => $data['payment_date'] ?? now()->toDateString(),
+                'reference_no'              => $data['reference_no'] ?? null,
+                'status'                    => 'pending',
+                'notes'                     => $data['notes'] ?? null,
+                'proof_uploaded_by_user_id' => Auth::guard('tenant')->id(),
+                'proof_uploaded_at'         => now(),
+            ]);
+
+            $extension = $proof->getClientOriginalExtension();
+            $safeName  = Str::uuid()->toString() . ($extension ? '.' . $extension : '');
+
+            // Private local disk — proofs are sensitive and served only via authorized routes.
+            $path = $proof->storeAs(
+                'billing-proofs/' . $tenant->id . '/' . $invoice->id,
+                $safeName,
+                'local'
+            );
+
+            $payment->update([
+                'proof_path'          => $path,
+                'proof_original_name' => $proof->getClientOriginalName(),
+            ]);
+
+            return $payment;
+        });
+    }
+
+    public function verifyPayment(SubscriptionPayment $payment): void
+    {
+        DB::connection('master')->transaction(function () use ($payment) {
+            $payment->update([
+                'status'              => 'verified',
+                'verified_by_user_id' => Auth::guard('central')->id(),
+                'verified_at'         => now(),
+            ]);
+
+            $this->refreshInvoicePaymentState($payment->invoice()->firstOrFail());
+        });
+    }
+
+    public function rejectPayment(SubscriptionPayment $payment, ?string $notes = null): void
+    {
+        DB::connection('master')->transaction(function () use ($payment, $notes) {
+            $payment->update([
+                'status' => 'rejected',
+                'notes'  => $notes ?: $payment->notes,
+            ]);
+
+            $this->refreshInvoicePaymentState($payment->invoice()->firstOrFail());
+        });
     }
 
     public function voidInvoice(SubscriptionInvoice $invoice): void

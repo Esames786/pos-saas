@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\Master\PaymentGateway;
 use App\Models\Master\Plan;
 use App\Models\Master\SubscriptionInvoice;
+use App\Models\Master\SubscriptionPayment;
 use App\Models\Master\Tenant;
 use App\Services\Saas\SubscriptionBillingService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use RuntimeException;
 
@@ -115,5 +117,38 @@ class InvoiceController extends Controller
 
         return redirect(url('/invoices/' . $invoice->id))
             ->with('status', 'Invoice voided.');
+    }
+
+    public function verifyPayment(SubscriptionInvoice $invoice, SubscriptionPayment $payment)
+    {
+        abort_unless((int) $payment->subscription_invoice_id === (int) $invoice->id, 404);
+
+        $this->billing->verifyPayment($payment);
+
+        return back()->with('status', 'Payment verified.');
+    }
+
+    public function rejectPayment(Request $request, SubscriptionInvoice $invoice, SubscriptionPayment $payment)
+    {
+        abort_unless((int) $payment->subscription_invoice_id === (int) $invoice->id, 404);
+
+        $data = $request->validate([
+            'notes' => ['nullable', 'string'],
+        ]);
+
+        $this->billing->rejectPayment($payment, $data['notes'] ?? null);
+
+        return back()->with('status', 'Payment rejected.');
+    }
+
+    public function downloadPaymentProof(SubscriptionInvoice $invoice, SubscriptionPayment $payment)
+    {
+        abort_unless((int) $payment->subscription_invoice_id === (int) $invoice->id, 404);
+        abort_unless($payment->proof_path, 404);
+
+        return Storage::disk('local')->download(
+            $payment->proof_path,
+            $payment->proof_original_name ?: basename($payment->proof_path)
+        );
     }
 }

@@ -18,6 +18,7 @@ class TenantSubscriptionAccessService
         'tenant.password',
         'tenant.locale',
         'tenant.api',
+        'tenant.billing',
         'central.dashboard',
         'central.login',
         'central.logout',
@@ -31,6 +32,26 @@ class TenantSubscriptionAccessService
 
     public function check(Tenant $tenant, ?string $routeName): array
     {
+        // Resolve the route module key FIRST. Always-allowed routes
+        // (login/logout/locale/api AND billing) must stay reachable even when
+        // the subscription is missing/expired/past_due — otherwise a lapsed
+        // tenant could never reach /billing to pay and would be deadlocked.
+        $routeCatalog = $routeName
+            ? RouteCatalog::where('route_name', $routeName)->first()
+            : null;
+
+        $routeModuleKey = $routeCatalog?->module_key;
+
+        if ($this->isAlwaysAllowed($routeModuleKey, $routeName)) {
+            return [
+                'allowed'    => true,
+                'reason'     => 'always_allowed',
+                'message'    => null,
+                'module_key' => $routeModuleKey,
+                'module'     => null,
+            ];
+        }
+
         $subscription = $tenant->subscription?->loadMissing(['plan.enabledModules']);
 
         if (!$subscription) {
@@ -49,22 +70,6 @@ class TenantSubscriptionAccessService
                 'reason'     => 'subscription_' . $subscription->status,
                 'message'    => 'Your subscription is not active. Please contact support.',
                 'module_key' => null,
-                'module'     => null,
-            ];
-        }
-
-        $routeCatalog = $routeName
-            ? RouteCatalog::where('route_name', $routeName)->first()
-            : null;
-
-        $routeModuleKey = $routeCatalog?->module_key;
-
-        if ($this->isAlwaysAllowed($routeModuleKey, $routeName)) {
-            return [
-                'allowed'    => true,
-                'reason'     => 'always_allowed',
-                'message'    => null,
-                'module_key' => $routeModuleKey,
                 'module'     => null,
             ];
         }
@@ -194,6 +199,7 @@ class TenantSubscriptionAccessService
             || str_starts_with($routeName, 'tenant.logout')
             || str_starts_with($routeName, 'tenant.password')
             || str_starts_with($routeName, 'tenant.locale')
+            || str_starts_with($routeName, 'tenant.billing')
             || str_starts_with($routeName, 'central.')
         )) {
             return true;

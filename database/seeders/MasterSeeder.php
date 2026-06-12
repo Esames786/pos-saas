@@ -143,6 +143,9 @@ class MasterSeeder extends Seeder
             'central.invoices.show',
             'central.invoices.payments.store',
             'central.invoices.void',
+            'central.invoices.payments.proof',
+            'central.invoices.payments.verify',
+            'central.invoices.payments.reject',
         ];
 
         foreach ($permissions as $permission) {

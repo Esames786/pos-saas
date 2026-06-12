@@ -22,13 +22,23 @@ class SubscriptionPayment extends Model
         'notes',
         'verified_by_user_id',
         'verified_at',
+        'proof_path',
+        'proof_original_name',
+        'proof_uploaded_by_user_id',
+        'proof_uploaded_at',
     ];
 
     protected $casts = [
-        'amount'       => 'decimal:2',
-        'payment_date' => 'date',
-        'verified_at'  => 'datetime',
+        'amount'              => 'decimal:2',
+        'payment_date'        => 'date',
+        'verified_at'         => 'datetime',
+        'proof_uploaded_at'   => 'datetime',
     ];
+
+    public function hasProof(): bool
+    {
+        return !empty($this->proof_path);
+    }
 
     public function invoice(): BelongsTo
     {

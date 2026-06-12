@@ -106,10 +106,19 @@
                 {{-- Tenant operations section --}}
                 @if($isTenant)
                     {{-- Administration section --}}
-                    @canany(['tenant.users.index', 'tenant.roles.index'])
+                    @canany(['tenant.users.index', 'tenant.roles.index', 'tenant.billing.index'])
                     <li class="submenu-open">
                         <h6 class="submenu-hdr">Administration</h6>
                         <ul>
+                            @can('tenant.billing.index')
+                                <li class="{{ request()->is('billing*') ? 'active' : '' }}">
+                                    <a href="{{ url('/billing') }}">
+                                        <i class="ti ti-receipt fs-16 me-2"></i>
+                                        <span>Billing</span>
+                                    </a>
+                                </li>
+                            @endcan
+
                             @can('tenant.users.index')
                                 <li class="{{ request()->is('users*') ? 'active' : '' }}">
                                     <a href="{{ url('/users') }}">

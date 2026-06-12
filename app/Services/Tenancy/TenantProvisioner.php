@@ -521,6 +521,12 @@ class TenantProvisioner
             'tenant.api.kitchen-display.lines.status',
             'tenant.api.kitchen-display.orders.status',
 
+            // Billing portal
+            'tenant.billing.index',
+            'tenant.billing.invoices.show',
+            'tenant.billing.invoices.payments.store',
+            'tenant.billing.invoices.payments.proof',
+
             // Manager PIN
             'tenant.users.manager-pin',
             'tenant.users.manager-pin.store',

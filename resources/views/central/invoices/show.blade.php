@@ -64,7 +64,7 @@
             <div class="card-body p-0">
                 <table class="table mb-0">
                     <thead>
-                        <tr><th>Date</th><th>Method</th><th>Reference</th><th class="text-end">Amount</th><th>Status</th><th>Verified By</th></tr>
+                        <tr><th>Date</th><th>Method</th><th>Reference</th><th class="text-end">Amount</th><th>Status</th><th>Proof</th><th class="text-end">Action</th></tr>
                     </thead>
                     <tbody>
                     @forelse($invoice->payments as $payment)
@@ -74,10 +74,33 @@
                             <td class="small">{{ $payment->reference_no ?? '—' }}</td>
                             <td class="text-end">{{ $payment->currency_code }} {{ number_format((float) $payment->amount, 2) }}</td>
                             <td><span class="badge {{ $payment->status === 'verified' ? 'bg-success' : ($payment->status === 'rejected' ? 'bg-danger' : 'bg-secondary') }}">{{ ucfirst($payment->status) }}</span></td>
-                            <td class="small text-muted">{{ $payment->verifiedBy?->name ?? '—' }}</td>
+                            <td>
+                                @if($payment->proof_path)
+                                    <a href="{{ url('/invoices/' . $invoice->id . '/payments/' . $payment->id . '/proof') }}" class="btn btn-sm btn-outline-secondary">Proof</a>
+                                @else
+                                    —
+                                @endif
+                            </td>
+                            <td class="text-end">
+                                @if($payment->status === 'pending')
+                                    <div class="d-flex gap-1 justify-content-end">
+                                        <form method="POST" action="{{ url('/invoices/' . $invoice->id . '/payments/' . $payment->id . '/verify') }}">
+                                            @csrf
+                                            <button class="btn btn-sm btn-success">Verify</button>
+                                        </form>
+                                        <form method="POST" action="{{ url('/invoices/' . $invoice->id . '/payments/' . $payment->id . '/reject') }}"
+                                              onsubmit="return confirm('Reject this payment?');">
+                                            @csrf
+                                            <button class="btn btn-sm btn-outline-danger">Reject</button>
+                                        </form>
+                                    </div>
+                                @else
+                                    <span class="small text-muted">{{ $payment->verifiedBy?->name ?? '' }}</span>
+                                @endif
+                            </td>
                         </tr>
                     @empty
-                        <tr><td colspan="6" class="text-center text-muted py-3">No payments recorded.</td></tr>
+                        <tr><td colspan="7" class="text-center text-muted py-3">No payments recorded.</td></tr>
                     @endforelse
                     </tbody>
                 </table>
