@@ -40,6 +40,11 @@
                     {{ session('status') }}
                 </div>
             @endif
+            @if(!empty($tenantSubscriptionStatus) && !empty($tenantSubscriptionStatus['message']))
+                <div class="alert alert-{{ $tenantSubscriptionStatus['severity'] === 'danger' ? 'danger' : 'warning' }} mb-3" role="status">
+                    {{ $tenantSubscriptionStatus['message'] }}
+                </div>
+            @endif
             @yield('content')
         </div>
     </div>

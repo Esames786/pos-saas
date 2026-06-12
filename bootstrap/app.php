@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\CentralOnly;
 use App\Http\Middleware\EnsureRoutePermission;
+use App\Http\Middleware\EnsureTenantSubscriptionAccess;
 use App\Http\Middleware\IdentifyTenant;
 use App\Http\Middleware\SetLocale;
 use App\Http\Middleware\TenantOnly;
@@ -51,6 +52,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'central.only' => CentralOnly::class,
             'tenant.only' => TenantOnly::class,
             'route.permission' => EnsureRoutePermission::class,
+            'tenant.subscription.access' => EnsureTenantSubscriptionAccess::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
