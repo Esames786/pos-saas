@@ -3,16 +3,28 @@
 @section('title', 'Start Free Trial')
 
 @section('content')
-@php $baseDomain = config('tenancy.tenant_base_domain'); @endphp
+@php
+    $baseDomain = config('tenancy.tenant_base_domain');
+    $defaultCurrency = config('saas.default_currency', 'PKR');
+    $feature = fn($plan, $key) => optional($plan->features->firstWhere('feature_key', $key))->feature_value;
+    $limitLabel = fn($v) => ($v === null || $v === '') ? 'Unlimited' : $v;
+@endphp
 
 <section class="section-pad">
     <div class="container">
         <div class="row justify-content-center">
-            <div class="col-lg-8">
+            <div class="col-lg-9">
                 <div class="text-center mb-4">
                     <h1 class="fw-bold mb-1">Start your free trial</h1>
                     <p class="text-muted">Create your account and you'll be live in minutes.</p>
                 </div>
+
+                @if($enterpriseRequested)
+                    <div class="alert alert-info d-flex align-items-center justify-content-between flex-wrap gap-2">
+                        <span>Enterprise plans are handled by our team. Please contact sales for setup.</span>
+                        <a href="{{ url('/contact?plan=enterprise') }}" class="btn btn-sm btn-primary">Contact Sales</a>
+                    </div>
+                @endif
 
                 @if($errors->any())
                     <div class="alert alert-danger">
@@ -33,7 +45,7 @@
                                 <input type="text" name="website" tabindex="-1" autocomplete="off" value="{{ old('website') }}">
                             </div>
 
-                            <input type="hidden" name="currency_code" value="{{ old('currency_code', 'PKR') }}">
+                            <input type="hidden" name="currency_code" value="{{ old('currency_code', $defaultCurrency) }}">
 
                             <div class="row g-3">
                                 <div class="col-md-6">
@@ -45,13 +57,12 @@
                                     <label class="form-label">Subdomain (your login address)</label>
                                     <div class="input-group">
                                         <input type="text" id="tenant_code" name="tenant_code" class="form-control"
-                                               value="{{ old('tenant_code') }}" required
-                                               placeholder="yourbusiness">
+                                               value="{{ old('tenant_code') }}" required placeholder="your-subdomain">
                                         <span class="input-group-text">.{{ $baseDomain }}</span>
                                     </div>
                                     <small class="text-muted">
                                         Your login URL will be:
-                                        <code id="loginUrlPreview">{{ old('tenant_code', 'yourbusiness') }}.{{ $baseDomain }}/login</code>
+                                        <code id="loginUrlPreview">{{ old('tenant_code', 'your-subdomain') }}.{{ $baseDomain }}/login</code>
                                     </small>
                                 </div>
 
@@ -68,8 +79,7 @@
 
                                 <div class="col-md-6">
                                     <label class="form-label">Owner phone <span class="text-muted">(optional)</span></label>
-                                    <input type="text" name="owner_phone" class="form-control"
-                                           value="{{ old('owner_phone') }}">
+                                    <input type="text" name="owner_phone" class="form-control" value="{{ old('owner_phone') }}">
                                 </div>
                                 <div class="col-md-6"></div>
 
@@ -87,24 +97,42 @@
                                     <div class="row g-3">
                                         @foreach($plans as $plan)
                                             @php $checked = old('plan_id', $selectedPlan?->id) == $plan->id; @endphp
-                                            <div class="col-md-6">
+                                            <div class="col-md-6 col-lg-3">
                                                 <label class="plan-card d-block p-3 h-100" style="cursor:pointer;">
                                                     <div class="form-check">
                                                         <input class="form-check-input" type="radio" name="plan_id"
                                                                value="{{ $plan->id }}" {{ $checked ? 'checked' : '' }} required>
                                                         <span class="form-check-label fw-semibold">{{ $plan->name }}</span>
                                                     </div>
-                                                    <div class="mt-1">
-                                                        <span class="fw-bold">{{ $plan->currency_code }} {{ number_format((float) $plan->price, 0) }}</span>
-                                                        <small class="text-muted">/ {{ $plan->billing_period }}</small>
+                                                    <div class="text-muted small mt-1">{{ $plan->public_description }}</div>
+                                                    <div class="mt-2">
+                                                        <span class="fw-bold">{{ $plan->currency_code }} {{ number_format((float) ($plan->monthly_price ?? $plan->price), 0) }}</span>
+                                                        <small class="text-muted">/ month</small>
                                                     </div>
                                                     @if($plan->trial_days)
-                                                        <small class="text-success">{{ $plan->trial_days }}-day free trial</small>
+                                                        <small class="text-success d-block">{{ $plan->trial_days }}-day free trial</small>
                                                     @endif
+                                                    <div class="small text-muted mt-2">
+                                                        {{ $limitLabel($feature($plan, 'branch_limit')) }} branches ·
+                                                        {{ $limitLabel($feature($plan, 'user_limit')) }} users ·
+                                                        {{ $limitLabel($feature($plan, 'terminal_limit')) }} terminals
+                                                    </div>
+                                                    <div class="mt-2">
+                                                        @foreach($plan->enabledModules->take(4) as $module)
+                                                            <span class="badge bg-light text-dark border me-1 mb-1">{{ $module->name }}</span>
+                                                        @endforeach
+                                                        @if($plan->enabledModules->count() > 4)
+                                                            <span class="badge bg-light text-muted border mb-1">+{{ $plan->enabledModules->count() - 4 }}</span>
+                                                        @endif
+                                                    </div>
                                                 </label>
                                             </div>
                                         @endforeach
                                     </div>
+                                    <small class="text-muted d-block mt-2">
+                                        Looking for Enterprise or a custom rollout?
+                                        <a href="{{ url('/contact?plan=enterprise') }}">Contact Sales</a>.
+                                    </small>
                                 </div>
 
                                 <div class="col-12">
@@ -127,10 +155,10 @@
         var preview = document.getElementById('loginUrlPreview');
         if (!input || !preview) return;
         input.addEventListener('input', function () {
-            var code = (input.value || 'yourbusiness')
+            var code = (input.value || 'your-subdomain')
                 .toLowerCase().trim()
                 .replace(/\s+/g, '-')
-                .replace(/[^a-z0-9_-]/g, '') || 'yourbusiness';
+                .replace(/[^a-z0-9_-]/g, '') || 'your-subdomain';
             preview.textContent = code + '.{{ $baseDomain }}/login';
         });
     })();

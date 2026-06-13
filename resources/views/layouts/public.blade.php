@@ -37,6 +37,7 @@
                 <li class="nav-item"><a class="nav-link" href="{{ url('/') }}">Home</a></li>
                 <li class="nav-item"><a class="nav-link" href="{{ url('/features') }}">Features</a></li>
                 <li class="nav-item"><a class="nav-link" href="{{ url('/pricing') }}">Pricing</a></li>
+                <li class="nav-item"><a class="nav-link" href="{{ url('/contact') }}">Contact Sales</a></li>
                 <li class="nav-item"><a class="nav-link" href="{{ url('/login') }}">Admin Login</a></li>
                 <li class="nav-item"><a class="btn btn-light btn-sm px-3" href="{{ url('/start-trial') }}">Start Trial</a></li>
             </ul>
@@ -51,7 +52,7 @@
         <div class="row gy-3">
             <div class="col-md-6">
                 <h5 class="text-white mb-1">{{ config('app.name') }}</h5>
-                <p class="mb-0">Pakistan-focused retail and restaurant POS.</p>
+                <p class="mb-0">Cloud POS for retail, restaurants, inventory, and multi-branch teams.</p>
             </div>
             <div class="col-md-6 text-md-end">
                 <a class="text-decoration-none me-3" style="color:#94a3b8;" href="{{ url('/features') }}">Features</a>

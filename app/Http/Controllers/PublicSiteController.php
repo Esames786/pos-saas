@@ -13,14 +13,18 @@ class PublicSiteController extends Controller
     public function home()
     {
         return view('public.home', [
-            'plans' => $this->publicPlans(),
+            'plans'            => $this->publicPlans(),
+            'selfServicePlans' => $this->selfServicePlans(),
+            'customPlans'      => $this->customPlans(),
         ]);
     }
 
     public function pricing()
     {
         return view('public.pricing', [
-            'plans' => $this->publicPlans(),
+            'plans'            => $this->publicPlans(),
+            'selfServicePlans' => $this->selfServicePlans(),
+            'customPlans'      => $this->customPlans(),
         ]);
     }
 
@@ -33,10 +37,30 @@ class PublicSiteController extends Controller
 
     public function trialCreate(Request $request)
     {
-        $plans = $this->publicPlans();
-        $selectedPlan = $plans->firstWhere('id', (int) $request->query('plan_id')) ?: $plans->first();
+        $plans = $this->selfServicePlans();
 
-        return view('public.start-trial', compact('plans', 'selectedPlan'));
+        $selectedPlan = null;
+
+        if ($request->filled('plan')) {
+            $selectedPlan = $plans->firstWhere('code', $request->query('plan'));
+        }
+
+        if (! $selectedPlan && $request->filled('plan_id')) {
+            $selectedPlan = $plans->firstWhere('id', (int) $request->query('plan_id'));
+        }
+
+        $selectedPlan = $selectedPlan ?: $plans->first();
+
+        $enterpriseRequested = $request->query('plan') === 'enterprise';
+
+        return view('public.start-trial', compact('plans', 'selectedPlan', 'enterpriseRequested'));
+    }
+
+    public function contact()
+    {
+        return view('public.contact', [
+            'customPlans' => $this->customPlans(),
+        ]);
     }
 
     public function trialStore(StartTrialRequest $request, SelfSignupService $signup)
@@ -79,6 +103,29 @@ class PublicSiteController extends Controller
         return Plan::with(['features', 'enabledModules'])
             ->where('is_active', true)
             ->where('is_public', true)
+            ->orderBy('display_order')
+            ->orderBy('price')
+            ->get();
+    }
+
+    private function selfServicePlans()
+    {
+        return Plan::with(['features', 'enabledModules'])
+            ->where('is_active', true)
+            ->where('is_public', true)
+            ->where('is_custom', false)
+            ->orderBy('display_order')
+            ->orderBy('price')
+            ->get();
+    }
+
+    private function customPlans()
+    {
+        return Plan::with(['features', 'enabledModules'])
+            ->where('is_active', true)
+            ->where('is_public', true)
+            ->where('is_custom', true)
+            ->orderBy('display_order')
             ->orderBy('price')
             ->get();
     }

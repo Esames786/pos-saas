@@ -19,4 +19,6 @@ Route::domain(config('tenancy.central_domain'))
             ->name('public.trial.store');
 
         Route::get('/trial/success', [PublicSiteController::class, 'trialSuccess'])->name('public.trial.success');
+
+        Route::get('/contact', [PublicSiteController::class, 'contact'])->name('public.contact');
     });

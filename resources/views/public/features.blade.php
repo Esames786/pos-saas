@@ -6,7 +6,7 @@
 <section class="public-hero section-pad">
     <div class="container text-center">
         <h1 class="fw-bold mb-2">Built for the whole operation</h1>
-        <p class="lead mb-0" style="color:#cbd5e1;">From the front counter to the back office.</p>
+        <p class="lead mb-0" style="color:#cbd5e1;">From the front counter to the kitchen to the back office.</p>
     </div>
 </section>
 
@@ -14,12 +14,14 @@
     <div class="container">
         @php
             $groups = [
-                ['POS & Sales', 'ti-cash-register', ['Quick-sale cart & barcode scanning', 'Held sales & multi-payment checkout', 'Sales returns & ledger', 'Customers & payment methods']],
-                ['Inventory & Purchasing', 'ti-package', ['Stock balances, transfers & counts', 'Suppliers & supplier payments', 'Purchase orders, GRNs & bills', 'Low-stock & expiry alerts']],
-                ['Restaurant & Kitchen', 'ti-tools-kitchen-2', ['Floors, tables & waiters', 'Split bills & service charges', 'Kitchen display system (KDS)', 'Recipes, productions & wastage']],
-                ['Printing', 'ti-printer', ['KOT routing by category', 'Receipt layout settings', 'Print job queue & retries', 'LAN print agents']],
-                ['Reports', 'ti-chart-bar', ['Sales, shifts & daily closings', 'Inventory valuation & movements', 'Restaurant & kitchen reports', 'Audit & manager approvals']],
-                ['SaaS Billing / Plan Controls', 'ti-credit-card', ['Plans, modules & usage limits', 'Invoices & payment proofs', 'Plan upgrade requests', 'Trial & subscription lifecycle']],
+                ['Retail & Barcode Checkout', 'ti-barcode', ['Quick-sale cart & barcode scanning', 'Held sales & multi-payment checkout', 'Sales returns & customer ledger', 'Promotions & price controls']],
+                ['Restaurant Tables & KOT Printing', 'ti-tools-kitchen-2', ['Floors, tables & waiters', 'Split bills & service charges', 'KOT routing by category', 'Dine-in, takeaway & delivery flows']],
+                ['Kitchen Display System', 'ti-device-desktop', ['Live order tickets to kitchen stations', 'Prep / ready / served states', 'Station-based routing', 'Faster turnaround & fewer misfires']],
+                ['Inventory, Purchasing & Suppliers', 'ti-package', ['Stock balances & valuation', 'Suppliers & supplier payments', 'Purchase orders, GRNs & bills', 'Low-stock & expiry alerts']],
+                ['Stock Count & Transfers', 'ti-transfer', ['Physical stock counts', 'Variance posting to ledger', 'Inter-branch stock transfers', 'Movement history & audit trail']],
+                ['Recipes & Kitchen Inventory', 'ti-chef-hat', ['Recipes / bill of materials', 'Kitchen productions', 'Wastage tracking', 'Ingredient-level consumption']],
+                ['Reports & Manager Controls', 'ti-chart-bar', ['Sales, shifts & daily closings', 'Inventory & purchase reporting', 'Restaurant & kitchen reports', 'Manager approvals & audit logs']],
+                ['SaaS Billing & Subscription Control', 'ti-credit-card', ['Plans, modules & usage limits', 'Invoices & payment proofs', 'Plan upgrade requests', 'Trial & subscription lifecycle']],
             ];
         @endphp
         <div class="row g-4">
@@ -40,36 +42,9 @@
             @endforeach
         </div>
 
-        @if($plans->count())
-            <div class="mt-5">
-                <h4 class="fw-bold mb-3">Modules by plan</h4>
-                <div class="table-responsive bg-white rounded border">
-                    <table class="table align-middle mb-0">
-                        <thead>
-                            <tr>
-                                <th>Plan</th>
-                                <th>Included modules</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach($plans as $plan)
-                                <tr>
-                                    <td class="fw-semibold">{{ $plan->name }}</td>
-                                    <td>
-                                        @foreach($plan->enabledModules as $module)
-                                            <span class="badge bg-light text-dark border me-1 mb-1">{{ $module->name }}</span>
-                                        @endforeach
-                                    </td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        @endif
-
         <div class="text-center mt-5">
-            <a href="{{ url('/start-trial') }}" class="btn btn-primary btn-lg px-4">Start Free Trial</a>
+            <a href="{{ url('/start-trial') }}" class="btn btn-primary btn-lg px-4 me-2">Start Free Trial</a>
+            <a href="{{ url('/pricing') }}" class="btn btn-outline-primary btn-lg px-4">View Pricing</a>
         </div>
     </div>
 </section>

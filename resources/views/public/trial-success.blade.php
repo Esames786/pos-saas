@@ -10,10 +10,10 @@
                 <div class="card border-0 shadow-sm text-center">
                     <div class="card-body p-5">
                         <i class="ti ti-circle-check mb-3" style="font-size:3.5rem;color:#16a34a;"></i>
-                        <h1 class="fw-bold mb-2">Trial created successfully</h1>
+                        <h1 class="fw-bold mb-2">Your cloud POS trial is ready.</h1>
                         <p class="text-muted mb-4">
                             Welcome aboard{{ session('trial_business_name') ? ', ' . session('trial_business_name') : '' }}!
-                            Your workspace is ready.
+                            Sign in below to start selling.
                         </p>
 
                         <div class="bg-light rounded p-4 text-start mb-4">
