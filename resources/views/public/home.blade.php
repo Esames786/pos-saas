@@ -1,28 +1,60 @@
 @extends('layouts.public')
 
-@section('title', 'Cloud POS for Retail & Restaurants')
+@section('title', 'Cloud POS for Retail, Restaurants & Inventory Teams')
+@section('meta_description', 'Launch a cloud POS for retail checkout, restaurant KOT, inventory, purchasing, reports, and multi-branch operations in minutes.')
 
 @section('content')
-<section class="public-hero section-pad">
+<section class="public-hero-premium section-pad">
     <div class="container">
-        <div class="row align-items-center gy-4">
-            <div class="col-lg-7">
+        <div class="row align-items-center gy-5">
+            <div class="col-lg-6">
+                <span class="hero-badge mb-3">
+                    <i class="ti ti-bolt"></i> Your dream POS is only 3 clicks away
+                </span>
                 <h1 class="display-5 fw-bold mb-3">
-                    Run your retail, restaurant, and inventory operations from one cloud POS.
+                    Your retail and restaurant POS, ready in minutes.
                 </h1>
                 <p class="lead mb-4" style="color:#cbd5e1;">
-                    Sell faster, manage stock, print KOTs, track kitchens, receive purchases, and control
-                    multi-branch operations from one SaaS platform.
+                    Launch a cloud POS workspace for sales, inventory, restaurant tables, KOT, kitchen display,
+                    purchasing, reports, and multi-branch control — without waiting weeks for setup.
                 </p>
+                <div class="d-flex flex-wrap gap-2 mb-4">
+                    <a href="{{ url('/start-trial') }}" class="btn btn-light btn-lg px-4">Start 30-Day Free Trial</a>
+                    <a href="{{ url('/pricing') }}" class="btn btn-outline-light btn-lg px-4">View Packages</a>
+                    <a href="{{ url('/contact') }}" class="btn btn-outline-light btn-lg px-4">Book a Demo</a>
+                </div>
                 <div class="d-flex flex-wrap gap-2">
-                    <a href="{{ url('/start-trial') }}" class="btn btn-light btn-lg px-4">Start Free Trial</a>
-                    <a href="{{ url('/pricing') }}" class="btn btn-outline-light btn-lg px-4">View Pricing</a>
-                    <a href="{{ url('/contact') }}" class="btn btn-outline-light btn-lg px-4">Contact Sales</a>
+                    @foreach(['Retail checkout', 'Restaurant KOT', 'Inventory control', 'Multi-branch ready', 'FBR-ready for Pakistan'] as $chip)
+                        <span class="hero-badge"><i class="ti ti-check"></i> {{ $chip }}</span>
+                    @endforeach
                 </div>
             </div>
-            <div class="col-lg-5 text-center d-none d-lg-block">
-                <i class="ti ti-building-store" style="font-size:11rem;color:#1d4ed8;"></i>
+            <div class="col-lg-6">
+                <div class="hero-glow-card p-3 p-md-4 reveal">
+                    <img src="{{ asset('images/data/Banner-Full.webp') }}"
+                         alt="Habibi POS cloud POS on laptop, tablet, and mobile"
+                         class="img-fluid rounded-4">
+                </div>
             </div>
+        </div>
+
+        <div class="row g-4 mt-2">
+            @php
+                $steps = [
+                    ['1', 'Choose your business type', 'Retail, restaurant, café, bakery, inventory, or multi-branch.'],
+                    ['2', 'Create your cloud POS', 'Your workspace and login are provisioned automatically.'],
+                    ['3', 'Start selling with your team', 'Add staff, products, and go live at the counter.'],
+                ];
+            @endphp
+            @foreach($steps as [$n, $title, $desc])
+                <div class="col-md-4">
+                    <div class="hero-glow-card p-4 h-100 reveal">
+                        <div class="fw-bold fs-3 mb-2" style="color:#93c5fd;">{{ $n }}</div>
+                        <h5 class="fw-semibold">{{ $title }}</h5>
+                        <p class="mb-0" style="color:#cbd5e1;">{{ $desc }}</p>
+                    </div>
+                </div>
+            @endforeach
         </div>
     </div>
 </section>
@@ -47,7 +79,7 @@
             @endphp
             @foreach($tiles as [$icon, $title, $desc])
                 <div class="col-md-6 col-lg-4">
-                    <div class="feature-tile p-4 h-100">
+                    <div class="feature-tile p-4 h-100 hover-lift reveal">
                         <i class="ti {{ $icon }} mb-3" style="font-size:2.2rem;color:#1d4ed8;"></i>
                         <h5 class="fw-semibold">{{ $title }}</h5>
                         <p class="text-muted mb-0">{{ $desc }}</p>
@@ -67,7 +99,7 @@
         <div class="row g-4 justify-content-center">
             @foreach($selfServicePlans as $plan)
                 <div class="col-md-6 col-lg-3">
-                    <div class="plan-card p-4 h-100 d-flex flex-column">
+                    <div class="plan-card p-4 h-100 d-flex flex-column hover-lift reveal">
                         <h5 class="fw-bold mb-1">{{ $plan->name }}</h5>
                         <p class="text-muted small flex-grow-1">{{ $plan->public_description }}</p>
                         <div class="plan-price">{{ $plan->currency_code }} {{ number_format((float) ($plan->monthly_price ?? $plan->price), 0) }}</div>

@@ -1,6 +1,7 @@
 @extends('layouts.public')
 
 @section('title', 'Contact Sales')
+@section('meta_description', 'Contact Habibi POS for enterprise rollout, multi-branch deployment, FBR-ready workflows, training, and onboarding.')
 
 @section('content')
 <section class="section-pad">

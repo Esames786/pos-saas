@@ -1,6 +1,7 @@
 @extends('layouts.public')
 
 @section('title', 'Pricing')
+@section('meta_description', 'Compare Habibi POS packages for retail stores, inventory teams, restaurants, cafés, and enterprise rollouts.')
 
 @section('content')
 @php

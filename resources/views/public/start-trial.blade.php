@@ -1,6 +1,7 @@
 @extends('layouts.public')
 
-@section('title', 'Start Free Trial')
+@section('title', 'Start 30-Day Free Trial')
+@section('meta_description', 'Create your Habibi POS trial workspace with no payment required.')
 
 @section('content')
 @php

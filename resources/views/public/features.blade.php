@@ -1,6 +1,7 @@
 @extends('layouts.public')
 
 @section('title', 'Features')
+@section('meta_description', 'Explore cloud POS features for barcode checkout, restaurant tables, KOT, kitchen display, inventory, purchasing, reports, and subscription control.')
 
 @section('content')
 <section class="public-hero section-pad">

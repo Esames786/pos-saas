@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 270 64" role="img" aria-label="Habibi POS">
+  <defs>
+    <linearGradient id="habibiBadge" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1e3a8a"/>
+      <stop offset="1" stop-color="#2563eb"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Icon badge -->
+  <rect x="0" y="0" width="64" height="64" rx="16" fill="url(#habibiBadge)"/>
+
+  <!-- Shopping bag handle -->
+  <path d="M25 26 v-3 a7 7 0 0 1 14 0 v3" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- Shopping bag body -->
+  <rect x="16" y="26" width="32" height="24" rx="5" fill="#ffffff"/>
+
+  <!-- Heart (Habibi = love) -->
+  <path d="M32 44 c-4.5-3-7.5-5.6-7.5-9 a3.6 3.6 0 0 1 7.5-1.4 a3.6 3.6 0 0 1 7.5 1.4 c0 3.4-3 6-7.5 9 z" fill="#f43f5e"/>
+
+  <!-- Wordmark -->
+  <text x="80" y="41" font-family="'Segoe UI', system-ui, -apple-system, Roboto, sans-serif" font-size="30" font-weight="700" letter-spacing="-0.5">
+    <tspan fill="currentColor">Habibi</tspan><tspan dx="8" fill="#3b82f6">POS</tspan>
+  </text>
+</svg>
