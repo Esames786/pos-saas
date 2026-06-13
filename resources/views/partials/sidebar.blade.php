@@ -11,7 +11,7 @@
             <img src="{{ asset('assets/img/logo-white.svg') }}" alt="Logo">
         </a>
         <a href="{{ url('/dashboard') }}" class="logo-small">
-            <img src="{{ asset('assets/img/logo-small.svg') }}" alt="Habibi POS">
+            <img src="{{ asset('assets/img/logo-small.svg') }}" alt="Bingoo POS">
         </a>
 
         <a id="toggle_btn" href="javascript:void(0);">

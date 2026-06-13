@@ -55,13 +55,13 @@
 
                     <div class="hero-glow-card p-3 reveal">
                         <img src="{{ asset('images/data/Banner-Full.webp') }}"
-                             alt="Habibi POS on laptop, tablet, and mobile" class="img-fluid rounded-4">
+                             alt="Bingoo POS on laptop, tablet, and mobile" class="img-fluid rounded-4">
                     </div>
 
                     {{-- Mini receipt ticket --}}
                     <div class="receipt-mock float-card d-none d-xl-block"
                          style="position:absolute;right:-26px;top:34%;width:190px;">
-                        <div class="text-center fw-bold mb-1">HABIBI POS</div>
+                        <div class="text-center fw-bold mb-1">BINGOO POS</div>
                         <div class="text-center" style="font-size:.7rem;color:#64748b;">Order #1042</div>
                         <hr>
                         <div class="r-row"><span>Burger Combo x2</span><span>1,300</span></div>
@@ -191,7 +191,7 @@
         <div class="text-center mb-4 reveal">
             <span class="badge mb-3 d-inline-block" style="background:rgba(200,155,60,.18);color:#e9c869;padding:.4rem 1rem;border-radius:8px;">Live product</span>
             <h2 class="fw-bold text-white">Watch the workflow move across your business.</h2>
-            <p style="color:#94a3b8;">Real screens from the live Habibi POS platform.</p>
+            <p style="color:#94a3b8;">Real screens from the live Bingoo POS platform.</p>
         </div>
 
         @php $demos = [
@@ -273,7 +273,7 @@
                     {{-- CSS/SVG sidekick --}}
                     <div style="position:relative;display:inline-block;">
                         <div style="width:160px;height:160px;border-radius:50%;background:linear-gradient(135deg,#0a1022,#16284a);display:flex;align-items:center;justify-content:center;box-shadow:0 20px 50px rgba(168,127,36,.35);border:2px solid rgba(200,155,60,.4);">
-                            <img src="{{ asset(config('saas.brand_mark', 'images/brand/habibi-pos-mark.svg')) }}" alt="Habibi Assistant" style="width:84px;height:84px;filter:drop-shadow(0 4px 8px rgba(0,0,0,.2));">
+                            <img src="{{ asset(config('saas.brand_mark', 'images/brand/bingoo-pos-mark.svg')) }}" alt="Bingoo Assistant" style="width:84px;height:84px;filter:drop-shadow(0 4px 8px rgba(0,0,0,.2));">
                         </div>
                         <span class="speech-bubble float-card" style="position:absolute;top:-6px;right:-90px;">“Add products fast”</span>
                         <span class="speech-bubble float-card-delay" style="position:absolute;bottom:30px;left:-96px;">“Send KOT instantly”</span>
@@ -283,7 +283,7 @@
                     <span class="badge bg-warning bg-opacity-10 text-warning fw-semibold px-3 py-2 mb-3 d-inline-block">Your POS sidekick</span>
                     <h2 class="fw-bold mb-3">Meet your POS sidekick.</h2>
                     <p class="text-muted mb-4">
-                        Habibi POS guides your team from first sale to daily closing — with workflows designed
+                        Bingoo POS guides your team from first sale to daily closing — with workflows designed
                         for cashiers, waiters, managers, and owners.
                     </p>
                     <div class="d-flex flex-wrap gap-2">
@@ -308,7 +308,7 @@
                     </span>
                     <h2 class="fw-bold text-white mb-3">FBR-ready workflows for Pakistan retailers.</h2>
                     <p style="color:#94a3b8;" class="mb-4">
-                        For eligible Pakistan businesses, Habibi POS is being designed with FBR-ready invoice
+                        For eligible Pakistan businesses, Bingoo POS is being designed with FBR-ready invoice
                         workflows, branch-level tax details, receipt configuration, and future integration support.
                     </p>
                     <div class="fbr-bullet"><i class="ti ti-check-circle"></i><span>Branch tax registration number fields</span></div>
@@ -323,7 +323,7 @@
                 <div class="col-lg-5">
                     {{-- Receipt + QR mock --}}
                     <div class="receipt-mock mx-auto" style="max-width:280px;">
-                        <div class="text-center fw-bold" style="font-size:1rem;">HABIBI POS</div>
+                        <div class="text-center fw-bold" style="font-size:1rem;">BINGOO POS</div>
                         <div class="text-center" style="font-size:.7rem;color:#64748b;">Tax Invoice</div>
                         <hr>
                         <div class="r-row"><span>NTN</span><span>XXXXXXX-X</span></div>
@@ -423,7 +423,7 @@
     <div class="container">
         <div class="text-center mb-5 reveal">
             <span class="badge bg-primary bg-opacity-10 text-primary fw-semibold px-3 py-2 mb-3 d-inline-block">Comparison</span>
-            <h2 class="fw-bold">Why businesses move to Habibi POS</h2>
+            <h2 class="fw-bold">Why businesses move to Bingoo POS</h2>
         </div>
         <div class="reveal table-responsive">
             <table class="table comparison-tbl border rounded-3 overflow-hidden bg-white">
@@ -432,7 +432,7 @@
                         <th style="background:#f9fafb;border-bottom:2px solid #e5e7eb;">Workflow</th>
                         <th class="text-center" style="background:#fef2f2;color:#991b1b;border-bottom:2px solid #fecaca;">Traditional POS</th>
                         <th class="text-center" style="background:#fff7ed;color:#92400e;border-bottom:2px solid #fed7aa;">Disconnected Tools</th>
-                        <th class="text-center col-habibi" style="border-bottom:2px solid #ead9a3;"><span style="color:#9a7320;font-weight:800;">Habibi POS</span></th>
+                        <th class="text-center col-brand" style="border-bottom:2px solid #ead9a3;"><span style="color:#9a7320;font-weight:800;">Bingoo POS</span></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -448,7 +448,7 @@
                             <td class="fw-semibold">{{ $row }}</td>
                             <td class="text-center"><i class="ti ti-x check-no"></i> <span class="text-muted small">{{ $c1 }}</span></td>
                             <td class="text-center"><i class="ti ti-x check-no"></i> <span class="text-muted small">{{ $c2 }}</span></td>
-                            <td class="text-center col-habibi"><i class="ti ti-check check-yes"></i> <span class="small text-dark">{{ $c3 }}</span></td>
+                            <td class="text-center col-brand"><i class="ti ti-check check-yes"></i> <span class="small text-dark">{{ $c3 }}</span></td>
                         </tr>
                     @endforeach
                 </tbody>
@@ -517,14 +517,14 @@
                 </div>
                 <div class="accordion reveal" id="faqAccordion">
                     @php $faqs = [
-                        ['Do I need to install anything?','No. Habibi POS is a cloud-based SaaS. You access it from any browser on any device — no software download or server required.'],
+                        ['Do I need to install anything?','No. Bingoo POS is a cloud-based SaaS. You access it from any browser on any device — no software download or server required.'],
                         ['Is payment required for the trial?','No. The 30-day free trial requires no payment details. Sign up, provision your workspace, and start immediately.'],
-                        ['Can I use Habibi POS for restaurants?','Yes. The Restaurant Starter and Restaurant Pro plans include table management, KOT printing, kitchen display, split bills, and service charges.'],
+                        ['Can I use Bingoo POS for restaurants?','Yes. The Restaurant Starter and Restaurant Pro plans include table management, KOT printing, kitchen display, split bills, and service charges.'],
                         ['Can I manage inventory and purchasing?','Yes. The Inventory Store and Restaurant Pro plans include stock balances, purchase orders, GRNs, supplier management, stock counts, and transfers.'],
                         ['Can I upgrade my plan later?','Yes. Request a plan upgrade any time from the billing portal. Our team approves it and issues an upgrade invoice.'],
-                        ['Does Habibi POS support multiple branches?','Yes. The Restaurant Pro and Enterprise plans include multi-branch controls with per-branch terminals, users, shifts, reports, and stock.'],
-                        ['Is FBR integration available for Pakistan?','Habibi POS has FBR-ready workflows designed for eligible Pakistan businesses, including branch tax fields, taxable products, and receipt tax numbers. Full FBR invoice sync is planned. This is not an official FBR-certified integration.'],
-                        ['Can I use barcode scanners and receipt printers?','Yes. Habibi POS supports USB and wireless barcode scanners, thermal receipt printers, and KOT kitchen printers via the local print agent.'],
+                        ['Does Bingoo POS support multiple branches?','Yes. The Restaurant Pro and Enterprise plans include multi-branch controls with per-branch terminals, users, shifts, reports, and stock.'],
+                        ['Is FBR integration available for Pakistan?','Bingoo POS has FBR-ready workflows designed for eligible Pakistan businesses, including branch tax fields, taxable products, and receipt tax numbers. Full FBR invoice sync is planned. This is not an official FBR-certified integration.'],
+                        ['Can I use barcode scanners and receipt printers?','Yes. Bingoo POS supports USB and wireless barcode scanners, thermal receipt printers, and KOT kitchen printers via the local print agent.'],
                     ]; @endphp
                     @foreach($faqs as $i => [$q, $a])
                         <div class="accordion-item border-0 mb-2 rounded-3 overflow-hidden shadow-sm">

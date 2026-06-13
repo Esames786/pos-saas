@@ -3,18 +3,25 @@
 return [
     'default_trial_days' => (int) env('SAAS_DEFAULT_TRIAL_DAYS', 30),
 
-    'brand_name' => env('SAAS_BRAND_NAME', 'Habibi POS'),
+    'brand_name' => env('SAAS_BRAND_NAME', 'Bingoo POS'),
 
     'brand_tagline' => env(
         'SAAS_BRAND_TAGLINE',
         'Cloud POS for retail, restaurants, and inventory teams.'
     ),
 
-    'brand_logo' => env('SAAS_BRAND_LOGO', 'images/brand/habibi-pos-logo.svg'),
+    'brand_logo' => env('SAAS_BRAND_LOGO', 'images/brand/bingoo-pos-logo.svg'),
 
-    'brand_mark' => env('SAAS_BRAND_MARK', 'images/brand/habibi-pos-mark.svg'),
+    'brand_mark' => env('SAAS_BRAND_MARK', 'images/brand/bingoo-pos-mark.svg'),
 
     'og_image' => env('SAAS_OG_IMAGE', 'images/data/Banner-Full.webp'),
+
+    'contact' => [
+        'sales_email'   => env('SAAS_SALES_EMAIL', 'sales@bingoopos.com'),
+        'support_email' => env('SAAS_SUPPORT_EMAIL', 'support@bingoopos.com'),
+        'website'       => env('SAAS_WEBSITE_URL', 'https://bingoopos.com'),
+        'phone'         => env('SAAS_CONTACT_PHONE', '+92 XXX XXXXXXX'),
+    ],
 
     'default_currency' => env('SAAS_DEFAULT_CURRENCY', 'PKR'),
 

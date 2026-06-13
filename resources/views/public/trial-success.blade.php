@@ -1,7 +1,7 @@
 @extends('layouts.public')
 
 @section('title', 'Trial Created')
-@section('meta_description', 'Your Habibi POS cloud trial workspace is ready.')
+@section('meta_description', 'Your Bingoo POS cloud trial workspace is ready.')
 
 @section('content')
 <section class="section-pad">

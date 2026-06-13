@@ -1,7 +1,7 @@
 @extends('layouts.public')
 
 @section('title', 'Contact Sales')
-@section('meta_description', 'Talk to Habibi POS sales — book a demo, plan an enterprise rollout, ask about FBR-ready workflows, or plan a multi-branch deployment.')
+@section('meta_description', 'Talk to Bingoo POS sales — book a demo, plan an enterprise rollout, ask about FBR-ready workflows, or plan a multi-branch deployment.')
 
 @section('content')
 
@@ -10,7 +10,7 @@
     <div class="mega-glow" style="top:-90px;left:-30px;background:#caa23f;"></div>
     <div class="container text-center" style="position:relative;z-index:2;">
         <span class="hero-badge mb-3"><i class="ti ti-headset"></i> We're here to help</span>
-        <h1 class="fw-bold mb-2" style="font-size:2.3rem;">Talk to Habibi POS sales.</h1>
+        <h1 class="fw-bold mb-2" style="font-size:2.3rem;">Talk to Bingoo POS sales.</h1>
         <p class="lead mb-4 mx-auto" style="color:#cbd5e1;max-width:780px;">
             Book a demo, discuss enterprise rollout, ask about FBR-ready workflows, or plan a multi-branch POS deployment.
         </p>
@@ -84,7 +84,7 @@
                 </div>
                 <div class="col-lg-5">
                     <div class="receipt-mock mx-auto" style="max-width:260px;">
-                        <div class="text-center fw-bold">HABIBI POS</div>
+                        <div class="text-center fw-bold">BINGOO POS</div>
                         <div class="text-center" style="font-size:.7rem;color:#64748b;">Sales Consultation</div>
                         <hr>
                         <div class="r-row"><span>Demo</span><span>Booked</span></div>
@@ -108,23 +108,34 @@
                     <div class="icon-wrap mx-auto mb-3"><i class="ti ti-mail-forward"></i></div>
                     <h3 class="fw-bold mb-2">Contact our sales team</h3>
                     <p class="text-muted mb-4">For now, reach us directly. An automated contact form will be added later.</p>
+                    @php $contact = config('saas.contact', []); @endphp
                     <div class="row g-3 justify-content-center mb-3">
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <div class="p-3 rounded-3 border bg-white">
                                 <i class="ti ti-mail text-primary mb-1" style="font-size:1.4rem;"></i>
-                                <div class="small text-muted">Email</div>
-                                <div class="fw-semibold">sales@habibipos.com</div>
+                                <div class="small text-muted">Sales</div>
+                                <div class="fw-semibold">{{ $contact['sales_email'] ?? 'sales@bingoopos.com' }}</div>
                             </div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <div class="p-3 rounded-3 border bg-white">
-                                <i class="ti ti-brand-whatsapp text-primary mb-1" style="font-size:1.4rem;"></i>
-                                <div class="small text-muted">WhatsApp / Phone</div>
-                                <div class="fw-semibold">+92 XXX XXXXXXX</div>
+                                <i class="ti ti-lifebuoy text-primary mb-1" style="font-size:1.4rem;"></i>
+                                <div class="small text-muted">Support</div>
+                                <div class="fw-semibold">{{ $contact['support_email'] ?? 'support@bingoopos.com' }}</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="p-3 rounded-3 border bg-white">
+                                <i class="ti ti-world text-primary mb-1" style="font-size:1.4rem;"></i>
+                                <div class="small text-muted">Website</div>
+                                <div class="fw-semibold">{{ str_replace(['https://','http://'], '', $contact['website'] ?? 'bingoopos.com') }}</div>
                             </div>
                         </div>
                     </div>
-                    <p class="text-muted small mb-4"><i class="ti ti-alert-triangle me-1"></i>Placeholder details — replace before production.</p>
+                    <p class="text-muted small mb-4">
+                        <i class="ti ti-brand-whatsapp me-1"></i>WhatsApp / Phone: <strong>{{ $contact['phone'] ?? '+92 XXX XXXXXXX' }}</strong>
+                        <span class="d-block mt-1"><i class="ti ti-alert-triangle me-1"></i>Phone is a placeholder — replace before production.</span>
+                    </p>
                     <div class="d-flex flex-wrap justify-content-center gap-2">
                         <a href="{{ url('/start-trial') }}" class="btn btn-primary">Start a Self-Service Trial</a>
                         <a href="{{ url('/pricing') }}" class="btn btn-outline-primary">Back to Pricing</a>

@@ -1,7 +1,7 @@
 @extends('layouts.public')
 
 @section('title', 'Pricing')
-@section('meta_description', 'Compare Habibi POS packages for retail stores, inventory teams, restaurants, cafés, and enterprise rollouts. 30-day free trial.')
+@section('meta_description', 'Compare Bingoo POS packages for retail stores, inventory teams, restaurants, cafés, and enterprise rollouts. 30-day free trial.')
 
 @section('content')
 @php

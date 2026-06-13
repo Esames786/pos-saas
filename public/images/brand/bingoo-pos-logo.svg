@@ -1,4 +1,4 @@
-<svg width="240" height="80" viewBox="0 0 240 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg width="240" height="80" viewBox="0 0 240 80" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Bingoo POS">
   <defs>
     <linearGradient id="g" x1="0" y1="0" x2="0.35" y2="1">
       <stop offset="0%" stop-color="#fff4cf"/>
@@ -13,10 +13,12 @@
       <stop offset="100%" stop-color="#0a1022"/>
     </linearGradient>
   </defs>
+  <!-- Badge -->
   <rect x="6" y="14" width="52" height="52" rx="14" fill="url(#nv)"/>
   <circle cx="28" cy="44" r="13" fill="#ffffff"/>
   <path d="M22 45 L27 50 L36 38" fill="none" stroke="url(#g)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
   <circle cx="50" cy="22" r="4" fill="url(#g)"/>
+  <!-- Wordmark: gold Bingoo + white POS (for dark navbar/footer) -->
   <text x="72" y="52" font-family="Georgia,'Times New Roman',serif" font-size="29" font-weight="700" fill="url(#g)" letter-spacing="-0.5">Bingoo</text>
-  <text x="184" y="52" font-family="'Segoe UI',system-ui,sans-serif" font-size="15" font-weight="700" fill="#0f172a" letter-spacing="3">POS</text>
+  <text x="184" y="52" font-family="'Segoe UI',system-ui,sans-serif" font-size="15" font-weight="700" fill="#ffffff" letter-spacing="3">POS</text>
 </svg>

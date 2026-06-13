@@ -1,7 +1,7 @@
 @extends('layouts.public')
 
 @section('title', 'Start 30-Day Free Trial')
-@section('meta_description', 'Create your Habibi POS trial workspace with no payment required. Test retail, restaurant, inventory, and reporting workflows.')
+@section('meta_description', 'Create your Bingoo POS trial workspace with no payment required. Test retail, restaurant, inventory, and reporting workflows.')
 
 @section('content')
 @php
@@ -16,7 +16,7 @@
     <div class="mega-glow" style="top:-90px;right:-30px;background:#caa23f;"></div>
     <div class="container text-center" style="position:relative;z-index:2;">
         <span class="hero-badge mb-3"><i class="ti ti-rocket"></i> 30-day free trial</span>
-        <h1 class="fw-bold mb-2" style="font-size:2.3rem;">Start your 30-day Habibi POS trial.</h1>
+        <h1 class="fw-bold mb-2" style="font-size:2.3rem;">Start your 30-day Bingoo POS trial.</h1>
         <p class="lead mb-4 mx-auto" style="color:#cbd5e1;max-width:760px;">
             Create your cloud POS workspace, invite your team, and test retail, restaurant, inventory, and
             reporting workflows — no payment required.

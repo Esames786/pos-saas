@@ -1,8 +1,8 @@
 @php
-    $brandName = config('saas.brand_name', 'Habibi POS');
+    $brandName = config('saas.brand_name', 'Bingoo POS');
     $brandTagline = config('saas.brand_tagline', 'Cloud POS for retail, restaurants, and inventory teams.');
-    $brandLogo = config('saas.brand_logo', 'images/brand/habibi-pos-logo.svg');
-    $brandMark = config('saas.brand_mark', 'images/brand/habibi-pos-mark.svg');
+    $brandLogo = config('saas.brand_logo', 'images/brand/bingoo-pos-logo.svg');
+    $brandMark = config('saas.brand_mark', 'images/brand/bingoo-pos-mark.svg');
     $ogImage = config('saas.og_image', 'images/data/Banner-Full.webp');
     // Decode once: inline @section content is HTML-escaped at definition,
     // and {{ }} escapes again on output — decode here to avoid double-encoding.
@@ -39,11 +39,11 @@
     <link rel="stylesheet" href="{{ asset('assets/plugins/tabler-icons/tabler-icons.min.css') }}">
     <style>
         :root {
-            --habibi-navy: #0f172a;
-            --habibi-blue: #2563eb;
-            --habibi-gold: #f59e0b;
-            --habibi-rose: #f43f5e;
-            --habibi-mint: #10b981;
+            --brand-navy: #0f172a;
+            --brand-blue: #2563eb;
+            --brand-gold: #f59e0b;
+            --brand-rose: #f43f5e;
+            --brand-mint: #10b981;
         }
         html { scroll-behavior: smooth; }
         body { background:#f7f8fb; color:#1f2937; }
@@ -257,8 +257,8 @@
 
         /* comparison table */
         .comparison-tbl th, .comparison-tbl td { padding:.9rem 1rem;vertical-align:middle; }
-        .comparison-tbl .col-habibi { background:#eff6ff; }
-        .comparison-tbl .col-habibi th { color:#1d4ed8;font-weight:800; }
+        .comparison-tbl .col-brand { background:#eff6ff; }
+        .comparison-tbl .col-brand th { color:#1d4ed8;font-weight:800; }
         .check-yes { color:#16a34a;font-size:1.1rem; }
         .check-no  { color:#9ca3af;font-size:1.1rem; }
 
@@ -312,7 +312,7 @@
             background:#fff; border:1px solid #e5e7eb; border-radius:999px;
             padding:.55rem 1.1rem; font-weight:600; font-size:.9rem; color:#334155; white-space:nowrap;
         }
-        .marquee-chip i { color:var(--habibi-blue); }
+        .marquee-chip i { color:var(--brand-blue); }
 
         .carousel-premium {
             border-radius:28px; overflow:hidden;
@@ -361,9 +361,9 @@
             border-radius:999px; padding:.5rem 1.1rem; font-weight:600; font-size:.9rem;
             transition:all .2s ease;
         }
-        .demo-tab-btn.active { background:var(--habibi-blue); color:#fff; border-color:var(--habibi-blue); box-shadow:0 8px 24px rgba(37,99,235,.3); }
+        .demo-tab-btn.active { background:var(--brand-blue); color:#fff; border-color:var(--brand-blue); box-shadow:0 8px 24px rgba(37,99,235,.3); }
 
-        .star-rating i { color:var(--habibi-gold); font-size:.95rem; }
+        .star-rating i { color:var(--brand-gold); font-size:.95rem; }
 
         .sticky-trial-cta {
             position:fixed; right:22px; bottom:22px; z-index:1050;
@@ -435,7 +435,7 @@
         .trust-item i { color:#a87f24 !important; }
         .marquee-chip i { color:#caa23f !important; }
         .demo-tab-btn.active { background:#caa23f !important; border-color:#caa23f !important; color:#11203f !important; box-shadow:0 8px 24px rgba(200,155,60,.3); }
-        .comparison-tbl .col-habibi { background:#fdf6e3 !important; }
+        .comparison-tbl .col-brand { background:#fdf6e3 !important; }
         .testimonial-card .quote-icon { color:#f1e0a8; }
         .glow-border { border-color:rgba(200,155,60,.4) !important; box-shadow:0 0 0 1px rgba(200,155,60,.2), 0 20px 60px rgba(15,23,42,.4) !important; }
         .hover-lift:hover { box-shadow:0 18px 50px rgba(168,127,36,.14); }

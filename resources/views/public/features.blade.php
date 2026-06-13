@@ -1,7 +1,7 @@
 @extends('layouts.public')
 
 @section('title', 'Features')
-@section('meta_description', 'Explore Habibi POS features: retail checkout, restaurant service, kitchen operations, inventory, purchasing, reports, SaaS billing, and FBR-ready workflows.')
+@section('meta_description', 'Explore Bingoo POS features: retail checkout, restaurant service, kitchen operations, inventory, purchasing, reports, SaaS billing, and FBR-ready workflows.')
 
 @section('content')
 
@@ -88,7 +88,7 @@
                         <i class="ti ti-flag me-1"></i>Pakistan Compliance
                     </span>
                     <h2 class="fw-bold text-white mb-3">FBR-ready Workflows</h2>
-                    <p style="color:#94a3b8;" class="mb-4">For eligible Pakistan businesses, Habibi POS is being designed with FBR-ready invoice workflows and tax configuration.</p>
+                    <p style="color:#94a3b8;" class="mb-4">For eligible Pakistan businesses, Bingoo POS is being designed with FBR-ready invoice workflows and tax configuration.</p>
                     <div class="fbr-bullet"><i class="ti ti-check-circle"></i><span>Branch tax registration number fields</span></div>
                     <div class="fbr-bullet"><i class="ti ti-check-circle"></i><span>Taxable products and per-line tax amounts</span></div>
                     <div class="fbr-bullet"><i class="ti ti-check-circle"></i><span>Receipt tax number & footer configuration</span></div>
@@ -98,7 +98,7 @@
                 </div>
                 <div class="col-lg-5">
                     <div class="receipt-mock mx-auto" style="max-width:260px;">
-                        <div class="text-center fw-bold">HABIBI POS</div>
+                        <div class="text-center fw-bold">BINGOO POS</div>
                         <div class="text-center" style="font-size:.7rem;color:#64748b;">Tax Invoice</div>
                         <hr>
                         <div class="r-row"><span>NTN</span><span>XXXXXXX-X</span></div>

@@ -33,11 +33,11 @@ class DemoProvisioner
     ];
 
     private const BUSINESS_NAMES = [
-        'retail'         => 'Habibi Retail Demo',
-        'inventory'      => 'Habibi Inventory Demo',
-        'restaurant'     => 'Habibi Restaurant Demo',
-        'restaurant_pro' => 'Habibi Restaurant Pro Demo',
-        'enterprise'     => 'Habibi Enterprise Demo',
+        'retail'         => 'Bingoo Retail Demo',
+        'inventory'      => 'Bingoo Inventory Demo',
+        'restaurant'     => 'Bingoo Restaurant Demo',
+        'restaurant_pro' => 'Bingoo Restaurant Pro Demo',
+        'enterprise'     => 'Bingoo Enterprise Demo',
     ];
 
     public function __construct(
