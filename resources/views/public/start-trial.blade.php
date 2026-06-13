@@ -98,8 +98,8 @@
 
                 <div class="gradient-card p-4 reveal">
                     <h6 class="fw-bold mb-2">Want to test before creating your own workspace?</h6>
-                    <p class="text-muted small mb-3">Live business-type demos are planned for retail, restaurant, inventory, and enterprise workflows.</p>
-                    <button class="btn btn-sm btn-outline-secondary" disabled>View Demo Options — Coming Soon</button>
+                    <p class="text-muted small mb-3">Open a live demo workspace for retail, restaurant, inventory, restaurant pro, or multi-branch enterprise — with sample data and no signup required.</p>
+                    <a href="{{ url('/demos') }}" class="btn btn-sm btn-outline-primary"><i class="ti ti-player-play me-1"></i>View Live Demos</a>
                 </div>
             </div>
 

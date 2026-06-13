@@ -25,6 +25,7 @@
                     <a href="{{ url('/start-trial') }}" class="btn btn-light btn-lg px-4 fw-semibold" style="box-shadow:0 4px 20px rgba(255,255,255,.25);">
                         <i class="ti ti-rocket me-2"></i>Start 30-Day Free Trial
                     </a>
+                    <a href="{{ url('/demos') }}" class="btn btn-outline-light btn-lg px-4"><i class="ti ti-player-play me-2"></i>Try Live Demo</a>
                     <a href="{{ url('/pricing') }}" class="btn btn-outline-light btn-lg px-4">View Packages</a>
                     <a href="{{ url('/contact') }}" class="btn btn-outline-light btn-lg px-4">Book a Demo</a>
                 </div>
@@ -142,11 +143,11 @@
         </div>
 
         @php $slides = [
-            ['retailers.webp','Retail','Retail & Supermarket','Long queues, stock errors, and barcode confusion.','Fast checkout, live stock, returns, receipt printing, and team access.','Start Retail Trial','/start-trial?plan=retail_starter'],
-            ['restaurant.png','Restaurant','Restaurant & Café','Tables, waiters, kitchen tickets, and split bills become messy.','Table service, KOT, KDS, service charges, and daily closing in one flow.','Start Restaurant Trial','/start-trial?plan=restaurant_starter'],
-            ['store.webp','Bakery & QSR','Bakery & Quick Service','Rush hours need speed, not complicated screens.','Quick order taking, kitchen tickets, popular item tracking, and takeaway support.','Explore Quick Service','/start-trial?plan=restaurant_starter'],
-            ['mart.webp','Inventory','Inventory & Warehouse','Stock disappears before reports catch up.','Purchasing, GRNs, stock counts, supplier tracking, and low-stock visibility.','Start Inventory Trial','/start-trial?plan=inventory_store'],
-            ['Banner-Full.webp','Enterprise','Multi-Branch Enterprise','Branches, teams, terminals, and reports get scattered.','Multi-branch control, custom rollout, centralized permissions, and reporting.','Contact Sales','/contact?plan=enterprise'],
+            ['retailers.webp','Retail','Retail & Supermarket','Long queues, stock errors, and barcode confusion.','Fast checkout, live stock, returns, receipt printing, and team access.','Start Retail Trial','/start-trial?plan=retail_starter','retail'],
+            ['restaurant.png','Restaurant','Restaurant & Café','Tables, waiters, kitchen tickets, and split bills become messy.','Table service, KOT, KDS, service charges, and daily closing in one flow.','Start Restaurant Trial','/start-trial?plan=restaurant_starter','restaurant'],
+            ['store.webp','Bakery & QSR','Bakery & Quick Service','Rush hours need speed, not complicated screens.','Quick order taking, kitchen tickets, popular item tracking, and takeaway support.','Explore Quick Service','/start-trial?plan=restaurant_starter','restaurant'],
+            ['mart.webp','Inventory','Inventory & Warehouse','Stock disappears before reports catch up.','Purchasing, GRNs, stock counts, supplier tracking, and low-stock visibility.','Start Inventory Trial','/start-trial?plan=inventory_store','inventory'],
+            ['Banner-Full.webp','Enterprise','Multi-Branch Enterprise','Branches, teams, terminals, and reports get scattered.','Multi-branch control, custom rollout, centralized permissions, and reporting.','Contact Sales','/contact?plan=enterprise','enterprise'],
         ]; @endphp
 
         <div id="industryCarousel" class="carousel slide carousel-premium reveal" data-bs-ride="carousel" data-bs-interval="5000">
@@ -156,7 +157,7 @@
                 @endforeach
             </div>
             <div class="carousel-inner">
-                @foreach($slides as $i => [$img, $badge, $title, $pain, $solution, $cta, $link])
+                @foreach($slides as $i => [$img, $badge, $title, $pain, $solution, $cta, $link, $demoAnchor])
                     <div class="carousel-item {{ $i===0?'active':'' }}">
                         <div class="row g-0 align-items-stretch">
                             <div class="col-lg-6">
@@ -168,7 +169,10 @@
                                     <h3 class="fw-bold mb-3">{{ $title }}</h3>
                                     <p class="mb-2" style="color:#fca5a5;"><i class="ti ti-alert-triangle me-1"></i><strong>Pain:</strong> {{ $pain }}</p>
                                     <p class="mb-4" style="color:#cbd5e1;"><i class="ti ti-circle-check me-1" style="color:#34d399;"></i><strong style="color:#fff;">Solution:</strong> {{ $solution }}</p>
-                                    <a href="{{ url($link) }}" class="btn btn-light fw-semibold px-4">{{ $cta }} &rarr;</a>
+                                    <div class="d-flex flex-wrap gap-2">
+                                        <a href="{{ url($link) }}" class="btn btn-light fw-semibold px-4">{{ $cta }} &rarr;</a>
+                                        <a href="{{ url('/demos') }}#{{ $demoAnchor }}" class="btn btn-outline-light fw-semibold px-4"><i class="ti ti-player-play me-1"></i>Try Demo</a>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -558,6 +562,7 @@
                 <a href="{{ url('/start-trial') }}" class="btn btn-light btn-lg px-5 fw-semibold" style="box-shadow:0 4px 20px rgba(255,255,255,.25);">
                     <i class="ti ti-rocket me-2"></i>Start 30-Day Free Trial
                 </a>
+                <a href="{{ url('/demos') }}" class="btn btn-outline-light btn-lg px-5"><i class="ti ti-player-play me-2"></i>Try Live Demo</a>
                 <a href="{{ url('/contact') }}" class="btn btn-outline-light btn-lg px-5"><i class="ti ti-calendar me-2"></i>Book a Demo</a>
                 <a href="{{ url('/pricing') }}" class="btn btn-outline-light btn-lg px-5">Compare Packages</a>
             </div>

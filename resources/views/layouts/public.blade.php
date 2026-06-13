@@ -480,6 +480,7 @@
                 <li class="nav-item"><a class="nav-link" href="{{ url('/') }}">Home</a></li>
                 <li class="nav-item"><a class="nav-link" href="{{ url('/features') }}">Features</a></li>
                 <li class="nav-item"><a class="nav-link" href="{{ url('/pricing') }}">Pricing</a></li>
+                <li class="nav-item"><a class="nav-link" href="{{ url('/demos') }}">Demos</a></li>
                 <li class="nav-item"><a class="nav-link" href="{{ url('/contact') }}">Contact Sales</a></li>
                 <li class="nav-item"><a class="nav-link" href="{{ url('/login') }}">Admin Login</a></li>
                 <li class="nav-item"><a class="btn btn-light btn-sm px-3" href="{{ url('/start-trial') }}">Start Trial</a></li>
@@ -504,6 +505,7 @@
             <div class="col-md-6 text-md-end">
                 <a class="text-decoration-none me-3" style="color:#94a3b8;" href="{{ url('/features') }}">Features</a>
                 <a class="text-decoration-none me-3" style="color:#94a3b8;" href="{{ url('/pricing') }}">Pricing</a>
+                <a class="text-decoration-none me-3" style="color:#94a3b8;" href="{{ url('/demos') }}">Demos</a>
                 <a class="text-decoration-none me-3" style="color:#94a3b8;" href="{{ url('/contact') }}">Contact Sales</a>
                 <a class="text-decoration-none" style="color:#94a3b8;" href="{{ url('/start-trial') }}">Start Trial</a>
             </div>

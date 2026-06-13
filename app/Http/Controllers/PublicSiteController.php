@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\Public\StartTrialRequest;
 use App\Models\Master\Plan;
+use App\Models\Master\Tenant;
 use App\Services\Saas\SelfSignupService;
 use Illuminate\Http\Request;
 use Throwable;
@@ -60,6 +61,46 @@ class PublicSiteController extends Controller
     {
         return view('public.contact', [
             'customPlans' => $this->customPlans(),
+        ]);
+    }
+
+    public function demos()
+    {
+        $cards = config('saas.demos.cards', []);
+        $password = config('saas.demos.default_password', 'demo1234');
+        $baseDomain = config('tenancy.tenant_base_domain', request()->getHost());
+        $scheme = request()->getScheme();
+
+        // Load the demo tenants we care about in one master-DB query.
+        $codes = collect($cards)->pluck('tenant_code')->filter()->all();
+
+        $tenants = Tenant::with('subscription')
+            ->whereIn('tenant_code', $codes)
+            ->get()
+            ->keyBy('tenant_code');
+
+        $demos = [];
+
+        foreach ($cards as $key => $card) {
+            $tenantCode = $card['tenant_code'] ?? null;
+            $tenant = $tenantCode ? $tenants->get($tenantCode) : null;
+
+            $available = $tenant
+                && $tenant->isDemo()
+                && $tenant->status === 'active'
+                && optional($tenant->subscription)->status === 'active';
+
+            $demos[] = array_merge($card, [
+                'key'       => $key,
+                'available' => $available,
+                'login_url' => $tenantCode ? "{$scheme}://{$tenantCode}.{$baseDomain}/login" : null,
+                'password'  => $password,
+            ]);
+        }
+
+        return view('public.demos', [
+            'demos'       => $demos,
+            'selfServicePlans' => $this->selfServicePlans(),
         ]);
     }
 

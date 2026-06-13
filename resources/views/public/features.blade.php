@@ -146,6 +146,7 @@
         <p class="mb-4" style="color:#cbd5e1;">Start a 30-day trial or talk to our team for a guided walkthrough.</p>
         <div class="d-flex flex-wrap justify-content-center gap-3">
             <a href="{{ url('/start-trial') }}" class="btn btn-light btn-lg px-5">Start Trial</a>
+            <a href="{{ url('/demos') }}" class="btn btn-outline-light btn-lg px-5">Try Live Demo</a>
             <a href="{{ url('/pricing') }}" class="btn btn-outline-light btn-lg px-5">View Pricing</a>
             <a href="{{ url('/contact') }}" class="btn btn-outline-light btn-lg px-5">Book Demo</a>
         </div>

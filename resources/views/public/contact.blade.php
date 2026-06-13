@@ -37,6 +37,9 @@
         <div class="text-center mb-5 reveal">
             <span class="badge bg-primary bg-opacity-10 text-primary fw-semibold px-3 py-2 mb-3 d-inline-block">How can we help?</span>
             <h2 class="fw-bold">Choose what you'd like to discuss</h2>
+            <p class="text-muted mb-0">Try a live demo first, or contact sales for a guided walkthrough.
+                <a href="{{ url('/demos') }}" class="fw-semibold text-decoration-none">View live demos &rarr;</a>
+            </p>
         </div>
         <div class="row g-4">
             @foreach([
@@ -138,6 +141,7 @@
                     </p>
                     <div class="d-flex flex-wrap justify-content-center gap-2">
                         <a href="{{ url('/start-trial') }}" class="btn btn-primary">Start a Self-Service Trial</a>
+                        <a href="{{ url('/demos') }}" class="btn btn-outline-primary">Try a Live Demo</a>
                         <a href="{{ url('/pricing') }}" class="btn btn-outline-primary">Back to Pricing</a>
                     </div>
                 </div>

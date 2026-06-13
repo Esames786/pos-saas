@@ -12,6 +12,8 @@ Route::domain(config('tenancy.central_domain'))
 
         Route::get('/features', [PublicSiteController::class, 'features'])->name('public.features');
 
+        Route::get('/demos', [PublicSiteController::class, 'demos'])->name('public.demos');
+
         Route::get('/start-trial', [PublicSiteController::class, 'trialCreate'])->name('public.trial.create');
 
         Route::post('/start-trial', [PublicSiteController::class, 'trialStore'])

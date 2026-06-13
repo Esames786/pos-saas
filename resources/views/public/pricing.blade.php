@@ -14,6 +14,14 @@
         'restaurant_starter' => 'Best for cafés & restaurants',
         'restaurant_pro'     => '⭐ Most Popular',
     ];
+    // Map plan code → /demos card anchor (15D-7).
+    $demoAnchors = [
+        'retail_starter'     => 'retail',
+        'inventory_store'    => 'inventory',
+        'restaurant_starter' => 'restaurant',
+        'restaurant_pro'     => 'restaurant_pro',
+        'enterprise'         => 'enterprise',
+    ];
 @endphp
 
 @push('styles')
@@ -115,7 +123,7 @@
                         </ul>
 
                         <a href="{{ url('/start-trial?plan=' . $plan->code) }}" class="btn {{ $popular ? 'btn-primary' : 'btn-outline-primary' }} mb-2">Start 30-Day Trial</a>
-                        <a href="#demo-preview" class="btn btn-link btn-sm text-decoration-none">Try Demo</a>
+                        <a href="{{ url('/demos') . (isset($demoAnchors[$plan->code]) ? '#' . $demoAnchors[$plan->code] : '') }}" class="btn btn-link btn-sm text-decoration-none">Try Demo</a>
                     </div>
                 </div>
             @endforeach
@@ -142,27 +150,35 @@
     </div>
 </section>
 
-{{-- DEMO PREVIEW --}}
+{{-- DEMO PREVIEW (live) --}}
 <section id="demo-preview" class="section-pad" style="background:#f8faff;">
     <div class="container">
         <div class="text-center mb-5 reveal">
-            <span class="badge bg-primary bg-opacity-10 text-primary fw-semibold px-3 py-2 mb-3 d-inline-block">Demos</span>
+            <span class="badge bg-primary bg-opacity-10 text-primary fw-semibold px-3 py-2 mb-3 d-inline-block">Live demos</span>
             <h2 class="fw-bold">Want to test before starting a trial?</h2>
-            <p class="text-muted">Live industry demos are planned for Retail, Inventory, Restaurant, Restaurant Pro, and Enterprise workflows.</p>
+            <p class="text-muted mx-auto" style="max-width:640px;">Open a live demo workspace for your business type and test real sample data before creating your own account.</p>
         </div>
-        <div class="row g-3 justify-content-center">
+        <div class="row g-3 justify-content-center mb-4">
             @foreach([
-                ['ti-building-store','Retail Demo'],['ti-package','Inventory Demo'],['ti-tools-kitchen-2','Restaurant Demo'],
-                ['ti-chef-hat','Restaurant Pro Demo'],['ti-building-skyscraper','Enterprise Demo'],
-            ] as [$ico, $label])
+                ['ti-building-store','Retail Demo','retail'],
+                ['ti-package','Inventory Demo','inventory'],
+                ['ti-tools-kitchen-2','Restaurant Demo','restaurant'],
+                ['ti-chef-hat','Restaurant Pro Demo','restaurant_pro'],
+                ['ti-building-skyscraper','Enterprise Demo','enterprise'],
+            ] as [$ico, $label, $anchor])
                 <div class="col-6 col-md-4 col-lg-2">
-                    <div class="gradient-card p-3 h-100 text-center reveal">
-                        <div class="icon-wrap mx-auto mb-2"><i class="ti {{ $ico }}"></i></div>
-                        <h6 class="fw-semibold small mb-2">{{ $label }}</h6>
-                        <button class="btn btn-sm btn-outline-secondary" disabled>Coming Soon</button>
-                    </div>
+                    <a href="{{ url('/demos') }}#{{ $anchor }}" class="text-decoration-none">
+                        <div class="gradient-card p-3 h-100 text-center reveal hover-lift">
+                            <div class="icon-wrap mx-auto mb-2"><i class="ti {{ $ico }}"></i></div>
+                            <h6 class="fw-semibold small mb-2 text-dark">{{ $label }}</h6>
+                            <span class="btn btn-sm btn-outline-primary">Try Demo</span>
+                        </div>
+                    </a>
                 </div>
             @endforeach
+        </div>
+        <div class="text-center reveal">
+            <a href="{{ url('/demos') }}" class="btn btn-primary px-4"><i class="ti ti-player-play me-1"></i>View all live demos</a>
         </div>
     </div>
 </section>
@@ -261,7 +277,7 @@
                         ['Can I switch from a Retail to a Restaurant plan?','Yes. Upgrades between public plans are supported through the billing portal.'],
                         ['Do you support multiple branches?','Restaurant Pro and Enterprise include multi-branch controls with per-branch terminals, users, shifts, and reports.'],
                         ['Is Enterprise custom priced?','Yes. Enterprise is a custom rollout — contact sales for pricing tailored to your scale.'],
-                        ['Will demo environments be available?','Live industry demos are planned for retail, inventory, restaurant, restaurant pro, and enterprise workflows.'],
+                        ['Are demo environments available?','Yes. Live demos are available for retail, inventory, restaurant, restaurant pro, and enterprise workflows. Open the Demos page to try a workspace with sample data — no signup required.'],
                     ]; @endphp
                     @foreach($faqs as $i => [$q,$a])
                         <div class="accordion-item border-0 mb-2 rounded-3 overflow-hidden shadow-sm">
