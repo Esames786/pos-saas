@@ -38,9 +38,24 @@
     <link rel="stylesheet" href="{{ asset('assets/css/bootstrap.min.css') }}">
     <link rel="stylesheet" href="{{ asset('assets/plugins/tabler-icons/tabler-icons.min.css') }}">
     <style>
+        :root {
+            --habibi-navy: #0f172a;
+            --habibi-blue: #2563eb;
+            --habibi-gold: #f59e0b;
+            --habibi-rose: #f43f5e;
+            --habibi-mint: #10b981;
+        }
         html { scroll-behavior: smooth; }
         body { background:#f7f8fb; color:#1f2937; }
-        .navbar-public { background:#0f172a; }
+        .navbar-public {
+            position: sticky;
+            top: 0;
+            z-index: 1030;
+            background: rgba(15, 23, 42, .86);
+            backdrop-filter: blur(18px);
+            -webkit-backdrop-filter: blur(18px);
+            border-bottom: 1px solid rgba(255,255,255,.08);
+        }
         .navbar-public .nav-link, .navbar-public .navbar-brand { color:#e2e8f0 !important; }
         .navbar-public .nav-link:hover { color:#fff !important; }
         .public-hero { background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 100%); color:#fff; }
@@ -279,6 +294,89 @@
         }
         .mobile-mock-row { display:flex;justify-content:space-between;padding:.4rem 0;border-bottom:1px solid rgba(255,255,255,.12); }
         .mobile-mock-row:last-child { border-bottom:none; }
+
+        /* ─── 2026 premium motion pass (15B-5D) ─── */
+        .mega-glow {
+            position:absolute; inset:auto;
+            width:420px; height:420px; border-radius:999px;
+            filter:blur(90px); opacity:.34; pointer-events:none; z-index:0;
+        }
+        .float-card { animation:floatY 5.5s ease-in-out infinite; }
+        .float-card-delay { animation:floatY 6.5s ease-in-out infinite .8s; }
+
+        .marquee-wrap { overflow:hidden; }
+        .marquee-track { display:flex; gap:1rem; width:max-content; animation:marquee 28s linear infinite; }
+        @keyframes marquee { from { transform:translateX(0); } to { transform:translateX(-50%); } }
+        .marquee-chip {
+            display:inline-flex; align-items:center; gap:.5rem;
+            background:#fff; border:1px solid #e5e7eb; border-radius:999px;
+            padding:.55rem 1.1rem; font-weight:600; font-size:.9rem; color:#334155; white-space:nowrap;
+        }
+        .marquee-chip i { color:var(--habibi-blue); }
+
+        .carousel-premium {
+            border-radius:28px; overflow:hidden;
+            background:linear-gradient(135deg, rgba(15,23,42,.96), rgba(30,58,138,.92));
+            border:1px solid rgba(255,255,255,.12);
+            box-shadow:0 30px 90px rgba(15,23,42,.28);
+        }
+        .carousel-premium .carousel-control-prev,
+        .carousel-premium .carousel-control-next { width:6%; }
+        .industry-slide-img { width:100%; height:420px; object-fit:cover; }
+        @media (max-width:991px){ .industry-slide-img { height:240px; } }
+
+        .mascot-card {
+            border-radius:28px;
+            background:
+                radial-gradient(circle at top left, rgba(245,158,11,.16), transparent 28%),
+                linear-gradient(135deg, #ffffff, #f8fbff);
+            border:1px solid rgba(37,99,235,.12);
+            box-shadow:0 24px 70px rgba(15,23,42,.10);
+        }
+        .speech-bubble {
+            background:#fff; border:1px solid #e5e7eb; border-radius:14px;
+            padding:.7rem 1rem; font-weight:600; color:#0f172a; font-size:.9rem;
+            box-shadow:0 8px 24px rgba(15,23,42,.08); display:inline-block;
+        }
+
+        .receipt-mock {
+            background:#fff; color:#0f172a; border-radius:22px;
+            box-shadow:0 24px 70px rgba(0,0,0,.22); padding:1.25rem;
+            font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size:.8rem; line-height:1.7;
+        }
+        .receipt-mock .r-row { display:flex; justify-content:space-between; }
+        .receipt-mock hr { border-top:1px dashed #cbd5e1; margin:.5rem 0; }
+        .qr-mock {
+            width:96px; height:96px;
+            background:
+                linear-gradient(90deg, #0f172a 8px, transparent 8px) 0 0/16px 16px,
+                linear-gradient(#0f172a 8px, transparent 8px) 0 0/16px 16px,
+                #fff;
+            border:8px solid #fff; box-shadow:inset 0 0 0 1px #e5e7eb;
+        }
+
+        .demo-tab-btn {
+            border:1px solid #e5e7eb; background:#fff; color:#334155;
+            border-radius:999px; padding:.5rem 1.1rem; font-weight:600; font-size:.9rem;
+            transition:all .2s ease;
+        }
+        .demo-tab-btn.active { background:var(--habibi-blue); color:#fff; border-color:var(--habibi-blue); box-shadow:0 8px 24px rgba(37,99,235,.3); }
+
+        .star-rating i { color:var(--habibi-gold); font-size:.95rem; }
+
+        .sticky-trial-cta {
+            position:fixed; right:22px; bottom:22px; z-index:1050;
+            display:none; box-shadow:0 18px 45px rgba(37,99,235,.35);
+        }
+        .sticky-trial-cta.is-visible { display:inline-flex; }
+
+        /* responsive polish */
+        @media (max-width:768px) {
+            .floating-card { display:none !important; }
+            .sticky-trial-cta { left:16px; right:16px; justify-content:center; }
+            .mega-glow { width:240px; height:240px; }
+        }
     </style>
     @stack('styles')
 </head>
@@ -286,8 +384,8 @@
 <nav class="navbar navbar-expand-lg navbar-public py-3">
     <div class="container">
         <a class="navbar-brand d-flex align-items-center gap-2 fw-bold" href="{{ url('/') }}">
-            <img src="{{ asset($brandMark) }}" alt="{{ $brandName }}" style="height:34px;width:34px;">
-            <span>{{ $brandName }}</span>
+            <img src="{{ asset($brandMark) }}" alt="{{ $brandName }}" style="height:36px;width:36px;">
+            <span style="letter-spacing:-.3px;font-size:1.15rem;">{{ $brandName }}</span>
         </a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#publicNav">
             <span class="navbar-toggler-icon"></span>
@@ -306,6 +404,10 @@
 </nav>
 
 @yield('content')
+
+<a href="{{ url('/start-trial') }}" class="btn btn-primary btn-lg sticky-trial-cta align-items-center gap-2">
+    <i class="ti ti-rocket"></i> Start Free Trial
+</a>
 
 <footer class="public-footer section-pad mt-5">
     <div class="container">
@@ -372,6 +474,34 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }, { threshold: 0.5 });
     counters.forEach(function (c) { io.observe(c); });
+});
+
+/* ── Sticky trial CTA ── */
+document.addEventListener('DOMContentLoaded', function () {
+    var sticky = document.querySelector('.sticky-trial-cta');
+    if (!sticky) return;
+    function toggleSticky() {
+        if (window.scrollY > 620) sticky.classList.add('is-visible');
+        else sticky.classList.remove('is-visible');
+    }
+    toggleSticky();
+    window.addEventListener('scroll', toggleSticky, { passive: true });
+});
+
+/* ── Product demo tabs ── */
+document.addEventListener('DOMContentLoaded', function () {
+    var btns = document.querySelectorAll('[data-demo-tab]');
+    if (!btns.length) return;
+    btns.forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var target = btn.getAttribute('data-demo-tab');
+            btns.forEach(function (b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+            document.querySelectorAll('[data-demo-panel]').forEach(function (panel) {
+                panel.style.display = (panel.getAttribute('data-demo-panel') === target) ? '' : 'none';
+            });
+        });
+    });
 });
 </script>
 @stack('scripts')
