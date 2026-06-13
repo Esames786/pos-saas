@@ -4,6 +4,7 @@ use App\Http\Middleware\CentralOnly;
 use App\Http\Middleware\EnsureRoutePermission;
 use App\Http\Middleware\EnsureTenantSubscriptionAccess;
 use App\Http\Middleware\IdentifyTenant;
+use App\Http\Middleware\PreventDemoMutation;
 use App\Http\Middleware\SetLocale;
 use App\Http\Middleware\TenantOnly;
 use Illuminate\Foundation\Application;
@@ -53,6 +54,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'tenant.only' => TenantOnly::class,
             'route.permission' => EnsureRoutePermission::class,
             'tenant.subscription.access' => EnsureTenantSubscriptionAccess::class,
+            'prevent.demo.mutation' => PreventDemoMutation::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

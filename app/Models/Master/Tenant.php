@@ -15,6 +15,7 @@ class Tenant extends Model
         'owner_email',
         'currency_code',
         'status',
+        'is_demo',
         'trial_ends_at',
         'activated_at',
     ];
@@ -22,9 +23,15 @@ class Tenant extends Model
     protected function casts(): array
     {
         return [
+            'is_demo' => 'boolean',
             'trial_ends_at' => 'datetime',
             'activated_at' => 'datetime',
         ];
+    }
+
+    public function isDemo(): bool
+    {
+        return (bool) $this->is_demo;
     }
 
     public function domains()

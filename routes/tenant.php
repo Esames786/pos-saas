@@ -82,7 +82,7 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
             Route::post('/password/change', [AuthController::class, 'changePassword'])
                 ->name('tenant.password.update');
 
-            Route::middleware(['tenant.subscription.access', 'route.permission'])->group(function () {
+            Route::middleware(['tenant.subscription.access', 'route.permission', 'prevent.demo.mutation'])->group(function () {
                 Route::get('/', fn () => redirect('/dashboard'));
                 Route::get('/dashboard', DashboardController::class)->name('tenant.dashboard');
 

@@ -43,5 +43,31 @@ return [
         'signup',
         'trial',
         'pricing',
+        'demos',
+        'retaildemo',
+        'inventorydemo',
+        'restaurantdemo',
+        'restaurantprodemo',
+        'enterprisedemo',
+    ],
+
+    'demos' => [
+        'enabled' => (bool) env('SAAS_DEMOS_ENABLED', true),
+        'default_password' => env('SAAS_DEMO_DEFAULT_PASSWORD', 'demo1234'),
+        'allowlist' => [
+            'demo',
+            'retaildemo',
+            'inventorydemo',
+            'restaurantdemo',
+            'restaurantprodemo',
+            'enterprisedemo',
+        ],
+        'tenant_codes' => [
+            'retail' => 'retaildemo',
+            'inventory' => 'inventorydemo',
+            'restaurant' => 'restaurantdemo',
+            'restaurant_pro' => 'restaurantprodemo',
+            'enterprise' => 'enterprisedemo',
+        ],
     ],
 ];
