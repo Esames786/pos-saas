@@ -54,6 +54,8 @@ class MasterSeeder extends Seeder
                 'currency_code' => 'PKR',
                 'billing_period' => 'monthly',
                 'is_active' => true,
+                'is_public' => true,
+                'trial_days' => 14,
             ]
         );
 
@@ -65,6 +67,8 @@ class MasterSeeder extends Seeder
                 'currency_code' => 'PKR',
                 'billing_period' => 'monthly',
                 'is_active' => true,
+                'is_public' => true,
+                'trial_days' => 14,
             ]
         );
 

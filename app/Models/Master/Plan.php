@@ -17,6 +17,8 @@ class Plan extends Model
         'currency_code',
         'billing_period',
         'is_active',
+        'is_public',
+        'trial_days',
     ];
 
     protected function casts(): array
@@ -24,6 +26,8 @@ class Plan extends Model
         return [
             'price' => 'decimal:2',
             'is_active' => 'boolean',
+            'is_public' => 'boolean',
+            'trial_days' => 'integer',
         ];
     }
 
