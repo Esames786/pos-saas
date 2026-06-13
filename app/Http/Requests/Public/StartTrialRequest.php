@@ -53,7 +53,9 @@ class StartTrialRequest extends FormRequest
                 'required',
                 'integer',
                 Rule::exists('master.plans', 'id')->where(function ($query) {
-                    $query->where('is_active', true)->where('is_public', true);
+                    $query->where('is_active', true)
+                        ->where('is_public', true)
+                        ->where('is_custom', false);
                 }),
             ],
             'currency_code' => ['nullable', 'string', 'size:3'],
@@ -67,7 +69,7 @@ class StartTrialRequest extends FormRequest
         return [
             'tenant_code.not_in' => 'This subdomain is reserved. Please choose another.',
             'tenant_code.unique' => 'This subdomain is already taken.',
-            'plan_id.exists'     => 'Please choose an available public plan.',
+            'plan_id.exists'     => 'Please choose an available self-service plan.',
             'website.size'       => 'Signup could not be completed.',
         ];
     }

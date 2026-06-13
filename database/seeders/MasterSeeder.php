@@ -51,11 +51,16 @@ class MasterSeeder extends Seeder
             [
                 'name' => 'Quick Sale POS',
                 'price' => 2500,
+                'monthly_price' => 2500,
+                'yearly_price' => null,
                 'currency_code' => 'PKR',
                 'billing_period' => 'monthly',
                 'is_active' => true,
-                'is_public' => true,
+                'is_public' => false,
+                'is_custom' => false,
                 'trial_days' => 14,
+                'display_order' => 900,
+                'public_description' => 'Legacy/internal plan.',
             ]
         );
 
@@ -64,11 +69,16 @@ class MasterSeeder extends Seeder
             [
                 'name' => 'Standard Restaurant & Inventory',
                 'price' => 7500,
+                'monthly_price' => 7500,
+                'yearly_price' => null,
                 'currency_code' => 'PKR',
                 'billing_period' => 'monthly',
                 'is_active' => true,
-                'is_public' => true,
+                'is_public' => false,
+                'is_custom' => false,
                 'trial_days' => 14,
+                'display_order' => 901,
+                'public_description' => 'Legacy/internal plan.',
             ]
         );
 
@@ -405,6 +415,174 @@ class MasterSeeder extends Seeder
                     ]
                 );
             }
+        }
+
+        $this->seedPublicPlanCatalog();
+    }
+
+    /**
+     * Public, self-service SaaS packages shown on the marketing site.
+     * Legacy quick_sale/standard remain active but non-public.
+     */
+    private function seedPublicPlanCatalog(): void
+    {
+        $catalog = [
+            [
+                'attributes' => [
+                    'code' => 'retail_starter',
+                    'name' => 'Retail Starter',
+                    'price' => 3000,
+                    'monthly_price' => 3000,
+                    'yearly_price' => 30000,
+                    'currency_code' => 'PKR',
+                    'billing_period' => 'monthly',
+                    'is_active' => true,
+                    'is_public' => true,
+                    'is_custom' => false,
+                    'trial_days' => 14,
+                    'display_order' => 10,
+                    'public_description' => 'Best for small stores, counters, and simple retail checkout.',
+                ],
+                'modules' => ['pos', 'catalog', 'printing', 'reports', 'users_roles'],
+                'features' => [
+                    'branch_limit' => '1',
+                    'terminal_limit' => '1',
+                    'user_limit' => '3',
+                    'product_limit' => '500',
+                ],
+            ],
+            [
+                'attributes' => [
+                    'code' => 'inventory_store',
+                    'name' => 'Inventory Store',
+                    'price' => 8000,
+                    'monthly_price' => 8000,
+                    'yearly_price' => 80000,
+                    'currency_code' => 'PKR',
+                    'billing_period' => 'monthly',
+                    'is_active' => true,
+                    'is_public' => true,
+                    'is_custom' => false,
+                    'trial_days' => 14,
+                    'display_order' => 20,
+                    'public_description' => 'Best for marts, grocery stores, warehouses, and stock-focused businesses.',
+                ],
+                'modules' => ['pos', 'catalog', 'inventory', 'stock_count', 'purchasing', 'printing', 'reports', 'users_roles'],
+                'features' => [
+                    'branch_limit' => '2',
+                    'terminal_limit' => '3',
+                    'user_limit' => '8',
+                    'product_limit' => '5000',
+                ],
+            ],
+            [
+                'attributes' => [
+                    'code' => 'restaurant_starter',
+                    'name' => 'Restaurant Starter',
+                    'price' => 7000,
+                    'monthly_price' => 7000,
+                    'yearly_price' => 70000,
+                    'currency_code' => 'PKR',
+                    'billing_period' => 'monthly',
+                    'is_active' => true,
+                    'is_public' => true,
+                    'is_custom' => false,
+                    'trial_days' => 14,
+                    'display_order' => 30,
+                    'public_description' => 'Best for cafés, dine-in restaurants, and takeaway counters.',
+                ],
+                'modules' => ['pos', 'catalog', 'restaurant', 'printing', 'reports', 'sales_controls', 'users_roles'],
+                'features' => [
+                    'branch_limit' => '1',
+                    'terminal_limit' => '2',
+                    'user_limit' => '8',
+                    'product_limit' => '1000',
+                ],
+            ],
+            [
+                'attributes' => [
+                    'code' => 'restaurant_pro',
+                    'name' => 'Restaurant Pro',
+                    'price' => 15000,
+                    'monthly_price' => 15000,
+                    'yearly_price' => 150000,
+                    'currency_code' => 'PKR',
+                    'billing_period' => 'monthly',
+                    'is_active' => true,
+                    'is_public' => true,
+                    'is_custom' => false,
+                    'trial_days' => 14,
+                    'display_order' => 40,
+                    'public_description' => 'Best for full-service restaurants, kitchens, and multi-station operations.',
+                ],
+                'modules' => ['pos', 'catalog', 'restaurant', 'kitchen_display', 'kitchen_inventory', 'inventory', 'purchasing', 'stock_count', 'printing', 'reports', 'sales_controls', 'multi_branch', 'users_roles'],
+                'features' => [
+                    'branch_limit' => '3',
+                    'terminal_limit' => '6',
+                    'user_limit' => '20',
+                    'product_limit' => '10000',
+                ],
+            ],
+            [
+                'attributes' => [
+                    'code' => 'enterprise',
+                    'name' => 'Enterprise / Custom',
+                    'price' => 0,
+                    'monthly_price' => null,
+                    'yearly_price' => null,
+                    'currency_code' => 'PKR',
+                    'billing_period' => 'monthly',
+                    'is_active' => true,
+                    'is_public' => true,
+                    'is_custom' => true,
+                    'trial_days' => 30,
+                    'display_order' => 50,
+                    'public_description' => 'Custom rollout for multi-branch, franchise, and enterprise operations.',
+                ],
+                'modules' => Module::where('is_active', true)->pluck('key')->all(),
+                'features' => [
+                    'branch_limit' => null,
+                    'terminal_limit' => null,
+                    'user_limit' => null,
+                    'product_limit' => null,
+                ],
+            ],
+        ];
+
+        foreach ($catalog as $entry) {
+            $plan = Plan::updateOrCreate(
+                ['code' => $entry['attributes']['code']],
+                $entry['attributes']
+            );
+
+            $this->syncPlanModules($plan, $entry['modules']);
+            $this->syncPlanFeatures($plan, $entry['features']);
+        }
+    }
+
+    private function syncPlanModules(Plan $plan, array $moduleKeys): void
+    {
+        $moduleIds = Module::whereIn('key', $moduleKeys)->pluck('id')->all();
+
+        foreach ($moduleIds as $moduleId) {
+            PlanModule::updateOrCreate(
+                ['plan_id' => $plan->id, 'module_id' => $moduleId],
+                ['is_enabled' => true, 'limits' => null]
+            );
+        }
+
+        PlanModule::where('plan_id', $plan->id)
+            ->whereNotIn('module_id', $moduleIds)
+            ->update(['is_enabled' => false]);
+    }
+
+    private function syncPlanFeatures(Plan $plan, array $features): void
+    {
+        foreach ($features as $key => $value) {
+            PlanFeature::updateOrCreate(
+                ['plan_id' => $plan->id, 'feature_key' => $key],
+                ['feature_value' => $value]
+            );
         }
     }
 }

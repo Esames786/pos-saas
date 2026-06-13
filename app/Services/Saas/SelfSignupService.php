@@ -34,6 +34,7 @@ class SelfSignupService
         try {
             $plan = Plan::where('is_active', true)
                 ->where('is_public', true)
+                ->where('is_custom', false)
                 ->findOrFail($data['plan_id']);
 
             $tenantCode = Str::of($data['tenant_code'])

@@ -19,6 +19,11 @@ class Plan extends Model
         'is_active',
         'is_public',
         'trial_days',
+        'is_custom',
+        'display_order',
+        'public_description',
+        'monthly_price',
+        'yearly_price',
     ];
 
     protected function casts(): array
@@ -28,6 +33,10 @@ class Plan extends Model
             'is_active' => 'boolean',
             'is_public' => 'boolean',
             'trial_days' => 'integer',
+            'is_custom' => 'boolean',
+            'display_order' => 'integer',
+            'monthly_price' => 'decimal:2',
+            'yearly_price' => 'decimal:2',
         ];
     }
 
