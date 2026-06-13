@@ -182,9 +182,9 @@
                 <div class="image-card shadow-sm hover-lift reveal h-100 d-flex flex-column">
                     <div style="position:relative;overflow:hidden;">
                         <span class="badge-tag">Restaurant</span>
-                        <img src="{{ asset('images/data/retaurant2.jpg') }}"
-                             alt="Restaurant manager at POS in restaurant"
-                             style="width:100%;height:200px;object-fit:cover;object-position:center top;display:block;">
+                        <img src="{{ asset('images/data/restaurant.png') }}"
+                             alt="Restaurant POS terminal in a warm dining setting"
+                             style="width:100%;height:200px;object-fit:cover;object-position:center;display:block;">
                     </div>
                     <div class="card-body flex-grow-1 d-flex flex-column">
                         <h5 class="fw-bold mb-2">Restaurant & Café</h5>
