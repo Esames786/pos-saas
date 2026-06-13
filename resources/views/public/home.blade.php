@@ -165,8 +165,8 @@
                 <div class="image-card shadow-sm hover-lift reveal h-100 d-flex flex-column">
                     <div style="position:relative;overflow:hidden;">
                         <span class="badge-tag">Retail</span>
-                        <img src="{{ asset('images/data/point-of-sale-software.webp') }}"
-                             alt="Retail POS with barcode scanner"
+                        <img src="{{ asset('images/data/retailers.webp') }}"
+                             alt="Supermarket retail POS checkout counter"
                              style="width:100%;height:200px;object-fit:cover;display:block;">
                     </div>
                     <div class="card-body flex-grow-1 d-flex flex-column">
@@ -182,9 +182,9 @@
                 <div class="image-card shadow-sm hover-lift reveal h-100 d-flex flex-column">
                     <div style="position:relative;overflow:hidden;">
                         <span class="badge-tag">Restaurant</span>
-                        <img src="{{ asset('images/data/jpg100-t3-scale100.jpg') }}"
-                             alt="Restaurant POS terminal in dining room"
-                             style="width:100%;height:200px;object-fit:cover;display:block;">
+                        <img src="{{ asset('images/data/retaurant2.jpg') }}"
+                             alt="Restaurant manager at POS in restaurant"
+                             style="width:100%;height:200px;object-fit:cover;object-position:center top;display:block;">
                     </div>
                     <div class="card-body flex-grow-1 d-flex flex-column">
                         <h5 class="fw-bold mb-2">Restaurant & Café</h5>
@@ -199,9 +199,9 @@
                 <div class="image-card shadow-sm hover-lift reveal h-100 d-flex flex-column">
                     <div style="position:relative;overflow:hidden;">
                         <span class="badge-tag">Bakery & QSR</span>
-                        <img src="{{ asset('images/data/pos1.jpg') }}"
-                             alt="Quick service retail counter"
-                             style="width:100%;height:200px;object-fit:cover;object-position:center top;display:block;">
+                        <img src="{{ asset('images/data/store.webp') }}"
+                             alt="Retail store POS counter"
+                             style="width:100%;height:200px;object-fit:cover;object-position:center;display:block;">
                     </div>
                     <div class="card-body flex-grow-1 d-flex flex-column">
                         <h5 class="fw-bold mb-2">Bakery & Quick Service</h5>
@@ -216,9 +216,9 @@
                 <div class="image-card shadow-sm hover-lift reveal h-100 d-flex flex-column" style="flex-direction:row!important;">
                     <div style="position:relative;overflow:hidden;width:45%;flex-shrink:0;">
                         <span class="badge-tag">Inventory</span>
-                        <img src="{{ asset('images/data/dashbaord.png') }}"
-                             alt="Habibi POS admin dashboard"
-                             style="width:100%;height:100%;object-fit:cover;object-position:top left;display:block;min-height:180px;">
+                        <img src="{{ asset('images/data/mart.webp') }}"
+                             alt="Grocery mart checkout counter"
+                             style="width:100%;height:100%;object-fit:cover;object-position:center;display:block;min-height:180px;">
                     </div>
                     <div class="card-body flex-grow-1 d-flex flex-column justify-content-center p-4">
                         <h5 class="fw-bold mb-2">Inventory & Warehouse</h5>
