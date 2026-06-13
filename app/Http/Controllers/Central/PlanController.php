@@ -44,9 +44,15 @@ class PlanController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'price' => ['required', 'numeric', 'min:0'],
+            'monthly_price' => ['nullable', 'numeric', 'min:0'],
+            'yearly_price' => ['nullable', 'numeric', 'min:0'],
             'currency_code' => ['required', 'string', 'size:3'],
             'billing_period' => ['required', Rule::in(['monthly', 'yearly'])],
+            'trial_days' => ['nullable', 'integer', 'min:0', 'max:365'],
+            'public_description' => ['nullable', 'string', 'max:1000'],
             'is_active' => ['nullable', 'boolean'],
+            'is_public' => ['nullable', 'boolean'],
+            'is_custom' => ['nullable', 'boolean'],
 
             'enabled_modules' => ['nullable', 'array'],
             'enabled_modules.*' => ['integer', 'exists:modules,id'],
@@ -58,14 +64,21 @@ class PlanController extends Controller
             'features.branch_limit' => ['nullable', 'integer', 'min:0'],
             'features.user_limit' => ['nullable', 'integer', 'min:0'],
             'features.terminal_limit' => ['nullable', 'integer', 'min:0'],
+            'features.product_limit' => ['nullable', 'integer', 'min:0'],
         ]);
 
         $plan->update([
             'name' => $data['name'],
             'price' => $data['price'],
+            'monthly_price' => $data['monthly_price'] ?? null,
+            'yearly_price' => $data['yearly_price'] ?? null,
             'currency_code' => strtoupper($data['currency_code']),
             'billing_period' => $data['billing_period'],
+            'trial_days' => $data['trial_days'] ?? null,
+            'public_description' => $data['public_description'] ?? null,
             'is_active' => $request->boolean('is_active'),
+            'is_public' => $request->boolean('is_public'),
+            'is_custom' => $request->boolean('is_custom'),
         ]);
 
         $enabledModuleIds = collect($data['enabled_modules'] ?? [])
@@ -104,7 +117,7 @@ class PlanController extends Controller
             );
         }
 
-        foreach (['branch_limit', 'user_limit', 'terminal_limit'] as $featureKey) {
+        foreach (['branch_limit', 'user_limit', 'terminal_limit', 'product_limit'] as $featureKey) {
             $value = $data['features'][$featureKey] ?? null;
 
             if ($value === null || $value === '') {

@@ -21,6 +21,7 @@
                         <th>Price</th>
                         <th>Period</th>
                         <th>Status</th>
+                        <th>Visibility</th>
                         <th>Enabled Modules</th>
                         <th class="text-end">Action</th>
                     </tr>
@@ -37,6 +38,16 @@
                                     {{ $plan->is_active ? 'Active' : 'Inactive' }}
                                 </span>
                             </td>
+                            <td>
+                                @if($plan->is_public)
+                                    <span class="badge bg-info text-dark">Public</span>
+                                @else
+                                    <span class="badge bg-secondary">Hidden</span>
+                                @endif
+                                @if($plan->is_custom)
+                                    <span class="badge bg-warning text-dark">Custom</span>
+                                @endif
+                            </td>
                             <td>{{ $plan->modules->where('pivot.is_enabled', true)->count() }} / {{ $plan->modules->count() }}</td>
                             <td class="text-end">
                                 <a href="{{ url('/plans/' . $plan->id . '/edit') }}" class="btn btn-sm btn-primary">
@@ -46,7 +57,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="7" class="text-center text-muted">No plans found.</td>
+                            <td colspan="8" class="text-center text-muted">No plans found.</td>
                         </tr>
                     @endforelse
                 </tbody>

@@ -1,5 +1,19 @@
 @php
     $isTenant = app()->bound('tenant');
+
+    // Modules enabled by the current tenant's plan — used to hide sidebar
+    // sections for features the plan does not include (mirrors the
+    // EnsureTenantSubscriptionAccess module gate, so links don't appear for
+    // routes that would be blocked on click).
+    $planModuleKeys = [];
+    if ($isTenant) {
+        $sub = app('tenant')->subscription;
+        if ($sub) {
+            $sub->loadMissing('plan.enabledModules');
+            $planModuleKeys = $sub->plan ? $sub->plan->enabledModules->pluck('key')->all() : [];
+        }
+    }
+    $hasModule = fn (string $key) => in_array($key, $planModuleKeys, true);
 @endphp
 
 <div class="sidebar" id="sidebar">
@@ -200,6 +214,7 @@
                     </li>
 
                     {{-- Inventory section --}}
+                    @if($hasModule('inventory') || $hasModule('stock_count'))
                     @canany([
                         'tenant.inventory.index',
                         'tenant.stock-adjustments.index',
@@ -283,6 +298,7 @@
                         </ul>
                     </li>
                     @endcanany
+                    @endif
 
                     {{-- Sales section --}}
                     @canany([
@@ -354,6 +370,7 @@
                     @endcanany
 
                     {{-- Purchasing section --}}
+                    @if($hasModule('purchasing'))
                     @canany([
                         'tenant.suppliers.index',
                         'tenant.purchase-orders.index',
@@ -411,8 +428,10 @@
                         </ul>
                     </li>
                     @endcanany
+                    @endif
 
                     {{-- Restaurant section --}}
+                    @if($hasModule('restaurant') || $hasModule('kitchen_display'))
                     @canany([
                         'tenant.restaurant.board',
                         'tenant.restaurant.floors.index',
@@ -433,6 +452,7 @@
                                 </li>
                             @endcan
 
+                            @if($hasModule('kitchen_display'))
                             @can('tenant.kitchen-display.index')
                                 <li class="{{ request()->is('kitchen-display*') ? 'active' : '' }}">
                                     <a href="{{ url('/kitchen-display') }}">
@@ -441,6 +461,7 @@
                                     </a>
                                 </li>
                             @endcan
+                            @endif
 
                             @can('tenant.restaurant.floors.index')
                                 <li class="{{ request()->is('restaurant/floors*') ? 'active' : '' }}">
@@ -480,8 +501,10 @@
                         </ul>
                     </li>
                     @endcanany
+                    @endif
 
                     {{-- Kitchen Inventory section --}}
+                    @if($hasModule('kitchen_inventory'))
                     @canany(['tenant.unit-conversions.index', 'tenant.recipes.index', 'tenant.kitchen.productions.index', 'tenant.kitchen.wastages.index'])
                     <li class="submenu-open">
                         <h6 class="submenu-hdr">Kitchen Inventory</h6>
@@ -521,6 +544,7 @@
                         </ul>
                     </li>
                     @endcanany
+                    @endif
 
                     {{-- Printing section --}}
                     @canany(['tenant.printing.printers.index', 'tenant.printing.category-mappings.index', 'tenant.printing.layouts.index', 'tenant.printing.jobs.index', 'tenant.print-agents.index'])
@@ -645,6 +669,7 @@
                     @endcanany
 
                     {{-- Sales Controls section --}}
+                    @if($hasModule('sales_controls'))
                     @canany(['tenant.promotions.index', 'tenant.service-charge-settings.index', 'tenant.void-reasons.index'])
                     <li class="submenu-open">
                         <h6 class="submenu-hdr">Sales Controls</h6>
@@ -676,6 +701,7 @@
                         </ul>
                     </li>
                     @endcanany
+                    @endif
 
                     {{-- Catalog section --}}
                     @canany(['tenant.units.index', 'tenant.categories.index', 'tenant.products.index'])

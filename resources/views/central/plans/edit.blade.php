@@ -80,11 +80,68 @@
 
     <div class="card mb-3">
         <div class="card-header">
+            <h5 class="mb-0">Public Listing &amp; Pricing</h5>
+            <small class="text-muted">Controls whether this plan appears on the public website and how it is priced there.</small>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Monthly Price</label>
+                    <input name="monthly_price" type="number" step="0.01" min="0"
+                           class="form-control @error('monthly_price') is-invalid @enderror"
+                           value="{{ old('monthly_price', $plan->monthly_price) }}">
+                    @error('monthly_price') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Yearly Price</label>
+                    <input name="yearly_price" type="number" step="0.01" min="0"
+                           class="form-control @error('yearly_price') is-invalid @enderror"
+                           value="{{ old('yearly_price', $plan->yearly_price) }}">
+                    @error('yearly_price') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Trial Days</label>
+                    <input name="trial_days" type="number" min="0" max="365"
+                           class="form-control @error('trial_days') is-invalid @enderror"
+                           value="{{ old('trial_days', $plan->trial_days) }}">
+                    @error('trial_days') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                </div>
+                <div class="col-md-3 d-flex align-items-end gap-3">
+                    <div class="form-check">
+                        <input type="checkbox" name="is_public" value="1" class="form-check-input"
+                               id="is_public" @checked(old('is_public', $plan->is_public))>
+                        <label for="is_public" class="form-check-label">Show on public website</label>
+                    </div>
+                    <div class="form-check">
+                        <input type="checkbox" name="is_custom" value="1" class="form-check-input"
+                               id="is_custom" @checked(old('is_custom', $plan->is_custom))>
+                        <label for="is_custom" class="form-check-label">Custom (Contact Sales — no self-trial)</label>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Public Description</label>
+                    <input name="public_description" maxlength="1000"
+                           class="form-control @error('public_description') is-invalid @enderror"
+                           value="{{ old('public_description', $plan->public_description) }}"
+                           placeholder="Best for small stores, counters, and simple retail checkout.">
+                    @error('public_description') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                </div>
+            </div>
+            <p class="text-muted small mb-0 mt-3">
+                <i class="ti ti-info-circle me-1"></i>
+                The base <strong>Price</strong> above is what billing/invoices use. Keep it equal to the Monthly Price.
+                Public pricing cards read Monthly/Yearly Price. Hidden plans stay usable for existing tenants.
+            </p>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header">
             <h5 class="mb-0">Plan Limits</h5>
         </div>
         <div class="card-body">
             <div class="row g-3">
-                @foreach(['branch_limit' => 'Branch Limit', 'user_limit' => 'User Limit', 'terminal_limit' => 'Terminal Limit'] as $key => $label)
+                @foreach(['branch_limit' => 'Branch Limit', 'user_limit' => 'User Limit', 'terminal_limit' => 'Terminal Limit', 'product_limit' => 'Product Limit'] as $key => $label)
                     <div class="col-md-4">
                         <label class="form-label">{{ $label }}</label>
                         <input name="features[{{ $key }}]" type="number" min="0"
