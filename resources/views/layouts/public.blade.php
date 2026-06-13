@@ -383,9 +383,8 @@
 <body>
 <nav class="navbar navbar-expand-lg navbar-public py-3">
     <div class="container">
-        <a class="navbar-brand d-flex align-items-center gap-2 fw-bold" href="{{ url('/') }}">
-            <img src="{{ asset($brandMark) }}" alt="{{ $brandName }}" style="height:36px;width:36px;">
-            <span style="letter-spacing:-.3px;font-size:1.15rem;">{{ $brandName }}</span>
+        <a class="navbar-brand d-flex align-items-center" href="{{ url('/') }}">
+            <img src="{{ asset($brandLogo) }}" alt="{{ $brandName }}" style="height:46px;width:auto;">
         </a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#publicNav">
             <span class="navbar-toggler-icon"></span>
@@ -413,10 +412,7 @@
     <div class="container">
         <div class="row gy-3">
             <div class="col-md-6">
-                <h5 class="text-white mb-1 d-flex align-items-center gap-2">
-                    <img src="{{ asset($brandMark) }}" alt="{{ $brandName }}" style="height:28px;width:28px;">
-                    {{ $brandName }}
-                </h5>
+                <img src="{{ asset($brandLogo) }}" alt="{{ $brandName }}" style="height:48px;width:auto;" class="mb-2">
                 <p class="mb-0">{{ $brandTagline }}</p>
             </div>
             <div class="col-md-6 text-md-end">
