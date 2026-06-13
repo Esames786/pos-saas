@@ -90,6 +90,90 @@
     </div>
 </section>
 
+{{-- BUSINESS TYPE CARDS with real images --}}
+<section class="section-pad bg-white">
+    <div class="container">
+        <div class="text-center mb-5 reveal">
+            <h2 class="fw-bold">Built for every business type</h2>
+            <p class="text-muted">From a single counter to a multi-branch restaurant chain — one platform handles it all.</p>
+        </div>
+        <div class="row g-4">
+            <div class="col-md-6 col-lg-4">
+                <div class="rounded-4 overflow-hidden shadow-sm hover-lift reveal" style="border:1px solid #e5e7eb;">
+                    <img src="{{ asset('images/data/point-of-sale-software.webp') }}"
+                         alt="Retail POS with barcode scanner"
+                         class="w-100" style="height:220px;object-fit:cover;">
+                    <div class="p-4">
+                        <h5 class="fw-bold mb-1">Retail & Supermarket</h5>
+                        <p class="text-muted small mb-3">Barcode checkout, product catalog, stock control, and receipt printing at the counter.</p>
+                        <a href="{{ url('/start-trial?plan=retail_starter') }}" class="btn btn-sm btn-primary">Start Retail Trial</a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6 col-lg-4">
+                <div class="rounded-4 overflow-hidden shadow-sm hover-lift reveal" style="border:1px solid #e5e7eb;">
+                    <img src="{{ asset('images/data/jpg100-t3-scale100.jpg') }}"
+                         alt="Restaurant POS terminal"
+                         class="w-100" style="height:220px;object-fit:cover;">
+                    <div class="p-4">
+                        <h5 class="fw-bold mb-1">Restaurant & Café</h5>
+                        <p class="text-muted small mb-3">Table management, KOT printing, split bills, service charge, and kitchen display.</p>
+                        <a href="{{ url('/start-trial?plan=restaurant_starter') }}" class="btn btn-sm btn-primary">Start Restaurant Trial</a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6 col-lg-4">
+                <div class="rounded-4 overflow-hidden shadow-sm hover-lift reveal" style="border:1px solid #e5e7eb;">
+                    <img src="{{ asset('images/data/pos1.jpg') }}"
+                         alt="Retail counter with barcode scanner and receipt printer"
+                         class="w-100" style="height:220px;object-fit:cover;object-position:center top;">
+                    <div class="p-4">
+                        <h5 class="fw-bold mb-1">Inventory & Warehouse</h5>
+                        <p class="text-muted small mb-3">Purchase orders, GRNs, stock transfers, stock counts, and supplier management.</p>
+                        <a href="{{ url('/start-trial?plan=inventory_store') }}" class="btn btn-sm btn-primary">Start Inventory Trial</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+{{-- DEVICE SHOWCASE with real system screenshots --}}
+<section class="public-hero-premium section-pad">
+    <div class="container">
+        <div class="text-center mb-5 reveal">
+            <h2 class="fw-bold text-white">See the actual system</h2>
+            <p style="color:#cbd5e1;">Real screens from the live Habibi POS platform.</p>
+        </div>
+        <div class="row g-4 align-items-start">
+            <div class="col-lg-6 reveal">
+                <p class="text-uppercase fw-semibold mb-2" style="color:#93c5fd;font-size:.8rem;letter-spacing:2px;">Dashboard & Reports</p>
+                <div class="device-frame">
+                    <img src="{{ asset('images/data/screencapture-demo-pos-saas-test-dashboard-2026-06-13-17_02_36.png') }}"
+                         alt="Habibi POS admin dashboard">
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="mb-4 reveal">
+                    <p class="text-uppercase fw-semibold mb-2" style="color:#93c5fd;font-size:.8rem;letter-spacing:2px;">Restaurant POS</p>
+                    <div class="device-frame">
+                        <img src="{{ asset('images/data/screencapture-demo-pos-saas-test-pos-2026-06-13-17_03_34.png') }}"
+                             alt="Habibi POS restaurant dine-in screen">
+                    </div>
+                </div>
+                <div class="reveal">
+                    <p class="text-uppercase fw-semibold mb-2" style="color:#93c5fd;font-size:.8rem;letter-spacing:2px;">Kitchen Display System</p>
+                    <div class="device-frame" style="overflow:hidden;max-height:220px;">
+                        <img src="{{ asset('images/data/screencapture-demo-pos-saas-test-kitchen-display-2026-06-13-17_03_10.png') }}"
+                             alt="Habibi POS kitchen display system"
+                             style="width:100%;border-radius:12px;object-fit:cover;object-position:top;">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
 <section class="section-pad bg-white">
     <div class="container">
         <div class="text-center mb-5">
