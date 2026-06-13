@@ -31,7 +31,9 @@ Route::domain(config('tenancy.central_domain'))
                 ->name('central.password.update');
 
             Route::middleware(['route.permission'])->group(function () {
-                Route::get('/', fn () => redirect('/dashboard'));
+                // GET / on the central domain is owned by the public marketing
+                // home (routes/public.php). Central admins land on /dashboard
+                // via the post-login redirect.
                 Route::get('/dashboard', DashboardController::class)->name('central.dashboard');
 
                 Route::get('/routes', [RouteCatalogController::class, 'index'])->name('central.routes.index');
