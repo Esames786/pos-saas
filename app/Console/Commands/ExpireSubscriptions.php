@@ -17,6 +17,10 @@ class ExpireSubscriptions extends Command
 
         $this->info('Expired subscriptions marked past_due: ' . $result['expired']);
 
+        if (($result['demo_skipped'] ?? 0) > 0) {
+            $this->line('Demo tenants skipped from expiry sweep: ' . $result['demo_skipped']);
+        }
+
         return self::SUCCESS;
     }
 }

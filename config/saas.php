@@ -77,6 +77,19 @@ return [
             'enterprise' => 'enterprisedemo',
         ],
 
+        // Tenants that demo:reset / demo:reset-all are allowed to drop & recreate (15D-8).
+        // Deliberately EXCLUDES the legacy 'demo' tenant (which is in 'allowlist').
+        'reset_tenant_codes' => [
+            'retaildemo',
+            'inventorydemo',
+            'restaurantdemo',
+            'restaurantprodemo',
+            'enterprisedemo',
+        ],
+
+        // Time-of-day for the optional nightly demo reset scheduler (24h HH:MM).
+        'reset_daily_at' => env('SAAS_DEMOS_RESET_DAILY_AT', '04:00'),
+
         // Public /demos page metadata (15D-7). Drives the live demo cards.
         // 'key' is also the anchor id used in /demos#<key> deep links.
         'cards' => [
