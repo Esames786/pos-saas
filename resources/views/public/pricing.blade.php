@@ -62,7 +62,7 @@
 
             @foreach($customPlans as $plan)
                 <div class="col-md-6 col-lg-3">
-                    <div class="plan-card bg-white p-4 h-100 d-flex flex-column" style="border-color:#1d4ed8;">
+                    <div class="plan-card bg-white p-4 h-100 d-flex flex-column" style="border-color:#caa23f;">
                         <h4 class="fw-bold mb-1">{{ $plan->name }}</h4>
                         <p class="text-muted small flex-grow-1">{{ $plan->public_description }}</p>
 

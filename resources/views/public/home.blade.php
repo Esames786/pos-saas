@@ -7,8 +7,8 @@
 
 {{-- ═══════════ 1. HERO ═══════════ --}}
 <section class="public-hero-premium" style="padding:5rem 0 3.5rem;position:relative;">
-    <div class="mega-glow" style="top:-80px;left:-60px;background:#2563eb;"></div>
-    <div class="mega-glow" style="bottom:-120px;right:-40px;background:#7c3aed;"></div>
+    <div class="mega-glow" style="top:-80px;left:-60px;background:#caa23f;"></div>
+    <div class="mega-glow" style="bottom:-120px;right:-40px;background:#1e3a6b;"></div>
     <div class="container" style="position:relative;z-index:2;">
         <div class="row align-items-center gy-5">
             <div class="col-lg-5">
@@ -47,7 +47,7 @@
                         <span class="dot" style="background:#f59e0b;"></span> Low stock: <strong>3 items</strong>
                     </div>
                     <div class="floating-card float-card" style="bottom:-18px;right:8%;">
-                        <span class="dot" style="background:#3b82f6;"></span> Today's sales: <strong>PKR 84,250</strong>
+                        <span class="dot" style="background:#caa23f;"></span> Today's sales: <strong>PKR 84,250</strong>
                     </div>
                     <div class="floating-card float-card-delay" style="bottom:-18px;left:6%;">
                         <span class="dot" style="background:#10b981;"></span> Branch report <strong>synced</strong>
@@ -67,7 +67,7 @@
                         <div class="r-row"><span>Burger Combo x2</span><span>1,300</span></div>
                         <div class="r-row"><span>Latte x1</span><span>450</span></div>
                         <hr>
-                        <div class="r-row fw-bold"><span>Status</span><span style="color:#2563eb;">KOT Sent</span></div>
+                        <div class="r-row fw-bold"><span>Status</span><span style="color:#a87f24;">KOT Sent</span></div>
                     </div>
                 </div>
             </div>
@@ -189,7 +189,7 @@
 <section class="premium-section section-pad">
     <div class="container">
         <div class="text-center mb-4 reveal">
-            <span class="badge mb-3 d-inline-block" style="background:rgba(99,102,241,.2);color:#a5b4fc;padding:.4rem 1rem;border-radius:8px;">Live product</span>
+            <span class="badge mb-3 d-inline-block" style="background:rgba(200,155,60,.18);color:#e9c869;padding:.4rem 1rem;border-radius:8px;">Live product</span>
             <h2 class="fw-bold text-white">Watch the workflow move across your business.</h2>
             <p style="color:#94a3b8;">Real screens from the live Habibi POS platform.</p>
         </div>
@@ -272,7 +272,7 @@
                 <div class="col-lg-4 text-center">
                     {{-- CSS/SVG sidekick --}}
                     <div style="position:relative;display:inline-block;">
-                        <div style="width:160px;height:160px;border-radius:50%;background:linear-gradient(135deg,#1e3a8a,#2563eb);display:flex;align-items:center;justify-content:center;box-shadow:0 20px 50px rgba(37,99,235,.3);">
+                        <div style="width:160px;height:160px;border-radius:50%;background:linear-gradient(135deg,#0a1022,#16284a);display:flex;align-items:center;justify-content:center;box-shadow:0 20px 50px rgba(168,127,36,.35);border:2px solid rgba(200,155,60,.4);">
                             <img src="{{ asset(config('saas.brand_mark', 'images/brand/habibi-pos-mark.svg')) }}" alt="Habibi Assistant" style="width:84px;height:84px;filter:drop-shadow(0 4px 8px rgba(0,0,0,.2));">
                         </div>
                         <span class="speech-bubble float-card" style="position:absolute;top:-6px;right:-90px;">“Add products fast”</span>
@@ -378,7 +378,7 @@
         </div>
 
         @php $tcards = [
-            ['RM','Restaurant Manager','UAE','Restaurant','#1d4ed8','We can manage tables, kitchen tickets, and daily closing from one place. The kitchen display keeps the team in sync.'],
+            ['RM','Restaurant Manager','UAE','Restaurant','#a87f24','We can manage tables, kitchen tickets, and daily closing from one place. The kitchen display keeps the team in sync.'],
             ['RO','Retail Owner','Pakistan','Supermarket','#7c3aed','Barcode checkout, stock visibility, and branch-level controls make daily work so much easier than before.'],
             ['CO','Café Operator','Saudi Arabia','Café','#059669','Our team takes orders fast and the kitchen gets the ticket instantly. Fewer errors, faster service.'],
             ['IS','Inventory Supervisor','UK','Warehouse','#d97706','Purchasing, stock counts, and supplier reports help us see exactly what is happening across the warehouse.'],
@@ -411,7 +411,7 @@
             </div>
             <div class="carousel-indicators position-static mt-3">
                 @foreach($tcards as $i => $t)
-                    <button type="button" data-bs-target="#testimonialCarousel" data-bs-slide-to="{{ $i }}" class="{{ $i===0?'active':'' }}" style="background-color:#1d4ed8;"></button>
+                    <button type="button" data-bs-target="#testimonialCarousel" data-bs-slide-to="{{ $i }}" class="{{ $i===0?'active':'' }}" style="background-color:#caa23f;"></button>
                 @endforeach
             </div>
         </div>
@@ -432,7 +432,7 @@
                         <th style="background:#f9fafb;border-bottom:2px solid #e5e7eb;">Workflow</th>
                         <th class="text-center" style="background:#fef2f2;color:#991b1b;border-bottom:2px solid #fecaca;">Traditional POS</th>
                         <th class="text-center" style="background:#fff7ed;color:#92400e;border-bottom:2px solid #fed7aa;">Disconnected Tools</th>
-                        <th class="text-center col-habibi" style="border-bottom:2px solid #bfdbfe;"><span style="color:#1d4ed8;font-weight:800;">Habibi POS</span></th>
+                        <th class="text-center col-habibi" style="border-bottom:2px solid #ead9a3;"><span style="color:#9a7320;font-weight:800;">Habibi POS</span></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -489,7 +489,7 @@
             @endforeach
             @foreach($customPlans as $plan)
                 <div class="col-md-6 col-lg-3">
-                    <div class="plan-card p-4 h-100 d-flex flex-column hover-lift reveal" style="border-color:#1d4ed8;">
+                    <div class="plan-card p-4 h-100 d-flex flex-column hover-lift reveal" style="border-color:#caa23f;">
                         <span class="plan-badge plan-badge-inv mb-2 align-self-start">Custom rollout</span>
                         <h5 class="fw-bold mb-1">{{ $plan->name }}</h5>
                         <p class="text-muted small flex-grow-1">{{ $plan->public_description }}</p>
@@ -544,7 +544,7 @@
 
 {{-- ═══════════ 15. FINAL CTA ═══════════ --}}
 <section class="public-hero-premium section-pad" style="position:relative;overflow:hidden;">
-    <div class="mega-glow" style="top:-100px;right:10%;background:#7c3aed;"></div>
+    <div class="mega-glow" style="top:-100px;right:10%;background:#caa23f;"></div>
     <div class="container text-center" style="position:relative;z-index:2;">
         <div class="reveal" style="max-width:720px;margin:0 auto;">
             <h2 class="fw-bold text-white mb-3" style="font-size:2.3rem;">

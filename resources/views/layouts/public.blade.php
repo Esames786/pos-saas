@@ -377,6 +377,92 @@
             .sticky-trial-cta { left:16px; right:16px; justify-content:center; }
             .mega-glow { width:240px; height:240px; }
         }
+
+        /* ═══════════ NAVY + GOLD LUXURY THEME (matches logo) ═══════════ */
+        /* Bootstrap primary → gold */
+        .btn-primary {
+            background:linear-gradient(135deg,#d8b24e,#a87f24) !important;
+            border-color:#a87f24 !important; color:#11203f !important; font-weight:600;
+        }
+        .btn-primary:hover, .btn-primary:focus, .btn-primary:active {
+            background:linear-gradient(135deg,#e9c869,#caa23f) !important;
+            border-color:#caa23f !important; color:#11203f !important;
+        }
+        .btn-outline-primary { color:#9a7320 !important; border-color:#d8b24e !important; }
+        .btn-outline-primary:hover, .btn-outline-primary:focus {
+            background:linear-gradient(135deg,#d8b24e,#a87f24) !important;
+            border-color:#a87f24 !important; color:#11203f !important;
+        }
+        .btn-link { color:#9a7320 !important; }
+        .text-primary { color:#9a7320 !important; }
+        .bg-primary { background-color:#caa23f !important; }
+        .text-success { color:#15803d !important; }
+
+        /* gold CTAs inside dark hero / premium sections */
+        .public-hero-premium .btn-light, .premium-section .btn-light {
+            background:linear-gradient(135deg,#e9c869,#caa23f); border-color:#caa23f;
+            color:#11203f !important; font-weight:700;
+        }
+        .public-hero-premium .btn-light:hover, .premium-section .btn-light:hover {
+            background:linear-gradient(135deg,#f4d784,#d8b24e); color:#11203f !important;
+        }
+        .public-hero-premium .btn-outline-light, .premium-section .btn-outline-light {
+            border-color:rgba(245,200,90,.5); color:#f4e7c1;
+        }
+        .public-hero-premium .btn-outline-light:hover, .premium-section .btn-outline-light:hover {
+            background:rgba(245,200,90,.15); border-color:#e3c163; color:#fff;
+        }
+
+        /* navy + gold hero background */
+        .public-hero-premium {
+            background:
+                radial-gradient(circle at 18% 22%, rgba(200,155,60,.22), transparent 30%),
+                radial-gradient(circle at 82% 12%, rgba(37,99,235,.16), transparent 30%),
+                linear-gradient(135deg, #0a1022 0%, #11223f 55%, #16284a 100%) !important;
+        }
+        .hero-badge { border-color:rgba(245,200,90,.35); background:rgba(245,200,90,.10); color:#f4e7c1; }
+        .hero-badge i { color:#e9c869; }
+
+        /* recolored accent classes */
+        .step-number { background:linear-gradient(135deg,#caa23f,#a87f24) !important; color:#11203f; box-shadow:0 8px 24px rgba(168,127,36,.35) !important; }
+        .icon-wrap { background:linear-gradient(135deg,#fbf1d6,#f1e0a8) !important; }
+        .icon-wrap i { color:#a87f24 !important; }
+        .gradient-card:hover { border-color:#e7cd86 !important; box-shadow:0 20px 50px rgba(168,127,36,.12) !important; }
+        .plan-card:hover { box-shadow:0 12px 30px rgba(168,127,36,.16) !important; }
+        .plan-card-popular { border-color:#caa23f !important; box-shadow:0 8px 32px rgba(200,155,60,.25) !important; }
+        .plan-price { color:#11203f !important; }
+        .stat-number { color:#a87f24 !important; }
+        .trust-item i { color:#a87f24 !important; }
+        .marquee-chip i { color:#caa23f !important; }
+        .demo-tab-btn.active { background:#caa23f !important; border-color:#caa23f !important; color:#11203f !important; box-shadow:0 8px 24px rgba(200,155,60,.3); }
+        .comparison-tbl .col-habibi { background:#fdf6e3 !important; }
+        .testimonial-card .quote-icon { color:#f1e0a8; }
+        .glow-border { border-color:rgba(200,155,60,.4) !important; box-shadow:0 0 0 1px rgba(200,155,60,.2), 0 20px 60px rgba(15,23,42,.4) !important; }
+        .hover-lift:hover { box-shadow:0 18px 50px rgba(168,127,36,.14); }
+        .accordion-button:not(.collapsed) { color:#9a7320 !important; background:#fdf6e3 !important; }
+        .plan-badge-inv { background:#fdf6e3 !important; color:#9a7320 !important; }
+        .country-badge { background:#fdf6e3 !important; color:#9a7320 !important; border-color:#e7cd86 !important; }
+        .navbar-public .btn-light {
+            background:linear-gradient(135deg,#e9c869,#caa23f); border-color:#caa23f; color:#11203f; font-weight:700;
+        }
+        .navbar-public .btn-light:hover { background:linear-gradient(135deg,#f4d784,#d8b24e); color:#11203f; }
+
+        /* legacy hero (pricing/features/contact/success) → navy + gold */
+        .public-hero {
+            background:
+                radial-gradient(circle at 18% 30%, rgba(200,155,60,.20), transparent 32%),
+                radial-gradient(circle at 85% 20%, rgba(37,99,235,.14), transparent 30%),
+                linear-gradient(135deg, #0a1022 0%, #11223f 60%, #16284a 100%) !important;
+        }
+        .public-hero .btn-light, .section-pad .btn-light {
+            background:linear-gradient(135deg,#e9c869,#caa23f); border-color:#caa23f; color:#11203f !important; font-weight:700;
+        }
+        .bg-primary-subtle { background-color:#fdf6e3 !important; }
+        /* subtle gold focus ring */
+        .form-control:focus, .form-select:focus, .form-check-input:focus {
+            border-color:#d8b24e; box-shadow:0 0 0 .2rem rgba(200,155,60,.18);
+        }
+        .form-check-input:checked { background-color:#caa23f; border-color:#caa23f; }
     </style>
     @stack('styles')
 </head>
