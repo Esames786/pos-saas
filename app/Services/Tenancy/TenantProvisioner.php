@@ -603,6 +603,12 @@ class TenantProvisioner
             'tenant.finance.customer-payments.store',
             'tenant.finance.customer-payments.show',
             'tenant.reports.sales.receivables',
+
+            // Finance — General Ledger (FIN-7)
+            'tenant.finance.journal-entries.index',
+            'tenant.finance.journal-entries.show',
+            'tenant.finance.general-ledger.index',
+            'tenant.finance.trial-balance.index',
         ];
 
         \App\Models\Tenant\Customer::updateOrCreate(

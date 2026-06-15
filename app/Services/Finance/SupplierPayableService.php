@@ -21,7 +21,10 @@ use Illuminate\Support\Facades\DB;
  */
 class SupplierPayableService
 {
-    public function __construct(private PurchasingService $purchasing) {}
+    public function __construct(
+        private PurchasingService $purchasing,
+        private JournalPostingService $journalPosting,
+    ) {}
 
     /**
      * Record a supplier payment end to end:
@@ -31,7 +34,7 @@ class SupplierPayableService
      */
     public function recordPayment(array $data, ?int $userId = null): SupplierPayment
     {
-        return DB::connection('tenant')->transaction(function () use ($data, $userId) {
+        $payment = DB::connection('tenant')->transaction(function () use ($data, $userId) {
             $payment = SupplierPayment::create([
                 ...$data,
                 'payment_no'        => $this->purchasing->nextPaymentNo(),
@@ -49,6 +52,11 @@ class SupplierPayableService
 
             return $payment;
         });
+
+        // GL journal (FIN-7) — only when paid from a cash/bank account. Idempotent + safe.
+        $this->journalPosting->postSupplierPayment($payment, $userId);
+
+        return $payment;
     }
 
     /**

@@ -21,6 +21,8 @@ use Illuminate\Support\Str;
  */
 class CustomerReceivableService
 {
+    public function __construct(private JournalPostingService $journalPosting) {}
+
     /**
      * Post a credit (unpaid/partial) sale to the customer's receivable.
      * No-op for fully paid sales or sales without a customer. Idempotent.
@@ -31,7 +33,7 @@ class CustomerReceivableService
             return $sale;
         }
 
-        return DB::connection('tenant')->transaction(function () use ($sale, $userId) {
+        $sale = DB::connection('tenant')->transaction(function () use ($sale, $userId) {
             $sale = SalesOrder::whereKey($sale->id)->lockForUpdate()->firstOrFail();
 
             $due = round((float) $sale->grand_total - (float) $sale->paid_amount, 4);
@@ -85,6 +87,11 @@ class CustomerReceivableService
 
             return $sale->fresh();
         });
+
+        // GL journal (FIN-7): Dr AR / Cr Sales Revenue for the credit portion. Safe + idempotent.
+        $this->journalPosting->postCreditSale($sale, $userId);
+
+        return $sale;
     }
 
     /**
@@ -94,7 +101,7 @@ class CustomerReceivableService
      */
     public function recordPayment(array $data, ?int $userId = null): CustomerPayment
     {
-        return DB::connection('tenant')->transaction(function () use ($data, $userId) {
+        $payment = DB::connection('tenant')->transaction(function () use ($data, $userId) {
             $payment = CustomerPayment::create([
                 ...$data,
                 'payment_no'        => $this->nextPaymentNo(),
@@ -144,6 +151,11 @@ class CustomerReceivableService
 
             return $payment->fresh();
         });
+
+        // GL journal (FIN-7): Dr cash/bank / Cr AR — only when deposited to a cash/bank account. Safe + idempotent.
+        $this->journalPosting->postCustomerPayment($payment, $userId);
+
+        return $payment;
     }
 
     /** Write the cash/bank "money in" transaction for a customer payment. Idempotent. */

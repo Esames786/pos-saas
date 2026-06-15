@@ -715,7 +715,7 @@
 
                     {{-- Finance section --}}
                     @if($hasModule('finance'))
-                    @canany(['tenant.finance.accounts.index', 'tenant.finance.cash-bank-accounts.index', 'tenant.finance.expense-categories.index', 'tenant.finance.expenses.index', 'tenant.finance.customer-payments.index'])
+                    @canany(['tenant.finance.accounts.index', 'tenant.finance.cash-bank-accounts.index', 'tenant.finance.expense-categories.index', 'tenant.finance.expenses.index', 'tenant.finance.customer-payments.index', 'tenant.finance.journal-entries.index', 'tenant.finance.general-ledger.index', 'tenant.finance.trial-balance.index'])
                     <li class="submenu-open">
                         <h6 class="submenu-hdr">Finance</h6>
                         <ul>
@@ -760,6 +760,33 @@
                                     <a href="{{ url('/finance/customer-payments') }}">
                                         <i class="ti ti-coin fs-16 me-2" aria-hidden="true"></i>
                                         <span>Customer Payments</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.finance.journal-entries.index')
+                                <li class="{{ request()->is('finance/journal-entries*') ? 'active' : '' }}">
+                                    <a href="{{ url('/finance/journal-entries') }}">
+                                        <i class="ti ti-notebook fs-16 me-2" aria-hidden="true"></i>
+                                        <span>Journal Entries</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.finance.general-ledger.index')
+                                <li class="{{ request()->is('finance/general-ledger*') ? 'active' : '' }}">
+                                    <a href="{{ url('/finance/general-ledger') }}">
+                                        <i class="ti ti-book fs-16 me-2" aria-hidden="true"></i>
+                                        <span>General Ledger</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.finance.trial-balance.index')
+                                <li class="{{ request()->is('finance/trial-balance*') ? 'active' : '' }}">
+                                    <a href="{{ url('/finance/trial-balance') }}">
+                                        <i class="ti ti-scale fs-16 me-2" aria-hidden="true"></i>
+                                        <span>Trial Balance</span>
                                     </a>
                                 </li>
                             @endcan

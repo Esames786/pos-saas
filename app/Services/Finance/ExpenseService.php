@@ -12,11 +12,13 @@ use RuntimeException;
  * Operational expense lifecycle (FIN-4).
  *
  * Posting an expense voucher moves money OUT of a cash/bank account and writes an
- * operational cash_bank_account_transactions row. Voiding reverses it. This is NOT
- * General Ledger journal posting — that arrives in FIN-7.
+ * operational cash_bank_account_transactions row. Voiding reverses it. Since FIN-7
+ * it also posts a balanced GL journal (and a reversal on void).
  */
 class ExpenseService
 {
+    public function __construct(private JournalPostingService $journalPosting) {}
+
     /** Recalculate voucher subtotal/tax/total from its lines. */
     public function recalcTotals(ExpenseVoucher $voucher): ExpenseVoucher
     {
@@ -45,7 +47,7 @@ class ExpenseService
      */
     public function post(ExpenseVoucher $voucher, ?int $userId = null): ExpenseVoucher
     {
-        return DB::transaction(function () use ($voucher, $userId) {
+        $voucher = DB::transaction(function () use ($voucher, $userId) {
             $voucher = ExpenseVoucher::whereKey($voucher->id)->lockForUpdate()->firstOrFail();
 
             if (! $voucher->isDraft()) {
@@ -90,6 +92,11 @@ class ExpenseService
 
             return $voucher->fresh();
         });
+
+        // GL journal (FIN-7) — idempotent + safe (never throws into this flow).
+        $this->journalPosting->postExpenseVoucher($voucher, $userId);
+
+        return $voucher;
     }
 
     /**
@@ -98,7 +105,7 @@ class ExpenseService
      */
     public function void(ExpenseVoucher $voucher, ?int $userId = null, ?string $reason = null): ExpenseVoucher
     {
-        return DB::transaction(function () use ($voucher, $userId, $reason) {
+        $voucher = DB::transaction(function () use ($voucher, $userId, $reason) {
             $voucher = ExpenseVoucher::whereKey($voucher->id)->lockForUpdate()->firstOrFail();
 
             if (! $voucher->isPosted()) {
@@ -141,5 +148,10 @@ class ExpenseService
 
             return $voucher->fresh();
         });
+
+        // Reverse the GL journal (FIN-7) — idempotent + safe.
+        $this->journalPosting->reverseForSource('expense_voucher', $voucher->id, $reason ?? 'Expense voucher voided', $userId);
+
+        return $voucher;
     }
 }

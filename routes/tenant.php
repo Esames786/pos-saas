@@ -10,6 +10,9 @@ use App\Http\Controllers\Tenant\Finance\CashBankAccountController;
 use App\Http\Controllers\Tenant\Finance\CustomerPaymentController;
 use App\Http\Controllers\Tenant\Finance\ExpenseCategoryController;
 use App\Http\Controllers\Tenant\Finance\ExpenseVoucherController;
+use App\Http\Controllers\Tenant\Finance\GeneralLedgerController;
+use App\Http\Controllers\Tenant\Finance\JournalEntryController;
+use App\Http\Controllers\Tenant\Finance\TrialBalanceController;
 use App\Http\Controllers\Tenant\DailyClosingController;
 use App\Http\Controllers\Tenant\DashboardController;
 use App\Http\Controllers\Tenant\GoodsReceiptController;
@@ -539,6 +542,12 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/finance/customer-payments/create', [CustomerPaymentController::class, 'create'])->name('tenant.finance.customer-payments.create');
                 Route::post('/finance/customer-payments', [CustomerPaymentController::class, 'store'])->name('tenant.finance.customer-payments.store');
                 Route::get('/finance/customer-payments/{customerPayment}', [CustomerPaymentController::class, 'show'])->name('tenant.finance.customer-payments.show');
+
+                // Finance — General Ledger (FIN-7)
+                Route::get('/finance/journal-entries', [JournalEntryController::class, 'index'])->name('tenant.finance.journal-entries.index');
+                Route::get('/finance/journal-entries/{journalEntry}', [JournalEntryController::class, 'show'])->name('tenant.finance.journal-entries.show');
+                Route::get('/finance/general-ledger', [GeneralLedgerController::class, 'index'])->name('tenant.finance.general-ledger.index');
+                Route::get('/finance/trial-balance', [TrialBalanceController::class, 'index'])->name('tenant.finance.trial-balance.index');
             });
         });
 
