@@ -299,6 +299,15 @@ class MasterSeeder extends Seeder
                 'sort_order' => 130,
                 'is_core' => true,
             ],
+            [
+                'key' => 'finance',
+                'name' => 'Finance',
+                'category' => 'Finance',
+                'description' => 'Chart of accounts, expenses, accounting reports, and financial controls.',
+                'route_module_keys' => ['tenant.finance'],
+                'sort_order' => 140,
+                'is_core' => false,
+            ],
         ];
 
         foreach ($modules as $module) {
@@ -338,6 +347,7 @@ class MasterSeeder extends Seeder
             'sales_controls',
             'multi_branch',
             'users_roles',
+            'finance',
         ];
 
         $planModuleMap = [
@@ -515,7 +525,7 @@ class MasterSeeder extends Seeder
                     'display_order' => 40,
                     'public_description' => 'Best for full-service restaurants, kitchens, and multi-station operations.',
                 ],
-                'modules' => ['pos', 'catalog', 'restaurant', 'kitchen_display', 'kitchen_inventory', 'inventory', 'purchasing', 'stock_count', 'printing', 'reports', 'sales_controls', 'multi_branch', 'users_roles'],
+                'modules' => ['pos', 'catalog', 'restaurant', 'kitchen_display', 'kitchen_inventory', 'inventory', 'purchasing', 'stock_count', 'printing', 'reports', 'sales_controls', 'multi_branch', 'users_roles', 'finance'],
                 'features' => [
                     'branch_limit' => '3',
                     'terminal_limit' => '6',

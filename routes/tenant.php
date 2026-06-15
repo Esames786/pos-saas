@@ -5,6 +5,7 @@ use App\Http\Controllers\Tenant\BranchController;
 use App\Http\Controllers\Tenant\CategoryController;
 use App\Http\Controllers\Tenant\CurrencyController;
 use App\Http\Controllers\Tenant\CustomerController;
+use App\Http\Controllers\Tenant\Finance\AccountController;
 use App\Http\Controllers\Tenant\DailyClosingController;
 use App\Http\Controllers\Tenant\DashboardController;
 use App\Http\Controllers\Tenant\GoodsReceiptController;
@@ -491,6 +492,14 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/reports/kitchen/production', [KitchenReportController::class, 'production'])->name('tenant.reports.kitchen.production');
                 Route::get('/reports/audit/manager-approvals', [AuditReportController::class, 'managerApprovals'])->name('tenant.reports.audit.manager-approvals');
                 Route::get('/reports/printing/jobs', [PrintReportController::class, 'jobs'])->name('tenant.reports.printing.jobs');
+
+                // Finance — Chart of Accounts (FIN-2)
+                Route::get('/finance/accounts', [AccountController::class, 'index'])->name('tenant.finance.accounts.index');
+                Route::get('/finance/accounts/create', [AccountController::class, 'create'])->name('tenant.finance.accounts.create');
+                Route::post('/finance/accounts', [AccountController::class, 'store'])->name('tenant.finance.accounts.store');
+                Route::get('/finance/accounts/{account}/edit', [AccountController::class, 'edit'])->name('tenant.finance.accounts.edit');
+                Route::put('/finance/accounts/{account}', [AccountController::class, 'update'])->name('tenant.finance.accounts.update');
+                Route::delete('/finance/accounts/{account}', [AccountController::class, 'destroy'])->name('tenant.finance.accounts.destroy');
             });
         });
 

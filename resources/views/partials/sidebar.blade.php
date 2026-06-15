@@ -703,6 +703,25 @@
                     @endcanany
                     @endif
 
+                    {{-- Finance section --}}
+                    @if($hasModule('finance'))
+                    @canany(['tenant.finance.accounts.index'])
+                    <li class="submenu-open">
+                        <h6 class="submenu-hdr">Finance</h6>
+                        <ul>
+                            @can('tenant.finance.accounts.index')
+                                <li class="{{ request()->is('finance/accounts*') ? 'active' : '' }}">
+                                    <a href="{{ url('/finance/accounts') }}">
+                                        <i class="ti ti-book-2 fs-16 me-2" aria-hidden="true"></i>
+                                        <span>Chart of Accounts</span>
+                                    </a>
+                                </li>
+                            @endcan
+                        </ul>
+                    </li>
+                    @endcanany
+                    @endif
+
                     {{-- Catalog section --}}
                     @canany(['tenant.units.index', 'tenant.categories.index', 'tenant.products.index'])
                     <li class="submenu-open">

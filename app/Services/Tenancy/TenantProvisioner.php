@@ -560,6 +560,14 @@ class TenantProvisioner
             'tenant.reports.kitchen.production',
             'tenant.reports.audit.manager-approvals',
             'tenant.reports.printing.jobs',
+
+            // Finance — Chart of Accounts (FIN-2)
+            'tenant.finance.accounts.index',
+            'tenant.finance.accounts.create',
+            'tenant.finance.accounts.store',
+            'tenant.finance.accounts.edit',
+            'tenant.finance.accounts.update',
+            'tenant.finance.accounts.destroy',
         ];
 
         \App\Models\Tenant\Customer::updateOrCreate(
@@ -608,6 +616,9 @@ class TenantProvisioner
         $role = Role::findOrCreate('Owner', 'tenant');
         $role->syncPermissions($tenantPermissions);
         $owner->syncRoles([$role]);
+
+        // Seed the default Chart of Accounts (FIN-2). Idempotent; tenant DB is active here.
+        (new \Database\Seeders\Tenant\DefaultChartOfAccountsSeeder())->run();
     }
 
     protected function makeDatabaseName(Tenant $tenant): string
