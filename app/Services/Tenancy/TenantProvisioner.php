@@ -576,6 +576,25 @@ class TenantProvisioner
             'tenant.finance.cash-bank-accounts.edit',
             'tenant.finance.cash-bank-accounts.update',
             'tenant.finance.cash-bank-accounts.destroy',
+
+            // Finance — Expense Categories (FIN-4)
+            'tenant.finance.expense-categories.index',
+            'tenant.finance.expense-categories.create',
+            'tenant.finance.expense-categories.store',
+            'tenant.finance.expense-categories.edit',
+            'tenant.finance.expense-categories.update',
+            'tenant.finance.expense-categories.destroy',
+
+            // Finance — Expense Vouchers (FIN-4)
+            'tenant.finance.expenses.index',
+            'tenant.finance.expenses.create',
+            'tenant.finance.expenses.store',
+            'tenant.finance.expenses.show',
+            'tenant.finance.expenses.edit',
+            'tenant.finance.expenses.update',
+            'tenant.finance.expenses.destroy',
+            'tenant.finance.expenses.post',
+            'tenant.finance.expenses.void',
         ];
 
         \App\Models\Tenant\Customer::updateOrCreate(
@@ -631,6 +650,10 @@ class TenantProvisioner
         // Seed default Cash & Bank accounts (FIN-3) — must run after the CoA seeder
         // (links to CoA codes 1110/1120/1210/1500).
         (new \Database\Seeders\Tenant\DefaultCashBankAccountsSeeder())->run();
+
+        // Seed default expense categories (FIN-4) — must run after the CoA seeder
+        // (links to expense CoA codes 6100-6800).
+        (new \Database\Seeders\Tenant\DefaultExpenseCategoriesSeeder())->run();
     }
 
     protected function makeDatabaseName(Tenant $tenant): string

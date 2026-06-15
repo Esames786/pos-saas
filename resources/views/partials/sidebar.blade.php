@@ -705,7 +705,7 @@
 
                     {{-- Finance section --}}
                     @if($hasModule('finance'))
-                    @canany(['tenant.finance.accounts.index', 'tenant.finance.cash-bank-accounts.index'])
+                    @canany(['tenant.finance.accounts.index', 'tenant.finance.cash-bank-accounts.index', 'tenant.finance.expense-categories.index', 'tenant.finance.expenses.index'])
                     <li class="submenu-open">
                         <h6 class="submenu-hdr">Finance</h6>
                         <ul>
@@ -723,6 +723,24 @@
                                     <a href="{{ url('/finance/cash-bank-accounts') }}">
                                         <i class="ti ti-cash fs-16 me-2" aria-hidden="true"></i>
                                         <span>Cash &amp; Bank Accounts</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.finance.expense-categories.index')
+                                <li class="{{ request()->is('finance/expense-categories*') ? 'active' : '' }}">
+                                    <a href="{{ url('/finance/expense-categories') }}">
+                                        <i class="ti ti-tags fs-16 me-2" aria-hidden="true"></i>
+                                        <span>Expense Categories</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.finance.expenses.index')
+                                <li class="{{ request()->is('finance/expenses*') ? 'active' : '' }}">
+                                    <a href="{{ url('/finance/expenses') }}">
+                                        <i class="ti ti-receipt-2 fs-16 me-2" aria-hidden="true"></i>
+                                        <span>Expenses</span>
                                     </a>
                                 </li>
                             @endcan

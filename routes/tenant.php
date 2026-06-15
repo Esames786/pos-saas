@@ -7,6 +7,8 @@ use App\Http\Controllers\Tenant\CurrencyController;
 use App\Http\Controllers\Tenant\CustomerController;
 use App\Http\Controllers\Tenant\Finance\AccountController;
 use App\Http\Controllers\Tenant\Finance\CashBankAccountController;
+use App\Http\Controllers\Tenant\Finance\ExpenseCategoryController;
+use App\Http\Controllers\Tenant\Finance\ExpenseVoucherController;
 use App\Http\Controllers\Tenant\DailyClosingController;
 use App\Http\Controllers\Tenant\DashboardController;
 use App\Http\Controllers\Tenant\GoodsReceiptController;
@@ -509,6 +511,25 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/finance/cash-bank-accounts/{cashBankAccount}/edit', [CashBankAccountController::class, 'edit'])->name('tenant.finance.cash-bank-accounts.edit');
                 Route::put('/finance/cash-bank-accounts/{cashBankAccount}', [CashBankAccountController::class, 'update'])->name('tenant.finance.cash-bank-accounts.update');
                 Route::delete('/finance/cash-bank-accounts/{cashBankAccount}', [CashBankAccountController::class, 'destroy'])->name('tenant.finance.cash-bank-accounts.destroy');
+
+                // Finance — Expense Categories (FIN-4)
+                Route::get('/finance/expense-categories', [ExpenseCategoryController::class, 'index'])->name('tenant.finance.expense-categories.index');
+                Route::get('/finance/expense-categories/create', [ExpenseCategoryController::class, 'create'])->name('tenant.finance.expense-categories.create');
+                Route::post('/finance/expense-categories', [ExpenseCategoryController::class, 'store'])->name('tenant.finance.expense-categories.store');
+                Route::get('/finance/expense-categories/{expenseCategory}/edit', [ExpenseCategoryController::class, 'edit'])->name('tenant.finance.expense-categories.edit');
+                Route::put('/finance/expense-categories/{expenseCategory}', [ExpenseCategoryController::class, 'update'])->name('tenant.finance.expense-categories.update');
+                Route::delete('/finance/expense-categories/{expenseCategory}', [ExpenseCategoryController::class, 'destroy'])->name('tenant.finance.expense-categories.destroy');
+
+                // Finance — Expense Vouchers (FIN-4)
+                Route::get('/finance/expenses', [ExpenseVoucherController::class, 'index'])->name('tenant.finance.expenses.index');
+                Route::get('/finance/expenses/create', [ExpenseVoucherController::class, 'create'])->name('tenant.finance.expenses.create');
+                Route::post('/finance/expenses', [ExpenseVoucherController::class, 'store'])->name('tenant.finance.expenses.store');
+                Route::get('/finance/expenses/{expenseVoucher}', [ExpenseVoucherController::class, 'show'])->name('tenant.finance.expenses.show');
+                Route::get('/finance/expenses/{expenseVoucher}/edit', [ExpenseVoucherController::class, 'edit'])->name('tenant.finance.expenses.edit');
+                Route::put('/finance/expenses/{expenseVoucher}', [ExpenseVoucherController::class, 'update'])->name('tenant.finance.expenses.update');
+                Route::delete('/finance/expenses/{expenseVoucher}', [ExpenseVoucherController::class, 'destroy'])->name('tenant.finance.expenses.destroy');
+                Route::post('/finance/expenses/{expenseVoucher}/post', [ExpenseVoucherController::class, 'post'])->name('tenant.finance.expenses.post');
+                Route::post('/finance/expenses/{expenseVoucher}/void', [ExpenseVoucherController::class, 'void'])->name('tenant.finance.expenses.void');
             });
         });
 
