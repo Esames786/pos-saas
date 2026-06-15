@@ -715,7 +715,7 @@
 
                     {{-- Finance section --}}
                     @if($hasModule('finance'))
-                    @canany(['tenant.finance.accounts.index', 'tenant.finance.cash-bank-accounts.index', 'tenant.finance.expense-categories.index', 'tenant.finance.expenses.index', 'tenant.finance.customer-payments.index', 'tenant.finance.journal-entries.index', 'tenant.finance.general-ledger.index', 'tenant.finance.trial-balance.index', 'tenant.finance.profit-loss.index'])
+                    @canany(['tenant.finance.accounts.index', 'tenant.finance.cash-bank-accounts.index', 'tenant.finance.expense-categories.index', 'tenant.finance.expenses.index', 'tenant.finance.customer-payments.index', 'tenant.finance.journal-entries.index', 'tenant.finance.general-ledger.index', 'tenant.finance.trial-balance.index', 'tenant.finance.profit-loss.index', 'tenant.finance.balance-sheet.index'])
                     <li class="submenu-open">
                         <h6 class="submenu-hdr">Finance</h6>
                         <ul>
@@ -796,6 +796,15 @@
                                     <a href="{{ url('/finance/profit-loss') }}">
                                         <i class="ti ti-chart-infographic fs-16 me-2" aria-hidden="true"></i>
                                         <span>Profit &amp; Loss</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.finance.balance-sheet.index')
+                                <li class="{{ request()->is('finance/balance-sheet*') ? 'active' : '' }}">
+                                    <a href="{{ url('/finance/balance-sheet') }}">
+                                        <i class="ti ti-report-money fs-16 me-2" aria-hidden="true"></i>
+                                        <span>Balance Sheet</span>
                                     </a>
                                 </li>
                             @endcan

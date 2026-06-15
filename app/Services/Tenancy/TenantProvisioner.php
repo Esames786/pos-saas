@@ -612,6 +612,9 @@ class TenantProvisioner
 
             // Finance — Profit & Loss (FIN-9)
             'tenant.finance.profit-loss.index',
+
+            // Finance — Balance Sheet (FIN-10)
+            'tenant.finance.balance-sheet.index',
         ];
 
         \App\Models\Tenant\Customer::updateOrCreate(
