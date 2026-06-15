@@ -6,6 +6,7 @@ use App\Models\Tenant\SalesLedger;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\SalesReturn;
 use App\Models\Tenant\Shift;
+use App\Services\Finance\JournalPostingService;
 use App\Services\Inventory\InventoryService;
 use Illuminate\Support\Facades\DB;
 
@@ -14,6 +15,7 @@ class SalesReturnService
     public function __construct(
         private readonly InventoryService $inventoryService,
         private readonly SalesService $salesService,
+        private readonly JournalPostingService $journalPosting,
     ) {}
 
     public function processReturn(
@@ -24,7 +26,7 @@ class SalesReturnService
         ?float $refundAmount,
         int $userId,
     ): SalesReturn {
-        return DB::connection('tenant')->transaction(function () use (
+        $salesReturn = DB::connection('tenant')->transaction(function () use (
             $salesOrder, $lines, $reason, $refundMethod, $refundAmount, $userId
         ) {
             $salesOrder->load(['branch', 'lines.product', 'lines.variant']);
@@ -80,7 +82,7 @@ class SalesReturnService
                         variant:       $orderLine->variant,
                         quantity:      $qty,
                         unitCost:      (float) ($orderLine->unit_cost > 0 ? $orderLine->unit_cost : 0),
-                        movementType:  'return',
+                        movementType:  'sale_return',
                         referenceType: 'sales_return',
                         referenceId:   $salesReturn->id,
                         referenceNo:   $salesReturn->return_no,
@@ -111,7 +113,7 @@ class SalesReturnService
                 'branch_id'          => $salesReturn->branch_id,
                 'sales_order_id'     => $salesOrder->id,
                 'sale_payment_id'    => null,
-                'entry_type'         => 'return',
+                'entry_type'         => 'sale_return',
                 'direction'          => 'debit',
                 'amount'             => $grandTotal,
                 'reference_no'       => $salesReturn->return_no,
@@ -123,6 +125,13 @@ class SalesReturnService
 
             return $salesReturn->fresh();
         });
+
+        // FIN-7C: GL reversal + operational cash/bank refund. Idempotent + safe
+        // (JournalPostingService catches/reports — never breaks return processing).
+        $this->journalPosting->postSalesReturn($salesReturn, $userId);
+        $this->journalPosting->postSalesReturnCashBankMovement($salesReturn, $userId);
+
+        return $salesReturn;
     }
 
     private function updateShiftForReturn(SalesOrder $salesOrder, ?string $refundMethod, float $grandTotal): void

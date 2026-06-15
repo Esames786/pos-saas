@@ -3,11 +3,13 @@
 namespace App\Services\Finance;
 
 use App\Models\Tenant\CashBankAccount;
+use App\Models\Tenant\CashBankAccountTransaction;
 use App\Models\Tenant\CustomerPayment;
 use App\Models\Tenant\ExpenseVoucher;
 use App\Models\Tenant\JournalEntry;
 use App\Models\Tenant\PurchaseBill;
 use App\Models\Tenant\SalesOrder;
+use App\Models\Tenant\SalesReturn;
 use App\Models\Tenant\SupplierPayment;
 use Throwable;
 
@@ -168,7 +170,7 @@ class JournalPostingService
                 return null;
             }
 
-            $sale->loadMissing(['payments.method.cashBankAccount']);
+            $sale->loadMissing(['payments.method.cashBankAccount', 'lines']);
 
             $discount = round((float) ($sale->discount_amount ?? 0), 4);
             $tax      = round((float) ($sale->tax_amount ?? 0), 4);
@@ -228,6 +230,16 @@ class JournalPostingService
                 $lines[] = ['account_code' => $revenueCode, 'branch_id' => $sale->branch_id, 'description' => 'Sales revenue ' . $sale->sale_no, 'debit' => 0, 'credit' => $grand];
             }
 
+            // COGS (FIN-7C): Dr 5100 Product COGS / Cr 1400 Inventory Asset — an
+            // independently balanced pair, so the whole entry stays balanced.
+            // cost_total is set by finalizePaidSale for stock-tracked items (recipe
+            // items keep 0 — their ingredient cost lives in stock_ledgers).
+            $cogs = round((float) $sale->lines->sum('cost_total'), 4);
+            if ($cogs > 0) {
+                $lines[] = ['account_code' => '5100', 'branch_id' => $sale->branch_id, 'description' => 'COGS ' . $sale->sale_no, 'debit' => $cogs, 'credit' => 0];
+                $lines[] = ['account_code' => '1400', 'branch_id' => $sale->branch_id, 'description' => 'Inventory reduction ' . $sale->sale_no, 'debit' => 0, 'credit' => $cogs];
+            }
+
             return $this->journal->post(
                 'sales_order_paid',
                 $sale->id,
@@ -275,6 +287,174 @@ class JournalPostingService
         } catch (Throwable $e) {
             report($e);
             return null;
+        }
+    }
+
+    /**
+     * Reverse a sale for a return/refund (FIN-7C):
+     *   Dr Sales Revenue (subtotal) + Dr Sales Tax Payable (tax)  / Cr cash-bank (grand_total)
+     *   plus COGS reversal Dr Inventory / Cr COGS for the returned cost (restocked goods).
+     */
+    public function postSalesReturn(SalesReturn $return, ?int $userId = null): ?JournalEntry
+    {
+        try {
+            $grand = round((float) $return->grand_total, 4);
+            if ($grand <= 0) {
+                return null;
+            }
+
+            $subtotal = round((float) $return->subtotal, 4);
+            $tax      = round((float) $return->tax_amount, 4);
+
+            $return->loadMissing(['order', 'lines.orderLine']);
+
+            $revenueCode = in_array($return->order?->order_type, ['dine_in', 'takeaway', 'delivery'], true) ? '4120' : '4110';
+
+            // Where the refund money goes out (by refund_method); fallback Undeposited.
+            $code = match ($return->refund_method) {
+                'cash'          => 'CASH-MAIN',
+                'bank_transfer' => 'BANK-MAIN',
+                default         => 'UNDEPOSITED',
+            };
+            $creditAccountId = CashBankAccount::where('code', $code)->value('account_id') ?? $this->journal->accountId('1500');
+
+            $lines = [];
+            if ($subtotal > 0) {
+                $lines[] = ['account_code' => $revenueCode, 'branch_id' => $return->branch_id, 'description' => 'Sales return ' . $return->return_no, 'debit' => $subtotal, 'credit' => 0];
+            }
+            if ($tax > 0) {
+                $lines[] = ['account_code' => '2200', 'branch_id' => $return->branch_id, 'description' => 'Sales tax reversal', 'debit' => $tax, 'credit' => 0];
+            }
+            $lines[] = ['account_id' => $creditAccountId, 'branch_id' => $return->branch_id, 'description' => 'Refund ' . $return->return_no, 'debit' => 0, 'credit' => $grand];
+
+            // COGS reversal — returned goods go back into inventory (balanced pair).
+            $cogs = 0.0;
+            foreach ($return->lines as $line) {
+                $cogs += (float) $line->quantity * (float) ($line->orderLine?->unit_cost ?? 0);
+            }
+            $cogs = round($cogs, 4);
+            if ($cogs > 0) {
+                $lines[] = ['account_code' => '1400', 'branch_id' => $return->branch_id, 'description' => 'Inventory restock ' . $return->return_no, 'debit' => $cogs, 'credit' => 0];
+                $lines[] = ['account_code' => '5100', 'branch_id' => $return->branch_id, 'description' => 'COGS reversal ' . $return->return_no, 'debit' => 0, 'credit' => $cogs];
+            }
+
+            return $this->journal->post(
+                'sales_return',
+                $return->id,
+                $return->return_no,
+                'Sales return ' . $return->return_no,
+                ($return->return_date ?? now())->toDateString(),
+                $lines,
+                $userId
+            );
+        } catch (Throwable $e) {
+            report($e);
+            return null;
+        }
+    }
+
+    /**
+     * Operational cash/bank movement for a fully-paid POS sale (FIN-7C): one IN
+     * transaction per sale payment (mapped account), bumping current_balance.
+     * Idempotent per sale_payment id; skips payments without a mapped account.
+     */
+    public function postSalesCashBankMovement(SalesOrder $sale, ?int $userId = null): void
+    {
+        try {
+            $sale->loadMissing('payments.method');
+
+            foreach ($sale->payments as $payment) {
+                $cashBankAccountId = $payment->method?->cash_bank_account_id;
+                if (! $cashBankAccountId) {
+                    continue;
+                }
+
+                $exists = CashBankAccountTransaction::query()
+                    ->where('reference_type', 'sale_payment')
+                    ->where('reference_id', $payment->id)
+                    ->where('transaction_type', 'sales_payment')
+                    ->exists();
+                if ($exists) {
+                    continue;
+                }
+
+                $cash = CashBankAccount::whereKey($cashBankAccountId)->lockForUpdate()->first();
+                if (! $cash) {
+                    continue;
+                }
+
+                $newBalance = (float) $cash->current_balance + (float) $payment->amount;
+
+                CashBankAccountTransaction::create([
+                    'cash_bank_account_id' => $cash->id,
+                    'transaction_date'     => ($sale->sale_date ?? now())->toDateString(),
+                    'direction'            => 'in',
+                    'amount'               => $payment->amount,
+                    'balance_after'        => $newBalance,
+                    'transaction_type'     => 'sales_payment',
+                    'reference_type'       => 'sale_payment',
+                    'reference_id'         => $payment->id,
+                    'notes'                => 'Sale receipt ' . $sale->sale_no,
+                    'created_by_user_id'   => $userId,
+                ]);
+
+                $cash->update(['current_balance' => $newBalance]);
+            }
+        } catch (Throwable $e) {
+            report($e);
+        }
+    }
+
+    /** Operational cash/bank OUT movement for a sales return refund (FIN-7C). Idempotent. */
+    public function postSalesReturnCashBankMovement(SalesReturn $return, ?int $userId = null): void
+    {
+        try {
+            $amount = round((float) $return->grand_total, 4);
+            if ($amount <= 0 || ! $return->refund_method) {
+                return;
+            }
+
+            $code = match ($return->refund_method) {
+                'cash'          => 'CASH-MAIN',
+                'bank_transfer' => 'BANK-MAIN',
+                default         => null, // card/other/store-credit: no operational drawer movement
+            };
+            if (! $code) {
+                return;
+            }
+
+            $cash = CashBankAccount::where('code', $code)->lockForUpdate()->first();
+            if (! $cash) {
+                return;
+            }
+
+            $exists = CashBankAccountTransaction::query()
+                ->where('reference_type', 'sales_return')
+                ->where('reference_id', $return->id)
+                ->where('transaction_type', 'sales_return_refund')
+                ->exists();
+            if ($exists) {
+                return;
+            }
+
+            $newBalance = (float) $cash->current_balance - $amount;
+
+            CashBankAccountTransaction::create([
+                'cash_bank_account_id' => $cash->id,
+                'transaction_date'     => ($return->return_date ?? now())->toDateString(),
+                'direction'            => 'out',
+                'amount'               => $amount,
+                'balance_after'        => $newBalance,
+                'transaction_type'     => 'sales_return_refund',
+                'reference_type'       => 'sales_return',
+                'reference_id'         => $return->id,
+                'notes'                => 'Refund ' . $return->return_no,
+                'created_by_user_id'   => $userId,
+            ]);
+
+            $cash->update(['current_balance' => $newBalance]);
+        } catch (Throwable $e) {
+            report($e);
         }
     }
 

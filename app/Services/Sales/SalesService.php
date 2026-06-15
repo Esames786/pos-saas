@@ -103,7 +103,10 @@ class SalesService
         // FIN-7B: GL posting for normal paid sales. The operational sale flow above
         // remains the source of truth; journal posting is idempotent and never throws
         // (JournalPostingService catches/reports), so it can never break checkout.
-        app(JournalPostingService::class)->postPaidSale($sale, $sale->created_by_user_id);
+        $journalPosting = app(JournalPostingService::class);
+        $journalPosting->postPaidSale($sale, $sale->created_by_user_id);
+        // FIN-7C: operational cash/bank balance movement for POS receipts (safe + idempotent).
+        $journalPosting->postSalesCashBankMovement($sale, $sale->created_by_user_id);
 
         return $sale;
     }
