@@ -613,6 +613,9 @@ class TenantProvisioner
             // Finance — Profit & Loss (FIN-9)
             'tenant.finance.profit-loss.index',
 
+            // Finance — Branch-wise P&L (FIN-11)
+            'tenant.finance.branch-profit-loss.index',
+
             // Finance — Balance Sheet (FIN-10)
             'tenant.finance.balance-sheet.index',
         ];
