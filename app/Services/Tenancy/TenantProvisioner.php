@@ -568,6 +568,14 @@ class TenantProvisioner
             'tenant.finance.accounts.edit',
             'tenant.finance.accounts.update',
             'tenant.finance.accounts.destroy',
+
+            // Finance — Cash & Bank Accounts (FIN-3)
+            'tenant.finance.cash-bank-accounts.index',
+            'tenant.finance.cash-bank-accounts.create',
+            'tenant.finance.cash-bank-accounts.store',
+            'tenant.finance.cash-bank-accounts.edit',
+            'tenant.finance.cash-bank-accounts.update',
+            'tenant.finance.cash-bank-accounts.destroy',
         ];
 
         \App\Models\Tenant\Customer::updateOrCreate(
@@ -619,6 +627,10 @@ class TenantProvisioner
 
         // Seed the default Chart of Accounts (FIN-2). Idempotent; tenant DB is active here.
         (new \Database\Seeders\Tenant\DefaultChartOfAccountsSeeder())->run();
+
+        // Seed default Cash & Bank accounts (FIN-3) — must run after the CoA seeder
+        // (links to CoA codes 1110/1120/1210/1500).
+        (new \Database\Seeders\Tenant\DefaultCashBankAccountsSeeder())->run();
     }
 
     protected function makeDatabaseName(Tenant $tenant): string

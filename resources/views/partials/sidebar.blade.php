@@ -705,7 +705,7 @@
 
                     {{-- Finance section --}}
                     @if($hasModule('finance'))
-                    @canany(['tenant.finance.accounts.index'])
+                    @canany(['tenant.finance.accounts.index', 'tenant.finance.cash-bank-accounts.index'])
                     <li class="submenu-open">
                         <h6 class="submenu-hdr">Finance</h6>
                         <ul>
@@ -714,6 +714,15 @@
                                     <a href="{{ url('/finance/accounts') }}">
                                         <i class="ti ti-book-2 fs-16 me-2" aria-hidden="true"></i>
                                         <span>Chart of Accounts</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.finance.cash-bank-accounts.index')
+                                <li class="{{ request()->is('finance/cash-bank-accounts*') ? 'active' : '' }}">
+                                    <a href="{{ url('/finance/cash-bank-accounts') }}">
+                                        <i class="ti ti-cash fs-16 me-2" aria-hidden="true"></i>
+                                        <span>Cash &amp; Bank Accounts</span>
                                     </a>
                                 </li>
                             @endcan

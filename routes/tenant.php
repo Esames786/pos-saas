@@ -6,6 +6,7 @@ use App\Http\Controllers\Tenant\CategoryController;
 use App\Http\Controllers\Tenant\CurrencyController;
 use App\Http\Controllers\Tenant\CustomerController;
 use App\Http\Controllers\Tenant\Finance\AccountController;
+use App\Http\Controllers\Tenant\Finance\CashBankAccountController;
 use App\Http\Controllers\Tenant\DailyClosingController;
 use App\Http\Controllers\Tenant\DashboardController;
 use App\Http\Controllers\Tenant\GoodsReceiptController;
@@ -500,6 +501,14 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/finance/accounts/{account}/edit', [AccountController::class, 'edit'])->name('tenant.finance.accounts.edit');
                 Route::put('/finance/accounts/{account}', [AccountController::class, 'update'])->name('tenant.finance.accounts.update');
                 Route::delete('/finance/accounts/{account}', [AccountController::class, 'destroy'])->name('tenant.finance.accounts.destroy');
+
+                // Finance — Cash & Bank Accounts (FIN-3)
+                Route::get('/finance/cash-bank-accounts', [CashBankAccountController::class, 'index'])->name('tenant.finance.cash-bank-accounts.index');
+                Route::get('/finance/cash-bank-accounts/create', [CashBankAccountController::class, 'create'])->name('tenant.finance.cash-bank-accounts.create');
+                Route::post('/finance/cash-bank-accounts', [CashBankAccountController::class, 'store'])->name('tenant.finance.cash-bank-accounts.store');
+                Route::get('/finance/cash-bank-accounts/{cashBankAccount}/edit', [CashBankAccountController::class, 'edit'])->name('tenant.finance.cash-bank-accounts.edit');
+                Route::put('/finance/cash-bank-accounts/{cashBankAccount}', [CashBankAccountController::class, 'update'])->name('tenant.finance.cash-bank-accounts.update');
+                Route::delete('/finance/cash-bank-accounts/{cashBankAccount}', [CashBankAccountController::class, 'destroy'])->name('tenant.finance.cash-bank-accounts.destroy');
             });
         });
 
