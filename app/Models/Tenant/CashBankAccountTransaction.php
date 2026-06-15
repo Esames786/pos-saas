@@ -11,7 +11,11 @@ class CashBankAccountTransaction extends Model
 
     public const DIRECTIONS = ['in', 'out'];
 
-    public const TYPES = ['opening_balance', 'manual_adjustment', 'expense_payment', 'expense_void_reversal'];
+    public const TYPES = [
+        'opening_balance', 'manual_adjustment',
+        'expense_payment', 'expense_void_reversal',
+        'supplier_payment', 'supplier_payment_void_reversal',
+    ];
 
     protected $fillable = [
         'cash_bank_account_id',

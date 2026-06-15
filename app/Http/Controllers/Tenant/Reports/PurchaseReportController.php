@@ -5,12 +5,16 @@ namespace App\Http\Controllers\Tenant\Reports;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\Supplier;
+use App\Services\Finance\SupplierPayableService;
 use App\Services\Reports\PurchaseReportService;
 use Illuminate\Http\Request;
 
 class PurchaseReportController extends Controller
 {
-    public function __construct(private readonly PurchaseReportService $service) {}
+    public function __construct(
+        private readonly PurchaseReportService $service,
+        private readonly SupplierPayableService $payableService,
+    ) {}
 
     public function summary(Request $request)
     {
@@ -52,20 +56,44 @@ class PurchaseReportController extends Controller
 
     public function payables(Request $request)
     {
-        $rows = $this->service->payables();
+        $filters = [
+            'supplier_id' => $request->input('supplier_id'),
+            'branch_id'   => $request->input('branch_id'),
+            'as_of_date'  => $request->input('as_of_date', today()->format('Y-m-d')),
+            'status'      => $request->input('status', 'all'),
+        ];
+
+        $aging  = $this->payableService->aging($filters);
+        $rows   = $aging['rows'];
+        $totals = $aging['totals'];
 
         if ($request->boolean('export_csv')) {
-            return response()->streamDownload(function () use ($rows) {
+            return response()->streamDownload(function () use ($rows, $totals) {
                 $fp = fopen('php://output', 'w');
-                fputcsv($fp, ['Supplier', 'Phone', 'Email', 'Outstanding Balance', 'Status']);
+                fputcsv($fp, ['Supplier', 'Current', '1-30', '31-60', '61-90', '90+', 'Total Due']);
                 foreach ($rows as $r) {
-                    fputcsv($fp, [$r->name, $r->phone, $r->email, number_format($r->current_balance, 2), $r->status]);
+                    fputcsv($fp, [
+                        $r['supplier_name'],
+                        number_format($r['current'], 2), number_format($r['d1_30'], 2),
+                        number_format($r['d31_60'], 2), number_format($r['d61_90'], 2),
+                        number_format($r['d90_plus'], 2), number_format($r['total'], 2),
+                    ]);
                 }
+                fputcsv($fp, [
+                    'TOTAL',
+                    number_format($totals['current'], 2), number_format($totals['d1_30'], 2),
+                    number_format($totals['d31_60'], 2), number_format($totals['d61_90'], 2),
+                    number_format($totals['d90_plus'], 2), number_format($totals['total'], 2),
+                ]);
                 fclose($fp);
-            }, 'supplier-payables-' . now()->format('Y-m-d') . '.csv', ['Content-Type' => 'text/csv']);
+            }, 'supplier-payables-aging-' . now()->format('Y-m-d') . '.csv', ['Content-Type' => 'text/csv']);
         }
 
-        return view('tenant.reports.purchases.payables', compact('rows'));
+        return view('tenant.reports.purchases.payables', array_merge(
+            compact('rows', 'totals', 'filters'),
+            ['asOf' => $aging['as_of']],
+            $this->sharedViewData()
+        ));
     }
 
     private function sharedViewData(): array

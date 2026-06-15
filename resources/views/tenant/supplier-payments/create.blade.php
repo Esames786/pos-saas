@@ -76,6 +76,21 @@
             </div>
 
             <div class="col-md-3">
+                <label for="cash_bank_account_id" class="form-label">Pay From (Cash/Bank)</label>
+                <select id="cash_bank_account_id" name="cash_bank_account_id"
+                        class="form-select @error('cash_bank_account_id') is-invalid @enderror">
+                    <option value="">— None (no cash/bank effect) —</option>
+                    @foreach($cashBankAccounts as $cba)
+                        <option value="{{ $cba->id }}" @selected(old('cash_bank_account_id') == $cba->id)>
+                            {{ $cba->code }} — {{ $cba->name }}
+                        </option>
+                    @endforeach
+                </select>
+                <small class="text-muted">Select to deduct this payment from a cash/bank balance.</small>
+                @error('cash_bank_account_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
+            </div>
+
+            <div class="col-md-3">
                 <label for="payment_method" class="form-label required">Payment Method</label>
                 <select id="payment_method" name="payment_method"
                         class="form-select @error('payment_method') is-invalid @enderror" required>

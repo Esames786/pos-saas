@@ -10,7 +10,7 @@ class SupplierPayment extends Model
     protected $table = 'supplier_payments';
 
     protected $fillable = [
-        'payment_no', 'supplier_id', 'branch_id', 'purchase_bill_id',
+        'payment_no', 'supplier_id', 'branch_id', 'cash_bank_account_id', 'purchase_bill_id',
         'payment_date', 'amount', 'payment_method', 'reference_no',
         'bank_name', 'account_no', 'transaction_ref', 'cheque_no', 'cheque_date',
         'notes', 'posted_by_user_id',
@@ -29,6 +29,11 @@ class SupplierPayment extends Model
     public function branch()
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    public function cashBankAccount()
+    {
+        return $this->belongsTo(CashBankAccount::class);
     }
 
     public function bill()
