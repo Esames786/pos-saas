@@ -31,6 +31,9 @@ class SalesOrder extends Model
         'tip_amount',
         'grand_total',
         'paid_amount',
+        'balance_due',
+        'payment_status',
+        'due_date',
         'change_amount',
         'manager_approval_id',
         'status',
@@ -56,6 +59,8 @@ class SalesOrder extends Model
             'tip_amount'            => 'decimal:2',
             'grand_total'           => 'decimal:2',
             'paid_amount'           => 'decimal:2',
+            'balance_due'           => 'decimal:4',
+            'due_date'              => 'date',
             'change_amount'         => 'decimal:2',
             'inventory_posted'      => 'boolean',
             'completed_at'          => 'datetime',
@@ -95,6 +100,11 @@ class SalesOrder extends Model
     public function payments()
     {
         return $this->hasMany(SalePayment::class);
+    }
+
+    public function customerPayments()
+    {
+        return $this->hasMany(CustomerPayment::class);
     }
 
     public function ledgerEntries()

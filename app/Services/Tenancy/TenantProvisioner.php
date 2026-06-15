@@ -360,6 +360,7 @@ class TenantProvisioner
             'tenant.customers.edit',
             'tenant.customers.update',
             'tenant.customers.destroy',
+            'tenant.customers.ledger',
 
             // Payment Methods
             'tenant.payment-methods.index',
@@ -595,6 +596,13 @@ class TenantProvisioner
             'tenant.finance.expenses.destroy',
             'tenant.finance.expenses.post',
             'tenant.finance.expenses.void',
+
+            // Finance — Customer Payments + Receivables (FIN-6)
+            'tenant.finance.customer-payments.index',
+            'tenant.finance.customer-payments.create',
+            'tenant.finance.customer-payments.store',
+            'tenant.finance.customer-payments.show',
+            'tenant.reports.sales.receivables',
         ];
 
         \App\Models\Tenant\Customer::updateOrCreate(

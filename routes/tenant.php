@@ -7,6 +7,7 @@ use App\Http\Controllers\Tenant\CurrencyController;
 use App\Http\Controllers\Tenant\CustomerController;
 use App\Http\Controllers\Tenant\Finance\AccountController;
 use App\Http\Controllers\Tenant\Finance\CashBankAccountController;
+use App\Http\Controllers\Tenant\Finance\CustomerPaymentController;
 use App\Http\Controllers\Tenant\Finance\ExpenseCategoryController;
 use App\Http\Controllers\Tenant\Finance\ExpenseVoucherController;
 use App\Http\Controllers\Tenant\DailyClosingController;
@@ -288,6 +289,7 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/customers', [CustomerController::class, 'index'])->name('tenant.customers.index');
                 Route::get('/customers/create', [CustomerController::class, 'create'])->name('tenant.customers.create');
                 Route::post('/customers', [CustomerController::class, 'store'])->name('tenant.customers.store');
+                Route::get('/customers/{customer}/ledger', [CustomerController::class, 'ledger'])->name('tenant.customers.ledger');
                 Route::get('/customers/{customer}', [CustomerController::class, 'show'])->name('tenant.customers.show');
                 Route::get('/customers/{customer}/edit', [CustomerController::class, 'edit'])->name('tenant.customers.edit');
                 Route::put('/customers/{customer}', [CustomerController::class, 'update'])->name('tenant.customers.update');
@@ -476,6 +478,7 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/reports/sales/summary',  [SalesReportController::class, 'summary'])->name('tenant.reports.sales.summary');
                 Route::get('/reports/sales/items',    [SalesReportController::class, 'items'])->name('tenant.reports.sales.items');
                 Route::get('/reports/sales/payments', [SalesReportController::class, 'payments'])->name('tenant.reports.sales.payments');
+                Route::get('/reports/sales/receivables', [SalesReportController::class, 'receivables'])->name('tenant.reports.sales.receivables');
                 Route::get('/reports/shifts',         [ShiftReportController::class, 'index'])->name('tenant.reports.shifts');
                 Route::get('/reports/inventory/valuation', [InventoryReportController::class, 'valuation'])->name('tenant.reports.inventory.valuation');
 
@@ -530,6 +533,12 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::delete('/finance/expenses/{expenseVoucher}', [ExpenseVoucherController::class, 'destroy'])->name('tenant.finance.expenses.destroy');
                 Route::post('/finance/expenses/{expenseVoucher}/post', [ExpenseVoucherController::class, 'post'])->name('tenant.finance.expenses.post');
                 Route::post('/finance/expenses/{expenseVoucher}/void', [ExpenseVoucherController::class, 'void'])->name('tenant.finance.expenses.void');
+
+                // Finance — Customer Payments (FIN-6)
+                Route::get('/finance/customer-payments', [CustomerPaymentController::class, 'index'])->name('tenant.finance.customer-payments.index');
+                Route::get('/finance/customer-payments/create', [CustomerPaymentController::class, 'create'])->name('tenant.finance.customer-payments.create');
+                Route::post('/finance/customer-payments', [CustomerPaymentController::class, 'store'])->name('tenant.finance.customer-payments.store');
+                Route::get('/finance/customer-payments/{customerPayment}', [CustomerPaymentController::class, 'show'])->name('tenant.finance.customer-payments.show');
             });
         });
 

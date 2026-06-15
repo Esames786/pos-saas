@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Tenant;
 
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Customer;
+use App\Models\Tenant\CustomerLedger;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -80,6 +81,17 @@ class CustomerController extends Controller
         $customer->delete();
 
         return redirect(url('/customers'))->with('status', 'Customer deleted successfully.');
+    }
+
+    public function ledger(Customer $customer)
+    {
+        $ledgers = CustomerLedger::where('customer_id', $customer->id)
+            ->with(['branch', 'createdBy'])
+            ->orderByDesc('entry_date')
+            ->orderByDesc('id')
+            ->paginate(30);
+
+        return view('tenant.customers.ledger', compact('customer', 'ledgers'));
     }
 
     public function quickStore(Request $request)

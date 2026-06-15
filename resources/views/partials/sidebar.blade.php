@@ -632,6 +632,14 @@
                                     </a>
                                 </li>
                             @endcan
+                            @can('tenant.reports.sales.receivables')
+                                <li class="{{ request()->is('reports/sales/receivables') ? 'active' : '' }}">
+                                    <a href="{{ url('/reports/sales/receivables') }}">
+                                        <i class="ti ti-cash-banknote fs-16 me-2" aria-hidden="true"></i>
+                                        <span>Receivables Aging</span>
+                                    </a>
+                                </li>
+                            @endcan
                             @can('tenant.reports.restaurant.tables')
                                 <li class="{{ request()->is('reports/restaurant*') ? 'active' : '' }}">
                                     <a href="{{ url('/reports/restaurant/tables') }}">
@@ -705,7 +713,7 @@
 
                     {{-- Finance section --}}
                     @if($hasModule('finance'))
-                    @canany(['tenant.finance.accounts.index', 'tenant.finance.cash-bank-accounts.index', 'tenant.finance.expense-categories.index', 'tenant.finance.expenses.index'])
+                    @canany(['tenant.finance.accounts.index', 'tenant.finance.cash-bank-accounts.index', 'tenant.finance.expense-categories.index', 'tenant.finance.expenses.index', 'tenant.finance.customer-payments.index'])
                     <li class="submenu-open">
                         <h6 class="submenu-hdr">Finance</h6>
                         <ul>
@@ -741,6 +749,15 @@
                                     <a href="{{ url('/finance/expenses') }}">
                                         <i class="ti ti-receipt-2 fs-16 me-2" aria-hidden="true"></i>
                                         <span>Expenses</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.finance.customer-payments.index')
+                                <li class="{{ request()->is('finance/customer-payments*') ? 'active' : '' }}">
+                                    <a href="{{ url('/finance/customer-payments') }}">
+                                        <i class="ti ti-coin fs-16 me-2" aria-hidden="true"></i>
+                                        <span>Customer Payments</span>
                                     </a>
                                 </li>
                             @endcan

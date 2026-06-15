@@ -4,15 +4,20 @@ namespace App\Http\Controllers\Tenant\Reports;
 
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Branch;
+use App\Models\Tenant\Customer;
 use App\Models\Tenant\Terminal;
 use App\Models\Tenant\User;
+use App\Services\Finance\CustomerReceivableService;
 use App\Services\Reports\SalesReportService;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SalesReportController extends Controller
 {
-    public function __construct(private readonly SalesReportService $service) {}
+    public function __construct(
+        private readonly SalesReportService $service,
+        private readonly CustomerReceivableService $receivables,
+    ) {}
 
     public function summary(Request $request)
     {
@@ -51,6 +56,49 @@ class SalesReportController extends Controller
 
         return view('tenant.reports.sales.payments', array_merge(
             compact('rows', 'filters'),
+            $this->sharedViewData()
+        ));
+    }
+
+    public function receivables(Request $request)
+    {
+        $filters = [
+            'customer_id' => $request->input('customer_id'),
+            'branch_id'   => $request->input('branch_id'),
+            'as_of_date'  => $request->input('as_of_date', today()->format('Y-m-d')),
+            'status'      => $request->input('status', 'all'),
+        ];
+
+        $aging  = $this->receivables->aging($filters);
+        $rows   = $aging['rows'];
+        $totals = $aging['totals'];
+        $asOf   = $aging['as_of'];
+
+        if ($request->boolean('export_csv')) {
+            return response()->streamDownload(function () use ($rows, $totals) {
+                $fp = fopen('php://output', 'w');
+                fputcsv($fp, ['Customer', 'Current', '1-30', '31-60', '61-90', '90+', 'Total Due']);
+                foreach ($rows as $r) {
+                    fputcsv($fp, [
+                        $r['customer_name'],
+                        number_format($r['current'], 2), number_format($r['d1_30'], 2),
+                        number_format($r['d31_60'], 2), number_format($r['d61_90'], 2),
+                        number_format($r['d90_plus'], 2), number_format($r['total'], 2),
+                    ]);
+                }
+                fputcsv($fp, [
+                    'TOTAL',
+                    number_format($totals['current'], 2), number_format($totals['d1_30'], 2),
+                    number_format($totals['d31_60'], 2), number_format($totals['d61_90'], 2),
+                    number_format($totals['d90_plus'], 2), number_format($totals['total'], 2),
+                ]);
+                fclose($fp);
+            }, 'customer-receivables-aging-' . now()->format('Y-m-d') . '.csv', ['Content-Type' => 'text/csv']);
+        }
+
+        return view('tenant.reports.sales.receivables', array_merge(
+            compact('rows', 'totals', 'filters', 'asOf'),
+            ['customers' => Customer::where('status', 'active')->orderBy('name')->get()],
             $this->sharedViewData()
         ));
     }
