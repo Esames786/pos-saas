@@ -140,6 +140,109 @@ class JournalPostingService
         }
     }
 
+    /**
+     * Dr cash/bank (by payment-method mapping) / Cr sales revenue + tax + service + tips,
+     * with sales discount as a contra-income debit, for a fully-paid POS sale (FIN-7B).
+     *
+     * Revenue is computed as the balancing figure so the entry always balances.
+     * COGS is deferred (see FIN-7C). Returns null for non-paid sales or credit sales.
+     */
+    public function postPaidSale(SalesOrder $sale, ?int $userId = null): ?JournalEntry
+    {
+        try {
+            $grand = round((float) $sale->grand_total, 4);
+            if ($grand <= 0) {
+                return null;
+            }
+
+            // Must be fully paid; never journal a sale that still has a receivable.
+            $balanceDue = round((float) ($sale->balance_due ?? 0), 4);
+            $fullyPaid = $sale->payment_status === 'paid'
+                || ($balanceDue <= 0 && (float) $sale->paid_amount + 0.01 >= $grand);
+            if (! $fullyPaid) {
+                return null;
+            }
+
+            // If this sale was already journaled as a credit sale, don't also post it as paid.
+            if ($this->journal->findPostedForSource('sales_order_credit', $sale->id)) {
+                return null;
+            }
+
+            $sale->loadMissing(['payments.method.cashBankAccount']);
+
+            $discount = round((float) ($sale->discount_amount ?? 0), 4);
+            $tax      = round((float) ($sale->tax_amount ?? 0), 4);
+            $service  = round((float) ($sale->service_charge_amount ?? 0), 4);
+            $tip      = round((float) ($sale->tip_amount ?? 0), 4);
+
+            $undepositedId = $this->journal->accountId('1500');
+
+            // ── Debit side: allocate grand_total across payment methods' mapped accounts ──
+            $lines = [];
+            $remaining = $grand;
+            foreach ($sale->payments as $payment) {
+                if ($remaining <= 0) {
+                    break;
+                }
+                $applied = min(round((float) $payment->amount, 4), $remaining);
+                if ($applied <= 0) {
+                    continue;
+                }
+                $accountId = $payment->method?->cashBankAccount?->account_id ?? $undepositedId;
+                $lines[] = [
+                    'account_id'  => $accountId,
+                    'branch_id'   => $sale->branch_id,
+                    'description' => 'Sale receipt (' . ($payment->method?->name ?? 'payment') . ')',
+                    'debit'       => $applied,
+                    'credit'      => 0,
+                ];
+                $remaining -= $applied;
+            }
+            if (empty($lines)) {
+                $lines[] = ['account_id' => $undepositedId, 'branch_id' => $sale->branch_id, 'description' => 'Sale proceeds', 'debit' => $grand, 'credit' => 0];
+                $remaining = 0.0;
+            } elseif ($remaining > 0.0001) {
+                $lines[] = ['account_id' => $undepositedId, 'branch_id' => $sale->branch_id, 'description' => 'Sale proceeds (unallocated)', 'debit' => round($remaining, 4), 'credit' => 0];
+                $remaining = 0.0;
+            }
+
+            $revenueCode = in_array($sale->order_type, ['dine_in', 'takeaway', 'delivery'], true) ? '4120' : '4110';
+            $revenue = round($grand + $discount - $tax - $service - $tip, 4);
+
+            if ($revenue > 0) {
+                if ($discount > 0) {
+                    $lines[] = ['account_code' => '4200', 'branch_id' => $sale->branch_id, 'description' => 'Sales discount', 'debit' => $discount, 'credit' => 0];
+                }
+                if ($tax > 0) {
+                    $lines[] = ['account_code' => '2200', 'branch_id' => $sale->branch_id, 'description' => 'Sales tax payable', 'debit' => 0, 'credit' => $tax];
+                }
+                if ($service > 0) {
+                    $lines[] = ['account_code' => '4130', 'branch_id' => $sale->branch_id, 'description' => 'Service charge', 'debit' => 0, 'credit' => $service];
+                }
+                if ($tip > 0) {
+                    $lines[] = ['account_code' => '4140', 'branch_id' => $sale->branch_id, 'description' => 'Tips', 'debit' => 0, 'credit' => $tip];
+                }
+                $lines[] = ['account_code' => $revenueCode, 'branch_id' => $sale->branch_id, 'description' => 'Sales revenue ' . $sale->sale_no, 'debit' => 0, 'credit' => $revenue];
+            } else {
+                // Pathological (revenue computes <= 0): keep it simple and balanced.
+                $lines[] = ['account_code' => $revenueCode, 'branch_id' => $sale->branch_id, 'description' => 'Sales revenue ' . $sale->sale_no, 'debit' => 0, 'credit' => $grand];
+            }
+
+            return $this->journal->post(
+                'sales_order_paid',
+                $sale->id,
+                $sale->sale_no,
+                'Paid sale ' . $sale->sale_no,
+                ($sale->sale_date ?? now())->toDateString(),
+                $lines,
+                $userId
+            );
+        } catch (Throwable $e) {
+            report($e);
+            return null;
+        }
+    }
+
     /** Dr Accounts Receivable / Cr Sales Revenue for the credit (unpaid) portion of a sale. */
     public function postCreditSale(SalesOrder $sale, ?int $userId = null): ?JournalEntry
     {

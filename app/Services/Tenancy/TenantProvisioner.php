@@ -668,6 +668,9 @@ class TenantProvisioner
         // Seed default expense categories (FIN-4) — must run after the CoA seeder
         // (links to expense CoA codes 6100-6800).
         (new \Database\Seeders\Tenant\DefaultExpenseCategoriesSeeder())->run();
+
+        // Map payment methods → cash/bank accounts (FIN-7B) — after cash/bank seeder.
+        (new \Database\Seeders\Tenant\DefaultPaymentMethodCashBankMappingSeeder())->run();
     }
 
     protected function makeDatabaseName(Tenant $tenant): string

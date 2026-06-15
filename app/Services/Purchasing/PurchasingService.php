@@ -89,6 +89,10 @@ class PurchasingService
             $bill->notes,
             $userId
         );
+
+        // FIN-7B: GL journal (Dr Inventory Asset / Cr Accounts Payable). Idempotent + safe
+        // (JournalPostingService catches/reports — never breaks bill posting).
+        app(\App\Services\Finance\JournalPostingService::class)->postPurchaseBill($bill, $userId);
     }
 
     public function postPayment(SupplierPayment $payment, ?int $userId = null): void

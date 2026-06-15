@@ -31,6 +31,7 @@
                         <th scope="col">Code</th>
                         <th scope="col">Name</th>
                         <th scope="col">Type</th>
+                        <th scope="col">Cash/Bank</th>
                         <th scope="col">Cash Drawer</th>
                         <th scope="col">Active</th>
                         <th scope="col" class="text-end">Actions</th>
@@ -42,6 +43,7 @@
                             <td><code>{{ $method->code }}</code></td>
                             <td>{{ $method->name }}</td>
                             <td>{{ str_replace('_', ' ', ucfirst($method->method_type)) }}</td>
+                            <td class="text-muted">{{ $method->cashBankAccount?->code ?? '—' }}</td>
                             <td>{{ $method->is_cash_drawer ? 'Yes' : 'No' }}</td>
                             <td>
                                 <span class="badge bg-{{ $method->is_active ? 'success' : 'secondary' }}">
@@ -68,7 +70,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="6" class="text-center text-muted py-4">No payment methods configured.</td>
+                            <td colspan="7" class="text-center text-muted py-4">No payment methods configured.</td>
                         </tr>
                     @endforelse
                     </tbody>
@@ -111,6 +113,18 @@
                             <option value="other"         @selected(old('method_type') === 'other')>Other</option>
                         </select>
                         @error('method_type') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                    </div>
+                    <div class="mb-3">
+                        <label for="cash_bank_account_id" class="form-label">Linked Cash/Bank Account</label>
+                        <select id="cash_bank_account_id" name="cash_bank_account_id"
+                                class="form-select @error('cash_bank_account_id') is-invalid @enderror">
+                            <option value="">— None —</option>
+                            @foreach($cashBankAccounts as $cba)
+                                <option value="{{ $cba->id }}" @selected(old('cash_bank_account_id') == $cba->id)>{{ $cba->code }} — {{ $cba->name }}</option>
+                            @endforeach
+                        </select>
+                        <small class="text-muted">Where sales paid with this method are recorded in the ledger.</small>
+                        @error('cash_bank_account_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
                     </div>
                     <div class="mb-2 form-check">
                         <input class="form-check-input" type="checkbox" id="requires_reference"
@@ -171,6 +185,15 @@
                                 <option value="cheque"        @selected($method->method_type === 'cheque')>Cheque</option>
                                 <option value="wallet"        @selected($method->method_type === 'wallet')>Wallet</option>
                                 <option value="other"         @selected($method->method_type === 'other')>Other</option>
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <label for="edit-cba-{{ $method->id }}" class="form-label">Linked Cash/Bank Account</label>
+                            <select id="edit-cba-{{ $method->id }}" name="cash_bank_account_id" class="form-select">
+                                <option value="">— None —</option>
+                                @foreach($cashBankAccounts as $cba)
+                                    <option value="{{ $cba->id }}" @selected($method->cash_bank_account_id == $cba->id)>{{ $cba->code }} — {{ $cba->name }}</option>
+                                @endforeach
                             </select>
                         </div>
                         <div class="col-12">

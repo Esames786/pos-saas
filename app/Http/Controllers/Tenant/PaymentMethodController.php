@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Tenant;
 
 use App\Http\Controllers\Controller;
+use App\Models\Tenant\CashBankAccount;
 use App\Models\Tenant\PaymentMethod;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -12,7 +13,8 @@ class PaymentMethodController extends Controller
     public function index()
     {
         return view('tenant.payment-methods.index', [
-            'methods' => PaymentMethod::orderBy('method_type')->orderBy('name')->get(),
+            'methods'          => PaymentMethod::with('cashBankAccount')->orderBy('method_type')->orderBy('name')->get(),
+            'cashBankAccounts' => CashBankAccount::where('is_active', true)->orderBy('code')->get(),
         ]);
     }
 
@@ -46,21 +48,23 @@ class PaymentMethodController extends Controller
     private function validateMethod(Request $request, ?PaymentMethod $paymentMethod = null): array
     {
         $data = $request->validate([
-            'code'               => ['required', 'string', 'max:50', Rule::unique('payment_methods', 'code')->ignore($paymentMethod?->id)],
-            'name'               => ['required', 'string', 'max:190'],
-            'method_type'        => ['required', Rule::in(['cash', 'card', 'bank_transfer', 'cheque', 'wallet', 'other'])],
-            'requires_reference' => ['nullable', 'boolean'],
-            'is_cash_drawer'     => ['nullable', 'boolean'],
-            'is_active'          => ['nullable', 'boolean'],
+            'code'                 => ['required', 'string', 'max:50', Rule::unique('payment_methods', 'code')->ignore($paymentMethod?->id)],
+            'name'                 => ['required', 'string', 'max:190'],
+            'method_type'          => ['required', Rule::in(['cash', 'card', 'bank_transfer', 'cheque', 'wallet', 'other'])],
+            'cash_bank_account_id' => ['nullable', Rule::exists('tenant.cash_bank_accounts', 'id')->where('is_active', true)],
+            'requires_reference'   => ['nullable', 'boolean'],
+            'is_cash_drawer'       => ['nullable', 'boolean'],
+            'is_active'            => ['nullable', 'boolean'],
         ]);
 
         return [
-            'code'               => strtoupper(trim($data['code'])),
-            'name'               => $data['name'],
-            'method_type'        => $data['method_type'],
-            'requires_reference' => !empty($data['requires_reference']),
-            'is_cash_drawer'     => !empty($data['is_cash_drawer']),
-            'is_active'          => !empty($data['is_active']),
+            'code'                 => strtoupper(trim($data['code'])),
+            'name'                 => $data['name'],
+            'method_type'          => $data['method_type'],
+            'cash_bank_account_id' => $data['cash_bank_account_id'] ?? null,
+            'requires_reference'   => !empty($data['requires_reference']),
+            'is_cash_drawer'       => !empty($data['is_cash_drawer']),
+            'is_active'            => !empty($data['is_active']),
         ];
     }
 }

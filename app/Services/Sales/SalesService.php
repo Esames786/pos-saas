@@ -7,6 +7,7 @@ use App\Models\Tenant\RestaurantTableSession;
 use App\Models\Tenant\SalesLedger;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\Shift;
+use App\Services\Finance\JournalPostingService;
 use App\Services\Inventory\InventoryService;
 use App\Services\Kitchen\RecipeConsumptionService;
 use Illuminate\Support\Facades\DB;
@@ -22,7 +23,7 @@ class SalesService
 
     public function finalizePaidSale(SalesOrder $sale): SalesOrder
     {
-        return DB::connection('tenant')->transaction(function () use ($sale) {
+        $sale = DB::connection('tenant')->transaction(function () use ($sale) {
             $sale->load([
                 'branch',
                 'terminal',
@@ -98,6 +99,13 @@ class SalesService
 
             return $sale->fresh();
         });
+
+        // FIN-7B: GL posting for normal paid sales. The operational sale flow above
+        // remains the source of truth; journal posting is idempotent and never throws
+        // (JournalPostingService catches/reports), so it can never break checkout.
+        app(JournalPostingService::class)->postPaidSale($sale, $sale->created_by_user_id);
+
+        return $sale;
     }
 
     private function postSalesLedger(SalesOrder $sale): void

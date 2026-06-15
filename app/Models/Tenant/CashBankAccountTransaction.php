@@ -16,6 +16,7 @@ class CashBankAccountTransaction extends Model
         'expense_payment', 'expense_void_reversal',
         'supplier_payment', 'supplier_payment_void_reversal',
         'customer_payment', 'customer_payment_void_reversal',
+        'sales_payment', 'sales_payment_void_reversal',
     ];
 
     protected $fillable = [

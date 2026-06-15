@@ -14,6 +14,7 @@ class PaymentMethod extends Model
         'method_type',
         'requires_reference',
         'is_cash_drawer',
+        'cash_bank_account_id',
         'is_active',
     ];
 
@@ -29,5 +30,10 @@ class PaymentMethod extends Model
     public function payments()
     {
         return $this->hasMany(SalePayment::class);
+    }
+
+    public function cashBankAccount()
+    {
+        return $this->belongsTo(CashBankAccount::class);
     }
 }
