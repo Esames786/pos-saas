@@ -609,6 +609,9 @@ class TenantProvisioner
             'tenant.finance.journal-entries.show',
             'tenant.finance.general-ledger.index',
             'tenant.finance.trial-balance.index',
+
+            // Finance — Profit & Loss (FIN-9)
+            'tenant.finance.profit-loss.index',
         ];
 
         \App\Models\Tenant\Customer::updateOrCreate(

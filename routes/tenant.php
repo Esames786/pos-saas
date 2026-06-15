@@ -12,6 +12,7 @@ use App\Http\Controllers\Tenant\Finance\ExpenseCategoryController;
 use App\Http\Controllers\Tenant\Finance\ExpenseVoucherController;
 use App\Http\Controllers\Tenant\Finance\GeneralLedgerController;
 use App\Http\Controllers\Tenant\Finance\JournalEntryController;
+use App\Http\Controllers\Tenant\Finance\ProfitLossController;
 use App\Http\Controllers\Tenant\Finance\TrialBalanceController;
 use App\Http\Controllers\Tenant\DailyClosingController;
 use App\Http\Controllers\Tenant\DashboardController;
@@ -548,6 +549,7 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/finance/journal-entries/{journalEntry}', [JournalEntryController::class, 'show'])->name('tenant.finance.journal-entries.show');
                 Route::get('/finance/general-ledger', [GeneralLedgerController::class, 'index'])->name('tenant.finance.general-ledger.index');
                 Route::get('/finance/trial-balance', [TrialBalanceController::class, 'index'])->name('tenant.finance.trial-balance.index');
+                Route::get('/finance/profit-loss', [ProfitLossController::class, 'index'])->name('tenant.finance.profit-loss.index');
             });
         });
 
