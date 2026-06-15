@@ -83,8 +83,23 @@ class PermissionSyncService
             });
     }
 
+    /**
+     * Exact route-name → module_key overrides. These win over the default
+     * 2-segment derivation so a single route can belong to a different module
+     * than its name prefix implies.
+     */
+    private const MODULE_KEY_OVERRIDES = [
+        // Receivables aging is a finance/accounting report, not a generic
+        // reports-module report — gate it behind the finance module (FIN-6A).
+        'tenant.reports.sales.receivables' => 'tenant.finance',
+    ];
+
     public function moduleKey(string $routeName): string
     {
+        if (isset(self::MODULE_KEY_OVERRIDES[$routeName])) {
+            return self::MODULE_KEY_OVERRIDES[$routeName];
+        }
+
         $parts = explode('.', $routeName);
 
         return count($parts) >= 2

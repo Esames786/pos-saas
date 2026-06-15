@@ -632,6 +632,7 @@
                                     </a>
                                 </li>
                             @endcan
+                            @if($hasModule('finance'))
                             @can('tenant.reports.sales.receivables')
                                 <li class="{{ request()->is('reports/sales/receivables') ? 'active' : '' }}">
                                     <a href="{{ url('/reports/sales/receivables') }}">
@@ -640,6 +641,7 @@
                                     </a>
                                 </li>
                             @endcan
+                            @endif
                             @can('tenant.reports.restaurant.tables')
                                 <li class="{{ request()->is('reports/restaurant*') ? 'active' : '' }}">
                                     <a href="{{ url('/reports/restaurant/tables') }}">
