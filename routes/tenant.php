@@ -12,6 +12,7 @@ use App\Http\Controllers\Tenant\Finance\ExpenseCategoryController;
 use App\Http\Controllers\Tenant\Finance\ExpenseVoucherController;
 use App\Http\Controllers\Tenant\Finance\BalanceSheetController;
 use App\Http\Controllers\Tenant\Finance\BranchProfitLossController;
+use App\Http\Controllers\Tenant\Finance\FinancialExportController;
 use App\Http\Controllers\Tenant\Finance\GeneralLedgerController;
 use App\Http\Controllers\Tenant\Finance\JournalEntryController;
 use App\Http\Controllers\Tenant\Finance\ProfitLossController;
@@ -554,6 +555,7 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/finance/profit-loss', [ProfitLossController::class, 'index'])->name('tenant.finance.profit-loss.index');
                 Route::get('/finance/branch-profit-loss', [BranchProfitLossController::class, 'index'])->name('tenant.finance.branch-profit-loss.index');
                 Route::get('/finance/balance-sheet', [BalanceSheetController::class, 'index'])->name('tenant.finance.balance-sheet.index');
+                Route::get('/finance/export', [FinancialExportController::class, 'index'])->name('tenant.finance.export.index');
             });
         });
 

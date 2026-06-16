@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Tenant\Finance;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Branch;
 use App\Services\Finance\BranchProfitLossService;
+use App\Support\CsvStreamer;
 use Illuminate\Http\Request;
 
 class BranchProfitLossController extends Controller
@@ -34,10 +35,9 @@ class BranchProfitLossController extends Controller
 
     private function csv(array $report)
     {
-        return response()->streamDownload(function () use ($report) {
-            $fp = fopen('php://output', 'w');
-            fputcsv($fp, ['Branch-wise P&L', $report['period']['from'] . ' to ' . $report['period']['to']]);
-            fputcsv($fp, []);
+        $header = CsvStreamer::financeHeader('Branch-wise Profit & Loss', ['Period' => $report['period']['from'] . ' to ' . $report['period']['to']]);
+
+        return CsvStreamer::download('branch-profit-loss-' . $report['period']['from'] . '_' . $report['period']['to'] . '.csv', $header, function ($fp) use ($report) {
             fputcsv($fp, ['Branch', 'Gross Revenue', 'Discounts', 'Net Revenue', 'COGS', 'Gross Profit', 'Operating Expenses', 'Net Profit', 'Gross Margin %', 'Net Margin %']);
             foreach ($report['rows'] as $r) {
                 fputcsv($fp, [
@@ -56,7 +56,6 @@ class BranchProfitLossController extends Controller
                 number_format($t['gross_profit'], 2), number_format($t['operating_expenses'], 2),
                 number_format($t['net_profit'], 2), $t['gross_margin_percent'], $t['net_margin_percent'],
             ]);
-            fclose($fp);
-        }, 'branch-profit-loss-' . $report['period']['from'] . '_' . $report['period']['to'] . '.csv', ['Content-Type' => 'text/csv']);
+        });
     }
 }

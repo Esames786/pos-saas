@@ -8,6 +8,14 @@
                 <h4>Trial Balance</h4>
                 <h6>As of {{ $asOf }}</h6>
             </div>
+            <div class="page-btn">
+                <form method="GET" class="d-inline">
+                    @foreach($filters as $k => $val)
+                        @if($val)<input type="hidden" name="{{ $k }}" value="{{ $val }}">@endif
+                    @endforeach
+                    <button type="submit" name="export_csv" value="1" class="btn btn-outline-success btn-sm"><i class="ti ti-download me-1"></i>CSV</button>
+                </form>
+            </div>
         </div>
 
         <div class="card">

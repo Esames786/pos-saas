@@ -5,11 +5,14 @@ namespace App\Http\Controllers\Tenant\Finance;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Account;
 use App\Models\Tenant\Branch;
-use App\Models\Tenant\JournalLine;
+use App\Services\Finance\FinancialExportService;
+use App\Support\CsvStreamer;
 use Illuminate\Http\Request;
 
 class GeneralLedgerController extends Controller
 {
+    public function __construct(private FinancialExportService $exportService) {}
+
     public function index(Request $request)
     {
         $accountId = $request->input('account_id');
@@ -19,19 +22,12 @@ class GeneralLedgerController extends Controller
 
         $account = $accountId ? Account::find($accountId) : null;
 
-        $lines = JournalLine::query()
-            ->select('journal_lines.*')
-            ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
-            ->where('journal_entries.status', 'posted')
-            ->when($accountId, fn ($q) => $q->where('journal_lines.account_id', $accountId))
-            ->when($branchId, fn ($q) => $q->where('journal_lines.branch_id', $branchId))
-            ->when($dateFrom, fn ($q) => $q->whereDate('journal_entries.entry_date', '>=', $dateFrom))
-            ->when($dateTo, fn ($q) => $q->whereDate('journal_entries.entry_date', '<=', $dateTo))
-            ->with(['account', 'branch', 'journalEntry'])
-            ->orderBy('journal_entries.entry_date')
-            ->orderBy('journal_entries.id')
-            ->limit(2000)
-            ->get();
+        $lines = $this->exportService->generalLedgerLines(
+            $dateFrom ?: '2000-01-01',
+            $dateTo ?: today()->format('Y-m-d'),
+            $branchId ?: null,
+            $accountId ?: null
+        );
 
         // Running balance is only meaningful when a single account is selected.
         $showRunning = (bool) $account;
@@ -44,6 +40,10 @@ class GeneralLedgerController extends Controller
             }
         }
 
+        if ($request->boolean('export_csv')) {
+            return $this->csv($lines, $account, $showRunning, $branchId);
+        }
+
         return view('tenant.finance.general-ledger.index', [
             'lines'       => $lines,
             'account'     => $account,
@@ -52,5 +52,40 @@ class GeneralLedgerController extends Controller
             'branches'    => Branch::orderBy('name')->get(['id', 'name']),
             'filters'     => $request->only(['account_id', 'branch_id', 'date_from', 'date_to']),
         ]);
+    }
+
+    private function csv($lines, ?Account $account, bool $showRunning, ?int $branchId)
+    {
+        $branchName = $branchId ? (Branch::find($branchId)?->name ?? '') : 'All branches';
+
+        $header = CsvStreamer::financeHeader('General Ledger', [
+            'Account' => $account ? ($account->code . ' — ' . $account->name) : 'All accounts',
+            'Branch'  => $branchName,
+        ]);
+
+        return CsvStreamer::download('general-ledger-' . now()->format('Y-m-d') . '.csv', $header, function ($fp) use ($lines, $showRunning) {
+            $cols = ['Date', 'Entry No', 'Account Code', 'Account', 'Branch', 'Description', 'Debit', 'Credit'];
+            if ($showRunning) {
+                $cols[] = 'Running Balance';
+            }
+            fputcsv($fp, $cols);
+
+            foreach ($lines as $line) {
+                $row = [
+                    optional($line->journalEntry->entry_date)->format('Y-m-d'),
+                    $line->journalEntry->entry_no ?? '',
+                    $line->account->code ?? '',
+                    $line->account->name ?? '',
+                    $line->branch->name ?? '',
+                    $line->description,
+                    number_format((float) $line->debit, 2, '.', ''),
+                    number_format((float) $line->credit, 2, '.', ''),
+                ];
+                if ($showRunning) {
+                    $row[] = number_format((float) ($line->running ?? 0), 2, '.', '');
+                }
+                fputcsv($fp, $row);
+            }
+        });
     }
 }

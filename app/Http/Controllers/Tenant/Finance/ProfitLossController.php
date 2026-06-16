@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Tenant\Finance;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Branch;
 use App\Services\Finance\ProfitLossService;
+use App\Support\CsvStreamer;
 use Illuminate\Http\Request;
 
 class ProfitLossController extends Controller
@@ -34,10 +35,9 @@ class ProfitLossController extends Controller
 
     private function csv(array $pl)
     {
-        return response()->streamDownload(function () use ($pl) {
-            $fp = fopen('php://output', 'w');
-            fputcsv($fp, ['Profit & Loss', $pl['period']['from'] . ' to ' . $pl['period']['to']]);
-            fputcsv($fp, []);
+        $header = CsvStreamer::financeHeader('Profit & Loss', ['Period' => $pl['period']['from'] . ' to ' . $pl['period']['to']]);
+
+        return CsvStreamer::download('profit-loss-' . $pl['period']['from'] . '_' . $pl['period']['to'] . '.csv', $header, function ($fp) use ($pl) {
             fputcsv($fp, ['Section', 'Code', 'Account', 'Amount']);
 
             foreach ($pl['revenue_rows'] as $r) {
@@ -58,7 +58,6 @@ class ProfitLossController extends Controller
             }
             fputcsv($fp, ['', '', 'Total Operating Expenses', number_format($pl['total_expenses'], 2)]);
             fputcsv($fp, ['', '', 'Net Profit / Loss', number_format($pl['net_profit'], 2)]);
-            fclose($fp);
-        }, 'profit-loss-' . $pl['period']['from'] . '_' . $pl['period']['to'] . '.csv', ['Content-Type' => 'text/csv']);
+        });
     }
 }

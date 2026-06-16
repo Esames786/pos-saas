@@ -10,6 +10,20 @@
                 <h4>Journal Entries</h4>
                 <h6>Double-entry general ledger journals</h6>
             </div>
+            <div class="page-btn d-flex gap-2">
+                <form method="GET" class="d-inline">
+                    @foreach($filters as $k => $val)
+                        @if($val)<input type="hidden" name="{{ $k }}" value="{{ $val }}">@endif
+                    @endforeach
+                    <button type="submit" name="export_csv" value="1" class="btn btn-outline-success btn-sm"><i class="ti ti-download me-1"></i>Entries CSV</button>
+                </form>
+                <form method="GET" class="d-inline">
+                    @foreach($filters as $k => $val)
+                        @if($val)<input type="hidden" name="{{ $k }}" value="{{ $val }}">@endif
+                    @endforeach
+                    <button type="submit" name="export_csv" value="lines" class="btn btn-outline-success btn-sm"><i class="ti ti-download me-1"></i>Lines CSV</button>
+                </form>
+            </div>
         </div>
 
         <div class="card">

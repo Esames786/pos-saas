@@ -618,6 +618,9 @@ class TenantProvisioner
 
             // Finance — Balance Sheet (FIN-10)
             'tenant.finance.balance-sheet.index',
+
+            // Finance — Accounting Export (FIN-12)
+            'tenant.finance.export.index',
         ];
 
         \App\Models\Tenant\Customer::updateOrCreate(

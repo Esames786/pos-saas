@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Tenant\Finance;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Branch;
 use App\Services\Finance\BalanceSheetService;
+use App\Support\CsvStreamer;
 use Illuminate\Http\Request;
 
 class BalanceSheetController extends Controller
@@ -33,10 +34,9 @@ class BalanceSheetController extends Controller
 
     private function csv(array $bs)
     {
-        return response()->streamDownload(function () use ($bs) {
-            $fp = fopen('php://output', 'w');
-            fputcsv($fp, ['Balance Sheet', 'As of ' . $bs['as_of_date']]);
-            fputcsv($fp, []);
+        $header = CsvStreamer::financeHeader('Balance Sheet', ['As of' => $bs['as_of_date']]);
+
+        return CsvStreamer::download('balance-sheet-' . $bs['as_of_date'] . '.csv', $header, function ($fp) use ($bs) {
             fputcsv($fp, ['Section', 'Code', 'Account', 'Amount']);
 
             foreach ($bs['asset_rows'] as $r) {
@@ -54,7 +54,6 @@ class BalanceSheetController extends Controller
             fputcsv($fp, ['', '', 'Total Equity + Current Earnings', number_format($bs['total_equity'] + $bs['current_earnings'], 2)]);
             fputcsv($fp, ['', '', 'Total Liabilities + Equity', number_format($bs['total_liabilities_equity'], 2)]);
             fputcsv($fp, ['', '', 'Difference', number_format($bs['difference'], 2)]);
-            fclose($fp);
-        }, 'balance-sheet-' . $bs['as_of_date'] . '.csv', ['Content-Type' => 'text/csv']);
+        });
     }
 }
