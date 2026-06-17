@@ -304,6 +304,23 @@
         .float-card { animation:floatY 5.5s ease-in-out infinite; }
         .float-card-delay { animation:floatY 6.5s ease-in-out infinite .8s; }
 
+        /* hero module thumbnail rail — shows breadth beyond restaurant */
+        .hero-modrail { position:absolute; left:-24px; top:22%; flex-direction:column; gap:.55rem; z-index:11; }
+        .hero-modrail-cap {
+            font-size:.58rem; font-weight:800; letter-spacing:.6px; text-transform:uppercase;
+            color:#0f172a; background:linear-gradient(135deg,#e9c869,#caa23f);
+            border-radius:8px; padding:.2rem .5rem; text-align:center; box-shadow:0 6px 16px rgba(7,16,38,.25);
+        }
+        .hero-modthumb {
+            width:78px; background:rgba(255,255,255,.97); border:1px solid rgba(202,162,63,.55);
+            border-radius:12px; padding:5px; box-shadow:0 8px 22px rgba(7,16,38,.28); text-align:center;
+        }
+        .hero-modthumb img { width:100%; height:42px; object-fit:cover; border-radius:8px; display:block; }
+        .hero-modthumb span {
+            display:block; font-size:.58rem; font-weight:800; letter-spacing:.3px;
+            color:#0f172a; margin-top:3px; text-transform:uppercase;
+        }
+
         .marquee-wrap { overflow:hidden; }
         .marquee-track { display:flex; gap:1rem; width:max-content; animation:marquee 28s linear infinite; }
         @keyframes marquee { from { transform:translateX(0); } to { transform:translateX(-50%); } }

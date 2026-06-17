@@ -54,6 +54,14 @@
                         <span class="dot" style="background:#10b981;"></span> Branch report <strong>synced</strong>
                     </div>
 
+                    {{-- All-in-one module thumbnails (real product images) — signals retail/inventory/reports, not just restaurant --}}
+                    <div class="hero-modrail float-soft-2 d-none d-lg-flex">
+                        <div class="hero-modrail-cap">All-in-one</div>
+                        <div class="hero-modthumb"><img src="{{ asset('images/data/hero-retail.webp') }}" alt="Retail checkout" loading="lazy"><span>Retail</span></div>
+                        <div class="hero-modthumb"><img src="{{ asset('images/data/hero-inventory.webp') }}" alt="Inventory &amp; stock" loading="lazy"><span>Inventory</span></div>
+                        <div class="hero-modthumb"><img src="{{ asset('images/data/hero-reports.webp') }}" alt="Reports &amp; dashboards" loading="lazy"><span>Reports</span></div>
+                    </div>
+
                     <div class="hero-glow-card p-3 reveal">
                         <img src="{{ asset('images/data/Banner-Full.webp') }}"
                              alt="Bingoo POS on laptop, tablet, and mobile" class="img-fluid rounded-4">
