@@ -14,7 +14,7 @@
             <div class="col-lg-5">
                 <span class="hero-badge mb-3"><i class="ti ti-bolt"></i> Your dream POS is only 3 clicks away</span>
                 <h1 class="fw-bold mb-3" style="font-size:2.6rem;line-height:1.2;letter-spacing:-.5px;">
-                    Run your store, kitchen, and inventory from one powerful cloud POS.
+                    Sell anything, run everything — one powerful cloud POS.
                 </h1>
                 <p class="mb-4" style="color:#cbd5e1;font-size:1.1rem;line-height:1.7;">
                     Launch a cloud workspace for sales, barcode checkout, restaurant tables, KOT,
