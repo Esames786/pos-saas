@@ -17,23 +17,30 @@ class RecipeConsumptionService
     ) {
     }
 
-    public function consumeForSalesOrderLine(SalesOrder $sale, SalesOrderLine $line, Branch $branch): void
+    /**
+     * Consume recipe ingredients for a sold line and RETURN the total ingredient
+     * cost consumed (FIN-11A). The caller (SalesService) stores this on the sale
+     * line as unit_cost/cost_total so the paid-sale journal can post COGS.
+     */
+    public function consumeForSalesOrderLine(SalesOrder $sale, SalesOrderLine $line, Branch $branch): float
     {
         $product = $line->product;
 
         if (!$product || $product->inventory_consumption_method !== 'recipe') {
-            return;
+            return 0.0;
         }
 
         $recipe = $product->activeRecipe()->with(['ingredients.product.unit', 'ingredients.variant', 'ingredients.unit'])->first();
 
         if (!$recipe) {
-            return;
+            return 0.0;
         }
 
         $soldQty   = (float) $line->quantity;
         $yieldQty  = (float) $recipe->yield_quantity ?: 1;
         $batchCount = $soldQty / $yieldQty;
+
+        $totalCost = 0.0;
 
         foreach ($recipe->ingredients as $ingredient) {
             $ingredientProduct = $ingredient->product;
@@ -62,7 +69,7 @@ class RecipeConsumptionService
                 }
             }
 
-            $this->inventoryService->postOutFefo(
+            $ledgers = $this->inventoryService->postOutFefo(
                 branch: $branch,
                 product: $ingredientProduct,
                 variant: $ingredient->variant,
@@ -74,6 +81,8 @@ class RecipeConsumptionService
                 notes: "Recipe consumption for {$product->name} (Sale {$sale->sale_no})",
                 userId: $sale->created_by_user_id,
             );
+
+            $totalCost += (float) collect($ledgers)->sum(fn ($ledger) => (float) $ledger->total_cost);
 
             RecipeConsumption::create([
                 'recipe_id'           => $recipe->id,
@@ -87,5 +96,7 @@ class RecipeConsumptionService
                 'notes'               => "Consumed for sale line #{$line->id}",
             ]);
         }
+
+        return round($totalCost, 4);
     }
 }

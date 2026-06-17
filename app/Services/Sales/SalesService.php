@@ -54,7 +54,17 @@ class SalesService
                     $consumptionMethod = $product->inventory_consumption_method ?? 'stock_item';
 
                     if ($consumptionMethod === 'recipe') {
-                        $this->recipeConsumptionService->consumeForSalesOrderLine($sale, $line, $sale->branch);
+                        // FIN-11A: capture the consumed ingredient cost as the line COGS
+                        // so postPaidSale posts Dr 5100 COGS / Cr 1400 Inventory.
+                        $recipeCost = $this->recipeConsumptionService->consumeForSalesOrderLine($sale, $line, $sale->branch);
+
+                        if ($recipeCost > 0) {
+                            $quantity = (float) $line->quantity;
+                            $line->update([
+                                'unit_cost'  => $quantity > 0 ? round($recipeCost / $quantity, 4) : 0,
+                                'cost_total' => round($recipeCost, 4),
+                            ]);
+                        }
                     } elseif ($consumptionMethod === 'stock_item' && $product->is_stock_tracked) {
                         $ledgers = $this->inventoryService->postOutFefo(
                             branch: $sale->branch,
