@@ -41,7 +41,7 @@
         ['kitchen','Kitchen Operations','Send orders to the kitchen without paper','images/data/kitchen_display.png',false,
             ['Kitchen Display System (KDS)','KOT routing by category & station','Prep / ready / served states','Recipes, productions & wastage'],
             'Faster turnaround and fewer missed or wrong orders.'],
-        ['inventory','Inventory & Purchasing','Know your stock before it runs out','images/data/mart.webp',true,
+        ['inventory','Inventory & Purchasing','Know your stock before it runs out','images/data/inventory.jpg',true,
             ['Stock balances & valuation','Purchase orders, GRNs & bills','Suppliers & supplier payments','Stock counts, transfers & low-stock alerts'],
             'Control what you buy, hold, and sell across branches.'],
         ['reports','Reports & Controls','See the whole business in real time','images/data/dashbaord.png',false,
