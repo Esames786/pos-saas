@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bingoo POS — Complete Operations Guide</title>
+<meta name="description" content="Step-by-step hands-on guide to run Bingoo POS end to end: create products, purchase, GRN, sell, restaurant, kitchen, finance and reports.">
+<link rel="icon" type="image/png" href="/images/bingoo_new/bingoo-footer-icon.png">
+<style>
+  :root{
+    --navy:#0f172a; --navy2:#16284a; --gold:#caa23f; --gold-lt:#e9c869; --gold-dk:#a87f24;
+    --ink:#1f2937; --muted:#64748b; --line:#e5e7eb; --bg:#f7f8fb; --card:#ffffff;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; font-family:'Segoe UI',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink); background:var(--bg); line-height:1.65;
+  }
+  a{color:var(--gold-dk); text-decoration:none}
+  a:hover{text-decoration:underline}
+
+  /* ---- top bar ---- */
+  header.topbar{
+    position:sticky; top:0; z-index:50;
+    background:linear-gradient(135deg,var(--navy2),var(--navy));
+    color:#fff; padding:14px 22px; display:flex; align-items:center; gap:16px;
+    box-shadow:0 4px 18px rgba(7,16,38,.35);
+  }
+  header.topbar img{height:40px;width:auto}
+  header.topbar .t{font-weight:700; font-size:1.05rem; letter-spacing:.2px}
+  header.topbar .t small{display:block; font-weight:500; font-size:.72rem; color:#cbd5e1; letter-spacing:.5px; text-transform:uppercase}
+  header.topbar .spacer{flex:1}
+  .btn-print{
+    background:linear-gradient(135deg,var(--gold-lt),var(--gold)); color:var(--navy);
+    border:0; font-weight:700; padding:.5rem 1rem; border-radius:9px; cursor:pointer; font-size:.85rem;
+  }
+  .btn-print:hover{filter:brightness(1.05)}
+
+  /* ---- layout ---- */
+  .wrap{display:flex; align-items:flex-start; max-width:1280px; margin:0 auto}
+  nav.toc{
+    position:sticky; top:68px; align-self:flex-start;
+    width:280px; flex:0 0 280px; max-height:calc(100vh - 68px); overflow:auto;
+    padding:22px 14px 40px 22px;
+  }
+  nav.toc h4{font-size:.7rem; text-transform:uppercase; letter-spacing:1px; color:var(--muted); margin:18px 0 8px}
+  nav.toc a{display:block; color:#334155; padding:5px 10px; border-radius:7px; font-size:.86rem; border-left:2px solid transparent}
+  nav.toc a:hover{background:#eef1f6; text-decoration:none}
+  nav.toc a.lead{font-weight:600}
+  main{flex:1; min-width:0; padding:26px 30px 80px; background:var(--bg)}
+
+  .hero{
+    background:linear-gradient(135deg,var(--navy2),var(--navy)); color:#fff;
+    border-radius:18px; padding:30px 32px; margin-bottom:26px;
+    box-shadow:0 14px 40px rgba(7,16,38,.25); position:relative; overflow:hidden;
+  }
+  .hero:before{content:""; position:absolute; right:-60px; top:-60px; width:240px; height:240px; border-radius:50%;
+    background:radial-gradient(circle,rgba(202,162,63,.35),transparent 70%)}
+  .hero h1{margin:0 0 8px; font-size:1.9rem; position:relative}
+  .hero h1 span{color:var(--gold-lt)}
+  .hero p{margin:.3rem 0; color:#dbe4f3; position:relative; max-width:760px}
+  .chips{margin-top:14px; display:flex; flex-wrap:wrap; gap:8px; position:relative}
+  .chip{background:rgba(255,255,255,.1); border:1px solid rgba(233,200,105,.35); color:#fdebc0;
+    padding:.3rem .7rem; border-radius:999px; font-size:.74rem; font-weight:600}
+
+  section{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:22px 26px; margin:0 0 22px;
+    box-shadow:0 2px 10px rgba(15,23,42,.04)}
+  section > h2{margin:0 0 4px; font-size:1.4rem; color:var(--navy); display:flex; align-items:center; gap:10px}
+  section > h2 .num{background:linear-gradient(135deg,var(--gold-lt),var(--gold)); color:var(--navy);
+    width:34px; height:34px; border-radius:9px; display:inline-flex; align-items:center; justify-content:center; font-size:.95rem; font-weight:800; flex:0 0 34px}
+  h3{color:var(--navy2); margin:22px 0 8px; font-size:1.08rem; border-bottom:2px solid #f1e7cb; padding-bottom:5px}
+  h3 .step{color:var(--gold-dk); font-weight:800; margin-right:6px}
+
+  .path{display:inline-block; background:#fbf6e7; border:1px solid #ecdcae; color:#7a5e16;
+    padding:.25rem .6rem; border-radius:8px; font-size:.82rem; font-weight:600; margin:6px 0}
+  .path b{color:var(--navy2)}
+
+  table{width:100%; border-collapse:collapse; margin:12px 0; font-size:.9rem}
+  th,td{text-align:left; padding:9px 12px; border-bottom:1px solid var(--line); vertical-align:top}
+  thead th{background:var(--navy); color:#fff; font-weight:600; font-size:.82rem}
+  thead th:first-child{border-top-left-radius:8px}
+  thead th:last-child{border-top-right-radius:8px}
+  tbody tr:nth-child(even){background:#fafbfd}
+  td code,.mono{background:#f3f4f6; border:1px solid #e5e7eb; border-radius:6px; padding:1px 6px; font-family:ui-monospace,Consolas,Menlo,monospace; font-size:.82rem; color:#9a3412}
+  .req{color:#b91c1c; font-weight:700; font-size:.72rem}
+
+  .tip,.warn,.ok{border-radius:10px; padding:12px 16px; margin:14px 0; font-size:.9rem; border-left:4px solid}
+  .tip{background:#fffaf0; border-color:var(--gold)}
+  .warn{background:#fff5f5; border-color:#ef4444}
+  .ok{background:#f0fdf4; border-color:#22c55e}
+  .tip b,.warn b,.ok b{color:var(--navy2)}
+
+  pre{background:var(--navy); color:#e8eefb; padding:16px 18px; border-radius:12px; overflow:auto; font-size:.82rem; line-height:1.5}
+  pre .g{color:var(--gold-lt)}
+
+  .lead-p{color:var(--muted); margin:.2rem 0 10px}
+  footer.docfoot{color:var(--muted); font-size:.82rem; text-align:center; padding:30px 10px; max-width:900px; margin:0 auto}
+
+  @media (max-width:980px){
+    nav.toc{display:none}
+    main{padding:18px 16px 60px}
+    .hero{padding:22px}
+  }
+  @media print{
+    header.topbar{position:static; box-shadow:none}
+    nav.toc,.btn-print{display:none}
+    body{background:#fff}
+    section{break-inside:avoid; box-shadow:none; border-color:#ddd}
+    main{padding:0}
+    .wrap{display:block}
+    .hero{box-shadow:none}
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <img src="/images/bingoo_new/bingoo-navbar-logo.webp" alt="Bingoo">
+  <div class="t">Operations Guide<small>The Ultimate Boss of Retail &amp; Restaurant Software</small></div>
+  <div class="spacer"></div>
+  <button class="btn-print" onclick="window.print()">🖨️ Print / Save PDF</button>
+</header>
+
+<div class="wrap">
+
+  <!-- ============ TABLE OF CONTENTS ============ -->
+  <nav class="toc">
+    <h4>Contents</h4>
+    <a class="lead" href="#business">The example business</a>
+    <a class="lead" href="#p0">0 · Log in &amp; orient</a>
+    <a class="lead" href="#p1">1 · Foundation setup</a>
+    <a href="#p1-1">— Branch</a>
+    <a href="#p1-2">— Units</a>
+    <a href="#p1-3">— Categories</a>
+    <a class="lead" href="#p2">2 · Catalog (products)</a>
+    <a class="lead" href="#p3">3 · Suppliers &amp; customers</a>
+    <a class="lead" href="#p4">4 · Purchasing cycle</a>
+    <a href="#p4-1">— Purchase Order</a>
+    <a href="#p4-2">— GRN (receive)</a>
+    <a href="#p4-3">— Purchase Bill</a>
+    <a href="#p4-4">— Supplier Payment</a>
+    <a class="lead" href="#p5">5 · Check inventory</a>
+    <a class="lead" href="#p6">6 · Selling at POS</a>
+    <a class="lead" href="#p7">7 · Restaurant</a>
+    <a class="lead" href="#p8">8 · Kitchen inventory</a>
+    <a class="lead" href="#p9">9 · Sales controls</a>
+    <a class="lead" href="#p10">10 · Finance &amp; accounting</a>
+    <a class="lead" href="#p11">11 · Reports &amp; closing</a>
+    <a class="lead" href="#p12">12 · Administration</a>
+    <h4>Appendix</h4>
+    <a href="#a-flow">A · Whole flow</a>
+    <a href="#a-data">B · Data reference</a>
+    <a href="#a-routine">C · Daily routine</a>
+  </nav>
+
+  <!-- ============ MAIN ============ -->
+  <main>
+
+    <div class="hero">
+      <h1>Bingoo POS — <span>Complete Operations Guide</span></h1>
+      <p>A hands-on walkthrough that runs the <b>entire</b> system end to end:
+        create a product → buy it from a supplier → receive it (GRN) → sell it (POS) →
+        handle a return → run the restaurant → keep the books → read your reports.</p>
+      <p>Uses the <b>Enterprise demo</b> (every module switched on). Type the same example values and all your numbers will reconcile at the end.</p>
+      <div class="chips">
+        <span class="chip">Catalog</span><span class="chip">Inventory</span><span class="chip">Purchasing / GRN</span>
+        <span class="chip">POS &amp; Returns</span><span class="chip">Restaurant &amp; KDS</span><span class="chip">Kitchen / Recipes</span>
+        <span class="chip">Finance</span><span class="chip">Reports</span>
+      </div>
+    </div>
+
+    <div class="tip">
+      <b>How to read this guide</b> — <b>Menu path</b> = where to click in the left sidebar of the app.
+      Tables list each <b>field</b>, the <b>example value</b> to type, and notes.
+      Fields marked <span class="req">REQUIRED</span> must be filled. 💡 = tip · ⚠️ = important · ✅ = result.
+    </div>
+
+    <!-- BUSINESS -->
+    <section id="business">
+      <h2><span class="num">★</span> The example business we'll set up</h2>
+      <p class="lead-p">We reuse the same fictional business and data everywhere, so the steps connect.</p>
+      <table>
+        <thead><tr><th>Thing</th><th>Example value</th></tr></thead>
+        <tbody>
+          <tr><td>Business</td><td><b>Bingoo Mega Store</b> (a shop <i>and</i> a small bistro)</td></tr>
+          <tr><td>Branch</td><td><b>Main Branch – Gulberg</b></td></tr>
+          <tr><td>Units</td><td><b>Piece (PCS)</b>, <b>Kilogram (KG)</b></td></tr>
+          <tr><td>Categories</td><td><b>Beverages</b>, <b>Burgers</b>, <b>Kitchen Raw</b></td></tr>
+          <tr><td>Retail product</td><td><b>Coca-Cola 500ml</b> (buy 60, sell 80)</td></tr>
+          <tr><td>Ingredient</td><td><b>Chicken Boneless</b> (raw material, by KG)</td></tr>
+          <tr><td>Menu item</td><td><b>Chicken Burger</b> (made from a recipe)</td></tr>
+          <tr><td>Supplier</td><td><b>Metro Distributors</b></td></tr>
+          <tr><td>Customer</td><td><b>Ahmed Khan</b></td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- PART 0 -->
+    <section id="p0">
+      <h2><span class="num">0</span> Log in &amp; get oriented</h2>
+      <table>
+        <thead><tr><th>Field</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>Demo URL</td><td><code>https://enterprisedemo.bingoopos.com/login</code> <span class="lead-p">(local: <code>http://enterprisedemo.pos-saas.test/login</code>)</span></td></tr>
+          <tr><td>Email</td><td><code>demo@enterprisedemo.com</code></td></tr>
+          <tr><td>Password</td><td><code>demo1234</code></td></tr>
+        </tbody>
+      </table>
+      <p>Click <b>Log in</b> → you land on the <b>Dashboard</b>. The <b>left sidebar</b> is your map, grouped into:
+        Administration · Operations · Inventory · Sales · Purchasing · Restaurant · Kitchen Inventory · Printing · Reports · Sales Controls · Finance · Catalog.</p>
+      <div class="tip">💡 The demo already has sample data — that's fine. We'll <b>add our own</b> records so you learn every screen.</div>
+    </section>
+
+    <!-- PART 1 -->
+    <section id="p1">
+      <h2><span class="num">1</span> Foundation setup</h2>
+      <p class="lead-p">Before products can exist you need a <b>branch</b> (a location), <b>units</b> (how you measure), and <b>categories</b> (how you group).</p>
+
+      <h3 id="p1-1"><span class="step">Step 1.1</span> Create a Branch</h3>
+      <div class="path"><b>Operations → Branches</b> → Add Branch</div>
+      <table>
+        <thead><tr><th>Field</th><th>Example value</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>Name <span class="req">REQ</span></td><td><code>Main Branch – Gulberg</code></td><td>Your outlet name</td></tr>
+          <tr><td>Code</td><td><code>MAIN</code></td><td></td></tr>
+          <tr><td>Business Type</td><td><code>Both</code></td><td>Retail / Restaurant / Both</td></tr>
+          <tr><td>Phone</td><td><code>042-111-2222</code></td><td></td></tr>
+          <tr><td>Email</td><td><code>main@bingoomega.com</code></td><td></td></tr>
+          <tr><td>Address</td><td><code>12 Main Boulevard, Gulberg, Lahore</code></td><td></td></tr>
+          <tr><td>Timezone</td><td><code>Asia/Karachi</code></td><td></td></tr>
+          <tr><td>Tax enabled?</td><td><code>Yes</code></td><td>If you charge sales tax</td></tr>
+          <tr><td>Tax Registration No</td><td><code>1234567-8</code></td><td>Shown on invoices</td></tr>
+          <tr><td>Receipt Footer</td><td><code>Thank you for shopping at Bingoo Mega Store!</code></td><td>Prints on receipts</td></tr>
+          <tr><td>Status</td><td><code>Active</code></td><td></td></tr>
+        </tbody>
+      </table>
+
+      <h3 id="p1-2"><span class="step">Step 1.2</span> Create Units of Measure</h3>
+      <div class="path"><b>Catalog → Units of Measure</b> → Add Unit (do this twice)</div>
+      <table>
+        <thead><tr><th>Field</th><th>Piece</th><th>Kilogram</th></tr></thead>
+        <tbody>
+          <tr><td>Name <span class="req">REQ</span></td><td><code>Piece</code></td><td><code>Kilogram</code></td></tr>
+          <tr><td>Code</td><td><code>PCS</code></td><td><code>KG</code></td></tr>
+          <tr><td>Unit Type</td><td><code>Quantity</code> (whole)</td><td><code>Weight</code> (decimals)</td></tr>
+          <tr><td>Is Base Unit?</td><td><code>Yes</code></td><td><code>Yes</code></td></tr>
+          <tr><td>Base Factor</td><td><code>1</code></td><td><code>1</code></td></tr>
+        </tbody>
+      </table>
+
+      <h3 id="p1-3"><span class="step">Step 1.3</span> Create Categories</h3>
+      <div class="path"><b>Catalog → Categories</b> → Add Category (repeat for each)</div>
+      <table>
+        <thead><tr><th>Name <span class="req">REQ</span></th><th>Code</th><th>Sort Order</th><th>Active</th></tr></thead>
+        <tbody>
+          <tr><td><code>Beverages</code></td><td><code>BEV</code></td><td>1</td><td>Yes</td></tr>
+          <tr><td><code>Burgers</code></td><td><code>BUR</code></td><td>2</td><td>Yes</td></tr>
+          <tr><td><code>Kitchen Raw</code></td><td><code>RAW</code></td><td>3</td><td>Yes</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- PART 2 -->
+    <section id="p2">
+      <h2><span class="num">2</span> Catalog: create products</h2>
+      <p class="lead-p">A <b>product</b> is anything you buy, hold, or sell. We create three kinds.</p>
+      <div class="path"><b>Catalog → Products</b> → Add Product</div>
+
+      <h3><span class="step">2.1</span> Retail product — Coca-Cola 500ml</h3>
+      <table>
+        <thead><tr><th>Field</th><th>Example value</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>SKU</td><td><code>CC-500</code></td><td>internal code</td></tr>
+          <tr><td>Name <span class="req">REQ</span></td><td><code>Coca-Cola 500ml</code></td><td></td></tr>
+          <tr><td>Product Type</td><td><code>Standard</code></td><td>normal stocked item</td></tr>
+          <tr><td>Category</td><td><code>Beverages</code></td><td></td></tr>
+          <tr><td>Unit of Measure</td><td><code>Piece (PCS)</code></td><td></td></tr>
+          <tr><td>Purchase Price</td><td><code>60</code></td><td>what you pay</td></tr>
+          <tr><td>Selling Price</td><td><code>80</code></td><td>what customer pays</td></tr>
+          <tr><td>Tax Rate (%)</td><td><code>0</code></td><td>or 17 if taxable</td></tr>
+          <tr><td>Default Variant Barcode</td><td><code>5449000000996</code></td><td>scan at POS</td></tr>
+          <tr><td>Reorder Level / Qty</td><td><code>24</code> / <code>48</code></td><td>low-stock alert</td></tr>
+          <tr><td>Sellable / Purchasable / Track Stock</td><td><code>Yes / Yes / Yes</code></td><td></td></tr>
+          <tr><td>Has Variants / Expiry / Batch</td><td><code>No / No / No</code></td><td></td></tr>
+        </tbody>
+      </table>
+
+      <h3><span class="step">2.2</span> Raw ingredient — Chicken Boneless</h3>
+      <table>
+        <thead><tr><th>Field</th><th>Example value</th></tr></thead>
+        <tbody>
+          <tr><td>SKU / Name</td><td><code>RAW-CHK</code> / <code>Chicken Boneless</code></td></tr>
+          <tr><td>Category / Unit</td><td><code>Kitchen Raw</code> / <code>Kilogram (KG)</code></td></tr>
+          <tr><td>Purchase Price</td><td><code>550</code> (per KG)</td></tr>
+          <tr><td>Sellable / Purchasable / Track Stock</td><td><code>No / Yes / Yes</code></td></tr>
+        </tbody>
+      </table>
+
+      <h3><span class="step">2.3</span> Menu item — Chicken Burger</h3>
+      <table>
+        <thead><tr><th>Field</th><th>Example value</th></tr></thead>
+        <tbody>
+          <tr><td>SKU / Name</td><td><code>BUR-CHK</code> / <code>Chicken Burger</code></td></tr>
+          <tr><td>Category / Unit</td><td><code>Burgers</code> / <code>Piece (PCS)</code></td></tr>
+          <tr><td>Selling Price / Barcode</td><td><code>450</code> / <code>BUR-CHK-01</code></td></tr>
+          <tr><td>Sellable / Purchasable / Track Stock</td><td><code>Yes / No / No</code> <span class="lead-p">(stock driven by recipe)</span></td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- PART 3 -->
+    <section id="p3">
+      <h2><span class="num">3</span> Suppliers &amp; customers</h2>
+
+      <h3><span class="step">3.1</span> Create a Supplier</h3>
+      <div class="path"><b>Purchasing → Suppliers</b> → Add Supplier</div>
+      <table>
+        <thead><tr><th>Field</th><th>Example value</th></tr></thead>
+        <tbody>
+          <tr><td>Name <span class="req">REQ</span></td><td><code>Metro Distributors</code></td></tr>
+          <tr><td>Code</td><td><code>SUP-METRO</code></td></tr>
+          <tr><td>Contact Person</td><td><code>Imran Sheikh</code></td></tr>
+          <tr><td>Phone / Email</td><td><code>0300-1112233</code> / <code>sales@metro.com</code></td></tr>
+          <tr><td>Tax Number</td><td><code>9876543-2</code></td></tr>
+          <tr><td>Address</td><td><code>Industrial Area, Lahore</code></td></tr>
+          <tr><td>Payment Terms (days)</td><td><code>30</code></td></tr>
+          <tr><td>Opening Balance</td><td><code>0</code></td></tr>
+        </tbody>
+      </table>
+
+      <h3><span class="step">3.2</span> Create a Customer</h3>
+      <div class="path"><b>Sales → Customers</b> → Add Customer</div>
+      <table>
+        <thead><tr><th>Field</th><th>Example value</th></tr></thead>
+        <tbody>
+          <tr><td>Customer Code</td><td><code>CUST-001</code></td></tr>
+          <tr><td>Name <span class="req">REQ</span></td><td><code>Ahmed Khan</code></td></tr>
+          <tr><td>Phone / Email</td><td><code>0321-4445566</code> / <code>ahmed@example.com</code></td></tr>
+          <tr><td>Gender / DOB</td><td><code>Male</code> / <code>1990-05-20</code></td></tr>
+          <tr><td>Address</td><td><code>45 Model Town, Lahore</code></td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- PART 4 -->
+    <section id="p4">
+      <h2><span class="num">4</span> Purchasing cycle (buy your stock)</h2>
+      <p class="lead-p">Four documents, in order: <b>Purchase Order → GRN → Purchase Bill → Supplier Payment</b>.</p>
+      <div class="warn">⚠️ A Purchase Order is <b>only a request</b> — it does not change stock. Your stock goes <b>up only when you post the GRN</b>.</div>
+
+      <h3 id="p4-1"><span class="step">4.1</span> Create a Purchase Order</h3>
+      <div class="path"><b>Purchasing → Purchase Orders</b> → Create Purchase Order</div>
+      <p><b>Order Header</b></p>
+      <table>
+        <thead><tr><th>Field</th><th>Example value</th></tr></thead>
+        <tbody>
+          <tr><td>Supplier <span class="req">REQ</span></td><td><code>Metro Distributors</code></td></tr>
+          <tr><td>Branch <span class="req">REQ</span></td><td><code>Main Branch – Gulberg</code></td></tr>
+          <tr><td>Order Date <span class="req">REQ</span></td><td><code>today</code> (pre-filled)</td></tr>
+          <tr><td>Expected Date</td><td><code>today + 3 days</code></td></tr>
+          <tr><td>Notes</td><td><code>Weekly stock order</code></td></tr>
+        </tbody>
+      </table>
+      <p><b>Product Lines</b> — scan the barcode in the “Scan Barcode / SKU” box (Enter), or pick from the <b>Product</b> dropdown, then fill the row:</p>
+      <table>
+        <thead><tr><th>Product</th><th>Quantity</th><th>Unit Cost</th><th>Discount</th><th>Tax</th></tr></thead>
+        <tbody>
+          <tr><td><code>Coca-Cola 500ml</code></td><td>48</td><td>60</td><td>0</td><td>0</td></tr>
+          <tr><td><code>Chicken Boneless</code></td><td>10</td><td>550</td><td>0</td><td>0</td></tr>
+        </tbody>
+      </table>
+      <div class="tip">💡 Picking a product <b>auto-fills Unit Cost</b> from its purchase price — you can override it.</div>
+      <p>Click <b>Save Purchase Order</b>. Status becomes Pending/Approved (no stock change yet).</p>
+
+      <h3 id="p4-2"><span class="step">4.2</span> Receive the goods (GRN)</h3>
+      <div class="path"><b>Purchasing → GRN</b> → Create GRN</div>
+      <table>
+        <thead><tr><th>Field</th><th>Example value</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>Purchase Order</td><td><i>select the PO from 4.1</i></td><td>pulls its lines</td></tr>
+          <tr><td>Supplier <span class="req">REQ</span></td><td><code>Metro Distributors</code></td><td>auto-fills</td></tr>
+          <tr><td>Branch <span class="req">REQ</span></td><td><code>Main Branch – Gulberg</code></td><td></td></tr>
+          <tr><td>Receipt Date <span class="req">REQ</span></td><td><code>today</code></td><td></td></tr>
+          <tr><td>Notes</td><td><code>Received in full</code></td><td></td></tr>
+        </tbody>
+      </table>
+      <p><b>Product Lines</b> (GRN adds Batch No &amp; Expiry columns for batch-tracked items):</p>
+      <table>
+        <thead><tr><th>Product</th><th>Quantity received</th><th>Unit Cost</th></tr></thead>
+        <tbody>
+          <tr><td><code>Coca-Cola 500ml</code></td><td>48</td><td>60</td></tr>
+          <tr><td><code>Chicken Boneless</code></td><td>10</td><td>550</td></tr>
+        </tbody>
+      </table>
+      <div class="ok">✅ Click <b>Post GRN</b> → stock is now real: 48 × Coca-Cola and 10 KG Chicken added to Main Branch. An Accounts-Payable entry posts automatically (you owe the supplier).</div>
+
+      <h3 id="p4-3"><span class="step">4.3</span> Enter the supplier's bill</h3>
+      <div class="path"><b>Purchasing → Purchase Bills</b> → Create Purchase Bill</div>
+      <table>
+        <thead><tr><th>Field</th><th>Example value</th></tr></thead>
+        <tbody>
+          <tr><td>Goods Receipt (GRN) <span class="req">REQ</span></td><td><i>select your GRN</i></td></tr>
+          <tr><td>Supplier Invoice No</td><td><code>INV-2025-554</code></td></tr>
+          <tr><td>Bill Date <span class="req">REQ</span></td><td><code>today</code></td></tr>
+          <tr><td>Due Date</td><td><code>today + 30 days</code></td></tr>
+          <tr><td>Bill-level Discount / Tax</td><td><code>0</code> / <code>0</code></td></tr>
+        </tbody>
+      </table>
+      <p>Bill total = 48×60 + 10×550 = <b>2,880 + 5,500 = 8,380</b>.</p>
+
+      <h3 id="p4-4"><span class="step">4.4</span> Pay the supplier</h3>
+      <div class="path"><b>Purchasing → Supplier Payments</b> → Add Payment</div>
+      <table>
+        <thead><tr><th>Field</th><th>Example value</th></tr></thead>
+        <tbody>
+          <tr><td>Supplier <span class="req">REQ</span></td><td><code>Metro Distributors</code></td></tr>
+          <tr><td>Against Bill</td><td><i>select the bill from 4.3</i></td></tr>
+          <tr><td>Payment Date <span class="req">REQ</span></td><td><code>today</code></td></tr>
+          <tr><td>Pay From (Cash/Bank)</td><td><code>Cash in Hand</code></td></tr>
+          <tr><td>Payment Method</td><td><code>Cash</code></td></tr>
+          <tr><td>Amount</td><td><code>8380</code></td></tr>
+          <tr><td>Reference No</td><td><code>PAY-001</code></td></tr>
+        </tbody>
+      </table>
+      <div class="ok">✅ Supplier balance is now 0; Cash in Hand drops by 8,380. Accounting posts automatically.</div>
+    </section>
+
+    <!-- PART 5 -->
+    <section id="p5">
+      <h2><span class="num">5</span> Check your inventory</h2>
+      <div class="path"><b>Inventory → Stock Balances</b></div>
+      <p>At Main Branch you now see: <b>Coca-Cola 500ml = 48</b> and <b>Chicken Boneless = 10 (KG)</b>.</p>
+      <table>
+        <thead><tr><th>Screen</th><th>Shows</th></tr></thead>
+        <tbody>
+          <tr><td>Movements</td><td>every stock in/out with reason (your GRN appears as an “in”)</td></tr>
+          <tr><td>Batches</td><td>batch/expiry tracking</td></tr>
+          <tr><td>Low Stock</td><td>items at/under reorder level</td></tr>
+          <tr><td>Expiry Alerts</td><td>items nearing expiry</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- PART 6 -->
+    <section id="p6">
+      <h2><span class="num">6</span> Selling at the POS (retail)</h2>
+      <div class="path"><b>Sales → POS</b></div>
+      <h3><span class="step">6.1</span> Make a sale</h3>
+      <ol>
+        <li>Pick the branch/terminal (<b>Main Branch – Gulberg</b>).</li>
+        <li><b>Scan</b> barcode <code>5449000000996</code> or <b>search</b> “Coca” → it enters the cart at 80.</li>
+        <li>Set <b>quantity = 2</b> (total 160).</li>
+        <li>(Optional) Select customer <code>Ahmed Khan</code>.</li>
+        <li>Click <b>Pay / Charge</b> → Method <code>Cash</code> → Tendered <code>200</code> → Change shows <code>40</code>.</li>
+        <li>Click <b>Complete</b> → receipt is generated (and printed if a printer is set up).</li>
+      </ol>
+      <div class="ok">✅ Coca-Cola stock 48 → 46. The sale and its profit post to accounting automatically.</div>
+      <div class="tip">💡 <b>Hold / Park a sale:</b> click <b>Hold</b> to park a cart; resume it later from <b>Restaurant → Held Sales</b> (used for retail too).</div>
+
+      <h3><span class="step">6.2</span> Review sales</h3>
+      <table>
+        <thead><tr><th>Screen</th><th>Menu path</th><th>Shows</th></tr></thead>
+        <tbody>
+          <tr><td>Sales Orders</td><td>Sales → Sales Orders</td><td>every completed sale (open to view/print)</td></tr>
+          <tr><td>Sales Ledger</td><td>Sales → Sales Ledger</td><td>money owed by credit customers</td></tr>
+        </tbody>
+      </table>
+
+      <h3><span class="step">6.3</span> Process a sales return</h3>
+      <div class="path"><b>Sales → Sales Returns</b> → New Return</div>
+      <p>Find the original sale → return <b>Coca-Cola 500ml, qty 1</b> → reason <code>Customer changed mind</code> → refund <code>Cash</code> → <b>Save Return</b>.</p>
+      <div class="ok">✅ Stock goes back up (46 → 47); refund + reversal posts to accounting.</div>
+    </section>
+
+    <!-- PART 7 -->
+    <section id="p7">
+      <h2><span class="num">7</span> Restaurant operations (dine-in)</h2>
+
+      <h3><span class="step">7.1</span> Floor → 7.2 Table → 7.3 Waiter</h3>
+      <div class="path"><b>Restaurant → Floors / Tables / Waiters</b></div>
+      <table>
+        <thead><tr><th>Floor</th><th>Table</th><th>Waiter</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Branch: <code>Main Branch</code><br>Name: <code>Ground Floor</code><br>Sort: <code>1</code></td>
+            <td>Floor: <code>Ground Floor</code><br>Table No: <code>T1</code><br>Capacity: <code>4</code></td>
+            <td>Name: <code>Bilal Ahmed</code><br>Code: <code>W-01</code><br>Phone: <code>0333-7778899</code></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3><span class="step">7.4</span> Take a dine-in order</h3>
+      <div class="path"><b>Restaurant → Table Board</b></div>
+      <p>Click table <b>T1</b> → assign <b>Waiter = Bilal Ahmed</b>, <b>Guests = 2</b> → add <b>Chicken Burger ×2</b> (900) → <b>Send to Kitchen</b> (fires a KOT; T1 turns occupied).</p>
+
+      <h3><span class="step">7.5</span> Kitchen Display (KDS)</h3>
+      <div class="path"><b>Restaurant → Kitchen Display</b></div>
+      <p>Ticket shows <b>Chicken Burger ×2 — Pending</b>. Staff tap <b>Start → Ready → Served</b>.</p>
+
+      <h3><span class="step">7.6</span> Settle the table</h3>
+      <p>Back on Table Board → <b>T1 → Bill/Pay</b> → (service charge auto-adds if configured) → <b>Cash</b> → complete. Table turns green (free).</p>
+      <div class="ok">✅ The dine-in sale posts like any sale, and the recipe consumes ingredients (next part).</div>
+    </section>
+
+    <!-- PART 8 -->
+    <section id="p8">
+      <h2><span class="num">8</span> Kitchen Inventory (recipes &amp; production)</h2>
+      <p class="lead-p">Makes selling a Chicken Burger automatically consume raw chicken and capture true food cost.</p>
+
+      <h3><span class="step">8.2</span> Create a Recipe / BOM</h3>
+      <div class="path"><b>Kitchen Inventory → Recipes / BOM</b> → Add Recipe</div>
+      <table>
+        <thead><tr><th>Field</th><th>Example value</th></tr></thead>
+        <tbody>
+          <tr><td>Name <span class="req">REQ</span></td><td><code>Chicken Burger Recipe</code></td></tr>
+          <tr><td>Finished Product <span class="req">REQ</span></td><td><code>Chicken Burger</code></td></tr>
+          <tr><td>Yield Quantity / Unit</td><td><code>1</code> / <code>Piece (PCS)</code></td></tr>
+        </tbody>
+      </table>
+      <p><b>Ingredients</b></p>
+      <table>
+        <thead><tr><th>Ingredient</th><th>Quantity</th><th>Unit</th></tr></thead>
+        <tbody><tr><td><code>Chicken Boneless</code></td><td>0.15</td><td>Kilogram (KG)</td></tr></tbody>
+      </table>
+      <div class="ok">✅ Each Chicken Burger sold now consumes 0.15 KG chicken and records the cost.</div>
+      <table>
+        <thead><tr><th>Also here</th><th>Use for</th></tr></thead>
+        <tbody>
+          <tr><td>Unit Conversions</td><td>buy in KG, use in grams, etc.</td></tr>
+          <tr><td>Productions</td><td>pre-cook a batch (consumes ingredients, adds finished stock)</td></tr>
+          <tr><td>Wastages</td><td>record spoilage (e.g. <code>0.5 KG Chicken — spoiled</code>)</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- PART 9 -->
+    <section id="p9">
+      <h2><span class="num">9</span> Sales Controls (optional, recommended)</h2>
+      <div class="path"><b>Sales Controls</b></div>
+      <table>
+        <thead><tr><th>Screen</th><th>Use for</th><th>Example</th></tr></thead>
+        <tbody>
+          <tr><td>Promotions</td><td>discounts/offers</td><td><code>10% off Beverages this week</code></td></tr>
+          <tr><td>Service Charge</td><td>auto charge on dine-in</td><td><code>Ground Floor: 5%</code></td></tr>
+          <tr><td>Void Reasons</td><td>force a reason on voids</td><td><code>Wrong item</code>, <code>Customer cancelled</code></td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- PART 10 -->
+    <section id="p10">
+      <h2><span class="num">10</span> Finance &amp; Accounting</h2>
+      <p class="lead-p">Most books already post automatically (purchases, sales, returns, payments). Here are the finance screens and the few things you enter by hand.</p>
+
+      <h3><span class="step">10.1</span> Chart of Accounts</h3>
+      <div class="path"><b>Finance → Chart of Accounts</b></div>
+      <p>Standard accounts are pre-seeded (Cash, Bank, Inventory, A/P, Sales, COGS…). To add one: Code <code>6300</code>, Name <code>Utilities Expense</code>, Type <code>Expense</code>, Normal Balance <code>Debit</code>.</p>
+
+      <h3><span class="step">10.2</span> Cash &amp; Bank Accounts</h3>
+      <div class="path"><b>Finance → Cash &amp; Bank Accounts</b></div>
+      <p>Demo has <b>Cash in Hand</b> + a Bank. To add: Name <code>Meezan Bank – Current</code>, Type <code>Bank</code>, Bank Name <code>Meezan Bank</code>, Account No <code>0123456789</code>, Opening Balance <code>100000</code>.</p>
+
+      <h3><span class="step">10.3 → 10.4</span> Expense category &amp; record an expense</h3>
+      <div class="path"><b>Finance → Expense Categories</b>, then <b>Finance → Expenses</b> → Add Expense</div>
+      <table>
+        <thead><tr><th>Header field</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>Voucher No / Branch</td><td><code>EXP-001</code> / <code>Main Branch</code></td></tr>
+          <tr><td>Expense &amp; Payment Date</td><td><code>today</code></td></tr>
+          <tr><td>Pay From / Payee</td><td><code>Cash in Hand</code> / <code>LESCO</code></td></tr>
+        </tbody>
+      </table>
+      <table>
+        <thead><tr><th>Line: Category</th><th>Description</th><th>Amount</th></tr></thead>
+        <tbody><tr><td><code>Utilities</code></td><td><code>Electricity – June</code></td><td>15000</td></tr></tbody>
+      </table>
+      <div class="ok">✅ Cash drops by 15,000; expense posts to the ledger automatically.</div>
+
+      <h3><span class="step">10.5</span> Customer Payment (credit sales)</h3>
+      <div class="path"><b>Finance → Customer Payments</b> → Add</div>
+      <p>Customer <code>Ahmed Khan</code> → Receive Into <code>Cash in Hand</code> → Amount <code>500</code> → Ref <code>RCPT-001</code> → Save.</p>
+
+      <h3><span class="step">10.6</span> Read the financial statements</h3>
+      <table>
+        <thead><tr><th>Report</th><th>Menu path</th><th>Answers</th></tr></thead>
+        <tbody>
+          <tr><td>Journal Entries</td><td>Finance → Journal Entries</td><td>every posting</td></tr>
+          <tr><td>General Ledger</td><td>Finance → General Ledger</td><td>activity per account</td></tr>
+          <tr><td>Trial Balance</td><td>Finance → Trial Balance</td><td>debits = credits (books balance)</td></tr>
+          <tr><td>Profit &amp; Loss</td><td>Finance → Profit &amp; Loss</td><td>are you making money?</td></tr>
+          <tr><td>Branch-wise P&amp;L</td><td>Finance → Branch-wise P&amp;L</td><td>profit per branch</td></tr>
+          <tr><td>Balance Sheet</td><td>Finance → Balance Sheet</td><td>what you own vs owe</td></tr>
+          <tr><td>Accounting Export</td><td>Finance → Accounting Export</td><td>CSV packs for your accountant</td></tr>
+        </tbody>
+      </table>
+      <div class="tip">💡 Open <b>Trial Balance</b> last — total Debit must equal total Credit. If it does, every step above posted correctly.</div>
+    </section>
+
+    <!-- PART 11 -->
+    <section id="p11">
+      <h2><span class="num">11</span> Reports &amp; closing the day</h2>
+      <div class="path"><b>Reports</b></div>
+      <table>
+        <thead><tr><th>Report</th><th>Shows</th></tr></thead>
+        <tbody>
+          <tr><td>Sales Reports</td><td>sales by day/product/branch/cashier</td></tr>
+          <tr><td>Shift Reports</td><td>each cashier's shift totals</td></tr>
+          <tr><td>Inventory Reports</td><td>stock valuation, movements</td></tr>
+          <tr><td>Purchase Reports</td><td>payables, purchases by supplier</td></tr>
+          <tr><td>Receivables Aging</td><td>who owes you and for how long</td></tr>
+          <tr><td>Restaurant / Kitchen Reports</td><td>table turnover, recipe consumption, food cost</td></tr>
+          <tr><td>Audit / Print Reports</td><td>manager approvals, voids, print history</td></tr>
+        </tbody>
+      </table>
+      <h3>Close the day</h3>
+      <div class="path"><b>Operations → Daily Closing</b></div>
+      <p>Count your cash drawer, enter the amount; the system compares it to expected cash (sales − refunds + payments) and locks the day. <b>Shifts</b> (Operations → Shifts): cashiers open a shift at start and close to reconcile their drawer.</p>
+    </section>
+
+    <!-- PART 12 -->
+    <section id="p12">
+      <h2><span class="num">12</span> Administration</h2>
+      <div class="path"><b>Administration</b></div>
+      <table>
+        <thead><tr><th>Screen</th><th>Use for</th><th>Example</th></tr></thead>
+        <tbody>
+          <tr><td>Users</td><td>add staff logins</td><td><code>Bilal – Cashier</code></td></tr>
+          <tr><td>Roles &amp; Permissions</td><td>control access per role</td><td>Cashier = POS only</td></tr>
+          <tr><td>Terminals (Operations)</td><td>register POS devices</td><td><code>Counter 1</code></td></tr>
+          <tr><td>Billing</td><td>plan &amp; invoices</td><td>view plan / request upgrade</td></tr>
+        </tbody>
+      </table>
+      <div class="tip">💡 Give cashiers the <b>Cashier</b> role (POS + held sales only). Keep Finance, Users and Reports for owners/managers.</div>
+    </section>
+
+    <!-- APPENDIX -->
+    <section id="a-flow">
+      <h2><span class="num">A</span> The complete flow at a glance</h2>
+<pre><span class="g">SETUP</span>          Branch → Units → Categories
+<span class="g">CATALOG</span>        Products (retail + ingredient + menu item)
+<span class="g">PEOPLE</span>         Supplier + Customer
+<span class="g">BUY</span>            Purchase Order → GRN (stock +) → Purchase Bill → Supplier Payment (cash −)
+<span class="g">SELL</span>           POS sale (stock −) → [Return] → Sales Ledger
+<span class="g">RESTAURANT</span>     Floor → Table → Waiter → Table Board → KOT → KDS → Settle
+<span class="g">KITCHEN</span>        Recipe/BOM → (Production) → Wastage   [selling consumes ingredients]
+<span class="g">FINANCE</span>        Chart of Accounts → Cash/Bank → Expense → Customer Payment
+               → Trial Balance / P&amp;L / Balance Sheet (auto-reconciled)
+<span class="g">REPORTS</span>        Sales / Inventory / Purchases / Restaurant / Kitchen
+<span class="g">CLOSE</span>          Shift close → Daily Closing</pre>
+    </section>
+
+    <section id="a-data">
+      <h2><span class="num">B</span> Example data quick reference</h2>
+      <table>
+        <thead><tr><th>Record</th><th>Key fields</th></tr></thead>
+        <tbody>
+          <tr><td>Branch</td><td>Main Branch – Gulberg (MAIN), Both, Asia/Karachi</td></tr>
+          <tr><td>Units</td><td>Piece (PCS, quantity), Kilogram (KG, weight)</td></tr>
+          <tr><td>Categories</td><td>Beverages (BEV), Burgers (BUR), Kitchen Raw (RAW)</td></tr>
+          <tr><td>Coca-Cola 500ml</td><td>CC-500, buy 60, sell 80, barcode 5449000000996</td></tr>
+          <tr><td>Chicken Boneless</td><td>RAW-CHK, KG, buy 550, not sellable</td></tr>
+          <tr><td>Chicken Burger</td><td>BUR-CHK, sell 450, made by recipe</td></tr>
+          <tr><td>Supplier</td><td>Metro Distributors (SUP-METRO), terms 30 days</td></tr>
+          <tr><td>Customer</td><td>Ahmed Khan (CUST-001)</td></tr>
+          <tr><td>PO/GRN</td><td>48 Coca-Cola @60 + 10 KG Chicken @550 = 8,380</td></tr>
+          <tr><td>Recipe</td><td>Chicken Burger ← 0.15 KG Chicken Boneless</td></tr>
+          <tr><td>Expense</td><td>Utilities / Electricity / 15,000</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="a-routine">
+      <h2><span class="num">C</span> Daily routine checklist (after setup)</h2>
+      <ol>
+        <li><b>Open shift</b> (cashier) → Operations → Shifts.</li>
+        <li><b>Sell</b> all day at Sales → POS (scan, charge, print).</li>
+        <li><b>Receive deliveries</b> as they arrive → Purchasing → GRN.</li>
+        <li><b>Record expenses</b> as you pay them → Finance → Expenses.</li>
+        <li><b>Close shift</b>, then Operations → Daily Closing (count cash).</li>
+        <li><b>Check</b> Reports → Sales and Finance → Profit &amp; Loss before leaving.</li>
+      </ol>
+    </section>
+
+    <footer class="docfoot">
+      Bingoo POS — The Ultimate Boss of Retail &amp; Restaurant Software · Operations Guide ·
+      Follow it once end-to-end and you'll know how to run the whole system.
+    </footer>
+
+  </main>
+</div>
+</body>
+</html>
