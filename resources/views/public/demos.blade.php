@@ -41,6 +41,7 @@
                 'No signup required',
                 'Safe demo data',
                 'Retail + restaurant + inventory',
+                'Built-in accounting (Pro & Enterprise)',
                 'Multi-branch enterprise demo',
                 'Reset-ready demo environments',
             ] as $chip)

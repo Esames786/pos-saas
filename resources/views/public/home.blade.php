@@ -248,6 +248,7 @@
             ['ti-package','Inventory & Purchasing','Stock balances, POs, GRNs','Supplier payments, low-stock alerts'],
             ['ti-transfer','Stock Count & Transfers','Physical stock counts','Variance posting, inter-branch transfers'],
             ['ti-chart-bar','Reports & Controls','Sales, shifts, inventory reports','Restaurant, kitchen, purchase, audit'],
+            ['ti-report-money','Finance & Accounting','Chart of accounts, expenses, double-entry ledger','P&L, Balance Sheet, branch-wise P&L'],
             ['ti-credit-card','SaaS Billing','Plan invoices, payment proofs','Upgrade requests, subscription lifecycle'],
             ['ti-users','Role-Based Access','Owner, Manager, Cashier roles','Custom permissions per user'],
         ]; @endphp
@@ -358,7 +359,7 @@
             <p class="text-muted">Designed to support thousands of daily transactions across counters, kitchens, and branches.</p>
         </div>
         <div class="row g-4 justify-content-center">
-            @php $stats = [['13','+','Business modules'],['30','day','Free trial period'],['5','','Public plan options'],['8','+','Industry use cases']]; @endphp
+            @php $stats = [['14','+','Business modules'],['30','day','Free trial period'],['5','','Public plan options'],['8','+','Industry use cases']]; @endphp
             @foreach($stats as [$n, $sfx, $label])
                 <div class="col-6 col-md-3">
                     <div class="stat-card reveal hover-lift">
@@ -525,6 +526,7 @@
                         ['Is payment required for the trial?','No. The 30-day free trial requires no payment details. Sign up, provision your workspace, and start immediately.'],
                         ['Can I use Bingoo POS for restaurants?','Yes. The Restaurant Starter and Restaurant Pro plans include table management, KOT printing, kitchen display, split bills, and service charges.'],
                         ['Can I manage inventory and purchasing?','Yes. The Inventory Store and Restaurant Pro plans include stock balances, purchase orders, GRNs, supplier management, stock counts, and transfers.'],
+                        ['Does Bingoo POS include accounting?','Yes. The Restaurant Pro and Enterprise plans include a built-in Finance & Accounting module — chart of accounts, expenses, cash &amp; bank accounts, customer/supplier payments, a double-entry general ledger that auto-posts from sales, purchases and expenses, plus Trial Balance, Profit &amp; Loss, Branch-wise P&amp;L and Balance Sheet reports with CSV export.'],
                         ['Can I upgrade my plan later?','Yes. Request a plan upgrade any time from the billing portal. Our team approves it and issues an upgrade invoice.'],
                         ['Does Bingoo POS support multiple branches?','Yes. The Restaurant Pro and Enterprise plans include multi-branch controls with per-branch terminals, users, shifts, reports, and stock.'],
                         ['Is FBR integration available for Pakistan?','Bingoo POS has FBR-ready workflows designed for eligible Pakistan businesses, including branch tax fields, taxable products, and receipt tax numbers. Full FBR invoice sync is planned. This is not an official FBR-certified integration.'],

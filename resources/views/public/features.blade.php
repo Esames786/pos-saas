@@ -21,7 +21,7 @@
         <div class="d-flex flex-wrap justify-content-center gap-2">
             @foreach([
                 ['#retail','Retail Checkout'],['#restaurant','Restaurant Service'],['#kitchen','Kitchen Operations'],
-                ['#inventory','Inventory & Purchasing'],['#reports','Reports & Controls'],['#saas','SaaS Billing & Team Access'],['#fbr','FBR-ready Workflows'],
+                ['#inventory','Inventory & Purchasing'],['#reports','Reports & Controls'],['#finance','Finance & Accounting'],['#saas','SaaS Billing & Team Access'],['#fbr','FBR-ready Workflows'],
             ] as [$anchor,$label])
                 <a href="{{ $anchor }}" class="marquee-chip text-decoration-none">{{ $label }}</a>
             @endforeach
@@ -47,7 +47,10 @@
         ['reports','Reports & Controls','See the whole business in real time','images/data/dashbaord.png',false,
             ['Sales, shifts & daily closings','Inventory & purchase reporting','Restaurant & kitchen reports','Manager approvals & audit logs'],
             'Make decisions from live, branch-level numbers.'],
-        ['saas','SaaS Billing & Team Access','Plans, billing, and role-based access','images/data/pos2.png',true,
+        ['finance','Finance & Accounting','Audit-ready books, built in','images/data/dashbaord.png',true,
+            ['Chart of accounts, cash &amp; bank accounts','Expenses, supplier &amp; customer payments','Double-entry general ledger that auto-posts from sales, purchases &amp; expenses','Trial Balance, P&amp;L, Branch-wise P&amp;L, Balance Sheet + CSV export'],
+            'Run your accounting inside your POS — included on Restaurant Pro & Enterprise.'],
+        ['saas','SaaS Billing & Team Access','Plans, billing, and role-based access','images/data/pos2.png',false,
             ['Plans, modules & usage limits','Invoices & payment proofs','Plan upgrade requests','Owner / Manager / Cashier roles'],
             'Scale your subscription and team safely as you grow.'],
     ];
@@ -124,7 +127,7 @@
             ['ti-barcode','POS & Sales'],['ti-stack-2','Catalog'],['ti-package','Inventory'],['ti-truck-delivery','Purchasing'],
             ['ti-transfer','Stock Count & Transfers'],['ti-armchair','Restaurant'],['ti-device-desktop','Kitchen Display'],
             ['ti-chef-hat','Kitchen Inventory'],['ti-printer','Printing'],['ti-chart-bar','Reports'],['ti-adjustments','Sales Controls'],
-            ['ti-building-store','Multi Branch'],['ti-users','Users & Roles'],
+            ['ti-building-store','Multi Branch'],['ti-users','Users & Roles'],['ti-report-money','Finance & Accounting'],
         ]; @endphp
         <div class="row g-3">
             @foreach($modules as [$ico,$name])

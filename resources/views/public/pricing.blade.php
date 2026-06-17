@@ -197,6 +197,7 @@
                 'Restaurant'             => ['restaurant'=>'Restaurant Tables','printing'=>'KOT Printing','kitchen_display'=>'Kitchen Display','kitchen_inventory'=>'Kitchen Inventory'],
                 'Inventory & Purchasing' => ['inventory'=>'Inventory','purchasing'=>'Purchasing','stock_count'=>'Stock Count'],
                 'Reports & Controls'     => ['reports'=>'Reports','sales_controls'=>'Sales Controls'],
+                'Finance & Accounting'   => ['finance'=>'Accounting (CoA, GL, P&L, Balance Sheet)'],
                 'SaaS & Team Access'     => ['multi_branch'=>'Multi Branch','users_roles'=>'Users & Roles'],
             ];
             $limitRows = ['branch_limit'=>'Branches','terminal_limit'=>'Terminals','user_limit'=>'Users','product_limit'=>'Products'];
@@ -276,6 +277,7 @@
                         ['What happens after 30 days?','Your trial subscription lapses to past-due until you pay an invoice. Your data stays intact while you decide.'],
                         ['Can I switch from a Retail to a Restaurant plan?','Yes. Upgrades between public plans are supported through the billing portal.'],
                         ['Do you support multiple branches?','Restaurant Pro and Enterprise include multi-branch controls with per-branch terminals, users, shifts, and reports.'],
+                        ['Which plans include accounting?','The Finance & Accounting module — chart of accounts, expenses, cash &amp; bank, a double-entry general ledger that auto-posts from sales, purchases and expenses, plus Trial Balance, Profit &amp; Loss, Branch-wise P&amp;L and Balance Sheet — is included on Restaurant Pro and Enterprise.'],
                         ['Is Enterprise custom priced?','Yes. Enterprise is a custom rollout — contact sales for pricing tailored to your scale.'],
                         ['Are demo environments available?','Yes. Live demos are available for retail, inventory, restaurant, restaurant pro, and enterprise workflows. Open the Demos page to try a workspace with sample data — no signup required.'],
                     ]; @endphp

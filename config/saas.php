@@ -162,7 +162,7 @@ return [
                     'Kitchen Display orders',
                     'Recipes and ingredient consumption',
                     'Kitchen stock and purchasing',
-                    'Restaurant Pro reporting',
+                    'Accounting: expenses, ledger, P&L & balance sheet',
                 ],
             ],
             'enterprise' => [
@@ -179,7 +179,7 @@ return [
                 'bullets'      => [
                     '4 branches and 6 terminals',
                     'Branch-level sales comparison',
-                    'Warehouse transfers and purchasing',
+                    'Full accounting: GL, P&L, branch-wise P&L, balance sheet',
                     'Enterprise users and safe roles',
                 ],
             ],

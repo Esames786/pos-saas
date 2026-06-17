@@ -72,6 +72,9 @@
                             <li class="mb-1"><i class="ti ti-building-store me-2 text-primary"></i>{{ $limitLabel($feature($selectedPlan,'branch_limit')) }} branches</li>
                             <li class="mb-1"><i class="ti ti-users me-2 text-primary"></i>{{ $limitLabel($feature($selectedPlan,'user_limit')) }} users</li>
                             <li class="mb-1"><i class="ti ti-stack-2 me-2 text-primary"></i>{{ $selectedPlan->enabledModules->count() }} modules included</li>
+                            @if($selectedPlan->enabledModules->pluck('key')->contains('finance'))
+                                <li class="mb-1"><i class="ti ti-report-money me-2 text-primary"></i>Includes Finance &amp; Accounting (GL, P&amp;L, Balance Sheet)</li>
+                            @endif
                         </ul>
                     @else
                         <p class="text-muted mb-0">Choose a plan in the form, or continue with the default selection.</p>
