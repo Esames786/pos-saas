@@ -176,7 +176,7 @@ a.plyr__control::before {
 .plyr--video .plyr__control:hover,
 .plyr--video .plyr__control[aria-expanded="true"] {
 	cursor:  pointer;
-    background: #FF9F43;
+    background: #CAA23F;
     color: #fff;
 }
 .plyr--video .plyr__control.plyr__tab-focus svg,

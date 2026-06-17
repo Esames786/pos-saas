@@ -652,7 +652,7 @@ var myRadarChart = new Chart(ctx, {
             datasets: [{
                 label: 'Semi Donut',
                 data: [16, 24, 50],
-                backgroundColor: ['#092C4C', '#E04F16', '#FE9F43'],
+                backgroundColor: ['#092C4C', '#E04F16', '#CAA23F'],
                 borderWidth: 5,
 				borderRadius: 10,
                 borderColor: '#fff', // Border between segments

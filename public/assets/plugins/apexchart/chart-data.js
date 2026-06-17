@@ -567,7 +567,7 @@ if($('#sales_charts').length > 0) {
         enabled: false
       }
     },
-    colors: ['#FF9F43'],
+    colors: ['#CAA23F'],
     dataLabels: {
       enabled: false
     },
@@ -687,7 +687,7 @@ if($('#customer-chart').length > 0 ){
           show: false,
         }
       },
-      colors: ['#FE9F43', '#FFE3CB'],
+      colors: ['#CAA23F', '#FFE3CB'],
       responsive: [{
         breakpoint: 480,
         options: {
@@ -773,7 +773,7 @@ if($('#customer-chart').length > 0 ){
           show: false,
         }
       },
-      colors: ['#FE9F43', '#FFE3CB'],
+      colors: ['#CAA23F', '#FFE3CB'],
       responsive: [{
         breakpoint: 480,
         options: {
@@ -859,7 +859,7 @@ if($('#customer-chart').length > 0 ){
           show: false,
         }
       },
-      colors: ['#FE9F43', '#FFE3CB'],
+      colors: ['#CAA23F', '#FFE3CB'],
       responsive: [{
         breakpoint: 480,
         options: {
@@ -946,7 +946,7 @@ if($('#customer-chart').length > 0 ){
           show: false,
         }
       },
-      colors: ['#FE9F43', '#FFE3CB'],
+      colors: ['#CAA23F', '#FFE3CB'],
       responsive: [{
         breakpoint: 480,
         options: {
@@ -1032,7 +1032,7 @@ if($('#customer-chart').length > 0 ){
           show: false,
         }
       },
-      colors: ['#FE9F43', '#FFE3CB'],
+      colors: ['#CAA23F', '#FFE3CB'],
       responsive: [{
         breakpoint: 480,
         options: {
@@ -1118,7 +1118,7 @@ if($('#customer-chart').length > 0 ){
           show: false,
         }
       },
-      colors: ['#FE9F43', '#FFE3CB'],
+      colors: ['#CAA23F', '#FFE3CB'],
       responsive: [{
         breakpoint: 480,
         options: {
@@ -1213,7 +1213,7 @@ if($('#customer-chart').length > 0 ){
             {
               from: 100,
               to: 200,
-              color: '#FE9F43'
+              color: '#CAA23F'
             },
           ],
         },
