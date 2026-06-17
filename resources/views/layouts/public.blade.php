@@ -34,7 +34,7 @@
     <meta name="twitter:description" content="{{ $metaDescription }}">
     <meta name="twitter:image" content="{{ asset($ogImage) }}">
 
-    <link rel="icon" type="image/svg+xml" href="{{ asset($brandMark) }}">
+    <link rel="icon" type="image/png" href="{{ asset('images/bingoo_new/bingoo-footer-icon.png') }}">
     <link rel="stylesheet" href="{{ asset('assets/css/bootstrap.min.css') }}">
     <link rel="stylesheet" href="{{ asset('assets/plugins/tabler-icons/tabler-icons.min.css') }}">
     <style>

@@ -3,14 +3,14 @@
 return [
     'default_trial_days' => (int) env('SAAS_DEFAULT_TRIAL_DAYS', 30),
 
-    'brand_name' => env('SAAS_BRAND_NAME', 'Bingoo POS'),
+    'brand_name' => env('SAAS_BRAND_NAME', 'Bingoo'),
 
     'brand_tagline' => env(
         'SAAS_BRAND_TAGLINE',
-        'Cloud POS for retail, restaurants, and inventory teams.'
+        'The Ultimate Boss of Retail & Restaurant Software'
     ),
 
-    'brand_logo' => env('SAAS_BRAND_LOGO', 'images/brand/bingoo-pos-logo.svg'),
+    'brand_logo' => env('SAAS_BRAND_LOGO', 'images/bingoo_new/bingoo-navbar-logo.webp'),
 
     'brand_mark' => env('SAAS_BRAND_MARK', 'images/brand/bingoo-pos-mark.svg'),
 

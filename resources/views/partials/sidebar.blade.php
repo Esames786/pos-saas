@@ -19,13 +19,13 @@
 <div class="sidebar" id="sidebar">
     <div class="sidebar-logo">
         <a href="{{ url('/dashboard') }}" class="logo logo-normal">
-            <img src="{{ asset('assets/img/logo.svg') }}" alt="Logo">
+            <img src="{{ asset('images/bingoo_new/bingoo-navbar-logo.webp') }}" alt="Bingoo">
         </a>
         <a href="{{ url('/dashboard') }}" class="logo logo-white">
-            <img src="{{ asset('assets/img/logo-white.svg') }}" alt="Logo">
+            <img src="{{ asset('images/bingoo_new/bingoo-navbar-logo.webp') }}" alt="Bingoo">
         </a>
         <a href="{{ url('/dashboard') }}" class="logo-small">
-            <img src="{{ asset('assets/img/logo-small.svg') }}" alt="Bingoo POS">
+            <img src="{{ asset('images/bingoo_new/bingoo-footer-icon.webp') }}" alt="Bingoo">
         </a>
 
         <a id="toggle_btn" href="javascript:void(0);">

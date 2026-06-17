@@ -10,7 +10,7 @@
                 <div class="col-lg-5 mx-auto">
                     <div class="login-content user-login">
                         <div class="login-logo">
-                            <img src="{{ asset('assets/img/logo.svg') }}" alt="Logo">
+                            <img src="{{ asset('images/bingoo_new/bingoo-login-main-logo.webp') }}" alt="Bingoo" style="max-width:220px;height:auto;">
                         </div>
 
                         <form method="POST" action="{{ url('/password/change') }}">
