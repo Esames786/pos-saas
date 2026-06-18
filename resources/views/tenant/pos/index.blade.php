@@ -2641,19 +2641,31 @@ document.addEventListener('DOMContentLoaded', function () {
     function applyModeTab(button) {
         var mode     = button.dataset.modeTab;
         var branchId = branchEl ? branchEl.value : '{{ $selectedBranchId }}';
+        var isDineIn = mode === 'dine_in';
 
-        if (mode !== 'dine_in') {
-            // Reload without table state so stale table_session_id is cleared
-            window.location.href = buildPosUrl({ branch_id: branchId, mode: mode });
-            return;
-        }
-
-        // Switching to dine_in in-place: clear table state until user picks a table
+        // In-place switch for EVERY mode — no full page reload (cart is preserved).
+        // Always clear table-session / held-sale state so stale data is never posted
+        // when changing order type; dine-in users re-pick a table from the board.
         clearTableStateInputs();
-        orderTypeEl.value = mode;
+
+        // Hidden order_type drives checkout + the totals/service-charge quote.
+        if (orderTypeEl) orderTypeEl.value = mode;
+
+        // Active tab highlight.
         document.querySelectorAll('[data-mode-tab]').forEach(function (b) { b.classList.remove('active'); });
         button.classList.add('active');
-        document.getElementById('dine-in-board').style.display = '';
+
+        // Table board is only relevant for dine-in.
+        var board = document.getElementById('dine-in-board');
+        if (board) board.style.display = isDineIn ? '' : 'none';
+
+        // Recompute service charge / totals for the new order type.
+        if (typeof refreshServerTotals === 'function') { refreshServerTotals(); }
+
+        // Keep ?mode= in the URL without reloading (shareable / refresh-safe).
+        if (window.history && window.history.replaceState) {
+            window.history.replaceState({}, '', buildPosUrl({ branch_id: branchId, mode: mode }));
+        }
     }
 
     document.querySelectorAll('[data-mode-tab]').forEach(function (button) {
