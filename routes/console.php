@@ -19,3 +19,8 @@ if (config('saas.demos.enabled', true)) {
         ->dailyAt(config('saas.demos.reset_daily_at', '04:00'))
         ->withoutOverlapping();
 }
+
+// Production recommendation (PRD-3): nightly multi-tenant backup with retention prune.
+// Left commented so it never runs unexpectedly in local/dev. Enable on a server that
+// has mysqldump available and storage space, then rely on OS cron `schedule:run`.
+// Schedule::command('tenants:backup --prune')->dailyAt('02:00')->withoutOverlapping();

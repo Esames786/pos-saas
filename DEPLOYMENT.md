@@ -3,10 +3,11 @@
 This runbook takes Bingoo POS from a fresh server to a live, multi-tenant SaaS
 ready for its first paying client. Read it end-to-end before deploying.
 
-> **Status note:** This covers configuration + deployment only.
-> **Database backups (PRD-3), legal pages (PRD-4) and transactional mail (PRD-5)
-> are not done yet.** Do **not** onboard a real paying client until backups
-> exist (see §15).
+> **Status note:** This covers configuration + deployment.
+> **Database backups are available** via `tenants:backup` (PRD-3, see §15).
+> **Legal pages (PRD-4) and transactional mail (PRD-5) are not done yet.**
+> Configure and test backups (and your off-server copy) before onboarding a real
+> paying client.
 
 ---
 
@@ -184,22 +185,99 @@ php artisan demo:reset-all --yes       # reset public demos to clean sample data
 > (`config/saas.demos.reset_tenant_codes`) and **never** real tenants.
 > On a pure production host set `SAAS_DEMOS_ENABLED=false` and do not run these.
 
-## 15. Backup requirement  — MANDATORY before first paid client
+## 15. Backup & restore  — MANDATORY before first paid client
 
-There is **no backup command yet** (coming in **PRD-3**). Until then, set up a
-manual schedule that dumps the master DB **and every tenant DB**:
+Backups are produced by the `tenants:backup` command (PRD-3). It dumps the
+master DB and **every tenant DB**, plus an optional `storage/app` archive, into a
+timestamped folder with a `manifest.json`. It is **read-only** — it never
+creates, drops, or restores databases.
+
+> ⚠️ **Security:** backup files contain **sensitive financial data**. Restrict
+> the backup directory (`chmod 700`), move copies off-server, and encrypt at
+> rest. Backups never contain `.env`, `vendor/`, or `node_modules/`.
+
+### Where backups are stored
+
+`{local-disk-root}/{BACKUP_PATH}/{YYYYmmdd_HHMMSS}/` — on the default Laravel 12
+`local` disk that is **`storage/app/private/backups/{timestamp}/`** (override via
+`BACKUP_DISK`/`BACKUP_PATH`). Each folder contains: `master.sql`,
+`tenant_{code}.sql` (one per tenant), optional `storage.tar.gz`, and
+`manifest.json`.
+
+### Backup commands
 
 ```bash
-# master
-mysqldump pos_saas_master > master_$(date +%F).sql
-# each tenant DB (enumerate pos_tenant_* from the server)
-for db in $(mysql -N -e "SHOW DATABASES LIKE 'pos\_tenant\_%'"); do
-  mysqldump "$db" > "${db}_$(date +%F).sql"
-done
+# Dry run — show exactly what would be backed up, writes nothing
+php artisan tenants:backup --dry-run
+
+# Full backup (master + all tenant DBs + storage archive)
+php artisan tenants:backup
+
+# One tenant only (no storage archive)
+php artisan tenants:backup --tenant=acme --no-storage
+
+# Master DB only / tenant DBs only
+php artisan tenants:backup --master-only
+php artisan tenants:backup --tenants-only
+
+# Backup then delete folders older than BACKUP_RETENTION_DAYS
+php artisan tenants:backup --prune
 ```
 
-Store off-server, test a restore, and define a retention policy.
-**PRD-3 will replace this with a `tenants:backup` artisan command + runbook.**
+> On Windows/Laragon, set `MYSQLDUMP_BINARY` in `.env` to the absolute
+> `mysqldump.exe` path if it is not on PATH.
+
+### Suggested scheduler (production)
+
+A commented recommendation is in `routes/console.php`; enable on the server:
+
+```php
+Schedule::command('tenants:backup --prune')->dailyAt('02:00')->withoutOverlapping();
+```
+
+(Relies on the OS cron from §11. Left disabled by default so it never runs in dev.)
+
+### Retention policy
+
+`--prune` deletes backup folders older than `BACKUP_RETENTION_DAYS` (default 14).
+Keep additional **off-server** copies with your own longer retention (e.g. weekly
+for 3 months) — `--prune` only manages the local folder.
+
+### What is NOT backed up
+
+`.env`, `vendor/`, `node_modules/`, and `storage/framework` (cache/sessions/
+views/logs) — only `storage/app` (uploads such as payment proofs) is archived.
+
+### Restore procedure (MANUAL + EXPLICIT)
+
+Restore is intentionally **not** automated. Never restore over production without:
+
+1. **Maintenance mode** — `php artisan down`.
+2. **Take a fresh backup first** — `php artisan tenants:backup`.
+3. **Confirm the exact target DB name** (master vs the specific tenant DB).
+4. Restore **master and the affected tenant DB(s) consistently** (same backup set).
+5. Clear caches and re-prime them.
+6. Run the §16 smoke test, then `php artisan up`.
+
+Manual example commands (review/adjust before running — these OVERWRITE data):
+
+```bash
+# Master (mysql client reads the dump on stdin)
+mysql -u pos_saas_user -p pos_saas_master < master.sql
+
+# A specific tenant DB (must already exist; do NOT create/drop blindly)
+mysql -u pos_saas_user -p pos_tenant_acme < tenant_acme.sql
+
+# Storage (extract into storage/app)
+tar -xzf storage.tar.gz -C storage/app
+```
+
+### Restore test checklist
+
+- Restore a backup into a **non-production** database and app instance.
+- Log in as a tenant owner; open POS; open Finance → Trial Balance (**diff = 0**).
+- Confirm products, sales, GRNs, and journals match the backup date.
+- Document the restore time so you know your recovery window.
 
 ## 16. Go-live smoke test
 
