@@ -956,10 +956,48 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function availableQty(product, variant) {
-        if (!product.is_stock_tracked) return null;
         const branchId = selectedBranchId();
-        if (variant && variant.stock_by_branch) return Number(variant.stock_by_branch[branchId] || 0);
-        return Number((product.stock_by_branch || {})[branchId] || 0);
+        if (product.is_stock_tracked) {
+            if (variant && variant.stock_by_branch) return Number(variant.stock_by_branch[branchId] || 0);
+            return Number((product.stock_by_branch || {})[branchId] || 0);
+        }
+        // Recipe/service product: availability = how many can be MADE from ingredient stock.
+        if (product.is_recipe && product.makeable_by_branch) {
+            return Number(product.makeable_by_branch[branchId] || 0);
+        }
+        return null; // plain service (no ingredients) — unlimited
+    }
+
+    // Name of the ingredient limiting a recipe product at the current branch (for messages).
+    function limitingIngredient(product) {
+        if (product && product.is_recipe && product.limiting_ingredient_by_branch) {
+            return product.limiting_ingredient_by_branch[selectedBranchId()] || null;
+        }
+        return null;
+    }
+
+    // Blocking message when a product can't be added / increased beyond availability.
+    function unavailableMessage(product, available) {
+        if (product.is_recipe) {
+            var ing = limitingIngredient(product);
+            if (available <= 0) {
+                return product.name + ' cannot be added. ' + (ing ? ing + ' stock is insufficient.' : 'Ingredients are insufficient.');
+            }
+            return 'Only ' + available + ' of ' + product.name + ' can be made. ' + (ing ? ing + ' stock is insufficient.' : '');
+        }
+        if (available <= 0) {
+            return product.name + ' is out of stock.';
+        }
+        return 'Insufficient stock for ' + product.name + '. Available: ' + available;
+    }
+
+    // Prominent blocking message (SweetAlert when present, else a toast — never a native alert).
+    function blockAlert(message) {
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({ icon: 'warning', title: 'Not available', text: message, confirmButtonColor: '#caa23f' });
+        } else {
+            toast('warning', message);
+        }
     }
 
     function lineTax(product, qty, price, discount) {
@@ -998,8 +1036,11 @@ document.addEventListener('DOMContentLoaded', function () {
             const variant    = product.variants && product.variants.length ? product.variants[0] : null;
             const qty        = availableQty(product, variant);
             const price      = productPrice(product, variant);
+            const isRecipe   = !product.is_stock_tracked && product.is_recipe;
             const stockClass = qty === null ? '' : qty <= 0 ? 'stock-out' : qty <= 5 ? 'stock-low' : '';
-            const stockText  = qty === null ? 'Service' : 'Stock ' + qty;
+            const stockText  = qty === null
+                ? 'Service'
+                : (qty <= 0 ? 'Out of stock' : (isRecipe ? 'Makes ' + qty : 'Stock ' + qty));
 
             const button     = document.createElement('button');
             button.type      = 'button';
@@ -1080,7 +1121,7 @@ document.addEventListener('DOMContentLoaded', function () {
         var stockQty  = availableQty(product, variant);
         var measurable = isMeasurableProduct(product);
 
-        if (stockQty !== null && stockQty <= 0) { alert('This item is out of stock.'); return; }
+        if (stockQty !== null && stockQty <= 0) { blockAlert(unavailableMessage(product, 0)); return; }
 
         if (forceQty === undefined && measurable) {
             openQtyModal(product, variant);
@@ -1096,13 +1137,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 ? parseFloat((Number(existing.quantity || 0) + addQty).toFixed(3))
                 : Number(existing.quantity || 0) + addQty;
             if (stockQty !== null && newQty > stockQty + 0.0001) {
-                alert('Insufficient stock. Available: ' + stockQty);
+                blockAlert(unavailableMessage(product, stockQty));
                 return;
             }
             existing.quantity = newQty;
         } else {
             if (stockQty !== null && addQty > stockQty + 0.0001) {
-                alert('Insufficient stock. Available: ' + stockQty);
+                blockAlert(unavailableMessage(product, stockQty));
                 return;
             }
             var price = productPrice(product, variant);
@@ -1178,7 +1219,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (newQty <= 0.0001) { cart.splice(i, 1); renderCart(); return; }
                 var stockQty = availableQty(item.product, item.variant);
                 if (stockQty !== null && newQty > stockQty + 0.0001) {
-                    alert('Insufficient stock. Available: ' + stockQty);
+                    blockAlert(unavailableMessage(item.product, stockQty));
                     input.value = formatQty(item.quantity, item.product);
                     return;
                 }
@@ -1784,7 +1825,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 submitBtn.textContent = origLabel;
 
                 if (!result.ok) {
-                    toast('error', result.data.message || 'Sale failed. Please try again.');
+                    var failMsg = result.data.message || 'Sale failed. Please try again.';
+                    if (typeof Swal !== 'undefined') {
+                        Swal.fire({ icon: 'error', title: 'Cannot complete sale', text: failMsg, confirmButtonColor: '#dc3545' });
+                    } else {
+                        toast('error', failMsg);
+                    }
                     return;
                 }
 
@@ -2734,7 +2780,7 @@ document.addEventListener('DOMContentLoaded', function () {
         .catch(function () {
             openBtn.disabled    = false;
             openBtn.textContent = 'Open Table';
-            alert('Network error. Please try again.');
+            toast('error', 'Network error. Please try again.');
         });
     });
 

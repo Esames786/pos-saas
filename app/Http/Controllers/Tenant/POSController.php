@@ -15,6 +15,7 @@ use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\StockBalance;
 use App\Models\Tenant\Terminal;
 use App\Models\Tenant\TerminalPrinterSetting;
+use App\Services\Kitchen\UnitConversionService;
 use App\Services\Sales\SalesTotalsService;
 use Illuminate\Http\Request;
 
@@ -85,19 +86,33 @@ class POSController extends Controller
                 'variants.barcodes',
                 'barcodes',
                 'branchPrices',
+                // Recipe data drives proactive "makeable" availability for service products.
+                'activeRecipe.ingredients.product.unit',
+                'activeRecipe.ingredients.unit',
+                'activeRecipe.ingredients.variant',
             ])
             ->where('status', 'active')
             ->where('is_sellable', true)
             ->orderBy('name')
             ->get();
 
-        $stockByProduct = StockBalance::query()
+        $stockRows = StockBalance::query()
             ->selectRaw('branch_id, product_id, product_variant_id, SUM(quantity_on_hand) as qty')
             ->groupBy('branch_id', 'product_id', 'product_variant_id')
-            ->get()
+            ->get();
+
+        $stockByProduct = $stockRows
             ->groupBy(fn ($row) => $row->branch_id . ':' . $row->product_id . ':' . ($row->product_variant_id ?: 0));
 
-        $productsPayload = $products->map(function ($product) use ($stockByProduct) {
+        // Fast [branchId][productId][variantId] => qty lookup for recipe ingredient stock.
+        $stockLookup = [];
+        foreach ($stockRows as $row) {
+            $stockLookup[(int) $row->branch_id][(int) $row->product_id][(int) ($row->product_variant_id ?: 0)] = (float) $row->qty;
+        }
+
+        $unitConversion = app(UnitConversionService::class);
+
+        $productsPayload = $products->map(function ($product) use ($stockByProduct, $branches, $stockLookup, $unitConversion) {
             $defaultVariant = $product->defaultVariant ?: $product->variants->first();
 
             $barcodes = $product->barcodes
@@ -151,6 +166,8 @@ class POSController extends Controller
                 }
             }
 
+            $recipe = $this->recipeAvailability($product, $branches, $stockLookup, $unitConversion);
+
             return [
                 'id'                => (int) $product->id,
                 'name'              => $product->name,
@@ -171,6 +188,9 @@ class POSController extends Controller
                 'branch_prices'     => $branchPrices,
                 'variants'          => $variants,
                 'stock_by_branch'   => $stockMap,
+                'is_recipe'                     => $recipe['is_recipe'],
+                'makeable_by_branch'            => $recipe['makeable'],
+                'limiting_ingredient_by_branch' => $recipe['limiting'],
             ];
         })->values();
 
@@ -204,6 +224,82 @@ class POSController extends Controller
                 ? 'dine_in'
                 : ($request->input('mode', 'quick_sale')),
         ]);
+    }
+
+    /**
+     * Proactive availability for recipe/service products: how many can be MADE per
+     * branch from current ingredient stock, plus the limiting ingredient name.
+     * Mirrors RecipeConsumptionService (same unit conversion) so the POS preview
+     * matches what checkout would actually consume. Backend remains authoritative.
+     *
+     * @return array{is_recipe:bool, makeable:array<int,int>, limiting:array<int,string>}
+     */
+    private function recipeAvailability(Product $product, $branches, array $stockLookup, UnitConversionService $unitConversion): array
+    {
+        $blank = ['is_recipe' => false, 'makeable' => [], 'limiting' => []];
+
+        if ($product->inventory_consumption_method !== 'recipe') {
+            return $blank;
+        }
+
+        $recipe = $product->activeRecipe;
+        if (! $recipe) {
+            return $blank;
+        }
+
+        // Only stock-tracked ingredients constrain how many we can make.
+        $ingredients = $recipe->ingredients->filter(
+            fn ($ing) => $ing->product && $ing->product->is_stock_tracked
+        );
+
+        if ($ingredients->isEmpty()) {
+            return $blank; // recipe with no stock-tracked ingredients → unlimited (plain service)
+        }
+
+        $yield = (float) ($recipe->yield_quantity ?: 1) ?: 1;
+
+        $makeable = [];
+        $limiting = [];
+
+        foreach ($branches as $branch) {
+            $branchId = (int) $branch->id;
+            $minUnits = null;
+            $limitName = null;
+
+            foreach ($ingredients as $ing) {
+                $ip = $ing->product;
+
+                $requiredPerBatch = (float) $ing->quantity;
+
+                // Convert ingredient unit → ingredient product base unit (as consumption does).
+                if ($ing->unit_id && $ip->unit_id && $ing->unit_id !== $ip->unit_id && $ing->unit && $ip->unit) {
+                    try {
+                        $requiredPerBatch = $unitConversion->convert($requiredPerBatch, $ing->unit, $ip->unit);
+                    } catch (\Throwable) {
+                        // no conversion path — use as-is
+                    }
+                }
+
+                if ($requiredPerBatch <= 0) {
+                    continue;
+                }
+
+                $variantId = (int) ($ing->product_variant_id ?: 0);
+                $stock = $stockLookup[$branchId][(int) $ip->id][$variantId] ?? 0.0;
+
+                $units = ($stock / $requiredPerBatch) * $yield;
+
+                if ($minUnits === null || $units < $minUnits) {
+                    $minUnits = $units;
+                    $limitName = $ip->name;
+                }
+            }
+
+            $makeable[$branchId]  = (int) floor(max(0, $minUnits ?? 0));
+            $limiting[$branchId]  = $limitName ?? '';
+        }
+
+        return ['is_recipe' => true, 'makeable' => $makeable, 'limiting' => $limiting];
     }
 
     public function quoteTotals(Request $request, SalesTotalsService $totalsService)
