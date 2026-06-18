@@ -12,7 +12,7 @@ class CashBankAccountTransaction extends Model
     public const DIRECTIONS = ['in', 'out'];
 
     public const TYPES = [
-        'opening_balance', 'manual_adjustment',
+        'opening_balance', 'opening_balance_void_reversal', 'manual_adjustment',
         'expense_payment', 'expense_void_reversal',
         'supplier_payment', 'supplier_payment_void_reversal',
         'customer_payment', 'customer_payment_void_reversal',

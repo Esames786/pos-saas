@@ -715,7 +715,7 @@
 
                     {{-- Finance section --}}
                     @if($hasModule('finance'))
-                    @canany(['tenant.finance.accounts.index', 'tenant.finance.cash-bank-accounts.index', 'tenant.finance.expense-categories.index', 'tenant.finance.expenses.index', 'tenant.finance.customer-payments.index', 'tenant.finance.journal-entries.index', 'tenant.finance.general-ledger.index', 'tenant.finance.trial-balance.index', 'tenant.finance.profit-loss.index', 'tenant.finance.branch-profit-loss.index', 'tenant.finance.balance-sheet.index', 'tenant.finance.export.index'])
+                    @canany(['tenant.finance.accounts.index', 'tenant.finance.cash-bank-accounts.index', 'tenant.finance.expense-categories.index', 'tenant.finance.expenses.index', 'tenant.finance.customer-payments.index', 'tenant.finance.opening-balances.index', 'tenant.finance.journal-entries.index', 'tenant.finance.general-ledger.index', 'tenant.finance.trial-balance.index', 'tenant.finance.profit-loss.index', 'tenant.finance.branch-profit-loss.index', 'tenant.finance.balance-sheet.index', 'tenant.finance.export.index'])
                     <li class="submenu-open">
                         <h6 class="submenu-hdr">Finance</h6>
                         <ul>
@@ -760,6 +760,15 @@
                                     <a href="{{ url('/finance/customer-payments') }}">
                                         <i class="ti ti-coin fs-16 me-2" aria-hidden="true"></i>
                                         <span>Customer Payments</span>
+                                    </a>
+                                </li>
+                            @endcan
+
+                            @can('tenant.finance.opening-balances.index')
+                                <li class="{{ request()->is('finance/opening-balances*') ? 'active' : '' }}">
+                                    <a href="{{ url('/finance/opening-balances') }}">
+                                        <i class="ti ti-adjustments-dollar fs-16 me-2" aria-hidden="true"></i>
+                                        <span>Opening Balances</span>
                                     </a>
                                 </li>
                             @endcan

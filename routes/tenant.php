@@ -15,6 +15,7 @@ use App\Http\Controllers\Tenant\Finance\BranchProfitLossController;
 use App\Http\Controllers\Tenant\Finance\FinancialExportController;
 use App\Http\Controllers\Tenant\Finance\GeneralLedgerController;
 use App\Http\Controllers\Tenant\Finance\JournalEntryController;
+use App\Http\Controllers\Tenant\Finance\OpeningBalanceController;
 use App\Http\Controllers\Tenant\Finance\ProfitLossController;
 use App\Http\Controllers\Tenant\Finance\TrialBalanceController;
 use App\Http\Controllers\Tenant\DailyClosingController;
@@ -550,6 +551,17 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 // Finance — General Ledger (FIN-7)
                 Route::get('/finance/journal-entries', [JournalEntryController::class, 'index'])->name('tenant.finance.journal-entries.index');
                 Route::get('/finance/journal-entries/{journalEntry}', [JournalEntryController::class, 'show'])->name('tenant.finance.journal-entries.show');
+
+                // Finance — Opening Balances / Owner Capital (FIN-13)
+                Route::get('/finance/opening-balances', [OpeningBalanceController::class, 'index'])->name('tenant.finance.opening-balances.index');
+                Route::get('/finance/opening-balances/create', [OpeningBalanceController::class, 'create'])->name('tenant.finance.opening-balances.create');
+                Route::post('/finance/opening-balances', [OpeningBalanceController::class, 'store'])->name('tenant.finance.opening-balances.store');
+                Route::get('/finance/opening-balances/{openingBalanceBatch}', [OpeningBalanceController::class, 'show'])->name('tenant.finance.opening-balances.show');
+                Route::get('/finance/opening-balances/{openingBalanceBatch}/edit', [OpeningBalanceController::class, 'edit'])->name('tenant.finance.opening-balances.edit');
+                Route::put('/finance/opening-balances/{openingBalanceBatch}', [OpeningBalanceController::class, 'update'])->name('tenant.finance.opening-balances.update');
+                Route::post('/finance/opening-balances/{openingBalanceBatch}/post', [OpeningBalanceController::class, 'post'])->name('tenant.finance.opening-balances.post');
+                Route::post('/finance/opening-balances/{openingBalanceBatch}/void', [OpeningBalanceController::class, 'void'])->name('tenant.finance.opening-balances.void');
+
                 Route::get('/finance/general-ledger', [GeneralLedgerController::class, 'index'])->name('tenant.finance.general-ledger.index');
                 Route::get('/finance/trial-balance', [TrialBalanceController::class, 'index'])->name('tenant.finance.trial-balance.index');
                 Route::get('/finance/profit-loss', [ProfitLossController::class, 'index'])->name('tenant.finance.profit-loss.index');

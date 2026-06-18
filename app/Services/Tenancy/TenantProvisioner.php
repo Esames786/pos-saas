@@ -607,6 +607,17 @@ class TenantProvisioner
             // Finance — General Ledger (FIN-7)
             'tenant.finance.journal-entries.index',
             'tenant.finance.journal-entries.show',
+
+            // Finance — Opening Balances / Owner Capital (FIN-13)
+            'tenant.finance.opening-balances.index',
+            'tenant.finance.opening-balances.create',
+            'tenant.finance.opening-balances.store',
+            'tenant.finance.opening-balances.show',
+            'tenant.finance.opening-balances.edit',
+            'tenant.finance.opening-balances.update',
+            'tenant.finance.opening-balances.post',
+            'tenant.finance.opening-balances.void',
+
             'tenant.finance.general-ledger.index',
             'tenant.finance.trial-balance.index',
 
