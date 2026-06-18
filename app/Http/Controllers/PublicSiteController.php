@@ -64,6 +64,28 @@ class PublicSiteController extends Controller
         ]);
     }
 
+    // ── Legal / policy pages (PRD-4) ────────────────────────────────────────
+
+    public function terms()
+    {
+        return view('public.terms');
+    }
+
+    public function privacy()
+    {
+        return view('public.privacy');
+    }
+
+    public function refundPolicy()
+    {
+        return view('public.refund-policy');
+    }
+
+    public function supportPolicy()
+    {
+        return view('public.support-policy');
+    }
+
     public function demos()
     {
         $cards = config('saas.demos.cards', []);

@@ -23,4 +23,10 @@ Route::domain(config('tenancy.central_domain'))
         Route::get('/trial/success', [PublicSiteController::class, 'trialSuccess'])->name('public.trial.success');
 
         Route::get('/contact', [PublicSiteController::class, 'contact'])->name('public.contact');
+
+        // Legal / policy pages (PRD-4)
+        Route::get('/terms', [PublicSiteController::class, 'terms'])->name('public.terms');
+        Route::get('/privacy', [PublicSiteController::class, 'privacy'])->name('public.privacy');
+        Route::get('/refund-policy', [PublicSiteController::class, 'refundPolicy'])->name('public.refund');
+        Route::get('/support-policy', [PublicSiteController::class, 'supportPolicy'])->name('public.support-policy');
     });

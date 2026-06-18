@@ -528,7 +528,16 @@
             </div>
         </div>
         <hr style="border-color:#1e293b;">
-        <small>&copy; {{ date('Y') }} {{ $brandName }}. All rights reserved.</small>
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <small>&copy; {{ date('Y') }} {{ $brandName }}. All rights reserved.</small>
+            <div class="d-flex flex-wrap gap-3">
+                <a class="text-decoration-none" style="color:#94a3b8;" href="{{ url('/terms') }}">Terms</a>
+                <a class="text-decoration-none" style="color:#94a3b8;" href="{{ url('/privacy') }}">Privacy</a>
+                <a class="text-decoration-none" style="color:#94a3b8;" href="{{ url('/refund-policy') }}">Refund Policy</a>
+                <a class="text-decoration-none" style="color:#94a3b8;" href="{{ url('/support-policy') }}">Support Policy</a>
+                <a class="text-decoration-none" style="color:#94a3b8;" href="{{ url('/contact') }}">Contact</a>
+            </div>
+        </div>
     </div>
 </footer>
 
