@@ -87,6 +87,7 @@
                 'showBatch'       => true,
                 'showDiscountTax' => false,
                 'showNotes'       => true,
+                'prefillLines'    => $prefillLines ?? [],
             ])
         </div>
     </div>
@@ -94,9 +95,36 @@
     @error('lines') <div class="alert alert-danger" role="alert">{{ $message }}</div> @enderror
 
     <div class="d-flex gap-2">
-        <button class="btn btn-primary" type="submit"
-                onclick="return confirm('Post this GRN and update stock?')">Post GRN</button>
+        <button class="btn btn-primary" type="submit" id="grn-post-btn">Post GRN</button>
         <a href="{{ url('/goods-receipts') }}" class="btn btn-light">Cancel</a>
     </div>
 </form>
 @endsection
+
+@push('scripts')
+<script>
+(function () {
+    var btn = document.getElementById('grn-post-btn');
+    if (!btn) return;
+    btn.addEventListener('click', function (e) {
+        var form = btn.closest('form');
+        if (!form || !window.Swal) return; // no Swal → normal submit
+        e.preventDefault();
+        Swal.fire({
+            title: 'Post this GRN?',
+            text: 'Goods will be received and stock updated immediately.',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Post GRN',
+            cancelButtonText: 'Cancel',
+            confirmButtonColor: '#0d6efd'
+        }).then(function (r) {
+            if (r.isConfirmed) {
+                // requestSubmit fires the form 'submit' event so blank-row cleanup runs.
+                if (form.requestSubmit) { form.requestSubmit(); } else { form.submit(); }
+            }
+        });
+    });
+})();
+</script>
+@endpush

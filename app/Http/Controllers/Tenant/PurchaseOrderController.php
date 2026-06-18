@@ -53,6 +53,15 @@ class PurchaseOrderController extends Controller
 
     public function store(Request $request)
     {
+        // Drop fully-blank rows before validation so empty lines never trigger
+        // confusing per-line errors (works even if client-side JS is bypassed).
+        $request->merge([
+            'lines' => collect($request->input('lines', []))
+                ->filter(fn ($l) => !empty($l['product_id'] ?? null))
+                ->values()
+                ->all(),
+        ]);
+
         $data = $request->validate([
             'branch_id'                => 'required|exists:tenant.branches,id',
             'supplier_id'              => 'required|exists:tenant.suppliers,id',

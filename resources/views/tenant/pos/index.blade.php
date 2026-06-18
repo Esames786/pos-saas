@@ -2881,7 +2881,4 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 
-@push('scripts')
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
-@endpush
 @endsection

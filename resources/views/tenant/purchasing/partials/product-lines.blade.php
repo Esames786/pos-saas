@@ -3,6 +3,18 @@
     $showBatch       = $showBatch       ?? false;
     $showDiscountTax = $showDiscountTax ?? true;
     $showNotes       = $showNotes       ?? false;
+    $prefillLines    = $prefillLines    ?? [];
+
+    // Rows to render: re-submitted values (validation error) win, then PO prefill,
+    // otherwise a few blank rows for manual entry.
+    $oldLines = old('lines');
+    if ($oldLines) {
+        $rows = array_values($oldLines);
+    } elseif (!empty($prefillLines)) {
+        $rows = array_values($prefillLines);
+    } else {
+        $rows = array_fill(0, 5, []);
+    }
 @endphp
 
 <div class="purchase-lines-widget"
@@ -61,16 +73,28 @@
                 @if($showNotes)
                     <th scope="col">Notes</th>
                 @endif
+
+                <th scope="col" class="text-end" style="width:48px;"><span class="visually-hidden">Actions</span></th>
             </tr>
             </thead>
             <tbody class="purchase-lines-body">
-            @for($i = 0; $i < 5; $i++)
+            @foreach($rows as $i => $row)
                 @php
-                    $variantData = collect([]);
-                    // will be overwritten per-product inside the select loop
+                    $rowProduct = $row['product_id'] ?? '';
+                    $rowVariant = $row['product_variant_id'] ?? '';
+                    $rowQty     = $row[$quantityField] ?? ($row['quantity'] ?? '');
+                    $rowCost    = $row['unit_cost'] ?? 0;
+                    $rowBatch   = $row['batch_no'] ?? '';
+                    $rowExpiry  = $row['expiry_date'] ?? '';
+                    $rowPoLine  = $row['purchase_order_line_id'] ?? '';
+                    $rowDisc    = $row['discount_amount'] ?? 0;
+                    $rowTax     = $row['tax_amount'] ?? 0;
+                    $rowNotes   = $row['notes'] ?? '';
                 @endphp
                 <tr class="purchase-line-row">
                     <td>
+                        <input type="hidden" name="lines[{{ $i }}][purchase_order_line_id]"
+                               class="purchase-po-line-input" value="{{ $rowPoLine }}">
                         <label for="lines_{{ $i }}_product_id" class="visually-hidden">Product line {{ $i + 1 }}</label>
                         <select id="lines_{{ $i }}_product_id" name="lines[{{ $i }}][product_id]"
                                 class="form-select form-select-sm purchase-product-select">
@@ -95,7 +119,7 @@
                                         data-requires-batch="{{ $product->requires_batch ? 1 : 0 }}"
                                         data-has-expiry="{{ $product->has_expiry ? 1 : 0 }}"
                                         data-variants="{{ $variantData->toJson() }}"
-                                        @selected(old("lines.$i.product_id") == $product->id)>
+                                        @selected($rowProduct == $product->id)>
                                     {{ $product->name }}{{ $product->sku ? ' — ' . $product->sku : '' }}
                                 </option>
                             @endforeach
@@ -105,9 +129,10 @@
                         <label for="lines_{{ $i }}_product_variant_id" class="visually-hidden">Variant line {{ $i + 1 }}</label>
                         <select id="lines_{{ $i }}_product_variant_id" name="lines[{{ $i }}][product_variant_id]"
                                 class="form-select form-select-sm purchase-variant-select"
-                                data-selected="{{ old("lines.$i.product_variant_id") }}">
+                                data-selected="{{ $rowVariant }}">
                             <option value="">—</option>
                         </select>
+                        <span class="purchase-variant-label text-muted small d-none"></span>
                     </td>
 
                     @if($showBatch)
@@ -115,13 +140,15 @@
                             <label for="lines_{{ $i }}_batch_no" class="visually-hidden">Batch number line {{ $i + 1 }}</label>
                             <input id="lines_{{ $i }}_batch_no" type="text" name="lines[{{ $i }}][batch_no]"
                                    class="form-control form-control-sm purchase-batch-input" maxlength="100"
-                                   value="{{ old("lines.$i.batch_no") }}">
+                                   value="{{ $rowBatch }}">
+                            <span class="purchase-batch-na text-muted small d-none">Not tracked</span>
                         </td>
                         <td>
                             <label for="lines_{{ $i }}_expiry_date" class="visually-hidden">Expiry date line {{ $i + 1 }}</label>
                             <input id="lines_{{ $i }}_expiry_date" type="date" name="lines[{{ $i }}][expiry_date]"
                                    class="form-control form-control-sm purchase-expiry-input"
-                                   value="{{ old("lines.$i.expiry_date") }}">
+                                   value="{{ $rowExpiry }}">
+                            <span class="purchase-expiry-na text-muted small d-none">Not tracked</span>
                         </td>
                     @endif
 
@@ -130,14 +157,14 @@
                         <input id="lines_{{ $i }}_quantity" type="number" step="0.001" min="0"
                                name="lines[{{ $i }}][{{ $quantityField }}]"
                                class="form-control form-control-sm purchase-qty-input"
-                               value="{{ old("lines.$i.$quantityField") }}">
+                               value="{{ $rowQty }}">
                     </td>
                     <td>
                         <label for="lines_{{ $i }}_unit_cost" class="visually-hidden">Unit cost line {{ $i + 1 }}</label>
                         <input id="lines_{{ $i }}_unit_cost" type="number" step="0.0001" min="0"
                                name="lines[{{ $i }}][unit_cost]"
                                class="form-control form-control-sm purchase-cost-input"
-                               value="{{ old("lines.$i.unit_cost", 0) }}">
+                               value="{{ $rowCost }}">
                     </td>
 
                     @if($showDiscountTax)
@@ -146,14 +173,14 @@
                             <input id="lines_{{ $i }}_discount_amount" type="number" step="0.01" min="0"
                                    name="lines[{{ $i }}][discount_amount]"
                                    class="form-control form-control-sm purchase-discount-input"
-                                   value="{{ old("lines.$i.discount_amount", 0) }}">
+                                   value="{{ $rowDisc }}">
                         </td>
                         <td>
                             <label for="lines_{{ $i }}_tax_amount" class="visually-hidden">Tax line {{ $i + 1 }}</label>
                             <input id="lines_{{ $i }}_tax_amount" type="number" step="0.01" min="0"
                                    name="lines[{{ $i }}][tax_amount]"
                                    class="form-control form-control-sm purchase-tax-input"
-                                   value="{{ old("lines.$i.tax_amount", 0) }}">
+                                   value="{{ $rowTax }}">
                         </td>
                     @endif
 
@@ -162,11 +189,21 @@
                             <label for="lines_{{ $i }}_notes" class="visually-hidden">Notes line {{ $i + 1 }}</label>
                             <input id="lines_{{ $i }}_notes" type="text" name="lines[{{ $i }}][notes]"
                                    class="form-control form-control-sm purchase-notes-input"
-                                   value="{{ old("lines.$i.notes") }}">
+                                   value="{{ $rowNotes }}">
                         </td>
                     @endif
+
+                    <td class="text-end">
+                        <button type="button" class="btn btn-sm btn-outline-danger purchase-line-remove"
+                                title="Remove line" aria-label="Remove line {{ $i + 1 }}">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+                                <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
+                                <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3h11V2h-11v1z"/>
+                            </svg>
+                        </button>
+                    </td>
                 </tr>
-            @endfor
+            @endforeach
             </tbody>
         </table>
     </div>
@@ -195,7 +232,7 @@
             });
             return;
         }
-        alert(message);
+        console.warn(message);
     }
 
     function parseJson(value, fallback) {
@@ -238,21 +275,27 @@
 
     function clearRow(row) {
         row.querySelectorAll('input, textarea, select').forEach(function (el) {
+            if (el.classList.contains('purchase-po-line-input')) { el.value = ''; el.disabled = false; return; }
             if (el.tagName === 'SELECT') {
                 el.value = '';
             } else if (el.type === 'number') {
                 el.value = el.classList.contains('purchase-qty-input') ? '1' : '0';
+                el.disabled = false;
             } else {
                 el.value = '';
+                el.disabled = false;
             }
         });
         var variantSelect = row.querySelector('.purchase-variant-select');
         if (variantSelect) {
             variantSelect.innerHTML = '<option value="">—</option>';
             variantSelect.dataset.selected = '';
+            variantSelect.classList.remove('d-none');
         }
-        var poLineInput = row.querySelector('.purchase-po-line-input');
-        if (poLineInput) poLineInput.value = '';
+        var variantLabel = row.querySelector('.purchase-variant-label');
+        if (variantLabel) variantLabel.classList.add('d-none');
+        // reset batch/expiry display
+        applyBatchExpiry(row);
     }
 
     function findReusableRow(widget) {
@@ -277,6 +320,29 @@
 
     function ensureRow(widget) {
         return findReusableRow(widget) || createRow(widget);
+    }
+
+    // Variant UX: hide the dropdown when a product has only one (default) variant,
+    // show a muted label instead, but keep the value submitting via the select.
+    function applyVariantDisplay(row, variants) {
+        var variantSelect = row.querySelector('.purchase-variant-select');
+        var variantLabel  = row.querySelector('.purchase-variant-label');
+        if (!variantSelect) return;
+
+        var active = (variants || []).filter(function (v) { return v.is_active !== false; });
+
+        if (active.length <= 1) {
+            // single/default variant — auto-select and simplify
+            variantSelect.classList.add('d-none');
+            if (variantLabel) {
+                var only = active[0];
+                variantLabel.textContent = only ? (only.name || only.sku || 'Default') : '—';
+                variantLabel.classList.remove('d-none');
+            }
+        } else {
+            variantSelect.classList.remove('d-none');
+            if (variantLabel) variantLabel.classList.add('d-none');
+        }
     }
 
     function fillVariants(row, selectedVariantId) {
@@ -306,6 +372,53 @@
             var def = variants.find(function (v) { return !!v.is_default; });
             if (def) variantSelect.value = String(def.id);
         }
+
+        applyVariantDisplay(row, variants);
+    }
+
+    // Conditional Batch/Expiry: only relevant on GRN (batch inputs present).
+    function applyBatchExpiry(row) {
+        var productSelect = row.querySelector('.purchase-product-select');
+        var batchInput    = row.querySelector('.purchase-batch-input');
+        var expiryInput   = row.querySelector('.purchase-expiry-input');
+        if (!batchInput && !expiryInput) return; // PO has no batch columns
+
+        var opt = productSelect ? productSelect.options[productSelect.selectedIndex] : null;
+        var requiresBatch = !!(opt && Number(opt.dataset.requiresBatch) === 1);
+        var hasExpiry     = !!(opt && Number(opt.dataset.hasExpiry) === 1);
+
+        if (batchInput) {
+            var batchNa = row.querySelector('.purchase-batch-na');
+            if (requiresBatch) {
+                batchInput.disabled = false;
+                batchInput.classList.remove('d-none');
+                batchInput.classList.add('border-warning');
+                batchInput.placeholder = 'Required';
+                if (batchNa) batchNa.classList.add('d-none');
+            } else {
+                batchInput.value = '';
+                batchInput.disabled = true;
+                batchInput.classList.add('d-none');
+                batchInput.classList.remove('border-warning');
+                if (batchNa) batchNa.classList.remove('d-none');
+            }
+        }
+
+        if (expiryInput) {
+            var expNa = row.querySelector('.purchase-expiry-na');
+            if (hasExpiry) {
+                expiryInput.disabled = false;
+                expiryInput.classList.remove('d-none');
+                expiryInput.classList.add('border-warning');
+                if (expNa) expNa.classList.add('d-none');
+            } else {
+                expiryInput.value = '';
+                expiryInput.disabled = true;
+                expiryInput.classList.add('d-none');
+                expiryInput.classList.remove('border-warning');
+                if (expNa) expNa.classList.remove('d-none');
+            }
+        }
     }
 
     function selectedBranchId() {
@@ -319,8 +432,6 @@
         var variantSelect = row.querySelector('.purchase-variant-select');
         var qtyInput      = row.querySelector('.purchase-qty-input');
         var costInput     = row.querySelector('.purchase-cost-input');
-        var batchInput    = row.querySelector('.purchase-batch-input');
-        var expiryInput   = row.querySelector('.purchase-expiry-input');
 
         if (!productSelect || !qtyInput || !costInput) {
             notify('Product line fields are missing on this page.', 'error');
@@ -329,6 +440,7 @@
 
         productSelect.value = String(result.product_id || '');
         fillVariants(row, result.variant_id || null);
+        applyBatchExpiry(row);
         if (variantSelect && result.variant_id) variantSelect.value = String(result.variant_id);
 
         qtyInput.value = result.allow_decimal ? '1.000' : '1';
@@ -336,9 +448,6 @@
         qtyInput.min   = '0.001';
 
         costInput.value = moneyValue(result.purchase_price).toFixed(4);
-
-        if (batchInput && result.requires_batch) batchInput.placeholder = 'Required';
-        if (expiryInput && result.has_expiry) expiryInput.classList.add('border-warning');
 
         var label = result.name || result.sku || 'Product';
         var unit  = result.unit_code ? (' ' + result.unit_code) : '';
@@ -377,17 +486,21 @@
         });
     }
 
+    function rowCount(widget) {
+        return widget.querySelectorAll('.purchase-line-row').length;
+    }
+
     function setupWidget(widget) {
         var scanner = widget.querySelector('.purchase-line-scanner');
         var button  = widget.querySelector('.purchase-line-scan-btn');
-        if (!scanner || !button) return;
 
-        // Auto-fill cost when product manually selected from dropdown
+        // Product change → variants + cost + conditional batch/expiry.
         widget.addEventListener('change', function (event) {
             if (event.target.classList.contains('purchase-product-select')) {
                 var row = event.target.closest('.purchase-line-row');
                 if (!row) return;
                 fillVariants(row);
+                applyBatchExpiry(row);
                 var selectedOption = event.target.options[event.target.selectedIndex];
                 var costInput = row.querySelector('.purchase-cost-input');
                 if (selectedOption && costInput && !Number(costInput.value || 0)) {
@@ -396,32 +509,51 @@
             }
             if (event.target.classList.contains('purchase-variant-select')) {
                 var selected  = event.target.options[event.target.selectedIndex];
-                var costInput = event.target.closest('.purchase-line-row') &&
+                var costInput2 = event.target.closest('.purchase-line-row') &&
                                 event.target.closest('.purchase-line-row').querySelector('.purchase-cost-input');
-                if (selected && costInput && Number(selected.dataset.purchasePrice || 0) > 0) {
-                    costInput.value = moneyValue(selected.dataset.purchasePrice).toFixed(4);
+                if (selected && costInput2 && Number(selected.dataset.purchasePrice || 0) > 0) {
+                    costInput2.value = moneyValue(selected.dataset.purchasePrice).toFixed(4);
                 }
             }
         });
 
-        // Init variant dropdowns on any rows that have a product pre-selected (e.g. old() values)
+        // Remove-row button (delegated). Keep at least one row.
+        widget.addEventListener('click', function (event) {
+            var removeBtn = event.target.closest('.purchase-line-remove');
+            if (!removeBtn) return;
+            var row = removeBtn.closest('.purchase-line-row');
+            if (!row) return;
+            if (rowCount(widget) > 1) {
+                row.remove();
+            } else {
+                clearRow(row);
+                notify('At least one product line is required.', 'info');
+            }
+        });
+
+        // Init each existing row (prefill / old values): variants + batch/expiry.
         widget.querySelectorAll('.purchase-line-row').forEach(function (row) {
             fillVariants(row);
+            applyBatchExpiry(row);
         });
 
-        function handleScan() {
-            var code = scanner.value.trim();
-            if (!code) { scanner.focus(); return; }
-            scanner.value = '';
-            lookupBarcode(widget, code);
+        if (scanner && button) {
+            (function () {
+                function handleScan() {
+                    var code = scanner.value.trim();
+                    if (!code) { scanner.focus(); return; }
+                    scanner.value = '';
+                    lookupBarcode(widget, code);
+                }
+                scanner.addEventListener('keydown', function (event) {
+                    if (event.key === 'Enter') { event.preventDefault(); handleScan(); }
+                });
+                button.addEventListener('click', handleScan);
+                setTimeout(function () { scanner.focus(); }, 200);
+            })();
         }
 
-        scanner.addEventListener('keydown', function (event) {
-            if (event.key === 'Enter') { event.preventDefault(); handleScan(); }
-        });
-        button.addEventListener('click', handleScan);
-
-        // Disable blank rows on submit so controller only sees filled lines
+        // Disable blank rows on submit so the controller only sees filled lines.
         var form = widget.closest('form');
         if (form) {
             form.addEventListener('submit', function () {
@@ -434,9 +566,6 @@
                 });
             });
         }
-
-        // Auto-focus scanner on page load
-        setTimeout(function () { scanner.focus(); }, 200);
     }
 
     document.querySelectorAll('.purchase-lines-widget').forEach(setupWidget);

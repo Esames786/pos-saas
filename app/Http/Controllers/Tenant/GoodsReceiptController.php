@@ -12,6 +12,7 @@ use App\Models\Tenant\Supplier;
 use App\Services\Purchasing\PurchasingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class GoodsReceiptController extends Controller
 {
@@ -50,10 +51,38 @@ class GoodsReceiptController extends Controller
             ->orderByDesc('order_date')
             ->get();
         $selectedPo   = null;
+        $prefillLines = [];
 
         if ($request->filled('purchase_order_id')) {
             $selectedPo = PurchaseOrder::with(['supplier', 'branch', 'lines.product', 'lines.variant'])
                 ->find($request->purchase_order_id);
+
+            if ($selectedPo) {
+                // Already-received qty per PO line (supports partial receiving).
+                $received = GoodsReceiptLine::whereIn('purchase_order_line_id', $selectedPo->lines->pluck('id'))
+                    ->selectRaw('purchase_order_line_id, SUM(quantity_received) as qty')
+                    ->groupBy('purchase_order_line_id')
+                    ->pluck('qty', 'purchase_order_line_id');
+
+                foreach ($selectedPo->lines as $line) {
+                    $remaining = (float) $line->quantity_ordered - (float) ($received[$line->id] ?? 0);
+                    if ($remaining <= 0) {
+                        continue; // fully received — skip
+                    }
+
+                    $prefillLines[] = [
+                        'purchase_order_line_id' => $line->id,
+                        'product_id'             => $line->product_id,
+                        'product_variant_id'     => $line->product_variant_id,
+                        'quantity_received'      => 0 + $remaining,
+                        'unit_cost'              => 0 + (float) $line->unit_cost,
+                        'discount_amount'        => 0 + (float) $line->discount_amount,
+                        'tax_amount'             => 0 + (float) $line->tax_amount,
+                        'batch_no'               => '',
+                        'expiry_date'            => '',
+                    ];
+                }
+            }
         }
 
         return view('tenant.goods-receipts.create', [
@@ -62,11 +91,20 @@ class GoodsReceiptController extends Controller
             'products'      => $products,
             'openOrders'    => $openOrders,
             'purchaseOrder' => $selectedPo,
+            'prefillLines'  => $prefillLines,
         ]);
     }
 
     public function store(Request $request)
     {
+        // Drop fully-blank rows before validation (robust even if client JS is bypassed).
+        $request->merge([
+            'lines' => collect($request->input('lines', []))
+                ->filter(fn ($l) => !empty($l['product_id'] ?? null))
+                ->values()
+                ->all(),
+        ]);
+
         $data = $request->validate([
             'branch_id'                    => 'required|exists:tenant.branches,id',
             'supplier_id'                  => 'required|exists:tenant.suppliers,id',
@@ -89,6 +127,25 @@ class GoodsReceiptController extends Controller
         $validLines = collect($data['lines'])->filter(fn($l) => !empty($l['product_id']));
         if ($validLines->isEmpty()) {
             return back()->withErrors(['lines' => 'At least one product line is required.'])->withInput();
+        }
+
+        // Conditional batch/expiry: required only when the selected product tracks them.
+        $productMap = Product::whereIn('id', $validLines->pluck('product_id'))->get()->keyBy('id');
+        foreach ($validLines->values() as $i => $line) {
+            $product = $productMap[$line['product_id']] ?? null;
+            if (! $product) {
+                continue;
+            }
+            if ($product->requires_batch && empty($line['batch_no'])) {
+                throw ValidationException::withMessages([
+                    "lines.$i.batch_no" => "Batch number is required for {$product->name}.",
+                ]);
+            }
+            if ($product->has_expiry && empty($line['expiry_date'])) {
+                throw ValidationException::withMessages([
+                    "lines.$i.expiry_date" => "Expiry date is required for {$product->name}.",
+                ]);
+            }
         }
 
         $userId = auth('tenant')->id();
