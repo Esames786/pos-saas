@@ -285,16 +285,33 @@ Run through this on the live host before announcing:
 
 1. Central home (`https://CENTRAL_DOMAIN`) loads.
 2. `/start-trial` loads.
-3. Create a trial → tenant + tenant DB provisioned.
+3. Create a trial → tenant + tenant DB provisioned, and the **"workspace ready"
+   email** is sent to the owner (check the inbox, or `storage/logs` if
+   `MAIL_MAILER=log`).
 4. Tenant subdomain `{code}.TENANT_BASE_DOMAIN` resolves over HTTPS.
 5. Owner can log in.
-6. POS screen opens.
-7. Create a product.
-8. Create a Purchase Order → Approve → **Send to GRN** (lines prefilled).
-9. Post the GRN (stock + inventory batch created).
-10. Make a POS sale.
-11. **Trial Balance difference is 0** (Finance → Trial Balance).
-12. Public demos (if enabled) still open and are write-protected.
+6. **Forgot password:** on the tenant login, click "Forgot password?", submit the
+   owner email → generic success message + reset email with a link on the **same
+   tenant subdomain**; complete the reset and log in with the new password.
+7. POS screen opens.
+8. Create a product.
+9. Create a Purchase Order → Approve → **Send to GRN** (lines prefilled).
+10. Post the GRN (stock + inventory batch created).
+11. Make a POS sale.
+12. **Trial Balance difference is 0** (Finance → Trial Balance).
+13. Public demos (if enabled) still open and are write-protected.
+
+### Email / onboarding (PRD-5)
+
+- **Configure SMTP before live signup** (`MAIL_*` in §5). With `MAIL_MAILER=log`
+  emails are written to `storage/logs/laravel-*.log` instead of being sent.
+- Two transactional emails exist: the **trial workspace-ready** email (after
+  signup) and the **password-reset** email. Both are best-effort — a mail failure
+  is logged and never blocks signup or reveals whether an email is registered.
+- After go-live, **test both** (a real signup and a forgot-password) and confirm
+  delivery; check `storage/logs` for any mail errors.
+- Self-signup uses an **owner-chosen** password, so no password is emailed; the
+  workspace-ready email links to login + the reset flow instead.
 
 ## 17. Rollback checklist
 

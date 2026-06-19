@@ -143,7 +143,25 @@ class PublicSiteController extends Controller
         }
 
         $domain = $tenant->domains->first()?->domain;
-        $loginUrl = 'http://' . $domain . '/login';
+        $scheme = $request->secure() ? 'https' : 'http';
+        $loginUrl = $scheme . '://' . $domain . '/login';
+
+        // Workspace-ready email (PRD-5) — additive; never block signup if mail fails.
+        try {
+            $trialEnds = $tenant->subscription?->trial_ends_at;
+            \Illuminate\Support\Facades\Mail::to($tenant->owner_email)->send(
+                new \App\Mail\TrialWorkspaceCreatedMail(
+                    brand: config('saas.brand_name', 'Bingoo'),
+                    businessName: $tenant->business_name,
+                    loginUrl: $loginUrl,
+                    ownerEmail: $tenant->owner_email,
+                    trialEnds: $trialEnds ? \Illuminate\Support\Carbon::parse($trialEnds)->format('F j, Y') : null,
+                    supportEmail: config('saas.contact.support_email', 'support@bingoopos.com'),
+                )
+            );
+        } catch (Throwable $e) {
+            report($e);
+        }
 
         return redirect(url('/trial/success'))->with([
             'trial_login_url'     => $loginUrl,

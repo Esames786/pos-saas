@@ -2,9 +2,12 @@
 
 namespace App\Models\Tenant;
 
+use App\Mail\TenantPasswordResetMail;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Mail;
 use Spatie\Permission\Traits\HasRoles;
+use Throwable;
 
 class User extends Authenticatable
 {
@@ -78,5 +81,28 @@ class User extends Authenticatable
     public function canAccessTerminal(int $terminalId): bool
     {
         return $this->terminals()->where('terminal_id', $terminalId)->exists();
+    }
+
+    /**
+     * Send the password-reset link on the CURRENT tenant subdomain (PRD-5).
+     * The reset request runs on the tenant host, so url() yields the tenant URL.
+     * Mail failures are reported but never bubble up (avoids leaking enumeration
+     * and never breaks the generic "link sent" response).
+     */
+    public function sendPasswordResetNotification($token): void
+    {
+        $email   = $this->getEmailForPasswordReset();
+        $resetUrl = url('/reset-password/' . $token) . '?email=' . urlencode($email);
+
+        try {
+            Mail::to($email)->send(new TenantPasswordResetMail(
+                brand: config('saas.brand_name', 'Bingoo'),
+                resetUrl: $resetUrl,
+                expireMinutes: (int) config('auth.passwords.tenant_users.expire', 60),
+                supportEmail: config('saas.contact.support_email', 'support@bingoopos.com'),
+            ));
+        } catch (Throwable $e) {
+            report($e);
+        }
     }
 }

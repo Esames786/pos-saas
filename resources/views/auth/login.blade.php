@@ -71,9 +71,11 @@
                                                 </div>
 
                                                 <div class="text-end">
-                                                    <a class="text-orange fs-16 fw-medium" href="javascript:void(0);">
-                                                        {{ __('auth.forgot_password') }}
-                                                    </a>
+                                                    @if(app()->bound('tenant'))
+                                                        <a class="text-orange fs-16 fw-medium" href="{{ url('/forgot-password') }}">
+                                                            {{ __('auth.forgot_password') }}
+                                                        </a>
+                                                    @endif
                                                 </div>
                                             </div>
                                         </div>

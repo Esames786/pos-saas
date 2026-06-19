@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\Tenant\Auth\PasswordResetController;
 use App\Http\Controllers\Tenant\BranchController;
 use App\Http\Controllers\Tenant\CategoryController;
 use App\Http\Controllers\Tenant\CurrencyController;
@@ -84,6 +85,14 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
 
         Route::get('/login', [AuthController::class, 'showLogin'])->name('tenant.login');
         Route::post('/login', [AuthController::class, 'login'])->name('tenant.login.post');
+
+        // Self-service password reset (PRD-5) — operates on the tenant connection.
+        Route::get('/forgot-password', [PasswordResetController::class, 'showLinkRequest'])->name('tenant.password.request');
+        Route::post('/forgot-password', [PasswordResetController::class, 'sendResetLink'])
+            ->middleware('throttle:5,1')->name('tenant.password.email');
+        Route::get('/reset-password/{token}', [PasswordResetController::class, 'showReset'])->name('tenant.password.reset');
+        Route::post('/reset-password', [PasswordResetController::class, 'reset'])
+            ->middleware('throttle:5,1')->name('tenant.password.store');
 
         Route::middleware(['auth:tenant'])->group(function () {
             Route::post('/logout', [AuthController::class, 'logout'])->name('tenant.logout');
