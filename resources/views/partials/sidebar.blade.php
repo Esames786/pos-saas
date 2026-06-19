@@ -6,14 +6,20 @@
     // EnsureTenantSubscriptionAccess module gate, so links don't appear for
     // routes that would be blocked on click).
     $planModuleKeys = [];
+    $planCode = null;
     if ($isTenant) {
         $sub = app('tenant')->subscription;
         if ($sub) {
             $sub->loadMissing('plan.enabledModules');
             $planModuleKeys = $sub->plan ? $sub->plan->enabledModules->pluck('key')->all() : [];
+            $planCode = $sub->plan?->code;
         }
     }
     $hasModule = fn (string $key) => in_array($key, $planModuleKeys, true);
+
+    // ERP "Coming Soon" roadmap modules (ERP-SOON-1) — shown only to enterprise
+    // + the legacy standard/demo plan, never to retail/restaurant clients.
+    $showErpComingSoon = in_array($planCode, ['enterprise', 'standard'], true);
 @endphp
 
 <div class="sidebar" id="sidebar">
@@ -838,6 +844,80 @@
                         </ul>
                     </li>
                     @endcanany
+                    @endif
+
+                    {{-- ══════════ Coming Soon ERP extensions (ERP-SOON-1) ══════════ --}}
+                    {{-- Roadmap-only pages; gated to enterprise + legacy demo plans. --}}
+                    @if($showErpComingSoon)
+                        @can('tenant.finance.bank-reconciliation.index')
+                        <li class="submenu-open">
+                            <h6 class="submenu-hdr">Finance ERP</h6>
+                            <ul>
+                                <li class="{{ request()->is('finance/bank-reconciliation*') ? 'active' : '' }}">
+                                    <a href="{{ url('/finance/bank-reconciliation') }}">
+                                        <i class="ti ti-arrows-left-right fs-16 me-2"></i>
+                                        <span>Bank Reconciliation</span>
+                                        <span class="badge bg-warning text-dark ms-1" style="font-size:.6rem;">Soon</span>
+                                    </a>
+                                </li>
+                            </ul>
+                        </li>
+                        @endcan
+
+                        @canany(['tenant.quotations.index', 'tenant.purchase-requisitions.index', 'tenant.purchase-returns.index'])
+                        <li class="submenu-open">
+                            <h6 class="submenu-hdr">Supply Chain</h6>
+                            <ul>
+                                @can('tenant.quotations.index')
+                                    <li class="{{ request()->is('quotations*') ? 'active' : '' }}">
+                                        <a href="{{ url('/quotations') }}"><i class="ti ti-file-dollar fs-16 me-2"></i><span>Quotations</span><span class="badge bg-warning text-dark ms-1" style="font-size:.6rem;">Soon</span></a>
+                                    </li>
+                                @endcan
+                                @can('tenant.purchase-requisitions.index')
+                                    <li class="{{ request()->is('purchase-requisitions*') ? 'active' : '' }}">
+                                        <a href="{{ url('/purchase-requisitions') }}"><i class="ti ti-clipboard-text fs-16 me-2"></i><span>Purchase Requisitions</span><span class="badge bg-warning text-dark ms-1" style="font-size:.6rem;">Soon</span></a>
+                                    </li>
+                                @endcan
+                                @can('tenant.purchase-returns.index')
+                                    <li class="{{ request()->is('purchase-returns*') ? 'active' : '' }}">
+                                        <a href="{{ url('/purchase-returns') }}"><i class="ti ti-arrow-back-up fs-16 me-2"></i><span>Purchase Returns</span><span class="badge bg-warning text-dark ms-1" style="font-size:.6rem;">Soon</span></a>
+                                    </li>
+                                @endcan
+                            </ul>
+                        </li>
+                        @endcanany
+
+                        @canany([
+                            'tenant.manufacturing.bom.index', 'tenant.manufacturing.material-requisitions.index',
+                            'tenant.manufacturing.production-orders.index', 'tenant.manufacturing.wip.index',
+                            'tenant.manufacturing.finished-goods.index', 'tenant.manufacturing.scrap.index',
+                            'tenant.manufacturing.rejections.index', 'tenant.manufacturing.consumption.index',
+                            'tenant.manufacturing.reports.index',
+                        ])
+                        <li class="submenu-open">
+                            <h6 class="submenu-hdr">Manufacturing</h6>
+                            <ul>
+                                @php $mfg = [
+                                    ['bom','BOM','ti-sitemap'],
+                                    ['material-requisitions','Material Requisition (MRC)','ti-clipboard-list'],
+                                    ['production-orders','Production Orders','ti-clipboard-check'],
+                                    ['wip','Work in Process (WIP)','ti-progress'],
+                                    ['finished-goods','Finished Goods','ti-package'],
+                                    ['scrap','Scrap / Hard Waste','ti-trash'],
+                                    ['rejections','Rejections','ti-ban'],
+                                    ['consumption','Consumption','ti-flask'],
+                                    ['reports','Production Reports','ti-chart-bar'],
+                                ]; @endphp
+                                @foreach($mfg as [$slug, $label, $icon])
+                                    @can('tenant.manufacturing.' . $slug . '.index')
+                                        <li class="{{ request()->is('manufacturing/' . $slug . '*') ? 'active' : '' }}">
+                                            <a href="{{ url('/manufacturing/' . $slug) }}"><i class="ti {{ $icon }} fs-16 me-2"></i><span>{{ $label }}</span><span class="badge bg-warning text-dark ms-1" style="font-size:.6rem;">Soon</span></a>
+                                        </li>
+                                    @endcan
+                                @endforeach
+                            </ul>
+                        </li>
+                        @endcanany
                     @endif
 
                     {{-- Catalog section --}}

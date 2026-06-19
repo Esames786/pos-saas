@@ -632,6 +632,21 @@ class TenantProvisioner
 
             // Finance — Accounting Export (FIN-12)
             'tenant.finance.export.index',
+
+            // Coming Soon ERP extensions (ERP-SOON-1) — read-only roadmap pages.
+            'tenant.finance.bank-reconciliation.index',
+            'tenant.quotations.index',
+            'tenant.purchase-requisitions.index',
+            'tenant.purchase-returns.index',
+            'tenant.manufacturing.bom.index',
+            'tenant.manufacturing.material-requisitions.index',
+            'tenant.manufacturing.production-orders.index',
+            'tenant.manufacturing.wip.index',
+            'tenant.manufacturing.finished-goods.index',
+            'tenant.manufacturing.scrap.index',
+            'tenant.manufacturing.rejections.index',
+            'tenant.manufacturing.consumption.index',
+            'tenant.manufacturing.reports.index',
         ];
 
         \App\Models\Tenant\Customer::updateOrCreate(

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Tenant\Auth\PasswordResetController;
+use App\Http\Controllers\Tenant\ComingSoonController;
 use App\Http\Controllers\Tenant\BranchController;
 use App\Http\Controllers\Tenant\CategoryController;
 use App\Http\Controllers\Tenant\CurrencyController;
@@ -577,6 +578,37 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/finance/branch-profit-loss', [BranchProfitLossController::class, 'index'])->name('tenant.finance.branch-profit-loss.index');
                 Route::get('/finance/balance-sheet', [BalanceSheetController::class, 'index'])->name('tenant.finance.balance-sheet.index');
                 Route::get('/finance/export', [FinancialExportController::class, 'index'])->name('tenant.finance.export.index');
+
+                // ── Coming Soon ERP extensions (ERP-SOON-1) — read-only roadmap pages,
+                //    no business logic. Visibility gated in the sidebar by plan + @can.
+                Route::get('/finance/bank-reconciliation', [ComingSoonController::class, 'show'])
+                    ->defaults('feature', 'bank-reconciliation')->name('tenant.finance.bank-reconciliation.index');
+
+                Route::get('/quotations', [ComingSoonController::class, 'show'])
+                    ->defaults('feature', 'quotations')->name('tenant.quotations.index');
+                Route::get('/purchase-requisitions', [ComingSoonController::class, 'show'])
+                    ->defaults('feature', 'purchase-requisitions')->name('tenant.purchase-requisitions.index');
+                Route::get('/purchase-returns', [ComingSoonController::class, 'show'])
+                    ->defaults('feature', 'purchase-returns')->name('tenant.purchase-returns.index');
+
+                Route::get('/manufacturing/bom', [ComingSoonController::class, 'show'])
+                    ->defaults('feature', 'bom')->name('tenant.manufacturing.bom.index');
+                Route::get('/manufacturing/material-requisitions', [ComingSoonController::class, 'show'])
+                    ->defaults('feature', 'material-requisitions')->name('tenant.manufacturing.material-requisitions.index');
+                Route::get('/manufacturing/production-orders', [ComingSoonController::class, 'show'])
+                    ->defaults('feature', 'production-orders')->name('tenant.manufacturing.production-orders.index');
+                Route::get('/manufacturing/wip', [ComingSoonController::class, 'show'])
+                    ->defaults('feature', 'wip')->name('tenant.manufacturing.wip.index');
+                Route::get('/manufacturing/finished-goods', [ComingSoonController::class, 'show'])
+                    ->defaults('feature', 'finished-goods')->name('tenant.manufacturing.finished-goods.index');
+                Route::get('/manufacturing/scrap', [ComingSoonController::class, 'show'])
+                    ->defaults('feature', 'scrap')->name('tenant.manufacturing.scrap.index');
+                Route::get('/manufacturing/rejections', [ComingSoonController::class, 'show'])
+                    ->defaults('feature', 'rejections')->name('tenant.manufacturing.rejections.index');
+                Route::get('/manufacturing/consumption', [ComingSoonController::class, 'show'])
+                    ->defaults('feature', 'consumption')->name('tenant.manufacturing.consumption.index');
+                Route::get('/manufacturing/reports', [ComingSoonController::class, 'show'])
+                    ->defaults('feature', 'reports')->name('tenant.manufacturing.reports.index');
             });
         });
 
