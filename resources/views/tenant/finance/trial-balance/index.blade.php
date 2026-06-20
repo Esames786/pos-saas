@@ -6,13 +6,22 @@
         <div class="page-header">
             <div class="page-title">
                 <h4>Trial Balance</h4>
-                <h6>As of {{ $asOf }}</h6>
+                <h6>As of {{ $asOf }}
+                    @if(count($selectedBranchIds))
+                        &mdash; {{ $branches->whereIn('id', $selectedBranchIds)->pluck('name')->implode(', ') }}
+                    @else
+                        &mdash; All Branches
+                    @endif
+                </h6>
             </div>
             <div class="page-btn">
                 <form method="GET" class="d-inline">
-                    @foreach($filters as $k => $val)
-                        @if($val)<input type="hidden" name="{{ $k }}" value="{{ $val }}">@endif
+                    @foreach($selectedBranchIds as $id)
+                        <input type="hidden" name="branch_ids[]" value="{{ $id }}">
                     @endforeach
+                    @if(!empty($filters['as_of_date']))
+                        <input type="hidden" name="as_of_date" value="{{ $filters['as_of_date'] }}">
+                    @endif
                     <button type="submit" name="export_csv" value="1" class="btn btn-outline-success btn-sm"><i class="ti ti-download me-1"></i>CSV</button>
                 </form>
             </div>
@@ -25,15 +34,7 @@
                         <label class="form-label mb-1">As of</label>
                         <input type="date" name="as_of_date" class="form-control" value="{{ $filters['as_of_date'] ?? $asOf }}">
                     </div>
-                    <div class="col-sm-3">
-                        <label class="form-label mb-1">Branch</label>
-                        <select name="branch_id" class="form-select">
-                            <option value="">All branches</option>
-                            @foreach($branches as $b)
-                                <option value="{{ $b->id }}" {{ (string)($filters['branch_id'] ?? '') === (string)$b->id ? 'selected' : '' }}>{{ $b->name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
+                    @include('tenant.finance.partials.branch-multiselect', ['branches' => $branches, 'selectedBranchIds' => $selectedBranchIds])
                     <div class="col-sm-2">
                         <button type="submit" class="btn btn-primary w-100">Apply</button>
                     </div>

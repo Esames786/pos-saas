@@ -14,10 +14,11 @@ class BranchProfitLossController extends Controller
 
     public function index(Request $request)
     {
+        $branchIds = $this->normalizeBranchIds($request);
         $filters = [
-            'date_from' => $request->input('date_from', now()->startOfMonth()->toDateString()),
-            'date_to'   => $request->input('date_to', now()->toDateString()),
-            'branch_id' => $request->input('branch_id'),
+            'date_from'  => $request->input('date_from', now()->startOfMonth()->toDateString()),
+            'date_to'    => $request->input('date_to', now()->toDateString()),
+            'branch_ids' => $branchIds,
         ];
 
         $report = $this->service->statement($filters);
@@ -27,10 +28,23 @@ class BranchProfitLossController extends Controller
         }
 
         return view('tenant.finance.branch-profit-loss.index', [
-            'report'   => $report,
-            'filters'  => $filters,
-            'branches' => Branch::orderBy('name')->get(['id', 'name']),
+            'report'            => $report,
+            'filters'           => $filters,
+            'branches'          => Branch::orderBy('name')->get(['id', 'name']),
+            'selectedBranchIds' => $branchIds ?? [],
         ]);
+    }
+
+    private function normalizeBranchIds(Request $request): ?array
+    {
+        if ($request->filled('branch_ids')) {
+            $ids = array_values(array_filter(array_map('intval', (array) $request->input('branch_ids'))));
+            return $ids ?: null;
+        }
+        if ($request->filled('branch_id')) {
+            return [(int) $request->input('branch_id')];
+        }
+        return null;
     }
 
     private function csv(array $report)

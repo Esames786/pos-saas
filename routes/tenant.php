@@ -591,6 +591,9 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/purchase-returns', [ComingSoonController::class, 'show'])
                     ->defaults('feature', 'purchase-returns')->name('tenant.purchase-returns.index');
 
+                Route::get('/manufacturing/customers', [ComingSoonController::class, 'show'])
+                    ->defaults('feature', 'manufacturing-customers')->name('tenant.manufacturing.customers.index');
+
                 Route::get('/manufacturing/bom', [ComingSoonController::class, 'show'])
                     ->defaults('feature', 'bom')->name('tenant.manufacturing.bom.index');
                 Route::get('/manufacturing/material-requisitions', [ComingSoonController::class, 'show'])

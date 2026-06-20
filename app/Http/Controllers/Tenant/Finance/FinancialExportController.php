@@ -56,25 +56,26 @@ class FinancialExportController extends Controller
 
     private function pack(array $filters, array $sections)
     {
-        $from     = $filters['date_from'];
-        $to       = $filters['date_to'];
-        $branchId = $filters['branch_id'] ?: null;
-        $branchName = $branchId ? (Branch::find($branchId)?->name ?? '') : 'All branches';
+        $from      = $filters['date_from'];
+        $to        = $filters['date_to'];
+        $branchId  = $filters['branch_id'] ?: null;
+        $branchIds = $branchId ? [$branchId] : null;
+        $branchName = $branchId ? (Branch::find($branchId)?->name ?? '') : 'All Branches';
 
         $header = CsvStreamer::financeHeader('Financial Statement Pack', [
             'Period' => $from . ' to ' . $to,
             'Branch' => $branchName,
         ]);
 
-        return CsvStreamer::download('financial-statement-pack-' . $from . '_' . $to . '.csv', $header, function ($fp) use ($sections, $from, $to, $branchId) {
+        return CsvStreamer::download('financial-statement-pack-' . $from . '_' . $to . '.csv', $header, function ($fp) use ($sections, $from, $to, $branchIds) {
             foreach ($sections as $key) {
                 fputcsv($fp, ['===== ' . self::SECTIONS[$key] . ' =====']);
                 match ($key) {
-                    'trial_balance'      => $this->sectionTrialBalance($fp, $to, $branchId),
-                    'profit_loss'        => $this->sectionProfitLoss($fp, $from, $to, $branchId),
-                    'branch_profit_loss' => $this->sectionBranchProfitLoss($fp, $from, $to, $branchId),
-                    'balance_sheet'      => $this->sectionBalanceSheet($fp, $to, $branchId),
-                    'journal_lines'      => $this->sectionJournalLines($fp, $from, $to, $branchId),
+                    'trial_balance'      => $this->sectionTrialBalance($fp, $to, $branchIds),
+                    'profit_loss'        => $this->sectionProfitLoss($fp, $from, $to, $branchIds),
+                    'branch_profit_loss' => $this->sectionBranchProfitLoss($fp, $from, $to, $branchIds),
+                    'balance_sheet'      => $this->sectionBalanceSheet($fp, $to, $branchIds),
+                    'journal_lines'      => $this->sectionJournalLines($fp, $from, $to, $branchIds),
                     default              => null,
                 };
                 fputcsv($fp, []);
@@ -82,9 +83,9 @@ class FinancialExportController extends Controller
         });
     }
 
-    private function sectionTrialBalance($fp, string $asOf, ?int $branchId): void
+    private function sectionTrialBalance($fp, string $asOf, ?array $branchIds): void
     {
-        $tb = $this->exportService->trialBalance($asOf, $branchId);
+        $tb = $this->exportService->trialBalance($asOf, $branchIds);
         fputcsv($fp, ['Code', 'Account', 'Type', 'Debit', 'Credit']);
         foreach ($tb['rows'] as $r) {
             fputcsv($fp, [$r['code'], $r['name'], ucfirst($r['type']), $this->n($r['debit_balance']), $this->n($r['credit_balance'])]);
@@ -93,9 +94,9 @@ class FinancialExportController extends Controller
         fputcsv($fp, ['', '', 'Difference', $this->n($tb['difference']), '']);
     }
 
-    private function sectionProfitLoss($fp, string $from, string $to, ?int $branchId): void
+    private function sectionProfitLoss($fp, string $from, string $to, ?array $branchIds): void
     {
-        $pl = $this->plService->statement(['date_from' => $from, 'date_to' => $to, 'branch_id' => $branchId]);
+        $pl = $this->plService->statement(['date_from' => $from, 'date_to' => $to, 'branch_ids' => $branchIds]);
         fputcsv($fp, ['Section', 'Code', 'Account', 'Amount']);
         foreach ($pl['revenue_rows'] as $r) {
             fputcsv($fp, ['Revenue', $r['code'], $r['name'], $this->n($r['amount'])]);
@@ -116,9 +117,9 @@ class FinancialExportController extends Controller
         fputcsv($fp, ['', '', 'Net Profit / Loss', $this->n($pl['net_profit'])]);
     }
 
-    private function sectionBranchProfitLoss($fp, string $from, string $to, ?int $branchId): void
+    private function sectionBranchProfitLoss($fp, string $from, string $to, ?array $branchIds): void
     {
-        $report = $this->branchPlService->statement(['date_from' => $from, 'date_to' => $to, 'branch_id' => $branchId]);
+        $report = $this->branchPlService->statement(['date_from' => $from, 'date_to' => $to, 'branch_ids' => $branchIds]);
         fputcsv($fp, ['Branch', 'Net Revenue', 'COGS', 'Gross Profit', 'Operating Expenses', 'Net Profit', 'Net Margin %']);
         foreach ($report['rows'] as $r) {
             fputcsv($fp, [$r['branch_name'], $this->n($r['net_revenue']), $this->n($r['cogs']), $this->n($r['gross_profit']), $this->n($r['operating_expenses']), $this->n($r['net_profit']), $r['net_margin_percent']]);
@@ -127,9 +128,9 @@ class FinancialExportController extends Controller
         fputcsv($fp, ['TOTAL', $this->n($t['net_revenue']), $this->n($t['cogs']), $this->n($t['gross_profit']), $this->n($t['operating_expenses']), $this->n($t['net_profit']), $t['net_margin_percent']]);
     }
 
-    private function sectionBalanceSheet($fp, string $asOf, ?int $branchId): void
+    private function sectionBalanceSheet($fp, string $asOf, ?array $branchIds): void
     {
-        $bs = $this->bsService->statement(['as_of_date' => $asOf, 'branch_id' => $branchId]);
+        $bs = $this->bsService->statement(['as_of_date' => $asOf, 'branch_ids' => $branchIds]);
         fputcsv($fp, ['Section', 'Code', 'Account', 'Amount']);
         foreach ($bs['asset_rows'] as $r) {
             fputcsv($fp, ['Asset', $r['code'], $r['name'], $this->n($r['amount'])]);
@@ -147,9 +148,9 @@ class FinancialExportController extends Controller
         fputcsv($fp, ['', '', 'Difference', $this->n($bs['difference'])]);
     }
 
-    private function sectionJournalLines($fp, string $from, string $to, ?int $branchId): void
+    private function sectionJournalLines($fp, string $from, string $to, ?array $branchIds): void
     {
-        $lines = $this->exportService->generalLedgerLines($from, $to, $branchId, null);
+        $lines = $this->exportService->generalLedgerLines($from, $to, $branchIds, null);
         fputcsv($fp, ['Entry No', 'Date', 'Source', 'Account Code', 'Account', 'Branch', 'Debit', 'Credit']);
         foreach ($lines as $line) {
             fputcsv($fp, [

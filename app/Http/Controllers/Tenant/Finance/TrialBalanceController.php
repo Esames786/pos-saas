@@ -14,33 +14,48 @@ class TrialBalanceController extends Controller
 
     public function index(Request $request)
     {
-        $asOf     = $request->input('as_of_date', today()->format('Y-m-d'));
-        $branchId = $request->input('branch_id');
+        $asOf      = $request->input('as_of_date', today()->format('Y-m-d'));
+        $branchIds = $this->normalizeBranchIds($request);
 
-        $tb = $this->exportService->trialBalance($asOf, $branchId);
+        $tb = $this->exportService->trialBalance($asOf, $branchIds);
 
         if ($request->boolean('export_csv')) {
-            return $this->csv($tb, $asOf, $branchId);
+            return $this->csv($tb, $asOf, $branchIds);
         }
 
         return view('tenant.finance.trial-balance.index', [
-            'rows'        => $tb['rows'],
-            'totalDebit'  => $tb['total_debit'],
-            'totalCredit' => $tb['total_credit'],
-            'difference'  => $tb['difference'],
-            'asOf'        => $asOf,
-            'branches'    => Branch::orderBy('name')->get(['id', 'name']),
-            'filters'     => $request->only(['as_of_date', 'branch_id']),
+            'rows'              => $tb['rows'],
+            'totalDebit'        => $tb['total_debit'],
+            'totalCredit'       => $tb['total_credit'],
+            'difference'        => $tb['difference'],
+            'asOf'              => $asOf,
+            'branches'          => Branch::orderBy('name')->get(['id', 'name']),
+            'selectedBranchIds' => $branchIds ?? [],
+            'filters'           => $request->only(['as_of_date', 'branch_ids']),
         ]);
     }
 
-    private function csv(array $tb, string $asOf, ?int $branchId)
+    private function normalizeBranchIds(Request $request): ?array
     {
-        $branchName = $branchId ? (Branch::find($branchId)?->name ?? '') : 'All branches';
+        if ($request->filled('branch_ids')) {
+            $ids = array_values(array_filter(array_map('intval', (array) $request->input('branch_ids'))));
+            return $ids ?: null;
+        }
+        if ($request->filled('branch_id')) {
+            return [(int) $request->input('branch_id')];
+        }
+        return null;
+    }
+
+    private function csv(array $tb, string $asOf, ?array $branchIds)
+    {
+        $branchLabel = $branchIds
+            ? Branch::whereIn('id', $branchIds)->orderBy('name')->pluck('name')->implode(', ')
+            : 'All Branches';
 
         $header = CsvStreamer::financeHeader('Trial Balance', [
             'As of'  => $asOf,
-            'Branch' => $branchName,
+            'Branch' => $branchLabel,
         ]);
 
         return CsvStreamer::download('trial-balance-' . $asOf . '.csv', $header, function ($fp) use ($tb) {

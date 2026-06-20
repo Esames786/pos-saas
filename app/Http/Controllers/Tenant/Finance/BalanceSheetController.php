@@ -14,9 +14,10 @@ class BalanceSheetController extends Controller
 
     public function index(Request $request)
     {
+        $branchIds = $this->normalizeBranchIds($request);
         $filters = [
             'as_of_date' => $request->input('as_of_date', now()->toDateString()),
-            'branch_id'  => $request->input('branch_id'),
+            'branch_ids' => $branchIds,
         ];
 
         $bs = $this->service->statement($filters);
@@ -26,10 +27,23 @@ class BalanceSheetController extends Controller
         }
 
         return view('tenant.finance.balance-sheet.index', [
-            'bs'       => $bs,
-            'filters'  => $filters,
-            'branches' => Branch::orderBy('name')->get(['id', 'name']),
+            'bs'                => $bs,
+            'filters'           => $filters,
+            'branches'          => Branch::orderBy('name')->get(['id', 'name']),
+            'selectedBranchIds' => $branchIds ?? [],
         ]);
+    }
+
+    private function normalizeBranchIds(Request $request): ?array
+    {
+        if ($request->filled('branch_ids')) {
+            $ids = array_values(array_filter(array_map('intval', (array) $request->input('branch_ids'))));
+            return $ids ?: null;
+        }
+        if ($request->filled('branch_id')) {
+            return [(int) $request->input('branch_id')];
+        }
+        return null;
     }
 
     private function csv(array $bs)

@@ -24,7 +24,7 @@ class BranchProfitLossService
         $dateTo = ! empty($filters['date_to'])
             ? Carbon::parse($filters['date_to'])->toDateString()
             : now()->toDateString();
-        $branchId = $filters['branch_id'] ?? null;
+        $branchIds = $this->normalizeBranchIds($filters);
 
         // Sum debit/credit per (branch, account) for income+expense accounts in period.
         $sums = JournalLine::query()
@@ -34,7 +34,7 @@ class BranchProfitLossService
             ->whereDate('journal_entries.entry_date', '>=', $dateFrom)
             ->whereDate('journal_entries.entry_date', '<=', $dateTo)
             ->whereIn('accounts.type', ['income', 'expense'])
-            ->when($branchId, fn ($q) => $q->where('journal_lines.branch_id', $branchId))
+            ->when($branchIds, fn ($q) => $q->whereIn('journal_lines.branch_id', $branchIds))
             ->groupBy('journal_lines.branch_id', 'accounts.type', 'accounts.normal_balance', 'accounts.code')
             ->select(
                 'journal_lines.branch_id',
@@ -110,6 +110,18 @@ class BranchProfitLossService
             'rows'   => $rows,
             'totals' => $totals,
         ];
+    }
+
+    private function normalizeBranchIds(array $filters): ?array
+    {
+        if (! empty($filters['branch_ids']) && is_array($filters['branch_ids'])) {
+            $ids = array_values(array_filter(array_map('intval', $filters['branch_ids'])));
+            return $ids ?: null;
+        }
+        if (! empty($filters['branch_id'])) {
+            return [(int) $filters['branch_id']];
+        }
+        return null;
     }
 
     private function finalizeRow(array $b): array

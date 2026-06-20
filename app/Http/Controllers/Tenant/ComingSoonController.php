@@ -65,6 +65,20 @@ class ComingSoonController extends Controller
             ],
         ],
 
+        // ── Manufacturing customers (FIN-UX-2) ────────────────────────────
+        'manufacturing-customers' => [
+            'title'       => 'Manufacturing Customers',
+            'category'    => 'Manufacturing',
+            'description' => 'Manufacturing Customers are separate from your POS/Sales customer base. This future module manages customer/project parties for production orders, job-work, customer-wise costing, and production reporting. Your existing POS and sales customers remain completely untouched.',
+            'workflow'    => [
+                'Maintain a dedicated list of manufacturing client/project parties',
+                'Link customers to production orders and job-work references',
+                'Track customer-wise production costing and material consumption',
+                'Customer-specific BOM/WIP/Finished Goods reporting',
+                'Separate from AR/customer ledger — no crossover with POS or invoice customers',
+            ],
+        ],
+
         // ── Manufacturing extension ────────────────────────────────────────
         'bom' => [
             'title'       => 'Bill of Materials (BOM)',

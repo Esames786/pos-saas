@@ -11,6 +11,8 @@ class AccountController extends Controller
 {
     public function index(Request $request)
     {
+        $hasFilter = $request->filled('type') || $request->filled('status') || $request->filled('q');
+
         $query = Account::query()->with('parent');
 
         if ($request->filled('type') && in_array($request->type, Account::TYPES, true)) {
@@ -33,13 +35,34 @@ class AccountController extends Controller
             });
         }
 
-        $accounts = $query->orderBy('sort_order')->orderBy('code')->get();
+        $allAccounts = $query->orderBy('sort_order')->orderBy('code')->get();
+
+        // When no filter is active, build the level-wise tree.
+        $tree = $hasFilter ? [] : $this->buildTree($allAccounts);
 
         return view('tenant.finance.accounts.index', [
-            'accounts' => $accounts,
-            'types'    => Account::TYPES,
-            'filters'  => $request->only(['type', 'status', 'q']),
+            'accounts'  => $allAccounts,
+            'tree'      => $tree,
+            'hasFilter' => $hasFilter,
+            'types'     => Account::TYPES,
+            'filters'   => $request->only(['type', 'status', 'q']),
         ]);
+    }
+
+    private function buildTree($accounts, ?int $parentId = null, int $level = 0): array
+    {
+        $result = [];
+        foreach ($accounts as $account) {
+            if ((int) ($account->parent_id ?? 0) !== (int) $parentId) {
+                continue;
+            }
+            $account->_level = $level;
+            $result[] = $account;
+            foreach ($this->buildTree($accounts, $account->id, $level + 1) as $child) {
+                $result[] = $child;
+            }
+        }
+        return $result;
     }
 
     public function create()

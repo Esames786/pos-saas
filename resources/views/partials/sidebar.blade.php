@@ -751,7 +751,7 @@
                     @endcan
 
                     {{-- ── MANUFACTURING — Coming Soon ─────────────────────────── --}}
-                    @canany(['tenant.manufacturing.bom.index','tenant.manufacturing.material-requisitions.index','tenant.manufacturing.production-orders.index','tenant.manufacturing.wip.index','tenant.manufacturing.finished-goods.index','tenant.manufacturing.scrap.index','tenant.manufacturing.rejections.index','tenant.manufacturing.consumption.index','tenant.manufacturing.reports.index'])
+                    @canany(['tenant.manufacturing.customers.index','tenant.manufacturing.bom.index','tenant.manufacturing.material-requisitions.index','tenant.manufacturing.production-orders.index','tenant.manufacturing.wip.index','tenant.manufacturing.finished-goods.index','tenant.manufacturing.scrap.index','tenant.manufacturing.rejections.index','tenant.manufacturing.consumption.index','tenant.manufacturing.reports.index'])
                     <li class="submenu">
                         <a href="javascript:void(0);">
                             <i class="ti ti-settings-cog fs-16 me-2"></i>
@@ -761,6 +761,7 @@
                         </a>
                         <ul style="display:none;">
                             @php $mfg = [
+                                ['customers','Manufacturing Customers','ti-users-group'],
                                 ['bom','BOM','ti-sitemap'],
                                 ['material-requisitions','Material Requisition (MRC)','ti-clipboard-list'],
                                 ['production-orders','Production Orders','ti-clipboard-check'],

@@ -638,6 +638,7 @@ class TenantProvisioner
             'tenant.quotations.index',
             'tenant.purchase-requisitions.index',
             'tenant.purchase-returns.index',
+            'tenant.manufacturing.customers.index',
             'tenant.manufacturing.bom.index',
             'tenant.manufacturing.material-requisitions.index',
             'tenant.manufacturing.production-orders.index',

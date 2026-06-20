@@ -16,7 +16,7 @@ class GeneralLedgerController extends Controller
     public function index(Request $request)
     {
         $accountId = $request->input('account_id');
-        $branchId  = $request->input('branch_id');
+        $branchIds = $this->normalizeBranchIds($request);
         $dateFrom  = $request->input('date_from');
         $dateTo    = $request->input('date_to');
 
@@ -25,7 +25,7 @@ class GeneralLedgerController extends Controller
         $lines = $this->exportService->generalLedgerLines(
             $dateFrom ?: '2000-01-01',
             $dateTo ?: today()->format('Y-m-d'),
-            $branchId ?: null,
+            $branchIds,
             $accountId ?: null
         );
 
@@ -41,22 +41,37 @@ class GeneralLedgerController extends Controller
         }
 
         if ($request->boolean('export_csv')) {
-            return $this->csv($lines, $account, $showRunning, $branchId);
+            return $this->csv($lines, $account, $showRunning, $branchIds);
         }
 
         return view('tenant.finance.general-ledger.index', [
-            'lines'       => $lines,
-            'account'     => $account,
-            'showRunning' => $showRunning,
-            'accounts'    => Account::orderBy('sort_order')->orderBy('code')->get(['id', 'code', 'name']),
-            'branches'    => Branch::orderBy('name')->get(['id', 'name']),
-            'filters'     => $request->only(['account_id', 'branch_id', 'date_from', 'date_to']),
+            'lines'             => $lines,
+            'account'           => $account,
+            'showRunning'       => $showRunning,
+            'accounts'          => Account::orderBy('sort_order')->orderBy('code')->get(['id', 'code', 'name']),
+            'branches'          => Branch::orderBy('name')->get(['id', 'name']),
+            'selectedBranchIds' => $branchIds ?? [],
+            'filters'           => $request->only(['account_id', 'branch_ids', 'date_from', 'date_to']),
         ]);
     }
 
-    private function csv($lines, ?Account $account, bool $showRunning, ?int $branchId)
+    private function normalizeBranchIds(Request $request): ?array
     {
-        $branchName = $branchId ? (Branch::find($branchId)?->name ?? '') : 'All branches';
+        if ($request->filled('branch_ids')) {
+            $ids = array_values(array_filter(array_map('intval', (array) $request->input('branch_ids'))));
+            return $ids ?: null;
+        }
+        if ($request->filled('branch_id')) {
+            return [(int) $request->input('branch_id')];
+        }
+        return null;
+    }
+
+    private function csv($lines, ?Account $account, bool $showRunning, ?array $branchIds)
+    {
+        $branchName = $branchIds
+            ? Branch::whereIn('id', $branchIds)->orderBy('name')->pluck('name')->implode(', ')
+            : 'All Branches';
 
         $header = CsvStreamer::financeHeader('General Ledger', [
             'Account' => $account ? ($account->code . ' — ' . $account->name) : 'All accounts',

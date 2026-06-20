@@ -27,13 +27,13 @@ class BalanceSheetService
         $asOf = ! empty($filters['as_of_date'])
             ? Carbon::parse($filters['as_of_date'])->toDateString()
             : now()->toDateString();
-        $branchId = $filters['branch_id'] ?? null;
+        $branchIds = $this->normalizeBranchIds($filters);
 
         $sums = JournalLine::query()
             ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
             ->where('journal_entries.status', 'posted')
             ->whereDate('journal_entries.entry_date', '<=', $asOf)
-            ->when($branchId, fn ($q) => $q->where('journal_lines.branch_id', $branchId))
+            ->when($branchIds, fn ($q) => $q->whereIn('journal_lines.branch_id', $branchIds))
             ->groupBy('journal_lines.account_id')
             ->select(
                 'journal_lines.account_id',
@@ -128,5 +128,17 @@ class BalanceSheetService
             'name'       => $account->name,
             'amount'     => $amount,
         ];
+    }
+
+    private function normalizeBranchIds(array $filters): ?array
+    {
+        if (! empty($filters['branch_ids']) && is_array($filters['branch_ids'])) {
+            $ids = array_values(array_filter(array_map('intval', $filters['branch_ids'])));
+            return $ids ?: null;
+        }
+        if (! empty($filters['branch_id'])) {
+            return [(int) $filters['branch_id']];
+        }
+        return null;
     }
 }

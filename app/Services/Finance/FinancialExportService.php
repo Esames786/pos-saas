@@ -19,13 +19,15 @@ class FinancialExportService
      *
      * @return array{rows: array<int,array<string,mixed>>, total_debit: float, total_credit: float, difference: float}
      */
-    public function trialBalance(string $asOf, ?int $branchId = null): array
+    public function trialBalance(string $asOf, array|int|null $branchIds = null): array
     {
+        $branchIds = $this->normalizeBranchIds($branchIds);
+
         $sums = JournalLine::query()
             ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
             ->where('journal_entries.status', 'posted')
             ->whereDate('journal_entries.entry_date', '<=', $asOf)
-            ->when($branchId, fn ($q) => $q->where('journal_lines.branch_id', $branchId))
+            ->when($branchIds, fn ($q) => $q->whereIn('journal_lines.branch_id', $branchIds))
             ->groupBy('journal_lines.account_id')
             ->select(
                 'journal_lines.account_id',
@@ -88,14 +90,16 @@ class FinancialExportService
      *
      * @return Collection<int, JournalLine>
      */
-    public function generalLedgerLines(string $from, string $to, ?int $branchId = null, ?int $accountId = null, int $limit = 5000): Collection
+    public function generalLedgerLines(string $from, string $to, array|int|null $branchIds = null, ?int $accountId = null, int $limit = 5000): Collection
     {
+        $branchIds = $this->normalizeBranchIds($branchIds);
+
         return JournalLine::query()
             ->select('journal_lines.*')
             ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
             ->where('journal_entries.status', 'posted')
             ->when($accountId, fn ($q) => $q->where('journal_lines.account_id', $accountId))
-            ->when($branchId, fn ($q) => $q->where('journal_lines.branch_id', $branchId))
+            ->when($branchIds, fn ($q) => $q->whereIn('journal_lines.branch_id', $branchIds))
             ->whereDate('journal_entries.entry_date', '>=', $from)
             ->whereDate('journal_entries.entry_date', '<=', $to)
             ->with(['account', 'branch', 'journalEntry'])
@@ -103,5 +107,16 @@ class FinancialExportService
             ->orderBy('journal_entries.id')
             ->limit($limit)
             ->get();
+    }
+
+    private function normalizeBranchIds(array|int|null $branchIds): ?array
+    {
+        if (is_int($branchIds)) {
+            return [$branchIds];
+        }
+        if (is_array($branchIds) && count($branchIds) > 0) {
+            return array_values(array_filter(array_map('intval', $branchIds)));
+        }
+        return null;
     }
 }

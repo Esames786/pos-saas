@@ -29,15 +29,7 @@
                         <label class="form-label mb-1">To</label>
                         <input type="date" name="date_to" class="form-control" value="{{ $filters['date_to'] }}">
                     </div>
-                    <div class="col-sm-3">
-                        <label class="form-label mb-1">Branch</label>
-                        <select name="branch_id" class="form-select">
-                            <option value="">All branches</option>
-                            @foreach($branches as $b)
-                                <option value="{{ $b->id }}" {{ (string)($filters['branch_id'] ?? '') === (string)$b->id ? 'selected' : '' }}>{{ $b->name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
+                    @include('tenant.finance.partials.branch-multiselect', ['branches' => $branches, 'selectedBranchIds' => $selectedBranchIds])
                     <div class="col-sm-2">
                         <button type="submit" class="btn btn-primary w-100">Apply</button>
                     </div>
