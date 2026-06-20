@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Master\Tenant;
 use App\Services\Tenancy\TenancyManager;
 use Database\Seeders\Demos\EnterpriseDemoSeeder;
+use Database\Seeders\Demos\FinanceDemoSeeder;
 use Database\Seeders\Demos\InventoryDemoSeeder;
 use Database\Seeders\Demos\RestaurantDemoSeeder;
 use Database\Seeders\Demos\RestaurantProDemoSeeder;
@@ -25,6 +26,7 @@ class DemoSeedCommand extends Command
         'restaurant'     => RestaurantDemoSeeder::class,
         'restaurant_pro' => RestaurantProDemoSeeder::class,
         'enterprise'     => EnterpriseDemoSeeder::class,
+        'finance'        => FinanceDemoSeeder::class,
     ];
 
     public function handle(TenancyManager $tenancy): int

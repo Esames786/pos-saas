@@ -30,6 +30,7 @@ class DemoProvisioner
         'restaurant'     => 'restaurant_starter',
         'restaurant_pro' => 'restaurant_pro',
         'enterprise'     => 'enterprise',
+        'finance'        => 'finance_erp',
     ];
 
     private const BUSINESS_NAMES = [
@@ -38,6 +39,7 @@ class DemoProvisioner
         'restaurant'     => 'Bingoo Restaurant Demo',
         'restaurant_pro' => 'Bingoo Restaurant Pro Demo',
         'enterprise'     => 'Bingoo Enterprise Demo',
+        'finance'        => 'Finance & Supply Chain ERP Demo',
     ];
 
     public function __construct(

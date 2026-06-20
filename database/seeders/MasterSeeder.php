@@ -557,6 +557,31 @@ class MasterSeeder extends Seeder
                     'product_limit' => null,
                 ],
             ],
+            [
+                'attributes' => [
+                    'code' => 'finance_erp',
+                    'name' => 'Finance & Supply Chain ERP',
+                    'price' => 0,
+                    'monthly_price' => null,
+                    'yearly_price' => null,
+                    'currency_code' => 'PKR',
+                    'billing_period' => 'monthly',
+                    'is_active' => true,
+                    'is_public' => true,
+                    'is_custom' => true,
+                    'trial_days' => 30,
+                    'display_order' => 45,
+                    'public_description' => 'For finance-led businesses: accounting, purchasing, inventory control, receivables/payables, and an ERP/manufacturing roadmap. Custom / contact sales.',
+                ],
+                // Available modules only — NO restaurant/kitchen.
+                'modules' => ['pos', 'catalog', 'inventory', 'stock_count', 'purchasing', 'printing', 'reports', 'sales_controls', 'multi_branch', 'users_roles', 'finance'],
+                'features' => [
+                    'branch_limit' => null,
+                    'terminal_limit' => null,
+                    'user_limit' => null,
+                    'product_limit' => null,
+                ],
+            ],
         ];
 
         foreach ($catalog as $entry) {

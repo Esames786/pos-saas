@@ -68,6 +68,7 @@ return [
             'restaurantdemo',
             'restaurantprodemo',
             'enterprisedemo',
+            'financedemo',
         ],
         'tenant_codes' => [
             'retail' => 'retaildemo',
@@ -75,6 +76,7 @@ return [
             'restaurant' => 'restaurantdemo',
             'restaurant_pro' => 'restaurantprodemo',
             'enterprise' => 'enterprisedemo',
+            'finance' => 'financedemo',
         ],
 
         // Tenants that demo:reset / demo:reset-all are allowed to drop & recreate (15D-8).
@@ -85,6 +87,7 @@ return [
             'restaurantdemo',
             'restaurantprodemo',
             'enterprisedemo',
+            'financedemo',
         ],
 
         // Time-of-day for the optional nightly demo reset scheduler (24h HH:MM).
@@ -181,6 +184,25 @@ return [
                     'Branch-level sales comparison',
                     'Full accounting: GL, P&L, branch-wise P&L, balance sheet',
                     'Enterprise users and safe roles',
+                ],
+            ],
+            'finance' => [
+                'title'        => 'Finance ERP Demo',
+                'tenant_code'  => 'financedemo',
+                'plan_code'    => 'finance_erp',
+                'badge'        => 'Finance + ERP',
+                'icon'         => 'ti-report-money',
+                'image'        => 'images/data/dashbaord.png',
+                'description'  => 'Explore accounting, purchasing, inventory, receivables/payables, financial reports, and planned ERP/manufacturing extensions.',
+                'email'        => 'demo@financedemo.com',
+                'cta_type'     => 'contact',
+                'cta_plan'     => 'finance_erp',
+                'bullets'      => [
+                    'Journal Entries, General Ledger, Trial Balance',
+                    'P&L, Balance Sheet, Branch-wise P&L',
+                    'Opening balances, suppliers, customers',
+                    'PO → GRN and inventory movement',
+                    'ERP extensions marked Coming Soon',
                 ],
             ],
         ],

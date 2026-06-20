@@ -19,7 +19,7 @@
 
     // ERP "Coming Soon" roadmap modules (ERP-SOON-1) — shown only to enterprise
     // + the legacy standard/demo plan, never to retail/restaurant clients.
-    $showErpComingSoon = in_array($planCode, ['enterprise', 'standard'], true);
+    $showErpComingSoon = in_array($planCode, ['enterprise', 'standard', 'finance_erp'], true);
 @endphp
 
 <div class="sidebar" id="sidebar">

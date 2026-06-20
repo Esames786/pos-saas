@@ -81,6 +81,60 @@
     </section>
 @endforeach
 
+{{-- FINANCE & SUPPLY CHAIN ERP --}}
+<section id="finance-erp" class="section-pad" style="background:#f8faff;">
+    <div class="container">
+        <div class="text-center mb-5 reveal">
+            <span class="badge bg-primary bg-opacity-10 text-primary fw-semibold px-3 py-2 mb-3 d-inline-block">ERP / Finance</span>
+            <h2 class="fw-bold">Finance &amp; Supply Chain ERP</h2>
+            <p class="text-muted mx-auto" style="max-width:760px;">Accounting-led operations today, with an ERP/manufacturing roadmap you can grow into.</p>
+        </div>
+        <div class="row g-4 reveal">
+            <div class="col-lg-6">
+                <div class="gradient-card p-4 h-100">
+                    <h5 class="fw-bold mb-3"><i class="ti ti-calculator me-2 text-primary"></i>Accounts Department <span class="badge bg-success ms-1">Available Now</span></h5>
+                    <ul class="list-unstyled mb-0 text-muted">
+                        <li class="mb-2"><i class="ti ti-check text-success me-2"></i>Journal Entries &amp; General Ledger</li>
+                        <li class="mb-2"><i class="ti ti-check text-success me-2"></i>Trial Balance</li>
+                        <li class="mb-2"><i class="ti ti-check text-success me-2"></i>Profit &amp; Loss</li>
+                        <li class="mb-2"><i class="ti ti-check text-success me-2"></i>Balance Sheet</li>
+                        <li class="mb-2"><i class="ti ti-check text-success me-2"></i>AR / AP Aging</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="gradient-card p-4 h-100">
+                    <h5 class="fw-bold mb-3"><i class="ti ti-truck-delivery me-2 text-primary"></i>Supply Chain Foundation <span class="badge bg-success ms-1">Available Now</span></h5>
+                    <ul class="list-unstyled mb-0 text-muted">
+                        <li class="mb-2"><i class="ti ti-check text-success me-2"></i>Purchase Orders</li>
+                        <li class="mb-2"><i class="ti ti-check text-success me-2"></i>GRN (Goods Receipt)</li>
+                        <li class="mb-2"><i class="ti ti-check text-success me-2"></i>Inventory stock movement</li>
+                        <li class="mb-2"><i class="ti ti-check text-success me-2"></i>Suppliers and customers</li>
+                        <li class="mb-2"><i class="ti ti-check text-success me-2"></i>Sales returns</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-4 p-4 rounded-4 reveal" style="background:#0f172a;color:#e2e8f0;">
+            <div class="d-flex align-items-center gap-2 mb-3">
+                <span class="badge bg-warning text-dark">Coming Soon</span>
+                <strong>Planned ERP Extensions</strong>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                @foreach(['Quotation','Purchase Requisition','Purchase Returns','BOM','MRC','WIP','Finished Goods','Scrap / Rejections','Production Reporting'] as $soon)
+                    <span class="marquee-chip"><i class="ti ti-clock-hour-4"></i>{{ $soon }}</span>
+                @endforeach
+            </div>
+            <p class="small mb-0 mt-3" style="color:#94a3b8;">Manufacturing/production modules are a planned ERP extension, customizable per business — not yet live.</p>
+        </div>
+
+        <div class="text-center mt-4 reveal">
+            <a href="{{ url('/demos') }}#finance" class="btn btn-primary"><i class="ti ti-player-play me-1"></i>Open Finance ERP Demo</a>
+        </div>
+    </div>
+</section>
+
 {{-- FBR-READY WORKFLOWS --}}
 <section id="fbr" class="section-pad bg-white">
     <div class="container">

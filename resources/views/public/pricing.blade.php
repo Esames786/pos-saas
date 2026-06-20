@@ -183,6 +183,70 @@
     </div>
 </section>
 
+{{-- FINANCE & SUPPLY CHAIN ERP --}}
+<section id="finance-erp" class="section-pad" style="background:#f8faff;">
+    <div class="container">
+        <div class="text-center mb-4 reveal">
+            <span class="badge bg-primary bg-opacity-10 text-primary fw-semibold px-3 py-2 mb-3 d-inline-block">ERP / Finance</span>
+            <h2 class="fw-bold">Finance &amp; Supply Chain ERP</h2>
+            <p class="text-muted mx-auto" style="max-width:760px;">
+                For finance-led businesses that need accounting, purchasing, inventory control,
+                receivables/payables, and ERP manufacturing roadmap visibility.
+            </p>
+        </div>
+        <div class="row g-4 align-items-stretch reveal">
+            <div class="col-lg-6">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body p-4">
+                        <h5 class="fw-bold mb-3"><span class="badge bg-success me-2">Available Now</span></h5>
+                        <ul class="list-unstyled mb-0">
+                            @foreach([
+                                'Double-entry accounting',
+                                'Journal Entries &amp; General Ledger',
+                                'Trial Balance',
+                                'Profit &amp; Loss and Branch-wise P&amp;L',
+                                'Balance Sheet',
+                                'Accounts Receivable &amp; Payable Aging',
+                                'Sales Returns',
+                                'Purchase Orders and GRN',
+                                'Cash / Bank accounts &amp; opening balances',
+                            ] as $f)
+                                <li class="mb-2"><i class="ti ti-circle-check text-success me-2"></i>{!! $f !!}</li>
+                            @endforeach
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body p-4">
+                        <h5 class="fw-bold mb-3"><span class="badge bg-warning text-dark me-2">Coming Soon</span><small class="text-muted">Planned ERP Extension</small></h5>
+                        <ul class="list-unstyled mb-0">
+                            @foreach([
+                                'Quotations',
+                                'Purchase Requisitions',
+                                'Purchase Returns',
+                                'Bank Reconciliation',
+                                'BOM (Bill of Materials)',
+                                'MRC / Production Orders',
+                                'WIP / Finished Goods',
+                                'Scrap, Rejections, Consumption, Production Reports',
+                            ] as $f)
+                                <li class="mb-2"><i class="ti ti-clock-hour-4 text-warning me-2"></i>{!! $f !!}</li>
+                            @endforeach
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="text-center mt-4 d-flex flex-wrap justify-content-center gap-2 reveal">
+            <a href="{{ url('/demos') }}#finance" class="btn btn-primary"><i class="ti ti-player-play me-1"></i>Open Finance Demo</a>
+            <a href="{{ url('/contact?plan=finance_erp') }}" class="btn btn-outline-primary">Contact Sales</a>
+        </div>
+        <p class="text-center text-muted small mt-3 mb-0">Manufacturing/production modules are a planned ERP extension, customizable per business — not yet live.</p>
+    </div>
+</section>
+
 {{-- COMPARISON --}}
 <section class="section-pad bg-white">
     <div class="container">
