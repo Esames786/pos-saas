@@ -3,6 +3,10 @@
 return [
     'default_trial_days' => (int) env('SAAS_DEFAULT_TRIAL_DAYS', 30),
 
+    // 'live' = public marketing site fully visible.
+    // 'coming_soon' = marketing pages show Coming Soon; tenant & admin routes unaffected.
+    'public_site_mode' => env('PUBLIC_SITE_MODE', 'live'),
+
     'brand_name' => env('SAAS_BRAND_NAME', 'Bingoo'),
 
     'brand_tagline' => env(

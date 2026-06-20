@@ -11,8 +11,20 @@ use Throwable;
 
 class PublicSiteController extends Controller
 {
+    private function comingSoonMode(): bool
+    {
+        return config('saas.public_site_mode') === 'coming_soon';
+    }
+
+    private function comingSoon(): \Illuminate\View\View
+    {
+        return view('public.coming-soon');
+    }
+
     public function home()
     {
+        if ($this->comingSoonMode()) return $this->comingSoon();
+
         return view('public.home', [
             'plans'            => $this->publicPlans(),
             'selfServicePlans' => $this->selfServicePlans(),
@@ -22,6 +34,8 @@ class PublicSiteController extends Controller
 
     public function pricing()
     {
+        if ($this->comingSoonMode()) return $this->comingSoon();
+
         return view('public.pricing', [
             'plans'            => $this->publicPlans(),
             'selfServicePlans' => $this->selfServicePlans(),
@@ -31,6 +45,8 @@ class PublicSiteController extends Controller
 
     public function features()
     {
+        if ($this->comingSoonMode()) return $this->comingSoon();
+
         return view('public.features', [
             'plans' => $this->publicPlans(),
         ]);
@@ -38,6 +54,8 @@ class PublicSiteController extends Controller
 
     public function trialCreate(Request $request)
     {
+        if ($this->comingSoonMode()) return $this->comingSoon();
+
         $plans = $this->selfServicePlans();
 
         $selectedPlan = null;
@@ -59,6 +77,8 @@ class PublicSiteController extends Controller
 
     public function contact()
     {
+        if ($this->comingSoonMode()) return $this->comingSoon();
+
         return view('public.contact', [
             'customPlans' => $this->customPlans(),
         ]);
@@ -88,6 +108,8 @@ class PublicSiteController extends Controller
 
     public function demos()
     {
+        if ($this->comingSoonMode()) return $this->comingSoon();
+
         $cards = config('saas.demos.cards', []);
         $password = config('saas.demos.default_password', 'demo1234');
         $baseDomain = config('tenancy.tenant_base_domain', request()->getHost());
@@ -126,8 +148,21 @@ class PublicSiteController extends Controller
         ]);
     }
 
+    public function trialSuccess()
+    {
+        if ($this->comingSoonMode()) return $this->comingSoon();
+
+        if (! session('trial_login_url')) {
+            return redirect(url('/pricing'));
+        }
+
+        return view('public.trial-success');
+    }
+
     public function trialStore(StartTrialRequest $request, SelfSignupService $signup)
     {
+        if ($this->comingSoonMode()) return $this->comingSoon();
+
         $data = $request->signupData();
 
         try {
@@ -168,15 +203,6 @@ class PublicSiteController extends Controller
             'trial_owner_email'   => $tenant->owner_email,
             'trial_business_name' => $tenant->business_name,
         ]);
-    }
-
-    public function trialSuccess()
-    {
-        if (! session('trial_login_url')) {
-            return redirect(url('/pricing'));
-        }
-
-        return view('public.trial-success');
     }
 
     private function publicPlans()
