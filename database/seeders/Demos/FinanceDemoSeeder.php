@@ -13,6 +13,7 @@ use App\Models\Tenant\PaymentMethod;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\ManufacturingCustomer;
+use App\Models\Tenant\ProductionOrder;
 use App\Models\Tenant\Supplier;
 use App\Models\Tenant\Unit;
 use App\Models\Tenant\User;
@@ -56,6 +57,7 @@ class FinanceDemoSeeder
         $this->seedPaidSales();
         $this->seedExpense();
         $this->seedManufacturingCustomers();
+        $this->seedProductionOrders();
 
         return $this->counts;
     }
@@ -416,5 +418,72 @@ class FinanceDemoSeeder
             );
         }
         $this->counts['manufacturing_customers'] = ManufacturingCustomer::count();
+    }
+
+    private function seedProductionOrders(): void
+    {
+        if (! $this->main) {
+            $this->counts['production_orders'] = 'skipped (no branch)';
+            return;
+        }
+
+        $cust1 = ManufacturingCustomer::where('code', 'MFG-CUST-001')->value('id');
+        $cust2 = ManufacturingCustomer::where('code', 'MFG-CUST-002')->value('id');
+        $cust3 = ManufacturingCustomer::where('code', 'MFG-CUST-003')->value('id');
+
+        $p001 = Product::where('sku', 'FIN-P001')->value('id'); // Steel Bracket A1
+        $p005 = Product::where('sku', 'FIN-P005')->value('id'); // Carton Box Large
+        $p002 = Product::where('sku', 'FIN-P002')->value('id'); // Aluminium Sheet 2mm
+
+        $orders = [
+            [
+                'order_no'                  => 'PROD-000001',
+                'manufacturing_customer_id' => $cust1,
+                'branch_id'                 => $this->main->id,
+                'product_id'                => $p001,
+                'planned_quantity'          => 250.0,
+                'produced_quantity'         => 0.0,
+                'order_date'                => now()->subDays(10)->toDateString(),
+                'due_date'                  => now()->addDays(20)->toDateString(),
+                'status'                    => 'planned',
+                'priority'                  => 'high',
+            ],
+            [
+                'order_no'                  => 'PROD-000002',
+                'manufacturing_customer_id' => $cust2,
+                'branch_id'                 => $this->main->id,
+                'product_id'                => $p005,
+                'planned_quantity'          => 1000.0,
+                'produced_quantity'         => 0.0,
+                'order_date'                => now()->subDays(5)->toDateString(),
+                'due_date'                  => now()->addDays(15)->toDateString(),
+                'status'                    => 'released',
+                'priority'                  => 'normal',
+            ],
+            [
+                'order_no'                  => 'PROD-000003',
+                'manufacturing_customer_id' => $cust3,
+                'branch_id'                 => $this->main->id,
+                'product_id'                => $p002,
+                'planned_quantity'          => 120.0,
+                'produced_quantity'         => 45.0,
+                'order_date'                => now()->subDays(15)->toDateString(),
+                'due_date'                  => now()->addDays(5)->toDateString(),
+                'status'                    => 'in_progress',
+                'priority'                  => 'urgent',
+            ],
+        ];
+
+        foreach ($orders as $o) {
+            if (! $o['product_id']) {
+                continue; // skip if product not found (e.g. fresh tenant without FIN products)
+            }
+            ProductionOrder::updateOrCreate(
+                ['order_no' => $o['order_no']],
+                array_merge($o, ['created_by_user_id' => $this->owner()?->id])
+            );
+        }
+
+        $this->counts['production_orders'] = ProductionOrder::count();
     }
 }

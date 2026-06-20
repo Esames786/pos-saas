@@ -768,11 +768,20 @@
                                     </a>
                                 </li>
                             @endcan
+                            {{-- Production Orders: real CRUD (MANUF-2) — no Soon badge --}}
+                            @can('tenant.manufacturing.production-orders.index')
+                                @php $a = $isIn('manufacturing/production-orders*'); @endphp
+                                <li class="{{ $a ? 'active' : '' }}">
+                                    <a href="{{ url('/manufacturing/production-orders') }}" class="{{ $a ? 'active' : '' }}">
+                                        <i class="ti ti-clipboard-check fs-16 me-2"></i>
+                                        <span>Production Orders</span>
+                                    </a>
+                                </li>
+                            @endcan
                             {{-- Remaining manufacturing items — Coming Soon --}}
                             @php $mfg = [
                                 ['bom','BOM','ti-sitemap'],
                                 ['material-requisitions','Material Requisition (MRC)','ti-clipboard-list'],
-                                ['production-orders','Production Orders','ti-clipboard-check'],
                                 ['wip','Work in Process (WIP)','ti-progress'],
                                 ['finished-goods','Finished Goods','ti-package'],
                                 ['scrap','Scrap / Hard Waste','ti-trash'],

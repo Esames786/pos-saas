@@ -79,6 +79,7 @@ use App\Http\Controllers\Tenant\Reports\KitchenReportController;
 use App\Http\Controllers\Tenant\Reports\AuditReportController;
 use App\Http\Controllers\Tenant\Reports\PrintReportController;
 use App\Http\Controllers\Tenant\Manufacturing\ManufacturingCustomerController;
+use App\Http\Controllers\Tenant\Manufacturing\ProductionOrderController;
 use Illuminate\Support\Facades\Route;
 
 Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
@@ -605,8 +606,14 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                     ->defaults('feature', 'bom')->name('tenant.manufacturing.bom.index');
                 Route::get('/manufacturing/material-requisitions', [ComingSoonController::class, 'show'])
                     ->defaults('feature', 'material-requisitions')->name('tenant.manufacturing.material-requisitions.index');
-                Route::get('/manufacturing/production-orders', [ComingSoonController::class, 'show'])
-                    ->defaults('feature', 'production-orders')->name('tenant.manufacturing.production-orders.index');
+                // ── Production Orders — real CRUD (MANUF-2) ─────────────────
+                Route::get('/manufacturing/production-orders', [ProductionOrderController::class, 'index'])->name('tenant.manufacturing.production-orders.index');
+                Route::get('/manufacturing/production-orders/create', [ProductionOrderController::class, 'create'])->name('tenant.manufacturing.production-orders.create');
+                Route::post('/manufacturing/production-orders', [ProductionOrderController::class, 'store'])->name('tenant.manufacturing.production-orders.store');
+                Route::get('/manufacturing/production-orders/{productionOrder}', [ProductionOrderController::class, 'show'])->name('tenant.manufacturing.production-orders.show');
+                Route::get('/manufacturing/production-orders/{productionOrder}/edit', [ProductionOrderController::class, 'edit'])->name('tenant.manufacturing.production-orders.edit');
+                Route::put('/manufacturing/production-orders/{productionOrder}', [ProductionOrderController::class, 'update'])->name('tenant.manufacturing.production-orders.update');
+                Route::delete('/manufacturing/production-orders/{productionOrder}', [ProductionOrderController::class, 'destroy'])->name('tenant.manufacturing.production-orders.destroy');
                 Route::get('/manufacturing/wip', [ComingSoonController::class, 'show'])
                     ->defaults('feature', 'wip')->name('tenant.manufacturing.wip.index');
                 Route::get('/manufacturing/finished-goods', [ComingSoonController::class, 'show'])
