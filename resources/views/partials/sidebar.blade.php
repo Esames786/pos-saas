@@ -701,8 +701,7 @@
                     <li class="submenu">
                         <a href="javascript:void(0);">
                             <i class="ti ti-arrows-left-right fs-16 me-2"></i>
-                            <span>ERP Extensions</span>
-                            <span class="badge bg-warning text-dark ms-1" style="font-size:.6rem;padding:2px 4px;">Soon</span>
+                            <span>ERP Extensions <span class="badge bg-warning text-dark" style="font-size:.6rem;padding:1px 4px;vertical-align:middle;">Soon</span></span>
                             <span class="menu-arrow"></span>
                         </a>
                         <ul style="display:none;">
@@ -755,8 +754,7 @@
                     <li class="submenu">
                         <a href="javascript:void(0);">
                             <i class="ti ti-settings-cog fs-16 me-2"></i>
-                            <span>Manufacturing</span>
-                            <span class="badge bg-warning text-dark ms-1" style="font-size:.6rem;padding:2px 4px;">Soon</span>
+                            <span>Manufacturing <span class="badge bg-warning text-dark" style="font-size:.6rem;padding:1px 4px;vertical-align:middle;">Soon</span></span>
                             <span class="menu-arrow"></span>
                         </a>
                         <ul style="display:none;">
