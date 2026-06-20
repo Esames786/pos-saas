@@ -12,6 +12,8 @@ use App\Models\Tenant\ExpenseVoucher;
 use App\Models\Tenant\PaymentMethod;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\SalesOrder;
+use App\Models\Tenant\ManufacturingBom;
+use App\Models\Tenant\ManufacturingBomLine;
 use App\Models\Tenant\ManufacturingCustomer;
 use App\Models\Tenant\ProductionOrder;
 use App\Models\Tenant\Supplier;
@@ -58,6 +60,7 @@ class FinanceDemoSeeder
         $this->seedExpense();
         $this->seedManufacturingCustomers();
         $this->seedProductionOrders();
+        $this->seedBoms();
 
         return $this->counts;
     }
@@ -485,5 +488,68 @@ class FinanceDemoSeeder
         }
 
         $this->counts['production_orders'] = ProductionOrder::count();
+    }
+
+    private function seedBoms(): void
+    {
+        // FIN-P001 = Steel Bracket A1 (finished), components: FIN-P004, FIN-P006, FIN-P005
+        $p001 = Product::where('sku', 'FIN-P001')->value('id');
+        $p002 = Product::where('sku', 'FIN-P002')->value('id');
+        $p004 = Product::where('sku', 'FIN-P004')->value('id');
+        $p005 = Product::where('sku', 'FIN-P005')->value('id');
+        $p006 = Product::where('sku', 'FIN-P006')->value('id');
+
+        $owner = $this->owner()?->id;
+
+        $bom1 = ManufacturingBom::updateOrCreate(
+            ['bom_no' => 'BOM-000001'],
+            [
+                'finished_product_id' => $p001,
+                'name'                => 'Standard Assembly — Steel Bracket A1',
+                'version'             => '1.0',
+                'output_quantity'     => 1.0000,
+                'status'              => 'active',
+                'effective_from'      => '2026-01-01',
+                'notes'               => 'Demo BOM — configuration only, no GL/WIP posting.',
+                'created_by_user_id'  => $owner,
+            ]
+        );
+
+        if ($p001 && $p004 && $p006 && $p005) {
+            ManufacturingBomLine::where('manufacturing_bom_id', $bom1->id)->delete();
+            foreach ([
+                ['component_product_id' => $p004, 'quantity' => 0.0500, 'wastage_percent' => 2.0000, 'sort_order' => 1],
+                ['component_product_id' => $p006, 'quantity' => 0.0200, 'wastage_percent' => 1.0000, 'sort_order' => 2],
+                ['component_product_id' => $p005, 'quantity' => 0.1000, 'wastage_percent' => 0.0000, 'sort_order' => 3],
+            ] as $line) {
+                ManufacturingBomLine::create(array_merge(['manufacturing_bom_id' => $bom1->id], $line));
+            }
+        }
+
+        $bom2 = ManufacturingBom::updateOrCreate(
+            ['bom_no' => 'BOM-000002'],
+            [
+                'finished_product_id' => $p002,
+                'name'                => 'Standard Roll — Aluminium Sheet 2mm',
+                'version'             => '1.0',
+                'output_quantity'     => 1.0000,
+                'status'              => 'active',
+                'effective_from'      => '2026-01-01',
+                'notes'               => 'Demo BOM — configuration only.',
+                'created_by_user_id'  => $owner,
+            ]
+        );
+
+        if ($p002 && $p004 && $p006) {
+            ManufacturingBomLine::where('manufacturing_bom_id', $bom2->id)->delete();
+            foreach ([
+                ['component_product_id' => $p004, 'quantity' => 0.0300, 'wastage_percent' => 1.0000, 'sort_order' => 1],
+                ['component_product_id' => $p006, 'quantity' => 0.0150, 'wastage_percent' => 1.0000, 'sort_order' => 2],
+            ] as $line) {
+                ManufacturingBomLine::create(array_merge(['manufacturing_bom_id' => $bom2->id], $line));
+            }
+        }
+
+        $this->counts['manufacturing_boms'] = ManufacturingBom::count();
     }
 }

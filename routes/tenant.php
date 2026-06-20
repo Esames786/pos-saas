@@ -80,6 +80,7 @@ use App\Http\Controllers\Tenant\Reports\AuditReportController;
 use App\Http\Controllers\Tenant\Reports\PrintReportController;
 use App\Http\Controllers\Tenant\Manufacturing\ManufacturingCustomerController;
 use App\Http\Controllers\Tenant\Manufacturing\ProductionOrderController;
+use App\Http\Controllers\Tenant\Manufacturing\BomController;
 use Illuminate\Support\Facades\Route;
 
 Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
@@ -602,8 +603,14 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::put('/manufacturing/customers/{manufacturingCustomer}', [ManufacturingCustomerController::class, 'update'])->name('tenant.manufacturing.customers.update');
                 Route::delete('/manufacturing/customers/{manufacturingCustomer}', [ManufacturingCustomerController::class, 'destroy'])->name('tenant.manufacturing.customers.destroy');
 
-                Route::get('/manufacturing/bom', [ComingSoonController::class, 'show'])
-                    ->defaults('feature', 'bom')->name('tenant.manufacturing.bom.index');
+                // ── Bill of Materials — real CRUD (MANUF-3) ─────────────────
+                Route::get('/manufacturing/bom', [BomController::class, 'index'])->name('tenant.manufacturing.bom.index');
+                Route::get('/manufacturing/bom/create', [BomController::class, 'create'])->name('tenant.manufacturing.bom.create');
+                Route::post('/manufacturing/bom', [BomController::class, 'store'])->name('tenant.manufacturing.bom.store');
+                Route::get('/manufacturing/bom/{manufacturingBom}', [BomController::class, 'show'])->name('tenant.manufacturing.bom.show');
+                Route::get('/manufacturing/bom/{manufacturingBom}/edit', [BomController::class, 'edit'])->name('tenant.manufacturing.bom.edit');
+                Route::put('/manufacturing/bom/{manufacturingBom}', [BomController::class, 'update'])->name('tenant.manufacturing.bom.update');
+                Route::delete('/manufacturing/bom/{manufacturingBom}', [BomController::class, 'destroy'])->name('tenant.manufacturing.bom.destroy');
                 Route::get('/manufacturing/material-requisitions', [ComingSoonController::class, 'show'])
                     ->defaults('feature', 'material-requisitions')->name('tenant.manufacturing.material-requisitions.index');
                 // ── Production Orders — real CRUD (MANUF-2) ─────────────────

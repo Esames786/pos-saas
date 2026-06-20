@@ -646,7 +646,14 @@ class TenantProvisioner
             'tenant.manufacturing.customers.edit',
             'tenant.manufacturing.customers.update',
             'tenant.manufacturing.customers.destroy',
+            // BOM CRUD (MANUF-3)
             'tenant.manufacturing.bom.index',
+            'tenant.manufacturing.bom.create',
+            'tenant.manufacturing.bom.store',
+            'tenant.manufacturing.bom.show',
+            'tenant.manufacturing.bom.edit',
+            'tenant.manufacturing.bom.update',
+            'tenant.manufacturing.bom.destroy',
             'tenant.manufacturing.material-requisitions.index',
             // Production Orders CRUD (MANUF-2)
             'tenant.manufacturing.production-orders.index',
