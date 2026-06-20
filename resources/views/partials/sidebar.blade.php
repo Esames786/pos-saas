@@ -758,8 +758,18 @@
                             <span class="menu-arrow"></span>
                         </a>
                         <ul style="display:none;">
+                            {{-- Manufacturing Customers: real CRUD (MANUF-1) — no Soon badge --}}
+                            @can('tenant.manufacturing.customers.index')
+                                @php $a = $isIn('manufacturing/customers*'); @endphp
+                                <li class="{{ $a ? 'active' : '' }}">
+                                    <a href="{{ url('/manufacturing/customers') }}" class="{{ $a ? 'active' : '' }}">
+                                        <i class="ti ti-users-group fs-16 me-2"></i>
+                                        <span>Manufacturing Customers</span>
+                                    </a>
+                                </li>
+                            @endcan
+                            {{-- Remaining manufacturing items — Coming Soon --}}
                             @php $mfg = [
-                                ['customers','Manufacturing Customers','ti-users-group'],
                                 ['bom','BOM','ti-sitemap'],
                                 ['material-requisitions','Material Requisition (MRC)','ti-clipboard-list'],
                                 ['production-orders','Production Orders','ti-clipboard-check'],

@@ -78,6 +78,7 @@ use App\Http\Controllers\Tenant\Reports\RestaurantReportController;
 use App\Http\Controllers\Tenant\Reports\KitchenReportController;
 use App\Http\Controllers\Tenant\Reports\AuditReportController;
 use App\Http\Controllers\Tenant\Reports\PrintReportController;
+use App\Http\Controllers\Tenant\Manufacturing\ManufacturingCustomerController;
 use Illuminate\Support\Facades\Route;
 
 Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
@@ -591,8 +592,14 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/purchase-returns', [ComingSoonController::class, 'show'])
                     ->defaults('feature', 'purchase-returns')->name('tenant.purchase-returns.index');
 
-                Route::get('/manufacturing/customers', [ComingSoonController::class, 'show'])
-                    ->defaults('feature', 'manufacturing-customers')->name('tenant.manufacturing.customers.index');
+                // ── Manufacturing Customers — real CRUD (MANUF-1) ────────────
+                Route::get('/manufacturing/customers', [ManufacturingCustomerController::class, 'index'])->name('tenant.manufacturing.customers.index');
+                Route::get('/manufacturing/customers/create', [ManufacturingCustomerController::class, 'create'])->name('tenant.manufacturing.customers.create');
+                Route::post('/manufacturing/customers', [ManufacturingCustomerController::class, 'store'])->name('tenant.manufacturing.customers.store');
+                Route::get('/manufacturing/customers/{manufacturingCustomer}', [ManufacturingCustomerController::class, 'show'])->name('tenant.manufacturing.customers.show');
+                Route::get('/manufacturing/customers/{manufacturingCustomer}/edit', [ManufacturingCustomerController::class, 'edit'])->name('tenant.manufacturing.customers.edit');
+                Route::put('/manufacturing/customers/{manufacturingCustomer}', [ManufacturingCustomerController::class, 'update'])->name('tenant.manufacturing.customers.update');
+                Route::delete('/manufacturing/customers/{manufacturingCustomer}', [ManufacturingCustomerController::class, 'destroy'])->name('tenant.manufacturing.customers.destroy');
 
                 Route::get('/manufacturing/bom', [ComingSoonController::class, 'show'])
                     ->defaults('feature', 'bom')->name('tenant.manufacturing.bom.index');

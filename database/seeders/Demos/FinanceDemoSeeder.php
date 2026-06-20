@@ -12,6 +12,7 @@ use App\Models\Tenant\ExpenseVoucher;
 use App\Models\Tenant\PaymentMethod;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\SalesOrder;
+use App\Models\Tenant\ManufacturingCustomer;
 use App\Models\Tenant\Supplier;
 use App\Models\Tenant\Unit;
 use App\Models\Tenant\User;
@@ -54,6 +55,7 @@ class FinanceDemoSeeder
         $this->seedOpeningBalances($invValue);
         $this->seedPaidSales();
         $this->seedExpense();
+        $this->seedManufacturingCustomers();
 
         return $this->counts;
     }
@@ -399,5 +401,20 @@ class FinanceDemoSeeder
 
         app(ExpenseService::class)->post($voucher, $this->owner()?->id);
         $this->counts['expenses'] = '1 posted';
+    }
+
+    private function seedManufacturingCustomers(): void
+    {
+        foreach ([
+            ['code' => 'MFG-CUST-001', 'name' => 'Crescent Industrial Works',  'contact_person' => 'Ahsan Malik',  'city' => 'Lahore'],
+            ['code' => 'MFG-CUST-002', 'name' => 'Alpha Packaging Pvt Ltd',    'contact_person' => 'Sana Javed',   'city' => 'Karachi'],
+            ['code' => 'MFG-CUST-003', 'name' => 'Northern Engineering Co',    'contact_person' => 'Bilal Khan',   'city' => 'Islamabad'],
+        ] as $c) {
+            ManufacturingCustomer::updateOrCreate(
+                ['code' => $c['code']],
+                array_merge($c, ['status' => 'active', 'country' => 'Pakistan'])
+            );
+        }
+        $this->counts['manufacturing_customers'] = ManufacturingCustomer::count();
     }
 }
