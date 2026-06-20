@@ -15,11 +15,18 @@
             </div>
         </div>
 
-        @include('tenant.manufacturing.bom.partials.form', [
-            'bom'      => $bom,
-            'nextNo'   => null,
-            'products' => $products,
-            'units'    => $units,
-            'statuses' => $statuses,
-        ])
+        <div class="row">
+            <div class="col-xxl-9 col-xl-8">
+                @include('tenant.manufacturing.bom.partials.form', [
+                    'bom'      => $bom,
+                    'nextNo'   => null,
+                    'products' => $products,
+                    'units'    => $units,
+                    'statuses' => $statuses,
+                ])
+            </div>
+            <div class="col-xxl-3 col-xl-4">
+                @include('tenant.manufacturing.bom.partials.help')
+            </div>
+        </div>
 @endsection

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Tenant\Manufacturing;
 
+use App\Http\Controllers\Concerns\GeneratesSequentialCode;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\ManufacturingCustomer;
@@ -12,6 +13,8 @@ use Illuminate\Validation\Rule;
 
 class ProductionOrderController extends Controller
 {
+    use GeneratesSequentialCode;
+
     public function index(Request $request)
     {
         $query = ProductionOrder::query()
@@ -163,12 +166,6 @@ class ProductionOrderController extends Controller
 
     private function nextOrderNo(): string
     {
-        $last = ProductionOrder::where('order_no', 'like', 'PROD-%')
-            ->orderByDesc('order_no')
-            ->value('order_no');
-
-        $n = $last ? ((int) substr($last, 5)) + 1 : 1;
-
-        return 'PROD-' . str_pad($n, 6, '0', STR_PAD_LEFT);
+        return $this->nextSequentialCode(ProductionOrder::class, 'order_no', 'PROD-', 6);
     }
 }

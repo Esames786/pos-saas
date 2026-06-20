@@ -15,13 +15,20 @@
             </div>
         </div>
 
-        @include('tenant.manufacturing.production-orders.partials.form', [
-            'order'      => $order,
-            'nextNo'     => null,
-            'customers'  => $customers,
-            'branches'   => $branches,
-            'products'   => $products,
-            'statuses'   => $statuses,
-            'priorities' => $priorities,
-        ])
+        <div class="row">
+            <div class="col-xl-8 col-lg-7">
+                @include('tenant.manufacturing.production-orders.partials.form', [
+                    'order'      => $order,
+                    'nextNo'     => null,
+                    'customers'  => $customers,
+                    'branches'   => $branches,
+                    'products'   => $products,
+                    'statuses'   => $statuses,
+                    'priorities' => $priorities,
+                ])
+            </div>
+            <div class="col-xl-4 col-lg-5">
+                @include('tenant.manufacturing.production-orders.partials.help')
+            </div>
+        </div>
 @endsection

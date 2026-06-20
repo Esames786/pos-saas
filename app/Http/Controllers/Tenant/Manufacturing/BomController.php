@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Tenant\Manufacturing;
 
+use App\Http\Controllers\Concerns\GeneratesSequentialCode;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\ManufacturingBom;
 use App\Models\Tenant\ManufacturingBomLine;
@@ -13,6 +14,8 @@ use Illuminate\Validation\ValidationException;
 
 class BomController extends Controller
 {
+    use GeneratesSequentialCode;
+
     public function index(Request $request)
     {
         $query = ManufacturingBom::query()->with('finishedProduct');
@@ -206,12 +209,6 @@ class BomController extends Controller
 
     private function nextBomNo(): string
     {
-        $last = ManufacturingBom::where('bom_no', 'like', 'BOM-%')
-            ->orderByDesc('bom_no')
-            ->value('bom_no');
-
-        $n = $last ? ((int) substr($last, 4)) + 1 : 1;
-
-        return 'BOM-' . str_pad($n, 6, '0', STR_PAD_LEFT);
+        return $this->nextSequentialCode(ManufacturingBom::class, 'bom_no', 'BOM-', 6);
     }
 }

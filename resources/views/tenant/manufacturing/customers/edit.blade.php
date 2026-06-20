@@ -15,8 +15,15 @@
             </div>
         </div>
 
-        @include('tenant.manufacturing.customers.partials.form', [
-            'customer' => $customer,
-            'nextCode' => null,
-        ])
+        <div class="row">
+            <div class="col-xl-8 col-lg-7">
+                @include('tenant.manufacturing.customers.partials.form', [
+                    'customer' => $customer,
+                    'nextCode' => null,
+                ])
+            </div>
+            <div class="col-xl-4 col-lg-5">
+                @include('tenant.manufacturing.customers.partials.help')
+            </div>
+        </div>
 @endsection

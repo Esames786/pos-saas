@@ -131,7 +131,7 @@
                         <tr class="bom-line-row">
                             <td>
                                 <select name="lines[{{ $i }}][component_product_id]" required
-                                        class="form-select form-select-sm">
+                                        class="select form-select form-select-sm">
                                     <option value="">— select —</option>
                                     @foreach($products as $p)
                                         <option value="{{ $p->id }}" @selected($p->id == $line->component_product_id)>
@@ -141,7 +141,7 @@
                                 </select>
                             </td>
                             <td>
-                                <select name="lines[{{ $i }}][unit_id]" class="form-select form-select-sm">
+                                <select name="lines[{{ $i }}][unit_id]" class="select form-select form-select-sm">
                                     <option value="">—</option>
                                     @foreach($units as $u)
                                         <option value="{{ $u->id }}" @selected($u->id == $line->unit_id)>
@@ -178,7 +178,7 @@
                         @foreach(old('lines') as $i => $line)
                         <tr class="bom-line-row">
                             <td>
-                                <select name="lines[{{ $i }}][component_product_id]" required class="form-select form-select-sm">
+                                <select name="lines[{{ $i }}][component_product_id]" required class="select form-select form-select-sm">
                                     <option value="">— select —</option>
                                     @foreach($products as $p)
                                         <option value="{{ $p->id }}" @selected($p->id == $line['component_product_id'])>
@@ -188,7 +188,7 @@
                                 </select>
                             </td>
                             <td>
-                                <select name="lines[{{ $i }}][unit_id]" class="form-select form-select-sm">
+                                <select name="lines[{{ $i }}][unit_id]" class="select form-select form-select-sm">
                                     <option value="">—</option>
                                     @foreach($units as $u)
                                         <option value="{{ $u->id }}" @selected($u->id == ($line['unit_id'] ?? ''))>
@@ -233,7 +233,7 @@
 <template id="line-row-template">
     <tr class="bom-line-row">
         <td>
-            <select name="lines[__IDX__][component_product_id]" required class="form-select form-select-sm">
+            <select name="lines[__IDX__][component_product_id]" required class="select form-select form-select-sm">
                 <option value="">— select —</option>
                 @foreach($products as $p)
                     <option value="{{ $p->id }}">{{ $p->sku }} — {{ $p->name }}</option>
@@ -241,7 +241,7 @@
             </select>
         </td>
         <td>
-            <select name="lines[__IDX__][unit_id]" class="form-select form-select-sm">
+            <select name="lines[__IDX__][unit_id]" class="select form-select form-select-sm">
                 <option value="">—</option>
                 @foreach($units as $u)
                     <option value="{{ $u->id }}">{{ $u->code }}</option>
@@ -274,17 +274,38 @@
     let idx = {{ $lineCount }};
     const body = document.getElementById('lines-body');
     const tpl  = document.getElementById('line-row-template');
+    const hasSelect2 = (typeof window.jQuery !== 'undefined' && typeof window.jQuery.fn.select2 !== 'undefined');
+
+    // Server-rendered rows are select2-initialised by the global .select handler.
+    // Newly added rows are not in the DOM at load, so initialise them here.
+    function initRowSelect2(row) {
+        if (!hasSelect2) return;
+        window.jQuery(row).find('select.select').each(function () {
+            if (!this.classList.contains('select2-hidden-accessible')) {
+                window.jQuery(this).select2({ width: '100%' });
+            }
+        });
+    }
 
     document.getElementById('add-line-btn').addEventListener('click', function () {
         const html = tpl.innerHTML.replaceAll('__IDX__', idx++);
         const tr   = document.createElement('tbody');
         tr.innerHTML = html;
-        body.appendChild(tr.firstElementChild);
+        const row = tr.firstElementChild;
+        body.appendChild(row);
+        initRowSelect2(row);
     });
 
     body.addEventListener('click', function (e) {
         const btn = e.target.closest('.remove-line-btn');
-        if (btn) btn.closest('tr').remove();
+        if (!btn) return;
+        const row = btn.closest('tr');
+        if (hasSelect2) {
+            window.jQuery(row).find('.select2-hidden-accessible').each(function () {
+                window.jQuery(this).select2('destroy');
+            });
+        }
+        row.remove();
     });
 })();
 </script>

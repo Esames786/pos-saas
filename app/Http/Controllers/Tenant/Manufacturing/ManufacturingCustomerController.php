@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Tenant\Manufacturing;
 
+use App\Http\Controllers\Concerns\GeneratesSequentialCode;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\ManufacturingCustomer;
 use Illuminate\Http\Request;
@@ -9,6 +10,8 @@ use Illuminate\Validation\Rule;
 
 class ManufacturingCustomerController extends Controller
 {
+    use GeneratesSequentialCode;
+
     public function index(Request $request)
     {
         $query = ManufacturingCustomer::query();
@@ -116,12 +119,6 @@ class ManufacturingCustomerController extends Controller
 
     private function nextCode(): string
     {
-        $last = ManufacturingCustomer::where('code', 'like', 'MFG-CUST-%')
-            ->orderByDesc('code')
-            ->value('code');
-
-        $n = $last ? ((int) substr($last, -4)) + 1 : 1;
-
-        return 'MFG-CUST-' . str_pad($n, 4, '0', STR_PAD_LEFT);
+        return $this->nextSequentialCode(ManufacturingCustomer::class, 'code', 'MFG-CUST-', 4);
     }
 }
