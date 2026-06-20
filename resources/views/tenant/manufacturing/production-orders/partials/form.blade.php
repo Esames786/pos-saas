@@ -55,7 +55,7 @@
             <div class="col-md-6">
                 <label for="product_id" class="form-label required">Finished Product</label>
                 <select id="product_id" name="product_id" required
-                        class="form-select @error('product_id') is-invalid @enderror">
+                        class="select form-select @error('product_id') is-invalid @enderror">
                     <option value="">— Select product —</option>
                     @foreach($products as $p)
                         <option value="{{ $p->id }}" @selected(old('product_id', $order?->product_id) == $p->id)>
@@ -95,7 +95,7 @@
             <div class="col-md-6">
                 <label for="manufacturing_customer_id" class="form-label">Manufacturing Customer</label>
                 <select id="manufacturing_customer_id" name="manufacturing_customer_id"
-                        class="form-select @error('manufacturing_customer_id') is-invalid @enderror">
+                        class="select form-select @error('manufacturing_customer_id') is-invalid @enderror">
                     <option value="">— None —</option>
                     @foreach($customers as $c)
                         <option value="{{ $c->id }}" @selected(old('manufacturing_customer_id', $order?->manufacturing_customer_id) == $c->id)>
@@ -110,7 +110,7 @@
             <div class="col-md-6">
                 <label for="branch_id" class="form-label">Branch / Production Unit</label>
                 <select id="branch_id" name="branch_id"
-                        class="form-select @error('branch_id') is-invalid @enderror">
+                        class="select form-select @error('branch_id') is-invalid @enderror">
                     <option value="">— All branches —</option>
                     @foreach($branches as $b)
                         <option value="{{ $b->id }}" @selected(old('branch_id', $order?->branch_id) == $b->id)>
@@ -131,7 +131,7 @@
             <div class="col-md-4">
                 <label for="status" class="form-label required">Status</label>
                 <select id="status" name="status" required
-                        class="form-select @error('status') is-invalid @enderror">
+                        class="select form-select @error('status') is-invalid @enderror">
                     @foreach($statuses as $s)
                         <option value="{{ $s }}" @selected(old('status', $order?->status ?? 'draft') === $s)>
                             {{ $statusLabels[$s] ?? ucfirst($s) }}
@@ -144,7 +144,7 @@
             <div class="col-md-4">
                 <label for="priority" class="form-label">Priority</label>
                 <select id="priority" name="priority"
-                        class="form-select @error('priority') is-invalid @enderror">
+                        class="select form-select @error('priority') is-invalid @enderror">
                     <option value="">— Not set —</option>
                     @foreach($priorities as $p)
                         <option value="{{ $p }}" @selected(old('priority', $order?->priority) === $p)>

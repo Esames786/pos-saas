@@ -3,14 +3,14 @@
 @section('title', $customer->name . ' — Manufacturing Customer')
 
 @section('content')
-<div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
-    <div>
-        <h1 class="mb-1">{{ $customer->name }}</h1>
-        <p class="fw-medium text-muted"><code>{{ $customer->code }}</code>
-            &nbsp;<span class="badge bg-{{ $customer->status === 'active' ? 'success' : 'secondary' }}">{{ ucfirst($customer->status) }}</span>
-        </p>
+<div class="page-header">
+    <div class="page-title">
+        <h4>{{ $customer->name }}</h4>
+        <h6><code>{{ $customer->code }}</code>
+            &nbsp;<span class="badge {{ $customer->status === 'active' ? 'bg-success' : 'bg-secondary' }}">{{ ucfirst($customer->status) }}</span>
+        </h6>
     </div>
-    <div class="d-flex gap-2">
+    <div class="page-btn d-flex gap-2">
         @can('tenant.manufacturing.customers.edit')
             <a href="{{ url('/manufacturing/customers/' . $customer->id . '/edit') }}" class="btn btn-primary">
                 <i class="ti ti-pencil me-1"></i>Edit
@@ -23,16 +23,12 @@
 </div>
 
 @if(session('status'))
-    <div class="alert alert-success" role="alert">{{ session('status') }}</div>
+    <div class="alert alert-success alert-dismissible fade show">{{ session('status') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
 @endif
 
-<div class="alert alert-info d-flex gap-2 align-items-start">
-    <i class="ti ti-info-circle fs-18 mt-1 flex-shrink-0"></i>
-    <div>
-        <strong>Manufacturing Customer</strong> — separate from your POS/Sales customer base.
-        This record is for production orders, job-work, costing, and manufacturing reports.
-        It does <strong>not</strong> affect POS sales, AR ledger, or customer payments.
-    </div>
+<div class="alert alert-info">
+    <i class="ti ti-info-circle me-1"></i>
+    <strong>Manufacturing Customer</strong> — separate from your POS/Sales customer base. Used for production orders, job-work, costing and manufacturing reports. It does not affect POS sales, AR ledger or customer payments.
 </div>
 
 <div class="row g-3">

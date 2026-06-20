@@ -116,7 +116,7 @@
             <div class="col-md-3">
                 <label for="status" class="form-label required">Status</label>
                 <select id="status" name="status" required
-                        class="form-select @error('status') is-invalid @enderror">
+                        class="select form-select @error('status') is-invalid @enderror">
                     <option value="active"   @selected(old('status', $customer?->status ?? 'active') === 'active')>Active</option>
                     <option value="inactive" @selected(old('status', $customer?->status) === 'inactive')>Inactive</option>
                 </select>

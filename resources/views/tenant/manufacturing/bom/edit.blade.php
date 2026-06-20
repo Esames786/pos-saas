@@ -3,21 +3,23 @@
 @section('title', $title)
 
 @section('content')
-<div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
-    <div>
-        <h1 class="mb-1">{{ $title }}</h1>
-        <p class="fw-medium text-muted">Configuration only — no inventory or GL posting at this stage.</p>
-    </div>
-    <a href="{{ url('/manufacturing/bom/' . $bom->id) }}" class="btn btn-light">
-        <i class="ti ti-arrow-left me-1"></i>Back
-    </a>
-</div>
+        <div class="page-header">
+            <div class="page-title">
+                <h4>{{ $title }}</h4>
+                <h6>Configuration only — no inventory or GL posting at this stage</h6>
+            </div>
+            <div class="page-btn">
+                <a href="{{ url('/manufacturing/bom/' . $bom->id) }}" class="btn btn-light">
+                    <i class="ti ti-arrow-left me-1"></i>Back
+                </a>
+            </div>
+        </div>
 
-@include('tenant.manufacturing.bom.partials.form', [
-    'bom'      => $bom,
-    'nextNo'   => null,
-    'products' => $products,
-    'units'    => $units,
-    'statuses' => $statuses,
-])
+        @include('tenant.manufacturing.bom.partials.form', [
+            'bom'      => $bom,
+            'nextNo'   => null,
+            'products' => $products,
+            'units'    => $units,
+            'statuses' => $statuses,
+        ])
 @endsection

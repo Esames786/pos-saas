@@ -40,7 +40,7 @@
             <div class="col-md-4">
                 <label for="status" class="form-label required">Status</label>
                 <select id="status" name="status" required
-                        class="form-select @error('status') is-invalid @enderror">
+                        class="select form-select @error('status') is-invalid @enderror">
                     @foreach($statuses as $s)
                         <option value="{{ $s }}" @selected(old('status', $bom?->status ?? 'draft') === $s)>
                             {{ ucfirst($s) }}
@@ -54,7 +54,7 @@
             <div class="col-md-6">
                 <label for="finished_product_id" class="form-label required">Finished Product</label>
                 <select id="finished_product_id" name="finished_product_id" required
-                        class="form-select @error('finished_product_id') is-invalid @enderror">
+                        class="select form-select @error('finished_product_id') is-invalid @enderror">
                     <option value="">— Select finished product —</option>
                     @foreach($products as $p)
                         <option value="{{ $p->id }}" @selected(old('finished_product_id', $bom?->finished_product_id) == $p->id)>

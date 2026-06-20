@@ -16,10 +16,10 @@
         : 0;
 @endphp
 
-<div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
-    <div>
-        <h1 class="mb-1">{{ $order->order_no }}</h1>
-        <p class="fw-medium text-muted">
+<div class="page-header">
+    <div class="page-title">
+        <h4>{{ $order->order_no }}</h4>
+        <h6>
             <span class="badge bg-{{ $statusColors[$order->status] ?? 'secondary' }} me-1">
                 {{ $statusLabels[$order->status] ?? ucfirst($order->status) }}
             </span>
@@ -28,9 +28,9 @@
                     {{ ucfirst($order->priority) }} priority
                 </span>
             @endif
-        </p>
+        </h6>
     </div>
-    <div class="d-flex gap-2">
+    <div class="page-btn d-flex gap-2">
         @can('tenant.manufacturing.production-orders.edit')
             @if(!$order->isClosed())
                 <a href="{{ url('/manufacturing/production-orders/' . $order->id . '/edit') }}" class="btn btn-primary">
@@ -45,16 +45,13 @@
 </div>
 
 @if(session('status'))
-    <div class="alert alert-success" role="alert">{{ session('status') }}</div>
+    <div class="alert alert-success alert-dismissible fade show">{{ session('status') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
 @endif
 
-<div class="alert alert-info d-flex gap-2 align-items-start mb-4">
-    <i class="ti ti-info-circle fs-18 mt-1 flex-shrink-0"></i>
-    <div>
-        <strong>Planning-only production order.</strong>
-        This order does <strong>not</strong> post inventory, WIP, finished goods, COGS, or GL entries yet.
-        BOM, MRC, WIP and Finished Goods posting are planned as upcoming modules.
-    </div>
+<div class="alert alert-info">
+    <i class="ti ti-info-circle me-1"></i>
+    <strong>Planning-only production order.</strong>
+    This order does not post inventory, WIP, finished goods, COGS or GL entries yet. BOM, MRC, WIP and Finished Goods posting are planned as upcoming modules.
 </div>
 
 <div class="row g-3">

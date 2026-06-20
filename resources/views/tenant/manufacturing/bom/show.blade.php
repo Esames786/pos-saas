@@ -7,16 +7,16 @@
     $statusColors = \App\Models\Tenant\ManufacturingBom::STATUS_COLORS;
 @endphp
 
-<div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
-    <div>
-        <h1 class="mb-1">{{ $bom->bom_no }}</h1>
-        <p class="fw-medium text-muted">
+<div class="page-header">
+    <div class="page-title">
+        <h4>{{ $bom->bom_no }}</h4>
+        <h6>
             <span class="badge bg-{{ $statusColors[$bom->status] ?? 'secondary' }}">{{ ucfirst($bom->status) }}</span>
             &nbsp;v{{ $bom->version }}
             @if($bom->name) &nbsp;·&nbsp; {{ $bom->name }} @endif
-        </p>
+        </h6>
     </div>
-    <div class="d-flex gap-2">
+    <div class="page-btn d-flex gap-2">
         @can('tenant.manufacturing.bom.edit')
             @if($bom->status !== 'archived')
                 <a href="{{ url('/manufacturing/bom/' . $bom->id . '/edit') }}" class="btn btn-primary">
@@ -31,16 +31,13 @@
 </div>
 
 @if(session('status'))
-    <div class="alert alert-success" role="alert">{{ session('status') }}</div>
+    <div class="alert alert-success alert-dismissible fade show">{{ session('status') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
 @endif
 
-<div class="alert alert-info d-flex gap-2 align-items-start mb-4">
-    <i class="ti ti-info-circle fs-18 mt-1 flex-shrink-0"></i>
-    <div>
-        <strong>Configuration-only BOM.</strong>
-        This BOM does <strong>not</strong> consume inventory, post WIP, create finished goods, or create GL entries.
-        Material Requisition and production posting are planned as upcoming modules.
-    </div>
+<div class="alert alert-info">
+    <i class="ti ti-info-circle me-1"></i>
+    <strong>Configuration-only BOM.</strong>
+    This BOM does not consume inventory, post WIP, create finished goods or create GL entries. Material Requisition and production posting are planned as upcoming modules.
 </div>
 
 <div class="row g-3">

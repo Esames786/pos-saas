@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Tenant\Finance;
 
+use App\Http\Controllers\Concerns\NormalizesBranchIds;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Branch;
 use App\Services\Finance\BalanceSheetService;
@@ -10,6 +11,8 @@ use Illuminate\Http\Request;
 
 class BalanceSheetController extends Controller
 {
+    use NormalizesBranchIds;
+
     public function __construct(private BalanceSheetService $service) {}
 
     public function index(Request $request)
@@ -34,17 +37,6 @@ class BalanceSheetController extends Controller
         ]);
     }
 
-    private function normalizeBranchIds(Request $request): ?array
-    {
-        if ($request->filled('branch_ids')) {
-            $ids = array_values(array_filter(array_map('intval', (array) $request->input('branch_ids'))));
-            return $ids ?: null;
-        }
-        if ($request->filled('branch_id')) {
-            return [(int) $request->input('branch_id')];
-        }
-        return null;
-    }
 
     private function csv(array $bs)
     {
