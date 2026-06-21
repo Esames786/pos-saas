@@ -749,12 +749,12 @@
                     </li>
                     @endcan
 
-                    {{-- ── MANUFACTURING — Coming Soon ─────────────────────────── --}}
+                    {{-- ── MANUFACTURING — live modules (Customers, Production Orders, BOM) + Coming Soon items ── --}}
                     @canany(['tenant.manufacturing.customers.index','tenant.manufacturing.bom.index','tenant.manufacturing.material-requisitions.index','tenant.manufacturing.production-orders.index','tenant.manufacturing.wip.index','tenant.manufacturing.finished-goods.index','tenant.manufacturing.scrap.index','tenant.manufacturing.rejections.index','tenant.manufacturing.consumption.index','tenant.manufacturing.reports.index'])
                     <li class="submenu">
                         <a href="javascript:void(0);">
                             <i class="ti ti-settings-cog fs-16 me-2"></i>
-                            <span>Manufacturing <span class="badge bg-warning text-dark" style="font-size:.6rem;padding:1px 4px;vertical-align:middle;">Soon</span></span>
+                            <span>Manufacturing</span>
                             <span class="menu-arrow"></span>
                         </a>
                         <ul style="display:none;">

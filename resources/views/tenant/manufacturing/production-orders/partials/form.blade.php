@@ -108,16 +108,17 @@
             </div>
 
             <div class="col-md-6">
-                <label for="branch_id" class="form-label">Branch / Production Unit</label>
-                <select id="branch_id" name="branch_id"
+                <label for="branch_id" class="form-label required">Branch / Production Unit</label>
+                <select id="branch_id" name="branch_id" required
                         class="select form-select @error('branch_id') is-invalid @enderror">
-                    <option value="">— All branches —</option>
+                    <option value="">— Select branch —</option>
                     @foreach($branches as $b)
                         <option value="{{ $b->id }}" @selected(old('branch_id', $order?->branch_id) == $b->id)>
                             {{ $b->name }}
                         </option>
                     @endforeach
                 </select>
+                <div class="form-text">A production order belongs to one branch / production unit.</div>
                 @error('branch_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
             </div>
 

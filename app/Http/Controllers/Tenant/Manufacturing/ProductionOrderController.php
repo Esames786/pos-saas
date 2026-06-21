@@ -140,7 +140,7 @@ class ProductionOrderController extends Controller
             'order_no'                    => ['required', 'string', 'max:50',
                                               Rule::unique('production_orders', 'order_no')->ignore($order?->id)],
             'manufacturing_customer_id'   => ['nullable', 'integer', 'exists:manufacturing_customers,id'],
-            'branch_id'                   => ['nullable', 'integer', 'exists:branches,id'],
+            'branch_id'                   => ['required', 'integer', 'exists:branches,id'],
             'product_id'                  => ['required', 'integer', 'exists:products,id'],
             'planned_quantity'            => ['required', 'numeric', 'min:0.0001'],
             'produced_quantity'           => ['nullable', 'numeric', 'min:0'],

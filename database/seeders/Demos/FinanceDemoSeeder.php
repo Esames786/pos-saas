@@ -410,10 +410,20 @@ class FinanceDemoSeeder
 
     private function seedManufacturingCustomers(): void
     {
+        // Normalize any legacy 3-digit demo codes to the 4-digit generator format.
+        // Relations are ID-based, so renaming the code in place is safe.
         foreach ([
-            ['code' => 'MFG-CUST-001', 'name' => 'Crescent Industrial Works',  'contact_person' => 'Ahsan Malik',  'city' => 'Lahore'],
-            ['code' => 'MFG-CUST-002', 'name' => 'Alpha Packaging Pvt Ltd',    'contact_person' => 'Sana Javed',   'city' => 'Karachi'],
-            ['code' => 'MFG-CUST-003', 'name' => 'Northern Engineering Co',    'contact_person' => 'Bilal Khan',   'city' => 'Islamabad'],
+            'MFG-CUST-001' => 'MFG-CUST-0001',
+            'MFG-CUST-002' => 'MFG-CUST-0002',
+            'MFG-CUST-003' => 'MFG-CUST-0003',
+        ] as $old => $new) {
+            ManufacturingCustomer::where('code', $old)->update(['code' => $new]);
+        }
+
+        foreach ([
+            ['code' => 'MFG-CUST-0001', 'name' => 'Crescent Industrial Works',  'contact_person' => 'Ahsan Malik',  'city' => 'Lahore'],
+            ['code' => 'MFG-CUST-0002', 'name' => 'Alpha Packaging Pvt Ltd',    'contact_person' => 'Sana Javed',   'city' => 'Karachi'],
+            ['code' => 'MFG-CUST-0003', 'name' => 'Northern Engineering Co',    'contact_person' => 'Bilal Khan',   'city' => 'Islamabad'],
         ] as $c) {
             ManufacturingCustomer::updateOrCreate(
                 ['code' => $c['code']],
@@ -430,9 +440,9 @@ class FinanceDemoSeeder
             return;
         }
 
-        $cust1 = ManufacturingCustomer::where('code', 'MFG-CUST-001')->value('id');
-        $cust2 = ManufacturingCustomer::where('code', 'MFG-CUST-002')->value('id');
-        $cust3 = ManufacturingCustomer::where('code', 'MFG-CUST-003')->value('id');
+        $cust1 = ManufacturingCustomer::where('code', 'MFG-CUST-0001')->value('id');
+        $cust2 = ManufacturingCustomer::where('code', 'MFG-CUST-0002')->value('id');
+        $cust3 = ManufacturingCustomer::where('code', 'MFG-CUST-0003')->value('id');
 
         $p001 = Product::where('sku', 'FIN-P001')->value('id'); // Steel Bracket A1
         $p005 = Product::where('sku', 'FIN-P005')->value('id'); // Carton Box Large

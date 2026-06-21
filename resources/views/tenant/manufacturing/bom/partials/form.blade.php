@@ -1,10 +1,13 @@
 {{-- Shared BOM form partial (create + edit) --}}
 @php
     $existingLines           = $bom?->lines ?? collect();
-    $lineCount               = $existingLines->count();
     $componentOptionsById    = $componentOptionsById ?? [];
     $selectedFinishedProduct = $selectedFinishedProduct ?? null;
     $productAjaxUrl          = url('/ajax/products');
+    // Rows rendered server-side: prefer the user's submitted lines on a validation
+    // redirect, else existing lines (edit), else one blank row (create). Drives the
+    // JS next-index counter.
+    $lineCount = old('lines') ? count(old('lines')) : ($existingLines->count() ?: 1);
 @endphp
 
 <form method="POST"
@@ -130,7 +133,49 @@
                         </tr>
                     </thead>
                     <tbody id="lines-body">
-                    @if($existingLines->count())
+                    @if(old('lines'))
+                        {{-- Validation redirect: preserve the user's submitted lines. --}}
+                        @foreach(old('lines') as $i => $line)
+                        @php $cid = $line['component_product_id'] ?? null; @endphp
+                        <tr class="bom-line-row">
+                            <td>
+                                <select name="lines[{{ $i }}][component_product_id]" required
+                                        class="ajax-select2 form-select form-select-sm"
+                                        data-ajax-url="{{ $productAjaxUrl }}" data-placeholder="Search component…" data-min-input="1">
+                                    @if($cid)
+                                        <option value="{{ $cid }}" selected>{{ $componentOptionsById[$cid] ?? ('#' . $cid) }}</option>
+                                    @endif
+                                </select>
+                            </td>
+                            <td>
+                                <select name="lines[{{ $i }}][unit_id]" class="form-select form-select-sm">
+                                    <option value="">—</option>
+                                    @foreach($units as $u)
+                                        <option value="{{ $u->id }}" @selected($u->id == ($line['unit_id'] ?? ''))>
+                                            {{ $u->code }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                            </td>
+                            <td>
+                                <input name="lines[{{ $i }}][quantity]" type="number" step="0.0001" min="0.0001" required
+                                       value="{{ $line['quantity'] ?? '' }}" class="form-control form-control-sm">
+                            </td>
+                            <td>
+                                <input name="lines[{{ $i }}][wastage_percent]" type="number" step="0.01" min="0" max="100"
+                                       value="{{ $line['wastage_percent'] ?? 0 }}" class="form-control form-control-sm" placeholder="0">
+                            </td>
+                            <td>
+                                <input name="lines[{{ $i }}][notes]" type="text" value="{{ $line['notes'] ?? '' }}"
+                                       class="form-control form-control-sm" placeholder="optional">
+                            </td>
+                            <td>
+                                <button type="button" class="btn btn-sm btn-outline-danger remove-line-btn" title="Remove"><i class="ti ti-x"></i></button>
+                            </td>
+                        </tr>
+                        @endforeach
+                    @elseif($existingLines->count())
+                        {{-- Edit: existing component lines. --}}
                         @foreach($existingLines as $i => $line)
                         @php $cid = $line->component_product_id; @endphp
                         <tr class="bom-line-row">
@@ -177,46 +222,38 @@
                             </td>
                         </tr>
                         @endforeach
-                    @elseif(old('lines'))
-                        @foreach(old('lines') as $i => $line)
-                        @php $cid = $line['component_product_id'] ?? null; @endphp
+                    @else
+                        {{-- Create: one blank component row by default (BOM needs at least one). --}}
                         <tr class="bom-line-row">
                             <td>
-                                <select name="lines[{{ $i }}][component_product_id]" required
+                                <select name="lines[0][component_product_id]" required
                                         class="ajax-select2 form-select form-select-sm"
-                                        data-ajax-url="{{ $productAjaxUrl }}" data-placeholder="Search component…" data-min-input="1">
-                                    @if($cid)
-                                        <option value="{{ $cid }}" selected>{{ $componentOptionsById[$cid] ?? ('#' . $cid) }}</option>
-                                    @endif
-                                </select>
+                                        data-ajax-url="{{ $productAjaxUrl }}" data-placeholder="Search component…" data-min-input="1"></select>
                             </td>
                             <td>
-                                <select name="lines[{{ $i }}][unit_id]" class="form-select form-select-sm">
+                                <select name="lines[0][unit_id]" class="form-select form-select-sm">
                                     <option value="">—</option>
                                     @foreach($units as $u)
-                                        <option value="{{ $u->id }}" @selected($u->id == ($line['unit_id'] ?? ''))>
-                                            {{ $u->code }}
-                                        </option>
+                                        <option value="{{ $u->id }}">{{ $u->code }}</option>
                                     @endforeach
                                 </select>
                             </td>
                             <td>
-                                <input name="lines[{{ $i }}][quantity]" type="number" step="0.0001" min="0.0001" required
-                                       value="{{ $line['quantity'] ?? '' }}" class="form-control form-control-sm">
+                                <input name="lines[0][quantity]" type="number" step="0.0001" min="0.0001" required
+                                       class="form-control form-control-sm" placeholder="0.0000">
                             </td>
                             <td>
-                                <input name="lines[{{ $i }}][wastage_percent]" type="number" step="0.01" min="0" max="100"
-                                       value="{{ $line['wastage_percent'] ?? 0 }}" class="form-control form-control-sm" placeholder="0">
+                                <input name="lines[0][wastage_percent]" type="number" step="0.01" min="0" max="100"
+                                       class="form-control form-control-sm" placeholder="0">
                             </td>
                             <td>
-                                <input name="lines[{{ $i }}][notes]" type="text" value="{{ $line['notes'] ?? '' }}"
+                                <input name="lines[0][notes]" type="text"
                                        class="form-control form-control-sm" placeholder="optional">
                             </td>
                             <td>
                                 <button type="button" class="btn btn-sm btn-outline-danger remove-line-btn" title="Remove"><i class="ti ti-x"></i></button>
                             </td>
                         </tr>
-                        @endforeach
                     @endif
                     </tbody>
                 </table>
