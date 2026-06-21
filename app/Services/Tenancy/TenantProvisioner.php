@@ -654,7 +654,14 @@ class TenantProvisioner
             'tenant.manufacturing.bom.edit',
             'tenant.manufacturing.bom.update',
             'tenant.manufacturing.bom.destroy',
+            // Material Requisition / MRC CRUD (MANUF-4)
             'tenant.manufacturing.material-requisitions.index',
+            'tenant.manufacturing.material-requisitions.create',
+            'tenant.manufacturing.material-requisitions.store',
+            'tenant.manufacturing.material-requisitions.show',
+            'tenant.manufacturing.material-requisitions.edit',
+            'tenant.manufacturing.material-requisitions.update',
+            'tenant.manufacturing.material-requisitions.destroy',
             // Production Orders CRUD (MANUF-2)
             'tenant.manufacturing.production-orders.index',
             'tenant.manufacturing.production-orders.create',

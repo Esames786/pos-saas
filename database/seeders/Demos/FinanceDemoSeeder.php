@@ -15,6 +15,8 @@ use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\ManufacturingBom;
 use App\Models\Tenant\ManufacturingBomLine;
 use App\Models\Tenant\ManufacturingCustomer;
+use App\Models\Tenant\MaterialRequisition;
+use App\Models\Tenant\MaterialRequisitionLine;
 use App\Models\Tenant\ProductionOrder;
 use App\Models\Tenant\Supplier;
 use App\Models\Tenant\Unit;
@@ -61,6 +63,7 @@ class FinanceDemoSeeder
         $this->seedManufacturingCustomers();
         $this->seedProductionOrders();
         $this->seedBoms();
+        $this->seedMaterialRequisitions();
 
         return $this->counts;
     }
@@ -561,5 +564,71 @@ class FinanceDemoSeeder
         }
 
         $this->counts['manufacturing_boms'] = ManufacturingBom::count();
+    }
+
+    private function seedMaterialRequisitions(): void
+    {
+        // Planning/request-only. No stock movement, no GL journal, no trial-balance impact.
+        $owner = $this->owner()?->id;
+
+        $map = [
+            'MRC-000001' => 'PROD-000001',
+            'MRC-000002' => 'PROD-000003',
+        ];
+
+        foreach ($map as $mrcNo => $orderNo) {
+            $order = ProductionOrder::with('product')->where('order_no', $orderNo)->first();
+            if (! $order) {
+                continue;
+            }
+
+            $bom = ManufacturingBom::active()
+                ->where('finished_product_id', $order->product_id)
+                ->with('lines')
+                ->orderByDesc('id')
+                ->first();
+
+            $mrc = MaterialRequisition::updateOrCreate(
+                ['mrc_no' => $mrcNo],
+                [
+                    'production_order_id'       => $order->id,
+                    'manufacturing_customer_id' => $order->manufacturing_customer_id,
+                    'branch_id'                 => $order->branch_id,
+                    'request_date'              => now()->subDays(3)->toDateString(),
+                    'required_date'             => $order->due_date?->toDateString(),
+                    'status'                    => 'requested',
+                    'priority'                  => $order->priority,
+                    'notes'                     => 'Demo MRC — request/planning only, no stock issue.',
+                    'created_by_user_id'        => $owner,
+                ]
+            );
+
+            // Rebuild lines idempotently from the active BOM (if any).
+            MaterialRequisitionLine::where('material_requisition_id', $mrc->id)->delete();
+
+            if ($bom && $bom->lines->count()) {
+                $output = (float) ($bom->output_quantity ?: 1);
+                $factor = $output > 0 ? ((float) $order->planned_quantity / $output) : 0;
+
+                foreach ($bom->lines as $i => $bl) {
+                    $base     = $factor * (float) $bl->quantity;
+                    $required = round($base * (1 + ((float) $bl->wastage_percent / 100)), 4);
+
+                    MaterialRequisitionLine::create([
+                        'material_requisition_id' => $mrc->id,
+                        'component_product_id'    => $bl->component_product_id,
+                        'unit_id'                 => $bl->unit_id,
+                        'required_quantity'       => $required,
+                        'issued_quantity'         => 0,
+                        'wastage_percent'         => (float) $bl->wastage_percent,
+                        'source_bom_line_id'      => $bl->id,
+                        'sort_order'              => $i,
+                    ]);
+                }
+            }
+        }
+
+        $this->counts['material_requisitions'] = MaterialRequisition::count();
+        $this->counts['material_requisition_lines'] = MaterialRequisitionLine::count();
     }
 }

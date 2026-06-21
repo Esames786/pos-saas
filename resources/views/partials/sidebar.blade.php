@@ -788,9 +788,18 @@
                                     </a>
                                 </li>
                             @endcan
+                            {{-- Material Requisition (MRC): real CRUD (MANUF-4) — no Soon badge --}}
+                            @can('tenant.manufacturing.material-requisitions.index')
+                                @php $a = $isIn('manufacturing/material-requisitions*'); @endphp
+                                <li class="{{ $a ? 'active' : '' }}">
+                                    <a href="{{ url('/manufacturing/material-requisitions') }}" class="{{ $a ? 'active' : '' }}">
+                                        <i class="ti ti-clipboard-list fs-16 me-2"></i>
+                                        <span>Material Requisition (MRC)</span>
+                                    </a>
+                                </li>
+                            @endcan
                             {{-- Remaining manufacturing items — Coming Soon --}}
                             @php $mfg = [
-                                ['material-requisitions','Material Requisition (MRC)','ti-clipboard-list'],
                                 ['wip','Work in Process (WIP)','ti-progress'],
                                 ['finished-goods','Finished Goods','ti-package'],
                                 ['scrap','Scrap / Hard Waste','ti-trash'],

@@ -81,8 +81,10 @@ use App\Http\Controllers\Tenant\Reports\PrintReportController;
 use App\Http\Controllers\Tenant\Manufacturing\ManufacturingCustomerController;
 use App\Http\Controllers\Tenant\Manufacturing\ProductionOrderController;
 use App\Http\Controllers\Tenant\Manufacturing\BomController;
+use App\Http\Controllers\Tenant\Manufacturing\MaterialRequisitionController;
 use App\Http\Controllers\Tenant\Ajax\ProductLookupController;
 use App\Http\Controllers\Tenant\Ajax\ManufacturingCustomerLookupController;
+use App\Http\Controllers\Tenant\Ajax\ProductionOrderLookupController;
 use Illuminate\Support\Facades\Route;
 
 Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
@@ -114,6 +116,7 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
             // they are read-only searchable pickers used across forms/filters).
             Route::get('/ajax/products', ProductLookupController::class)->name('tenant.ajax.products');
             Route::get('/ajax/manufacturing-customers', ManufacturingCustomerLookupController::class)->name('tenant.ajax.manufacturing-customers');
+            Route::get('/ajax/production-orders', ProductionOrderLookupController::class)->name('tenant.ajax.production-orders');
 
             Route::middleware(['tenant.subscription.access', 'route.permission', 'prevent.demo.mutation'])->group(function () {
                 Route::get('/', fn () => redirect('/dashboard'));
@@ -618,8 +621,14 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/manufacturing/bom/{manufacturingBom}/edit', [BomController::class, 'edit'])->name('tenant.manufacturing.bom.edit');
                 Route::put('/manufacturing/bom/{manufacturingBom}', [BomController::class, 'update'])->name('tenant.manufacturing.bom.update');
                 Route::delete('/manufacturing/bom/{manufacturingBom}', [BomController::class, 'destroy'])->name('tenant.manufacturing.bom.destroy');
-                Route::get('/manufacturing/material-requisitions', [ComingSoonController::class, 'show'])
-                    ->defaults('feature', 'material-requisitions')->name('tenant.manufacturing.material-requisitions.index');
+                // ── Material Requisition / MRC — real CRUD (MANUF-4) ─────────
+                Route::get('/manufacturing/material-requisitions', [MaterialRequisitionController::class, 'index'])->name('tenant.manufacturing.material-requisitions.index');
+                Route::get('/manufacturing/material-requisitions/create', [MaterialRequisitionController::class, 'create'])->name('tenant.manufacturing.material-requisitions.create');
+                Route::post('/manufacturing/material-requisitions', [MaterialRequisitionController::class, 'store'])->name('tenant.manufacturing.material-requisitions.store');
+                Route::get('/manufacturing/material-requisitions/{materialRequisition}', [MaterialRequisitionController::class, 'show'])->name('tenant.manufacturing.material-requisitions.show');
+                Route::get('/manufacturing/material-requisitions/{materialRequisition}/edit', [MaterialRequisitionController::class, 'edit'])->name('tenant.manufacturing.material-requisitions.edit');
+                Route::put('/manufacturing/material-requisitions/{materialRequisition}', [MaterialRequisitionController::class, 'update'])->name('tenant.manufacturing.material-requisitions.update');
+                Route::delete('/manufacturing/material-requisitions/{materialRequisition}', [MaterialRequisitionController::class, 'destroy'])->name('tenant.manufacturing.material-requisitions.destroy');
                 // ── Production Orders — real CRUD (MANUF-2) ─────────────────
                 Route::get('/manufacturing/production-orders', [ProductionOrderController::class, 'index'])->name('tenant.manufacturing.production-orders.index');
                 Route::get('/manufacturing/production-orders/create', [ProductionOrderController::class, 'create'])->name('tenant.manufacturing.production-orders.create');

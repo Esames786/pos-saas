@@ -31,6 +31,13 @@
         </h6>
     </div>
     <div class="page-btn d-flex gap-2">
+        @can('tenant.manufacturing.material-requisitions.create')
+            @if(!$order->isClosed())
+                <a href="{{ url('/manufacturing/material-requisitions/create?production_order_id=' . $order->id) }}" class="btn btn-added">
+                    <i class="ti ti-clipboard-list me-1"></i>Generate Material Requisition
+                </a>
+            @endif
+        @endcan
         @can('tenant.manufacturing.production-orders.edit')
             @if(!$order->isClosed())
                 <a href="{{ url('/manufacturing/production-orders/' . $order->id . '/edit') }}" class="btn btn-primary">
