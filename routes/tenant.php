@@ -87,6 +87,7 @@ use App\Http\Controllers\Tenant\Manufacturing\FinishedGoodReceiptController;
 use App\Http\Controllers\Tenant\Manufacturing\ManufacturingScrapController;
 use App\Http\Controllers\Tenant\Manufacturing\ManufacturingRejectionController;
 use App\Http\Controllers\Tenant\Manufacturing\ManufacturingConsumptionController;
+use App\Http\Controllers\Tenant\Manufacturing\ManufacturingReportController;
 use App\Http\Controllers\Tenant\Ajax\ProductLookupController;
 use App\Http\Controllers\Tenant\Ajax\ManufacturingCustomerLookupController;
 use App\Http\Controllers\Tenant\Ajax\ProductionOrderLookupController;
@@ -688,8 +689,9 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/manufacturing/consumption/{manufacturingConsumptionRecord}/edit', [ManufacturingConsumptionController::class, 'edit'])->name('tenant.manufacturing.consumption.edit');
                 Route::put('/manufacturing/consumption/{manufacturingConsumptionRecord}', [ManufacturingConsumptionController::class, 'update'])->name('tenant.manufacturing.consumption.update');
                 Route::delete('/manufacturing/consumption/{manufacturingConsumptionRecord}', [ManufacturingConsumptionController::class, 'destroy'])->name('tenant.manufacturing.consumption.destroy');
-                Route::get('/manufacturing/reports', [ComingSoonController::class, 'show'])
-                    ->defaults('feature', 'reports')->name('tenant.manufacturing.reports.index');
+                // ── Production Reports — read-only analytics (MANUF-10) ──────
+                Route::get('/manufacturing/reports', [ManufacturingReportController::class, 'index'])->name('tenant.manufacturing.reports.index');
+                Route::get('/manufacturing/reports/export', [ManufacturingReportController::class, 'export'])->name('tenant.manufacturing.reports.export');
             });
         });
 

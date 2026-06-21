@@ -710,7 +710,9 @@ class TenantProvisioner
             'tenant.manufacturing.consumption.edit',
             'tenant.manufacturing.consumption.update',
             'tenant.manufacturing.consumption.destroy',
+            // Production Reports — read-only (MANUF-10)
             'tenant.manufacturing.reports.index',
+            'tenant.manufacturing.reports.export',
         ];
 
         \App\Models\Tenant\Customer::updateOrCreate(

@@ -31,7 +31,20 @@
 | Scrap / Hard Waste | **tracking only (MANUF-7)** | none (no inventory deduction, no scrap expense, no WIP variance, no GL) |
 | Rejections | **tracking only (MANUF-8)** | none (no inventory deduction, no scrap auto-create, no rejection/rework expense, no WIP variance, no GL) |
 | Consumption | **tracking only (MANUF-9)** | none (no inventory deduction, no raw-material issue, no WIP/MRC mutation, no consumption accounting, no COGS, no GL) |
-| Production Reports | Coming Soon | none |
+| Production Reports | **read-only (MANUF-10)** | none (pure SELECT aggregation; no posting, no mutation) |
+
+> **Production Reports phase note (MANUF-10):** The Production Reports module is now
+> live as **read-only** analytics. It aggregates existing manufacturing operational
+> data only (orders, MRC, WIP, finished goods, scrap, rejections, consumption) into
+> summary cards, grouped tables, yield/variance indicators and CSV exports. It does
+> **not** implement inventory deduction, WIP/FG accounting, variance accounting, COGS
+> or GL posting, and performs **no writes/mutation** of any manufacturing record.
+>
+> **Foundation completion:** Manufacturing foundation modules **MANUF-1 through
+> MANUF-10 are now live** (all tracking/configuration/read-only). The
+> accounting/posting layer (inventory movements, WIP/FG/COGS/variance, GL) remains
+> **deferred** behind explicit settings and future approval — the items in section 2
+> below are the roadmap for that phase.
 
 > **Consumption phase note (MANUF-9):** The Consumption module is now live as
 > **tracking-only** — it records planned vs consumed material (with wastage and an

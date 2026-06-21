@@ -848,22 +848,16 @@
                                     </a>
                                 </li>
                             @endcan
-                            {{-- Remaining manufacturing items — Coming Soon --}}
-                            @php $mfg = [
-                                ['reports','Production Reports','ti-chart-bar'],
-                            ]; @endphp
-                            @foreach($mfg as [$slug, $label, $icon])
-                                @can('tenant.manufacturing.' . $slug . '.index')
-                                    @php $a = $isIn('manufacturing/' . $slug . '*'); @endphp
-                                    <li class="{{ $a ? 'active' : '' }}">
-                                        <a href="{{ url('/manufacturing/' . $slug) }}" class="{{ $a ? 'active' : '' }}">
-                                            <i class="ti {{ $icon }} fs-16 me-2"></i>
-                                            <span>{{ $label }}</span>
-                                            <span class="badge bg-warning text-dark ms-1" style="font-size:.6rem;">Soon</span>
-                                        </a>
-                                    </li>
-                                @endcan
-                            @endforeach
+                            {{-- Production Reports: read-only analytics (MANUF-10) — no Soon badge --}}
+                            @can('tenant.manufacturing.reports.index')
+                                @php $a = $isIn('manufacturing/reports*'); @endphp
+                                <li class="{{ $a ? 'active' : '' }}">
+                                    <a href="{{ url('/manufacturing/reports') }}" class="{{ $a ? 'active' : '' }}">
+                                        <i class="ti ti-chart-bar fs-16 me-2"></i>
+                                        <span>Production Reports</span>
+                                    </a>
+                                </li>
+                            @endcan
                         </ul>
                     </li>
                     @endcanany
