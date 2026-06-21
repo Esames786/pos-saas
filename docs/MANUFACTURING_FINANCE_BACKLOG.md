@@ -28,7 +28,18 @@
 | Material Requisition (MRC) | request/planning | none (no stock issue, no GL) |
 | Work in Process (WIP) | **tracking/planning (MANUF-5)** | none (no stock issue, no WIP accounting, no GL) |
 | Finished Goods | **tracking only (MANUF-6)** | none (no inventory increase, no WIP→FG accounting, no COGS, no GL) |
-| Scrap / Rejections / Consumption / Reports | Coming Soon | none |
+| Scrap / Hard Waste | **tracking only (MANUF-7)** | none (no inventory deduction, no scrap expense, no WIP variance, no GL) |
+| Rejections / Consumption / Reports | Coming Soon | none |
+
+> **Scrap / Hard Waste phase note (MANUF-7):** The Scrap module is now live as
+> **tracking-only** — it records wasted/damaged/lost quantity (total / recoverable /
+> disposed, optional estimated loss value, batch/lot lines) from a WIP job, a
+> finished goods receipt, or manually. **Scrap accounting is NOT implemented:** no
+> inventory deduction/adjustment, no stock ledger entry, no scrap expense posting
+> (Dr Scrap/Waste expense / Cr Inventory or WIP), no WIP usage/yield variance, no
+> COGS and no GL journals. `estimated_loss_value` is an informational tracking
+> figure only — it does not post anywhere. Recording scrap does not change WIP /
+> Finished Goods / Production Order status.
 
 > **Finished Goods phase note (MANUF-6):** The Finished Goods module is now live as
 > **tracking-only** — it records production output (received / accepted / rejected /

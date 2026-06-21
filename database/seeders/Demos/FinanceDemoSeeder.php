@@ -23,6 +23,8 @@ use App\Models\Tenant\WipJob;
 use App\Models\Tenant\WipJobLine;
 use App\Models\Tenant\FinishedGoodReceipt;
 use App\Models\Tenant\FinishedGoodReceiptLine;
+use App\Models\Tenant\ManufacturingScrapRecord;
+use App\Models\Tenant\ManufacturingScrapLine;
 use App\Models\Tenant\Unit;
 use App\Models\Tenant\User;
 use App\Services\Finance\ExpenseService;
@@ -70,6 +72,7 @@ class FinanceDemoSeeder
         $this->seedMaterialRequisitions();
         $this->seedWipJobs();
         $this->seedFinishedGoods();
+        $this->seedScrap();
 
         return $this->counts;
     }
@@ -762,5 +765,89 @@ class FinanceDemoSeeder
 
         $this->counts['finished_goods'] = FinishedGoodReceipt::count();
         $this->counts['finished_good_lines'] = FinishedGoodReceiptLine::count();
+    }
+
+    private function seedScrap(): void
+    {
+        // Tracking-only. No stock movement, no GL journal, no trial-balance impact.
+        $owner = $this->owner()?->id;
+
+        $wip = WipJob::where('wip_no', 'WIP-000001')->first();
+        $fg  = FinishedGoodReceipt::where('fg_no', 'FG-000002')->first();
+
+        // SCRAP-000001 — from WIP-000001 (wip loss, machine loss, non-recoverable, all disposed)
+        if ($wip) {
+            $rec = ManufacturingScrapRecord::updateOrCreate(
+                ['scrap_no' => 'SCRAP-000001'],
+                [
+                    'scrap_date'                => now()->subDay()->toDateString(),
+                    'source_type'               => 'wip',
+                    'wip_job_id'                => $wip->id,
+                    'finished_good_receipt_id'  => null,
+                    'production_order_id'        => $wip->production_order_id,
+                    'manufacturing_customer_id' => $wip->manufacturing_customer_id,
+                    'branch_id'                 => $wip->branch_id,
+                    'status'                    => 'recorded',
+                    'scrap_type'                => 'wip_loss',
+                    'reason_code'               => 'machine_loss',
+                    'quality_status'            => 'non_recoverable',
+                    'total_quantity'            => 2.5000,
+                    'recoverable_quantity'      => 0.0000,
+                    'disposed_quantity'         => 2.5000,
+                    'estimated_loss_value'      => null,
+                    'notes'                     => 'Demo scrap — tracking only, no stock/GL posting.',
+                    'created_by_user_id'        => $owner,
+                ]
+            );
+            ManufacturingScrapLine::where('manufacturing_scrap_record_id', $rec->id)->delete();
+            ManufacturingScrapLine::create([
+                'manufacturing_scrap_record_id' => $rec->id,
+                'product_id'                    => $wip->finished_product_id,
+                'unit_id'                       => null,
+                'quantity'                      => 2.5000,
+                'recoverable_quantity'          => 0.0000,
+                'disposed_quantity'             => 2.5000,
+                'sort_order'                    => 0,
+            ]);
+        }
+
+        // SCRAP-000002 — from FG-000002 (finished goods loss, quality fail, pending)
+        if ($fg) {
+            $rec = ManufacturingScrapRecord::updateOrCreate(
+                ['scrap_no' => 'SCRAP-000002'],
+                [
+                    'scrap_date'                => now()->toDateString(),
+                    'source_type'               => 'finished_goods',
+                    'wip_job_id'                => $fg->wip_job_id,
+                    'finished_good_receipt_id'  => $fg->id,
+                    'production_order_id'        => $fg->production_order_id,
+                    'manufacturing_customer_id' => $fg->manufacturing_customer_id,
+                    'branch_id'                 => $fg->branch_id,
+                    'status'                    => 'recorded',
+                    'scrap_type'                => 'finished_goods_loss',
+                    'reason_code'               => 'quality_fail',
+                    'quality_status'            => 'pending',
+                    'total_quantity'            => 1.0000,
+                    'recoverable_quantity'      => 0.0000,
+                    'disposed_quantity'         => 0.0000,
+                    'estimated_loss_value'      => null,
+                    'notes'                     => 'Demo scrap — tracking only, no stock/GL posting.',
+                    'created_by_user_id'        => $owner,
+                ]
+            );
+            ManufacturingScrapLine::where('manufacturing_scrap_record_id', $rec->id)->delete();
+            ManufacturingScrapLine::create([
+                'manufacturing_scrap_record_id' => $rec->id,
+                'product_id'                    => $fg->finished_product_id,
+                'unit_id'                       => null,
+                'quantity'                      => 1.0000,
+                'recoverable_quantity'          => 0.0000,
+                'disposed_quantity'             => 0.0000,
+                'sort_order'                    => 0,
+            ]);
+        }
+
+        $this->counts['scrap_records'] = ManufacturingScrapRecord::count();
+        $this->counts['scrap_lines'] = ManufacturingScrapLine::count();
     }
 }

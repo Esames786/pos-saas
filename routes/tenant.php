@@ -84,11 +84,13 @@ use App\Http\Controllers\Tenant\Manufacturing\BomController;
 use App\Http\Controllers\Tenant\Manufacturing\MaterialRequisitionController;
 use App\Http\Controllers\Tenant\Manufacturing\WipJobController;
 use App\Http\Controllers\Tenant\Manufacturing\FinishedGoodReceiptController;
+use App\Http\Controllers\Tenant\Manufacturing\ManufacturingScrapController;
 use App\Http\Controllers\Tenant\Ajax\ProductLookupController;
 use App\Http\Controllers\Tenant\Ajax\ManufacturingCustomerLookupController;
 use App\Http\Controllers\Tenant\Ajax\ProductionOrderLookupController;
 use App\Http\Controllers\Tenant\Ajax\MaterialRequisitionLookupController;
 use App\Http\Controllers\Tenant\Ajax\WipJobLookupController;
+use App\Http\Controllers\Tenant\Ajax\FinishedGoodReceiptLookupController;
 use Illuminate\Support\Facades\Route;
 
 Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
@@ -123,6 +125,7 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
             Route::get('/ajax/production-orders', ProductionOrderLookupController::class)->name('tenant.ajax.production-orders');
             Route::get('/ajax/material-requisitions', MaterialRequisitionLookupController::class)->name('tenant.ajax.material-requisitions');
             Route::get('/ajax/wip-jobs', WipJobLookupController::class)->name('tenant.ajax.wip-jobs');
+            Route::get('/ajax/finished-goods', FinishedGoodReceiptLookupController::class)->name('tenant.ajax.finished-goods');
 
             Route::middleware(['tenant.subscription.access', 'route.permission', 'prevent.demo.mutation'])->group(function () {
                 Route::get('/', fn () => redirect('/dashboard'));
@@ -659,8 +662,14 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/manufacturing/finished-goods/{finishedGoodReceipt}/edit', [FinishedGoodReceiptController::class, 'edit'])->name('tenant.manufacturing.finished-goods.edit');
                 Route::put('/manufacturing/finished-goods/{finishedGoodReceipt}', [FinishedGoodReceiptController::class, 'update'])->name('tenant.manufacturing.finished-goods.update');
                 Route::delete('/manufacturing/finished-goods/{finishedGoodReceipt}', [FinishedGoodReceiptController::class, 'destroy'])->name('tenant.manufacturing.finished-goods.destroy');
-                Route::get('/manufacturing/scrap', [ComingSoonController::class, 'show'])
-                    ->defaults('feature', 'scrap')->name('tenant.manufacturing.scrap.index');
+                // ── Scrap / Hard Waste — real CRUD (MANUF-7) ─────────────────
+                Route::get('/manufacturing/scrap', [ManufacturingScrapController::class, 'index'])->name('tenant.manufacturing.scrap.index');
+                Route::get('/manufacturing/scrap/create', [ManufacturingScrapController::class, 'create'])->name('tenant.manufacturing.scrap.create');
+                Route::post('/manufacturing/scrap', [ManufacturingScrapController::class, 'store'])->name('tenant.manufacturing.scrap.store');
+                Route::get('/manufacturing/scrap/{manufacturingScrapRecord}', [ManufacturingScrapController::class, 'show'])->name('tenant.manufacturing.scrap.show');
+                Route::get('/manufacturing/scrap/{manufacturingScrapRecord}/edit', [ManufacturingScrapController::class, 'edit'])->name('tenant.manufacturing.scrap.edit');
+                Route::put('/manufacturing/scrap/{manufacturingScrapRecord}', [ManufacturingScrapController::class, 'update'])->name('tenant.manufacturing.scrap.update');
+                Route::delete('/manufacturing/scrap/{manufacturingScrapRecord}', [ManufacturingScrapController::class, 'destroy'])->name('tenant.manufacturing.scrap.destroy');
                 Route::get('/manufacturing/rejections', [ComingSoonController::class, 'show'])
                     ->defaults('feature', 'rejections')->name('tenant.manufacturing.rejections.index');
                 Route::get('/manufacturing/consumption', [ComingSoonController::class, 'show'])

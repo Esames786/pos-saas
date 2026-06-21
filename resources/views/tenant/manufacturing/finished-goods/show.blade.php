@@ -24,6 +24,13 @@
         </h6>
     </div>
     <div class="page-btn d-flex gap-2">
+        @can('tenant.manufacturing.scrap.create')
+            @if(!$receipt->isClosed())
+                <a href="{{ url('/manufacturing/scrap/create?finished_good_receipt_id=' . $receipt->id) }}" class="btn btn-light">
+                    <i class="ti ti-trash me-1"></i>Record Scrap / Hard Waste
+                </a>
+            @endif
+        @endcan
         @can('tenant.manufacturing.finished-goods.edit')
             @if(!$receipt->isClosed())
                 <a href="{{ url('/manufacturing/finished-goods/' . $receipt->id . '/edit') }}" class="btn btn-primary">

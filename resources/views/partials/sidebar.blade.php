@@ -818,9 +818,18 @@
                                     </a>
                                 </li>
                             @endcan
+                            {{-- Scrap / Hard Waste: real CRUD (MANUF-7) — no Soon badge --}}
+                            @can('tenant.manufacturing.scrap.index')
+                                @php $a = $isIn('manufacturing/scrap*'); @endphp
+                                <li class="{{ $a ? 'active' : '' }}">
+                                    <a href="{{ url('/manufacturing/scrap') }}" class="{{ $a ? 'active' : '' }}">
+                                        <i class="ti ti-trash fs-16 me-2"></i>
+                                        <span>Scrap / Hard Waste</span>
+                                    </a>
+                                </li>
+                            @endcan
                             {{-- Remaining manufacturing items — Coming Soon --}}
                             @php $mfg = [
-                                ['scrap','Scrap / Hard Waste','ti-trash'],
                                 ['rejections','Rejections','ti-ban'],
                                 ['consumption','Consumption','ti-flask'],
                                 ['reports','Production Reports','ti-chart-bar'],

@@ -27,6 +27,13 @@
                 </a>
             @endif
         @endcan
+        @can('tenant.manufacturing.scrap.create')
+            @if(!$job->isClosed())
+                <a href="{{ url('/manufacturing/scrap/create?wip_job_id=' . $job->id) }}" class="btn btn-light">
+                    <i class="ti ti-trash me-1"></i>Record Scrap / Hard Waste
+                </a>
+            @endif
+        @endcan
         @can('tenant.manufacturing.wip.edit')
             @if(!$job->isClosed())
                 <a href="{{ url('/manufacturing/wip/' . $job->id . '/edit') }}" class="btn btn-primary">
