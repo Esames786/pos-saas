@@ -53,9 +53,11 @@ class BomController extends Controller
     public function create()
     {
         return view('tenant.manufacturing.bom.create', $this->formData() + [
-            'bom'    => null,
-            'title'  => 'Create Bill of Materials',
-            'nextNo' => $this->nextBomNo(),
+            'bom'                     => null,
+            'title'                   => 'Create Bill of Materials',
+            'nextNo'                  => $this->nextBomNo(),
+            'selectedFinishedProduct' => $this->finishedProductOption(null),
+            'componentOptionsById'    => $this->componentOptionsMap(null),
         ]);
     }
 
@@ -97,9 +99,11 @@ class BomController extends Controller
         $manufacturingBom->load(['lines.componentProduct', 'lines.unit']);
 
         return view('tenant.manufacturing.bom.edit', $this->formData() + [
-            'bom'    => $manufacturingBom,
-            'title'  => 'Edit BOM: ' . $manufacturingBom->bom_no,
-            'nextNo' => null,
+            'bom'                     => $manufacturingBom,
+            'title'                   => 'Edit BOM: ' . $manufacturingBom->bom_no,
+            'nextNo'                  => null,
+            'selectedFinishedProduct' => $this->finishedProductOption($manufacturingBom),
+            'componentOptionsById'    => $this->componentOptionsMap($manufacturingBom),
         ]);
     }
 
@@ -131,11 +135,44 @@ class BomController extends Controller
 
     private function formData(): array
     {
+        // Products are loaded on demand via the AJAX Select2 endpoint (tenant.ajax.products),
+        // so we no longer pull the whole catalogue into the form.
         return [
-            'products' => Product::where('status', 'active')->orderBy('name')->get(['id', 'name', 'sku']),
             'units'    => Unit::where('is_active', true)->orderBy('name')->get(['id', 'name', 'code']),
             'statuses' => ManufacturingBom::STATUSES,
         ];
+    }
+
+    /** Pre-rendered Select2 option for the finished product (edit / validation redirect). */
+    private function finishedProductOption(?ManufacturingBom $bom): ?array
+    {
+        $id = old('finished_product_id', $bom?->finished_product_id);
+        return $this->productOption($id);
+    }
+
+    /** Map of product_id => "SKU — Name" for every component referenced by the form. */
+    private function componentOptionsMap(?ManufacturingBom $bom): array
+    {
+        $ids = collect(old('lines', []))->pluck('component_product_id')
+            ->merge($bom?->lines->pluck('component_product_id') ?? collect())
+            ->filter()->unique()->values();
+
+        if ($ids->isEmpty()) {
+            return [];
+        }
+
+        return Product::whereIn('id', $ids)->get(['id', 'sku', 'name'])
+            ->mapWithKeys(fn (Product $p) => [$p->id => ($p->sku ? $p->sku . ' — ' . $p->name : $p->name)])
+            ->all();
+    }
+
+    private function productOption($id): ?array
+    {
+        if (! $id) {
+            return null;
+        }
+        $p = Product::find($id, ['id', 'sku', 'name']);
+        return $p ? ['id' => $p->id, 'text' => ($p->sku ? $p->sku . ' — ' . $p->name : $p->name)] : null;
     }
 
     private function validateBom(Request $request, ?ManufacturingBom $bom = null): array

@@ -21,6 +21,8 @@ use Illuminate\Support\Str;
  */
 class CustomerReceivableService
 {
+    use \App\Services\Concerns\ResolvesBranchIds;
+
     public function __construct(private JournalPostingService $journalPosting) {}
 
     /**
@@ -211,12 +213,14 @@ class CustomerReceivableService
             default   => ['unpaid', 'partial'],
         };
 
+        $branchIds = $this->resolveBranchIds($filters);
+
         $orders = SalesOrder::query()
             ->with('customer')
             ->whereNotNull('customer_id')
             ->whereIn('payment_status', $statuses)
             ->where('balance_due', '>', 0)
-            ->when(! empty($filters['branch_id']), fn ($q) => $q->where('branch_id', $filters['branch_id']))
+            ->when($branchIds, fn ($q) => $q->whereIn('branch_id', $branchIds))
             ->when(! empty($filters['customer_id']), fn ($q) => $q->where('customer_id', $filters['customer_id']))
             ->get();
 

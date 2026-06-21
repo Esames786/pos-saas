@@ -1,7 +1,10 @@
 {{-- Shared BOM form partial (create + edit) --}}
 @php
-    $existingLines = $bom?->lines ?? collect();
-    $lineCount     = $existingLines->count();
+    $existingLines           = $bom?->lines ?? collect();
+    $lineCount               = $existingLines->count();
+    $componentOptionsById    = $componentOptionsById ?? [];
+    $selectedFinishedProduct = $selectedFinishedProduct ?? null;
+    $productAjaxUrl          = url('/ajax/products');
 @endphp
 
 <form method="POST"
@@ -54,14 +57,15 @@
             <div class="col-md-6">
                 <label for="finished_product_id" class="form-label required">Finished Product</label>
                 <select id="finished_product_id" name="finished_product_id" required
-                        class="select form-select @error('finished_product_id') is-invalid @enderror">
-                    <option value="">— Select finished product —</option>
-                    @foreach($products as $p)
-                        <option value="{{ $p->id }}" @selected(old('finished_product_id', $bom?->finished_product_id) == $p->id)>
-                            {{ $p->sku }} — {{ $p->name }}
-                        </option>
-                    @endforeach
+                        class="ajax-select2 form-select @error('finished_product_id') is-invalid @enderror"
+                        data-ajax-url="{{ $productAjaxUrl }}"
+                        data-placeholder="Search finished product…"
+                        data-min-input="1">
+                    @if($selectedFinishedProduct)
+                        <option value="{{ $selectedFinishedProduct['id'] }}" selected>{{ $selectedFinishedProduct['text'] }}</option>
+                    @endif
                 </select>
+                <div class="form-text">Type to search by SKU or name.</div>
                 @error('finished_product_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
             </div>
 
@@ -117,7 +121,7 @@
                 <table class="table table-sm align-middle" id="lines-table">
                     <thead class="thead-light">
                         <tr>
-                            <th style="min-width:240px;">Component Product <span class="text-danger">*</span></th>
+                            <th style="min-width:260px;">Component Product <span class="text-danger">*</span></th>
                             <th style="min-width:120px;">Unit</th>
                             <th style="min-width:110px;">Qty <span class="text-danger">*</span></th>
                             <th style="min-width:110px;">Wastage %</th>
@@ -128,20 +132,19 @@
                     <tbody id="lines-body">
                     @if($existingLines->count())
                         @foreach($existingLines as $i => $line)
+                        @php $cid = $line->component_product_id; @endphp
                         <tr class="bom-line-row">
                             <td>
                                 <select name="lines[{{ $i }}][component_product_id]" required
-                                        class="select form-select form-select-sm">
-                                    <option value="">— select —</option>
-                                    @foreach($products as $p)
-                                        <option value="{{ $p->id }}" @selected($p->id == $line->component_product_id)>
-                                            {{ $p->sku }} — {{ $p->name }}
-                                        </option>
-                                    @endforeach
+                                        class="ajax-select2 form-select form-select-sm"
+                                        data-ajax-url="{{ $productAjaxUrl }}" data-placeholder="Search component…" data-min-input="1">
+                                    @if($cid)
+                                        <option value="{{ $cid }}" selected>{{ $componentOptionsById[$cid] ?? ($line->componentProduct?->sku . ' — ' . $line->componentProduct?->name) }}</option>
+                                    @endif
                                 </select>
                             </td>
                             <td>
-                                <select name="lines[{{ $i }}][unit_id]" class="select form-select form-select-sm">
+                                <select name="lines[{{ $i }}][unit_id]" class="form-select form-select-sm">
                                     <option value="">—</option>
                                     @foreach($units as $u)
                                         <option value="{{ $u->id }}" @selected($u->id == $line->unit_id)>
@@ -176,19 +179,19 @@
                         @endforeach
                     @elseif(old('lines'))
                         @foreach(old('lines') as $i => $line)
+                        @php $cid = $line['component_product_id'] ?? null; @endphp
                         <tr class="bom-line-row">
                             <td>
-                                <select name="lines[{{ $i }}][component_product_id]" required class="select form-select form-select-sm">
-                                    <option value="">— select —</option>
-                                    @foreach($products as $p)
-                                        <option value="{{ $p->id }}" @selected($p->id == $line['component_product_id'])>
-                                            {{ $p->sku }} — {{ $p->name }}
-                                        </option>
-                                    @endforeach
+                                <select name="lines[{{ $i }}][component_product_id]" required
+                                        class="ajax-select2 form-select form-select-sm"
+                                        data-ajax-url="{{ $productAjaxUrl }}" data-placeholder="Search component…" data-min-input="1">
+                                    @if($cid)
+                                        <option value="{{ $cid }}" selected>{{ $componentOptionsById[$cid] ?? ('#' . $cid) }}</option>
+                                    @endif
                                 </select>
                             </td>
                             <td>
-                                <select name="lines[{{ $i }}][unit_id]" class="select form-select form-select-sm">
+                                <select name="lines[{{ $i }}][unit_id]" class="form-select form-select-sm">
                                     <option value="">—</option>
                                     @foreach($units as $u)
                                         <option value="{{ $u->id }}" @selected($u->id == ($line['unit_id'] ?? ''))>
@@ -219,7 +222,7 @@
                 </table>
             </div>
 
-            <p class="text-muted small mb-0 mt-1"><i class="ti ti-info-circle me-1"></i>At least 1 component required. A component cannot be the same as the finished product.</p>
+            <p class="text-muted small mb-0 mt-1"><i class="ti ti-info-circle me-1"></i>At least 1 component required. A component cannot be the same as the finished product. Type to search products.</p>
         </div>
     </div>
 
@@ -229,19 +232,16 @@
     </div>
 </form>
 
-{{-- Row template for new lines --}}
+{{-- Row template for new lines (component select is AJAX, initialised on add) --}}
 <template id="line-row-template">
     <tr class="bom-line-row">
         <td>
-            <select name="lines[__IDX__][component_product_id]" required class="select form-select form-select-sm">
-                <option value="">— select —</option>
-                @foreach($products as $p)
-                    <option value="{{ $p->id }}">{{ $p->sku }} — {{ $p->name }}</option>
-                @endforeach
-            </select>
+            <select name="lines[__IDX__][component_product_id]" required
+                    class="ajax-select2 form-select form-select-sm"
+                    data-ajax-url="{{ $productAjaxUrl }}" data-placeholder="Search component…" data-min-input="1"></select>
         </td>
         <td>
-            <select name="lines[__IDX__][unit_id]" class="select form-select form-select-sm">
+            <select name="lines[__IDX__][unit_id]" class="form-select form-select-sm">
                 <option value="">—</option>
                 @foreach($units as $u)
                     <option value="{{ $u->id }}">{{ $u->code }}</option>
@@ -268,24 +268,14 @@
     </tr>
 </template>
 
+@include('tenant.partials.ajax-select2-scripts')
+
 @push('scripts')
 <script>
 (function () {
     let idx = {{ $lineCount }};
     const body = document.getElementById('lines-body');
     const tpl  = document.getElementById('line-row-template');
-    const hasSelect2 = (typeof window.jQuery !== 'undefined' && typeof window.jQuery.fn.select2 !== 'undefined');
-
-    // Server-rendered rows are select2-initialised by the global .select handler.
-    // Newly added rows are not in the DOM at load, so initialise them here.
-    function initRowSelect2(row) {
-        if (!hasSelect2) return;
-        window.jQuery(row).find('select.select').each(function () {
-            if (!this.classList.contains('select2-hidden-accessible')) {
-                window.jQuery(this).select2({ width: '100%' });
-            }
-        });
-    }
 
     document.getElementById('add-line-btn').addEventListener('click', function () {
         const html = tpl.innerHTML.replaceAll('__IDX__', idx++);
@@ -293,14 +283,14 @@
         tr.innerHTML = html;
         const row = tr.firstElementChild;
         body.appendChild(row);
-        initRowSelect2(row);
+        if (window.initAjaxSelect2) window.initAjaxSelect2(row); // init AJAX Select2 on the new row
     });
 
     body.addEventListener('click', function (e) {
         const btn = e.target.closest('.remove-line-btn');
         if (!btn) return;
         const row = btn.closest('tr');
-        if (hasSelect2) {
+        if (typeof window.jQuery !== 'undefined') {
             window.jQuery(row).find('.select2-hidden-accessible').each(function () {
                 window.jQuery(this).select2('destroy');
             });

@@ -12,15 +12,24 @@
                 <input type="date" id="filter-date-to" name="date_to" class="form-control form-control-sm"
                     value="{{ $filters['date_to'] ?? today()->format('Y-m-d') }}">
             </div>
-            <div class="col-md-2">
-                <label class="form-label small mb-1" for="filter-branch">Branch</label>
-                <select id="filter-branch" name="branch_id" class="form-select form-select-sm">
-                    <option value="">All Branches</option>
-                    @foreach($branches ?? [] as $b)
-                        <option value="{{ $b->id }}" {{ ($filters['branch_id'] ?? '') == $b->id ? 'selected' : '' }}>{{ $b->name }}</option>
-                    @endforeach
-                </select>
-            </div>
+            @if($branchMulti ?? false)
+                {{-- Multi-select branch (reports only). Submits branch_ids[]. --}}
+                @include('tenant.partials.branch-multiselect', [
+                    'branches'          => $branches ?? [],
+                    'selectedBranchIds' => $selectedBranchIds ?? [],
+                    'colClass'          => 'col-md-3',
+                ])
+            @else
+                <div class="col-md-2">
+                    <label class="form-label small mb-1" for="filter-branch">Branch</label>
+                    <select id="filter-branch" name="branch_id" class="form-select form-select-sm">
+                        <option value="">All Branches</option>
+                        @foreach($branches ?? [] as $b)
+                            <option value="{{ $b->id }}" {{ ($filters['branch_id'] ?? '') == $b->id ? 'selected' : '' }}>{{ $b->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+            @endif
             @if($showTerminal ?? true)
             <div class="col-md-2">
                 <label class="form-label small mb-1" for="filter-terminal">Terminal</label>

@@ -10,7 +10,7 @@
             </div>
         </div>
 
-        @include('tenant.reports.partials.filters', ['showOrderType' => false, 'showCsvExport' => false])
+        @include('tenant.reports.partials.filters', ['showOrderType' => false, 'showCsvExport' => false, 'branchMulti' => true])
 
         <div class="row g-3 mb-3">
             @foreach($rows as $row)

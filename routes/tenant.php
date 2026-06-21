@@ -81,6 +81,8 @@ use App\Http\Controllers\Tenant\Reports\PrintReportController;
 use App\Http\Controllers\Tenant\Manufacturing\ManufacturingCustomerController;
 use App\Http\Controllers\Tenant\Manufacturing\ProductionOrderController;
 use App\Http\Controllers\Tenant\Manufacturing\BomController;
+use App\Http\Controllers\Tenant\Ajax\ProductLookupController;
+use App\Http\Controllers\Tenant\Ajax\ManufacturingCustomerLookupController;
 use Illuminate\Support\Facades\Route;
 
 Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
@@ -107,6 +109,11 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 ->name('tenant.password.change');
             Route::post('/password/change', [AuthController::class, 'changePassword'])
                 ->name('tenant.password.update');
+
+            // AJAX Select2 lookups (authenticated only — no per-permission gate;
+            // they are read-only searchable pickers used across forms/filters).
+            Route::get('/ajax/products', ProductLookupController::class)->name('tenant.ajax.products');
+            Route::get('/ajax/manufacturing-customers', ManufacturingCustomerLookupController::class)->name('tenant.ajax.manufacturing-customers');
 
             Route::middleware(['tenant.subscription.access', 'route.permission', 'prevent.demo.mutation'])->group(function () {
                 Route::get('/', fn () => redirect('/dashboard'));

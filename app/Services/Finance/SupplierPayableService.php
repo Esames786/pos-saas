@@ -21,6 +21,8 @@ use Illuminate\Support\Facades\DB;
  */
 class SupplierPayableService
 {
+    use \App\Services\Concerns\ResolvesBranchIds;
+
     public function __construct(
         private PurchasingService $purchasing,
         private JournalPostingService $journalPosting,
@@ -116,11 +118,13 @@ class SupplierPayableService
             default  => ['posted', 'partial'],
         };
 
+        $branchIds = $this->resolveBranchIds($filters);
+
         $bills = PurchaseBill::query()
             ->with('supplier')
             ->whereIn('status', $statuses)
             ->where('balance_due', '>', 0)
-            ->when(! empty($filters['branch_id']), fn ($q) => $q->where('branch_id', $filters['branch_id']))
+            ->when($branchIds, fn ($q) => $q->whereIn('branch_id', $branchIds))
             ->when(! empty($filters['supplier_id']), fn ($q) => $q->where('supplier_id', $filters['supplier_id']))
             ->get();
 

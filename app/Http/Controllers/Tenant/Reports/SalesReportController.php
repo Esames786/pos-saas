@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Tenant\Reports;
 
+use App\Http\Controllers\Concerns\NormalizesBranchIds;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\Customer;
@@ -14,6 +15,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SalesReportController extends Controller
 {
+    use NormalizesBranchIds;
+
     public function __construct(
         private readonly SalesReportService $service,
         private readonly CustomerReceivableService $receivables,
@@ -64,7 +67,7 @@ class SalesReportController extends Controller
     {
         $filters = [
             'customer_id' => $request->input('customer_id'),
-            'branch_id'   => $request->input('branch_id'),
+            'branch_ids'  => $this->normalizeBranchIds($request),
             'as_of_date'  => $request->input('as_of_date', today()->format('Y-m-d')),
             'status'      => $request->input('status', 'all'),
         ];
@@ -110,7 +113,7 @@ class SalesReportController extends Controller
         return [
             'date_from'   => $request->input('date_from', today()->format('Y-m-d')),
             'date_to'     => $request->input('date_to',   today()->format('Y-m-d')),
-            'branch_id'   => $request->input('branch_id'),
+            'branch_ids'  => $this->normalizeBranchIds($request),
             'terminal_id' => $request->input('terminal_id'),
             'order_type'  => $request->input('order_type'),
             'cashier_id'  => $request->input('cashier_id'),
@@ -120,9 +123,10 @@ class SalesReportController extends Controller
     private function sharedViewData(): array
     {
         return [
-            'branches'   => Branch::where('status', 'active')->orderBy('name')->get(),
-            'terminals'  => Terminal::where('status', 'active')->orderBy('name')->get(),
-            'orderTypes' => ['quick_sale', 'takeaway', 'dine_in', 'delivery'],
+            'branches'          => Branch::where('status', 'active')->orderBy('name')->get(),
+            'terminals'         => Terminal::where('status', 'active')->orderBy('name')->get(),
+            'orderTypes'        => ['quick_sale', 'takeaway', 'dine_in', 'delivery'],
+            'selectedBranchIds' => $this->normalizeBranchIds(request()) ?? [],
         ];
     }
 

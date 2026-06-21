@@ -60,14 +60,14 @@ class ProductionOrderController extends Controller
     public function create()
     {
         return view('tenant.manufacturing.production-orders.create', [
-            'order'     => null,
-            'title'     => 'New Production Order',
-            'nextNo'    => $this->nextOrderNo(),
-            'customers' => ManufacturingCustomer::active()->orderBy('name')->get(['id', 'name', 'code']),
-            'branches'  => Branch::orderBy('name')->get(['id', 'name']),
-            'products'  => Product::where('status', 'active')->orderBy('name')->get(['id', 'name', 'sku']),
-            'statuses'  => ProductionOrder::STATUSES,
-            'priorities'=> ProductionOrder::PRIORITIES,
+            'order'           => null,
+            'title'           => 'New Production Order',
+            'nextNo'          => $this->nextOrderNo(),
+            'branches'        => Branch::orderBy('name')->get(['id', 'name']),
+            'statuses'        => ProductionOrder::STATUSES,
+            'priorities'      => ProductionOrder::PRIORITIES,
+            'selectedProduct' => $this->productOption(old('product_id')),
+            'selectedCustomer'=> $this->customerOption(old('manufacturing_customer_id')),
         ]);
     }
 
@@ -100,14 +100,14 @@ class ProductionOrderController extends Controller
     public function edit(ProductionOrder $productionOrder)
     {
         return view('tenant.manufacturing.production-orders.edit', [
-            'order'     => $productionOrder,
-            'title'     => 'Edit: ' . $productionOrder->order_no,
-            'nextNo'    => null,
-            'customers' => ManufacturingCustomer::active()->orderBy('name')->get(['id', 'name', 'code']),
-            'branches'  => Branch::orderBy('name')->get(['id', 'name']),
-            'products'  => Product::where('status', 'active')->orderBy('name')->get(['id', 'name', 'sku']),
-            'statuses'  => ProductionOrder::STATUSES,
-            'priorities'=> ProductionOrder::PRIORITIES,
+            'order'           => $productionOrder,
+            'title'           => 'Edit: ' . $productionOrder->order_no,
+            'nextNo'          => null,
+            'branches'        => Branch::orderBy('name')->get(['id', 'name']),
+            'statuses'        => ProductionOrder::STATUSES,
+            'priorities'      => ProductionOrder::PRIORITIES,
+            'selectedProduct' => $this->productOption(old('product_id', $productionOrder->product_id)),
+            'selectedCustomer'=> $this->customerOption(old('manufacturing_customer_id', $productionOrder->manufacturing_customer_id)),
         ]);
     }
 
@@ -167,5 +167,25 @@ class ProductionOrderController extends Controller
     private function nextOrderNo(): string
     {
         return $this->nextSequentialCode(ProductionOrder::class, 'order_no', 'PROD-', 6);
+    }
+
+    /** Pre-rendered Select2 option for the finished product (AJAX dropdown). */
+    private function productOption($id): ?array
+    {
+        if (! $id) {
+            return null;
+        }
+        $p = Product::find($id, ['id', 'sku', 'name']);
+        return $p ? ['id' => $p->id, 'text' => ($p->sku ? $p->sku . ' — ' . $p->name : $p->name)] : null;
+    }
+
+    /** Pre-rendered Select2 option for the manufacturing customer (AJAX dropdown). */
+    private function customerOption($id): ?array
+    {
+        if (! $id) {
+            return null;
+        }
+        $c = ManufacturingCustomer::find($id, ['id', 'code', 'name']);
+        return $c ? ['id' => $c->id, 'text' => ($c->code ? $c->code . ' — ' . $c->name : $c->name)] : null;
     }
 }

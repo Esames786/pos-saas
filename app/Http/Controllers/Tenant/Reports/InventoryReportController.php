@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Tenant\Reports;
 
+use App\Http\Controllers\Concerns\NormalizesBranchIds;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Branch;
 use App\Services\Reports\InventoryReportService;
@@ -10,12 +11,15 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class InventoryReportController extends Controller
 {
+    use NormalizesBranchIds;
+
     public function __construct(private readonly InventoryReportService $service) {}
 
     public function valuation(Request $request)
     {
+        $selectedBranchIds = $this->normalizeBranchIds($request) ?? [];
         $filters = [
-            'branch_id' => $request->input('branch_id'),
+            'branch_ids' => $selectedBranchIds ?: null,
         ];
 
         $rows   = $this->service->valuation($filters);
@@ -27,13 +31,14 @@ class InventoryReportController extends Controller
 
         $branches = Branch::where('status', 'active')->orderBy('name')->get();
 
-        return view('tenant.reports.inventory.valuation', compact('rows', 'totals', 'filters', 'branches'));
+        return view('tenant.reports.inventory.valuation', compact('rows', 'totals', 'filters', 'branches', 'selectedBranchIds'));
     }
 
     public function movements(Request $request)
     {
+        $selectedBranchIds = $this->normalizeBranchIds($request) ?? [];
         $filters = [
-            'branch_id'     => $request->input('branch_id'),
+            'branch_ids'    => $selectedBranchIds ?: null,
             'product_id'    => $request->input('product_id'),
             'movement_type' => $request->input('movement_type'),
             'date_from'     => $request->input('date_from', today()->format('Y-m-d')),
@@ -46,7 +51,7 @@ class InventoryReportController extends Controller
                           'transfer_in', 'transfer_out', 'recipe_consumption',
                           'production_in', 'production_out', 'wastage'];
 
-        return view('tenant.reports.inventory.movements', compact('rows', 'filters', 'branches', 'movementTypes'));
+        return view('tenant.reports.inventory.movements', compact('rows', 'filters', 'branches', 'movementTypes', 'selectedBranchIds'));
     }
 
     public function lowStock(Request $request)

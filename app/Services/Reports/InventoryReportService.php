@@ -6,17 +6,22 @@ use App\Models\Tenant\InventoryBatch;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\StockBalance;
 use App\Models\Tenant\StockLedger;
+use App\Services\Concerns\ResolvesBranchIds;
 
 class InventoryReportService
 {
+    use ResolvesBranchIds;
+
     /**
      * Stock valuation — qty × average_cost per branch/product.
      */
     public function valuation(array $filters)
     {
+        $branchIds = $this->resolveBranchIds($filters);
+
         return StockBalance::query()
             ->with(['product.category', 'variant', 'branch'])
-            ->when(!empty($filters['branch_id']), fn ($q) => $q->where('branch_id', $filters['branch_id']))
+            ->when($branchIds, fn ($q) => $q->whereIn('branch_id', $branchIds))
             ->where('quantity_on_hand', '>', 0)
             ->orderBy('branch_id')
             ->orderByRaw('(SELECT name FROM products WHERE products.id = stock_balances.product_id)')
@@ -64,7 +69,7 @@ class InventoryReportService
     {
         return StockLedger::query()
             ->with(['branch', 'product', 'variant', 'createdBy'])
-            ->when(!empty($filters['branch_id']),      fn ($q) => $q->where('branch_id', $filters['branch_id']))
+            ->when($this->resolveBranchIds($filters), fn ($q, $ids) => $q->whereIn('branch_id', $ids))
             ->when(!empty($filters['product_id']),     fn ($q) => $q->where('product_id', $filters['product_id']))
             ->when(!empty($filters['movement_type']),  fn ($q) => $q->where('movement_type', $filters['movement_type']))
             ->when(!empty($filters['date_from']),      fn ($q) => $q->whereDate('created_at', '>=', $filters['date_from']))
@@ -77,16 +82,18 @@ class InventoryReportService
     /** Products below reorder level. */
     public function lowStock(array $filters)
     {
+        $branchIds = $this->resolveBranchIds($filters);
+
         return Product::query()
             ->with(['defaultVariant', 'stockBalances.branch', 'category'])
             ->where('is_stock_tracked', true)
-            ->when(!empty($filters['branch_id']), fn ($q) => $q->whereHas('stockBalances', fn ($s) => $s->where('branch_id', $filters['branch_id'])))
+            ->when($branchIds, fn ($q) => $q->whereHas('stockBalances', fn ($s) => $s->whereIn('branch_id', $branchIds)))
             ->whereHas('defaultVariant', fn ($q) => $q->where('reorder_level', '>', 0))
             ->get()
-            ->filter(function (Product $product) use ($filters) {
+            ->filter(function (Product $product) use ($branchIds) {
                 $balances = $product->stockBalances;
-                if (!empty($filters['branch_id'])) {
-                    $balances = $balances->where('branch_id', $filters['branch_id']);
+                if ($branchIds) {
+                    $balances = $balances->whereIn('branch_id', $branchIds);
                 }
                 $qty     = $balances->sum('quantity_on_hand');
                 $reorder = (float) ($product->defaultVariant?->reorder_level ?? 0);
@@ -103,7 +110,7 @@ class InventoryReportService
             ->with(['branch', 'product', 'variant'])
             ->whereNotNull('expiry_date')
             ->whereDate('expiry_date', '<=', now()->addDays($days))
-            ->when(!empty($filters['branch_id']), fn ($q) => $q->where('branch_id', $filters['branch_id']))
+            ->when($this->resolveBranchIds($filters), fn ($q, $ids) => $q->whereIn('branch_id', $ids))
             ->orderBy('expiry_date')
             ->paginate(25)
             ->withQueryString();

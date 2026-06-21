@@ -18,11 +18,12 @@
         <div class="row">
             <div class="col-xxl-9 col-xl-8">
                 @include('tenant.manufacturing.bom.partials.form', [
-                    'bom'      => $bom,
-                    'nextNo'   => null,
-                    'products' => $products,
-                    'units'    => $units,
-                    'statuses' => $statuses,
+                    'bom'                     => $bom,
+                    'nextNo'                  => null,
+                    'units'                   => $units,
+                    'statuses'                => $statuses,
+                    'selectedFinishedProduct' => $selectedFinishedProduct,
+                    'componentOptionsById'    => $componentOptionsById,
                 ])
             </div>
             <div class="col-xxl-3 col-xl-4">

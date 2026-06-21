@@ -4,15 +4,20 @@ namespace App\Services\Reports;
 
 use App\Models\Tenant\PurchaseBill;
 use App\Models\Tenant\Supplier;
+use App\Services\Concerns\ResolvesBranchIds;
 use Illuminate\Support\Facades\DB;
 
 class PurchaseReportService
 {
+    use ResolvesBranchIds;
+
     public function summary(array $filters)
     {
+        $branchIds = $this->resolveBranchIds($filters);
+
         return PurchaseBill::query()
             ->with(['supplier', 'branch'])
-            ->when(!empty($filters['branch_id']),   fn ($q) => $q->where('branch_id', $filters['branch_id']))
+            ->when($branchIds, fn ($q) => $q->whereIn('branch_id', $branchIds))
             ->when(!empty($filters['supplier_id']), fn ($q) => $q->where('supplier_id', $filters['supplier_id']))
             ->when(!empty($filters['status']),      fn ($q) => $q->where('status', $filters['status']))
             ->when(!empty($filters['date_from']),   fn ($q) => $q->whereDate('bill_date', '>=', $filters['date_from']))
@@ -24,8 +29,10 @@ class PurchaseReportService
 
     public function summaryTotals(array $filters): array
     {
+        $branchIds = $this->resolveBranchIds($filters);
+
         return PurchaseBill::query()
-            ->when(!empty($filters['branch_id']),   fn ($q) => $q->where('branch_id', $filters['branch_id']))
+            ->when($branchIds, fn ($q) => $q->whereIn('branch_id', $branchIds))
             ->when(!empty($filters['supplier_id']), fn ($q) => $q->where('supplier_id', $filters['supplier_id']))
             ->when(!empty($filters['status']),      fn ($q) => $q->where('status', $filters['status']))
             ->when(!empty($filters['date_from']),   fn ($q) => $q->whereDate('bill_date', '>=', $filters['date_from']))

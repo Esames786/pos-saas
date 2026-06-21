@@ -9,7 +9,10 @@
     <div class="page-btn">
         <form method="GET" class="d-inline">
             @foreach($filters as $k => $val)
-                @if($val)<input type="hidden" name="{{ $k }}" value="{{ $val }}">@endif
+                @if(!is_array($val) && $val !== null && $val !== '')<input type="hidden" name="{{ $k }}" value="{{ $val }}">@endif
+            @endforeach
+            @foreach($selectedBranchIds ?? [] as $bid)
+                <input type="hidden" name="branch_ids[]" value="{{ $bid }}">
             @endforeach
             <button type="submit" name="export_csv" value="1" class="btn btn-outline-success btn-sm">
                 <i class="ti ti-download me-1"></i>CSV
@@ -30,15 +33,11 @@
                     @endforeach
                 </select>
             </div>
-            <div class="col-sm-3">
-                <label class="form-label mb-1">Branch</label>
-                <select name="branch_id" class="form-select">
-                    <option value="">All branches</option>
-                    @foreach($branches as $b)
-                        <option value="{{ $b->id }}" {{ (string)($filters['branch_id'] ?? '') === (string)$b->id ? 'selected' : '' }}>{{ $b->name }}</option>
-                    @endforeach
-                </select>
-            </div>
+            @include('tenant.partials.branch-multiselect', [
+                'branches'          => $branches,
+                'selectedBranchIds' => $selectedBranchIds ?? [],
+                'colClass'          => 'col-sm-3',
+            ])
             <div class="col-sm-2">
                 <label class="form-label mb-1">Status</label>
                 <select name="status" class="form-select">

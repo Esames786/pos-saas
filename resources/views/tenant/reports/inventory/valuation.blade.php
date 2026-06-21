@@ -11,15 +11,11 @@
         <div class="card border-0 shadow-sm mb-3">
             <div class="card-body py-2">
                 <form method="GET" action="{{ url('/reports/inventory/valuation') }}" class="row g-2 align-items-end">
-                    <div class="col-md-3">
-                        <label class="form-label small mb-1" for="iv-branch">Branch</label>
-                        <select id="iv-branch" name="branch_id" class="form-select form-select-sm">
-                            <option value="">All Branches</option>
-                            @foreach($branches as $b)
-                                <option value="{{ $b->id }}" {{ ($filters['branch_id'] ?? '') == $b->id ? 'selected' : '' }}>{{ $b->name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
+                    @include('tenant.partials.branch-multiselect', [
+                        'branches'          => $branches,
+                        'selectedBranchIds' => $selectedBranchIds ?? [],
+                        'colClass'          => 'col-md-3',
+                    ])
                     <div class="col-md-auto d-flex gap-2">
                         <button type="submit" class="btn btn-primary btn-sm">Apply</button>
                         <a href="{{ url('/reports/inventory/valuation') }}" class="btn btn-outline-secondary btn-sm">Reset</a>

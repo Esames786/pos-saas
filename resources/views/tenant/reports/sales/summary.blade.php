@@ -15,7 +15,7 @@
             </div>
         </div>
 
-        @include('tenant.reports.partials.filters', ['showOrderType' => true, 'showCsvExport' => true])
+        @include('tenant.reports.partials.filters', ['showOrderType' => true, 'showCsvExport' => true, 'branchMulti' => true])
 
         {{-- Totals banner --}}
         @php $t = $data['totals']; @endphp

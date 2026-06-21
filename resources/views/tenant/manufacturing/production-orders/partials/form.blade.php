@@ -55,14 +55,14 @@
             <div class="col-md-6">
                 <label for="product_id" class="form-label required">Finished Product</label>
                 <select id="product_id" name="product_id" required
-                        class="select form-select @error('product_id') is-invalid @enderror">
-                    <option value="">— Select product —</option>
-                    @foreach($products as $p)
-                        <option value="{{ $p->id }}" @selected(old('product_id', $order?->product_id) == $p->id)>
-                            {{ $p->sku }} — {{ $p->name }}
-                        </option>
-                    @endforeach
+                        class="ajax-select2 form-select @error('product_id') is-invalid @enderror"
+                        data-ajax-url="{{ url('/ajax/products') }}"
+                        data-placeholder="Search product…" data-min-input="1">
+                    @if($selectedProduct ?? null)
+                        <option value="{{ $selectedProduct['id'] }}" selected>{{ $selectedProduct['text'] }}</option>
+                    @endif
                 </select>
+                <div class="form-text">Type to search by SKU or name.</div>
                 @error('product_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
             </div>
 
@@ -95,13 +95,13 @@
             <div class="col-md-6">
                 <label for="manufacturing_customer_id" class="form-label">Manufacturing Customer</label>
                 <select id="manufacturing_customer_id" name="manufacturing_customer_id"
-                        class="select form-select @error('manufacturing_customer_id') is-invalid @enderror">
-                    <option value="">— None —</option>
-                    @foreach($customers as $c)
-                        <option value="{{ $c->id }}" @selected(old('manufacturing_customer_id', $order?->manufacturing_customer_id) == $c->id)>
-                            {{ $c->code }} — {{ $c->name }}
-                        </option>
-                    @endforeach
+                        class="ajax-select2 form-select @error('manufacturing_customer_id') is-invalid @enderror"
+                        data-ajax-url="{{ url('/ajax/manufacturing-customers') }}"
+                        data-placeholder="Search customer (optional)…" data-min-input="1" data-allow-clear="1">
+                    <option value=""></option>
+                    @if($selectedCustomer ?? null)
+                        <option value="{{ $selectedCustomer['id'] }}" selected>{{ $selectedCustomer['text'] }}</option>
+                    @endif
                 </select>
                 <div class="form-text">Optional. <strong>Not linked to POS/Sales customers.</strong></div>
                 @error('manufacturing_customer_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
@@ -173,3 +173,5 @@
            class="btn btn-light ms-2">Cancel</a>
     </div>
 </form>
+
+@include('tenant.partials.ajax-select2-scripts')

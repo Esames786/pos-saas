@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Tenant\Reports;
 
+use App\Http\Controllers\Concerns\NormalizesBranchIds;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\Supplier;
@@ -11,6 +12,8 @@ use Illuminate\Http\Request;
 
 class PurchaseReportController extends Controller
 {
+    use NormalizesBranchIds;
+
     public function __construct(
         private readonly PurchaseReportService $service,
         private readonly SupplierPayableService $payableService,
@@ -21,7 +24,7 @@ class PurchaseReportController extends Controller
         $filters = [
             'date_from'   => $request->input('date_from', today()->subDays(29)->format('Y-m-d')),
             'date_to'     => $request->input('date_to',   today()->format('Y-m-d')),
-            'branch_id'   => $request->input('branch_id'),
+            'branch_ids'  => $this->normalizeBranchIds($request),
             'supplier_id' => $request->input('supplier_id'),
             'status'      => $request->input('status'),
         ];
@@ -58,7 +61,7 @@ class PurchaseReportController extends Controller
     {
         $filters = [
             'supplier_id' => $request->input('supplier_id'),
-            'branch_id'   => $request->input('branch_id'),
+            'branch_ids'  => $this->normalizeBranchIds($request),
             'as_of_date'  => $request->input('as_of_date', today()->format('Y-m-d')),
             'status'      => $request->input('status', 'all'),
         ];
@@ -99,8 +102,9 @@ class PurchaseReportController extends Controller
     private function sharedViewData(): array
     {
         return [
-            'branches'  => Branch::where('status', 'active')->orderBy('name')->get(),
-            'suppliers' => Supplier::where('status', 'active')->orderBy('name')->get(),
+            'branches'          => Branch::where('status', 'active')->orderBy('name')->get(),
+            'suppliers'         => Supplier::where('status', 'active')->orderBy('name')->get(),
+            'selectedBranchIds' => $this->normalizeBranchIds(request()) ?? [],
         ];
     }
 

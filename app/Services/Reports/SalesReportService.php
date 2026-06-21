@@ -5,10 +5,13 @@ namespace App\Services\Reports;
 use App\Models\Tenant\SalePayment;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\SalesOrderLine;
+use App\Services\Concerns\ResolvesBranchIds;
 use Illuminate\Support\Facades\DB;
 
 class SalesReportService
 {
+    use ResolvesBranchIds;
+
     /**
      * Summary totals for a given filter set.
      * Returns both overall aggregates and a per-day breakdown.
@@ -59,12 +62,14 @@ class SalesReportService
      */
     public function items(array $filters)
     {
+        $branchIds = $this->resolveBranchIds($filters);
+
         return SalesOrderLine::query()
             ->join('sales_orders', 'sales_order_lines.sales_order_id', '=', 'sales_orders.id')
             ->leftJoin('products', 'sales_order_lines.product_id', '=', 'products.id')
             ->leftJoin('categories', 'products.category_id', '=', 'categories.id')
             ->where('sales_orders.status', 'paid')
-            ->when(!empty($filters['branch_id']),    fn ($q) => $q->where('sales_orders.branch_id', $filters['branch_id']))
+            ->when($branchIds, fn ($q) => $q->whereIn('sales_orders.branch_id', $branchIds))
             ->when(!empty($filters['date_from']),    fn ($q) => $q->whereDate('sales_orders.sale_date', '>=', $filters['date_from']))
             ->when(!empty($filters['date_to']),      fn ($q) => $q->whereDate('sales_orders.sale_date', '<=', $filters['date_to']))
             ->when(!empty($filters['terminal_id']),  fn ($q) => $q->where('sales_orders.terminal_id', $filters['terminal_id']))
@@ -91,11 +96,13 @@ class SalesReportService
      */
     public function payments(array $filters)
     {
+        $branchIds = $this->resolveBranchIds($filters);
+
         return SalePayment::query()
             ->join('sales_orders',    'sale_payments.sales_order_id',    '=', 'sales_orders.id')
             ->join('payment_methods', 'sale_payments.payment_method_id', '=', 'payment_methods.id')
             ->where('sales_orders.status', 'paid')
-            ->when(!empty($filters['branch_id']),   fn ($q) => $q->where('sales_orders.branch_id', $filters['branch_id']))
+            ->when($branchIds, fn ($q) => $q->whereIn('sales_orders.branch_id', $branchIds))
             ->when(!empty($filters['date_from']),   fn ($q) => $q->whereDate('sales_orders.sale_date', '>=', $filters['date_from']))
             ->when(!empty($filters['date_to']),     fn ($q) => $q->whereDate('sales_orders.sale_date', '<=', $filters['date_to']))
             ->when(!empty($filters['terminal_id']), fn ($q) => $q->where('sales_orders.terminal_id', $filters['terminal_id']))
@@ -143,9 +150,11 @@ class SalesReportService
 
     private function baseSalesQuery(array $filters)
     {
+        $branchIds = $this->resolveBranchIds($filters);
+
         return SalesOrder::query()
             ->where('status', 'paid')
-            ->when(!empty($filters['branch_id']),    fn ($q) => $q->where('branch_id', $filters['branch_id']))
+            ->when($branchIds, fn ($q) => $q->whereIn('branch_id', $branchIds))
             ->when(!empty($filters['date_from']),    fn ($q) => $q->whereDate('sale_date', '>=', $filters['date_from']))
             ->when(!empty($filters['date_to']),      fn ($q) => $q->whereDate('sale_date', '<=', $filters['date_to']))
             ->when(!empty($filters['terminal_id']),  fn ($q) => $q->where('terminal_id', $filters['terminal_id']))
