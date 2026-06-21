@@ -1,21 +1,15 @@
 {{--
     Reusable AJAX Select2 initialiser.
 
-    Usage on a <select>:
-        <select class="form-select ajax-select2"
-                data-ajax-url="{{ url('/ajax/products') }}"
-                data-placeholder="Search product..."
-                data-min-input="1"
-                data-allow-clear="1">
-            {{-- render ONLY the currently selected option(s), if any --}}
-        </select>
+    Put class "ajax-select2" on a select plus data-ajax-url (and optional
+    data-placeholder / data-min-input / data-allow-clear). Render only the
+    currently selected option(s) server-side; they are preserved on edit pages.
 
     Notes:
-      - Does NOT use the `.select` class, so the global script.js `.select`
-        initialiser leaves these alone (no double init).
+      - These selects deliberately omit the "select" class so the global
+        script.js initialiser leaves them alone (no double init).
       - window.initAjaxSelect2(scope) can be called for dynamically added rows
         (e.g. BOM component lines). Already-initialised selects are skipped.
-      - Selected <option>s rendered server-side are preserved on edit pages.
 --}}
 @once
 @push('scripts')
