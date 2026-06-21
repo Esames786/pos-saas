@@ -26,6 +26,13 @@
                 </a>
             @endif
         @endcan
+        @can('tenant.manufacturing.consumption.create')
+            @if(!$requisition->isClosed())
+                <a href="{{ url('/manufacturing/consumption/create?material_requisition_id=' . $requisition->id) }}" class="btn btn-light">
+                    <i class="ti ti-flask me-1"></i>Record Consumption
+                </a>
+            @endif
+        @endcan
         @can('tenant.manufacturing.material-requisitions.edit')
             @if(!$requisition->isClosed())
                 <a href="{{ url('/manufacturing/material-requisitions/' . $requisition->id . '/edit') }}" class="btn btn-primary">

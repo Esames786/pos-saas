@@ -30,7 +30,21 @@
 | Finished Goods | **tracking only (MANUF-6)** | none (no inventory increase, no WIP→FG accounting, no COGS, no GL) |
 | Scrap / Hard Waste | **tracking only (MANUF-7)** | none (no inventory deduction, no scrap expense, no WIP variance, no GL) |
 | Rejections | **tracking only (MANUF-8)** | none (no inventory deduction, no scrap auto-create, no rejection/rework expense, no WIP variance, no GL) |
-| Consumption / Reports | Coming Soon | none |
+| Consumption | **tracking only (MANUF-9)** | none (no inventory deduction, no raw-material issue, no WIP/MRC mutation, no consumption accounting, no COGS, no GL) |
+| Production Reports | Coming Soon | none |
+
+> **Consumption phase note (MANUF-9):** The Consumption module is now live as
+> **tracking-only** — it records planned vs consumed material (with wastage and an
+> auto-calculated variance = consumed − planned) from a WIP job, a material
+> requisition, or manually. **Material-consumption accounting is NOT implemented:**
+> no inventory deduction/adjustment, no stock ledger `production_out` movement, no
+> raw-material issue posting, no Dr WIP / Cr Inventory, no material usage/yield
+> variance posting, no COGS, no GL journals. It also does **not** mutate WIP line
+> `consumed_quantity` or MRC line `issued_quantity` — a consumption record is a
+> separate tracking document. `estimated_unit_cost`/`estimated_total_value`/
+> `estimated_consumption_value` are informational only. This module is the natural
+> hook point for the **[WIP] raw-material issue → stock + WIP accounting** backlog
+> item when perpetual inventory/GL posting is enabled.
 
 > **Rejections phase note (MANUF-8):** The Rejections module is now live as
 > **tracking-only** — it records rejected quantity, defect reason, severity and

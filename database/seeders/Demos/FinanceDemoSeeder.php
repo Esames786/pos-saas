@@ -27,6 +27,8 @@ use App\Models\Tenant\ManufacturingScrapRecord;
 use App\Models\Tenant\ManufacturingScrapLine;
 use App\Models\Tenant\ManufacturingRejectionRecord;
 use App\Models\Tenant\ManufacturingRejectionLine;
+use App\Models\Tenant\ManufacturingConsumptionRecord;
+use App\Models\Tenant\ManufacturingConsumptionLine;
 use App\Models\Tenant\Unit;
 use App\Models\Tenant\User;
 use App\Services\Finance\ExpenseService;
@@ -76,6 +78,7 @@ class FinanceDemoSeeder
         $this->seedFinishedGoods();
         $this->seedScrap();
         $this->seedRejections();
+        $this->seedConsumption();
 
         return $this->counts;
     }
@@ -943,5 +946,103 @@ class FinanceDemoSeeder
 
         $this->counts['rejection_records'] = ManufacturingRejectionRecord::count();
         $this->counts['rejection_lines'] = ManufacturingRejectionLine::count();
+    }
+
+    private function seedConsumption(): void
+    {
+        // Tracking-only. No stock movement, no GL journal, no WIP/MRC mutation, no trial-balance impact.
+        $owner = $this->owner()?->id;
+
+        // CONS-000001 — from WIP-000001 (lines mirror WIP lines; demonstrate variance + wastage)
+        $wip = WipJob::with('lines')->where('wip_no', 'WIP-000001')->first();
+        if ($wip) {
+            $lines = [];
+            foreach ($wip->lines as $i => $wl) {
+                $planned  = (float) $wl->required_quantity;
+                // First line over-consumes (+10%) with small wastage; rest on-plan.
+                $consumed = $i === 0 ? round($planned * 1.10, 4) : $planned;
+                $wastage  = $i === 0 ? round($planned * 0.05, 4) : 0.0;
+                $lines[] = [
+                    'wip_job_line_id'              => $wl->id,
+                    'material_requisition_line_id' => $wl->material_requisition_line_id,
+                    'component_product_id'         => $wl->component_product_id,
+                    'unit_id'                      => $wl->unit_id,
+                    'planned_quantity'             => $planned,
+                    'consumed_quantity'            => $consumed,
+                    'wastage_quantity'             => $wastage,
+                ];
+            }
+            $this->writeConsumption('CONS-000001', [
+                'consumption_date'          => now()->subDay()->toDateString(),
+                'source_type'               => 'wip',
+                'wip_job_id'                => $wip->id,
+                'material_requisition_id'   => $wip->material_requisition_id,
+                'production_order_id'       => $wip->production_order_id,
+                'manufacturing_customer_id' => $wip->manufacturing_customer_id,
+                'branch_id'                 => $wip->branch_id,
+                'status'                    => 'recorded',
+                'consumption_type'          => 'production_usage',
+                'created_by_user_id'        => $owner,
+            ], $lines);
+        }
+
+        // CONS-000002 — from MRC-000002 (lines mirror MRC lines; on-plan)
+        $mrc = MaterialRequisition::with('lines')->where('mrc_no', 'MRC-000002')->first();
+        if ($mrc) {
+            $lines = [];
+            foreach ($mrc->lines as $i => $ml) {
+                $planned = (float) $ml->required_quantity;
+                $lines[] = [
+                    'material_requisition_line_id' => $ml->id,
+                    'component_product_id'         => $ml->component_product_id,
+                    'unit_id'                      => $ml->unit_id,
+                    'planned_quantity'             => $planned,
+                    'consumed_quantity'            => $planned,
+                    'wastage_quantity'             => 0.0,
+                ];
+            }
+            $this->writeConsumption('CONS-000002', [
+                'consumption_date'          => now()->toDateString(),
+                'source_type'               => 'material_requisition',
+                'material_requisition_id'   => $mrc->id,
+                'production_order_id'       => $mrc->production_order_id,
+                'manufacturing_customer_id' => $mrc->manufacturing_customer_id,
+                'branch_id'                 => $mrc->branch_id,
+                'status'                    => 'recorded',
+                'consumption_type'          => 'production_usage',
+                'created_by_user_id'        => $owner,
+            ], $lines);
+        }
+
+        $this->counts['consumption_records'] = ManufacturingConsumptionRecord::count();
+        $this->counts['consumption_lines'] = ManufacturingConsumptionLine::count();
+    }
+
+    /** Idempotently write a consumption record + lines with header totals/variance derived from lines. */
+    private function writeConsumption(string $consNo, array $header, array $lines): void
+    {
+        $planned  = round(collect($lines)->sum('planned_quantity'), 4);
+        $consumed = round(collect($lines)->sum('consumed_quantity'), 4);
+        $wastage  = round(collect($lines)->sum('wastage_quantity'), 4);
+
+        $rec = ManufacturingConsumptionRecord::updateOrCreate(
+            ['consumption_no' => $consNo],
+            array_merge($header, [
+                'total_planned_quantity'  => $planned,
+                'total_consumed_quantity' => $consumed,
+                'total_wastage_quantity'  => $wastage,
+                'total_variance_quantity' => round($consumed - $planned, 4),
+                'notes'                   => 'Demo consumption — tracking only, no stock/GL posting.',
+            ])
+        );
+
+        ManufacturingConsumptionLine::where('manufacturing_consumption_record_id', $rec->id)->delete();
+        foreach (array_values($lines) as $i => $l) {
+            ManufacturingConsumptionLine::create(array_merge($l, [
+                'manufacturing_consumption_record_id' => $rec->id,
+                'variance_quantity'                   => round((float) $l['consumed_quantity'] - (float) $l['planned_quantity'], 4),
+                'sort_order'                          => $i,
+            ]));
+        }
     }
 }

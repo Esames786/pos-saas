@@ -702,7 +702,14 @@ class TenantProvisioner
             'tenant.manufacturing.rejections.edit',
             'tenant.manufacturing.rejections.update',
             'tenant.manufacturing.rejections.destroy',
+            // Consumption CRUD (MANUF-9)
             'tenant.manufacturing.consumption.index',
+            'tenant.manufacturing.consumption.create',
+            'tenant.manufacturing.consumption.store',
+            'tenant.manufacturing.consumption.show',
+            'tenant.manufacturing.consumption.edit',
+            'tenant.manufacturing.consumption.update',
+            'tenant.manufacturing.consumption.destroy',
             'tenant.manufacturing.reports.index',
         ];
 

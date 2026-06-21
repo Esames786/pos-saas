@@ -838,9 +838,18 @@
                                     </a>
                                 </li>
                             @endcan
+                            {{-- Consumption: real CRUD (MANUF-9) — no Soon badge --}}
+                            @can('tenant.manufacturing.consumption.index')
+                                @php $a = $isIn('manufacturing/consumption*'); @endphp
+                                <li class="{{ $a ? 'active' : '' }}">
+                                    <a href="{{ url('/manufacturing/consumption') }}" class="{{ $a ? 'active' : '' }}">
+                                        <i class="ti ti-flask fs-16 me-2"></i>
+                                        <span>Consumption</span>
+                                    </a>
+                                </li>
+                            @endcan
                             {{-- Remaining manufacturing items — Coming Soon --}}
                             @php $mfg = [
-                                ['consumption','Consumption','ti-flask'],
                                 ['reports','Production Reports','ti-chart-bar'],
                             ]; @endphp
                             @foreach($mfg as [$slug, $label, $icon])

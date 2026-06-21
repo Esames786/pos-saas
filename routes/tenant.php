@@ -86,6 +86,7 @@ use App\Http\Controllers\Tenant\Manufacturing\WipJobController;
 use App\Http\Controllers\Tenant\Manufacturing\FinishedGoodReceiptController;
 use App\Http\Controllers\Tenant\Manufacturing\ManufacturingScrapController;
 use App\Http\Controllers\Tenant\Manufacturing\ManufacturingRejectionController;
+use App\Http\Controllers\Tenant\Manufacturing\ManufacturingConsumptionController;
 use App\Http\Controllers\Tenant\Ajax\ProductLookupController;
 use App\Http\Controllers\Tenant\Ajax\ManufacturingCustomerLookupController;
 use App\Http\Controllers\Tenant\Ajax\ProductionOrderLookupController;
@@ -679,8 +680,14 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/manufacturing/rejections/{manufacturingRejectionRecord}/edit', [ManufacturingRejectionController::class, 'edit'])->name('tenant.manufacturing.rejections.edit');
                 Route::put('/manufacturing/rejections/{manufacturingRejectionRecord}', [ManufacturingRejectionController::class, 'update'])->name('tenant.manufacturing.rejections.update');
                 Route::delete('/manufacturing/rejections/{manufacturingRejectionRecord}', [ManufacturingRejectionController::class, 'destroy'])->name('tenant.manufacturing.rejections.destroy');
-                Route::get('/manufacturing/consumption', [ComingSoonController::class, 'show'])
-                    ->defaults('feature', 'consumption')->name('tenant.manufacturing.consumption.index');
+                // ── Consumption — real CRUD (MANUF-9) ────────────────────────
+                Route::get('/manufacturing/consumption', [ManufacturingConsumptionController::class, 'index'])->name('tenant.manufacturing.consumption.index');
+                Route::get('/manufacturing/consumption/create', [ManufacturingConsumptionController::class, 'create'])->name('tenant.manufacturing.consumption.create');
+                Route::post('/manufacturing/consumption', [ManufacturingConsumptionController::class, 'store'])->name('tenant.manufacturing.consumption.store');
+                Route::get('/manufacturing/consumption/{manufacturingConsumptionRecord}', [ManufacturingConsumptionController::class, 'show'])->name('tenant.manufacturing.consumption.show');
+                Route::get('/manufacturing/consumption/{manufacturingConsumptionRecord}/edit', [ManufacturingConsumptionController::class, 'edit'])->name('tenant.manufacturing.consumption.edit');
+                Route::put('/manufacturing/consumption/{manufacturingConsumptionRecord}', [ManufacturingConsumptionController::class, 'update'])->name('tenant.manufacturing.consumption.update');
+                Route::delete('/manufacturing/consumption/{manufacturingConsumptionRecord}', [ManufacturingConsumptionController::class, 'destroy'])->name('tenant.manufacturing.consumption.destroy');
                 Route::get('/manufacturing/reports', [ComingSoonController::class, 'show'])
                     ->defaults('feature', 'reports')->name('tenant.manufacturing.reports.index');
             });
