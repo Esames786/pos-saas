@@ -82,9 +82,11 @@ use App\Http\Controllers\Tenant\Manufacturing\ManufacturingCustomerController;
 use App\Http\Controllers\Tenant\Manufacturing\ProductionOrderController;
 use App\Http\Controllers\Tenant\Manufacturing\BomController;
 use App\Http\Controllers\Tenant\Manufacturing\MaterialRequisitionController;
+use App\Http\Controllers\Tenant\Manufacturing\WipJobController;
 use App\Http\Controllers\Tenant\Ajax\ProductLookupController;
 use App\Http\Controllers\Tenant\Ajax\ManufacturingCustomerLookupController;
 use App\Http\Controllers\Tenant\Ajax\ProductionOrderLookupController;
+use App\Http\Controllers\Tenant\Ajax\MaterialRequisitionLookupController;
 use Illuminate\Support\Facades\Route;
 
 Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
@@ -117,6 +119,7 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
             Route::get('/ajax/products', ProductLookupController::class)->name('tenant.ajax.products');
             Route::get('/ajax/manufacturing-customers', ManufacturingCustomerLookupController::class)->name('tenant.ajax.manufacturing-customers');
             Route::get('/ajax/production-orders', ProductionOrderLookupController::class)->name('tenant.ajax.production-orders');
+            Route::get('/ajax/material-requisitions', MaterialRequisitionLookupController::class)->name('tenant.ajax.material-requisitions');
 
             Route::middleware(['tenant.subscription.access', 'route.permission', 'prevent.demo.mutation'])->group(function () {
                 Route::get('/', fn () => redirect('/dashboard'));
@@ -637,8 +640,14 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/manufacturing/production-orders/{productionOrder}/edit', [ProductionOrderController::class, 'edit'])->name('tenant.manufacturing.production-orders.edit');
                 Route::put('/manufacturing/production-orders/{productionOrder}', [ProductionOrderController::class, 'update'])->name('tenant.manufacturing.production-orders.update');
                 Route::delete('/manufacturing/production-orders/{productionOrder}', [ProductionOrderController::class, 'destroy'])->name('tenant.manufacturing.production-orders.destroy');
-                Route::get('/manufacturing/wip', [ComingSoonController::class, 'show'])
-                    ->defaults('feature', 'wip')->name('tenant.manufacturing.wip.index');
+                // ── Work in Process / WIP — real CRUD (MANUF-5) ──────────────
+                Route::get('/manufacturing/wip', [WipJobController::class, 'index'])->name('tenant.manufacturing.wip.index');
+                Route::get('/manufacturing/wip/create', [WipJobController::class, 'create'])->name('tenant.manufacturing.wip.create');
+                Route::post('/manufacturing/wip', [WipJobController::class, 'store'])->name('tenant.manufacturing.wip.store');
+                Route::get('/manufacturing/wip/{wipJob}', [WipJobController::class, 'show'])->name('tenant.manufacturing.wip.show');
+                Route::get('/manufacturing/wip/{wipJob}/edit', [WipJobController::class, 'edit'])->name('tenant.manufacturing.wip.edit');
+                Route::put('/manufacturing/wip/{wipJob}', [WipJobController::class, 'update'])->name('tenant.manufacturing.wip.update');
+                Route::delete('/manufacturing/wip/{wipJob}', [WipJobController::class, 'destroy'])->name('tenant.manufacturing.wip.destroy');
                 Route::get('/manufacturing/finished-goods', [ComingSoonController::class, 'show'])
                     ->defaults('feature', 'finished-goods')->name('tenant.manufacturing.finished-goods.index');
                 Route::get('/manufacturing/scrap', [ComingSoonController::class, 'show'])

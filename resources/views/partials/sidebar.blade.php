@@ -798,9 +798,18 @@
                                     </a>
                                 </li>
                             @endcan
+                            {{-- Work in Process (WIP): real CRUD (MANUF-5) — no Soon badge --}}
+                            @can('tenant.manufacturing.wip.index')
+                                @php $a = $isIn('manufacturing/wip*'); @endphp
+                                <li class="{{ $a ? 'active' : '' }}">
+                                    <a href="{{ url('/manufacturing/wip') }}" class="{{ $a ? 'active' : '' }}">
+                                        <i class="ti ti-progress fs-16 me-2"></i>
+                                        <span>Work in Process (WIP)</span>
+                                    </a>
+                                </li>
+                            @endcan
                             {{-- Remaining manufacturing items — Coming Soon --}}
                             @php $mfg = [
-                                ['wip','Work in Process (WIP)','ti-progress'],
                                 ['finished-goods','Finished Goods','ti-package'],
                                 ['scrap','Scrap / Hard Waste','ti-trash'],
                                 ['rejections','Rejections','ti-ban'],

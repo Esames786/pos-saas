@@ -38,6 +38,13 @@
                 </a>
             @endif
         @endcan
+        @can('tenant.manufacturing.wip.create')
+            @if(!$order->isClosed())
+                <a href="{{ url('/manufacturing/wip/create?production_order_id=' . $order->id) }}" class="btn btn-added">
+                    <i class="ti ti-progress me-1"></i>Create WIP Job
+                </a>
+            @endif
+        @endcan
         @can('tenant.manufacturing.production-orders.edit')
             @if(!$order->isClosed())
                 <a href="{{ url('/manufacturing/production-orders/' . $order->id . '/edit') }}" class="btn btn-primary">

@@ -26,7 +26,15 @@
 | Production Orders | planning | none |
 | Bill of Materials | configuration | none |
 | Material Requisition (MRC) | request/planning | none (no stock issue, no GL) |
-| WIP / Finished Goods / Scrap / Rejections / Consumption / Reports | Coming Soon | none |
+| Work in Process (WIP) | **tracking/planning (MANUF-5)** | none (no stock issue, no WIP accounting, no GL) |
+| Finished Goods / Scrap / Rejections / Consumption / Reports | Coming Soon | none |
+
+> **WIP phase note (MANUF-5):** The WIP module is now live as **tracking-only** — it
+> records planned/started/completed quantities, progress %, and a material snapshot
+> (required/issued/consumed/remaining) carried from the MRC. **WIP accounting is still
+> pending**: raw-material issue → stock movement, WIP account mapping, and the
+> Dr WIP / Cr Inventory posting are NOT implemented. The consumed/issued figures on a
+> WIP job are tracking numbers only and do not move stock or post to the GL.
 
 **Invariant to preserve:** every future change below must keep
 `trial_balance.difference = 0` and `P&L net_profit == Balance Sheet current_earnings`,

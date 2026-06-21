@@ -19,6 +19,8 @@ use App\Models\Tenant\MaterialRequisition;
 use App\Models\Tenant\MaterialRequisitionLine;
 use App\Models\Tenant\ProductionOrder;
 use App\Models\Tenant\Supplier;
+use App\Models\Tenant\WipJob;
+use App\Models\Tenant\WipJobLine;
 use App\Models\Tenant\Unit;
 use App\Models\Tenant\User;
 use App\Services\Finance\ExpenseService;
@@ -64,6 +66,7 @@ class FinanceDemoSeeder
         $this->seedProductionOrders();
         $this->seedBoms();
         $this->seedMaterialRequisitions();
+        $this->seedWipJobs();
 
         return $this->counts;
     }
@@ -630,5 +633,72 @@ class FinanceDemoSeeder
 
         $this->counts['material_requisitions'] = MaterialRequisition::count();
         $this->counts['material_requisition_lines'] = MaterialRequisitionLine::count();
+    }
+
+    private function seedWipJobs(): void
+    {
+        // Tracking-only. No stock movement, no GL journal, no trial-balance impact.
+        $owner = $this->owner()?->id;
+
+        // [wip_no, production order no, status, progress%]
+        $jobs = [
+            ['WIP-000001', 'PROD-000001', 'MRC-000001', 'in_progress', 25.00],
+            ['WIP-000002', 'PROD-000003', 'MRC-000002', 'released', 0.00],
+        ];
+
+        foreach ($jobs as [$wipNo, $orderNo, $mrcNo, $status, $progress]) {
+            $order = ProductionOrder::where('order_no', $orderNo)->first();
+            if (! $order) {
+                continue;
+            }
+            $mrc = MaterialRequisition::with('lines')->where('mrc_no', $mrcNo)->first();
+
+            $planned   = (float) $order->planned_quantity;
+            $completed = round($planned * ($progress / 100), 4);
+
+            $job = WipJob::updateOrCreate(
+                ['wip_no' => $wipNo],
+                [
+                    'production_order_id'       => $order->id,
+                    'material_requisition_id'   => $mrc?->id,
+                    'manufacturing_customer_id' => $order->manufacturing_customer_id,
+                    'branch_id'                 => $order->branch_id,
+                    'finished_product_id'       => $order->product_id,
+                    'planned_quantity'          => $planned,
+                    'started_quantity'          => $progress > 0 ? $planned : 0,
+                    'completed_quantity'        => $completed,
+                    'start_date'                => now()->subDays(2)->toDateString(),
+                    'target_date'               => $order->due_date?->toDateString(),
+                    'status'                    => $status,
+                    'priority'                  => $order->priority,
+                    'progress_percent'          => $progress,
+                    'notes'                     => 'Demo WIP — tracking only, no stock/GL posting.',
+                    'created_by_user_id'        => $owner,
+                ]
+            );
+
+            // Rebuild lines idempotently from the MRC (if any).
+            WipJobLine::where('wip_job_id', $job->id)->delete();
+            if ($mrc) {
+                foreach ($mrc->lines as $i => $ml) {
+                    $required = (float) $ml->required_quantity;
+                    $issued   = (float) $ml->issued_quantity;
+                    WipJobLine::create([
+                        'wip_job_id'                   => $job->id,
+                        'material_requisition_line_id' => $ml->id,
+                        'component_product_id'         => $ml->component_product_id,
+                        'unit_id'                      => $ml->unit_id,
+                        'required_quantity'            => $required,
+                        'issued_quantity'              => $issued,
+                        'consumed_quantity'            => 0,
+                        'remaining_quantity'           => $required,
+                        'sort_order'                   => $i,
+                    ]);
+                }
+            }
+        }
+
+        $this->counts['wip_jobs'] = WipJob::count();
+        $this->counts['wip_job_lines'] = WipJobLine::count();
     }
 }
