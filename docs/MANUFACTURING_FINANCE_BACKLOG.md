@@ -29,7 +29,20 @@
 | Work in Process (WIP) | **tracking/planning (MANUF-5)** | none (no stock issue, no WIP accounting, no GL) |
 | Finished Goods | **tracking only (MANUF-6)** | none (no inventory increase, no WIP→FG accounting, no COGS, no GL) |
 | Scrap / Hard Waste | **tracking only (MANUF-7)** | none (no inventory deduction, no scrap expense, no WIP variance, no GL) |
-| Rejections / Consumption / Reports | Coming Soon | none |
+| Rejections | **tracking only (MANUF-8)** | none (no inventory deduction, no scrap auto-create, no rejection/rework expense, no WIP variance, no GL) |
+| Consumption / Reports | Coming Soon | none |
+
+> **Rejections phase note (MANUF-8):** The Rejections module is now live as
+> **tracking-only** — it records rejected quantity, defect reason, severity and
+> disposition (rework / scrap / accept-after-review / disposed, with batch/lot and
+> defect-code lines) from a WIP job, finished goods receipt, or manually.
+> **Rejection accounting is NOT implemented:** no inventory deduction/adjustment, no
+> stock ledger entry, **no automatic Scrap record creation**, no rejection or rework
+> expense posting, no WIP usage/yield variance, no COGS, no GL journals.
+> `estimated_loss_value` is informational only. Recording a rejection does not change
+> WIP / Finished Goods / Production Order status. Future: link a rejection's
+> `scrap_quantity` disposition to an actual Scrap record + inventory/GL postings, and
+> rework cost capture (re-issue materials/labour to WIP).
 
 > **Scrap / Hard Waste phase note (MANUF-7):** The Scrap module is now live as
 > **tracking-only** — it records wasted/damaged/lost quantity (total / recoverable /

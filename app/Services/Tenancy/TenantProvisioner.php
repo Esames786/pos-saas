@@ -694,7 +694,14 @@ class TenantProvisioner
             'tenant.manufacturing.scrap.edit',
             'tenant.manufacturing.scrap.update',
             'tenant.manufacturing.scrap.destroy',
+            // Rejections CRUD (MANUF-8)
             'tenant.manufacturing.rejections.index',
+            'tenant.manufacturing.rejections.create',
+            'tenant.manufacturing.rejections.store',
+            'tenant.manufacturing.rejections.show',
+            'tenant.manufacturing.rejections.edit',
+            'tenant.manufacturing.rejections.update',
+            'tenant.manufacturing.rejections.destroy',
             'tenant.manufacturing.consumption.index',
             'tenant.manufacturing.reports.index',
         ];

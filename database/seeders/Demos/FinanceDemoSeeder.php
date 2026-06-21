@@ -25,6 +25,8 @@ use App\Models\Tenant\FinishedGoodReceipt;
 use App\Models\Tenant\FinishedGoodReceiptLine;
 use App\Models\Tenant\ManufacturingScrapRecord;
 use App\Models\Tenant\ManufacturingScrapLine;
+use App\Models\Tenant\ManufacturingRejectionRecord;
+use App\Models\Tenant\ManufacturingRejectionLine;
 use App\Models\Tenant\Unit;
 use App\Models\Tenant\User;
 use App\Services\Finance\ExpenseService;
@@ -73,6 +75,7 @@ class FinanceDemoSeeder
         $this->seedWipJobs();
         $this->seedFinishedGoods();
         $this->seedScrap();
+        $this->seedRejections();
 
         return $this->counts;
     }
@@ -849,5 +852,96 @@ class FinanceDemoSeeder
 
         $this->counts['scrap_records'] = ManufacturingScrapRecord::count();
         $this->counts['scrap_lines'] = ManufacturingScrapLine::count();
+    }
+
+    private function seedRejections(): void
+    {
+        // Tracking-only. No stock movement, no GL journal, no scrap auto-create, no trial-balance impact.
+        $owner = $this->owner()?->id;
+
+        $fg  = FinishedGoodReceipt::where('fg_no', 'FG-000001')->first();
+        $wip = WipJob::where('wip_no', 'WIP-000001')->first();
+
+        // REJ-000001 — from FG-000001 (quality fail, major, rework)
+        if ($fg) {
+            $rec = ManufacturingRejectionRecord::updateOrCreate(
+                ['rejection_no' => 'REJ-000001'],
+                [
+                    'rejection_date'                 => now()->subDay()->toDateString(),
+                    'source_type'                    => 'finished_goods',
+                    'wip_job_id'                     => $fg->wip_job_id,
+                    'finished_good_receipt_id'       => $fg->id,
+                    'production_order_id'            => $fg->production_order_id,
+                    'manufacturing_customer_id'      => $fg->manufacturing_customer_id,
+                    'branch_id'                      => $fg->branch_id,
+                    'status'                         => 'recorded',
+                    'rejection_type'                 => 'quality_fail',
+                    'severity'                       => 'major',
+                    'disposition'                    => 'rework',
+                    'reason_code'                    => 'dimension_issue',
+                    'quality_status'                 => 'reworkable',
+                    'total_quantity'                 => 1.0000,
+                    'rework_quantity'                => 1.0000,
+                    'scrap_quantity'                 => 0.0000,
+                    'accepted_after_review_quantity' => 0.0000,
+                    'disposed_quantity'              => 0.0000,
+                    'estimated_loss_value'           => null,
+                    'notes'                          => 'Demo rejection — tracking only, no stock/GL posting.',
+                    'created_by_user_id'             => $owner,
+                ]
+            );
+            ManufacturingRejectionLine::where('manufacturing_rejection_record_id', $rec->id)->delete();
+            ManufacturingRejectionLine::create([
+                'manufacturing_rejection_record_id' => $rec->id,
+                'product_id'                        => $fg->finished_product_id,
+                'unit_id'                           => null,
+                'quantity'                          => 1.0000,
+                'rework_quantity'                   => 1.0000,
+                'defect_code'                       => 'DIM-01',
+                'sort_order'                        => 0,
+            ]);
+        }
+
+        // REJ-000002 — from WIP-000001 (process defect, minor, pending)
+        if ($wip) {
+            $rec = ManufacturingRejectionRecord::updateOrCreate(
+                ['rejection_no' => 'REJ-000002'],
+                [
+                    'rejection_date'                 => now()->toDateString(),
+                    'source_type'                    => 'wip',
+                    'wip_job_id'                     => $wip->id,
+                    'finished_good_receipt_id'       => null,
+                    'production_order_id'            => $wip->production_order_id,
+                    'manufacturing_customer_id'      => $wip->manufacturing_customer_id,
+                    'branch_id'                      => $wip->branch_id,
+                    'status'                         => 'recorded',
+                    'rejection_type'                 => 'process_defect',
+                    'severity'                       => 'minor',
+                    'disposition'                    => 'pending',
+                    'reason_code'                    => 'machine_issue',
+                    'quality_status'                 => 'pending',
+                    'total_quantity'                 => 0.5000,
+                    'rework_quantity'                => 0.0000,
+                    'scrap_quantity'                 => 0.0000,
+                    'accepted_after_review_quantity' => 0.0000,
+                    'disposed_quantity'              => 0.0000,
+                    'estimated_loss_value'           => null,
+                    'notes'                          => 'Demo rejection — tracking only, no stock/GL posting.',
+                    'created_by_user_id'             => $owner,
+                ]
+            );
+            ManufacturingRejectionLine::where('manufacturing_rejection_record_id', $rec->id)->delete();
+            ManufacturingRejectionLine::create([
+                'manufacturing_rejection_record_id' => $rec->id,
+                'product_id'                        => $wip->finished_product_id,
+                'unit_id'                           => null,
+                'quantity'                          => 0.5000,
+                'defect_code'                       => 'PRC-02',
+                'sort_order'                        => 0,
+            ]);
+        }
+
+        $this->counts['rejection_records'] = ManufacturingRejectionRecord::count();
+        $this->counts['rejection_lines'] = ManufacturingRejectionLine::count();
     }
 }

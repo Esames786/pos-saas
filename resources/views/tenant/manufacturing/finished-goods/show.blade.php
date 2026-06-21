@@ -31,6 +31,13 @@
                 </a>
             @endif
         @endcan
+        @can('tenant.manufacturing.rejections.create')
+            @if(!$receipt->isClosed())
+                <a href="{{ url('/manufacturing/rejections/create?finished_good_receipt_id=' . $receipt->id) }}" class="btn btn-light">
+                    <i class="ti ti-ban me-1"></i>Record Rejection
+                </a>
+            @endif
+        @endcan
         @can('tenant.manufacturing.finished-goods.edit')
             @if(!$receipt->isClosed())
                 <a href="{{ url('/manufacturing/finished-goods/' . $receipt->id . '/edit') }}" class="btn btn-primary">

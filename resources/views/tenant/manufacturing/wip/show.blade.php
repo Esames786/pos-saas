@@ -34,6 +34,13 @@
                 </a>
             @endif
         @endcan
+        @can('tenant.manufacturing.rejections.create')
+            @if(!$job->isClosed())
+                <a href="{{ url('/manufacturing/rejections/create?wip_job_id=' . $job->id) }}" class="btn btn-light">
+                    <i class="ti ti-ban me-1"></i>Record Rejection
+                </a>
+            @endif
+        @endcan
         @can('tenant.manufacturing.wip.edit')
             @if(!$job->isClosed())
                 <a href="{{ url('/manufacturing/wip/' . $job->id . '/edit') }}" class="btn btn-primary">
