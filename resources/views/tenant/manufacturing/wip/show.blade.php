@@ -20,6 +20,13 @@
         </h6>
     </div>
     <div class="page-btn d-flex gap-2">
+        @can('tenant.manufacturing.finished-goods.create')
+            @if(!$job->isClosed())
+                <a href="{{ url('/manufacturing/finished-goods/create?wip_job_id=' . $job->id) }}" class="btn btn-added">
+                    <i class="ti ti-package me-1"></i>Record Finished Goods
+                </a>
+            @endif
+        @endcan
         @can('tenant.manufacturing.wip.edit')
             @if(!$job->isClosed())
                 <a href="{{ url('/manufacturing/wip/' . $job->id . '/edit') }}" class="btn btn-primary">

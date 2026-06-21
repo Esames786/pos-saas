@@ -21,6 +21,8 @@ use App\Models\Tenant\ProductionOrder;
 use App\Models\Tenant\Supplier;
 use App\Models\Tenant\WipJob;
 use App\Models\Tenant\WipJobLine;
+use App\Models\Tenant\FinishedGoodReceipt;
+use App\Models\Tenant\FinishedGoodReceiptLine;
 use App\Models\Tenant\Unit;
 use App\Models\Tenant\User;
 use App\Services\Finance\ExpenseService;
@@ -67,6 +69,7 @@ class FinanceDemoSeeder
         $this->seedBoms();
         $this->seedMaterialRequisitions();
         $this->seedWipJobs();
+        $this->seedFinishedGoods();
 
         return $this->counts;
     }
@@ -700,5 +703,64 @@ class FinanceDemoSeeder
 
         $this->counts['wip_jobs'] = WipJob::count();
         $this->counts['wip_job_lines'] = WipJobLine::count();
+    }
+
+    private function seedFinishedGoods(): void
+    {
+        // Tracking-only. No stock movement, no GL journal, no trial-balance impact.
+        $owner = $this->owner()?->id;
+
+        // [fg_no, wip_no, status, quality, received, accepted, rejected, scrap]
+        $records = [
+            ['FG-000001', 'WIP-000001', 'accepted', 'passed', 62.5000, 62.5000, 0.0000, 0.0000],
+            ['FG-000002', 'WIP-000002', 'recorded', 'pending', 5.0000, 0.0000, 0.0000, 0.0000],
+        ];
+
+        foreach ($records as [$fgNo, $wipNo, $status, $quality, $received, $accepted, $rejected, $scrap]) {
+            $wip = WipJob::where('wip_no', $wipNo)->first();
+            if (! $wip) {
+                continue;
+            }
+
+            $fg = FinishedGoodReceipt::updateOrCreate(
+                ['fg_no' => $fgNo],
+                [
+                    'wip_job_id'                => $wip->id,
+                    'production_order_id'       => $wip->production_order_id,
+                    'manufacturing_customer_id' => $wip->manufacturing_customer_id,
+                    'branch_id'                 => $wip->branch_id,
+                    'finished_product_id'       => $wip->finished_product_id,
+                    'receipt_date'              => now()->subDay()->toDateString(),
+                    'status'                    => $status,
+                    'quality_status'            => $quality,
+                    'planned_quantity'          => $wip->planned_quantity,
+                    'received_quantity'         => $received,
+                    'accepted_quantity'         => $accepted,
+                    'rejected_quantity'         => $rejected,
+                    'scrap_quantity'            => $scrap,
+                    'priority'                  => $wip->priority,
+                    'notes'                     => 'Demo finished goods — tracking only, no inventory/GL posting.',
+                    'created_by_user_id'        => $owner,
+                ]
+            );
+
+            // One output line for the finished product (idempotent rebuild).
+            FinishedGoodReceiptLine::where('finished_good_receipt_id', $fg->id)->delete();
+            FinishedGoodReceiptLine::create([
+                'finished_good_receipt_id' => $fg->id,
+                'finished_product_id'      => $wip->finished_product_id,
+                'unit_id'                  => null,
+                'batch_no'                 => 'B-' . substr($fgNo, 3),
+                'lot_no'                   => null,
+                'received_quantity'        => $received,
+                'accepted_quantity'        => $accepted,
+                'rejected_quantity'        => $rejected,
+                'scrap_quantity'           => $scrap,
+                'sort_order'               => 0,
+            ]);
+        }
+
+        $this->counts['finished_goods'] = FinishedGoodReceipt::count();
+        $this->counts['finished_good_lines'] = FinishedGoodReceiptLine::count();
     }
 }

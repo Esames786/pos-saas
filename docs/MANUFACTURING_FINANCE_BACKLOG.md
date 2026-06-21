@@ -27,7 +27,18 @@
 | Bill of Materials | configuration | none |
 | Material Requisition (MRC) | request/planning | none (no stock issue, no GL) |
 | Work in Process (WIP) | **tracking/planning (MANUF-5)** | none (no stock issue, no WIP accounting, no GL) |
-| Finished Goods / Scrap / Rejections / Consumption / Reports | Coming Soon | none |
+| Finished Goods | **tracking only (MANUF-6)** | none (no inventory increase, no WIP→FG accounting, no COGS, no GL) |
+| Scrap / Rejections / Consumption / Reports | Coming Soon | none |
+
+> **Finished Goods phase note (MANUF-6):** The Finished Goods module is now live as
+> **tracking-only** — it records production output (received / accepted / rejected /
+> scrap, with optional batch/lot output lines) from a WIP job. **Finished-goods
+> inventory increase and WIP→FG accounting are NOT implemented**: no stock ledger
+> `production_in` movement, no Dr Finished Goods / Cr WIP posting, and **COGS is not
+> implemented** (it would post on sale of the finished product, once FG inventory is
+> real). Acceptance/quality figures are tracking numbers only and do not move stock
+> or post to the GL. Recording finished goods does not change WIP or production-order
+> status in this phase.
 
 > **WIP phase note (MANUF-5):** The WIP module is now live as **tracking-only** — it
 > records planned/started/completed quantities, progress %, and a material snapshot
