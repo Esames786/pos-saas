@@ -99,6 +99,19 @@ and must not alter POS / Sales / Purchasing / Inventory posting.
   analysed per branch / production unit (reuse the existing report branch
   multi-select pattern, reports-only).
 
+### Logic / validation decisions (not finance posting)
+- **[FG] Finished-goods received-quantity rule (production-completion rule).**
+  MANUF-6 currently enforces `received_quantity <= WIP planned_quantity` (in
+  `FinishedGoodReceiptController::validateHeader()`), **not** strict
+  `received_quantity <= WIP remaining (planned − completed)`. Reason: strict
+  remaining blocks recording finished goods once `WipJob.completed_quantity` has
+  already been advanced (remaining = 0), and it contradicts the generate-from-WIP
+  prefill which falls back to `planned` when remaining is 0. **Decision deferred:**
+  when production-completion posting is built, decide the authoritative rule —
+  likely "cumulative received across all FG receipts for a WIP ≤ planned" (sum
+  guard across receipts), and whether recording FG should advance/close WIP and
+  Production Order status. Until then, keep the `<= planned` guard as-is.
+
 ---
 
 ## 3. Sequencing guidance
