@@ -77,7 +77,7 @@ class ProductionOrderController extends Controller
             $request->merge(['order_no' => $this->nextOrderNo()]);
         }
 
-        $data = $this->validate($request, $this->rules());
+        $data = $request->validate($this->rules());
         $this->guardProducedQty($data);
 
         $data['created_by_user_id'] = auth('tenant')->id();
@@ -113,7 +113,7 @@ class ProductionOrderController extends Controller
 
     public function update(Request $request, ProductionOrder $productionOrder)
     {
-        $data = $this->validate($request, $this->rules($productionOrder));
+        $data = $request->validate($this->rules($productionOrder));
         $this->guardProducedQty($data);
 
         $productionOrder->update($data);

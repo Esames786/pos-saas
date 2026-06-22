@@ -15,6 +15,7 @@
                 'branches'          => $branches,
                 'selectedBranchIds' => $selectedBranchIds ?? [],
                 'colClass'          => 'col-sm-6 col-md-3',
+                'label'             => 'Branch',
             ])
 
             <div class="col-sm-6 col-md-2">

@@ -55,7 +55,7 @@ class ManufacturingCustomerController extends Controller
             $request->merge(['code' => $this->nextCode()]);
         }
 
-        $data = $this->validate($request, $this->rules());
+        $data = $request->validate($this->rules());
         $data['created_by_user_id'] = auth('tenant')->id();
 
         $customer = ManufacturingCustomer::create($data);
@@ -82,7 +82,7 @@ class ManufacturingCustomerController extends Controller
 
     public function update(Request $request, ManufacturingCustomer $manufacturingCustomer)
     {
-        $data = $this->validate($request, $this->rules($manufacturingCustomer));
+        $data = $request->validate($this->rules($manufacturingCustomer));
         $manufacturingCustomer->update($data);
 
         return redirect(url('/manufacturing/customers/' . $manufacturingCustomer->id))
