@@ -12,6 +12,11 @@
 > disturbing other modules. Each item is tagged with the phase that first
 > requires it:
 >
+> **➡ Detailed design:** the full posting design (events, journal/stock-ledger
+> design, required settings, schema gaps, phased roadmap A–H) now lives in
+> [`MANUFACTURING_FINANCE_POSTING_DESIGN.md`](MANUFACTURING_FINANCE_POSTING_DESIGN.md)
+> (MFG-FIN-DESIGN-1 — design/documentation only, nothing implemented).
+>
 > - **[WIP]** — required for the Work-in-Process phase
 > - **[FG]** — required for the Finished-Goods phase
 > - **[COST]** — future costing / accounting-maturity phase
