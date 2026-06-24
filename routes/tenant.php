@@ -88,6 +88,7 @@ use App\Http\Controllers\Tenant\Manufacturing\ManufacturingScrapController;
 use App\Http\Controllers\Tenant\Manufacturing\ManufacturingRejectionController;
 use App\Http\Controllers\Tenant\Manufacturing\ManufacturingConsumptionController;
 use App\Http\Controllers\Tenant\Manufacturing\ManufacturingReportController;
+use App\Http\Controllers\Tenant\Manufacturing\ManufacturingPostingSettingController;
 use App\Http\Controllers\Tenant\Ajax\ProductLookupController;
 use App\Http\Controllers\Tenant\Ajax\ManufacturingCustomerLookupController;
 use App\Http\Controllers\Tenant\Ajax\ProductionOrderLookupController;
@@ -692,6 +693,11 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 // ── Production Reports — read-only analytics (MANUF-10) ──────
                 Route::get('/manufacturing/reports', [ManufacturingReportController::class, 'index'])->name('tenant.manufacturing.reports.index');
                 Route::get('/manufacturing/reports/export', [ManufacturingReportController::class, 'export'])->name('tenant.manufacturing.reports.export');
+
+                // ── Posting Settings — configuration only, NO posting (MFG-FIN-A) ──
+                Route::get('/manufacturing/posting-settings', [ManufacturingPostingSettingController::class, 'show'])->name('tenant.manufacturing.posting-settings.show');
+                Route::get('/manufacturing/posting-settings/edit', [ManufacturingPostingSettingController::class, 'edit'])->name('tenant.manufacturing.posting-settings.edit');
+                Route::put('/manufacturing/posting-settings', [ManufacturingPostingSettingController::class, 'update'])->name('tenant.manufacturing.posting-settings.update');
             });
         });
 

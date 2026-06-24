@@ -713,6 +713,10 @@ class TenantProvisioner
             // Production Reports — read-only (MANUF-10)
             'tenant.manufacturing.reports.index',
             'tenant.manufacturing.reports.export',
+            // Posting Settings — configuration only, NO posting (MFG-FIN-A)
+            'tenant.manufacturing.posting-settings.show',
+            'tenant.manufacturing.posting-settings.edit',
+            'tenant.manufacturing.posting-settings.update',
         ];
 
         \App\Models\Tenant\Customer::updateOrCreate(

@@ -713,7 +713,7 @@
                     @endcan
 
                     {{-- ── MANUFACTURING — live modules in workflow order (Customers → BOM → Production Orders → MRC → WIP → FG → Scrap → Rejections → Consumption → Reports) ── --}}
-                    @canany(['tenant.manufacturing.customers.index','tenant.manufacturing.bom.index','tenant.manufacturing.material-requisitions.index','tenant.manufacturing.production-orders.index','tenant.manufacturing.wip.index','tenant.manufacturing.finished-goods.index','tenant.manufacturing.scrap.index','tenant.manufacturing.rejections.index','tenant.manufacturing.consumption.index','tenant.manufacturing.reports.index'])
+                    @canany(['tenant.manufacturing.customers.index','tenant.manufacturing.bom.index','tenant.manufacturing.material-requisitions.index','tenant.manufacturing.production-orders.index','tenant.manufacturing.wip.index','tenant.manufacturing.finished-goods.index','tenant.manufacturing.scrap.index','tenant.manufacturing.rejections.index','tenant.manufacturing.consumption.index','tenant.manufacturing.reports.index','tenant.manufacturing.posting-settings.show'])
                     <li class="submenu">
                         <a href="javascript:void(0);">
                             <i class="ti ti-settings-cog fs-16 me-2"></i>
@@ -818,6 +818,16 @@
                                     <a href="{{ url('/manufacturing/reports') }}" class="{{ $a ? 'active' : '' }}">
                                         <i class="ti ti-chart-bar fs-16 me-2"></i>
                                         <span>Production Reports</span>
+                                    </a>
+                                </li>
+                            @endcan
+                            {{-- Posting Settings: account mapping config only, NO posting (MFG-FIN-A) --}}
+                            @can('tenant.manufacturing.posting-settings.show')
+                                @php $a = $isIn('manufacturing/posting-settings*'); @endphp
+                                <li class="{{ $a ? 'active' : '' }}">
+                                    <a href="{{ url('/manufacturing/posting-settings') }}" class="{{ $a ? 'active' : '' }}">
+                                        <i class="ti ti-settings-dollar fs-16 me-2"></i>
+                                        <span>Posting Settings</span>
                                     </a>
                                 </li>
                             @endcan

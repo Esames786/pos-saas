@@ -37,6 +37,20 @@
 | Rejections | **tracking only (MANUF-8)** | none (no inventory deduction, no scrap auto-create, no rejection/rework expense, no WIP variance, no GL) |
 | Consumption | **tracking only (MANUF-9)** | none (no inventory deduction, no raw-material issue, no WIP/MRC mutation, no consumption accounting, no COGS, no GL) |
 | Production Reports | **read-only (MANUF-10)** | none (pure SELECT aggregation; no posting, no mutation) |
+| Posting Settings | **config only (MFG-FIN-A)** | none (account mapping + policy stored; disabled by default; NO posting code) |
+
+> **Phase A implemented (MFG-FIN-A):** Manufacturing posting **CoA accounts**
+> seeded (`1410` Raw Material, `1420` WIP, `1430` Finished Goods, `1490` Overhead
+> Clearing, `5300` Production Variance, `5310` Manufactured Goods COGS, `6210`
+> Direct Labour, `6900` Scrap/Waste Expense, `6910` Rework Expense, `6920`
+> Inventory Adjustment Expense — additive, `is_system`, existing accounts
+> untouched). New `manufacturing_posting_settings` table + `ManufacturingPostingSetting`
+> model + **Posting Settings UI** (show/edit/update) under Manufacturing, with 3
+> settings permissions and account-type + enable-readiness validation. **Settings
+> are disabled by default and post nothing** — no journal entries, no stock-ledger
+> entries, no inventory movement, no document mutation, no finance/inventory
+> service change. **Phase B (posting infrastructure / posting-state columns /
+> idempotency) is next — not event posting.**
 
 > **Production Reports phase note (MANUF-10):** The Production Reports module is now
 > live as **read-only** analytics. It aggregates existing manufacturing operational

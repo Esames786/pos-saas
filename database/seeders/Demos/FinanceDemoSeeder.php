@@ -79,6 +79,7 @@ class FinanceDemoSeeder
         $this->seedScrap();
         $this->seedRejections();
         $this->seedConsumption();
+        $this->seedPostingSettings();
 
         return $this->counts;
     }
@@ -1044,5 +1045,40 @@ class FinanceDemoSeeder
                 'sort_order'                          => $i,
             ]));
         }
+    }
+
+    /**
+     * Seed a DEFAULT-DISABLED manufacturing posting settings row (MFG-FIN-A).
+     * Configuration only — `is_enabled = false`, so nothing can post. First ensures
+     * the manufacturing CoA accounts exist (idempotent), then maps them.
+     */
+    private function seedPostingSettings(): void
+    {
+        (new \Database\Seeders\Tenant\DefaultChartOfAccountsSeeder())->run();
+
+        $acc = fn (string $code) => Account::where('code', $code)->value('id');
+
+        \App\Models\Tenant\ManufacturingPostingSetting::updateOrCreate(
+            ['branch_id' => null],
+            [
+                'is_enabled'                          => false, // never enable posting in demo
+                'raw_material_inventory_account_id'   => $acc('1410'),
+                'wip_inventory_account_id'            => $acc('1420'),
+                'finished_goods_inventory_account_id' => $acc('1430'),
+                'manufacturing_overhead_account_id'   => $acc('1490'),
+                'direct_labour_account_id'            => $acc('6210'),
+                'scrap_expense_account_id'            => $acc('6900'),
+                'rework_expense_account_id'           => $acc('6910'),
+                'production_variance_account_id'      => $acc('5300'),
+                'manufactured_cogs_account_id'        => $acc('5310'),
+                'inventory_adjustment_account_id'     => $acc('6920'),
+                'negative_stock_policy'               => 'block',
+                'costing_method'                      => 'moving_average',
+                'fg_cost_source'                      => 'wip_actual',
+                'created_by_user_id'                  => $this->owner()?->id,
+            ]
+        );
+
+        $this->counts['posting_settings'] = \App\Models\Tenant\ManufacturingPostingSetting::count();
     }
 }

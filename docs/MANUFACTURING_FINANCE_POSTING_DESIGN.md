@@ -10,6 +10,17 @@
 > Companion file: [`MANUFACTURING_FINANCE_BACKLOG.md`](MANUFACTURING_FINANCE_BACKLOG.md)
 > (the running backlog of finance work). This document is the detailed design;
 > the backlog is the checklist.
+>
+> **➡ Phase A IMPLEMENTED (MFG-FIN-A):**
+> - Manufacturing posting CoA accounts seeded (`1410/1420/1430/1490`, `5300/5310`,
+>   `6210/6900/6910/6920`) — idempotent, `is_system`, additive (existing accounts untouched).
+> - `manufacturing_posting_settings` table + `ManufacturingPostingSetting` model +
+>   Posting Settings UI (show/edit/update) + 3 settings permissions + sidebar link.
+> - Settings **disabled by default**; account-type + enable-readiness validation.
+> - **No posting code** implemented: no journal entries, no stock-ledger entries,
+>   no inventory movement, no document mutation, no finance/inventory service change.
+> - **Next is Phase B** (posting infrastructure / schema / idempotency), *not* event
+>   posting.
 
 ---
 
