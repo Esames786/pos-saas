@@ -19,8 +19,23 @@
 > - Settings **disabled by default**; account-type + enable-readiness validation.
 > - **No posting code** implemented: no journal entries, no stock-ledger entries,
 >   no inventory movement, no document mutation, no finance/inventory service change.
-> - **Next is Phase B** (posting infrastructure / schema / idempotency), *not* event
->   posting.
+>
+> **➡ Phase B IMPLEMENTED (MFG-FIN-B):**
+> - Posting-state columns (`posting_status` default `unposted`, `posted_at`,
+>   `posted_by_user_id`, `journal_entry_id`, `reversed_of_id`) on `production_orders`,
+>   `manufacturing_consumption_records`, `finished_good_receipts`,
+>   `manufacturing_scrap_records`, `manufacturing_rejection_records`.
+> - WIP cost columns (`wip_jobs.accumulated_cost/costed_quantity/average_unit_cost`),
+>   FG cost columns (`finished_good_receipts.unit_cost/total_cost`),
+>   `stock_ledgers.reversal_of_id`.
+> - `HasManufacturingPostingStatus` trait (status helpers) + `ManufacturingPostingService`
+>   scaffold (settings/readiness/idempotency lookups + posting-state writers only —
+>   it never calls JournalService/InventoryService or creates journal/stock rows).
+> - Read-only posting-status badge on the 5 show pages (no Post/Reverse buttons).
+> - **No event posting** — no journals, no stock movements, no GL, no document
+>   business mutation; all existing documents default to `unposted`.
+> - **Next is Phase C** (Consumption posting `Dr WIP / Cr Raw Material`), only after
+>   approval — *not* implemented here.
 
 ---
 
@@ -635,6 +650,10 @@ integrity check (§ verification) before and after.
 ---
 
 ## 21. Implementation Roadmap
+
+> **Status:** Phase A ✅ complete (MFG-FIN-A) · Phase B ✅ complete (MFG-FIN-B) ·
+> **Phase C next** (Consumption posting `Dr WIP / Cr Raw Material`) — *not yet
+> implemented; requires approval.*
 
 | Phase | Scope | Files likely touched | Tables likely needed | Key risk | Verification | Expected TB |
 |---|---|---|---|---|---|---|

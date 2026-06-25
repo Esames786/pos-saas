@@ -38,6 +38,22 @@
 | Consumption | **tracking only (MANUF-9)** | none (no inventory deduction, no raw-material issue, no WIP/MRC mutation, no consumption accounting, no COGS, no GL) |
 | Production Reports | **read-only (MANUF-10)** | none (pure SELECT aggregation; no posting, no mutation) |
 | Posting Settings | **config only (MFG-FIN-A)** | none (account mapping + policy stored; disabled by default; NO posting code) |
+| Posting Infrastructure | **schema/scaffold only (MFG-FIN-B)** | none (posting-state + cost columns + service scaffold; NO posting code) |
+
+> **Phase B implemented (MFG-FIN-B):** Posting **infrastructure / schema only**.
+> Added posting-state columns (`posting_status`/`posted_at`/`posted_by_user_id`/
+> `journal_entry_id`/`reversed_of_id`) to `production_orders`,
+> `manufacturing_consumption_records`, `finished_good_receipts`,
+> `manufacturing_scrap_records`, `manufacturing_rejection_records`; WIP cost columns
+> (`accumulated_cost`/`costed_quantity`/`average_unit_cost`); FG cost columns
+> (`unit_cost`/`total_cost`); `stock_ledgers.reversal_of_id`. Added
+> `HasManufacturingPostingStatus` trait + `ManufacturingPostingService` scaffold
+> (reads settings, validates readiness, answers idempotency, flips posting-state
+> columns — but **never** calls JournalService/InventoryService or creates journal/
+> stock rows) + read-only posting-status badges on 5 show pages (no buttons).
+> **No event posting, no journals, no stock movements, no GL, no document business
+> mutation; all documents default `unposted`.** **Phase C (Consumption posting
+> Dr WIP / Cr Raw Material) is next — not implemented in this sprint.**
 
 > **Phase A implemented (MFG-FIN-A):** Manufacturing posting **CoA accounts**
 > seeded (`1410` Raw Material, `1420` WIP, `1430` Finished Goods, `1490` Overhead

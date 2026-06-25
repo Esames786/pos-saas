@@ -49,6 +49,10 @@ class WipJob extends Model
         'progress_percent',
         'notes',
         'created_by_user_id',
+        // WIP cost accumulation (MFG-FIN-B) — populated by a future posting phase only.
+        'accumulated_cost',
+        'costed_quantity',
+        'average_unit_cost',
     ];
 
     protected function casts(): array
@@ -60,6 +64,9 @@ class WipJob extends Model
             'started_quantity'   => 'decimal:4',
             'completed_quantity' => 'decimal:4',
             'progress_percent'   => 'decimal:2',
+            'accumulated_cost'   => 'decimal:4',
+            'costed_quantity'    => 'decimal:4',
+            'average_unit_cost'  => 'decimal:4',
         ];
     }
 

@@ -2,11 +2,14 @@
 
 namespace App\Models\Tenant;
 
+use App\Models\Tenant\Concerns\HasManufacturingPostingStatus;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
 class ProductionOrder extends Model
 {
+    use HasManufacturingPostingStatus;
+
     protected $connection = 'tenant';
 
     public const STATUSES = [

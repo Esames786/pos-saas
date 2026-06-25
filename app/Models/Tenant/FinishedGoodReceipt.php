@@ -2,11 +2,14 @@
 
 namespace App\Models\Tenant;
 
+use App\Models\Tenant\Concerns\HasManufacturingPostingStatus;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
 class FinishedGoodReceipt extends Model
 {
+    use HasManufacturingPostingStatus;
+
     protected $connection = 'tenant';
 
     public const STATUSES = [
@@ -61,6 +64,9 @@ class FinishedGoodReceipt extends Model
         'priority',
         'notes',
         'created_by_user_id',
+        // FG cost capture (MFG-FIN-B) — populated by a future posting phase only.
+        'unit_cost',
+        'total_cost',
     ];
 
     protected function casts(): array
@@ -72,6 +78,8 @@ class FinishedGoodReceipt extends Model
             'accepted_quantity' => 'decimal:4',
             'rejected_quantity' => 'decimal:4',
             'scrap_quantity'    => 'decimal:4',
+            'unit_cost'         => 'decimal:4',
+            'total_cost'        => 'decimal:4',
         ];
     }
 

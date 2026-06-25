@@ -2,11 +2,14 @@
 
 namespace App\Models\Tenant;
 
+use App\Models\Tenant\Concerns\HasManufacturingPostingStatus;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
 class ManufacturingConsumptionRecord extends Model
 {
+    use HasManufacturingPostingStatus;
+
     protected $connection = 'tenant';
 
     public const SOURCE_TYPES = ['wip', 'material_requisition', 'manual'];

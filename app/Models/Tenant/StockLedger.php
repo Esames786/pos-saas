@@ -24,6 +24,8 @@ class StockLedger extends Model
         'reference_no',
         'notes',
         'created_by_user_id',
+        // Reversal linkage (MFG-FIN-B) — a future reversal row points at the original.
+        'reversal_of_id',
     ];
 
     protected function casts(): array
