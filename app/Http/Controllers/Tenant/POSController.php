@@ -59,17 +59,7 @@ class POSController extends Controller
                 ->find($heldSale->restaurant_table_session_id);
         }
 
-        $floors = RestaurantFloor::with([
-                'tables.openSession.waiter',
-                'tables.openSession.salesOrders' => function ($query) {
-                    $query->whereIn('status', ['held', 'paid']);
-                },
-            ])
-            ->where('branch_id', $selectedBranchId)
-            ->where('status', 'active')
-            ->orderBy('sort_order')
-            ->orderBy('name')
-            ->get();
+        $floors = $this->loadBoardFloors($selectedBranchId);
 
         $waiters = RestaurantWaiter::where(function ($query) use ($selectedBranchId) {
                 $query->whereNull('branch_id')
@@ -224,6 +214,53 @@ class POSController extends Controller
                 ? 'dine_in'
                 : ($request->input('mode', 'quick_sale')),
         ]);
+    }
+
+    /**
+     * Eager-load the dine-in board for a branch. Shared by the full POS page render
+     * and the AJAX board-refresh endpoint so the tile markup has one source of truth.
+     */
+    private function loadBoardFloors(int $branchId)
+    {
+        return RestaurantFloor::with([
+                'tables.openSession.waiter',
+                'tables.openSession.salesOrders' => function ($query) {
+                    $query->whereIn('status', ['held', 'paid']);
+                },
+            ])
+            ->where('branch_id', $branchId)
+            ->where('status', 'active')
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get();
+    }
+
+    /**
+     * AJAX: re-render just the live table board for a branch (no full page reload).
+     * Returns the same partial used on first load, with the given session highlighted,
+     * so the board stays accurate after open/continue/select actions.
+     */
+    public function tableBoard(Request $request)
+    {
+        $selectedBranchId = (int) (
+            $request->branch_id
+            ?: optional(Branch::where('status', 'active')->orderBy('name')->first())->id
+        );
+
+        $tableSession = null;
+        if ($request->filled('selected_session_id')) {
+            $tableSession = RestaurantTableSession::with(['table.floor', 'waiter'])
+                ->whereIn('status', ['open', 'bill_requested'])
+                ->find($request->selected_session_id);
+        }
+
+        $html = view('tenant.pos.partials.table-board', [
+            'floors'           => $this->loadBoardFloors($selectedBranchId),
+            'selectedBranchId' => $selectedBranchId,
+            'tableSession'     => $tableSession,
+        ])->render();
+
+        return response()->json(['ok' => true, 'html' => $html]);
     }
 
     /**

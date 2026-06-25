@@ -107,6 +107,8 @@ class HeldSaleController extends Controller
     /** AJAX: open held orders for a specific table session */
     public function tableSessionOpenOrders(RestaurantTableSession $restaurantTableSession)
     {
+        $restaurantTableSession->loadMissing(['table', 'waiter']);
+
         $orders = SalesOrder::with(['lines'])
             ->where('restaurant_table_session_id', $restaurantTableSession->id)
             ->where('status', 'held')
@@ -117,19 +119,61 @@ class HeldSaleController extends Controller
             'ok'               => true,
             'table_session_id' => $restaurantTableSession->id,
             'branch_id'        => $restaurantTableSession->branch_id,
-            'orders'           => $orders->map(fn ($sale) => [
-                'id'                    => $sale->id,
-                'sale_no'               => $sale->sale_no,
-                'grand_total'           => (float) $sale->grand_total,
-                'grand_total_formatted' => number_format((float) $sale->grand_total, 2),
-                'items_count'           => round((float) $sale->lines->sum('quantity'), 3),
-                'created_at'            => $sale->created_at?->format('d M Y H:i'),
-                'updated_at'            => $sale->updated_at?->diffForHumans(),
-                'recall_url'            => url('/pos?held_sale_id=' . $sale->id
-                    . '&table_session_id=' . $restaurantTableSession->id
-                    . '&mode=dine_in&branch_id=' . $restaurantTableSession->branch_id),
-            ])->values(),
+            // Session detail lets the POS paint the session bar in place when continuing.
+            'session'          => $this->sessionPayload($restaurantTableSession),
+            // Full line payload lets the POS recall an order client-side (no reload).
+            'orders'           => $orders->map(fn ($sale) => $this->openOrderPayload($sale, $restaurantTableSession))->values(),
         ]);
+    }
+
+    private function sessionPayload(RestaurantTableSession $session): array
+    {
+        return [
+            'id'          => (int) $session->id,
+            'session_no'  => $session->session_no,
+            'table_id'    => (int) $session->restaurant_table_id,
+            'table_no'    => $session->table?->table_no,
+            'waiter_name' => $session->waiter?->name,
+            'guest_count' => $session->guest_count,
+            'status'      => $session->status,
+            'branch_id'   => (int) $session->branch_id,
+        ];
+    }
+
+    private function openOrderPayload(SalesOrder $sale, RestaurantTableSession $session): array
+    {
+        return [
+            'id'                          => (int) $sale->id,
+            'sale_no'                     => $sale->sale_no,
+            'order_type'                  => $sale->order_type,
+            'terminal_id'                 => $sale->terminal_id,
+            'restaurant_table_session_id' => $sale->restaurant_table_session_id,
+            'restaurant_table_id'         => $sale->restaurant_table_id,
+            'grand_total'                 => (float) $sale->grand_total,
+            'grand_total_formatted'       => number_format((float) $sale->grand_total, 2),
+            'items_count'                 => round((float) $sale->lines->sum('quantity'), 3),
+            'created_at'                  => $sale->created_at?->format('d M Y H:i'),
+            'updated_at'                  => $sale->updated_at?->diffForHumans(),
+            'recall_url'                  => url('/pos?held_sale_id=' . $sale->id
+                . '&table_session_id=' . $session->id
+                . '&mode=dine_in&branch_id=' . $session->branch_id),
+            'lines'                       => $sale->lines->map(fn ($l) => [
+                'id'                 => (int) $l->id,
+                'product_id'         => (int) $l->product_id,
+                'product_variant_id' => $l->product_variant_id ? (int) $l->product_variant_id : null,
+                'quantity'           => (float) $l->quantity,
+                'unit_price'         => (float) $l->unit_price,
+                'discount_amount'    => (float) $l->discount_amount,
+                'tax_amount'         => (float) $l->tax_amount,
+                'line_total'         => (float) $l->line_total,
+                'product_name'       => $l->product_name,
+                'variant_name'       => $l->variant_name,
+                'unit_code'          => $l->unit_code,
+                'kot_sent'           => (bool) $l->kot_sent,
+                'kot_sent_quantity'  => (float) ($l->kot_sent_quantity ?? 0),
+                'kitchen_note'       => $l->kitchen_note,
+            ])->values(),
+        ];
     }
 
     public function create()
@@ -249,6 +293,7 @@ class HeldSaleController extends Controller
                         'message'          => 'This table already has open held orders. Continue an existing order or intentionally create a separate order.',
                         'table_session_id' => $tableSession->id,
                         'branch_id'        => $tableSession->branch_id,
+                        'session'          => $this->sessionPayload($tableSession->loadMissing(['table', 'waiter'])),
                         'orders'           => $openOrders,
                     ], 409);
                 }
@@ -406,17 +451,7 @@ class HeldSaleController extends Controller
             ->where('status', 'held')
             ->orderByDesc('updated_at')
             ->get()
-            ->map(fn ($sale) => [
-                'id'                    => $sale->id,
-                'sale_no'               => $sale->sale_no,
-                'grand_total'           => (float) $sale->grand_total,
-                'grand_total_formatted' => number_format((float) $sale->grand_total, 2),
-                'items_count'           => round((float) $sale->lines->sum('quantity'), 3),
-                'updated_at'            => $sale->updated_at?->diffForHumans(),
-                'recall_url'            => url('/pos?held_sale_id=' . $sale->id
-                    . '&table_session_id=' . $tableSession->id
-                    . '&mode=dine_in&branch_id=' . $tableSession->branch_id),
-            ])
+            ->map(fn ($sale) => $this->openOrderPayload($sale, $tableSession))
             ->values();
     }
 

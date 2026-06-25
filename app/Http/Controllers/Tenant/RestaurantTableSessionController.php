@@ -87,12 +87,25 @@ class RestaurantTableSessionController extends Controller
         }
 
         if ($request->expectsJson()) {
-            $session = RestaurantTableSession::where('session_no', $sessionNo)
+            $session = RestaurantTableSession::with(['table', 'waiter'])
+                ->where('session_no', $sessionNo)
                 ->where('restaurant_table_id', $restaurantTable->id)
                 ->first();
             return response()->json([
+                'ok'         => true,
                 'session_id' => $session?->id,
-                'branch_id'  => $restaurantTable->branch_id,
+                'branch_id'  => (int) $restaurantTable->branch_id,
+                // Full detail lets the POS paint the session bar + board in place (no reload).
+                'session'    => $session ? [
+                    'id'          => (int) $session->id,
+                    'session_no'  => $session->session_no,
+                    'table_id'    => (int) $restaurantTable->id,
+                    'table_no'    => $restaurantTable->table_no,
+                    'waiter_name' => $session->waiter?->name,
+                    'guest_count' => $session->guest_count,
+                    'status'      => $session->status,
+                    'branch_id'   => (int) $session->branch_id,
+                ] : null,
             ]);
         }
 
