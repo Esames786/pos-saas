@@ -2883,10 +2883,24 @@ document.addEventListener('DOMContentLoaded', function () {
             });
             const modifiers = normalizeModifiers(line.modifiers || []);
             const lineKind = line.line_kind || 'standard';
-            const key = lineKind === 'combo_header'
+            const key = (lineKind === 'combo_header' || lineKind === 'component')
                 ? 'held-line:' + line.id
-                : (lineKind === 'component' ? 'held-line:' + line.id : cartKey(product, variant, modifiers));
+                : cartKey(product, variant, modifiers);
             const parentKey = line.parent_sales_order_line_id ? recalledLineKeys[line.parent_sales_order_line_id] : '';
+            // Honour the STORED price exactly — combo components are 0, and a falsy-OR
+            // would wrongly re-price them to full catalog price (inflating the total).
+            const unitPrice = (line.unit_price !== undefined && line.unit_price !== null)
+                ? Number(line.unit_price)
+                : productPrice(product, variant);
+            // The combo header carries the bundle price and must never be taxed.
+            const lineProduct = (lineKind === 'combo_header')
+                ? Object.assign({}, product, { is_taxable: false, tax_rate_percent: 0 })
+                : product;
+            // Per-unit component qty so changing the combo qty after recall rescales components.
+            const parentHeader = parentKey ? cart.find(function (i) { return i.key === parentKey; }) : null;
+            const comboCompQty = (lineKind === 'component' && parentHeader && Number(parentHeader.quantity) > 0)
+                ? Number(line.quantity) / Number(parentHeader.quantity)
+                : undefined;
             cart.push({
                 key:                key,
                 client_line_key:    key,
@@ -2894,18 +2908,19 @@ document.addEventListener('DOMContentLoaded', function () {
                 parent_client_line_key: parentKey,
                 line_kind:          lineKind,
                 combo_id:           line.combo_id || '',
+                combo_component_qty: comboCompQty,
                 product_id:         product.id,
                 product_variant_id: variant ? variant.id : null,
                 name:               line.product_name || product.name,
                 variant_name:       line.variant_name || (variant ? variant.name : null),
                 unit_code:          line.unit_code || product.unit_code || '',
                 quantity:           Number(line.quantity || 1),
-                unit_price:         Number(line.unit_price || productPrice(product, variant)),
-                base_unit_price:    Number(line.base_unit_price || 0) || Math.max(Number(line.unit_price || productPrice(product, variant)) - modifierPriceDelta(modifiers), 0),
+                unit_price:         unitPrice,
+                base_unit_price:    Math.max(unitPrice - modifierPriceDelta(modifiers), 0),
                 modifiers:          modifiers,
                 discount_amount:    Number(line.discount_amount || 0),
                 tax_amount:         Number(line.tax_amount || 0),
-                product:            product,
+                product:            lineProduct,
                 variant:            variant || null,
             });
             recalledLineKeys[line.id] = key;
@@ -3866,10 +3881,23 @@ document.addEventListener('DOMContentLoaded', function () {
             const variant = (product.variants || []).find(function (v) { return Number(v.id) === Number(line.product_variant_id); });
             const modifiers = normalizeModifiers(line.modifiers || []);
             const lineKind = line.line_kind || 'standard';
-            const key = lineKind === 'combo_header'
+            const key = (lineKind === 'combo_header' || lineKind === 'component')
                 ? 'held-line:' + line.id
-                : (lineKind === 'component' ? 'held-line:' + line.id : cartKey(product, variant, modifiers));
+                : cartKey(product, variant, modifiers);
             const parentKey = line.parent_sales_order_line_id ? preloadedLineKeys[line.parent_sales_order_line_id] : '';
+            // Honour the STORED price exactly (combo components are 0; a falsy-OR re-prices them).
+            const unitPrice = (line.unit_price !== undefined && line.unit_price !== null)
+                ? Number(line.unit_price)
+                : productPrice(product, variant);
+            // Combo header carries the bundle price + the combo name, and is never taxed.
+            const lineProduct = (lineKind === 'combo_header')
+                ? Object.assign({}, product, { is_taxable: false, tax_rate_percent: 0 })
+                : product;
+            const displayName = line.product_name || product.name;
+            const parentHeader = parentKey ? cart.find(function (i) { return i.key === parentKey; }) : null;
+            const comboCompQty = (lineKind === 'component' && parentHeader && Number(parentHeader.quantity) > 0)
+                ? Number(line.quantity) / Number(parentHeader.quantity)
+                : undefined;
 
             cart.push({
                 key:                key,
@@ -3878,19 +3906,20 @@ document.addEventListener('DOMContentLoaded', function () {
                 parent_client_line_key: parentKey,
                 line_kind:          lineKind,
                 combo_id:           line.combo_id || '',
+                combo_component_qty: comboCompQty,
                 product_id:         product.id,
                 product_variant_id: variant ? variant.id : null,
-                name:               product.name,
-                product_name:       product.name,
+                name:               displayName,
+                product_name:       displayName,
                 variant_name:       variant ? variant.name : null,
                 unit_code:          line.unit_code || product.unit_code || '',
                 quantity:           Number(line.quantity || 1),
-                unit_price:         Number(line.unit_price || productPrice(product, variant)),
-                base_unit_price:    Number(line.base_unit_price || 0) || Math.max(Number(line.unit_price || productPrice(product, variant)) - modifierPriceDelta(modifiers), 0),
+                unit_price:         unitPrice,
+                base_unit_price:    Math.max(unitPrice - modifierPriceDelta(modifiers), 0),
                 modifiers:          modifiers,
                 discount_amount:    Number(line.discount_amount || 0),
                 tax_amount:         Number(line.tax_amount || 0),
-                product:            product,
+                product:            lineProduct,
                 variant:            variant || null,
                 _dbLineId:          line.id || null,
                 kot_sent:           !!line.kot_sent,
