@@ -1293,6 +1293,29 @@ document.addEventListener('DOMContentLoaded', function () {
         return null; // plain service (no ingredients) — unlimited
     }
 
+    // How many of a combo can be made right now = the lowest of its components'
+    // availability ÷ the qty each combo needs. Returns { makeable, limiting }:
+    //   makeable = null → unlimited (all components are plain services)
+    //   makeable = 0    → unavailable; `limiting` names the blocking component.
+    function comboAvailability(combo) {
+        var makeable = Infinity;
+        var limiting = null;
+        (combo.components || []).forEach(function (component) {
+            var product = products.find(function (p) { return Number(p.id) === Number(component.product_id); });
+            if (!product) { makeable = 0; limiting = component.product_name || 'a component'; return; }
+            var variant = (product.variants || []).find(function (v) {
+                return Number(v.id) === Number(component.product_variant_id);
+            }) || null;
+            var avail = availableQty(product, variant);   // null = unlimited service
+            if (avail === null) return;
+            var perCombo = Number(component.quantity || 1) || 1;
+            var canMake  = Math.floor(avail / perCombo);
+            if (canMake < makeable) { makeable = canMake; limiting = product.name; }
+        });
+        if (makeable === Infinity) return { makeable: null, limiting: null };
+        return { makeable: Math.max(0, makeable), limiting: limiting };
+    }
+
     // Name of the ingredient limiting a recipe product at the current branch (for messages).
     function limitingIngredient(product) {
         if (product && product.is_recipe && product.limiting_ingredient_by_branch) {
@@ -1369,18 +1392,27 @@ document.addEventListener('DOMContentLoaded', function () {
         });
 
         filteredCombos.forEach(function (combo) {
+            const avail      = comboAvailability(combo);
+            const isOut      = avail.makeable !== null && avail.makeable <= 0;
+            const isLow      = !isOut && avail.makeable !== null && avail.makeable <= 5;
+            const badgeClass = isOut ? 'stock-out' : (isLow ? 'stock-low' : '');
+            const badgeText  = isOut ? 'Unavailable' : 'Combo';
+            const note       = isOut
+                ? '<div class="small text-danger mt-2">' + escapeHtml(avail.limiting || 'A component') + ' out of stock</div>'
+                : '<div class="small text-muted mt-2">' + combo.components.length + ' items' + (isLow ? ' &middot; makes ' + avail.makeable : '') + '</div>';
+
             const button = document.createElement('button');
             button.type = 'button';
-            button.className = 'product-tile';
+            button.className = 'product-tile' + (isOut ? ' stock-out' : '');
             button.innerHTML =
                 '<div class="product-avatar"><i class="ti ti-package"></i></div>' +
                 '<div class="fw-bold mb-1">' + escapeHtml(combo.name) + '</div>' +
                 '<div class="text-muted small mb-2">' + escapeHtml(combo.code || 'Combo') + '</div>' +
                 '<div class="d-flex justify-content-between align-items-center">' +
                     '<span class="fw-bold">' + money(combo.price) + '</span>' +
-                    '<span class="stock-badge">Combo</span>' +
+                    '<span class="stock-badge ' + badgeClass + '">' + badgeText + '</span>' +
                 '</div>' +
-                '<div class="small text-muted mt-2">' + combo.components.length + ' items</div>';
+                note;
 
             button.addEventListener('click', function () { addComboToCart(combo); });
             productGrid.appendChild(button);
@@ -1394,7 +1426,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const stockClass = qty === null ? '' : qty <= 0 ? 'stock-out' : qty <= 5 ? 'stock-low' : '';
             const stockText  = qty === null
                 ? 'Service'
-                : (qty <= 0 ? 'Out of stock' : (isRecipe ? 'Makes ' + qty : 'Stock ' + qty));
+                : (qty <= 0 ? 'Out' : (isRecipe ? 'Makes ' + qty : 'Stock ' + qty));
 
             const button     = document.createElement('button');
             button.type      = 'button';
@@ -1589,11 +1621,24 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function addComboToCart(combo) {
+        var avail = comboAvailability(combo);
+        if (avail.makeable !== null && avail.makeable <= 0) {
+            blockAlert(combo.name + ' is unavailable — '
+                + (avail.limiting ? avail.limiting + ' is out of stock' : 'a component is out of stock') + '.');
+            return;
+        }
+
         var key = 'combo:' + combo.id;
         var existing = cart.find(function (item) { return item.key === key; });
 
         if (existing) {
-            existing.quantity = Number(existing.quantity || 0) + 1;
+            var nextQty = Number(existing.quantity || 0) + 1;
+            if (avail.makeable !== null && nextQty > avail.makeable) {
+                blockAlert('Only ' + avail.makeable + ' × ' + combo.name + ' can be made right now'
+                    + (avail.limiting ? ' (' + avail.limiting + ')' : '') + '.');
+                return;
+            }
+            existing.quantity = nextQty;
             updateComboComponents(key);
             renderCart();
             return;
@@ -2428,7 +2473,7 @@ document.addEventListener('DOMContentLoaded', function () {
             (data.jobs || []).forEach(function (job) {
                 if (job.fallback || job.printer_type === 'browser') {
                     toast('warning', 'No printer found — opening KOT for manual print');
-                    window.open(job.preview_url, '_blank');
+                    openPreviewTab(job.preview_url);
                 }
             });
         })
@@ -2470,7 +2515,7 @@ document.addEventListener('DOMContentLoaded', function () {
         .then(function (data) {
             if (data && (data.fallback || data.printer_type === 'browser') && data.preview_url) {
                 toast('warning', 'No printer found — opening receipt for manual print');
-                window.open(data.preview_url, '_blank');
+                openPreviewTab(data.preview_url);
             }
         })
         .catch(function () {});
@@ -3186,16 +3231,52 @@ document.addEventListener('DOMContentLoaded', function () {
     /* Open browser preview tabs for any fallback jobs in a server response.
        KOT responses: { jobs: [{fallback, preview_url, ...}] }
        Receipt responses: { fallback, preview_url, ... } */
+    // Open print-preview tab(s) even when the browser pop-up blocker fires. Auto-print
+    // runs from the async "sale complete" response, so window.open isn't tied to the
+    // click → Chrome may block it silently. We collect any blocked previews and show one
+    // "Open prints" prompt (that click IS a user gesture, so the browser allows it).
+    var _blockedPreviews = [];
+    var _blockedPreviewTimer = null;
+    function openPreviewTab(url) {
+        if (!url) return;
+        var w = window.open(url, '_blank');
+        if (!w || w.closed || typeof w.closed === 'undefined') {
+            _blockedPreviews.push(url);
+            clearTimeout(_blockedPreviewTimer);
+            _blockedPreviewTimer = setTimeout(flushBlockedPreviews, 200);
+        }
+    }
+    function flushBlockedPreviews() {
+        if (!_blockedPreviews.length) return;
+        var urls = _blockedPreviews.slice();
+        _blockedPreviews = [];
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                icon: 'info',
+                title: 'Allow pop-ups to print',
+                html: 'Your browser blocked the print tab' + (urls.length > 1 ? 's' : '') + '. Click to open '
+                    + urls.length + ' print preview' + (urls.length > 1 ? 's' : '')
+                    + ', or allow pop-ups for this site so prints open automatically.',
+                confirmButtonText: 'Open print' + (urls.length > 1 ? 's' : ''),
+                confirmButtonColor: '#0d6efd',
+            }).then(function (r) {
+                if (r.isConfirmed) { urls.forEach(function (u) { window.open(u, '_blank'); }); }
+            });
+        } else {
+            toast('warning', 'Pop-up blocked — allow pop-ups for this site to print.');
+        }
+    }
+
     function openFallbackPreviews(data) {
         (data.jobs || []).forEach(function (job) {
             if (job.fallback || job.printer_type === 'browser') {
                 toast('warning', 'No printer found — opening for manual print');
-                window.open(job.preview_url, '_blank');
+                openPreviewTab(job.preview_url);
             }
         });
         if ((data.fallback || data.printer_type === 'browser') && data.preview_url) {
             toast('warning', 'No printer found — opening for manual print');
-            window.open(data.preview_url, '_blank');
+            openPreviewTab(data.preview_url);
         }
     }
 

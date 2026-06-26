@@ -40,7 +40,7 @@
                     @if($session)
                         <div class="small mb-2">
                             <div><strong>Session:</strong> {{ $session->session_no }}</div>
-                            <div><strong>Waiter:</strong> {{ $session->waiter?->name ?? '-' }}</div>
+                            <div class="d-flex align-items-center gap-1"><i class="ti ti-user small text-muted"></i>{{ $session->waiter?->name ?? 'No waiter' }}</div>
                             <div><strong>Total:</strong> {{ number_format($sessionTotal, 2) }}</div>
                         </div>
                         <a href="{{ url('/pos?table_session_id=' . $session->id . '&mode=dine_in&branch_id=' . $selectedBranchId) }}"

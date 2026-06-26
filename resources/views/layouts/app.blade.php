@@ -20,10 +20,20 @@
     <link rel="stylesheet" href="{{ asset('assets/plugins/fontawesome/css/all.min.css') }}">
     <link rel="stylesheet" href="{{ asset('assets/css/style.css') }}">
     <link rel="stylesheet" href="{{ asset('assets/css/a11y-custom.css') }}">
+    @if(request()->is('pos'))
+        <style>
+            body.pos-workspace .header { display: none; }
+            body.pos-workspace.nosidebar .sidebar { display: none; }
+            body.pos-workspace:not(.nosidebar) .sidebar { display: block; z-index: 1050; }
+            body.pos-workspace .page-wrapper { margin: 0; padding-top: 0; }
+            body.pos-workspace .page-wrapper .content { padding: 12px; min-height: 100vh; }
+            body.pos-workspace .tenant-subscription-banner { display: none; }
+        </style>
+    @endif
     @stack('styles')
 </head>
 
-<body>
+<body @class(['pos-workspace nosidebar' => request()->is('pos')])>
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <div id="global-loader">
     <div class="whirly-loader"></div>
@@ -41,7 +51,7 @@
                 </div>
             @endif
             @if(!empty($tenantSubscriptionStatus) && !empty($tenantSubscriptionStatus['message']))
-                <div class="alert alert-{{ $tenantSubscriptionStatus['severity'] === 'danger' ? 'danger' : 'warning' }} mb-3" role="status">
+                <div class="tenant-subscription-banner alert alert-{{ $tenantSubscriptionStatus['severity'] === 'danger' ? 'danger' : 'warning' }} mb-3" role="status">
                     {{ $tenantSubscriptionStatus['message'] }}
                 </div>
             @endif

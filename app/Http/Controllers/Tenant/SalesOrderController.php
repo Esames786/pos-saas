@@ -101,8 +101,14 @@ class SalesOrderController extends Controller
                     $product = Product::with('unit')->findOrFail($line['product_id']);
                     $variant = $inventoryService->resolveVariant($product, $line['product_variant_id'] ?? null);
                     $qty     = (float) $line['quantity'];
-                    $price   = $this->resolveSellingPrice($product, $variant, $branch->id,
-                        isset($line['unit_price']) ? (float) $line['unit_price'] : null);
+                    $lineKind       = $line['line_kind'] ?? 'standard';
+                    $submittedPrice = isset($line['unit_price']) ? (float) $line['unit_price'] : null;
+                    // Combo header carries the bundle price; components are intentionally 0.
+                    // Honour those exactly — never re-resolve a combo line from the catalog,
+                    // or the server total drifts above what the customer pays.
+                    $price = in_array($lineKind, ['combo_header', 'component'], true)
+                        ? (float) ($submittedPrice ?? 0)
+                        : $this->resolveSellingPrice($product, $variant, $branch->id, $submittedPrice);
                     $disc    = (float) ($line['discount_amount'] ?? 0);
                     $tax     = $this->resolveTaxAmount($product, $qty, $price, $disc,
                         isset($line['tax_amount']) ? (float) $line['tax_amount'] : null);
