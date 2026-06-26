@@ -508,7 +508,7 @@
                     <div class="pos-charge-amt" id="pos-charge-total">0.00</div>
                 </div>
                 <button type="button" class="btn btn-primary btn-lg flex-grow-1" id="review-pay-btn">
-                    <i class="ti ti-cash-register me-1"></i>{{ $tableSession ? 'Close & Pay Bill' : 'Review &amp; Pay' }}
+                    <i class="ti ti-cash-register me-1"></i>{{ $tableSession ? 'Close & Pay Bill' : 'Review & Pay' }}
                 </button>
             </div>
 
