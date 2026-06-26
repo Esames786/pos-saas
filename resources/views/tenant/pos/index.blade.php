@@ -586,88 +586,97 @@
     {{-- Payment modal (opened by "Review & Pay"). Kept inside #pos-sale-form; all IDs
          preserved so the existing POS JS reads values by id regardless of location. --}}
     <div class="modal fade" id="paymentModal" tabindex="-1" aria-labelledby="paymentModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header">
                     <h2 class="modal-title h5" id="paymentModalLabel"><span id="payment_heading">Payment</span></h2>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <label for="payment_method_id" class="form-label required">Payment Method</label>
-                            <select id="payment_method_id" class="form-select" required>
-                                @foreach($paymentMethods as $method)
-                                    <option value="{{ $method->id }}" data-type="{{ $method->method_type }}" @selected($method->method_type === 'cash')>{{ $method->name }}</option>
-                                @endforeach
-                            </select>
-                        </div>
-                        <div class="col-md-6">
-                            <label for="tendered_amount" class="form-label">Tendered Amount</label>
-                            <input id="tendered_amount" type="number" step="0.01" min="0" class="form-control form-control-lg">
-                            <div class="d-flex gap-1 flex-wrap mt-1" id="quick-cash-buttons"></div>
-                        </div>
-                        <div class="col-12">
-                            <label for="transaction_ref" class="form-label">Reference / Card / Bank</label>
-                            <input id="transaction_ref" class="form-control" placeholder="Optional reference">
-                        </div>
-                        <div class="col-12">
-                            {{-- Promo Code Input --}}
-                            <div class="d-flex gap-1" id="promo-row">
-                                <input type="text" id="promo-code-input" class="form-control form-control-sm" placeholder="Promo code" style="text-transform:uppercase">
-                                <button type="button" class="btn btn-sm btn-outline-primary px-2" id="apply-promo-btn">Apply</button>
-                                <button type="button" class="btn btn-sm btn-outline-secondary px-2 d-none" id="remove-promo-btn">✕</button>
-                            </div>
-                            <div id="promo-feedback" class="small mt-1"></div>
-                        </div>
-                        <div class="col-12">
-                            {{-- Tip Buttons --}}
-                            <div class="d-flex gap-1 flex-wrap">
-                                <span class="small text-muted me-1 align-self-center">Tip:</span>
-                                <button type="button" class="btn btn-xs btn-outline-secondary tip-btn" data-tip-type="percent" data-tip-value="0">No Tip</button>
-                                <button type="button" class="btn btn-xs btn-outline-secondary tip-btn" data-tip-type="percent" data-tip-value="5">5%</button>
-                                <button type="button" class="btn btn-xs btn-outline-secondary tip-btn" data-tip-type="percent" data-tip-value="10">10%</button>
-                                <button type="button" class="btn btn-xs btn-outline-secondary tip-btn" data-tip-type="custom">Custom</button>
-                            </div>
-                        </div>
-                        {{-- Printing panel: live status + temporary (this-device) auto-print overrides --}}
-                        <div class="col-12">
-                            <div class="border rounded p-2" id="print-pref-panel">
-                                <div class="d-flex justify-content-between align-items-center mb-1">
-                                    <span class="fw-semibold small"><i class="ti ti-printer me-1"></i>Printing</span>
-                                    <span class="text-muted small" id="print-terminal-label">No terminal</span>
+                    <div class="row g-4">
+                        {{-- LEFT: payment inputs --}}
+                        <div class="col-lg-7">
+                            <div class="row g-3">
+                                <div class="col-sm-6">
+                                    <label for="payment_method_id" class="form-label required">Payment Method</label>
+                                    <select id="payment_method_id" class="form-select" required>
+                                        @foreach($paymentMethods as $method)
+                                            <option value="{{ $method->id }}" data-type="{{ $method->method_type }}" @selected($method->method_type === 'cash')>{{ $method->name }}</option>
+                                        @endforeach
+                                    </select>
                                 </div>
-                                <div class="form-check form-switch mb-1">
-                                    <input class="form-check-input" type="checkbox" id="auto-kot-toggle">
-                                    <label class="form-check-label small" for="auto-kot-toggle">
-                                        Auto-print Kitchen Ticket (KOT)
-                                        <span class="text-muted d-block" id="kot-status-hint">—</span>
-                                    </label>
+                                <div class="col-sm-6">
+                                    <label for="tendered_amount" class="form-label">Tendered Amount</label>
+                                    <input id="tendered_amount" type="number" step="0.01" min="0" class="form-control form-control-lg">
+                                    <div class="d-flex gap-1 flex-wrap mt-1" id="quick-cash-buttons"></div>
                                 </div>
-                                <div class="form-check form-switch">
-                                    <input class="form-check-input" type="checkbox" id="auto-receipt-toggle">
-                                    <label class="form-check-label small" for="auto-receipt-toggle">
-                                        Auto-print Receipt
-                                        <span class="text-muted d-block" id="receipt-status-hint">—</span>
-                                    </label>
+                                <div class="col-12">
+                                    <label for="transaction_ref" class="form-label">Reference / Card / Bank</label>
+                                    <input id="transaction_ref" class="form-control" placeholder="Optional reference">
+                                </div>
+                                <div class="col-12">
+                                    {{-- Promo Code Input --}}
+                                    <div class="d-flex gap-1" id="promo-row">
+                                        <input type="text" id="promo-code-input" class="form-control form-control-sm" placeholder="Promo code" style="text-transform:uppercase">
+                                        <button type="button" class="btn btn-sm btn-outline-primary px-2" id="apply-promo-btn">Apply</button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary px-2 d-none" id="remove-promo-btn">✕</button>
+                                    </div>
+                                    <div id="promo-feedback" class="small mt-1"></div>
+                                </div>
+                                <div class="col-12">
+                                    {{-- Tip Buttons --}}
+                                    <div class="d-flex gap-1 flex-wrap">
+                                        <span class="small text-muted me-1 align-self-center">Tip:</span>
+                                        <button type="button" class="btn btn-xs btn-outline-secondary tip-btn" data-tip-type="percent" data-tip-value="0">No Tip</button>
+                                        <button type="button" class="btn btn-xs btn-outline-secondary tip-btn" data-tip-type="percent" data-tip-value="5">5%</button>
+                                        <button type="button" class="btn btn-xs btn-outline-secondary tip-btn" data-tip-type="percent" data-tip-value="10">10%</button>
+                                        <button type="button" class="btn btn-xs btn-outline-secondary tip-btn" data-tip-type="custom">Custom</button>
+                                    </div>
+                                </div>
+                                {{-- Printing panel: live status + temporary (this-device) auto-print overrides --}}
+                                <div class="col-12">
+                                    <div class="border rounded p-2" id="print-pref-panel">
+                                        <div class="d-flex justify-content-between align-items-center mb-1">
+                                            <span class="fw-semibold small"><i class="ti ti-printer me-1"></i>Printing</span>
+                                            <span class="text-muted small" id="print-terminal-label">No terminal</span>
+                                        </div>
+                                        <div class="form-check form-switch mb-1">
+                                            <input class="form-check-input" type="checkbox" id="auto-kot-toggle">
+                                            <label class="form-check-label small" for="auto-kot-toggle">
+                                                Auto-print Kitchen Ticket (KOT)
+                                                <span class="text-muted d-block" id="kot-status-hint">—</span>
+                                            </label>
+                                        </div>
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="auto-receipt-toggle">
+                                            <label class="form-check-label small" for="auto-receipt-toggle">
+                                                Auto-print Receipt
+                                                <span class="text-muted d-block" id="receipt-status-hint">—</span>
+                                            </label>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
 
-                    <hr>
-                    <div class="pos-total-line"><span>Subtotal</span><strong id="subtotal-view">0.00</strong></div>
-                    <div class="pos-total-line d-none" id="promo-discount-row"><span id="promo-discount-label">Promo</span><strong id="promo-discount-view" class="text-success">−0.00</strong></div>
-                    <div class="pos-total-line"><span>Discount</span><strong id="discount-view">0.00</strong></div>
-                    <div class="pos-total-line"><span>Tax</span><strong id="tax-view">0.00</strong></div>
-                    <div class="pos-total-line d-none" id="service-charge-row"><span>Service Charge</span><strong id="service-charge-view">0.00</strong></div>
-                    <div class="pos-total-line d-none" id="tip-row"><span>Tip</span><strong id="tip-view">0.00</strong></div>
-                    <hr>
-                    <div class="pos-total-line">
-                        <span class="pos-grand-total">Total</span>
-                        <strong class="pos-grand-total" id="grand-total-view">0.00</strong>
+                        {{-- RIGHT: totals summary --}}
+                        <div class="col-lg-5">
+                            <div class="border rounded p-3 bg-light h-100">
+                                <div class="pos-total-line"><span>Subtotal</span><strong id="subtotal-view">0.00</strong></div>
+                                <div class="pos-total-line d-none" id="promo-discount-row"><span id="promo-discount-label">Promo</span><strong id="promo-discount-view" class="text-success">−0.00</strong></div>
+                                <div class="pos-total-line"><span>Discount</span><strong id="discount-view">0.00</strong></div>
+                                <div class="pos-total-line"><span>Tax</span><strong id="tax-view">0.00</strong></div>
+                                <div class="pos-total-line d-none" id="service-charge-row"><span>Service Charge</span><strong id="service-charge-view">0.00</strong></div>
+                                <div class="pos-total-line d-none" id="tip-row"><span>Tip</span><strong id="tip-view">0.00</strong></div>
+                                <hr>
+                                <div class="pos-total-line">
+                                    <span class="pos-grand-total">Total</span>
+                                    <strong class="pos-grand-total" id="grand-total-view">0.00</strong>
+                                </div>
+                                <div class="pos-total-line"><span>Change</span><strong id="change-view">0.00</strong></div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="pos-total-line"><span>Change</span><strong id="change-view">0.00</strong></div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary btn-lg" data-bs-dismiss="modal">Back</button>
