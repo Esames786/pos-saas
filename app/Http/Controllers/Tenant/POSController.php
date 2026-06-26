@@ -460,4 +460,35 @@ class POSController extends Controller
             'grand_total'                => $totals['grand_total'],
         ]);
     }
+
+    /**
+     * Recent COMPLETED sales for the branch — powers the POS "Completed Orders"
+     * modal (reprint receipt/KOT, view). Read-only; never mutates anything.
+     */
+    public function recentSales(Request $request)
+    {
+        $branchId = $request->integer('branch_id');
+
+        $sales = SalesOrder::with('customer')
+            ->where('status', '!=', 'held')
+            ->whereNotNull('sale_no')
+            ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
+            ->orderByDesc('id')
+            ->limit(50)
+            ->get();
+
+        return response()->json([
+            'sales' => $sales->map(fn ($s) => [
+                'id'             => (int) $s->id,
+                'sale_no'        => $s->sale_no,
+                'order_type'     => $s->order_type,
+                'status'         => $s->status,
+                'payment_status' => $s->payment_status,
+                'customer'       => $s->customer_name ?: $s->customer?->name ?: 'Walk-in',
+                'total'          => number_format((float) $s->grand_total, 2),
+                'time'           => optional($s->sale_date ?? $s->created_at)->format('d M, h:i A'),
+                'ago'            => optional($s->sale_date ?? $s->created_at)->diffForHumans(),
+            ])->values(),
+        ]);
+    }
 }

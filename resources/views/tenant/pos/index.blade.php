@@ -559,6 +559,20 @@
                 </div>
                 <div class="row g-2">
                     <div class="col">
+                        <button type="button" class="btn btn-outline-secondary btn-lg w-100" id="bill-preview-btn"
+                                title="Show / print the current bill (preview — not a tax receipt)">
+                            <i class="ti ti-file-text me-1"></i>Bill / Preview
+                        </button>
+                    </div>
+                    <div class="col">
+                        <button type="button" class="btn btn-outline-secondary btn-lg w-100" id="completed-orders-btn"
+                                title="Completed orders — reprint receipt / KOT">
+                            <i class="ti ti-receipt-2 me-1"></i>Completed
+                        </button>
+                    </div>
+                </div>
+                <div class="row g-2">
+                    <div class="col">
                         <button type="button" class="btn btn-outline-danger btn-lg w-100" id="cancel-order-btn">Cancel Order</button>
                     </div>
                     <div class="col" id="split-bill-wrap" style="display:none">
@@ -754,6 +768,25 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body p-0" id="held-sales-modal-body">
+                <div class="text-center py-5">
+                    <div class="spinner-border text-secondary" role="status"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{-- Completed Orders Modal — recent paid sales, reprint receipt/KOT/view --}}
+<div class="modal fade" id="completedOrdersModal" tabindex="-1" aria-labelledby="completedOrdersModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title h5" id="completedOrdersModalLabel">
+                    <i class="ti ti-receipt-2 me-2"></i>Completed Orders
+                </h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0" id="completed-orders-modal-body">
                 <div class="text-center py-5">
                     <div class="spinner-border text-secondary" role="status"></div>
                 </div>
@@ -3221,6 +3254,112 @@ document.addEventListener('DOMContentLoaded', function () {
             toast('error', 'Retry failed');
         });
     }
+
+    /* ── Completed Orders (recent paid sales) — reprint receipt/KOT / view ── */
+    const completedOrdersModalEl = document.getElementById('completedOrdersModal');
+    const completedOrdersBtn     = document.getElementById('completed-orders-btn');
+    if (completedOrdersModalEl) {
+        completedOrdersModalEl.addEventListener('show.bs.modal', loadRecentSales);
+    }
+    if (completedOrdersBtn && completedOrdersModalEl && window.bootstrap) {
+        completedOrdersBtn.addEventListener('click', function () {
+            bootstrap.Modal.getOrCreateInstance(completedOrdersModalEl).show();
+        });
+    }
+
+    function loadRecentSales() {
+        const body = document.getElementById('completed-orders-modal-body');
+        const branchId = (branchEl ? branchEl.value : '') || '';
+        body.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-secondary" role="status"></div></div>';
+        fetch('{{ url('/api/pos/recent-sales') }}?branch_id=' + encodeURIComponent(branchId), { headers: { 'Accept': 'application/json' } })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+            const sales = data.sales || [];
+            if (!sales.length) {
+                body.innerHTML = '<div class="alert alert-light border m-3 mb-0 text-center">No completed orders yet for this branch.</div>';
+                return;
+            }
+            const rows = sales.map(function (s) {
+                return '<tr>' +
+                    '<td><strong>' + s.sale_no + '</strong><div class="text-muted small">' + (s.time || s.ago || '') + '</div></td>' +
+                    '<td>' + (s.customer || 'Walk-in') + '<div class="text-muted small text-capitalize">' + String(s.order_type || '').replace(/_/g, ' ') + '</div></td>' +
+                    '<td class="text-end fw-semibold">' + s.total + '</td>' +
+                    '<td class="text-end text-nowrap">' +
+                        '<button type="button" class="btn btn-sm btn-outline-primary me-1" data-reprint-receipt="' + s.id + '"><i class="ti ti-printer me-1"></i>Receipt</button>' +
+                        '<button type="button" class="btn btn-sm btn-outline-warning me-1" data-reprint-kot="' + s.id + '"><i class="ti ti-tool-kitchen-2 me-1"></i>KOT</button>' +
+                        '<a href="{{ url('/sales-orders') }}/' + s.id + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="View"><i class="ti ti-eye"></i></a>' +
+                    '</td>' +
+                '</tr>';
+            }).join('');
+            body.innerHTML = '<div class="table-responsive"><table class="table table-hover mb-0 align-middle">' +
+                '<thead class="thead-light"><tr><th>Order</th><th>Customer</th><th class="text-end">Total</th><th class="text-end">Reprint</th></tr></thead>' +
+                '<tbody>' + rows + '</tbody></table></div>';
+            body.querySelectorAll('[data-reprint-receipt]').forEach(function (b) {
+                b.addEventListener('click', function () { reprintSale(Number(b.dataset.reprintReceipt), 'receipt', b); });
+            });
+            body.querySelectorAll('[data-reprint-kot]').forEach(function (b) {
+                b.addEventListener('click', function () { reprintSale(Number(b.dataset.reprintKot), 'kot', b); });
+            });
+        })
+        .catch(function () { body.innerHTML = '<div class="alert alert-danger m-3 mb-0">Failed to load completed orders.</div>'; });
+    }
+
+    // Reprint receipt/KOT for a chosen completed sale (reuses print endpoints + fallback).
+    function reprintSale(saleId, type, btn) {
+        const terminalId = (document.getElementById('terminal_id') || {}).value || '';
+        const orig = btn.innerHTML;
+        btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+        let url, q;
+        if (type === 'kot') {
+            url = '{{ url('/printing/jobs/kot') }}/' + saleId;
+            q   = '?reprint=1' + (terminalId ? '&terminal_id=' + encodeURIComponent(terminalId) : '');
+        } else {
+            url = '{{ url('/printing/jobs/receipt') }}/' + saleId;
+            q   = terminalId ? '?terminal_id=' + encodeURIComponent(terminalId) : '';
+        }
+        fetch(url + q, { method: 'POST', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' } })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+            btn.disabled = false; btn.innerHTML = orig;
+            openFallbackPreviews(data);
+            toast('success', (type === 'kot' ? 'KOT' : 'Receipt') + ' re-queued');
+        })
+        .catch(function () { btn.disabled = false; btn.innerHTML = orig; toast('error', 'Reprint failed'); });
+    }
+
+    /* ── Bill / Preview — client-side proforma of the current cart (no save) ── */
+    function billPreview() {
+        if (!cart.length) { toast('warning', 'Cart is empty'); return; }
+        const t = totals();
+        const branchName = (branchEl && branchEl.selectedOptions[0]) ? branchEl.selectedOptions[0].textContent.trim() : '';
+        const rowsHtml = cart.map(function (it) {
+            const qty = Number(it.quantity) || 0;
+            const price = Number(it.unit_price) || 0;
+            const lt = (it.line_total != null) ? Number(it.line_total) : qty * price;
+            return '<tr><td>' + (it.name || it.product_name || 'Item') + '</td><td style="text-align:right">' + qty + '</td><td style="text-align:right">' + money(price) + '</td><td style="text-align:right">' + money(lt) + '</td></tr>';
+        }).join('');
+        const html = '<html><head><title>Bill Preview</title><style>'
+            + 'body{font-family:monospace;max-width:320px;margin:0 auto;padding:8px;font-size:13px}'
+            + 'h3{text-align:center;margin:4px 0}table{width:100%;border-collapse:collapse}td,th{padding:2px 0}'
+            + '.tot{border-top:1px dashed #000;margin-top:6px;padding-top:6px}.muted{text-align:center;color:#666;font-size:11px}</style></head><body>'
+            + '<h3>' + branchName + '</h3>'
+            + '<div class="muted">BILL PREVIEW — NOT A TAX RECEIPT</div>'
+            + '<div class="muted">' + new Date().toLocaleString() + '</div><hr>'
+            + '<table><thead><tr><th style="text-align:left">Item</th><th style="text-align:right">Qty</th><th style="text-align:right">Price</th><th style="text-align:right">Amt</th></tr></thead><tbody>'
+            + rowsHtml + '</tbody></table>'
+            + '<div class="tot"><table>'
+            + '<tr><td>Subtotal</td><td style="text-align:right">' + money(t.subtotal) + '</td></tr>'
+            + ((t.discount > 0) ? '<tr><td>Discount</td><td style="text-align:right">' + money(t.discount) + '</td></tr>' : '')
+            + ((t.tax > 0) ? '<tr><td>Tax</td><td style="text-align:right">' + money(t.tax) + '</td></tr>' : '')
+            + '<tr><td><strong>Total</strong></td><td style="text-align:right"><strong>' + money(t.total) + '</strong></td></tr>'
+            + '</table></div></body></html>';
+        const w = window.open('', '_blank');
+        if (!w) { toast('warning', 'Allow pop-ups to preview the bill'); return; }
+        w.document.write(html); w.document.close(); w.focus();
+        setTimeout(function () { try { w.print(); } catch (e) {} }, 300);
+    }
+    const billPreviewBtn = document.getElementById('bill-preview-btn');
+    if (billPreviewBtn) { billPreviewBtn.addEventListener('click', billPreview); }
 
     document.getElementById('last-print-btn').addEventListener('click', openRecentPrints);
 
