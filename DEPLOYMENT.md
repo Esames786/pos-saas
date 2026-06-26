@@ -323,6 +323,176 @@ Run through this on the live host before announcing:
 6. `php artisan optimize:clear && php artisan config:cache route:cache view:cache`.
 7. `php artisan up` and re-run the §16 smoke test.
 
+## 18. Routine updates — deploy a new release (DO THIS AFTER EVERY PUSH)
+
+This is the **recurring** workflow for applying the latest pushed changes to the
+live site. It is **non-destructive** (no DB is dropped or wiped) and safe to
+re-run. It is *not* `system:reset` (see §18.6 — that one wipes everything).
+
+Prerequisites (already true on the live box, verify once):
+- `.env` has all four `TENANT_DB_*` lines, with `TENANT_DB_USERNAME=new_admin`
+  (`grep -c TENANT_DB .env` → `4`). If this is ever missing, tenants connect as
+  `root` and migrations fail with `Access denied for user 'root'@'localhost'`.
+- `php` resolves to PHP 8.2 (else use `/usr/bin/php8.2` in the commands below).
+
+### 18.1 The one-command deploy (recommended)
+
+A committed script does the whole sequence. On the server:
+
+```bash
+cd /var/www/html/pos-saas
+bash deploy.sh
+```
+
+`deploy.sh` self-pulls and runs, in order:
+1. `git pull --ff-only`
+2. `composer install --no-dev --optimize-autoloader` (no-op if unchanged)
+3. `php artisan migrate --force` — **master** DB migrations
+4. `php artisan system:routes-sync` — register any new route permissions in `route_catalogs`
+5. **Per-tenant loop** (resilient — a broken/`pending` tenant prints `SKIP:` and the
+   run continues): tenant migrations + `DefaultChartOfAccountsSeeder` + grant the
+   `Owner` role **every** `tenant.%` permission (read from `route_catalogs.route_name`,
+   so new permissions are picked up automatically — no per-sprint editing needed)
+6. `permission:cache-reset` + `optimize:clear` + `config:cache` + `route:cache` + `view:cache`
+7. `sudo systemctl reload php8.2-fpm` — **clears OPcache** (without this, old PHP
+   bytecode can keep serving and your change "doesn't take")
+
+Watch the output for `tenants ok=N skipped=M` and `DEPLOY COMPLETE`. Any tenant on
+a `SKIP:` line needs repair — see §18.4.
+
+> First time only: the script must exist on the box, so run `git pull` once
+> manually to fetch `deploy.sh`, then use `bash deploy.sh` from then on.
+
+### 18.2 Manual equivalent (if you can't run the script)
+
+```bash
+cd /var/www/html/pos-saas
+git pull --ff-only
+composer install --no-dev --optimize-autoloader --no-interaction
+php artisan migrate --force                 # master DB
+php artisan system:routes-sync
+# per-tenant migrations + CoA + Owner permission sync (see 18.3)
+php artisan permission:cache-reset
+php artisan optimize:clear
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
+sudo systemctl reload php8.2-fpm
+```
+
+### 18.3 Per-tenant migrations + permission sync (the important loop)
+
+Tenant migrations live in `database/migrations/tenant` and **must run with a tenant
+activated** (a raw `php artisan migrate --database=tenant` fails with "No database
+selected"). This loop migrates every tenant, keeps the Chart of Accounts in sync,
+and grants the `Owner` role all current tenant route permissions. It is what
+`deploy.sh` runs; use it standalone if needed:
+
+```bash
+php artisan tinker --execute='
+$names = \Illuminate\Support\Facades\DB::connection("master")->table("route_catalogs")->where("route_name","like","tenant.%")->pluck("route_name")->all();
+foreach (\App\Models\Master\Tenant::all() as $t) {
+  try {
+    app(\App\Services\Tenancy\TenancyManager::class)->activate($t);
+    \Illuminate\Support\Facades\Artisan::call("migrate", ["--database"=>"tenant","--path"=>"database/migrations/tenant","--force"=>true]);
+    (new \Database\Seeders\Tenant\DefaultChartOfAccountsSeeder())->run();
+    foreach ($names as $n) { \Spatie\Permission\Models\Permission::findOrCreate($n, "tenant"); }
+    $owner = \Spatie\Permission\Models\Role::where("name","Owner")->where("guard_name","tenant")->first();
+    if ($owner && $names) { $owner->givePermissionTo($names); }
+    echo "  OK:   {$t->tenant_code}\n";
+  } catch (\Throwable $e) {
+    echo "  SKIP: {$t->tenant_code} -> ".substr($e->getMessage(),0,90)."\n";
+  } finally {
+    app(\App\Services\Tenancy\TenancyManager::class)->deactivate();
+    \Illuminate\Support\Facades\DB::setDefaultConnection("master");
+  }
+}'
+php artisan permission:cache-reset
+```
+
+### 18.4 Repairing a broken / `pending` demo tenant
+
+If §18.1/§18.3 prints `SKIP:` for a tenant, or you see
+`Access denied for user 'root'@'localhost' (Connection: tenant)`, that tenant's DB
+is half-built (e.g. its per-tenant stored DB user is `root`, or its status is
+`pending` from an aborted reset). **For a demo tenant, re-provision it fresh.**
+
+> ⚠️ Argument types differ between commands:
+> - `demo:reset` takes the **tenant_code** — e.g. `retaildemo`
+> - `demo:provision` and `demo:seed` take the **industry** — e.g. `retail`
+>
+> Industry → tenant_code: retail→retaildemo, inventory→inventorydemo,
+> restaurant→restaurantdemo, restaurant_pro→restaurantprodemo,
+> enterprise→enterprisedemo, finance→financedemo.
+
+```bash
+php artisan config:clear                       # ensure live .env (new_admin) is used
+php artisan demo:reset retaildemo --yes        # tenant_code; works only if status=active
+# If it refuses ("status is [pending]" / "not active") OR the DB user is root:
+php artisan demo:provision retail --fresh      # industry; drops+recreates clean as new_admin
+php artisan demo:seed retail                   # industry; reloads sample data
+```
+
+Re-provisioning runs all tenant migrations + the CoA seeder + grants permissions
+via `TenantProvisioner`, so the repaired tenant ends up fully up to date.
+
+> The nightly `demo:reset-all` **stops on the first failing tenant**, so one broken
+> demo (e.g. `retaildemo`, which is first in `reset_tenant_codes`) blocks the rest.
+> If the scheduled reset is failing, repair the first demo as above.
+
+### 18.5 Verify the deploy
+
+```bash
+# (a) every tenant DB connects (no root/access-denied, no pending leftovers)
+php artisan tinker --execute='
+foreach (\App\Models\Master\Tenant::all() as $t) {
+  try { app(\App\Services\Tenancy\TenancyManager::class)->activate($t);
+    \Illuminate\Support\Facades\DB::connection("tenant")->select("select 1");
+    echo "CONN OK:   {$t->tenant_code} (".$t->status.")\n";
+  } catch (\Throwable $e) { echo "CONN FAIL: {$t->tenant_code} -> ".substr($e->getMessage(),0,70)."\n"; }
+  finally { app(\App\Services\Tenancy\TenancyManager::class)->deactivate(); \Illuminate\Support\Facades\DB::setDefaultConnection("master"); }
+}'
+
+# (b) finance integrity on a representative tenant (must be tb_diff=0 / pl_vs_bs=OK)
+php artisan tinker --execute='
+$t = \App\Models\Master\Tenant::where("tenant_code","financedemo")->first();
+app(\App\Services\Tenancy\TenancyManager::class)->activate($t);
+$tb = app(\App\Services\Finance\FinancialExportService::class)->trialBalance(now()->toDateString(), null);
+echo "tb_diff=".$tb["difference"]."\n";
+$pl = app(\App\Services\Finance\ProfitLossService::class)->statement(["date_from"=>"2000-01-01","date_to"=>now()->toDateString()]);
+$bs = app(\App\Services\Finance\BalanceSheetService::class)->statement(["as_of_date"=>now()->toDateString()]);
+echo "pl_vs_bs=".(abs($pl["net_profit"]-$bs["current_earnings"])<=0.01 ? "OK" : "MISMATCH")."\n";
+'
+```
+
+Then in the browser: load a tenant dashboard + the screen the release changed, and
+confirm Finance → Trial Balance still shows **difference 0**.
+
+### 18.6 When to use `system:reset` instead (DESTRUCTIVE — rarely)
+
+`php artisan system:reset --skip-backup --force` **drops every `pos_tenant_*`
+database** and rebuilds master + all demos from seed. Use it ONLY for a deliberate
+full demo rebuild when there is no real tenant/signup data to lose. It is **not**
+the normal deploy path — for shipping code changes always use §18.1.
+
+```bash
+php artisan config:clear         # TENANT_DB_USERNAME must be live, not cached
+php artisan system:reset --backup   # safest: backs up first, asks to confirm
+```
+
+### 18.7 Common gotchas
+
+- **Change didn't take effect** → OPcache. Always `sudo systemctl reload php8.2-fpm`
+  after a deploy (it's the last step of `deploy.sh`).
+- **`Access denied for user 'root'@'localhost'`** on a tenant → `TENANT_DB_USERNAME`
+  not in live config, or that tenant was provisioned as root. Fix .env + `config:clear`,
+  then repair the tenant (§18.4).
+- **403 / missing menu after adding a feature** → permissions not granted or Spatie
+  cache stale. The §18.3 loop grants them; always finish with `permission:cache-reset`.
+- **New route 404s** → route cache stale. `php artisan route:cache` (done by the script).
+- **Never** edit `.env` with `echo "... " >> .env` blindly — check first
+  (`grep TENANT_DB .env`); a duplicate or wrong line breaks tenant DB auth.
+
 ## 18. Common issues
 
 - **Tenant subdomain 404 / wrong site** → `TENANT_BASE_DOMAIN` mismatch or no
