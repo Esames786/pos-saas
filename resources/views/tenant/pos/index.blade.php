@@ -6,8 +6,9 @@
 <style>
     .pos-shell {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) 430px;
+        grid-template-columns: minmax(0, 1fr) 500px;
         gap: 1rem;
+        align-items: start;
     }
 
     .pos-card {
@@ -21,14 +22,14 @@
         display: flex;
         gap: .65rem;
         overflow-x: auto;
-        padding-bottom: .25rem;
+        padding: .15rem 0;
     }
 
     .mode-tab {
         border: 1px solid #e9ecef;
         background: #fff;
         border-radius: 999px;
-        padding: .75rem 1.1rem;
+        padding: .6rem 1rem;
         font-weight: 800;
         white-space: nowrap;
         cursor: pointer;
@@ -67,7 +68,7 @@
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
         gap: .75rem;
-        max-height: 360px;
+        max-height: 330px;
         overflow-y: auto;
     }
 
@@ -101,9 +102,9 @@
 
     .product-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(165px, 1fr));
-        gap: .85rem;
-        max-height: calc(100vh - 430px);
+        grid-template-columns: repeat(auto-fill, minmax(145px, 1fr));
+        gap: .7rem;
+        max-height: calc(100vh - 340px);
         overflow-y: auto;
         padding-right: .25rem;
     }
@@ -127,7 +128,7 @@
         border-radius: 20px;
         background: linear-gradient(180deg, #ffffff, #fbfcfd);
         padding: .85rem;
-        min-height: 155px;
+        min-height: 138px;
         cursor: pointer;
         transition: .15s ease;
         text-align: left;
@@ -163,13 +164,51 @@
     .stock-low  { background: #fff3cd; color: #7a5200; }
     .stock-out  { background: #fee2e2; color: #991b1b; }
 
-    .cart-panel { position: sticky; top: 88px; }
+    .cart-panel {
+        position: sticky;
+        top: 88px;
+        height: calc(100vh - 104px);
+        display: flex;
+        flex-direction: column;
+        gap: .75rem;
+    }
 
-    .cart-items { max-height: calc(100vh - 500px); overflow-y: auto; }
+    .cart-section {
+        display: flex;
+        flex: 1 1 380px;
+        min-height: 360px;
+        flex-direction: column;
+        margin-bottom: 0 !important;
+    }
+
+    .cart-items { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: .25rem; }
+
+    .payment-section,
+    .pos-actions { flex: 0 0 auto; margin-bottom: 0 !important; }
+
+    /* Charge bar — replaces the inline payment panel; opens the payment modal */
+    .pos-charge-bar { flex: 0 0 auto; display: flex; align-items: center; gap: .9rem; padding: .85rem 1.1rem; margin-bottom: 0 !important; }
+    .pos-charge-bar .pos-charge-amt { font-size: 1.6rem; font-weight: 800; line-height: 1.1; }
+
+    details.payment-section { overflow: hidden; }
+
+    details.payment-section summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        cursor: pointer;
+        list-style: none;
+        padding: .8rem 1rem;
+        font-weight: 800;
+    }
+
+    details.payment-section summary::-webkit-details-marker { display: none; }
+    details.payment-section summary::after { content: '+'; font-size: 1.25rem; color: #667085; }
+    details.payment-section[open] summary::after { content: '-'; }
 
     .cart-row {
         border-bottom: 1px solid #eef0f3;
-        padding: .75rem 0;
+        padding: .55rem 0;
     }
 
     .qty-btn {
@@ -180,14 +219,6 @@
         background: #fff;
         font-weight: 900;
         cursor: pointer;
-    }
-
-    .shortcut-chip {
-        border-radius: 999px;
-        background: #f8fafc;
-        padding: .35rem .65rem;
-        font-size: .75rem;
-        font-weight: 800;
     }
 
     .pos-total-line {
@@ -215,22 +246,65 @@
 
     @media (max-width: 1199px) {
         .pos-shell      { grid-template-columns: 1fr; }
-        .cart-panel     { position: static; }
+        .cart-panel     { position: static; height: auto; }
+        .cart-section   { min-height: 280px; }
+    }
+
+    @media (min-width: 1200px) {
+        #dine-in-board.is-collapsed { display: none !important; }
+    }
+
+    .waiter-roster {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(145px, 1fr));
+        gap: .5rem;
+    }
+
+    .waiter-choice {
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        background: #fff;
+        color: #172033;
+        display: flex;
+        align-items: center;
+        gap: .55rem;
+        padding: .55rem;
+        text-align: left;
+    }
+
+    .waiter-choice:hover,
+    .waiter-choice.is-selected { border-color: #15244d; background: #f3f6ff; }
+
+    .waiter-initials {
+        width: 32px;
+        height: 32px;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        background: #eaf0fb;
+        color: #15244d;
+        font-size: .75rem;
+        font-weight: 800;
+        flex: 0 0 auto;
+    }
+
+    .session-context { min-width: 0; }
+    .session-context strong { font-size: 1rem; }
+
+    #pos-sidebar-toggle {
+        width: 38px;
+        height: 38px;
+        display: inline-grid;
+        place-items: center;
     }
 </style>
 
-<div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-3">
-    <div>
-        <h1 class="mb-1">Restaurant POS</h1>
-        <p class="fw-medium mb-0">Dine-in, takeaway, quick sale, delivery, table orders, and fast checkout.</p>
-    </div>
-    <div class="d-flex flex-wrap gap-2">
-        <span class="shortcut-chip">Ctrl+F Search</span>
-        <span class="shortcut-chip">Ctrl+H Hold</span>
-        <span class="shortcut-chip">Ctrl+L Orders</span>
-        <span class="shortcut-chip">Ctrl+P Payment</span>
-        <span class="shortcut-chip">Ctrl+Enter Pay</span>
-        <span class="shortcut-chip">Ctrl+M Calc</span>
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+    <div class="d-flex align-items-center gap-2">
+        <button type="button" class="btn btn-outline-secondary" id="pos-sidebar-toggle" title="Show navigation" aria-label="Show navigation">
+            <i class="ti ti-layout-sidebar-left-expand"></i>
+        </button>
+        <h1 class="h3 mb-0">Restaurant POS</h1>
     </div>
 </div>
 
@@ -244,16 +318,19 @@
 
 {{-- Selected table-session bar — JS-managed: always in the DOM, shown when a dine-in
      session is active. Filled by applyTableSession() so switching tables needs no reload. --}}
-<div id="pos-session-bar" class="pos-card p-3 mb-3 d-flex flex-wrap align-items-center gap-2"
+<div id="pos-session-bar" class="pos-card p-3 mb-3 d-flex flex-wrap align-items-center gap-2 {{ $tableSession ? '' : 'd-none' }}"
      data-session-base="{{ url('/restaurant/table-sessions') }}"
      style="{{ $tableSession ? '' : 'display:none;' }}">
-    <div>
+    <div class="session-context">
         <strong>Table <span id="pos-session-table-no">{{ $tableSession?->table?->table_no }}</span></strong>
         <span class="text-muted ms-1" id="pos-session-no">{{ $tableSession?->session_no }}</span>
         &middot; <span id="pos-session-waiter">{{ $tableSession?->waiter?->name ?? 'No waiter' }}</span>
         &middot; <span id="pos-session-guests">{{ $tableSession?->guest_count }}</span> guests
     </div>
     <div class="d-flex gap-2 ms-auto flex-wrap">
+        <button type="button" id="change-table-btn" class="btn btn-sm btn-outline-secondary" title="Change table">
+            <i class="ti ti-layout-grid"></i>
+        </button>
         @can('tenant.restaurant.table-sessions.bill-preview')
             <a href="{{ $tableSession ? url('/restaurant/table-sessions/' . $tableSession->id . '/bill-preview') : '#' }}"
                id="pos-session-bill-preview" target="_blank" rel="noopener" class="btn btn-sm btn-dark">Bill Preview</a>
@@ -276,7 +353,7 @@
 @endif
 
 {{-- Mode tabs --}}
-<div class="pos-card p-3 mb-3">
+<div class="mb-3">
     <div class="mode-tabs" id="mode-tabs-wrapper" role="tablist" aria-label="POS Modes">
         <button type="button" class="mode-tab {{ $activeMode === 'dine_in'    ? 'active' : '' }}" data-mode-tab="dine_in">Dine In</button>
         <button type="button" class="mode-tab {{ $activeMode === 'takeaway'   ? 'active' : '' }}" data-mode-tab="takeaway">Takeaway</button>
@@ -286,7 +363,7 @@
 </div>
 
 {{-- Live table board --}}
-<div id="dine-in-board" class="pos-card p-3 mb-3" style="{{ $activeMode === 'dine_in' ? '' : 'display:none;' }}">
+<div id="dine-in-board" class="pos-card p-3 mb-3 {{ $tableSession ? 'is-collapsed' : '' }}" style="{{ $activeMode === 'dine_in' && !$tableSession ? '' : 'display:none;' }}">
     <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
         <div>
             <h2 class="h5 mb-1">Live Table Board</h2>
@@ -404,7 +481,7 @@
 
         {{-- RIGHT: cart + payment --}}
         <aside class="cart-panel">
-            <section class="pos-card p-3 mb-3" aria-labelledby="cart_heading">
+            <section class="pos-card p-3 cart-section" aria-labelledby="cart_heading">
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <h2 id="cart_heading" class="h5 mb-0">{{ $tableSession ? 'Table Cart' : 'Cart' }}</h2>
                     <div class="d-flex gap-2">
@@ -424,59 +501,18 @@
                 </div>
             </section>
 
-            <section class="pos-card p-3 mb-3" aria-labelledby="payment_heading">
-                <h2 id="payment_heading" class="h5 mb-3">Payment</h2>
-                <div class="mb-3">
-                    <label for="payment_method_id" class="form-label required">Payment Method</label>
-                    <select id="payment_method_id" class="form-select" required>
-                        @foreach($paymentMethods as $method)
-                            <option value="{{ $method->id }}" data-type="{{ $method->method_type }}" @selected($method->method_type === 'cash')>{{ $method->name }}</option>
-                        @endforeach
-                    </select>
+            {{-- Charge bar: always-visible total + opens the Payment modal (payment moved to a modal for space) --}}
+            <div class="pos-card pos-charge-bar">
+                <div class="flex-shrink-0">
+                    <div class="text-muted small">Total</div>
+                    <div class="pos-charge-amt" id="pos-charge-total">0.00</div>
                 </div>
-                <div class="mb-3">
-                    <label for="tendered_amount" class="form-label">Tendered Amount</label>
-                    <input id="tendered_amount" type="number" step="0.01" min="0" class="form-control form-control-lg">
-                    <div class="d-flex gap-1 flex-wrap mt-1" id="quick-cash-buttons"></div>
-                </div>
-                <div class="mb-3">
-                    <label for="transaction_ref" class="form-label">Reference / Card / Bank</label>
-                    <input id="transaction_ref" class="form-control" placeholder="Optional reference">
-                </div>
-                {{-- Promo Code Input --}}
-                <div class="mb-2 d-flex gap-1" id="promo-row">
-                    <input type="text" id="promo-code-input" class="form-control form-control-sm" placeholder="Promo code" style="text-transform:uppercase">
-                    <button type="button" class="btn btn-sm btn-outline-primary px-2" id="apply-promo-btn">Apply</button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary px-2 d-none" id="remove-promo-btn">✕</button>
-                </div>
-                <div id="promo-feedback" class="small mb-2"></div>
+                <button type="button" class="btn btn-primary btn-lg flex-grow-1" id="review-pay-btn">
+                    <i class="ti ti-cash-register me-1"></i>{{ $tableSession ? 'Close & Pay Bill' : 'Review &amp; Pay' }}
+                </button>
+            </div>
 
-                {{-- Tip Buttons --}}
-                <div class="mb-2">
-                    <div class="d-flex gap-1 flex-wrap">
-                        <span class="small text-muted me-1 align-self-center">Tip:</span>
-                        <button type="button" class="btn btn-xs btn-outline-secondary tip-btn" data-tip-type="percent" data-tip-value="0">No Tip</button>
-                        <button type="button" class="btn btn-xs btn-outline-secondary tip-btn" data-tip-type="percent" data-tip-value="5">5%</button>
-                        <button type="button" class="btn btn-xs btn-outline-secondary tip-btn" data-tip-type="percent" data-tip-value="10">10%</button>
-                        <button type="button" class="btn btn-xs btn-outline-secondary tip-btn" data-tip-type="custom">Custom</button>
-                    </div>
-                </div>
-
-                <div class="pos-total-line"><span>Subtotal</span><strong id="subtotal-view">0.00</strong></div>
-                <div class="pos-total-line d-none" id="promo-discount-row"><span id="promo-discount-label">Promo</span><strong id="promo-discount-view" class="text-success">−0.00</strong></div>
-                <div class="pos-total-line"><span>Discount</span><strong id="discount-view">0.00</strong></div>
-                <div class="pos-total-line"><span>Tax</span><strong id="tax-view">0.00</strong></div>
-                <div class="pos-total-line d-none" id="service-charge-row"><span>Service Charge</span><strong id="service-charge-view">0.00</strong></div>
-                <div class="pos-total-line d-none" id="tip-row"><span>Tip</span><strong id="tip-view">0.00</strong></div>
-                <hr>
-                <div class="pos-total-line">
-                    <span class="pos-grand-total">Total</span>
-                    <strong class="pos-grand-total" id="grand-total-view">0.00</strong>
-                </div>
-                <div class="pos-total-line"><span>Change</span><strong id="change-view">0.00</strong></div>
-            </section>
-
-            <section class="pos-card p-3 mb-3" id="calculator-panel" style="display:none;" aria-labelledby="calculator_heading">
+            <section class="pos-card p-3 payment-section" id="calculator-panel" style="display:none;" aria-labelledby="calculator_heading">
                 <h2 id="calculator_heading" class="h6 mb-2">Touch Keypad / Calculator</h2>
                 <input id="calc-display" class="form-control mb-2" readonly>
                 <div class="keypad">
@@ -507,7 +543,7 @@
                 </div>
             </div>
 
-            <div class="d-grid gap-2">
+            <div class="d-grid gap-2 pos-actions">
                 <div class="row g-2">
                     <div class="col">
                         <button type="button" class="btn btn-warning btn-lg w-100" id="hold-sale-btn">
@@ -521,9 +557,6 @@
                         </button>
                     </div>
                 </div>
-                <button type="button" class="btn btn-primary btn-lg" id="complete-sale-btn">
-                    {{ $tableSession ? 'Close & Pay Table Bill' : 'Complete Sale' }}
-                </button>
                 <div class="row g-2">
                     <div class="col">
                         <button type="button" class="btn btn-outline-danger btn-lg w-100" id="cancel-order-btn">Cancel Order</button>
@@ -533,7 +566,7 @@
                     </div>
                     <div class="col-auto">
                         <button type="button" class="btn btn-outline-secondary btn-lg px-3" id="last-print-btn"
-                                title="Reprint Last KOT">
+                                title="Print history">
                             <i class="ti ti-printer"></i>
                         </button>
                     </div>
@@ -548,6 +581,79 @@
                 @endif
             </div>
         </aside>
+    </div>
+
+    {{-- Payment modal (opened by "Review & Pay"). Kept inside #pos-sale-form; all IDs
+         preserved so the existing POS JS reads values by id regardless of location. --}}
+    <div class="modal fade" id="paymentModal" tabindex="-1" aria-labelledby="paymentModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 class="modal-title h5" id="paymentModalLabel"><span id="payment_heading">Payment</span></h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label for="payment_method_id" class="form-label required">Payment Method</label>
+                            <select id="payment_method_id" class="form-select" required>
+                                @foreach($paymentMethods as $method)
+                                    <option value="{{ $method->id }}" data-type="{{ $method->method_type }}" @selected($method->method_type === 'cash')>{{ $method->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="tendered_amount" class="form-label">Tendered Amount</label>
+                            <input id="tendered_amount" type="number" step="0.01" min="0" class="form-control form-control-lg">
+                            <div class="d-flex gap-1 flex-wrap mt-1" id="quick-cash-buttons"></div>
+                        </div>
+                        <div class="col-12">
+                            <label for="transaction_ref" class="form-label">Reference / Card / Bank</label>
+                            <input id="transaction_ref" class="form-control" placeholder="Optional reference">
+                        </div>
+                        <div class="col-12">
+                            {{-- Promo Code Input --}}
+                            <div class="d-flex gap-1" id="promo-row">
+                                <input type="text" id="promo-code-input" class="form-control form-control-sm" placeholder="Promo code" style="text-transform:uppercase">
+                                <button type="button" class="btn btn-sm btn-outline-primary px-2" id="apply-promo-btn">Apply</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary px-2 d-none" id="remove-promo-btn">✕</button>
+                            </div>
+                            <div id="promo-feedback" class="small mt-1"></div>
+                        </div>
+                        <div class="col-12">
+                            {{-- Tip Buttons --}}
+                            <div class="d-flex gap-1 flex-wrap">
+                                <span class="small text-muted me-1 align-self-center">Tip:</span>
+                                <button type="button" class="btn btn-xs btn-outline-secondary tip-btn" data-tip-type="percent" data-tip-value="0">No Tip</button>
+                                <button type="button" class="btn btn-xs btn-outline-secondary tip-btn" data-tip-type="percent" data-tip-value="5">5%</button>
+                                <button type="button" class="btn btn-xs btn-outline-secondary tip-btn" data-tip-type="percent" data-tip-value="10">10%</button>
+                                <button type="button" class="btn btn-xs btn-outline-secondary tip-btn" data-tip-type="custom">Custom</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr>
+                    <div class="pos-total-line"><span>Subtotal</span><strong id="subtotal-view">0.00</strong></div>
+                    <div class="pos-total-line d-none" id="promo-discount-row"><span id="promo-discount-label">Promo</span><strong id="promo-discount-view" class="text-success">−0.00</strong></div>
+                    <div class="pos-total-line"><span>Discount</span><strong id="discount-view">0.00</strong></div>
+                    <div class="pos-total-line"><span>Tax</span><strong id="tax-view">0.00</strong></div>
+                    <div class="pos-total-line d-none" id="service-charge-row"><span>Service Charge</span><strong id="service-charge-view">0.00</strong></div>
+                    <div class="pos-total-line d-none" id="tip-row"><span>Tip</span><strong id="tip-view">0.00</strong></div>
+                    <hr>
+                    <div class="pos-total-line">
+                        <span class="pos-grand-total">Total</span>
+                        <strong class="pos-grand-total" id="grand-total-view">0.00</strong>
+                    </div>
+                    <div class="pos-total-line"><span>Change</span><strong id="change-view">0.00</strong></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary btn-lg" data-bs-dismiss="modal">Back</button>
+                    <button type="button" class="btn btn-primary btn-lg flex-grow-1" id="complete-sale-btn">
+                        {{ $tableSession ? 'Close & Pay Table Bill' : 'Complete Sale' }}
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 </form>
 
@@ -568,12 +674,25 @@
                 </div>
                 <div class="col-12">
                     <label for="restaurant_waiter_id" class="form-label">Waiter</label>
-                    <select id="restaurant_waiter_id" name="restaurant_waiter_id" class="form-select">
+                    <select id="restaurant_waiter_id" name="restaurant_waiter_id" class="form-select visually-hidden">
                         <option value="">No Waiter</option>
                         @foreach($waiters as $waiter)
                             <option value="{{ $waiter->id }}">{{ $waiter->name }}</option>
                         @endforeach
                     </select>
+                    @if($waiters->isNotEmpty())
+                        <div class="waiter-roster" id="waiter-roster" role="listbox" aria-label="Waiter selection">
+                            @foreach($waiters as $waiter)
+                                @php $initials = collect(explode(' ', $waiter->name))->filter()->map(fn ($part) => strtoupper(substr($part, 0, 1)))->take(2)->implode(''); @endphp
+                                <button type="button" class="waiter-choice" data-waiter-choice="{{ $waiter->id }}" role="option" aria-selected="false">
+                                    <span class="waiter-initials">{{ $initials }}</span>
+                                    <span class="fw-semibold small">{{ $waiter->name }}</span>
+                                </button>
+                            @endforeach
+                        </div>
+                    @else
+                        <div class="alert alert-light border mb-0 small">No active waiters are assigned to this branch.</div>
+                    @endif
                 </div>
                 <div class="col-12">
                     <label for="guest_count" class="form-label required">Guests</label>
@@ -823,6 +942,8 @@
 @endphp
 
 <script>
+document.body.classList.remove('mini-sidebar', 'expand-menu');
+document.body.classList.add('nosidebar');
 document.addEventListener('DOMContentLoaded', function () {
     const products   = @json($productsPayload);
     const combos     = @json($combosPayload);
@@ -895,9 +1016,15 @@ document.addEventListener('DOMContentLoaded', function () {
                 rb.action = base + '/' + session.id + '/bill-requested';
                 rb.style.display = (!session.status || session.status === 'open') ? '' : 'none';
             }
+            bar.classList.remove('d-none');
             bar.style.display = '';
         }
         forceDineInMode();
+        var board = document.getElementById('dine-in-board');
+        if (board) {
+            board.classList.add('is-collapsed');
+            board.style.display = 'none';
+        }
         setHidden('restaurant_table_session_id', session.id);
         setHidden('restaurant_table_id', session.table_id || '');
         setCompleteSaleLabel(true);
@@ -968,6 +1095,18 @@ document.addEventListener('DOMContentLoaded', function () {
     const calcDisplay      = document.getElementById('calc-display');
     const orderTypeEl      = document.getElementById('order_type');
     const terminalEl       = document.getElementById('terminal_id');
+
+    const posSidebarToggle = document.getElementById('pos-sidebar-toggle');
+    if (posSidebarToggle) {
+        posSidebarToggle.addEventListener('click', function () {
+            const hidden = document.body.classList.toggle('nosidebar');
+            posSidebarToggle.title = hidden ? 'Show navigation' : 'Hide navigation';
+            posSidebarToggle.setAttribute('aria-label', posSidebarToggle.title);
+            posSidebarToggle.querySelector('i').className = hidden
+                ? 'ti ti-layout-sidebar-left-expand'
+                : 'ti ti-layout-sidebar-left-collapse';
+        });
+    }
 
     let selectedParentCategory = '';
     let selectedChildCategory  = '';
@@ -1584,6 +1723,10 @@ document.addEventListener('DOMContentLoaded', function () {
             cartItemsEl.appendChild(row);
         });
 
+        requestAnimationFrame(function () {
+            cartItemsEl.scrollTo({ top: cartItemsEl.scrollHeight, behavior: 'smooth' });
+        });
+
         cartItemsEl.querySelectorAll('[data-qty-input]').forEach(function (input) {
             input.addEventListener('change', function () {
                 var i    = Number(input.dataset.qtyInput);
@@ -1752,6 +1895,8 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('discount-view').textContent    = money(t.discount);
         document.getElementById('tax-view').textContent         = money(t.tax);
         document.getElementById('grand-total-view').textContent = money(t.total);
+        var chargeTotalEl = document.getElementById('pos-charge-total');
+        if (chargeTotalEl) { chargeTotalEl.textContent = money(t.total); }
 
         // Promo discount row
         const promoRow = document.getElementById('promo-discount-row');
@@ -2269,6 +2414,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 clearCart();
                 toast('success', 'Sale complete! ' + saleNo);
+                var pmEl = document.getElementById('paymentModal');
+                if (pmEl && window.bootstrap) { var pmInst = bootstrap.Modal.getInstance(pmEl); if (pmInst) { pmInst.hide(); } }
             })
             .catch(function () {
                 submitBtn.disabled    = false;
@@ -3001,6 +3148,25 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     document.getElementById('complete-sale-btn').addEventListener('click', submitPaidSale);
+
+    // "Review & Pay" opens the payment modal (guarded on empty cart); focus tendered when shown.
+    var paymentModalEl = document.getElementById('paymentModal');
+    var reviewPayBtn   = document.getElementById('review-pay-btn');
+    if (reviewPayBtn && paymentModalEl && window.bootstrap) {
+        reviewPayBtn.addEventListener('click', function () {
+            if (!cart.length) {
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({ icon: 'info', title: 'Cart is empty', text: 'Add items before taking payment.', timer: 1600, showConfirmButton: false });
+                }
+                return;
+            }
+            bootstrap.Modal.getOrCreateInstance(paymentModalEl).show();
+        });
+        paymentModalEl.addEventListener('shown.bs.modal', function () {
+            (tenderedEl || paymentMethodEl).focus();
+            if (tenderedEl && tenderedEl.select) { tenderedEl.select(); }
+        });
+    }
     document.getElementById('hold-sale-btn').addEventListener('click', submitHeldSale);
     document.getElementById('clear-cart-btn').addEventListener('click', function () {
         if (typeof Swal !== 'undefined') {
@@ -3096,7 +3262,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
         // Switching mode de-selects any active table → hide its bar + reset the pay button.
         var sessionBar = document.getElementById('pos-session-bar');
-        if (sessionBar) sessionBar.style.display = 'none';
+        if (sessionBar) {
+            sessionBar.style.display = 'none';
+            sessionBar.classList.add('d-none');
+        }
         setCompleteSaleLabel(false);
 
         // Hidden order_type drives checkout + the totals/service-charge quote.
@@ -3108,7 +3277,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
         // Table board is only relevant for dine-in.
         var board = document.getElementById('dine-in-board');
-        if (board) board.style.display = isDineIn ? '' : 'none';
+        if (board) {
+            board.classList.toggle('is-collapsed', !isDineIn);
+            board.style.display = isDineIn ? '' : 'none';
+        }
 
         // Recompute service charge / totals for the new order type.
         if (typeof refreshServerTotals === 'function') { refreshServerTotals(); }
@@ -3188,7 +3360,36 @@ document.addEventListener('DOMContentLoaded', function () {
         if (errEl) errEl.remove();
         const openBtn = document.getElementById('open-table-submit');
         if (openBtn) { openBtn.disabled = false; openBtn.textContent = 'Open Table'; }
+        selectWaiterChoice('');
     });
+
+    function selectWaiterChoice(waiterId) {
+        var value = String(waiterId || '');
+        var waiterSelect = document.getElementById('restaurant_waiter_id');
+        if (waiterSelect) waiterSelect.value = value;
+        document.querySelectorAll('[data-waiter-choice]').forEach(function (choice) {
+            var selected = String(choice.dataset.waiterChoice) === value;
+            choice.classList.toggle('is-selected', selected);
+            choice.setAttribute('aria-selected', selected ? 'true' : 'false');
+        });
+    }
+
+    document.querySelectorAll('[data-waiter-choice]').forEach(function (choice) {
+        choice.addEventListener('click', function () {
+            selectWaiterChoice(choice.dataset.waiterChoice);
+        });
+    });
+
+    var changeTableBtn = document.getElementById('change-table-btn');
+    if (changeTableBtn) {
+        changeTableBtn.addEventListener('click', function () {
+            var board = document.getElementById('dine-in-board');
+            if (!board) return;
+            board.classList.remove('is-collapsed');
+            board.style.display = '';
+            board.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+    }
 
     /* open table modal — AJAX submit (stay on POS, land on session) */
 
