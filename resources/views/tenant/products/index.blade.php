@@ -86,6 +86,7 @@
                     <th scope="col">Name</th>
                     <th scope="col">Category</th>
                     <th scope="col">Type</th>
+                    <th scope="col">Role / Visibility</th>
                     <th scope="col">Sell Price</th>
                     <th scope="col">Status</th>
                     <th scope="col" class="text-end">Action</th>
@@ -100,6 +101,9 @@
                     </td>
                     <td>{{ $product->category?->name ?? '—' }}</td>
                     <td><span class="badge bg-light text-dark">{{ ucfirst($product->product_type) }}</span></td>
+                    <td class="text-nowrap">
+                        <span class="d-inline-flex flex-wrap gap-1">@include('tenant.products.partials.product-role-badges')</span>
+                    </td>
                     <td>{{ number_format($product->default_selling_price, 2) }}</td>
                     <td>
                         @if($product->status === 'active')
@@ -127,7 +131,7 @@
                 </tr>
             @empty
                 <tr>
-                    <td colspan="7" class="text-center text-muted py-4">No products found.</td>
+                    <td colspan="8" class="text-center text-muted py-4">No products found.</td>
                 </tr>
             @endforelse
             </tbody>

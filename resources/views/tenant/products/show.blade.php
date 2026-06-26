@@ -7,6 +7,7 @@
     <div>
         <h1 class="mb-1">{{ $product->name }}</h1>
         <p class="fw-medium text-muted mb-0"><code>{{ $product->sku }}</code> &middot; {{ ucfirst($product->product_type) }}</p>
+        <div class="d-flex flex-wrap gap-1 mt-2">@include('tenant.products.partials.product-role-badges')</div>
     </div>
     <div class="d-flex gap-2">
         @can('tenant.products.edit')

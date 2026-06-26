@@ -38,6 +38,33 @@ class ProductLookupController extends Controller
             $query->where('is_purchasable', true);
         }
 
+        // PRODUCT-BOUNDARY-2: optional role context so each screen only offers the right
+        // products. Unknown / empty context keeps the original (safe) behaviour.
+        switch ((string) $request->input('context', '')) {
+            case 'pos':
+                $query->where('is_sellable', true)->where('is_pos_visible', true);
+                break;
+            case 'sales':
+                $query->where('is_sellable', true);
+                break;
+            case 'purchase':
+                $query->where('is_purchasable', true);
+                break;
+            case 'bom_component':
+            case 'consumption':
+                $query->where('can_be_bom_component', true);
+                break;
+            case 'bom_output':
+            case 'production_order':
+            case 'finished_goods':
+                $query->where('can_be_bom_output', true);
+                break;
+            case 'inventory':
+                $query->where('is_stock_tracked', true);
+                break;
+            // 'manufacturing_report' and '' → no extra restriction.
+        }
+
         if ($q !== '') {
             $query->where(function ($w) use ($q) {
                 $w->where('sku', 'like', "%{$q}%")

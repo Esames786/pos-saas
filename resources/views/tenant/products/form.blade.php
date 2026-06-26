@@ -217,6 +217,86 @@
                 </div>
             </div>
 
+            {{-- PRODUCT-BOUNDARY-2: Role & Visibility --}}
+            <h5 class="mb-3 mt-4">Product Role &amp; Visibility</h5>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label for="product_kind" class="form-label">Product Kind</label>
+                    <select id="product_kind" name="product_kind"
+                            class="form-select @error('product_kind') is-invalid @enderror">
+                        @foreach(\App\Models\Tenant\Product::KINDS as $val => $label)
+                            <option value="{{ $val }}" @selected(old('product_kind', $product?->product_kind ?? 'sale_item') === $val)>{{ $label }}</option>
+                        @endforeach
+                    </select>
+                    @error('product_kind') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                    <div class="form-help">Raw materials &amp; packaging are normally hidden from POS. Finished goods show in POS only when saleable.</div>
+                </div>
+                <div class="col-md-8">
+                    <div class="d-flex flex-wrap gap-4 mt-2">
+                        <div class="form-check">
+                            <input id="is_pos_visible" type="checkbox" name="is_pos_visible" value="1" class="form-check-input"
+                                   @checked(old('is_pos_visible', $product?->is_pos_visible ?? true))>
+                            <label for="is_pos_visible" class="form-check-label">POS Visible</label>
+                        </div>
+                        <div class="form-check">
+                            <input id="can_be_bom_component" type="checkbox" name="can_be_bom_component" value="1" class="form-check-input"
+                                   @checked(old('can_be_bom_component', $product?->can_be_bom_component ?? false))>
+                            <label for="can_be_bom_component" class="form-check-label">Can be BOM Component</label>
+                        </div>
+                        <div class="form-check">
+                            <input id="can_be_bom_output" type="checkbox" name="can_be_bom_output" value="1" class="form-check-input"
+                                   @checked(old('can_be_bom_output', $product?->can_be_bom_output ?? false))>
+                            <label for="can_be_bom_output" class="form-check-label">Can be BOM Output</label>
+                        </div>
+                        <div class="form-check">
+                            <input id="is_manufactured_finished_good" type="checkbox" name="is_manufactured_finished_good" value="1" class="form-check-input"
+                                   @checked(old('is_manufactured_finished_good', $product?->is_manufactured_finished_good ?? false))>
+                            <label for="is_manufactured_finished_good" class="form-check-label">Manufactured Finished Good</label>
+                        </div>
+                    </div>
+                    <div class="form-help mt-1">
+                        BOM components are used inside manufacturing; BOM outputs are produced by manufacturing.
+                        Manufactured FG affects future manufacturing COGS logic.
+                    </div>
+                </div>
+            </div>
+            <script>
+            (function () {
+                var kind = document.getElementById('product_kind');
+                if (!kind) return;
+                var set = function (id, val) { var el = document.getElementById(id); if (el) el.checked = !!val; };
+                // Smart defaults applied only when the user CHANGES the kind (never on load,
+                // so existing products keep their saved flags).
+                kind.addEventListener('change', function () {
+                    switch (kind.value) {
+                        case 'raw_material':
+                        case 'packaging_material':
+                            set('is_pos_visible', false); set('is_sellable', false); set('is_purchasable', true);
+                            set('can_be_bom_component', true); set('can_be_bom_output', false); set('is_manufactured_finished_good', false);
+                            break;
+                        case 'semi_finished':
+                            set('is_pos_visible', false); set('is_sellable', false); set('is_purchasable', false);
+                            set('can_be_bom_component', true); set('can_be_bom_output', true);
+                            break;
+                        case 'finished_good':
+                            set('is_pos_visible', false); set('is_purchasable', false);
+                            set('can_be_bom_component', false); set('can_be_bom_output', true); set('is_manufactured_finished_good', true);
+                            break;
+                        case 'service':
+                            set('is_pos_visible', true); set('is_sellable', true); set('is_stock_tracked', false);
+                            set('can_be_bom_component', false); set('can_be_bom_output', false); set('is_manufactured_finished_good', false);
+                            break;
+                        case 'combo_virtual':
+                            set('is_pos_visible', false); set('is_sellable', false); set('is_purchasable', false);
+                            break;
+                        default: // sale_item
+                            set('is_pos_visible', true); set('is_sellable', true); set('is_purchasable', true);
+                            set('can_be_bom_component', false); set('can_be_bom_output', false); set('is_manufactured_finished_good', false);
+                    }
+                });
+            })();
+            </script>
+
             {{-- Inventory Profile --}}
             <h5 class="mb-3 mt-4">Inventory Profile</h5>
             <div class="row g-3">

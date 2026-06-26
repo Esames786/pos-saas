@@ -86,6 +86,7 @@ class POSController extends Controller
             ])
             ->where('status', 'active')
             ->where('is_sellable', true)
+            ->where('is_pos_visible', true)   // PRODUCT-BOUNDARY-2: hide manufacturing/internal items
             ->orderBy('name')
             ->get();
 

@@ -34,7 +34,15 @@
                     dataType: 'json',
                     delay: 250,
                     data: function (params) {
-                        return { q: params.term || '', page: params.page || 1, only_active: 1 };
+                        // PRODUCT-BOUNDARY-2: forward an optional role context (e.g.
+                        // bom_component / bom_output / production_order) so each lookup
+                        // only offers the right products. Empty context = original behaviour.
+                        return {
+                            q: params.term || '',
+                            page: params.page || 1,
+                            only_active: 1,
+                            context: $el.data('context') || '',
+                        };
                     },
                     processResults: function (data, params) {
                         params.page = params.page || 1;

@@ -102,6 +102,17 @@ class SalesOrderController extends Controller
                     $variant = $inventoryService->resolveVariant($product, $line['product_variant_id'] ?? null);
                     $qty     = (float) $line['quantity'];
                     $lineKind       = $line['line_kind'] ?? 'standard';
+
+                    // PRODUCT-BOUNDARY-2: a normal POS line must be a saleable, POS-visible,
+                    // active product. Combo header/component lines are managed by the combo
+                    // system and are exempt (components are intentionally not POS-visible).
+                    if (
+                        $lineKind === 'standard'
+                        && (! $product->is_sellable || ! $product->is_pos_visible || $product->status !== 'active')
+                    ) {
+                        throw new RuntimeException($product->name . ' is not available for POS sale.');
+                    }
+
                     $submittedPrice = isset($line['unit_price']) ? (float) $line['unit_price'] : null;
                     // Combo header carries the bundle price; components are intentionally 0.
                     // Honour those exactly — never re-resolve a combo line from the catalog,

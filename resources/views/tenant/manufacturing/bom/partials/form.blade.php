@@ -62,6 +62,7 @@
                 <select id="finished_product_id" name="finished_product_id" required
                         class="ajax-select2 form-select @error('finished_product_id') is-invalid @enderror"
                         data-ajax-url="{{ $productAjaxUrl }}"
+                        data-context="bom_output"
                         data-placeholder="Search finished product…"
                         data-min-input="1">
                     @if($selectedFinishedProduct)
@@ -141,7 +142,7 @@
                             <td>
                                 <select name="lines[{{ $i }}][component_product_id]" required
                                         class="ajax-select2 form-select form-select-sm"
-                                        data-ajax-url="{{ $productAjaxUrl }}" data-placeholder="Search component…" data-min-input="1">
+                                        data-ajax-url="{{ $productAjaxUrl }}" data-context="bom_component" data-placeholder="Search component…" data-min-input="1">
                                     @if($cid)
                                         <option value="{{ $cid }}" selected>{{ $componentOptionsById[$cid] ?? ('#' . $cid) }}</option>
                                     @endif
@@ -182,7 +183,7 @@
                             <td>
                                 <select name="lines[{{ $i }}][component_product_id]" required
                                         class="ajax-select2 form-select form-select-sm"
-                                        data-ajax-url="{{ $productAjaxUrl }}" data-placeholder="Search component…" data-min-input="1">
+                                        data-ajax-url="{{ $productAjaxUrl }}" data-context="bom_component" data-placeholder="Search component…" data-min-input="1">
                                     @if($cid)
                                         <option value="{{ $cid }}" selected>{{ $componentOptionsById[$cid] ?? ($line->componentProduct?->sku . ' — ' . $line->componentProduct?->name) }}</option>
                                     @endif
@@ -228,7 +229,7 @@
                             <td>
                                 <select name="lines[0][component_product_id]" required
                                         class="ajax-select2 form-select form-select-sm"
-                                        data-ajax-url="{{ $productAjaxUrl }}" data-placeholder="Search component…" data-min-input="1"></select>
+                                        data-ajax-url="{{ $productAjaxUrl }}" data-context="bom_component" data-placeholder="Search component…" data-min-input="1"></select>
                             </td>
                             <td>
                                 <select name="lines[0][unit_id]" class="form-select form-select-sm">

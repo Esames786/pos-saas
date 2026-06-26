@@ -205,6 +205,12 @@ class ProductController extends Controller
             'storage_type'                => ['nullable', 'string', 'max:50'],
             'shelf_life_days'             => ['nullable', 'integer', 'min:0', 'max:65535'],
             'default_wastage_percent'     => ['nullable', 'numeric', 'min:0', 'max:100'],
+            // PRODUCT-BOUNDARY-2 role / visibility
+            'product_kind'                  => ['nullable', Rule::in(array_keys(Product::KINDS))],
+            'is_pos_visible'                => ['nullable', 'boolean'],
+            'can_be_bom_component'          => ['nullable', 'boolean'],
+            'can_be_bom_output'             => ['nullable', 'boolean'],
+            'is_manufactured_finished_good' => ['nullable', 'boolean'],
         ]);
 
         $slugBase = Str::slug($data['name']);
@@ -219,6 +225,31 @@ class ProductController extends Controller
             $slug = $slugBase . '-' . $counter++;
         }
 
+        // PRODUCT-BOUNDARY-2: resolve role flags + enforce the hard boundary server-side
+        // (so raw/packaging can never be POS-visible/saleable even if the UI is bypassed).
+        $kind         = $data['product_kind'] ?? ($product?->product_kind ?? Product::KIND_SALE_ITEM);
+        $isSellable   = !empty($data['is_sellable']);
+        $isPosVisible = $request->boolean('is_pos_visible');
+        $canComponent = $request->boolean('can_be_bom_component');
+        $canOutput    = $request->boolean('can_be_bom_output');
+        $isMfgFg      = $request->boolean('is_manufactured_finished_good');
+
+        if (in_array($kind, [Product::KIND_RAW_MATERIAL, Product::KIND_PACKAGING_MATERIAL], true)) {
+            $isSellable   = false;
+            $isPosVisible = false;
+            $canComponent = true;
+        }
+        if ($kind === Product::KIND_SEMI_FINISHED) {
+            $isPosVisible = false;
+        }
+        if ($kind === Product::KIND_COMBO_VIRTUAL) {
+            $isSellable   = false;
+            $isPosVisible = false;
+        }
+        if ($isMfgFg) {
+            $canOutput = true;   // a manufactured finished good must be a valid BOM output
+        }
+
         return [
             'category_id'            => $data['category_id'] ?? null,
             'unit_id'                => $data['unit_id'] ?? null,
@@ -226,7 +257,12 @@ class ProductController extends Controller
             'name'                   => $data['name'],
             'slug'                   => $slug,
             'product_type'           => $data['product_type'],
-            'is_sellable'            => !empty($data['is_sellable']),
+            'product_kind'                  => $kind,
+            'is_pos_visible'                => $isPosVisible,
+            'can_be_bom_component'          => $canComponent,
+            'can_be_bom_output'             => $canOutput,
+            'is_manufactured_finished_good' => $isMfgFg,
+            'is_sellable'            => $isSellable,
             'is_purchasable'         => !empty($data['is_purchasable']),
             'is_stock_tracked'       => !empty($data['is_stock_tracked']),
             'has_variants'           => !empty($data['has_variants']),

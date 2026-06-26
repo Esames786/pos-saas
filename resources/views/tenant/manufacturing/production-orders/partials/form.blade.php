@@ -57,6 +57,7 @@
                 <select id="product_id" name="product_id" required
                         class="ajax-select2 form-select @error('product_id') is-invalid @enderror"
                         data-ajax-url="{{ url('/ajax/products') }}"
+                        data-context="production_order"
                         data-placeholder="Search product…" data-min-input="1">
                     @if($selectedProduct ?? null)
                         <option value="{{ $selectedProduct['id'] }}" selected>{{ $selectedProduct['text'] }}</option>
