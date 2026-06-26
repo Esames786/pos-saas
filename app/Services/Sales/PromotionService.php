@@ -7,9 +7,10 @@ use Carbon\Carbon;
 
 class PromotionService
 {
-    public function findApplicablePromotion(int $branchId, string $orderType, float $subtotal, ?string $promoCode = null): ?Promotion
+    public function findApplicablePromotion(int $branchId, string $orderType, float $subtotal, ?string $promoCode = null, array $lines = []): ?Promotion
     {
-        $query = Promotion::where('status', 'active')
+        $query = Promotion::with('targets')
+            ->where('status', 'active')
             ->where(function ($q) use ($branchId) {
                 $q->whereNull('branch_id')->orWhere('branch_id', $branchId);
             });
@@ -36,7 +37,9 @@ class PromotionService
             $q->whereNull('usage_limit')->orWhereRaw('used_count < usage_limit');
         });
 
-        return $query->orderByDesc('priority')->first();
+        return $query->orderByDesc('priority')
+            ->get()
+            ->first(fn (Promotion $promotion) => $this->qualifyingSubtotal($promotion, $lines, $subtotal) > 0);
     }
 
     public function calculateDiscount(Promotion $promotion, float $subtotal): float
@@ -51,6 +54,51 @@ class PromotionService
         }
 
         return min($discount, $subtotal);
+    }
+
+    public function calculateDiscountForLines(Promotion $promotion, array $lines, float $subtotal): float
+    {
+        return $this->calculateDiscount($promotion, $this->qualifyingSubtotal($promotion, $lines, $subtotal));
+    }
+
+    public function qualifyingSubtotal(Promotion $promotion, array $lines, float $subtotal): float
+    {
+        if ($promotion->promotion_type === 'order') {
+            return max($subtotal, 0);
+        }
+
+        $targets = $promotion->relationLoaded('targets') ? $promotion->targets : $promotion->targets()->get();
+        if ($targets->isEmpty()) {
+            return 0;
+        }
+
+        $targetIds = $targets
+            ->where('target_type', $promotion->promotion_type)
+            ->pluck('target_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        if (empty($targetIds)) {
+            return 0;
+        }
+
+        return collect($lines)->sum(function (array $line) use ($promotion, $targetIds) {
+            $lineSubtotal = max(
+                ((float) ($line['quantity'] ?? 0) * (float) ($line['unit_price'] ?? 0))
+                - (float) ($line['discount_amount'] ?? 0),
+                0
+            );
+
+            if ($promotion->promotion_type === 'product') {
+                return in_array((int) ($line['product_id'] ?? 0), $targetIds, true) ? $lineSubtotal : 0;
+            }
+
+            if ($promotion->promotion_type === 'category') {
+                return in_array((int) ($line['category_id'] ?? 0), $targetIds, true) ? $lineSubtotal : 0;
+            }
+
+            return 0;
+        });
     }
 
     public function incrementUsage(Promotion $promotion): void

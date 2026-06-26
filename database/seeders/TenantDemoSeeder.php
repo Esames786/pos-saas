@@ -6,10 +6,13 @@ use App\Models\Master\SubscriptionInvoice;
 use App\Models\Master\Tenant;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\Category;
+use App\Models\Tenant\Combo;
 use App\Models\Tenant\Currency;
 use App\Models\Tenant\Customer;
 use App\Models\Tenant\DailyClosing;
 use App\Models\Tenant\GoodsReceipt;
+use App\Models\Tenant\Modifier;
+use App\Models\Tenant\ModifierGroup;
 use App\Models\Tenant\PaymentMethod;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\ProductBarcode;
@@ -76,6 +79,8 @@ class TenantDemoSeeder extends Seeder
         $this->seedUsers();
         $this->seedRestaurantData();
         $this->seedProducts();
+        $this->seedModifiers();
+        $this->seedCombos();
         $this->seedCustomers();
         $this->seedPaymentMethods();
         $this->seedSuppliers();
@@ -623,6 +628,165 @@ class TenantDemoSeeder extends Seeder
     }
 
     // ── Customers ────────────────────────────────────────────────────────────
+
+    private function seedModifiers(): void
+    {
+        $groups = [
+            [
+                'name' => 'Spice Level',
+                'min_select' => 1,
+                'max_select' => 1,
+                'is_required' => true,
+                'sort_order' => 10,
+                'options' => [
+                    ['name' => 'Mild', 'price_delta' => 0, 'is_default' => true, 'sort_order' => 10],
+                    ['name' => 'Medium', 'price_delta' => 0, 'is_default' => false, 'sort_order' => 20],
+                    ['name' => 'Extra Spicy', 'price_delta' => 0, 'is_default' => false, 'sort_order' => 30],
+                ],
+                'products' => ['BIRYANI-C', 'BIRYANI-M', 'KARAHI-C', 'KARAHI-M', 'BURGER-C', 'BURGER-B', 'SHAWARMA'],
+            ],
+            [
+                'name' => 'Burger Add-ons',
+                'min_select' => 0,
+                'max_select' => 4,
+                'is_required' => false,
+                'sort_order' => 20,
+                'options' => [
+                    ['name' => 'Extra Cheese', 'price_delta' => 100, 'is_default' => false, 'sort_order' => 10],
+                    ['name' => 'Extra Patty', 'price_delta' => 250, 'is_default' => false, 'sort_order' => 20],
+                    ['name' => 'Extra Sauce', 'price_delta' => 50, 'is_default' => false, 'sort_order' => 30],
+                    ['name' => 'No Onion', 'price_delta' => 0, 'is_default' => false, 'sort_order' => 40],
+                ],
+                'products' => ['BURGER-C', 'BURGER-B'],
+            ],
+            [
+                'name' => 'Meal Sides',
+                'min_select' => 0,
+                'max_select' => 3,
+                'is_required' => false,
+                'sort_order' => 30,
+                'options' => [
+                    ['name' => 'Extra Raita', 'price_delta' => 80, 'is_default' => false, 'sort_order' => 10],
+                    ['name' => 'Extra Naan', 'price_delta' => 40, 'is_default' => false, 'sort_order' => 20],
+                    ['name' => 'Mint Chutney', 'price_delta' => 30, 'is_default' => false, 'sort_order' => 30],
+                ],
+                'products' => ['BIRYANI-C', 'BIRYANI-M', 'KARAHI-C', 'KARAHI-M'],
+            ],
+        ];
+
+        $groupCount = 0;
+        $optionCount = 0;
+
+        foreach ($groups as $definition) {
+            $group = ModifierGroup::updateOrCreate(
+                ['name' => $definition['name'], 'branch_id' => null],
+                [
+                    'min_select' => $definition['min_select'],
+                    'max_select' => $definition['max_select'],
+                    'is_required' => $definition['is_required'],
+                    'sort_order' => $definition['sort_order'],
+                    'status' => 'active',
+                ]
+            );
+
+            $groupCount++;
+
+            foreach ($definition['options'] as $option) {
+                Modifier::updateOrCreate(
+                    ['modifier_group_id' => $group->id, 'name' => $option['name']],
+                    [
+                        'price_delta' => $option['price_delta'],
+                        'linked_product_id' => null,
+                        'is_default' => $option['is_default'],
+                        'sort_order' => $option['sort_order'],
+                        'status' => 'active',
+                    ]
+                );
+                $optionCount++;
+            }
+
+            foreach ($definition['products'] as $sku) {
+                $product = Product::where('sku', $sku)->first();
+                if (!$product) continue;
+
+                $product->modifierGroups()->syncWithoutDetaching([
+                    $group->id => ['sort_order' => $definition['sort_order']],
+                ]);
+            }
+        }
+
+        $this->command->line("  Modifiers seeded: {$groupCount} groups, {$optionCount} options.");
+    }
+
+    private function seedCombos(): void
+    {
+        $main = Branch::where('code', 'MAIN')->first();
+
+        $definitions = [
+            [
+                'code' => 'COMBO-BURGER',
+                'name' => 'Burger Meal Combo',
+                'price' => 620,
+                'branch_id' => $main?->id,
+                'sort_order' => 10,
+                'description' => 'Beef burger with fries and cola.',
+                'components' => [
+                    ['sku' => 'BURGER-B', 'quantity' => 1, 'sort_order' => 10],
+                    ['sku' => 'FRIES-REG', 'quantity' => 1, 'sort_order' => 20],
+                    ['sku' => 'COLA-500', 'quantity' => 1, 'sort_order' => 30],
+                ],
+            ],
+            [
+                'code' => 'COMBO-BIRYANI',
+                'name' => 'Biryani Lunch Combo',
+                'price' => 560,
+                'branch_id' => $main?->id,
+                'sort_order' => 20,
+                'description' => 'Chicken biryani with lassi and dessert.',
+                'components' => [
+                    ['sku' => 'BIRYANI-C', 'quantity' => 1, 'sort_order' => 10],
+                    ['sku' => 'LASSI-LRG', 'quantity' => 1, 'sort_order' => 20],
+                    ['sku' => 'GULAB-J', 'quantity' => 1, 'sort_order' => 30],
+                ],
+            ],
+        ];
+
+        $comboCount = 0;
+        $componentCount = 0;
+
+        foreach ($definitions as $definition) {
+            $combo = Combo::updateOrCreate(
+                ['code' => $definition['code'], 'branch_id' => $definition['branch_id']],
+                [
+                    'name' => $definition['name'],
+                    'price' => $definition['price'],
+                    'sort_order' => $definition['sort_order'],
+                    'status' => 'active',
+                    'description' => $definition['description'],
+                ]
+            );
+
+            $combo->components()->delete();
+            $comboCount++;
+
+            foreach ($definition['components'] as $component) {
+                $product = Product::where('sku', $component['sku'])->first();
+                if (!$product) {
+                    continue;
+                }
+
+                $combo->components()->create([
+                    'product_id' => $product->id,
+                    'product_variant_id' => null,
+                    'quantity' => $component['quantity'],
+                    'sort_order' => $component['sort_order'],
+                ]);
+                $componentCount++;
+            }
+        }
+
+        $this->command->line("  Combos seeded: {$comboCount} combos, {$componentCount} components.");
+    }
 
     private function seedCustomers(): void
     {
@@ -1770,6 +1934,50 @@ class TenantDemoSeeder extends Seeder
                 'priority'       => 100,
             ]
         );
+
+        $burgerDeal = Promotion::updateOrCreate(
+            ['code' => 'BURGER15'],
+            [
+                'branch_id'      => $main->id,
+                'name'           => '15% Selected Burger Deal',
+                'promotion_type' => 'product',
+                'discount_type'  => 'percent',
+                'discount_value' => 15,
+                'order_types'    => ['dine_in', 'takeaway', 'quick_sale'],
+                'requires_code'  => true,
+                'status'         => 'active',
+                'priority'       => 120,
+            ]
+        );
+        $burgerDeal->targets()->delete();
+        Product::whereIn('sku', ['BURGER-C', 'BURGER-B'])
+            ->pluck('id')
+            ->each(fn ($productId) => $burgerDeal->targets()->create([
+                'target_type' => 'product',
+                'target_id' => $productId,
+            ]));
+
+        $fastFoodDeal = Promotion::updateOrCreate(
+            ['code' => 'FASTFOOD5'],
+            [
+                'branch_id'      => $main->id,
+                'name'           => '5% Fast Food Category Deal',
+                'promotion_type' => 'category',
+                'discount_type'  => 'percent',
+                'discount_value' => 5,
+                'order_types'    => ['dine_in', 'takeaway', 'quick_sale'],
+                'requires_code'  => true,
+                'status'         => 'active',
+                'priority'       => 80,
+            ]
+        );
+        $fastFoodDeal->targets()->delete();
+        if ($fastFood = Category::where('code', 'FASTFOOD')->first()) {
+            $fastFoodDeal->targets()->create([
+                'target_type' => 'category',
+                'target_id' => $fastFood->id,
+            ]);
+        }
 
         // Void Reasons
         $voidReasons = [

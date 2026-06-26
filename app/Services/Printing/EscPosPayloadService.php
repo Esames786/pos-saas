@@ -58,6 +58,10 @@ class EscPosPayloadService
         $out .= str_repeat('-', 42) . "\n";
 
         foreach ($sale->lines as $line) {
+            if (($line->line_kind ?? 'standard') === 'component') {
+                continue;
+            }
+
             $name  = mb_substr($line->product_name ?? '', 0, 24);
             $qty   = number_format((float) $line->quantity, 3);
             if ($line->unit_code) { $qty .= ' ' . $line->unit_code; }
@@ -72,6 +76,23 @@ class EscPosPayloadService
 
             if ($line->kitchen_note) {
                 $out .= "  * {$line->kitchen_note}\n";
+            }
+
+            foreach ($this->lineModifiers($line) as $modifier) {
+                $label = '  + ' . $modifier['name'];
+                $delta = (float) ($modifier['price_delta'] ?? 0);
+                if ($delta !== 0.0) {
+                    $label .= ' (' . ($delta > 0 ? '+' : '') . number_format($delta, 2) . ')';
+                }
+                $out .= $label . "\n";
+            }
+
+            foreach ($sale->lines->where('parent_sales_order_line_id', $line->id) as $component) {
+                $componentQty = number_format((float) $component->quantity, 3);
+                if ($component->unit_code) {
+                    $componentQty .= ' ' . $component->unit_code;
+                }
+                $out .= '  - ' . $componentQty . ' x ' . ($component->product_name ?? '') . "\n";
             }
         }
 
@@ -144,6 +165,10 @@ class EscPosPayloadService
         $out .= str_repeat('-', 42) . "\n";
 
         foreach ($lines as $line) {
+            if (($line->line_kind ?? 'standard') === 'combo_header') {
+                continue;
+            }
+
             // Use stored quantity from payload when available; fall back to model quantity.
             $qtyToPrint = $lineQuantities->has((string) $line->id)
                 ? (float) $lineQuantities->get((string) $line->id)
@@ -160,6 +185,9 @@ class EscPosPayloadService
 
             if ($line->variant_name) {
                 $out .= "Variant: {$line->variant_name}\n";
+            }
+            foreach ($this->lineModifiers($line) as $modifier) {
+                $out .= '+ ' . $modifier['name'] . "\n";
             }
             if ($line->kitchen_note) {
                 $out .= "NOTE: {$line->kitchen_note}\n";
@@ -192,5 +220,28 @@ class EscPosPayloadService
     {
         $space = max($width - mb_strlen($left) - mb_strlen($right), 1);
         return $left . str_repeat(' ', $space) . $right;
+    }
+
+    private function lineModifiers($line): array
+    {
+        $modifiers = $line->modifiers ?? [];
+
+        if (is_string($modifiers)) {
+            $decoded = json_decode($modifiers, true);
+            $modifiers = is_array($decoded) ? $decoded : [];
+        }
+
+        if (!is_array($modifiers)) {
+            return [];
+        }
+
+        return collect($modifiers)
+            ->filter(fn ($modifier) => is_array($modifier) && !empty($modifier['name']))
+            ->map(fn ($modifier) => [
+                'name' => (string) $modifier['name'],
+                'price_delta' => (float) ($modifier['price_delta'] ?? 0),
+            ])
+            ->values()
+            ->all();
     }
 }

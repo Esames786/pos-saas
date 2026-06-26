@@ -10,6 +10,9 @@ class SalesOrderLine extends Model
 
     protected $fillable = [
         'sales_order_id',
+        'parent_sales_order_line_id',
+        'line_kind',
+        'combo_id',
         'product_id',
         'product_variant_id',
         'product_name',
@@ -23,6 +26,7 @@ class SalesOrderLine extends Model
         'tax_amount',
         'line_total',
         'kitchen_note',
+        'modifiers',
         'kitchen_status',
         'kitchen_started_at',
         'kitchen_ready_at',
@@ -44,6 +48,7 @@ class SalesOrderLine extends Model
             'discount_amount'   => 'decimal:2',
             'tax_amount'        => 'decimal:2',
             'line_total'        => 'decimal:2',
+            'modifiers'         => 'array',
             'returned_quantity' => 'decimal:3',
             'kot_sent'          => 'boolean',
             'kot_sent_quantity' => 'decimal:6',
@@ -66,5 +71,20 @@ class SalesOrderLine extends Model
     public function variant()
     {
         return $this->belongsTo(ProductVariant::class, 'product_variant_id');
+    }
+
+    public function parentLine()
+    {
+        return $this->belongsTo(self::class, 'parent_sales_order_line_id');
+    }
+
+    public function componentLines()
+    {
+        return $this->hasMany(self::class, 'parent_sales_order_line_id');
+    }
+
+    public function combo()
+    {
+        return $this->belongsTo(Combo::class);
     }
 }

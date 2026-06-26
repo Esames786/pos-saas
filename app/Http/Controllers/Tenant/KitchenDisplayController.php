@@ -41,6 +41,9 @@ class KitchenDisplayController extends Controller
                 'order.restaurantWaiter',
             ])
             ->whereNull('void_reason_id')
+            ->where(function ($query) {
+                $query->whereNull('line_kind')->orWhere('line_kind', '!=', 'combo_header');
+            })
             ->whereRaw('(quantity - returned_quantity) > 0')
             ->whereHas('order', function ($query) use ($data) {
                 $query->whereIn('status', ['held', 'paid']);
@@ -109,6 +112,7 @@ class KitchenDisplayController extends Controller
                             'category'     => $line->product?->category?->name,
                             'quantity'     => number_format($remainingQty, 3, '.', ''),
                             'unit_code'    => $line->unit_code,
+                            'modifiers'    => $this->lineModifiers($line),
                             'kitchen_note' => $line->kitchen_note,
                             'status'       => $status,
                             'started_at'   => optional($line->kitchen_started_at)->format('H:i'),
@@ -215,5 +219,17 @@ class KitchenDisplayController extends Controller
         }
 
         $line->update($updates);
+    }
+
+    private function lineModifiers(SalesOrderLine $line): array
+    {
+        return collect($line->modifiers ?? [])
+            ->filter(fn ($modifier) => is_array($modifier) && !empty($modifier['name']))
+            ->map(fn ($modifier) => [
+                'name' => (string) $modifier['name'],
+                'price_delta' => (float) ($modifier['price_delta'] ?? 0),
+            ])
+            ->values()
+            ->all();
     }
 }

@@ -61,20 +61,20 @@ class SalesTotalsService
         }
         $manualDiscountAmount = $lineDiscount + $orderDiscount;
 
-        // 3. Promotion (order-level only for now)
+        // 3. Promotion
         $promotionId            = null;
         $promotionDiscountAmount = 0;
         $appliedPromoCode       = null;
 
         if ($promoCode) {
             $promotion = $this->promotionService->findApplicablePromotion(
-                $branchId, $orderType, $subtotal - $manualDiscountAmount, $promoCode
+                $branchId, $orderType, $subtotal - $manualDiscountAmount, $promoCode, $resolvedLines
             );
             if ($promotion) {
                 $promotionId             = $promotion->id;
                 $appliedPromoCode        = $promotion->code;
-                $promotionDiscountAmount = $this->promotionService->calculateDiscount(
-                    $promotion, $subtotal - $manualDiscountAmount
+                $promotionDiscountAmount = $this->promotionService->calculateDiscountForLines(
+                    $promotion, $resolvedLines, $subtotal - $manualDiscountAmount
                 );
             }
         }

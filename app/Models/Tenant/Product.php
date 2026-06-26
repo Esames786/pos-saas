@@ -107,6 +107,19 @@ class Product extends Model
         return $this->hasMany(RecipeIngredient::class);
     }
 
+    public function modifierGroups()
+    {
+        return $this->belongsToMany(ModifierGroup::class, 'product_modifier_group')
+            ->withPivot('sort_order')
+            ->withTimestamps()
+            ->orderByPivot('sort_order');
+    }
+
+    public function linkedModifiers()
+    {
+        return $this->hasMany(Modifier::class, 'linked_product_id');
+    }
+
     public function isRecipeBased(): bool
     {
         return $this->inventory_consumption_method === 'recipe';

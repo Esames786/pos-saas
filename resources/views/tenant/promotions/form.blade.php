@@ -1,4 +1,7 @@
-@php $editing = isset($promotion); @endphp
+@php
+    $editing = isset($promotion);
+    $selectedTargets = old('target_ids', $editing ? $promotion->targets->pluck('target_id')->map(fn ($id) => (string) $id)->all() : []);
+@endphp
 @extends('layouts.app')
 
 @section('title', $editing ? 'Edit Promotion' : 'Create Promotion')
@@ -92,6 +95,28 @@
                             </div>
                         </div>
 
+                        <div class="col-12 mb-3 promotion-targets" data-target-panel="product">
+                            <label class="form-label" for="product_targets">Target Products</label>
+                            <select id="product_targets" name="target_ids[]" class="form-select" multiple size="8">
+                                @foreach(($products ?? []) as $product)
+                                    <option value="{{ $product->id }}" @selected(in_array((string) $product->id, $selectedTargets, true))>
+                                        {{ $product->name }} @if($product->sku) ({{ $product->sku }}) @endif
+                                    </option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <div class="col-12 mb-3 promotion-targets" data-target-panel="category">
+                            <label class="form-label" for="category_targets">Target Categories</label>
+                            <select id="category_targets" name="target_ids[]" class="form-select" multiple size="8">
+                                @foreach(($categories ?? []) as $category)
+                                    <option value="{{ $category->id }}" @selected(in_array((string) $category->id, $selectedTargets, true))>
+                                        {{ $category->name }} @if($category->code) ({{ $category->code }}) @endif
+                                    </option>
+                                @endforeach
+                            </select>
+                        </div>
+
                         <div class="col-md-3 mb-3">
                             <label class="form-label" for="starts_at">Starts At</label>
                             <input type="datetime-local" id="starts_at" name="starts_at" class="form-control"
@@ -140,3 +165,28 @@
             </div>
         </div>
 @endsection
+
+@push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const typeSelect = document.getElementById('promotion_type');
+    const panels = document.querySelectorAll('[data-target-panel]');
+
+    function syncTargetPanels() {
+        const type = typeSelect ? typeSelect.value : 'order';
+        panels.forEach(function (panel) {
+            const active = panel.dataset.targetPanel === type;
+            panel.classList.toggle('d-none', !active);
+            panel.querySelectorAll('select').forEach(function (select) {
+                select.disabled = !active;
+            });
+        });
+    }
+
+    if (typeSelect) {
+        typeSelect.addEventListener('change', syncTargetPanels);
+        syncTargetPanels();
+    }
+});
+</script>
+@endpush

@@ -44,6 +44,7 @@ class RestaurantProDemoSeeder extends RestaurantDemoSeeder
         $this->seedCategories();
         $this->seedIngredients();      // before menu/recipes/orders
         $this->seedMenu();             // recipe items flagged via recipeMenuSkus()
+        $this->seedModifiersAndCombos();
         $this->seedOpeningStock();     // ingredient stock before consumption
         $this->seedRecipes();
         $this->seedSuppliersAndPurchases();

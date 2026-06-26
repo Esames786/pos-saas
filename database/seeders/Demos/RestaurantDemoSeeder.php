@@ -4,6 +4,9 @@ namespace Database\Seeders\Demos;
 
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\Category;
+use App\Models\Tenant\Combo;
+use App\Models\Tenant\Modifier;
+use App\Models\Tenant\ModifierGroup;
 use App\Models\Tenant\PaymentMethod;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\ProductVariant;
@@ -49,6 +52,7 @@ class RestaurantDemoSeeder
         $this->seedStaff();
         $this->seedCategories();
         $this->seedMenu();
+        $this->seedModifiersAndCombos();
         $this->seedSalesControls();
         $this->seedSampleOrders();
 
@@ -269,6 +273,15 @@ class RestaurantDemoSeeder
             ]
         );
 
+        $burgerDeal = Promotion::updateOrCreate(
+            ['code' => 'RSTBURGER15'],
+            ['branch_id' => $branch->id, 'name' => '15% Burger Deal', 'promotion_type' => 'product', 'discount_type' => 'percent', 'discount_value' => 15, 'order_types' => ['dine_in', 'takeaway', 'quick_sale'], 'requires_code' => true, 'status' => 'active', 'priority' => 110]
+        );
+        $burgerDeal->targets()->delete();
+        Product::whereIn('sku', ['RST-BURGER-CLASSIC', 'RST-BURGER-CHEESE', 'RST-BURGER-ZINGER'])
+            ->pluck('id')
+            ->each(fn ($productId) => $burgerDeal->targets()->create(['target_type' => 'product', 'target_id' => $productId]));
+
         foreach ([
             ['name' => 'Wrong Item', 'reason_type' => 'void'],
             ['name' => 'Customer Changed Mind', 'reason_type' => 'return'],
@@ -281,7 +294,59 @@ class RestaurantDemoSeeder
             ['branch_id' => $branch->id],
             ['charge_type' => 'percent', 'charge_value' => 5, 'order_types' => ['dine_in'], 'is_taxable' => false, 'is_active' => true]
         );
-        $this->counts['sales_controls'] = 'promotion + 3 void reasons + 5% service charge';
+        $this->counts['sales_controls'] = '2 promotions + 3 void reasons + 5% service charge';
+    }
+
+    /** Seed POS-ready add-ons and structural combos for restaurant demo tenants. */
+    protected function seedModifiersAndCombos(): void
+    {
+        $branch = $this->mainBranch();
+        if (! $branch) return;
+
+        $groups = [
+            ['name' => 'Burger Add-ons', 'min_select' => 0, 'max_select' => 3, 'sort_order' => 10, 'options' => [['Extra Cheese', 100], ['Extra Patty', 250], ['Garlic Mayo', 60], ['No Onion', 0]], 'skus' => ['RST-BURGER-CLASSIC', 'RST-BURGER-CHEESE', 'RST-BURGER-ZINGER']],
+            ['name' => 'Spice Level', 'min_select' => 1, 'max_select' => 1, 'sort_order' => 20, 'options' => [['Mild', 0], ['Medium', 0], ['Extra Spicy', 0]], 'skus' => ['RST-BURGER-ZINGER', 'RST-BIRYANI-CHK', 'RST-BIRYANI-MUT', 'RST-BBQ-TIKKA']],
+        ];
+
+        $optionCount = 0;
+        foreach ($groups as $definition) {
+            $group = ModifierGroup::updateOrCreate(
+                ['branch_id' => $branch->id, 'name' => $definition['name']],
+                ['min_select' => $definition['min_select'], 'max_select' => $definition['max_select'], 'is_required' => $definition['min_select'] > 0, 'sort_order' => $definition['sort_order'], 'status' => 'active']
+            );
+            foreach ($definition['options'] as $index => [$name, $priceDelta]) {
+                Modifier::updateOrCreate(
+                    ['modifier_group_id' => $group->id, 'name' => $name],
+                    ['price_delta' => $priceDelta, 'is_default' => $index === 0, 'sort_order' => ($index + 1) * 10, 'status' => 'active']
+                );
+                $optionCount++;
+            }
+            Product::whereIn('sku', $definition['skus'])->get()->each(
+                fn (Product $product) => $product->modifierGroups()->syncWithoutDetaching([$group->id => ['sort_order' => $definition['sort_order']]])
+            );
+        }
+
+        $combos = [
+            ['code' => 'RST-COMBO-BURGER', 'name' => 'Classic Burger Meal', 'price' => 690, 'description' => 'Classic burger, fries and a soft drink.', 'components' => [['RST-BURGER-CLASSIC', 1], ['RST-FRIES', 1], ['RST-SOFTDRINK', 1]]],
+            ['code' => 'RST-COMBO-BIRYANI', 'name' => 'Biryani Lunch Deal', 'price' => 590, 'description' => 'Chicken biryani, mint margarita and brownie.', 'components' => [['RST-BIRYANI-CHK', 1], ['RST-MARGARITA', 1], ['RST-BROWNIE', 1]]],
+        ];
+        $componentCount = 0;
+        foreach ($combos as $sortOrder => $definition) {
+            $combo = Combo::updateOrCreate(
+                ['branch_id' => $branch->id, 'code' => $definition['code']],
+                ['name' => $definition['name'], 'price' => $definition['price'], 'description' => $definition['description'], 'sort_order' => ($sortOrder + 1) * 10, 'status' => 'active']
+            );
+            $combo->components()->delete();
+            foreach ($definition['components'] as $componentSort => [$sku, $quantity]) {
+                $product = Product::where('sku', $sku)->first();
+                if (! $product) continue;
+                $combo->components()->create(['product_id' => $product->id, 'quantity' => $quantity, 'sort_order' => ($componentSort + 1) * 10]);
+                $componentCount++;
+            }
+        }
+
+        $this->counts['pos_add_ons'] = count($groups) . " groups / {$optionCount} options";
+        $this->counts['combo_deals'] = count($combos) . " combos / {$componentCount} components";
     }
 
     protected function seedSampleOrders(): void

@@ -196,7 +196,7 @@
                 </li>
 
                 {{-- ── CATALOG (define products first) ─────────────────────────── --}}
-                @canany(['tenant.units.index', 'tenant.categories.index', 'tenant.products.index'])
+                @canany(['tenant.units.index', 'tenant.categories.index', 'tenant.products.index', 'tenant.modifier-groups.index'])
                 <li class="submenu">
                     <a href="javascript:void(0);">
                         <i class="ti ti-package fs-16 me-2"></i>
@@ -209,6 +209,14 @@
                             <li class="{{ $a ? 'active' : '' }}">
                                 <a href="{{ url('/products') }}" class="{{ $a ? 'active' : '' }}">
                                     <i class="ti ti-package fs-16 me-2"></i><span>Products</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.modifier-groups.index')
+                            @php $a = $isIn('modifier-groups*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/modifier-groups') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-list-details fs-16 me-2"></i><span>Modifiers</span>
                                 </a>
                             </li>
                         @endcan
@@ -925,7 +933,7 @@
 
                 {{-- ── SALES CONTROLS ──────────────────────────────────────────── --}}
                 @if($hasModule('sales_controls'))
-                @canany(['tenant.promotions.index','tenant.service-charge-settings.index','tenant.void-reasons.index'])
+                @canany(['tenant.promotions.index','tenant.combos.index','tenant.service-charge-settings.index','tenant.void-reasons.index'])
                 <li class="submenu">
                     <a href="javascript:void(0);">
                         <i class="ti ti-discount-2 fs-16 me-2"></i>
@@ -938,6 +946,14 @@
                             <li class="{{ $a ? 'active' : '' }}">
                                 <a href="{{ url('/promotions') }}" class="{{ $a ? 'active' : '' }}">
                                     <i class="ti ti-discount-2 fs-16 me-2"></i><span>Promotions</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.combos.index')
+                            @php $a = $isIn('combos*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/combos') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-package fs-16 me-2"></i><span>Combos</span>
                                 </a>
                             </li>
                         @endcan

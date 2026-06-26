@@ -106,6 +106,9 @@
     function buildLine(line) {
         var qty = line.quantity;
         if (line.unit_code) qty += ' ' + line.unit_code;
+        var modifiers = (line.modifiers || []).map(function (modifier) {
+            return `<div class="small text-muted ps-2">+ ${escapeHtml(modifier.name)}</div>`;
+        }).join('');
 
         return `
             <div class="border rounded p-2 mb-2 kds-line" data-line-id="${line.id}">
@@ -113,6 +116,7 @@
                     <div>
                         <div class="fw-semibold">${escapeHtml(line.product_name)}</div>
                         ${line.variant_name ? `<div class="small text-muted">${escapeHtml(line.variant_name)}</div>` : ''}
+                        ${modifiers}
                         <div class="small text-muted">
                             Qty: ${escapeHtml(qty)}${line.category ? ` · ${escapeHtml(line.category)}` : ''}
                         </div>

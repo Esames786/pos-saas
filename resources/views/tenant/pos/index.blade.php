@@ -383,6 +383,9 @@
             <div class="mb-3">
                 <div class="category-strip" id="parent-category-strip">
                     <button type="button" class="category-pill active" data-parent-category="">All</button>
+                    @if(count($combosPayload))
+                        <button type="button" class="category-pill" data-parent-category="__deals__">Deals</button>
+                    @endif
                     @foreach($categories as $category)
                         <button type="button" class="category-pill" data-parent-category="{{ $category->id }}">
                             {{ $category->name }}
@@ -773,6 +776,29 @@
     </div>
 </div>
 
+{{-- Modifier Entry Modal (MOD-2) --}}
+<div class="modal fade" id="modifierEntryModal" tabindex="-1" aria-labelledby="modifierEntryModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title h5" id="modifierEntryModalLabel">Choose Modifiers</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-light border small mb-3 py-2">
+                    <strong id="modifier-modal-product-name"></strong>
+                    <div class="text-muted" id="modifier-modal-price-hint"></div>
+                </div>
+                <div id="modifier-modal-groups"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-light" type="button" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-primary" type="button" id="modifier-modal-confirm">Add to Cart</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 @php
     $heldSaleJson = $heldSale ? [
         'id'      => $heldSale->id,
@@ -781,6 +807,9 @@
             'id'                 => (int) $l->id,
             'product_id'         => (int) $l->product_id,
             'product_variant_id' => $l->product_variant_id ? (int) $l->product_variant_id : null,
+            'parent_sales_order_line_id' => $l->parent_sales_order_line_id ? (int) $l->parent_sales_order_line_id : null,
+            'line_kind'          => $l->line_kind ?? 'standard',
+            'combo_id'           => $l->combo_id ? (int) $l->combo_id : null,
             'quantity'           => (float) $l->quantity,
             'unit_price'         => (float) $l->unit_price,
             'discount_amount'    => (float) $l->discount_amount,
@@ -788,6 +817,7 @@
             'kot_sent'           => (bool) $l->kot_sent,
             'product_name'       => $l->product_name,
             'unit_code'          => $l->unit_code,
+            'modifiers'          => $l->modifiers ?? [],
         ])->values()->toArray(),
     ] : null;
 @endphp
@@ -795,6 +825,7 @@
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     const products   = @json($productsPayload);
+    const combos     = @json($combosPayload);
     const categories = @json($categories);
     const heldSale   = @json($heldSaleJson);
 
@@ -948,6 +979,12 @@ document.addEventListener('DOMContentLoaded', function () {
         return Number(value || 0).toFixed(2);
     }
 
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, function (char) {
+            return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[char];
+        });
+    }
+
     function isMeasurableProduct(product) {
         return !!(product && (product.allow_decimal_qty || ['weight', 'volume', 'length'].indexOf(product.unit_type) !== -1));
     }
@@ -988,6 +1025,55 @@ document.addEventListener('DOMContentLoaded', function () {
         if (variant) return Number(variant.selling_price || product.price || 0);
 
         return Number(product.price || 0);
+    }
+
+    function activeModifierGroups(product) {
+        var branchId = selectedBranchId();
+        return (product.modifier_groups || [])
+            .filter(function (group) {
+                return !group.branch_id || Number(group.branch_id) === branchId;
+            })
+            .filter(function (group) {
+                return (group.modifiers || []).length > 0;
+            })
+            .sort(function (a, b) {
+                return Number(a.sort_order || 0) - Number(b.sort_order || 0);
+            });
+    }
+
+    function hasModifierGroups(product) {
+        return activeModifierGroups(product).length > 0;
+    }
+
+    function normalizeModifiers(modifiers) {
+        return (modifiers || []).map(function (modifier) {
+            return {
+                modifier_group_id: Number(modifier.modifier_group_id || 0),
+                modifier_group_name: modifier.modifier_group_name || '',
+                modifier_id: Number(modifier.modifier_id || 0),
+                name: modifier.name || '',
+                price_delta: Number(modifier.price_delta || 0),
+            };
+        }).filter(function (modifier) {
+            return modifier.modifier_id > 0 && modifier.name;
+        });
+    }
+
+    function modifierSignature(modifiers) {
+        return normalizeModifiers(modifiers)
+            .map(function (modifier) { return modifier.modifier_group_id + ':' + modifier.modifier_id; })
+            .sort()
+            .join('|');
+    }
+
+    function modifierPriceDelta(modifiers) {
+        return normalizeModifiers(modifiers).reduce(function (sum, modifier) {
+            return sum + Number(modifier.price_delta || 0);
+        }, 0);
+    }
+
+    function cartKey(product, variant, modifiers) {
+        return product.id + ':' + (variant ? variant.id : 0) + ':' + modifierSignature(modifiers);
     }
 
     function availableQty(product, variant) {
@@ -1048,8 +1134,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function renderProducts() {
         const query = searchEl.value.toLowerCase().trim();
+        const dealsOnly = selectedParentCategory === '__deals__';
 
-        const filtered = products.filter(function (product) {
+        const filtered = dealsOnly ? [] : products.filter(function (product) {
             const matchParent = !selectedParentCategory || Number(product.category_id) === Number(selectedParentCategory);
             const matchChild  = !selectedChildCategory  || Number(product.category_id) === Number(selectedChildCategory);
 
@@ -1066,6 +1153,34 @@ document.addEventListener('DOMContentLoaded', function () {
         });
 
         productGrid.innerHTML = '';
+
+        // Combos appear on the "All" view and on the dedicated "Deals" view only —
+        // never inside a specific product category.
+        const showCombos = dealsOnly || (!selectedParentCategory && !selectedChildCategory);
+        const filteredCombos = (showCombos ? combos : []).filter(function (combo) {
+            const textMatch = !query
+                || String(combo.name).toLowerCase().includes(query)
+                || String(combo.code || '').toLowerCase().includes(query);
+            return textMatch;
+        });
+
+        filteredCombos.forEach(function (combo) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'product-tile';
+            button.innerHTML =
+                '<div class="product-avatar"><i class="ti ti-package"></i></div>' +
+                '<div class="fw-bold mb-1">' + escapeHtml(combo.name) + '</div>' +
+                '<div class="text-muted small mb-2">' + escapeHtml(combo.code || 'Combo') + '</div>' +
+                '<div class="d-flex justify-content-between align-items-center">' +
+                    '<span class="fw-bold">' + money(combo.price) + '</span>' +
+                    '<span class="stock-badge">Combo</span>' +
+                '</div>' +
+                '<div class="small text-muted mt-2">' + combo.components.length + ' items</div>';
+
+            button.addEventListener('click', function () { addComboToCart(combo); });
+            productGrid.appendChild(button);
+        });
 
         filtered.forEach(function (product) {
             const variant    = product.variants && product.variants.length ? product.variants[0] : null;
@@ -1088,13 +1203,14 @@ document.addEventListener('DOMContentLoaded', function () {
                     '<span class="fw-bold">' + money(price) + '</span>' +
                     '<span class="stock-badge ' + stockClass + '">' + stockText + '</span>' +
                 '</div>' +
-                (product.is_taxable ? '<div class="small text-muted mt-2">Tax ' + product.tax_rate_percent + '%</div>' : '');
+                (product.is_taxable ? '<div class="small text-muted mt-2">Tax ' + product.tax_rate_percent + '%</div>' : '') +
+                (hasModifierGroups(product) ? '<div class="small text-primary mt-1"><i class="ti ti-adjustments-horizontal me-1"></i>Customizable</div>' : '');
 
             button.addEventListener('click', function () { addToCart(product, variant); });
             productGrid.appendChild(button);
         });
 
-        if (!filtered.length) {
+        if (!filtered.length && !filteredCombos.length) {
             productGrid.innerHTML = '<div class="alert alert-info" role="status">No products found.</div>';
         }
     }
@@ -1104,6 +1220,11 @@ document.addEventListener('DOMContentLoaded', function () {
     var _qtyModal = null;
     var _qtyModalProduct = null;
     var _qtyModalVariant = null;
+    var _modifierModal = null;
+    var _modifierModalProduct = null;
+    var _modifierModalVariant = null;
+    var _modifierModalQty = 1;
+    var _modifierModalEditKey = null;   // when set, confirm edits this cart line instead of adding
 
     function openQtyModal(product, variant) {
         _qtyModalProduct = product;
@@ -1150,8 +1271,200 @@ document.addEventListener('DOMContentLoaded', function () {
         if (event.key === 'Enter') { event.preventDefault(); document.getElementById('qty-modal-confirm').click(); }
     });
 
-    function addToCart(product, variant, forceQty) {
-        var key       = product.id + ':' + (variant ? variant.id : 0);
+    function openModifierModal(product, variant, qty, preselectedIds, editKey) {
+        _modifierModalProduct = product;
+        _modifierModalVariant = variant || null;
+        _modifierModalQty = qty || 1;
+        _modifierModalEditKey = editKey || null;
+        var preselect = Array.isArray(preselectedIds) ? preselectedIds.map(Number) : null;
+
+        var groups = activeModifierGroups(product);
+        var basePrice = productPrice(product, variant);
+        var body = document.getElementById('modifier-modal-groups');
+        document.getElementById('modifier-modal-product-name').textContent = product.name;
+        document.getElementById('modifier-modal-price-hint').textContent = money(basePrice) + ' base price';
+
+        body.innerHTML = groups.map(function (group) {
+            var maxText = group.max_select ? group.max_select : 'Any';
+            var rules = (group.is_required ? 'Required' : 'Optional') + ' · ' + Number(group.min_select || 0) + ' min / ' + maxText + ' max';
+            var inputType = Number(group.max_select || 0) === 1 ? 'radio' : 'checkbox';
+            var options = (group.modifiers || []).map(function (modifier) {
+                var inputName = inputType === 'radio'
+                    ? 'modifier_group_' + group.id
+                    : 'modifier_group_' + group.id + '[]';
+                var checked = (preselect ? preselect.indexOf(Number(modifier.id)) !== -1 : modifier.is_default) ? ' checked' : '';
+                var price = Number(modifier.price_delta || 0);
+                var priceText = price === 0 ? '' : ' <span class="text-muted">(' + (price > 0 ? '+' : '') + money(price) + ')</span>';
+
+                return '<label class="list-group-item d-flex align-items-center justify-content-between gap-3">' +
+                    '<span><input class="form-check-input me-2" type="' + inputType + '" name="' + inputName + '" value="' + modifier.id + '"' +
+                        ' data-modifier-input data-group-id="' + group.id + '"' +
+                        ' data-group-name="' + escapeHtml(group.name) + '"' +
+                        ' data-modifier-name="' + escapeHtml(modifier.name) + '"' +
+                        ' data-price-delta="' + price + '"' + checked + '> ' +
+                        escapeHtml(modifier.name) + priceText + '</span>' +
+                    '</label>';
+            }).join('');
+
+            return '<div class="mb-3" data-modifier-group="' + group.id + '" data-min="' + Number(group.min_select || 0) + '" data-max="' + (group.max_select || '') + '">' +
+                '<div class="d-flex align-items-center justify-content-between mb-1">' +
+                    '<strong>' + escapeHtml(group.name) + '</strong>' +
+                    '<span class="small text-muted">' + rules + '</span>' +
+                '</div>' +
+                '<div class="list-group">' + options + '</div>' +
+                '<div class="small text-danger mt-1 d-none" data-modifier-error></div>' +
+            '</div>';
+        }).join('');
+
+        if (!_modifierModal) {
+            _modifierModal = new bootstrap.Modal(document.getElementById('modifierEntryModal'));
+        }
+        _modifierModal.show();
+    }
+
+    function selectedModifiersFromModal() {
+        var selected = [];
+        document.querySelectorAll('#modifier-modal-groups [data-modifier-input]:checked').forEach(function (input) {
+            selected.push({
+                modifier_group_id: Number(input.dataset.groupId || 0),
+                modifier_group_name: input.dataset.groupName || '',
+                modifier_id: Number(input.value || 0),
+                name: input.dataset.modifierName || '',
+                price_delta: Number(input.dataset.priceDelta || 0),
+            });
+        });
+        return selected;
+    }
+
+    function validateModifierModal() {
+        var ok = true;
+        document.querySelectorAll('#modifier-modal-groups [data-modifier-group]').forEach(function (groupEl) {
+            var min = Number(groupEl.dataset.min || 0);
+            var max = groupEl.dataset.max === '' ? null : Number(groupEl.dataset.max || 0);
+            var count = groupEl.querySelectorAll('[data-modifier-input]:checked').length;
+            var error = groupEl.querySelector('[data-modifier-error]');
+            error.classList.add('d-none');
+            error.textContent = '';
+
+            if (count < min) {
+                ok = false;
+                error.textContent = 'Select at least ' + min + ' option' + (min === 1 ? '' : 's') + '.';
+                error.classList.remove('d-none');
+            } else if (max !== null && count > max) {
+                ok = false;
+                error.textContent = 'Select no more than ' + max + ' option' + (max === 1 ? '' : 's') + '.';
+                error.classList.remove('d-none');
+            }
+        });
+        return ok;
+    }
+
+    document.getElementById('modifier-modal-confirm').addEventListener('click', function () {
+        if (!validateModifierModal()) return;
+        var modifiers = selectedModifiersFromModal();
+        if (_modifierModal) _modifierModal.hide();
+        if (_modifierModalEditKey) {
+            // Editing an existing line: drop it, then re-add with the new modifiers.
+            // addToCart re-keys by modifier signature and re-folds the price delta.
+            var idx = cart.findIndex(function (row) { return row.key === _modifierModalEditKey; });
+            if (idx !== -1) cart.splice(idx, 1);
+            _modifierModalEditKey = null;
+        }
+        addToCart(_modifierModalProduct, _modifierModalVariant, _modifierModalQty, modifiers);
+    });
+
+    function updateComboComponents(parentKey) {
+        var header = cart.find(function (item) { return item.key === parentKey; });
+        if (!header) return;
+
+        cart.forEach(function (item) {
+            if (item.parent_key === parentKey && item.line_kind === 'component') {
+                item.quantity = Number(item.combo_component_qty || 0) * Number(header.quantity || 0);
+            }
+        });
+    }
+
+    function addComboToCart(combo) {
+        var key = 'combo:' + combo.id;
+        var existing = cart.find(function (item) { return item.key === key; });
+
+        if (existing) {
+            existing.quantity = Number(existing.quantity || 0) + 1;
+            updateComboComponents(key);
+            renderCart();
+            return;
+        }
+
+        var headerProduct = products.find(function (product) {
+            return Number(product.id) === Number(combo.header_product_id);
+        });
+
+        if (!headerProduct) {
+            blockAlert('Combo cannot be added because its header product is unavailable.');
+            return;
+        }
+
+        cart.push({
+            key: key,
+            client_line_key: key,
+            line_kind: 'combo_header',
+            combo_id: combo.id,
+            product_id: headerProduct.id,
+            product_variant_id: null,
+            name: combo.name,
+            variant_name: null,
+            unit_code: '',
+            quantity: 1,
+            unit_price: Number(combo.price || 0),
+            base_unit_price: Number(combo.price || 0),
+            modifiers: [],
+            discount_amount: 0,
+            tax_amount: 0,
+            product: Object.assign({}, headerProduct, { is_taxable: false, tax_rate_percent: 0 }),
+            variant: null,
+            combo_components: combo.components || [],
+        });
+
+        (combo.components || []).forEach(function (component) {
+            var product = products.find(function (item) {
+                return Number(item.id) === Number(component.product_id);
+            });
+            if (!product) return;
+
+            var variant = (product.variants || []).find(function (item) {
+                return Number(item.id) === Number(component.product_variant_id);
+            }) || null;
+
+            cart.push({
+                key: key + ':component:' + component.id,
+                client_line_key: key + ':component:' + component.id,
+                parent_key: key,
+                parent_client_line_key: key,
+                line_kind: 'component',
+                combo_id: combo.id,
+                combo_component_qty: Number(component.quantity || 1),
+                product_id: product.id,
+                product_variant_id: variant ? variant.id : null,
+                name: product.name,
+                variant_name: variant ? variant.name : null,
+                unit_code: component.unit_code || product.unit_code || '',
+                quantity: Number(component.quantity || 1),
+                unit_price: 0,
+                base_unit_price: 0,
+                modifiers: [],
+                discount_amount: 0,
+                tax_amount: 0,
+                product: product,
+                variant: variant,
+            });
+        });
+
+        renderCart();
+    }
+
+    function addToCart(product, variant, forceQty, selectedModifiers) {
+        var modifiers = normalizeModifiers(selectedModifiers || []);
+        var key       = cartKey(product, variant, modifiers);
         var existing  = cart.find(function (item) { return item.key === key; });
         var stockQty  = availableQty(product, variant);
         var measurable = isMeasurableProduct(product);
@@ -1167,6 +1480,11 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!measurable) { addQty = Math.max(Math.round(addQty || 1), 1); }
         if (!addQty || addQty <= 0) return;
 
+        if (!selectedModifiers && hasModifierGroups(product)) {
+            openModifierModal(product, variant, addQty);
+            return;
+        }
+
         if (existing) {
             var newQty = measurable
                 ? parseFloat((Number(existing.quantity || 0) + addQty).toFixed(3))
@@ -1181,7 +1499,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 blockAlert(unavailableMessage(product, stockQty));
                 return;
             }
-            var price = productPrice(product, variant);
+            var price = productPrice(product, variant) + modifierPriceDelta(modifiers);
             cart.push({
                 key:                key,
                 product_id:         product.id,
@@ -1191,6 +1509,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 unit_code:          product.unit_code || '',
                 quantity:           measurable ? parseFloat(addQty.toFixed(3)) : addQty,
                 unit_price:         price,
+                base_unit_price:    productPrice(product, variant),
+                modifiers:          modifiers,
                 discount_amount:    0,
                 tax_amount:         lineTax(product, addQty, price, 0),
                 product:            product,
@@ -1211,17 +1531,41 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         cart.forEach(function (item, index) {
+            if (item.line_kind === 'component') return;
+
             item.tax_amount = lineTax(item.product, item.quantity, item.unit_price, item.discount_amount);
 
             const row     = document.createElement('div');
             row.className = 'cart-row';
+            var modifierHtml = normalizeModifiers(item.modifiers).map(function (modifier) {
+                var delta = Number(modifier.price_delta || 0);
+                var deltaText = delta === 0 ? '' : ' <span>(' + (delta > 0 ? '+' : '') + money(delta) + ')</span>';
+                return '<div class="small text-muted ps-2">+ ' + escapeHtml(modifier.name) + deltaText + '</div>';
+            }).join('');
+            var componentHtml = '';
+            if (item.line_kind === 'combo_header') {
+                componentHtml = cart.filter(function (child) {
+                    return child.parent_key === item.key && child.line_kind === 'component';
+                }).map(function (child) {
+                    return '<div class="small text-muted ps-2">- ' + formatQty(child.quantity, child.product) + ' x ' + escapeHtml(child.name) + '</div>';
+                }).join('');
+            }
+            var canEditModifiers = item.line_kind !== 'combo_header' && item.line_kind !== 'component'
+                && !item.kot_sent && item.product && hasModifierGroups(item.product);
+            var editBtnHtml = canEditModifiers
+                ? '<button type="button" class="btn btn-sm btn-outline-secondary" data-edit-mod="' + index + '" title="Edit options"><i class="ti ti-adjustments-horizontal"></i></button>'
+                : '';
             row.innerHTML =
                 '<div class="d-flex justify-content-between gap-2 mb-2">' +
                     '<div>' +
-                        '<div class="fw-bold">' + item.name + '</div>' +
-                        '<div class="small text-muted">' + (item.variant_name || 'Default') + ' &middot; ' + money(item.unit_price) + (lineUnitLabel(item) ? ' / ' + lineUnitLabel(item) : '') + '</div>' +
+                        '<div class="fw-bold">' + escapeHtml(item.name) + '</div>' +
+                        '<div class="small text-muted">' + escapeHtml(item.variant_name || 'Default') + ' &middot; ' + money(item.unit_price) + (lineUnitLabel(item) ? ' / ' + escapeHtml(lineUnitLabel(item)) : '') + '</div>' +
+                        modifierHtml +
+                        componentHtml +
                     '</div>' +
-                    '<button type="button" class="btn btn-sm btn-outline-danger" data-remove="' + index + '">&times;</button>' +
+                    '<div class="d-flex gap-1">' + editBtnHtml +
+                        '<button type="button" class="btn btn-sm btn-outline-danger" data-remove="' + index + '">&times;</button>' +
+                    '</div>' +
                 '</div>' +
                 '<div class="d-flex align-items-center justify-content-between gap-2">' +
                     '<div class="d-flex align-items-center gap-2">' +
@@ -1259,6 +1603,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     return;
                 }
                 item.quantity = newQty;
+                if (item.line_kind === 'combo_header') updateComboComponents(item.key);
                 renderCart();
             });
         });
@@ -1271,6 +1616,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 item.quantity = isMeasurableProduct(item.product)
                     ? parseFloat((Number(item.quantity || 0) + step).toFixed(3))
                     : Number(item.quantity || 0) + 1;
+                if (item.line_kind === 'combo_header') updateComboComponents(item.key);
                 renderCart();
             });
         });
@@ -1282,8 +1628,24 @@ document.addEventListener('DOMContentLoaded', function () {
                 item.quantity = isMeasurableProduct(item.product)
                     ? parseFloat((Number(item.quantity || 0) - step).toFixed(3))
                     : Number(item.quantity || 0) - 1;
-                if (item.quantity <= 0.0001) { cart.splice(i, 1); }
+                if (item.quantity <= 0.0001) {
+                    if (item.line_kind === 'combo_header') {
+                        cart = cart.filter(function (row) { return row.key !== item.key && row.parent_key !== item.key; });
+                    } else {
+                        cart.splice(i, 1);
+                    }
+                } else if (item.line_kind === 'combo_header') {
+                    updateComboComponents(item.key);
+                }
                 renderCart();
+            });
+        });
+        cartItemsEl.querySelectorAll('[data-edit-mod]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var item = cart[Number(btn.dataset.editMod)];
+                if (!item || !item.product) return;
+                var preselected = normalizeModifiers(item.modifiers).map(function (m) { return Number(m.modifier_id); });
+                openModifierModal(item.product, item.variant, item.quantity, preselected, item.key);
             });
         });
         cartItemsEl.querySelectorAll('[data-remove]').forEach(function (btn) {
@@ -1303,11 +1665,19 @@ document.addEventListener('DOMContentLoaded', function () {
                                 product_name:        item.product_name || item.product?.name || '',
                             });
                         }
-                        cart.splice(idx, 1);
+                        if (item.line_kind === 'combo_header') {
+                            cart = cart.filter(function (row) { return row.key !== item.key && row.parent_key !== item.key; });
+                        } else {
+                            cart.splice(idx, 1);
+                        }
                         renderCart();
                     });
                 } else {
-                    cart.splice(idx, 1);
+                    if (item.line_kind === 'combo_header') {
+                        cart = cart.filter(function (row) { return row.key !== item.key && row.parent_key !== item.key; });
+                    } else {
+                        cart.splice(idx, 1);
+                    }
                     renderCart();
                 }
             });
@@ -1432,6 +1802,8 @@ document.addEventListener('DOMContentLoaded', function () {
     function collectQuoteLines() {
         return cart.map(function (item) {
             return {
+                product_id:       item.product_id || 0,
+                category_id:      item.product?.category_id || 0,
                 quantity:        item.quantity || 0,
                 unit_price:      item.unit_price || 0,
                 discount_amount: item.discount_amount || 0,
@@ -1502,10 +1874,16 @@ document.addEventListener('DOMContentLoaded', function () {
             var fields = {
                 product_id:         item.product_id,
                 product_variant_id: item.product_variant_id || '',
+                client_line_key:    item.client_line_key || item.key || '',
+                parent_client_line_key: item.parent_client_line_key || '',
+                line_kind:          item.line_kind || 'standard',
+                combo_id:           item.combo_id || '',
+                line_name:          item.name || '',
                 quantity:           item.quantity,
                 unit_price:         item.unit_price,
                 discount_amount:    item.discount_amount || 0,
                 tax_amount:         item.tax_amount || 0,
+                modifiers:          JSON.stringify(normalizeModifiers(item.modifiers)),
             };
             Object.keys(fields).forEach(function (field) {
                 var inp  = document.createElement('input');
@@ -1573,7 +1951,13 @@ document.addEventListener('DOMContentLoaded', function () {
         fetch('{{ url('/api/pos/promotions/quote') }}', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
-            body: JSON.stringify({ promo_code: code, branch_id: branchId, order_type: orderType, subtotal: t.subtotal }),
+            body: JSON.stringify({
+                promo_code: code,
+                branch_id: branchId,
+                order_type: orderType,
+                subtotal: t.subtotal,
+                lines: collectQuoteLines(),
+            }),
         })
         .then(function (res) { return res.json(); })
         .then(function (data) {
@@ -2135,14 +2519,26 @@ document.addEventListener('DOMContentLoaded', function () {
 
         // Rebuild cart from recalled sale
         cart = [];
+        var recalledLineKeys = {};
         sale.lines.forEach(function (line) {
             const product = products.find(function (p) { return Number(p.id) === Number(line.product_id); });
             if (!product) return;
             const variant = (product.variants || []).find(function (v) {
                 return Number(v.id) === Number(line.product_variant_id);
             });
+            const modifiers = normalizeModifiers(line.modifiers || []);
+            const lineKind = line.line_kind || 'standard';
+            const key = lineKind === 'combo_header'
+                ? 'held-line:' + line.id
+                : (lineKind === 'component' ? 'held-line:' + line.id : cartKey(product, variant, modifiers));
+            const parentKey = line.parent_sales_order_line_id ? recalledLineKeys[line.parent_sales_order_line_id] : '';
             cart.push({
-                key:                product.id + ':' + (variant ? variant.id : 0),
+                key:                key,
+                client_line_key:    key,
+                parent_key:         parentKey,
+                parent_client_line_key: parentKey,
+                line_kind:          lineKind,
+                combo_id:           line.combo_id || '',
                 product_id:         product.id,
                 product_variant_id: variant ? variant.id : null,
                 name:               line.product_name || product.name,
@@ -2150,11 +2546,14 @@ document.addEventListener('DOMContentLoaded', function () {
                 unit_code:          line.unit_code || product.unit_code || '',
                 quantity:           Number(line.quantity || 1),
                 unit_price:         Number(line.unit_price || productPrice(product, variant)),
+                base_unit_price:    Number(line.base_unit_price || 0) || Math.max(Number(line.unit_price || productPrice(product, variant)) - modifierPriceDelta(modifiers), 0),
+                modifiers:          modifiers,
                 discount_amount:    Number(line.discount_amount || 0),
                 tax_amount:         Number(line.tax_amount || 0),
                 product:            product,
                 variant:            variant || null,
             });
+            recalledLineKeys[line.id] = key;
         });
 
         _currentHeldSaleId = sale.id;
@@ -2892,15 +3291,27 @@ document.addEventListener('DOMContentLoaded', function () {
     if (heldSale && heldSale.lines) {
         _currentHeldSaleId = heldSale.id;
         _currentHeldSaleNo = heldSale.sale_no || '';
+        var preloadedLineKeys = {};
 
         heldSale.lines.forEach(function (line) {
             const product = products.find(function (p) { return Number(p.id) === Number(line.product_id); });
             if (!product) return;
 
             const variant = (product.variants || []).find(function (v) { return Number(v.id) === Number(line.product_variant_id); });
+            const modifiers = normalizeModifiers(line.modifiers || []);
+            const lineKind = line.line_kind || 'standard';
+            const key = lineKind === 'combo_header'
+                ? 'held-line:' + line.id
+                : (lineKind === 'component' ? 'held-line:' + line.id : cartKey(product, variant, modifiers));
+            const parentKey = line.parent_sales_order_line_id ? preloadedLineKeys[line.parent_sales_order_line_id] : '';
 
             cart.push({
-                key:                product.id + ':' + (variant ? variant.id : 0),
+                key:                key,
+                client_line_key:    key,
+                parent_key:         parentKey,
+                parent_client_line_key: parentKey,
+                line_kind:          lineKind,
+                combo_id:           line.combo_id || '',
                 product_id:         product.id,
                 product_variant_id: variant ? variant.id : null,
                 name:               product.name,
@@ -2909,6 +3320,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 unit_code:          line.unit_code || product.unit_code || '',
                 quantity:           Number(line.quantity || 1),
                 unit_price:         Number(line.unit_price || productPrice(product, variant)),
+                base_unit_price:    Number(line.base_unit_price || 0) || Math.max(Number(line.unit_price || productPrice(product, variant)) - modifierPriceDelta(modifiers), 0),
+                modifiers:          modifiers,
                 discount_amount:    Number(line.discount_amount || 0),
                 tax_amount:         Number(line.tax_amount || 0),
                 product:            product,
@@ -2916,6 +3329,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 _dbLineId:          line.id || null,
                 kot_sent:           !!line.kot_sent,
             });
+            preloadedLineKeys[line.id] = key;
         });
     }
 

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Tenant;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\Category;
+use App\Models\Tenant\Combo;
 use App\Models\Tenant\Customer;
 use App\Models\Tenant\PaymentMethod;
 use App\Models\Tenant\Product;
@@ -76,6 +77,8 @@ class POSController extends Controller
                 'variants.barcodes',
                 'barcodes',
                 'branchPrices',
+                'modifierGroups.modifiers',
+                'modifierGroups.branch',
                 // Recipe data drives proactive "makeable" availability for service products.
                 'activeRecipe.ingredients.product.unit',
                 'activeRecipe.ingredients.unit',
@@ -157,6 +160,30 @@ class POSController extends Controller
             }
 
             $recipe = $this->recipeAvailability($product, $branches, $stockLookup, $unitConversion);
+            $modifierGroups = $product->modifierGroups
+                ? $product->modifierGroups->map(function ($group) {
+                    return [
+                        'id'          => (int) $group->id,
+                        'branch_id'   => $group->branch_id ? (int) $group->branch_id : null,
+                        'name'        => $group->name,
+                        'min_select'  => (int) $group->min_select,
+                        'max_select'  => $group->max_select !== null ? (int) $group->max_select : null,
+                        'is_required' => (bool) $group->is_required,
+                        'sort_order'  => (int) ($group->pivot?->sort_order ?? $group->sort_order ?? 0),
+                        'modifiers'   => $group->modifiers
+                            ->where('status', 'active')
+                            ->map(fn ($modifier) => [
+                                'id'                => (int) $modifier->id,
+                                'name'              => $modifier->name,
+                                'price_delta'       => (float) $modifier->price_delta,
+                                'linked_product_id' => $modifier->linked_product_id ? (int) $modifier->linked_product_id : null,
+                                'is_default'        => (bool) $modifier->is_default,
+                                'sort_order'        => (int) $modifier->sort_order,
+                            ])
+                            ->values(),
+                    ];
+                })->values()
+                : collect();
 
             return [
                 'id'                => (int) $product->id,
@@ -176,6 +203,7 @@ class POSController extends Controller
                 'tax_rate_percent'  => (float) ($product->tax_rate_percent ?? 0),
                 'barcodes'          => $barcodes,
                 'branch_prices'     => $branchPrices,
+                'modifier_groups'   => $modifierGroups,
                 'variants'          => $variants,
                 'stock_by_branch'   => $stockMap,
                 'is_recipe'                     => $recipe['is_recipe'],
@@ -183,6 +211,44 @@ class POSController extends Controller
                 'limiting_ingredient_by_branch' => $recipe['limiting'],
             ];
         })->values();
+
+        $combosPayload = Combo::with(['components.product.unit', 'components.variant'])
+            ->where('status', 'active')
+            ->where(function ($query) use ($selectedBranchId) {
+                $query->whereNull('branch_id')->orWhere('branch_id', $selectedBranchId);
+            })
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get()
+            ->map(function (Combo $combo) {
+                $components = $combo->components
+                    ->filter(fn ($component) => $component->product)
+                    ->map(fn ($component) => [
+                        'id' => (int) $component->id,
+                        'product_id' => (int) $component->product_id,
+                        'product_variant_id' => $component->product_variant_id ? (int) $component->product_variant_id : null,
+                        'product_name' => $component->product?->name,
+                        'variant_name' => $component->variant?->name,
+                        'unit_code' => $component->product?->unit?->code,
+                        'quantity' => (float) $component->quantity,
+                        'sort_order' => (int) $component->sort_order,
+                    ])
+                    ->values();
+
+                return [
+                    'id' => (int) $combo->id,
+                    'branch_id' => $combo->branch_id ? (int) $combo->branch_id : null,
+                    'code' => $combo->code,
+                    'name' => $combo->name,
+                    'price' => (float) $combo->price,
+                    'sort_order' => (int) $combo->sort_order,
+                    'description' => $combo->description,
+                    'header_product_id' => (int) ($components->first()['product_id'] ?? 0),
+                    'components' => $components,
+                ];
+            })
+            ->filter(fn ($combo) => $combo['header_product_id'] > 0 && count($combo['components']) > 0)
+            ->values();
 
         return view('tenant.pos.index', [
             'branches'         => $branches,
@@ -196,6 +262,7 @@ class POSController extends Controller
                 ->orderBy('name')
                 ->get(),
             'productsPayload'  => $productsPayload,
+            'combosPayload'    => $combosPayload,
             'paymentMethods'   => PaymentMethod::where('is_active', true)
                 ->orderByRaw("CASE WHEN method_type = 'cash' THEN 0 ELSE 1 END")
                 ->orderBy('name')
@@ -349,6 +416,8 @@ class POSController extends Controller
             'promo_code'              => ['nullable', 'string', 'max:50'],
             'tip_amount'              => ['nullable', 'numeric', 'min:0'],
             'lines'                   => ['nullable', 'array'],
+            'lines.*.product_id'      => ['nullable', 'integer'],
+            'lines.*.category_id'     => ['nullable', 'integer'],
             'lines.*.quantity'        => ['nullable', 'numeric', 'min:0'],
             'lines.*.unit_price'      => ['nullable', 'numeric', 'min:0'],
             'lines.*.discount_amount' => ['nullable', 'numeric', 'min:0'],
@@ -358,6 +427,8 @@ class POSController extends Controller
         $resolvedLines = collect($data['lines'] ?? [])
             ->filter(fn ($line) => (float) ($line['quantity'] ?? 0) > 0)
             ->map(fn ($line) => [
+                'product_id'      => (int) ($line['product_id'] ?? 0),
+                'category_id'     => (int) ($line['category_id'] ?? 0),
                 'quantity'        => (float) ($line['quantity'] ?? 0),
                 'unit_price'      => (float) ($line['unit_price'] ?? 0),
                 'discount_amount' => (float) ($line['discount_amount'] ?? 0),

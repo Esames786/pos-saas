@@ -5,6 +5,7 @@ use App\Http\Controllers\Tenant\Auth\PasswordResetController;
 use App\Http\Controllers\Tenant\ComingSoonController;
 use App\Http\Controllers\Tenant\BranchController;
 use App\Http\Controllers\Tenant\CategoryController;
+use App\Http\Controllers\Tenant\ComboController;
 use App\Http\Controllers\Tenant\CurrencyController;
 use App\Http\Controllers\Tenant\CustomerController;
 use App\Http\Controllers\Tenant\Finance\AccountController;
@@ -26,6 +27,7 @@ use App\Http\Controllers\Tenant\GoodsReceiptController;
 use App\Http\Controllers\Tenant\InventoryController;
 use App\Http\Controllers\Tenant\PaymentMethodController;
 use App\Http\Controllers\Tenant\POSController;
+use App\Http\Controllers\Tenant\ModifierGroupController;
 use App\Http\Controllers\Tenant\ProductBarcodeController;
 use App\Http\Controllers\Tenant\PurchaseBillController;
 use App\Http\Controllers\Tenant\PurchaseOrderController;
@@ -217,6 +219,15 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/products/{product}/edit', [ProductController::class, 'edit'])->name('tenant.products.edit');
                 Route::put('/products/{product}', [ProductController::class, 'update'])->name('tenant.products.update');
                 Route::delete('/products/{product}', [ProductController::class, 'destroy'])->name('tenant.products.destroy');
+
+                // Modifier Groups (MOD-1 config only)
+                Route::get('/modifier-groups', [ModifierGroupController::class, 'index'])->name('tenant.modifier-groups.index');
+                Route::get('/modifier-groups/create', [ModifierGroupController::class, 'create'])->name('tenant.modifier-groups.create');
+                Route::post('/modifier-groups', [ModifierGroupController::class, 'store'])->name('tenant.modifier-groups.store');
+                Route::get('/modifier-groups/{modifierGroup}/edit', [ModifierGroupController::class, 'edit'])->name('tenant.modifier-groups.edit');
+                Route::put('/modifier-groups/{modifierGroup}', [ModifierGroupController::class, 'update'])->name('tenant.modifier-groups.update');
+                Route::delete('/modifier-groups/{modifierGroup}', [ModifierGroupController::class, 'destroy'])->name('tenant.modifier-groups.destroy');
+                Route::put('/products/{product}/modifier-groups', [ModifierGroupController::class, 'syncProduct'])->name('tenant.products.modifier-groups.update');
 
                 // Product Variants
                 Route::post('/products/{product}/variants', [ProductVariantController::class, 'store'])->name('tenant.product-variants.store');
@@ -501,6 +512,13 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::delete('/promotions/{promotion}', [PromotionController::class, 'destroy'])->name('tenant.promotions.destroy');
 
                 // Sales Controls — Service Charge
+                Route::get('/combos', [ComboController::class, 'index'])->name('tenant.combos.index');
+                Route::get('/combos/create', [ComboController::class, 'create'])->name('tenant.combos.create');
+                Route::post('/combos', [ComboController::class, 'store'])->name('tenant.combos.store');
+                Route::get('/combos/{combo}/edit', [ComboController::class, 'edit'])->name('tenant.combos.edit');
+                Route::put('/combos/{combo}', [ComboController::class, 'update'])->name('tenant.combos.update');
+                Route::delete('/combos/{combo}', [ComboController::class, 'destroy'])->name('tenant.combos.destroy');
+
                 Route::get('/service-charge-settings', [ServiceChargeSettingController::class, 'index'])->name('tenant.service-charge-settings.index');
                 Route::post('/service-charge-settings', [ServiceChargeSettingController::class, 'store'])->name('tenant.service-charge-settings.store');
 

@@ -299,6 +299,89 @@
     @endcan
 </div>
 
+{{-- Modifier groups panel --}}
+<div class="card mb-4">
+    <div class="card-header d-flex align-items-center justify-content-between">
+        <strong>Modifier Groups</strong>
+        @can('tenant.modifier-groups.create')
+            <a href="{{ url('/modifier-groups/create') }}" class="btn btn-sm btn-outline-primary">Create Group</a>
+        @endcan
+    </div>
+    @can('tenant.products.modifier-groups.update')
+    <form method="POST" action="{{ url('/products/' . $product->id . '/modifier-groups') }}">
+        @csrf
+        @method('PUT')
+        <div class="card-body table-responsive p-0">
+            <table class="table table-nowrap align-middle mb-0">
+                <caption class="visually-hidden">Product modifier groups</caption>
+                <thead>
+                    <tr>
+                        <th scope="col">Use</th>
+                        <th scope="col">Group</th>
+                        <th scope="col">Branch</th>
+                        <th scope="col">Rules</th>
+                        <th scope="col">Sort</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @forelse($modifierGroups as $idx => $group)
+                    @php
+                        $attached = $product->modifierGroups->firstWhere('id', $group->id);
+                    @endphp
+                    <tr>
+                        <td style="width:70px">
+                            <input type="hidden" name="groups[{{ $idx }}][id]" value="{{ $group->id }}">
+                            <input type="checkbox"
+                                   name="groups[{{ $idx }}][enabled]"
+                                   value="1"
+                                   class="form-check-input"
+                                   @checked((bool) $attached)
+                                   aria-label="Attach {{ $group->name }}">
+                        </td>
+                        <td>
+                            <div class="fw-medium">{{ $group->name }}</div>
+                        </td>
+                        <td>{{ $group->branch?->name ?? 'All Branches' }}</td>
+                        <td>
+                            @if($group->is_required)
+                                <span class="badge bg-warning text-dark">Required</span>
+                            @else
+                                <span class="badge bg-light text-muted">Optional</span>
+                            @endif
+                            <span class="ms-1">{{ $group->min_select }} min / {{ $group->max_select ?? 'Any' }} max</span>
+                        </td>
+                        <td style="width:110px">
+                            <input type="number"
+                                   name="groups[{{ $idx }}][sort_order]"
+                                   class="form-control form-control-sm"
+                                   min="0"
+                                   step="1"
+                                   value="{{ $attached?->pivot?->sort_order ?? $idx }}">
+                        </td>
+                    </tr>
+                @empty
+                    <tr>
+                        <td colspan="5" class="text-center text-muted py-3">No active modifier groups yet.</td>
+                    </tr>
+                @endforelse
+                </tbody>
+            </table>
+        </div>
+        <div class="card-footer">
+            <button type="submit" class="btn btn-primary">Save Modifier Groups</button>
+        </div>
+    </form>
+    @else
+    <div class="card-body">
+        @forelse($product->modifierGroups as $group)
+            <span class="badge bg-light text-dark border me-1 mb-1">{{ $group->name }}</span>
+        @empty
+            <p class="text-muted mb-0">No modifier groups attached.</p>
+        @endforelse
+    </div>
+    @endcan
+</div>
+
 {{-- Branch prices panel --}}
 <div class="card mb-4">
     <div class="card-header"><strong>Branch Prices</strong></div>

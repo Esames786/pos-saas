@@ -63,6 +63,9 @@ class HeldSaleController extends Controller
                     'id'                 => (int) $l->id,
                     'product_id'         => (int) $l->product_id,
                     'product_variant_id' => $l->product_variant_id ? (int) $l->product_variant_id : null,
+                    'parent_sales_order_line_id' => $l->parent_sales_order_line_id ? (int) $l->parent_sales_order_line_id : null,
+                    'line_kind'          => $l->line_kind ?? 'standard',
+                    'combo_id'           => $l->combo_id ? (int) $l->combo_id : null,
                     'quantity'           => (float) $l->quantity,
                     'unit_price'         => (float) $l->unit_price,
                     'discount_amount'    => (float) $l->discount_amount,
@@ -71,6 +74,7 @@ class HeldSaleController extends Controller
                     'product_name'       => $l->product_name,
                     'variant_name'       => $l->variant_name,
                     'unit_code'          => $l->unit_code,
+                    'modifiers'          => $l->modifiers ?? [],
                     'kot_sent'           => (bool) $l->kot_sent,
                     'kot_sent_quantity'  => (float) ($l->kot_sent_quantity ?? 0),
                     'kitchen_note'       => $l->kitchen_note,
@@ -161,6 +165,9 @@ class HeldSaleController extends Controller
                 'id'                 => (int) $l->id,
                 'product_id'         => (int) $l->product_id,
                 'product_variant_id' => $l->product_variant_id ? (int) $l->product_variant_id : null,
+                'parent_sales_order_line_id' => $l->parent_sales_order_line_id ? (int) $l->parent_sales_order_line_id : null,
+                'line_kind'          => $l->line_kind ?? 'standard',
+                'combo_id'           => $l->combo_id ? (int) $l->combo_id : null,
                 'quantity'           => (float) $l->quantity,
                 'unit_price'         => (float) $l->unit_price,
                 'discount_amount'    => (float) $l->discount_amount,
@@ -169,6 +176,7 @@ class HeldSaleController extends Controller
                 'product_name'       => $l->product_name,
                 'variant_name'       => $l->variant_name,
                 'unit_code'          => $l->unit_code,
+                'modifiers'          => $l->modifiers ?? [],
                 'kot_sent'           => (bool) $l->kot_sent,
                 'kot_sent_quantity'  => (float) ($l->kot_sent_quantity ?? 0),
                 'kitchen_note'       => $l->kitchen_note,
@@ -215,8 +223,14 @@ class HeldSaleController extends Controller
             'lines'                       => 'required|array|min:1',
             'lines.*.product_id'          => 'required_with:lines.*.quantity|nullable|exists:products,id',
             'lines.*.product_variant_id'  => 'nullable|exists:product_variants,id',
+            'lines.*.client_line_key'      => 'nullable|string|max:120',
+            'lines.*.parent_client_line_key' => 'nullable|string|max:120',
+            'lines.*.line_kind'            => 'nullable|in:standard,combo_header,component,modifier',
+            'lines.*.combo_id'             => 'nullable|exists:combos,id',
+            'lines.*.line_name'            => 'nullable|string|max:190',
             'lines.*.quantity'            => 'nullable|numeric|min:0.001',
             'lines.*.unit_price'          => 'nullable|numeric|min:0',
+            'lines.*.modifiers'           => 'nullable|string',
             'void_items'                  => 'nullable|array',
             'void_items.*.old_line_id'    => 'nullable|integer',
             'void_items.*.reason_id'      => 'nullable|exists:void_reasons,id',
@@ -234,8 +248,14 @@ class HeldSaleController extends Controller
             return back()->withErrors(['lines' => 'At least one product line is required.'])->withInput();
         }
 
+        $productsById = Product::whereIn('id', $lines->pluck('product_id')->filter()->unique())
+            ->get(['id', 'category_id'])
+            ->keyBy('id');
+
         // Build resolved lines for totals calculation (held sales use submitted prices)
         $resolvedLines = $lines->map(fn ($l) => [
+            'product_id'      => (int) ($l['product_id'] ?? 0),
+            'category_id'     => (int) ($productsById->get((int) ($l['product_id'] ?? 0))?->category_id ?? 0),
             'quantity'        => (float) ($l['quantity'] ?? 0),
             'unit_price'      => (float) ($l['unit_price'] ?? 0),
             'discount_amount' => 0,
@@ -401,6 +421,8 @@ class HeldSaleController extends Controller
             ]);
         }
 
+        $createdLinesByClientKey = [];
+
         foreach ($lines as $line) {
             $product = Product::with('unit')->find($line['product_id']);
             $variant = !empty($line['product_variant_id'])
@@ -414,11 +436,19 @@ class HeldSaleController extends Controller
             $newQty    = (float) $line['quantity'];
             $kotSent   = $sentQty > 0 && $newQty <= $sentQty;
             $kotSentQty = min($sentQty, $newQty);
+            $parentClientKey = $line['parent_client_line_key'] ?? null;
 
-            $sale->lines()->create([
+            $createdLine = $sale->lines()->create([
+                'parent_sales_order_line_id' => $parentClientKey && isset($createdLinesByClientKey[$parentClientKey])
+                    ? $createdLinesByClientKey[$parentClientKey]->id
+                    : null,
+                'line_kind'          => $line['line_kind'] ?? 'standard',
+                'combo_id'           => $line['combo_id'] ?? null,
                 'product_id'         => $line['product_id'],
                 'product_variant_id' => $line['product_variant_id'] ?? null,
-                'product_name'       => $product?->name ?? '',
+                'product_name'       => (($line['line_kind'] ?? 'standard') === 'combo_header' && !empty($line['line_name']))
+                    ? $line['line_name']
+                    : ($product?->name ?? ''),
                 'variant_name'       => $variant?->name ?? null,
                 'unit_code'          => $product?->unit?->code,
                 'quantity'           => $line['quantity'],
@@ -428,9 +458,14 @@ class HeldSaleController extends Controller
                 'discount_amount'    => 0,
                 'tax_amount'         => 0,
                 'line_total'         => $lineTotal,
+                'modifiers'          => $this->normalizeLineModifiers($line['modifiers'] ?? null),
                 'kot_sent'           => $kotSent,
                 'kot_sent_quantity'  => $kotSentQty,
             ]);
+
+            if (!empty($line['client_line_key'])) {
+                $createdLinesByClientKey[$line['client_line_key']] = $createdLine;
+            }
         }
 
         if ($request->expectsJson()) {
@@ -471,5 +506,30 @@ class HeldSaleController extends Controller
         }
 
         return redirect(url('/held-sales'))->with('status', 'Held sale cancelled.');
+    }
+
+    private function normalizeLineModifiers(mixed $value): array
+    {
+        if (is_string($value)) {
+            $decoded = json_decode($value, true);
+            $value = is_array($decoded) ? $decoded : [];
+        }
+
+        if (!is_array($value)) {
+            return [];
+        }
+
+        return collect($value)
+            ->filter(fn ($modifier) => is_array($modifier))
+            ->map(fn ($modifier) => [
+                'modifier_group_id'   => (int) ($modifier['modifier_group_id'] ?? 0),
+                'modifier_group_name' => (string) ($modifier['modifier_group_name'] ?? ''),
+                'modifier_id'         => (int) ($modifier['modifier_id'] ?? 0),
+                'name'                => (string) ($modifier['name'] ?? ''),
+                'price_delta'         => round((float) ($modifier['price_delta'] ?? 0), 2),
+            ])
+            ->filter(fn ($modifier) => $modifier['modifier_id'] > 0 && $modifier['name'] !== '')
+            ->values()
+            ->all();
     }
 }

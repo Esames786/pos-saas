@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Tenant\Branch;
 use App\Services\Catalog\BarcodeLookupService;
 use App\Models\Tenant\Category;
+use App\Models\Tenant\ModifierGroup;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\ProductBarcode;
 use App\Models\Tenant\ProductVariant;
@@ -109,11 +110,12 @@ class ProductController extends Controller
 
     public function show(Product $product)
     {
-        $product->load(['category', 'unit', 'variants.barcodes', 'barcodes', 'branchPrices.branch']);
+        $product->load(['category', 'unit', 'variants.barcodes', 'barcodes', 'branchPrices.branch', 'modifierGroups.branch']);
 
         return view('tenant.products.show', [
-            'product'  => $product,
-            'branches' => Branch::where('status', 'active')->orderBy('name')->get(),
+            'product'        => $product,
+            'branches'       => Branch::where('status', 'active')->orderBy('name')->get(),
+            'modifierGroups' => ModifierGroup::with('branch')->where('status', 'active')->orderBy('sort_order')->orderBy('name')->get(),
         ]);
     }
 

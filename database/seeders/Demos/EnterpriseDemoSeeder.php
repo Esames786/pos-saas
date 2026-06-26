@@ -4,10 +4,13 @@ namespace Database\Seeders\Demos;
 
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\Category;
+use App\Models\Tenant\Combo;
 use App\Models\Tenant\GoodsReceipt;
 use App\Models\Tenant\PaymentMethod;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\ProductVariant;
+use App\Models\Tenant\Modifier;
+use App\Models\Tenant\ModifierGroup;
 use App\Models\Tenant\Promotion;
 use App\Models\Tenant\PurchaseBill;
 use App\Models\Tenant\PurchaseOrder;
@@ -62,6 +65,7 @@ class EnterpriseDemoSeeder
         $this->seedCategories();
         $this->seedRetailProducts();
         $this->seedMenuProducts();
+        $this->seedModifiersAndCombos();
         $this->seedIngredients();
         $this->seedRolesAndUsers();
         $this->seedOpeningStock();
@@ -474,11 +478,57 @@ class EnterpriseDemoSeeder
             RestaurantWaiter::updateOrCreate(['branch_id' => $this->mall->id, 'code' => $code], ['name' => $name, 'status' => 'active']);
         }
         Promotion::updateOrCreate(['code' => 'ENTDINE10'], ['branch_id' => $this->mall->id, 'name' => '10% Dine-in', 'promotion_type' => 'order', 'discount_type' => 'percent', 'discount_value' => 10, 'order_types' => ['dine_in'], 'requires_code' => true, 'status' => 'active', 'priority' => 100]);
+        $burgerDeal = Promotion::updateOrCreate(['code' => 'ENTBURGER15'], ['branch_id' => $this->mall->id, 'name' => '15% Burger Deal', 'promotion_type' => 'product', 'discount_type' => 'percent', 'discount_value' => 15, 'order_types' => ['dine_in', 'takeaway', 'quick_sale'], 'requires_code' => true, 'status' => 'active', 'priority' => 110]);
+        $burgerDeal->targets()->delete();
+        Product::whereIn('sku', ['ENT-MENU-BURGER-CLASSIC', 'ENT-MENU-BURGER-CHEESE', 'ENT-MENU-BURGER-ZINGER'])
+            ->pluck('id')
+            ->each(fn ($productId) => $burgerDeal->targets()->create(['target_type' => 'product', 'target_id' => $productId]));
         foreach ([['name' => 'Wrong Item', 'reason_type' => 'void'], ['name' => 'Customer Changed Mind', 'reason_type' => 'return'], ['name' => 'Out of Stock', 'reason_type' => 'cancel']] as $reason) {
             VoidReason::updateOrCreate(['name' => $reason['name']], array_merge($reason, ['is_active' => true]));
         }
         ServiceChargeSetting::updateOrCreate(['branch_id' => $this->mall->id], ['charge_type' => 'percent', 'charge_value' => 5, 'order_types' => ['dine_in'], 'is_taxable' => false, 'is_active' => true]);
         $this->counts['restaurant'] = "2 floors, {$tables} tables, 3 waiters, sales controls";
+    }
+
+    /** Seed add-ons and bundle deals that are available in the Mall Restaurant POS. */
+    private function seedModifiersAndCombos(): void
+    {
+        if (! $this->mall) return;
+
+        $group = ModifierGroup::updateOrCreate(
+            ['branch_id' => $this->mall->id, 'name' => 'Burger Add-ons'],
+            ['min_select' => 0, 'max_select' => 3, 'is_required' => false, 'sort_order' => 10, 'status' => 'active']
+        );
+        foreach ([['Extra Cheese', 100], ['Extra Patty', 250], ['Garlic Mayo', 60], ['No Onion', 0]] as $index => [$name, $priceDelta]) {
+            Modifier::updateOrCreate(
+                ['modifier_group_id' => $group->id, 'name' => $name],
+                ['price_delta' => $priceDelta, 'is_default' => $index === 0, 'sort_order' => ($index + 1) * 10, 'status' => 'active']
+            );
+        }
+        Product::whereIn('sku', ['ENT-MENU-BURGER-CLASSIC', 'ENT-MENU-BURGER-CHEESE', 'ENT-MENU-BURGER-ZINGER'])
+            ->get()
+            ->each(fn (Product $product) => $product->modifierGroups()->syncWithoutDetaching([$group->id => ['sort_order' => 10]]));
+
+        $combos = [
+            ['code' => 'ENT-COMBO-BURGER', 'name' => 'Classic Burger Meal', 'price' => 690, 'components' => [['ENT-MENU-BURGER-CLASSIC', 1], ['ENT-MENU-FRIES', 1], ['ENT-MENU-SOFTDRINK', 1]]],
+            ['code' => 'ENT-COMBO-BIRYANI', 'name' => 'Biryani Lunch Deal', 'price' => 590, 'components' => [['ENT-MENU-BIRYANI', 1], ['ENT-MENU-MARGARITA', 1], ['ENT-MENU-BROWNIE', 1]]],
+        ];
+        $componentCount = 0;
+        foreach ($combos as $sortOrder => $definition) {
+            $combo = Combo::updateOrCreate(
+                ['branch_id' => $this->mall->id, 'code' => $definition['code']],
+                ['name' => $definition['name'], 'price' => $definition['price'], 'description' => 'POS demo meal deal.', 'sort_order' => ($sortOrder + 1) * 10, 'status' => 'active']
+            );
+            $combo->components()->delete();
+            foreach ($definition['components'] as $componentSort => [$sku, $quantity]) {
+                $product = Product::where('sku', $sku)->first();
+                if (! $product) continue;
+                $combo->components()->create(['product_id' => $product->id, 'quantity' => $quantity, 'sort_order' => ($componentSort + 1) * 10]);
+                $componentCount++;
+            }
+        }
+        $this->counts['pos_add_ons'] = '1 group / 4 options';
+        $this->counts['combo_deals'] = count($combos) . " combos / {$componentCount} components";
     }
 
     private function seedRetailSales(): void

@@ -45,6 +45,10 @@ class SalesService
 
             if (!$sale->inventory_posted) {
                 foreach ($sale->lines as $line) {
+                    if (($line->line_kind ?? 'standard') === 'combo_header') {
+                        continue;
+                    }
+
                     $product = $line->product;
 
                     if (!$product) {

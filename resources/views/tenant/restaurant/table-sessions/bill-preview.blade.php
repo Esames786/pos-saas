@@ -139,8 +139,29 @@
                                     </thead>
                                     <tbody>
                                     @foreach($sale->lines as $line)
+                                        @if(($line->line_kind ?? 'standard') === 'component') @continue @endif
                                         <tr>
-                                            <td>{{ $line->product_name }}</td>
+                                            <td>
+                                                {{ $line->product_name }}
+                                                @if($line->variant_name)
+                                                    <div class="small text-muted">{{ $line->variant_name }}</div>
+                                                @endif
+                                                @foreach(($line->modifiers ?? []) as $modifier)
+                                                    @if(!empty($modifier['name']))
+                                                        <div class="small text-muted ps-2">
+                                                            + {{ $modifier['name'] }}
+                                                            @if((float) ($modifier['price_delta'] ?? 0) !== 0.0)
+                                                                ({{ (float) $modifier['price_delta'] > 0 ? '+' : '' }}{{ number_format((float) $modifier['price_delta'], 2) }})
+                                                            @endif
+                                                        </div>
+                                                    @endif
+                                                @endforeach
+                                                @foreach($sale->lines->where('parent_sales_order_line_id', $line->id) as $component)
+                                                    <div class="small text-muted ps-2">
+                                                        - {{ number_format((float) $component->quantity, 3) }}{{ $component->unit_code ? ' '.$component->unit_code : '' }} x {{ $component->product_name }}
+                                                    </div>
+                                                @endforeach
+                                            </td>
                                             <td>{{ number_format($line->quantity, 3) }}</td>
                                             <td>{{ number_format($line->unit_price, 2) }}</td>
                                             <td>{{ number_format($line->line_total, 2) }}</td>

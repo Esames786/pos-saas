@@ -113,6 +113,14 @@ class SalesOrderController extends Controller
                         'unit_price'      => $price,
                         'discount_amount' => $disc,
                         'tax_amount'      => $tax,
+                        'product_id'      => $product->id,
+                        'category_id'     => $product->category_id,
+                        'modifiers'       => $this->normalizeLineModifiers($line['modifiers'] ?? null),
+                        'client_line_key' => $line['client_line_key'] ?? null,
+                        'parent_client_line_key' => $line['parent_client_line_key'] ?? null,
+                        'line_kind'       => $line['line_kind'] ?? 'standard',
+                        'combo_id'        => $line['combo_id'] ?? null,
+                        'line_name'       => $line['line_name'] ?? null,
                     ]);
                 })->values()->toArray();
 
@@ -210,6 +218,7 @@ class SalesOrderController extends Controller
                 }
 
                 // Create lines using resolved prices
+                $createdLinesByClientKey = [];
                 foreach ($resolvedLines as $line) {
                     $product   = $line['_product'];
                     $variant   = $line['_variant'];
@@ -218,11 +227,19 @@ class SalesOrderController extends Controller
                     $disc      = (float) $line['discount_amount'];
                     $lineTax   = (float) $line['tax_amount'];
                     $lineTotal = ($qty * $unitPrice) - $disc + $lineTax;
+                    $parentClientKey = $line['parent_client_line_key'] ?? null;
 
-                    $sale->lines()->create([
+                    $createdLine = $sale->lines()->create([
+                        'parent_sales_order_line_id' => $parentClientKey && isset($createdLinesByClientKey[$parentClientKey])
+                            ? $createdLinesByClientKey[$parentClientKey]->id
+                            : null,
+                        'line_kind'          => $line['line_kind'] ?? 'standard',
+                        'combo_id'           => $line['combo_id'] ?? null,
                         'product_id'         => $product->id,
                         'product_variant_id' => $variant?->id,
-                        'product_name'       => $product->name,
+                        'product_name'       => (($line['line_kind'] ?? 'standard') === 'combo_header' && !empty($line['line_name']))
+                            ? $line['line_name']
+                            : $product->name,
                         'variant_name'       => $variant?->name,
                         'unit_code'          => $product->unit?->code,
                         'quantity'           => $qty,
@@ -232,7 +249,12 @@ class SalesOrderController extends Controller
                         'discount_amount'    => $disc,
                         'tax_amount'         => $lineTax,
                         'line_total'         => $lineTotal,
+                        'modifiers'          => $line['modifiers'] ?? [],
                     ]);
+
+                    if (!empty($line['client_line_key'])) {
+                        $createdLinesByClientKey[$line['client_line_key']] = $createdLine;
+                    }
                 }
 
                 foreach ($payments as $payment) {
@@ -333,10 +355,16 @@ class SalesOrderController extends Controller
             'lines'                      => ['required', 'array'],
             'lines.*.product_id'         => ['nullable', 'exists:products,id'],
             'lines.*.product_variant_id' => ['nullable', 'exists:product_variants,id'],
+            'lines.*.client_line_key'    => ['nullable', 'string', 'max:120'],
+            'lines.*.parent_client_line_key' => ['nullable', 'string', 'max:120'],
+            'lines.*.line_kind'          => ['nullable', Rule::in(['standard', 'combo_header', 'component', 'modifier'])],
+            'lines.*.combo_id'           => ['nullable', 'exists:combos,id'],
+            'lines.*.line_name'          => ['nullable', 'string', 'max:190'],
             'lines.*.quantity'           => ['nullable', 'numeric', 'min:0.001'],
             'lines.*.unit_price'         => ['nullable', 'numeric', 'min:0'],
             'lines.*.discount_amount'    => ['nullable', 'numeric', 'min:0'],
             'lines.*.tax_amount'         => ['nullable', 'numeric', 'min:0'],
+            'lines.*.modifiers'          => ['nullable', 'string'],
 
             'payments'                         => ['required', 'array'],
             'payments.*.payment_method_id'     => ['nullable', 'exists:payment_methods,id'],
@@ -380,6 +408,31 @@ class SalesOrderController extends Controller
         }
 
         return (float) ($product->default_selling_price ?? 0);
+    }
+
+    private function normalizeLineModifiers(mixed $value): array
+    {
+        if (is_string($value)) {
+            $decoded = json_decode($value, true);
+            $value = is_array($decoded) ? $decoded : [];
+        }
+
+        if (!is_array($value)) {
+            return [];
+        }
+
+        return collect($value)
+            ->filter(fn ($modifier) => is_array($modifier))
+            ->map(fn ($modifier) => [
+                'modifier_group_id'   => (int) ($modifier['modifier_group_id'] ?? 0),
+                'modifier_group_name' => (string) ($modifier['modifier_group_name'] ?? ''),
+                'modifier_id'         => (int) ($modifier['modifier_id'] ?? 0),
+                'name'                => (string) ($modifier['name'] ?? ''),
+                'price_delta'         => round((float) ($modifier['price_delta'] ?? 0), 2),
+            ])
+            ->filter(fn ($modifier) => $modifier['modifier_id'] > 0 && $modifier['name'] !== '')
+            ->values()
+            ->all();
     }
 
     private function resolveTaxAmount(Product $product, float $quantity, float $unitPrice, float $lineDiscount, ?float $submittedTax): float

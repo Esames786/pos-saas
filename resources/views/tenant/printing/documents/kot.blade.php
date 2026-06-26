@@ -75,6 +75,7 @@
     </thead>
     <tbody>
         @foreach($kotLines as $line)
+        @if(($line->line_kind ?? 'standard') === 'combo_header') @continue @endif
         @php
             $totalQty = (float) $line->quantity;
 
@@ -107,6 +108,11 @@
                 @if($line->variant_name)
                     <br><small>{{ $line->variant_name }}</small>
                 @endif
+                @foreach(($line->modifiers ?? []) as $modifier)
+                    @if(!empty($modifier['name']))
+                        <br><small>+ {{ $modifier['name'] }}</small>
+                    @endif
+                @endforeach
                 @if($line->kitchen_note)
                     <br><small>⚑ {{ $line->kitchen_note }}</small>
                 @endif

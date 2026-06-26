@@ -281,6 +281,14 @@ class TenantProvisioner
             'tenant.products.edit',
             'tenant.products.update',
             'tenant.products.destroy',
+            'tenant.products.modifier-groups.update',
+
+            'tenant.modifier-groups.index',
+            'tenant.modifier-groups.create',
+            'tenant.modifier-groups.store',
+            'tenant.modifier-groups.edit',
+            'tenant.modifier-groups.update',
+            'tenant.modifier-groups.destroy',
 
             'tenant.product-variants.store',
             'tenant.product-variants.update',
@@ -499,6 +507,12 @@ class TenantProvisioner
             'tenant.promotions.destroy',
 
             // Sales Controls — Service Charge
+            'tenant.combos.index',
+            'tenant.combos.create',
+            'tenant.combos.store',
+            'tenant.combos.edit',
+            'tenant.combos.update',
+            'tenant.combos.destroy',
             'tenant.service-charge-settings.index',
             'tenant.service-charge-settings.store',
 
