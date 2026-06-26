@@ -29,8 +29,8 @@
         <ul class="nav user-menu">
             @if($isTenant)
                 <li class="nav-item pos-nav">
-                    @can('tenant.dashboard')
-                        <a href="{{ url('/dashboard') }}" class="btn btn-dark btn-md d-inline-flex align-items-center">
+                    @can('tenant.pos.index')
+                        <a href="{{ url('/pos') }}" class="btn btn-dark btn-md d-inline-flex align-items-center">
                             <i class="ti ti-device-laptop me-1"></i>POS
                         </a>
                     @endcan
