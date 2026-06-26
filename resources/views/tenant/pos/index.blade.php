@@ -630,6 +630,29 @@
                                 <button type="button" class="btn btn-xs btn-outline-secondary tip-btn" data-tip-type="custom">Custom</button>
                             </div>
                         </div>
+                        {{-- Printing panel: live status + temporary (this-device) auto-print overrides --}}
+                        <div class="col-12">
+                            <div class="border rounded p-2" id="print-pref-panel">
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <span class="fw-semibold small"><i class="ti ti-printer me-1"></i>Printing</span>
+                                    <span class="text-muted small" id="print-terminal-label">No terminal</span>
+                                </div>
+                                <div class="form-check form-switch mb-1">
+                                    <input class="form-check-input" type="checkbox" id="auto-kot-toggle">
+                                    <label class="form-check-label small" for="auto-kot-toggle">
+                                        Auto-print Kitchen Ticket (KOT)
+                                        <span class="text-muted d-block" id="kot-status-hint">—</span>
+                                    </label>
+                                </div>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="auto-receipt-toggle">
+                                    <label class="form-check-label small" for="auto-receipt-toggle">
+                                        Auto-print Receipt
+                                        <span class="text-muted d-block" id="receipt-status-hint">—</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <hr>
@@ -2315,10 +2338,41 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const terminalPrintConfig = @json($terminalPrintConfig);
 
-    function terminalAutoKot(terminalId) {
-        if (!terminalId) return false;  // No terminal selected → always ask
+    // Session-only print overrides (this device): '1' force on, '0' force off, null = follow terminal.
+    const PRINT_OVERRIDE_KEY = { kot: 'pos_auto_kot', receipt: 'pos_auto_receipt' };
+
+    function currentTerminalId() {
+        return (document.getElementById('terminal_id') || {}).value || '';
+    }
+
+    function terminalAuto(kind, terminalId) {
+        if (!terminalId) return false;            // No terminal → ask / manual fallback
         const cfg = terminalPrintConfig[terminalId];
-        return cfg ? cfg.auto_print_kot : false;
+        if (!cfg) return false;
+        return kind === 'kot' ? !!cfg.auto_print_kot : !!cfg.auto_print_receipt;
+    }
+
+    // Effective auto-print: a session override wins, else the terminal's saved setting.
+    function autoPrintEnabled(kind) {
+        const ov = localStorage.getItem(PRINT_OVERRIDE_KEY[kind]);
+        if (ov === '1') return true;
+        if (ov === '0') return false;
+        return terminalAuto(kind, currentTerminalId());
+    }
+
+    // Back-compat alias used by handleKotAfterSale (now honours session override too).
+    function terminalAutoKot() { return autoPrintEnabled('kot'); }
+
+    // Units already sent to the kitchen vs not-yet-sent, from the current cart (delta guard).
+    function kotPending() {
+        let sent = 0, pending = 0;
+        cart.forEach(function (it) {
+            const q = Number(it.quantity) || 0;
+            const s = Number(it.kot_sent_quantity || 0);
+            sent    += Math.min(s, q);
+            pending += Math.max(q - s, 0);
+        });
+        return { sent: sent, pending: pending };
     }
 
     function fireKotSilently(saleId, terminalId) {
@@ -2359,6 +2413,70 @@ document.addEventListener('DOMContentLoaded', function () {
                     toast('success', 'KOT sent to kitchen');
                 }
             });
+        }
+    }
+
+    // Print the receipt on complete, honouring the Auto-Receipt toggle + no-printer fallback.
+    function maybePrintReceipt(saleId, terminalId) {
+        if (!autoPrintEnabled('receipt')) { return; }   // "No receipt" (toggle off)
+        const query = terminalId ? '?terminal_id=' + encodeURIComponent(terminalId) : '';
+        fetch('{{ url('/printing/jobs/receipt') }}/' + saleId + query, {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
+        })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+            if (data && (data.fallback || data.printer_type === 'browser') && data.preview_url) {
+                toast('warning', 'No printer found — opening receipt for manual print');
+                window.open(data.preview_url, '_blank');
+            }
+        })
+        .catch(function () {});
+    }
+
+    // Live "Printing" panel in the payment modal: status chips + session toggles.
+    function refreshPrintPanel() {
+        const tid     = currentTerminalId();
+        const cfg     = tid ? terminalPrintConfig[tid] : null;
+        const labelEl = document.getElementById('print-terminal-label');
+        const kotTog  = document.getElementById('auto-kot-toggle');
+        const rcpTog  = document.getElementById('auto-receipt-toggle');
+        const kotHint = document.getElementById('kot-status-hint');
+        const rcpHint = document.getElementById('receipt-status-hint');
+        if (!kotTog || !rcpTog) { return; }
+
+        if (labelEl) {
+            const tName = tid && document.getElementById('terminal_id')
+                ? document.getElementById('terminal_id').selectedOptions[0].textContent.trim()
+                : 'No terminal';
+            labelEl.textContent = tName;
+        }
+
+        const kotAuto = autoPrintEnabled('kot');
+        const rcpAuto = autoPrintEnabled('receipt');
+        kotTog.checked = kotAuto;
+        rcpTog.checked = rcpAuto;
+
+        const pend = kotPending().pending;
+        if (kotHint) {
+            if (pend <= 0) {
+                kotHint.textContent = 'Kitchen: all items already sent ✓';
+            } else if (!tid) {
+                kotHint.textContent = pend + ' new item(s) — no terminal → opens KOT for manual print';
+            } else if (kotAuto) {
+                kotHint.textContent = pend + ' new item(s) → auto-send to kitchen';
+            } else {
+                kotHint.textContent = pend + ' new item(s) → will ask before sending';
+            }
+        }
+        if (rcpHint) {
+            if (!rcpAuto) {
+                rcpHint.textContent = 'Off — no receipt will print';
+            } else if (!tid) {
+                rcpHint.textContent = 'No terminal → opens receipt for manual print';
+            } else {
+                rcpHint.textContent = 'Prints to receipt printer on complete';
+            }
         }
     }
 
@@ -2404,13 +2522,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 _lastSaleId = saleId;
                 _lastSaleNo = saleNo;
 
-                // Receipt fires silently
-                fetch('{{ url('/printing/jobs/receipt') }}/' + saleId + printQuery, {
-                    method: 'POST', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
-                }).catch(function () {});
+                // Receipt — honours the Auto-Receipt toggle + opens preview if no printer
+                maybePrintReceipt(saleId, terminalId);
 
-                // KOT — auto or ask
-                handleKotAfterSale(saleId, saleNo, terminalId);
+                // KOT — only the un-sent delta; nothing new → no print, no prompt, no double
+                if (kotPending().pending > 0) {
+                    handleKotAfterSale(saleId, saleNo, terminalId);
+                }
 
                 clearCart();
                 toast('success', 'Sale complete! ' + saleNo);
@@ -2483,7 +2601,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 updateRecalledBar();
                 lockOrderControls();
                 toast('success', 'Held: ' + saleNo);
-                handleKotAfterSale(saleId, saleNo, terminalId);
+                // KOT — only the un-sent delta (re-holding without new items won't reprint)
+                if (kotPending().pending > 0) {
+                    handleKotAfterSale(saleId, saleNo, terminalId);
+                }
             })
             .catch(function () {
                 holdBtn.disabled    = false;
@@ -3163,9 +3284,24 @@ document.addEventListener('DOMContentLoaded', function () {
             bootstrap.Modal.getOrCreateInstance(paymentModalEl).show();
         });
         paymentModalEl.addEventListener('shown.bs.modal', function () {
+            refreshPrintPanel();
             (tenderedEl || paymentMethodEl).focus();
             if (tenderedEl && tenderedEl.select) { tenderedEl.select(); }
         });
+
+        // Session (this-device) auto-print overrides — temporary fallback to manual.
+        var kotTog = document.getElementById('auto-kot-toggle');
+        var rcpTog = document.getElementById('auto-receipt-toggle');
+        if (kotTog) { kotTog.addEventListener('change', function () {
+            localStorage.setItem(PRINT_OVERRIDE_KEY.kot, kotTog.checked ? '1' : '0');
+            refreshPrintPanel();
+        }); }
+        if (rcpTog) { rcpTog.addEventListener('change', function () {
+            localStorage.setItem(PRINT_OVERRIDE_KEY.receipt, rcpTog.checked ? '1' : '0');
+            refreshPrintPanel();
+        }); }
+        var termSel = document.getElementById('terminal_id');
+        if (termSel) { termSel.addEventListener('change', refreshPrintPanel); }
     }
     document.getElementById('hold-sale-btn').addEventListener('click', submitHeldSale);
     document.getElementById('clear-cart-btn').addEventListener('click', function () {
