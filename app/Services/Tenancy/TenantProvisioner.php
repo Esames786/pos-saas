@@ -724,6 +724,9 @@ class TenantProvisioner
             'tenant.manufacturing.consumption.edit',
             'tenant.manufacturing.consumption.update',
             'tenant.manufacturing.consumption.destroy',
+            // MFG-FIN-C — consumption posting
+            'tenant.manufacturing.consumption.post',
+            'tenant.manufacturing.consumption.reverse',
             // Production Reports — read-only (MANUF-10)
             'tenant.manufacturing.reports.index',
             'tenant.manufacturing.reports.export',

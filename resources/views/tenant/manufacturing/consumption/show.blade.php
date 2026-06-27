@@ -33,16 +33,59 @@
     </div>
 </div>
 
-@include('tenant.manufacturing.partials.posting-status', ['document' => $record])
-
 @if(session('status'))
     <div class="alert alert-success alert-dismissible fade show">{{ session('status') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
 @endif
 
-<div class="alert alert-info">
-    <i class="ti ti-info-circle me-1"></i>
-    This Consumption record is <strong>tracking-only</strong> in this phase. It does <strong>not</strong> deduct stock, update WIP/MRC issued quantities, post material consumption, WIP variance, COGS or GL entries yet.
+{{-- MFG-FIN-C: consumption posting (Dr WIP / Cr Raw Material) --}}
+@php $postingReady = $postingReady ?? false; $postingReason = $postingReason ?? null; $postedTotal = $postedTotal ?? 0; @endphp
+<div class="card mb-3 border-0 shadow-sm">
+    <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <div>
+            <strong class="me-1">Consumption Posting</strong>
+            <span class="badge bg-{{ $record->postingStatusBadgeClass() }}">{{ $record->postingStatusLabel() }}</span>
+            @if($record->isPosted())
+                <div class="small text-muted mt-1">
+                    Dr WIP / Cr Raw Material · Total issued cost <strong>{{ number_format($postedTotal, 2) }}</strong>@if($record->journal_entry_id) · Journal #{{ $record->journal_entry_id }}@endif
+                </div>
+            @elseif($record->isUnposted() && ! $postingReady && $postingReason)
+                <div class="small text-warning mt-1"><i class="ti ti-alert-triangle me-1"></i>{{ $postingReason }}</div>
+            @endif
+        </div>
+        <div class="d-flex gap-2">
+            @if($record->isUnposted() && $record->status !== 'cancelled')
+                @can('tenant.manufacturing.consumption.post')
+                    @if($postingReady)
+                        <form method="POST" action="{{ url('/manufacturing/consumption/' . $record->id . '/post') }}"
+                              onsubmit="return confirm('Post this consumption? Raw material stock will be issued and a Dr WIP / Cr Raw Material journal posted.');">
+                            @csrf
+                            <button class="btn btn-success"><i class="ti ti-arrow-bar-to-down me-1"></i>Post Consumption</button>
+                        </form>
+                    @else
+                        <button class="btn btn-success" disabled title="{{ $postingReason }}"><i class="ti ti-arrow-bar-to-down me-1"></i>Post Consumption</button>
+                    @endif
+                @endcan
+            @elseif($record->isPosted())
+                @can('tenant.manufacturing.consumption.reverse')
+                    <form method="POST" action="{{ url('/manufacturing/consumption/' . $record->id . '/reverse') }}"
+                          onsubmit="return confirm('Reverse this consumption posting? Stock will be returned and a reversal journal posted.');">
+                        @csrf
+                        <button class="btn btn-outline-danger"><i class="ti ti-arrow-back-up me-1"></i>Reverse Posting</button>
+                    </form>
+                @endcan
+            @endif
+        </div>
+    </div>
+    @error('posting')<div class="card-footer text-danger small"><i class="ti ti-alert-circle me-1"></i>{{ $message }}</div>@enderror
 </div>
+
+@if($record->isUnposted())
+    <div class="alert alert-info">
+        <i class="ti ti-info-circle me-1"></i>
+        Posting a consumption issues raw material from stock and posts <strong>Dr WIP / Cr Raw Material</strong>.
+        Finished goods, scrap, rejection, COGS and variance posting are <strong>not</strong> enabled yet.
+    </div>
+@endif
 
 <div class="row g-3">
     <div class="col-lg-5">

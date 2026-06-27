@@ -11,8 +11,10 @@ use App\Models\Tenant\ManufacturingCustomer;
 use App\Models\Tenant\MaterialRequisition;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\ProductionOrder;
+use App\Models\Tenant\ManufacturingPostingSetting;
 use App\Models\Tenant\Unit;
 use App\Models\Tenant\WipJob;
+use App\Services\Manufacturing\ManufacturingPostingService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -111,14 +113,37 @@ class ManufacturingConsumptionController extends Controller
         return redirect(url('/manufacturing/consumption/' . $record->id))->with('status', 'Consumption record created.');
     }
 
-    public function show(ManufacturingConsumptionRecord $manufacturingConsumptionRecord)
+    public function show(ManufacturingConsumptionRecord $manufacturingConsumptionRecord, ManufacturingPostingService $posting)
     {
         $manufacturingConsumptionRecord->load([
             'wipJob', 'materialRequisition', 'productionOrder', 'manufacturingCustomer', 'branch',
             'createdBy', 'lines.componentProduct', 'lines.unit',
         ]);
 
-        return view('tenant.manufacturing.consumption.show', ['record' => $manufacturingConsumptionRecord]);
+        $settings = $posting->settings($manufacturingConsumptionRecord->branch_id);
+
+        return view('tenant.manufacturing.consumption.show', [
+            'record'        => $manufacturingConsumptionRecord,
+            'postingReady'  => (bool) ($settings && $settings->canPost()),
+            'postingReason' => $this->postingBlockReason($settings),
+            'postedTotal'   => (float) $manufacturingConsumptionRecord->lines->sum('actual_total_cost'),
+        ]);
+    }
+
+    /** Human-readable reason posting is unavailable (null when it is ready). */
+    private function postingBlockReason(?ManufacturingPostingSetting $settings): ?string
+    {
+        if (! $settings) {
+            return 'Manufacturing posting settings are not configured.';
+        }
+        if (! $settings->is_enabled) {
+            return 'Manufacturing posting is disabled in settings.';
+        }
+        if (! $settings->isComplete()) {
+            return 'Posting settings are incomplete — required accounts are not mapped.';
+        }
+
+        return null;
     }
 
     public function edit(ManufacturingConsumptionRecord $manufacturingConsumptionRecord)

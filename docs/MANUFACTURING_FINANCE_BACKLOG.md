@@ -214,3 +214,31 @@ and must not alter POS / Sales / Purchasing / Inventory posting.
 settings; never change existing POS/Sales/Purchase/Inventory/Finance posting or
 report math. Re-run the finance integrity check (`tb_diff=0`, `pl_vs_bs=OK`)
 after each change.
+
+---
+
+## MFG-FIN-C — Consumption Posting (DONE)
+
+First real manufacturing GL posting. Posting a consumption record issues raw material
+from stock (FEFO), accrues the actual issued cost onto the linked WIP job, and posts:
+
+```
+Dr  Work-In-Process Inventory      total actual issue cost
+Cr  Raw Material Inventory          total actual issue cost
+```
+
+- Service `App\Services\Manufacturing\ConsumptionPostingService` (`post()` / `reverse()`),
+  controller `ManufacturingConsumptionPostingController`, routes
+  `tenant.manufacturing.consumption.post|reverse`, perms granted to Owner.
+- Strict, settings-gated (`ManufacturingPostingService::assertSettingsReady`), idempotent
+  (`assertUnposted`/`alreadyHasJournal`/`alreadyHasStockMovement`), reversible
+  (`JournalService::reverse` + stock-in with `reversal_of_id`; originals never deleted).
+- New stock movement types `manufacturing_material_issue` / `_reversal`; consumption lines
+  gained `actual_unit_cost` / `actual_total_cost` / `posted_quantity`.
+- Respects PRODUCT-BOUNDARY-2: component must be `can_be_bom_component` + stock-tracked +
+  active; POS visibility/saleable are NOT required (hidden raw materials are valid).
+- Verified (rolled-back E2E): post +1 journal (balanced) + stock issue + WIP accrual,
+  reverse restores both, `tb_diff=0` throughout; all guards block (disabled settings,
+  non-bom-component, non-stock-tracked, insufficient stock, duplicate post/reverse).
+- **Not** implemented: finished-goods, scrap, rejection, rework, variance, manufactured
+  COGS, BOM cost roll-up, auto-posting, any sales/POS COGS change.

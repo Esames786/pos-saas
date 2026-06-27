@@ -129,7 +129,12 @@
                                 <td class="text-end">{{ number_format($rec->total_consumed_quantity, 2) }}</td>
                                 <td class="text-end">{{ number_format($rec->total_wastage_quantity, 2) }}</td>
                                 <td class="text-end {{ (float)$rec->total_variance_quantity > 0 ? 'text-danger' : ((float)$rec->total_variance_quantity < 0 ? 'text-warning' : 'text-success') }}">{{ number_format($rec->total_variance_quantity, 2) }}</td>
-                                <td><span class="badge bg-{{ $statusColors[$rec->status] ?? 'secondary' }}">{{ ucfirst(str_replace('_', ' ', $rec->status)) }}</span></td>
+                                <td>
+                                    <span class="badge bg-{{ $statusColors[$rec->status] ?? 'secondary' }}">{{ ucfirst(str_replace('_', ' ', $rec->status)) }}</span>
+                                    @unless($rec->isUnposted())
+                                        <span class="badge bg-{{ $rec->postingStatusBadgeClass() }}" title="Posting status">{{ $rec->postingStatusLabel() }}</span>
+                                    @endunless
+                                </td>
                                 <td class="text-end">
                                     @can('tenant.manufacturing.consumption.show')
                                         <a href="{{ url('/manufacturing/consumption/' . $rec->id) }}" class="btn btn-sm btn-outline-secondary me-1" title="View"><i class="ti ti-eye"></i></a>

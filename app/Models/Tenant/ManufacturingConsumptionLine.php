@@ -20,6 +20,9 @@ class ManufacturingConsumptionLine extends Model
         'variance_quantity',
         'estimated_unit_cost',
         'estimated_total_value',
+        'actual_unit_cost',
+        'actual_total_cost',
+        'posted_quantity',
         'batch_no',
         'lot_no',
         'notes',
@@ -35,6 +38,9 @@ class ManufacturingConsumptionLine extends Model
             'variance_quantity'     => 'decimal:4',
             'estimated_unit_cost'   => 'decimal:4',
             'estimated_total_value' => 'decimal:4',
+            'actual_unit_cost'      => 'decimal:4',
+            'actual_total_cost'     => 'decimal:4',
+            'posted_quantity'       => 'decimal:4',
             'sort_order'            => 'integer',
         ];
     }
