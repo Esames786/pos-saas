@@ -15,13 +15,22 @@ class Recipe extends Model
         'yield_unit_id',
         'is_active',
         'notes',
+        // KITCHEN-RECIPE-COST-1 report header
+        'doc_no',
+        'recipe_no',
+        'revision_no',
+        'review_date',
+        'overhead_percent',
     ];
 
     protected function casts(): array
     {
         return [
-            'yield_quantity' => 'decimal:4',
-            'is_active'      => 'boolean',
+            'yield_quantity'   => 'decimal:4',
+            'is_active'        => 'boolean',
+            'revision_no'      => 'integer',
+            'review_date'      => 'date',
+            'overhead_percent' => 'decimal:4',
         ];
     }
 

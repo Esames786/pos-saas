@@ -38,6 +38,7 @@ class Product extends Model
         'description', 'image_path', 'status',
         'product_kind', 'is_pos_visible', 'can_be_bom_component',
         'can_be_bom_output', 'is_manufactured_finished_good',
+        'purchase_unit_id', 'purchase_pack_size',
     ];
 
     protected function casts(): array
@@ -60,6 +61,7 @@ class Product extends Model
             'can_be_bom_component'       => 'boolean',
             'can_be_bom_output'          => 'boolean',
             'is_manufactured_finished_good' => 'boolean',
+            'purchase_pack_size'         => 'decimal:4',
         ];
     }
 
@@ -163,6 +165,12 @@ class Product extends Model
     public function unit()
     {
         return $this->belongsTo(Unit::class);
+    }
+
+    /** KITCHEN-RECIPE-COST-1: the unit this product is purchased in (KG/PKT/ROLL/PC). */
+    public function purchaseUnit()
+    {
+        return $this->belongsTo(Unit::class, 'purchase_unit_id');
     }
 
     public function translations()

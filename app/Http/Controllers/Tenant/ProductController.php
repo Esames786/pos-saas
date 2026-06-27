@@ -187,6 +187,9 @@ class ProductController extends Controller
             'product_type'           => ['required', Rule::in(['simple', 'recipe', 'hybrid', 'service'])],
             'default_purchase_price' => ['nullable', 'numeric', 'min:0'],
             'default_selling_price'  => ['required', 'numeric', 'min:0'],
+            // KITCHEN-RECIPE-COST-1 recipe-costing pack fields
+            'purchase_unit_id'       => ['nullable', 'exists:units,id'],
+            'purchase_pack_size'     => ['nullable', 'numeric', 'min:0'],
             'reorder_level'          => ['nullable', 'numeric', 'min:0'],
             'reorder_quantity'       => ['nullable', 'numeric', 'min:0'],
             'is_sellable'            => ['nullable', 'boolean'],
@@ -270,6 +273,8 @@ class ProductController extends Controller
             'requires_batch'         => !empty($data['requires_batch']),
             'default_purchase_price' => $data['default_purchase_price'] ?? 0,
             'default_selling_price'  => $data['default_selling_price'],
+            'purchase_unit_id'       => $data['purchase_unit_id'] ?? null,
+            'purchase_pack_size'     => (isset($data['purchase_pack_size']) && $data['purchase_pack_size'] !== '') ? $data['purchase_pack_size'] : null,
             'is_taxable'             => !empty($data['is_taxable']),
             'tax_rate_percent'              => $data['tax_rate_percent'] ?? null,
             'description'                  => $data['description'] ?? null,

@@ -62,6 +62,29 @@
                            class="form-control" maxlength="255">
                 </div>
 
+                {{-- KITCHEN-RECIPE-COST-1 report header --}}
+                <div class="col-md-2">
+                    <label class="form-label">Doc #</label>
+                    <input type="text" name="doc_no" value="{{ old('doc_no') }}" class="form-control" maxlength="100">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Recipe #</label>
+                    <input type="text" name="recipe_no" value="{{ old('recipe_no') }}" class="form-control" maxlength="100">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Revision #</label>
+                    <input type="number" name="revision_no" value="{{ old('revision_no', 1) }}" class="form-control" min="1">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Review Date</label>
+                    <input type="date" name="review_date" value="{{ old('review_date') }}" class="form-control">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Overhead %</label>
+                    <input type="number" name="overhead_percent" value="{{ old('overhead_percent', 0) }}" class="form-control" step="0.0001" min="0" max="1000">
+                    <div class="form-help">Added on top of recipe cost (gas/labour). 0 = none.</div>
+                </div>
+
                 <div class="col-12">
                     <div class="form-check">
                         <input type="checkbox" name="is_active" value="1" id="is_active"
@@ -76,7 +99,7 @@
                 @if(old('ingredients'))
                     @foreach(old('ingredients') as $i => $ing)
                     <div class="ingredient-row row g-2 mb-2 align-items-end">
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                             <label class="form-label @if($i===0) required @endif">Ingredient</label>
                             <select name="ingredients[{{ $i }}][product_id]" class="form-select" required>
                                 <option value="">— Select —</option>
@@ -86,15 +109,23 @@
                             </select>
                         </div>
                         <div class="col-md-2">
+                            <label class="form-label">Section</label>
+                            <select name="ingredients[{{ $i }}][line_section]" class="form-select">
+                                @foreach(\App\Models\Tenant\RecipeIngredient::SECTIONS as $sv => $sl)
+                                    <option value="{{ $sv }}" @selected(($ing['line_section'] ?? 'food_cost') === $sv)>{{ $sl }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="col-md-2">
                             <label class="form-label">Quantity</label>
                             <input type="number" name="ingredients[{{ $i }}][quantity]"
                                    value="{{ $ing['quantity'] ?? '' }}"
                                    class="form-control" step="0.0001" min="0.0001" required>
                         </div>
-                        <div class="col-md-2">
+                        <div class="col-md-1">
                             <label class="form-label">Unit</label>
                             <select name="ingredients[{{ $i }}][unit_id]" class="form-select">
-                                <option value="">— Same as product —</option>
+                                <option value="">— Same —</option>
                                 @foreach($units as $u)
                                     <option value="{{ $u->id }}" @selected(($ing['unit_id'] ?? '') == $u->id)>{{ $u->code }}</option>
                                 @endforeach
@@ -113,7 +144,7 @@
                     @endforeach
                 @else
                     <div class="ingredient-row row g-2 mb-2 align-items-end">
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                             <label class="form-label required">Ingredient</label>
                             <select name="ingredients[0][product_id]" class="form-select" required>
                                 <option value="">— Select —</option>
@@ -123,14 +154,22 @@
                             </select>
                         </div>
                         <div class="col-md-2">
+                            <label class="form-label">Section</label>
+                            <select name="ingredients[0][line_section]" class="form-select">
+                                @foreach(\App\Models\Tenant\RecipeIngredient::SECTIONS as $sv => $sl)
+                                    <option value="{{ $sv }}">{{ $sl }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="col-md-2">
                             <label class="form-label">Quantity</label>
                             <input type="number" name="ingredients[0][quantity]"
                                    class="form-control" step="0.0001" min="0.0001" required>
                         </div>
-                        <div class="col-md-2">
+                        <div class="col-md-1">
                             <label class="form-label">Unit</label>
                             <select name="ingredients[0][unit_id]" class="form-select">
-                                <option value="">— Same as product —</option>
+                                <option value="">— Same —</option>
                                 @foreach($units as $u)
                                     <option value="{{ $u->id }}">{{ $u->code }}</option>
                                 @endforeach
@@ -164,25 +203,34 @@
     const productsJson = @json($products->map(fn($p) => ['id' => $p->id, 'name' => $p->name]));
     const unitsJson    = @json($units->map(fn($u) => ['id' => $u->id, 'code' => $u->code]));
 
+    const sectionsJson = @json(\App\Models\Tenant\RecipeIngredient::SECTIONS);
+
     function buildIngredientRow(idx) {
         const productOptions = productsJson.map(p =>
             `<option value="${p.id}">${p.name}</option>`
         ).join('');
-        const unitOptions = '<option value="">— Same as product —</option>' +
+        const unitOptions = '<option value="">— Same —</option>' +
             unitsJson.map(u => `<option value="${u.id}">${u.code}</option>`).join('');
+        const sectionOptions = Object.entries(sectionsJson).map(([v, l]) =>
+            `<option value="${v}">${l}</option>`
+        ).join('');
 
         return `<div class="ingredient-row row g-2 mb-2 align-items-end">
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <label class="form-label">Ingredient</label>
                 <select name="ingredients[${idx}][product_id]" class="form-select" required>
                     <option value="">— Select —</option>${productOptions}
                 </select>
             </div>
             <div class="col-md-2">
+                <label class="form-label">Section</label>
+                <select name="ingredients[${idx}][line_section]" class="form-select">${sectionOptions}</select>
+            </div>
+            <div class="col-md-2">
                 <label class="form-label">Quantity</label>
                 <input type="number" name="ingredients[${idx}][quantity]" class="form-control" step="0.0001" min="0.0001" required>
             </div>
-            <div class="col-md-2">
+            <div class="col-md-1">
                 <label class="form-label">Unit</label>
                 <select name="ingredients[${idx}][unit_id]" class="form-select">${unitOptions}</select>
             </div>

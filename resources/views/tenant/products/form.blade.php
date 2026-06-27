@@ -193,6 +193,28 @@
                     @error('default_purchase_price') <div class="invalid-feedback">{{ $message }}</div> @enderror
                 </div>
 
+                {{-- KITCHEN-RECIPE-COST-1 recipe-costing pack fields --}}
+                <div class="col-md-3 pf" data-pg="pack">
+                    <label for="purchase_unit_id" class="form-label">Purchase Unit</label>
+                    <select id="purchase_unit_id" name="purchase_unit_id" class="form-select">
+                        <option value="">— Same as stock unit —</option>
+                        @foreach($units as $unit)
+                            <option value="{{ $unit->id }}" @selected(old('purchase_unit_id', $product?->purchase_unit_id) == $unit->id)>{{ $unit->name }} ({{ $unit->code }})</option>
+                        @endforeach
+                    </select>
+                    <div class="form-help">Unit you buy in: KG, PKT, ROLL, PC.</div>
+                </div>
+
+                <div class="col-md-3 pf" data-pg="pack">
+                    <label for="purchase_pack_size" class="form-label">Purchase Pack Size</label>
+                    <input id="purchase_pack_size" type="number" name="purchase_pack_size"
+                           step="0.0001" min="0"
+                           value="{{ old('purchase_pack_size', $product?->purchase_pack_size) }}"
+                           class="form-control @error('purchase_pack_size') is-invalid @enderror" placeholder="e.g. 1000">
+                    @error('purchase_pack_size') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                    <div class="form-help">Recipe units inside one purchase unit. 1 KG = 1000 g, 1 roll = 50 pcs. Used for recipe costing.</div>
+                </div>
+
                 <div class="col-md-3 pf" data-pg="sell">
                     <label for="default_selling_price" class="form-label required">Selling Price</label>
                     <input id="default_selling_price" type="number" name="default_selling_price"
@@ -451,22 +473,22 @@
     var KITCHEN = {{ $kitchenAvailable ? 'true' : 'false' }};
 
     // groups always-visible regardless of mode
-    var ALL_GROUPS = ['sell','pos','tax','purchase','stock','batch','kitchen','mfg','role'];
+    var ALL_GROUPS = ['sell','pos','tax','purchase','pack','stock','batch','kitchen','mfg','role'];
 
     var MODES = {
         pos_sale:     { groups:['sell','pos','tax','purchase','stock'],
                         def:{ product_kind:'sale_item', is_sellable:1, is_pos_visible:1, is_purchasable:1, is_stock_tracked:1, item_kind:'finished_good', inventory_consumption_method:'stock_item', can_be_bom_component:0, can_be_bom_output:0, is_manufactured_finished_good:0 } },
         recipe:       { groups:['sell','pos','tax','stock','kitchen'],
                         def:{ product_kind:'sale_item', is_sellable:1, is_pos_visible:1, is_purchasable:1, is_stock_tracked:1, item_kind:'finished_good', inventory_consumption_method:'recipe', can_be_bom_component:0, can_be_bom_output:0, is_manufactured_finished_good:0 } },
-        raw_material: { groups:['purchase','stock','batch','kitchen'],
+        raw_material: { groups:['purchase','pack','stock','batch','kitchen'],
                         def:{ product_kind:'raw_material', is_sellable:0, is_pos_visible:0, is_purchasable:1, is_stock_tracked:1, item_kind:'ingredient', inventory_consumption_method:'stock_item', can_be_bom_component:0, can_be_bom_output:0, is_manufactured_finished_good:0 } },
-        packaging:    { groups:['purchase','stock'],
+        packaging:    { groups:['purchase','pack','stock'],
                         def:{ product_kind:'packaging_material', is_sellable:0, is_pos_visible:0, is_purchasable:1, is_stock_tracked:1, item_kind:'ingredient', inventory_consumption_method:'stock_item', can_be_bom_component:0, can_be_bom_output:0, is_manufactured_finished_good:0 } },
         service:      { groups:['sell','pos','tax'],
                         def:{ product_type:'service', product_kind:'service', is_sellable:1, is_pos_visible:1, is_purchasable:0, is_stock_tracked:0, item_kind:'finished_good', inventory_consumption_method:'none', can_be_bom_component:0, can_be_bom_output:0, is_manufactured_finished_good:0 } },
-        mfg_raw:      { groups:['purchase','stock','mfg'],
+        mfg_raw:      { groups:['purchase','pack','stock','mfg'],
                         def:{ product_kind:'raw_material', is_sellable:0, is_pos_visible:0, is_purchasable:1, is_stock_tracked:1, item_kind:'ingredient', inventory_consumption_method:'stock_item', can_be_bom_component:1, can_be_bom_output:0, is_manufactured_finished_good:0 } },
-        mfg_fg:       { groups:['purchase','stock','mfg','sell','pos'],
+        mfg_fg:       { groups:['purchase','pack','stock','mfg','sell','pos'],
                         def:{ product_kind:'finished_good', is_sellable:0, is_pos_visible:0, is_purchasable:0, is_stock_tracked:1, item_kind:'finished_good', inventory_consumption_method:'stock_item', can_be_bom_component:0, can_be_bom_output:1, is_manufactured_finished_good:1 } },
         advanced:     { groups:'all', def:null },
     };
