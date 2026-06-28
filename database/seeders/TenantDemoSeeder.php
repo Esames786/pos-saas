@@ -2362,6 +2362,9 @@ class TenantDemoSeeder extends Seeder
                 'quantity'           => $qty,
                 'unit_id'            => $unitId($su),
                 'line_section'       => $section,
+                // KITCHEN-RECIPE-ORDER-TYPE-1: packing only applies to takeaway/delivery;
+                // food cost applies to all order types (null).
+                'applicable_order_types' => $section === 'packing_material' ? ['takeaway', 'delivery'] : null,
                 'sort_order'         => $sort++,
             ]);
         }

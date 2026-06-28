@@ -141,6 +141,14 @@
                     <div class="col-md-2">
                         <button type="button" class="btn btn-outline-danger remove-row w-100">Remove</button>
                     </div>
+                    <div class="col-12 ot-wrap">
+                        @php $otSel = (array) ($ing['applicable_order_types'] ?? []); $otAll = empty($otSel) || in_array('all', $otSel); @endphp
+                        <small class="text-muted me-2">Applies to:</small>
+                        @foreach(\App\Models\Tenant\RecipeIngredient::ORDER_TYPES as $otv => $otl)
+                            <label class="me-3 small"><input type="checkbox" class="form-check-input ot-check me-1" name="ingredients[{{ $i }}][applicable_order_types][]" value="{{ $otv }}" @checked($otv === 'all' ? $otAll : in_array($otv, $otSel))>{{ $otl }}</label>
+                        @endforeach
+                        <span class="form-text d-block">Default = All. Use this to consume packing material only for Takeaway/Delivery, or dine-in-specific items only for Dine In.</span>
+                    </div>
                 </div>
                 @endforeach
             </div>
@@ -161,7 +169,14 @@
     const productsJson = @json($products->map(fn($p) => ['id' => $p->id, 'name' => $p->name]));
     const unitsJson    = @json($units->map(fn($u) => ['id' => $u->id, 'code' => $u->code]));
 
-    const sectionsJson = @json(\App\Models\Tenant\RecipeIngredient::SECTIONS);
+    const sectionsJson   = @json(\App\Models\Tenant\RecipeIngredient::SECTIONS);
+    const orderTypesJson = @json(\App\Models\Tenant\RecipeIngredient::ORDER_TYPES);
+
+    function otCheckboxes(idx) {
+        return Object.entries(orderTypesJson).map(([v, l]) =>
+            `<label class="me-3 small"><input type="checkbox" class="form-check-input ot-check me-1" name="ingredients[${idx}][applicable_order_types][]" value="${v}" ${v === 'all' ? 'checked' : ''}>${l}</label>`
+        ).join('');
+    }
 
     function buildIngredientRow(idx) {
         const productOptions = productsJson.map(p =>
@@ -199,6 +214,10 @@
             <div class="col-md-2">
                 <button type="button" class="btn btn-outline-danger remove-row w-100">Remove</button>
             </div>
+            <div class="col-12 ot-wrap">
+                <small class="text-muted me-2">Applies to:</small>${otCheckboxes(idx)}
+                <span class="form-text d-block">Default = All. Use this to consume packing material only for Takeaway/Delivery, or dine-in-specific items only for Dine In.</span>
+            </div>
         </div>`;
     }
 
@@ -215,6 +234,21 @@
             if (rows.length > 1) {
                 e.target.closest('.ingredient-row').remove();
             }
+        }
+    });
+
+    // KITCHEN-RECIPE-ORDER-TYPE-1: "All" is exclusive vs specific order types.
+    document.getElementById('ingredientRows').addEventListener('change', function (e) {
+        if (!e.target.classList.contains('ot-check')) return;
+        const row = e.target.closest('.ingredient-row');
+        const checks = row.querySelectorAll('.ot-check');
+        const allBox = row.querySelector('.ot-check[value="all"]');
+        if (e.target.value === 'all') {
+            if (e.target.checked) checks.forEach(c => { if (c !== allBox) c.checked = false; });
+        } else {
+            if (e.target.checked && allBox) allBox.checked = false;
+            const anySpecific = Array.prototype.some.call(checks, c => c.value !== 'all' && c.checked);
+            if (!anySpecific && allBox) allBox.checked = true;
         }
     });
 })();

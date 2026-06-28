@@ -56,6 +56,8 @@ class RecipeController extends Controller
             'ingredients.*.unit_id'            => ['nullable', 'exists:units,id'],
             'ingredients.*.cost_override'      => ['nullable', 'numeric', 'min:0'],
             'ingredients.*.line_section'       => ['nullable', Rule::in(array_keys(RecipeIngredient::SECTIONS))],
+            'ingredients.*.applicable_order_types'   => ['nullable', 'array'],
+            'ingredients.*.applicable_order_types.*' => [Rule::in(array_keys(RecipeIngredient::ORDER_TYPES))],
             'ingredients.*.sort_order'         => ['nullable', 'integer', 'min:0'],
             // KITCHEN-RECIPE-COST-1 report header
             'doc_no'                  => ['nullable', 'string', 'max:100'],
@@ -86,8 +88,9 @@ class RecipeController extends Controller
                 'quantity'           => $ing['quantity'],
                 'unit_id'            => $ing['unit_id'] ?? null,
                 'cost_override'      => isset($ing['cost_override']) && $ing['cost_override'] !== '' ? $ing['cost_override'] : null,
-                'line_section'       => $ing['line_section'] ?? 'food_cost',
-                'sort_order'         => $ing['sort_order'] ?? $i,
+                'line_section'           => $ing['line_section'] ?? 'food_cost',
+                'applicable_order_types' => $this->normalizeOrderTypes($ing['applicable_order_types'] ?? null),
+                'sort_order'             => $ing['sort_order'] ?? $i,
             ]);
         }
 
@@ -100,11 +103,35 @@ class RecipeController extends Controller
     {
         $recipe->load(['product', 'yieldUnit', 'ingredients.product', 'ingredients.variant', 'ingredients.unit']);
 
+        // KITCHEN-RECIPE-ORDER-TYPE-1 report scope (null = all lines).
+        $orderType = $request->query('order_type');
+        if (! in_array($orderType, RecipeIngredient::SPECIFIC_ORDER_TYPES, true)) {
+            $orderType = null;
+        }
+
         $estimatedCost = $recipeCostService->calculateCost($recipe);
-        $breakdown     = $recipeCostService->breakdown($recipe);
+        $breakdown     = $recipeCostService->breakdown($recipe, $orderType);
         $print         = $request->boolean('print');
 
-        return view('tenant.recipes.show', compact('recipe', 'estimatedCost', 'breakdown', 'print'));
+        return view('tenant.recipes.show', compact('recipe', 'estimatedCost', 'breakdown', 'print', 'orderType'));
+    }
+
+    /**
+     * Normalize submitted order types: null/empty/contains "all" → null (applies to all
+     * order types). Otherwise a de-duplicated list of the specific selected types.
+     */
+    private function normalizeOrderTypes(?array $types): ?array
+    {
+        if (empty($types) || in_array(RecipeIngredient::ORDER_TYPE_ALL, $types, true)) {
+            return null;
+        }
+
+        $clean = array_values(array_unique(array_intersect(
+            $types,
+            RecipeIngredient::SPECIFIC_ORDER_TYPES
+        )));
+
+        return $clean === [] ? null : $clean;
     }
 
     /** Only one active recipe per finished product: deactivate the others. */
@@ -146,6 +173,8 @@ class RecipeController extends Controller
             'ingredients.*.unit_id'            => ['nullable', 'exists:units,id'],
             'ingredients.*.cost_override'      => ['nullable', 'numeric', 'min:0'],
             'ingredients.*.line_section'       => ['nullable', Rule::in(array_keys(RecipeIngredient::SECTIONS))],
+            'ingredients.*.applicable_order_types'   => ['nullable', 'array'],
+            'ingredients.*.applicable_order_types.*' => [Rule::in(array_keys(RecipeIngredient::ORDER_TYPES))],
             'ingredients.*.sort_order'         => ['nullable', 'integer', 'min:0'],
             // KITCHEN-RECIPE-COST-1 report header
             'doc_no'                  => ['nullable', 'string', 'max:100'],
@@ -178,8 +207,9 @@ class RecipeController extends Controller
                 'quantity'           => $ing['quantity'],
                 'unit_id'            => $ing['unit_id'] ?? null,
                 'cost_override'      => isset($ing['cost_override']) && $ing['cost_override'] !== '' ? $ing['cost_override'] : null,
-                'line_section'       => $ing['line_section'] ?? 'food_cost',
-                'sort_order'         => $ing['sort_order'] ?? $i,
+                'line_section'           => $ing['line_section'] ?? 'food_cost',
+                'applicable_order_types' => $this->normalizeOrderTypes($ing['applicable_order_types'] ?? null),
+                'sort_order'             => $ing['sort_order'] ?? $i,
             ]);
         }
 

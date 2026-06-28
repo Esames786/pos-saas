@@ -31,7 +31,15 @@
 
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3 no-print">
     <h1 class="mb-0">Recipe Cost — {{ $recipe->name }}</h1>
-    <div class="d-flex gap-2">
+    <div class="d-flex align-items-center gap-2">
+        <label class="form-label mb-0 me-1 small text-muted">Report Scope</label>
+        <select class="form-select form-select-sm" style="width:auto" onchange="window.location.href=this.value">
+            <option value="{{ url('/recipes/' . $recipe->id) }}" @selected(!$orderType)>All Lines</option>
+            @foreach(\App\Models\Tenant\RecipeIngredient::ORDER_TYPES as $otv => $otl)
+                @continue($otv === 'all')
+                <option value="{{ url('/recipes/' . $recipe->id . '?order_type=' . $otv) }}" @selected($orderType === $otv)>{{ $otl }}</option>
+            @endforeach
+        </select>
         <button type="button" class="btn btn-primary" onclick="window.print()"><i class="ti ti-printer me-1"></i>Print</button>
         @can('tenant.recipes.edit')
             <a href="{{ url('/recipes/' . $recipe->id . '/edit') }}" class="btn btn-light">Edit</a>
@@ -69,6 +77,7 @@
                 <div><strong>Review Date:</strong> {{ optional($recipe->review_date)->format('d-M-Y') ?: '—' }}</div>
                 <div><strong>Date:</strong> {{ now()->format('d-M-Y g:i a') }}</div>
                 <div><strong>Production Weight:</strong> —</div>
+                <div><strong>Order Type:</strong> {{ $b['order_type_label'] }}@if($b['is_order_type_filtered']) <span class="badge bg-info text-dark">filtered</span>@endif</div>
             </div>
         </div>
 
@@ -97,7 +106,10 @@
                         <tr>
                             <td>{{ $line['s_no'] }}</td>
                             <td>{{ $line['barcode'] }}</td>
-                            <td>{{ $line['item_description'] }}</td>
+                            <td>
+                                {{ $line['item_description'] }}
+                                <span class="badge {{ empty($line['applicable_order_types']) ? 'bg-light text-muted border' : 'bg-info-subtle text-info-emphasis border border-info-subtle' }} fw-normal d-inline-block mt-1" style="font-size:.68rem">Applies: {{ $line['applicable_order_types_label'] }}</span>
+                            </td>
                             <td class="text-center">{{ $line['is_intermediate'] ? '✓' : '' }}</td>
                             <td class="rr-num">{{ rtrim(rtrim(number_format($line['prod_qty'], 4), '0'), '.') }} {{ $line['prod_unit'] ? '('.$line['prod_unit'].')' : '' }}</td>
                             <td class="rr-num">{{ rtrim(rtrim(number_format($line['prod_weight'], 4), '0'), '.') }}</td>

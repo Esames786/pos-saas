@@ -31,7 +31,7 @@ class RecipeCostService
      * default_purchase_price. (This is the PURCHASE-unit meaning — distinct from the
      * legacy calculateCost() above, which is intentionally left unchanged.)
      */
-    public function breakdown(Recipe $recipe): array
+    public function breakdown(Recipe $recipe, ?string $orderType = null): array
     {
         $recipe->loadMissing([
             'product.unit', 'product.purchaseUnit',
@@ -45,6 +45,12 @@ class RecipeCostService
         $allLines = [];
 
         foreach ($recipe->ingredients as $ing) {
+            // KITCHEN-RECIPE-ORDER-TYPE-1: report-scope filter. Lines that do not apply to
+            // the requested order type are excluded so totals/percentages recalculate.
+            if (! $ing->appliesToOrderType($orderType)) {
+                continue;
+            }
+
             $product   = $ing->product;
             $costPrice = $this->resolvePurchaseCost($ing);                 // per purchase unit
             $packSize  = (float) ($product?->purchase_pack_size ?: 0);
@@ -70,6 +76,8 @@ class RecipeCostService
                 'price_per_unit'   => round($pricePer, 4),
                 'cost_price'       => round($costPrice, 4),
                 'amount'           => $amount,
+                'applicable_order_types'       => $ing->applicable_order_types,
+                'applicable_order_types_label' => $ing->applicableOrderTypesLabel(),
             ];
 
             $allLines[] = $line;
@@ -134,6 +142,11 @@ class RecipeCostService
             'grand_total'          => round($grand, 2),
             'line_count'           => count($allLines),
             'quantity_total'       => round(array_sum(array_column($allLines, 'prod_qty')), 2),
+            'order_type'           => $orderType,
+            'order_type_label'     => $orderType === null
+                ? 'All recipe lines'
+                : (RecipeIngredient::ORDER_TYPES[$orderType] ?? $orderType),
+            'is_order_type_filtered' => $orderType !== null,
         ];
     }
 
