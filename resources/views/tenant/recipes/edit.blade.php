@@ -11,9 +11,10 @@
     .os-scope-menu .ot-check:checked ~ span { font-weight:600; }
 </style>
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
-    <h1 class="mb-0">Edit Recipe</h1>
+    <h1 class="mb-0">Edit Recipe — Setup</h1>
     <div class="d-flex gap-2">
-        <a href="{{ url('/recipes/' . $recipe->id) }}" class="btn btn-light">View</a>
+        <a href="{{ url('/recipes/' . $recipe->id) }}" class="btn btn-primary"><i class="ti ti-report-money me-1"></i>View Cost Report</a>
+        <a href="{{ url('/recipes/' . $recipe->id . '?print=1') }}" class="btn btn-outline-primary" target="_blank"><i class="ti ti-printer me-1"></i>Print Cost Sheet</a>
         <a href="{{ url('/recipes') }}" class="btn btn-light">Back</a>
     </div>
 </div>
@@ -29,10 +30,10 @@
 
             <div class="alert alert-light border small mb-4">
                 <i class="ti ti-info-circle me-1"></i>
-                Use this screen to define the ingredients and packaging needed to prepare/sell this item.
+                You are editing <strong>recipe setup</strong>. Define the ingredients and packaging needed to prepare/sell this item.
                 <strong>Food Cost</strong> lines are used in every order by default; <strong>Packing Material</strong>
-                can be limited to Takeaway/Delivery. This screen defines the recipe and costing — actual stock is
-                consumed when a sale/production is completed.
+                can be limited to Takeaway/Delivery. Actual stock is consumed when a sale/production is completed.
+                Percentages, totals, GP and the printable costing sheet are on <strong>View Cost Report</strong>.
             </div>
 
             <h5 class="mb-3">Recipe Header</h5>
@@ -107,6 +108,23 @@
                                class="form-check-input" @checked(old('is_active', $recipe->is_active))>
                         <label for="is_active" class="form-check-label">Active</label>
                     </div>
+                </div>
+            </div>
+
+            {{-- KITCHEN-RECIPE-REPORT-UX-1: read-only mini cost summary (full report on View) --}}
+            <div class="card bg-light border mb-4">
+                <div class="card-body py-2 px-3">
+                    <div class="d-flex flex-wrap align-items-center gap-3 small">
+                        <span class="fw-bold text-nowrap"><i class="ti ti-calculator me-1"></i>Cost Summary</span>
+                        @foreach($breakdown['sections'] as $section)
+                            <span class="text-nowrap"><span class="text-muted">{{ $section['label'] }}:</span> <strong>{{ number_format($section['amount_total'], 2) }}</strong> <span class="text-muted">({{ number_format($section['percent_of_grand'], 1) }}%)</span></span>
+                        @endforeach
+                        <span class="text-nowrap"><span class="text-muted">Grand Total:</span> <strong>{{ number_format($breakdown['grand_total'], 2) }}</strong></span>
+                        <span class="text-nowrap"><span class="text-muted">Sale Price:</span> <strong>{{ number_format($breakdown['sale_price'], 2) }}</strong></span>
+                        <span class="text-nowrap"><span class="text-muted">Overall Cost:</span> <strong>{{ number_format($breakdown['overall_cost_percent'], 2) }}%</strong></span>
+                        <a href="{{ url('/recipes/' . $recipe->id) }}" class="btn btn-sm btn-outline-primary ms-auto text-nowrap"><i class="ti ti-report-money me-1"></i>View Full Cost Report</a>
+                    </div>
+                    <div class="form-text mt-1">Read-only preview. Save changes, then open the report to see updated figures.</div>
                 </div>
             </div>
 

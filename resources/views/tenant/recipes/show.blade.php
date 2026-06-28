@@ -30,7 +30,10 @@
 </style>
 
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3 no-print">
-    <h1 class="mb-0">Recipe Cost — {{ $recipe->name }}</h1>
+    <div>
+        <h1 class="mb-0">Recipe Cost Sheet</h1>
+        <div class="text-muted">{{ $recipe->name }}</div>
+    </div>
     <div class="d-flex align-items-center gap-2">
         <label class="form-label mb-0 me-1 small text-muted">Report Scope</label>
         <select class="form-select form-select-sm" style="width:auto" onchange="window.location.href=this.value">
@@ -40,9 +43,9 @@
                 <option value="{{ url('/recipes/' . $recipe->id . '?order_type=' . $otv) }}" @selected($orderType === $otv)>{{ $otl }}</option>
             @endforeach
         </select>
-        <button type="button" class="btn btn-primary" onclick="window.print()"><i class="ti ti-printer me-1"></i>Print</button>
+        <button type="button" class="btn btn-primary" onclick="window.print()"><i class="ti ti-printer me-1"></i>Print Cost Sheet</button>
         @can('tenant.recipes.edit')
-            <a href="{{ url('/recipes/' . $recipe->id . '/edit') }}" class="btn btn-light">Edit</a>
+            <a href="{{ url('/recipes/' . $recipe->id . '/edit') }}" class="btn btn-light"><i class="ti ti-edit me-1"></i>Edit Recipe</a>
         @endcan
         <a href="{{ url('/recipes') }}" class="btn btn-light">Back</a>
     </div>
@@ -57,7 +60,7 @@
         {{-- ── Header ──────────────────────────────────────────────────── --}}
         <div class="text-center mb-3">
             <h2 class="mb-0">{{ $businessName }}</h2>
-            <div class="fw-semibold">Item Ingredients</div>
+            <div class="fw-semibold">Recipe Cost Sheet — Item Ingredients</div>
             @if($recipe->is_active)
                 <div class="text-success fw-bold">ACTIVE RECIPE</div>
             @else

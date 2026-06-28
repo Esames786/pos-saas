@@ -147,14 +147,18 @@ class RecipeController extends Controller
             ->update(['is_active' => false]);
     }
 
-    public function edit(Recipe $recipe)
+    public function edit(Recipe $recipe, RecipeCostService $recipeCostService)
     {
-        $recipe->load(['ingredients.product', 'ingredients.variant', 'ingredients.unit']);
+        $recipe->load(['product', 'ingredients.product', 'ingredients.variant', 'ingredients.unit']);
 
         $products = Product::where('status', 'active')->orderBy('name')->get();
         $units    = Unit::orderBy('name')->get();
 
-        return view('tenant.recipes.edit', compact('recipe', 'products', 'units'));
+        // KITCHEN-RECIPE-REPORT-UX-1: read-only mini cost summary on the setup screen
+        // (all lines; the full Technosys report lives on the View page). No stock movement.
+        $breakdown = $recipeCostService->breakdown($recipe);
+
+        return view('tenant.recipes.edit', compact('recipe', 'products', 'units', 'breakdown'));
     }
 
     public function update(Request $request, Recipe $recipe)
