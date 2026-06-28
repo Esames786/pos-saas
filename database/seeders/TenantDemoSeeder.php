@@ -2186,11 +2186,11 @@ class TenantDemoSeeder extends Seeder
         $lines = [
             ['KRH-ING-CHICKEN', 'Karahi Chicken',          'G',   'KG',   1000, 493.00,  'food_cost',        1000],
             ['KRH-ING-OIL',     'Cooking Oil',             'G',   'KG',   1000, 607.64,  'food_cost',        200],
-            ['KRH-ING-TOMATO',  'Tomato',                  'G',   'KG',   1000, 120.00,  'food_cost',        500],
+            ['KRH-ING-TOMATO',  'Tomato',                  'G',   'KG',   1000, 126.00,  'food_cost',        500],
             ['KRH-ING-YOGURT',  'Yogurt',                  'G',   'KG',   1000, 200.00,  'food_cost',        80],
             ['KRH-ING-MASALA',  'Karahi Masala Shan Box',  'G',   'PKT',  50,   150.00,  'food_cost',        5],
             ['KRH-ING-BPEPPER', 'Black Pepper Ground',     'G',   'KG',   1000, 1600.00, 'food_cost',        5],
-            ['KRH-ING-CUMIN',   'Cumin Powder',            'G',   'KG',   1000, 900.00,  'food_cost',        5],
+            ['KRH-ING-CUMIN',   'Cumin Powder',            'G',   'KG',   1000, 941.00,  'food_cost',        5],
             ['KRH-ING-METHI',   'Kasoori Methi',           'G',   'PKT',  120,  188.00,  'food_cost',        5],
             ['KRH-ING-GCHILLI', 'Green Chilli',            'G',   'KG',   1000, 200.00,  'food_cost',        50],
             ['KRH-ING-GINGER',  'Ginger Fresh',            'G',   'KG',   1000, 400.00,  'food_cost',        20],
