@@ -173,6 +173,10 @@ class EnterpriseDemoSeeder
                 'default_purchase_price'       => $buy,
                 'default_selling_price'        => $sell,
                 'is_taxable'                   => false,
+                // KITCHEN-RECIPE-COST-1: pack fields. Recipe qtys use the stock unit (KG/L/PCS),
+                // so purchase unit = stock unit, pack size = 1 keeps the cost report accurate.
+                'purchase_unit_id'             => $unit?->id,
+                'purchase_pack_size'           => $opts['pack'] ?? 1,
                 'status'                       => 'active',
             ], [])
         );
@@ -394,7 +398,12 @@ class EnterpriseDemoSeeder
             if (! $menu) continue;
             $recipe = Recipe::updateOrCreate(
                 ['product_id' => $menu->id, 'name' => $name],
-                ['yield_quantity' => 1, 'yield_unit_id' => $pcs?->id, 'is_active' => true, 'notes' => 'Bingoo enterprise demo recipe']
+                [
+                    'yield_quantity' => 1, 'yield_unit_id' => $pcs?->id, 'is_active' => true,
+                    'notes' => 'Bingoo enterprise demo recipe',
+                    'recipe_no' => 'REC-' . str_pad((string) ($count + 1), 4, '0', STR_PAD_LEFT),
+                    'revision_no' => 1, 'review_date' => now()->toDateString(), 'overhead_percent' => 0,
+                ]
             );
             $recipe->ingredients()->delete();
             $sort = 1;

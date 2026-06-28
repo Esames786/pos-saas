@@ -152,6 +152,10 @@ class RestaurantProDemoSeeder extends RestaurantDemoSeeder
                     'default_purchase_price'       => $cost,
                     'default_selling_price'        => 0,
                     'is_taxable'                   => false,
+                    // KITCHEN-RECIPE-COST-1: pack fields. Recipe qtys here use the stock unit
+                    // (KG/L/PCS) so purchase unit = stock unit, pack size = 1 (report-accurate).
+                    'purchase_unit_id'             => $unit?->id,
+                    'purchase_pack_size'           => 1,
                     'status'                       => 'active',
                 ]
             );
@@ -239,7 +243,12 @@ class RestaurantProDemoSeeder extends RestaurantDemoSeeder
             if (! $menu) continue;
             $recipe = Recipe::updateOrCreate(
                 ['product_id' => $menu->id, 'name' => $recipeName],
-                ['yield_quantity' => 1, 'yield_unit_id' => $pcs?->id, 'is_active' => true, 'notes' => 'Bingoo Pro demo recipe']
+                [
+                    'yield_quantity' => 1, 'yield_unit_id' => $pcs?->id, 'is_active' => true,
+                    'notes' => 'Bingoo Pro demo recipe',
+                    'recipe_no' => 'REC-' . str_pad((string) ($count + 1), 4, '0', STR_PAD_LEFT),
+                    'revision_no' => 1, 'review_date' => now()->toDateString(), 'overhead_percent' => 0,
+                ]
             );
             $recipe->ingredients()->delete();
             $sort = 1;

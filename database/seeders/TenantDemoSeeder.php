@@ -143,6 +143,7 @@ class TenantDemoSeeder extends Seeder
             ['code' => 'BOX',  'name' => 'Box',         'unit_type' => 'quantity', 'base_factor' => 1,     'is_base' => false],
             ['code' => 'BTL',  'name' => 'Bottle',      'unit_type' => 'quantity', 'base_factor' => 1,     'is_base' => false],
             ['code' => 'PKT',  'name' => 'Packet',      'unit_type' => 'quantity', 'base_factor' => 1,     'is_base' => false],
+            ['code' => 'ROLL', 'name' => 'Roll',        'unit_type' => 'quantity', 'base_factor' => 1,     'is_base' => false],
             ['code' => 'DOZ',  'name' => 'Dozen',       'unit_type' => 'quantity', 'base_factor' => 12,    'is_base' => false],
             ['code' => 'KG',   'name' => 'Kilogram',    'unit_type' => 'weight',   'base_factor' => 1,     'is_base' => true],
             ['code' => 'G',    'name' => 'Gram',        'unit_type' => 'weight',   'base_factor' => 0.001, 'is_base' => false],
@@ -564,6 +565,11 @@ class TenantDemoSeeder extends Seeder
                     'requires_batch'         => false,
                     'default_purchase_price' => $pd['buy'],
                     'default_selling_price'  => $pd['sell'],
+                    // KITCHEN-RECIPE-COST-1: recipe-costing pack fields. Default purchase unit =
+                    // stock unit, pack size = 1 (these demo recipes use stock-unit quantities,
+                    // e.g. 0.5 KG, so pack size 1 keeps the cost report accurate, not inflated).
+                    'purchase_unit_id'       => $pd['unit']?->id,
+                    'purchase_pack_size'     => 1,
                     'status'                 => 'active',
                 ]
             );
@@ -2086,10 +2092,14 @@ class TenantDemoSeeder extends Seeder
             $recipe1 = Recipe::updateOrCreate(
                 ['product_id' => $karahi->id, 'name' => 'Chicken Karahi (Half)'],
                 [
-                    'yield_quantity' => 1,
-                    'yield_unit_id'  => $pcs?->id,
-                    'is_active'      => true,
-                    'notes'          => 'Half karahi serving — approx 2 portions',
+                    'yield_quantity'   => 1,
+                    'yield_unit_id'    => $pcs?->id,
+                    'is_active'        => true,
+                    'notes'            => 'Half karahi serving — approx 2 portions',
+                    'recipe_no'        => 'REC-0001',
+                    'revision_no'      => 1,
+                    'review_date'      => now()->toDateString(),
+                    'overhead_percent' => 0,
                 ]
             );
             // Clear and re-seed ingredients
@@ -2109,10 +2119,14 @@ class TenantDemoSeeder extends Seeder
             $recipe2 = Recipe::updateOrCreate(
                 ['product_id' => $biryani->id, 'name' => 'Chicken Biryani (Plate)'],
                 [
-                    'yield_quantity' => 1,
-                    'yield_unit_id'  => $pcs?->id,
-                    'is_active'      => true,
-                    'notes'          => 'Single plate serving',
+                    'yield_quantity'   => 1,
+                    'yield_unit_id'    => $pcs?->id,
+                    'is_active'        => true,
+                    'notes'            => 'Single plate serving',
+                    'recipe_no'        => 'REC-0002',
+                    'revision_no'      => 1,
+                    'review_date'      => now()->toDateString(),
+                    'overhead_percent' => 0,
                 ]
             );
             $recipe2->ingredients()->delete();
@@ -2132,10 +2146,14 @@ class TenantDemoSeeder extends Seeder
             $recipe3 = Recipe::updateOrCreate(
                 ['product_id' => $burger->id, 'name' => 'Beef Burger'],
                 [
-                    'yield_quantity' => 1,
-                    'yield_unit_id'  => $pcs?->id,
-                    'is_active'      => true,
-                    'notes'          => 'Beef patty burger with bun',
+                    'yield_quantity'   => 1,
+                    'yield_unit_id'    => $pcs?->id,
+                    'is_active'        => true,
+                    'notes'            => 'Beef patty burger with bun',
+                    'recipe_no'        => 'REC-0003',
+                    'revision_no'      => 1,
+                    'review_date'      => now()->toDateString(),
+                    'overhead_percent' => 0,
                 ]
             );
             $recipe3->ingredients()->delete();
@@ -2145,7 +2163,210 @@ class TenantDemoSeeder extends Seeder
             if ($oil)   $recipe3->ingredients()->create(['product_id' => $oil->id,   'quantity' => 0.020, 'unit_id' => $ltr?->id, 'sort_order' => $sort++]);
         }
 
+        $this->seedTechnosysKarahi();
+
         $this->command->line('  Recipes seeded: Chicken Karahi, Chicken Biryani, Beef Burger.');
+    }
+
+    /**
+     * KITCHEN-RECIPE-COST-1 — a full Technosys-style, gram-based "Regular Karahi" recipe
+     * so the recipe cost report shows Food Cost + Packing Material sections with realistic
+     * per-line costing immediately after seeding. Ingredient quantities are in grams/pieces;
+     * each ingredient product carries a purchase unit + pack size so
+     * Price/Unit = Cost Price ÷ pack size (e.g. 493 ÷ 1000 g). Idempotent.
+     */
+    private function seedTechnosysKarahi(): void
+    {
+        $pcs  = Unit::where('code', 'PCS')->first();
+        $groc = Category::where('code', 'GROC')->first();
+        $main = Category::where('code', 'MAINCOURSE')->first();
+        $unitId = fn (string $code) => Unit::where('code', $code)->first()?->id;
+
+        // [sku, name, stockUnit, purchaseUnit, packSize, cost(per purchase unit), section, qty]
+        $lines = [
+            ['KRH-ING-CHICKEN', 'Karahi Chicken',          'G',   'KG',   1000, 493.00,  'food_cost',        1000],
+            ['KRH-ING-OIL',     'Cooking Oil',             'G',   'KG',   1000, 607.64,  'food_cost',        200],
+            ['KRH-ING-TOMATO',  'Tomato',                  'G',   'KG',   1000, 120.00,  'food_cost',        500],
+            ['KRH-ING-YOGURT',  'Yogurt',                  'G',   'KG',   1000, 200.00,  'food_cost',        80],
+            ['KRH-ING-MASALA',  'Karahi Masala Shan Box',  'G',   'PKT',  50,   150.00,  'food_cost',        5],
+            ['KRH-ING-BPEPPER', 'Black Pepper Ground',     'G',   'KG',   1000, 1600.00, 'food_cost',        5],
+            ['KRH-ING-CUMIN',   'Cumin Powder',            'G',   'KG',   1000, 900.00,  'food_cost',        5],
+            ['KRH-ING-METHI',   'Kasoori Methi',           'G',   'PKT',  120,  188.00,  'food_cost',        5],
+            ['KRH-ING-GCHILLI', 'Green Chilli',            'G',   'KG',   1000, 200.00,  'food_cost',        50],
+            ['KRH-ING-GINGER',  'Ginger Fresh',            'G',   'KG',   1000, 400.00,  'food_cost',        20],
+            ['KRH-ING-RCHILLI', 'Red Chilli Crush',        'G',   'KG',   1000, 600.00,  'food_cost',        5],
+            ['KRH-ING-GARLIC',  'Garlic Fresh',            'G',   'KG',   1000, 500.00,  'food_cost',        15],
+            ['KRH-ING-CORIAND', 'Coriander Powder',        'G',   'KG',   1000, 400.00,  'food_cost',        5],
+            ['KRH-ING-SALT',    'Table Salt',              'G',   'PKT',  800,  60.00,   'food_cost',        10],
+            ['KRH-PKG-FOIL',    'Aluminium Foil Wrap 12"', 'PCS', 'ROLL', 50,   2040.00, 'packing_material', 1],
+            ['KRH-PKG-CONT',    'Karahi Container 1500ml', 'PCS', 'PCS',  1,    39.38,   'packing_material', 1],
+        ];
+
+        // ── Ingredient products (raw material / packaging) ───────────────────
+        foreach ($lines as [$sku, $name, $su, $pu, $pack, $cost, $section, $qty]) {
+            $isPack = $section === 'packing_material';
+
+            $product = Product::updateOrCreate(
+                ['sku' => $sku],
+                [
+                    'category_id'                  => $groc?->id,
+                    'unit_id'                      => $unitId($su),
+                    'name'                         => $name,
+                    'slug'                         => Str::slug($name),
+                    'product_type'                 => 'simple',
+                    'item_kind'                    => 'ingredient',
+                    'inventory_consumption_method' => 'stock_item',
+                    'product_kind'                 => $isPack ? 'packaging_material' : 'raw_material',
+                    'is_sellable'                  => false,
+                    'is_pos_visible'               => false,
+                    'is_purchasable'               => true,
+                    'is_stock_tracked'             => true,
+                    'has_expiry'                   => false,
+                    'requires_batch'               => false,
+                    'default_purchase_price'       => $cost,
+                    'default_selling_price'        => 0,
+                    'purchase_unit_id'             => $unitId($pu),
+                    'purchase_pack_size'           => $pack,
+                    'status'                       => 'active',
+                ]
+            );
+            $product->translations()->updateOrCreate(['language_code' => 'en'], ['name' => $name]);
+            ProductVariant::updateOrCreate(
+                ['sku' => $sku],
+                [
+                    'product_id' => $product->id, 'name' => $name,
+                    'purchase_price' => $cost, 'selling_price' => 0,
+                    'reorder_level' => 5, 'reorder_quantity' => 20,
+                    'is_default' => true, 'is_active' => true,
+                ]
+            );
+        }
+
+        // ── Finished product (recipe-based, POS sale item) ───────────────────
+        $finished = Product::updateOrCreate(
+            ['sku' => 'KARAHI-REG'],
+            [
+                'category_id'                  => $main?->id,
+                'unit_id'                      => $pcs?->id,
+                'name'                         => 'Regular Karahi',
+                'slug'                         => Str::slug('Regular Karahi'),
+                'product_type'                 => 'recipe',
+                'item_kind'                    => 'finished_good',
+                'inventory_consumption_method' => 'recipe',
+                'product_kind'                 => 'sale_item',
+                'is_sellable'                  => true,
+                'is_pos_visible'               => true,
+                'is_purchasable'               => false,
+                'is_stock_tracked'             => false,
+                'has_expiry'                   => false,
+                'requires_batch'               => false,
+                'default_purchase_price'       => 0,
+                'default_selling_price'        => 2800,
+                'purchase_unit_id'             => $pcs?->id,
+                'purchase_pack_size'           => 1,
+                'status'                       => 'active',
+            ]
+        );
+        $finished->translations()->updateOrCreate(['language_code' => 'en'], ['name' => 'Regular Karahi']);
+        ProductVariant::updateOrCreate(
+            ['sku' => 'KARAHI-REG'],
+            [
+                'product_id' => $finished->id, 'name' => 'Regular Karahi',
+                'purchase_price' => 0, 'selling_price' => 2800,
+                'reorder_level' => 0, 'reorder_quantity' => 0,
+                'is_default' => true, 'is_active' => true,
+            ]
+        );
+
+        // ── Opening stock for the new ingredients (so Regular Karahi is sellable).
+        // Self-contained + guarded by a fixed adjustment_no so re-seeds don't double-post.
+        $mainBranch = Branch::where('code', 'MAIN')->first();
+        if ($mainBranch && ! StockAdjustment::where('adjustment_no', 'ADJ-KRH-OPEN-MAIN')->exists()) {
+            $adjustment = StockAdjustment::create([
+                'adjustment_no'   => 'ADJ-KRH-OPEN-MAIN',
+                'branch_id'       => $mainBranch->id,
+                'adjustment_type' => 'opening',
+                'adjustment_date' => now()->toDateString(),
+                'status'          => 'posted',
+                'posted_at'       => now(),
+                'notes'           => 'Karahi recipe ingredients opening stock (demo seed)',
+            ]);
+
+            // ~30 servings worth, in each product's stock unit (grams / pieces).
+            $openQty = [
+                'KRH-ING-CHICKEN' => 50000, 'KRH-ING-OIL' => 20000, 'KRH-ING-TOMATO' => 30000,
+                'KRH-ING-YOGURT' => 5000,   'KRH-ING-MASALA' => 2000, 'KRH-ING-BPEPPER' => 1000,
+                'KRH-ING-CUMIN' => 1000,    'KRH-ING-METHI' => 1000,  'KRH-ING-GCHILLI' => 5000,
+                'KRH-ING-GINGER' => 3000,   'KRH-ING-RCHILLI' => 1000, 'KRH-ING-GARLIC' => 3000,
+                'KRH-ING-CORIAND' => 1000,  'KRH-ING-SALT' => 5000,   'KRH-PKG-FOIL' => 200,
+                'KRH-PKG-CONT' => 200,
+            ];
+
+            foreach ($lines as [$sku, $name, $su, $pu, $pack, $cost]) {
+                $product = Product::where('sku', $sku)->first();
+                if (! $product) continue;
+                $variant   = $this->inv->resolveVariant($product, null);
+                $qty       = (float) ($openQty[$sku] ?? 0);
+                $unitCost  = $pack > 0 ? round($cost / $pack, 4) : $cost; // per stock unit (per gram/pc)
+                if ($qty <= 0) continue;
+
+                $adjustment->lines()->create([
+                    'product_id'         => $product->id,
+                    'product_variant_id' => $variant?->id,
+                    'quantity'           => $qty,
+                    'unit_cost'          => $unitCost,
+                ]);
+                $ledger = $this->inv->postIn(
+                    branch: $mainBranch,
+                    product: $product,
+                    variant: $variant,
+                    quantity: $qty,
+                    unitCost: $unitCost,
+                    movementType: 'opening_stock',
+                    referenceType: 'stock_adjustment',
+                    referenceId: $adjustment->id,
+                    referenceNo: $adjustment->adjustment_no,
+                    expiryDate: null,
+                    notes: 'Karahi ingredient opening stock',
+                );
+                unset($ledger);
+            }
+        }
+
+        // ── Recipe with Food Cost + Packing Material sections ────────────────
+        $recipe = Recipe::updateOrCreate(
+            ['product_id' => $finished->id, 'name' => 'Regular Karahi'],
+            [
+                'yield_quantity'   => 1,
+                'yield_unit_id'    => $pcs?->id,
+                'is_active'        => true,
+                'notes'            => 'Technosys-style karahi recipe — food cost + packing material.',
+                'doc_no'           => 'DOC-KRH-01',
+                'recipe_no'        => 'REC-0010',
+                'revision_no'      => 1,
+                'review_date'      => now()->toDateString(),
+                'overhead_percent' => 4.48,
+            ]
+        );
+
+        // This seeder owns these lines: delete + recreate intentionally (demo recipe only).
+        $recipe->ingredients()->delete();
+        $sort = 1;
+        foreach ($lines as [$sku, $name, $su, $pu, $pack, $cost, $section, $qty]) {
+            $ingredient = Product::where('sku', $sku)->first();
+            if (! $ingredient) continue;
+            $variant = $ingredient->defaultVariant()->first();
+            $recipe->ingredients()->create([
+                'product_id'         => $ingredient->id,
+                'product_variant_id' => $variant?->id,
+                'quantity'           => $qty,
+                'unit_id'            => $unitId($su),
+                'line_section'       => $section,
+                'sort_order'         => $sort++,
+            ]);
+        }
+
+        $this->command->line('  Technosys Karahi recipe seeded: ' . count($lines) . ' lines (food cost + packing).');
     }
 
     /**
