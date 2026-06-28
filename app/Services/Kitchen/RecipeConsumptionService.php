@@ -43,6 +43,15 @@ class RecipeConsumptionService
         $totalCost = 0.0;
 
         foreach ($recipe->ingredients as $ingredient) {
+            // KITCHEN-RECIPE-CONSUME-ORDER-TYPE-1: only consume lines that apply to this
+            // sale's POS order type. Lines tagged for other order types (e.g. takeaway/
+            // delivery packing on a dine-in sale) are skipped — no stock out, no COGS.
+            // Lines with applicable_order_types null/empty/["all"] still consume for every
+            // order type, so legacy recipes behave exactly as before.
+            if (!$ingredient->appliesToOrderType($sale->order_type)) {
+                continue;
+            }
+
             $ingredientProduct = $ingredient->product;
 
             if (!$ingredientProduct || !$ingredientProduct->is_stock_tracked) {
@@ -85,15 +94,18 @@ class RecipeConsumptionService
             $totalCost += (float) collect($ledgers)->sum(fn ($ledger) => (float) $ledger->total_cost);
 
             RecipeConsumption::create([
-                'recipe_id'           => $recipe->id,
-                'sales_order_id'      => $sale->id,
-                'sales_order_line_id' => $line->id,
-                'product_id'          => $ingredientProduct->id,
-                'product_variant_id'  => $ingredient->product_variant_id,
-                'quantity_consumed'   => $requiredQty,
-                'unit_id'             => $ingredientProduct->unit_id,
-                'consumed_at'         => now(),
-                'notes'               => "Consumed for sale line #{$line->id}",
+                'recipe_id'            => $recipe->id,
+                'recipe_ingredient_id' => $ingredient->id,
+                'sales_order_id'       => $sale->id,
+                'sales_order_line_id'  => $line->id,
+                'product_id'           => $ingredientProduct->id,
+                'product_variant_id'   => $ingredient->product_variant_id,
+                'quantity_consumed'    => $requiredQty,
+                'order_type'           => $sale->order_type,
+                'line_section'         => $ingredient->line_section,
+                'unit_id'              => $ingredientProduct->unit_id,
+                'consumed_at'          => now(),
+                'notes'                => "Consumed for sale line #{$line->id}",
             ]);
         }
 

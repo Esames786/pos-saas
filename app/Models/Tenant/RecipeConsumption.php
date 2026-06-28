@@ -10,11 +10,14 @@ class RecipeConsumption extends Model
 
     protected $fillable = [
         'recipe_id',
+        'recipe_ingredient_id',
         'sales_order_id',
         'sales_order_line_id',
         'product_id',
         'product_variant_id',
         'quantity_consumed',
+        'order_type',
+        'line_section',
         'unit_id',
         'consumed_at',
         'notes',
