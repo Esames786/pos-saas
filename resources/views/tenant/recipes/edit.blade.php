@@ -3,6 +3,13 @@
 @section('title', 'Edit Recipe — ' . $recipe->name)
 
 @section('content')
+<style>
+    .os-scope-menu .os-item { cursor:pointer; }
+    .os-scope-menu .os-item:hover { background:#f1f3f5; }
+    .os-scope-menu .os-check { visibility:hidden; color:#0d6efd; }
+    .os-scope-menu .ot-check:checked ~ .os-check { visibility:visible; }
+    .os-scope-menu .ot-check:checked ~ span { font-weight:600; }
+</style>
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
     <h1 class="mb-0">Edit Recipe</h1>
     <div class="d-flex gap-2">
@@ -177,30 +184,30 @@
     const sectionsJson   = @json(\App\Models\Tenant\RecipeIngredient::SECTIONS);
     const orderTypesJson = @json(\App\Models\Tenant\RecipeIngredient::ORDER_TYPES);
 
-    const presetsJson = { all:'All Orders', dine_in:'Dine In only', takeaway_delivery:'Takeaway + Delivery', takeaway:'Takeaway only', delivery:'Delivery only', quick_sale:'Quick Sale only', custom:'Custom…' };
-    const PRESET_MAP = { all:[], dine_in:['dine_in'], takeaway_delivery:['takeaway','delivery'], takeaway:['takeaway'], delivery:['delivery'], quick_sale:['quick_sale'] };
-
     function orderScopeHtml(idx) {
-        const presetOptions = Object.entries(presetsJson).map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
-        const checks = Object.entries(orderTypesJson).map(([v, l]) =>
-            `<label class="me-2 small mb-0"><input type="checkbox" class="form-check-input ot-check me-1" name="ingredients[${idx}][applicable_order_types][]" value="${v}" ${v === 'all' ? 'checked' : ''}>${l}</label>`
+        const items = Object.entries(orderTypesJson).map(([v, l]) =>
+            `<label class="os-item d-flex justify-content-between align-items-center px-2 py-1 rounded mb-0">
+                <input type="checkbox" class="ot-check d-none" name="ingredients[${idx}][applicable_order_types][]" value="${v}" ${v === 'all' ? 'checked' : ''}>
+                <span class="small">${l}</span>
+                <i class="ti ti-check os-check ms-3"></i>
+            </label>`
         ).join('');
         return `<div class="col-12 ot-wrap d-flex align-items-center flex-wrap gap-2">
             <small class="text-muted"><i class="ti ti-receipt me-1"></i>Order Scope:</small>
-            <select class="form-select form-select-sm os-preset" style="width:auto">${presetOptions}</select>
-            <span class="os-detail d-flex flex-wrap gap-2" style="display:none">${checks}</span>
+            <div class="os-scope position-relative">
+                <button type="button" class="btn btn-sm btn-outline-secondary os-scope-btn d-inline-flex align-items-center">
+                    <span class="os-scope-label">All Orders</span><i class="ti ti-chevron-down ms-2"></i>
+                </button>
+                <div class="os-scope-menu border rounded bg-white shadow-sm p-1" style="display:none; position:absolute; z-index:1050; min-width:190px;">${items}</div>
+            </div>
         </div>`;
     }
 
-    function applyPreset(row) {
-        const sel = row.querySelector('.os-preset'); if (!sel) return;
-        const preset = sel.value;
-        const detail = row.querySelector('.os-detail');
-        const boxes = row.querySelectorAll('.ot-check');
-        if (preset === 'custom') { if (detail) detail.style.display = ''; return; }
-        if (detail) detail.style.display = 'none';
-        const want = PRESET_MAP[preset] || [];
-        boxes.forEach(b => { b.checked = (b.value === 'all') ? (preset === 'all') : (want.indexOf(b.value) !== -1); });
+    function updateScopeLabel(scope) {
+        const label = scope.querySelector('.os-scope-label');
+        if (!label) return;
+        const specifics = Array.prototype.filter.call(scope.querySelectorAll('.ot-check'), c => c.value !== 'all' && c.checked);
+        label.textContent = specifics.length ? specifics.map(c => orderTypesJson[c.value] || c.value).join(', ') : 'All Orders';
     }
 
     function buildIngredientRow(idx) {
@@ -259,17 +266,12 @@
         }
     });
 
-    // UX-POLISH-1: Order Scope preset drives the underlying checkboxes; "All" stays
-    // exclusive vs specific types when editing the Custom pills directly.
+    // UX-POLISH-1: multi-select Order Scope. "All" stays exclusive vs specific types.
     document.getElementById('ingredientRows').addEventListener('change', function (e) {
-        if (e.target.classList.contains('os-preset')) {
-            applyPreset(e.target.closest('.ingredient-row'));
-            return;
-        }
         if (!e.target.classList.contains('ot-check')) return;
-        const row = e.target.closest('.ingredient-row');
-        const checks = row.querySelectorAll('.ot-check');
-        const allBox = row.querySelector('.ot-check[value="all"]');
+        const scope = e.target.closest('.os-scope');
+        const checks = scope.querySelectorAll('.ot-check');
+        const allBox = scope.querySelector('.ot-check[value="all"]');
         if (e.target.value === 'all') {
             if (e.target.checked) checks.forEach(c => { if (c !== allBox) c.checked = false; });
         } else {
@@ -277,7 +279,26 @@
             const anySpecific = Array.prototype.some.call(checks, c => c.value !== 'all' && c.checked);
             if (!anySpecific && allBox) allBox.checked = true;
         }
+        updateScopeLabel(scope);
     });
+
+    // Toggle a row's Order Scope dropdown; close any others / on outside click.
+    document.addEventListener('click', function (e) {
+        const btn = e.target.closest('.os-scope-btn');
+        const inMenu = e.target.closest('.os-scope-menu');
+        document.querySelectorAll('.os-scope').forEach(function (scope) {
+            const menu = scope.querySelector('.os-scope-menu');
+            if (!menu) return;
+            if (btn && scope.contains(btn)) {
+                menu.style.display = (menu.style.display === 'block') ? 'none' : 'block';
+            } else if (!(inMenu && scope.contains(e.target))) {
+                menu.style.display = 'none';
+            }
+        });
+    });
+
+    // Initialise existing rows' summary labels.
+    document.querySelectorAll('.os-scope').forEach(updateScopeLabel);
 })();
 </script>
 @endpush
