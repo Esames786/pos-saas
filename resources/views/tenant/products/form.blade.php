@@ -77,6 +77,7 @@
                         @endif
                     @endforeach
                 </div>
+                <div id="pmode-summary" class="alert alert-light border py-2 px-3 mt-2 mb-0 small"></div>
                 <div id="pos-hide-warn" class="alert alert-warning py-2 px-3 mt-2 mb-0 small d-none">
                     <i class="ti ti-alert-triangle me-1"></i>This type is normally <strong>hidden from POS</strong>. Use Advanced if you need it sold at the till.
                 </div>
@@ -184,7 +185,7 @@
             <div class="psection">
             <h5 class="mb-3 mt-4">Pricing &amp; Tax</h5>
             <div class="row g-3">
-                <div class="col-md-3 pf" data-pg="purchase">
+                <div class="col-md-3 pf" data-pg="purchase" data-link="purchasable">
                     <label for="default_purchase_price" class="form-label">Purchase Price</label>
                     <input id="default_purchase_price" type="number" name="default_purchase_price"
                            step="0.01" min="0"
@@ -194,7 +195,7 @@
                 </div>
 
                 {{-- KITCHEN-RECIPE-COST-1 recipe-costing pack fields --}}
-                <div class="col-md-3 pf" data-pg="pack">
+                <div class="col-md-3 pf" data-pg="pack" data-link="purchasable">
                     <label for="purchase_unit_id" class="form-label">Purchase Unit</label>
                     <select id="purchase_unit_id" name="purchase_unit_id" class="form-select">
                         <option value="">— Same as stock unit —</option>
@@ -205,7 +206,7 @@
                     <div class="form-help">Unit you buy in: KG, PKT, ROLL, PC.</div>
                 </div>
 
-                <div class="col-md-3 pf" data-pg="pack">
+                <div class="col-md-3 pf" data-pg="pack" data-link="purchasable">
                     <label for="purchase_pack_size" class="form-label">Purchase Pack Size</label>
                     <input id="purchase_pack_size" type="number" name="purchase_pack_size"
                            step="0.0001" min="0"
@@ -222,15 +223,20 @@
                            value="{{ old('default_selling_price', $product?->default_selling_price ?? 0) }}"
                            class="form-control @error('default_selling_price') is-invalid @enderror" required>
                     @error('default_selling_price') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                    <div class="form-help">Used when this product is sold in POS or Sales.</div>
                 </div>
 
-                <div class="col-md-2 pf" data-pg="tax">
+                <div class="col-md-2 pf" data-pg="tax" data-link="taxable">
                     <label for="tax_rate_percent" class="form-label">Tax Rate (%)</label>
                     <input id="tax_rate_percent" type="number" name="tax_rate_percent"
                            step="0.01" min="0" max="100"
                            value="{{ old('tax_rate_percent', $product?->tax_rate_percent) }}"
                            class="form-control @error('tax_rate_percent') is-invalid @enderror">
                     @error('tax_rate_percent') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                </div>
+                <div class="col-md-2 pf" data-pg="tax" data-link="not-taxable">
+                    <label class="form-label text-muted">Tax Rate (%)</label>
+                    <div class="form-help mt-1"><i class="ti ti-lock me-1"></i>Enable <strong>Taxable</strong> to enter a tax rate.</div>
                 </div>
             </div>
             </div>
@@ -239,7 +245,7 @@
             <div class="psection">
             <h5 class="mb-3 mt-4">Stock &amp; Reorder</h5>
             <div class="row g-3">
-                <div class="col-md-3 pf" data-pg="stock">
+                <div class="col-md-3 pf" data-pg="stock" data-link="stock">
                     <label for="reorder_level" class="form-label">Reorder Level</label>
                     <input id="reorder_level" type="number" name="reorder_level"
                            step="0.001" min="0"
@@ -248,7 +254,7 @@
                     @error('reorder_level') <div class="invalid-feedback">{{ $message }}</div> @enderror
                 </div>
 
-                <div class="col-md-3 pf" data-pg="stock">
+                <div class="col-md-3 pf" data-pg="stock" data-link="stock">
                     <label for="reorder_quantity" class="form-label">Reorder Quantity</label>
                     <input id="reorder_quantity" type="number" name="reorder_quantity"
                            step="0.001" min="0"
@@ -307,6 +313,9 @@
                         <label for="is_taxable" class="form-check-label">Taxable</label>
                     </div>
                 </div>
+                <div class="col-12" id="stock-off-note" style="display:none">
+                    <div class="form-help"><i class="ti ti-info-circle me-1"></i>Stock will not be deducted for this product.</div>
+                </div>
             </div>
             </div>
 
@@ -348,9 +357,10 @@
                             <label for="is_manufactured_finished_good" class="form-check-label">Manufactured Finished Good</label>
                         </div>
                     </div>
-                    <div class="form-help mt-1">
-                        BOM components are used inside manufacturing; BOM outputs are produced by manufacturing.
-                        Manufactured FG affects future manufacturing COGS logic.
+                    <div class="form-help mt-1 pf" data-pg="mfg">
+                        <strong>BOM Component</strong> = used as input inside manufacturing.
+                        <strong>BOM Output</strong> = product produced by manufacturing.
+                        <strong>Manufactured FG</strong> affects future manufacturing COGS.
                     </div>
                 </div>
             </div>
@@ -478,7 +488,7 @@
     var MODES = {
         pos_sale:     { groups:['sell','pos','tax','purchase','stock'],
                         def:{ product_kind:'sale_item', is_sellable:1, is_pos_visible:1, is_purchasable:1, is_stock_tracked:1, item_kind:'finished_good', inventory_consumption_method:'stock_item', can_be_bom_component:0, can_be_bom_output:0, is_manufactured_finished_good:0 } },
-        recipe:       { groups:['sell','pos','tax','stock','kitchen'],
+        recipe:       { groups:['sell','pos','tax','purchase','stock','kitchen'],
                         def:{ product_kind:'sale_item', is_sellable:1, is_pos_visible:1, is_purchasable:1, is_stock_tracked:1, item_kind:'finished_good', inventory_consumption_method:'recipe', can_be_bom_component:0, can_be_bom_output:0, is_manufactured_finished_good:0 } },
         raw_material: { groups:['purchase','pack','stock','batch','kitchen'],
                         def:{ product_kind:'raw_material', is_sellable:0, is_pos_visible:0, is_purchasable:1, is_stock_tracked:1, item_kind:'ingredient', inventory_consumption_method:'stock_item', can_be_bom_component:0, can_be_bom_output:0, is_manufactured_finished_good:0 } },
@@ -525,28 +535,72 @@
         });
     }
 
-    function applyMode(mode, withDefaults) {
-        var groups = visibleGroups(mode);
+    // UX-POLISH-1: short per-mode explanation under the type cards.
+    var SUMMARIES = {
+        pos_sale:     'This item appears in POS and can be sold to customers.',
+        recipe:       'This item is sold in POS and consumes ingredients through Recipes/BOM.',
+        raw_material: 'This item is not sold in POS. It is purchased and consumed by recipes.',
+        packaging:    'This item is hidden from POS and used for takeaway/delivery packaging.',
+        service:      'This item is sold without stock tracking.',
+        mfg_raw:      'This item is hidden from POS and used as a manufacturing BOM component.',
+        mfg_fg:       'This item is produced by manufacturing and hidden from POS unless explicitly made saleable.',
+        advanced:     'Advanced mode — every field is shown for full manual control.'
+    };
+    function updateSummary(mode) {
+        var box = document.getElementById('pmode-summary');
+        if (box) box.innerHTML = '<i class="ti ti-info-circle me-1"></i>' + (SUMMARIES[mode] || SUMMARIES.pos_sale);
+    }
+
+    function isChecked(id) { var e = document.getElementById(id); return e ? !!e.checked : false; }
+
+    // A field linked to a control checkbox is only shown when that checkbox agrees.
+    function linkOk(f) {
+        var link = f.getAttribute('data-link');
+        if (!link) return true;
+        if (link === 'taxable')     return isChecked('is_taxable');
+        if (link === 'not-taxable') return !isChecked('is_taxable');
+        if (link === 'purchasable') return isChecked('is_purchasable');
+        if (link === 'stock')       return isChecked('is_stock_tracked');
+        return true;
+    }
+
+    // Show/hide every .pf using (group ∈ mode) AND its data-link condition.
+    function renderVisibility(groups) {
         document.querySelectorAll('.pf').forEach(function (f) {
             var pg = f.getAttribute('data-pg') || 'always';
-            f.style.display = (groups.indexOf(pg) !== -1) ? '' : 'none';
+            var vis = (groups.indexOf(pg) !== -1) && linkOk(f);
+            f.style.display = vis ? '' : 'none';
         });
+        var note = document.getElementById('stock-off-note');
+        if (note) note.style.display = (groups.indexOf('stock') !== -1 && !isChecked('is_stock_tracked')) ? '' : 'none';
         refreshSections();
+    }
 
+    function applyMode(mode, withDefaults) {
         var hid = document.getElementById('_setup_mode');
         if (hid) hid.value = mode;
         document.querySelectorAll('#pmode-cards .pmode-card').forEach(function (c) {
             c.classList.toggle('active', c.getAttribute('data-mode') === mode);
         });
 
+        // Defaults BEFORE visibility so linked fields reflect the new checkbox states.
         if (withDefaults && MODES[mode] && MODES[mode].def) applyDefaults(MODES[mode].def);
 
-        // POS-hide warning when this mode normally hides the product from POS.
+        renderVisibility(visibleGroups(mode));
+
         var def = MODES[mode] && MODES[mode].def;
         var hidesPos = def && (def.is_pos_visible === 0 || def.is_sellable === 0);
         var warn = document.getElementById('pos-hide-warn');
         if (warn) warn.classList.toggle('d-none', !hidesPos);
 
+        updateSummary(mode);
+        updateChips();
+    }
+
+    // Re-evaluate visibility for the current mode when a linked checkbox toggles.
+    function refreshVisibility() {
+        var hid = document.getElementById('_setup_mode');
+        renderVisibility(visibleGroups(hid ? hid.value : 'pos_sale'));
         updateChips();
     }
 
@@ -570,8 +624,23 @@
     document.querySelectorAll('#pmode-cards .pmode-card').forEach(function (card) {
         card.addEventListener('click', function () { applyMode(card.getAttribute('data-mode'), true); });
     });
-    // Reflect a few field edits in the chips live.
-    ['is_pos_visible','is_sellable','is_stock_tracked','can_be_bom_component','can_be_bom_output','inventory_consumption_method'].forEach(function (id) {
+
+    // Linked control checkboxes re-evaluate dependent field visibility (+ chips).
+    ['is_taxable','is_purchasable','is_stock_tracked'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.addEventListener('change', refreshVisibility);
+    });
+    // Entering a tax rate > 0 auto-enables Taxable.
+    var taxRate = document.getElementById('tax_rate_percent');
+    if (taxRate) taxRate.addEventListener('input', function () {
+        if (parseFloat(taxRate.value) > 0) {
+            var t = document.getElementById('is_taxable');
+            if (t && !t.checked) t.checked = true;
+        }
+        refreshVisibility();
+    });
+    // Reflect a few other field edits in the chips live.
+    ['is_pos_visible','is_sellable','can_be_bom_component','can_be_bom_output','inventory_consumption_method'].forEach(function (id) {
         var el = document.getElementById(id);
         if (el) el.addEventListener('change', updateChips);
     });

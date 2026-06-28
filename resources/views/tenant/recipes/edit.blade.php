@@ -20,6 +20,14 @@
                 <div class="alert alert-danger">{{ $errors->first() }}</div>
             @endif
 
+            <div class="alert alert-light border small mb-4">
+                <i class="ti ti-info-circle me-1"></i>
+                Use this screen to define the ingredients and packaging needed to prepare/sell this item.
+                <strong>Food Cost</strong> lines are used in every order by default; <strong>Packing Material</strong>
+                can be limited to Takeaway/Delivery. This screen defines the recipe and costing — actual stock is
+                consumed when a sale/production is completed.
+            </div>
+
             <h5 class="mb-3">Recipe Header</h5>
             <div class="row g-3 mb-4">
                 <div class="col-md-6">
@@ -95,7 +103,11 @@
                 </div>
             </div>
 
-            <h5 class="mb-3">Ingredients</h5>
+            <h5 class="mb-3 mt-4">Ingredients</h5>
+            <div class="form-text mb-2">
+                <strong>Section:</strong> Food Cost = edible ingredients · Packing Material = containers, foil, bags · Other = optional costing items.
+                <strong>Order Scope</strong> decides when a line is used — e.g. packing usually applies to Takeaway + Delivery.
+            </div>
             <div id="ingredientRows">
                 @php $ingList = old('ingredients', $recipe->ingredients->toArray()); @endphp
                 @foreach($ingList as $i => $ing)
@@ -141,14 +153,7 @@
                     <div class="col-md-2">
                         <button type="button" class="btn btn-outline-danger remove-row w-100">Remove</button>
                     </div>
-                    <div class="col-12 ot-wrap">
-                        @php $otSel = (array) ($ing['applicable_order_types'] ?? []); $otAll = empty($otSel) || in_array('all', $otSel); @endphp
-                        <small class="text-muted me-2">Applies to:</small>
-                        @foreach(\App\Models\Tenant\RecipeIngredient::ORDER_TYPES as $otv => $otl)
-                            <label class="me-3 small"><input type="checkbox" class="form-check-input ot-check me-1" name="ingredients[{{ $i }}][applicable_order_types][]" value="{{ $otv }}" @checked($otv === 'all' ? $otAll : in_array($otv, $otSel))>{{ $otl }}</label>
-                        @endforeach
-                        <span class="form-text d-block">Default = All. Use this to consume packing material only for Takeaway/Delivery, or dine-in-specific items only for Dine In.</span>
-                    </div>
+                    @include('tenant.recipes._order_scope', ['i' => $i, 'otSel' => $ing['applicable_order_types'] ?? []])
                 </div>
                 @endforeach
             </div>
@@ -172,10 +177,30 @@
     const sectionsJson   = @json(\App\Models\Tenant\RecipeIngredient::SECTIONS);
     const orderTypesJson = @json(\App\Models\Tenant\RecipeIngredient::ORDER_TYPES);
 
-    function otCheckboxes(idx) {
-        return Object.entries(orderTypesJson).map(([v, l]) =>
-            `<label class="me-3 small"><input type="checkbox" class="form-check-input ot-check me-1" name="ingredients[${idx}][applicable_order_types][]" value="${v}" ${v === 'all' ? 'checked' : ''}>${l}</label>`
+    const presetsJson = { all:'All Orders', dine_in:'Dine In only', takeaway_delivery:'Takeaway + Delivery', takeaway:'Takeaway only', delivery:'Delivery only', quick_sale:'Quick Sale only', custom:'Custom…' };
+    const PRESET_MAP = { all:[], dine_in:['dine_in'], takeaway_delivery:['takeaway','delivery'], takeaway:['takeaway'], delivery:['delivery'], quick_sale:['quick_sale'] };
+
+    function orderScopeHtml(idx) {
+        const presetOptions = Object.entries(presetsJson).map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+        const checks = Object.entries(orderTypesJson).map(([v, l]) =>
+            `<label class="me-2 small mb-0"><input type="checkbox" class="form-check-input ot-check me-1" name="ingredients[${idx}][applicable_order_types][]" value="${v}" ${v === 'all' ? 'checked' : ''}>${l}</label>`
         ).join('');
+        return `<div class="col-12 ot-wrap d-flex align-items-center flex-wrap gap-2">
+            <small class="text-muted"><i class="ti ti-receipt me-1"></i>Order Scope:</small>
+            <select class="form-select form-select-sm os-preset" style="width:auto">${presetOptions}</select>
+            <span class="os-detail d-flex flex-wrap gap-2" style="display:none">${checks}</span>
+        </div>`;
+    }
+
+    function applyPreset(row) {
+        const sel = row.querySelector('.os-preset'); if (!sel) return;
+        const preset = sel.value;
+        const detail = row.querySelector('.os-detail');
+        const boxes = row.querySelectorAll('.ot-check');
+        if (preset === 'custom') { if (detail) detail.style.display = ''; return; }
+        if (detail) detail.style.display = 'none';
+        const want = PRESET_MAP[preset] || [];
+        boxes.forEach(b => { b.checked = (b.value === 'all') ? (preset === 'all') : (want.indexOf(b.value) !== -1); });
     }
 
     function buildIngredientRow(idx) {
@@ -214,10 +239,7 @@
             <div class="col-md-2">
                 <button type="button" class="btn btn-outline-danger remove-row w-100">Remove</button>
             </div>
-            <div class="col-12 ot-wrap">
-                <small class="text-muted me-2">Applies to:</small>${otCheckboxes(idx)}
-                <span class="form-text d-block">Default = All. Use this to consume packing material only for Takeaway/Delivery, or dine-in-specific items only for Dine In.</span>
-            </div>
+            ${orderScopeHtml(idx)}
         </div>`;
     }
 
@@ -237,8 +259,13 @@
         }
     });
 
-    // KITCHEN-RECIPE-ORDER-TYPE-1: "All" is exclusive vs specific order types.
+    // UX-POLISH-1: Order Scope preset drives the underlying checkboxes; "All" stays
+    // exclusive vs specific types when editing the Custom pills directly.
     document.getElementById('ingredientRows').addEventListener('change', function (e) {
+        if (e.target.classList.contains('os-preset')) {
+            applyPreset(e.target.closest('.ingredient-row'));
+            return;
+        }
         if (!e.target.classList.contains('ot-check')) return;
         const row = e.target.closest('.ingredient-row');
         const checks = row.querySelectorAll('.ot-check');
