@@ -637,6 +637,9 @@ class TenantDemoSeeder extends Seeder
 
     private function seedModifiers(): void
     {
+        // MODIFIER-INVENTORY-1: stock-tracked linked products for consume_stock options.
+        $this->seedModifierStockProducts();
+
         $groups = [
             [
                 'name' => 'Spice Level',
@@ -658,9 +661,9 @@ class TenantDemoSeeder extends Seeder
                 'is_required' => false,
                 'sort_order' => 20,
                 'options' => [
-                    ['name' => 'Extra Cheese', 'price_delta' => 100, 'is_default' => false, 'sort_order' => 10],
-                    ['name' => 'Extra Patty', 'price_delta' => 250, 'is_default' => false, 'sort_order' => 20],
-                    ['name' => 'Extra Sauce', 'price_delta' => 50, 'is_default' => false, 'sort_order' => 30],
+                    ['name' => 'Extra Cheese', 'price_delta' => 100, 'is_default' => false, 'sort_order' => 10, 'consume_stock' => true, 'linked_sku' => 'MOD-CHEESE', 'linked_quantity' => 1, 'linked_unit' => 'PCS'],
+                    ['name' => 'Extra Patty', 'price_delta' => 250, 'is_default' => false, 'sort_order' => 20, 'consume_stock' => true, 'linked_sku' => 'MOD-PATTY', 'linked_quantity' => 1, 'linked_unit' => 'PCS'],
+                    ['name' => 'Extra Sauce', 'price_delta' => 50, 'is_default' => false, 'sort_order' => 30, 'consume_stock' => true, 'linked_sku' => 'MOD-SAUCE', 'linked_quantity' => 1, 'linked_unit' => 'PCS'],
                     ['name' => 'No Onion', 'price_delta' => 0, 'is_default' => false, 'sort_order' => 40],
                 ],
                 'products' => ['BURGER-C', 'BURGER-B'],
@@ -698,14 +701,21 @@ class TenantDemoSeeder extends Seeder
             $groupCount++;
 
             foreach ($definition['options'] as $option) {
+                $consumeStock  = !empty($option['consume_stock']);
+                $linkedProduct = !empty($option['linked_sku']) ? Product::where('sku', $option['linked_sku'])->first() : null;
+                $linkedUnit    = !empty($option['linked_unit']) ? Unit::where('code', $option['linked_unit'])->first() : null;
+
                 Modifier::updateOrCreate(
                     ['modifier_group_id' => $group->id, 'name' => $option['name']],
                     [
-                        'price_delta' => $option['price_delta'],
-                        'linked_product_id' => null,
-                        'is_default' => $option['is_default'],
-                        'sort_order' => $option['sort_order'],
-                        'status' => 'active',
+                        'price_delta'       => $option['price_delta'],
+                        'linked_product_id' => $consumeStock ? $linkedProduct?->id : null,
+                        'consume_stock'     => $consumeStock && $linkedProduct,
+                        'linked_quantity'   => $consumeStock && $linkedProduct ? ($option['linked_quantity'] ?? 1) : null,
+                        'linked_unit_id'    => $consumeStock && $linkedProduct ? $linkedUnit?->id : null,
+                        'is_default'        => $option['is_default'],
+                        'sort_order'        => $option['sort_order'],
+                        'status'            => 'active',
                     ]
                 );
                 $optionCount++;
@@ -722,6 +732,87 @@ class TenantDemoSeeder extends Seeder
         }
 
         $this->command->line("  Modifiers seeded: {$groupCount} groups, {$optionCount} options.");
+    }
+
+    /**
+     * MODIFIER-INVENTORY-1 — stock-tracked products that consume_stock modifiers deduct
+     * (Extra Cheese → Cheese Slice, Extra Patty → Beef Patty, Extra Sauce → Burger Sauce).
+     * Hidden from POS, purchasable, with opening stock at MAIN. Idempotent + guarded.
+     */
+    private function seedModifierStockProducts(): void
+    {
+        $pcs  = Unit::where('code', 'PCS')->first();
+        $groc = Category::where('code', 'GROC')->first();
+
+        // [sku, name, cost, openingQty]
+        $items = [
+            ['MOD-CHEESE', 'Cheese Slice (Modifier)', 35.00, 200],
+            ['MOD-PATTY',  'Beef Patty (Modifier)',   90.00, 100],
+            ['MOD-SAUCE',  'Burger Sauce (Modifier)', 15.00, 300],
+        ];
+
+        foreach ($items as [$sku, $name, $cost, $qty]) {
+            $product = Product::updateOrCreate(
+                ['sku' => $sku],
+                [
+                    'category_id'                  => $groc?->id,
+                    'unit_id'                      => $pcs?->id,
+                    'name'                         => $name,
+                    'slug'                         => Str::slug($name),
+                    'product_type'                 => 'simple',
+                    'item_kind'                    => 'ingredient',
+                    'inventory_consumption_method' => 'stock_item',
+                    'product_kind'                 => 'raw_material',
+                    'is_sellable'                  => false,
+                    'is_pos_visible'               => false,
+                    'is_purchasable'               => true,
+                    'is_stock_tracked'             => true,
+                    'has_expiry'                   => false,
+                    'requires_batch'               => false,
+                    'default_purchase_price'       => $cost,
+                    'default_selling_price'        => 0,
+                    'purchase_unit_id'             => $pcs?->id,
+                    'purchase_pack_size'           => 1,
+                    'status'                       => 'active',
+                ]
+            );
+            $product->translations()->updateOrCreate(['language_code' => 'en'], ['name' => $name]);
+            ProductVariant::updateOrCreate(
+                ['sku' => $sku],
+                ['product_id' => $product->id, 'name' => $name, 'purchase_price' => $cost, 'selling_price' => 0,
+                 'reorder_level' => 10, 'reorder_quantity' => 50, 'is_default' => true, 'is_active' => true]
+            );
+        }
+
+        $mainBranch = Branch::where('code', 'MAIN')->first();
+        if ($mainBranch && ! StockAdjustment::where('adjustment_no', 'ADJ-MOD-OPEN-MAIN')->exists()) {
+            $adjustment = StockAdjustment::create([
+                'adjustment_no'   => 'ADJ-MOD-OPEN-MAIN',
+                'branch_id'       => $mainBranch->id,
+                'adjustment_type' => 'opening',
+                'adjustment_date' => now()->toDateString(),
+                'status'          => 'posted',
+                'posted_at'       => now(),
+                'notes'           => 'Modifier linked products opening stock (demo seed)',
+            ]);
+            foreach ($items as [$sku, $name, $cost, $qty]) {
+                $product = Product::where('sku', $sku)->first();
+                if (! $product) continue;
+                $variant = $this->inv->resolveVariant($product, null);
+                $adjustment->lines()->create([
+                    'product_id'         => $product->id,
+                    'product_variant_id' => $variant?->id,
+                    'quantity'           => $qty,
+                    'unit_cost'          => $cost,
+                ]);
+                $this->inv->postIn(
+                    branch: $mainBranch, product: $product, variant: $variant, quantity: (float) $qty, unitCost: (float) $cost,
+                    movementType: 'opening_stock', referenceType: 'stock_adjustment',
+                    referenceId: $adjustment->id, referenceNo: $adjustment->adjustment_no,
+                    expiryDate: null, notes: 'Modifier linked product opening stock',
+                );
+            }
+        }
     }
 
     private function seedCombos(): void

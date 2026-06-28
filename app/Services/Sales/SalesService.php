@@ -2,10 +2,12 @@
 
 namespace App\Services\Sales;
 
+use App\Models\Tenant\Modifier;
 use App\Models\Tenant\PaymentMethod;
 use App\Models\Tenant\RestaurantTableSession;
 use App\Models\Tenant\SalesLedger;
 use App\Models\Tenant\SalesOrder;
+use App\Models\Tenant\SalesOrderLine;
 use App\Models\Tenant\Shift;
 use App\Services\Finance\JournalPostingService;
 use App\Services\Inventory\InventoryService;
@@ -92,6 +94,18 @@ class SalesService
                         ]);
                     }
                     // 'none': skip inventory entirely
+
+                    // MODIFIER-INVENTORY-1: deduct linked stock for any consume_stock
+                    // modifier options on this line, adding their cost on top of line COGS.
+                    $modifierCost = $this->consumeLineModifiers($sale, $line);
+                    if ($modifierCost > 0) {
+                        $qty          = (float) $line->quantity;
+                        $newCostTotal = round((float) $line->cost_total + $modifierCost, 4);
+                        $line->update([
+                            'cost_total' => $newCostTotal,
+                            'unit_cost'  => $qty > 0 ? round($newCostTotal / $qty, 4) : 0,
+                        ]);
+                    }
                 }
             }
 
@@ -123,6 +137,83 @@ class SalesService
         $journalPosting->postSalesCashBankMovement($sale, $sale->created_by_user_id);
 
         return $sale;
+    }
+
+    /**
+     * MODIFIER-INVENTORY-1 — deduct linked inventory for the consume_stock modifier
+     * options selected on a sale line, returning the total cost consumed (added to the
+     * line COGS by the caller). Runs only inside the inventory_posted guard, so a
+     * repeated finalize cannot double-post. Throws (rolls back the sale) when a
+     * stock-consuming modifier is misconfigured or its linked product is short on stock.
+     */
+    private function consumeLineModifiers(SalesOrder $sale, SalesOrderLine $line): float
+    {
+        $modifiers = $line->modifiers ?? [];
+
+        if (empty($modifiers) || ! is_array($modifiers)) {
+            return 0.0;
+        }
+
+        $lineQty   = (float) $line->quantity;
+        $totalCost = 0.0;
+
+        foreach ($modifiers as $entry) {
+            $modifierId = (int) ($entry['modifier_id'] ?? 0);
+            if ($modifierId <= 0) {
+                continue;
+            }
+
+            $modifier = Modifier::with(['linkedProduct'])->find($modifierId);
+
+            // Price-only / removed / non-consuming options never touch stock.
+            if (! $modifier || ! $modifier->consume_stock) {
+                continue;
+            }
+
+            $linked = $modifier->linkedProduct;
+            if (! $linked) {
+                throw new RuntimeException("Modifier \"{$modifier->name}\" is set to consume stock but has no linked product.");
+            }
+            if (! $linked->is_stock_tracked) {
+                throw new RuntimeException("Modifier \"{$modifier->name}\" linked product \"{$linked->name}\" is not stock-tracked.");
+            }
+
+            $perModifierQty = (float) ($modifier->linked_quantity ?: 0);
+            if ($perModifierQty <= 0) {
+                continue;
+            }
+
+            // 1 selected modifier per cart entry × line quantity.
+            $consumeQty = $perModifierQty * $lineQty;
+            if ($consumeQty <= 0) {
+                continue;
+            }
+
+            $variant = $this->inventoryService->resolveVariant($linked, null);
+
+            try {
+                $ledgers = $this->inventoryService->postOutFefo(
+                    branch: $sale->branch,
+                    product: $linked,
+                    variant: $variant,
+                    quantity: $consumeQty,
+                    movementType: 'modifier_consumption',
+                    referenceType: 'sales_order',
+                    referenceId: $sale->id,
+                    referenceNo: $sale->sale_no,
+                    notes: "Modifier consumption: {$modifier->name} for {$line->product_name}",
+                    userId: $sale->created_by_user_id,
+                );
+            } catch (RuntimeException $e) {
+                throw new RuntimeException(
+                    "Cannot complete sale — modifier \"{$modifier->name}\" ({$linked->name}): " . $e->getMessage()
+                );
+            }
+
+            $totalCost += (float) collect($ledgers)->sum(fn ($ledger) => (float) $ledger->total_cost);
+        }
+
+        return round($totalCost, 4);
     }
 
     private function postSalesLedger(SalesOrder $sale): void

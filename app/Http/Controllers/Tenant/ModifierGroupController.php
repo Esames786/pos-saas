@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\ModifierGroup;
 use App\Models\Tenant\Product;
+use App\Models\Tenant\Unit;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Rule;
@@ -44,6 +45,7 @@ class ModifierGroupController extends Controller
             'group'    => new ModifierGroup(['status' => 'active']),
             'branches' => Branch::where('status', 'active')->orderBy('name')->get(),
             'products' => Product::where('status', 'active')->orderBy('name')->get(['id', 'name', 'sku']),
+            'units'    => Unit::orderBy('name')->get(['id', 'name', 'code']),
             'title'    => 'Create Modifier Group',
         ]);
     }
@@ -64,6 +66,7 @@ class ModifierGroupController extends Controller
             'group'    => $modifierGroup,
             'branches' => Branch::where('status', 'active')->orderBy('name')->get(),
             'products' => Product::where('status', 'active')->orderBy('name')->get(['id', 'name', 'sku']),
+            'units'    => Unit::orderBy('name')->get(['id', 'name', 'code']),
             'title'    => 'Edit Modifier Group',
         ]);
     }
@@ -148,13 +151,17 @@ class ModifierGroupController extends Controller
             'modifiers.*.name'                => ['nullable', 'string', 'max:190'],
             'modifiers.*.price_delta'         => ['nullable', 'numeric', 'min:-9999999999.99', 'max:9999999999.99'],
             'modifiers.*.linked_product_id'   => ['nullable', 'exists:products,id'],
+            // MODIFIER-INVENTORY-1 stock-consumption fields
+            'modifiers.*.consume_stock'       => ['nullable', 'boolean'],
+            'modifiers.*.linked_quantity'     => ['nullable', 'numeric', 'min:0.0001'],
+            'modifiers.*.linked_unit_id'      => ['nullable', 'exists:units,id'],
             'modifiers.*.is_default'          => ['nullable', 'boolean'],
             'modifiers.*.sort_order'          => ['nullable', 'integer', 'min:0'],
             'modifiers.*.status'              => ['nullable', Rule::in(['active', 'inactive'])],
             'modifiers.*._delete'             => ['nullable', 'boolean'],
         ]);
 
-        foreach ($data['modifiers'] ?? [] as $row) {
+        foreach ($data['modifiers'] ?? [] as $i => $row) {
             $id = isset($row['id']) ? (int) $row['id'] : null;
 
             if (!empty($row['_delete'])) {
@@ -169,10 +176,39 @@ class ModifierGroupController extends Controller
                 continue;
             }
 
+            // MODIFIER-INVENTORY-1: stock-consuming options need a valid, active,
+            // stock-tracked linked product + a positive quantity.
+            $consumeStock = !empty($row['consume_stock']);
+            $linkedProductId = $row['linked_product_id'] ?: null;
+            $linkedQuantity = (isset($row['linked_quantity']) && $row['linked_quantity'] !== '')
+                ? (float) $row['linked_quantity'] : null;
+
+            if ($consumeStock) {
+                if (! $linkedProductId) {
+                    throw ValidationException::withMessages([
+                        "modifiers.{$i}.linked_product_id" => "\"{$name}\": choose a Linked Product when Consume Stock is on.",
+                    ]);
+                }
+                if (! $linkedQuantity || $linkedQuantity <= 0) {
+                    throw ValidationException::withMessages([
+                        "modifiers.{$i}.linked_quantity" => "\"{$name}\": Linked Quantity is required when Consume Stock is on.",
+                    ]);
+                }
+                $linked = Product::find($linkedProductId);
+                if (! $linked || $linked->status !== 'active' || ! $linked->is_stock_tracked) {
+                    throw ValidationException::withMessages([
+                        "modifiers.{$i}.linked_product_id" => "\"{$name}\": linked product must be active and stock-tracked when Consume Stock is enabled.",
+                    ]);
+                }
+            }
+
             $payload = [
                 'name'              => $name,
                 'price_delta'       => $row['price_delta'] ?? 0,
-                'linked_product_id' => $row['linked_product_id'] ?: null,
+                'linked_product_id' => $linkedProductId,
+                'consume_stock'     => $consumeStock,
+                'linked_quantity'   => $consumeStock ? $linkedQuantity : null,
+                'linked_unit_id'    => $consumeStock ? ($row['linked_unit_id'] ?: null) : null,
                 'is_default'        => !empty($row['is_default']),
                 'sort_order'        => (int) ($row['sort_order'] ?? 0),
                 'status'            => $row['status'] ?? 'active',

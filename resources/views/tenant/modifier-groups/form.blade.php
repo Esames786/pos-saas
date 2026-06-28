@@ -12,12 +12,15 @@
                 'name'              => $modifier->name,
                 'price_delta'       => $modifier->price_delta,
                 'linked_product_id' => $modifier->linked_product_id,
+                'consume_stock'     => $modifier->consume_stock ? 1 : 0,
+                'linked_quantity'   => $modifier->linked_quantity,
+                'linked_unit_id'    => $modifier->linked_unit_id,
                 'is_default'        => $modifier->is_default ? 1 : 0,
                 'sort_order'        => $modifier->sort_order,
                 'status'            => $modifier->status,
             ])->values()->all()
             : [
-                ['name' => '', 'price_delta' => 0, 'linked_product_id' => '', 'is_default' => 0, 'sort_order' => 0, 'status' => 'active'],
+                ['name' => '', 'price_delta' => 0, 'linked_product_id' => '', 'consume_stock' => 0, 'linked_quantity' => '', 'linked_unit_id' => '', 'is_default' => 0, 'sort_order' => 0, 'status' => 'active'],
             ];
     }
 @endphp
@@ -110,17 +113,29 @@
                         <strong>Modifier Options</strong>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="add-modifier-row">Add Option</button>
                     </div>
-                    <div class="card-body p-0">
+                    <div class="card-body">
+                        <div class="alert alert-light border small mb-3">
+                            <i class="ti ti-info-circle me-1"></i>
+                            Use modifiers for add-ons or choices shown in POS — e.g. <strong>Extra Cheese</strong>, <strong>Extra Patty</strong>, <strong>No Onion</strong>, Spice Level.
+                            <strong>Price Delta</strong> changes the customer price.
+                            <strong>Consume Stock</strong> deducts a linked inventory product when the sale is completed — leave it off for note-only options like <em>No Onion</em>.
+                            <div class="mt-1 text-muted">
+                                Example: &nbsp;Extra Cheese → +100, deduct 1 Cheese Slice &nbsp;·&nbsp; Extra Patty → +250, deduct 1 Beef Patty &nbsp;·&nbsp; No Onion → 0, no stock.
+                            </div>
+                        </div>
                         <div class="table-responsive">
                             <table class="table align-middle mb-0" id="modifier-options-table">
                                 <thead class="thead-light">
                                     <tr>
-                                        <th style="width: 24%">Name</th>
-                                        <th style="width: 14%">Price Delta</th>
-                                        <th style="width: 28%">Linked Product</th>
-                                        <th style="width: 10%">Default</th>
-                                        <th style="width: 10%">Sort</th>
-                                        <th style="width: 10%">Status</th>
+                                        <th style="min-width:140px">Name</th>
+                                        <th style="min-width:90px">Price Delta</th>
+                                        <th style="min-width:180px">Linked Product<br><span class="fw-normal text-muted" style="font-size:.72rem">Inventory item to deduct</span></th>
+                                        <th style="min-width:90px" class="text-center">Consume Stock?<br><span class="fw-normal text-muted" style="font-size:.72rem">On = uses real stock</span></th>
+                                        <th style="min-width:100px">Linked Qty<br><span class="fw-normal text-muted" style="font-size:.72rem">Per modifier</span></th>
+                                        <th style="min-width:110px">Linked Unit</th>
+                                        <th style="min-width:70px" class="text-center">Default</th>
+                                        <th style="min-width:70px">Sort</th>
+                                        <th style="min-width:90px">Status</th>
                                         <th style="width: 4%"></th>
                                     </tr>
                                 </thead>
@@ -142,6 +157,21 @@
                                                     <option value="{{ $product->id }}" @selected(($modifier['linked_product_id'] ?? '') == $product->id)>{{ $product->name }} ({{ $product->sku }})</option>
                                                 @endforeach
                                             </select>
+                                        </td>
+                                        <td class="text-center">
+                                            <input type="checkbox" name="modifiers[{{ $idx }}][consume_stock]" value="1" class="form-check-input consume-stock" @checked(!empty($modifier['consume_stock']))>
+                                        </td>
+                                        <td>
+                                            <input type="number" name="modifiers[{{ $idx }}][linked_quantity]" class="form-control form-control-sm stock-field" step="0.0001" min="0.0001" value="{{ $modifier['linked_quantity'] ?? '' }}" placeholder="1">
+                                        </td>
+                                        <td>
+                                            <select name="modifiers[{{ $idx }}][linked_unit_id]" class="form-select form-select-sm stock-field">
+                                                <option value="">Product unit</option>
+                                                @foreach($units as $unit)
+                                                    <option value="{{ $unit->id }}" @selected(($modifier['linked_unit_id'] ?? '') == $unit->id)>{{ $unit->code }}</option>
+                                                @endforeach
+                                            </select>
+                                            <div class="form-text stock-off-note" style="display:none">Price-only. No stock deducted.</div>
                                         </td>
                                         <td class="text-center">
                                             <input type="checkbox" name="modifiers[{{ $idx }}][is_default]" value="1" class="form-check-input" @checked(!empty($modifier['is_default']))>
@@ -189,6 +219,17 @@
                 @endforeach
             </select>
         </td>
+        <td class="text-center"><input type="checkbox" name="modifiers[__INDEX__][consume_stock]" value="1" class="form-check-input consume-stock"></td>
+        <td><input type="number" name="modifiers[__INDEX__][linked_quantity]" class="form-control form-control-sm stock-field" step="0.0001" min="0.0001" placeholder="1"></td>
+        <td>
+            <select name="modifiers[__INDEX__][linked_unit_id]" class="form-select form-select-sm stock-field">
+                <option value="">Product unit</option>
+                @foreach($units as $unit)
+                    <option value="{{ $unit->id }}">{{ $unit->code }}</option>
+                @endforeach
+            </select>
+            <div class="form-text stock-off-note" style="display:none">Price-only. No stock deducted.</div>
+        </td>
         <td class="text-center"><input type="checkbox" name="modifiers[__INDEX__][is_default]" value="1" class="form-check-input"></td>
         <td><input type="number" name="modifiers[__INDEX__][sort_order]" min="0" step="1" class="form-control form-control-sm" value="0"></td>
         <td>
@@ -208,9 +249,33 @@ document.addEventListener('DOMContentLoaded', function () {
     var template = document.getElementById('modifier-row-template');
     var nextIndex = {{ count($existingModifiers) }};
 
+    // MODIFIER-INVENTORY-1: mute Linked Qty/Unit unless Consume Stock is on.
+    function syncStockFields(row) {
+        var cb = row.querySelector('.consume-stock');
+        if (!cb) return;
+        var on = cb.checked;
+        row.querySelectorAll('.stock-field').forEach(function (el) {
+            el.disabled = !on;
+            el.style.opacity = on ? '' : '0.5';
+        });
+        var note = row.querySelector('.stock-off-note');
+        if (note) note.style.display = on ? 'none' : '';
+    }
+
+    function syncAll() {
+        tableBody.querySelectorAll('tr').forEach(syncStockFields);
+    }
+
     document.getElementById('add-modifier-row').addEventListener('click', function () {
         var html = template.innerHTML.replaceAll('__INDEX__', nextIndex++);
         tableBody.insertAdjacentHTML('beforeend', html);
+        syncStockFields(tableBody.lastElementChild);
+    });
+
+    tableBody.addEventListener('change', function (event) {
+        if (event.target.classList.contains('consume-stock')) {
+            syncStockFields(event.target.closest('tr'));
+        }
     });
 
     tableBody.addEventListener('click', function (event) {
@@ -227,6 +292,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
         row.remove();
     });
+
+    syncAll();
 });
 </script>
 @endpush
