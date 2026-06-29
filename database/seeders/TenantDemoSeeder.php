@@ -1042,8 +1042,13 @@ class TenantDemoSeeder extends Seeder
 
     private function postOpeningForBranch(Branch $branch, array $qtys, string $label): void
     {
+        // Guard specifically on catalog opening adjustments (ADJ-OPEN-{BRANCH}-*).
+        // This avoids a false-positive skip when seedModifierStockProducts() has already
+        // created a separate 'opening' adjustment (ADJ-MOD-OPEN-MAIN) for modifier-linked
+        // products on the same branch before this method is called.
         $alreadyPosted = StockAdjustment::where('branch_id', $branch->id)
             ->where('adjustment_type', 'opening')
+            ->where('adjustment_no', 'like', 'ADJ-OPEN-' . $branch->code . '-%')
             ->exists();
 
         if ($alreadyPosted) {
