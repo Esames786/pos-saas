@@ -533,7 +533,10 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::delete('/void-reasons/{voidReason}', [VoidReasonController::class, 'destroy'])->name('tenant.void-reasons.destroy');
 
                 // API — Manager Approvals
-                Route::post('/api/manager-approvals/verify', [ManagerApprovalController::class, 'verify'])->name('tenant.api.manager-approvals.verify');
+                // Manager Approvals — PIN verify (rate-limited, BUG-041 FIX)
+                Route::post('/api/manager-approvals/verify', [ManagerApprovalController::class, 'verify'])
+                    ->middleware('throttle:10,1')
+                    ->name('tenant.api.manager-approvals.verify');
                 Route::post('/api/pos/promotions/quote', [PromotionController::class, 'quote'])->name('tenant.api.pos.promotions.quote');
 
                 // Catalog API — shared barcode/SKU lookup used by POS, GRN, stock screens
@@ -608,6 +611,13 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 // Finance — General Ledger (FIN-7)
                 Route::get('/finance/journal-entries', [JournalEntryController::class, 'index'])->name('tenant.finance.journal-entries.index');
                 Route::get('/finance/journal-entries/{journalEntry}', [JournalEntryController::class, 'show'])->name('tenant.finance.journal-entries.show');
+
+                // Finance — Manual Journal Entries (Q2 feature)
+                Route::get('/finance/manual-journals', [\App\Http\Controllers\Tenant\Finance\ManualJournalController::class, 'index'])->name('tenant.finance.manual-journals.index');
+                Route::get('/finance/manual-journals/create', [\App\Http\Controllers\Tenant\Finance\ManualJournalController::class, 'create'])->name('tenant.finance.manual-journals.create');
+                Route::post('/finance/manual-journals', [\App\Http\Controllers\Tenant\Finance\ManualJournalController::class, 'store'])->name('tenant.finance.manual-journals.store');
+                Route::get('/finance/manual-journals/{manualJournal}', [\App\Http\Controllers\Tenant\Finance\ManualJournalController::class, 'show'])->name('tenant.finance.manual-journals.show');
+                Route::post('/finance/manual-journals/{manualJournal}/reverse', [\App\Http\Controllers\Tenant\Finance\ManualJournalController::class, 'reverse'])->name('tenant.finance.manual-journals.reverse');
 
                 // Finance — Opening Balances / Owner Capital (FIN-13)
                 Route::get('/finance/opening-balances', [OpeningBalanceController::class, 'index'])->name('tenant.finance.opening-balances.index');
@@ -714,6 +724,11 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 // MFG-FIN-C — consumption posting (Dr WIP / Cr Raw Material)
                 Route::post('/manufacturing/consumption/{manufacturingConsumptionRecord}/post', [ManufacturingConsumptionPostingController::class, 'post'])->name('tenant.manufacturing.consumption.post');
                 Route::post('/manufacturing/consumption/{manufacturingConsumptionRecord}/reverse', [ManufacturingConsumptionPostingController::class, 'reverse'])->name('tenant.manufacturing.consumption.reverse');
+
+                // MFG-FIN-E — Finished Goods posting (Dr FG / Cr WIP) + WIP closing
+                Route::post('/manufacturing/finished-goods/{finishedGoodReceipt}/post', [\App\Http\Controllers\Tenant\Manufacturing\FinishedGoodPostingController::class, 'post'])->name('tenant.manufacturing.finished-goods.post');
+                Route::post('/manufacturing/finished-goods/{finishedGoodReceipt}/reverse', [\App\Http\Controllers\Tenant\Manufacturing\FinishedGoodPostingController::class, 'reverse'])->name('tenant.manufacturing.finished-goods.reverse');
+                Route::post('/manufacturing/wip/{wipJob}/close', [\App\Http\Controllers\Tenant\Manufacturing\FinishedGoodPostingController::class, 'closeWip'])->name('tenant.manufacturing.wip.close');
                 // ── Production Reports — read-only analytics (MANUF-10) ──────
                 Route::get('/manufacturing/reports', [ManufacturingReportController::class, 'index'])->name('tenant.manufacturing.reports.index');
                 Route::get('/manufacturing/reports/export', [ManufacturingReportController::class, 'export'])->name('tenant.manufacturing.reports.export');

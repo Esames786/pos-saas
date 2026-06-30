@@ -78,7 +78,9 @@ class PurchaseBillController extends Controller
 
         $userId = auth('tenant')->id();
 
-        DB::connection('tenant')->transaction(function () use ($data, $grn, $userId) {
+        $purchaseBill = null;
+
+        DB::connection('tenant')->transaction(function () use ($data, $grn, $userId, &$purchaseBill) {
             $subtotal   = $grn->lines->sum(fn($l) => $l->quantity_received * $l->unit_cost);
             $discTotal  = (float) ($data['discount_amount'] ?? 0);
             $taxTotal   = (float) ($data['tax_amount'] ?? 0);
@@ -120,8 +122,16 @@ class PurchaseBillController extends Controller
             }
 
             $purchaseBill->load('supplier');
-            $this->purchasingService->postBill($purchaseBill, $userId);
+            // BUG-044 FIX: postBill() calls supplier ledger (operational) inside tx,
+            // but GL journal posting is intentionally called OUTSIDE (below) so that
+            // a GL failure never rolls back the operational bill creation.
+            $this->purchasingService->postBillOperational($purchaseBill, $userId);
         });
+
+        // GL journal outside the transaction — idempotent + safe (never throws).
+        if ($purchaseBill) {
+            app(\App\Services\Finance\JournalPostingService::class)->postPurchaseBill($purchaseBill, $userId);
+        }
 
         return redirect(url('/purchase-bills'))->with('status', 'Purchase bill posted.');
     }

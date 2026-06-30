@@ -549,7 +549,7 @@
 
                 {{-- ── FINANCE ─────────────────────────────────────────────────── --}}
                 @if($hasModule('finance'))
-                @canany(['tenant.finance.accounts.index','tenant.finance.cash-bank-accounts.index','tenant.finance.expense-categories.index','tenant.finance.expenses.index','tenant.finance.customer-payments.index','tenant.finance.opening-balances.index','tenant.finance.journal-entries.index','tenant.finance.general-ledger.index','tenant.finance.trial-balance.index','tenant.finance.profit-loss.index','tenant.finance.branch-profit-loss.index','tenant.finance.balance-sheet.index','tenant.finance.export.index'])
+                @canany(['tenant.finance.accounts.index','tenant.finance.cash-bank-accounts.index','tenant.finance.expense-categories.index','tenant.finance.expenses.index','tenant.finance.customer-payments.index','tenant.finance.opening-balances.index','tenant.finance.journal-entries.index','tenant.finance.manual-journals.index','tenant.finance.general-ledger.index','tenant.finance.trial-balance.index','tenant.finance.profit-loss.index','tenant.finance.branch-profit-loss.index','tenant.finance.balance-sheet.index','tenant.finance.export.index'])
                 <li class="submenu">
                     <a href="javascript:void(0);">
                         <i class="ti ti-calculator fs-16 me-2"></i>
@@ -610,6 +610,14 @@
                             <li class="{{ $a ? 'active' : '' }}">
                                 <a href="{{ url('/finance/journal-entries') }}" class="{{ $a ? 'active' : '' }}">
                                     <i class="ti ti-notebook fs-16 me-2"></i><span>Journal Entries</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.finance.manual-journals.index')
+                            @php $a = $isIn('finance/manual-journals*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/finance/manual-journals') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-edit fs-16 me-2"></i><span>Manual Journals</span>
                                 </a>
                             </li>
                         @endcan

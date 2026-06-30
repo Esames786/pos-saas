@@ -229,9 +229,20 @@ class SalesOrderController extends Controller
                     ]));
                 }
 
-                // Increment promo usage count once sale is committed
+                // BUG-003 FIX: increment promo usage atomically with a guard so
+                // concurrent sales cannot bypass the usage_limit. Must run inside
+                // the sale transaction so it rolls back if the sale fails.
                 if ($totals['promotion_id']) {
-                    \App\Models\Tenant\Promotion::where('id', $totals['promotion_id'])->increment('used_count');
+                    $updated = \App\Models\Tenant\Promotion::where('id', $totals['promotion_id'])
+                        ->where(function ($q) {
+                            $q->whereNull('usage_limit')
+                              ->orWhereRaw('used_count < usage_limit');
+                        })
+                        ->increment('used_count');
+
+                    if (! $updated) {
+                        throw new RuntimeException('Promotion usage limit has been reached. Please try without the promo code.');
+                    }
                 }
 
                 // Create lines using resolved prices
@@ -399,8 +410,11 @@ class SalesOrderController extends Controller
 
     private function resolveSellingPrice(Product $product, $variant, int $branchId, ?float $submittedPrice): float
     {
-        if ($submittedPrice !== null && $submittedPrice > 0) {
-            return $submittedPrice;
+        // BUG-015 FIX: accept an explicitly submitted price of 0 as a legitimate
+        // free/complimentary item. Only fall back to catalog price when null (i.e.
+        // the field was absent from the request, not when it was intentionally set to 0).
+        if ($submittedPrice !== null) {
+            return $submittedPrice; // includes 0 for free items
         }
 
         $branchPrice = $product->branchPrices()

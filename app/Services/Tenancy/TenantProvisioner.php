@@ -87,6 +87,11 @@ class TenantProvisioner
 
     public function provisionDemoTenant(): Tenant
     {
+        // BUG-056 FIX: use a single canonical trial expiry date applied to BOTH
+        // the tenant row and the subscription row so the middleware gate and the
+        // UI banner always agree on when the trial expires.
+        $trialEndsAt = now()->addMonths(2);
+
         $tenant = Tenant::firstOrCreate(
             ['tenant_code' => 'demo'],
             [
@@ -95,7 +100,7 @@ class TenantProvisioner
                 'owner_email'   => 'owner@demo.com',
                 'currency_code' => 'PKR',
                 'status'        => 'active',
-                'trial_ends_at' => now()->addMonths(2),
+                'trial_ends_at' => $trialEndsAt,
                 'activated_at'  => now(),
             ]
         );
@@ -115,9 +120,9 @@ class TenantProvisioner
             Subscription::updateOrCreate(
                 ['tenant_id' => $tenant->id],
                 [
-                    'plan_id'      => $plan->id,
-                    'status'       => 'trial',
-                    'trial_ends_at' => now()->addMonths(2),
+                    'plan_id'       => $plan->id,
+                    'status'        => 'trial',
+                    'trial_ends_at' => $trialEndsAt,  // same value as tenant row
                 ]
             );
         }
@@ -622,6 +627,13 @@ class TenantProvisioner
             'tenant.finance.journal-entries.index',
             'tenant.finance.journal-entries.show',
 
+            // Finance — Manual Journal Entries
+            'tenant.finance.manual-journals.index',
+            'tenant.finance.manual-journals.create',
+            'tenant.finance.manual-journals.store',
+            'tenant.finance.manual-journals.show',
+            'tenant.finance.manual-journals.reverse',
+
             // Finance — Opening Balances / Owner Capital (FIN-13)
             'tenant.finance.opening-balances.index',
             'tenant.finance.opening-balances.create',
@@ -727,6 +739,10 @@ class TenantProvisioner
             // MFG-FIN-C — consumption posting
             'tenant.manufacturing.consumption.post',
             'tenant.manufacturing.consumption.reverse',
+            // MFG-FIN-E — FG receipt posting + WIP closing
+            'tenant.manufacturing.finished-goods.post',
+            'tenant.manufacturing.finished-goods.reverse',
+            'tenant.manufacturing.wip.close',
             // Production Reports — read-only (MANUF-10)
             'tenant.manufacturing.reports.index',
             'tenant.manufacturing.reports.export',

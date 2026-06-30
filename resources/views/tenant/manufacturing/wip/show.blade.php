@@ -55,6 +55,15 @@
                 </a>
             @endif
         @endcan
+        @can('tenant.manufacturing.wip.close')
+            @if(!$job->isClosed())
+                <form method="POST" action="{{ url('/manufacturing/wip/' . $job->id . '/close') }}"
+                      onsubmit="return confirm('Close this WIP job? A variance journal will be posted to clear residual WIP cost. This sets status to Completed.');">
+                    @csrf
+                    <button class="btn btn-outline-success"><i class="ti ti-check me-1"></i>Close WIP Job</button>
+                </form>
+            @endif
+        @endcan
         <a href="{{ url('/manufacturing/wip') }}" class="btn btn-light">
             <i class="ti ti-arrow-left me-1"></i>Back
         </a>
@@ -85,11 +94,77 @@
     </div>
 </div>
 
+{{-- MFG-FIN-E: WIP Cost Accumulation Panel --}}
+@if((float)$job->accumulated_cost > 0)
+<div class="card mb-3 border-0 shadow-sm">
+    <div class="card-body">
+        <h6 class="fw-bold mb-3">WIP Cost Accumulation <small class="text-muted fw-normal">(from posted Consumption records)</small></h6>
+        <div class="row g-3 text-center">
+            <div class="col-6 col-md-3">
+                <div class="border rounded py-3 bg-primary bg-opacity-10">
+                    <div class="text-muted small mb-1">Accumulated WIP Cost</div>
+                    <div class="fw-bold fs-5">{{ number_format($job->accumulated_cost, 2) }}</div>
+                    <div class="text-muted small">Dr WIP total (Rs)</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="border rounded py-3">
+                    <div class="text-muted small mb-1">Planned Qty</div>
+                    <div class="fw-bold fs-5">{{ number_format($job->planned_quantity, 2) }}</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="border rounded py-3 bg-success bg-opacity-10">
+                    <div class="text-muted small mb-1">WIP Unit Cost</div>
+                    <div class="fw-bold fs-5">
+                        {{ (float)$job->planned_quantity > 0
+                            ? number_format($job->accumulated_cost / $job->planned_quantity, 4)
+                            : '—' }}
+                    </div>
+                    <div class="text-muted small">WIP ÷ Planned Qty</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="border rounded py-3">
+                    <div class="text-muted small mb-1">Completed Qty</div>
+                    <div class="fw-bold fs-5">{{ number_format($job->completed_quantity, 2) }}</div>
+                    <div class="text-muted small">Moved to FG</div>
+                </div>
+            </div>
+        </div>
+        <p class="text-muted small mb-0 mt-2">
+            <i class="ti ti-info-circle me-1"></i>
+            WIP cost accumulates when Consumption records are posted (Dr WIP / Cr Raw Material).
+            Posting Finished Goods transfers this cost to FG Inventory (Dr FG / Cr WIP).
+            Closing the WIP job clears any residual balance to Production Variance.
+        </p>
+    </div>
+</div>
+@else
+<div class="alert alert-secondary d-flex align-items-center gap-2 py-2 mb-3">
+    <i class="ti ti-info-circle flex-shrink-0"></i>
+    <span>
+        No WIP cost accumulated yet.
+        Post the linked
+        <a href="{{ url('/manufacturing/consumption/create?wip_job_id=' . $job->id) }}">Consumption records</a>
+        to start accumulating Dr WIP / Cr Raw Material entries.
+    </span>
+</div>
+@endif
+
+@if(session('status'))
+    <div class="alert alert-success alert-dismissible fade show mb-3">
+        {{ session('status') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+@endif
+@error('posting')
+    <div class="alert alert-danger mb-3"><i class="ti ti-alert-circle me-1"></i>{{ $message }}</div>
+@enderror
+
 <div class="row g-3">
     <div class="col-lg-5">
         <div class="card h-100">
-            <div class="card-header"><h6 class="mb-0">Job Summary</h6></div>
-            <div class="card-body">
+            <div class="card-header"><h6 class="mb-0">Job Summary</h6></div>            <div class="card-body">
                 <dl class="row mb-0">
                     <dt class="col-sm-5 text-muted">WIP No</dt>
                     <dd class="col-sm-7"><code>{{ $job->wip_no }}</code></dd>

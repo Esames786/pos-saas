@@ -57,10 +57,80 @@
     <div class="alert alert-success alert-dismissible fade show">{{ session('status') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
 @endif
 
-<div class="alert alert-info">
-    <i class="ti ti-info-circle me-1"></i>
-    This Finished Goods record is <strong>tracking-only</strong> in this phase. It does <strong>not</strong> increase inventory, post WIP accounting, create COGS or GL entries yet.
+{{-- MFG-FIN-E: FG Receipt posting panel (Dr FG Inventory / Cr WIP) --}}
+@php
+    $postingReady  = $postingReady  ?? false;
+    $postingReason = $postingReason ?? null;
+    $wipAccumCost  = $wipAccumCost  ?? 0;
+    $fgUnitCost    = $fgUnitCost    ?? 0;
+@endphp
+<div class="card mb-3 border-0 shadow-sm">
+    <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <div>
+            <strong class="me-1">FG Inventory Posting</strong>
+            <span class="badge bg-{{ $receipt->postingStatusBadgeClass() }}">{{ $receipt->postingStatusLabel() }}</span>
+            @if($receipt->isPosted())
+                <div class="small text-muted mt-1">
+                    Dr {{ $fgAccountName ?? 'Finished Goods Inventory' }} /
+                    Cr {{ $wipAccountName ?? 'WIP Inventory' }} ·
+                    Unit cost <strong>{{ number_format($fgUnitCost, 4) }}</strong> ·
+                    Total <strong>{{ number_format($receipt->total_cost, 2) }}</strong>
+                    @if($receipt->journal_entry_id) · Journal #{{ $receipt->journal_entry_id }}@endif
+                </div>
+            @elseif($receipt->isUnposted() && !$postingReady && $postingReason)
+                <div class="small text-warning mt-1"><i class="ti ti-alert-triangle me-1"></i>{{ $postingReason }}</div>
+            @elseif($receipt->isUnposted() && $postingReady)
+                <div class="small text-muted mt-1">
+                    WIP accumulated cost: <strong>{{ number_format($wipAccumCost, 2) }}</strong> ·
+                    Derived unit cost: <strong>{{ number_format($fgUnitCost, 4) }}</strong> ·
+                    Accepted qty: <strong>{{ number_format($receipt->accepted_quantity, 2) }}</strong>
+                </div>
+            @endif
+        </div>
+        <div class="d-flex gap-2">
+            @if($receipt->isUnposted() && $receipt->status !== 'cancelled')
+                @can('tenant.manufacturing.finished-goods.post')
+                    @if($postingReady)
+                        <form method="POST" action="{{ url('/manufacturing/finished-goods/' . $receipt->id . '/post') }}"
+                              onsubmit="return confirm('Post FG receipt? Accepted quantity will be added to inventory and a Dr FG / Cr WIP journal will be posted.');">
+                            @csrf
+                            <button class="btn btn-success"><i class="ti ti-arrow-bar-to-down me-1"></i>Post to Inventory</button>
+                        </form>
+                    @else
+                        <button class="btn btn-success" disabled title="{{ $postingReason }}">
+                            <i class="ti ti-arrow-bar-to-down me-1"></i>Post to Inventory
+                        </button>
+                    @endif
+                @endcan
+            @elseif($receipt->isPosted())
+                @can('tenant.manufacturing.finished-goods.reverse')
+                    <form method="POST" action="{{ url('/manufacturing/finished-goods/' . $receipt->id . '/reverse') }}"
+                          onsubmit="return confirm('Reverse FG posting? Inventory stock will be removed and the journal reversed. Only possible if the FG stock has not been sold.');">
+                        @csrf
+                        <button class="btn btn-outline-danger"><i class="ti ti-arrow-back-up me-1"></i>Reverse Posting</button>
+                    </form>
+                @endcan
+            @endif
+        </div>
+    </div>
+    @error('posting')<div class="card-footer text-danger small"><i class="ti ti-alert-circle me-1"></i>{{ $message }}</div>@enderror
 </div>
+
+{{-- WIP link info --}}
+@if($receipt->wipJob)
+<div class="alert alert-info d-flex justify-content-between align-items-center py-2">
+    <span>
+        <i class="ti ti-tools me-1"></i>
+        WIP job <strong>{{ $receipt->wipJob->wip_no }}</strong> —
+        Accumulated cost: <strong>Rs {{ number_format($wipAccumCost, 2) }}</strong> ·
+        Completed: {{ number_format($receipt->wipJob->completed_quantity, 2) }} /
+        {{ number_format($receipt->wipJob->planned_quantity, 2) }}
+    </span>
+    <a href="{{ url('/manufacturing/wip/' . $receipt->wip_job_id) }}" class="btn btn-sm btn-outline-secondary">
+        View WIP Job
+    </a>
+</div>
+@endif
 
 {{-- Acceptance --}}
 <div class="card mb-3">

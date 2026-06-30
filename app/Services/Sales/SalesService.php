@@ -163,7 +163,7 @@ class SalesService
                 continue;
             }
 
-            $modifier = Modifier::with(['linkedProduct'])->find($modifierId);
+            $modifier = Modifier::with(['linkedProduct', 'linkedUnit'])->find($modifierId);
 
             // Price-only / removed / non-consuming options never touch stock.
             if (! $modifier || ! $modifier->consume_stock) {
@@ -183,8 +183,29 @@ class SalesService
                 continue;
             }
 
+            // BUG-008 FIX: convert from modifier's linked_unit to the product's stock unit
+            // before deducting. Without this, a modifier configured as "50 G" on a product
+            // stocked in KG would deduct 50 KG instead of 0.05 KG.
+            $deductQty = $perModifierQty;
+            if ($modifier->linked_unit_id && $linked->unit_id && $modifier->linked_unit_id !== $linked->unit_id) {
+                $modifier->loadMissing(['linkedUnit']);
+                $linked->loadMissing('unit');
+                if ($modifier->linkedUnit && $linked->unit) {
+                    try {
+                        $unitConversion = app(\App\Services\Kitchen\UnitConversionService::class);
+                        $deductQty = $unitConversion->convert($perModifierQty, $modifier->linkedUnit, $linked->unit);
+                    } catch (\RuntimeException $e) {
+                        throw new RuntimeException(
+                            "Modifier \"{$modifier->name}\": cannot convert"
+                            . " {$modifier->linkedUnit->code} → {$linked->unit->code}"
+                            . " for {$linked->name}. Add a unit conversion rule under Catalog → Unit Conversions."
+                        );
+                    }
+                }
+            }
+
             // 1 selected modifier per cart entry × line quantity.
-            $consumeQty = $perModifierQty * $lineQty;
+            $consumeQty = $deductQty * $lineQty;
             if ($consumeQty <= 0) {
                 continue;
             }
@@ -204,7 +225,7 @@ class SalesService
                     notes: "Modifier consumption: {$modifier->name} for {$line->product_name}",
                     userId: $sale->created_by_user_id,
                 );
-            } catch (RuntimeException $e) {
+            } catch (\RuntimeException $e) {
                 throw new RuntimeException(
                     "Cannot complete sale — modifier \"{$modifier->name}\" ({$linked->name}): " . $e->getMessage()
                 );
@@ -361,6 +382,8 @@ class SalesService
             return;
         }
 
+        // BUG-032 FIX: use increment() for atomic updates — avoids read-modify-write
+        // race condition when two sales on the same shift finalize concurrently.
         $shift = Shift::find($sale->shift_id);
 
         if (!$shift || $shift->status !== 'open') {
@@ -374,31 +397,20 @@ class SalesService
 
         foreach ($sale->payments as $payment) {
             $type = $payment->method?->method_type;
-
-            if ($type === 'cash') {
-                $cash += (float) $payment->amount;
-            }
-            if ($type === 'card') {
-                $card += (float) $payment->amount;
-            }
-            if ($type === 'bank_transfer') {
-                $bankTransfer += (float) $payment->amount;
-            }
-            if ($type === 'cheque') {
-                $cheque += (float) $payment->amount;
-            }
+            if ($type === 'cash')          $cash         += (float) $payment->amount;
+            if ($type === 'card')          $card         += (float) $payment->amount;
+            if ($type === 'bank_transfer') $bankTransfer += (float) $payment->amount;
+            if ($type === 'cheque')        $cheque       += (float) $payment->amount;
         }
 
-        $shift->update([
-            'total_sales'         => (float) $shift->total_sales + (float) $sale->grand_total,
-            'total_cash'          => (float) $shift->total_cash + $cash,
-            'total_card'          => (float) $shift->total_card + $card,
-            'total_bank_transfer' => (float) $shift->total_bank_transfer + $bankTransfer,
-            'total_cheque'        => (float) $shift->total_cheque + $cheque,
-            'total_discount'      => (float) $shift->total_discount + (float) $sale->discount_amount,
-            'total_tax'           => (float) $shift->total_tax + (float) $sale->tax_amount,
-            'expected_cash'       => (float) $shift->expected_cash + $cash,
-        ]);
+        $shift->increment('total_sales',         (float) $sale->grand_total);
+        $shift->increment('total_discount',       (float) $sale->discount_amount);
+        $shift->increment('total_tax',            (float) $sale->tax_amount);
+        $shift->increment('expected_cash',        $cash);
+        if ($cash > 0)         $shift->increment('total_cash',          $cash);
+        if ($card > 0)         $shift->increment('total_card',          $card);
+        if ($bankTransfer > 0) $shift->increment('total_bank_transfer', $bankTransfer);
+        if ($cheque > 0)       $shift->increment('total_cheque',        $cheque);
     }
 
     public function nextSaleNo(): string

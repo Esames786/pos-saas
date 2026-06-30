@@ -3,6 +3,12 @@
 return [
     'default_trial_days' => (int) env('SAAS_DEFAULT_TRIAL_DAYS', 30),
 
+    // BUG-059 FIX: grace period (days) after current_period_ends_at before the
+    // middleware blocks access. Gives tenants time to pay without being locked out
+    // the moment their billing period ticks over. The daily expiry sweep
+    // (saas:subscriptions-expire) remains the authoritative status flipper.
+    'subscription_grace_days' => (int) env('SAAS_SUBSCRIPTION_GRACE_DAYS', 3),
+
     // 'live' = public marketing site fully visible.
     // 'coming_soon' = marketing pages show Coming Soon; tenant & admin routes unaffected.
     'public_site_mode' => env('PUBLIC_SITE_MODE', 'live'),

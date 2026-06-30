@@ -16,7 +16,12 @@ class PromotionService
             });
 
         if ($promoCode) {
-            $query->where('code', $promoCode)->where('requires_code', true);
+            // Code submitted: find promos that match this code (requires_code or not).
+            $query->where('code', $promoCode);
+        } else {
+            // BUG-013 FIX: no code submitted — only apply promos that do NOT require a code.
+            // This prevents requires_code=true promos from auto-applying without the user entering a code.
+            $query->where('requires_code', false);
         }
 
         $now = Carbon::now();

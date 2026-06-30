@@ -396,20 +396,22 @@ class StockCountController extends Controller
 
     private function stockSnapshot(int $branchId, int $productId, ?int $variantId): array
     {
-        $query = StockBalance::where('branch_id', $branchId)
-            ->where('product_id', $productId);
+        // BUG-051 FIX: SUM across all batches for this product/variant at this branch
+        // so multi-batch products (expiry items) show the correct total on-hand, not just
+        // one batch row. Weighted average cost is derived from total value / total qty.
+        $rows = StockBalance::where('branch_id', $branchId)
+            ->where('product_id', $productId)
+            ->when($variantId, fn ($q) => $q->where('product_variant_id', $variantId),
+                              fn ($q) => $q->whereNull('product_variant_id'))
+            ->get(['quantity_on_hand', 'average_cost']);
 
-        if ($variantId) {
-            $query->where('product_variant_id', $variantId);
-        } else {
-            $query->whereNull('product_variant_id');
-        }
-
-        $balance = $query->first();
+        $totalQty   = $rows->sum(fn ($r) => (float) $r->quantity_on_hand);
+        $totalValue = $rows->sum(fn ($r) => (float) $r->quantity_on_hand * (float) $r->average_cost);
+        $avgCost    = $totalQty > 0 ? round($totalValue / $totalQty, 4) : 0.0;
 
         return [
-            'quantity'     => $balance ? (float) $balance->quantity_on_hand : 0.0,
-            'average_cost' => $balance ? (float) $balance->average_cost : 0.0,
+            'quantity'     => round($totalQty, 3),
+            'average_cost' => $avgCost,
         ];
     }
 

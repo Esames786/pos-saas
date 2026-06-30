@@ -33,7 +33,11 @@ class BalanceSheetService
             ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
             ->where('journal_entries.status', 'posted')
             ->whereDate('journal_entries.entry_date', '<=', $asOf)
-            ->when($branchIds, fn ($q) => $q->whereIn('journal_lines.branch_id', $branchIds))
+            // BUG-053 FIX: include null-branch lines when filtering by branch.
+            ->when($branchIds, fn ($q) => $q->where(
+                fn ($q2) => $q2->whereIn('journal_lines.branch_id', $branchIds)
+                               ->orWhereNull('journal_lines.branch_id')
+            ))
             ->groupBy('journal_lines.account_id')
             ->select(
                 'journal_lines.account_id',

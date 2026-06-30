@@ -232,12 +232,34 @@ class JournalPostingService
 
             // COGS (FIN-7C): Dr 5100 Product COGS / Cr 1400 Inventory Asset — an
             // independently balanced pair, so the whole entry stays balanced.
-            // cost_total is set by finalizePaidSale for stock-tracked items (recipe
-            // items keep 0 — their ingredient cost lives in stock_ledgers).
-            $cogs = round((float) $sale->lines->sum('cost_total'), 4);
-            if ($cogs > 0) {
-                $lines[] = ['account_code' => '5100', 'branch_id' => $sale->branch_id, 'description' => 'COGS ' . $sale->sale_no, 'debit' => $cogs, 'credit' => 0];
-                $lines[] = ['account_code' => '1400', 'branch_id' => $sale->branch_id, 'description' => 'Inventory reduction ' . $sale->sale_no, 'debit' => 0, 'credit' => $cogs];
+            // BUG-001 FIX: recipe-based lines already moved stock through ingredient
+            // consumption (postOutFefo on each ingredient), so their cost_total must
+            // NOT credit 1400 again. Instead credit 5200 Recipe/Ingredient COGS for
+            // those lines so the GL stays reconciled with the stock ledger.
+            $stockItemCogs  = 0.0;
+            $recipeCogs     = 0.0;
+            foreach ($sale->lines as $line) {
+                $method = $line->product?->inventory_consumption_method ?? 'stock_item';
+                if ($method === 'recipe') {
+                    $recipeCogs += (float) $line->cost_total;
+                } else {
+                    $stockItemCogs += (float) $line->cost_total;
+                }
+            }
+            $stockItemCogs = round($stockItemCogs, 4);
+            $recipeCogs    = round($recipeCogs, 4);
+
+            if ($stockItemCogs > 0) {
+                $lines[] = ['account_code' => '5100', 'branch_id' => $sale->branch_id, 'description' => 'COGS ' . $sale->sale_no, 'debit' => $stockItemCogs, 'credit' => 0];
+                $lines[] = ['account_code' => '1400', 'branch_id' => $sale->branch_id, 'description' => 'Inventory reduction ' . $sale->sale_no, 'debit' => 0, 'credit' => $stockItemCogs];
+            }
+            if ($recipeCogs > 0) {
+                // Recipe ingredient cost: stock was already moved by individual ingredient
+                // postOutFefo calls. We post Dr 5200 / Cr 5200 as a COGS reclassification
+                // — actually Dr 5200 Recipe COGS / Cr 5100 Product COGS to keep the P&L
+                // accurate without touching 1400 again.
+                $lines[] = ['account_code' => '5200', 'branch_id' => $sale->branch_id, 'description' => 'Recipe COGS ' . $sale->sale_no, 'debit' => $recipeCogs, 'credit' => 0];
+                $lines[] = ['account_code' => '5100', 'branch_id' => $sale->branch_id, 'description' => 'Recipe COGS transfer ' . $sale->sale_no, 'debit' => 0, 'credit' => $recipeCogs];
             }
 
             return $this->journal->post(
@@ -369,36 +391,39 @@ class JournalPostingService
                     continue;
                 }
 
-                $exists = CashBankAccountTransaction::query()
-                    ->where('reference_type', 'sale_payment')
-                    ->where('reference_id', $payment->id)
-                    ->where('transaction_type', 'sales_payment')
-                    ->exists();
-                if ($exists) {
-                    continue;
-                }
+                // BUG-002 FIX: wrap in a tenant transaction so lockForUpdate is effective.
+                DB::connection('tenant')->transaction(function () use ($payment, $cashBankAccountId, $userId, $sale) {
+                    $exists = CashBankAccountTransaction::query()
+                        ->where('reference_type', 'sale_payment')
+                        ->where('reference_id', $payment->id)
+                        ->where('transaction_type', 'sales_payment')
+                        ->exists();
+                    if ($exists) {
+                        return;
+                    }
 
-                $cash = CashBankAccount::whereKey($cashBankAccountId)->lockForUpdate()->first();
-                if (! $cash) {
-                    continue;
-                }
+                    $cash = CashBankAccount::whereKey($cashBankAccountId)->lockForUpdate()->first();
+                    if (! $cash) {
+                        return;
+                    }
 
-                $newBalance = (float) $cash->current_balance + (float) $payment->amount;
+                    $newBalance = (float) $cash->current_balance + (float) $payment->amount;
 
-                CashBankAccountTransaction::create([
-                    'cash_bank_account_id' => $cash->id,
-                    'transaction_date'     => ($sale->sale_date ?? now())->toDateString(),
-                    'direction'            => 'in',
-                    'amount'               => $payment->amount,
-                    'balance_after'        => $newBalance,
-                    'transaction_type'     => 'sales_payment',
-                    'reference_type'       => 'sale_payment',
-                    'reference_id'         => $payment->id,
-                    'notes'                => 'Sale receipt ' . $sale->sale_no,
-                    'created_by_user_id'   => $userId,
-                ]);
+                    CashBankAccountTransaction::create([
+                        'cash_bank_account_id' => $cash->id,
+                        'transaction_date'     => ($sale->sale_date ?? now())->toDateString(),
+                        'direction'            => 'in',
+                        'amount'               => $payment->amount,
+                        'balance_after'        => $newBalance,
+                        'transaction_type'     => 'sales_payment',
+                        'reference_type'       => 'sale_payment',
+                        'reference_id'         => $payment->id,
+                        'notes'                => 'Sale receipt ' . $sale->sale_no,
+                        'created_by_user_id'   => $userId,
+                    ]);
 
-                $cash->update(['current_balance' => $newBalance]);
+                    $cash->update(['current_balance' => $newBalance]);
+                });
             }
         } catch (Throwable $e) {
             report($e);
@@ -414,20 +439,42 @@ class JournalPostingService
                 return;
             }
 
-            $code = match ($return->refund_method) {
-                'cash'          => 'CASH-MAIN',
-                'bank_transfer' => 'BANK-MAIN',
-                default         => null, // card/other/store-credit: no operational drawer movement
-            };
-            if (! $code) {
-                return;
+            // BUG-027 FIX: look up the cash/bank account from the original sale's
+            // payment method mapping rather than using hardcoded 'CASH-MAIN'/'BANK-MAIN'
+            // codes which break for any tenant with differently named accounts.
+            $return->loadMissing(['order.payments.method']);
+
+            $cashBankAccountId = null;
+
+            if ($return->order) {
+                foreach ($return->order->payments as $payment) {
+                    $methodType = $payment->method?->method_type;
+                    $matches = match ($return->refund_method) {
+                        'cash'          => $methodType === 'cash',
+                        'bank_transfer' => $methodType === 'bank_transfer',
+                        default         => false,
+                    };
+                    if ($matches && $payment->method?->cash_bank_account_id) {
+                        $cashBankAccountId = $payment->method->cash_bank_account_id;
+                        break;
+                    }
+                }
             }
 
-            $cash = CashBankAccount::where('code', $code)->lockForUpdate()->first();
-            if (! $cash) {
-                return;
+            // Fallback: query by account_type if original payment had no mapping.
+            if (! $cashBankAccountId) {
+                $accountType = $return->refund_method === 'cash' ? 'cash' : 'bank';
+                $cashBankAccountId = \App\Models\Tenant\CashBankAccount::where('account_type', $accountType)
+                    ->where('is_active', true)
+                    ->where('is_default', true)
+                    ->value('id');
             }
 
+            if (! $cashBankAccountId) {
+                return; // no mappable account — skip silently
+            }
+
+            // Idempotency guard.
             $exists = CashBankAccountTransaction::query()
                 ->where('reference_type', 'sales_return')
                 ->where('reference_id', $return->id)
@@ -437,22 +484,29 @@ class JournalPostingService
                 return;
             }
 
-            $newBalance = (float) $cash->current_balance - $amount;
+            DB::connection('tenant')->transaction(function () use ($cashBankAccountId, $return, $amount, $userId) {
+                $cash = CashBankAccount::whereKey($cashBankAccountId)->lockForUpdate()->first();
+                if (! $cash) {
+                    return;
+                }
 
-            CashBankAccountTransaction::create([
-                'cash_bank_account_id' => $cash->id,
-                'transaction_date'     => ($return->return_date ?? now())->toDateString(),
-                'direction'            => 'out',
-                'amount'               => $amount,
-                'balance_after'        => $newBalance,
-                'transaction_type'     => 'sales_return_refund',
-                'reference_type'       => 'sales_return',
-                'reference_id'         => $return->id,
-                'notes'                => 'Refund ' . $return->return_no,
-                'created_by_user_id'   => $userId,
-            ]);
+                $newBalance = (float) $cash->current_balance - $amount;
 
-            $cash->update(['current_balance' => $newBalance]);
+                CashBankAccountTransaction::create([
+                    'cash_bank_account_id' => $cash->id,
+                    'transaction_date'     => ($return->return_date ?? now())->toDateString(),
+                    'direction'            => 'out',
+                    'amount'               => $amount,
+                    'balance_after'        => $newBalance,
+                    'transaction_type'     => 'sales_return_refund',
+                    'reference_type'       => 'sales_return',
+                    'reference_id'         => $return->id,
+                    'notes'                => 'Refund ' . $return->return_no,
+                    'created_by_user_id'   => $userId,
+                ]);
+
+                $cash->update(['current_balance' => $newBalance]);
+            });
         } catch (Throwable $e) {
             report($e);
         }

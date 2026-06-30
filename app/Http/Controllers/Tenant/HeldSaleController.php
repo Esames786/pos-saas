@@ -352,15 +352,21 @@ class HeldSaleController extends Controller
                 ]);
             }
 
-            // Remember KOT-sent quantities before deleting lines
+            // BUG-014 FIX: include line_kind in the KOT key so a standalone product
+            // and the same product appearing as a combo component never share a key
+            // and incorrectly inherit each other's kot_sent status.
             $kotSentKeys = $sale->lines()
                 ->where('kot_sent', true)
-                ->get(['product_id', 'product_variant_id', 'quantity', 'kot_sent_quantity'])
+                ->get(['product_id', 'product_variant_id', 'quantity', 'kot_sent_quantity', 'line_kind', 'combo_id'])
                 ->mapWithKeys(function ($l) {
                     $sentQty = (float) $l->kot_sent_quantity > 0
                         ? (float) $l->kot_sent_quantity
                         : (float) $l->quantity;
-                    return [$l->product_id . ':' . ($l->product_variant_id ?? 0) => $sentQty];
+                    $key = $l->product_id
+                        . ':' . ($l->product_variant_id ?? 0)
+                        . ':' . ($l->line_kind ?? 'standard')
+                        . ':' . ($l->combo_id ?? 0);
+                    return [$key => $sentQty];
                 })
                 ->all();
 
@@ -431,7 +437,11 @@ class HeldSaleController extends Controller
 
             $lineTotal = (float) $line['quantity'] * (float) ($line['unit_price'] ?? 0);
 
-            $kotKey    = $line['product_id'] . ':' . (($line['product_variant_id'] ?? null) ?? 0);
+            // BUG-014 FIX: use the same 4-part key as the lookup above.
+            $kotKey    = $line['product_id']
+                . ':' . (($line['product_variant_id'] ?? null) ?? 0)
+                . ':' . ($line['line_kind'] ?? 'standard')
+                . ':' . (($line['combo_id'] ?? null) ?? 0);
             $sentQty   = $kotSentKeys[$kotKey] ?? 0;
             $newQty    = (float) $line['quantity'];
             $kotSent   = $sentQty > 0 && $newQty <= $sentQty;

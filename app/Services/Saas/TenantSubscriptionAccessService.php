@@ -177,14 +177,20 @@ class TenantSubscriptionAccessService
     private function subscriptionIsUsable($subscription): bool
     {
         if ($subscription->status === 'active') {
-            // Defense-in-depth: an active subscription past its billing period is
-            // not usable, even before the daily expiry sweep flips it to past_due.
-            return !$subscription->current_period_ends_at
-                || Carbon::parse($subscription->current_period_ends_at)->isFuture();
+            // BUG-059 FIX: add a 3-day grace period after period end so tenants who
+            // have already paid but whose admin hasn't verified the payment yet are
+            // not immediately locked out. The daily expiry sweep (saas:subscriptions-expire)
+            // is the authoritative mechanism that eventually flips to past_due.
+            $graceDays = (int) config('saas.subscription_grace_days', 3);
+            return ! $subscription->current_period_ends_at
+                || \Illuminate\Support\Carbon::parse($subscription->current_period_ends_at)
+                    ->addDays($graceDays)
+                    ->isFuture();
         }
 
         if ($subscription->status === 'trial') {
-            return !$subscription->trial_ends_at || Carbon::parse($subscription->trial_ends_at)->isFuture();
+            return ! $subscription->trial_ends_at
+                || \Illuminate\Support\Carbon::parse($subscription->trial_ends_at)->isFuture();
         }
 
         return false;
@@ -242,10 +248,12 @@ class TenantSubscriptionAccessService
 
     public function currentTenantUsage(string $resourceKey): int
     {
+        // BUG-057 FIX: only count active resources so inactive branches/users/terminals
+        // don't block tenants from adding new ones under their plan limit.
         return match ($resourceKey) {
-            'branches'  => Branch::query()->count(),
-            'users'     => User::query()->count(),
-            'terminals' => Terminal::query()->count(),
+            'branches'  => Branch::where('status', 'active')->count(),
+            'users'     => User::where('status', 'active')->count(),
+            'terminals' => Terminal::where('status', 'active')->count(),
             default     => 0,
         };
     }

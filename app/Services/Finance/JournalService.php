@@ -224,7 +224,12 @@ class JournalService
     {
         $prefix = 'JE-' . \Illuminate\Support\Carbon::parse($entryDate)->format('Ymd') . '-';
 
+        // BUG-034 FIX: lock the max-sequence read so two concurrent posts on the
+        // same date cannot both read the same last entry_no and collide.
+        // We run this inside the outer transaction (which already holds a lock on
+        // the new JournalEntry row being created), so the lock is coherent.
         $last = JournalEntry::where('entry_no', 'like', $prefix . '%')
+            ->lockForUpdate()
             ->orderByDesc('entry_no')
             ->value('entry_no');
 

@@ -112,7 +112,50 @@ class FinishedGoodReceiptController extends Controller
             'createdBy', 'lines.finishedProduct', 'lines.unit',
         ]);
 
-        return view('tenant.manufacturing.finished-goods.show', ['receipt' => $finishedGoodReceipt]);
+        // MFG-FIN-E: build posting readiness context for the view.
+        $postingReady  = false;
+        $postingReason = null;
+        $wipAccumCost  = (float) ($finishedGoodReceipt->wipJob?->accumulated_cost ?? 0);
+        $fgUnitCost    = 0.0;
+        $fgAccountName = null;
+        $wipAccountName = null;
+
+        $settings = app(\App\Services\Manufacturing\ManufacturingPostingService::class)
+            ->settings($finishedGoodReceipt->branch_id);
+
+        if (! $settings || ! $settings->is_enabled) {
+            $postingReason = 'Manufacturing posting is not enabled. Enable it under Manufacturing → Posting Settings.';
+        } elseif (! $settings->isComplete()) {
+            $postingReason = 'Posting settings incomplete — map all required accounts under Manufacturing → Posting Settings.';
+        } elseif ((float) $finishedGoodReceipt->accepted_quantity <= 0) {
+            $postingReason = 'Accepted quantity is zero. Set accepted quantity before posting.';
+        } elseif (! $finishedGoodReceipt->finishedProduct?->is_stock_tracked) {
+            $postingReason = 'Finished product is not stock-tracked. Enable stock tracking on the product.';
+        } elseif ($wipAccumCost <= 0 && (float) ($finishedGoodReceipt->finishedProduct?->default_purchase_price ?? 0) <= 0) {
+            $postingReason = 'No WIP accumulated cost and no purchase price on the product. Post related consumptions first or set a purchase price.';
+        } else {
+            $postingReady = true;
+            $acceptedQty  = (float) $finishedGoodReceipt->accepted_quantity;
+            $costBasisQty = $finishedGoodReceipt->wipJob && (float) $finishedGoodReceipt->wipJob->planned_quantity > 0
+                ? (float) $finishedGoodReceipt->wipJob->planned_quantity
+                : $acceptedQty;
+            $fgUnitCost   = $wipAccumCost > 0 && $costBasisQty > 0
+                ? round($wipAccumCost / $costBasisQty, 4)
+                : (float) ($finishedGoodReceipt->finishedProduct?->default_purchase_price ?? 0);
+
+            $fgAccountName  = $settings->finishedGoodsInventoryAccount?->name ?? '1430 Finished Goods';
+            $wipAccountName = $settings->wipInventoryAccount?->name ?? '1420 WIP Inventory';
+        }
+
+        return view('tenant.manufacturing.finished-goods.show', [
+            'receipt'        => $finishedGoodReceipt,
+            'postingReady'   => $postingReady,
+            'postingReason'  => $postingReason,
+            'wipAccumCost'   => $wipAccumCost,
+            'fgUnitCost'     => $fgUnitCost,
+            'fgAccountName'  => $fgAccountName,
+            'wipAccountName' => $wipAccountName,
+        ]);
     }
 
     public function edit(FinishedGoodReceipt $finishedGoodReceipt)

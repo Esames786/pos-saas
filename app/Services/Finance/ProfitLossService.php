@@ -35,7 +35,13 @@ class ProfitLossService
             ->where('journal_entries.status', 'posted')
             ->whereDate('journal_entries.entry_date', '>=', $dateFrom)
             ->whereDate('journal_entries.entry_date', '<=', $dateTo)
-            ->when($branchIds, fn ($q) => $q->whereIn('journal_lines.branch_id', $branchIds))
+            // BUG-053 FIX: include null-branch lines so system-level journal entries
+            // (e.g. opening balances posted without a branch) are not silently excluded
+            // when a branch filter is active.
+            ->when($branchIds, fn ($q) => $q->where(
+                fn ($q2) => $q2->whereIn('journal_lines.branch_id', $branchIds)
+                               ->orWhereNull('journal_lines.branch_id')
+            ))
             ->groupBy('journal_lines.account_id')
             ->select(
                 'journal_lines.account_id',

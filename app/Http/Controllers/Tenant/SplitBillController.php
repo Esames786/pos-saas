@@ -146,6 +146,12 @@ class SplitBillController extends Controller
                         'discount_amount'    => $splitDiscount,
                         'tax_amount'         => $splitTax,
                         'line_total'         => $splitLineTotal,
+                        // BUG-047 FIX: copy modifiers so modifier stock is consumed on finalize.
+                        'modifiers'          => $heldLine->modifiers ?? [],
+                        'unit_code'          => $heldLine->unit_code,
+                        'line_kind'          => $heldLine->line_kind ?? 'standard',
+                        'combo_id'           => $heldLine->combo_id,
+                        'kitchen_note'       => $heldLine->kitchen_note,
                     ]);
 
                     $subtotal      += $splitSubtotal;
@@ -173,11 +179,26 @@ class SplitBillController extends Controller
                 }
 
                 $newSale->update([
-                    'subtotal'        => $subtotal,
-                    'discount_amount' => $discountTotal,
-                    'tax_amount'      => $taxTotal,
-                    'grand_total'     => $grandTotal,
+                    'subtotal'              => $subtotal,
+                    'discount_amount'       => $discountTotal,
+                    'tax_amount'            => $taxTotal,
+                    'grand_total'           => $grandTotal,
+                    // BUG-048 FIX: recalculate service charge proportionally for the split portion.
+                    // Pro-rate based on split subtotal vs original held sale subtotal.
+                    'service_charge_amount' => (function () use ($salesOrder, $subtotal) {
+                        $origSubtotal = (float) $salesOrder->subtotal;
+                        $origSC       = (float) $salesOrder->service_charge_amount;
+                        if ($origSubtotal <= 0 || $origSC <= 0) {
+                            return 0;
+                        }
+                        return round($origSC * ($subtotal / $origSubtotal), 2);
+                    })(),
                 ]);
+
+                // Recalculate grand_total to include split service charge.
+                $splitSC     = (float) $newSale->fresh()->service_charge_amount;
+                $grandTotal += $splitSC;
+                $newSale->update(['grand_total' => $grandTotal]);
 
                 $tendered = isset($data['tendered_amount']) && $data['tendered_amount'] !== null
                     ? (float) $data['tendered_amount']

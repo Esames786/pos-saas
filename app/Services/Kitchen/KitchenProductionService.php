@@ -86,10 +86,19 @@ class KitchenProductionService
             $prodIngredient->update(['quantity_used' => $usedQty]);
         }
 
-        // Post finished product into stock if tracked
+        // Post finished product into stock only if it is stock-tracked AND
+        // NOT recipe-based. BUG-017 FIX: a product with inventory_consumption_method
+        // = 'recipe' is consumed ingredient-by-ingredient at point-of-sale. If we
+        // also add it to stock here, the POS sale will consume ingredients a second
+        // time (double-consumption). Only add to stock for products where the POS
+        // will deduct using FEFO (stock_item method) or the product is not sold via POS.
         $finishedProduct = $production->recipe->product;
 
-        if ($finishedProduct && $finishedProduct->is_stock_tracked) {
+        if (
+            $finishedProduct
+            && $finishedProduct->is_stock_tracked
+            && $finishedProduct->inventory_consumption_method !== 'recipe'
+        ) {
             $unitCost = $this->recipeCostService->calculateCost($production->recipe);
 
             $this->inventoryService->postIn(

@@ -58,6 +58,23 @@ class SalesOrderLine extends Model
         ];
     }
 
+    /**
+     * BUG-020 FIX: always return an array for modifiers, never null.
+     * The JSON column is nullable but the rest of the codebase (JS recall,
+     * consumeLineModifiers) expects an array, not null.
+     */
+    public function getModifiersAttribute($value): array
+    {
+        if ($value === null) {
+            return [];
+        }
+        if (is_array($value)) {
+            return $value;
+        }
+        $decoded = json_decode($value, true);
+        return is_array($decoded) ? $decoded : [];
+    }
+
     public function order()
     {
         return $this->belongsTo(SalesOrder::class, 'sales_order_id');

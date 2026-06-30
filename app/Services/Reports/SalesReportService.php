@@ -74,10 +74,14 @@ class SalesReportService
             ->when(!empty($filters['date_to']),      fn ($q) => $q->whereDate('sales_orders.sale_date', '<=', $filters['date_to']))
             ->when(!empty($filters['terminal_id']),  fn ($q) => $q->where('sales_orders.terminal_id', $filters['terminal_id']))
             ->when(!empty($filters['order_type']),   fn ($q) => $q->where('sales_orders.order_type', $filters['order_type']))
+            // BUG-061 FIX: group by product_id + variant_id (stable identifiers), not
+            // product_name string — prevents two products with the same name merging.
             ->selectRaw('
-                sales_order_lines.product_name,
-                COALESCE(sales_order_lines.variant_name, \'\') as variant_name,
-                COALESCE(categories.name, \'Uncategorised\') as category_name,
+                sales_order_lines.product_id,
+                sales_order_lines.product_variant_id,
+                MAX(sales_order_lines.product_name) as product_name,
+                MAX(COALESCE(sales_order_lines.variant_name, \'\')) as variant_name,
+                MAX(COALESCE(categories.name, \'Uncategorised\')) as category_name,
                 COALESCE(SUM(sales_order_lines.quantity), 0)                              as qty_sold,
                 COALESCE(SUM(sales_order_lines.quantity * sales_order_lines.unit_price), 0) as gross_amount,
                 COALESCE(SUM(sales_order_lines.discount_amount), 0)                      as total_discount,
@@ -86,7 +90,7 @@ class SalesReportService
                 COALESCE(SUM(sales_order_lines.cost_total), 0)                           as total_cost,
                 COALESCE(SUM(sales_order_lines.line_total) - SUM(sales_order_lines.cost_total), 0) as profit
             ')
-            ->groupBy('sales_order_lines.product_name', 'sales_order_lines.variant_name', 'categories.name')
+            ->groupBy('sales_order_lines.product_id', 'sales_order_lines.product_variant_id')
             ->orderByDesc('qty_sold')
             ->get();
     }

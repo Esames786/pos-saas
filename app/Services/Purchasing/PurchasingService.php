@@ -29,26 +29,35 @@ class PurchasingService
         ?string $notes = null,
         ?int $userId = null
     ): SupplierLedger {
-        $balance = $direction === 'debit'
-            ? $supplier->current_balance + $amount
-            : $supplier->current_balance - $amount;
+        // BUG-042 FIX: lock the supplier row before read-modify-write so concurrent
+        // GRN postings and payments cannot corrupt the running balance.
+        return DB::connection('tenant')->transaction(function () use (
+            $supplier, $entryType, $direction, $amount,
+            $referenceType, $referenceId, $referenceNo, $notes, $userId
+        ) {
+            $supplier = Supplier::whereKey($supplier->id)->lockForUpdate()->firstOrFail();
 
-        $ledger = SupplierLedger::create([
-            'supplier_id'      => $supplier->id,
-            'entry_type'       => $entryType,
-            'direction'        => $direction,
-            'amount'           => $amount,
-            'balance_after'    => $balance,
-            'reference_type'   => $referenceType,
-            'reference_id'     => $referenceId,
-            'reference_no'     => $referenceNo,
-            'notes'            => $notes,
-            'created_by_user_id' => $userId,
-        ]);
+            $balance = $direction === 'debit'
+                ? $supplier->current_balance + $amount
+                : $supplier->current_balance - $amount;
 
-        $supplier->update(['current_balance' => $balance]);
+            $ledger = SupplierLedger::create([
+                'supplier_id'        => $supplier->id,
+                'entry_type'         => $entryType,
+                'direction'          => $direction,
+                'amount'             => $amount,
+                'balance_after'      => $balance,
+                'reference_type'     => $referenceType,
+                'reference_id'       => $referenceId,
+                'reference_no'       => $referenceNo,
+                'notes'              => $notes,
+                'created_by_user_id' => $userId,
+            ]);
 
-        return $ledger;
+            $supplier->update(['current_balance' => $balance]);
+
+            return $ledger;
+        });
     }
 
     public function postGrn(GoodsReceipt $grn, ?int $userId = null): void
@@ -78,6 +87,18 @@ class PurchasingService
 
     public function postBill(PurchaseBill $bill, ?int $userId = null): void
     {
+        $this->postBillOperational($bill, $userId);
+        // GL journal outside — safe + idempotent (JournalPostingService catches/reports).
+        app(\App\Services\Finance\JournalPostingService::class)->postPurchaseBill($bill, $userId);
+    }
+
+    /**
+     * BUG-044 FIX — operational-only bill posting (supplier ledger).
+     * Called inside a DB transaction; GL journal is intentionally excluded so
+     * a GL failure never rolls back the operational bill creation.
+     */
+    public function postBillOperational(PurchaseBill $bill, ?int $userId = null): void
+    {
         $this->postSupplierLedger(
             $bill->supplier,
             'purchase_bill',
@@ -89,10 +110,6 @@ class PurchasingService
             $bill->notes,
             $userId
         );
-
-        // FIN-7B: GL journal (Dr Inventory Asset / Cr Accounts Payable). Idempotent + safe
-        // (JournalPostingService catches/reports — never breaks bill posting).
-        app(\App\Services\Finance\JournalPostingService::class)->postPurchaseBill($bill, $userId);
     }
 
     public function postPayment(SupplierPayment $payment, ?int $userId = null): void

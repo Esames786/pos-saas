@@ -72,8 +72,17 @@ class RecipeConsumptionService
                             $ingredient->unit,
                             $ingredientProduct->unit
                         );
-                    } catch (RuntimeException) {
-                        // Skip conversion if no path found; use as-is
+                    } catch (RuntimeException $e) {
+                        // BUG-009 FIX: do NOT silently use the unconverted quantity.
+                        // A missing conversion path means we cannot safely determine
+                        // how much to deduct — throw so the sale is blocked cleanly
+                        // rather than silently consuming the wrong quantity.
+                        throw new RuntimeException(
+                            "Cannot process sale: no unit conversion found from "
+                            . "[{$ingredient->unit->code}] to [{$ingredientProduct->unit->code}]"
+                            . " for ingredient [{$ingredientProduct->name}]."
+                            . " Please add a unit conversion rule under Catalog → Unit Conversions."
+                        );
                     }
                 }
             }

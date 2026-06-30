@@ -56,7 +56,15 @@ class SalesReturnService
                     continue;
                 }
 
-                $qty       = min((float) $lineData['quantity'], (float) $orderLine->quantity);
+                // BUG-011 FIX: cap against remaining returnable qty, not original qty.
+                $alreadyReturned = (float) $orderLine->returned_quantity;
+                $returnable      = (float) $orderLine->quantity - $alreadyReturned;
+
+                if ($returnable <= 0) {
+                    continue; // fully returned already
+                }
+
+                $qty = min((float) $lineData['quantity'], $returnable);
                 $lineTotal = $qty * (float) $orderLine->unit_price;
                 $lineTax   = (float) $orderLine->quantity > 0
                     ? ((float) $orderLine->tax_amount / (float) $orderLine->quantity) * $qty

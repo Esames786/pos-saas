@@ -183,9 +183,22 @@ class GoodsReceiptController extends Controller
             $this->purchasingService->postGrn($grn, $userId);
 
             if ($grn->purchase_order_id) {
-                $po = PurchaseOrder::find($grn->purchase_order_id);
+                $po = PurchaseOrder::with('lines')->find($grn->purchase_order_id);
                 if ($po && $po->status === 'approved') {
-                    $po->update(['status' => 'received']);
+                    // BUG-062 FIX: only set 'received' when ALL PO lines are fully received.
+                    // Compare total ordered vs total received across ALL GRNs for this PO.
+                    $totalOrdered  = (float) $po->lines->sum('quantity_ordered');
+                    $totalReceived = \App\Models\Tenant\GoodsReceiptLine::query()
+                        ->join('goods_receipts', 'goods_receipt_lines.goods_receipt_id', '=', 'goods_receipts.id')
+                        ->where('goods_receipts.purchase_order_id', $po->id)
+                        ->where('goods_receipts.status', 'posted')
+                        ->sum('goods_receipt_lines.quantity_received');
+
+                    $newPoStatus = ($totalOrdered > 0 && $totalReceived >= $totalOrdered)
+                        ? 'received'
+                        : 'partially_received';
+
+                    $po->update(['status' => $newPoStatus]);
                 }
             }
         });

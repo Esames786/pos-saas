@@ -36,7 +36,12 @@ class CustomerReceivableService
         }
 
         $sale = DB::connection('tenant')->transaction(function () use ($sale, $userId) {
-            $sale = SalesOrder::whereKey($sale->id)->lockForUpdate()->firstOrFail();
+            // BUG-064 FIX: lock customer FIRST, then sale — consistent lock ordering
+            // prevents deadlocks when two credit sales for the same customer run
+            // concurrently. Locking customer first means both transactions queue on
+            // the customer row; the second one waits and reads the updated balance.
+            $customer = Customer::whereKey($sale->customer_id)->lockForUpdate()->firstOrFail();
+            $sale     = SalesOrder::whereKey($sale->id)->lockForUpdate()->firstOrFail();
 
             $due = round((float) $sale->grand_total - (float) $sale->paid_amount, 4);
 
@@ -47,8 +52,7 @@ class CustomerReceivableService
 
             $dueDate = $sale->due_date;
             if (! $dueDate) {
-                $customer = Customer::find($sale->customer_id);
-                $days = (int) ($customer?->credit_days ?? 7);
+                $days    = (int) ($customer->credit_days ?? 7);
                 $dueDate = Carbon::parse($sale->sale_date ?? now())->addDays($days)->toDateString();
             }
 
@@ -66,7 +70,6 @@ class CustomerReceivableService
                 ->exists();
 
             if (! $exists) {
-                $customer = Customer::whereKey($sale->customer_id)->lockForUpdate()->firstOrFail();
                 $newBalance = (float) $customer->current_balance + $due;
 
                 CustomerLedger::create([
@@ -266,7 +269,12 @@ class CustomerReceivableService
     private function nextPaymentNo(): string
     {
         $prefix = 'CPY-' . now()->format('Ymd') . '-';
-        $last = CustomerPayment::where('payment_no', 'like', $prefix . '%')->orderByDesc('payment_no')->value('payment_no');
+        // BUG-046 FIX: lockForUpdate prevents two concurrent payments on the same
+        // date from reading the same last sequence number and producing duplicates.
+        $last = CustomerPayment::where('payment_no', 'like', $prefix . '%')
+            ->lockForUpdate()
+            ->orderByDesc('payment_no')
+            ->value('payment_no');
         $seq = $last ? ((int) Str::afterLast($last, '-')) + 1 : 1;
 
         return $prefix . str_pad((string) $seq, 4, '0', STR_PAD_LEFT);

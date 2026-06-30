@@ -27,7 +27,11 @@ class FinancialExportService
             ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
             ->where('journal_entries.status', 'posted')
             ->whereDate('journal_entries.entry_date', '<=', $asOf)
-            ->when($branchIds, fn ($q) => $q->whereIn('journal_lines.branch_id', $branchIds))
+            // BUG-053 FIX: include null-branch lines when a branch filter is applied.
+            ->when($branchIds, fn ($q) => $q->where(
+                fn ($q2) => $q2->whereIn('journal_lines.branch_id', $branchIds)
+                               ->orWhereNull('journal_lines.branch_id')
+            ))
             ->groupBy('journal_lines.account_id')
             ->select(
                 'journal_lines.account_id',
@@ -94,7 +98,7 @@ class FinancialExportService
     {
         $branchIds = $this->normalizeBranchIds($branchIds);
 
-        return JournalLine::query()
+        $query = JournalLine::query()
             ->select('journal_lines.*')
             ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
             ->where('journal_entries.status', 'posted')
@@ -104,9 +108,19 @@ class FinancialExportService
             ->whereDate('journal_entries.entry_date', '<=', $to)
             ->with(['account', 'branch', 'journalEntry'])
             ->orderBy('journal_entries.entry_date')
-            ->orderBy('journal_entries.id')
-            ->limit($limit)
-            ->get();
+            ->orderBy('journal_entries.id');
+
+        // BUG-055 FIX: count total before limiting so callers can show a truncation warning.
+        $totalCount  = (clone $query)->count();
+        $results     = $query->limit($limit)->get();
+
+        // Attach truncation metadata as a property on the collection so the
+        // view/controller can display a warning without re-running the query.
+        $results->truncated      = $totalCount > $limit;
+        $results->total_count    = $totalCount;
+        $results->returned_count = $results->count();
+
+        return $results;
     }
 
     private function normalizeBranchIds(array|int|null $branchIds): ?array

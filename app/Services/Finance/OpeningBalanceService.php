@@ -147,6 +147,8 @@ class OpeningBalanceService
      */
     public function void(OpeningBalanceBatch $batch, ?int $userId = null, ?string $reason = null): OpeningBalanceBatch
     {
+        // BUG-063 FIX: run cash/bank reversal AND GL reversal inside the same
+        // transaction so a GL failure cannot leave cash/bank reversed but GL intact.
         $batch = DB::transaction(function () use ($batch, $userId, $reason) {
             $batch = OpeningBalanceBatch::whereKey($batch->id)->lockForUpdate()->firstOrFail();
 
@@ -155,6 +157,21 @@ class OpeningBalanceService
             }
 
             $this->syncCashBankOnVoid($batch, $userId);
+
+            // GL reversal inside the transaction — JournalService::reverse() uses
+            // DB::connection('tenant')->transaction() internally (savepoint), which is
+            // safe here. Unlike JournalPostingService event translators, this reversal
+            // MUST be atomic with the cash/bank change so both succeed or both fail.
+            if ($batch->journal_entry_id) {
+                $originalEntry = \App\Models\Tenant\JournalEntry::find($batch->journal_entry_id);
+                if ($originalEntry) {
+                    $this->journal->reverse(
+                        $originalEntry,
+                        $reason ?? ('Opening balance batch ' . $batch->batch_no . ' voided'),
+                        $userId
+                    );
+                }
+            }
 
             $batch->update([
                 'status'            => 'void',
@@ -165,14 +182,6 @@ class OpeningBalanceService
 
             return $batch->fresh();
         });
-
-        // Reverse the GL journal (idempotent + safe; never throws into this flow).
-        $this->journalPosting->reverseForSource(
-            'opening_balance',
-            $batch->id,
-            $reason ?? ('Opening balance batch ' . $batch->batch_no . ' voided'),
-            $userId
-        );
 
         return $batch;
     }

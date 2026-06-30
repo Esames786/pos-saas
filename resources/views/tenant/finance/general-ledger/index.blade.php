@@ -51,6 +51,15 @@
 
         <div class="card border-0 shadow-sm">
             <div class="card-body p-0">
+                {{-- BUG-055 FIX: show truncation warning when results exceed the 5,000 row limit --}}
+                @if(!empty($lines->truncated) && $lines->truncated)
+                <div class="alert alert-warning rounded-0 mb-0 border-0 border-bottom">
+                    <i class="ti ti-alert-triangle me-1"></i>
+                    <strong>Results truncated:</strong> showing {{ number_format($lines->returned_count) }} of
+                    {{ number_format($lines->total_count) }} lines. Narrow the date range or filter by a specific
+                    account to see all entries, or use the CSV export which includes all matching rows.
+                </div>
+                @endif
                 <div class="table-responsive">
                     <table class="table table-sm mb-0">
                         <caption class="visually-hidden">General ledger lines</caption>

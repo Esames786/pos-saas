@@ -36,6 +36,12 @@ class PreventDemoMutation
         'users', 'import', 'export',
         'regenerate', 'manager-pin',
         'activate', 'deactivate',
+        // BUG-026 FIX: block printer/agent config writes in demo
+        'printers.store', 'printers.update', 'printers.destroy',
+        'category-mappings.store', 'category-mappings.destroy',
+        'layouts.store',
+        'print-agents.store', 'print-agents.deactivate', 'print-agents.regenerate-token',
+        'terminal-settings',
     ];
 
     public function handle(Request $request, Closure $next)

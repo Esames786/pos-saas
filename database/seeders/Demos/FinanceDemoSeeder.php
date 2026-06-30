@@ -1048,9 +1048,8 @@ class FinanceDemoSeeder
     }
 
     /**
-     * Seed a DEFAULT-DISABLED manufacturing posting settings row (MFG-FIN-A).
-     * Configuration only — `is_enabled = false`, so nothing can post. First ensures
-     * the manufacturing CoA accounts exist (idempotent), then maps them.
+     * Seed manufacturing posting settings ready for the finance/manufacturing demo.
+     * First ensures the manufacturing CoA accounts exist (idempotent), then maps them.
      */
     private function seedPostingSettings(): void
     {
@@ -1061,7 +1060,7 @@ class FinanceDemoSeeder
         \App\Models\Tenant\ManufacturingPostingSetting::updateOrCreate(
             ['branch_id' => null],
             [
-                'is_enabled'                          => false, // never enable posting in demo
+                'is_enabled'                          => true,
                 'raw_material_inventory_account_id'   => $acc('1410'),
                 'wip_inventory_account_id'            => $acc('1420'),
                 'finished_goods_inventory_account_id' => $acc('1430'),

@@ -70,7 +70,9 @@ class InventoryService
     ): array {
         $this->ensureStockTracked($product);
 
-        return DB::transaction(function () use (
+        // BUG-006 FIX: always use the tenant connection so inventory writes stay
+        // inside the same transaction as the caller (SalesService, etc.).
+        return DB::connection('tenant')->transaction(function () use (
             $branch, $product, $variant, $quantity, $movementType,
             $referenceType, $referenceId, $referenceNo, $notes, $userId
         ) {
@@ -139,7 +141,8 @@ class InventoryService
             throw new RuntimeException('Transfer branches must be different.');
         }
 
-        DB::transaction(function () use (
+        // BUG-006 FIX: tenant connection keeps transfer inside the same tx scope.
+        DB::connection('tenant')->transaction(function () use (
             $fromBranch, $toBranch, $product, $variant, $quantity, $unitCost,
             $referenceType, $referenceId, $referenceNo, $notes, $userId
         ) {
@@ -252,23 +255,30 @@ class InventoryService
             throw new RuntimeException('Quantity must be greater than zero.');
         }
 
-        return DB::transaction(function () use (
+        // BUG-006 FIX: tenant connection. BUG-007 FIX: lockForUpdate on StockBalance.
+        return DB::connection('tenant')->transaction(function () use (
             $branch, $product, $variant, $batch, $movementType, $direction,
             $quantity, $unitCost, $referenceType, $referenceId, $referenceNo, $notes, $userId
         ) {
             $balanceKey = $this->balanceKey($branch->id, $product->id, $variant?->id, $batch?->id);
 
-            $balance = StockBalance::firstOrCreate(
-                ['balance_key' => $balanceKey],
-                [
+            // BUG-007 FIX: acquire a row-level lock before read-modify-write so
+            // concurrent sales of the same product cannot both pass the stock check.
+            $balance = StockBalance::where('balance_key', $balanceKey)->lockForUpdate()->first();
+
+            if (! $balance) {
+                $balance = StockBalance::create([
+                    'balance_key'         => $balanceKey,
                     'branch_id'           => $branch->id,
                     'product_id'          => $product->id,
                     'product_variant_id'  => $variant?->id,
                     'inventory_batch_id'  => $batch?->id,
                     'quantity_on_hand'    => 0,
                     'average_cost'        => 0,
-                ]
-            );
+                ]);
+                // Re-acquire lock on the newly created row.
+                $balance = StockBalance::where('balance_key', $balanceKey)->lockForUpdate()->firstOrFail();
+            }
 
             $currentQty  = (float) $balance->quantity_on_hand;
             $currentCost = (float) $balance->average_cost;
