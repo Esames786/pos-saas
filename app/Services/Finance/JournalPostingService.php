@@ -332,13 +332,40 @@ class JournalPostingService
 
             $revenueCode = in_array($return->order?->order_type, ['dine_in', 'takeaway', 'delivery'], true) ? '4120' : '4110';
 
-            // Where the refund money goes out (by refund_method); fallback Undeposited.
-            $code = match ($return->refund_method) {
-                'cash'          => 'CASH-MAIN',
-                'bank_transfer' => 'BANK-MAIN',
-                default         => 'UNDEPOSITED',
-            };
-            $creditAccountId = CashBankAccount::where('code', $code)->value('account_id') ?? $this->journal->accountId('1500');
+            // BUG-027 FIX (GL): resolve refund account from original sale payment method
+            // mapping instead of hardcoded CASH-MAIN/BANK-MAIN codes which break for any
+            // tenant with differently named cash/bank accounts.
+            $return->loadMissing(['order.payments.method']);
+            $creditAccountId = null;
+
+            if ($return->order) {
+                foreach ($return->order->payments as $payment) {
+                    $methodType = $payment->method?->method_type;
+                    $matches = match ($return->refund_method) {
+                        'cash'          => $methodType === 'cash',
+                        'bank_transfer' => $methodType === 'bank_transfer',
+                        default         => false,
+                    };
+                    if ($matches && $payment->method?->cashBankAccount?->account_id) {
+                        $creditAccountId = $payment->method->cashBankAccount->account_id;
+                        break;
+                    }
+                }
+            }
+
+            // Fallback: find any default cash/bank account of the right type.
+            if (! $creditAccountId) {
+                $accountType = $return->refund_method === 'cash' ? 'cash' : 'bank';
+                $creditAccountId = CashBankAccount::where('account_type', $accountType)
+                    ->where('is_active', true)
+                    ->where('is_default', true)
+                    ->value('account_id');
+            }
+
+            // Final fallback: Undeposited Funds (1500).
+            if (! $creditAccountId) {
+                $creditAccountId = $this->journal->accountId('1500');
+            }
 
             $lines = [];
             if ($subtotal > 0) {
