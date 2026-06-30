@@ -22,7 +22,7 @@ class ProductController extends Controller
     {
         $context = $this->productContext($request);
         $query = Product::with(['category', 'unit', 'defaultVariant'])->latest();
-        $this->applyContextFilter($query, $context);
+        $this->applyContextFilter($query, $context, $request);
 
         if ($request->filled('search')) {
             $search = trim($request->search);
@@ -308,19 +308,33 @@ class ProductController extends Controller
         return $request->query('context') === 'manufacturing' ? 'manufacturing' : 'catalog';
     }
 
-    private function applyContextFilter($query, string $context): void
+    private function applyContextFilter($query, string $context, Request $request): void
     {
         if ($context === 'manufacturing') {
-            $query->where(function ($q) {
-                $q->where('can_be_bom_component', true)
-                    ->orWhere('can_be_bom_output', true)
-                    ->orWhere('is_manufactured_finished_good', true)
-                    ->orWhereIn('product_kind', [
-                        Product::KIND_RAW_MATERIAL,
-                        Product::KIND_PACKAGING_MATERIAL,
-                        Product::KIND_SEMI_FINISHED,
-                        Product::KIND_FINISHED_GOOD,
-                    ]);
+            $includeSharedMaterials = $request->boolean('include_shared_materials');
+
+            $query->where(function ($outer) use ($includeSharedMaterials) {
+                $outer->where(function ($q) {
+                    $q->where('can_be_bom_component', true)
+                        ->orWhere('can_be_bom_output', true)
+                        ->orWhere('is_manufactured_finished_good', true)
+                        ->orWhereIn('product_kind', [
+                            Product::KIND_SEMI_FINISHED,
+                            Product::KIND_FINISHED_GOOD,
+                        ]);
+                });
+
+                if ($includeSharedMaterials) {
+                    $outer->orWhere(function ($q) {
+                        $q->whereIn('product_kind', [
+                            Product::KIND_RAW_MATERIAL,
+                            Product::KIND_PACKAGING_MATERIAL,
+                        ])->where(function ($stock) {
+                            $stock->where('is_stock_tracked', true)
+                                ->orWhere('is_purchasable', true);
+                        });
+                    });
+                }
             });
 
             return;

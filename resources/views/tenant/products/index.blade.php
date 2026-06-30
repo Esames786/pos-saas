@@ -39,7 +39,7 @@
     <i class="ti ti-info-circle fs-18 mt-1"></i>
     <div>
         @if($isManufacturing)
-            This list is for materials and finished goods used in manufacturing. BOM components are consumed in production, and manufactured finished goods are received from WIP/FG receipts.
+            This list is for manufacturing raw materials, BOM components, BOM outputs, and manufactured finished goods. Shared kitchen or restaurant stock items stay hidden unless you include them.
         @else
             This list is for items sold in POS, restaurant, sales, or kitchen recipes. Manufacturing-only materials are managed under Manufacturing &gt; Products.
         @endif
@@ -92,6 +92,15 @@
                     <option value="inactive" @selected(request('status') === 'inactive')>Inactive</option>
                 </select>
             </div>
+            @if($isManufacturing)
+                <div class="col-md-2">
+                    <div class="form-check mt-4">
+                        <input id="include-shared-materials" class="form-check-input" type="checkbox"
+                               name="include_shared_materials" value="1" @checked(request()->boolean('include_shared_materials'))>
+                        <label class="form-check-label" for="include-shared-materials">Include shared stock materials</label>
+                    </div>
+                </div>
+            @endif
             <div class="col-md-2">
                 <button class="btn btn-dark">Filter</button>
                 <a href="{{ $indexUrl }}" class="btn btn-light">Reset</a>
@@ -143,7 +152,7 @@
                     @else
                         <td><span class="badge bg-light text-dark">{{ ucfirst($product->product_type) }}</span></td>
                         <td class="text-nowrap">
-                            <span class="d-inline-flex flex-wrap gap-1">@include('tenant.products.partials.product-role-badges')</span>
+                            <span class="d-inline-flex flex-wrap gap-1">@include('tenant.products.partials.product-role-badges', ['badgeContext' => 'catalog'])</span>
                         </td>
                         <td>{{ number_format($product->default_selling_price, 2) }}</td>
                     @endif
@@ -177,7 +186,13 @@
                 </tr>
             @empty
                 <tr>
-                    <td colspan="{{ $isManufacturing ? 11 : 8 }}" class="text-center text-muted py-4">No products found.</td>
+                    <td colspan="{{ $isManufacturing ? 11 : 8 }}" class="text-center text-muted py-4">
+                        @if($isManufacturing)
+                            No manufacturing products found yet. Create a Manufacturing Raw Material or Manufacturing Finished Good to start. Shared kitchen/restaurant ingredients remain under Catalog/Kitchen Inventory.
+                        @else
+                            No products found.
+                        @endif
+                    </td>
                 </tr>
             @endforelse
             </tbody>

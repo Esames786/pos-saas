@@ -636,14 +636,18 @@
         var box = document.getElementById('mode-chips');
         if (!box) return;
         var get = function (id) { var e = document.getElementById(id); return e ? (e.type === 'checkbox' ? e.checked : e.value) : null; };
+        var mode = (document.getElementById('_setup_mode') || {}).value || 'pos_sale';
+        var showMfgBadges = CONTEXT === 'manufacturing' || mode === 'advanced';
         var out = [];
         out.push(get('is_pos_visible') ? chip('Appears in POS', 'success') : chip('Hidden from POS', 'secondary'));
         if (get('is_sellable')) out.push(chip('Sellable', 'primary'));
+        if (get('is_stock_tracked')) out.push(chip('Stock Tracked', 'light text-dark border'));
         if (get('inventory_consumption_method') === 'recipe') out.push(chip('Consumed by recipe', 'info text-dark'));
         if (get('inventory_consumption_method') === 'none') out.push(chip('No stock consumption', 'light text-dark border'));
         if (!get('is_stock_tracked')) out.push(chip('No stock tracking', 'light text-dark border'));
-        if (get('can_be_bom_component')) out.push(chip('BOM Component', 'warning text-dark'));
-        if (get('can_be_bom_output')) out.push(chip('Produced by manufacturing', 'dark'));
+        if (showMfgBadges && get('can_be_bom_component')) out.push(chip('BOM Component', 'warning text-dark'));
+        if (showMfgBadges && get('can_be_bom_output')) out.push(chip('BOM Output', 'info text-dark'));
+        if (showMfgBadges && get('is_manufactured_finished_good')) out.push(chip('Manufactured FG', 'dark'));
         box.innerHTML = out.join(' ');
     }
     window.posUpdateChips = updateChips;
@@ -667,7 +671,7 @@
         refreshVisibility();
     });
     // Reflect a few other field edits in the chips live.
-    ['is_pos_visible','is_sellable','can_be_bom_component','can_be_bom_output','inventory_consumption_method'].forEach(function (id) {
+    ['is_pos_visible','is_sellable','is_stock_tracked','can_be_bom_component','can_be_bom_output','is_manufactured_finished_good','inventory_consumption_method'].forEach(function (id) {
         var el = document.getElementById(id);
         if (el) el.addEventListener('change', updateChips);
     });
