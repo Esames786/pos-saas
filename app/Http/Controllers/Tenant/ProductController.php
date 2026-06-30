@@ -20,7 +20,9 @@ class ProductController extends Controller
 {
     public function index(Request $request)
     {
+        $context = $this->productContext($request);
         $query = Product::with(['category', 'unit', 'defaultVariant'])->latest();
+        $this->applyContextFilter($query, $context);
 
         if ($request->filled('search')) {
             $search = trim($request->search);
@@ -49,16 +51,20 @@ class ProductController extends Controller
         return view('tenant.products.index', [
             'products'   => $query->paginate(15)->withQueryString(),
             'categories' => Category::where('is_active', true)->orderBy('name')->get(),
+            'context'    => $context,
         ]);
     }
 
-    public function create()
+    public function create(Request $request)
     {
+        $context = $this->productContext($request);
+
         return view('tenant.products.form', [
             'product'    => null,
-            'title'      => 'Create Product',
+            'title'      => $context === 'manufacturing' ? 'Create Manufacturing Product' : 'Create Product',
             'categories' => Category::where('is_active', true)->orderBy('name')->get(),
             'units'      => Unit::where('is_active', true)->orderBy('name')->get(),
+            'context'    => $context,
         ]);
     }
 
@@ -105,7 +111,7 @@ class ProductController extends Controller
             return $product;
         });
 
-        return redirect('/products/' . $product->id)->with('status', 'Product created successfully.');
+        return redirect($this->productRedirectUrl($request, $product))->with('status', 'Product created successfully.');
     }
 
     public function show(Product $product)
@@ -119,13 +125,16 @@ class ProductController extends Controller
         ]);
     }
 
-    public function edit(Product $product)
+    public function edit(Request $request, Product $product)
     {
+        $context = $this->productContext($request);
+
         return view('tenant.products.form', [
             'product'    => $product,
-            'title'      => 'Edit Product',
+            'title'      => $context === 'manufacturing' ? 'Edit Manufacturing Product' : 'Edit Product',
             'categories' => Category::where('is_active', true)->orderBy('name')->get(),
             'units'      => Unit::where('is_active', true)->orderBy('name')->get(),
+            'context'    => $context,
         ]);
     }
 
@@ -151,7 +160,7 @@ class ProductController extends Controller
             }
         });
 
-        return redirect('/products/' . $product->id)->with('status', 'Product updated successfully.');
+        return redirect($this->productRedirectUrl($request, $product))->with('status', 'Product updated successfully.');
     }
 
     public function destroy(Product $product)
@@ -286,5 +295,63 @@ class ProductController extends Controller
             'shelf_life_days'             => isset($data['shelf_life_days']) ? (int) $data['shelf_life_days'] : null,
             'default_wastage_percent'     => $data['default_wastage_percent'] ?? 0,
         ];
+    }
+
+    private function productContext(Request $request): string
+    {
+        $routeName = (string) $request->route()?->getName();
+
+        if (str_starts_with($routeName, 'tenant.manufacturing.products.')) {
+            return 'manufacturing';
+        }
+
+        return $request->query('context') === 'manufacturing' ? 'manufacturing' : 'catalog';
+    }
+
+    private function applyContextFilter($query, string $context): void
+    {
+        if ($context === 'manufacturing') {
+            $query->where(function ($q) {
+                $q->where('can_be_bom_component', true)
+                    ->orWhere('can_be_bom_output', true)
+                    ->orWhere('is_manufactured_finished_good', true)
+                    ->orWhereIn('product_kind', [
+                        Product::KIND_RAW_MATERIAL,
+                        Product::KIND_PACKAGING_MATERIAL,
+                        Product::KIND_SEMI_FINISHED,
+                        Product::KIND_FINISHED_GOOD,
+                    ]);
+            });
+
+            return;
+        }
+
+        $query->where(function ($q) {
+            $q->where('is_pos_visible', true)
+                ->orWhere('is_sellable', true)
+                ->orWhere('inventory_consumption_method', 'recipe')
+                ->orWhere('product_type', 'service')
+                ->orWhere('product_kind', Product::KIND_SERVICE);
+        })->where(function ($q) {
+            $q->where(function ($inner) {
+                $inner->where('can_be_bom_component', false)
+                    ->orWhere('is_pos_visible', true)
+                    ->orWhere('is_sellable', true);
+            })
+                ->where('can_be_bom_output', false)
+                ->where('is_manufactured_finished_good', false)
+                ->whereNotIn('product_kind', [
+                    Product::KIND_RAW_MATERIAL,
+                    Product::KIND_SEMI_FINISHED,
+                    Product::KIND_FINISHED_GOOD,
+                ]);
+        });
+    }
+
+    private function productRedirectUrl(Request $request, Product $product): string
+    {
+        return $this->productContext($request) === 'manufacturing'
+            ? '/manufacturing/products'
+            : '/products/' . $product->id;
     }
 }

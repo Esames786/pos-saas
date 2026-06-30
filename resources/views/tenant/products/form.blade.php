@@ -5,8 +5,14 @@
 @php
     /** PRODUCT-UX-1: guided product setup. UI only — same fields, same controller. */
     $u = auth()->user();
+    $context = $context ?? 'catalog';
+    $isManufacturing = $context === 'manufacturing';
     $kitchenAvailable = (bool) ($u?->can('tenant.recipes.index') ?? false);
-    $mfgAvailable     = (bool) ($u?->can('tenant.manufacturing.bom.index') ?? false);
+    $mfgAvailable     = (bool) (($u?->can('tenant.manufacturing.bom.index') ?? false) || ($u?->can('tenant.manufacturing.products.index') ?? false));
+    $backUrl = $isManufacturing ? url('/manufacturing/products') : url('/products');
+    $formUrl = $product
+        ? ($isManufacturing ? url('/manufacturing/products/' . $product->id) : url('/products/' . $product->id))
+        : ($isManufacturing ? url('/manufacturing/products') : url('/products'));
 
     // Detect the current product's setup mode from its existing flags (edit screens).
     $detectMode = function ($p) use ($mfgAvailable, $kitchenAvailable) {
@@ -21,24 +27,30 @@
         return 'advanced';
     };
     $currentMode = old('_setup_mode', $detectMode($product ?? null));
+    if (! $product && ! old('_setup_mode') && $isManufacturing) {
+        $currentMode = 'mfg_raw';
+    }
 
     // Card catalogue (manufacturing cards gated by availability).
     $modeCards = [
-        'pos_sale'     => ['POS Sale Item', 'ti-shopping-cart', 'Sold at the till, tracked in stock', true],
-        'recipe'       => ['Recipe / Kitchen Item', 'ti-chef-hat', 'Sold in POS, consumes ingredients', true],
-        'raw_material' => ['Ingredient / Raw Material', 'ti-meat', 'Hidden from POS, used in recipes', true],
-        'packaging'    => ['Packing Material', 'ti-package', 'Hidden from POS, packaging stock', true],
-        'service'      => ['Service Item', 'ti-businessplan', 'Sold in POS, no stock', true],
-        'mfg_raw'      => ['Manufacturing Raw Material', 'ti-building-factory-2', 'BOM component', $mfgAvailable],
-        'mfg_fg'       => ['Manufacturing Finished Good', 'ti-box', 'Produced via BOM', $mfgAvailable],
+        'pos_sale'     => ['POS Sale Item', 'ti-shopping-cart', 'Sold at the till, tracked in stock', ! $isManufacturing],
+        'recipe'       => ['Recipe / Kitchen Item', 'ti-chef-hat', 'Sold in POS, consumes ingredients', ! $isManufacturing],
+        'raw_material' => ['Ingredient / Raw Material', 'ti-meat', 'Hidden from POS, used in recipes', ! $isManufacturing],
+        'packaging'    => ['Packing Material', 'ti-package', 'Hidden from POS, packaging stock', ! $isManufacturing],
+        'service'      => ['Service Item', 'ti-businessplan', 'Sold in POS, no stock', ! $isManufacturing],
+        'mfg_raw'      => ['Manufacturing Raw Material', 'ti-building-factory-2', 'BOM component', $isManufacturing && $mfgAvailable],
+        'mfg_fg'       => ['Manufacturing Finished Good', 'ti-box', 'Produced via BOM', $isManufacturing && $mfgAvailable],
         'advanced'     => ['Advanced / Custom', 'ti-adjustments', 'Show every field', true],
     ];
+    if (! ($modeCards[$currentMode][3] ?? false)) {
+        $currentMode = 'advanced';
+    }
 @endphp
 
 @section('content')
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
     <h1 class="mb-0">{{ $title }}</h1>
-    <a href="{{ url('/products') }}" class="btn btn-light">Back</a>
+    <a href="{{ $backUrl }}" class="btn btn-light">{{ $isManufacturing ? 'Back to Manufacturing Products' : 'Back to Catalog Products' }}</a>
 </div>
 
 <style>
@@ -53,7 +65,7 @@
 <div class="card">
     <div class="card-body">
         <form method="POST"
-              action="{{ $product ? url('/products/' . $product->id) : url('/products') }}"
+              action="{{ $formUrl }}"
               novalidate>
             @csrf
             @if($product) @method('PUT') @endif
@@ -61,6 +73,18 @@
 
             @if($errors->any())
                 <div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>
+            @endif
+
+            @if($isManufacturing)
+                <div class="alert alert-info d-flex align-items-start gap-2">
+                    <i class="ti ti-info-circle fs-18 mt-1"></i>
+                    <div>
+                        Use this screen for materials and finished goods used in manufacturing.
+                        Choose <strong>Raw Material</strong> for items consumed in BOMs and
+                        <strong>Finished Good</strong> for products produced through WIP/FG receipts.
+                        Use Advanced only if the product must also appear in POS or sales.
+                    </div>
+                </div>
             @endif
 
             {{-- ── Product Setup Mode ─────────────────────────────────────────── --}}
@@ -470,7 +494,7 @@
 
             <div class="mt-4 d-flex gap-2">
                 <button type="submit" class="btn btn-primary">Save Product</button>
-                <a href="{{ url('/products') }}" class="btn btn-light">Cancel</a>
+                <a href="{{ $backUrl }}" class="btn btn-light">Cancel</a>
             </div>
         </form>
     </div>
@@ -481,6 +505,7 @@
     var IS_EDIT = {{ $product ? 'true' : 'false' }};
     var MFG = {{ $mfgAvailable ? 'true' : 'false' }};
     var KITCHEN = {{ $kitchenAvailable ? 'true' : 'false' }};
+    var CONTEXT = {!! json_encode($context) !!};
 
     // groups always-visible regardless of mode
     var ALL_GROUPS = ['sell','pos','tax','purchase','pack','stock','batch','kitchen','mfg','role'];
@@ -498,7 +523,7 @@
                         def:{ product_type:'service', product_kind:'service', is_sellable:1, is_pos_visible:1, is_purchasable:0, is_stock_tracked:0, item_kind:'finished_good', inventory_consumption_method:'none', can_be_bom_component:0, can_be_bom_output:0, is_manufactured_finished_good:0 } },
         mfg_raw:      { groups:['purchase','pack','stock','mfg'],
                         def:{ product_kind:'raw_material', is_sellable:0, is_pos_visible:0, is_purchasable:1, is_stock_tracked:1, item_kind:'ingredient', inventory_consumption_method:'stock_item', can_be_bom_component:1, can_be_bom_output:0, is_manufactured_finished_good:0 } },
-        mfg_fg:       { groups:['purchase','pack','stock','mfg','sell','pos'],
+        mfg_fg:       { groups:['purchase','pack','stock','mfg'],
                         def:{ product_kind:'finished_good', is_sellable:0, is_pos_visible:0, is_purchasable:0, is_stock_tracked:1, item_kind:'finished_good', inventory_consumption_method:'stock_item', can_be_bom_component:0, can_be_bom_output:1, is_manufactured_finished_good:1 } },
         advanced:     { groups:'all', def:null },
     };
@@ -544,7 +569,9 @@
         service:      'This item is sold without stock tracking.',
         mfg_raw:      'This item is hidden from POS and used as a manufacturing BOM component.',
         mfg_fg:       'This item is produced by manufacturing and hidden from POS unless explicitly made saleable.',
-        advanced:     'Advanced mode — every field is shown for full manual control.'
+        advanced:     CONTEXT === 'manufacturing'
+            ? 'Advanced mode shows every field, including POS visibility, for special cross-context products.'
+            : 'Advanced mode — every field is shown for full manual control.'
     };
     function updateSummary(mode) {
         var box = document.getElementById('pmode-summary');

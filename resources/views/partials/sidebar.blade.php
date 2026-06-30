@@ -729,7 +729,7 @@
                     @endcan
 
                     {{-- ── MANUFACTURING — live modules in workflow order (Customers → BOM → Production Orders → MRC → WIP → FG → Scrap → Rejections → Consumption → Reports) ── --}}
-                    @canany(['tenant.manufacturing.customers.index','tenant.manufacturing.bom.index','tenant.manufacturing.material-requisitions.index','tenant.manufacturing.production-orders.index','tenant.manufacturing.wip.index','tenant.manufacturing.finished-goods.index','tenant.manufacturing.scrap.index','tenant.manufacturing.rejections.index','tenant.manufacturing.consumption.index','tenant.manufacturing.reports.index','tenant.manufacturing.posting-settings.show'])
+                    @canany(['tenant.manufacturing.products.index','tenant.manufacturing.customers.index','tenant.manufacturing.bom.index','tenant.manufacturing.material-requisitions.index','tenant.manufacturing.production-orders.index','tenant.manufacturing.wip.index','tenant.manufacturing.finished-goods.index','tenant.manufacturing.scrap.index','tenant.manufacturing.rejections.index','tenant.manufacturing.consumption.index','tenant.manufacturing.reports.index','tenant.manufacturing.posting-settings.show'])
                     <li class="submenu">
                         <a href="javascript:void(0);">
                             <i class="ti ti-settings-cog fs-16 me-2"></i>
@@ -738,6 +738,33 @@
                         </a>
                         <ul style="display:none;">
                             {{-- Manufacturing Customers: real CRUD (MANUF-1) — no Soon badge --}}
+                            @can('tenant.manufacturing.products.index')
+                                @php $a = $isIn('manufacturing/products*'); @endphp
+                                <li class="{{ $a ? 'active' : '' }}">
+                                    <a href="{{ url('/manufacturing/products') }}" class="{{ $a ? 'active' : '' }}">
+                                        <i class="ti ti-package-import fs-16 me-2"></i>
+                                        <span>Products</span>
+                                    </a>
+                                </li>
+                            @endcan
+                            @can('tenant.categories.index')
+                                @php $a = request()->is('categories*') && request('context') === 'manufacturing'; @endphp
+                                <li class="{{ $a ? 'active' : '' }}">
+                                    <a href="{{ url('/categories?context=manufacturing') }}" class="{{ $a ? 'active' : '' }}">
+                                        <i class="ti ti-category fs-16 me-2"></i>
+                                        <span>Product Categories</span>
+                                    </a>
+                                </li>
+                            @endcan
+                            @can('tenant.units.index')
+                                @php $a = request()->is('units*') && request('context') === 'manufacturing'; @endphp
+                                <li class="{{ $a ? 'active' : '' }}">
+                                    <a href="{{ url('/units?context=manufacturing') }}" class="{{ $a ? 'active' : '' }}">
+                                        <i class="ti ti-ruler-measure fs-16 me-2"></i>
+                                        <span>Units of Measure</span>
+                                    </a>
+                                </li>
+                            @endcan
                             @can('tenant.manufacturing.customers.index')
                                 @php $a = $isIn('manufacturing/customers*'); @endphp
                                 <li class="{{ $a ? 'active' : '' }}">

@@ -649,6 +649,13 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                     ->defaults('feature', 'purchase-returns')->name('tenant.purchase-returns.index');
 
                 // ── Manufacturing Customers — real CRUD (MANUF-1) ────────────
+                // Manufacturing Products - same Product model/table, manufacturing context.
+                Route::get('/manufacturing/products', [ProductController::class, 'index'])->name('tenant.manufacturing.products.index');
+                Route::get('/manufacturing/products/create', [ProductController::class, 'create'])->name('tenant.manufacturing.products.create');
+                Route::post('/manufacturing/products', [ProductController::class, 'store'])->name('tenant.manufacturing.products.store');
+                Route::get('/manufacturing/products/{product}/edit', [ProductController::class, 'edit'])->name('tenant.manufacturing.products.edit');
+                Route::put('/manufacturing/products/{product}', [ProductController::class, 'update'])->name('tenant.manufacturing.products.update');
+
                 Route::get('/manufacturing/customers', [ManufacturingCustomerController::class, 'index'])->name('tenant.manufacturing.customers.index');
                 Route::get('/manufacturing/customers/create', [ManufacturingCustomerController::class, 'create'])->name('tenant.manufacturing.customers.create');
                 Route::post('/manufacturing/customers', [ManufacturingCustomerController::class, 'store'])->name('tenant.manufacturing.customers.store');

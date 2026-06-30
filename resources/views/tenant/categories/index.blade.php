@@ -19,9 +19,23 @@
     <div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>
 @endif
 
+@if(request('context') === 'manufacturing')
+    <div class="alert alert-info d-flex align-items-start gap-2">
+        <i class="ti ti-info-circle fs-18 mt-1"></i>
+        <div>
+            <strong>Shared setup.</strong>
+            Categories are shared across POS, inventory, kitchen, and manufacturing.
+            For manufacturing, use categories like Raw Material, Packing Material, and Finished Goods.
+        </div>
+    </div>
+@endif
+
 <div class="card mb-3">
     <div class="card-body">
         <form method="GET" action="{{ url('/categories') }}" class="row g-3 align-items-end">
+            @if(request('context') === 'manufacturing')
+                <input type="hidden" name="context" value="manufacturing">
+            @endif
             <div class="col-md-6">
                 <label for="cat-search" class="form-label">Search</label>
                 <input id="cat-search" type="text" name="search" value="{{ request('search') }}"
@@ -29,7 +43,7 @@
             </div>
             <div class="col-md-3">
                 <button class="btn btn-dark">Filter</button>
-                <a href="{{ url('/categories') }}" class="btn btn-light">Reset</a>
+                <a href="{{ request('context') === 'manufacturing' ? url('/categories?context=manufacturing') : url('/categories') }}" class="btn btn-light">Reset</a>
             </div>
         </form>
     </div>
