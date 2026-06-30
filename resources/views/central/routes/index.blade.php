@@ -6,7 +6,7 @@
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
     <div>
         <h1 class="mb-1">Route Catalog</h1>
-        <p class="fw-medium">Sync system routes, publish permissions, and manage route visibility.</p>
+        <p class="text-muted mb-0">Developer tool for route-to-module mapping and permission publishing.</p>
     </div>
 
     <div class="d-flex flex-wrap gap-2">
@@ -23,7 +23,7 @@
             <form method="POST" action="{{ url('/routes/publish-all') }}">
                 @csrf
                 <button class="btn btn-primary">
-                    <i class="ti ti-upload me-1"></i>Publish All
+                    <i class="ti ti-upload me-1"></i>Publish All Routes
                 </button>
             </form>
         @endcan
@@ -42,6 +42,17 @@
 @if($errors->any())
     <div class="alert alert-danger">{{ $errors->first() }}</div>
 @endif
+
+<div class="alert alert-warning d-flex align-items-start gap-2">
+    <i class="ti ti-alert-triangle fs-5"></i>
+    <div>
+        <strong>Developer tool:</strong>
+        Route Catalog maps application routes to modules and permissions. Normal plan setup should be done from
+        <a href="{{ url('/plans') }}" class="alert-link">Plans - Plan Builder</a>.
+        Use this screen only when adding new routes or publishing permissions.
+        Publishing routes changes what permissions can be assigned to tenants, so review before publishing all.
+    </div>
+</div>
 
 <div class="card mb-3">
     <div class="card-body">
