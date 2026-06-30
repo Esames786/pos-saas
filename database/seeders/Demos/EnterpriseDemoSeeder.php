@@ -165,7 +165,12 @@ class EnterpriseDemoSeeder
                 'product_type'                 => $opts['type'] ?? 'simple',
                 'item_kind'                    => $opts['kind'] ?? 'finished_good',
                 'inventory_consumption_method' => $opts['consume'] ?? 'stock_item',
+                'product_kind'                 => $opts['product_kind'] ?? 'sale_item',
                 'is_sellable'                  => $opts['sellable'] ?? true,
+                'is_pos_visible'               => $opts['pos_visible'] ?? true,
+                'can_be_bom_component'         => $opts['bom_component'] ?? false,
+                'can_be_bom_output'            => $opts['bom_output'] ?? false,
+                'is_manufactured_finished_good'=> $opts['manufactured_fg'] ?? false,
                 'is_purchasable'               => $opts['purchasable'] ?? true,
                 'is_stock_tracked'             => $opts['tracked'] ?? true,
                 'has_expiry'                   => false,
@@ -279,7 +284,12 @@ class EnterpriseDemoSeeder
     {
         foreach ($this->ingredients() as [$sku, $name, $unit, $cost, $low]) {
             $this->makeProduct($sku, $name, 'ENT-KITCHEN', $unit, $cost, 0, [
-                'kind' => 'ingredient', 'sellable' => false, 'tracked' => true, 'reorder' => $low ? 10 : 5,
+                'kind' => 'ingredient',
+                'product_kind' => $sku === 'ENT-ING-PACKBOX' ? 'packaging_material' : 'raw_material',
+                'sellable' => false,
+                'pos_visible' => false,
+                'tracked' => true,
+                'reorder' => $low ? 10 : 5,
             ]);
         }
         $this->counts['ingredients'] = count($this->ingredients());

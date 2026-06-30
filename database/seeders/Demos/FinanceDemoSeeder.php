@@ -178,6 +178,8 @@ class FinanceDemoSeeder
         foreach ($this->productList() as $p) {
             $cat = Category::where('code', $p['cat'])->first();
             $unit = Unit::where('code', 'PCS')->first();
+            $isFinished = $p['cat'] === 'FG';
+            $isConsumable = $p['cat'] === 'CONSUM';
 
             $product = Product::updateOrCreate(
                 ['sku' => $p['sku']],
@@ -187,12 +189,17 @@ class FinanceDemoSeeder
                     'category_id'                   => $cat?->id,
                     'unit_id'                       => $unit?->id,
                     'product_type'                  => 'simple',
-                    'item_kind'                     => 'finished_good',
+                    'item_kind'                     => $isFinished ? 'finished_good' : 'ingredient',
                     'inventory_consumption_method'  => 'stock_item',
+                    'product_kind'                  => $isFinished ? 'finished_good' : ($isConsumable ? 'packaging_material' : 'raw_material'),
                     'default_purchase_price'        => $p['cost'],
                     'default_selling_price'         => $p['price'],
-                    'is_sellable'                   => true,
-                    'is_purchasable'                => true,
+                    'is_sellable'                   => $isFinished,
+                    'is_pos_visible'                => false,
+                    'can_be_bom_component'          => ! $isFinished,
+                    'can_be_bom_output'             => $isFinished,
+                    'is_manufactured_finished_good' => $isFinished,
+                    'is_purchasable'                => ! $isFinished,
                     'is_stock_tracked'              => true,
                     'has_expiry'                    => false,
                     'requires_batch'                => false,

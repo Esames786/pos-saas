@@ -95,6 +95,7 @@ class TenantDemoSeeder extends Seeder
         $this->seedPrintersAndAgent();
         $this->seedReceiptLayouts();
         $this->seedRecipes();
+        $this->seedManufacturingDemoProducts();
         $this->seedManufacturingPostingSettings();
 
         app(TenancyManager::class)->deactivate();
@@ -550,6 +551,7 @@ class TenantDemoSeeder extends Seeder
                                : (in_array($pd['sku'], $ingredientSkus) ? 'stock_item' : ($isTracked ? 'stock_item' : 'none'));
             $itemKind          = in_array($pd['sku'], $recipeSkus)     ? 'finished_good'
                                : (in_array($pd['sku'], $ingredientSkus) ? 'ingredient'  : 'finished_good');
+            $productKind       = 'sale_item';
 
             $product = Product::updateOrCreate(
                 ['sku' => $pd['sku']],
@@ -561,6 +563,11 @@ class TenantDemoSeeder extends Seeder
                     'product_type'                   => in_array($pd['sku'], $recipeSkus) ? 'recipe' : ($isTracked ? 'simple' : 'service'),
                     'item_kind'                      => $itemKind,
                     'inventory_consumption_method'   => $consumptionMethod,
+                    'product_kind'                   => $productKind,
+                    'is_pos_visible'                 => true,
+                    'can_be_bom_component'           => false,
+                    'can_be_bom_output'              => false,
+                    'is_manufactured_finished_good'  => false,
                     'is_sellable'                    => true,
                     'is_purchasable'                 => $isTracked && !in_array($pd['sku'], $recipeSkus),
                     'is_stock_tracked'               => $isTracked,
@@ -768,6 +775,9 @@ class TenantDemoSeeder extends Seeder
                     'product_kind'                 => 'raw_material',
                     'is_sellable'                  => false,
                     'is_pos_visible'               => false,
+                    'can_be_bom_component'         => false,
+                    'can_be_bom_output'            => false,
+                    'is_manufactured_finished_good'=> false,
                     'is_purchasable'               => true,
                     'is_stock_tracked'             => true,
                     'has_expiry'                   => false,
@@ -2320,6 +2330,9 @@ class TenantDemoSeeder extends Seeder
                     'product_kind'                 => $isPack ? 'packaging_material' : 'raw_material',
                     'is_sellable'                  => false,
                     'is_pos_visible'               => false,
+                    'can_be_bom_component'         => false,
+                    'can_be_bom_output'            => false,
+                    'is_manufactured_finished_good'=> false,
                     'is_purchasable'               => true,
                     'is_stock_tracked'             => true,
                     'has_expiry'                   => false,
@@ -2357,6 +2370,9 @@ class TenantDemoSeeder extends Seeder
                 'product_kind'                 => 'sale_item',
                 'is_sellable'                  => true,
                 'is_pos_visible'               => true,
+                'can_be_bom_component'         => false,
+                'can_be_bom_output'            => false,
+                'is_manufactured_finished_good'=> false,
                 'is_purchasable'               => false,
                 'is_stock_tracked'             => false,
                 'has_expiry'                   => false,
@@ -2471,6 +2487,124 @@ class TenantDemoSeeder extends Seeder
         }
 
         $this->command->line('  Technosys Karahi recipe seeded: ' . count($lines) . ' lines (food cost + packing).');
+    }
+
+    private function seedManufacturingDemoProducts(): void
+    {
+        $groc = Category::where('code', 'GROC')->first();
+        $pcs  = Unit::where('code', 'PCS')->first();
+        $kg   = Unit::where('code', 'KG')->first();
+        $pkt  = Unit::where('code', 'PKT')->first();
+
+        $products = [
+            [
+                'sku' => 'RAW-FLOUR-IND',
+                'name' => 'Industrial Flour 25kg',
+                'unit' => $kg,
+                'kind' => 'raw_material',
+                'buy' => 3200,
+                'sell' => 0,
+                'component' => true,
+                'output' => false,
+                'mfg_fg' => false,
+                'purchasable' => true,
+            ],
+            [
+                'sku' => 'RAW-SUGAR-IND',
+                'name' => 'Industrial Sugar 25kg',
+                'unit' => $kg,
+                'kind' => 'raw_material',
+                'buy' => 4200,
+                'sell' => 0,
+                'component' => true,
+                'output' => false,
+                'mfg_fg' => false,
+                'purchasable' => true,
+            ],
+            [
+                'sku' => 'PKG-CARTON-MFG',
+                'name' => 'Manufacturing Carton Box',
+                'unit' => $pcs,
+                'kind' => 'packaging_material',
+                'buy' => 65,
+                'sell' => 0,
+                'component' => true,
+                'output' => false,
+                'mfg_fg' => false,
+                'purchasable' => true,
+            ],
+            [
+                'sku' => 'SFG-DOUGH-BATCH',
+                'name' => 'Semi Finished Dough Batch',
+                'unit' => $kg,
+                'kind' => 'semi_finished',
+                'buy' => 0,
+                'sell' => 0,
+                'component' => true,
+                'output' => true,
+                'mfg_fg' => false,
+                'purchasable' => false,
+            ],
+            [
+                'sku' => 'FG-BISCUIT-MFG',
+                'name' => 'Manufactured Biscuit Box',
+                'unit' => $pkt,
+                'kind' => 'finished_good',
+                'buy' => 0,
+                'sell' => 260,
+                'component' => false,
+                'output' => true,
+                'mfg_fg' => true,
+                'purchasable' => false,
+            ],
+        ];
+
+        foreach ($products as $pd) {
+            $product = Product::updateOrCreate(
+                ['sku' => $pd['sku']],
+                [
+                    'category_id'                  => $groc?->id,
+                    'unit_id'                      => $pd['unit']?->id,
+                    'name'                         => $pd['name'],
+                    'slug'                         => Str::slug($pd['name']),
+                    'product_type'                 => 'simple',
+                    'item_kind'                    => $pd['mfg_fg'] || $pd['output'] ? 'finished_good' : 'ingredient',
+                    'inventory_consumption_method' => 'stock_item',
+                    'product_kind'                 => $pd['kind'],
+                    'is_sellable'                  => (bool) $pd['mfg_fg'],
+                    'is_pos_visible'               => false,
+                    'can_be_bom_component'         => (bool) $pd['component'],
+                    'can_be_bom_output'            => (bool) $pd['output'],
+                    'is_manufactured_finished_good'=> (bool) $pd['mfg_fg'],
+                    'is_purchasable'               => (bool) $pd['purchasable'],
+                    'is_stock_tracked'             => true,
+                    'has_expiry'                   => false,
+                    'requires_batch'               => false,
+                    'default_purchase_price'       => $pd['buy'],
+                    'default_selling_price'        => $pd['sell'],
+                    'purchase_unit_id'             => $pd['unit']?->id,
+                    'purchase_pack_size'           => 1,
+                    'status'                       => 'active',
+                ]
+            );
+
+            $product->translations()->updateOrCreate(['language_code' => 'en'], ['name' => $pd['name']]);
+            ProductVariant::updateOrCreate(
+                ['sku' => $pd['sku']],
+                [
+                    'product_id' => $product->id,
+                    'name' => $pd['name'],
+                    'purchase_price' => $pd['buy'],
+                    'selling_price' => $pd['sell'],
+                    'reorder_level' => 5,
+                    'reorder_quantity' => 20,
+                    'is_default' => true,
+                    'is_active' => true,
+                ]
+            );
+        }
+
+        $this->command->line('  Manufacturing demo products seeded: ' . count($products));
     }
 
     private function seedManufacturingPostingSettings(): void
