@@ -9,10 +9,15 @@ use App\Http\Requests\Central\UpdateTenantRequest;
 use App\Models\Master\Plan;
 use App\Models\Master\Subscription;
 use App\Models\Master\Tenant;
+use App\Models\Master\TenantBackup;
 use App\Models\Master\TenantDomain;
+use App\Services\Central\TenantBackupService;
+use App\Services\Central\TenantOpsService;
 use App\Services\Tenancy\TenantProvisioner;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class TenantController extends Controller
 {
@@ -196,5 +201,155 @@ class TenantController extends Controller
 
         return redirect('/tenants/' . $tenant->id)
             ->with('status', 'Tenant subscription updated successfully.');
+    }
+
+    /* ─── MASTER-TENANT-OPS-1: backup / restore / reset / sync ───────────────── */
+
+    private function adminId(): ?int
+    {
+        return auth('central')->id();
+    }
+
+    /** Create a manual backup of one tenant DB. */
+    public function backup(Tenant $tenant, TenantBackupService $service)
+    {
+        try {
+            $backup = $service->backup($tenant, 'manual', $this->adminId());
+            return back()->with('status', "Backup created for {$tenant->tenant_code} ({$backup->humanSize()}).");
+        } catch (\Throwable $e) {
+            return back()->withErrors(['ops' => $e->getMessage()]);
+        }
+    }
+
+    /** Backup history for one tenant. */
+    public function backups(Tenant $tenant)
+    {
+        $backups = TenantBackup::where('tenant_id', $tenant->id)
+            ->with('creator')
+            ->latest()
+            ->paginate(20);
+
+        return view('central.tenants.backups', compact('tenant', 'backups'));
+    }
+
+    /** Stream a backup file to the (super-admin) browser. Never exposes the abs path. */
+    public function downloadBackup(TenantBackup $backup)
+    {
+        if (! $backup->fileExists()) {
+            return back()->withErrors(['ops' => 'Backup file is missing on disk.']);
+        }
+
+        return Storage::disk($backup->disk)->download($backup->path, $backup->file_name, [
+            'Content-Type' => 'application/sql',
+        ]);
+    }
+
+    /** Restore a tenant from a backup (requires typing RESTORE + the tenant code). */
+    public function restoreBackup(Request $request, TenantBackup $backup, TenantBackupService $backupService, TenantOpsService $opsService)
+    {
+        $tenant = Tenant::with('database')->findOrFail($backup->tenant_id);
+
+        $this->assertConfirmed($request, 'confirm', 'RESTORE');
+        $this->assertTenantCode($request, $tenant);
+
+        try {
+            $backupService->restore($backup, $tenant, $this->adminId());
+            $sync = $opsService->syncTenant($tenant); // migrate + permissions after import
+            $note = $sync['status'] === 'ok' ? '' : ' (sync warning: ' . $sync['error'] . ')';
+
+            return redirect('/tenants/' . $tenant->id . '/backups')
+                ->with('status', "Restored {$tenant->tenant_code} from {$backup->file_name}. A pre-restore backup was created first.{$note}");
+        } catch (\Throwable $e) {
+            return back()->withErrors(['ops' => $e->getMessage()]);
+        }
+    }
+
+    public function deleteBackup(TenantBackup $backup, TenantBackupService $service)
+    {
+        $tenantId = $backup->tenant_id;
+        $service->deleteBackup($backup);
+
+        return redirect('/tenants/' . $tenantId . '/backups')->with('status', 'Backup deleted.');
+    }
+
+    /** Reset one tenant (requires RESET + tenant code + checkbox). Backup taken first. */
+    public function reset(Request $request, Tenant $tenant, TenantOpsService $service)
+    {
+        $this->assertConfirmed($request, 'confirm', 'RESET');
+        $this->assertTenantCode($request, $tenant);
+
+        if (! $request->boolean('understand')) {
+            throw ValidationException::withMessages(['understand' => 'Please confirm you understand this deletes and reseeds tenant data.']);
+        }
+
+        try {
+            $service->resetTenant($tenant, $this->adminId());
+            return back()->with('status', "Tenant {$tenant->tenant_code} reset (a pre-reset backup was created first).");
+        } catch (\Throwable $e) {
+            return back()->withErrors(['ops' => $e->getMessage()]);
+        }
+    }
+
+    /** Sync one tenant (migrate + permissions). No data loss. */
+    public function sync(Tenant $tenant, TenantOpsService $service)
+    {
+        $res = $service->syncTenant($tenant);
+
+        return $res['status'] === 'ok'
+            ? back()->with('status', "Synced {$tenant->tenant_code}: {$res['migrate']}, permissions {$res['permissions']}.")
+            : back()->withErrors(['ops' => "Sync failed for {$tenant->tenant_code}: {$res['error']}"]);
+    }
+
+    /** Sync all tenants (requires typing SYNC ALL). */
+    public function syncAll(Request $request, TenantOpsService $service)
+    {
+        $this->assertConfirmed($request, 'confirm', 'SYNC ALL');
+        $results = $service->syncAll();
+
+        return view('central.tenants.ops-result', [
+            'title'   => 'Sync All Tenants — Result',
+            'columns' => ['tenant_code', 'migrate', 'permissions', 'status', 'error'],
+            'results' => $results,
+        ]);
+    }
+
+    /** Backup all tenants (requires typing BACKUP ALL). */
+    public function backupAll(Request $request, TenantOpsService $service)
+    {
+        $this->assertConfirmed($request, 'confirm', 'BACKUP ALL');
+        $results = $service->backupAll($this->adminId());
+
+        return view('central.tenants.ops-result', [
+            'title'   => 'Backup All Tenants — Result',
+            'columns' => ['tenant_code', 'status', 'file', 'size', 'error'],
+            'results' => $results,
+        ]);
+    }
+
+    /** Reset all demo tenants (requires typing RESET DEMOS). Backup each first. */
+    public function resetDemoTenants(Request $request, TenantOpsService $service)
+    {
+        $this->assertConfirmed($request, 'confirm', 'RESET DEMOS');
+        $results = $service->resetDemoTenants($this->adminId());
+
+        return view('central.tenants.ops-result', [
+            'title'   => 'Reset Demo Tenants — Result',
+            'columns' => ['tenant_code', 'status', 'plan'],
+            'results' => $results,
+        ]);
+    }
+
+    private function assertConfirmed(Request $request, string $field, string $expected): void
+    {
+        if (trim((string) $request->input($field)) !== $expected) {
+            throw ValidationException::withMessages([$field => "Type {$expected} exactly to confirm this action."]);
+        }
+    }
+
+    private function assertTenantCode(Request $request, Tenant $tenant): void
+    {
+        if (trim((string) $request->input('tenant_code')) !== $tenant->tenant_code) {
+            throw ValidationException::withMessages(['tenant_code' => "Type the tenant code ({$tenant->tenant_code}) to confirm."]);
+        }
     }
 }

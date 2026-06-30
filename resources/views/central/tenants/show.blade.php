@@ -25,6 +25,31 @@
 @if($errors->any())
     <div class="alert alert-danger">{{ $errors->first() }}</div>
 @endif
+@if(session('status'))
+    <div class="alert alert-success alert-dismissible fade show">{{ session('status') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+@endif
+
+{{-- MASTER-TENANT-OPS-1: tenant operations --}}
+<div class="card mb-3">
+    <div class="card-body d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <div class="small text-muted"><i class="ti ti-server-cog me-1"></i><strong>Operations</strong> — Backup is safe; Sync applies migrations + permissions (no data loss); Reset deletes + reseeds a demo (backup first).</div>
+        <div class="d-flex flex-wrap gap-2">
+            @can('central.tenants.backup')
+                <form method="POST" action="{{ route('central.tenants.backup', $tenant) }}">@csrf
+                    <button class="btn btn-sm btn-outline-primary"><i class="ti ti-database-export me-1"></i>Backup</button>
+                </form>
+            @endcan
+            @can('central.tenants.backups')
+                <a href="{{ route('central.tenants.backups', $tenant) }}" class="btn btn-sm btn-outline-secondary"><i class="ti ti-history me-1"></i>Backups</a>
+            @endcan
+            @can('central.tenants.sync')
+                <form method="POST" action="{{ route('central.tenants.sync', $tenant) }}" onsubmit="return confirm('Sync {{ $tenant->tenant_code }}? Applies migrations + permissions; no data deleted.');">@csrf
+                    <button class="btn btn-sm btn-outline-success"><i class="ti ti-refresh me-1"></i>Sync</button>
+                </form>
+            @endcan
+        </div>
+    </div>
+</div>
 
 <div class="row">
     {{-- Left column: info + domains --}}

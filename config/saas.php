@@ -217,4 +217,18 @@ return [
             ],
         ],
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Tenant operations (MASTER-TENANT-OPS-1)
+    |--------------------------------------------------------------------------
+    | Safety flags for the superadmin tenant backup / restore / reset / sync
+    | control center. Destructive actions default to BLOCKED.
+    */
+    'tenant_ops' => [
+        // Allow resetting a tenant that is NOT flagged is_demo (production/client).
+        'allow_non_demo_reset' => (bool) env('ALLOW_TENANT_RESET_FOR_NON_DEMO', false),
+        // Allow the "Reset All Tenants" danger-zone action at all.
+        'allow_reset_all'      => (bool) env('ALLOW_RESET_ALL_TENANTS', false),
+    ],
 ];

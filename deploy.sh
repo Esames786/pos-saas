@@ -39,6 +39,9 @@ $ok = 0; $skip = 0;
 foreach (\App\Models\Master\Tenant::all() as $t) {
   try {
     app(\App\Services\Tenancy\TenancyManager::class)->activate($t);
+    // Forget the spatie permission cache after switching connection so findOrCreate reads
+    // THIS tenant DB (otherwise a stale cross-tenant cache makes it INSERT existing perms → dup-key).
+    app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
     \Illuminate\Support\Facades\Artisan::call("migrate", ["--database"=>"tenant","--path"=>"database/migrations/tenant","--force"=>true]);
     (new \Database\Seeders\Tenant\DefaultChartOfAccountsSeeder())->run();
     foreach ($names as $n) { \Spatie\Permission\Models\Permission::findOrCreate($n, "tenant"); }

@@ -62,6 +62,21 @@ Route::domain(config('tenancy.central_domain'))
                 Route::put('/tenants/{tenant}/subscription', [TenantController::class, 'updateSubscription'])
                     ->name('central.tenants.subscription.update');
 
+                // MASTER-TENANT-OPS-1 — backup / restore / reset / sync (superadmin only)
+                // Global actions use hyphenated paths so they never collide with /tenants/{tenant}.
+                Route::post('/tenants-sync-all', [TenantController::class, 'syncAll'])->name('central.tenants.sync-all');
+                Route::post('/tenants-backup-all', [TenantController::class, 'backupAll'])->name('central.tenants.backup-all');
+                Route::post('/tenants-reset-demos', [TenantController::class, 'resetDemoTenants'])->name('central.tenants.reset-demos');
+
+                Route::post('/tenants/{tenant}/backup', [TenantController::class, 'backup'])->name('central.tenants.backup');
+                Route::get('/tenants/{tenant}/backups', [TenantController::class, 'backups'])->name('central.tenants.backups');
+                Route::post('/tenants/{tenant}/sync', [TenantController::class, 'sync'])->name('central.tenants.sync');
+                Route::post('/tenants/{tenant}/reset', [TenantController::class, 'reset'])->name('central.tenants.reset');
+
+                Route::get('/tenant-backups/{backup}/download', [TenantController::class, 'downloadBackup'])->name('central.tenant-backups.download');
+                Route::post('/tenant-backups/{backup}/restore', [TenantController::class, 'restoreBackup'])->name('central.tenant-backups.restore');
+                Route::delete('/tenant-backups/{backup}', [TenantController::class, 'deleteBackup'])->name('central.tenant-backups.delete');
+
                 // Plans
                 Route::get('/plans', [PlanController::class, 'index'])->name('central.plans.index');
                 Route::get('/plans/{plan}/edit', [PlanController::class, 'edit'])->name('central.plans.edit');

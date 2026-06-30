@@ -137,6 +137,18 @@ class MasterSeeder extends Seeder
             'central.tenants.suspend',
             'central.tenants.cancel',
 
+            // MASTER-TENANT-OPS-1 — backup / restore / reset / sync
+            'central.tenants.backup',
+            'central.tenants.backups',
+            'central.tenants.sync',
+            'central.tenants.reset',
+            'central.tenants.sync-all',
+            'central.tenants.backup-all',
+            'central.tenants.reset-demos',
+            'central.tenant-backups.download',
+            'central.tenant-backups.restore',
+            'central.tenant-backups.delete',
+
             'central.tenant-domains.store',
             'central.tenant-domains.primary',
             'central.tenant-domains.activate',
