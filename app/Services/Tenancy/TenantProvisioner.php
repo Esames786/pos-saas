@@ -664,6 +664,12 @@ class TenantProvisioner
             'tenant.quotations.index',
             'tenant.purchase-requisitions.index',
             'tenant.purchase-returns.index',
+            // Manufacturing Products (PRODUCT-CONTEXT-SPLIT-1) — manufacturing context view
+            'tenant.manufacturing.products.index',
+            'tenant.manufacturing.products.create',
+            'tenant.manufacturing.products.store',
+            'tenant.manufacturing.products.edit',
+            'tenant.manufacturing.products.update',
             // Manufacturing Customers CRUD (MANUF-1)
             'tenant.manufacturing.customers.index',
             'tenant.manufacturing.customers.create',
