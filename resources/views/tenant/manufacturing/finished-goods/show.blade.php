@@ -69,6 +69,9 @@
         <div>
             <strong class="me-1">FG Inventory Posting</strong>
             <span class="badge bg-{{ $receipt->postingStatusBadgeClass() }}">{{ $receipt->postingStatusLabel() }}</span>
+            <div class="small text-muted mt-1">
+                Post to Inventory increases Finished Goods stock and posts Dr FG Inventory / Cr WIP. Reverse Posting reverses the stock movement and journal.
+            </div>
             @if($receipt->isPosted())
                 <div class="small text-muted mt-1">
                     Dr {{ $fgAccountName ?? 'Finished Goods Inventory' }} /

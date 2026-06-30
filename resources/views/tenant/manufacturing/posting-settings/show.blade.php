@@ -11,7 +11,7 @@
         <div class="page-header">
             <div class="page-title">
                 <h4>Manufacturing Posting Settings</h4>
-                <h6>Account mapping &amp; inventory policy for future manufacturing accounting</h6>
+                <h6>Account mapping &amp; inventory policy for manufacturing posting</h6>
             </div>
             <div class="page-btn">
                 @can('tenant.manufacturing.posting-settings.edit')
@@ -26,14 +26,14 @@
             <div class="alert alert-success">{{ session('status') }}</div>
         @endif
 
-        <div class="alert alert-warning d-flex align-items-start gap-2">
-            <i class="ti ti-alert-triangle fs-18 mt-1"></i>
+        <div class="alert alert-info d-flex align-items-start gap-2">
+            <i class="ti ti-info-circle fs-18 mt-1"></i>
             <div>
-                <strong>Phase A — configuration only.</strong>
-                These settings are <strong>stored</strong> so a future posting layer can read them, but
-                <strong>no manufacturing posting code exists yet</strong>. Saving or enabling these settings does
-                <strong>not</strong> create any journal entry, stock movement, or COGS — and does not change any
-                production, WIP, consumption, scrap or finished-goods record.
+                <strong>Posting guide.</strong>
+                These mappings tell manufacturing posting which accounts to use. Consumption moves
+                Raw Material Inventory to WIP, Finished Goods posting moves WIP to Finished Goods
+                Inventory, and WIP closing clears residual WIP to Production Variance. Saving this
+                page only updates configuration; posting still happens from each manufacturing document.
             </div>
         </div>
 
@@ -69,7 +69,7 @@
             <div class="col-lg-7">
                 @include('tenant.manufacturing.posting-settings.partials.account-mapping-table', ['fields' => $required, 'setting' => $setting, 'title' => 'Required account mappings'])
                 <div class="mt-3">
-                    @include('tenant.manufacturing.posting-settings.partials.account-mapping-table', ['fields' => $optional, 'setting' => $setting, 'title' => 'Optional account mappings (Phase A)'])
+                    @include('tenant.manufacturing.posting-settings.partials.account-mapping-table', ['fields' => $optional, 'setting' => $setting, 'title' => 'Optional account mappings'])
                 </div>
                 <div class="card mt-3">
                     <div class="card-header"><h6 class="mb-0">Inventory policy</h6></div>

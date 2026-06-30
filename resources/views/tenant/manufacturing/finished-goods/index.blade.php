@@ -11,7 +11,7 @@
         <div class="page-header">
             <div class="page-title">
                 <h4>Finished Goods</h4>
-                <h6>Record production output from WIP jobs — tracking only, no inventory or accounting posting</h6>
+                <h6>Record production output, then post accepted goods to inventory from the receipt page</h6>
             </div>
             @can('tenant.manufacturing.finished-goods.create')
             <div class="page-btn">

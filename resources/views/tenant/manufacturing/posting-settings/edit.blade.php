@@ -10,12 +10,12 @@
             </div>
         </div>
 
-        <div class="alert alert-warning d-flex align-items-start gap-2">
-            <i class="ti ti-alert-triangle fs-18 mt-1"></i>
+        <div class="alert alert-info d-flex align-items-start gap-2">
+            <i class="ti ti-info-circle fs-18 mt-1"></i>
             <div>
-                <strong>Enabling these settings does not post anything yet.</strong> This is Phase A
-                (configuration only). Posting (journal entries, stock movements, COGS) will be added in a later
-                phase. Mappings are validated and stored; nothing is posted on save.
+                <strong>Saving this page only updates configuration.</strong>
+                Manufacturing documents use these mappings when you post consumption, finished goods, or WIP closing.
+                No stock movement or journal entry is created by saving the settings form itself.
             </div>
         </div>
 
@@ -39,7 +39,7 @@
                                {{ old('is_enabled', $setting->is_enabled) ? 'checked' : '' }}>
                         <label class="form-check-label" for="is_enabled">
                             <strong>Enable manufacturing posting settings</strong>
-                            <span class="d-block text-muted small">Can only be enabled when all required (*) accounts are mapped. Enabling still posts nothing in this phase.</span>
+                            <span class="d-block text-muted small">Can only be enabled when all required (*) accounts are mapped. Actual posting still happens from each manufacturing document.</span>
                         </label>
                     </div>
                 </div>

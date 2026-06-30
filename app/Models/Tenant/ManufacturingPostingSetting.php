@@ -7,12 +7,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * Manufacturing posting settings (MFG-FIN-A, Phase A).
+ * Manufacturing posting settings.
  *
- * Holds the account mapping + inventory policy a FUTURE posting layer will read.
- * This model stores configuration only — it does NOT post anything. `canPost()`
- * merely reports whether configuration is complete enough that posting *could*
- * run once the posting engine (Phase C+) exists.
+ * Holds the account mapping + inventory policy manufacturing posting uses.
+ * This model stores configuration only; `canPost()` reports whether the
+ * settings are enabled and all required mappings are complete.
  */
 class ManufacturingPostingSetting extends Model
 {

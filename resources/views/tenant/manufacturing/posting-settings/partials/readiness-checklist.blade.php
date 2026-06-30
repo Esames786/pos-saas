@@ -28,12 +28,12 @@
             <span>FG cost source</span><span class="badge bg-info text-dark">{{ str_replace('_', ' ', $setting->fg_cost_source) }}</span>
         </li>
         <li class="list-group-item d-flex justify-content-between align-items-center">
-            <span><strong>Could post once posting engine exists</strong></span>
+            <span><strong>Ready for manufacturing posting</strong></span>
             {!! $setting->canPost() ? '<span class="badge bg-success">Ready</span>' : '<span class="badge bg-secondary">Not ready</span>' !!}
         </li>
     </ul>
     <div class="card-footer text-muted small">
-        “Ready” means configuration is complete and enabled — it does <strong>not</strong> mean anything is being
-        posted. No manufacturing posting code exists yet (arrives in a later phase).
+        "Ready" means manufacturing posting can use this configuration. Map every required
+        account before posting consumption, finished goods, or WIP closing documents.
     </div>
 </div>

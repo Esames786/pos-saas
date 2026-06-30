@@ -6,7 +6,7 @@
         <div class="page-header">
             <div class="page-title">
                 <h4>{{ $title }}</h4>
-                <h6>Tracking only — no inventory increase, WIP accounting, COGS or GL posting</h6>
+                <h6>Step 1: record output. Step 2: open the saved receipt and use Post to Inventory.</h6>
             </div>
             <div class="page-btn">
                 <a href="{{ url('/manufacturing/finished-goods') }}" class="btn btn-light">

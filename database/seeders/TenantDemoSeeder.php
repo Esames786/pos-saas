@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\Master\SubscriptionInvoice;
 use App\Models\Master\Tenant;
+use App\Models\Tenant\Account;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\Category;
 use App\Models\Tenant\Combo;
@@ -13,6 +14,7 @@ use App\Models\Tenant\DailyClosing;
 use App\Models\Tenant\GoodsReceipt;
 use App\Models\Tenant\Modifier;
 use App\Models\Tenant\ModifierGroup;
+use App\Models\Tenant\ManufacturingPostingSetting;
 use App\Models\Tenant\PaymentMethod;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\ProductBarcode;
@@ -93,6 +95,7 @@ class TenantDemoSeeder extends Seeder
         $this->seedPrintersAndAgent();
         $this->seedReceiptLayouts();
         $this->seedRecipes();
+        $this->seedManufacturingPostingSettings();
 
         app(TenancyManager::class)->deactivate();
 
@@ -2468,6 +2471,38 @@ class TenantDemoSeeder extends Seeder
         }
 
         $this->command->line('  Technosys Karahi recipe seeded: ' . count($lines) . ' lines (food cost + packing).');
+    }
+
+    private function seedManufacturingPostingSettings(): void
+    {
+        (new \Database\Seeders\Tenant\DefaultChartOfAccountsSeeder())->run();
+
+        $accountId = fn (string $code) => Account::where('code', $code)->value('id');
+        $userId = User::orderBy('id')->value('id');
+
+        ManufacturingPostingSetting::updateOrCreate(
+            ['branch_id' => null],
+            [
+                'is_enabled' => true,
+                'raw_material_inventory_account_id' => $accountId('1410'),
+                'wip_inventory_account_id' => $accountId('1420'),
+                'finished_goods_inventory_account_id' => $accountId('1430'),
+                'manufacturing_overhead_account_id' => $accountId('1490'),
+                'direct_labour_account_id' => $accountId('6210'),
+                'scrap_expense_account_id' => $accountId('6900'),
+                'rework_expense_account_id' => $accountId('6910'),
+                'production_variance_account_id' => $accountId('5300'),
+                'manufactured_cogs_account_id' => $accountId('5310'),
+                'inventory_adjustment_account_id' => $accountId('6920'),
+                'negative_stock_policy' => 'block',
+                'costing_method' => 'moving_average',
+                'fg_cost_source' => 'wip_actual',
+                'updated_by_user_id' => $userId,
+                'created_by_user_id' => $userId,
+            ]
+        );
+
+        $this->command->line('  Manufacturing posting settings seeded and mapped.');
     }
 
     /**
