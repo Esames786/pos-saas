@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Tenant\Ajax;
 
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Product;
+use App\Models\Tenant\StockBalance;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -23,7 +24,14 @@ class ProductLookupController extends Controller
         $q    = trim((string) $request->input('q', ''));
         $page = max(1, (int) $request->input('page', 1));
 
-        $query = Product::query()->select(['id', 'sku', 'name']);
+        // PURCHASING-UX-1: the purchase/GRN pickers need richer data (unit cost, unit,
+        // default variant, current branch stock) to fill each line + fix the stale-cost bug.
+        $rich     = $request->boolean('rich') || in_array((string) $request->input('context', ''), ['purchase', 'inventory'], true);
+        $branchId = (int) $request->input('branch_id', 0);
+
+        $query = $rich
+            ? Product::query()->with(['unit:id,code,unit_type', 'variants'])
+            : Product::query()->select(['id', 'sku', 'name']);
 
         if ($request->boolean('only_active', true)) {
             $query->where('status', 'active');
@@ -78,10 +86,53 @@ class ProductLookupController extends Controller
             ->forPage($page, self::PER_PAGE)
             ->get();
 
-        $results = $records->map(fn (Product $p) => [
-            'id'   => $p->id,
-            'text' => $p->sku ? ($p->sku . ' — ' . $p->name) : $p->name,
-        ]);
+        $results = $records->map(function (Product $p) use ($rich, $branchId) {
+            $base = [
+                'id'   => $p->id,
+                'text' => $p->sku ? ($p->sku . ' — ' . $p->name) : $p->name,
+            ];
+
+            if (! $rich) {
+                return $base;
+            }
+
+            $default = $p->variants->firstWhere('is_default', true) ?? $p->variants->first();
+            $unitCode = $p->unit?->code;
+
+            $stock = null;
+            if ($branchId > 0) {
+                $stock = (float) StockBalance::where('product_id', $p->id)
+                    ->where('branch_id', $branchId)
+                    ->sum('quantity_on_hand');
+            }
+            $stockLabel = $stock === null
+                ? null
+                : rtrim(rtrim(number_format($stock, 3), '0'), '.') . ($unitCode ? ' ' . $unitCode : '');
+
+            return array_merge($base, [
+                'sku'             => $p->sku,
+                'name'            => $p->name,
+                'unit_code'       => $unitCode,
+                'unit_type'       => $p->unit?->unit_type ?? 'quantity',
+                'purchase_price'  => (float) ($p->default_purchase_price ?? 0),
+                'requires_batch'  => (bool) $p->requires_batch,
+                'has_expiry'      => (bool) $p->has_expiry,
+                'is_purchasable'  => (bool) $p->is_purchasable,
+                'is_stock_tracked'=> (bool) $p->is_stock_tracked,
+                'variant_id'      => $default?->id,
+                'variants'        => $p->variants->map(fn ($v) => [
+                    'id'             => (int) $v->id,
+                    'name'           => $v->name,
+                    'sku'            => $v->sku,
+                    'barcode'        => $v->barcode,
+                    'purchase_price' => (string) ($v->purchase_price ?? 0),
+                    'is_default'     => (bool) $v->is_default,
+                    'is_active'      => (bool) $v->is_active,
+                ])->values(),
+                'current_stock'   => $stock,
+                'stock_label'     => $stockLabel,
+            ]);
+        });
 
         return response()->json([
             'results'    => $results,

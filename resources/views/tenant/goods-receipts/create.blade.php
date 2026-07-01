@@ -6,9 +6,20 @@
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
     <div>
         <h1 class="mb-1">Create Goods Receipt Note</h1>
-        <p class="fw-medium">Receiving goods posts inventory purchase movements immediately.</p>
+        <p class="fw-medium text-muted mb-0">Step 2 of the purchasing flow — receive goods into a branch.</p>
     </div>
     <a href="{{ url('/goods-receipts') }}" class="btn btn-light">Back</a>
+</div>
+
+<div class="card border-success-subtle mb-3">
+    <div class="card-body d-flex flex-wrap align-items-start gap-3 py-2">
+        <span class="badge bg-success-subtle text-success-emphasis mt-1"><i class="ti ti-package-import me-1"></i>Updates stock</span>
+        <div class="small">
+            A <strong>Goods Receipt (GRN)</strong> receives stock into the selected branch — posting it <strong>increases inventory</strong> (purchase movement) immediately.
+            If this came from a PO, quantities should match the supplier's actual delivery.
+            <div class="text-muted mt-1">Flow: PO → <strong>GRN</strong> (receives stock) → Purchase Bill (payable) → Supplier Payment.</div>
+        </div>
+    </div>
 </div>
 
 @if($errors->any())
@@ -88,6 +99,7 @@
                 'showDiscountTax' => false,
                 'showNotes'       => true,
                 'prefillLines'    => $prefillLines ?? [],
+                'stockEffect'     => 'Stock effect: posting this GRN will INCREASE the selected branch stock by the received quantity.',
             ])
         </div>
     </div>

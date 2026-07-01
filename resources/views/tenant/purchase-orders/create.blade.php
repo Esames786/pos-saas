@@ -6,9 +6,20 @@
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
     <div>
         <h1 class="mb-1">Create Purchase Order</h1>
-        <p class="fw-medium">A purchase order is only a request. Stock updates when GRN is posted.</p>
+        <p class="fw-medium text-muted mb-0">Step 1 of the purchasing flow — request goods from a supplier.</p>
     </div>
     <a href="{{ url('/purchase-orders') }}" class="btn btn-light">Back</a>
+</div>
+
+<div class="card border-info-subtle mb-3">
+    <div class="card-body d-flex flex-wrap align-items-start gap-3 py-2">
+        <span class="badge bg-info-subtle text-info-emphasis mt-1"><i class="ti ti-file-text me-1"></i>Request only</span>
+        <div class="small">
+            A <strong>Purchase Order</strong> is a request to buy goods — it does <strong>not</strong> update stock or accounting.
+            Stock increases only when a <strong>Goods Receipt (GRN)</strong> is posted against it.
+            <div class="text-muted mt-1">Flow: <strong>PO</strong> → GRN (receives stock) → Purchase Bill (payable) → Supplier Payment.</div>
+        </div>
+    </div>
 </div>
 
 @if($errors->any())
@@ -83,6 +94,7 @@
                 'showBatch'      => false,
                 'showDiscountTax' => true,
                 'showNotes'      => false,
+                'stockEffect'    => 'Stock effect: none. This PO does not change stock — stock updates only when the GRN is posted.',
             ])
         </div>
     </div>

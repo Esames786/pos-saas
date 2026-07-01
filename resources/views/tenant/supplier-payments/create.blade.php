@@ -6,14 +6,40 @@
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
     <div>
         <h1 class="mb-1">Create Supplier Payment</h1>
-        <p class="fw-medium">Payment reduces payable balance and updates the supplier ledger.</p>
+        <p class="fw-medium text-muted mb-0">Step 4 of the purchasing flow — pay the supplier.</p>
     </div>
     <a href="{{ url('/supplier-payments') }}" class="btn btn-light">Back</a>
+</div>
+
+<div class="card border-primary-subtle mb-3">
+    <div class="card-body d-flex flex-wrap align-items-start gap-3 py-2">
+        <span class="badge bg-primary-subtle text-primary-emphasis mt-1"><i class="ti ti-cash me-1"></i>Reduces payable</span>
+        <div class="small">
+            A <strong>Supplier Payment</strong> reduces the supplier's payable balance and updates the supplier ledger.
+            Choose <strong>Pay From (Cash/Bank)</strong> only if money actually leaves that account.
+            <div class="text-muted mt-1">Flow: PO → GRN → Purchase Bill → <strong>Supplier Payment</strong>.</div>
+        </div>
+    </div>
 </div>
 
 @if($errors->any())
     <div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>
 @endif
+
+{{-- Live payment summary --}}
+<div class="card mb-3" id="payment-summary">
+    <div class="card-body py-2">
+        <div class="row text-center g-2 small">
+            <div class="col-6 col-md-3"><div class="text-muted">Supplier Balance</div><div class="fw-bold fs-6" id="sum-supplier">—</div></div>
+            <div class="col-6 col-md-3"><div class="text-muted">Selected Bill Outstanding</div><div class="fw-bold fs-6" id="sum-bill">—</div></div>
+            <div class="col-6 col-md-3"><div class="text-muted">This Payment</div><div class="fw-bold fs-6 text-primary" id="sum-amount">0.00</div></div>
+            <div class="col-6 col-md-3"><div class="text-muted">Remaining After</div><div class="fw-bold fs-6" id="sum-remaining">—</div></div>
+        </div>
+        <div class="alert alert-warning py-2 px-3 mt-2 mb-0 small d-none" id="cashbank-warn">
+            <i class="ti ti-alert-triangle me-1"></i>No Cash/Bank account selected for a <span id="cashbank-method"></span> payment — this will record the supplier ledger only, with <strong>no cash/bank movement</strong>. Select an account above if money actually left one.
+        </div>
+    </div>
+</div>
 
 <form method="POST" action="{{ url('/supplier-payments') }}" novalidate>
     @csrf
@@ -27,6 +53,7 @@
                     <option value="">— Select —</option>
                     @foreach($suppliers as $supplier)
                         <option value="{{ $supplier->id }}"
+                                data-balance="{{ (float) $supplier->current_balance }}"
                                 @selected(old('supplier_id', $bill?->supplier_id) == $supplier->id)>
                             {{ $supplier->name }}
                             (Balance: {{ number_format($supplier->current_balance, 2) }})
@@ -43,6 +70,7 @@
                     <option value="">No specific bill (general payment)</option>
                     @foreach($bills as $payableBill)
                         <option value="{{ $payableBill->id }}"
+                                data-balance="{{ (float) $payableBill->balance_due }}"
                                 @selected(old('purchase_bill_id', $bill?->id) == $payableBill->id)>
                             {{ $payableBill->bill_no }} — {{ $payableBill->supplier?->name }}
                             — Balance: {{ number_format($payableBill->balance_due, 2) }}
@@ -160,4 +188,45 @@
         </div>
     </div>
 </form>
+
+@push('scripts')
+<script>
+(function () {
+    var supplier = document.getElementById('supplier_id');
+    var billSel  = document.getElementById('purchase_bill_id');
+    var amount   = document.getElementById('amount');
+    var method   = document.getElementById('payment_method');
+    var cashBank = document.getElementById('cash_bank_account_id');
+
+    function optNum(sel){ var o = sel && sel.options[sel.selectedIndex]; var v = o ? o.getAttribute('data-balance') : null; return v==null?null:Number(v); }
+    function fmt(n){ return (Math.round(n*100)/100).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2}); }
+
+    function refresh(){
+        var supBal = optNum(supplier);
+        var billBal = optNum(billSel);
+        var amt = Number(amount && amount.value || 0);
+        document.getElementById('sum-supplier').textContent = supBal==null ? '—' : fmt(supBal);
+        document.getElementById('sum-bill').textContent = billBal==null ? '—' : fmt(billBal);
+        document.getElementById('sum-amount').textContent = fmt(amt);
+        // Remaining = bill outstanding if a bill selected, else supplier balance, minus amount.
+        var base = billBal!=null ? billBal : supBal;
+        var remEl = document.getElementById('sum-remaining');
+        if (base==null){ remEl.textContent='—'; remEl.className='fw-bold fs-6'; }
+        else { var rem = base - amt; remEl.textContent = fmt(rem); remEl.className = 'fw-bold fs-6 ' + (rem < -0.01 ? 'text-danger' : 'text-success'); }
+
+        // Cash/bank warning: money-moving methods with no account selected.
+        var moneyMethods = ['cash','bank_transfer','cheque','card'];
+        var needsAccount = method && moneyMethods.indexOf(method.value) !== -1;
+        var noAccount = !cashBank || !cashBank.value;
+        var warn = document.getElementById('cashbank-warn');
+        if (warn){
+            warn.classList.toggle('d-none', !(needsAccount && noAccount));
+            var m = document.getElementById('cashbank-method'); if (m && method) m.textContent = method.options[method.selectedIndex].text;
+        }
+    }
+    [supplier, billSel, amount, method, cashBank].forEach(function(el){ if(el){ el.addEventListener('change', refresh); el.addEventListener('input', refresh); } });
+    refresh();
+})();
+</script>
+@endpush
 @endsection

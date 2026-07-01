@@ -6,9 +6,20 @@
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
     <div>
         <h1 class="mb-1">Create Purchase Bill</h1>
-        <p class="fw-medium">Bill is derived from a posted GRN. Inventory is not updated again here.</p>
+        <p class="fw-medium text-muted mb-0">Step 3 of the purchasing flow — record what you owe the supplier.</p>
     </div>
     <a href="{{ url('/purchase-bills') }}" class="btn btn-light">Back</a>
+</div>
+
+<div class="card border-warning-subtle mb-3">
+    <div class="card-body d-flex flex-wrap align-items-start gap-3 py-2">
+        <span class="badge bg-warning-subtle text-warning-emphasis mt-1"><i class="ti ti-receipt-2 me-1"></i>Payable only</span>
+        <div class="small">
+            A <strong>Purchase Bill</strong> records the supplier <strong>payable</strong> from a posted GRN.
+            Inventory is <strong>not</strong> updated again here — the GRN already received the stock. The bill lines come from the GRN.
+            <div class="text-muted mt-1">Flow: PO → GRN → <strong>Purchase Bill</strong> (payable) → Supplier Payment.</div>
+        </div>
+    </div>
 </div>
 
 @if($errors->any())
@@ -91,37 +102,53 @@
     </div>
 
     @if($goodsReceipt)
+    @php $grnSubtotal = $goodsReceipt->lines->sum('line_total'); @endphp
     <div class="card mb-3">
-        <div class="card-header">
-            <strong>GRN Lines Preview</strong>
-            <span class="text-muted small ms-2">{{ $goodsReceipt->grn_no }}</span>
+        <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <span><strong>GRN Lines Preview</strong> <span class="text-muted small ms-2">{{ $goodsReceipt->grn_no }}</span></span>
+            <span class="small text-muted">
+                Supplier: <strong>{{ $goodsReceipt->supplier?->name }}</strong> ·
+                Branch: <strong>{{ $goodsReceipt->branch?->name }}</strong> ·
+                Received: <strong>{{ $goodsReceipt->receipt_date?->format('Y-m-d') }}</strong>
+            </span>
         </div>
         <div class="card-body table-responsive p-0">
             <table class="table table-nowrap align-middle mb-0">
                 <caption class="visually-hidden">Lines from selected GRN</caption>
-                <thead>
+                <thead class="table-light">
                 <tr>
                     <th scope="col">Product</th>
                     <th scope="col">Variant</th>
-                    <th scope="col">Qty</th>
-                    <th scope="col">Unit Cost</th>
-                    <th scope="col">Line Total</th>
+                    <th scope="col" class="text-end">Qty</th>
+                    <th scope="col" class="text-end">Unit Cost</th>
+                    <th scope="col" class="text-end">Line Total</th>
                 </tr>
                 </thead>
                 <tbody>
                 @foreach($goodsReceipt->lines as $line)
                     <tr>
                         <td>{{ $line->product?->name }}</td>
-                        <td>{{ $line->variant?->name ?? '—' }}</td>
-                        <td>{{ number_format($line->quantity_received, 3) }}</td>
-                        <td>{{ number_format($line->unit_cost, 4) }}</td>
-                        <td>{{ number_format($line->line_total, 2) }}</td>
+                        <td>{{ $line->variant?->name ?? 'Default' }}</td>
+                        <td class="text-end">{{ number_format($line->quantity_received, 3) }}</td>
+                        <td class="text-end">{{ number_format($line->unit_cost, 4) }}</td>
+                        <td class="text-end">{{ number_format($line->line_total, 2) }}</td>
                     </tr>
                 @endforeach
                 </tbody>
+                <tfoot class="table-light fw-semibold">
+                    <tr>
+                        <td colspan="4" class="text-end">GRN Subtotal</td>
+                        <td class="text-end">{{ number_format($grnSubtotal, 2) }}</td>
+                    </tr>
+                </tfoot>
             </table>
         </div>
+        <div class="card-footer small text-muted">
+            <i class="ti ti-info-circle me-1"></i>Bill-level discount/tax above adjust the payable total. Posting the bill creates the supplier payable — <strong>stock will not update again</strong>.
+        </div>
     </div>
+    @else
+    <div class="alert alert-light border small"><i class="ti ti-arrow-up me-1"></i>Select a posted <strong>GRN</strong> above to preview its received lines and totals. The bill is built from the GRN — there are no manual product lines.</div>
     @endif
 
     <div class="d-flex gap-2">
