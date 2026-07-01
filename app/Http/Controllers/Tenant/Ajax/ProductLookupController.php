@@ -73,6 +73,12 @@ class ProductLookupController extends Controller
             // 'manufacturing_report' and '' → no extra restriction.
         }
 
+        // PURCHASING-UX-1-LIVE-QA: fetch a single known product (used to refresh a line's
+        // branch stock after the branch changes, without re-searching by text).
+        if ($pid = (int) $request->input('product_id', 0)) {
+            $query->where('id', $pid);
+        }
+
         if ($q !== '') {
             $query->where(function ($w) use ($q) {
                 $w->where('sku', 'like', "%{$q}%")

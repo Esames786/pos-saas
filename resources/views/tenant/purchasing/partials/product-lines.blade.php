@@ -481,12 +481,40 @@
         });
     }
 
+    // When the branch changes, re-fetch each selected row's stock for the new branch
+    // (so a badge never shows another branch's figure). Uses product_id lookup.
+    function refreshBranchStock(){
+        var branchId = selectedBranchId();
+        document.querySelectorAll('.purchase-lines-widget').forEach(function(widget){
+            var url = widget.dataset.searchUrl;
+            widget.querySelectorAll('.purchase-line-row').forEach(function(row){
+                var ps = row.querySelector('.purchase-product-select');
+                var badge = row.querySelector('.purchase-stock-badge');
+                if (!ps || !ps.value || !badge) return;
+                if (!branchId){ badge.textContent = '—'; badge.className = 'purchase-stock-badge badge bg-light text-muted border'; return; }
+                badge.textContent = '↻'; badge.className = 'purchase-stock-badge badge bg-light text-muted border';
+                fetch(url + '?rich=1&branch_id=' + encodeURIComponent(branchId) + '&product_id=' + encodeURIComponent(ps.value), { headers: { 'Accept':'application/json' } })
+                .then(function(r){ return r.json(); })
+                .then(function(d){
+                    var item = (d.results || [])[0];
+                    if (!item || item.current_stock == null){ badge.textContent = 'n/a'; badge.className = 'purchase-stock-badge badge bg-light text-muted border'; return; }
+                    badge.textContent = item.stock_label || money(item.current_stock).toFixed(2);
+                    badge.className = 'purchase-stock-badge badge ' + (money(item.current_stock) > 0 ? 'bg-success-subtle text-success-emphasis' : 'bg-warning-subtle text-warning-emphasis');
+                })
+                .catch(function(){ badge.textContent = '—'; });
+            });
+        });
+    }
+
     document.querySelectorAll('.purchase-lines-widget').forEach(setupWidget);
 
-    // Gate reacts to supplier/branch; branch change also refreshes Select2 (branch_id in ajax).
+    // Gate reacts to supplier/branch; branch change also refreshes selected rows' stock.
     ['supplier_id','branch_id'].forEach(function(name){
         var el = document.querySelector('[name="'+name+'"]');
-        if (el){ el.addEventListener('change', function(){ applyGate(); if (name==='branch_id'){ /* stock reloads on next search */ } }); if ($ && $(el).hasClass('select2-hidden-accessible')) $(el).on('select2:select select2:clear', applyGate); }
+        if (!el) return;
+        var onChange = function(){ applyGate(); if (name === 'branch_id') refreshBranchStock(); };
+        el.addEventListener('change', onChange);
+        if ($ && $(el).hasClass('select2-hidden-accessible')) $(el).on('select2:select select2:clear', onChange);
     });
     applyGate();
     recalcTotals();
