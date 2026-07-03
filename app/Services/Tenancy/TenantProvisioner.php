@@ -334,6 +334,14 @@ class TenantProvisioner
             'tenant.stock-counts.post',
             'tenant.stock-counts.cancel',
 
+            'tenant.departments.index',
+            'tenant.departments.create',
+            'tenant.departments.store',
+            'tenant.departments.show',
+            'tenant.departments.edit',
+            'tenant.departments.update',
+            'tenant.departments.destroy',
+
             'tenant.suppliers.index',
             'tenant.suppliers.create',
             'tenant.suppliers.store',
@@ -578,6 +586,8 @@ class TenantProvisioner
             'tenant.reports.kitchen.recipe-consumption',
             'tenant.reports.kitchen.wastage',
             'tenant.reports.kitchen.production',
+            'tenant.reports.departments.sales',
+            'tenant.reports.departments.consumption',
             'tenant.reports.audit.manager-approvals',
             'tenant.reports.printing.jobs',
 

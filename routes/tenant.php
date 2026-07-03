@@ -80,6 +80,8 @@ use App\Http\Controllers\Tenant\Reports\RestaurantReportController;
 use App\Http\Controllers\Tenant\Reports\KitchenReportController;
 use App\Http\Controllers\Tenant\Reports\AuditReportController;
 use App\Http\Controllers\Tenant\Reports\PrintReportController;
+use App\Http\Controllers\Tenant\Reports\DepartmentReportController;
+use App\Http\Controllers\Tenant\DepartmentController;
 use App\Http\Controllers\Tenant\Manufacturing\ManufacturingCustomerController;
 use App\Http\Controllers\Tenant\Manufacturing\ProductionOrderController;
 use App\Http\Controllers\Tenant\Manufacturing\BomController;
@@ -276,6 +278,16 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::delete('/stock-counts/{stockCountSession}/lines/{line}', [StockCountController::class, 'destroyLine'])->name('tenant.stock-counts.lines.destroy');
                 Route::post('/stock-counts/{stockCountSession}/post', [StockCountController::class, 'post'])->name('tenant.stock-counts.post');
                 Route::post('/stock-counts/{stockCountSession}/cancel', [StockCountController::class, 'cancel'])->name('tenant.stock-counts.cancel');
+
+                // Departments (DEPARTMENT-FOUNDATION-1) — mapping/reporting only,
+                // no stock movement in this phase.
+                Route::get('/departments', [DepartmentController::class, 'index'])->name('tenant.departments.index');
+                Route::get('/departments/create', [DepartmentController::class, 'create'])->name('tenant.departments.create');
+                Route::post('/departments', [DepartmentController::class, 'store'])->name('tenant.departments.store');
+                Route::get('/departments/{department}', [DepartmentController::class, 'show'])->name('tenant.departments.show');
+                Route::get('/departments/{department}/edit', [DepartmentController::class, 'edit'])->name('tenant.departments.edit');
+                Route::put('/departments/{department}', [DepartmentController::class, 'update'])->name('tenant.departments.update');
+                Route::delete('/departments/{department}', [DepartmentController::class, 'destroy'])->name('tenant.departments.destroy');
 
                 // Suppliers
                 Route::resource('suppliers', SupplierController::class)->names([
@@ -564,6 +576,8 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/reports/kitchen/recipe-consumption', [KitchenReportController::class, 'recipeConsumption'])->name('tenant.reports.kitchen.recipe-consumption');
                 Route::get('/reports/kitchen/wastage', [KitchenReportController::class, 'wastage'])->name('tenant.reports.kitchen.wastage');
                 Route::get('/reports/kitchen/production', [KitchenReportController::class, 'production'])->name('tenant.reports.kitchen.production');
+                Route::get('/reports/departments/sales', [DepartmentReportController::class, 'sales'])->name('tenant.reports.departments.sales');
+                Route::get('/reports/departments/consumption', [DepartmentReportController::class, 'consumption'])->name('tenant.reports.departments.consumption');
                 Route::get('/reports/audit/manager-approvals', [AuditReportController::class, 'managerApprovals'])->name('tenant.reports.audit.manager-approvals');
                 Route::get('/reports/printing/jobs', [PrintReportController::class, 'jobs'])->name('tenant.reports.printing.jobs');
 

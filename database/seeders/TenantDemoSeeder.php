@@ -97,6 +97,7 @@ class TenantDemoSeeder extends Seeder
         $this->seedRecipes();
         $this->seedManufacturingDemoProducts();
         $this->seedManufacturingPostingSettings();
+        $this->seedDepartments();
 
         app(TenancyManager::class)->deactivate();
 
@@ -2605,6 +2606,19 @@ class TenantDemoSeeder extends Seeder
         }
 
         $this->command->line('  Manufacturing demo products seeded: ' . count($products));
+    }
+
+    // DEPARTMENT-FOUNDATION-1: demo departments + category/product mappings.
+    // Mapping/reporting only — no stock movement. Shared seeder skips missing
+    // categories/SKUs safely and is idempotent.
+    private function seedDepartments(): void
+    {
+        $counts = \Database\Seeders\Tenant\DemoDepartmentSeeder::seed();
+
+        $this->command->line(sprintf(
+            '  Departments seeded: %d (category maps: %d, product overrides: %d)',
+            $counts['departments'], $counts['category_maps'], $counts['product_overrides']
+        ));
     }
 
     private function seedManufacturingPostingSettings(): void

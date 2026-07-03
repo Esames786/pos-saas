@@ -77,6 +77,9 @@ class EnterpriseDemoSeeder
         $this->seedRestaurantSales();
         $this->seedKdsOrders();
 
+        // DEPARTMENT-FOUNDATION-1: mapping/reporting only — no stock movement.
+        $this->counts['departments'] = \Database\Seeders\Tenant\DemoDepartmentSeeder::seed()['departments'];
+
         $this->counts['billing'] = 'skipped for safety (no payment proofs / invoices)';
 
         return $this->counts;

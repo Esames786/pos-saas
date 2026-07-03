@@ -242,7 +242,7 @@
 
                 {{-- ── INVENTORY (stock of the products defined above) ─────────── --}}
                 @if($hasModule('inventory') || $hasModule('stock_count'))
-                @canany(['tenant.inventory.index','tenant.stock-adjustments.index','tenant.stock-transfers.index','tenant.stock-counts.index'])
+                @canany(['tenant.inventory.index','tenant.stock-adjustments.index','tenant.stock-transfers.index','tenant.stock-counts.index','tenant.departments.index'])
                 <li class="submenu">
                     <a href="javascript:void(0);">
                         <i class="ti ti-box fs-16 me-2"></i>
@@ -311,6 +311,14 @@
                             <li class="{{ $a ? 'active' : '' }}">
                                 <a href="{{ url('/stock-counts') }}" class="{{ $a ? 'active' : '' }}">
                                     <i class="ti ti-clipboard-list fs-16 me-2"></i><span>Stock Counts</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.departments.index')
+                            @php $a = $isIn('departments*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/departments') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-building-warehouse fs-16 me-2"></i><span>Departments</span>
                                 </a>
                             </li>
                         @endcan
@@ -880,7 +888,7 @@
                 @endif
 
                 {{-- ── REPORTS ─────────────────────────────────────────────────── --}}
-                @canany(['tenant.reports.sales.summary','tenant.reports.shifts','tenant.reports.inventory.valuation','tenant.reports.purchases.payables','tenant.reports.restaurant.tables','tenant.reports.kitchen.recipe-consumption','tenant.reports.audit.manager-approvals','tenant.reports.printing.jobs'])
+                @canany(['tenant.reports.sales.summary','tenant.reports.shifts','tenant.reports.inventory.valuation','tenant.reports.purchases.payables','tenant.reports.restaurant.tables','tenant.reports.kitchen.recipe-consumption','tenant.reports.departments.sales','tenant.reports.audit.manager-approvals','tenant.reports.printing.jobs'])
                 <li class="submenu">
                     <a href="javascript:void(0);">
                         <i class="ti ti-chart-bar fs-16 me-2"></i>
@@ -943,6 +951,14 @@
                             <li class="{{ $a ? 'active' : '' }}">
                                 <a href="{{ url('/reports/kitchen/recipe-consumption') }}" class="{{ $a ? 'active' : '' }}">
                                     <i class="ti ti-pot fs-16 me-2"></i><span>Kitchen Reports</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.reports.departments.sales')
+                            @php $a = $isIn('reports/departments*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/reports/departments/sales') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-building-warehouse fs-16 me-2"></i><span>Department Reports</span>
                                 </a>
                             </li>
                         @endcan

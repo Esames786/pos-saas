@@ -52,6 +52,9 @@ class RestaurantProDemoSeeder extends RestaurantDemoSeeder
         $this->seedSampleOrders();     // recipe items consume ingredients
         $this->seedKdsOrders();        // held orders for kitchen display
 
+        // DEPARTMENT-FOUNDATION-1: mapping/reporting only — no stock movement.
+        $this->counts['departments'] = \Database\Seeders\Tenant\DemoDepartmentSeeder::seed()['departments'];
+
         return $this->counts;
     }
 

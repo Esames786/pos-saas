@@ -1,0 +1,54 @@
+<?php
+
+namespace App\Http\Controllers\Tenant\Reports;
+
+use App\Http\Controllers\Controller;
+use App\Models\Tenant\Branch;
+use App\Models\Tenant\Department;
+use App\Services\Reports\DepartmentReportService;
+use Illuminate\Http\Request;
+
+/**
+ * DEPARTMENT-FOUNDATION-1 — read-only department reports built from existing
+ * sales and stock-ledger data. No stock movement, no GL.
+ */
+class DepartmentReportController extends Controller
+{
+    public function __construct(private readonly DepartmentReportService $service) {}
+
+    public function sales(Request $request)
+    {
+        $filters = [
+            'date_from'     => $request->input('date_from', today()->subDays(6)->format('Y-m-d')),
+            'date_to'       => $request->input('date_to',   today()->format('Y-m-d')),
+            'branch_id'     => $request->input('branch_id'),
+            'department_id' => $request->input('department_id'),
+            'order_type'    => $request->input('order_type'),
+        ];
+
+        $report      = $this->service->sales($filters);
+        $branches    = Branch::where('status', 'active')->orderBy('name')->get();
+        $departments = Department::with('branch')->orderBy('branch_id')->orderBy('sort_order')->orderBy('name')->get();
+        $orderTypes  = ['quick_sale', 'takeaway', 'dine_in', 'delivery'];
+
+        return view('tenant.reports.departments.sales', compact('report', 'filters', 'branches', 'departments', 'orderTypes'));
+    }
+
+    public function consumption(Request $request)
+    {
+        $filters = [
+            'date_from'     => $request->input('date_from', today()->subDays(6)->format('Y-m-d')),
+            'date_to'       => $request->input('date_to',   today()->format('Y-m-d')),
+            'branch_id'     => $request->input('branch_id'),
+            'department_id' => $request->input('department_id'),
+            'movement_type' => $request->input('movement_type'),
+        ];
+
+        $report        = $this->service->consumption($filters);
+        $branches      = Branch::where('status', 'active')->orderBy('name')->get();
+        $departments   = Department::with('branch')->orderBy('branch_id')->orderBy('sort_order')->orderBy('name')->get();
+        $movementTypes = DepartmentReportService::CONSUMPTION_MOVEMENT_TYPES;
+
+        return view('tenant.reports.departments.consumption', compact('report', 'filters', 'branches', 'departments', 'movementTypes'));
+    }
+}
