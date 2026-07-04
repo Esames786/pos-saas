@@ -338,6 +338,14 @@
                                 </a>
                             </li>
                         @endcan
+                        @can('tenant.department-counts.index')
+                            @php $a = $isIn('department-counts*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/department-counts') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-clipboard-check fs-16 me-2"></i><span>Department Counts</span>
+                                </a>
+                            </li>
+                        @endcan
                     </ul>
                 </li>
                 @endcanany

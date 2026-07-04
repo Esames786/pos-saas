@@ -83,6 +83,7 @@ use App\Http\Controllers\Tenant\Reports\PrintReportController;
 use App\Http\Controllers\Tenant\Reports\DepartmentReportController;
 use App\Http\Controllers\Tenant\DepartmentController;
 use App\Http\Controllers\Tenant\DepartmentStockTransferController;
+use App\Http\Controllers\Tenant\DepartmentCountController;
 use App\Http\Controllers\Tenant\Manufacturing\ManufacturingCustomerController;
 use App\Http\Controllers\Tenant\Manufacturing\ProductionOrderController;
 use App\Http\Controllers\Tenant\Manufacturing\BomController;
@@ -301,6 +302,18 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::put('/department-stock/transfers/{transfer}', [DepartmentStockTransferController::class, 'update'])->name('tenant.department-stock.transfers.update');
                 Route::post('/department-stock/transfers/{transfer}/post', [DepartmentStockTransferController::class, 'post'])->name('tenant.department-stock.transfers.post');
                 Route::post('/department-stock/transfers/{transfer}/cancel', [DepartmentStockTransferController::class, 'cancel'])->name('tenant.department-stock.transfers.cancel');
+
+                // Department counts (DEPT-4) — custody reconciliation only.
+                Route::get('/department-counts', [DepartmentCountController::class, 'index'])->name('tenant.department-counts.index');
+                Route::get('/department-counts/create', [DepartmentCountController::class, 'create'])->name('tenant.department-counts.create');
+                Route::post('/department-counts', [DepartmentCountController::class, 'store'])->name('tenant.department-counts.store');
+                Route::get('/department-counts/{session}', [DepartmentCountController::class, 'show'])->name('tenant.department-counts.show');
+                Route::get('/department-counts/{session}/edit', [DepartmentCountController::class, 'edit'])->name('tenant.department-counts.edit');
+                Route::put('/department-counts/{session}', [DepartmentCountController::class, 'update'])->name('tenant.department-counts.update');
+                Route::post('/department-counts/{session}/submit', [DepartmentCountController::class, 'submit'])->name('tenant.department-counts.submit');
+                Route::post('/department-counts/{session}/approve', [DepartmentCountController::class, 'approve'])->name('tenant.department-counts.approve');
+                Route::post('/department-counts/{session}/reject', [DepartmentCountController::class, 'reject'])->name('tenant.department-counts.reject');
+                Route::post('/department-counts/{session}/cancel', [DepartmentCountController::class, 'cancel'])->name('tenant.department-counts.cancel');
 
                 // Suppliers
                 Route::resource('suppliers', SupplierController::class)->names([
@@ -596,6 +609,7 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/reports/departments/allocation', [DepartmentReportController::class, 'allocation'])->name('tenant.reports.departments.allocation');
                 // DEPT-3A: shadow consumption exception report + resolve/ignore actions.
                 Route::get('/reports/departments/consumption-exceptions', [DepartmentReportController::class, 'consumptionExceptions'])->name('tenant.reports.departments.consumption-exceptions');
+                Route::get('/reports/departments/reconciliation', [DepartmentReportController::class, 'reconciliation'])->name('tenant.reports.departments.reconciliation');
                 Route::post('/department-consumption-exceptions/{exception}/resolve', [DepartmentReportController::class, 'resolveException'])->name('tenant.department-consumption-exceptions.resolve');
                 Route::post('/department-consumption-exceptions/{exception}/ignore', [DepartmentReportController::class, 'ignoreException'])->name('tenant.department-consumption-exceptions.ignore');
                 Route::get('/reports/audit/manager-approvals', [AuditReportController::class, 'managerApprovals'])->name('tenant.reports.audit.manager-approvals');

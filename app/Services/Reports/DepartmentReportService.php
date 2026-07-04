@@ -398,6 +398,63 @@ class DepartmentReportService
     }
 
     /**
+     * DEPT-4 — reconciliation report: count lines with variances + summary.
+     *
+     * @return array{rows: \Illuminate\Contracts\Pagination\LengthAwarePaginator, summary: array}
+     */
+    public function reconciliation(array $filters): array
+    {
+        $base = \App\Models\Tenant\DepartmentCountLine::query()
+            ->whereHas('session', function ($q) use ($filters) {
+                $q->when(!empty($filters['date_from']),     fn ($s) => $s->whereDate('count_date', '>=', $filters['date_from']))
+                  ->when(!empty($filters['date_to']),       fn ($s) => $s->whereDate('count_date', '<=', $filters['date_to']))
+                  ->when(!empty($filters['branch_id']),     fn ($s) => $s->where('branch_id', $filters['branch_id']))
+                  ->when(!empty($filters['department_id']), fn ($s) => $s->where('department_id', $filters['department_id']))
+                  ->when(!empty($filters['status']),        fn ($s) => $s->where('status', $filters['status']));
+            })
+            ->when(!empty($filters['reason']), fn ($q) => $q->where('reason_code', $filters['reason']));
+
+        $rows = (clone $base)
+            ->with(['session.branch:id,name', 'session.department:id,name,code', 'session.approvedBy:id,name', 'product:id,sku,name'])
+            ->orderByDesc('id')
+            ->paginate(30)
+            ->withQueryString();
+
+        $all = (clone $base)->with('session.department:id,name')->get(['id', 'department_count_session_id', 'variance_qty', 'variance_value', 'product_id']);
+
+        $positive = $all->where('variance_qty', '>', 0);
+        $negative = $all->where('variance_qty', '<', 0);
+
+        $byDept = [];
+        foreach ($all as $line) {
+            $name = $line->session?->department?->name ?? '—';
+            $byDept[$name] = ($byDept[$name] ?? 0) + (float) $line->variance_value;
+        }
+
+        $byProduct = [];
+        foreach ($all as $line) {
+            $byProduct[$line->product_id] = ($byProduct[$line->product_id] ?? 0) + abs((float) $line->variance_value);
+        }
+        arsort($byProduct);
+        $topProducts = collect(array_slice($byProduct, 0, 5, true))
+            ->map(fn ($value, $pid) => ['product' => Product::find($pid)?->name ?? ('#' . $pid), 'value' => $value])
+            ->values()->all();
+
+        return [
+            'rows'    => $rows,
+            'summary' => [
+                'positive_qty'    => (float) $positive->sum('variance_qty'),
+                'positive_value'  => (float) $positive->sum('variance_value'),
+                'negative_qty'    => (float) $negative->sum('variance_qty'),
+                'negative_value'  => (float) $negative->sum('variance_value'),
+                'by_department'   => $byDept,
+                'top_products'    => $topProducts,
+                'awaiting_approval' => \App\Models\Tenant\DepartmentCountSession::where('status', 'submitted')->count(),
+            ],
+        ];
+    }
+
+    /**
      * DEPT-2 — small stock summary for the department show page.
      */
     public function stockSummary(\App\Models\Tenant\Department $department): array

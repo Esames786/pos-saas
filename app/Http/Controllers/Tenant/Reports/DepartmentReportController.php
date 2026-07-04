@@ -123,6 +123,28 @@ class DepartmentReportController extends Controller
         return view('tenant.reports.departments.consumption-exceptions', compact('rows', 'filters', 'branches', 'departments', 'reasons'));
     }
 
+    // ── DEPT-4 reconciliation report ─────────────────────────────────────────
+
+    public function reconciliation(Request $request)
+    {
+        $filters = [
+            'date_from'     => $request->input('date_from', today()->subDays(29)->format('Y-m-d')),
+            'date_to'       => $request->input('date_to',   today()->format('Y-m-d')),
+            'branch_id'     => $request->input('branch_id'),
+            'department_id' => $request->input('department_id'),
+            'status'        => $request->input('status'),
+            'reason'        => $request->input('reason'),
+        ];
+
+        $report      = $this->service->reconciliation($filters);
+        $branches    = Branch::where('status', 'active')->orderBy('name')->get();
+        $departments = Department::with('branch')->orderBy('branch_id')->orderBy('sort_order')->orderBy('name')->get();
+        $reasons     = \App\Models\Tenant\DepartmentCountSession::REASON_CODES;
+        $statuses    = ['draft', 'submitted', 'approved', 'rejected', 'cancelled'];
+
+        return view('tenant.reports.departments.reconciliation', compact('report', 'filters', 'branches', 'departments', 'reasons', 'statuses'));
+    }
+
     public function resolveException(\App\Models\Tenant\DepartmentConsumptionException $exception)
     {
         $exception->update(['status' => 'resolved', 'resolved_by' => auth()->id(), 'resolved_at' => now()]);
