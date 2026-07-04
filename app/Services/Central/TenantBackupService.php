@@ -133,11 +133,15 @@ class TenantBackupService
     {
         $db = $tenant->database;
 
+        // PROD-FIX: config fallbacks, not env() — runtime env() is null under
+        // `config:cache` and would fall back to root/no-password.
+        $template = config('database.connections.tenant');
+
         return [
-            'host'     => $db?->db_host ?: env('TENANT_DB_HOST', '127.0.0.1'),
-            'port'     => $db?->db_port ?: env('TENANT_DB_PORT', 3306),
-            'username' => $db?->db_username ?: env('TENANT_DB_USERNAME', 'root'),
-            'password' => $db?->db_password ?? env('TENANT_DB_PASSWORD', ''),
+            'host'     => $db?->db_host ?: ($template['host'] ?? '127.0.0.1'),
+            'port'     => $db?->db_port ?: ($template['port'] ?? 3306),
+            'username' => $db?->db_username ?: ($template['username'] ?? 'root'),
+            'password' => $db?->db_password ?? ($template['password'] ?? ''),
             'database' => $db?->db_database,
         ];
     }

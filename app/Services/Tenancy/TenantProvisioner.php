@@ -28,15 +28,22 @@ class TenantProvisioner
     {
         $dbName = $this->makeDatabaseName($tenant);
 
+        // PROD-FIX: read creds from config, NOT env() — under `config:cache`
+        // runtime env() returns null, which used to store db_username='root'
+        // (the fallback) and break every later tenant connection with
+        // "Access denied for 'root'@'localhost'". config/database.php reads
+        // the TENANT_DB_* env vars at cache-build time, so this is cache-safe.
+        $template = config('database.connections.tenant');
+
         TenantDatabase::updateOrCreate(
             ['tenant_id' => $tenant->id],
             [
                 'db_connection' => 'tenant',
-                'db_host'       => env('TENANT_DB_HOST', '127.0.0.1'),
-                'db_port'       => env('TENANT_DB_PORT', 3306),
+                'db_host'       => $template['host'] ?? '127.0.0.1',
+                'db_port'       => $template['port'] ?? 3306,
                 'db_database'   => $dbName,
-                'db_username'   => env('TENANT_DB_USERNAME', 'root'),
-                'db_password'   => env('TENANT_DB_PASSWORD'),
+                'db_username'   => $template['username'] ?? 'root',
+                'db_password'   => $template['password'] ?? null,
                 'migration_status' => 'pending',
             ]
         );
@@ -73,6 +80,12 @@ class TenantProvisioner
 
             $this->tenancyManager->deactivate();
 
+            // PROD-FIX: the spatie permission cache is ONE shared key for both
+            // master and tenant permission tables. Provisioning rebuilds it with
+            // TENANT perms, which 403s the central superadmin panel afterwards.
+            // Flush as the LAST step so the next request rebuilds it correctly.
+            app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
+
             return $tenant->fresh(['domains', 'database', 'subscription']);
         } catch (Throwable $e) {
             if ($tenant->database) {
@@ -80,6 +93,7 @@ class TenantProvisioner
             }
 
             $this->tenancyManager->deactivate();
+            app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
 
             throw $e;
         }

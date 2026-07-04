@@ -26,6 +26,12 @@ class TenancyManager
 
     public function configureTenantConnection(TenantDatabase $database): void
     {
+        // PROD-FIX: fall back to the boot-time config template password, NOT
+        // env() — runtime env() is null under `config:cache`. Captured once
+        // (static) because this method overwrites the tenant config entry.
+        static $templatePassword = null;
+        $templatePassword ??= config('database.connections.tenant.password') ?? '';
+
         config(['database.connections.tenant' => array_merge(
             config('database.connections.tenant', []),
             [
@@ -33,7 +39,7 @@ class TenancyManager
                 'port'     => (int) $database->db_port,
                 'database' => $database->db_database,
                 'username' => $database->db_username,
-                'password' => $database->db_password ?? env('TENANT_DB_PASSWORD', ''),
+                'password' => $database->db_password ?? $templatePassword,
             ]
         )]);
 
