@@ -47,6 +47,20 @@
             <div class="text-muted small">Movements (7 days)</div>
             <div class="fw-bold fs-5">{{ $stockSummary['recent_movements'] }}</div>
         </div>
+        @isset($stockSummary['recent_shadow_consumption'])
+        <div>
+            <div class="text-muted small">Shadow Consumption (7d)</div>
+            <div class="fw-bold fs-5">{{ $stockSummary['recent_shadow_consumption'] }}</div>
+        </div>
+        @endisset
+        @if(($stockSummary['open_exceptions'] ?? 0) > 0)
+        <div>
+            <div class="text-muted small">Open Exceptions</div>
+            <div class="fw-bold fs-5 text-warning">
+                <a href="{{ url('/reports/departments/consumption-exceptions?department_id=' . $department->id . '&status=open') }}" class="text-warning">{{ $stockSummary['open_exceptions'] }}</a>
+            </div>
+        </div>
+        @endif
         <div class="ms-auto d-flex flex-wrap gap-2 small">
             @can('tenant.department-stock.index')
                 <a href="{{ url('/department-stock?department_id=' . $department->id) }}" class="btn btn-sm btn-light"><i class="ti ti-building-warehouse me-1"></i>View Department Stock</a>

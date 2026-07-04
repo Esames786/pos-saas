@@ -971,10 +971,18 @@
                             </li>
                         @endcan
                         @can('tenant.reports.departments.sales')
-                            @php $a = $isIn('reports/departments*'); @endphp
+                            @php $a = $isIn('reports/departments*') && !$isIn('reports/departments/consumption-exceptions'); @endphp
                             <li class="{{ $a ? 'active' : '' }}">
                                 <a href="{{ url('/reports/departments/sales') }}" class="{{ $a ? 'active' : '' }}">
                                     <i class="ti ti-building-warehouse fs-16 me-2"></i><span>Department Reports</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.reports.departments.consumption-exceptions')
+                            @php $a = $isIn('reports/departments/consumption-exceptions'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/reports/departments/consumption-exceptions') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-alert-triangle fs-16 me-2"></i><span>Dept Exceptions</span>
                                 </a>
                             </li>
                         @endcan

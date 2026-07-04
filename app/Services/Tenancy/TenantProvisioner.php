@@ -624,6 +624,9 @@ class TenantProvisioner
             'tenant.reports.departments.stock',
             'tenant.reports.departments.movements',
             'tenant.reports.departments.allocation',
+            'tenant.reports.departments.consumption-exceptions',
+            'tenant.department-consumption-exceptions.resolve',
+            'tenant.department-consumption-exceptions.ignore',
             'tenant.reports.audit.manager-approvals',
             'tenant.reports.printing.jobs',
 

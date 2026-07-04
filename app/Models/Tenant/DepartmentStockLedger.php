@@ -12,7 +12,7 @@ class DepartmentStockLedger extends Model
 {
     protected $connection = 'tenant';
 
-    /** Custody movement types for this phase. */
+    /** Custody movement types (string column — extend freely, no ALTER). */
     public const MOVEMENT_TYPES = [
         'branch_issue_in',
         'branch_return_out',
@@ -21,6 +21,20 @@ class DepartmentStockLedger extends Model
         'department_adjustment_in',
         'department_adjustment_out',
         'opening_department_stock',
+        // DEPT-3A: shadow mirrors of official sale out-movements. Custody only —
+        // the official stock_ledgers row remains the single financial truth.
+        'sale_shadow_consumption_out',
+        'recipe_shadow_consumption_out',
+        'modifier_shadow_consumption_out',
+        'wastage_shadow_consumption_out',
+    ];
+
+    /** DEPT-3A: official stock_ledgers movement_type → shadow custody type. */
+    public const SHADOW_TYPE_MAP = [
+        'sale'                 => 'sale_shadow_consumption_out',
+        'recipe_consumption'   => 'recipe_shadow_consumption_out',
+        'modifier_consumption' => 'modifier_shadow_consumption_out',
+        'wastage'              => 'wastage_shadow_consumption_out',
     ];
 
     protected $fillable = [

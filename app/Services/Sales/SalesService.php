@@ -136,6 +136,16 @@ class SalesService
         // FIN-7C: operational cash/bank balance movement for POS receipts (safe + idempotent).
         $journalPosting->postSalesCashBankMovement($sale, $sale->created_by_user_id);
 
+        // DEPT-3A: shadow department custody deduction mirroring the official
+        // out-movements above. Custody sub-ledger ONLY (no stock/COGS/GL twice);
+        // idempotent per ledger; shortages/no-mapping become exception rows —
+        // this can NEVER block or fail the sale.
+        try {
+            app(\App\Services\Departments\DepartmentConsumptionService::class)->processSaleOrder($sale);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
         return $sale;
     }
 

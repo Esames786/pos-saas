@@ -377,6 +377,27 @@ class DepartmentReportService
     }
 
     /**
+     * DEPT-3A — shadow consumption exception report (paginated).
+     */
+    public function consumptionExceptions(array $filters)
+    {
+        return \App\Models\Tenant\DepartmentConsumptionException::query()
+            ->with(['branch:id,name', 'department:id,name,code', 'product:id,sku,name', 'stockLedger:id,movement_type,reference_no'])
+            ->when(!empty($filters['date_from']),     fn ($q) => $q->whereDate('created_at', '>=', $filters['date_from']))
+            ->when(!empty($filters['date_to']),       fn ($q) => $q->whereDate('created_at', '<=', $filters['date_to']))
+            ->when(!empty($filters['branch_id']),     fn ($q) => $q->where('branch_id', $filters['branch_id']))
+            ->when(!empty($filters['department_id']), fn ($q) => $q->where('department_id', $filters['department_id']))
+            ->when(!empty($filters['reason']),        fn ($q) => $q->where('reason', $filters['reason']))
+            ->when(!empty($filters['status']),        fn ($q) => $q->where('status', $filters['status']))
+            ->when(!empty($filters['product']),       fn ($q) => $q->whereHas('product', fn ($p) => $p
+                ->where('name', 'like', '%' . $filters['product'] . '%')
+                ->orWhere('sku', 'like', '%' . $filters['product'] . '%')))
+            ->orderByDesc('id')
+            ->paginate(30)
+            ->withQueryString();
+    }
+
+    /**
      * DEPT-2 — small stock summary for the department show page.
      */
     public function stockSummary(\App\Models\Tenant\Department $department): array
@@ -391,6 +412,12 @@ class DepartmentReportService
             'product_count'    => $balances->count(),
             'recent_movements' => \App\Models\Tenant\DepartmentStockLedger::where('department_id', $department->id)
                 ->where('created_at', '>=', now()->subDays(7))->count(),
+            // DEPT-3A: shadow custody deductions mirrored from sales (last 7 days).
+            'recent_shadow_consumption' => \App\Models\Tenant\DepartmentStockLedger::where('department_id', $department->id)
+                ->where('created_at', '>=', now()->subDays(7))
+                ->where('movement_type', 'like', '%_shadow_consumption_out')->count(),
+            'open_exceptions'  => \App\Models\Tenant\DepartmentConsumptionException::where('department_id', $department->id)
+                ->where('status', 'open')->count(),
         ];
     }
 

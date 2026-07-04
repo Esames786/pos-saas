@@ -594,6 +594,10 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/reports/departments/stock', [DepartmentReportController::class, 'stock'])->name('tenant.reports.departments.stock');
                 Route::get('/reports/departments/movements', [DepartmentReportController::class, 'movements'])->name('tenant.reports.departments.movements');
                 Route::get('/reports/departments/allocation', [DepartmentReportController::class, 'allocation'])->name('tenant.reports.departments.allocation');
+                // DEPT-3A: shadow consumption exception report + resolve/ignore actions.
+                Route::get('/reports/departments/consumption-exceptions', [DepartmentReportController::class, 'consumptionExceptions'])->name('tenant.reports.departments.consumption-exceptions');
+                Route::post('/department-consumption-exceptions/{exception}/resolve', [DepartmentReportController::class, 'resolveException'])->name('tenant.department-consumption-exceptions.resolve');
+                Route::post('/department-consumption-exceptions/{exception}/ignore', [DepartmentReportController::class, 'ignoreException'])->name('tenant.department-consumption-exceptions.ignore');
                 Route::get('/reports/audit/manager-approvals', [AuditReportController::class, 'managerApprovals'])->name('tenant.reports.audit.manager-approvals');
                 Route::get('/reports/printing/jobs', [PrintReportController::class, 'jobs'])->name('tenant.reports.printing.jobs');
 

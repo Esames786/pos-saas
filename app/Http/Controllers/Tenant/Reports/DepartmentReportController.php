@@ -100,4 +100,40 @@ class DepartmentReportController extends Controller
 
         return view('tenant.reports.departments.allocation', compact('report', 'filters', 'branches'));
     }
+
+    // ── DEPT-3A shadow consumption exceptions ────────────────────────────────
+
+    public function consumptionExceptions(Request $request)
+    {
+        $filters = [
+            'date_from'     => $request->input('date_from', today()->subDays(29)->format('Y-m-d')),
+            'date_to'       => $request->input('date_to',   today()->format('Y-m-d')),
+            'branch_id'     => $request->input('branch_id'),
+            'department_id' => $request->input('department_id'),
+            'reason'        => $request->input('reason'),
+            'status'        => $request->input('status'),
+            'product'       => $request->input('product'),
+        ];
+
+        $rows        = $this->service->consumptionExceptions($filters);
+        $branches    = Branch::where('status', 'active')->orderBy('name')->get();
+        $departments = Department::with('branch')->orderBy('branch_id')->orderBy('sort_order')->orderBy('name')->get();
+        $reasons     = \App\Models\Tenant\DepartmentConsumptionException::REASONS;
+
+        return view('tenant.reports.departments.consumption-exceptions', compact('rows', 'filters', 'branches', 'departments', 'reasons'));
+    }
+
+    public function resolveException(\App\Models\Tenant\DepartmentConsumptionException $exception)
+    {
+        $exception->update(['status' => 'resolved', 'resolved_by' => auth()->id(), 'resolved_at' => now()]);
+
+        return back()->with('status', 'Exception marked resolved.');
+    }
+
+    public function ignoreException(\App\Models\Tenant\DepartmentConsumptionException $exception)
+    {
+        $exception->update(['status' => 'ignored', 'resolved_by' => auth()->id(), 'resolved_at' => now()]);
+
+        return back()->with('status', 'Exception marked ignored.');
+    }
 }
