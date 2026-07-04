@@ -11,6 +11,7 @@ use App\Models\Tenant\PurchaseBill;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\SalesReturn;
 use App\Models\Tenant\SupplierPayment;
+use Illuminate\Support\Facades\DB;
 use Throwable;
 
 /**

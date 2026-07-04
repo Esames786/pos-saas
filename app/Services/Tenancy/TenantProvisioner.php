@@ -26,6 +26,15 @@ class TenantProvisioner
 
     public function provisionTenant(Tenant $tenant, string $ownerPassword): Tenant
     {
+        // Provisioning (117 migrations + base seed) takes longer than PHP-FPM's
+        // max_execution_time (30s) — the request was being killed mid-provision,
+        // leaving migration_status stuck at "running". Lift the PHP limit and
+        // keep going even if the admin navigates away; the whole method is
+        // idempotent (updateOrCreate / IF NOT EXISTS / migrate --force), so a
+        // re-click also safely completes a half-done provision.
+        @set_time_limit(0);
+        ignore_user_abort(true);
+
         $dbName = $this->makeDatabaseName($tenant);
 
         // PROD-FIX: read creds from config, NOT env() — under `config:cache`

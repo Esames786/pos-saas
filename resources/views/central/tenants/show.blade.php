@@ -293,6 +293,26 @@
                             {{ ucfirst($tenant->database->migration_status) }}
                         </span>
                     </div>
+                    @if($tenant->database->migration_status === 'running')
+                        <div class="alert alert-warning py-2 px-3 mb-0 small" id="provision-progress">
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
+                                <strong>Provisioning in progress…</strong>
+                            </div>
+                            <div class="progress mb-2" style="height:6px;">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated bg-warning w-100"></div>
+                            </div>
+                            Creating the database, running migrations, and seeding starter data.
+                            This page refreshes automatically every few seconds.
+                            <div class="text-muted mt-1">Stuck on "Running" for over 2 minutes? Click <strong>Provision &amp; Activate</strong> again — it safely resumes and completes a half-done setup.</div>
+                        </div>
+                        <script>setTimeout(function () { window.location.reload(); }, 6000);</script>
+                    @elseif($tenant->database->migration_status === 'failed')
+                        <div class="alert alert-danger py-2 px-3 mb-0 small">
+                            <i class="ti ti-alert-triangle me-1"></i>
+                            Last provisioning attempt <strong>failed</strong>. Click <strong>Provision &amp; Activate</strong> again — it safely retries from where it stopped.
+                        </div>
+                    @endif
                 @else
                     <p class="text-muted mb-0">No database provisioned yet.</p>
                 @endif
@@ -306,10 +326,12 @@
                     <div class="card-header"><h5 class="mb-0">Provision Database</h5></div>
                     <div class="card-body">
                         <p class="text-muted small">
-                            Creates the tenant database, runs migrations, and seeds the default owner user.
+                            Creates the tenant database, runs all migrations, and seeds the starter data
+                            (owner login, main branch, currency, payment methods, chart of accounts).
+                            <strong>Takes 1–2 minutes.</strong>
                         </p>
 
-                        <form method="POST" action="{{ url('/tenants/' . $tenant->id . '/provision') }}" class="row g-3">
+                        <form method="POST" action="{{ url('/tenants/' . $tenant->id . '/provision') }}" class="row g-3" id="provision-form">
                             @csrf
 
                             <div class="col-12">
@@ -323,11 +345,31 @@
                             </div>
 
                             <div class="col-12">
-                                <button class="btn btn-success w-100">
-                                    <i class="ti ti-database me-1"></i>Provision &amp; Activate
+                                <button class="btn btn-success w-100" id="provision-btn">
+                                    <span class="spinner-border spinner-border-sm me-1 d-none" id="provision-spinner" role="status" aria-hidden="true"></span>
+                                    <i class="ti ti-database me-1" id="provision-icon"></i>
+                                    <span id="provision-label">Provision &amp; Activate</span>
                                 </button>
+                                <div class="alert alert-info py-2 px-3 mt-2 mb-0 small d-none" id="provision-wait-note">
+                                    <strong>Setting up the account…</strong> creating database, running migrations, seeding starter data.
+                                    Please keep this page open — it can take up to 2 minutes.
+                                </div>
                             </div>
                         </form>
+                        <script>
+                            (function () {
+                                var form = document.getElementById('provision-form');
+                                if (!form) return;
+                                form.addEventListener('submit', function () {
+                                    var btn = document.getElementById('provision-btn');
+                                    btn.disabled = true;
+                                    document.getElementById('provision-spinner').classList.remove('d-none');
+                                    document.getElementById('provision-icon').classList.add('d-none');
+                                    document.getElementById('provision-label').textContent = 'Provisioning… please wait';
+                                    document.getElementById('provision-wait-note').classList.remove('d-none');
+                                });
+                            })();
+                        </script>
                     </div>
                 </div>
             @endif
