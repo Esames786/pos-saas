@@ -31,6 +31,38 @@
     <div class="alert alert-success" role="alert">{{ session('status') }}</div>
 @endif
 
+{{-- DEPT-2: custody stock summary --}}
+@isset($stockSummary)
+<div class="card mb-3 border-info-subtle">
+    <div class="card-body d-flex flex-wrap align-items-center gap-4 py-2">
+        <div>
+            <div class="text-muted small">Custody Stock Value</div>
+            <div class="fw-bold fs-5">{{ number_format($stockSummary['stock_value'], 2) }}</div>
+        </div>
+        <div>
+            <div class="text-muted small">Products in Custody</div>
+            <div class="fw-bold fs-5">{{ $stockSummary['product_count'] }}</div>
+        </div>
+        <div>
+            <div class="text-muted small">Movements (7 days)</div>
+            <div class="fw-bold fs-5">{{ $stockSummary['recent_movements'] }}</div>
+        </div>
+        <div class="ms-auto d-flex flex-wrap gap-2 small">
+            @can('tenant.department-stock.index')
+                <a href="{{ url('/department-stock?department_id=' . $department->id) }}" class="btn btn-sm btn-light"><i class="ti ti-building-warehouse me-1"></i>View Department Stock</a>
+            @endcan
+            @can('tenant.department-stock.transfers.create')
+                <a href="{{ url('/department-stock/transfers/create') }}" class="btn btn-sm btn-success"><i class="ti ti-arrow-down-to-arc me-1"></i>Issue Stock</a>
+                <a href="{{ url('/department-stock/transfers/create') }}" class="btn btn-sm btn-outline-warning"><i class="ti ti-arrow-back-up me-1"></i>Return Stock</a>
+            @endcan
+            @can('tenant.reports.departments.movements')
+                <a href="{{ url('/reports/departments/movements?department_id=' . $department->id) }}" class="btn btn-sm btn-light"><i class="ti ti-report me-1"></i>Movement Report</a>
+            @endcan
+        </div>
+    </div>
+</div>
+@endisset
+
 {{-- Setup coverage preview --}}
 <div class="card mb-3">
     <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">

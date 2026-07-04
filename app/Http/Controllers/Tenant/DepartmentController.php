@@ -67,8 +67,10 @@ class DepartmentController extends Controller
         $department->load(['branch', 'manager', 'categoryMaps.category', 'productOverrides.product']);
 
         return view('tenant.departments.show', [
-            'department' => $department,
-            'preview'    => $reportService->setupPreview($department),
+            'department'   => $department,
+            'preview'      => $reportService->setupPreview($department),
+            // DEPT-2: custody stock summary card.
+            'stockSummary' => $reportService->stockSummary($department),
         ]);
     }
 

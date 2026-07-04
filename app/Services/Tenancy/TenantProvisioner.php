@@ -365,6 +365,16 @@ class TenantProvisioner
             'tenant.departments.update',
             'tenant.departments.destroy',
 
+            'tenant.department-stock.index',
+            'tenant.department-stock.transfers.index',
+            'tenant.department-stock.transfers.create',
+            'tenant.department-stock.transfers.store',
+            'tenant.department-stock.transfers.show',
+            'tenant.department-stock.transfers.edit',
+            'tenant.department-stock.transfers.update',
+            'tenant.department-stock.transfers.post',
+            'tenant.department-stock.transfers.cancel',
+
             'tenant.suppliers.index',
             'tenant.suppliers.create',
             'tenant.suppliers.store',
@@ -611,6 +621,9 @@ class TenantProvisioner
             'tenant.reports.kitchen.production',
             'tenant.reports.departments.sales',
             'tenant.reports.departments.consumption',
+            'tenant.reports.departments.stock',
+            'tenant.reports.departments.movements',
+            'tenant.reports.departments.allocation',
             'tenant.reports.audit.manager-approvals',
             'tenant.reports.printing.jobs',
 

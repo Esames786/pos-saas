@@ -217,7 +217,7 @@ class MasterSeeder extends Seeder
                 'name' => 'Inventory',
                 'category' => 'Inventory',
                 'description' => 'Stock balances, ledgers, adjustments and transfers.',
-                'route_module_keys' => ['tenant.inventory', 'tenant.stock-adjustments', 'tenant.stock-transfers', 'tenant.departments'],
+                'route_module_keys' => ['tenant.inventory', 'tenant.stock-adjustments', 'tenant.stock-transfers', 'tenant.departments', 'tenant.department-stock'],
                 'sort_order' => 30,
                 'is_core' => false,
             ],

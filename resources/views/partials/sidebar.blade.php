@@ -242,7 +242,7 @@
 
                 {{-- ── INVENTORY (stock of the products defined above) ─────────── --}}
                 @if($hasModule('inventory') || $hasModule('stock_count'))
-                @canany(['tenant.inventory.index','tenant.stock-adjustments.index','tenant.stock-transfers.index','tenant.stock-counts.index','tenant.departments.index'])
+                @canany(['tenant.inventory.index','tenant.stock-adjustments.index','tenant.stock-transfers.index','tenant.stock-counts.index','tenant.departments.index','tenant.department-stock.index'])
                 <li class="submenu">
                     <a href="javascript:void(0);">
                         <i class="ti ti-box fs-16 me-2"></i>
@@ -319,6 +319,22 @@
                             <li class="{{ $a ? 'active' : '' }}">
                                 <a href="{{ url('/departments') }}" class="{{ $a ? 'active' : '' }}">
                                     <i class="ti ti-building-warehouse fs-16 me-2"></i><span>Departments</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.department-stock.index')
+                            @php $a = $isIn('department-stock') && !$isIn('department-stock/transfers*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/department-stock') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-stack-2 fs-16 me-2"></i><span>Department Stock</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.department-stock.transfers.index')
+                            @php $a = $isIn('department-stock/transfers*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/department-stock/transfers') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-arrows-exchange-2 fs-16 me-2"></i><span>Dept Stock Transfers</span>
                                 </a>
                             </li>
                         @endcan

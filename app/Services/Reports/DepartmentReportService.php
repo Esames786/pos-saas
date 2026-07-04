@@ -256,6 +256,145 @@ class DepartmentReportService
     }
 
     /**
+     * DEPT-2 — Department Stock Available (custody balances).
+     *
+     * @return array{rows: \Illuminate\Support\Collection, dept_totals: array, product_totals: array, total_value: float}
+     */
+    public function stock(array $filters): array
+    {
+        $rows = \App\Models\Tenant\DepartmentStockBalance::query()
+            ->with(['branch:id,name', 'department:id,name,code', 'product:id,sku,name,unit_id', 'product.unit:id,code', 'variant:id,name'])
+            ->when(!empty($filters['branch_id']),     fn ($q) => $q->where('branch_id', $filters['branch_id']))
+            ->when(!empty($filters['department_id']), fn ($q) => $q->where('department_id', $filters['department_id']))
+            ->when(!empty($filters['nonzero']),       fn ($q) => $q->where('quantity_on_hand', '!=', 0))
+            ->orderBy('branch_id')->orderBy('department_id')
+            ->get();
+
+        $deptTotals = [];
+        $prodTotals = [];
+        $totalValue = 0.0;
+
+        foreach ($rows as $row) {
+            $value = (float) $row->quantity_on_hand * (float) $row->average_cost;
+            $totalValue += $value;
+
+            $dk = $row->branch_id . '-' . $row->department_id;
+            $deptTotals[$dk] ??= ['branch' => $row->branch?->name, 'department' => $row->department?->name, 'qty' => 0.0, 'value' => 0.0];
+            $deptTotals[$dk]['qty']   += (float) $row->quantity_on_hand;
+            $deptTotals[$dk]['value'] += $value;
+
+            $pk = $row->product_id;
+            $prodTotals[$pk] ??= ['product' => $row->product?->name, 'sku' => $row->product?->sku, 'qty' => 0.0, 'value' => 0.0];
+            $prodTotals[$pk]['qty']   += (float) $row->quantity_on_hand;
+            $prodTotals[$pk]['value'] += $value;
+        }
+
+        usort($prodTotals, fn ($a, $b) => $b['value'] <=> $a['value']);
+
+        return [
+            'rows'           => $rows,
+            'dept_totals'    => array_values($deptTotals),
+            'product_totals' => array_slice(array_values($prodTotals), 0, 10),
+            'total_value'    => $totalValue,
+        ];
+    }
+
+    /**
+     * DEPT-2 — Department Movement report (custody ledger, paginated).
+     */
+    public function movements(array $filters)
+    {
+        return \App\Models\Tenant\DepartmentStockLedger::query()
+            ->with(['branch:id,name', 'department:id,name,code', 'product:id,sku,name', 'variant:id,name'])
+            ->when(!empty($filters['date_from']),     fn ($q) => $q->whereDate('created_at', '>=', $filters['date_from']))
+            ->when(!empty($filters['date_to']),       fn ($q) => $q->whereDate('created_at', '<=', $filters['date_to']))
+            ->when(!empty($filters['branch_id']),     fn ($q) => $q->where('branch_id', $filters['branch_id']))
+            ->when(!empty($filters['department_id']), fn ($q) => $q->where('department_id', $filters['department_id']))
+            ->when(!empty($filters['movement_type']), fn ($q) => $q->where('movement_type', $filters['movement_type']))
+            ->when(!empty($filters['product']),       fn ($q) => $q->whereHas('product', fn ($p) => $p
+                ->where('name', 'like', '%' . $filters['product'] . '%')
+                ->orWhere('sku', 'like', '%' . $filters['product'] . '%')))
+            ->orderByDesc('id')
+            ->paginate(30)
+            ->withQueryString();
+    }
+
+    /**
+     * DEPT-2 — Branch vs Department Allocation:
+     * unallocated = official branch stock − total department custody.
+     */
+    public function allocation(array $filters): array
+    {
+        $official = DB::connection('tenant')->table('stock_balances as sb')
+            ->leftJoin('products as p', 'p.id', '=', 'sb.product_id')
+            ->when(!empty($filters['branch_id']), fn ($q) => $q->where('sb.branch_id', $filters['branch_id']))
+            ->groupBy('sb.branch_id', 'sb.product_id')
+            ->select([
+                'sb.branch_id', 'sb.product_id',
+                DB::raw('MAX(p.name) as product_name'), DB::raw('MAX(p.sku) as product_sku'),
+                DB::raw('SUM(sb.quantity_on_hand) as official_qty'),
+            ])->get()->keyBy(fn ($r) => $r->branch_id . '-' . $r->product_id);
+
+        $allocated = DB::connection('tenant')->table('department_stock_balances as dsb')
+            ->when(!empty($filters['branch_id']), fn ($q) => $q->where('dsb.branch_id', $filters['branch_id']))
+            ->groupBy('dsb.branch_id', 'dsb.product_id')
+            ->select(['dsb.branch_id', 'dsb.product_id', DB::raw('SUM(dsb.quantity_on_hand) as allocated_qty')])
+            ->get()->keyBy(fn ($r) => $r->branch_id . '-' . $r->product_id);
+
+        $rows = [];
+        foreach ($official as $key => $o) {
+            $alloc = (float) ($allocated[$key]->allocated_qty ?? 0);
+            if (empty($filters['only_allocated']) || $alloc != 0.0) {
+                $rows[] = [
+                    'branch_id'   => (int) $o->branch_id,
+                    'product'     => $o->product_name,
+                    'sku'         => $o->product_sku,
+                    'official'    => (float) $o->official_qty,
+                    'allocated'   => $alloc,
+                    'unallocated' => (float) $o->official_qty - $alloc,
+                ];
+            }
+        }
+        // Departments holding custody of a product the branch no longer officially
+        // stocks (edge case) still must show up.
+        foreach ($allocated as $key => $a) {
+            if (! isset($official[$key])) {
+                $p = Product::find($a->product_id);
+                $rows[] = [
+                    'branch_id'   => (int) $a->branch_id,
+                    'product'     => $p?->name ?? ('#' . $a->product_id),
+                    'sku'         => $p?->sku,
+                    'official'    => 0.0,
+                    'allocated'   => (float) $a->allocated_qty,
+                    'unallocated' => -(float) $a->allocated_qty,
+                ];
+            }
+        }
+
+        usort($rows, fn ($x, $y) => [$x['branch_id'], -$x['allocated']] <=> [$y['branch_id'], -$y['allocated']]);
+
+        return ['rows' => $rows];
+    }
+
+    /**
+     * DEPT-2 — small stock summary for the department show page.
+     */
+    public function stockSummary(\App\Models\Tenant\Department $department): array
+    {
+        $balances = \App\Models\Tenant\DepartmentStockBalance::query()
+            ->where('department_id', $department->id)
+            ->where('quantity_on_hand', '!=', 0)
+            ->get(['quantity_on_hand', 'average_cost']);
+
+        return [
+            'stock_value'      => (float) $balances->sum(fn ($b) => (float) $b->quantity_on_hand * (float) $b->average_cost),
+            'product_count'    => $balances->count(),
+            'recent_movements' => \App\Models\Tenant\DepartmentStockLedger::where('department_id', $department->id)
+                ->where('created_at', '>=', now()->subDays(7))->count(),
+        ];
+    }
+
+    /**
      * Setup-coverage preview for one department (show page).
      */
     public function setupPreview(\App\Models\Tenant\Department $department): array

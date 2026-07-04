@@ -26,8 +26,13 @@ class ProductLookupController extends Controller
 
         // PURCHASING-UX-1: the purchase/GRN pickers need richer data (unit cost, unit,
         // default variant, current branch stock) to fill each line + fix the stale-cost bug.
-        $rich     = $request->boolean('rich') || in_array((string) $request->input('context', ''), ['purchase', 'inventory'], true);
+        // DEPT-2: department_stock context also returns custody figures (allocated,
+        // available-to-issue, source-department on hand, destination mapping match).
+        $context  = (string) $request->input('context', '');
+        $rich     = $request->boolean('rich') || in_array($context, ['purchase', 'inventory', 'department_stock'], true);
         $branchId = (int) $request->input('branch_id', 0);
+        $fromDeptId = (int) $request->input('from_department_id', 0);
+        $toDeptId   = (int) $request->input('to_department_id', 0);
 
         $query = $rich
             ? Product::query()->with(['unit:id,code,unit_type', 'variants'])
@@ -68,6 +73,7 @@ class ProductLookupController extends Controller
                 $query->where('can_be_bom_output', true);
                 break;
             case 'inventory':
+            case 'department_stock': // DEPT-2: custody documents move stock-tracked products only.
                 $query->where('is_stock_tracked', true);
                 break;
             // 'manufacturing_report' and '' → no extra restriction.
@@ -92,7 +98,15 @@ class ProductLookupController extends Controller
             ->forPage($page, self::PER_PAGE)
             ->get();
 
-        $results = $records->map(function (Product $p) use ($rich, $branchId) {
+        // DEPT-2: build custody helpers once per request (cheap; page is max 25 rows).
+        $deptInventory = $context === 'department_stock'
+            ? app(\App\Services\Departments\DepartmentInventoryService::class)
+            : null;
+        $destResolver = ($context === 'department_stock' && $toDeptId > 0 && $branchId > 0)
+            ? \App\Services\Departments\DepartmentMappingService::forBranch($branchId)
+            : null;
+
+        $results = $records->map(function (Product $p) use ($rich, $branchId, $deptInventory, $destResolver, $fromDeptId, $toDeptId) {
             $base = [
                 'id'   => $p->id,
                 'text' => $p->sku ? ($p->sku . ' — ' . $p->name) : $p->name,
@@ -137,7 +151,19 @@ class ProductLookupController extends Controller
                 ])->values(),
                 'current_stock'   => $stock,
                 'stock_label'     => $stockLabel,
-            ]);
+            ] + ($deptInventory && $branchId > 0 ? [
+                // DEPT-2 custody figures (variant-level; batch granularity not used here).
+                'branch_on_hand'          => $branchOnHand = $deptInventory->officialBranchOnHand($branchId, $p->id, $default?->id),
+                'department_allocated'    => $allocated = $deptInventory->allocatedDepartmentOnHand($branchId, $p->id, $default?->id),
+                'available_to_issue'      => $branchOnHand - $allocated,
+                'source_department_on_hand' => $fromDeptId > 0
+                    ? $deptInventory->departmentOnHand($fromDeptId, $p->id, $default?->id)
+                    : null,
+                'destination_department_match' => $destResolver
+                    ? in_array($toDeptId, $destResolver->matchingDepartmentIds($p->id, $p->category_id), true)
+                    : null,
+                'branch_average_cost'     => $deptInventory->officialAverageCost($branchId, $p->id, $default?->id),
+            ] : []));
         });
 
         return response()->json([

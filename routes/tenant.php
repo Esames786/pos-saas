@@ -82,6 +82,7 @@ use App\Http\Controllers\Tenant\Reports\AuditReportController;
 use App\Http\Controllers\Tenant\Reports\PrintReportController;
 use App\Http\Controllers\Tenant\Reports\DepartmentReportController;
 use App\Http\Controllers\Tenant\DepartmentController;
+use App\Http\Controllers\Tenant\DepartmentStockTransferController;
 use App\Http\Controllers\Tenant\Manufacturing\ManufacturingCustomerController;
 use App\Http\Controllers\Tenant\Manufacturing\ProductionOrderController;
 use App\Http\Controllers\Tenant\Manufacturing\BomController;
@@ -288,6 +289,18 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/departments/{department}/edit', [DepartmentController::class, 'edit'])->name('tenant.departments.edit');
                 Route::put('/departments/{department}', [DepartmentController::class, 'update'])->name('tenant.departments.update');
                 Route::delete('/departments/{department}', [DepartmentController::class, 'destroy'])->name('tenant.departments.destroy');
+
+                // Department custody stock (DEPT-2) — sub-ledger only, never
+                // touches official branch stock or GL.
+                Route::get('/department-stock', [DepartmentStockTransferController::class, 'index'])->name('tenant.department-stock.index');
+                Route::get('/department-stock/transfers', [DepartmentStockTransferController::class, 'transfersIndex'])->name('tenant.department-stock.transfers.index');
+                Route::get('/department-stock/transfers/create', [DepartmentStockTransferController::class, 'create'])->name('tenant.department-stock.transfers.create');
+                Route::post('/department-stock/transfers', [DepartmentStockTransferController::class, 'store'])->name('tenant.department-stock.transfers.store');
+                Route::get('/department-stock/transfers/{transfer}', [DepartmentStockTransferController::class, 'show'])->name('tenant.department-stock.transfers.show');
+                Route::get('/department-stock/transfers/{transfer}/edit', [DepartmentStockTransferController::class, 'edit'])->name('tenant.department-stock.transfers.edit');
+                Route::put('/department-stock/transfers/{transfer}', [DepartmentStockTransferController::class, 'update'])->name('tenant.department-stock.transfers.update');
+                Route::post('/department-stock/transfers/{transfer}/post', [DepartmentStockTransferController::class, 'post'])->name('tenant.department-stock.transfers.post');
+                Route::post('/department-stock/transfers/{transfer}/cancel', [DepartmentStockTransferController::class, 'cancel'])->name('tenant.department-stock.transfers.cancel');
 
                 // Suppliers
                 Route::resource('suppliers', SupplierController::class)->names([
@@ -578,6 +591,9 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/reports/kitchen/production', [KitchenReportController::class, 'production'])->name('tenant.reports.kitchen.production');
                 Route::get('/reports/departments/sales', [DepartmentReportController::class, 'sales'])->name('tenant.reports.departments.sales');
                 Route::get('/reports/departments/consumption', [DepartmentReportController::class, 'consumption'])->name('tenant.reports.departments.consumption');
+                Route::get('/reports/departments/stock', [DepartmentReportController::class, 'stock'])->name('tenant.reports.departments.stock');
+                Route::get('/reports/departments/movements', [DepartmentReportController::class, 'movements'])->name('tenant.reports.departments.movements');
+                Route::get('/reports/departments/allocation', [DepartmentReportController::class, 'allocation'])->name('tenant.reports.departments.allocation');
                 Route::get('/reports/audit/manager-approvals', [AuditReportController::class, 'managerApprovals'])->name('tenant.reports.audit.manager-approvals');
                 Route::get('/reports/printing/jobs', [PrintReportController::class, 'jobs'])->name('tenant.reports.printing.jobs');
 

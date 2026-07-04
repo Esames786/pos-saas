@@ -51,4 +51,53 @@ class DepartmentReportController extends Controller
 
         return view('tenant.reports.departments.consumption', compact('report', 'filters', 'branches', 'departments', 'movementTypes'));
     }
+
+    // ── DEPT-2 custody reports ───────────────────────────────────────────────
+
+    public function stock(Request $request)
+    {
+        $filters = [
+            'branch_id'     => $request->input('branch_id'),
+            'department_id' => $request->input('department_id'),
+            'nonzero'       => $request->boolean('nonzero', true),
+        ];
+
+        $report      = $this->service->stock($filters);
+        $branches    = Branch::where('status', 'active')->orderBy('name')->get();
+        $departments = Department::with('branch')->orderBy('branch_id')->orderBy('sort_order')->orderBy('name')->get();
+
+        return view('tenant.reports.departments.stock', compact('report', 'filters', 'branches', 'departments'));
+    }
+
+    public function movements(Request $request)
+    {
+        $filters = [
+            'date_from'     => $request->input('date_from', today()->subDays(6)->format('Y-m-d')),
+            'date_to'       => $request->input('date_to',   today()->format('Y-m-d')),
+            'branch_id'     => $request->input('branch_id'),
+            'department_id' => $request->input('department_id'),
+            'movement_type' => $request->input('movement_type'),
+            'product'       => $request->input('product'),
+        ];
+
+        $rows          = $this->service->movements($filters);
+        $branches      = Branch::where('status', 'active')->orderBy('name')->get();
+        $departments   = Department::with('branch')->orderBy('branch_id')->orderBy('sort_order')->orderBy('name')->get();
+        $movementTypes = \App\Models\Tenant\DepartmentStockLedger::MOVEMENT_TYPES;
+
+        return view('tenant.reports.departments.movements', compact('rows', 'filters', 'branches', 'departments', 'movementTypes'));
+    }
+
+    public function allocation(Request $request)
+    {
+        $filters = [
+            'branch_id'      => $request->input('branch_id'),
+            'only_allocated' => $request->boolean('only_allocated'),
+        ];
+
+        $report   = $this->service->allocation($filters);
+        $branches = Branch::where('status', 'active')->orderBy('name')->get();
+
+        return view('tenant.reports.departments.allocation', compact('report', 'filters', 'branches'));
+    }
 }
