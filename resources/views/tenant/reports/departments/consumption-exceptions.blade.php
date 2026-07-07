@@ -8,7 +8,12 @@
         <h1 class="mb-1">Department Consumption Exceptions</h1>
         <p class="fw-medium text-muted mb-0">Shadow custody deductions that could not be applied — the POS sale itself always succeeded.</p>
     </div>
-    <a href="{{ url('/department-stock') }}" class="btn btn-light">Department Stock</a>
+    <div class="d-flex gap-2">
+        @can('tenant.departments.dashboard')
+            <a href="{{ url('/departments/dashboard') }}" class="btn btn-light"><i class="ti ti-layout-dashboard me-1"></i>Dashboard</a>
+        @endcan
+        <a href="{{ url('/department-stock') }}" class="btn btn-light">Department Stock</a>
+    </div>
 </div>
 
 <div class="card border-warning-subtle mb-3">

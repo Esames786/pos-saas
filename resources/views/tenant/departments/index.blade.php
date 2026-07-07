@@ -8,11 +8,16 @@
         <h1 class="mb-1">Departments</h1>
         <p class="fw-medium text-muted mb-0">Internal responsibility areas inside each branch.</p>
     </div>
-    @can('tenant.departments.create')
-        <a href="{{ url('/departments/create') }}" class="btn btn-primary">
-            <i class="ti ti-plus me-1"></i>Create Department
-        </a>
-    @endcan
+    <div class="d-flex gap-2">
+        @can('tenant.departments.dashboard')
+            <a href="{{ url('/departments/dashboard') }}" class="btn btn-light"><i class="ti ti-layout-dashboard me-1"></i>Dashboard</a>
+        @endcan
+        @can('tenant.departments.create')
+            <a href="{{ url('/departments/create') }}" class="btn btn-primary">
+                <i class="ti ti-plus me-1"></i>Create Department
+            </a>
+        @endcan
+    </div>
 </div>
 
 <div class="card border-primary-subtle mb-3">

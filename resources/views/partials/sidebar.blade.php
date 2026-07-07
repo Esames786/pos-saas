@@ -314,8 +314,16 @@
                                 </a>
                             </li>
                         @endcan
+                        @can('tenant.departments.dashboard')
+                            @php $a = $isIn('departments/dashboard'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/departments/dashboard') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-layout-dashboard fs-16 me-2"></i><span>Department Dashboard</span>
+                                </a>
+                            </li>
+                        @endcan
                         @can('tenant.departments.index')
-                            @php $a = $isIn('departments*'); @endphp
+                            @php $a = $isIn('departments*') && !$isIn('departments/dashboard'); @endphp
                             <li class="{{ $a ? 'active' : '' }}">
                                 <a href="{{ url('/departments') }}" class="{{ $a ? 'active' : '' }}">
                                     <i class="ti ti-building-warehouse fs-16 me-2"></i><span>Departments</span>

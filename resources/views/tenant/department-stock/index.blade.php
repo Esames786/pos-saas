@@ -9,6 +9,9 @@
         <p class="fw-medium text-muted mb-0">Custody balances — which department is holding how much, inside each branch.</p>
     </div>
     <div class="d-flex gap-2">
+        @can('tenant.departments.dashboard')
+            <a href="{{ url('/departments/dashboard') }}" class="btn btn-light"><i class="ti ti-layout-dashboard me-1"></i>Dashboard</a>
+        @endcan
         @can('tenant.department-stock.transfers.index')
             <a href="{{ url('/department-stock/transfers') }}" class="btn btn-light"><i class="ti ti-file-invoice me-1"></i>Documents</a>
         @endcan

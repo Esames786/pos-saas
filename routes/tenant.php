@@ -284,6 +284,9 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 // Departments (DEPARTMENT-FOUNDATION-1) — mapping/reporting only,
                 // no stock movement in this phase.
                 Route::get('/departments', [DepartmentController::class, 'index'])->name('tenant.departments.index');
+                // NB: registered BEFORE /departments/{department} or the model
+                // binding would swallow "dashboard" as a department id.
+                Route::get('/departments/dashboard', [\App\Http\Controllers\Tenant\DepartmentDashboardController::class, 'index'])->name('tenant.departments.dashboard');
                 Route::get('/departments/create', [DepartmentController::class, 'create'])->name('tenant.departments.create');
                 Route::post('/departments', [DepartmentController::class, 'store'])->name('tenant.departments.store');
                 Route::get('/departments/{department}', [DepartmentController::class, 'show'])->name('tenant.departments.show');

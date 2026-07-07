@@ -8,9 +8,14 @@
         <h1 class="mb-1">Department Counts</h1>
         <p class="fw-medium text-muted mb-0">End-day physical counts reconciling department custody stock.</p>
     </div>
-    @can('tenant.department-counts.create')
-        <a href="{{ url('/department-counts/create') }}" class="btn btn-primary"><i class="ti ti-plus me-1"></i>New Count</a>
-    @endcan
+    <div class="d-flex gap-2">
+        @can('tenant.departments.dashboard')
+            <a href="{{ url('/departments/dashboard') }}" class="btn btn-light"><i class="ti ti-layout-dashboard me-1"></i>Dashboard</a>
+        @endcan
+        @can('tenant.department-counts.create')
+            <a href="{{ url('/department-counts/create') }}" class="btn btn-primary"><i class="ti ti-plus me-1"></i>New Count</a>
+        @endcan
+    </div>
 </div>
 
 <div class="card border-primary-subtle mb-3">

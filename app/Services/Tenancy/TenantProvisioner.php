@@ -358,6 +358,7 @@ class TenantProvisioner
             'tenant.stock-counts.cancel',
 
             'tenant.departments.index',
+            'tenant.departments.dashboard',
             'tenant.departments.create',
             'tenant.departments.store',
             'tenant.departments.show',
