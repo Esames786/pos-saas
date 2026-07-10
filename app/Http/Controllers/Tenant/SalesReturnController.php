@@ -27,12 +27,35 @@ class SalesReturnController extends Controller
         $salesOrder = null;
 
         if ($request->filled('sales_order_id')) {
-            $salesOrder = SalesOrder::with(['branch', 'lines.product', 'lines.variant'])
+            $salesOrder = SalesOrder::with([
+                'branch', 'terminal', 'customer', 'createdBy',
+                'restaurantTable', 'restaurantWaiter',
+                'payments.method',
+                'lines.product', 'lines.variant',
+            ])
                 ->whereIn('status', ['paid', 'partially_returned'])
                 ->find($request->sales_order_id);
+
+            // SALES-RETURN-UX-1: branch guard — users with explicit branch
+            // assignments can only return sales of their branches.
+            if ($salesOrder && ! $this->userCanAccessBranch($salesOrder->branch_id)) {
+                return redirect(url('/sales-returns/create'))
+                    ->withErrors(['return' => 'That sale belongs to a branch you are not assigned to.']);
+            }
         }
 
         return view('tenant.sales-returns.create', compact('salesOrder'));
+    }
+
+    private function userCanAccessBranch(int $branchId): bool
+    {
+        $user = auth('tenant')->user();
+        if (! $user) {
+            return false;
+        }
+        $assigned = $user->branches()->pluck('branches.id');
+
+        return $assigned->isEmpty() || $assigned->contains($branchId);
     }
 
     public function store(Request $request, SalesReturnService $salesReturnService)
@@ -50,6 +73,10 @@ class SalesReturnController extends Controller
         $salesOrder = SalesOrder::with(['branch', 'lines.product', 'lines.variant'])
             ->whereIn('status', ['paid', 'partially_returned'])
             ->findOrFail($data['sales_order_id']);
+
+        if (! $this->userCanAccessBranch($salesOrder->branch_id)) {
+            return back()->withErrors(['return' => 'That sale belongs to a branch you are not assigned to.'])->withInput();
+        }
 
         try {
             $salesReturn = $salesReturnService->processReturn(
