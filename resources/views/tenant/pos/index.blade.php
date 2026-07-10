@@ -102,9 +102,10 @@
 
     .product-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(145px, 1fr));
-        gap: .7rem;
-        max-height: calc(100vh - 340px);
+        grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+        gap: .55rem;
+        /* POS-UX-1: tighter fit — more products visible per screen */
+        max-height: calc(100vh - 300px);
         overflow-y: auto;
         padding-right: .25rem;
     }
@@ -151,7 +152,12 @@
         background: #f1f5f9;
         font-weight: 900;
         margin-bottom: .65rem;
+        overflow: hidden;
     }
+
+    /* POS-UX-1: real product photos on tiles */
+    .product-avatar.has-img { background: #fff; padding: 0; }
+    .product-avatar.has-img img { width: 100%; height: 100%; object-fit: cover; border-radius: 16px; }
 
     .stock-badge {
         border-radius: 999px;
@@ -161,8 +167,23 @@
         font-weight: 800;
     }
 
+    /* POS-UX-1: color language — green in stock, yellow low, red out, blue service */
+    .stock-ok   { background: #dcfce7; color: #166534; }
     .stock-low  { background: #fff3cd; color: #7a5200; }
     .stock-out  { background: #fee2e2; color: #991b1b; }
+    .stock-svc  { background: #dbeafe; color: #1e40af; }
+
+    /* POS-UX-1: visible keyboard shortcut bar */
+    .pos-shortcut-bar {
+        display: flex; flex-wrap: wrap; gap: .4rem;
+        padding: .35rem .6rem; margin-bottom: .5rem;
+        background: #f8fafc; border: 1px solid #edf0f4; border-radius: 12px;
+        font-size: .72rem; color: #475569;
+    }
+    .pos-shortcut-bar kbd {
+        background: #0f172a; color: #fff; border-radius: 5px;
+        padding: .1rem .35rem; font-size: .68rem;
+    }
 
     .cart-panel {
         position: sticky;
@@ -475,7 +496,16 @@
                 <div class="category-strip" id="child-category-strip"></div>
             </div>
 
-            <h2 id="products_heading" class="h5 mb-3">Products</h2>
+            <h2 id="products_heading" class="h5 mb-2">Products</h2>
+            {{-- POS-UX-1: visible keyboard shortcuts --}}
+            <div class="pos-shortcut-bar" aria-label="Keyboard shortcuts">
+                <span><kbd>Ctrl+F</kbd> Search</span>
+                <span><kbd>Ctrl+Enter</kbd> Pay &amp; Complete</span>
+                <span><kbd>Ctrl+H</kbd> Hold Sale</span>
+                <span><kbd>Ctrl+L</kbd> Held Orders</span>
+                <span><kbd>Ctrl+P</kbd> Payment Method</span>
+                <span><kbd>Ctrl+M</kbd> Calculator</span>
+            </div>
             <div class="product-grid" id="product-grid" aria-live="polite"></div>
         </section>
 
@@ -1423,16 +1453,21 @@ document.addEventListener('DOMContentLoaded', function () {
             const qty        = availableQty(product, variant);
             const price      = productPrice(product, variant);
             const isRecipe   = !product.is_stock_tracked && product.is_recipe;
-            const stockClass = qty === null ? '' : qty <= 0 ? 'stock-out' : qty <= 5 ? 'stock-low' : '';
+            const stockClass = qty === null ? 'stock-svc' : qty <= 0 ? 'stock-out' : qty <= 5 ? 'stock-low' : 'stock-ok';
             const stockText  = qty === null
                 ? 'Service'
                 : (qty <= 0 ? 'Out' : (isRecipe ? 'Makes ' + qty : 'Stock ' + qty));
+
+            // POS-UX-1: real product image on the tile when available.
+            const avatarHtml = product.image_url
+                ? '<div class="product-avatar has-img"><img src="' + product.image_url + '" alt="" loading="lazy"></div>'
+                : '<div class="product-avatar">' + initials(product.name) + '</div>';
 
             const button     = document.createElement('button');
             button.type      = 'button';
             button.className = 'product-tile';
             button.innerHTML =
-                '<div class="product-avatar">' + initials(product.name) + '</div>' +
+                avatarHtml +
                 '<div class="fw-bold mb-1">' + product.name + '</div>' +
                 '<div class="text-muted small mb-2">' + (product.sku || 'No SKU') + '</div>' +
                 '<div class="d-flex justify-content-between align-items-center">' +

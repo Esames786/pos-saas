@@ -66,6 +66,7 @@
     <div class="card-body">
         <form method="POST"
               action="{{ $formUrl }}"
+              enctype="multipart/form-data"
               novalidate>
             @csrf
             @if($product) @method('PUT') @endif
@@ -190,6 +191,45 @@
                               class="form-control @error('description') is-invalid @enderror">{{ old('description', $product?->description) }}</textarea>
                     @error('description') <div class="invalid-feedback">{{ $message }}</div> @enderror
                 </div>
+
+                {{-- POS-UX-1: product image (shown on the POS tile) --}}
+                <div class="col-md-6 pf" data-pg="always">
+                    <label for="image" class="form-label">Product Image <span class="text-muted small">(shown on POS)</span></label>
+                    <div class="d-flex align-items-center gap-3">
+                        <img id="image-preview"
+                             src="{{ $product?->image_path ? asset('storage/' . $product->image_path) : '' }}"
+                             alt="" class="rounded border {{ $product?->image_path ? '' : 'd-none' }}"
+                             style="width:64px;height:64px;object-fit:cover;">
+                        <div class="flex-grow-1">
+                            <input id="image" type="file" name="image" accept="image/jpeg,image/png,image/webp"
+                                   class="form-control @error('image') is-invalid @enderror">
+                            <small class="text-muted">JPG / PNG / WebP, max 2 MB. Square images look best on the POS grid.</small>
+                            @error('image') <div class="invalid-feedback d-block">{{ $message }}</div> @enderror
+                        </div>
+                        @if($product?->image_path)
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="remove_image" value="1" id="remove_image">
+                                <label class="form-check-label small" for="remove_image">Remove</label>
+                            </div>
+                        @endif
+                    </div>
+                </div>
+                @push('scripts')
+                <script>
+                (function () {
+                    var input = document.getElementById('image');
+                    var preview = document.getElementById('image-preview');
+                    if (input && preview) {
+                        input.addEventListener('change', function () {
+                            if (this.files && this.files[0]) {
+                                preview.src = URL.createObjectURL(this.files[0]);
+                                preview.classList.remove('d-none');
+                            }
+                        });
+                    }
+                })();
+                </script>
+                @endpush
 
                 @if(!$product)
                 <div class="col-md-4 pf" data-pg="always">

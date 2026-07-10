@@ -71,6 +71,7 @@ class ProductController extends Controller
     public function store(Request $request)
     {
         $data = $this->validated($request);
+        $data['image_path'] = $this->handleImageUpload($request);
 
         $product = DB::transaction(function () use ($data, $request) {
             $product = Product::create($data);
@@ -142,6 +143,18 @@ class ProductController extends Controller
     {
         $data = $this->validated($request, $product);
 
+        // POS-UX-1: replace / remove the product image.
+        if ($request->boolean('remove_image') && $product->image_path) {
+            \Illuminate\Support\Facades\Storage::disk('public')->delete($product->image_path);
+            $data['image_path'] = null;
+        }
+        if ($newPath = $this->handleImageUpload($request)) {
+            if ($product->image_path) {
+                \Illuminate\Support\Facades\Storage::disk('public')->delete($product->image_path);
+            }
+            $data['image_path'] = $newPath;
+        }
+
         DB::transaction(function () use ($product, $data) {
             $product->update($data);
 
@@ -183,6 +196,23 @@ class ProductController extends Controller
                 branchId: (int) $data['branch_id'],
             )
         );
+    }
+
+    /**
+     * POS-UX-1: validate + store an uploaded product image on the public disk.
+     * Returns the stored path or null when no file was uploaded.
+     */
+    private function handleImageUpload(Request $request): ?string
+    {
+        if (! $request->hasFile('image')) {
+            return null;
+        }
+
+        $request->validate([
+            'image' => ['image', 'mimes:jpeg,png,webp', 'max:2048'],
+        ]);
+
+        return $request->file('image')->store('products', 'public');
     }
 
     private function validated(Request $request, ?Product $product = null): array
