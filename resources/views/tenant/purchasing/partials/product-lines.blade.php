@@ -153,6 +153,7 @@
     </div>
 
     <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <span class="badge bg-light text-muted border d-none d-md-inline me-2">Alt+N = add line · Enter: Qty → Cost → next line</span>
         <button type="button" class="btn btn-sm btn-outline-primary purchase-add-line"><i class="ti ti-plus me-1"></i>Add Product Line</button>
         @if($stockEffect)
             <div class="small text-muted"><i class="ti ti-info-circle me-1"></i>{{ $stockEffect }}</div>
@@ -471,6 +472,27 @@
             scanner.addEventListener('keydown', function(ev){ if(ev.key==='Enter'){ ev.preventDefault(); handle(); } });
             scanBtn.addEventListener('click', handle);
         }
+        // PURCHASING-UX-2: keyboard flow — Alt+N adds a line; Enter walks
+        // Qty → Cost → next row's product picker (scanner-first data entry).
+        document.addEventListener('keydown', function(ev){
+            if (ev.altKey && (ev.key === 'n' || ev.key === 'N')) { ev.preventDefault(); if (addBtn) addBtn.click(); }
+        });
+        widget.addEventListener('keydown', function(ev){
+            if (ev.key !== 'Enter') return;
+            if (ev.target.classList.contains('purchase-qty-input')) {
+                ev.preventDefault();
+                var cost = ev.target.closest('.purchase-line-row').querySelector('.purchase-cost-input');
+                if (cost) { cost.focus(); cost.select(); }
+            } else if (ev.target.classList.contains('purchase-cost-input')) {
+                ev.preventDefault();
+                var row = ev.target.closest('.purchase-line-row');
+                var next = row.nextElementSibling;
+                if (next && next.classList.contains('purchase-line-row')) {
+                    var ps = next.querySelector('.purchase-product-select');
+                    if ($ && ps) $(ps).select2('open');
+                } else if (addBtn) { addBtn.click(); }
+            }
+        });
         // disable blank rows on submit
         var form = widget.closest('form');
         if (form) form.addEventListener('submit', function(){
