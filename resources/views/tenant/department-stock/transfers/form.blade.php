@@ -70,7 +70,8 @@
                     <option value="">— Select —</option>
                     @foreach($departments as $dept)
                         <option value="{{ $dept->id }}" data-branch="{{ $dept->branch_id }}"
-                                @selected(old('to_department_id', $transfer?->to_department_id) == $dept->id)>{{ $dept->name }}</option>
+                                data-issue="{{ $dept->allow_stock_issue ? 1 : 0 }}"
+                                @selected(old('to_department_id', $transfer?->to_department_id) == $dept->id)>{{ $dept->name }}{{ $dept->allow_stock_issue ? '' : ' (stock issue off)' }}</option>
                     @endforeach
                 </select>
             </div>
@@ -95,7 +96,21 @@
         <div class="card mb-3">
             <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
                 <strong>Product Lines</strong>
-                <button type="button" class="btn btn-sm btn-outline-primary" id="add-line-btn"><i class="ti ti-plus me-1"></i>Add Product Line</button>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge bg-light text-muted border d-none d-md-inline">Alt+N = add line · Enter in Qty = next line</span>
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="add-line-btn"><i class="ti ti-plus me-1"></i>Add Product Line</button>
+                </div>
+            </div>
+            <div class="card-body pb-0">
+                <div class="border rounded p-2 mb-2 bg-light">
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text"><i class="ti ti-barcode"></i></span>
+                        <input type="text" id="dept-scanner" class="form-control"
+                               placeholder="Scan barcode or type SKU then press Enter" autocomplete="off">
+                        <button class="btn btn-outline-primary" type="button" id="dept-scan-btn">Add</button>
+                    </div>
+                    <div class="form-text">Scan to add a line with live custody figures.</div>
+                </div>
             </div>
             <div class="card-body table-responsive">
                 <table class="table align-middle" id="dept-lines-table">
@@ -197,13 +212,18 @@
     // ── Department selects follow the chosen branch ─────────────────────────
     function filterDeptOptions() {
         var branch = el('branch_id').value;
+        var type = el('transfer_type').value;
         ['from_department_id', 'to_department_id'].forEach(function (id) {
             var sel = el(id);
             Array.prototype.forEach.call(sel.options, function (opt) {
                 if (!opt.value) return;
                 var show = !branch || opt.getAttribute('data-branch') === branch;
+                // DEPT-FLAGS-1: issue documents cannot target a department with
+                // stock issue turned off (server enforces this too).
+                var issueOff = id === 'to_department_id' && type === 'issue' && opt.getAttribute('data-issue') === '0';
                 opt.hidden = !show;
-                if (!show && opt.selected) sel.value = '';
+                opt.disabled = issueOff;
+                if ((!show || issueOff) && opt.selected) sel.value = '';
             });
         });
     }
@@ -337,11 +357,58 @@
 
     ['transfer_type', 'branch_id', 'from_department_id', 'to_department_id'].forEach(function (id) {
         el(id).addEventListener('change', function () {
-            if (id === 'transfer_type') applyTypeShape();
+            if (id === 'transfer_type') { applyTypeShape(); filterDeptOptions(); }
             if (id === 'branch_id') filterDeptOptions();
             applyGate();
             refreshRows();
         });
+    });
+
+    // ── Barcode scanner + keyboard shortcuts ─────────────────────────────────
+    function deptToast(msg, type) {
+        if (window.Swal) { Swal.fire({ toast: true, position: 'top-end', timer: 2400, showConfirmButton: false, icon: type || 'info', title: msg }); }
+    }
+    function scanAdd(code) {
+        var h = headerVals();
+        if (!gateOk()) { deptToast('Complete the document header before scanning', 'warning'); return; }
+        fetch(searchUrl + '?context=department_stock&only_active=1&q=' + encodeURIComponent(code)
+                + '&branch_id=' + encodeURIComponent(h.branch)
+                + '&from_department_id=' + encodeURIComponent(h.from || 0)
+                + '&to_department_id=' + encodeURIComponent(h.to || 0),
+            { headers: { 'Accept': 'application/json' } })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                var hit = (data.results || [])[0];
+                if (!hit) { deptToast('No product found for "' + code + '"', 'warning'); return; }
+                el('add-line-btn').click();
+                var rows = document.querySelectorAll('#dept-lines-body .dept-line-row');
+                var row = rows[rows.length - 1];
+                if ($ && row) {
+                    $(row.querySelector('.dept-product-select')).append(new Option(hit.text, hit.id, true, true)).trigger('change');
+                    populateRow(row, hit);
+                    var qty = row.querySelector('.dept-qty');
+                    setTimeout(function () { qty.focus(); qty.select(); }, 60);
+                }
+            })
+            .catch(function () { deptToast('Lookup failed', 'error'); });
+    }
+    el('dept-scan-btn').addEventListener('click', function () {
+        var s = el('dept-scanner');
+        if (s.value.trim()) { scanAdd(s.value.trim()); s.value = ''; }
+        s.focus();
+    });
+    el('dept-scanner').addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); el('dept-scan-btn').click(); }
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.altKey && (e.key === 'n' || e.key === 'N')) { e.preventDefault(); el('add-line-btn').click(); }
+        if (e.key === 'Enter' && e.target.classList && e.target.classList.contains('dept-qty')) {
+            e.preventDefault();
+            var row = e.target.closest('tr.dept-line-row');
+            var next = row ? row.nextElementSibling : null;
+            if (next) { var p = next.querySelector('.dept-product-select'); if ($ && p) $(p).select2('open'); }
+            else { el('add-line-btn').click(); }
+        }
     });
 
     // Init existing rows (edit / validation-return) + initial state.

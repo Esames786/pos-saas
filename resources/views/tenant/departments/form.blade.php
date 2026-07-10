@@ -202,8 +202,9 @@
             <div class="col-12">
                 <div class="alert alert-light border small mb-0">
                     <i class="ti ti-flag me-1"></i>
-                    Stock issue and end-day count are <strong>preparation flags</strong> for future department stock and reconciliation phases.
-                    They do <strong>not</strong> move stock yet.
+                    <strong>Allow stock issue</strong> — when off, Issue documents cannot target this department.
+                    <strong>Require end-day count</strong> — the Department Dashboard flags this department as
+                    <em>Count due</em> until today's count is approved.
                 </div>
             </div>
         </div>

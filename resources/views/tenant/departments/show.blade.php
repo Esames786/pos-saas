@@ -187,12 +187,14 @@
 
 <div class="card mt-3">
     <div class="card-body d-flex flex-wrap gap-2 align-items-center small">
-        <span class="text-muted">Reporting flags:</span>
+        <span class="text-muted">Operational flags:</span>
         @if($department->allow_stock_issue)
-            <span class="badge bg-info-subtle text-info-emphasis">Stock issue allowed (future phase)</span>
+            <span class="badge bg-success-subtle text-success-emphasis" title="Issue documents can target this department">Stock issue allowed</span>
+        @else
+            <span class="badge bg-secondary-subtle text-secondary-emphasis" title="Issue documents to this department are blocked">Stock issue OFF</span>
         @endif
         @if($department->require_end_day_count)
-            <span class="badge bg-primary-subtle text-primary-emphasis">End-day count required (future phase)</span>
+            <span class="badge bg-primary-subtle text-primary-emphasis" title="Dashboard flags this department until today's count is approved">End-day count required</span>
         @endif
         <span class="text-muted ms-auto">
             Reports:

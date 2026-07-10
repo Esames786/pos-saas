@@ -186,7 +186,7 @@ class DepartmentStockTransferController extends Controller
             'title'       => $transfer ? 'Edit Custody Document ' . $transfer->transfer_no : 'New Department Stock Document',
             'branches'    => Branch::where('status', 'active')->orderBy('name')->get(),
             'departments' => Department::where('status', 'active')->orderBy('branch_id')->orderBy('sort_order')->orderBy('name')
-                ->get(['id', 'branch_id', 'name', 'code']),
+                ->get(['id', 'branch_id', 'name', 'code', 'allow_stock_issue']),
         ]);
     }
 

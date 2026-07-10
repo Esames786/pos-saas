@@ -133,8 +133,16 @@ class DepartmentDashboardService
             $deptPending  = DepartmentCountSession::where('department_id', $dept->id)->whereIn('status', ['draft', 'submitted'])->count();
             $lastCount    = DepartmentCountSession::where('department_id', $dept->id)->where('status', 'approved')->max('count_date');
 
+            // DEPT-FLAGS-1: require_end_day_count means an approved count is
+            // expected every day — flag the department until today's is done.
+            $countDue = $dept->require_end_day_count
+                && ! DepartmentCountSession::where('department_id', $dept->id)
+                    ->where('status', 'approved')
+                    ->whereDate('count_date', now()->toDateString())
+                    ->exists();
+
             $status = 'healthy';
-            if ($deptOpenExc > 0 || $deptPending > 0) {
+            if ($deptOpenExc > 0 || $deptPending > 0 || $countDue) {
                 $status = 'attention';
             }
             if ($deptNegative > 0) {
@@ -150,6 +158,8 @@ class DepartmentDashboardService
                 'open_exceptions' => $deptOpenExc,
                 'pending_counts'  => $deptPending,
                 'last_count'      => $lastCount,
+                'count_due'       => $countDue,
+                'allow_stock_issue' => (bool) $dept->allow_stock_issue,
                 'status'          => $status,
             ];
         }

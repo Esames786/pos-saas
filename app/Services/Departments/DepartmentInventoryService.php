@@ -172,6 +172,14 @@ class DepartmentInventoryService
 
                 switch ($doc->transfer_type) {
                     case 'issue':
+                        // DEPT-FLAGS-1: departments with stock issue turned OFF
+                        // cannot receive custody via an issue document.
+                        $toDept = Department::find($doc->to_department_id);
+                        if ($toDept && ! $toDept->allow_stock_issue) {
+                            throw new RuntimeException(
+                                "Department {$toDept->name} has 'Allow stock issue' turned OFF — enable it in the department settings before issuing stock."
+                            );
+                        }
                         // Over-allocation guard against OFFICIAL branch stock.
                         $available = $this->availableToIssue($doc->branch_id, $line->product_id, $variantId, $batchId);
                         if ($qty > $available + 0.0005) {

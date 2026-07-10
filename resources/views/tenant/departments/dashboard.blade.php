@@ -111,7 +111,15 @@
                     <td class="text-end">{{ $row['stocked'] }}</td>
                     <td class="text-end {{ $row['open_exceptions'] ? 'text-warning fw-semibold' : 'text-muted' }}">{{ $row['open_exceptions'] }}</td>
                     <td class="text-end {{ $row['pending_counts'] ? 'text-info fw-semibold' : 'text-muted' }}">{{ $row['pending_counts'] }}</td>
-                    <td class="small">{{ $row['last_count'] ?? 'never' }}</td>
+                    <td class="small">
+                        {{ $row['last_count'] ?? 'never' }}
+                        @if(!empty($row['count_due']))
+                            <span class="badge bg-warning text-dark ms-1" title="End-day count required but not approved today">Count due</span>
+                        @endif
+                        @if(isset($row['allow_stock_issue']) && !$row['allow_stock_issue'])
+                            <span class="badge bg-secondary-subtle text-secondary-emphasis ms-1" title="Stock issue is turned off for this department">Issue off</span>
+                        @endif
+                    </td>
                     <td>
                         @if($row['status'] === 'healthy')
                             <span class="badge bg-success-subtle text-success-emphasis">Healthy</span>
