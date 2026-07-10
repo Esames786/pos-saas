@@ -106,7 +106,7 @@ class ProductLookupController extends Controller
             ? \App\Services\Departments\DepartmentMappingService::forBranch($branchId)
             : null;
 
-        $results = $records->map(function (Product $p) use ($rich, $branchId, $deptInventory, $destResolver, $fromDeptId, $toDeptId) {
+        $results = $records->map(function (Product $p) use ($rich, $branchId, $context, $deptInventory, $destResolver, $fromDeptId, $toDeptId) {
             $base = [
                 'id'   => $p->id,
                 'text' => $p->sku ? ($p->sku . ' — ' . $p->name) : $p->name,
@@ -124,6 +124,25 @@ class ProductLookupController extends Controller
                 $stock = (float) StockBalance::where('product_id', $p->id)
                     ->where('branch_id', $branchId)
                     ->sum('quantity_on_hand');
+            }
+
+            // INVENTORY-UX-1: saved batches for this branch+product so adjustment/
+            // wastage screens offer a DROPDOWN of real batches instead of free text.
+            $batches = [];
+            if ($branchId > 0 && $context === 'inventory') {
+                $batches = StockBalance::query()
+                    ->with('batch:id,batch_no,expiry_date')
+                    ->where('product_id', $p->id)
+                    ->where('branch_id', $branchId)
+                    ->whereNotNull('inventory_batch_id')
+                    ->where('quantity_on_hand', '>', 0)
+                    ->get()
+                    ->map(fn ($b) => [
+                        'id'       => (int) $b->inventory_batch_id,
+                        'batch_no' => $b->batch?->batch_no,
+                        'expiry'   => $b->batch?->expiry_date?->format('Y-m-d'),
+                        'qty'      => (float) $b->quantity_on_hand,
+                    ])->values()->all();
             }
             $stockLabel = $stock === null
                 ? null
@@ -151,6 +170,8 @@ class ProductLookupController extends Controller
                 ])->values(),
                 'current_stock'   => $stock,
                 'stock_label'     => $stockLabel,
+                'allow_decimal'   => ($p->unit?->unit_type ?? 'quantity') !== 'quantity',
+                'batches'         => $batches,
             ] + ($deptInventory && $branchId > 0 ? [
                 // DEPT-2 custody figures (variant-level; batch granularity not used here).
                 'branch_on_hand'          => $branchOnHand = $deptInventory->officialBranchOnHand($branchId, $p->id, $default?->id),

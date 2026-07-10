@@ -37,36 +37,58 @@ class KitchenWastageController extends Controller
 
     public function create()
     {
-        $branches = Branch::where('status', 'active')->orderBy('name')->get();
-        $products = Product::where('status', 'active')->orderBy('name')->get();
-        $units    = Unit::orderBy('name')->get();
-
-        return view('tenant.kitchen.wastages.create', compact('branches', 'products', 'units'));
+        return view('tenant.kitchen.wastages.create', [
+            'branches' => Branch::where('status', 'active')->orderBy('name')->get(),
+        ]);
     }
 
-    public function store(Request $request, KitchenWastageService $kitchenWastageService)
+    public function store(Request $request, KitchenWastageService $kitchenWastageService, \App\Services\Inventory\InventoryService $inventoryService)
     {
+        // WASTAGE-UX-1: multi-line document instead of one product per submit.
         $data = $request->validate([
-            'branch_id'          => ['required', 'exists:branches,id'],
-            'product_id'         => ['required', 'exists:products,id'],
-            'product_variant_id' => ['nullable', 'exists:product_variants,id'],
-            'quantity'           => ['required', 'numeric', 'min:0.0001'],
-            'unit_id'            => ['nullable', 'exists:units,id'],
-            'reason'             => ['nullable', 'string', 'max:255'],
-            'wastage_date'       => ['required', 'date'],
+            'branch_id'                  => ['required', 'exists:branches,id'],
+            'wastage_date'               => ['required', 'date'],
+            'lines'                      => ['required', 'array', 'min:1'],
+            'lines.*.product_id'         => ['nullable', 'exists:products,id'],
+            'lines.*.product_variant_id' => ['nullable', 'exists:product_variants,id'],
+            'lines.*.quantity'           => ['nullable', 'numeric', 'min:0.0001'],
+            'lines.*.reason'             => ['nullable', 'string', 'max:255'],
         ]);
 
+        $lines = collect($data['lines'])
+            ->filter(fn ($line) => !empty($line['product_id']) && !empty($line['quantity']))
+            ->values();
+
+        if ($lines->isEmpty()) {
+            return back()->withErrors(['wastage' => 'At least one product line with quantity is required.'])->withInput();
+        }
+
         $branch  = Branch::findOrFail($data['branch_id']);
-        $product = Product::findOrFail($data['product_id']);
-        $variant = !empty($data['product_variant_id']) ? ProductVariant::find($data['product_variant_id']) : null;
+        $created = [];
 
         try {
-            $wastage = $kitchenWastageService->record($data, $branch, $product, $variant, Auth::id());
+            \Illuminate\Support\Facades\DB::connection('tenant')->transaction(function () use ($lines, $data, $branch, $kitchenWastageService, $inventoryService, &$created) {
+                foreach ($lines as $line) {
+                    $product = Product::findOrFail($line['product_id']);
+                    // BUG FIX: stock lives under the product's DEFAULT variant — a null
+                    // variant made postOutFefo find nothing and fail "Insufficient stock".
+                    $variant = $inventoryService->resolveVariant($product, $line['product_variant_id'] ?? null);
+
+                    $created[] = $kitchenWastageService->record([
+                        'quantity'     => (float) $line['quantity'],
+                        'reason'       => $line['reason'] ?? null,
+                        'wastage_date' => $data['wastage_date'],
+                    ], $branch, $product, $variant, Auth::id());
+                }
+            });
         } catch (\RuntimeException $e) {
             return back()->withErrors(['wastage' => $e->getMessage()])->withInput();
         }
 
-        return redirect(url('/kitchen/wastages/' . $wastage->id))->with('status', 'Wastage recorded: ' . $wastage->wastage_no);
+        $nos = collect($created)->pluck('wastage_no')->implode(', ');
+
+        return redirect(url('/kitchen/wastages'))
+            ->with('status', count($created) . ' wastage record(s) posted: ' . $nos);
     }
 
     public function show(KitchenWastage $kitchenWastage)

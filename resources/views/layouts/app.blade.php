@@ -69,6 +69,18 @@
 <script src="{{ asset('assets/plugins/select2/js/select2.min.js') }}"></script>
 <script src="{{ asset('assets/plugins/sweetalert/sweetalert2.all.min.js') }}"></script>
 <script src="{{ asset('assets/js/script.js') }}"></script>
+{{-- UX-HARDEN-1: global flash toast — every session "status" flash surfaces as
+     a SweetAlert toast so success feedback is consistent portal-wide. --}}
+@if(session('status'))
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    if (window.Swal) {
+        Swal.fire({ toast: true, position: 'top-end', timer: 3500, timerProgressBar: true,
+            showConfirmButton: false, icon: 'success', title: @json(session('status')) });
+    }
+});
+</script>
+@endif
 @stack('scripts')
 <script>
 (function () {

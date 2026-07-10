@@ -37,13 +37,10 @@ class StockAdjustmentController extends Controller
 
     public function create()
     {
+        // INVENTORY-UX-1: products load via the AJAX picker now — no more
+        // rendering the whole catalogue into every row's <select>.
         return view('tenant.stock-adjustments.create', [
             'branches' => Branch::where('status', 'active')->orderBy('name')->get(),
-            'products' => Product::with(['unit', 'variants'])
-                ->where('is_stock_tracked', true)
-                ->where('status', 'active')
-                ->orderBy('name')
-                ->get(),
         ]);
     }
 
