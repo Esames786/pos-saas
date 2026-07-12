@@ -73,7 +73,7 @@ Design: `docs/MANUFACTURING_FINANCE_POSTING_DESIGN.md` · backlog: `docs/MANUFAC
 ### G1 — Functional gaps
 | Gap | Detail | Priority |
 |---|---|---|
-| **Purchase Returns is a Coming-Soon stub** | `purchase_return` enum value + route exist, but NO controller/screen/posting — supplier returns impossible | **HIGH** |
+| Purchase Returns | ✅ **PURCHASE-RETURNS-1 (e98928b, 2026-07-12)**: full document flow (draft→post immutable), GRN-sourced returnable tracking + standalone mode, stock out via InventoryService (FEFO), supplier ledger credit + GL Dr 2100/Cr 1400 (bill mirror), report with by-supplier/by-reason. v1 scope notes: per-bill paid/balance untouched; line batch informational (FEFO out) | ✅ was HIGH |
 | No credit notes / store credit | Sales-return refund is cash-out only; no credit-note issuance for later use | MED |
 | No period/fiscal closing lock | Anyone can post backdated documents forever; no month/year close | MED |
 | Unit conversion not applied on consumption/purchasing | Wastage/PO record a unit but qty is never converted (recipe cost report converts; live stock ops don't) | MED |
