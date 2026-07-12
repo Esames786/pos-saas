@@ -26,7 +26,7 @@
 |---|---|---|---|
 | A1 | **PRD-6 hardening**: login throttle, payment-proof upload validation (mime/size), dev-artifact cleanup, RELEASE_CHECKLIST.md | brute-force + upload abuse exposure | ✅ **PROD-READINESS-1** (2026-07-11): email+IP+guard throttle 5/2min on the shared login; proof mimes+mimetypes+5MB+help text; RELEASE_CHECKLIST.md; artifact audit run |
 | A2 | **SMTP**: prod `MAIL_MAILER=log` — signup/password-reset emails are silently never sent | real clients can't reset passwords | 🟡 code+docs ready (`mail:test` command, docs/ops/SMTP_SETUP.md) — **manual: put real SMTP creds in prod .env + config:cache + verify** |
-| A3 | **Merge → main + tag `v0.9.0-pilot`** — feature branch live, main stale | release discipline / rollback point | pending |
+| A3 | **Merge → main + tag `v0.9.0-pilot`** | release discipline / rollback point | ✅ 2026-07-11: main fast-forwarded 173 commits (23e1738→e7fce39, zero divergence), annotated tag `v0.9.0-pilot` pushed — rollback point established |
 | A4 | **deploy.sh hardening** | every deploy hits gotchas by hand | ✅ deploy.sh now: MasterSeeder + `system:clear-tenant-permission-cache` (new command) + queue:restart + chown/chmod |
 | A5 | Ops: nightly demo:reset-all green check; SSL auto-renew (cert ~Sep 2026); rotate root+MySQL passwords; re-register lost client tenant | | 🟡 manual ops — documented in RELEASE_CHECKLIST/DESTRUCTIVE_COMMANDS docs |
 
