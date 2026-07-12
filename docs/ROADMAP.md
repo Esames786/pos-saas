@@ -1,7 +1,7 @@
 # Bingoo POS — Roadmap & System Gap Register
 
 > Maintained working document. Update after every completed sprint.
-> Last updated: **2026-07-10** · prod = `1d371f2` · branch `feat/14d-2-plan-upgrade-requests`
+> Last updated: **2026-07-10** (added Track E client requests) · prod = `2165f62` · branch `feat/14d-2-plan-upgrade-requests`
 
 ---
 
@@ -50,6 +50,13 @@ Design: `docs/MANUFACTURING_FINANCE_POSTING_DESIGN.md` · backlog: `docs/MANUFAC
 | C2 | Wastage shadow — `wastage_shadow_consumption_out` supported by service, wastage flow not wired to call it |
 | C3 | Department count barcode scan + "add zero-custody product" button (service `addLine()` exists, no UI) |
 | C4 | Optional approved branch adjustment from approved dept count (behind safe flag — deliberately skipped in DEPT-4) |
+
+## 🔜 TRACK E — Client-requested features (queued 2026-07-10)
+
+| # | Item | Design notes | Size |
+|---|---|---|---|
+| E1 | **Delivery channels + rider management** — on the POS **Delivery** order type, choose the fulfilment channel: **Foodpanda / other 3rd-party platforms / Own delivery** — and for own delivery, pick the assigned **rider** | New tenant tables: `delivery_channels` (name, type: aggregator/own, commission_percent, is_active — seed Foodpanda/Careem/Own) + `delivery_riders` (branch_id, name, phone, status) or reuse/extend restaurant_waiters with a role. `sales_orders` gains `delivery_channel_id` + `delivery_rider_id` (nullable, delivery orders only). POS delivery flow: channel select → rider select (own only). Reports: sales by channel (aggregator commission visibility), rider-wise deliveries/day. Receipt shows channel/rider. Later phase: channel-specific pricing/menus + aggregator settlement reconciliation | M |
+| E2 | **Global negative-inventory setting** — tenant/branch-level toggle: when a branch allows negative inventory, stock-out items can still be sold (POS does not block) | Setting home: `branches.allow_negative_stock` (bool, default OFF) + optional tenant-level default in a settings table. Enforcement point is the single choke point `InventoryService::postMovement()` — on direction=out with insufficient qty: if branch allows negative → post anyway (balance goes negative, WAC kept), else current RuntimeException. POS availableQty/tile badge shows "Backorder"/negative amber instead of blocking "Out". MUST log every negative-crossing movement (flag on ledger row or report) + a "Negative Stock" report for reconciliation; dept custody shadow already tolerates shortage via exceptions. Careful: COGS on negative-stock sales uses last WAC — document the accounting caveat | M |
 
 ## 🔜 TRACK D — Catalog polish (quick wins)
 
@@ -109,5 +116,6 @@ Design: `docs/MANUFACTURING_FINANCE_POSTING_DESIGN.md` · backlog: `docs/MANUFAC
 1. **PROD-READINESS-1** = A1+A2+A4 + queue worker (G3) + scheduled offsite backups (G3) — one hardening sprint
 2. **A3** merge → main + tag
 3. **PURCHASE-RETURNS-1** (G1 high gap — completes the purchasing cycle)
-4. **MFG-FIN-C** and onward (Track B)
-5. Track C/D + remaining gaps as client demand dictates
+4. **DELIVERY-CHANNELS-1 (E1)** + **NEGATIVE-STOCK-SETTING-1 (E2)** — client-requested, restaurant/mart operations
+5. **MFG-FIN-C** and onward (Track B)
+6. Track C/D + remaining gaps as client demand dictates
