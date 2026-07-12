@@ -20,7 +20,11 @@ if (config('saas.demos.enabled', true)) {
         ->withoutOverlapping();
 }
 
-// Production recommendation (PRD-3): nightly multi-tenant backup with retention prune.
-// Left commented so it never runs unexpectedly in local/dev. Enable on a server that
-// has mysqldump available and storage space, then rely on OS cron `schedule:run`.
-// Schedule::command('tenants:backup --prune')->dailyAt('02:00')->withoutOverlapping();
+// PROD-READINESS-1: nightly multi-tenant backup with retention prune. Gated by
+// BACKUP_SCHEDULE_ENABLED so local/dev machines never run it; set it to true in
+// the production .env (mysqldump binaries + disk space required). Runs at 02:00,
+// before the 04:00 demo reset. See docs/ops/BACKUP_AND_RESTORE_RUNBOOK.md —
+// local-only backups are NOT enough; sync them offsite.
+if (config('backup.schedule_enabled', false)) {
+    Schedule::command('tenants:backup --prune')->dailyAt('02:00')->withoutOverlapping();
+}

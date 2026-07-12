@@ -52,7 +52,18 @@ class TenantBillingController extends Controller
             'payment_date'        => ['required', 'date'],
             'reference_no'        => ['nullable', 'string', 'max:255'],
             'notes'               => ['nullable', 'string'],
-            'proof'               => ['required', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:4096'],
+            // PROD-READINESS-1: extension + real-mimetype double check (a renamed
+            // .exe/.php passes a naive extension check but not mimetypes), 5MB cap.
+            'proof'               => [
+                'required', 'file',
+                'mimes:jpg,jpeg,png,webp,pdf',
+                'mimetypes:image/jpeg,image/png,image/webp,application/pdf',
+                'max:5120',
+            ],
+        ], [
+            'proof.mimes'     => 'Proof must be a JPG, PNG, WEBP image or a PDF.',
+            'proof.mimetypes' => 'The uploaded file content is not a valid image or PDF.',
+            'proof.max'       => 'Proof file may not be larger than 5 MB.',
         ]);
 
         try {

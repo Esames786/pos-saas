@@ -21,4 +21,9 @@ return [
     // Include a storage/app archive (uploads such as payment proofs).
     'include_storage' => (bool) env('BACKUP_INCLUDE_STORAGE', true),
 
+    // PROD-READINESS-1: enables the nightly 02:00 `tenants:backup --prune`
+    // schedule. Set true ONLY on the production server (read via config() so
+    // it stays config-cache safe).
+    'schedule_enabled' => (bool) env('BACKUP_SCHEDULE_ENABLED', false),
+
 ];

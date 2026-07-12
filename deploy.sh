@@ -20,19 +20,22 @@ cd "$(dirname "$0")"
 
 PHP=php   # use php8.2 explicitly if 'php' isn't 8.2 on this box
 
-echo "==> [1/7] Pull latest code"
+echo "==> [1/9] Pull latest code"
 git pull --ff-only
 
-echo "==> [2/7] Composer (no-op if dependencies unchanged)"
+echo "==> [2/9] Composer (no-op if dependencies unchanged)"
 composer install --no-dev --optimize-autoloader --no-interaction
 
-echo "==> [3/7] Master database migrations"
+echo "==> [3/9] Master database migrations"
 $PHP artisan migrate --force
 
-echo "==> [4/7] Register route permissions in the catalog"
+echo "==> [3b/9] Master seed (plans/modules/central perms — idempotent)"
+$PHP artisan db:seed --class="Database\\Seeders\\MasterSeeder" --force
+
+echo "==> [4/9] Register route permissions in the catalog"
 $PHP artisan system:routes-sync
 
-echo "==> [5/7] Per-tenant: migrations + Chart of Accounts + grant Owner all tenant permissions (resilient)"
+echo "==> [5/9] Per-tenant: migrations + Chart of Accounts + grant Owner all tenant permissions (resilient)"
 $PHP artisan tinker --execute='
 $names = \Illuminate\Support\Facades\DB::connection("master")->table("route_catalogs")->where("route_name","like","tenant.%")->pluck("route_name")->all();
 $ok = 0; $skip = 0;
@@ -58,14 +61,25 @@ foreach (\App\Models\Master\Tenant::all() as $t) {
 echo "  tenants ok={$ok} skipped={$skip}\n";
 '
 
-echo "==> [6/7] Flush + rebuild caches"
+echo "==> [6/9] Flush permission caches (master + EVERY tenant cache table)"
 $PHP artisan permission:cache-reset
+# PROD-READINESS-1: the spatie cache key also lives in each tenant DB's cache
+# table; a stale per-tenant row 403s NEW permissions while old ones still work.
+$PHP artisan system:clear-tenant-permission-cache
+
+echo "==> [7/9] Rebuild caches"
 $PHP artisan optimize:clear
 $PHP artisan config:cache
 $PHP artisan route:cache
 $PHP artisan view:cache
+# Workers cache booted code — tell them to restart (no-op if none running).
+$PHP artisan queue:restart || true
 
-echo "==> [7/7] Reload PHP-FPM (clear OPcache)"
+echo "==> [8/9] Fix ownership (root-run artisan creates root-owned files that break web writes)"
+sudo chown -R www-data:www-data storage bootstrap/cache
+sudo chmod -R ug+rwX storage bootstrap/cache
+
+echo "==> [9/9] Reload PHP-FPM (clear OPcache)"
 sudo systemctl reload php8.2-fpm
 
 echo "==> DEPLOY COMPLETE"

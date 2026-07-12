@@ -22,13 +22,13 @@
 
 ## 🔜 TRACK A — Production readiness for real clients (DO FIRST)
 
-| # | Item | Why | Size |
+| # | Item | Why | Status |
 |---|---|---|---|
-| A1 | **PRD-6 hardening**: login throttle, payment-proof upload validation (mime/size), dev-artifact cleanup, RELEASE_CHECKLIST.md | brute-force + upload abuse exposure | S |
-| A2 | **SMTP**: prod `MAIL_MAILER=log` — signup/password-reset emails are silently never sent | real clients can't reset passwords | S |
-| A3 | **Merge → main + tag `v0.9.0-pilot`** — ~60 commits live from feature branch, main is stale | release discipline / rollback point | S |
-| A4 | **deploy.sh hardening**: append per-tenant spatie cache-row delete + `chown -R www-data storage bootstrap/cache` (recurring manual gotchas) | every deploy hits these by hand | S |
-| A5 | Ops: confirm nightly `demo:reset-all` green end-to-end; SSL auto-renew via Cloudflare (cert expires ~Sep 2026); rotate root + MySQL passwords; re-register client tenant lost in system:reset | | S |
+| A1 | **PRD-6 hardening**: login throttle, payment-proof upload validation (mime/size), dev-artifact cleanup, RELEASE_CHECKLIST.md | brute-force + upload abuse exposure | ✅ **PROD-READINESS-1** (2026-07-11): email+IP+guard throttle 5/2min on the shared login; proof mimes+mimetypes+5MB+help text; RELEASE_CHECKLIST.md; artifact audit run |
+| A2 | **SMTP**: prod `MAIL_MAILER=log` — signup/password-reset emails are silently never sent | real clients can't reset passwords | 🟡 code+docs ready (`mail:test` command, docs/ops/SMTP_SETUP.md) — **manual: put real SMTP creds in prod .env + config:cache + verify** |
+| A3 | **Merge → main + tag `v0.9.0-pilot`** — feature branch live, main stale | release discipline / rollback point | pending |
+| A4 | **deploy.sh hardening** | every deploy hits gotchas by hand | ✅ deploy.sh now: MasterSeeder + `system:clear-tenant-permission-cache` (new command) + queue:restart + chown/chmod |
+| A5 | Ops: nightly demo:reset-all green check; SSL auto-renew (cert ~Sep 2026); rotate root+MySQL passwords; re-register lost client tenant | | 🟡 manual ops — documented in RELEASE_CHECKLIST/DESTRUCTIVE_COMMANDS docs |
 
 ## 🔜 TRACK B — Manufacturing Finance Posting (biggest functional work)
 
@@ -94,8 +94,8 @@ Design: `docs/MANUFACTURING_FINANCE_POSTING_DESIGN.md` · backlog: `docs/MANUFAC
 ### G3 — Data-safety / ops gaps
 | Gap | Detail | Priority |
 |---|---|---|
-| **No scheduled backups + no offsite copy** | Backups are manual (panel/command) to LOCAL disk only — droplet loss = total loss | **HIGH** |
-| **Queue worker missing** | `QUEUE_CONNECTION=database`, no worker/supervisor on prod → anything queued (future mail!) silently never runs | **HIGH** (bundle with A2) |
+| Scheduled backups + offsite | Nightly 02:00 `tenants:backup --prune` schedule now registered behind `BACKUP_SCHEDULE_ENABLED` (✅ code, 2026-07-11) — **manual: enable flag on prod + set up offsite sync per docs/ops/BACKUP_AND_RESTORE_RUNBOOK.md** | 🟡 was HIGH |
+| Queue worker missing | Supervisor config + runbook at docs/ops/QUEUE_WORKER_SETUP.md; deploy.sh runs `queue:restart \|\| true` (✅ docs, 2026-07-11) — **manual: install supervisor on prod** | 🟡 was HIGH |
 | No error monitoring / alerting | No Sentry/uptime checks; failures found by users | MED |
 | Single 1vCPU/2GB droplet | No capacity plan for real multi-tenant load; MySQL+PHP same box | MED |
 | Backup retention policy | tenant_backups grow unbounded | LOW |

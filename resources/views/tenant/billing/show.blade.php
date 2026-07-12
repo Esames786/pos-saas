@@ -109,8 +109,14 @@
                         <input name="reference_no" class="form-control form-control-sm" value="{{ old('reference_no') }}">
                     </div>
                     <div class="col-12">
-                        <label class="form-label">Proof (jpg/png/pdf, max 4MB)</label>
-                        <input name="proof" type="file" accept=".jpg,.jpeg,.png,.pdf" class="form-control form-control-sm" required>
+                        <label class="form-label">Payment Proof</label>
+                        <input name="proof" type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" class="form-control form-control-sm" required>
+                        <small class="text-muted d-block mt-1">
+                            Upload your bank receipt, transaction screenshot, or PDF proof.
+                            Allowed: JPG, PNG, WEBP, PDF · max 5 MB.
+                            <strong>Do not upload passwords or card PINs.</strong>
+                        </small>
+                        @error('proof') <div class="text-danger small">{{ $message }}</div> @enderror
                     </div>
                     <div class="col-12">
                         <label class="form-label">Notes</label>
