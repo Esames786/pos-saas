@@ -33,6 +33,10 @@ echo "==> [3b/9] Master seed (plans/modules/central perms — idempotent)"
 $PHP artisan db:seed --class="Database\\Seeders\\MasterSeeder" --force
 
 echo "==> [4/9] Register route permissions in the catalog"
+# route:clear FIRST — with a stale cached routes file, routes-sync misses the
+# newly pulled routes, so their permissions never enter the catalog and the
+# per-tenant grant loop silently skips them (found 2026-07-12).
+$PHP artisan route:clear
 $PHP artisan system:routes-sync
 
 echo "==> [5/9] Per-tenant: migrations + Chart of Accounts + grant Owner all tenant permissions (resilient)"
