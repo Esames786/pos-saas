@@ -1461,15 +1461,15 @@ document.addEventListener('DOMContentLoaded', function () {
             // POS-UX-1: real product image on the tile when available.
             const avatarHtml = product.image_url
                 ? '<div class="product-avatar has-img"><img src="' + product.image_url + '" alt="" loading="lazy"></div>'
-                : '<div class="product-avatar">' + initials(product.name) + '</div>';
+                : '<div class="product-avatar">' + escapeHtml(initials(product.name)) + '</div>';
 
             const button     = document.createElement('button');
             button.type      = 'button';
             button.className = 'product-tile';
             button.innerHTML =
                 avatarHtml +
-                '<div class="fw-bold mb-1">' + product.name + '</div>' +
-                '<div class="text-muted small mb-2">' + (product.sku || 'No SKU') + '</div>' +
+                '<div class="fw-bold mb-1">' + escapeHtml(product.name) + '</div>' +
+                '<div class="text-muted small mb-2">' + escapeHtml(product.sku || 'No SKU') + '</div>' +
                 '<div class="d-flex justify-content-between align-items-center">' +
                     '<span class="fw-bold">' + money(price) + '</span>' +
                     '<span class="stock-badge ' + stockClass + '">' + stockText + '</span>' +
