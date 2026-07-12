@@ -387,6 +387,15 @@ class TenantProvisioner
             'tenant.department-counts.reject',
             'tenant.department-counts.cancel',
 
+            'tenant.purchase-returns.index',
+            'tenant.purchase-returns.create',
+            'tenant.purchase-returns.store',
+            'tenant.purchase-returns.show',
+            'tenant.purchase-returns.edit',
+            'tenant.purchase-returns.update',
+            'tenant.purchase-returns.post',
+            'tenant.purchase-returns.cancel',
+
             'tenant.suppliers.index',
             'tenant.suppliers.create',
             'tenant.suppliers.store',
@@ -638,6 +647,7 @@ class TenantProvisioner
             'tenant.reports.departments.allocation',
             'tenant.reports.departments.consumption-exceptions',
             'tenant.reports.departments.reconciliation',
+            'tenant.reports.purchases.returns',
             'tenant.department-consumption-exceptions.resolve',
             'tenant.department-consumption-exceptions.ignore',
             'tenant.reports.audit.manager-approvals',

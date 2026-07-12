@@ -361,7 +361,7 @@
 
                 {{-- ── PURCHASING ──────────────────────────────────────────────── --}}
                 @if($hasModule('purchasing'))
-                @canany(['tenant.suppliers.index','tenant.purchase-orders.index','tenant.goods-receipts.index','tenant.purchase-bills.index','tenant.supplier-payments.index'])
+                @canany(['tenant.suppliers.index','tenant.purchase-orders.index','tenant.goods-receipts.index','tenant.purchase-bills.index','tenant.supplier-payments.index','tenant.purchase-returns.index'])
                 <li class="submenu">
                     <a href="javascript:void(0);">
                         <i class="ti ti-truck-delivery fs-16 me-2"></i>
@@ -406,6 +406,14 @@
                             <li class="{{ $a ? 'active' : '' }}">
                                 <a href="{{ url('/supplier-payments') }}" class="{{ $a ? 'active' : '' }}">
                                     <i class="ti ti-cash fs-16 me-2"></i><span>Supplier Payments</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.purchase-returns.index')
+                            @php $a = $isIn('purchase-returns*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/purchase-returns') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-truck-return fs-16 me-2"></i><span>Purchase Returns</span>
                                 </a>
                             </li>
                         @endcan
@@ -754,16 +762,7 @@
                                     </a>
                                 </li>
                             @endcan
-                            @can('tenant.purchase-returns.index')
-                                @php $a = $isIn('purchase-returns*'); @endphp
-                                <li class="{{ $a ? 'active' : '' }}">
-                                    <a href="{{ url('/purchase-returns') }}" class="{{ $a ? 'active' : '' }}">
-                                        <i class="ti ti-arrow-back-up fs-16 me-2"></i>
-                                        <span>Purchase Returns</span>
-                                        <span class="badge bg-warning text-dark ms-1" style="font-size:.6rem;">Soon</span>
-                                    </a>
-                                </li>
-                            @endcan
+                            {{-- PURCHASE-RETURNS-1: real screen now — moved to the Purchasing menu. --}}
                         </ul>
                     </li>
                     @endcan

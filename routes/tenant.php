@@ -133,6 +133,7 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
             // they are read-only searchable pickers used across forms/filters).
             Route::get('/ajax/products', ProductLookupController::class)->name('tenant.ajax.products');
             Route::get('/ajax/sales', \App\Http\Controllers\Tenant\Ajax\SaleLookupController::class)->name('tenant.ajax.sales');
+            Route::get('/ajax/goods-receipts', \App\Http\Controllers\Tenant\Ajax\GrnLookupController::class)->name('tenant.ajax.goods-receipts');
             Route::get('/ajax/manufacturing-customers', ManufacturingCustomerLookupController::class)->name('tenant.ajax.manufacturing-customers');
             Route::get('/ajax/production-orders', ProductionOrderLookupController::class)->name('tenant.ajax.production-orders');
             Route::get('/ajax/material-requisitions', MaterialRequisitionLookupController::class)->name('tenant.ajax.material-requisitions');
@@ -376,6 +377,16 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/supplier-payments/{supplierPayment}', [SupplierPaymentController::class, 'show'])
                     ->name('tenant.supplier-payments.show');
 
+                // Purchase Returns (PURCHASE-RETURNS-1) — completes the purchasing cycle.
+                Route::get('/purchase-returns', [\App\Http\Controllers\Tenant\PurchaseReturnController::class, 'index'])->name('tenant.purchase-returns.index');
+                Route::get('/purchase-returns/create', [\App\Http\Controllers\Tenant\PurchaseReturnController::class, 'create'])->name('tenant.purchase-returns.create');
+                Route::post('/purchase-returns', [\App\Http\Controllers\Tenant\PurchaseReturnController::class, 'store'])->name('tenant.purchase-returns.store');
+                Route::get('/purchase-returns/{purchaseReturn}', [\App\Http\Controllers\Tenant\PurchaseReturnController::class, 'show'])->name('tenant.purchase-returns.show');
+                Route::get('/purchase-returns/{purchaseReturn}/edit', [\App\Http\Controllers\Tenant\PurchaseReturnController::class, 'edit'])->name('tenant.purchase-returns.edit');
+                Route::put('/purchase-returns/{purchaseReturn}', [\App\Http\Controllers\Tenant\PurchaseReturnController::class, 'update'])->name('tenant.purchase-returns.update');
+                Route::post('/purchase-returns/{purchaseReturn}/post', [\App\Http\Controllers\Tenant\PurchaseReturnController::class, 'post'])->name('tenant.purchase-returns.post');
+                Route::post('/purchase-returns/{purchaseReturn}/cancel', [\App\Http\Controllers\Tenant\PurchaseReturnController::class, 'cancel'])->name('tenant.purchase-returns.cancel');
+
                 // Daily Closings
                 Route::get('/daily-closings', [DailyClosingController::class, 'index'])->name('tenant.daily-closings.index');
                 Route::get('/daily-closings/create', [DailyClosingController::class, 'create'])->name('tenant.daily-closings.create');
@@ -600,6 +611,7 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/reports/purchases/summary', [PurchaseReportController::class, 'summary'])->name('tenant.reports.purchases.summary');
                 Route::get('/reports/purchases/suppliers', [PurchaseReportController::class, 'suppliers'])->name('tenant.reports.purchases.suppliers');
                 Route::get('/reports/purchases/payables', [PurchaseReportController::class, 'payables'])->name('tenant.reports.purchases.payables');
+                Route::get('/reports/purchases/returns', [PurchaseReportController::class, 'returns'])->name('tenant.reports.purchases.returns');
                 Route::get('/reports/restaurant/tables', [RestaurantReportController::class, 'tables'])->name('tenant.reports.restaurant.tables');
                 Route::get('/reports/restaurant/waiters', [RestaurantReportController::class, 'waiters'])->name('tenant.reports.restaurant.waiters');
                 Route::get('/reports/restaurant/order-types', [RestaurantReportController::class, 'orderTypes'])->name('tenant.reports.restaurant.order-types');
@@ -697,8 +709,6 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                     ->defaults('feature', 'quotations')->name('tenant.quotations.index');
                 Route::get('/purchase-requisitions', [ComingSoonController::class, 'show'])
                     ->defaults('feature', 'purchase-requisitions')->name('tenant.purchase-requisitions.index');
-                Route::get('/purchase-returns', [ComingSoonController::class, 'show'])
-                    ->defaults('feature', 'purchase-returns')->name('tenant.purchase-returns.index');
 
                 // ── Manufacturing Customers — real CRUD (MANUF-1) ────────────
                 // Manufacturing Products - same Product model/table, manufacturing context.

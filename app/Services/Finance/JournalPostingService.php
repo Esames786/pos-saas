@@ -573,6 +573,41 @@ class JournalPostingService
         }
     }
 
+    /**
+     * PURCHASE-RETURNS-1 — GL for a posted supplier purchase return: the exact
+     * mirror of postPurchaseBill. Goods go back, so the supplier liability and
+     * the inventory asset both shrink:
+     *   Dr 2100 Accounts Payable / Cr 1400 Inventory Asset.
+     * Idempotent per (purchase_return, id); never throws (safe-catch style).
+     */
+    public function postPurchaseReturn(\App\Models\Tenant\PurchaseReturn $return, ?int $userId = null): ?JournalEntry
+    {
+        try {
+            $amount = round((float) $return->grand_total, 4);
+            if ($amount <= 0) {
+                return null;
+            }
+
+            $lines = [
+                ['account_code' => '2100', 'branch_id' => $return->branch_id, 'description' => 'Purchase return ' . $return->return_no, 'debit' => $amount, 'credit' => 0],
+                ['account_code' => '1400', 'branch_id' => $return->branch_id, 'description' => 'Inventory Asset', 'debit' => 0, 'credit' => $amount],
+            ];
+
+            return $this->journal->post(
+                'purchase_return',
+                $return->id,
+                $return->return_no,
+                'Purchase return ' . $return->return_no,
+                $return->return_date?->toDateString() ?? now()->toDateString(),
+                $lines,
+                $userId
+            );
+        } catch (Throwable $e) {
+            report($e);
+            return null;
+        }
+    }
+
     /** Reverse the posted journal for an event (used by void flows). Idempotent; safe. */
     public function reverseForSource(string $sourceType, int $sourceId, string $reason, ?int $userId = null): ?JournalEntry
     {

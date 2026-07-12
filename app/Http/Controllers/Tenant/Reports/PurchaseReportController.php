@@ -99,6 +99,28 @@ class PurchaseReportController extends Controller
         ));
     }
 
+    // PURCHASE-RETURNS-1 — supplier return lines + summary.
+    public function returns(Request $request)
+    {
+        $filters = [
+            'date_from'   => $request->input('date_from', today()->subDays(29)->format('Y-m-d')),
+            'date_to'     => $request->input('date_to',   today()->format('Y-m-d')),
+            'branch_id'   => $request->input('branch_id'),
+            'supplier_id' => $request->input('supplier_id'),
+            'status'      => $request->input('status'),
+            'reason'      => $request->input('reason'),
+            'product'     => $request->input('product'),
+        ];
+
+        $report  = $this->service->returns($filters);
+        $reasons = \App\Models\Tenant\PurchaseReturn::REASON_CODES;
+
+        return view('tenant.reports.purchases.returns', array_merge(
+            compact('report', 'filters', 'reasons'),
+            $this->sharedViewData()
+        ));
+    }
+
     private function sharedViewData(): array
     {
         return [

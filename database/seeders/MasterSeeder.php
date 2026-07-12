@@ -235,7 +235,7 @@ class MasterSeeder extends Seeder
                 'name' => 'Purchasing',
                 'category' => 'Purchasing',
                 'description' => 'Suppliers, purchase orders, goods receipts and purchase bills.',
-                'route_module_keys' => ['tenant.suppliers', 'tenant.supplier-payments', 'tenant.purchase-orders', 'tenant.goods-receipts', 'tenant.purchase-bills'],
+                'route_module_keys' => ['tenant.suppliers', 'tenant.supplier-payments', 'tenant.purchase-orders', 'tenant.goods-receipts', 'tenant.purchase-bills', 'tenant.purchase-returns'],
                 'sort_order' => 50,
                 'is_core' => false,
             ],

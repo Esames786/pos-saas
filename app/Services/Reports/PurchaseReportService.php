@@ -80,4 +80,48 @@ class PurchaseReportService
             ->orderByDesc('current_balance')
             ->get();
     }
+
+    /**
+     * PURCHASE-RETURNS-1 — return lines report + summary.
+     *
+     * @return array{rows: \Illuminate\Contracts\Pagination\LengthAwarePaginator, summary: array}
+     */
+    public function returns(array $filters): array
+    {
+        $base = \App\Models\Tenant\PurchaseReturnLine::query()
+            ->whereHas('purchaseReturn', function ($q) use ($filters) {
+                $q->when(!empty($filters['date_from']),   fn ($s) => $s->whereDate('return_date', '>=', $filters['date_from']))
+                  ->when(!empty($filters['date_to']),     fn ($s) => $s->whereDate('return_date', '<=', $filters['date_to']))
+                  ->when(!empty($filters['branch_id']),   fn ($s) => $s->where('branch_id', $filters['branch_id']))
+                  ->when(!empty($filters['supplier_id']), fn ($s) => $s->where('supplier_id', $filters['supplier_id']))
+                  ->when(!empty($filters['status']),      fn ($s) => $s->where('status', $filters['status']));
+            })
+            ->when(!empty($filters['reason']), fn ($q) => $q->where(function ($w) use ($filters) {
+                $w->where('reason_code', $filters['reason'])
+                  ->orWhereHas('purchaseReturn', fn ($s) => $s->where('reason_code', $filters['reason']));
+            }))
+            ->when(!empty($filters['product']), fn ($q) => $q->whereHas('product', fn ($p) => $p
+                ->where('name', 'like', '%' . $filters['product'] . '%')
+                ->orWhere('sku', 'like', '%' . $filters['product'] . '%')));
+
+        $rows = (clone $base)
+            ->with(['purchaseReturn.supplier:id,name', 'purchaseReturn.branch:id,name', 'product:id,sku,name'])
+            ->orderByDesc('id')
+            ->paginate(30)
+            ->withQueryString();
+
+        $all = (clone $base)->with(['purchaseReturn.supplier:id,name'])->get(['id', 'purchase_return_id', 'quantity', 'line_total', 'reason_code']);
+
+        return [
+            'rows'    => $rows,
+            'summary' => [
+                'total_qty'   => (float) $all->sum('quantity'),
+                'total_value' => (float) $all->sum('line_total'),
+                'by_supplier' => $all->groupBy(fn ($l) => $l->purchaseReturn?->supplier?->name ?? '—')
+                    ->map(fn ($g) => (float) $g->sum('line_total'))->sortDesc()->all(),
+                'by_reason'   => $all->groupBy(fn ($l) => $l->reason_code ?: ($l->purchaseReturn?->reason_code ?: 'unspecified'))
+                    ->map(fn ($g) => (float) $g->sum('line_total'))->sortDesc()->all(),
+            ],
+        ];
+    }
 }
