@@ -1,7 +1,7 @@
 # Bingoo POS — Roadmap & System Gap Register
 
 > Maintained working document. Update after every completed sprint.
-> Last updated: **2026-07-13** (DELIVERY-CHANNELS-1 completed locally) · prod = `0f92391` · branch `feat/14d-2-plan-upgrade-requests`
+> Last updated: **2026-07-13** (DELIVERY-CHANNELS-1 production deployed and verified) · prod = `6a5c6df` · branch `feat/14d-2-plan-upgrade-requests`
 
 ---
 
@@ -55,7 +55,7 @@ Design: `docs/MANUFACTURING_FINANCE_POSTING_DESIGN.md` · backlog: `docs/MANUFAC
 
 | # | Item | Design notes | Size |
 |---|---|---|---|
-| E1 | ✅ **DELIVERY-CHANNELS-1** — delivery channel + rider attribution | Tenant tables `delivery_channels` + `delivery_riders`; `sales_orders.delivery_channel_id/delivery_rider_id`; POS delivery channel picker with own-delivery rider requirement; held-sale recall support; admin screens under Sales; sales-by-channel and rider deliveries reports; receipt/KOT payload visibility; permissions/routes/module keys wired; demo seeders populate channels, riders, and sample delivery sales. Later phase: channel-specific pricing/menus + aggregator settlement reconciliation | ✅ done |
+| E1 | ✅ **DELIVERY-CHANNELS-1** — delivery channel + rider attribution | Tenant tables `delivery_channels` + `delivery_riders`; `sales_orders.delivery_channel_id/delivery_rider_id`; POS delivery channel picker with own-delivery rider requirement; held-sale recall support; admin screens under Sales; sales-by-channel and rider deliveries reports; receipt/KOT payload visibility; permissions/routes/module keys wired; demo seeders populate channels, riders, and sample delivery sales. **Production deployed 2026-07-13** (`4a1423f`, deploy blocker fix `6a5c6df`): 7/7 tenant schemas and permissions green; Own Delivery rider validation, aggregator no-rider flow, held recall, reports/CSV, browser receipt and ESC-POS payload verified; all tenants `tb_diff=0`, official/dept negatives `0`. Later phase: channel-specific pricing/menus + aggregator settlement reconciliation | ✅ prod verified |
 | E2 | **Global negative-inventory setting** — tenant/branch-level toggle: when a branch allows negative inventory, stock-out items can still be sold (POS does not block) | Setting home: `branches.allow_negative_stock` (bool, default OFF) + optional tenant-level default in a settings table. Enforcement point is the single choke point `InventoryService::postMovement()` — on direction=out with insufficient qty: if branch allows negative → post anyway (balance goes negative, WAC kept), else current RuntimeException. POS availableQty/tile badge shows "Backorder"/negative amber instead of blocking "Out". MUST log every negative-crossing movement (flag on ledger row or report) + a "Negative Stock" report for reconciliation; dept custody shadow already tolerates shortage via exceptions. Careful: COGS on negative-stock sales uses last WAC — document the accounting caveat | M |
 
 ## 🔜 TRACK D — Catalog polish (quick wins)
