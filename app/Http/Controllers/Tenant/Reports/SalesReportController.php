@@ -106,6 +106,76 @@ class SalesReportController extends Controller
         ));
     }
 
+    /** DELIVERY-CHANNELS-1: paid delivery sales by fulfilment channel. */
+    public function channels(Request $request)
+    {
+        $filters = array_merge($this->filters($request), [
+            'delivery_channel_id' => $request->input('delivery_channel_id'),
+        ]);
+
+        $rows = $this->service->byChannel($filters);
+
+        if ($request->boolean('export_csv')) {
+            return response()->streamDownload(function () use ($rows) {
+                $fp = fopen('php://output', 'w');
+                fputcsv($fp, ['Channel', 'Type', 'Orders', 'Gross Amount', 'Commission %', 'Commission Amount', 'Net After Commission']);
+                foreach ($rows as $r) {
+                    fputcsv($fp, [
+                        $r->channel_name,
+                        $r->channel_type ?: '-',
+                        $r->order_count,
+                        number_format($r->gross_amount, 2),
+                        number_format($r->commission_percent, 2),
+                        number_format($r->commission_amount, 2),
+                        number_format($r->gross_amount - $r->commission_amount, 2),
+                    ]);
+                }
+                fclose($fp);
+            }, 'sales-by-channel-' . now()->format('Y-m-d') . '.csv', ['Content-Type' => 'text/csv']);
+        }
+
+        return view('tenant.reports.sales.channels', array_merge(
+            compact('rows', 'filters'),
+            ['channels' => \App\Models\Tenant\DeliveryChannel::orderBy('sort_order')->orderBy('name')->get()],
+            $this->sharedViewData()
+        ));
+    }
+
+    /** DELIVERY-CHANNELS-1: rider-wise deliveries (totals + per-day). */
+    public function riders(Request $request)
+    {
+        $filters = array_merge($this->filters($request), [
+            'delivery_rider_id' => $request->input('delivery_rider_id'),
+        ]);
+
+        $data  = $this->service->byRider($filters);
+        $rows  = $data['riders'];
+        $daily = $data['daily'];
+
+        if ($request->boolean('export_csv')) {
+            return response()->streamDownload(function () use ($rows) {
+                $fp = fopen('php://output', 'w');
+                fputcsv($fp, ['Rider', 'Phone', 'Branch', 'Deliveries', 'Total Amount']);
+                foreach ($rows as $r) {
+                    fputcsv($fp, [
+                        $r->rider_name,
+                        $r->rider_phone ?: '-',
+                        $r->rider_branch,
+                        $r->delivery_count,
+                        number_format($r->total_amount, 2),
+                    ]);
+                }
+                fclose($fp);
+            }, 'rider-deliveries-' . now()->format('Y-m-d') . '.csv', ['Content-Type' => 'text/csv']);
+        }
+
+        return view('tenant.reports.sales.riders', array_merge(
+            compact('rows', 'daily', 'filters'),
+            ['riders' => \App\Models\Tenant\DeliveryRider::orderBy('name')->get()],
+            $this->sharedViewData()
+        ));
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────
 
     private function filters(Request $request): array

@@ -11,6 +11,8 @@ use App\Models\Tenant\Combo;
 use App\Models\Tenant\Currency;
 use App\Models\Tenant\Customer;
 use App\Models\Tenant\DailyClosing;
+use App\Models\Tenant\DeliveryChannel;
+use App\Models\Tenant\DeliveryRider;
 use App\Models\Tenant\GoodsReceipt;
 use App\Models\Tenant\Modifier;
 use App\Models\Tenant\ModifierGroup;
@@ -77,6 +79,7 @@ class TenantDemoSeeder extends Seeder
         $this->seedUnits();
         $this->seedCategories();
         $this->seedBranches();
+        $this->seedDeliveryChannelsAndRiders();
         $this->seedTerminals();
         $this->seedUsers();
         $this->seedRestaurantData();
@@ -228,6 +231,47 @@ class TenantDemoSeeder extends Seeder
         }
 
         $this->command->line('  Branches seeded: ' . count($branches));
+    }
+
+    private function seedDeliveryChannelsAndRiders(): void
+    {
+        $channels = [
+            ['name' => 'Own Delivery', 'type' => 'own', 'commission_percent' => 0, 'sort_order' => 10],
+            ['name' => 'Foodpanda', 'type' => 'aggregator', 'commission_percent' => 18, 'sort_order' => 20],
+            ['name' => 'Careem', 'type' => 'aggregator', 'commission_percent' => 15, 'sort_order' => 30],
+            ['name' => 'Direct WhatsApp', 'type' => 'own', 'commission_percent' => 0, 'sort_order' => 40],
+        ];
+
+        foreach ($channels as $channel) {
+            DeliveryChannel::updateOrCreate(
+                ['name' => $channel['name']],
+                array_merge($channel, ['is_active' => true])
+            );
+        }
+
+        $main = Branch::where('code', 'MAIN')->first();
+        $city = Branch::where('code', 'CITY')->first();
+        $mall = Branch::where('code', 'MALL')->first();
+
+        $riders = [
+            ['branch' => $main, 'name' => 'Rider Ali - Main Branch', 'phone' => '0300-1112233'],
+            ['branch' => $main, 'name' => 'Rider Bilal - Main Branch', 'phone' => '0300-2223344'],
+            ['branch' => $city, 'name' => 'Rider Danish - City Branch', 'phone' => '0300-3334455'],
+            ['branch' => $mall, 'name' => 'Rider Hamza - Mall Outlet', 'phone' => '0300-4445566'],
+        ];
+
+        foreach ($riders as $rider) {
+            if (! $rider['branch']) {
+                continue;
+            }
+
+            DeliveryRider::updateOrCreate(
+                ['branch_id' => $rider['branch']->id, 'name' => $rider['name']],
+                ['phone' => $rider['phone'], 'status' => 'active']
+            );
+        }
+
+        $this->command->line('  Delivery channels seeded: ' . count($channels) . '; riders seeded: ' . count($riders));
     }
 
     // ── Terminals ────────────────────────────────────────────────────────────
@@ -1431,6 +1475,10 @@ class TenantDemoSeeder extends Seeder
 
         $customers = Customer::where('code', '!=', null)->whereNotNull('code')->get()->keyBy('code');
 
+        $foodpanda = DeliveryChannel::where('name', 'Foodpanda')->first();
+        $ownDelivery = DeliveryChannel::where('name', 'Own Delivery')->first();
+        $mainRider = DeliveryRider::where('branch_id', $main?->id)->where('status', 'active')->orderBy('name')->first();
+
         $salesData = [
             // Quick sales — cash — main branch
             [
@@ -1575,6 +1623,7 @@ class TenantDemoSeeder extends Seeder
             [
                 'branch' => $main, 'terminal' => null, 'shift' => null, 'user' => $owner,
                 'customer' => $customers['CUST-010'] ?? null, 'order_type' => 'delivery', 'discount_type' => 'none',
+                'delivery_channel' => $foodpanda,
                 'lines' => [
                     ['sku' => 'WATER-1L',  'qty' => 24, 'price' => 30],
                     ['sku' => 'JUICE-MNG', 'qty' => 12, 'price' => 40],
@@ -1695,6 +1744,8 @@ class TenantDemoSeeder extends Seeder
             [
                 'branch' => $main, 'terminal' => null, 'shift' => null, 'user' => $owner,
                 'customer' => $customers['CUST-008'] ?? null, 'order_type' => 'delivery', 'discount_type' => 'none',
+                'delivery_channel' => $ownDelivery,
+                'delivery_rider' => $mainRider,
                 'lines' => [
                     ['sku' => 'BURGER-B',   'qty' => 2, 'price' => 350],
                     ['sku' => 'BURGER-C',   'qty' => 2, 'price' => 280],
@@ -1783,6 +1834,8 @@ class TenantDemoSeeder extends Seeder
             'customer_id'        => $sd['customer']?->id,
             'order_source'       => $sd['terminal'] ? 'pos' : 'manual',
             'order_type'         => $sd['order_type'],
+            'delivery_channel_id' => $sd['order_type'] === 'delivery' ? (($sd['delivery_channel'] ?? null)?->id) : null,
+            'delivery_rider_id'   => $sd['order_type'] === 'delivery' ? (($sd['delivery_rider'] ?? null)?->id) : null,
             'sale_date'          => $saleDate,
             'subtotal'           => $subtotal,
             'discount_type'      => $discountType,

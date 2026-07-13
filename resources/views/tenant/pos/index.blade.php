@@ -466,6 +466,28 @@
                 </div>
             </div>
 
+            {{-- DELIVERY-CHANNELS-1: channel + rider, visible only for delivery orders --}}
+            <div class="row g-2 mb-3" id="delivery-panel" style="display:none">
+                <div class="col-md-3">
+                    <label for="delivery_channel_id" class="form-label">Delivery Channel</label>
+                    <select id="delivery_channel_id" name="delivery_channel_id" class="form-select">
+                        <option value="">Select channel</option>
+                        @foreach($deliveryChannels as $channel)
+                            <option value="{{ $channel->id }}" data-type="{{ $channel->type }}" @selected($heldSale?->delivery_channel_id === $channel->id)>{{ $channel->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="col-md-3" id="delivery-rider-wrap" style="display:none">
+                    <label for="delivery_rider_id" class="form-label">Rider</label>
+                    <select id="delivery_rider_id" name="delivery_rider_id" class="form-select">
+                        <option value="">Select rider</option>
+                        @foreach($deliveryRiders as $rider)
+                            <option value="{{ $rider->id }}" data-branch="{{ $rider->branch_id ?? '' }}" @selected($heldSale?->delivery_rider_id === $rider->id)>{{ $rider->name }}{{ $rider->phone ? ' - ' . $rider->phone : '' }}</option>
+                        @endforeach
+                    </select>
+                </div>
+            </div>
+
             <div class="row g-2 mb-3">
                 <div class="col-md-8">
                     <label for="pos_search" class="form-label">Barcode / Product Search</label>
@@ -1190,6 +1212,53 @@ document.addEventListener('DOMContentLoaded', function () {
     const calcDisplay      = document.getElementById('calc-display');
     const orderTypeEl      = document.getElementById('order_type');
     const terminalEl       = document.getElementById('terminal_id');
+
+    /* ── DELIVERY-CHANNELS-1: channel + rider panel ─────────────────── */
+
+    const deliveryPanelEl   = document.getElementById('delivery-panel');
+    const deliveryChannelEl = document.getElementById('delivery_channel_id');
+    const deliveryRiderWrap = document.getElementById('delivery-rider-wrap');
+    const deliveryRiderEl   = document.getElementById('delivery_rider_id');
+
+    function updateDeliveryPanel() {
+        if (!deliveryPanelEl || !orderTypeEl) return;
+        const isDelivery = orderTypeEl.value === 'delivery';
+        deliveryPanelEl.style.display = isDelivery ? '' : 'none';
+        if (deliveryChannelEl) deliveryChannelEl.required = isDelivery;
+
+        if (!isDelivery) {
+            // Never post stale channel/rider on a non-delivery sale.
+            if (deliveryChannelEl) deliveryChannelEl.value = '';
+            if (deliveryRiderEl)   deliveryRiderEl.value = '';
+            if (deliveryRiderEl)   deliveryRiderEl.required = false;
+            if (deliveryRiderWrap) deliveryRiderWrap.style.display = 'none';
+            return;
+        }
+
+        // Rider applies to own-delivery channels only.
+        const opt = deliveryChannelEl ? deliveryChannelEl.selectedOptions[0] : null;
+        const isOwn = !!(opt && opt.dataset.type === 'own');
+        if (deliveryRiderWrap) deliveryRiderWrap.style.display = isOwn ? '' : 'none';
+        if (deliveryRiderEl) deliveryRiderEl.required = isOwn;
+        if (!isOwn && deliveryRiderEl) deliveryRiderEl.value = '';
+
+        // Riders are branch-scoped: hide riders belonging to OTHER branches.
+        if (deliveryRiderEl) {
+            const branchId = (document.getElementById('branch_id') || {}).value || '';
+            Array.prototype.forEach.call(deliveryRiderEl.options, function (o) {
+                if (!o.value) return;
+                const riderBranch = o.dataset.branch || '';
+                o.hidden = !!(riderBranch && branchId && riderBranch !== branchId);
+            });
+            const sel = deliveryRiderEl.selectedOptions[0];
+            if (sel && sel.hidden) deliveryRiderEl.value = '';
+        }
+    }
+
+    if (orderTypeEl)      orderTypeEl.addEventListener('change', updateDeliveryPanel);
+    if (branchEl)         branchEl.addEventListener('change', updateDeliveryPanel);
+    if (deliveryChannelEl) deliveryChannelEl.addEventListener('change', updateDeliveryPanel);
+    updateDeliveryPanel();
 
     const posSidebarToggle = document.getElementById('pos-sidebar-toggle');
     if (posSidebarToggle) {
@@ -2977,6 +3046,15 @@ document.addEventListener('DOMContentLoaded', function () {
             const dineBoard = document.getElementById('dine-in-board');
             if (dineBoard) dineBoard.style.display = sale.order_type === 'dine_in' ? '' : 'none';
         }
+        updateDeliveryPanel();
+        if (sale.delivery_channel_id && deliveryChannelEl) {
+            deliveryChannelEl.value = String(sale.delivery_channel_id);
+            updateDeliveryPanel();
+            if (sale.delivery_rider_id && deliveryRiderEl) {
+                deliveryRiderEl.value = String(sale.delivery_rider_id);
+                updateDeliveryPanel();
+            }
+        }
 
         // Sync terminal if provided
         if (sale.terminal_id !== undefined && terminalEl) {
@@ -3685,6 +3763,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         // Hidden order_type drives checkout + the totals/service-charge quote.
         if (orderTypeEl) orderTypeEl.value = mode;
+        updateDeliveryPanel();
 
         // Active tab highlight.
         document.querySelectorAll('[data-mode-tab]').forEach(function (b) { b.classList.remove('active'); });

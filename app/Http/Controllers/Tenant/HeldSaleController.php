@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Tenant;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\Customer;
+use App\Models\Tenant\DeliveryChannel;
+use App\Models\Tenant\DeliveryRider;
 use App\Models\Tenant\ManagerApproval;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\ProductVariant;
@@ -15,6 +17,7 @@ use App\Models\Tenant\Terminal;
 use App\Services\Sales\SalesTotalsService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\ValidationException;
 
 class HeldSaleController extends Controller
 {
@@ -54,6 +57,8 @@ class HeldSaleController extends Controller
                 'terminal_id'                 => $s->terminal_id,
                 'restaurant_table_session_id' => $s->restaurant_table_session_id,
                 'restaurant_table_id'         => $s->restaurant_table_id,
+                'delivery_channel_id'         => $s->delivery_channel_id,
+                'delivery_rider_id'           => $s->delivery_rider_id,
                 'customer'                    => $s->customer_name ?: $s->customer?->name ?: 'Walk-in',
                 'total'                       => number_format($s->grand_total, 2),
                 'items'                       => round((float) $s->lines->sum('quantity'), 3),
@@ -210,6 +215,8 @@ class HeldSaleController extends Controller
             'branch_id'                   => 'required|exists:branches,id',
             'terminal_id'                 => 'nullable|exists:terminals,id',
             'order_type'                  => 'required|in:quick_sale,takeaway,dine_in,delivery',
+            'delivery_channel_id'         => 'nullable|exists:delivery_channels,id',
+            'delivery_rider_id'           => 'nullable|exists:delivery_riders,id',
             'restaurant_table_session_id' => 'nullable|exists:restaurant_table_sessions,id',
             'restaurant_table_id'         => 'nullable|exists:restaurant_tables,id',
             'customer_id'                 => 'nullable|exists:customers,id',
@@ -238,6 +245,8 @@ class HeldSaleController extends Controller
             'void_items.*.product_name'   => 'nullable|string',
             'create_separate_order'       => 'nullable|boolean',
         ]);
+
+        $data = $this->validateDeliveryAttribution($data);
 
         $lines = collect($data['lines'])->filter(fn ($l) => !empty($l['product_id']) && !empty($l['quantity']));
 
@@ -375,6 +384,8 @@ class HeldSaleController extends Controller
                 'branch_id'                   => $data['branch_id'],
                 'terminal_id'                 => $data['terminal_id'] ?? null,
                 'order_type'                  => $data['order_type'],
+                'delivery_channel_id'         => $data['order_type'] === 'delivery' ? ($data['delivery_channel_id'] ?? null) : null,
+                'delivery_rider_id'           => $data['order_type'] === 'delivery' ? ($data['delivery_rider_id'] ?? null) : null,
                 'customer_id'                 => $data['customer_id'] ?? null,
                 'customer_name'               => $data['customer_name'] ?? null,
                 'customer_phone'              => $data['customer_phone'] ?? null,
@@ -401,6 +412,8 @@ class HeldSaleController extends Controller
                 'terminal_id'                 => $data['terminal_id'] ?? null,
                 'order_source'                => 'pos',
                 'order_type'                  => $data['order_type'],
+                'delivery_channel_id'         => $data['order_type'] === 'delivery' ? ($data['delivery_channel_id'] ?? null) : null,
+                'delivery_rider_id'           => $data['order_type'] === 'delivery' ? ($data['delivery_rider_id'] ?? null) : null,
                 'customer_id'                 => $data['customer_id'] ?? null,
                 'customer_name'               => $data['customer_name'] ?? null,
                 'customer_phone'              => $data['customer_phone'] ?? null,
@@ -487,6 +500,52 @@ class HeldSaleController extends Controller
         }
 
         return redirect(url('/held-sales'))->with('status', "Held sale {$sale->sale_no} saved.");
+    }
+
+    private function validateDeliveryAttribution(array $data): array
+    {
+        if (($data['order_type'] ?? null) !== 'delivery' || ! empty($data['restaurant_table_session_id']) || ! empty($data['restaurant_table_id'])) {
+            $data['delivery_channel_id'] = null;
+            $data['delivery_rider_id'] = null;
+
+            return $data;
+        }
+
+        if (empty($data['delivery_channel_id'])) {
+            throw ValidationException::withMessages([
+                'delivery_channel_id' => 'Select a delivery channel for delivery orders.',
+            ]);
+        }
+
+        $channel = DeliveryChannel::where('is_active', true)->find($data['delivery_channel_id']);
+
+        if (! $channel) {
+            throw ValidationException::withMessages([
+                'delivery_channel_id' => 'Selected delivery channel is not active.',
+            ]);
+        }
+
+        if (! $channel->isOwn()) {
+            $data['delivery_rider_id'] = null;
+
+            return $data;
+        }
+
+        if (empty($data['delivery_rider_id'])) {
+            throw ValidationException::withMessages([
+                'delivery_rider_id' => 'Select a rider for own-delivery orders.',
+            ]);
+        }
+
+        $rider = DeliveryRider::where('status', 'active')->find($data['delivery_rider_id']);
+
+        if (! $rider || ($rider->branch_id && (int) $rider->branch_id !== (int) $data['branch_id'])) {
+            throw ValidationException::withMessages([
+                'delivery_rider_id' => 'Selected rider is not active for this branch.',
+            ]);
+        }
+
+        return $data;
     }
 
     private function tableOpenOrdersPayload(RestaurantTableSession $tableSession)

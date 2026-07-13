@@ -23,6 +23,8 @@ use App\Http\Controllers\Tenant\Finance\ProfitLossController;
 use App\Http\Controllers\Tenant\Finance\TrialBalanceController;
 use App\Http\Controllers\Tenant\DailyClosingController;
 use App\Http\Controllers\Tenant\DashboardController;
+use App\Http\Controllers\Tenant\DeliveryChannelController;
+use App\Http\Controllers\Tenant\DeliveryRiderController;
 use App\Http\Controllers\Tenant\GoodsReceiptController;
 use App\Http\Controllers\Tenant\InventoryController;
 use App\Http\Controllers\Tenant\PaymentMethodController;
@@ -410,6 +412,16 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::put('/payment-methods/{paymentMethod}', [PaymentMethodController::class, 'update'])->name('tenant.payment-methods.update');
                 Route::delete('/payment-methods/{paymentMethod}', [PaymentMethodController::class, 'destroy'])->name('tenant.payment-methods.destroy');
 
+                // Delivery channels/riders (DELIVERY-CHANNELS-1)
+                Route::get('/delivery/channels', [DeliveryChannelController::class, 'index'])->name('tenant.delivery-channels.index');
+                Route::post('/delivery/channels', [DeliveryChannelController::class, 'store'])->name('tenant.delivery-channels.store');
+                Route::put('/delivery/channels/{deliveryChannel}', [DeliveryChannelController::class, 'update'])->name('tenant.delivery-channels.update');
+                Route::delete('/delivery/channels/{deliveryChannel}', [DeliveryChannelController::class, 'destroy'])->name('tenant.delivery-channels.destroy');
+                Route::get('/delivery/riders', [DeliveryRiderController::class, 'index'])->name('tenant.delivery-riders.index');
+                Route::post('/delivery/riders', [DeliveryRiderController::class, 'store'])->name('tenant.delivery-riders.store');
+                Route::put('/delivery/riders/{deliveryRider}', [DeliveryRiderController::class, 'update'])->name('tenant.delivery-riders.update');
+                Route::delete('/delivery/riders/{deliveryRider}', [DeliveryRiderController::class, 'destroy'])->name('tenant.delivery-riders.destroy');
+
                 // POS
                 Route::get('/pos', [POSController::class, 'index'])->name('tenant.pos.index');
                 Route::post('/pos', [SalesOrderController::class, 'store'])->name('tenant.pos.store');
@@ -600,6 +612,8 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/reports/sales/items',    [SalesReportController::class, 'items'])->name('tenant.reports.sales.items');
                 Route::get('/reports/sales/payments', [SalesReportController::class, 'payments'])->name('tenant.reports.sales.payments');
                 Route::get('/reports/sales/receivables', [SalesReportController::class, 'receivables'])->name('tenant.reports.sales.receivables');
+                Route::get('/reports/sales/channels', [SalesReportController::class, 'channels'])->name('tenant.reports.sales.channels');
+                Route::get('/reports/sales/riders', [SalesReportController::class, 'riders'])->name('tenant.reports.sales.riders');
                 Route::get('/reports/shifts',         [ShiftReportController::class, 'index'])->name('tenant.reports.shifts');
                 Route::get('/reports/inventory/valuation', [InventoryReportController::class, 'valuation'])->name('tenant.reports.inventory.valuation');
 

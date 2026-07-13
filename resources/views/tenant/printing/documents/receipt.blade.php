@@ -94,6 +94,13 @@
 @endif
 @endif
 
+@if($salesOrder->deliveryChannel)
+<div>Channel: {{ $salesOrder->deliveryChannel->name }}</div>
+@endif
+@if($salesOrder->deliveryRider)
+<div>Rider: {{ $salesOrder->deliveryRider->name }}{{ $salesOrder->deliveryRider->phone ? ' - ' . $salesOrder->deliveryRider->phone : '' }}</div>
+@endif
+
 <hr>
 
 <table>

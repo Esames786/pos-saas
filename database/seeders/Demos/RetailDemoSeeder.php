@@ -5,6 +5,8 @@ namespace Database\Seeders\Demos;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\Category;
 use App\Models\Tenant\Customer;
+use App\Models\Tenant\DeliveryChannel;
+use App\Models\Tenant\DeliveryRider;
 use App\Models\Tenant\PaymentMethod;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\ProductBarcode;
@@ -40,6 +42,7 @@ class RetailDemoSeeder
         $this->seedCategories();
         $this->seedProducts();
         $this->seedCustomers();
+        $this->seedDeliveryChannelsAndRiders();
         $this->seedOpeningStock();
         $this->seedSales();
 
@@ -189,6 +192,32 @@ class RetailDemoSeeder
         $this->counts['customers'] = count($customers);
     }
 
+    private function seedDeliveryChannelsAndRiders(): void
+    {
+        foreach ([
+            ['name' => 'Own Delivery', 'type' => 'own', 'commission_percent' => 0, 'sort_order' => 10],
+            ['name' => 'Foodpanda', 'type' => 'aggregator', 'commission_percent' => 18, 'sort_order' => 20],
+            ['name' => 'Careem', 'type' => 'aggregator', 'commission_percent' => 15, 'sort_order' => 30],
+        ] as $channel) {
+            DeliveryChannel::updateOrCreate(
+                ['name' => $channel['name']],
+                array_merge($channel, ['is_active' => true])
+            );
+        }
+
+        $branch = Branch::query()->orderBy('id')->first();
+        if ($branch) {
+            foreach ([['Retail Rider A', '0300-5551100'], ['Retail Rider B', '0300-5552200']] as [$name, $phone]) {
+                DeliveryRider::updateOrCreate(
+                    ['branch_id' => $branch->id, 'name' => $name],
+                    ['phone' => $phone, 'status' => 'active']
+                );
+            }
+        }
+
+        $this->counts['delivery'] = DeliveryChannel::count() . ' channels / ' . DeliveryRider::count() . ' riders';
+    }
+
     private function seedOpeningStock(): void
     {
         $branch = Branch::query()->orderBy('id')->first();
@@ -256,6 +285,9 @@ class RetailDemoSeeder
         $cash   = PaymentMethod::where('method_type', 'cash')->first();
         $card   = PaymentMethod::where('method_type', 'card')->first();
         $customers = Customer::whereNotNull('code')->get()->keyBy('code');
+        $foodpanda = DeliveryChannel::where('name', 'Foodpanda')->first();
+        $ownDelivery = DeliveryChannel::where('name', 'Own Delivery')->first();
+        $rider = DeliveryRider::where('branch_id', $branch?->id)->where('status', 'active')->orderBy('name')->first();
 
         if (! $branch || ! $owner || ! $cash) {
             $this->counts['sales'] = 'skipped (missing branch/user/payment method)';
@@ -265,11 +297,11 @@ class RetailDemoSeeder
         $sales = [
             ['cust' => null,     'pay' => $cash, 'days' => 0, 'lines' => [['890100000007', 2, 130], ['890100000014', 3, 95]]],
             ['cust' => 'RC-001', 'pay' => $cash, 'days' => 0, 'lines' => [['890100000010', 2, 150], ['890100000012', 1, 120], ['890100000013', 1, 300]]],
-            ['cust' => null,     'pay' => $card, 'days' => 1, 'lines' => [['890100000001', 1, 1100], ['890100000003', 1, 480]]],
+            ['cust' => null,     'pay' => $card, 'days' => 1, 'type' => 'delivery', 'delivery_channel' => $foodpanda, 'lines' => [['890100000001', 1, 1100], ['890100000003', 1, 480]]],
             ['cust' => 'RC-002', 'pay' => $cash, 'days' => 1, 'lines' => [['890100000015', 4, 80], ['890100000016', 3, 140], ['890100000006', 5, 50]]],
             ['cust' => null,     'pay' => $cash, 'days' => 2, 'lines' => [['890100000021', 1, 330], ['890100000022', 2, 185], ['890100000023', 3, 100]]],
             ['cust' => 'RC-004', 'pay' => $card, 'days' => 2, 'lines' => [['890100000018', 2, 230], ['890100000019', 1, 380], ['890100000020', 4, 160]]],
-            ['cust' => null,     'pay' => $cash, 'days' => 3, 'lines' => [['890100000024', 2, 320], ['890100000025', 3, 140]]],
+            ['cust' => null,     'pay' => $cash, 'days' => 3, 'type' => 'delivery', 'delivery_channel' => $ownDelivery, 'delivery_rider' => $rider, 'lines' => [['890100000024', 2, 320], ['890100000025', 3, 140]]],
             ['cust' => 'RC-003', 'pay' => $cash, 'days' => 4, 'lines' => [['890100000002', 3, 160], ['890100000004', 2, 250], ['890100000005', 2, 85]]],
             ['cust' => null,     'pay' => $card, 'days' => 5, 'lines' => [['890100000008', 2, 210], ['890100000009', 4, 180]]],
             ['cust' => 'RC-005', 'pay' => $cash, 'days' => 6, 'lines' => [['890100000017', 2, 300], ['890100000011', 3, 130]]],
@@ -300,7 +332,9 @@ class RetailDemoSeeder
             'branch_id'          => $branch->id,
             'customer_id'        => isset($sd['cust']) && $sd['cust'] ? ($customers[$sd['cust']]->id ?? null) : null,
             'order_source'       => 'manual',
-            'order_type'         => 'quick_sale',
+            'order_type'         => $sd['type'] ?? 'quick_sale',
+            'delivery_channel_id' => ($sd['type'] ?? 'quick_sale') === 'delivery' ? (($sd['delivery_channel'] ?? null)?->id) : null,
+            'delivery_rider_id'   => ($sd['type'] ?? 'quick_sale') === 'delivery' ? (($sd['delivery_rider'] ?? null)?->id) : null,
             'sale_date'          => $saleDate,
             'subtotal'           => $subtotal,
             'discount_type'      => 'none',

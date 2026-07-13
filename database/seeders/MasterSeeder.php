@@ -199,7 +199,7 @@ class MasterSeeder extends Seeder
                 'name' => 'POS',
                 'category' => 'Sales',
                 'description' => 'Quick sale, cart, checkout, payments, held sales and POS APIs.',
-                'route_module_keys' => ['tenant.pos', 'tenant.held-sales', 'tenant.sales-orders', 'tenant.sales-returns', 'tenant.sales-ledger', 'tenant.customers', 'tenant.payment-methods'],
+                'route_module_keys' => ['tenant.pos', 'tenant.held-sales', 'tenant.sales-orders', 'tenant.sales-returns', 'tenant.sales-ledger', 'tenant.customers', 'tenant.payment-methods', 'tenant.delivery-channels', 'tenant.delivery-riders'],
                 'sort_order' => 10,
                 'is_core' => true,
             ],

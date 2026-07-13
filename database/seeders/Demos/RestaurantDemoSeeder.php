@@ -5,6 +5,8 @@ namespace Database\Seeders\Demos;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\Category;
 use App\Models\Tenant\Combo;
+use App\Models\Tenant\DeliveryChannel;
+use App\Models\Tenant\DeliveryRider;
 use App\Models\Tenant\Modifier;
 use App\Models\Tenant\ModifierGroup;
 use App\Models\Tenant\PaymentMethod;
@@ -49,6 +51,7 @@ class RestaurantDemoSeeder
         $this->seedUnits();
         $this->seedFloorsAndTables();
         $this->seedWaiters();
+        $this->seedDeliveryChannelsAndRiders();
         $this->seedStaff();
         $this->seedCategories();
         $this->seedMenu();
@@ -120,6 +123,33 @@ class RestaurantDemoSeeder
             );
         }
         $this->counts['waiters'] = RestaurantWaiter::count();
+    }
+
+    protected function seedDeliveryChannelsAndRiders(): void
+    {
+        $branch = $this->mainBranch();
+
+        foreach ([
+            ['name' => 'Own Delivery', 'type' => 'own', 'commission_percent' => 0, 'sort_order' => 10],
+            ['name' => 'Foodpanda', 'type' => 'aggregator', 'commission_percent' => 18, 'sort_order' => 20],
+            ['name' => 'Careem', 'type' => 'aggregator', 'commission_percent' => 15, 'sort_order' => 30],
+        ] as $channel) {
+            DeliveryChannel::updateOrCreate(
+                ['name' => $channel['name']],
+                array_merge($channel, ['is_active' => true])
+            );
+        }
+
+        if ($branch) {
+            foreach ([['Restaurant Rider A', '0300-7771100'], ['Restaurant Rider B', '0300-7772200']] as [$name, $phone]) {
+                DeliveryRider::updateOrCreate(
+                    ['branch_id' => $branch->id, 'name' => $name],
+                    ['phone' => $phone, 'status' => 'active']
+                );
+            }
+        }
+
+        $this->counts['delivery'] = DeliveryChannel::count() . ' channels / ' . DeliveryRider::count() . ' riders';
     }
 
     protected function seedStaff(): void
@@ -364,6 +394,9 @@ class RestaurantDemoSeeder
         $owner  = User::where('email', 'owner@' . app('tenant')->tenant_code . '.com')->first() ?? User::query()->orderBy('id')->first();
         $cash   = PaymentMethod::where('method_type', 'cash')->first();
         $card   = PaymentMethod::where('method_type', 'card')->first();
+        $foodpanda = DeliveryChannel::where('name', 'Foodpanda')->first();
+        $ownDelivery = DeliveryChannel::where('name', 'Own Delivery')->first();
+        $rider = DeliveryRider::where('branch_id', $branch?->id)->where('status', 'active')->orderBy('name')->first();
         if (! $branch || ! $owner || ! $cash) {
             $this->counts['sample_orders'] = 'skipped (missing branch/user/payment method)';
             return;
@@ -375,7 +408,9 @@ class RestaurantDemoSeeder
             ['type' => 'dine_in',  'pay' => $cash, 'days' => 1, 'lines' => [['RST-KARAHI-HALF', 1, 900], ['RST-BBQ-TIKKA', 2, 550], ['RST-TEA', 3, 80]]],
             ['type' => 'takeaway', 'pay' => $cash, 'days' => 1, 'lines' => [['RST-BURGER-ZINGER', 3, 480], ['RST-LOADED-FRIES', 2, 350]]],
             ['type' => 'dine_in',  'pay' => $card, 'days' => 2, 'lines' => [['RST-PIZZA-FAJITA', 2, 950], ['RST-PIZZA-MARG', 1, 750], ['RST-SOFTDRINK', 4, 120]]],
+            ['type' => 'delivery', 'pay' => $card, 'days' => 2, 'delivery_channel' => $foodpanda, 'lines' => [['RST-BURGER-CLASSIC', 2, 450], ['RST-FRIES', 2, 200], ['RST-SOFTDRINK', 2, 120]]],
             ['type' => 'takeaway', 'pay' => $cash, 'days' => 3, 'lines' => [['RST-SANDWICH', 2, 380], ['RST-CAPPUCCINO', 2, 280]]],
+            ['type' => 'delivery', 'pay' => $cash, 'days' => 3, 'delivery_channel' => $ownDelivery, 'delivery_rider' => $rider, 'lines' => [['RST-BURGER-CHEESE', 2, 520], ['RST-FRIES', 2, 200]]],
             ['type' => 'dine_in',  'pay' => $cash, 'days' => 4, 'lines' => [['RST-BIRYANI-MUT', 2, 650], ['RST-BROWNIE', 2, 300], ['RST-LIME', 2, 180]]],
         ];
 
@@ -397,6 +432,8 @@ class RestaurantDemoSeeder
             'branch_id'          => $branch->id,
             'order_source'       => 'manual',
             'order_type'         => $o['type'],
+            'delivery_channel_id' => $o['type'] === 'delivery' ? (($o['delivery_channel'] ?? null)?->id) : null,
+            'delivery_rider_id'   => $o['type'] === 'delivery' ? (($o['delivery_rider'] ?? null)?->id) : null,
             'sale_date'          => $saleDate,
             'subtotal'           => $subtotal,
             'discount_type'      => 'none',

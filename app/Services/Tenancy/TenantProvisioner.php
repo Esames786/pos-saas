@@ -443,6 +443,16 @@ class TenantProvisioner
             'tenant.payment-methods.update',
             'tenant.payment-methods.destroy',
 
+            // Delivery controls
+            'tenant.delivery-channels.index',
+            'tenant.delivery-channels.store',
+            'tenant.delivery-channels.update',
+            'tenant.delivery-channels.destroy',
+            'tenant.delivery-riders.index',
+            'tenant.delivery-riders.store',
+            'tenant.delivery-riders.update',
+            'tenant.delivery-riders.destroy',
+
             // POS
             'tenant.pos.index',
             'tenant.pos.store',
@@ -623,6 +633,8 @@ class TenantProvisioner
             'tenant.reports.sales.summary',
             'tenant.reports.sales.items',
             'tenant.reports.sales.payments',
+            'tenant.reports.sales.channels',
+            'tenant.reports.sales.riders',
             'tenant.reports.shifts',
             'tenant.reports.inventory.valuation',
 

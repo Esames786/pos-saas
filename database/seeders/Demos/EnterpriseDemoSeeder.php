@@ -5,6 +5,8 @@ namespace Database\Seeders\Demos;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\Category;
 use App\Models\Tenant\Combo;
+use App\Models\Tenant\DeliveryChannel;
+use App\Models\Tenant\DeliveryRider;
 use App\Models\Tenant\GoodsReceipt;
 use App\Models\Tenant\PaymentMethod;
 use App\Models\Tenant\Product;
@@ -61,6 +63,7 @@ class EnterpriseDemoSeeder
 
         $this->seedUnits();
         $this->seedBranches();
+        $this->seedDeliveryChannelsAndRiders();
         $this->seedTerminals();
         $this->seedCategories();
         $this->seedRetailProducts();
@@ -119,6 +122,39 @@ class EnterpriseDemoSeeder
             ['code' => $code],
             ['name' => $name, 'address' => $address, 'phone' => $phone, 'email' => strtolower($code) . '@enterprisedemo.com', 'status' => 'active']
         );
+    }
+
+    private function seedDeliveryChannelsAndRiders(): void
+    {
+        foreach ([
+            ['name' => 'Own Delivery', 'type' => 'own', 'commission_percent' => 0, 'sort_order' => 10],
+            ['name' => 'Foodpanda', 'type' => 'aggregator', 'commission_percent' => 18, 'sort_order' => 20],
+            ['name' => 'Careem', 'type' => 'aggregator', 'commission_percent' => 15, 'sort_order' => 30],
+            ['name' => 'Corporate Dispatch', 'type' => 'own', 'commission_percent' => 0, 'sort_order' => 40],
+        ] as $channel) {
+            DeliveryChannel::updateOrCreate(
+                ['name' => $channel['name']],
+                array_merge($channel, ['is_active' => true])
+            );
+        }
+
+        foreach ([
+            [$this->downtown, 'Downtown Rider A', '0300-8881100'],
+            [$this->downtown, 'Downtown Rider B', '0300-8882200'],
+            [$this->mall, 'Mall Rider A', '0300-9991100'],
+            [$this->mall, 'Mall Rider B', '0300-9992200'],
+        ] as [$branch, $name, $phone]) {
+            if (! $branch) {
+                continue;
+            }
+
+            DeliveryRider::updateOrCreate(
+                ['branch_id' => $branch->id, 'name' => $name],
+                ['phone' => $phone, 'status' => 'active']
+            );
+        }
+
+        $this->counts['delivery'] = DeliveryChannel::count() . ' channels / ' . DeliveryRider::count() . ' riders';
     }
 
     private function seedTerminals(): void
@@ -559,13 +595,16 @@ class EnterpriseDemoSeeder
         $owner = $this->owner();
         $cash = PaymentMethod::where('method_type', 'cash')->first();
         $card = PaymentMethod::where('method_type', 'card')->first();
+        $foodpanda = DeliveryChannel::where('name', 'Foodpanda')->first();
+        $ownDelivery = DeliveryChannel::where('name', 'Own Delivery')->first();
+        $rider = DeliveryRider::where('branch_id', $this->downtown->id)->where('status', 'active')->orderBy('name')->first();
         $orders = [
             ['pay' => $cash, 'days' => 0, 'lines' => [['ENT-RET-COLA', 3, 130], ['ENT-RET-CHIPS', 2, 95]]],
-            ['pay' => $card, 'days' => 1, 'lines' => [['ENT-RET-RICE', 1, 1100], ['ENT-RET-OIL', 1, 480]]],
+            ['pay' => $card, 'days' => 1, 'type' => 'delivery', 'delivery_channel' => $foodpanda, 'lines' => [['ENT-RET-RICE', 1, 1100], ['ENT-RET-OIL', 1, 480]]],
             ['pay' => $cash, 'days' => 2, 'lines' => [['ENT-RET-MILK', 2, 150], ['ENT-RET-BREAD', 1, 120], ['ENT-RET-BISCUIT', 3, 80]]],
             ['pay' => $cash, 'days' => 3, 'lines' => [['ENT-RET-SHAMPOO', 1, 330], ['ENT-RET-TPASTE', 2, 185]]],
             ['pay' => $card, 'days' => 4, 'lines' => [['ENT-RET-DETER', 1, 380], ['ENT-RET-DISH', 2, 230]]],
-            ['pay' => $cash, 'days' => 5, 'lines' => [['ENT-RET-WATER', 6, 50], ['ENT-RET-COLA', 2, 130]]],
+            ['pay' => $cash, 'days' => 5, 'type' => 'delivery', 'delivery_channel' => $ownDelivery, 'delivery_rider' => $rider, 'lines' => [['ENT-RET-WATER', 6, 50], ['ENT-RET-COLA', 2, 130]]],
             ['pay' => $cash, 'days' => 6, 'lines' => [['ENT-RET-TEA', 2, 250], ['ENT-RET-SUGAR', 3, 160]]],
             ['pay' => $card, 'days' => 7, 'lines' => [['ENT-RET-RICE', 2, 1100], ['ENT-RET-MILK', 3, 150]]],
         ];
@@ -578,13 +617,16 @@ class EnterpriseDemoSeeder
         $owner = $this->owner();
         $cash = PaymentMethod::where('method_type', 'cash')->first();
         $card = PaymentMethod::where('method_type', 'card')->first();
+        $careem = DeliveryChannel::where('name', 'Careem')->first();
+        $ownDelivery = DeliveryChannel::where('name', 'Own Delivery')->first();
+        $rider = DeliveryRider::where('branch_id', $this->mall->id)->where('status', 'active')->orderBy('name')->first();
         $orders = [
             ['pay' => $cash, 'days' => 0, 'lines' => [['ENT-MENU-BURGER-CLASSIC', 2, 450], ['ENT-MENU-FRIES', 2, 200], ['ENT-MENU-SOFTDRINK', 2, 120]]],
             ['pay' => $card, 'days' => 1, 'lines' => [['ENT-MENU-BIRYANI', 3, 400], ['ENT-MENU-MARGARITA', 3, 250]]],
             ['pay' => $cash, 'days' => 2, 'lines' => [['ENT-MENU-PIZZA-FAJITA', 1, 950], ['ENT-MENU-TEA', 3, 80]]],
-            ['pay' => $cash, 'days' => 3, 'lines' => [['ENT-MENU-BURGER-ZINGER', 3, 480], ['ENT-MENU-LOADED', 2, 350]]],
+            ['pay' => $cash, 'days' => 3, 'type' => 'delivery', 'delivery_channel' => $careem, 'lines' => [['ENT-MENU-BURGER-ZINGER', 3, 480], ['ENT-MENU-LOADED', 2, 350]]],
             ['pay' => $card, 'days' => 4, 'lines' => [['ENT-MENU-KARAHI', 1, 900], ['ENT-MENU-BROWNIE', 2, 300]]],
-            ['pay' => $cash, 'days' => 5, 'lines' => [['ENT-MENU-BURGER-CHEESE', 2, 420], ['ENT-MENU-CAPP', 2, 280]]],
+            ['pay' => $cash, 'days' => 5, 'type' => 'delivery', 'delivery_channel' => $ownDelivery, 'delivery_rider' => $rider, 'lines' => [['ENT-MENU-BURGER-CHEESE', 2, 420], ['ENT-MENU-CAPP', 2, 280]]],
             ['pay' => $cash, 'days' => 6, 'lines' => [['ENT-MENU-FRIES', 3, 200], ['ENT-MENU-DIP', 3, 60], ['ENT-MENU-WATER', 3, 60]]],
         ];
         $this->counts['restaurant_sales'] = $this->runOrders($this->mall, $owner, $orders, 'dine_in') . ' @ Mall';
@@ -600,7 +642,12 @@ class EnterpriseDemoSeeder
                 foreach ($o['lines'] as [$sku, $qty, $price]) $subtotal += $qty * $price;
                 $sale = SalesOrder::create([
                     'sale_no' => 'SO-' . $saleDate->format('Ymd') . '-' . str_pad(SalesOrder::count() + 1, 4, '0', STR_PAD_LEFT),
-                    'branch_id' => $branch->id, 'order_source' => 'pos', 'order_type' => $type, 'sale_date' => $saleDate,
+                    'branch_id' => $branch->id,
+                    'order_source' => 'pos',
+                    'order_type' => $o['type'] ?? $type,
+                    'delivery_channel_id' => ($o['type'] ?? $type) === 'delivery' ? (($o['delivery_channel'] ?? null)?->id) : null,
+                    'delivery_rider_id' => ($o['type'] ?? $type) === 'delivery' ? (($o['delivery_rider'] ?? null)?->id) : null,
+                    'sale_date' => $saleDate,
                     'subtotal' => $subtotal, 'discount_type' => 'none', 'discount_value' => 0, 'discount_amount' => 0,
                     'tax_amount' => 0, 'grand_total' => $subtotal, 'status' => 'draft', 'created_by_user_id' => $owner->id,
                 ]);

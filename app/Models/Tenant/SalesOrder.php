@@ -45,6 +45,8 @@ class SalesOrder extends Model
         'restaurant_table_id',
         'restaurant_table_session_id',
         'restaurant_waiter_id',
+        'delivery_channel_id',
+        'delivery_rider_id',
     ];
 
     protected function casts(): array
@@ -135,5 +137,15 @@ class SalesOrder extends Model
     public function restaurantWaiter()
     {
         return $this->belongsTo(RestaurantWaiter::class);
+    }
+
+    public function deliveryChannel()
+    {
+        return $this->belongsTo(DeliveryChannel::class);
+    }
+
+    public function deliveryRider()
+    {
+        return $this->belongsTo(DeliveryRider::class);
     }
 }

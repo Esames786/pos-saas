@@ -7,6 +7,8 @@ use App\Models\Tenant\Branch;
 use App\Models\Tenant\Category;
 use App\Models\Tenant\Combo;
 use App\Models\Tenant\Customer;
+use App\Models\Tenant\DeliveryChannel;
+use App\Models\Tenant\DeliveryRider;
 use App\Models\Tenant\PaymentMethod;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\RestaurantFloor;
@@ -67,6 +69,16 @@ class POSController extends Controller
                     ->orWhere('branch_id', $selectedBranchId);
             })
             ->where('status', 'active')
+            ->orderBy('name')
+            ->get();
+
+        $deliveryChannels = DeliveryChannel::where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get();
+
+        // All active riders; POS JS filters by the selected branch (data-branch attr).
+        $deliveryRiders = DeliveryRider::where('status', 'active')
             ->orderBy('name')
             ->get();
 
@@ -272,6 +284,8 @@ class POSController extends Controller
                 ->get(),
             'floors'              => $floors,
             'waiters'             => $waiters,
+            'deliveryChannels'    => $deliveryChannels,
+            'deliveryRiders'      => $deliveryRiders,
             'tableSession'        => $tableSession,
             'heldSale'            => $heldSale,
             'terminalPrintConfig' => TerminalPrinterSetting::all()

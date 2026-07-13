@@ -150,7 +150,84 @@ class SalesReportService
         ];
     }
 
+    /**
+     * DELIVERY-CHANNELS-1: paid delivery sales grouped by fulfilment channel.
+     * Commission is computed at the channel's CURRENT commission_percent -
+     * v1 has no per-order commission snapshot (documented caveat).
+     */
+    public function byChannel(array $filters)
+    {
+        return $this->baseDeliveryQuery($filters)
+            ->leftJoin('delivery_channels', 'sales_orders.delivery_channel_id', '=', 'delivery_channels.id')
+            ->selectRaw("
+                sales_orders.delivery_channel_id,
+                COALESCE(MAX(delivery_channels.name), '(No channel)')       as channel_name,
+                MAX(COALESCE(delivery_channels.type, ''))                    as channel_type,
+                MAX(COALESCE(delivery_channels.commission_percent, 0))       as commission_percent,
+                COUNT(*)                                                     as order_count,
+                COALESCE(SUM(sales_orders.grand_total), 0)                   as gross_amount,
+                ROUND(COALESCE(SUM(sales_orders.grand_total), 0)
+                    * MAX(COALESCE(delivery_channels.commission_percent, 0)) / 100, 2) as commission_amount
+            ")
+            ->groupBy('sales_orders.delivery_channel_id')
+            ->orderByDesc('gross_amount')
+            ->get();
+    }
+
+    /**
+     * DELIVERY-CHANNELS-1: paid delivery sales grouped by rider (totals)
+     * plus a rider by day breakdown for the same filter window.
+     */
+    public function byRider(array $filters): array
+    {
+        $riders = $this->baseDeliveryQuery($filters)
+            ->leftJoin('delivery_riders', 'sales_orders.delivery_rider_id', '=', 'delivery_riders.id')
+            ->leftJoin('branches', 'delivery_riders.branch_id', '=', 'branches.id')
+            ->selectRaw("
+                sales_orders.delivery_rider_id,
+                COALESCE(MAX(delivery_riders.name), '(No rider)')  as rider_name,
+                MAX(COALESCE(delivery_riders.phone, ''))            as rider_phone,
+                MAX(COALESCE(branches.name, 'All Branches'))        as rider_branch,
+                COUNT(*)                                            as delivery_count,
+                COALESCE(SUM(sales_orders.grand_total), 0)          as total_amount
+            ")
+            ->groupBy('sales_orders.delivery_rider_id')
+            ->orderByDesc('delivery_count')
+            ->get();
+
+        $daily = $this->baseDeliveryQuery($filters)
+            ->leftJoin('delivery_riders', 'sales_orders.delivery_rider_id', '=', 'delivery_riders.id')
+            ->selectRaw("
+                DATE(sales_orders.sale_date)                        as sale_day,
+                sales_orders.delivery_rider_id,
+                COALESCE(MAX(delivery_riders.name), '(No rider)')  as rider_name,
+                COUNT(*)                                            as delivery_count,
+                COALESCE(SUM(sales_orders.grand_total), 0)          as total_amount
+            ")
+            ->groupByRaw('DATE(sales_orders.sale_date), sales_orders.delivery_rider_id')
+            ->orderByDesc('sale_day')
+            ->orderByDesc('delivery_count')
+            ->get();
+
+        return ['riders' => $riders, 'daily' => $daily];
+    }
+
     // ── Private helpers ──────────────────────────────────────────────────
+
+    /** Paid DELIVERY sales with the standard report filters applied. */
+    private function baseDeliveryQuery(array $filters)
+    {
+        $branchIds = $this->resolveBranchIds($filters);
+
+        return SalesOrder::query()
+            ->where('sales_orders.status', 'paid')
+            ->where('sales_orders.order_type', 'delivery')
+            ->when($branchIds, fn ($q) => $q->whereIn('sales_orders.branch_id', $branchIds))
+            ->when(!empty($filters['date_from']), fn ($q) => $q->whereDate('sales_orders.sale_date', '>=', $filters['date_from']))
+            ->when(!empty($filters['date_to']),   fn ($q) => $q->whereDate('sales_orders.sale_date', '<=', $filters['date_to']))
+            ->when(!empty($filters['delivery_channel_id']), fn ($q) => $q->where('sales_orders.delivery_channel_id', $filters['delivery_channel_id']))
+            ->when(!empty($filters['delivery_rider_id']),   fn ($q) => $q->where('sales_orders.delivery_rider_id', $filters['delivery_rider_id']));
+    }
 
     private function baseSalesQuery(array $filters)
     {

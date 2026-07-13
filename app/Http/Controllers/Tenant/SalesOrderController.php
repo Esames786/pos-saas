@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Tenant;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\Customer;
+use App\Models\Tenant\DeliveryChannel;
+use App\Models\Tenant\DeliveryRider;
 use App\Models\Tenant\PaymentMethod;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\RestaurantTableSession;
@@ -18,6 +20,7 @@ use App\Services\Sales\PromotionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 
 class SalesOrderController extends Controller
@@ -198,6 +201,10 @@ class SalesOrderController extends Controller
                     'customer_email'              => $data['customer_email'] ?? null,
                     'order_source'                => $data['order_source'] ?? 'pos',
                     'order_type'                  => $tableSession ? 'dine_in' : $orderType,
+                    // Channel/rider are delivery-only attribution; never persist stale
+                    // values when the effective order type is not delivery.
+                    'delivery_channel_id'         => (! $tableSession && $orderType === 'delivery') ? ($data['delivery_channel_id'] ?? null) : null,
+                    'delivery_rider_id'           => (! $tableSession && $orderType === 'delivery') ? ($data['delivery_rider_id'] ?? null) : null,
                     'sale_date'                   => now(),
                     'subtotal'                    => $totals['subtotal'],
                     'discount_type'               => $data['discount_type'],
@@ -361,7 +368,7 @@ class SalesOrderController extends Controller
 
     private function validateSale(Request $request): array
     {
-        return $request->validate([
+        $data = $request->validate([
             'branch_id'    => ['required', 'exists:branches,id'],
             'terminal_id'  => ['nullable', 'exists:terminals,id'],
             'customer_id'  => ['nullable', 'exists:customers,id'],
@@ -373,6 +380,8 @@ class SalesOrderController extends Controller
             'create_separate_order'       => ['nullable', 'boolean'],
             'order_source'        => ['nullable', Rule::in(['pos', 'manual'])],
             'order_type'          => ['required', Rule::in(['quick_sale', 'takeaway', 'dine_in', 'delivery'])],
+            'delivery_channel_id' => ['nullable', 'exists:delivery_channels,id'],
+            'delivery_rider_id'   => ['nullable', 'exists:delivery_riders,id'],
             'discount_type'       => ['required', Rule::in(['none', 'fixed', 'percent'])],
             'discount_value'      => ['nullable', 'numeric', 'min:0'],
             'promo_code'          => ['nullable', 'string', 'max:50'],
@@ -406,6 +415,54 @@ class SalesOrderController extends Controller
             'payments.*.cheque_date'           => ['nullable', 'date'],
             'payments.*.notes'                 => ['nullable', 'string'],
         ]);
+
+        return $this->validateDeliveryAttribution($data);
+    }
+
+    private function validateDeliveryAttribution(array $data): array
+    {
+        if (($data['order_type'] ?? null) !== 'delivery' || ! empty($data['restaurant_table_session_id'])) {
+            $data['delivery_channel_id'] = null;
+            $data['delivery_rider_id'] = null;
+
+            return $data;
+        }
+
+        if (empty($data['delivery_channel_id'])) {
+            throw ValidationException::withMessages([
+                'delivery_channel_id' => 'Select a delivery channel for delivery orders.',
+            ]);
+        }
+
+        $channel = DeliveryChannel::where('is_active', true)->find($data['delivery_channel_id']);
+
+        if (! $channel) {
+            throw ValidationException::withMessages([
+                'delivery_channel_id' => 'Selected delivery channel is not active.',
+            ]);
+        }
+
+        if (! $channel->isOwn()) {
+            $data['delivery_rider_id'] = null;
+
+            return $data;
+        }
+
+        if (empty($data['delivery_rider_id'])) {
+            throw ValidationException::withMessages([
+                'delivery_rider_id' => 'Select a rider for own-delivery orders.',
+            ]);
+        }
+
+        $rider = DeliveryRider::where('status', 'active')->find($data['delivery_rider_id']);
+
+        if (! $rider || ($rider->branch_id && (int) $rider->branch_id !== (int) $data['branch_id'])) {
+            throw ValidationException::withMessages([
+                'delivery_rider_id' => 'Selected rider is not active for this branch.',
+            ]);
+        }
+
+        return $data;
     }
 
     private function resolveSellingPrice(Product $product, $variant, int $branchId, ?float $submittedPrice): float

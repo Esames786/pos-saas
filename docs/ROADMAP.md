@@ -1,7 +1,7 @@
 # Bingoo POS — Roadmap & System Gap Register
 
 > Maintained working document. Update after every completed sprint.
-> Last updated: **2026-07-10** (added Track E client requests) · prod = `2165f62` · branch `feat/14d-2-plan-upgrade-requests`
+> Last updated: **2026-07-13** (DELIVERY-CHANNELS-1 completed locally) · prod = `0f92391` · branch `feat/14d-2-plan-upgrade-requests`
 
 ---
 
@@ -55,7 +55,7 @@ Design: `docs/MANUFACTURING_FINANCE_POSTING_DESIGN.md` · backlog: `docs/MANUFAC
 
 | # | Item | Design notes | Size |
 |---|---|---|---|
-| E1 | **Delivery channels + rider management** — on the POS **Delivery** order type, choose the fulfilment channel: **Foodpanda / other 3rd-party platforms / Own delivery** — and for own delivery, pick the assigned **rider** | New tenant tables: `delivery_channels` (name, type: aggregator/own, commission_percent, is_active — seed Foodpanda/Careem/Own) + `delivery_riders` (branch_id, name, phone, status) or reuse/extend restaurant_waiters with a role. `sales_orders` gains `delivery_channel_id` + `delivery_rider_id` (nullable, delivery orders only). POS delivery flow: channel select → rider select (own only). Reports: sales by channel (aggregator commission visibility), rider-wise deliveries/day. Receipt shows channel/rider. Later phase: channel-specific pricing/menus + aggregator settlement reconciliation | M |
+| E1 | ✅ **DELIVERY-CHANNELS-1** — delivery channel + rider attribution | Tenant tables `delivery_channels` + `delivery_riders`; `sales_orders.delivery_channel_id/delivery_rider_id`; POS delivery channel picker with own-delivery rider requirement; held-sale recall support; admin screens under Sales; sales-by-channel and rider deliveries reports; receipt/KOT payload visibility; permissions/routes/module keys wired; demo seeders populate channels, riders, and sample delivery sales. Later phase: channel-specific pricing/menus + aggregator settlement reconciliation | ✅ done |
 | E2 | **Global negative-inventory setting** — tenant/branch-level toggle: when a branch allows negative inventory, stock-out items can still be sold (POS does not block) | Setting home: `branches.allow_negative_stock` (bool, default OFF) + optional tenant-level default in a settings table. Enforcement point is the single choke point `InventoryService::postMovement()` — on direction=out with insufficient qty: if branch allows negative → post anyway (balance goes negative, WAC kept), else current RuntimeException. POS availableQty/tile badge shows "Backorder"/negative amber instead of blocking "Out". MUST log every negative-crossing movement (flag on ledger row or report) + a "Negative Stock" report for reconciliation; dept custody shadow already tolerates shortage via exceptions. Careful: COGS on negative-stock sales uses last WAC — document the accounting caveat | M |
 
 ## 🔜 TRACK D — Catalog polish (quick wins)

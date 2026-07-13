@@ -54,6 +54,12 @@ class EscPosPayloadService
         if ($sale->restaurantWaiter) {
             $out .= 'Waiter: ' . $sale->restaurantWaiter->name . "\n";
         }
+        if ($sale->deliveryChannel) {
+            $out .= 'Channel: ' . $sale->deliveryChannel->name . "\n";
+        }
+        if ($sale->deliveryRider) {
+            $out .= 'Rider: ' . $sale->deliveryRider->name . "\n";
+        }
 
         $out .= str_repeat('-', 42) . "\n";
 

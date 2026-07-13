@@ -423,7 +423,7 @@
                 @endif
 
                 {{-- ── SALES ───────────────────────────────────────────────────── --}}
-                @canany(['tenant.pos.index','tenant.sales-orders.index','tenant.customers.index','tenant.payment-methods.index','tenant.sales-ledger.index','tenant.sales-returns.index'])
+                @canany(['tenant.pos.index','tenant.sales-orders.index','tenant.customers.index','tenant.payment-methods.index','tenant.delivery-channels.index','tenant.delivery-riders.index','tenant.sales-ledger.index','tenant.sales-returns.index'])
                 <li class="submenu">
                     <a href="javascript:void(0);">
                         <i class="ti ti-device-tablet fs-16 me-2"></i>
@@ -468,6 +468,22 @@
                             <li class="{{ $a ? 'active' : '' }}">
                                 <a href="{{ url('/payment-methods') }}" class="{{ $a ? 'active' : '' }}">
                                     <i class="ti ti-credit-card fs-16 me-2"></i><span>Payment Methods</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.delivery-channels.index')
+                            @php $a = $isIn('delivery/channels*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/delivery/channels') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-building-store fs-16 me-2"></i><span>Delivery Channels</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.delivery-riders.index')
+                            @php $a = $isIn('delivery/riders*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/delivery/riders') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-motorbike fs-16 me-2"></i><span>Delivery Riders</span>
                                 </a>
                             </li>
                         @endcan
@@ -919,7 +935,7 @@
                 @endif
 
                 {{-- ── REPORTS ─────────────────────────────────────────────────── --}}
-                @canany(['tenant.reports.sales.summary','tenant.reports.shifts','tenant.reports.inventory.valuation','tenant.reports.purchases.payables','tenant.reports.restaurant.tables','tenant.reports.kitchen.recipe-consumption','tenant.reports.departments.sales','tenant.reports.audit.manager-approvals','tenant.reports.printing.jobs'])
+                @canany(['tenant.reports.sales.summary','tenant.reports.sales.channels','tenant.reports.sales.riders','tenant.reports.shifts','tenant.reports.inventory.valuation','tenant.reports.purchases.payables','tenant.reports.restaurant.tables','tenant.reports.kitchen.recipe-consumption','tenant.reports.departments.sales','tenant.reports.audit.manager-approvals','tenant.reports.printing.jobs'])
                 <li class="submenu">
                     <a href="javascript:void(0);">
                         <i class="ti ti-chart-bar fs-16 me-2"></i>
@@ -928,10 +944,26 @@
                     </a>
                     <ul style="display:none;">
                         @can('tenant.reports.sales.summary')
-                            @php $a = $isIn('reports/sales*') && !$isIn('reports/sales/receivables'); @endphp
+                            @php $a = $isIn('reports/sales*') && !$isIn('reports/sales/receivables') && !$isIn('reports/sales/channels') && !$isIn('reports/sales/riders'); @endphp
                             <li class="{{ $a ? 'active' : '' }}">
                                 <a href="{{ url('/reports/sales/summary') }}" class="{{ $a ? 'active' : '' }}">
                                     <i class="ti ti-report-money fs-16 me-2"></i><span>Sales Reports</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.reports.sales.channels')
+                            @php $a = $isIn('reports/sales/channels'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/reports/sales/channels') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-chart-pie fs-16 me-2"></i><span>Delivery Channels</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.reports.sales.riders')
+                            @php $a = $isIn('reports/sales/riders'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/reports/sales/riders') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-motorbike fs-16 me-2"></i><span>Rider Deliveries</span>
                                 </a>
                             </li>
                         @endcan
