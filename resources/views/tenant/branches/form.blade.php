@@ -123,6 +123,20 @@
                     </div>
                 </div>
 
+                <div class="col-md-12">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" role="switch"
+                            id="allow_negative_stock" name="allow_negative_stock" value="1"
+                            @checked(old('allow_negative_stock', $branch?->allow_negative_stock))>
+                        <label class="form-check-label" for="allow_negative_stock">Allow Negative Inventory</label>
+                    </div>
+                    <div class="form-text text-warning">
+                        When enabled, this branch can sell/post stock-out items and official stock may go below zero.
+                        Use only when you accept backorder or delayed stock entry workflows.
+                        COGS for backorder sales is estimated at last known cost.
+                    </div>
+                </div>
+
                 <div class="col-md-8">
                     <label for="receipt_footer" class="form-label">Receipt Footer Text</label>
                     <textarea id="receipt_footer" name="receipt_footer" class="form-control" rows="2"

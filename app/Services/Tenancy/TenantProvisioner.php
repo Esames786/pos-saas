@@ -643,6 +643,7 @@ class TenantProvisioner
             'tenant.reports.inventory.movements',
             'tenant.reports.inventory.low-stock',
             'tenant.reports.inventory.expiry',
+            'tenant.reports.inventory.negative-stock',
             'tenant.reports.purchases.summary',
             'tenant.reports.purchases.suppliers',
             'tenant.reports.purchases.payables',

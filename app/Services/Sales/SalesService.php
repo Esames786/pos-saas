@@ -82,7 +82,8 @@ class SalesService
                             referenceId: $sale->id,
                             referenceNo: $sale->sale_no,
                             notes: 'Sale stock out',
-                            userId: $sale->created_by_user_id
+                            userId: $sale->created_by_user_id,
+                            allowNegative: (bool) $sale->branch->allow_negative_stock,
                         );
 
                         $costTotal = collect($ledgers)->sum(fn ($ledger) => (float) $ledger->total_cost);
@@ -234,6 +235,7 @@ class SalesService
                     referenceNo: $sale->sale_no,
                     notes: "Modifier consumption: {$modifier->name} for {$line->product_name}",
                     userId: $sale->created_by_user_id,
+                    allowNegative: (bool) $sale->branch->allow_negative_stock,
                 );
             } catch (\RuntimeException $e) {
                 throw new RuntimeException(

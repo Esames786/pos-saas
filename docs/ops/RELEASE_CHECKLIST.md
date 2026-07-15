@@ -30,9 +30,18 @@ checklist wraps it with pre/post verification.
 - [ ] New/changed routes respond (spot-check the release's screens)
 - [ ] Finance smoke on demo tenant:
   ```
-  tb_diff=0
-  official_negative_stock_rows=0
+  tb_diff=0                                   ← ALWAYS mandatory, no exceptions
+  official_negative_on_disallowed_branches=0  ← branches with allow_negative_stock OFF must have zero negative rows
+  official_negative_on_allowed_branches=N     ← branches with the flag ON may have negatives; REPORT count+value, not a failure
   department_negative_stock_rows=0
+  ```
+  Branch-aware negative check (NEGATIVE-STOCK-SETTING-1B — a bare `official_negative=0` assertion is
+  outdated once any branch legitimately enables negative inventory):
+  ```php
+  $disallowed = \App\Models\Tenant\StockBalance::whereHas('branch', fn ($q) => $q->where('allow_negative_stock', false))
+      ->where('quantity_on_hand', '<', 0)->count();   // must be 0
+  $allowed = \App\Models\Tenant\StockBalance::whereHas('branch', fn ($q) => $q->where('allow_negative_stock', true))
+      ->where('quantity_on_hand', '<', 0)->count();   // report only
   ```
 - [ ] Key module spot-check (POS page, one report)
 - [ ] `tail -50 storage/logs/laravel-$(date +%F).log` — no fresh ERRORs

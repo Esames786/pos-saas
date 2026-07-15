@@ -98,6 +98,7 @@ class RecipeConsumptionService
                 referenceNo: $sale->sale_no,
                 notes: "Recipe consumption for {$product->name} (Sale {$sale->sale_no})",
                 userId: $sale->created_by_user_id,
+                allowNegative: (bool) $branch->allow_negative_stock,
             );
 
             $totalCost += (float) collect($ledgers)->sum(fn ($ledger) => (float) $ledger->total_cost);

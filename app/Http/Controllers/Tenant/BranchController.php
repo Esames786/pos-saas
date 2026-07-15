@@ -78,7 +78,7 @@ class BranchController extends Controller
 
     private function validateBranch(Request $request, ?Branch $branch = null): array
     {
-        return $request->validate([
+        $data = $request->validate([
             'code'                       => ['nullable', 'string', 'max:50', Rule::unique('branches', 'code')->ignore($branch?->id)],
             'name'                       => ['required', 'string', 'max:190'],
             'business_type'              => ['required', Rule::in(['store', 'restaurant', 'hybrid'])],
@@ -89,8 +89,15 @@ class BranchController extends Controller
             'tax_registration_no'        => ['nullable', 'string', 'max:100'],
             'is_tax_enabled'             => ['nullable', 'boolean'],
             'show_tax_number_on_invoice' => ['nullable', 'boolean'],
+            'allow_negative_stock'       => ['nullable', 'boolean'],
             'receipt_footer'             => ['nullable', 'string'],
             'status'                     => ['required', Rule::in(['active', 'inactive'])],
         ]);
+
+        // Unchecked checkbox is absent from the request; force an explicit value
+        // so turning the setting OFF actually persists false.
+        $data['allow_negative_stock'] = $request->boolean('allow_negative_stock');
+
+        return $data;
     }
 }

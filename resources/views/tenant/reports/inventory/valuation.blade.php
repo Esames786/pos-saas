@@ -5,6 +5,14 @@
 @section('content')
         <div class="page-header">
             <div class="page-title"><h4>Stock Valuation</h4><h6>Current inventory value by product</h6></div>
+            <div class="page-btn">
+                @can('tenant.reports.inventory.movements')
+                <a href="{{ url('/reports/inventory/movements') }}" class="btn btn-outline-secondary btn-sm">Movements</a>
+                @endcan
+                @can('tenant.reports.inventory.negative-stock')
+                <a href="{{ url('/reports/inventory/negative-stock') }}" class="btn btn-outline-warning btn-sm">Negative Stock</a>
+                @endcan
+            </div>
         </div>
 
         {{-- Filters --}}

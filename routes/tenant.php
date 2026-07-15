@@ -622,6 +622,7 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/reports/inventory/movements', [InventoryReportController::class, 'movements'])->name('tenant.reports.inventory.movements');
                 Route::get('/reports/inventory/low-stock', [InventoryReportController::class, 'lowStock'])->name('tenant.reports.inventory.low-stock');
                 Route::get('/reports/inventory/expiry', [InventoryReportController::class, 'expiry'])->name('tenant.reports.inventory.expiry');
+                Route::get('/reports/inventory/negative-stock', [InventoryReportController::class, 'negativeStock'])->name('tenant.reports.inventory.negative-stock');
                 Route::get('/reports/purchases/summary', [PurchaseReportController::class, 'summary'])->name('tenant.reports.purchases.summary');
                 Route::get('/reports/purchases/suppliers', [PurchaseReportController::class, 'suppliers'])->name('tenant.reports.purchases.suppliers');
                 Route::get('/reports/purchases/payables', [PurchaseReportController::class, 'payables'])->name('tenant.reports.purchases.payables');

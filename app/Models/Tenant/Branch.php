@@ -19,6 +19,7 @@ class Branch extends Model
         'tax_registration_no',
         'is_tax_enabled',
         'show_tax_number_on_invoice',
+        'allow_negative_stock',
         'receipt_footer',
         'status',
     ];
@@ -28,6 +29,7 @@ class Branch extends Model
         return [
             'is_tax_enabled' => 'boolean',
             'show_tax_number_on_invoice' => 'boolean',
+            'allow_negative_stock' => 'boolean',
         ];
     }
 

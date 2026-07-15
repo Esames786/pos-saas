@@ -67,6 +67,7 @@ class InventoryService
         ?string $referenceNo = null,
         ?string $notes = null,
         ?int $userId = null,
+        bool $allowNegative = false,
     ): array {
         $this->ensureStockTracked($product);
 
@@ -74,10 +75,11 @@ class InventoryService
         // inside the same transaction as the caller (SalesService, etc.).
         return DB::connection('tenant')->transaction(function () use (
             $branch, $product, $variant, $quantity, $movementType,
-            $referenceType, $referenceId, $referenceNo, $notes, $userId
+            $referenceType, $referenceId, $referenceNo, $notes, $userId, $allowNegative
         ) {
             $remaining = $quantity;
             $ledgers = [];
+            $lastConsumedCost = null;
 
             $balances = StockBalance::query()
                 ->with('batch')
@@ -113,11 +115,46 @@ class InventoryService
                     userId: $userId,
                 );
 
+                if ((float) $balance->average_cost > 0) {
+                    $lastConsumedCost = (float) $balance->average_cost;
+                }
+
                 $remaining -= $consumeQty;
             }
 
             if ($remaining > 0.0001) {
-                throw new RuntimeException('Insufficient stock for ' . $product->name);
+                if (! $allowNegative) {
+                    throw new RuntimeException('Insufficient stock for ' . $product->name);
+                }
+
+                // NEGATIVE-STOCK-SETTING-1B: branch explicitly allows backorder.
+                // Post ONE batch-less leg for the shortfall so the balance goes
+                // negative while the ledger stays complete. Cost comes from the
+                // fallback chain — never silently zero when a cost is known.
+                $negativeCost = $this->resolveNegativeStockCost(
+                    $branch->id, $product, $variant, $lastConsumedCost
+                );
+
+                $negativeNotes = $negativeCost > 0
+                    ? trim(($notes ? $notes . ' | ' : '') . 'negative-stock leg')
+                    : trim(($notes ? $notes . ' | ' : '') . 'negative-stock leg, no known cost');
+
+                $ledgers[] = $this->postMovement(
+                    branch: $branch,
+                    product: $product,
+                    variant: $variant,
+                    batch: null,
+                    movementType: $movementType,
+                    direction: 'out',
+                    quantity: $remaining,
+                    unitCost: $negativeCost,
+                    referenceType: $referenceType,
+                    referenceId: $referenceId,
+                    referenceNo: $referenceNo,
+                    notes: $negativeNotes,
+                    userId: $userId,
+                    allowNegative: true,
+                );
             }
 
             return $ledgers;
@@ -250,6 +287,7 @@ class InventoryService
         ?string $referenceNo,
         ?string $notes,
         ?int $userId,
+        bool $allowNegative = false,
     ): StockLedger {
         if ($quantity <= 0) {
             throw new RuntimeException('Quantity must be greater than zero.');
@@ -258,7 +296,7 @@ class InventoryService
         // BUG-006 FIX: tenant connection. BUG-007 FIX: lockForUpdate on StockBalance.
         return DB::connection('tenant')->transaction(function () use (
             $branch, $product, $variant, $batch, $movementType, $direction,
-            $quantity, $unitCost, $referenceType, $referenceId, $referenceNo, $notes, $userId
+            $quantity, $unitCost, $referenceType, $referenceId, $referenceNo, $notes, $userId, $allowNegative
         ) {
             $balanceKey = $this->balanceKey($branch->id, $product->id, $variant?->id, $batch?->id);
 
@@ -283,7 +321,7 @@ class InventoryService
             $currentQty  = (float) $balance->quantity_on_hand;
             $currentCost = (float) $balance->average_cost;
 
-            if ($direction === 'out' && $currentQty < $quantity) {
+            if ($direction === 'out' && $currentQty < $quantity && ! $allowNegative) {
                 throw new RuntimeException('Insufficient stock for ' . $product->name);
             }
 
@@ -320,6 +358,52 @@ class InventoryService
                 'created_by_user_id'   => $userId,
             ]);
         });
+    }
+
+    /**
+     * NEGATIVE-STOCK-SETTING-1B: best-known unit cost for a backorder (negative)
+     * leg so COGS is never silently zero when any cost is known.
+     * Fallback order (design doc §6):
+     *   1. last positive balance cost consumed in the same postOutFefo call
+     *   2. batch-less balance average_cost
+     *   3. max average_cost across this branch/product/variant's balances
+     *   4. variant purchase_price
+     *   5. product default_purchase_price
+     *   6. 0 — flagged via ledger notes by the caller
+     */
+    private function resolveNegativeStockCost(
+        int $branchId,
+        Product $product,
+        ?ProductVariant $variant,
+        ?float $lastConsumedCost = null
+    ): float {
+        if ($lastConsumedCost !== null && $lastConsumedCost > 0) {
+            return $lastConsumedCost;
+        }
+
+        $batchlessKey = $this->balanceKey($branchId, $product->id, $variant?->id, null);
+        $batchlessCost = (float) (StockBalance::where('balance_key', $batchlessKey)->value('average_cost') ?? 0);
+        if ($batchlessCost > 0) {
+            return $batchlessCost;
+        }
+
+        $maxCost = (float) (StockBalance::where('branch_id', $branchId)
+            ->where('product_id', $product->id)
+            ->where('product_variant_id', $variant?->id)
+            ->max('average_cost') ?? 0);
+        if ($maxCost > 0) {
+            return $maxCost;
+        }
+
+        if ($variant && (float) $variant->purchase_price > 0) {
+            return (float) $variant->purchase_price;
+        }
+
+        if ((float) $product->default_purchase_price > 0) {
+            return (float) $product->default_purchase_price;
+        }
+
+        return 0.0;
     }
 
     private function ensureStockTracked(Product $product): void

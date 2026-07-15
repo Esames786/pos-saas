@@ -172,6 +172,7 @@
     .stock-low  { background: #fff3cd; color: #7a5200; }
     .stock-out  { background: #fee2e2; color: #991b1b; }
     .stock-svc  { background: #dbeafe; color: #1e40af; }
+    .stock-backorder { background: #ffedd5; color: #9a3412; }
 
     /* POS-UX-1: visible keyboard shortcut bar */
     .pos-shortcut-bar {
@@ -425,7 +426,9 @@
                     <label for="branch_id" class="form-label required">Branch</label>
                     <select id="branch_id" name="branch_id" class="form-select" required>
                         @foreach($branches as $branch)
-                            <option value="{{ $branch->id }}" @selected((int) $selectedBranchId === (int) $branch->id)>
+                            <option value="{{ $branch->id }}"
+                                data-allow-negative="{{ $branch->allow_negative_stock ? 1 : 0 }}"
+                                @selected((int) $selectedBranchId === (int) $branch->id)>
                                 {{ $branch->name }}
                             </option>
                         @endforeach
@@ -1392,6 +1395,19 @@ document.addEventListener('DOMContentLoaded', function () {
         return null; // plain service (no ingredients) — unlimited
     }
 
+    // NEGATIVE-STOCK-SETTING-1B: does the currently selected branch allow
+    // selling stock-out items (official stock may go negative)? Read live from
+    // the branch option so it always matches the selected branch.
+    function branchAllowsNegative() {
+        var sel = document.getElementById('branch_id');
+        var opt = sel && sel.selectedOptions ? sel.selectedOptions[0] : null;
+        return !!(opt && opt.dataset.allowNegative === '1');
+    }
+
+    function backorderToast(name) {
+        toast('warning', 'Backorder — ' + name + ' stock will go negative');
+    }
+
     // How many of a combo can be made right now = the lowest of its components'
     // availability ÷ the qty each combo needs. Returns { makeable, limiting }:
     //   makeable = null → unlimited (all components are plain services)
@@ -1494,15 +1510,16 @@ document.addEventListener('DOMContentLoaded', function () {
             const avail      = comboAvailability(combo);
             const isOut      = avail.makeable !== null && avail.makeable <= 0;
             const isLow      = !isOut && avail.makeable !== null && avail.makeable <= 5;
-            const badgeClass = isOut ? 'stock-out' : (isLow ? 'stock-low' : '');
-            const badgeText  = isOut ? 'Unavailable' : 'Combo';
+            const negOk      = branchAllowsNegative();
+            const badgeClass = isOut ? (negOk ? 'stock-backorder' : 'stock-out') : (isLow ? 'stock-low' : '');
+            const badgeText  = isOut ? (negOk ? 'Backorder' : 'Unavailable') : 'Combo';
             const note       = isOut
-                ? '<div class="small text-danger mt-2">' + escapeHtml(avail.limiting || 'A component') + ' out of stock</div>'
+                ? '<div class="small ' + (negOk ? 'text-warning' : 'text-danger') + ' mt-2">' + escapeHtml(avail.limiting || 'A component') + ' out of stock</div>'
                 : '<div class="small text-muted mt-2">' + combo.components.length + ' items' + (isLow ? ' &middot; makes ' + avail.makeable : '') + '</div>';
 
             const button = document.createElement('button');
             button.type = 'button';
-            button.className = 'product-tile' + (isOut ? ' stock-out' : '');
+            button.className = 'product-tile' + (isOut && !negOk ? ' stock-out' : '');
             button.innerHTML =
                 '<div class="product-avatar"><i class="ti ti-package"></i></div>' +
                 '<div class="fw-bold mb-1">' + escapeHtml(combo.name) + '</div>' +
@@ -1522,10 +1539,11 @@ document.addEventListener('DOMContentLoaded', function () {
             const qty        = availableQty(product, variant);
             const price      = productPrice(product, variant);
             const isRecipe   = !product.is_stock_tracked && product.is_recipe;
-            const stockClass = qty === null ? 'stock-svc' : qty <= 0 ? 'stock-out' : qty <= 5 ? 'stock-low' : 'stock-ok';
+            const negAllowed = branchAllowsNegative();
+            const stockClass = qty === null ? 'stock-svc' : qty <= 0 ? (negAllowed ? 'stock-backorder' : 'stock-out') : qty <= 5 ? 'stock-low' : 'stock-ok';
             const stockText  = qty === null
                 ? 'Service'
-                : (qty <= 0 ? 'Out' : (isRecipe ? 'Makes ' + qty : 'Stock ' + qty));
+                : (qty <= 0 ? (negAllowed ? 'Backorder' : 'Out') : (isRecipe ? 'Makes ' + qty : 'Stock ' + qty));
 
             // POS-UX-1: real product image on the tile when available.
             const avatarHtml = product.image_url
@@ -1727,9 +1745,12 @@ document.addEventListener('DOMContentLoaded', function () {
     function addComboToCart(combo) {
         var avail = comboAvailability(combo);
         if (avail.makeable !== null && avail.makeable <= 0) {
-            blockAlert(combo.name + ' is unavailable — '
-                + (avail.limiting ? avail.limiting + ' is out of stock' : 'a component is out of stock') + '.');
-            return;
+            if (!branchAllowsNegative()) {
+                blockAlert(combo.name + ' is unavailable — '
+                    + (avail.limiting ? avail.limiting + ' is out of stock' : 'a component is out of stock') + '.');
+                return;
+            }
+            backorderToast(combo.name);
         }
 
         var key = 'combo:' + combo.id;
@@ -1738,9 +1759,12 @@ document.addEventListener('DOMContentLoaded', function () {
         if (existing) {
             var nextQty = Number(existing.quantity || 0) + 1;
             if (avail.makeable !== null && nextQty > avail.makeable) {
-                blockAlert('Only ' + avail.makeable + ' × ' + combo.name + ' can be made right now'
-                    + (avail.limiting ? ' (' + avail.limiting + ')' : '') + '.');
-                return;
+                if (!branchAllowsNegative()) {
+                    blockAlert('Only ' + avail.makeable + ' × ' + combo.name + ' can be made right now'
+                        + (avail.limiting ? ' (' + avail.limiting + ')' : '') + '.');
+                    return;
+                }
+                backorderToast(combo.name);
             }
             existing.quantity = nextQty;
             updateComboComponents(key);
@@ -1822,7 +1846,10 @@ document.addEventListener('DOMContentLoaded', function () {
         var stockQty  = availableQty(product, variant);
         var measurable = isMeasurableProduct(product);
 
-        if (stockQty !== null && stockQty <= 0) { blockAlert(unavailableMessage(product, 0)); return; }
+        if (stockQty !== null && stockQty <= 0) {
+            if (!branchAllowsNegative()) { blockAlert(unavailableMessage(product, 0)); return; }
+            backorderToast(product.name);
+        }
 
         if (forceQty === undefined && measurable) {
             openQtyModal(product, variant);
@@ -1843,14 +1870,20 @@ document.addEventListener('DOMContentLoaded', function () {
                 ? parseFloat((Number(existing.quantity || 0) + addQty).toFixed(3))
                 : Number(existing.quantity || 0) + addQty;
             if (stockQty !== null && newQty > stockQty + 0.0001) {
-                blockAlert(unavailableMessage(product, stockQty));
-                return;
+                if (!branchAllowsNegative()) {
+                    blockAlert(unavailableMessage(product, stockQty));
+                    return;
+                }
+                backorderToast(product.name);
             }
             existing.quantity = newQty;
         } else {
             if (stockQty !== null && addQty > stockQty + 0.0001) {
-                blockAlert(unavailableMessage(product, stockQty));
-                return;
+                if (!branchAllowsNegative()) {
+                    blockAlert(unavailableMessage(product, stockQty));
+                    return;
+                }
+                backorderToast(product.name);
             }
             var price = productPrice(product, variant) + modifierPriceDelta(modifiers);
             cart.push({
@@ -2673,8 +2706,42 @@ document.addEventListener('DOMContentLoaded', function () {
 
     /* ── Complete sale ────────────────────────────────────────────────── */
 
+    var _backorderConfirmed = false;
+
     function submitPaidSale() {
         if (!cart.length) { toast('warning', 'Add at least one item'); return; }
+
+        // NEGATIVE-STOCK-SETTING-1B: warn once when the cart will push official
+        // stock negative on a branch that allows it. Backend remains authoritative.
+        if (!_backorderConfirmed && branchAllowsNegative() && typeof Swal !== 'undefined') {
+            var shortfall = cart.filter(function (item) {
+                if (!item.product) return false;
+                var avail = availableQty(item.product, item.variant);
+                return avail !== null && Number(item.quantity || 0) > avail + 0.0001;
+            });
+
+            if (shortfall.length) {
+                var listHtml = shortfall.map(function (item) {
+                    return '<li>' + escapeHtml(item.name || '') + ' — qty ' + item.quantity + '</li>';
+                }).join('');
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Backorder sale',
+                    html: 'This sale includes items with insufficient stock. Official inventory for this branch may go negative and COGS will use the last known cost. Continue?'
+                        + '<ul class="text-start small mt-2 mb-0">' + listHtml + '</ul>',
+                    showCancelButton: true,
+                    confirmButtonText: 'Continue',
+                    confirmButtonColor: '#d97706',
+                }).then(function (res) {
+                    if (res.isConfirmed) {
+                        _backorderConfirmed = true;
+                        submitPaidSale();
+                    }
+                });
+                return;
+            }
+        }
+        _backorderConfirmed = false;
 
         const submitBtn  = document.getElementById('complete-sale-btn');
         const origLabel  = submitBtn.textContent;
