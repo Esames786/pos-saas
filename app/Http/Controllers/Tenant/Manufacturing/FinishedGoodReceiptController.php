@@ -16,13 +16,11 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Finished Goods receipt / production-output tracking (MANUF-6) — tracking only.
+ * Finished Goods receipt / production-output tracking (MANUF-6).
  *
- * Records the finished quantity produced by a WIP job (received / accepted /
- * rejected / scrap, with optional batch/lot output lines). It does NOT increase
- * inventory, write a stock ledger entry, post WIP→FG accounting, compute COGS,
- * or create GL journals. Creating a receipt does not change WIP or production
- * order status.
+ * Recording and editing are tracking-only. A separate explicit posting action
+ * can add accepted FG to inventory and post WIP-to-FG accounting when the
+ * tenant's manufacturing posting settings are enabled.
  */
 class FinishedGoodReceiptController extends Controller
 {
@@ -160,6 +158,11 @@ class FinishedGoodReceiptController extends Controller
 
     public function edit(FinishedGoodReceipt $finishedGoodReceipt)
     {
+        if (! $finishedGoodReceipt->isUnposted()) {
+            return redirect(url('/manufacturing/finished-goods/' . $finishedGoodReceipt->id))
+                ->withErrors(['posting' => 'Posted or reversed finished-goods receipts are immutable. Reverse the posting before creating a correcting receipt.']);
+        }
+
         $finishedGoodReceipt->load(['lines.finishedProduct', 'wipJob', 'productionOrder', 'manufacturingCustomer', 'finishedProduct']);
 
         return view('tenant.manufacturing.finished-goods.edit', $this->formData() + [
@@ -178,6 +181,11 @@ class FinishedGoodReceiptController extends Controller
 
     public function update(Request $request, FinishedGoodReceipt $finishedGoodReceipt)
     {
+        if (! $finishedGoodReceipt->isUnposted()) {
+            return redirect(url('/manufacturing/finished-goods/' . $finishedGoodReceipt->id))
+                ->withErrors(['posting' => 'Posted or reversed finished-goods receipts cannot be edited.']);
+        }
+
         $data = $this->validateHeader($request, $finishedGoodReceipt);
         $this->validateLines($request, $data);
 
@@ -189,6 +197,11 @@ class FinishedGoodReceiptController extends Controller
 
     public function destroy(FinishedGoodReceipt $finishedGoodReceipt)
     {
+        if (! $finishedGoodReceipt->isUnposted()) {
+            return redirect(url('/manufacturing/finished-goods/' . $finishedGoodReceipt->id))
+                ->withErrors(['posting' => 'Posted or reversed finished-goods receipts cannot be cancelled.']);
+        }
+
         $finishedGoodReceipt->update(['status' => 'cancelled']);
 
         return redirect(url('/manufacturing/finished-goods'))->with('status', 'Finished goods receipt cancelled.');

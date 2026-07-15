@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
- * MFG-FIN-E — Finished Goods Receipt Posting (Phase E).
+ * MFG-FIN-D — Finished Goods Receipt Posting.
  *
  * Posting a finished goods receipt:
  *   1. Puts finished goods INTO inventory (postIn) at the WIP unit cost (accumulated_cost / accepted_quantity).
@@ -99,6 +99,18 @@ class FinishedGoodPostingService
 
         // ── Atomic: stock in → journal → state ───────────────────────────────
         return DB::connection('tenant')->transaction(function () use ($receipt, $settings, $branch, $product, $variant, $acceptedQty, $unitCost, $totalCost, $userId) {
+            $lockedReceipt = FinishedGoodReceipt::query()
+                ->whereKey($receipt->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $this->posting->assertUnposted($lockedReceipt);
+            if ($this->posting->alreadyHasJournal(self::SOURCE_TYPE, $receipt->id)) {
+                throw new RuntimeException('A posted journal already exists for this FG receipt.');
+            }
+            if ($this->posting->alreadyHasStockMovement('finished_good_receipt', $receipt->id, self::MOVEMENT_FG_IN)) {
+                throw new RuntimeException('A finished-goods stock movement already exists for this receipt.');
+            }
 
             // Stock IN for finished goods.
             $this->inventory->postIn(
@@ -198,6 +210,11 @@ class FinishedGoodPostingService
         $variant     = $product ? $this->inventory->resolveVariant($product, null) : null;
 
         return DB::connection('tenant')->transaction(function () use ($receipt, $original, $branch, $product, $variant, $acceptedQty, $unitCost, $userId) {
+            $lockedReceipt = FinishedGoodReceipt::query()
+                ->whereKey($receipt->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $this->posting->assertCanReverse($lockedReceipt);
 
             // Remove FG stock (postOutFefo — uses FEFO from what was just posted in).
             if ($product && $product->is_stock_tracked && $acceptedQty > 0) {

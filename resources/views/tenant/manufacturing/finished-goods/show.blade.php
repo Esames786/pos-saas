@@ -39,7 +39,7 @@
             @endif
         @endcan
         @can('tenant.manufacturing.finished-goods.edit')
-            @if(!$receipt->isClosed())
+            @if(!$receipt->isClosed() && $receipt->isUnposted())
                 <a href="{{ url('/manufacturing/finished-goods/' . $receipt->id . '/edit') }}" class="btn btn-primary">
                     <i class="ti ti-pencil me-1"></i>Edit
                 </a>
@@ -263,7 +263,7 @@
 </div>
 
 @can('tenant.manufacturing.finished-goods.destroy')
-    @if(!$receipt->isClosed())
+    @if(!$receipt->isClosed() && $receipt->isUnposted())
     <div class="mt-4 border-top pt-3">
         <form method="POST" action="{{ url('/manufacturing/finished-goods/' . $receipt->id) }}"
               onsubmit="return confirm('Cancel this finished goods receipt?')">

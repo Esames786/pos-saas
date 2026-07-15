@@ -410,8 +410,14 @@
     document.addEventListener('DOMContentLoaded', function () {
         const emptyText = '<span class="text-muted small">None selected.</span>';
 
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, function (char) {
+                return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[char];
+            });
+        }
+
         function badge(label, tone) {
-            return `<span class="badge ${tone}">${label}</span>`;
+            return `<span class="badge ${tone}">${escapeHtml(label)}</span>`;
         }
 
         function updatePreview() {
@@ -449,7 +455,7 @@
             });
 
             document.getElementById('previewLimits').innerHTML = limits.length
-                ? limits.map(item => `<div class="small border rounded px-2 py-1">${item}</div>`).join('')
+                ? limits.map(item => `<div class="small border rounded px-2 py-1">${escapeHtml(item)}</div>`).join('')
                 : emptyText;
 
             const monthly = document.querySelector('[name="monthly_price"]').value || document.querySelector('[name="price"]').value || '0.00';

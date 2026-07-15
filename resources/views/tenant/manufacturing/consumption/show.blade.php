@@ -21,7 +21,7 @@
     </div>
     <div class="page-btn d-flex gap-2">
         @can('tenant.manufacturing.consumption.edit')
-            @if(!$record->isClosed())
+            @if(!$record->isClosed() && $record->isUnposted())
                 <a href="{{ url('/manufacturing/consumption/' . $record->id . '/edit') }}" class="btn btn-primary">
                     <i class="ti ti-pencil me-1"></i>Edit
                 </a>
@@ -83,7 +83,8 @@
     <div class="alert alert-info">
         <i class="ti ti-info-circle me-1"></i>
         Posting a consumption issues raw material from stock and posts <strong>Dr WIP / Cr Raw Material</strong>.
-        Finished goods, scrap, rejection, COGS and variance posting are <strong>not</strong> enabled yet.
+        Finished-goods receipt posting and WIP closing are available as separate explicit actions.
+        Scrap, rejection, rework and manufactured-goods COGS posting are <strong>not</strong> enabled yet.
     </div>
 @endif
 
@@ -193,7 +194,7 @@
 </div>
 
 @can('tenant.manufacturing.consumption.destroy')
-    @if(!$record->isClosed())
+    @if(!$record->isClosed() && $record->isUnposted())
     <div class="mt-4 border-top pt-3">
         <form method="POST" action="{{ url('/manufacturing/consumption/' . $record->id) }}"
               onsubmit="return confirm('Cancel this consumption record?')">

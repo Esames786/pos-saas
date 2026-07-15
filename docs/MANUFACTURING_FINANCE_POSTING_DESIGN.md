@@ -1,11 +1,11 @@
 # Manufacturing Finance Posting — Design & Gap Audit
 
-> **Status: DESIGN / DOCUMENTATION ONLY (MFG-FIN-DESIGN-1).**
-> Nothing in this document is implemented. No posting code, no migrations, no
-> stock-ledger entries, no journal entries, no changes to existing finance /
-> inventory / POS / sales / purchase services. This file specifies *how* the
-> future Manufacturing accounting/posting layer should work so it can be built
-> safely, phase by phase, without disturbing anything that is already live.
+> **Current status (2026-07-16): partially implemented.** Phases A and B provide
+> settings/schema; Phase C posts material consumption; Phase D posts/reverses
+> finished-goods receipts; and Phase G closes ready WIP to production variance.
+> Phases E (scrap/rejection/rework), F (manufactured-goods COGS), and H
+> (valuation/reconciliation reports) remain design/backlog. Historical sections
+> below are retained as the original design rationale.
 >
 > Companion file: [`MANUFACTURING_FINANCE_BACKLOG.md`](MANUFACTURING_FINANCE_BACKLOG.md)
 > (the running backlog of finance work). This document is the detailed design;
@@ -34,8 +34,8 @@
 > - Read-only posting-status badge on the 5 show pages (no Post/Reverse buttons).
 > - **No event posting** — no journals, no stock movements, no GL, no document
 >   business mutation; all existing documents default to `unposted`.
-> - **Next is Phase C** (Consumption posting `Dr WIP / Cr Raw Material`), only after
->   approval — *not* implemented here.
+> - Phase C was subsequently implemented in `92859f5`; Phase D and Phase G were
+>   implemented in `9dd35fb` and hardened during REPO-AUDIT-UX-GAP-1.
 
 ---
 
@@ -651,9 +651,9 @@ integrity check (§ verification) before and after.
 
 ## 21. Implementation Roadmap
 
-> **Status:** Phase A ✅ complete (MFG-FIN-A) · Phase B ✅ complete (MFG-FIN-B) ·
-> **Phase C next** (Consumption posting `Dr WIP / Cr Raw Material`) — *not yet
-> implemented; requires approval.*
+> **Status (2026-07-16):** Phases A, B, C, D, and G are implemented. Phases E, F,
+> and H remain separate work. Production deployment of the audit hardening is
+> still pending.
 
 | Phase | Scope | Files likely touched | Tables likely needed | Key risk | Verification | Expected TB |
 |---|---|---|---|---|---|---|

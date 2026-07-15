@@ -49,7 +49,7 @@ class WipJob extends Model
         'progress_percent',
         'notes',
         'created_by_user_id',
-        // WIP cost accumulation (MFG-FIN-B) — populated by a future posting phase only.
+        // WIP cost accumulation populated by manufacturing consumption posting.
         'accumulated_cost',
         'costed_quantity',
         'average_unit_cost',

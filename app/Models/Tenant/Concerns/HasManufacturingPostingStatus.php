@@ -3,13 +3,11 @@
 namespace App\Models\Tenant\Concerns;
 
 /**
- * Posting-state helpers for future-postable manufacturing documents (MFG-FIN-B).
+ * Posting-state helpers for manufacturing documents (MFG-FIN-B+).
  *
- * INFRASTRUCTURE ONLY. This trait adds the posting-state columns to the model's
- * fillable/casts and provides read-only status helpers + badge classes. It does
- * NOT post anything: no journal entries, no stock movements, no GL. The columns
- * stay 'unposted' until a future posting phase (C+) sets them via the
- * ManufacturingPostingService mark* helpers.
+ * This trait adds posting-state columns to fillable/casts and provides status
+ * helpers. It performs no stock or journal writes; event services set the state
+ * through ManufacturingPostingService after their posting transaction succeeds.
  */
 trait HasManufacturingPostingStatus
 {
@@ -69,8 +67,7 @@ trait HasManufacturingPostingStatus
     }
 
     /**
-     * Marker that the posting-state infrastructure exists on this document.
-     * Always true once this trait is applied; posting itself is a later phase.
+     * Marker that posting-state infrastructure exists on this document.
      */
     public function markAsPostingInfrastructureReady(): bool
     {

@@ -1,7 +1,7 @@
 # Bingoo POS — Roadmap & System Gap Register
 
 > Maintained working document. Update after every completed sprint.
-> Last updated: **2026-07-13** (DELIVERY-CHANNELS-1 production deployed and verified) · prod = `6a5c6df` · branch `feat/14d-2-plan-upgrade-requests`
+> Last updated: **2026-07-16** (REPO-AUDIT-UX-GAP-1 local audit; production not deployed) · branch `feat/14d-2-plan-upgrade-requests`
 
 ---
 
@@ -13,7 +13,7 @@
 | Finance (FIN-1..12: CoA, journals, TB/P&L/BS, receivables/payables) | ✅ live |
 | SaaS platform (plans/modules/limits, billing+proof, upgrade requests, self-signup, 6 public demos) | ✅ live |
 | Manufacturing foundation (MANUF-1..10, planning/tracking only) | ✅ live |
-| Manufacturing finance infra (MFG-FIN A+B: settings, CoA 1410-6920, posting-state columns) — **no posting yet** | ✅ live |
+| Manufacturing finance (A-D + G: settings/infrastructure, consumption, FG receipt, WIP close/variance) | ✅ built; audit-hardened locally, production deployment pending |
 | Department module (DEPT-1..5: mapping, custody stock, shadow consumption, counts/reconciliation, dashboard) | ✅ live |
 | Purchasing UX + portal-wide UX hardening (AJAX pickers, batch dropdowns, shortcuts, Swal, POS images/colors) | ✅ live |
 | Tenant ops (backup/restore/sync/reset from central panel) + provisioner config-cache fix | ✅ live |
@@ -37,9 +37,9 @@ Design: `docs/MANUFACTURING_FINANCE_POSTING_DESIGN.md` · backlog: `docs/MANUFAC
 | # | Item | Posting |
 |---|---|---|
 | B1 | ✅ **MFG-FIN-C** Consumption posting (built `92859f5`; **variant-null bugfix 2026-07** — stock lives under the default variant, so posting failed "Insufficient stock" on ALL normally-stocked materials until fixed; 15/15 QA rollback-clean incl. allow_negative_stock isolation) | Dr WIP 1420 / Cr Raw Material 1410 + `manufacturing_material_issue` stock out; strict settings-gate, idempotent, reversible |
-| B2 | MFG-FIN-D/E FG receipt + WIP closing/variance | Dr FG 1430 / Cr WIP; variance to 5310 |
-| B3 | MFG-FIN-F Manufactured FG COGS on sale | Dr COGS / Cr FG at FG cost |
-| B4 | MFG-FIN-G Scrap / Rejection / Rework posting | 6900 / 6910 / 6920 |
+| B2 | ✅ **MFG-FIN-D + G** FG receipt + WIP closing/variance (built in `9dd35fb`; concurrency, immutability, and state guards hardened by REPO-AUDIT-UX-GAP-1) | Dr FG 1430 / Cr WIP; residual WIP to variance 5300; stock receipt/reversal |
+| B3 | MFG-FIN-F Manufactured FG COGS on sale | Dr COGS 5310 / Cr FG 1430 at captured FG cost |
+| B4 | MFG-FIN-E Scrap / Rejection / Rework posting | 6900 / 6910 / relevant inventory or WIP account |
 | B5 | MFG-FIN-H WIP/FG valuation + variance reports | read-only |
 
 ## 🔜 TRACK C — Department module optional phases (v1 complete)
@@ -103,7 +103,7 @@ Design: `docs/MANUFACTURING_FINANCE_POSTING_DESIGN.md` · backlog: `docs/MANUFAC
 ### G4 — Engineering gaps
 | Gap | Detail | Priority |
 |---|---|---|
-| **Zero automated tests** | tests/ has only ExampleTest; all QA is manual/tinker scripts | HIGH (long-term) |
+| **Minimal automated tests** | only framework health/unit placeholders exist; posting flows rely on rollback-clean integration harnesses | HIGH (long-term) |
 | POS payload scales poorly | ALL products+variants+barcodes+branch-prices+modifiers serialized into the page — fine at 78 SKUs, will crawl at 5-10k SKU marts; needs pagination/caching/AJAX | MED |
 | No POS offline mode | Connectivity loss stops billing — common requirement for marts | MED (big) |
 | Localization incomplete | languages/ar RTL scaffolding exists; blades hardcoded English | LOW |
@@ -117,5 +117,5 @@ Design: `docs/MANUFACTURING_FINANCE_POSTING_DESIGN.md` · backlog: `docs/MANUFAC
 2. **A3** merge → main + tag
 3. **PURCHASE-RETURNS-1** (G1 high gap — completes the purchasing cycle)
 4. **DELIVERY-CHANNELS-1 (E1)** + **NEGATIVE-STOCK-SETTING-1 (E2)** — client-requested, restaurant/mart operations
-5. **MFG-FIN-C** and onward (Track B)
+5. **Manufacturing next:** audit review/deploy, then MFG-FIN-E scrap/rejection or MFG-FIN-F manufactured COGS as separate approved sprints
 6. Track C/D + remaining gaps as client demand dictates

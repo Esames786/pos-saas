@@ -64,7 +64,7 @@ class FinishedGoodReceipt extends Model
         'priority',
         'notes',
         'created_by_user_id',
-        // FG cost capture (MFG-FIN-B) — populated by a future posting phase only.
+        // FG cost capture populated by explicit finished-goods posting.
         'unit_cost',
         'total_cost',
     ];

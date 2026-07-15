@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Auth;
 use RuntimeException;
 
 /**
- * MFG-FIN-E — Post / reverse a Finished Goods receipt + close a WIP job.
+ * MFG-FIN-D/G — post or reverse an FG receipt, and close a completed WIP job.
  *
  * POST   /manufacturing/finished-goods/{id}/post    → post FG stock + Dr FG / Cr WIP
  * POST   /manufacturing/finished-goods/{id}/reverse → reverse FG posting

@@ -56,7 +56,7 @@
             @endif
         @endcan
         @can('tenant.manufacturing.wip.close')
-            @if(!$job->isClosed())
+            @if($job->status === 'ready_for_completion')
                 <form method="POST" action="{{ url('/manufacturing/wip/' . $job->id . '/close') }}"
                       onsubmit="return confirm('Close this WIP job? A variance journal will be posted to clear residual WIP cost. This sets status to Completed.');">
                     @csrf
@@ -76,7 +76,9 @@
 
 <div class="alert alert-info">
     <i class="ti ti-info-circle me-1"></i>
-    This WIP Job is <strong>tracking/planning-only</strong> in this phase. It does <strong>not</strong> deduct stock, post WIP accounting, create finished goods, COGS or GL entries yet.
+    WIP details are recorded first without stock or GL impact. When manufacturing posting is enabled,
+    posted consumption moves raw-material cost into WIP and posted finished-goods receipts move accepted cost into FG inventory.
+    Close becomes available only after posted FG receipts complete the planned quantity.
 </div>
 
 {{-- Progress --}}

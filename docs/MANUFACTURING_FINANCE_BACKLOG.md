@@ -1,11 +1,10 @@
 # Manufacturing → Finance Impact Backlog
 
-> **Status: documentation only.** Nothing in this file is implemented yet.
-> The current Manufacturing modules (Customers, Production Orders, BOM,
-> Material Requisition / MRC) are **planning / configuration / request-only**.
-> They do **not** post to inventory, WIP, finished goods, COGS, or the General
-> Ledger, and they do **not** affect POS, Sales, Purchasing, Inventory, or the
-> existing Finance reports.
+> **Current status (2026-07-16): active implementation backlog.** Settings and
+> posting infrastructure are live in code. Consumption posting (Phase C),
+> finished-goods receipt posting (Phase D), and WIP close/variance (Phase G) are
+> implemented behind the tenant posting-settings gate. Scrap/rejection/rework,
+> manufactured-goods COGS, and valuation/reconciliation reports remain pending.
 >
 > This backlog tracks the finance/accounting work that will be needed **later**,
 > as the Manufacturing track matures, so it can be added safely without
@@ -15,7 +14,7 @@
 > **➡ Detailed design:** the full posting design (events, journal/stock-ledger
 > design, required settings, schema gaps, phased roadmap A–H) now lives in
 > [`MANUFACTURING_FINANCE_POSTING_DESIGN.md`](MANUFACTURING_FINANCE_POSTING_DESIGN.md)
-> (MFG-FIN-DESIGN-1 — design/documentation only, nothing implemented).
+> (MFG-FIN-DESIGN-1, subsequently implemented in phases).
 >
 > - **[WIP]** — required for the Work-in-Process phase
 > - **[FG]** — required for the Finished-Goods phase
@@ -23,7 +22,13 @@
 
 ---
 
-## 1. Current state (as of MANUF-4)
+## 1. Current state (reconciled 2026-07-16)
+
+> The detailed historical phase notes below describe the foundation when each
+> MANUF module first shipped. Current posting reality: consumption, accepted FG
+> receipts, and ready-WIP closing can create reversible stock/GL entries when
+> posting settings are enabled and ready. COGS, scrap, rejection, and rework
+> posting remain unimplemented.
 
 | Module | State | Finance impact today |
 |---|---|---|

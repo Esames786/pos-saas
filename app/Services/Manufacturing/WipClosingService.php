@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
- * MFG-FIN-E Phase: WIP Job Closing — variance journal.
+ * MFG-FIN-G: WIP Job Closing — variance journal.
  *
  * When a WIP job is closed, any residual WIP balance (accumulated_cost minus
  * FG cost already transferred out) is cleared to Production Variance:
@@ -37,13 +37,25 @@ class WipClosingService
             throw new RuntimeException('WIP job is already closed/cancelled.');
         }
 
+        if ($wip->status !== 'ready_for_completion') {
+            throw new RuntimeException('WIP can be closed only after posted finished-goods receipts complete the planned quantity.');
+        }
+
         if (! $settings->wip_inventory_account_id || ! $settings->production_variance_account_id) {
             throw new RuntimeException('WIP / Production Variance accounts not mapped in posting settings.');
         }
 
         return DB::connection('tenant')->transaction(function () use ($wip, $settings, $userId) {
+            $lockedWip = WipJob::query()
+                ->whereKey($wip->id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-            $accumulatedCost = round((float) $wip->accumulated_cost, 2);
+            if ($lockedWip->status !== 'ready_for_completion') {
+                throw new RuntimeException('WIP can be closed only once, after posted finished-goods receipts complete the planned quantity.');
+            }
+
+            $accumulatedCost = round((float) $lockedWip->accumulated_cost, 2);
             // Residual = cost still sitting in this WIP job that did not transfer
             // to FG. Keep this scoped to the job; branch-level sums mix unrelated
             // production runs.

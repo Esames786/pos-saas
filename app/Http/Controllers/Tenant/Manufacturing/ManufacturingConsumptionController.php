@@ -148,6 +148,11 @@ class ManufacturingConsumptionController extends Controller
 
     public function edit(ManufacturingConsumptionRecord $manufacturingConsumptionRecord)
     {
+        if (! $manufacturingConsumptionRecord->isUnposted()) {
+            return redirect(url('/manufacturing/consumption/' . $manufacturingConsumptionRecord->id))
+                ->withErrors(['posting' => 'Posted or reversed consumption records are immutable. Reverse the posting before creating a correcting record.']);
+        }
+
         $manufacturingConsumptionRecord->load(['lines.componentProduct', 'wipJob', 'materialRequisition', 'productionOrder', 'manufacturingCustomer']);
 
         return view('tenant.manufacturing.consumption.edit', $this->formData() + [
@@ -167,6 +172,11 @@ class ManufacturingConsumptionController extends Controller
 
     public function update(Request $request, ManufacturingConsumptionRecord $manufacturingConsumptionRecord)
     {
+        if (! $manufacturingConsumptionRecord->isUnposted()) {
+            return redirect(url('/manufacturing/consumption/' . $manufacturingConsumptionRecord->id))
+                ->withErrors(['posting' => 'Posted or reversed consumption records cannot be edited.']);
+        }
+
         $data  = $this->validateHeader($request, $manufacturingConsumptionRecord);
         $lines = $this->validateLines($request);
         $data  = $this->applyLineTotals($data, $lines);
@@ -179,6 +189,11 @@ class ManufacturingConsumptionController extends Controller
 
     public function destroy(ManufacturingConsumptionRecord $manufacturingConsumptionRecord)
     {
+        if (! $manufacturingConsumptionRecord->isUnposted()) {
+            return redirect(url('/manufacturing/consumption/' . $manufacturingConsumptionRecord->id))
+                ->withErrors(['posting' => 'Posted or reversed consumption records cannot be cancelled.']);
+        }
+
         $manufacturingConsumptionRecord->update(['status' => 'cancelled']);
 
         return redirect(url('/manufacturing/consumption'))->with('status', 'Consumption record cancelled.');

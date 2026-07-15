@@ -1547,7 +1547,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
             // POS-UX-1: real product image on the tile when available.
             const avatarHtml = product.image_url
-                ? '<div class="product-avatar has-img"><img src="' + product.image_url + '" alt="" loading="lazy"></div>'
+                ? '<div class="product-avatar has-img"><img src="' + escapeHtml(product.image_url) + '" alt="" loading="lazy"></div>'
                 : '<div class="product-avatar">' + escapeHtml(initials(product.name)) + '</div>';
 
             const button     = document.createElement('button');
@@ -2358,11 +2358,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 _promoDiscountAmount = data.discount_amount;
                 _promoCode = data.promo_code;
                 _promoName = data.promotion_name || 'Promo';
-                fb.innerHTML = '<span class="text-success"><i class="ti ti-check me-1"></i>' + data.promotion_name + ' applied</span>';
+                fb.innerHTML = '<span class="text-success"><i class="ti ti-check me-1"></i>' + escapeHtml(data.promotion_name || 'Promo') + ' applied</span>';
                 document.getElementById('remove-promo-btn').classList.remove('d-none');
                 document.getElementById('apply-promo-btn').classList.add('d-none');
             } else {
-                fb.innerHTML = '<span class="text-danger">' + (data.message || 'Invalid promo code') + '</span>';
+                fb.innerHTML = '<span class="text-danger">' + escapeHtml(data.message || 'Invalid promo code') + '</span>';
             }
             updateTotals();
         })
@@ -3004,15 +3004,15 @@ document.addEventListener('DOMContentLoaded', function () {
 
             data.sales.forEach(function (s) {
                 html += '<tr>' +
-                    '<td><strong>' + s.sale_no + '</strong></td>' +
-                    '<td><span class="badge bg-secondary text-capitalize">' + s.order_type.replace('_', ' ') + '</span></td>' +
-                    '<td>' + s.customer + '</td>' +
-                    '<td class="text-end">' + s.items + '</td>' +
-                    '<td class="text-end fw-bold">' + s.total + '</td>' +
-                    '<td class="text-muted small">' + s.time + '</td>' +
+                    '<td><strong>' + escapeHtml(s.sale_no) + '</strong></td>' +
+                    '<td><span class="badge bg-secondary text-capitalize">' + escapeHtml(String(s.order_type || '').replace('_', ' ')) + '</span></td>' +
+                    '<td>' + escapeHtml(s.customer || 'Walk-in') + '</td>' +
+                    '<td class="text-end">' + escapeHtml(s.items) + '</td>' +
+                    '<td class="text-end fw-bold">' + escapeHtml(s.total) + '</td>' +
+                    '<td class="text-muted small">' + escapeHtml(s.time) + '</td>' +
                     '<td class="text-end">' +
-                        '<button class="btn btn-sm btn-primary me-1" data-recall-id="' + s.id + '">Recall</button>' +
-                        '<button class="btn btn-sm btn-outline-danger" data-cancel-id="' + s.id + '" data-cancel-no="' + s.sale_no + '">Cancel</button>' +
+                        '<button class="btn btn-sm btn-primary me-1" data-recall-id="' + Number(s.id) + '">Recall</button>' +
+                        '<button class="btn btn-sm btn-outline-danger" data-cancel-id="' + Number(s.id) + '" data-cancel-no="' + escapeHtml(s.sale_no) + '">Cancel</button>' +
                     '</td>' +
                     '</tr>';
             });
@@ -3217,12 +3217,12 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             coTableSessionEl.innerHTML = '<option value="">— Select Table —</option>' +
                 (data.sessions || []).map(function (s) {
-                    const waiter  = s.waiter ? ' (' + s.waiter + ')' : '';
+                    const waiter  = s.waiter ? ' (' + escapeHtml(s.waiter) + ')' : '';
                     const status  = s.has_session ? '' : ' ✦ New';
                     const sel     = s.table_id == currentTableId ? ' selected' : '';
-                    return '<option value="' + s.table_id + '"' +
-                           ' data-session-id="' + (s.session_id || '') + '"' +
-                           sel + '>' + s.label + waiter + status + '</option>';
+                    return '<option value="' + escapeHtml(s.table_id) + '"' +
+                           ' data-session-id="' + escapeHtml(s.session_id || '') + '"' +
+                           sel + '>' + escapeHtml(s.label) + waiter + status + '</option>';
                 }).join('');
         })
         .catch(function () {
@@ -3345,7 +3345,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
             const statusBadge = function (s) {
                 const map = { printed: 'success', queued: 'secondary', claimed: 'info', failed: 'danger', cancelled: 'warning' };
-                return '<span class="badge bg-' + (map[s] || 'secondary') + '">' + s + '</span>';
+                return '<span class="badge bg-' + (map[s] || 'secondary') + '">' + escapeHtml(s) + '</span>';
             };
             const typeBadge = function (t) {
                 return t === 'kot'
@@ -3369,24 +3369,24 @@ document.addEventListener('DOMContentLoaded', function () {
                     : '—';
 
                 const viewBtn = j.fallback
-                    ? '<a href="' + j.preview_url + '" target="_blank" class="btn btn-sm btn-outline-info py-0 me-1"><i class="ti ti-eye me-1"></i>View</a>'
+                    ? '<a href="' + escapeHtml(j.preview_url) + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-info py-0 me-1"><i class="ti ti-eye me-1"></i>View</a>'
                     : '';
 
                 const retryBtn = j.print_status === 'failed'
-                    ? '<button class="btn btn-sm btn-danger py-0 me-1" data-retry-job="' + j.id + '"><i class="ti ti-refresh me-1"></i>Retry</button>'
+                    ? '<button class="btn btn-sm btn-danger py-0 me-1" data-retry-job="' + Number(j.id) + '"><i class="ti ti-refresh me-1"></i>Retry</button>'
                     : '';
 
                 html += '<tr' + (j.print_status === 'failed' ? ' class="table-danger"' : '') + '>' +
-                    '<td class="ps-3 fw-semibold small">' + j.job_no + '</td>' +
+                    '<td class="ps-3 fw-semibold small">' + escapeHtml(j.job_no) + '</td>' +
                     '<td>' + typeBadge(j.document_type) + '</td>' +
                     '<td>' + statusBadge(j.print_status) + '</td>' +
-                    '<td class="text-muted small">' + j.printer_name + '</td>' +
-                    '<td class="text-muted small">' + itemsCell + '</td>' +
-                    '<td class="text-muted small">' + j.created_at + '</td>' +
+                    '<td class="text-muted small">' + escapeHtml(j.printer_name) + '</td>' +
+                    '<td class="text-muted small">' + escapeHtml(itemsCell) + '</td>' +
+                    '<td class="text-muted small">' + escapeHtml(j.created_at) + '</td>' +
                     '<td class="pe-3 text-end">' +
                         viewBtn +
                         retryBtn +
-                        '<button class="btn btn-sm btn-outline-secondary py-0" data-requeue-job="' + j.id + '" data-job-type="' + j.document_type + '">' +
+                        '<button class="btn btn-sm btn-outline-secondary py-0" data-requeue-job="' + Number(j.id) + '" data-job-type="' + escapeHtml(j.document_type) + '">' +
                             '<i class="ti ti-printer me-1"></i>Reprint' +
                         '</button>' +
                     '</td>' +
@@ -3557,13 +3557,13 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             const rows = sales.map(function (s) {
                 return '<tr>' +
-                    '<td><strong>' + s.sale_no + '</strong><div class="text-muted small">' + (s.time || s.ago || '') + '</div></td>' +
-                    '<td>' + (s.customer || 'Walk-in') + '<div class="text-muted small text-capitalize">' + String(s.order_type || '').replace(/_/g, ' ') + '</div></td>' +
-                    '<td class="text-end fw-semibold">' + s.total + '</td>' +
+                    '<td><strong>' + escapeHtml(s.sale_no) + '</strong><div class="text-muted small">' + escapeHtml(s.time || s.ago || '') + '</div></td>' +
+                    '<td>' + escapeHtml(s.customer || 'Walk-in') + '<div class="text-muted small text-capitalize">' + escapeHtml(String(s.order_type || '').replace(/_/g, ' ')) + '</div></td>' +
+                    '<td class="text-end fw-semibold">' + escapeHtml(s.total) + '</td>' +
                     '<td class="text-end text-nowrap">' +
-                        '<button type="button" class="btn btn-sm btn-outline-primary me-1" data-reprint-receipt="' + s.id + '"><i class="ti ti-printer me-1"></i>Receipt</button>' +
-                        '<button type="button" class="btn btn-sm btn-outline-warning me-1" data-reprint-kot="' + s.id + '"><i class="ti ti-tool-kitchen-2 me-1"></i>KOT</button>' +
-                        '<a href="{{ url('/sales-orders') }}/' + s.id + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="View"><i class="ti ti-eye"></i></a>' +
+                        '<button type="button" class="btn btn-sm btn-outline-primary me-1" data-reprint-receipt="' + Number(s.id) + '"><i class="ti ti-printer me-1"></i>Receipt</button>' +
+                        '<button type="button" class="btn btn-sm btn-outline-warning me-1" data-reprint-kot="' + Number(s.id) + '"><i class="ti ti-tool-kitchen-2 me-1"></i>KOT</button>' +
+                        '<a href="{{ url('/sales-orders') }}/' + Number(s.id) + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="View"><i class="ti ti-eye"></i></a>' +
                     '</td>' +
                 '</tr>';
             }).join('');

@@ -935,7 +935,7 @@
                 @endif
 
                 {{-- ── REPORTS ─────────────────────────────────────────────────── --}}
-                @canany(['tenant.reports.sales.summary','tenant.reports.sales.channels','tenant.reports.sales.riders','tenant.reports.shifts','tenant.reports.inventory.valuation','tenant.reports.purchases.payables','tenant.reports.restaurant.tables','tenant.reports.kitchen.recipe-consumption','tenant.reports.departments.sales','tenant.reports.audit.manager-approvals','tenant.reports.printing.jobs'])
+                @canany(['tenant.reports.sales.summary','tenant.reports.sales.channels','tenant.reports.sales.riders','tenant.reports.sales.receivables','tenant.reports.shifts','tenant.reports.inventory.valuation','tenant.reports.inventory.negative-stock','tenant.reports.purchases.payables','tenant.reports.purchases.returns','tenant.reports.restaurant.tables','tenant.reports.kitchen.recipe-consumption','tenant.reports.departments.sales','tenant.reports.departments.consumption-exceptions','tenant.reports.audit.manager-approvals','tenant.reports.printing.jobs'])
                 <li class="submenu">
                     <a href="javascript:void(0);">
                         <i class="ti ti-chart-bar fs-16 me-2"></i>
@@ -976,18 +976,34 @@
                             </li>
                         @endcan
                         @can('tenant.reports.inventory.valuation')
-                            @php $a = $isIn('reports/inventory*'); @endphp
+                            @php $a = $isIn('reports/inventory*') && !$isIn('reports/inventory/negative-stock'); @endphp
                             <li class="{{ $a ? 'active' : '' }}">
                                 <a href="{{ url('/reports/inventory/valuation') }}" class="{{ $a ? 'active' : '' }}">
                                     <i class="ti ti-box fs-16 me-2"></i><span>Inventory Reports</span>
                                 </a>
                             </li>
                         @endcan
+                        @can('tenant.reports.inventory.negative-stock')
+                            @php $a = $isIn('reports/inventory/negative-stock'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/reports/inventory/negative-stock') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-alert-triangle fs-16 me-2"></i><span>Negative Stock</span>
+                                </a>
+                            </li>
+                        @endcan
                         @can('tenant.reports.purchases.payables')
-                            @php $a = $isIn('reports/purchases*'); @endphp
+                            @php $a = $isIn('reports/purchases*') && !$isIn('reports/purchases/returns'); @endphp
                             <li class="{{ $a ? 'active' : '' }}">
                                 <a href="{{ url('/reports/purchases/payables') }}" class="{{ $a ? 'active' : '' }}">
                                     <i class="ti ti-file-invoice fs-16 me-2"></i><span>Purchase Reports</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.reports.purchases.returns')
+                            @php $a = $isIn('reports/purchases/returns'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/reports/purchases/returns') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-package-export fs-16 me-2"></i><span>Purchase Returns Report</span>
                                 </a>
                             </li>
                         @endcan

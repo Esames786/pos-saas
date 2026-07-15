@@ -12,6 +12,9 @@ checklist wraps it with pre/post verification.
 - [ ] Backup before risky releases: `php artisan tenants:backup` (or panel Backup All)
 
 ## Deploy (deploy.sh does 1-9 automatically)
+- [ ] If this release changes `deploy.sh`, run the newly pulled script again (or
+      execute its newly added steps manually). A running shell cannot replace
+      its own already-parsed release logic.
 - [ ] `git pull` (ff-only)
 - [ ] composer install
 - [ ] master `migrate --force`
@@ -47,6 +50,14 @@ checklist wraps it with pre/post verification.
 - [ ] `tail -50 storage/logs/laravel-$(date +%F).log` — no fresh ERRORs
 - [ ] If perms/routes changed and a tenant still 403s: run
       `php artisan system:clear-tenant-permission-cache` again
+
+## Manual production readiness (not automated by deploy.sh)
+- [ ] Real SMTP configured and signup/password-reset delivery verified
+- [ ] Queue worker/Supervisor installed, running, and survives reboot
+- [ ] Scheduled tenant backups enabled; restore drill and offsite copy verified
+- [ ] TLS renewal timer enabled and next renewal observed
+- [ ] Root, database, print-agent, and any previously exposed credentials rotated
+- [ ] External uptime/error monitoring and disk-capacity alerts enabled
 
 ## Rollback
 - `git log` the previous tag/commit → `git checkout <sha> -- .` is NOT the path;

@@ -13,13 +13,18 @@ class PermissionSyncService
     public function syncRouteCatalog(): int
     {
         $count = 0;
+        $routeNames = [];
 
         foreach (Route::getRoutes() as $route) {
             $name = $route->getName();
 
-            if (!$name) {
+            // Laravel assigns temporary generated::* names to unnamed routes
+            // while building the route cache. They are not stable permissions.
+            if (!$name || str_starts_with($name, 'generated::')) {
                 continue;
             }
+
+            $routeNames[] = $name;
 
             RouteCatalog::updateOrCreate(
                 ['route_name' => $name],
@@ -33,6 +38,21 @@ class PermissionSyncService
             );
 
             $count++;
+        }
+
+        // Keep the catalog aligned with the current application. Otherwise
+        // deleted routes remain publishable as stale permissions forever.
+        if ($routeNames !== []) {
+            $staleRouteNames = RouteCatalog::query()
+                ->pluck('route_name')
+                ->diff($routeNames)
+                ->values();
+
+            if ($staleRouteNames->isNotEmpty()) {
+                RouteCatalog::query()
+                    ->whereIn('route_name', $staleRouteNames)
+                    ->delete();
+            }
         }
 
         return $count;

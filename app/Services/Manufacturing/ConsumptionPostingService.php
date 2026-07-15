@@ -89,6 +89,21 @@ class ConsumptionPostingService
 
         // ── Atomic: stock issue (FEFO) → WIP accrual → journal → state ───────────
         return DB::connection('tenant')->transaction(function () use ($record, $settings, $branch, $userId) {
+            $lockedRecord = ManufacturingConsumptionRecord::query()
+                ->whereKey($record->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $this->posting->assertUnposted($lockedRecord);
+            if ($this->posting->alreadyHasJournal(self::SOURCE_TYPE, $record->id)) {
+                throw new RuntimeException('A posted journal already exists for this consumption record.');
+            }
+            foreach ($record->lines as $line) {
+                if ($this->posting->alreadyHasStockMovement(self::LINE_REFERENCE_TYPE, $line->id, self::MOVEMENT_ISSUE)) {
+                    throw new RuntimeException('A stock movement already exists for a line in this record.');
+                }
+            }
+
             $totalCost = 0.0;
 
             foreach ($record->lines as $line) {
@@ -195,6 +210,12 @@ class ConsumptionPostingService
         $branch = $record->branch ?: Branch::findOrFail($record->branch_id);
 
         return DB::connection('tenant')->transaction(function () use ($record, $original, $branch, $userId) {
+            $lockedRecord = ManufacturingConsumptionRecord::query()
+                ->whereKey($record->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $this->posting->assertCanReverse($lockedRecord);
+
             $issues = StockLedger::query()
                 ->where('reference_type', self::LINE_REFERENCE_TYPE)
                 ->where('movement_type', self::MOVEMENT_ISSUE)

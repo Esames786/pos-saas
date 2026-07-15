@@ -9,20 +9,18 @@ use Illuminate\Database\Eloquent\Model;
 use RuntimeException;
 
 /**
- * Manufacturing posting INFRASTRUCTURE (MFG-FIN-B) — scaffold only.
+ * Shared manufacturing posting-state and readiness support (MFG-FIN-B+).
  *
- * This service deliberately performs NO posting. It only:
+ * This service does not post journals or stock itself. It:
  *   - reads the posting settings,
  *   - validates document/settings readiness,
  *   - answers idempotency questions (does a journal / stock movement already
  *     exist for this source?),
- *   - and flips a document's posting-state columns when a FUTURE caller (Phase C+)
- *     explicitly asks via markDocumentPosted / markDocumentReversed.
+ *   - and flips a document's posting-state columns when an event-specific
+ *     posting service asks via markDocumentPosted / markDocumentReversed.
  *
- * It NEVER calls JournalService::post()/reverse() or InventoryService::postIn()/
- * postOutFefo(), and NEVER creates a JournalEntry or StockLedger row. Posting
- * events (consumption, finished goods, scrap, rejection, rework, variance, COGS)
- * are not implemented in this phase.
+ * Event services currently implement consumption and finished-goods posting;
+ * scrap, rejection, rework and manufactured-FG COGS remain separate phases.
  */
 class ManufacturingPostingService
 {
@@ -113,9 +111,8 @@ class ManufacturingPostingService
     // ── Posting-state writers (flip document columns ONLY — no journal/stock) ────
 
     /**
-     * Record that a document has been posted. Updates ONLY the posting-state
-     * columns; it does NOT create the journal/stock rows (the caller does that in
-     * a future phase and passes the resulting JournalEntry in).
+     * Record that a document has been posted. Updates only posting-state
+     * columns; the event service creates and passes the resulting journal.
      */
     public function markDocumentPosted(Model $document, JournalEntry $journalEntry, ?int $userId = null): void
     {
