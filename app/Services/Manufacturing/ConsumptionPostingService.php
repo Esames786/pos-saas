@@ -95,11 +95,16 @@ class ConsumptionPostingService
                 $product = $line->componentProduct;
                 $qty     = (float) $line->consumed_quantity;
 
+                // BUG FIX (same as KitchenWastageController): stock lives under the
+                // product's DEFAULT variant — a null variant makes postOutFefo find no
+                // balances and fail "Insufficient stock" for every normally-stocked item.
+                $variant = $this->inventory->resolveVariant($product, null);
+
                 // FEFO stock-out. Throws "Insufficient stock for {name}" when short (block policy).
                 $ledgers = $this->inventory->postOutFefo(
                     branch:        $branch,
                     product:       $product,
-                    variant:       null,
+                    variant:       $variant,
                     quantity:      $qty,
                     movementType:  self::MOVEMENT_ISSUE,
                     referenceType: self::LINE_REFERENCE_TYPE,

@@ -36,7 +36,7 @@ Design: `docs/MANUFACTURING_FINANCE_POSTING_DESIGN.md` · backlog: `docs/MANUFAC
 
 | # | Item | Posting |
 |---|---|---|
-| B1 | **MFG-FIN-C** Consumption posting (next) | Dr WIP 1420 / Cr Raw Material 1410 + `manufacturing_material_issue` stock out |
+| B1 | ✅ **MFG-FIN-C** Consumption posting (built `92859f5`; **variant-null bugfix 2026-07** — stock lives under the default variant, so posting failed "Insufficient stock" on ALL normally-stocked materials until fixed; 15/15 QA rollback-clean incl. allow_negative_stock isolation) | Dr WIP 1420 / Cr Raw Material 1410 + `manufacturing_material_issue` stock out; strict settings-gate, idempotent, reversible |
 | B2 | MFG-FIN-D/E FG receipt + WIP closing/variance | Dr FG 1430 / Cr WIP; variance to 5310 |
 | B3 | MFG-FIN-F Manufactured FG COGS on sale | Dr COGS / Cr FG at FG cost |
 | B4 | MFG-FIN-G Scrap / Rejection / Rework posting | 6900 / 6910 / 6920 |

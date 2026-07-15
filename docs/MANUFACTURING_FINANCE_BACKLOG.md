@@ -237,6 +237,11 @@ Cr  Raw Material Inventory          total actual issue cost
   gained `actual_unit_cost` / `actual_total_cost` / `posted_quantity`.
 - Respects PRODUCT-BOUNDARY-2: component must be `can_be_bom_component` + stock-tracked +
   active; POS visibility/saleable are NOT required (hidden raw materials are valid).
+- **Variant-null bugfix (2026-07):** `post()` passed `variant: null` to `postOutFefo`, but
+  every normally-purchased product's stock balance is keyed to its DEFAULT variant — so
+  posting always failed "Insufficient stock" on real data (same bug previously fixed in
+  KitchenWastageController). Now resolves the default variant per line before issuing.
+  Reversal side was already variant-correct (reads `product_variant_id` off the issue ledger).
 - Verified (rolled-back E2E): post +1 journal (balanced) + stock issue + WIP accrual,
   reverse restores both, `tb_diff=0` throughout; all guards block (disabled settings,
   non-bom-component, non-stock-tracked, insufficient stock, duplicate post/reverse).
