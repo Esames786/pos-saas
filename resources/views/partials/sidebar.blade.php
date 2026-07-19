@@ -784,6 +784,8 @@
                     @endcan
 
                     {{-- ── MANUFACTURING — live modules in workflow order (Customers → BOM → Production Orders → MRC → WIP → FG → Scrap → Rejections → Consumption → Reports) ── --}}
+                    {{-- ENTITLEMENT-1: plan must include the manufacturing module (route middleware enforces the same). --}}
+                    @if($hasModule('manufacturing'))
                     @canany(['tenant.manufacturing.products.index','tenant.manufacturing.customers.index','tenant.manufacturing.bom.index','tenant.manufacturing.material-requisitions.index','tenant.manufacturing.production-orders.index','tenant.manufacturing.wip.index','tenant.manufacturing.finished-goods.index','tenant.manufacturing.scrap.index','tenant.manufacturing.rejections.index','tenant.manufacturing.consumption.index','tenant.manufacturing.reports.index','tenant.manufacturing.posting-settings.show'])
                     <li class="submenu">
                         <a href="javascript:void(0);">
@@ -932,6 +934,7 @@
                         </ul>
                     </li>
                     @endcanany
+                    @endif
                 @endif
 
                 {{-- ── REPORTS ─────────────────────────────────────────────────── --}}

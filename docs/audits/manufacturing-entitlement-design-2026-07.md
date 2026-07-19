@@ -177,6 +177,20 @@ All in MasterSeeder + sidebar + verification — **no new middleware, no tenant 
 | Billing UI not showing add-on | Phase 2 scope; Phase 1 module-disabled view already carries upgrade CTA |
 | Stale route cache hides new module mapping | deploy.sh already does route:clear before routes-sync (0f92391) |
 
+## 10a. Implementation result (MANUFACTURING-ENTITLEMENT-IMPLEMENT-1, 2026-07)
+
+Implemented exactly per this design. Usage audit: manufacturing rows exist ONLY on
+demo/enterprisedemo/financedemo (the three keep-access plans) — no stop condition.
+Module `manufacturing` seeded (route_module_keys `['tenant.manufacturing']`,
+`forRouteModuleKey` resolves); plans: standard/enterprise/finance_erp = Y, all
+lower plans = N (verified matrix incl. quick_sale=N); AJAX
+`tenant.ajax.manufacturing-customers` given an explicit MODULE_KEY_OVERRIDES entry;
+sidebar wrapped with `$hasModule('manufacturing')`. QA: demo+financedemo 200 +
+sidebar visible; retaildemo 403 module-disabled view + sidebar hidden (no 500);
+MFG consumption QA 15/15 rollback-clean; all-tenant smoke green. Pre-existing
+note: financedemo's `Demo` role lacks `posting-settings.show` permission (perm
+layer, unrelated to module gating). Production deploy pending.
+
 ## 10. Ready-made implementation prompt (next sprint)
 
 **MANUFACTURING-ENTITLEMENT-IMPLEMENT-1** — scope:

@@ -315,6 +315,15 @@ class MasterSeeder extends Seeder
                 'is_core' => true,
             ],
             [
+                'key' => 'manufacturing',
+                'name' => 'Manufacturing',
+                'category' => 'Operations',
+                'description' => 'BOM, production orders, WIP, finished goods, consumption, scrap/rejections, and manufacturing finance posting.',
+                'route_module_keys' => ['tenant.manufacturing'],
+                'sort_order' => 75,
+                'is_core' => false,
+            ],
+            [
                 'key' => 'finance',
                 'name' => 'Finance',
                 'category' => 'Finance',
@@ -363,6 +372,8 @@ class MasterSeeder extends Seeder
             'multi_branch',
             'users_roles',
             'finance',
+            // Legacy demo.bingoopos.com is the manufacturing QA/showcase tenant.
+            'manufacturing',
         ];
 
         $planModuleMap = [
@@ -589,7 +600,7 @@ class MasterSeeder extends Seeder
                     'public_description' => 'For finance-led businesses: accounting, purchasing, inventory control, receivables/payables, and an ERP/manufacturing roadmap. Custom / contact sales.',
                 ],
                 // Available modules only — NO restaurant/kitchen.
-                'modules' => ['pos', 'catalog', 'inventory', 'stock_count', 'purchasing', 'printing', 'reports', 'sales_controls', 'multi_branch', 'users_roles', 'finance'],
+                'modules' => ['pos', 'catalog', 'inventory', 'stock_count', 'purchasing', 'printing', 'reports', 'sales_controls', 'multi_branch', 'users_roles', 'finance', 'manufacturing'],
                 'features' => [
                     'branch_limit' => null,
                     'terminal_limit' => null,

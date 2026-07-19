@@ -14,6 +14,7 @@
 | SaaS platform (plans/modules/limits, billing+proof, upgrade requests, self-signup, 6 public demos) | ✅ live |
 | Manufacturing foundation (MANUF-1..10, planning/tracking only) | ✅ live |
 | Manufacturing finance (A-D + G: settings/infrastructure, consumption, FG receipt, WIP close/variance) | ✅ built; audit-hardened locally, production deployment pending |
+| Manufacturing plan entitlement (ENTITLEMENT-IMPLEMENT-1, 2026-07): central `manufacturing` module + route/sidebar gating — allowed: standard/enterprise/finance_erp; blocked: retail_starter/inventory_store/restaurant_starter/restaurant_pro (Phase 2 = paid add-on, design doc `docs/audits/manufacturing-entitlement-design-2026-07.md`) | ✅ built locally; prod deploy pending |
 | Department module (DEPT-1..5: mapping, custody stock, shadow consumption, counts/reconciliation, dashboard) | ✅ live |
 | Purchasing UX + portal-wide UX hardening (AJAX pickers, batch dropdowns, shortcuts, Swal, POS images/colors) | ✅ live |
 | Tenant ops (backup/restore/sync/reset from central panel) + provisioner config-cache fix | ✅ live |

@@ -112,6 +112,9 @@ class PermissionSyncService
         // Receivables aging is a finance/accounting report, not a generic
         // reports-module report — gate it behind the finance module (FIN-6A).
         'tenant.reports.sales.receivables' => 'tenant.finance',
+        // Manufacturing customer lookup exposes manufacturing data — gate it with
+        // the manufacturing module, not the fail-open generic tenant.ajax prefix.
+        'tenant.ajax.manufacturing-customers' => 'tenant.manufacturing',
     ];
 
     public function moduleKey(string $routeName): string
