@@ -166,8 +166,18 @@ Ship P1 backend first (harmless, additive) → beta the Windows installer on the
 demo tenant with `fake-printer.js` → one pilot restaurant → docs/ops runbook +
 public download page. Old flow stays available until P4 removes the raw-token UI.
 
-## 11. Implementation prompt (next sprint)
+## 11. Implementation result (PRINT-AGENT-INSTALLER-1, 2026-07)
 
-**PRINT-AGENT-INSTALLER-1**: implement Phase P1 (pairing backend + admin UI) +
-P2 (Windows installer). macOS = follow-up sprint. Non-goals: offline POS, printer
-auto-discovery, USB printers.
+P1 + agent v2 + Windows installer FOUNDATION implemented per this design:
+pairing columns migration, `PrintAgentPairingService` (HMAC-SHA256 digest,
+15-min/single-use/5-attempt codes), rate-limited `/api/print-agent/pair`,
+pairing-first admin UI (raw token demoted to collapsed Advanced), Test Print via
+the existing print_jobs pipeline, "Download Windows Agent" ZIP endpoint (script
+bundle; the signed .exe replaces the same URL later), agent v2
+(`setup|run|status`, config-file storage, `--server/--code` silent mode,
+file logging), install/uninstall-service.ps1 + BingooPrintAgent.iss + build
+scripts. **Full E2E proven locally**: HTTP pair → poll → fake printer received
+payload → job `printed` → last_seen live; wrong-code rate limit 429 after 5.
+NOT done (honest): pkg/Inno binaries not built (toolchain absent on this
+machine — build scripts + README ready), no code signing, no macOS (P3), no
+tray GUI (console/service only), central audit table (structured logs only).

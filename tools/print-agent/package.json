@@ -1,10 +1,16 @@
 {
-  "name": "pos-print-agent",
-  "version": "1.0.0",
+  "name": "bingoo-print-agent",
+  "version": "2.0.0",
   "type": "commonjs",
   "bin": {
-    "pos-test-agent":  "./pos-test-agent.js",
-    "pos-print-agent": "./print-agent.js"
+    "pos-test-agent":     "./pos-test-agent.js",
+    "bingoo-print-agent": "./print-agent.js"
+  },
+  "scripts": {
+    "setup":     "node print-agent.js setup",
+    "start":     "node print-agent.js run",
+    "status":    "node print-agent.js status",
+    "build:win": "pkg print-agent.js --targets node18-win-x64 --output dist/BingooPrintAgent.exe"
   },
   "pkg": {
     "targets": ["node18-win-x64"],

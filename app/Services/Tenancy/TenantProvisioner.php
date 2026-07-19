@@ -574,6 +574,9 @@ class TenantProvisioner
             'tenant.print-agents.store',
             'tenant.print-agents.regenerate-token',
             'tenant.print-agents.deactivate',
+            'tenant.print-agents.pairing-code',
+            'tenant.print-agents.test-print',
+            'tenant.print-agents.download-windows',
 
             // Sales Controls — Promotions
             'tenant.promotions.index',

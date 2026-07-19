@@ -1,6 +1,21 @@
-# POS SaaS Local Print Agent
+# Bingoo POS Local Print Agent
 
 Runs inside the restaurant LAN network. Polls the cloud POS for queued print jobs and sends raw text to LAN printers via TCP (port 9100).
+
+## Quick start (v2 pairing flow — recommended)
+
+```bash
+node print-agent.js setup    # asks Server URL + 6-digit pairing code from Printing → Print Agents
+node print-agent.js run      # start printing (auto-runs after setup)
+node print-agent.js status   # config + live server check
+```
+
+Config is stored at `%ProgramData%\BingooPrintAgent\config.json` (Windows) or
+`~/.bingoo-print-agent/config.json`. No env vars or token copy-paste needed.
+Windows auto-start + installer: see `installer/windows/README.md`.
+
+The sections below describe the LEGACY manual mode — still fully supported for
+existing agents.
 
 ## Architecture
 

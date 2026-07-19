@@ -569,6 +569,10 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::post('/print/agents', [PrintAgentController::class, 'store'])->name('tenant.print-agents.store');
                 Route::post('/print/agents/{printAgent}/regenerate-token', [PrintAgentController::class, 'regenerateToken'])->name('tenant.print-agents.regenerate-token');
                 Route::post('/print/agents/{printAgent}/deactivate', [PrintAgentController::class, 'deactivate'])->name('tenant.print-agents.deactivate');
+                // PRINT-AGENT-INSTALLER-1 — pairing-code flow + test page + agent download
+                Route::post('/print/agents/{printAgent}/pairing-code', [PrintAgentController::class, 'pairingCode'])->name('tenant.print-agents.pairing-code');
+                Route::post('/print/agents/{printAgent}/test-print', [PrintAgentController::class, 'testPrint'])->name('tenant.print-agents.test-print');
+                Route::get('/print/agents/download/windows', [PrintAgentController::class, 'downloadWindows'])->name('tenant.print-agents.download-windows');
 
                 // Sales Controls — Promotions
                 Route::get('/promotions', [PromotionController::class, 'index'])->name('tenant.promotions.index');
@@ -826,6 +830,8 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
 
         // Print agent API — token-based auth, no session/cookie required
         Route::prefix('/api/print-agent')->group(function () {
+            // Pairing exchange: the one-time code IS the credential (rate limited).
+            Route::post('/pair', [PrintAgentApiController::class, 'pair'])->name('tenant.api.print-agent.pair');
             Route::post('/heartbeat', [PrintAgentApiController::class, 'heartbeat'])->name('tenant.api.print-agent.heartbeat');
             Route::get('/pending', [PrintAgentApiController::class, 'pending'])->name('tenant.api.print-agent.pending');
             Route::post('/jobs/{printJob}/printed', [PrintAgentApiController::class, 'printed'])->name('tenant.api.print-agent.jobs.printed');

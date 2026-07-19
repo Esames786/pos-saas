@@ -5,14 +5,61 @@ namespace App\Http\Controllers\Tenant\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\PrintAgent;
 use App\Models\Tenant\PrintJob;
+use App\Services\Printing\PrintAgentPairingService;
 use App\Services\Printing\PrintJobService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\RateLimiter;
 
 class PrintAgentApiController extends Controller
 {
+    /**
+     * PRINT-AGENT-INSTALLER-1: exchange a 6-digit pairing code for the
+     * permanent agent token. Unauthenticated by design (the code IS the
+     * credential) but tenant-scoped by subdomain and rate limited like login.
+     */
+    public function pair(Request $request, PrintAgentPairingService $pairing): JsonResponse
+    {
+        $data = $request->validate([
+            'pairing_code'    => ['required', 'string', 'max:12'],
+            'device_name'     => ['nullable', 'string', 'max:190'],
+            'device_platform' => ['nullable', 'string', 'max:190'],
+            'agent_version'   => ['nullable', 'string', 'max:50'],
+        ]);
+
+        $limiterKey = 'print-agent-pair|' . app('tenant')->tenant_code . '|' . $request->ip();
+
+        if (RateLimiter::tooManyAttempts($limiterKey, PrintAgentPairingService::MAX_ATTEMPTS)) {
+            return response()->json([
+                'ok'      => false,
+                'message' => 'Too many pairing attempts. Try again in ' . RateLimiter::availableIn($limiterKey) . ' seconds.',
+            ], 429);
+        }
+
+        try {
+            $result = $pairing->pair($data['pairing_code'], [
+                'device_name'     => $data['device_name'] ?? null,
+                'device_platform' => $data['device_platform'] ?? null,
+                'ip'              => $request->ip(),
+            ]);
+        } catch (\RuntimeException $e) {
+            RateLimiter::hit($limiterKey, PrintAgentPairingService::CODE_TTL_MINUTES * 60);
+
+            return response()->json(['ok' => false, 'message' => $e->getMessage()], 422);
+        }
+
+        RateLimiter::clear($limiterKey);
+
+        return response()->json([
+            'ok'                    => true,
+            'agent_code'            => $result['agent_code'],
+            'token'                 => $result['token'],
+            'poll_interval_seconds' => 3,
+        ]);
+    }
+
     public function heartbeat(Request $request): JsonResponse
     {
         $agent = $this->authenticate($request);
