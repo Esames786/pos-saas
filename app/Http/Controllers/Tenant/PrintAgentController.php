@@ -143,20 +143,30 @@ class PrintAgentController extends Controller
     }
 
     /**
-     * Download the Windows agent bundle as a ZIP built from the repo's
-     * tools/print-agent files (script agent + Windows helper scripts + README).
-     * The signed one-click .exe replaces this download once the code-signing
-     * pipeline exists — the button and URL stay the same.
+     * Download the Windows agent.
+     *
+     * Preferred: the one-click wizard `BingooPrintAgent-Setup.exe` (Node.js is
+     * bundled inside — the customer installs nothing else; the wizard asks for
+     * the server URL + pairing code and registers an auto-start service).
+     *
+     * Fallback (if the built .exe is not deployed): a ZIP of the script agent +
+     * Windows helper scripts for the manual/Node install path.
      */
     public function downloadWindows()
     {
-        $base = base_path('tools/print-agent');
+        $base    = base_path('tools/print-agent');
+        $setupExe = $base . '/dist/BingooPrintAgent-Setup.exe';
 
+        if (is_file($setupExe)) {
+            return response()->download($setupExe, 'BingooPrintAgent-Setup.exe');
+        }
+
+        // Fallback: script bundle.
         $files = [
-            'print-agent.js'                        => $base . '/print-agent.js',
-            'README.md'                             => $base . '/README.md',
-            'installer/windows/README.md'           => $base . '/installer/windows/README.md',
-            'installer/windows/install-service.ps1' => $base . '/installer/windows/install-service.ps1',
+            'print-agent.js'                          => $base . '/print-agent.js',
+            'README.md'                               => $base . '/README.md',
+            'installer/windows/README.md'             => $base . '/installer/windows/README.md',
+            'installer/windows/install-service.ps1'   => $base . '/installer/windows/install-service.ps1',
             'installer/windows/uninstall-service.ps1' => $base . '/installer/windows/uninstall-service.ps1',
         ];
 

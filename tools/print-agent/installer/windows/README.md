@@ -1,41 +1,41 @@
 # Bingoo Print Agent — Windows Installer
 
-Two install paths. Path A works today with no external tooling; Path B is the
-one-click `.exe` once the build/signing pipeline runs.
+## Customer install (one-click — the default download)
 
-## Path A — Script install (works today)
+**Printing → Print Agents → Create Agent → Download Windows Agent** gives
+`BingooPrintAgent-Setup.exe`. On the Counter/Kitchen PC:
 
-Prerequisite on the shop PC: [Node.js 18+](https://nodejs.org) (LTS installer, next-next-finish).
+1. Double-click **BingooPrintAgent-Setup.exe**. (Node.js is bundled inside — the
+   customer installs nothing else.)
+2. Wizard → paste the **Server URL** and the **6-digit pairing code** shown in
+   Bingoo POS → Next.
+3. It installs to `C:\Program Files\BingooPrintAgent`, pairs, and registers an
+   auto-start scheduled task (survives reboots). Done.
 
-1. In Bingoo POS: **Printing → Print Agents → Download Windows Agent** → unzip
-   anywhere (e.g. `C:\BingooPrintAgent`).
-2. Open the folder, hold Shift + right-click → "Open PowerShell window here":
-   ```powershell
-   node print-agent.js setup
-   ```
-3. Enter the **Server URL** (pre-filled from SERVER.txt in the zip) and the
-   **6-digit pairing code** from the Print Agents screen. The agent pairs and
-   starts printing immediately.
-4. Make it survive reboots (run PowerShell **as Administrator**):
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File installer\windows\install-service.ps1
-   ```
+Unsigned builds trigger Windows SmartScreen ("unrecognized app") — click
+*More info → Run anyway*. A code-signing certificate removes this (ops backlog).
 
-## Path B — One-click .exe (build pipeline)
+## Build the installer (maintainers)
 
-Build machine prerequisites: Node 18+, `npm i -g pkg`, Inno Setup 6.
+Build machine prerequisites: Node 18+, and Inno Setup 6 (`winget install
+JRSoftware.InnoSetup`).
 
 ```powershell
 cd tools/print-agent
-npm run build:win          # pkg → dist/BingooPrintAgent.exe
-cd installer/windows
-iscc BingooPrintAgent.iss  # → output/BingooPrintAgent-Setup.exe
+npx pkg print-agent.js --targets node18-win-x64 --output dist/BingooPrintAgent.exe
+& "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" installer/windows/BingooPrintAgent.iss
+copy installer\windows\output\BingooPrintAgent-Setup.exe dist\BingooPrintAgent-Setup.exe
 ```
 
-Then sign `BingooPrintAgent-Setup.exe` with the code-signing certificate
-(unsigned builds trigger SmartScreen "unrecognized app" warnings — clients can
-still proceed via *More info → Run anyway*, but signing is required for a clean
-experience).
+`dist/BingooPrintAgent-Setup.exe` is the committed artifact the download endpoint
+serves. The 37 MB `dist/BingooPrintAgent.exe` is a build intermediate (bundled
+into Setup.exe) and is git-ignored.
+
+## Script / developer mode (fallback, needs Node.js)
+
+If the wizard can't be used, the download falls back to a script ZIP:
+`node print-agent.js setup` then `install-service.ps1`. Existing env-var/token
+agents keep working unchanged.
 
 The installed app:
 - lives in `C:\Program Files\BingooPrintAgent`

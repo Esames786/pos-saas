@@ -3,16 +3,20 @@
 Client-friendly pairing flow (PRINT-AGENT-INSTALLER-1). Legacy env-var/token
 agents keep working unchanged — nothing to migrate.
 
-## Install (Windows)
+## Install (Windows — one-click)
 
 1. Bingoo POS → **Printing → Print Agents → Create Agent** (pick branch/terminal).
-2. The screen shows a **6-digit pairing code** (valid 15 min, single use).
-3. On the shop PC: **Download Windows Agent** (top-right) → unzip → install
-   Node.js LTS if missing → `node print-agent.js setup`.
-4. Enter Server URL (pre-filled from SERVER.txt) + pairing code → agent pairs and
-   starts. Status on the admin screen becomes **Online** within ~10 s.
-5. Auto-start on boot (admin PowerShell):
-   `powershell -ExecutionPolicy Bypass -File installer\windows\install-service.ps1`
+2. The screen shows a **6-digit pairing code** (valid 15 min, single use) + the
+   Server URL.
+3. On the shop PC: **Download Windows Agent** → run **BingooPrintAgent-Setup.exe**
+   (Node.js is bundled — nothing else to install).
+4. In the wizard, paste the **Server URL** + **pairing code** → Next. It installs,
+   pairs, and registers an auto-start task. Admin screen shows **Online** in ~10 s.
+5. SmartScreen on unsigned build → *More info → Run anyway* (code-signing is on the
+   ops backlog).
+
+Fallback (script mode, needs Node.js): if the Setup.exe is unavailable the
+download serves a ZIP — `node print-agent.js setup` + `install-service.ps1`.
 
 ## Pair / Re-pair
 

@@ -22,3 +22,8 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Print agent build intermediates (only the wizard Setup.exe is committed for the download)
+/tools/print-agent/dist/BingooPrintAgent.exe
+/tools/print-agent/installer/windows/output/
+/tools/print-agent/node_modules/

@@ -25,10 +25,57 @@ const os       = require('os');
 const fs       = require('fs');
 const path     = require('path');
 const readline = require('readline');
+const http     = require('http');
+const https    = require('https');
+const { URL }  = require('url');
 
-const AGENT_VERSION = '2.0.0';
+const AGENT_VERSION = '2.0.1';
+
+/* ── HTTP helper (http/https module — stable on every Node incl. the bundled
+ *    runtime, unlike Node 18's experimental global fetch) ────────────────── */
+
+function httpJson(method, urlString, { headers = {}, body = null } = {}) {
+    return new Promise((resolve, reject) => {
+        let url;
+        try { url = new URL(urlString); } catch (e) { reject(new Error(`Bad URL: ${urlString}`)); return; }
+
+        const payload = body === null ? null : (typeof body === 'string' ? body : JSON.stringify(body));
+        const lib = url.protocol === 'https:' ? https : http;
+
+        const req = lib.request({
+            method,
+            hostname: url.hostname,
+            port:     url.port || (url.protocol === 'https:' ? 443 : 80),
+            path:     url.pathname + url.search,
+            headers:  Object.assign({ 'Accept': 'application/json' },
+                          payload !== null ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) } : {},
+                          headers),
+            timeout:  15000,
+        }, (res) => {
+            let data = '';
+            res.on('data', (chunk) => { data += chunk; });
+            res.on('end', () => {
+                let json = null;
+                try { json = data ? JSON.parse(data) : null; } catch (_) { /* non-JSON body */ }
+                resolve({ status: res.statusCode, ok: res.statusCode >= 200 && res.statusCode < 300, json, text: data });
+            });
+        });
+
+        req.on('error',   (err) => reject(err));
+        req.on('timeout', () => { req.destroy(); reject(new Error('Request timed out.')); });
+
+        if (payload !== null) req.write(payload);
+        req.end();
+    });
+}
 
 /* ── Config locations ─────────────────────────────────────────────────── */
+
+// Real folder the program lives in. Under pkg, __dirname is a virtual snapshot
+// path, so sibling files (SERVER.txt) must be read next to the .exe instead.
+function exeDir() {
+    return process.pkg ? path.dirname(process.execPath) : __dirname;
+}
 
 function configCandidates() {
     const candidates = [];
@@ -36,7 +83,7 @@ function configCandidates() {
         candidates.push(path.join(process.env.ProgramData, 'BingooPrintAgent', 'config.json'));
     }
     candidates.push(path.join(os.homedir(), '.bingoo-print-agent', 'config.json'));
-    candidates.push(path.join(__dirname, '.agent-config.json'));
+    candidates.push(path.join(exeDir(), '.agent-config.json'));
     return candidates;
 }
 
@@ -115,16 +162,18 @@ async function setup() {
     const argServer = argValue('--server');
     const argCode   = argValue('--code');
     if (argServer && argCode) {
-        return pairAndStart(argServer.replace(/\/+$/, ''), argCode);
+        // --no-start: pair then exit (used by the installer; the auto-start
+        // service launches `run` separately). Without it, pairing also starts.
+        return pairAndStart(argServer.replace(/\/+$/, ''), argCode, !process.argv.includes('--no-start'));
     }
 
     console.log('You need the Server URL and the 6-digit pairing code from');
     console.log('Bingoo POS → Printing → Print Agents.\n');
 
-    // SERVER.txt is dropped next to the script by the download bundle.
+    // SERVER.txt is dropped next to the exe by the download bundle.
     let defaultServer = '';
     try {
-        const serverTxt = path.join(__dirname, 'SERVER.txt');
+        const serverTxt = path.join(exeDir(), 'SERVER.txt');
         if (fs.existsSync(serverTxt)) {
             const match = fs.readFileSync(serverTxt, 'utf8').match(/https?:\/\/\S+/);
             if (match) defaultServer = match[0];
@@ -134,27 +183,25 @@ async function setup() {
     const baseUrl = (await ask(`Server URL${defaultServer ? ` [${defaultServer}]` : ''}: `, defaultServer)).replace(/\/+$/, '');
     const code    = await ask('Pairing code (6 digits): ');
 
-    return pairAndStart(baseUrl, code);
+    return pairAndStart(baseUrl, code, true);
 }
 
-async function pairAndStart(baseUrl, code) {
+async function pairAndStart(baseUrl, code, start = true) {
     if (!baseUrl || !code) {
         console.error('Server URL and pairing code are both required.');
         process.exit(1);
     }
 
-    const res = await fetch(`${baseUrl}/api/print-agent/pair`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body:    JSON.stringify({
+    const res = await httpJson('POST', `${baseUrl}/api/print-agent/pair`, {
+        body: {
             pairing_code:    code,
             device_name:     os.hostname(),
             device_platform: `${os.platform()} ${os.release()}`,
             agent_version:   AGENT_VERSION,
-        }),
-    });
+        },
+    }).catch((err) => ({ ok: false, json: { message: err.message } }));
 
-    const body = await res.json().catch(() => ({}));
+    const body = res.json || {};
 
     if (!res.ok || !body.ok) {
         console.error(`\nPairing failed: ${body.message || `HTTP ${res.status}`}`);
@@ -171,8 +218,13 @@ async function pairAndStart(baseUrl, code) {
 
     console.log(`\nPaired successfully as ${body.agent_code}.`);
     console.log(`Config saved: ${file}`);
-    console.log('Starting the agent now... (Ctrl+C to stop; the Windows service keeps it running after install)');
 
+    if (!start) {
+        console.log('Pairing complete. The auto-start service will keep the agent running.');
+        process.exit(0);
+    }
+
+    console.log('Starting the agent now... (Ctrl+C to stop; the Windows service keeps it running after install)');
     run(loadConfig());
 }
 
@@ -190,34 +242,30 @@ function headers() {
 }
 
 async function heartbeat() {
-    const res = await fetch(`${CONFIG.baseUrl}/api/print-agent/heartbeat`, {
-        method:  'POST',
+    const res = await httpJson('POST', `${CONFIG.baseUrl}/api/print-agent/heartbeat`, {
         headers: headers(),
-        body:    JSON.stringify({
+        body:    {
             device_name: os.hostname(),
             device_os:   `${os.platform()} ${os.release()}`,
             local_ip:    localIp(),
-        }),
+        },
     });
 
     if (!res.ok) {
-        const body = await res.text().catch(() => '');
-        throw new Error(`Heartbeat failed: HTTP ${res.status} — ${body.slice(0, 300)}`);
+        throw new Error(`Heartbeat failed: HTTP ${res.status} — ${(res.text || '').slice(0, 300)}`);
     }
 }
 
 async function getPendingJobs() {
-    const res = await fetch(`${CONFIG.baseUrl}/api/print-agent/pending`, {
-        method:  'GET',
+    const res = await httpJson('GET', `${CONFIG.baseUrl}/api/print-agent/pending`, {
         headers: headers(),
     });
 
     if (!res.ok) {
-        const body = await res.text().catch(() => '');
-        throw new Error(`Pending jobs fetch failed: HTTP ${res.status} — ${body.slice(0, 300)}`);
+        throw new Error(`Pending jobs fetch failed: HTTP ${res.status} — ${(res.text || '').slice(0, 300)}`);
     }
 
-    return await res.json();
+    return res.json || {};
 }
 
 function sendToNetworkPrinter(ip, port, payload) {
@@ -246,18 +294,16 @@ function sendToNetworkPrinter(ip, port, payload) {
 }
 
 async function markPrinted(jobId) {
-    await fetch(`${CONFIG.baseUrl}/api/print-agent/jobs/${jobId}/printed`, {
-        method:  'POST',
+    await httpJson('POST', `${CONFIG.baseUrl}/api/print-agent/jobs/${jobId}/printed`, {
         headers: headers(),
-        body:    JSON.stringify({}),
+        body:    {},
     });
 }
 
 async function markFailed(jobId, message) {
-    await fetch(`${CONFIG.baseUrl}/api/print-agent/jobs/${jobId}/failed`, {
-        method:  'POST',
+    await httpJson('POST', `${CONFIG.baseUrl}/api/print-agent/jobs/${jobId}/failed`, {
         headers: headers(),
-        body:    JSON.stringify({ error_message: message }),
+        body:    { error_message: message },
     });
 }
 

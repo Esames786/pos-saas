@@ -35,10 +35,10 @@
                 <button type="button" class="btn btn-sm btn-outline-secondary" onclick="navigator.clipboard.writeText('{{ str_replace('-', '', $pairing['code']) }}'); this.textContent='Copied!';">Copy code</button>
                 <span class="text-muted small ms-2">Server URL: <code>{{ $pairing['server_url'] }}</code></span>
             </div>
-            <ol class="text-start small text-muted mx-auto" style="max-width: 480px;">
-                <li>Download the Windows Agent (button top-right) on the Counter/Kitchen PC.</li>
-                <li>Install / run it — it asks for the Server URL and this pairing code.</li>
-                <li>The agent connects automatically. Status below turns <span class="badge bg-success">Online</span>.</li>
+            <ol class="text-start small text-muted mx-auto" style="max-width: 520px;">
+                <li>On the Counter/Kitchen PC, click <strong>Download Windows Agent</strong> (top-right) and run <strong>BingooPrintAgent-Setup.exe</strong>. <span class="text-success">No Node.js or other software needed — everything is built in.</span></li>
+                <li>In the installer, paste the <strong>Server URL</strong> above and this <strong>pairing code</strong>.</li>
+                <li>The agent installs, connects, and auto-starts on every reboot. Status below turns <span class="badge bg-success">Online</span>.</li>
                 <li>Click <em>Test Print</em> to confirm the printer works.</li>
             </ol>
         </div>
@@ -191,8 +191,8 @@
     <div class="card-header"><strong>Quick Setup Guide</strong></div>
     <div class="card-body">
         <ol class="mb-3">
-            <li><strong>Download Windows Agent</strong> (top-right) on the Counter/Kitchen PC.</li>
-            <li>Install it — the agent asks for the Server URL and your <strong>pairing code</strong>.</li>
+            <li><strong>Download Windows Agent</strong> (top-right) on the Counter/Kitchen PC and run <strong>BingooPrintAgent-Setup.exe</strong> — no Node.js or extra software needed, everything is bundled.</li>
+            <li>The installer asks for the <strong>Server URL</strong> and your <strong>6-digit pairing code</strong> (from Create Agent), then auto-starts on every reboot.</li>
             <li>Add printers under <strong>Printing → Printers</strong> (Type = Network, IP, port 9100) and map categories under <strong>Printing → KOT Routing</strong>.</li>
             <li>Click <strong>Test Print</strong> on the agent row. Done.</li>
         </ol>
