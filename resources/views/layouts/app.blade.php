@@ -51,9 +51,26 @@
                 </div>
             @endif
             @if(!empty($tenantSubscriptionStatus) && !empty($tenantSubscriptionStatus['message']))
-                <div class="tenant-subscription-banner alert alert-{{ $tenantSubscriptionStatus['severity'] === 'danger' ? 'danger' : 'warning' }} mb-3" role="status">
+                {{-- POS-UX-2: dismissible per browser-session (danger severity stays visible) --}}
+                <div class="tenant-subscription-banner alert alert-{{ $tenantSubscriptionStatus['severity'] === 'danger' ? 'danger' : 'warning' }} mb-3 {{ $tenantSubscriptionStatus['severity'] === 'danger' ? '' : 'alert-dismissible fade show' }}" role="status"
+                     @if($tenantSubscriptionStatus['severity'] !== 'danger') id="tenant-subscription-banner-dismissible" @endif>
                     {{ $tenantSubscriptionStatus['message'] }}
+                    @if($tenantSubscriptionStatus['severity'] !== 'danger')
+                        <button type="button" class="btn-close" aria-label="Dismiss"
+                                onclick="try{sessionStorage.setItem('subBannerDismissed','1')}catch(e){}"
+                                data-bs-dismiss="alert"></button>
+                    @endif
                 </div>
+                @if($tenantSubscriptionStatus['severity'] !== 'danger')
+                <script>
+                    try {
+                        if (sessionStorage.getItem('subBannerDismissed') === '1') {
+                            var b = document.getElementById('tenant-subscription-banner-dismissible');
+                            if (b) b.remove();
+                        }
+                    } catch (e) {}
+                </script>
+                @endif
             @endif
             @yield('content')
         </div>

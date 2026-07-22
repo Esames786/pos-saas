@@ -205,6 +205,7 @@ class SalesOrderController extends Controller
                     // values when the effective order type is not delivery.
                     'delivery_channel_id'         => (! $tableSession && $orderType === 'delivery') ? ($data['delivery_channel_id'] ?? null) : null,
                     'delivery_rider_id'           => (! $tableSession && $orderType === 'delivery') ? ($data['delivery_rider_id'] ?? null) : null,
+                    'delivery_address'            => (! $tableSession && $orderType === 'delivery') ? ($data['delivery_address'] ?? null) : null,
                     'sale_date'                   => now(),
                     'subtotal'                    => $totals['subtotal'],
                     'discount_type'               => $data['discount_type'],
@@ -382,6 +383,7 @@ class SalesOrderController extends Controller
             'order_type'          => ['required', Rule::in(['quick_sale', 'takeaway', 'dine_in', 'delivery'])],
             'delivery_channel_id' => ['nullable', 'exists:delivery_channels,id'],
             'delivery_rider_id'   => ['nullable', 'exists:delivery_riders,id'],
+            'delivery_address'    => ['nullable', 'string', 'max:500'],
             'discount_type'       => ['required', Rule::in(['none', 'fixed', 'percent'])],
             'discount_value'      => ['nullable', 'numeric', 'min:0'],
             'promo_code'          => ['nullable', 'string', 'max:50'],

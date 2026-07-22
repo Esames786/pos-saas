@@ -47,6 +47,7 @@ class SalesOrder extends Model
         'restaurant_waiter_id',
         'delivery_channel_id',
         'delivery_rider_id',
+        'delivery_address',
     ];
 
     protected function casts(): array

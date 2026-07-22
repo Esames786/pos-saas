@@ -100,6 +100,9 @@
 @if($salesOrder->deliveryRider)
 <div>Rider: {{ $salesOrder->deliveryRider->name }}{{ $salesOrder->deliveryRider->phone ? ' - ' . $salesOrder->deliveryRider->phone : '' }}</div>
 @endif
+@if($salesOrder->delivery_address)
+<div>Deliver to: {{ $salesOrder->delivery_address }}</div>
+@endif
 
 <hr>
 

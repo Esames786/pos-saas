@@ -126,10 +126,10 @@
 
     .product-tile {
         border: 1px solid #edf0f4;
-        border-radius: 20px;
+        border-radius: 16px;
         background: linear-gradient(180deg, #ffffff, #fbfcfd);
-        padding: .85rem;
-        min-height: 138px;
+        padding: .6rem .7rem;
+        min-height: 112px;
         cursor: pointer;
         transition: .15s ease;
         text-align: left;
@@ -144,20 +144,21 @@
     }
 
     .product-avatar {
-        width: 44px;
-        height: 44px;
-        border-radius: 16px;
+        width: 36px;
+        height: 36px;
+        border-radius: 12px;
         display: grid;
         place-items: center;
         background: #f1f5f9;
         font-weight: 900;
-        margin-bottom: .65rem;
+        font-size: .8rem;
+        margin-bottom: .4rem;
         overflow: hidden;
     }
 
     /* POS-UX-1: real product photos on tiles */
     .product-avatar.has-img { background: #fff; padding: 0; }
-    .product-avatar.has-img img { width: 100%; height: 100%; object-fit: cover; border-radius: 16px; }
+    .product-avatar.has-img img { width: 100%; height: 100%; object-fit: cover; border-radius: 12px; }
 
     .stock-badge {
         border-radius: 999px;
@@ -421,10 +422,11 @@
     <div class="pos-shell">
         {{-- LEFT: products --}}
         <section class="pos-card p-3" aria-labelledby="products_heading">
-            <div class="row g-2 mb-3" id="order-controls-row">
+            {{-- POS-UX-2: compact header — small controls, order type lives in the tabs only --}}
+            <div class="row g-2 mb-2" id="order-controls-row">
                 <div class="col-md-3">
-                    <label for="branch_id" class="form-label required">Branch</label>
-                    <select id="branch_id" name="branch_id" class="form-select" required>
+                    <label for="branch_id" class="form-label small mb-1 required">Branch</label>
+                    <select id="branch_id" name="branch_id" class="form-select form-select-sm" required>
                         @foreach($branches as $branch)
                             <option value="{{ $branch->id }}"
                                 data-allow-negative="{{ $branch->allow_negative_stock ? 1 : 0 }}"
@@ -435,17 +437,22 @@
                     </select>
                 </div>
                 <div class="col-md-3">
-                    <label for="terminal_id" class="form-label">Terminal</label>
-                    <select id="terminal_id" name="terminal_id" class="form-select">
+                    <label for="terminal_id" class="form-label small mb-1">Terminal</label>
+                    <select id="terminal_id" name="terminal_id" class="form-select form-select-sm">
                         <option value="">No Terminal</option>
                         @foreach($terminals as $terminal)
-                            <option value="{{ $terminal->id }}">{{ $terminal->name }} &mdash; {{ $terminal->branch?->name }}</option>
+                            <option value="{{ $terminal->id }}" data-branch="{{ $terminal->branch_id ?? '' }}">{{ $terminal->name }} &mdash; {{ $terminal->branch?->name }}</option>
                         @endforeach
                     </select>
+                    {{-- Auto-print is terminal-driven; warn when none is selected --}}
+                    <div id="no-terminal-warning" class="small text-warning-emphasis mt-1" style="display:none">
+                        <i class="ti ti-alert-triangle me-1"></i>No terminal — auto receipt/KOT print is off
+                    </div>
                 </div>
-                <div class="col-md-3">
-                    <label for="order_type" class="form-label required">Order Type</label>
-                    <select id="order_type" name="order_type" class="form-select" required>
+                {{-- Order type is driven by the mode tabs above; keep the select for the
+                     form payload + existing JS, but never show the duplicate control. --}}
+                <div class="d-none">
+                    <select id="order_type" name="order_type">
                         <option value="dine_in"    @selected($activeMode === 'dine_in')>Dine In</option>
                         <option value="takeaway"   @selected($activeMode === 'takeaway')>Takeaway</option>
                         <option value="quick_sale" @selected($activeMode === 'quick_sale')>Quick Sale</option>
@@ -453,9 +460,9 @@
                     </select>
                 </div>
                 <div class="col-md-3">
-                    <label for="customer_id" class="form-label">Customer</label>
-                    <div class="input-group">
-                        <select id="customer_id" name="customer_id" class="form-select">
+                    <label for="customer_id" class="form-label small mb-1">Customer</label>
+                    <div class="input-group input-group-sm">
+                        <select id="customer_id" name="customer_id" class="form-select form-select-sm">
                             <option value="">Walk-in</option>
                             @foreach($customers as $customer)
                                 <option value="{{ $customer->id }}" @selected($heldSale?->customer_id === $customer->id)>
@@ -463,17 +470,22 @@
                                 </option>
                             @endforeach
                         </select>
-                        <button class="btn btn-outline-primary" type="button"
+                        <button class="btn btn-outline-primary btn-sm" type="button"
                             data-bs-toggle="modal" data-bs-target="#quickCustomerModal">+</button>
                     </div>
                 </div>
+                <div class="col-md-3">
+                    <label for="customer_phone" class="form-label small mb-1"><span id="phone-label-text">Customer Phone</span></label>
+                    <input id="customer_phone" name="customer_phone" class="form-control form-control-sm"
+                           placeholder="03xx-xxxxxxx" value="{{ $heldSale?->customer_phone }}">
+                </div>
             </div>
 
-            {{-- DELIVERY-CHANNELS-1: channel + rider, visible only for delivery orders --}}
-            <div class="row g-2 mb-3" id="delivery-panel" style="display:none">
+            {{-- DELIVERY-CHANNELS-1 + POS-UX-2: channel, rider + delivery address (delivery orders only) --}}
+            <div class="row g-2 mb-2" id="delivery-panel" style="display:none">
                 <div class="col-md-3">
-                    <label for="delivery_channel_id" class="form-label">Delivery Channel</label>
-                    <select id="delivery_channel_id" name="delivery_channel_id" class="form-select">
+                    <label for="delivery_channel_id" class="form-label small mb-1">Delivery Channel</label>
+                    <select id="delivery_channel_id" name="delivery_channel_id" class="form-select form-select-sm">
                         <option value="">Select channel</option>
                         @foreach($deliveryChannels as $channel)
                             <option value="{{ $channel->id }}" data-type="{{ $channel->type }}" @selected($heldSale?->delivery_channel_id === $channel->id)>{{ $channel->name }}</option>
@@ -481,25 +493,26 @@
                     </select>
                 </div>
                 <div class="col-md-3" id="delivery-rider-wrap" style="display:none">
-                    <label for="delivery_rider_id" class="form-label">Rider</label>
-                    <select id="delivery_rider_id" name="delivery_rider_id" class="form-select">
+                    <label for="delivery_rider_id" class="form-label small mb-1">Rider</label>
+                    <select id="delivery_rider_id" name="delivery_rider_id" class="form-select form-select-sm">
                         <option value="">Select rider</option>
                         @foreach($deliveryRiders as $rider)
                             <option value="{{ $rider->id }}" data-branch="{{ $rider->branch_id ?? '' }}" @selected($heldSale?->delivery_rider_id === $rider->id)>{{ $rider->name }}{{ $rider->phone ? ' - ' . $rider->phone : '' }}</option>
                         @endforeach
                     </select>
                 </div>
+                <div class="col-md-6">
+                    <label for="delivery_address" class="form-label small mb-1">Delivery Address</label>
+                    <input id="delivery_address" name="delivery_address" class="form-control form-control-sm"
+                           maxlength="500" placeholder="House / street / area for the rider"
+                           value="{{ $heldSale?->delivery_address }}">
+                </div>
             </div>
 
-            <div class="row g-2 mb-3">
-                <div class="col-md-8">
-                    <label for="pos_search" class="form-label">Barcode / Product Search</label>
-                    <input id="pos_search" class="form-control form-control-lg" placeholder="Scan barcode or type product name / SKU">
-                </div>
-                <div class="col-md-4">
-                    <label for="customer_phone" class="form-label">Optional Phone</label>
-                    <input id="customer_phone" name="customer_phone" class="form-control form-control-lg"
-                           value="{{ $heldSale?->customer_phone }}">
+            <div class="row g-2 mb-2">
+                <div class="col-12">
+                    <label for="pos_search" class="form-label small mb-1 visually-hidden">Barcode / Product Search</label>
+                    <input id="pos_search" class="form-control form-control-lg" placeholder="Scan barcode or type product name / SKU  (Ctrl+F)">
                 </div>
             </div>
 
@@ -521,15 +534,17 @@
                 <div class="category-strip" id="child-category-strip"></div>
             </div>
 
-            <h2 id="products_heading" class="h5 mb-2">Products</h2>
-            {{-- POS-UX-1: visible keyboard shortcuts --}}
-            <div class="pos-shortcut-bar" aria-label="Keyboard shortcuts">
-                <span><kbd>Ctrl+F</kbd> Search</span>
-                <span><kbd>Ctrl+Enter</kbd> Pay &amp; Complete</span>
-                <span><kbd>Ctrl+H</kbd> Hold Sale</span>
-                <span><kbd>Ctrl+L</kbd> Held Orders</span>
-                <span><kbd>Ctrl+P</kbd> Payment Method</span>
-                <span><kbd>Ctrl+M</kbd> Calculator</span>
+            {{-- POS-UX-2: heading + shortcuts on one slim line --}}
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-1">
+                <h2 id="products_heading" class="h6 mb-0">Products</h2>
+                <div class="pos-shortcut-bar mb-0" aria-label="Keyboard shortcuts">
+                    <span><kbd>Ctrl+F</kbd> Search</span>
+                    <span><kbd>Ctrl+Enter</kbd> Pay &amp; Complete</span>
+                    <span><kbd>Ctrl+H</kbd> Hold Sale</span>
+                    <span><kbd>Ctrl+L</kbd> Held Orders</span>
+                    <span><kbd>Ctrl+P</kbd> Payment Method</span>
+                    <span><kbd>Ctrl+M</kbd> Calculator</span>
+                </div>
             </div>
             <div class="product-grid" id="product-grid" aria-live="polite"></div>
         </section>
@@ -552,7 +567,7 @@
                     </div>
                 @endif
                 <div class="cart-items" id="cart-items">
-                    <p class="text-muted mb-0">No items added.</p>
+                    <p class="text-muted mb-0"><i class="ti ti-scan me-1"></i>No items yet — scan a barcode or press <kbd>Ctrl+F</kbd> to search.</p>
                 </div>
             </section>
 
@@ -579,8 +594,8 @@
             </section>
 
             {{-- Recalled order indicator --}}
-            <div id="recalled-order-bar" style="display:none" class="rounded-3 mb-2 px-3 py-2 d-flex align-items-center justify-content-between gap-2"
-                 style="background:#fff3cd;border:1px solid #ffc107;">
+            <div id="recalled-order-bar" class="rounded-3 mb-2 px-3 py-2 d-flex align-items-center justify-content-between gap-2"
+                 style="display:none;background:#fff3cd;border:1px solid #ffc107;">
                 <div class="small fw-semibold text-warning-emphasis">
                     <i class="ti ti-lock me-1"></i>Recalled: <span id="recalled-order-no">—</span>
                 </div>
@@ -601,7 +616,7 @@
             <div class="d-grid gap-2 pos-actions">
                 <div class="row g-2">
                     <div class="col">
-                        <button type="button" class="btn btn-warning btn-lg w-100" id="hold-sale-btn">
+                        <button type="button" class="btn btn-warning btn-lg w-100 text-dark fw-semibold" id="hold-sale-btn">
                             {{ $tableSession ? 'Save Order' : 'Hold Sale' }}
                         </button>
                     </div>
@@ -621,8 +636,8 @@
                     </div>
                     <div class="col">
                         <button type="button" class="btn btn-outline-secondary btn-lg w-100" id="completed-orders-btn"
-                                title="Completed orders — reprint receipt / KOT">
-                            <i class="ti ti-receipt-2 me-1"></i>Completed
+                                title="Recent completed orders — reprint receipt / KOT">
+                            <i class="ti ti-receipt-2 me-1"></i>Recent Orders
                         </button>
                     </div>
                 </div>
@@ -837,7 +852,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2 class="modal-title h5" id="completedOrdersModalLabel">
-                    <i class="ti ti-receipt-2 me-2"></i>Completed Orders
+                    <i class="ti ti-receipt-2 me-2"></i>Recent Orders
                 </h2>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
@@ -1229,12 +1244,20 @@ document.addEventListener('DOMContentLoaded', function () {
         deliveryPanelEl.style.display = isDelivery ? '' : 'none';
         if (deliveryChannelEl) deliveryChannelEl.required = isDelivery;
 
+        // POS-UX-2: for delivery orders the phone stops being "optional" in spirit —
+        // the rider needs a contact number. Label reflects that.
+        const phoneLabel = document.getElementById('phone-label-text');
+        if (phoneLabel) phoneLabel.textContent = isDelivery ? 'Customer Phone (needed for delivery)' : 'Customer Phone';
+
+        const deliveryAddressEl = document.getElementById('delivery_address');
+
         if (!isDelivery) {
-            // Never post stale channel/rider on a non-delivery sale.
+            // Never post stale channel/rider/address on a non-delivery sale.
             if (deliveryChannelEl) deliveryChannelEl.value = '';
             if (deliveryRiderEl)   deliveryRiderEl.value = '';
             if (deliveryRiderEl)   deliveryRiderEl.required = false;
             if (deliveryRiderWrap) deliveryRiderWrap.style.display = 'none';
+            if (deliveryAddressEl) deliveryAddressEl.value = '';
             return;
         }
 
@@ -1262,6 +1285,55 @@ document.addEventListener('DOMContentLoaded', function () {
     if (branchEl)         branchEl.addEventListener('change', updateDeliveryPanel);
     if (deliveryChannelEl) deliveryChannelEl.addEventListener('change', updateDeliveryPanel);
     updateDeliveryPanel();
+
+    /* ── POS-UX-2: terminal auto-select + remember ─────────────────────────
+       Auto receipt/KOT printing is terminal-driven; a forgotten "No Terminal"
+       silently disables printing. Remember the cashier's choice per branch and
+       pre-select the branch's terminal when nothing is chosen. */
+
+    const noTerminalWarning = document.getElementById('no-terminal-warning');
+
+    function updateTerminalWarning() {
+        if (noTerminalWarning) {
+            noTerminalWarning.style.display = (terminalEl && terminalEl.value) ? 'none' : '';
+        }
+    }
+
+    function autoSelectTerminal() {
+        if (!terminalEl) return;
+        if (terminalEl.value) { updateTerminalWarning(); return; }
+
+        var branchId = branchEl ? branchEl.value : '';
+        var saved = null;
+        try { saved = localStorage.getItem('pos_terminal_' + branchId); } catch (e) {}
+
+        var candidate = '';
+        for (var i = 0; i < terminalEl.options.length; i++) {
+            var o = terminalEl.options[i];
+            if (!o.value) continue;
+            if (saved && o.value === saved && (!o.dataset.branch || o.dataset.branch === branchId)) {
+                candidate = o.value;
+                break;
+            }
+            if (!candidate && o.dataset.branch === branchId) {
+                candidate = o.value; // first terminal of this branch as fallback
+            }
+        }
+
+        if (candidate) terminalEl.value = candidate;
+        updateTerminalWarning();
+    }
+
+    if (terminalEl) {
+        terminalEl.addEventListener('change', function () {
+            var branchId = branchEl ? branchEl.value : '';
+            if (terminalEl.value) {
+                try { localStorage.setItem('pos_terminal_' + branchId, terminalEl.value); } catch (e) {}
+            }
+            updateTerminalWarning();
+        });
+    }
+    autoSelectTerminal();
 
     const posSidebarToggle = document.getElementById('pos-sidebar-toggle');
     if (posSidebarToggle) {
@@ -1907,11 +1979,25 @@ document.addEventListener('DOMContentLoaded', function () {
         renderCart();
     }
 
+    // POS-UX-2: primary actions only make sense with items in the cart —
+    // dim them on empty so the cashier's eye goes to scanning first.
+    function updateCartActionStates() {
+        var empty = !cart.length;
+        ['complete-sale-btn', 'hold-sale-btn', 'bill-preview-btn'].forEach(function (id) {
+            var b = document.getElementById(id);
+            if (b) {
+                b.disabled = empty;
+                b.classList.toggle('opacity-50', empty);
+            }
+        });
+    }
+
     function renderCart() {
         cartItemsEl.innerHTML = '';
+        updateCartActionStates();
 
         if (!cart.length) {
-            cartItemsEl.innerHTML = '<p class="text-muted mb-0">No items added.</p>';
+            cartItemsEl.innerHTML = '<p class="text-muted mb-0"><i class="ti ti-scan me-1"></i>No items yet — scan a barcode or press <kbd>Ctrl+F</kbd> to search.</p>';
             updateTotals();
             return;
         }

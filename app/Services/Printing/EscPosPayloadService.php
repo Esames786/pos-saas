@@ -60,6 +60,9 @@ class EscPosPayloadService
         if ($sale->deliveryRider) {
             $out .= 'Rider: ' . $sale->deliveryRider->name . "\n";
         }
+        if ($sale->delivery_address) {
+            $out .= 'Deliver to: ' . $sale->delivery_address . "\n";
+        }
 
         $out .= str_repeat('-', 42) . "\n";
 
