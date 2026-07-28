@@ -64,7 +64,7 @@ class SalesOrderController extends Controller
         ]);
     }
 
-    public function store(Request $request, SalesService $salesService, InventoryService $inventoryService, SalesTotalsService $totalsService)
+    public function store(Request $request, SalesService $salesService, InventoryService $inventoryService, SalesTotalsService $totalsService, \App\Services\Sales\SaleIdempotencyService $idempotency)
     {
         $data = $this->validateSale($request);
 
@@ -72,6 +72,18 @@ class SalesOrderController extends Controller
         // Branch Server — the cloud must not create them (split-brain guard).
         app(\App\Services\Edge\BranchOperatingModeService::class)
             ->assertSaleMutationAllowed(Branch::findOrFail($data['branch_id']));
+
+        // SALE-IDEMPOTENCY-1: one logical sale = one client_uuid. A retry / double
+        // click / timeout replay of the same sale must never double-post.
+        $clientUuid  = $idempotency->normalizeClientUuid($data['client_uuid'] ?? null);
+        $payloadHash = $idempotency->buildPayloadHash($this->canonicalSalePayload($data));
+
+        if ($clientUuid !== null && $existing = $idempotency->findFinalized($clientUuid)) {
+            if ($idempotency->payloadMatches($existing, $payloadHash)) {
+                return $this->saleResponse($request, $existing, true); // harmless replay
+            }
+            throw new \App\Exceptions\SaleIdempotencyConflictException($existing->id); // 409
+        }
 
         $lines = collect($data['lines'])
             ->filter(fn ($line) => !empty($line['product_id']) && !empty($line['quantity']))
@@ -95,9 +107,15 @@ class SalesOrderController extends Controller
             return back()->withErrors(['payments' => 'At least one payment line is required.'])->withInput();
         }
 
+        // Idempotency fields stamped on the created/updated sale. client_uuid only
+        // when supplied (else the model auto-generates one); hash always stored.
+        $idempotencyFields = $clientUuid !== null
+            ? ['client_uuid' => $clientUuid, 'client_payload_hash' => $payloadHash]
+            : ['client_payload_hash' => $payloadHash];
+
         try {
             $sale = DB::connection('tenant')->transaction(function () use (
-                $data, $lines, $payments, $salesService, $inventoryService, $totalsService
+                $data, $lines, $payments, $salesService, $inventoryService, $totalsService, $idempotencyFields
             ) {
                 $branch   = Branch::findOrFail($data['branch_id']);
                 $terminal = !empty($data['terminal_id']) ? Terminal::find($data['terminal_id']) : null;
@@ -227,7 +245,7 @@ class SalesOrderController extends Controller
                     $sale = SalesOrder::where('status', 'held')->findOrFail($data['held_sale_id']);
                     $sale->lines()->delete();
                     $sale->payments()->delete();
-                    $sale->update(array_merge($saleFields, [
+                    $sale->update(array_merge($saleFields, $idempotencyFields, [
                         'paid_amount'      => 0,
                         'change_amount'    => 0,
                         'status'           => 'draft',
@@ -235,7 +253,7 @@ class SalesOrderController extends Controller
                         'completed_at'     => null,
                     ]));
                 } else {
-                    $sale = SalesOrder::create(array_merge($saleFields, [
+                    $sale = SalesOrder::create(array_merge($saleFields, $idempotencyFields, [
                         'sale_no'             => $salesService->nextSaleNo(),
                         'status'              => 'draft',
                         'created_by_user_id'  => auth('tenant')->id(),
@@ -324,6 +342,15 @@ class SalesOrderController extends Controller
 
                 return $salesService->finalizePaidSale($sale);
             });
+        } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+            // SALE-IDEMPOTENCY-1: a concurrent identical request won the race and
+            // committed first. If a finalized sale now exists for this client_uuid,
+            // return it as a replay (one sale, one posting). Any other unique
+            // collision is a real error.
+            if ($clientUuid !== null && $winner = $idempotency->findFinalized($clientUuid)) {
+                return $this->saleResponse($request, $winner, true);
+            }
+            throw $e;
         } catch (RuntimeException $e) {
             if ($request->expectsJson()) {
                 return response()->json(['message' => $e->getMessage()], 422);
@@ -331,15 +358,70 @@ class SalesOrderController extends Controller
             return back()->withErrors(['sale' => $e->getMessage()])->withInput();
         }
 
+        return $this->saleResponse($request, $sale, false);
+    }
+
+    /**
+     * SALE-IDEMPOTENCY-1: unified sale response for a fresh sale or an idempotent
+     * replay. The `idempotent_replay` flag lets the POS avoid re-firing auto
+     * receipt/KOT print for a replay (see POS JS).
+     */
+    private function saleResponse(Request $request, SalesOrder $sale, bool $replay): \Illuminate\Http\Response|\Illuminate\Http\JsonResponse|\Illuminate\Http\RedirectResponse
+    {
         if ($request->expectsJson()) {
             return response()->json([
-                'sale_id'  => $sale->id,
-                'sale_no'  => $sale->sale_no,
-                'redirect' => url('/sales-orders/' . $sale->id),
+                'sale_id'           => $sale->id,
+                'sale_no'           => $sale->sale_no,
+                'redirect'          => url('/sales-orders/' . $sale->id),
+                'idempotent_replay' => $replay,
             ]);
         }
 
-        return redirect(url('/sales-orders/' . $sale->id))->with('status', 'Sale posted successfully.');
+        return redirect(url('/sales-orders/' . $sale->id))
+            ->with('status', $replay ? 'This sale was already completed.' : 'Sale posted successfully.');
+    }
+
+    /**
+     * SALE-IDEMPOTENCY-1: the customer's INTENDED sale, canonicalized for hashing.
+     * INCLUDES the material intent (branch/terminal/customer/order type + delivery,
+     * each line's product/variant/qty/price/discount/tax/modifiers/kind, and each
+     * payment's method/amount/tender, plus discount/promo/tip). EXCLUDES CSRF, key
+     * order, server-generated sale_no/ids, and browser-only fields.
+     */
+    private function canonicalSalePayload(array $data): array
+    {
+        return [
+            'branch_id'                   => $data['branch_id'] ?? null,
+            'terminal_id'                 => $data['terminal_id'] ?? null,
+            'customer_id'                 => $data['customer_id'] ?? null,
+            'order_source'                => $data['order_source'] ?? null,
+            'order_type'                  => $data['order_type'] ?? null,
+            'restaurant_table_session_id' => $data['restaurant_table_session_id'] ?? null,
+            'held_sale_id'                => $data['held_sale_id'] ?? null,
+            'delivery_channel_id'         => $data['delivery_channel_id'] ?? null,
+            'delivery_rider_id'           => $data['delivery_rider_id'] ?? null,
+            'delivery_address'            => $data['delivery_address'] ?? null,
+            'discount_type'               => $data['discount_type'] ?? null,
+            'discount_value'              => $data['discount_value'] ?? null,
+            'promo_code'                  => $data['promo_code'] ?? null,
+            'tip_amount'                  => $data['tip_amount'] ?? null,
+            'lines' => collect($data['lines'] ?? [])->map(fn ($l) => [
+                'product_id'         => $l['product_id'] ?? null,
+                'product_variant_id' => $l['product_variant_id'] ?? null,
+                'line_kind'          => $l['line_kind'] ?? 'standard',
+                'combo_id'           => $l['combo_id'] ?? null,
+                'quantity'           => $l['quantity'] ?? null,
+                'unit_price'         => $l['unit_price'] ?? null,
+                'discount_amount'    => $l['discount_amount'] ?? null,
+                'tax_amount'         => $l['tax_amount'] ?? null,
+                'modifiers'          => $l['modifiers'] ?? null,
+            ])->values()->all(),
+            'payments' => collect($data['payments'] ?? [])->map(fn ($p) => [
+                'payment_method_id' => $p['payment_method_id'] ?? null,
+                'amount'            => $p['amount'] ?? null,
+                'tendered_amount'   => $p['tendered_amount'] ?? null,
+            ])->values()->all(),
+        ];
     }
 
     public function show(SalesOrder $salesOrder)
@@ -388,6 +470,7 @@ class SalesOrderController extends Controller
             'restaurant_table_session_id' => ['nullable', 'exists:restaurant_table_sessions,id'],
             'create_separate_order'       => ['nullable', 'boolean'],
             'order_source'        => ['nullable', Rule::in(['pos', 'manual'])],
+            'client_uuid'         => ['nullable', 'string', 'max:36'],
             'order_type'          => ['required', Rule::in(['quick_sale', 'takeaway', 'dine_in', 'delivery'])],
             'delivery_channel_id' => ['nullable', 'exists:delivery_channels,id'],
             'delivery_rider_id'   => ['nullable', 'exists:delivery_riders,id'],

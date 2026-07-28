@@ -3,13 +3,30 @@
 namespace App\Models\Tenant;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
 
 class SalesOrder extends Model
 {
     protected $connection = 'tenant';
 
+    /**
+     * SALE-IDEMPOTENCY-1: every sale carries a client_uuid. Cloud POS/manual
+     * sales that don't supply one get a server-generated uuid so the column is
+     * always populated (backward compatible); offline Edge sales supply theirs.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (SalesOrder $sale) {
+            if (empty($sale->client_uuid)) {
+                $sale->client_uuid = (string) Str::uuid();
+            }
+        });
+    }
+
     protected $fillable = [
         'sale_no',
+        'client_uuid',
+        'client_payload_hash',
         'branch_id',
         'terminal_id',
         'shift_id',

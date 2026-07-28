@@ -38,7 +38,8 @@ Design: `docs/audits/offline-pos-architecture-2026-07.md` + `docs/ops/OFFLINE_PO
 | # | Item | Status |
 |---|---|---|
 | F1 | **BRANCH-OPERATING-MODE-1** + **HARDEN-1** — 5-state lifecycle, `APP_ROLE`/`EDGE_*` (env-only), guard on 9 sale paths + shift open/close; code-enforced transition matrix; EDGE_TENANT_CODE+EDGE_BRANCH_ID both enforced; setup UI+actions behind `EDGE_FEATURE_ENABLED` (default OFF). Cloud lock on active/closing/suspended; pending keeps cloud sales | ✅ built locally; **prod deploy deferred until pairing/bootstrap ready** |
-| F2 | SALE-IDEMPOTENCY-1 — `sales_orders.client_uuid` + sync_state; idempotent-by-uuid posting | next |
+| F2 | ✅ **SALE-IDEMPOTENCY-1** — `sales_orders.client_uuid` (unique) + `client_payload_hash`; one-logical-sale uuid in POS JS (persist/retry/rotate); same-uuid+same-payload = replay, same-uuid+different-payload = 409; DB-unique race guard; replay never double-posts sale/stock/COGS/journal/print. Design `docs/audits/sale-idempotency-design-2026-07.md`. QA 16/16 | ✅ built locally; deploy deferred |
+| F3 | EDGE-EDITION-ARCHITECTURE-1 (restricted build boundary + `offline_edge` sellable module + self-serve installer + ioncube/appliance protection) | next |
 | F3 | BRANCH-DEVICE-PAIRING-1 → BRANCH-BOOTSTRAP-SNAPSHOT-1 → OFFLINE-SYNC-ENGINE-1 → BRANCH-SERVER-PACKAGING-1 → SYNC-EXCEPTION-DASHBOARD-1 → MODE-RECONCILIATION-1 | queued |
 
 ## 🔜 TRACK B — Manufacturing Finance Posting (moved to extreme end — after Offline POS)

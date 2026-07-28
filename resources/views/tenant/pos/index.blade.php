@@ -408,6 +408,8 @@
 <form id="pos-sale-form" method="POST" action="{{ url('/pos') }}">
     @csrf
     <input type="hidden" name="order_source"                id="pos-order-source"      value="pos">
+    {{-- SALE-IDEMPOTENCY-1: one logical sale = one client_uuid (survives retry/refresh) --}}
+    <input type="hidden" name="client_uuid"                 id="client_uuid"                 value="">
     <input type="hidden" name="held_sale_id"                                            value="{{ $heldSale?->id }}">
     <input type="hidden" name="restaurant_table_session_id" id="restaurant_table_session_id" value="{{ $tableSession?->id ?? $heldSale?->restaurant_table_session_id }}">
     <input type="hidden" name="restaurant_table_id"         id="restaurant_table_id"         value="{{ $heldSale?->restaurant_table_id }}">
@@ -1912,6 +1914,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function addToCart(product, variant, forceQty, selectedModifiers) {
+        ensureSaleUuid();  // SALE-IDEMPOTENCY-1: a logical sale begins at first item
         var modifiers = normalizeModifiers(selectedModifiers || []);
         var key       = cartKey(product, variant, modifiers);
         var existing  = cart.find(function (item) { return item.key === key; });
@@ -2345,6 +2348,44 @@ document.addEventListener('DOMContentLoaded', function () {
 
     /* form build + submit */
 
+    /* ── SALE-IDEMPOTENCY-1: one logical sale = one client_uuid ─────────────
+       Generated when a sale begins, persisted so a refresh/retry/timeout reuses
+       the SAME uuid, rotated only after a successful/replayed sale or a clear. */
+    var SALE_UUID_KEY = 'pos_sale_uuid';
+
+    function genUuid() {
+        if (window.crypto && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+            var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    }
+
+    function ensureSaleUuid() {
+        var el = document.getElementById('client_uuid');
+        if (!el) return '';
+        var u = el.value;
+        if (!u) { try { u = localStorage.getItem(SALE_UUID_KEY) || ''; } catch (e) {} }
+        if (!u) { u = genUuid(); try { localStorage.setItem(SALE_UUID_KEY, u); } catch (e) {} }
+        el.value = u;
+        return u;
+    }
+
+    function rotateSaleUuid() {
+        var el = document.getElementById('client_uuid');
+        if (el) el.value = '';
+        try { localStorage.removeItem(SALE_UUID_KEY); } catch (e) {}
+    }
+
+    // Restore a mid-sale uuid on page load (refresh must not rotate it).
+    (function () {
+        try {
+            var u = localStorage.getItem(SALE_UUID_KEY);
+            var el = document.getElementById('client_uuid');
+            if (u && el) el.value = u;
+        } catch (e) {}
+    })();
+
     function buildInputs(includePayment) {
         dynamicInputs.innerHTML = '';
 
@@ -2578,6 +2619,7 @@ document.addEventListener('DOMContentLoaded', function () {
     /* ── Cart clear helper ────────────────────────────────────────────── */
 
     function clearCart() {
+        rotateSaleUuid();          // SALE-IDEMPOTENCY-1: next sale gets a fresh uuid
         cart = [];
         _currentHeldSaleId = null;
         _currentHeldSaleNo = null;
@@ -2834,6 +2876,8 @@ document.addEventListener('DOMContentLoaded', function () {
         submitBtn.disabled    = true;
         submitBtn.textContent = 'Processing…';
 
+        ensureSaleUuid();  // SALE-IDEMPOTENCY-1: stamp the sale's uuid before submit
+
         refreshServerTotals().finally(function () {
             buildInputs(true);
 
@@ -2865,6 +2909,17 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 _lastSaleId = saleId;
                 _lastSaleNo = saleNo;
+
+                // SALE-IDEMPOTENCY-1: a replay means this sale already posted on an
+                // earlier attempt — do NOT re-fire receipt/KOT (no duplicate kitchen
+                // ticket). Reprint from Recent Orders if the first copy never printed.
+                if (result.data.idempotent_replay) {
+                    clearCart();
+                    toast('info', 'Sale ' + saleNo + ' was already completed. Use Recent Orders to reprint if needed.');
+                    var pmElR = document.getElementById('paymentModal');
+                    if (pmElR && window.bootstrap) { var pmInstR = bootstrap.Modal.getInstance(pmElR); if (pmInstR) { pmInstR.hide(); } }
+                    return;
+                }
 
                 // Receipt — honours the Auto-Receipt toggle + opens preview if no printer
                 maybePrintReceipt(saleId, terminalId);
