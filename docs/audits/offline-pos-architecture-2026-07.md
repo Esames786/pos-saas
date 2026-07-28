@@ -78,21 +78,35 @@ Branch LAN
   (entitlement/permissions) run locally in a single-tenant, always-entitled
   configuration (a paid on-prem deployment; module gating is satisfied locally).
 
-## 4. Branch operating mode + cloud sale-lock
+## 4. Branch operating mode + cloud sale-lock (5-state lifecycle)
 
-New per-branch setting: `branches.sales_operating_mode` = `cloud` (default) |
-`local_edge`.
+Per-branch: `branches.sales_operating_mode` = `cloud` | `local_edge`, plus a
+lifecycle `branches.local_edge_status` = `inactive | pending | active | closing |
+suspended`. **A raw two-state toggle is unsafe** (accidental `active` before the
+Branch Server is ready would lock the branch out of sales). Behavior:
 
-- `cloud` → today's behavior, unchanged.
-- `local_edge` → the cloud **rejects** direct sale create/mutate for that branch
-  (POS store, held-sale, returns-against-live) with a clear "This branch is in
-  Local POS Mode — sales run on the Branch Server" message. The cloud still shows
-  last-synced data read-only. This is the split-brain guard.
+| Status | Cloud sale mutation | Meaning |
+|---|---|---|
+| `inactive` (cloud) | **allowed** | Today's behavior, unchanged (default for all branches) |
+| `pending` | **allowed** | Branch Server install/pair/bootstrap in progress — cloud sales must NOT be interrupted |
+| `active` | **BLOCKED** | Branch Server is the authority; cloud refuses direct sale create/mutate |
+| `closing` | **BLOCKED** | Controlled exit; no new mutations while pending sync/reconciliation drains |
+| `suspended` | **BLOCKED** | Emergency/security hold |
 
-Enforcement point: a small guard in `SalesOrderController::store` /
-`HeldSaleController::store` (and sale-mutating routes) that 403s when the resolved
-branch is `local_edge` **and** the request is hitting the cloud instance (a config
-flag `APP_ROLE=cloud|branch_server` distinguishes the two identical codebases).
+Cloud sale-lock applies **only** to `active`/`closing` (implemented via
+`Branch::isLocalEdgeActive()`). The cloud still shows last-synced data read-only.
+
+Enforcement (implemented in BRANCH-OPERATING-MODE-1): the centralized
+`App\Services\Edge\BranchOperatingModeService::assertSaleMutationAllowed($branch)`
+is called in every sale-mutating controller (POS/manual sale store, sale cancel,
+held-sale store/cancel, sales-return store, restaurant table-session
+open/bill-requested/close/move/merge, split-bill). It throws a self-rendering
+`BranchLocalEdgeException` → friendly **409** (`code: BRANCH_LOCAL_EDGE_ACTIVE`),
+never a 500. Two identical codebases are distinguished by `config('app.role')`
+= `cloud | branch_server` (env-only, never from a request); a `branch_server`
+instance may only mutate its hard-bound `EDGE_BRANCH_ID`. UI can request setup
+(→ `pending`) or return to cloud, but **cannot** set `active` — activation waits
+for future pairing/bootstrap readiness.
 
 ## 5. Offline MVP scope (allowed / blocked)
 
@@ -165,11 +179,28 @@ existing `cloud_sale_id` + official `sale_no`, no double post.
 
 On entering Local Mode, the cloud reserves an invoice range per branch, e.g.
 `KHI01-OF-000001 … KHI01-OF-010000`, stored on the branch record. The Branch
-Server assigns sequential numbers from this range locally (gapless) — so a receipt
-number is available instantly, duplicates are impossible across terminals, and no
-rename is needed at sync. Every sale still carries `client_uuid` for idempotency.
-**Gap detection = fraud signal:** cloud flags any missing number in a synced range.
-(Note: this replaces `nextSaleNo()`'s random scheme for Local-Mode sales.)
+Server assigns sequential numbers from this range locally — so a receipt number is
+available instantly, duplicates are impossible across terminals, and no rename is
+needed at sync. Every sale still carries `client_uuid` for idempotency.
+(Replaces `nextSaleNo()`'s random scheme for Local-Mode sales.)
+
+**Sequential ≠ absolute-gapless.** A crash, cancelled checkout, or void can leave
+a reserved number unused. Numbers are **never reused**; instead every reserved
+number is traceable to a status: `issued`, `synced`, `voided`, `abandoned`, or
+`missing/unexplained`. **Only an *unexplained* gap** is a reconciliation/fraud
+alert — voided/abandoned gaps are expected and accounted for.
+
+### Provisional (local) vs official (cloud) accounting
+
+The Branch Server reuses the existing POS pipeline locally, so it DOES create
+local `stock`, `COGS`, `journal`, table/session and payment rows — these are
+**operational/provisional branch records**, the branch's own working copy. They
+are **never copied to the cloud.** At sync the Branch Server sends only the
+**canonical sale payload** (`client_uuid`, reserved `sale_no`, branch/terminal/
+user, lines/modifiers, printed prices/taxes/discounts, payments, `captured_at`,
+local totals). The cloud then **independently** posts official stock, FEFO, COGS
+and journals via `SalesService::finalizePaidSale`. Cloud is the only official
+inventory/accounting record; the local ledger is provisional and disposable.
 
 ## 9. Sync Exception Dashboard (cloud)
 
@@ -271,10 +302,14 @@ reconnect → all sales sync, official numbers assigned, stock/journals post onc
 demo tenant → one branch → cash-first → pilot restaurant → feature-flagged →
 sync monitoring + daily reconciliation → documented rollback (mode close → cloud).
 
-## 18. Next implementation prompt
+## 18. Implementation progress
 
-**BRANCH-OPERATING-MODE-1**: add `branches.sales_operating_mode` + `APP_ROLE`
-config + cloud sale-lock guard (403 on `local_edge` from the cloud instance) +
-admin UI to set the mode — **no sync yet**, purely the split-brain guard and the
-switch. Then **SALE-IDEMPOTENCY-1** (`client_uuid`). Non-goals: packaging,
-Electron, manufacturing.
+- ✅ **BRANCH-OPERATING-MODE-1** (done locally): 5-state lifecycle columns,
+  `config('app.role')` + `EDGE_*` (env-only), `BranchOperatingModeService` +
+  self-rendering `BranchLocalEdgeException` (409), guard in all 9 sale-mutating
+  paths, admin UI (setup→pending / return-to-cloud; no UI activation), audit logs.
+  Cloud lock only on `active`/`closing`; `pending` keeps cloud sales.
+- **Next: SALE-IDEMPOTENCY-1** — `sales_orders.client_uuid` (unique) +
+  `sync_state`/`synced_at`/`cloud_sale_id`; make sale posting idempotent-by-uuid.
+  Then BRANCH-DEVICE-PAIRING-1 → BRANCH-BOOTSTRAP-SNAPSHOT-1 → OFFLINE-SYNC-ENGINE-1
+  → BRANCH-SERVER-PACKAGING-1. Non-goals throughout: Electron, manufacturing.

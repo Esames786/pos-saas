@@ -68,6 +68,11 @@ class SalesOrderController extends Controller
     {
         $data = $this->validateSale($request);
 
+        // BRANCH-OPERATING-MODE-1: a Local POS (active) branch runs sales on its
+        // Branch Server — the cloud must not create them (split-brain guard).
+        app(\App\Services\Edge\BranchOperatingModeService::class)
+            ->assertSaleMutationAllowed(Branch::findOrFail($data['branch_id']));
+
         $lines = collect($data['lines'])
             ->filter(fn ($line) => !empty($line['product_id']) && !empty($line['quantity']))
             ->values();
@@ -356,6 +361,9 @@ class SalesOrderController extends Controller
 
     public function cancel(SalesOrder $salesOrder)
     {
+        app(\App\Services\Edge\BranchOperatingModeService::class)
+            ->assertSaleMutationAllowed(Branch::findOrFail($salesOrder->branch_id));
+
         if ($salesOrder->status === 'paid' || $salesOrder->inventory_posted) {
             return back()->withErrors([
                 'sale' => 'Paid sale cannot be cancelled. Use sales return flow.',

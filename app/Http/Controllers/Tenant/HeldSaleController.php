@@ -250,6 +250,10 @@ class HeldSaleController extends Controller
 
         $data = $this->validateDeliveryAttribution($data);
 
+        // BRANCH-OPERATING-MODE-1: block cloud held-sale mutation for an active Local POS branch.
+        app(\App\Services\Edge\BranchOperatingModeService::class)
+            ->assertSaleMutationAllowed(\App\Models\Tenant\Branch::findOrFail($data['branch_id']));
+
         $lines = collect($data['lines'])->filter(fn ($l) => !empty($l['product_id']) && !empty($l['quantity']));
 
         if ($lines->isEmpty()) {
@@ -565,6 +569,9 @@ class HeldSaleController extends Controller
 
     public function cancel(SalesOrder $salesOrder)
     {
+        app(\App\Services\Edge\BranchOperatingModeService::class)
+            ->assertSaleMutationAllowed(\App\Models\Tenant\Branch::findOrFail($salesOrder->branch_id));
+
         if ($salesOrder->status !== 'held') {
             if (request()->expectsJson()) {
                 return response()->json(['message' => 'Only held sales can be cancelled.'], 422);

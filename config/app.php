@@ -17,6 +17,26 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Application Role (Branch Edge)
+    |--------------------------------------------------------------------------
+    |
+    | 'cloud'          — the central SaaS instance (default).
+    | 'branch_server'  — an on-prem Branch Server running Local POS Mode for one
+    |                    branch, hard-bound via edge_tenant_code / edge_branch_id.
+    |
+    | SECURITY: role + edge binding come ONLY from the environment/config, NEVER
+    | from HTTP request data. A branch server may only mutate its bound branch.
+    |
+    */
+
+    'role' => env('APP_ROLE', 'cloud'),
+
+    'edge_tenant_code' => env('EDGE_TENANT_CODE'),
+
+    'edge_branch_id' => env('EDGE_BRANCH_ID'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Environment
     |--------------------------------------------------------------------------
     |

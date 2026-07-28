@@ -74,6 +74,10 @@ class SalesReturnController extends Controller
             ->whereIn('status', ['paid', 'partially_returned'])
             ->findOrFail($data['sales_order_id']);
 
+        // BRANCH-OPERATING-MODE-1: an active Local POS branch handles returns on its Branch Server.
+        app(\App\Services\Edge\BranchOperatingModeService::class)
+            ->assertSaleMutationAllowed(\App\Models\Tenant\Branch::findOrFail($salesOrder->branch_id));
+
         if (! $this->userCanAccessBranch($salesOrder->branch_id)) {
             return back()->withErrors(['return' => 'That sale belongs to a branch you are not assigned to.'])->withInput();
         }

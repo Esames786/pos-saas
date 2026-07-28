@@ -38,6 +38,9 @@ class SplitBillController extends Controller
 
     public function store(Request $request, SalesOrder $salesOrder, SalesService $salesService)
     {
+        app(\App\Services\Edge\BranchOperatingModeService::class)
+            ->assertSaleMutationAllowed(\App\Models\Tenant\Branch::findOrFail($salesOrder->branch_id));
+
         $data = $request->validate([
             'payment_method_id'              => ['required', 'exists:payment_methods,id'],
             'tendered_amount'                => ['nullable', 'numeric', 'min:0'],

@@ -31,9 +31,19 @@
 | A4 | **deploy.sh hardening** | every deploy hits gotchas by hand | ✅ deploy.sh now: MasterSeeder + `system:clear-tenant-permission-cache` (new command) + queue:restart + chown/chmod |
 | A5 | Ops: nightly demo:reset-all green check; SSL auto-renew (cert ~Sep 2026); rotate root+MySQL passwords; re-register lost client tenant | | 🟡 manual ops — documented in RELEASE_CHECKLIST/DESTRUCTIVE_COMMANDS docs |
 
-## 🔜 TRACK B — Manufacturing Finance Posting (biggest functional work)
+## 🔜 TRACK F — Offline POS / Branch Edge (NOW the primary direction, 2026-07)
 
-Design: `docs/MANUFACTURING_FINANCE_POSTING_DESIGN.md` · backlog: `docs/MANUFACTURING_FINANCE_BACKLOG.md`. All gated behind per-tenant `manufacturing_posting_settings` (disabled by default).
+Design: `docs/audits/offline-pos-architecture-2026-07.md` + `docs/ops/OFFLINE_POS_ROLLOUT_RUNBOOK.md`. **Branch Edge / Local POS Mode**: one on-prem Branch Server per Local-Mode branch (existing Laravel + local MySQL, single-tenant); terminals are browsers on the LAN URL. Cloud stays the only official accounting authority; local sales sync idempotently via `SalesService::finalizePaidSale`.
+
+| # | Item | Status |
+|---|---|---|
+| F1 | **BRANCH-OPERATING-MODE-1** — 5-state lifecycle (`sales_operating_mode`+`local_edge_status`), `APP_ROLE`/`EDGE_*` (env-only), `BranchOperatingModeService` + `BranchLocalEdgeException` (409) guard on all 9 sale-mutating paths, admin UI (setup→pending / return-to-cloud; no UI activation). Cloud lock only on active/closing; pending keeps cloud sales | ✅ built locally; prod deploy pending |
+| F2 | SALE-IDEMPOTENCY-1 — `sales_orders.client_uuid` + sync_state; idempotent-by-uuid posting | next |
+| F3 | BRANCH-DEVICE-PAIRING-1 → BRANCH-BOOTSTRAP-SNAPSHOT-1 → OFFLINE-SYNC-ENGINE-1 → BRANCH-SERVER-PACKAGING-1 → SYNC-EXCEPTION-DASHBOARD-1 → MODE-RECONCILIATION-1 | queued |
+
+## 🔜 TRACK B — Manufacturing Finance Posting (moved to extreme end — after Offline POS)
+
+Design: `docs/MANUFACTURING_FINANCE_POSTING_DESIGN.md` · backlog: `docs/MANUFACTURING_FINANCE_BACKLOG.md`. All gated behind per-tenant `manufacturing_posting_settings` (disabled by default). **Deferred: remaining MFG-FIN phases (F/E/H) handled only when needed, after the Offline POS track.**
 
 | # | Item | Posting |
 |---|---|---|

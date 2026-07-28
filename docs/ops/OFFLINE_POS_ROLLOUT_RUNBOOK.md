@@ -15,10 +15,18 @@ is live yet; this is the intended procedure.**
 - Thermal printers on the LAN (real IPs, port 9100 — **not** 127.0.0.1).
 - Terminals: any modern browser pointed at `http://bingoo.branch.local`.
 
+## Lifecycle states (BRANCH-OPERATING-MODE-1)
+
+`inactive` (Cloud POS) → `pending` (setup; cloud sales still work) → `active`
+(Branch Server authority; cloud sales locked) → `closing` (draining sync) →
+`inactive`. `suspended` = emergency hold. **The admin UI can only request setup
+(→ pending) or return to cloud** — activation is reached later via Branch Server
+pairing/bootstrap readiness, so a branch can never be accidentally locked out.
+
 ## Enter Local POS Mode (owner + support)
 
-1. Cloud: **Branches → Edit → Sales Operating Mode → Local POS Mode** (this alone
-   does not switch until pairing completes).
+1. Cloud: **Branches → Setup Local POS** on the branch row → status becomes
+   **Local POS Setup Pending** (cloud sales stay fully available).
 2. Install the Branch Server on the box; pair it (6-digit code from cloud, like
    the print agent).
 3. Bootstrap snapshot pulls: branch, terminals, users+PIN hashes+roles, products,

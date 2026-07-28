@@ -180,6 +180,9 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/branches/{branch}/edit', [BranchController::class, 'edit'])->name('tenant.branches.edit');
                 Route::put('/branches/{branch}', [BranchController::class, 'update'])->name('tenant.branches.update');
                 Route::delete('/branches/{branch}', [BranchController::class, 'destroy'])->name('tenant.branches.destroy');
+                // BRANCH-OPERATING-MODE-1: Local POS lifecycle (setup→pending / return-to-cloud). No activation from UI.
+                Route::post('/branches/{branch}/local-mode/request', [BranchController::class, 'requestLocalMode'])->name('tenant.branches.local-mode.request');
+                Route::post('/branches/{branch}/local-mode/cancel', [BranchController::class, 'cancelLocalMode'])->name('tenant.branches.local-mode.cancel');
 
                 // Terminals
                 Route::get('/terminals', [TerminalController::class, 'index'])->name('tenant.terminals.index');

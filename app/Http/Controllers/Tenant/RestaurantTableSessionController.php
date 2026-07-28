@@ -39,6 +39,10 @@ class RestaurantTableSessionController extends Controller
 
     public function open(Request $request, RestaurantTable $restaurantTable)
     {
+        // BRANCH-OPERATING-MODE-1: table/session mutations belong to the Branch Server for active Local POS branches.
+        app(\App\Services\Edge\BranchOperatingModeService::class)
+            ->assertSaleMutationAllowed(\App\Models\Tenant\Branch::findOrFail($restaurantTable->branch_id));
+
         $data = $request->validate([
             'restaurant_waiter_id' => 'nullable|exists:restaurant_waiters,id',
             'guest_count'          => 'required|integer|min:1|max:100',
@@ -115,6 +119,9 @@ class RestaurantTableSessionController extends Controller
 
     public function billRequested(RestaurantTableSession $restaurantTableSession)
     {
+        app(\App\Services\Edge\BranchOperatingModeService::class)
+            ->assertSaleMutationAllowed(\App\Models\Tenant\Branch::findOrFail($restaurantTableSession->branch_id));
+
         if (!in_array($restaurantTableSession->status, ['open', 'bill_requested'], true)) {
             if (request()->expectsJson()) {
                 return response()->json(['message' => 'Session is not open.'], 422);
@@ -138,6 +145,9 @@ class RestaurantTableSessionController extends Controller
 
     public function close(Request $request, RestaurantTableSession $restaurantTableSession)
     {
+        app(\App\Services\Edge\BranchOperatingModeService::class)
+            ->assertSaleMutationAllowed(\App\Models\Tenant\Branch::findOrFail($restaurantTableSession->branch_id));
+
         if (in_array($restaurantTableSession->status, ['closed', 'cancelled'])) {
             return back()->withErrors(['session' => 'Session is already closed or cancelled.']);
         }
@@ -199,6 +209,9 @@ class RestaurantTableSessionController extends Controller
 
     public function move(Request $request, RestaurantTableSession $restaurantTableSession)
     {
+        app(\App\Services\Edge\BranchOperatingModeService::class)
+            ->assertSaleMutationAllowed(\App\Models\Tenant\Branch::findOrFail($restaurantTableSession->branch_id));
+
         $data = $request->validate([
             'target_table_id' => ['required', 'exists:restaurant_tables,id'],
         ]);
@@ -264,6 +277,9 @@ class RestaurantTableSessionController extends Controller
 
     public function merge(Request $request, RestaurantTableSession $restaurantTableSession)
     {
+        app(\App\Services\Edge\BranchOperatingModeService::class)
+            ->assertSaleMutationAllowed(\App\Models\Tenant\Branch::findOrFail($restaurantTableSession->branch_id));
+
         $data = $request->validate([
             'target_session_id' => ['required', 'exists:restaurant_table_sessions,id'],
         ]);

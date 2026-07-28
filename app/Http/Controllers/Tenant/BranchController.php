@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Tenant;
 
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Branch;
+use App\Services\Edge\BranchOperatingModeService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -63,6 +64,34 @@ class BranchController extends Controller
         $branch->update($data);
 
         return redirect('/branches')->with('status', 'Branch updated successfully.');
+    }
+
+    /**
+     * BRANCH-OPERATING-MODE-1: begin Local POS setup (→ pending). Cloud sales
+     * stay available; activation happens later via Branch Server pairing/bootstrap
+     * readiness (NOT reachable from this UI on purpose — no accidental lock).
+     */
+    public function requestLocalMode(Branch $branch, BranchOperatingModeService $mode)
+    {
+        if ($branch->local_edge_status !== 'inactive') {
+            return back()->withErrors(['local_mode' => 'Local POS Mode setup is already in progress or active for this branch.']);
+        }
+
+        $mode->transition($branch, 'pending', auth('tenant')->id(), 'Owner requested Local POS setup');
+
+        return back()->with('status', 'Local POS Mode setup requested. Cloud sales stay available until the Branch Server is paired and activated.');
+    }
+
+    /** Return a pending/suspended branch to Cloud Mode. Active branches must go through the (future) controlled close/reconciliation flow. */
+    public function cancelLocalMode(Branch $branch, BranchOperatingModeService $mode)
+    {
+        if (! in_array($branch->local_edge_status, ['pending', 'suspended'], true)) {
+            return back()->withErrors(['local_mode' => 'Only a pending or suspended branch can be returned to Cloud Mode here.']);
+        }
+
+        $mode->transition($branch, 'inactive', auth('tenant')->id(), 'Returned to Cloud Mode');
+
+        return back()->with('status', 'Branch returned to Cloud Mode.');
     }
 
     public function destroy(Branch $branch)

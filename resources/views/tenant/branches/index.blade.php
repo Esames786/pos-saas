@@ -35,6 +35,13 @@
     <div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>
 @endif
 
+@if(session('status'))
+    <div class="alert alert-success alert-dismissible fade show" role="status">
+        {{ session('status') }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+@endif
+
 <div class="card mb-3">
     <div class="card-body">
         <form method="GET" action="{{ url('/branches') }}" class="row g-3 align-items-end">
@@ -61,6 +68,7 @@
                     <th scope="col">Name</th>
                     <th scope="col">Type</th>
                     <th scope="col">Tax</th>
+                    <th scope="col">Sales Mode</th>
                     <th scope="col">Status</th>
                     <th scope="col" class="text-end">Action</th>
                 </tr>
@@ -78,6 +86,20 @@
                     <td>{{ ucfirst($branch->business_type) }}</td>
                     <td>{{ $branch->is_tax_enabled ? 'Enabled' : 'Disabled' }}</td>
                     <td>
+                        {{-- BRANCH-OPERATING-MODE-1: Local POS lifecycle badge --}}
+                        @php
+                            $modeMap = [
+                                'inactive'  => ['Cloud POS', 'bg-light text-dark border'],
+                                'pending'   => ['Local POS Setup Pending', 'bg-info text-dark'],
+                                'active'    => ['Local POS Active', 'bg-primary'],
+                                'closing'   => ['Local POS Closing', 'bg-warning text-dark'],
+                                'suspended' => ['Local POS Suspended', 'bg-danger'],
+                            ];
+                            [$modeLabel, $modeClass] = $modeMap[$branch->local_edge_status] ?? ['Cloud POS', 'bg-light text-dark border'];
+                        @endphp
+                        <span class="badge {{ $modeClass }}">{{ $modeLabel }}</span>
+                    </td>
+                    <td>
                         <span class="badge {{ $branch->status === 'active' ? 'bg-success' : 'bg-secondary' }}">
                             {{ ucfirst($branch->status) }}
                         </span>
@@ -88,6 +110,22 @@
                                 <a href="{{ url('/branches/' . $branch->id . '/edit') }}" class="btn btn-sm btn-primary">
                                     Edit
                                 </a>
+                            @endcan
+
+                            @can('tenant.branches.local-mode.request')
+                                @if($branch->local_edge_status === 'inactive')
+                                    <form method="POST" action="{{ url('/branches/' . $branch->id . '/local-mode/request') }}" class="d-inline"
+                                          onsubmit="return confirm('Request Local POS Mode setup for {{ addslashes($branch->name) }}? Cloud sales stay available until the Branch Server is paired and activated.')">
+                                        @csrf
+                                        <button type="submit" class="btn btn-sm btn-outline-primary" title="Begin Local POS setup (pending — cloud sales unaffected)">Setup Local POS</button>
+                                    </form>
+                                @elseif(in_array($branch->local_edge_status, ['pending', 'suspended'], true))
+                                    <form method="POST" action="{{ url('/branches/' . $branch->id . '/local-mode/cancel') }}" class="d-inline"
+                                          onsubmit="return confirm('Return {{ addslashes($branch->name) }} to Cloud Mode?')">
+                                        @csrf
+                                        <button type="submit" class="btn btn-sm btn-outline-secondary" title="Return to Cloud Mode">Return to Cloud</button>
+                                    </form>
+                                @endif
                             @endcan
 
                             @can('tenant.branches.destroy')
@@ -103,7 +141,7 @@
                 </tr>
             @empty
                 <tr>
-                    <td colspan="6" class="text-center text-muted py-4">No branches found.</td>
+                    <td colspan="7" class="text-center text-muted py-4">No branches found.</td>
                 </tr>
             @endforelse
             </tbody>

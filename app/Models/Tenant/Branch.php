@@ -22,6 +22,11 @@ class Branch extends Model
         'allow_negative_stock',
         'receipt_footer',
         'status',
+        'sales_operating_mode',
+        'local_edge_status',
+        'local_edge_activated_at',
+        'local_edge_suspended_at',
+        'local_edge_status_reason',
     ];
 
     protected function casts(): array
@@ -30,7 +35,16 @@ class Branch extends Model
             'is_tax_enabled' => 'boolean',
             'show_tax_number_on_invoice' => 'boolean',
             'allow_negative_stock' => 'boolean',
+            'local_edge_activated_at' => 'datetime',
+            'local_edge_suspended_at' => 'datetime',
         ];
+    }
+
+    /** BRANCH-OPERATING-MODE-1: this branch runs all sales on a Branch Server. */
+    public function isLocalEdgeActive(): bool
+    {
+        return $this->sales_operating_mode === 'local_edge'
+            && in_array($this->local_edge_status, ['active', 'closing'], true);
     }
 
     public function users()

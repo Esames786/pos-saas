@@ -261,6 +261,8 @@ class TenantProvisioner
             'tenant.branches.edit',
             'tenant.branches.update',
             'tenant.branches.destroy',
+            'tenant.branches.local-mode.request',
+            'tenant.branches.local-mode.cancel',
 
             'tenant.terminals.index',
             'tenant.terminals.create',
