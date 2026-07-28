@@ -23,6 +23,23 @@ class BranchOperatingModeService
         return config('app.role', 'cloud') !== 'branch_server';
     }
 
+    /**
+     * HARDEN-1: the Local POS setup journey (pairing/bootstrap/sync) is
+     * incomplete, so its UI + request actions are hidden behind a flag that is
+     * OFF by default. Existing cloud POS is never affected by this flag.
+     */
+    public function isEdgeFeatureEnabled(): bool
+    {
+        return (bool) config('app.edge_feature_enabled', false);
+    }
+
+    public function assertEdgeFeatureEnabled(): void
+    {
+        if (! $this->isEdgeFeatureEnabled()) {
+            throw new BranchLocalEdgeException(null, BranchLocalEdgeException::CODE_FEATURE_DISABLED);
+        }
+    }
+
     public function isBranchServerInstance(): bool
     {
         return config('app.role', 'cloud') === 'branch_server';
@@ -71,62 +88,100 @@ class BranchOperatingModeService
         }
     }
 
-    /** A Branch Server may only ever touch its hard-bound branch. */
+    /**
+     * A Branch Server may only ever touch its hard-bound tenant + branch — both
+     * from config/env, never from a request. HARDEN-1: enforce EDGE_TENANT_CODE
+     * as well as EDGE_BRANCH_ID.
+     */
     public function assertBranchServerBoundToBranch(Branch $branch): void
     {
         if (! $this->isBranchServerInstance()) {
             return;
         }
 
+        $boundTenant = (string) config('app.edge_tenant_code');
+        $currentTenant = (string) (app()->bound('tenant') ? app('tenant')->tenant_code : '');
+
+        if ($boundTenant === '' || $currentTenant === '' || $currentTenant !== $boundTenant) {
+            throw new BranchLocalEdgeException($branch, BranchLocalEdgeException::CODE_TENANT_NOT_BOUND);
+        }
+
         $boundBranchId = (int) config('app.edge_branch_id');
 
         if ($boundBranchId <= 0 || (int) $branch->id !== $boundBranchId) {
-            throw new BranchLocalEdgeException($branch, BranchLocalEdgeException::CODE_NOT_BOUND);
+            throw new BranchLocalEdgeException($branch, BranchLocalEdgeException::CODE_BRANCH_NOT_BOUND);
         }
     }
 
     /**
-     * Transition a branch through the lifecycle with a structured audit line.
-     * Activation is intentionally NOT reachable from the normal admin UI in this
-     * sprint — it requires future Branch Server pairing/bootstrap readiness — so
-     * the UI may only request setup (→ pending) or return to cloud.
+     * HARDEN-1: code-enforced lifecycle transition matrix (do not rely on UI).
      *
-     * Allowed transitions:
-     *   cloud/inactive        → pending      (request setup)
-     *   pending               → active       (pairing-ready; service/QA only)
-     *   active                → closing      (controlled exit)
-     *   closing               → cloud/inactive (reconciled)
-     *   active|pending        → suspended    (emergency)
-     *   suspended             → cloud/inactive
+     *   inactive  → pending
+     *   pending   → active | suspended | inactive
+     *   active    → closing | suspended
+     *   closing   → inactive | suspended
+     *   suspended → inactive
+     *
+     * Everything else (inactive→active, pending→closing, closing→active,
+     * suspended→active, unknown status, same-state) is rejected.
+     */
+    public const TRANSITIONS = [
+        Branch::STATUS_INACTIVE  => [Branch::STATUS_PENDING],
+        Branch::STATUS_PENDING   => [Branch::STATUS_ACTIVE, Branch::STATUS_SUSPENDED, Branch::STATUS_INACTIVE],
+        Branch::STATUS_ACTIVE    => [Branch::STATUS_CLOSING, Branch::STATUS_SUSPENDED],
+        Branch::STATUS_CLOSING   => [Branch::STATUS_INACTIVE, Branch::STATUS_SUSPENDED],
+        Branch::STATUS_SUSPENDED => [Branch::STATUS_INACTIVE],
+    ];
+
+    /** Statuses a branch may legally move to from its current one. */
+    public function allowedTransitions(Branch $branch): array
+    {
+        return self::TRANSITIONS[$branch->local_edge_status] ?? [];
+    }
+
+    public function canTransition(Branch $branch, string $toStatus): bool
+    {
+        return in_array($toStatus, $this->allowedTransitions($branch), true);
+    }
+
+    /**
+     * Transition a branch through the lifecycle. Rejects invalid transitions
+     * with a friendly domain exception — never a raw field jump.
      */
     public function transition(Branch $branch, string $toStatus, ?int $actorId = null, ?string $reason = null): void
     {
         $fromStatus = $branch->local_edge_status;
 
-        $branch->local_edge_status       = $toStatus;
+        if (! $this->canTransition($branch, $toStatus)) {
+            throw new BranchLocalEdgeException(
+                $branch,
+                BranchLocalEdgeException::CODE_INVALID_TRANSITION,
+                "Cannot move this branch from '{$fromStatus}' to '{$toStatus}'."
+            );
+        }
+
+        $branch->local_edge_status        = $toStatus;
         $branch->local_edge_status_reason = $reason;
 
-        if ($toStatus === 'inactive') {
-            $branch->sales_operating_mode = 'cloud';
-        } else {
-            $branch->sales_operating_mode = 'local_edge';
-        }
+        $branch->sales_operating_mode = $toStatus === Branch::STATUS_INACTIVE
+            ? Branch::MODE_CLOUD
+            : Branch::MODE_LOCAL_EDGE;
 
-        if ($toStatus === 'active') {
+        if ($toStatus === Branch::STATUS_ACTIVE) {
             $branch->local_edge_activated_at = now();
         }
-        if ($toStatus === 'suspended') {
+        if ($toStatus === Branch::STATUS_SUSPENDED) {
             $branch->local_edge_suspended_at = now();
         }
 
         $branch->save();
 
         $eventMap = [
-            'pending'   => 'requested',
-            'active'    => 'activated',
-            'closing'   => 'closing',
-            'suspended' => 'suspended',
-            'inactive'  => 'returned_to_cloud',
+            Branch::STATUS_PENDING   => 'requested',
+            Branch::STATUS_ACTIVE    => 'activated',
+            Branch::STATUS_CLOSING   => 'closing',
+            Branch::STATUS_SUSPENDED => 'suspended',
+            Branch::STATUS_INACTIVE  => 'returned_to_cloud',
         ];
 
         Log::info('[branch-edge-audit] branch.local_edge.' . ($eventMap[$toStatus] ?? $toStatus), [

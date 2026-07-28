@@ -40,11 +40,21 @@ class Branch extends Model
         ];
     }
 
-    /** BRANCH-OPERATING-MODE-1: this branch runs all sales on a Branch Server. */
+    // BRANCH-OPERATING-MODE-1/HARDEN-1: Local POS (Branch Edge) lifecycle vocabulary.
+    public const MODE_CLOUD      = 'cloud';
+    public const MODE_LOCAL_EDGE = 'local_edge';
+
+    public const STATUS_INACTIVE  = 'inactive';
+    public const STATUS_PENDING   = 'pending';
+    public const STATUS_ACTIVE    = 'active';
+    public const STATUS_CLOSING   = 'closing';
+    public const STATUS_SUSPENDED = 'suspended';
+
+    /** This branch runs all sales on a Branch Server (server is the live authority). */
     public function isLocalEdgeActive(): bool
     {
-        return $this->sales_operating_mode === 'local_edge'
-            && in_array($this->local_edge_status, ['active', 'closing'], true);
+        return $this->sales_operating_mode === self::MODE_LOCAL_EDGE
+            && in_array($this->local_edge_status, [self::STATUS_ACTIVE, self::STATUS_CLOSING], true);
     }
 
     public function users()

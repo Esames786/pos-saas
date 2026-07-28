@@ -35,6 +35,10 @@ return [
 
     'edge_branch_id' => env('EDGE_BRANCH_ID'),
 
+    // Local POS setup journey (pairing/bootstrap/sync) is incomplete — keep OFF
+    // in production until it is ready. Existing cloud POS is unaffected either way.
+    'edge_feature_enabled' => env('EDGE_FEATURE_ENABLED', false),
+
     /*
     |--------------------------------------------------------------------------
     | Application Environment

@@ -96,17 +96,38 @@ Branch Server is ready would lock the branch out of sales). Behavior:
 Cloud sale-lock applies **only** to `active`/`closing` (implemented via
 `Branch::isLocalEdgeActive()`). The cloud still shows last-synced data read-only.
 
-Enforcement (implemented in BRANCH-OPERATING-MODE-1): the centralized
+Enforcement (BRANCH-OPERATING-MODE-1 + HARDEN-1): the centralized
 `App\Services\Edge\BranchOperatingModeService::assertSaleMutationAllowed($branch)`
 is called in every sale-mutating controller (POS/manual sale store, sale cancel,
 held-sale store/cancel, sales-return store, restaurant table-session
-open/bill-requested/close/move/merge, split-bill). It throws a self-rendering
-`BranchLocalEdgeException` → friendly **409** (`code: BRANCH_LOCAL_EDGE_ACTIVE`),
-never a 500. Two identical codebases are distinguished by `config('app.role')`
-= `cloud | branch_server` (env-only, never from a request); a `branch_server`
-instance may only mutate its hard-bound `EDGE_BRANCH_ID`. UI can request setup
-(→ `pending`) or return to cloud, but **cannot** set `active` — activation waits
-for future pairing/bootstrap readiness.
+open/bill-requested/close/move/merge, split-bill, **and shift open/close**). It
+throws a self-rendering `BranchLocalEdgeException`.
+
+**Exact response behavior:** JSON/AJAX requests get **HTTP 409** with a structured
+`{message, code}`; normal browser form POSTs get a friendly `redirect-back` with a
+validation message (not a 409). Never a 500.
+
+Two identical codebases are distinguished by `config('app.role')` =
+`cloud | branch_server` (env-only, never from a request). A `branch_server` may
+only mutate its hard-bound **tenant AND branch** — both `EDGE_TENANT_CODE` (must
+equal the active tenant) and `EDGE_BRANCH_ID` are enforced (reason codes
+`BRANCH_SERVER_TENANT_NOT_BOUND` / `BRANCH_SERVER_BRANCH_NOT_BOUND`).
+
+**Code-enforced lifecycle matrix** (`BranchOperatingModeService::canTransition`,
+not just UI): `inactive→pending`; `pending→active|suspended|inactive`;
+`active→closing|suspended`; `closing→inactive|suspended`; `suspended→inactive`.
+Everything else (e.g. `inactive→active`, `pending→closing`, `closing→active`,
+`suspended→active`, unknown/same-state) is rejected with
+`BRANCH_LOCAL_EDGE_INVALID_TRANSITION`. Returning from suspended uses this
+controlled action, never a raw field update.
+
+**Feature flag:** the Local POS setup journey (pairing/bootstrap/sync) is
+incomplete, so its UI **and** request actions are gated behind
+`config('app.edge_feature_enabled')` (`EDGE_FEATURE_ENABLED`, default **false**).
+With the flag off there is no Setup button and the setup/return actions 409 on
+direct HTTP (`BRANCH_LOCAL_EDGE_FEATURE_DISABLED`) — the status badge stays
+visible read-only. Existing cloud POS is never affected by this flag. UI can only
+request setup (→ `pending`) or return to cloud; it can **never** set `active`.
 
 ## 5. Offline MVP scope (allowed / blocked)
 
@@ -306,9 +327,13 @@ sync monitoring + daily reconciliation → documented rollback (mode close → c
 
 - ✅ **BRANCH-OPERATING-MODE-1** (done locally): 5-state lifecycle columns,
   `config('app.role')` + `EDGE_*` (env-only), `BranchOperatingModeService` +
-  self-rendering `BranchLocalEdgeException` (409), guard in all 9 sale-mutating
-  paths, admin UI (setup→pending / return-to-cloud; no UI activation), audit logs.
-  Cloud lock only on `active`/`closing`; `pending` keeps cloud sales.
+  self-rendering `BranchLocalEdgeException`, guard in 9 sale-mutating paths, admin
+  UI, audit logs. Cloud lock on `active`/`closing`/`suspended`; `pending` keeps
+  cloud sales.
+- ✅ **BRANCH-OPERATING-MODE-HARDEN-1** (done locally): code-enforced transition
+  matrix (invalid jumps rejected); `EDGE_TENANT_CODE`+`EDGE_BRANCH_ID` both
+  enforced; **shift open/close guarded** (cash-reconciliation split-brain); Local
+  POS setup UI+actions behind `EDGE_FEATURE_ENABLED` (default OFF).
 - **Next: SALE-IDEMPOTENCY-1** — `sales_orders.client_uuid` (unique) +
   `sync_state`/`synced_at`/`cloud_sale_id`; make sale posting idempotent-by-uuid.
   Then BRANCH-DEVICE-PAIRING-1 → BRANCH-BOOTSTRAP-SNAPSHOT-1 → OFFLINE-SYNC-ENGINE-1

@@ -113,13 +113,13 @@
                             @endcan
 
                             @can('tenant.branches.local-mode.request')
-                                @if($branch->local_edge_status === 'inactive')
+                                @if(($edgeFeatureEnabled ?? false) && $branch->local_edge_status === 'inactive')
                                     <form method="POST" action="{{ url('/branches/' . $branch->id . '/local-mode/request') }}" class="d-inline"
                                           onsubmit="return confirm('Request Local POS Mode setup for {{ addslashes($branch->name) }}? Cloud sales stay available until the Branch Server is paired and activated.')">
                                         @csrf
                                         <button type="submit" class="btn btn-sm btn-outline-primary" title="Begin Local POS setup (pending — cloud sales unaffected)">Setup Local POS</button>
                                     </form>
-                                @elseif(in_array($branch->local_edge_status, ['pending', 'suspended'], true))
+                                @elseif(($edgeFeatureEnabled ?? false) && in_array($branch->local_edge_status, ['pending', 'suspended'], true))
                                     <form method="POST" action="{{ url('/branches/' . $branch->id . '/local-mode/cancel') }}" class="d-inline"
                                           onsubmit="return confirm('Return {{ addslashes($branch->name) }} to Cloud Mode?')">
                                         @csrf

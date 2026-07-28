@@ -28,7 +28,9 @@ class BranchController extends Controller
         $usage = app(\App\Services\Saas\TenantSubscriptionAccessService::class)
             ->checkLimit(app('tenant'), 'branches');
 
-        return view('tenant.branches.index', compact('branches', 'usage'));
+        $edgeFeatureEnabled = app(BranchOperatingModeService::class)->isEdgeFeatureEnabled();
+
+        return view('tenant.branches.index', compact('branches', 'usage', 'edgeFeatureEnabled'));
     }
 
     public function create()
@@ -73,11 +75,10 @@ class BranchController extends Controller
      */
     public function requestLocalMode(Branch $branch, BranchOperatingModeService $mode)
     {
-        if ($branch->local_edge_status !== 'inactive') {
-            return back()->withErrors(['local_mode' => 'Local POS Mode setup is already in progress or active for this branch.']);
-        }
+        // HARDEN-1: block the whole setup action (not just the button) until the flag is on.
+        $mode->assertEdgeFeatureEnabled();
 
-        $mode->transition($branch, 'pending', auth('tenant')->id(), 'Owner requested Local POS setup');
+        $mode->transition($branch, Branch::STATUS_PENDING, auth('tenant')->id(), 'Owner requested Local POS setup');
 
         return back()->with('status', 'Local POS Mode setup requested. Cloud sales stay available until the Branch Server is paired and activated.');
     }
@@ -85,11 +86,9 @@ class BranchController extends Controller
     /** Return a pending/suspended branch to Cloud Mode. Active branches must go through the (future) controlled close/reconciliation flow. */
     public function cancelLocalMode(Branch $branch, BranchOperatingModeService $mode)
     {
-        if (! in_array($branch->local_edge_status, ['pending', 'suspended'], true)) {
-            return back()->withErrors(['local_mode' => 'Only a pending or suspended branch can be returned to Cloud Mode here.']);
-        }
+        $mode->assertEdgeFeatureEnabled();
 
-        $mode->transition($branch, 'inactive', auth('tenant')->id(), 'Returned to Cloud Mode');
+        $mode->transition($branch, Branch::STATUS_INACTIVE, auth('tenant')->id(), 'Returned to Cloud Mode');
 
         return back()->with('status', 'Branch returned to Cloud Mode.');
     }

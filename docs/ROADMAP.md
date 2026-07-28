@@ -37,7 +37,7 @@ Design: `docs/audits/offline-pos-architecture-2026-07.md` + `docs/ops/OFFLINE_PO
 
 | # | Item | Status |
 |---|---|---|
-| F1 | **BRANCH-OPERATING-MODE-1** — 5-state lifecycle (`sales_operating_mode`+`local_edge_status`), `APP_ROLE`/`EDGE_*` (env-only), `BranchOperatingModeService` + `BranchLocalEdgeException` (409) guard on all 9 sale-mutating paths, admin UI (setup→pending / return-to-cloud; no UI activation). Cloud lock only on active/closing; pending keeps cloud sales | ✅ built locally; prod deploy pending |
+| F1 | **BRANCH-OPERATING-MODE-1** + **HARDEN-1** — 5-state lifecycle, `APP_ROLE`/`EDGE_*` (env-only), guard on 9 sale paths + shift open/close; code-enforced transition matrix; EDGE_TENANT_CODE+EDGE_BRANCH_ID both enforced; setup UI+actions behind `EDGE_FEATURE_ENABLED` (default OFF). Cloud lock on active/closing/suspended; pending keeps cloud sales | ✅ built locally; **prod deploy deferred until pairing/bootstrap ready** |
 | F2 | SALE-IDEMPOTENCY-1 — `sales_orders.client_uuid` + sync_state; idempotent-by-uuid posting | next |
 | F3 | BRANCH-DEVICE-PAIRING-1 → BRANCH-BOOTSTRAP-SNAPSHOT-1 → OFFLINE-SYNC-ENGINE-1 → BRANCH-SERVER-PACKAGING-1 → SYNC-EXCEPTION-DASHBOARD-1 → MODE-RECONCILIATION-1 | queued |
 

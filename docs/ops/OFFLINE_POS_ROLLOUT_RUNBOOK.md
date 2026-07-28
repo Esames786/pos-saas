@@ -15,13 +15,22 @@ is live yet; this is the intended procedure.**
 - Thermal printers on the LAN (real IPs, port 9100 — **not** 127.0.0.1).
 - Terminals: any modern browser pointed at `http://bingoo.branch.local`.
 
-## Lifecycle states (BRANCH-OPERATING-MODE-1)
+## Lifecycle states (BRANCH-OPERATING-MODE-1 + HARDEN-1)
 
-`inactive` (Cloud POS) → `pending` (setup; cloud sales still work) → `active`
-(Branch Server authority; cloud sales locked) → `closing` (draining sync) →
-`inactive`. `suspended` = emergency hold. **The admin UI can only request setup
-(→ pending) or return to cloud** — activation is reached later via Branch Server
-pairing/bootstrap readiness, so a branch can never be accidentally locked out.
+Code-enforced transitions (invalid jumps are rejected server-side, not just in UI):
+`inactive→pending`; `pending→active|suspended|inactive`; `active→closing|suspended`;
+`closing→inactive|suspended`; `suspended→inactive`. Cloud sales are blocked for
+`active/closing/suspended`; `pending` (setup) keeps cloud sales. **The admin UI can
+only request setup (→ pending) or return to cloud** — activation is reached later
+via Branch Server pairing/bootstrap, so a branch can never be accidentally locked.
+
+**Feature flag:** the whole setup flow is hidden + blocked until
+`EDGE_FEATURE_ENABLED=true`. Keep it **false in production** until pairing/bootstrap
+is ready — the status badge stays visible read-only but no Setup action is exposed.
+
+**Branch Server binding:** `APP_ROLE=branch_server` must set BOTH `EDGE_TENANT_CODE`
+(= the active tenant) and `EDGE_BRANCH_ID`; a server may mutate only that branch.
+These come from env only — never from a request.
 
 ## Enter Local POS Mode (owner + support)
 

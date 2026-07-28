@@ -14,21 +14,36 @@ use RuntimeException;
  */
 class BranchLocalEdgeException extends RuntimeException
 {
-    public const CODE_ACTIVE   = 'BRANCH_LOCAL_EDGE_ACTIVE';
-    public const CODE_NOT_BOUND = 'BRANCH_SERVER_NOT_BOUND';
+    public const CODE_ACTIVE            = 'BRANCH_LOCAL_EDGE_ACTIVE';
+    public const CODE_NOT_BOUND         = 'BRANCH_SERVER_NOT_BOUND';
+    public const CODE_TENANT_NOT_BOUND  = 'BRANCH_SERVER_TENANT_NOT_BOUND';
+    public const CODE_BRANCH_NOT_BOUND  = 'BRANCH_SERVER_BRANCH_NOT_BOUND';
+    public const CODE_INVALID_TRANSITION = 'BRANCH_LOCAL_EDGE_INVALID_TRANSITION';
+    public const CODE_FEATURE_DISABLED  = 'BRANCH_LOCAL_EDGE_FEATURE_DISABLED';
 
     public function __construct(
         public readonly ?Branch $branch = null,
         public readonly string $reasonCode = self::CODE_ACTIVE,
+        ?string $overrideMessage = null,
     ) {
-        parent::__construct($this->friendlyMessage());
+        parent::__construct($overrideMessage ?? $this->defaultMessage());
     }
 
     public function friendlyMessage(): string
     {
-        return $this->reasonCode === self::CODE_NOT_BOUND
-            ? 'This Branch Server is not configured for this branch.'
-            : 'This branch is operating through Bingoo Local POS. Create and manage sales from the Branch Server.';
+        return $this->getMessage();
+    }
+
+    private function defaultMessage(): string
+    {
+        return match ($this->reasonCode) {
+            self::CODE_NOT_BOUND,
+            self::CODE_TENANT_NOT_BOUND,
+            self::CODE_BRANCH_NOT_BOUND   => 'This Branch Server is not configured for this branch.',
+            self::CODE_INVALID_TRANSITION => 'This Local POS mode change is not allowed.',
+            self::CODE_FEATURE_DISABLED   => 'Local POS setup is not enabled for this installation.',
+            default                       => 'This branch is operating through Bingoo Local POS. Create and manage sales from the Branch Server.',
+        };
     }
 
     public function render(Request $request)

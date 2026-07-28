@@ -48,6 +48,11 @@ class ShiftController extends Controller
             'opening_notes' => ['nullable', 'string'],
         ]);
 
+        // BRANCH-OPERATING-MODE-HARDEN-1: a Local POS (active) branch opens/closes
+        // shifts on its Branch Server — cloud must not, or cash reconciliation forks.
+        app(\App\Services\Edge\BranchOperatingModeService::class)
+            ->assertSaleMutationAllowed(\App\Models\Tenant\Branch::findOrFail($data['branch_id']));
+
         $terminal = Terminal::where('id', $data['terminal_id'])
             ->where('branch_id', $data['branch_id'])
             ->firstOrFail();
@@ -94,6 +99,9 @@ class ShiftController extends Controller
     public function close(Request $request, Shift $shift)
     {
         abort_if($shift->status !== 'open', 404);
+
+        app(\App\Services\Edge\BranchOperatingModeService::class)
+            ->assertSaleMutationAllowed(\App\Models\Tenant\Branch::findOrFail($shift->branch_id));
 
         $data = $request->validate([
             'counted_cash'    => ['nullable', 'numeric', 'min:0'],
