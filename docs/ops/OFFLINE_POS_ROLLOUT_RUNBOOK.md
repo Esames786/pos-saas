@@ -106,3 +106,15 @@ These come from env only — never from a request.
   the Branch Server never writes cloud journals/stock independently.
 - A `local_edge` branch's sales **never** run on the cloud instance (guard 403).
 - No manager/admin-less deletion of sync exceptions.
+
+## Update — EDGE-EDITION-ARCHITECTURE-1 (2026-07)
+The Branch Server is distributed as a **self-service one-click `BingooEdgeSetup.exe`**
+(restricted Laravel Edge + local MariaDB/MySQL), gated by the sellable `offline_edge`
+module. Customer flow, installer internals, entitlement/lease-grace, Print Agent reuse, and
+disaster-recovery steps are documented in `docs/ops/EDGE_INSTALLER_PRODUCT_RUNBOOK.md`.
+Reconfirmed invariants: cloud is the only official accounting authority; Edge posts NO
+official GL/COGS/stock (new `EdgeSaleCaptureService` captures operationally, cloud replays
+by `client_uuid` through `finalizePaidSale`); a branch only goes pending→active after
+readiness checks (installer/bootstrap failure keeps it pending, cloud sales available, no
+lock). A production-like **multi-worker** idempotency concurrency certification is a
+required go-live gate.

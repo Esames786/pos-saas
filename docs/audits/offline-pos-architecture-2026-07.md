@@ -340,3 +340,19 @@ sync monitoring + daily reconciliation → documented rollback (mode close → c
   `sync_state`/`synced_at`/`cloud_sale_id`; make sale posting idempotent-by-uuid.
   Then BRANCH-DEVICE-PAIRING-1 → BRANCH-BOOTSTRAP-SNAPSHOT-1 → OFFLINE-SYNC-ENGINE-1
   → BRANCH-SERVER-PACKAGING-1. Non-goals throughout: Electron, manufacturing.
+
+## Update — EDGE-EDITION-ARCHITECTURE-1 (2026-07)
+The offline runtime is now specified as a **sellable, restricted Edge Edition**, not a
+copy of the SaaS app. See `docs/audits/edge-edition-architecture-2026-07.md` (full
+decision + timeline), `docs/audits/edge-edition-boundary-manifest-2026-07.md` (ship/exclude
+allowlist), and `docs/ops/EDGE_INSTALLER_PRODUCT_RUNBOOK.md` (installer/pair/update/backup).
+Key refinements to this doc: the offline runtime is a **build-time allowlist-stripped
+Laravel Edge artifact** (finance/COGS/GL/purchasing/stock-authority/manufacturing/billing/
+tenancy physically ABSENT, not just route-hidden); local sale capture moves to a new
+**`EdgeSaleCaptureService`** (operational only, no official GL) while the cloud keeps
+`finalizePaidSale` as the sole posting authority on sync; `offline_edge` is a gated module
+with a **signed offline entitlement lease/grace** so brief internet loss never stops
+selling. Roadmap reordered: OFFLINE-EDGE-ENTITLEMENT-1 → BRANCH-DEVICE-PAIRING-1 →
+BRANCH-BOOTSTRAP-SNAPSHOT-1 → EDGE-SALE-CAPTURE-1 → OFFLINE-SYNC-ENGINE-1 →
+EDGE-BUILD-STRIPPER-1 → EDGE-BUILD-PACKAGING-1 → LOCAL-PRINT-LAN-1 → dashboards/recon →
+pilot. Honest end-to-end ~4–5 months.

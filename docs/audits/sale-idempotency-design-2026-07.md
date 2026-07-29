@@ -51,9 +51,24 @@ reuses a live queued/printed receipt job for the sale; a failed job is *not* reu
 so a genuine miss is still recoverable), and KOT already prints only the un-sent line
 delta (`kot_sent_quantity`). An explicit reprint (`?reprint=1`) forces a fresh job.
 
+## Concurrency evidence — honest scope (corrected in EDGE-EDITION-ARCHITECTURE-1)
+Describe the HARDEN-1 concurrency result precisely as a **parallel-client replay test**:
+12 callers, same `client_uuid`, same sale, one posting, no 500 — 12 barrier-synchronised
+`curl` requests against a **single `php artisan serve` process**. `serve` is single-process
+(one request at a time), so this proves the *client contract* (all callers converge on one
+sale, one row, no 500) but **not** simultaneous multi-worker transaction overlap on the DB
+unique index. That stronger guarantee rests on the DB unique constraint + the
+`UniqueConstraintViolationException` handler (correct by construction, not yet exercised
+under true parallelism).
+**Production gate:** before `EDGE_FEATURE_ENABLED` / prod deploy, run a **production-like
+multi-worker concurrency certification** (Apache/Nginx + PHP-FPM, Octane, or multiple
+workers behind a load balancer) firing overlapping identical-`client_uuid` requests →
+assert one posted sale, one row, zero 500s, losers replay or get retryable 503 PENDING. The
+idempotency implementation is not changed by that certification.
+
 ## HARDEN-1 — proving races and recovering prints
-- **Real concurrency (not sequential):** 12 genuinely-parallel HTTP `POST /pos` with
-  one shared `client_uuid` (barrier-synchronised curl against `php artisan serve`).
+- **Parallel-client replay test (see scope note above):** 12 parallel HTTP `POST /pos`
+  with one shared `client_uuid` (barrier-synchronised curl against `php artisan serve`).
   Result: all 12 → HTTP 200, all resolved to the same `sale_id`, exactly one fresh
   post (`idempotent_replay:false`), 11 replays, and exactly **one** `sales_orders`
   row. No 500. The loser of the DB `client_uuid` unique-index race is caught as
