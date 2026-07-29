@@ -332,6 +332,18 @@ class MasterSeeder extends Seeder
                 'sort_order' => 140,
                 'is_core' => false,
             ],
+            [
+                // OFFLINE-EDGE-ENTITLEMENT-1: sellable add-on. NOT attached to any plan
+                // here — grant it only through explicit plan-module administration once
+                // pricing/rollout is approved (see syncPlanModules: unlisted = disabled).
+                'key' => 'offline_edge',
+                'name' => 'Offline Branch Edge',
+                'category' => 'Operations',
+                'description' => 'Run permitted POS operations from a branch-local server during internet outages.',
+                'route_module_keys' => ['tenant.offline-edge'],
+                'sort_order' => 150,
+                'is_core' => false,
+            ],
         ];
 
         foreach ($modules as $module) {

@@ -1172,6 +1172,18 @@
                 </li>
                 @endcanany
 
+                {{-- ── OFFLINE BRANCH EDGE (add-on; hidden unless entitled + rolled out) ── --}}
+                @if(config('app.edge_feature_enabled') && $hasModule('offline_edge'))
+                    @can('tenant.offline-edge.index')
+                        @php $a = $isIn('settings/offline-edge*'); @endphp
+                        <li class="{{ $a ? 'active' : '' }}">
+                            <a href="{{ url('/settings/offline-edge') }}" class="{{ $a ? 'active' : '' }}">
+                                <i class="ti ti-cloud-off fs-16 me-2"></i><span>Offline Branch Edge</span>
+                            </a>
+                        </li>
+                    @endcan
+                @endif
+
                 {{-- ── ADMINISTRATION (settings — kept last) ───────────────────── --}}
                 @canany(['tenant.users.index', 'tenant.roles.index', 'tenant.billing.index'])
                 <li class="submenu">

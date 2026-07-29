@@ -62,6 +62,7 @@ use App\Http\Controllers\Tenant\KitchenDisplayController;
 use App\Http\Controllers\Tenant\KitchenProductionController;
 use App\Http\Controllers\Tenant\TenantBillingController;
 use App\Http\Controllers\Tenant\TenantUpgradeController;
+use App\Http\Controllers\Tenant\OfflineEdgeController;
 use App\Http\Controllers\Tenant\KitchenWastageController;
 use App\Http\Controllers\Tenant\PrinterController;
 use App\Http\Controllers\Tenant\CategoryPrinterMappingController;
@@ -576,6 +577,13 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::post('/print/agents/{printAgent}/pairing-code', [PrintAgentController::class, 'pairingCode'])->name('tenant.print-agents.pairing-code');
                 Route::post('/print/agents/{printAgent}/test-print', [PrintAgentController::class, 'testPrint'])->name('tenant.print-agents.test-print');
                 Route::get('/print/agents/download/windows', [PrintAgentController::class, 'downloadWindows'])->name('tenant.print-agents.download-windows');
+
+                // OFFLINE-EDGE-ENTITLEMENT-1 — sellable Offline Branch Edge (offline_edge
+                // module). Module-gated by the subscription middleware; the controller
+                // additionally enforces EDGE_FEATURE_ENABLED + installer availability.
+                // No pairing/bootstrap/sync/device endpoints exist yet.
+                Route::get('/settings/offline-edge', [OfflineEdgeController::class, 'index'])->name('tenant.offline-edge.index');
+                Route::get('/settings/offline-edge/download', [OfflineEdgeController::class, 'download'])->name('tenant.offline-edge.download');
 
                 // Sales Controls — Promotions
                 Route::get('/promotions', [PromotionController::class, 'index'])->name('tenant.promotions.index');

@@ -513,3 +513,15 @@ Windows local-stack installer trivial. Do not overpromise a "few weeks" offline 
 ```
 
 **Next sprint: `OFFLINE-EDGE-ENTITLEMENT-1`.**
+
+---
+
+## Update — OFFLINE-EDGE-ENTITLEMENT-1 implemented (2026-07)
+The `offline_edge` module + access gates are now built (tenant-level only). See
+`docs/audits/offline-edge-entitlement-design-2026-07.md`. Three independent gates —
+entitlement (`plan.hasEnabledModuleKey('offline_edge')`), rollout (`EDGE_FEATURE_ENABLED`),
+installer availability (`config('app.edge_installer_*')` + file on disk) — via
+`App\Services\Edge\OfflineEdgeEntitlementService`. `/settings/offline-edge` landing +
+`/download` gate self-render 403 `EDGE_FEATURE_DISABLED` / 503 `EDGE_INSTALLER_NOT_AVAILABLE`
+(no fake EXE, never 500). NOT built: installer, pairing, bootstrap, sync, device/branch
+licensing, lease/grace. `offline_edge` is attached to no plan by default.

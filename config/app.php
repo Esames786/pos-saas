@@ -39,6 +39,16 @@ return [
     // in production until it is ready. Existing cloud POS is unaffected either way.
     'edge_feature_enabled' => env('EDGE_FEATURE_ENABLED', false),
 
+    // OFFLINE-EDGE-ENTITLEMENT-1: the Bingoo Edge installer (BingooEdgeSetup.exe)
+    // does NOT exist yet. These stay unset until EDGE-BUILD-PACKAGING-1 produces a
+    // real, signed artifact. Availability is derived from these config values ONLY
+    // (never from request input); an absent/invalid artifact yields a controlled
+    // EDGE_INSTALLER_NOT_AVAILABLE response, never a fake file.
+    'edge_installer_path'           => env('EDGE_INSTALLER_PATH'),
+    'edge_installer_version'        => env('EDGE_INSTALLER_VERSION'),
+    'edge_installer_sha256'         => env('EDGE_INSTALLER_SHA256'),
+    'edge_installer_signature_path' => env('EDGE_INSTALLER_SIGNATURE_PATH'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Environment

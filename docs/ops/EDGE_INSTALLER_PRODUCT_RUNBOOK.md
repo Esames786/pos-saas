@@ -183,3 +183,14 @@ Box dies:
 
 QA uses a dedicated QA tenant or a restorable snapshot — not the live demo tenant. Demo
 sale **#78** is a retained idempotency QA artifact; do not delete its records manually.
+
+---
+
+## Update — OFFLINE-EDGE-ENTITLEMENT-1 (2026-07)
+The entitlement/download foundation is live in the cloud app. Owners with the `offline_edge`
+module (granted via plan-module administration; attached to no plan by default) and the
+`tenant.offline-edge.index` permission see **Settings → Offline Branch Edge** ONLY when
+`EDGE_FEATURE_ENABLED=true`. The download endpoint returns **503 EDGE_INSTALLER_NOT_AVAILABLE**
+until a real signed `BingooEdgeSetup.exe` is configured via `EDGE_INSTALLER_PATH` /
+`_VERSION` / `_SHA256` / `_SIGNATURE_PATH` (produced later by EDGE-BUILD-PACKAGING-1). No fake
+installer is ever served, and the Print Agent installer is never substituted for the Edge one.

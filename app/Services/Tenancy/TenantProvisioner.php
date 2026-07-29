@@ -580,6 +580,12 @@ class TenantProvisioner
             'tenant.print-agents.test-print',
             'tenant.print-agents.download-windows',
 
+            // OFFLINE-EDGE-ENTITLEMENT-1 — Offline Branch Edge settings + installer download.
+            // Owner receives these; access is still gated by the offline_edge module
+            // entitlement + EDGE_FEATURE_ENABLED at request time.
+            'tenant.offline-edge.index',
+            'tenant.offline-edge.download',
+
             // Sales Controls — Promotions
             'tenant.promotions.index',
             'tenant.promotions.create',

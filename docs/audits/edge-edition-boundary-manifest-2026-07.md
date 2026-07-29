@@ -196,3 +196,14 @@ NEVER SHIP: cloud DB credentials, master DB config, other tenants' data,
 [ ] route:list shows only Edge-permitted endpoints
 ```
 The build **fails closed** if any check trips.
+
+---
+
+## Update — OFFLINE-EDGE-ENTITLEMENT-1 (2026-07)
+The commercial gate now exists in the CLOUD app (not the Edge artifact): module registry
+entry `offline_edge`, `OfflineEdgeEntitlementService`, `OfflineEdgeController`,
+`/settings/offline-edge[/download]`, permissions `tenant.offline-edge.index|download`. These
+are cloud-side entitlement/download-gate concerns and are INCLUDE-cloud / EXCLUDE-from-Edge
+(the Edge artifact never carries billing/entitlement/download UI). The future
+`verify-edge-artifact.php` checklist should assert the offline-edge SETTINGS/entitlement
+controller and routes are ABSENT from the stripped Edge build.
