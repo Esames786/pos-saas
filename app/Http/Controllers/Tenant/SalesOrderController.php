@@ -79,10 +79,7 @@ class SalesOrderController extends Controller
         $payloadHash = $idempotency->buildPayloadHash($this->canonicalSalePayload($data));
 
         if ($clientUuid !== null && $existing = $idempotency->findFinalized($clientUuid)) {
-            if ($idempotency->payloadMatches($existing, $payloadHash)) {
-                return $this->saleResponse($request, $existing, true); // harmless replay
-            }
-            throw new \App\Exceptions\SaleIdempotencyConflictException($existing->id); // 409
+            return $this->idempotentReplayOrThrow($request, $idempotency, $existing, $payloadHash);
         }
 
         $lines = collect($data['lines'])
@@ -343,12 +340,15 @@ class SalesOrderController extends Controller
                 return $salesService->finalizePaidSale($sale);
             });
         } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
-            // SALE-IDEMPOTENCY-1: a concurrent identical request won the race and
-            // committed first. If a finalized sale now exists for this client_uuid,
-            // return it as a replay (one sale, one posting). Any other unique
-            // collision is a real error.
-            if ($clientUuid !== null && $winner = $idempotency->findFinalized($clientUuid)) {
-                return $this->saleResponse($request, $winner, true);
+            // SALE-IDEMPOTENCY-1/HARDEN-1: a concurrent identical request won the
+            // race. Bounded retry until its (atomic) sale is visible, then replay /
+            // conflict per the same rules. If it truly can't be resolved in budget,
+            // return a retryable PENDING (never a 500) — the caller retries same uuid.
+            if ($clientUuid !== null) {
+                if ($winner = $idempotency->resolveFinalizedWithRetry($clientUuid)) {
+                    return $this->idempotentReplayOrThrow($request, $idempotency, $winner, $payloadHash);
+                }
+                throw new \App\Exceptions\SaleIdempotencyConflictException(null, \App\Exceptions\SaleIdempotencyConflictException::CODE_PENDING);
             }
             throw $e;
         } catch (RuntimeException $e) {
@@ -362,9 +362,30 @@ class SalesOrderController extends Controller
     }
 
     /**
+     * SALE-IDEMPOTENCY-HARDEN-1: given an existing sale under this client_uuid,
+     * decide replay vs conflict vs unverifiable — used by both the pre-check and
+     * the concurrent-race resolution so they behave identically.
+     *   verified hash matches   → replay (return existing sale)
+     *   verified hash differs   → 409 SALE_IDEMPOTENCY_CONFLICT
+     *   no stored hash          → 409 SALE_IDEMPOTENCY_UNVERIFIABLE (never silently replay)
+     */
+    private function idempotentReplayOrThrow(Request $request, \App\Services\Sales\SaleIdempotencyService $idempotency, SalesOrder $existing, string $payloadHash)
+    {
+        if (! $idempotency->hasVerifiableHash($existing)) {
+            throw new \App\Exceptions\SaleIdempotencyConflictException($existing->id, \App\Exceptions\SaleIdempotencyConflictException::CODE_UNVERIFIABLE);
+        }
+
+        if ($idempotency->payloadMatches($existing, $payloadHash)) {
+            return $this->saleResponse($request, $existing, true);
+        }
+
+        throw new \App\Exceptions\SaleIdempotencyConflictException($existing->id);
+    }
+
+    /**
      * SALE-IDEMPOTENCY-1: unified sale response for a fresh sale or an idempotent
-     * replay. The `idempotent_replay` flag lets the POS avoid re-firing auto
-     * receipt/KOT print for a replay (see POS JS).
+     * replay. The `idempotent_replay` flag lets the POS know this sale already
+     * posted (it still ensures print jobs; see POS JS).
      */
     private function saleResponse(Request $request, SalesOrder $sale, bool $replay): \Illuminate\Http\Response|\Illuminate\Http\JsonResponse|\Illuminate\Http\RedirectResponse
     {
@@ -405,22 +426,29 @@ class SalesOrderController extends Controller
             'discount_value'              => $data['discount_value'] ?? null,
             'promo_code'                  => $data['promo_code'] ?? null,
             'tip_amount'                  => $data['tip_amount'] ?? null,
+            // HARDEN-1: line ordering is NOT material — sort by stable identity so
+            // harmless browser reordering never causes a false conflict.
             'lines' => collect($data['lines'] ?? [])->map(fn ($l) => [
                 'product_id'         => $l['product_id'] ?? null,
                 'product_variant_id' => $l['product_variant_id'] ?? null,
                 'line_kind'          => $l['line_kind'] ?? 'standard',
                 'combo_id'           => $l['combo_id'] ?? null,
+                'client_line_key'    => $l['client_line_key'] ?? null,
                 'quantity'           => $l['quantity'] ?? null,
                 'unit_price'         => $l['unit_price'] ?? null,
                 'discount_amount'    => $l['discount_amount'] ?? null,
                 'tax_amount'         => $l['tax_amount'] ?? null,
                 'modifiers'          => $l['modifiers'] ?? null,
-            ])->values()->all(),
+            ])
+            ->sortBy(fn ($l) => implode('|', [$l['client_line_key'] ?? '', $l['product_id'] ?? '', $l['product_variant_id'] ?? '', $l['line_kind'] ?? '']))
+            ->values()->all(),
             'payments' => collect($data['payments'] ?? [])->map(fn ($p) => [
                 'payment_method_id' => $p['payment_method_id'] ?? null,
                 'amount'            => $p['amount'] ?? null,
                 'tendered_amount'   => $p['tendered_amount'] ?? null,
-            ])->values()->all(),
+            ])
+            ->sortBy(fn ($p) => ($p['payment_method_id'] ?? '') . '|' . ($p['amount'] ?? ''))
+            ->values()->all(),
         ];
     }
 

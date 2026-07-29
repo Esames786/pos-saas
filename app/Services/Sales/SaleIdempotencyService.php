@@ -55,14 +55,35 @@ class SaleIdempotencyService
         return $sale && in_array($sale->status, self::FINALIZED_STATUSES, true) ? $sale : null;
     }
 
-    /** True when the stored hash matches this request's payload (→ replay, not conflict). */
+    /**
+     * HARDEN-1: after a client_uuid unique-key collision, the winning transaction
+     * has committed its (atomic) sale — but re-fetch with a short bounded retry to
+     * be safe across drivers/replication. Returns the finalized sale, or null if it
+     * cannot be resolved in the budget (caller returns a retryable PENDING).
+     */
+    public function resolveFinalizedWithRetry(string $clientUuid, int $attempts = 8, int $delayMs = 80): ?SalesOrder
+    {
+        for ($i = 0; $i < $attempts; $i++) {
+            if ($sale = $this->findFinalized($clientUuid)) {
+                return $sale;
+            }
+            usleep($delayMs * 1000);
+        }
+
+        return $this->findFinalized($clientUuid);
+    }
+
+    /** HARDEN-1: a sale with NO stored hash cannot be verified as a safe replay. */
+    public function hasVerifiableHash(SalesOrder $sale): bool
+    {
+        return $sale->client_payload_hash !== null && $sale->client_payload_hash !== '';
+    }
+
+    /** Strict: the stored non-null hash equals this request's payload hash. */
     public function payloadMatches(SalesOrder $sale, string $payloadHash): bool
     {
-        // A sale created before this feature (or via a path that didn't record a
-        // hash) has a null hash — treat a same-uuid hit as a replay, not a conflict,
-        // to stay backward compatible and never wrongly 409 a legitimate retry.
-        return $sale->client_payload_hash === null
-            || hash_equals((string) $sale->client_payload_hash, $payloadHash);
+        return $this->hasVerifiableHash($sale)
+            && hash_equals((string) $sale->client_payload_hash, $payloadHash);
     }
 
     /** Recursively ksort arrays + normalize scalars so equal intents hash equally. */

@@ -42,9 +42,37 @@ exactly one sale, one posting set, both callers get the same result, no 500.
 
 ## Print jobs
 `store()` never enqueues receipt/KOT (the POS triggers those after the sale). On a
-replay the response carries `idempotent_replay: true`; the POS **skips** auto
-receipt/KOT (no duplicate kitchen ticket) and points the cashier to Recent Orders
-for a manual reprint if the first attempt never printed.
+replay the response carries `idempotent_replay: true`. **HARDEN-1:** the POS no
+longer *skips* printing on a replay — it re-runs `maybePrintReceipt` + the KOT delta,
+because the earlier attempt may have died (network timeout) *before* printing. Both
+print paths are idempotent so this recovers a missed copy without ever duplicating
+one: the receipt endpoint is **ensure-once** (`PrintJobService::queueReceipt(..., ensureOnce: true)`
+reuses a live queued/printed receipt job for the sale; a failed job is *not* reused,
+so a genuine miss is still recoverable), and KOT already prints only the un-sent line
+delta (`kot_sent_quantity`). An explicit reprint (`?reprint=1`) forces a fresh job.
+
+## HARDEN-1 — proving races and recovering prints
+- **Real concurrency (not sequential):** 12 genuinely-parallel HTTP `POST /pos` with
+  one shared `client_uuid` (barrier-synchronised curl against `php artisan serve`).
+  Result: all 12 → HTTP 200, all resolved to the same `sale_id`, exactly one fresh
+  post (`idempotent_replay:false`), 11 replays, and exactly **one** `sales_orders`
+  row. No 500. The loser of the DB `client_uuid` unique-index race is caught as
+  `UniqueConstraintViolationException` → `resolveFinalizedWithRetry()` (bounded
+  re-fetch) → replay; if the winner isn't yet visible it returns a retryable **503
+  `SALE_IDEMPOTENCY_PENDING`** (never a 500).
+- **Null-hash safety:** a stored sale with no `client_payload_hash` is never silently
+  replayed. `payloadMatches()` is strict (`hasVerifiableHash` + `hash_equals`); an
+  existing sale under the same uuid with no verifiable hash returns **409
+  `SALE_IDEMPOTENCY_UNVERIFIABLE`**. Same uuid + different verified payload → **409
+  `SALE_IDEMPOTENCY_CONFLICT`** (both proven over real HTTP; conflict created no row).
+- **UUID isolation (POS):** the mid-sale uuid moved from a single global
+  `localStorage` key to **`sessionStorage`** (per-tab) under a key scoped to
+  `origin:branch:terminal`. Two registers in two tabs never share a uuid; two
+  branches/terminals never collide; a refresh in the *same* tab still reuses its uuid.
+- **Canonical payload line order is immaterial:** `canonicalSalePayload()` sorts lines
+  by stable identity (`client_line_key|product_id|product_variant_id|line_kind`) and
+  payments by `payment_method_id|amount`, so harmless browser reordering never
+  triggers a false conflict.
 
 ## Reuses the official pipeline
 Idempotency wraps — never bypasses — `SalesTotalsService`,

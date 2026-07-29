@@ -14,8 +14,25 @@ class PrintJobService
         private readonly PrintRoutingService $routingService,
     ) {}
 
-    public function queueReceipt(SalesOrder $sale, ?Printer $printer = null, ?string $terminalId = null): PrintJob
+    public function queueReceipt(SalesOrder $sale, ?Printer $printer = null, ?string $terminalId = null, bool $ensureOnce = false): PrintJob
     {
+        // SALE-IDEMPOTENCY-HARDEN-1: auto receipt after a sale is "ensure-once" —
+        // if a live (queued/printed) receipt job already exists for this sale, reuse
+        // it (a replay/timeout-retry must not create a duplicate). An explicit
+        // reprint passes ensureOnce=false and always makes a fresh job. A previously
+        // FAILED receipt is not reused, so a genuine miss can still be recovered.
+        if ($ensureOnce) {
+            $existing = PrintJob::where('reference_type', 'sales_order')
+                ->where('reference_id', $sale->id)
+                ->where('document_type', 'receipt')
+                ->whereIn('print_status', ['queued', 'printed'])
+                ->latest('id')
+                ->first();
+            if ($existing) {
+                return $existing;
+            }
+        }
+
         $sale->loadMissing(['branch', 'terminal', 'customer', 'lines', 'payments.method']);
 
         $printer = $printer ?: $this->routingService->receiptPrinter($sale);

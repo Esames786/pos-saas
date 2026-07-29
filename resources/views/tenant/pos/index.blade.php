@@ -2351,7 +2351,15 @@ document.addEventListener('DOMContentLoaded', function () {
     /* ── SALE-IDEMPOTENCY-1: one logical sale = one client_uuid ─────────────
        Generated when a sale begins, persisted so a refresh/retry/timeout reuses
        the SAME uuid, rotated only after a successful/replayed sale or a clear. */
-    var SALE_UUID_KEY = 'pos_sale_uuid';
+    /* HARDEN-1: the mid-sale uuid lives in sessionStorage (per-TAB, so two tabs never
+       share one), under a key scoped to origin + branch + terminal (so two branches /
+       terminals never collide). Two registers open in two tabs each get their own
+       logical sale; a refresh in the SAME tab reuses the same uuid (no double-post). */
+    function saleUuidKey() {
+        var b = (document.getElementById('branch_id')   || {}).value || '0';
+        var t = (document.getElementById('terminal_id') || {}).value || '0';
+        return 'pos_sale_uuid:' + (location.host || '') + ':' + b + ':' + t;
+    }
 
     function genUuid() {
         if (window.crypto && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
@@ -2364,9 +2372,10 @@ document.addEventListener('DOMContentLoaded', function () {
     function ensureSaleUuid() {
         var el = document.getElementById('client_uuid');
         if (!el) return '';
+        var key = saleUuidKey();
         var u = el.value;
-        if (!u) { try { u = localStorage.getItem(SALE_UUID_KEY) || ''; } catch (e) {} }
-        if (!u) { u = genUuid(); try { localStorage.setItem(SALE_UUID_KEY, u); } catch (e) {} }
+        if (!u) { try { u = sessionStorage.getItem(key) || ''; } catch (e) {} }
+        if (!u) { u = genUuid(); try { sessionStorage.setItem(key, u); } catch (e) {} }
         el.value = u;
         return u;
     }
@@ -2374,13 +2383,13 @@ document.addEventListener('DOMContentLoaded', function () {
     function rotateSaleUuid() {
         var el = document.getElementById('client_uuid');
         if (el) el.value = '';
-        try { localStorage.removeItem(SALE_UUID_KEY); } catch (e) {}
+        try { sessionStorage.removeItem(saleUuidKey()); } catch (e) {}
     }
 
-    // Restore a mid-sale uuid on page load (refresh must not rotate it).
+    // Restore a mid-sale uuid on page load (refresh in this tab must not rotate it).
     (function () {
         try {
-            var u = localStorage.getItem(SALE_UUID_KEY);
+            var u = sessionStorage.getItem(saleUuidKey());
             var el = document.getElementById('client_uuid');
             if (u && el) el.value = u;
         } catch (e) {}
@@ -2910,16 +2919,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 _lastSaleId = saleId;
                 _lastSaleNo = saleNo;
 
-                // SALE-IDEMPOTENCY-1: a replay means this sale already posted on an
-                // earlier attempt — do NOT re-fire receipt/KOT (no duplicate kitchen
-                // ticket). Reprint from Recent Orders if the first copy never printed.
-                if (result.data.idempotent_replay) {
-                    clearCart();
-                    toast('info', 'Sale ' + saleNo + ' was already completed. Use Recent Orders to reprint if needed.');
-                    var pmElR = document.getElementById('paymentModal');
-                    if (pmElR && window.bootstrap) { var pmInstR = bootstrap.Modal.getInstance(pmElR); if (pmInstR) { pmInstR.hide(); } }
-                    return;
-                }
+                // SALE-IDEMPOTENCY-HARDEN-1: a replay means this sale already POSTED on
+                // an earlier attempt (retry / network timeout). The accounting is NOT
+                // repeated, but we still ENSURE the receipt/KOT print — the earlier
+                // attempt may have died before printing. Both print endpoints are
+                // idempotent (receipt = ensure-once, KOT = un-sent delta), so this
+                // recovers a missed copy without ever duplicating one.
+                var isReplay = !!result.data.idempotent_replay;
 
                 // Receipt — honours the Auto-Receipt toggle + opens preview if no printer
                 maybePrintReceipt(saleId, terminalId);
@@ -2930,7 +2936,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
 
                 clearCart();
-                toast('success', 'Sale complete! ' + saleNo);
+                toast(isReplay ? 'info' : 'success',
+                      isReplay ? ('Sale ' + saleNo + ' already completed — print re-checked.')
+                               : ('Sale complete! ' + saleNo));
                 var pmEl = document.getElementById('paymentModal');
                 if (pmEl && window.bootstrap) { var pmInst = bootstrap.Modal.getInstance(pmEl); if (pmInst) { pmInst.hide(); } }
             })

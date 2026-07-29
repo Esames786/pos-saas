@@ -271,7 +271,9 @@ version before sync.
 ```
 1. OFFLINE-POS-ARCHITECTURE-1        this doc
 2. BRANCH-OPERATING-MODE-1           branches.sales_operating_mode + cloud sale-lock guard + APP_ROLE
-3. SALE-IDEMPOTENCY-1                client_uuid + sync_state cols + finalizePaidSale idempotent-by-uuid
+3. SALE-IDEMPOTENCY-1 (+HARDEN-1)    client_uuid + payload-hash; replay/conflict/unverifiable/pending;
+                                     real parallel-HTTP race proven (one row, no 500); strict null-hash;
+                                     ensure-once receipt + KOT-delta print recovery. THE sync foundation.
 4. BRANCH-DEVICE-PAIRING-1           pair API + token (extends print-agent pairing)
 5. BRANCH-BOOTSTRAP-SNAPSHOT-1       bootstrap + changes(since) APIs
 6. BRANCH-SERVER-PACKAGING-1         one-box installer (bundled PHP+MySQL+app+print bridge+auto-start+local backup)

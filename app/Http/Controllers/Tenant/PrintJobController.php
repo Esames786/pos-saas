@@ -38,7 +38,9 @@ class PrintJobController extends Controller
 
     public function queueReceipt(Request $request, SalesOrder $salesOrder)
     {
-        $job = $this->printJobService->queueReceipt($salesOrder);
+        // Auto print after a sale is ensure-once (idempotent); explicit reprint forces a new job.
+        $ensureOnce = ! $request->boolean('reprint');
+        $job = $this->printJobService->queueReceipt($salesOrder, ensureOnce: $ensureOnce);
 
         $previewUrl = url('/printing/documents/' . $job->id . '/receipt');
 
