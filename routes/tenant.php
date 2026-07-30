@@ -143,12 +143,16 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
             Route::get('/ajax/wip-jobs', WipJobLookupController::class)->name('tenant.ajax.wip-jobs');
             Route::get('/ajax/finished-goods', FinishedGoodReceiptLookupController::class)->name('tenant.ajax.finished-goods');
 
-            // BRANCH-DEVICE-PAIRING-1 — device REVOCATION is a security control: gated by
-            // permission + ownership ONLY (route.permission), deliberately OUTSIDE the
-            // subscription/module gate so an Owner can still revoke a device after
-            // offline_edge entitlement is removed, the subscription lapses, or the rollout
-            // flag is turned off.
+            // BRANCH-DEVICE-PAIRING-1 (+HARDEN-1) — SECURITY controls: gated by permission +
+            // ownership ONLY (route.permission), deliberately OUTSIDE the subscription/module
+            // gate so an Owner can still see paired devices, cancel a live code, and revoke a
+            // device after offline_edge entitlement is removed, the subscription lapses, or the
+            // rollout flag is turned off. Generation/download stay entitlement+rollout gated.
             Route::middleware(['route.permission', 'prevent.demo.mutation'])->group(function () {
+                Route::get('/settings/offline-edge/security', [OfflineEdgeController::class, 'security'])
+                    ->name('tenant.offline-edge.security');
+                Route::post('/settings/offline-edge/branches/{branch}/pairing-code/cancel', [OfflineEdgeController::class, 'cancelPairingCode'])
+                    ->name('tenant.offline-edge.pairing-code.cancel');
                 Route::post('/settings/offline-edge/devices/{edgeDevice}/revoke', [OfflineEdgeController::class, 'revokeDevice'])
                     ->name('tenant.offline-edge.devices.revoke');
             });
@@ -595,13 +599,11 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/settings/offline-edge', [OfflineEdgeController::class, 'index'])->name('tenant.offline-edge.index');
                 Route::get('/settings/offline-edge/download', [OfflineEdgeController::class, 'download'])->name('tenant.offline-edge.download');
 
-                // BRANCH-DEVICE-PAIRING-1 — generate/cancel branch pairing codes + revoke devices.
-                // Generation/cancel require entitlement+rollout (controller); revoke is a security
-                // control gated by permission + ownership only. Pairing NEVER activates Local POS.
+                // BRANCH-DEVICE-PAIRING-1 — generate branch pairing codes (entitlement+rollout
+                // gated). Cancel + revoke are SECURITY controls registered above, OUTSIDE this
+                // subscription gate. Pairing NEVER activates Local POS.
                 Route::post('/settings/offline-edge/branches/{branch}/pairing-code', [OfflineEdgeController::class, 'generatePairingCode'])
                     ->middleware('throttle:10,1')->name('tenant.offline-edge.pairing-code.generate');
-                Route::post('/settings/offline-edge/branches/{branch}/pairing-code/cancel', [OfflineEdgeController::class, 'cancelPairingCode'])
-                    ->name('tenant.offline-edge.pairing-code.cancel');
 
                 // Sales Controls — Promotions
                 Route::get('/promotions', [PromotionController::class, 'index'])->name('tenant.promotions.index');

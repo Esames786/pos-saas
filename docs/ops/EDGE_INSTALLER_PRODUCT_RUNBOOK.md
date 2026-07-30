@@ -221,3 +221,15 @@ the same device). Authenticated device calls use `X-Edge-Device-ID: <public_uuid
 and never activates Local POS; cloud sales keep working until a later bootstrap/readiness
 step. Revocation from Settings → Offline Branch Edge kills the device's auth immediately and
 works even if entitlement/flag are removed.
+
+---
+
+## Update — BRANCH-DEVICE-PAIRING-HARDEN-1 (2026-07-30)
+Pairing is now durable and race-safe. Operational notes: the six-digit code's 5-attempt limit
+only applies to failures where a real code row was resolved — unknown-code guessing is bounded
+by the endpoint IP throttle, not the per-code counter. A revoked/recovered Windows installation
+can pair again (unique is on installation_uuid + active_slot, not installation_uuid alone).
+Owners always have a security-management path (Settings → Edge Security) to revoke a device even
+if the subscription lapsed or the feature flag is off. Concurrency has been certified against two
+independent PHP server processes (same DBs): simultaneous pairs converge on exactly one active
+device per branch and never exceed the tenant device cap, with zero 500s.

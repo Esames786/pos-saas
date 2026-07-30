@@ -585,12 +585,14 @@ class TenantProvisioner
             // entitlement + EDGE_FEATURE_ENABLED at request time.
             'tenant.offline-edge.index',
             'tenant.offline-edge.download',
-            // BRANCH-DEVICE-PAIRING-1 — pairing-code lifecycle + device revocation.
-            // Owner-only; generation/cancel additionally require entitlement + rollout at
-            // request time, while revoke works regardless (security control).
+            // BRANCH-DEVICE-PAIRING-1 (+HARDEN-1) — pairing-code lifecycle + device revocation
+            // + the always-reachable security-management view. Owner-only; generation
+            // additionally requires entitlement + rollout at request time, while the security
+            // view + cancel + revoke work regardless (security controls).
             'tenant.offline-edge.pairing-code.generate',
             'tenant.offline-edge.pairing-code.cancel',
             'tenant.offline-edge.devices.revoke',
+            'tenant.offline-edge.security',
 
             // Sales Controls — Promotions
             'tenant.promotions.index',

@@ -6,10 +6,16 @@
 <div class="content">
     <div class="d-flex align-items-center justify-content-between mb-3">
         <div>
-            <h4 class="mb-1">Offline Branch Edge</h4>
-            <p class="text-muted mb-0">Pair one branch-local server per branch. Keep selling during internet outages.</p>
+            <h4 class="mb-1">Offline Branch Edge@if(!empty($securityOnly)) — Security@endif</h4>
+            <p class="text-muted mb-0">
+                @if(!empty($securityOnly))
+                    Manage or revoke paired devices and cancel pairing codes. Setup/download are unavailable because Offline Edge is not currently enabled for this account.
+                @else
+                    Pair one branch-local server per branch. Keep selling during internet outages.
+                @endif
+            </p>
         </div>
-        <span class="badge bg-info-subtle text-info align-self-start">Add-on module</span>
+        <span class="badge bg-info-subtle text-info align-self-start">@if(!empty($securityOnly))Security mode @else Add-on module @endif</span>
     </div>
 
     @if(session('status'))
@@ -36,6 +42,7 @@
         Pairing does <strong>not</strong> activate Local POS. Cloud sales stay available until bootstrap &amp; readiness are completed in a later step.
     </div>
 
+    @unless(!empty($securityOnly))
     <div class="card mb-3">
         <div class="card-body d-flex flex-wrap gap-4">
             <div><div class="text-muted small text-uppercase">Licensed devices</div><div class="fw-semibold">{{ $activeDevices }} / {{ $deviceLimit }} active</div></div>
@@ -51,6 +58,7 @@
             </div>
         </div>
     </div>
+    @endunless
 
     <div class="card">
         <div class="card-header"><h5 class="mb-0">Branches</h5></div>
@@ -88,10 +96,12 @@
                                             <button class="btn btn-outline-secondary btn-sm">Cancel code</button>
                                         </form>
                                     @endif
+                                    @unless(!empty($securityOnly))
                                     <form method="POST" action="{{ url('/settings/offline-edge/branches/' . $row['id'] . '/pairing-code') }}" class="d-inline">
                                         @csrf
                                         <button class="btn btn-primary btn-sm"><i class="ti ti-key me-1"></i>{{ $row['has_live_code'] ? 'New code' : 'Generate pairing code' }}</button>
                                     </form>
+                                    @endunless
                                 @endif
                             </td>
                         </tr>

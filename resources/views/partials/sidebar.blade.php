@@ -1172,16 +1172,41 @@
                 </li>
                 @endcanany
 
-                {{-- ── OFFLINE BRANCH EDGE (add-on; hidden unless entitled + rolled out) ── --}}
+                {{-- ── OFFLINE BRANCH EDGE — full setup entry hidden unless entitled + rolled out ── --}}
                 @if(config('app.edge_feature_enabled') && $hasModule('offline_edge'))
                     @can('tenant.offline-edge.index')
-                        @php $a = $isIn('settings/offline-edge*'); @endphp
+                        @php $a = $isIn('settings/offline-edge') && !$isIn('settings/offline-edge/security'); @endphp
                         <li class="{{ $a ? 'active' : '' }}">
                             <a href="{{ url('/settings/offline-edge') }}" class="{{ $a ? 'active' : '' }}">
                                 <i class="ti ti-cloud-off fs-16 me-2"></i><span>Offline Branch Edge</span>
                             </a>
                         </li>
                     @endcan
+                @else
+                    {{-- HARDEN-1: SECURITY link stays reachable even with entitlement removed /
+                         flag off, whenever a live Edge device or pairing code exists, so an Owner
+                         can always revoke. Hidden when nothing to manage. --}}
+                    @php
+                        $edgeHasSecurityItems = false;
+                        if ($isTenant) {
+                            try {
+                                $__tid = app('tenant')->id;
+                                $edgeHasSecurityItems =
+                                    \App\Models\Master\EdgeDevice::where('tenant_id', $__tid)->where('active_slot', 1)->exists()
+                                    || \App\Models\Master\EdgePairingCode::where('tenant_id', $__tid)->where('active_slot', 1)->exists();
+                            } catch (\Throwable $e) {}
+                        }
+                    @endphp
+                    @if($edgeHasSecurityItems)
+                        @can('tenant.offline-edge.security')
+                            @php $a = $isIn('settings/offline-edge/security'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/settings/offline-edge/security') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-shield-lock fs-16 me-2"></i><span>Edge Security</span>
+                                </a>
+                            </li>
+                        @endcan
+                    @endif
                 @endif
 
                 {{-- ── ADMINISTRATION (settings — kept last) ───────────────────── --}}

@@ -8,15 +8,16 @@ use App\Models\Tenant\Branch;
 use App\Services\Edge\EdgePairingService;
 use App\Services\Edge\OfflineEdgeEntitlementService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Crypt;
 
 /**
- * OFFLINE-EDGE-ENTITLEMENT-1 + BRANCH-DEVICE-PAIRING-1 — the entitled Settings page for
- * Offline Branch Edge: installer-download gate, plus generate/cancel branch pairing codes
- * and revoke paired devices.
+ * OFFLINE-EDGE-ENTITLEMENT-1 + BRANCH-DEVICE-PAIRING-1 (+HARDEN-1) — the entitled Settings
+ * page (generate code / download) AND a security-management path (cancel code / revoke
+ * device) that stays reachable even after entitlement is removed or the rollout flag is off.
  *
- * Generation/cancel require entitlement + rollout (assertSetupAccessAllowed). Revocation
- * is a SECURITY control and deliberately does NOT depend on entitlement or the rollout
- * flag — only authentication, the revoke permission, and device ownership.
+ * Gating summary:
+ *   index / generate / download → entitlement + rollout (assertSetupAccessAllowed)
+ *   security / cancel / revoke  → permission + ownership ONLY (security controls)
  */
 class OfflineEdgeController extends Controller
 {
@@ -29,37 +30,32 @@ class OfflineEdgeController extends Controller
     {
         $this->entitlement->assertSetupAccessAllowed();
 
-        $tenant = app('tenant');
-        $branches = Branch::where('status', 'active')->orderBy('name')->get();
-
-        // Per-branch pairing/device state (master DB), joined in memory (no cross-DB FK).
-        $devices = EdgeDevice::active()->where('tenant_id', $tenant->id)->get()->keyBy('branch_id');
-
-        $rows = $branches->map(function (Branch $b) use ($tenant, $devices) {
-            $device   = $devices->get($b->id);
-            $liveCode = $this->pairing->liveCodeForBranch($tenant->id, $b->id);
-
-            return [
-                'id'            => $b->id,
-                'name'          => $b->name,
-                'lifecycle'     => $b->local_edge_status,
-                'device'        => $device,
-                'has_live_code' => (bool) $liveCode,
-                'code_expires'  => $liveCode?->expires_at,
-            ];
-        });
-
-        return view('tenant.offline-edge.index', [
-            'branchRows'         => $rows,
-            'deviceLimit'        => $this->pairing->deviceLimit($tenant),
-            'activeDevices'      => $this->pairing->activeDeviceCount($tenant->id),
+        return view('tenant.offline-edge.index', array_merge($this->branchState(), [
+            'securityOnly'       => false,
             'installerAvailable' => $this->entitlement->installerIsAvailable(),
             'installerVersion'   => $this->entitlement->installerVersion(),
-            // A freshly generated code is flashed ONCE and never re-rendered / stored.
-            'newCode'            => session('edge_pairing_code'),
+            'newCode'            => $this->decodeOneTimeCode(),
             'newCodeBranch'      => session('edge_pairing_branch'),
             'newCodeExpires'     => session('edge_pairing_expires'),
-        ]);
+        ]));
+    }
+
+    /**
+     * Security-management view — permission-gated only (NO entitlement / rollout gate), so an
+     * Owner can always revoke a device / cancel a code after entitlement is removed, the
+     * subscription lapses, or EDGE_FEATURE_ENABLED is turned off. Generation/download controls
+     * are never rendered here.
+     */
+    public function security(Request $request)
+    {
+        return view('tenant.offline-edge.index', array_merge($this->branchState(), [
+            'securityOnly'       => true,
+            'installerAvailable' => false,
+            'installerVersion'   => null,
+            'newCode'            => null,
+            'newCodeBranch'      => null,
+            'newCodeExpires'     => null,
+        ]));
     }
 
     public function download(Request $request)
@@ -85,26 +81,26 @@ class OfflineEdgeController extends Controller
 
         $result = $this->pairing->generateCode(app('tenant'), $branch, (int) auth('tenant')->id());
 
-        // Show the code exactly once via a one-shot flash — never persisted, never in the URL.
+        // The plaintext code is ENCRYPTED before it enters session flash (the server-side
+        // session store is not encrypted at rest), decrypted once for the immediate render,
+        // and never persisted, logged, or placed in a URL.
         return redirect(url('/settings/offline-edge'))
-            ->with('edge_pairing_code', $result['code'])
+            ->with('edge_pairing_code', Crypt::encryptString($result['code']))
             ->with('edge_pairing_branch', $branch->id)
             ->with('edge_pairing_expires', $result['expires_at']);
     }
 
+    /** Cancel a live code. SECURITY control — no entitlement/flag dependency. */
     public function cancelPairingCode(Request $request, Branch $branch)
     {
-        $this->entitlement->assertSetupAccessAllowed();
-
         $this->pairing->cancelCode(app('tenant'), $branch, (int) auth('tenant')->id());
 
-        return redirect(url('/settings/offline-edge'))->with('status', 'Pairing code cancelled.');
+        return redirect($this->backTo())->with('status', 'Pairing code cancelled.');
     }
 
     /** Revoke a paired device. SECURITY control — no entitlement/flag dependency. */
     public function revokeDevice(Request $request, EdgeDevice $edgeDevice)
     {
-        // Ownership: the device must belong to the CURRENT tenant (route binding is global in master).
         abort_unless((int) $edgeDevice->tenant_id === (int) app('tenant')->id, 404);
 
         $this->pairing->revokeDevice(
@@ -114,12 +110,60 @@ class OfflineEdgeController extends Controller
             $request->string('reason')->limit(190, '')->value() ?: null,
         );
 
-        return redirect(url('/settings/offline-edge'))->with('status', 'Edge device revoked.');
+        return redirect($this->backTo())->with('status', 'Edge device revoked.');
+    }
+
+    /* ── helpers ─────────────────────────────────────────────────────────── */
+
+    /** Per-branch device + live-code state (master joined to tenant branches in memory). */
+    private function branchState(): array
+    {
+        $tenant   = app('tenant');
+        $branches = Branch::where('status', 'active')->orderBy('name')->get();
+        $devices  = EdgeDevice::active()->where('tenant_id', $tenant->id)->get()->keyBy('branch_id');
+
+        $rows = $branches->map(function (Branch $b) use ($tenant, $devices) {
+            $liveCode = $this->pairing->liveCodeForBranch($tenant->id, $b->id);
+            return [
+                'id'            => $b->id,
+                'name'          => $b->name,
+                'lifecycle'     => $b->local_edge_status,
+                'device'        => $devices->get($b->id),
+                'has_live_code' => (bool) $liveCode,
+                'code_expires'  => $liveCode?->expires_at,
+            ];
+        });
+
+        return [
+            'branchRows'    => $rows,
+            'deviceLimit'   => $this->pairing->deviceLimit($tenant),
+            'activeDevices' => $this->pairing->activeDeviceCount($tenant->id),
+        ];
+    }
+
+    private function decodeOneTimeCode(): ?string
+    {
+        $enc = session('edge_pairing_code');
+        if (! $enc) {
+            return null;
+        }
+        try {
+            return Crypt::decryptString($enc);
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /** Return to the setup page when reachable, else the security page. */
+    private function backTo(): string
+    {
+        return $this->entitlement->tenantHasOfflineEdgeAccess() && $this->entitlement->featureIsEnabled()
+            ? url('/settings/offline-edge')
+            : url('/settings/offline-edge/security');
     }
 
     private function assertEligibleBranch(Branch $branch): void
     {
-        // Only cloud/inactive or local_edge/pending branches may be paired (never active/closing/suspended).
         abort_unless(
             in_array($branch->local_edge_status, [Branch::STATUS_INACTIVE, Branch::STATUS_PENDING], true),
             422,

@@ -153,6 +153,73 @@ installer unavailable, manufacturing regression green, Print Agent + cloud POS u
   DB unique index + `lockForUpdate` are the real guards. A **production-like multi-worker
   concurrency certification** remains a go-live gate (shared with the sale-idempotency gate).
 
-## 13. Next
+## 13. HARDEN-1 (2026-07-30) — durability, race-safety, recoverability, manageability
+Closed the review blockers:
+
+1. **Failure-state now persists.** `exchange()` was mutating (`attempts++`, expired/exhausted
+   burn) and then throwing *inside* the master transaction — Laravel rolled those writes
+   back, so "5 attempts" was not actually enforced. Refactored to an **outcome pattern**:
+   the transaction returns `['fail'=>CODE]` (after committing the mutation) or `['ok'=>meta]`,
+   and the structured `EdgePairingException` is thrown **after commit**. Proven: attempts
+   persist across failed exchanges; exhaustion and expiry permanently null `active_slot`.
+2. **DB-enforced live-code uniqueness.** New `unique(code_hash, active_slot)` on
+   `edge_pairing_codes` — two branches/tenants can never hold the same live six-digit code.
+   Generation retries on the collision (bounded); no raw `UniqueConstraintViolationException`
+   escapes. Proven at the DB level.
+3. **Race-safe tenant device cap.** `generateCode()` and `exchange()` now
+   `Tenant::whereKey($id)->lockForUpdate()` before counting/creating, so two DIFFERENT
+   branches of one tenant cannot both consume the last licensed slot. **Certified with two
+   independent PHP server processes** (see §11 update): two branches + `limit=1` +
+   simultaneous exchange → exactly one active device, the other `EDGE_DEVICE_LIMIT_REACHED`
+   (409), zero 500s.
+4. **Re-pair after revoke.** Replaced `unique(installation_uuid)` with
+   `unique(installation_uuid, active_slot)`: one ACTIVE device per installation globally,
+   revoked rows retained (active_slot NULL), and the same installation can pair again after
+   revoke. An installation already active elsewhere → `PAIRING_DEVICE_CONFLICT` (409).
+5. **No plaintext code in session.** The one-time code is `Crypt::encryptString`-encrypted
+   before it enters session flash (the file/database session store is not encrypted at rest),
+   decrypted once for the immediate render, and never re-shown on refresh. The stored flash
+   value is always ciphertext (deterministically verified over 200 codes); it never equals or
+   identifiably contains the plaintext.
+6. **Security controls are always reachable.** Revoke + cancel + a new **`/settings/offline-edge/security`**
+   view sit OUTSIDE the subscription/module gate (permission + ownership only), so an Owner
+   can revoke a device / cancel a code even after `offline_edge` is removed, the subscription
+   lapses, or `EDGE_FEATURE_ENABLED` is off. The sidebar surfaces an **Edge Security** link
+   whenever a live device/code exists even when the setup entry is hidden. Generation +
+   download stay entitlement+rollout gated; the security view never renders them. New
+   permission `tenant.offline-edge.security` (propagated to Owners via deploy.sh step 5).
+7. **Cross-DB saga (no false atomicity).** Master and tenant DBs do not share a transaction.
+   Ordered as a saga: **generate** creates the code in master, then transitions the branch
+   `inactive→pending` in the tenant DB — if that fails, it **compensates** by burning the
+   new code. **exchange** requires the branch already `pending` and performs NO tenant-DB
+   branch write. **cancel/revoke** commit the master security mutation first, then reconcile
+   the branch **idempotently**; if reconciliation fails, the security action stays committed
+   and a `edge.branch.reconciliation_required` audit line is logged — never a 500. Retrying
+   cancel/revoke re-attempts reconciliation (proven idempotent).
+8. **Error-status consistency.** `EDGE_DEVICE_LIMIT_REACHED` is `409` in code, docs and QA
+   (verified via `render()`), alongside INVALID/EXPIRED/EXHAUSTED=422, USED/CONFLICT=409,
+   ENTITLEMENT=403, throttle=429, device-auth=401.
+
+### Honesty corrections (superseding earlier claims)
+- **max_attempts is not brute-force protection for unknown codes.** The exchange resolves a
+  code row by exact hash; a totally wrong six-digit guess matches no row and cannot increment
+  any counter. `max_attempts` only bounds failures where a **real** code row was resolved
+  (e.g. repeated entitlement/branch/limit failures). **Unknown-code guessing is bounded by
+  the IP throttle** (`throttle:5,1`) on the exchange endpoint. The six-digit-only installer UX
+  is unchanged.
+- **Concurrency is now certified across real processes.** The earlier "4 parallel curl"
+  against a single `php artisan serve` proved only the client contract. HARDEN-1 re-ran the
+  matrix against **two independent PHP server processes (ports 8899 + 8900) on the same DBs**:
+  (A) same code+installation+secret → both 200, same device, 1 row, 0×500; (B) same code +
+  different installations → one 200 / one 409 USED, 1 row; (C) two branches + tenant limit 1 →
+  one 200 / one 409 LIMIT, exactly 1 active device; (D) two simultaneous generates → exactly 1
+  live code, 0×500.
+
+HARDEN-1 QA: 14/14 durability/race + 27/27 base (no regression) + 2-process concurrency A–D
++ session-payload encryption (200 codes) + security-page/revoke reachable with entitlement
+off; 7/7 tenants tb=0/neg=0/dept=0, no branch/device/code left, `offline_edge` on 0 plans,
+flag off, manufacturing green, Print Agent + POS unaffected.
+
+## 14. Next
 `BRANCH-BOOTSTRAP-SNAPSHOT-1` — the paired device downloads its branch catalog/settings/
 users/tables/printers (still no activation until readiness).

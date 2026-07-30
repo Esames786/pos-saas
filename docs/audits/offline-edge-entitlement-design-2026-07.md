@@ -165,3 +165,12 @@ propagate via the same deploy.sh step-5 path. Generation/cancel reuse
 `featureIsEnabled()` + `tenantHasOfflineEdgeAccess()` at exchange time; **revocation is
 deliberately outside the subscription/module gate** so it works after entitlement is removed
 or the flag is off. Full design: `docs/audits/branch-device-pairing-design-2026-07.md`.
+
+## 10. Follow-on — BRANCH-DEVICE-PAIRING-HARDEN-1 (2026-07-30)
+Security actions are now reachable independent of entitlement/rollout: a permission-only
+**`/settings/offline-edge/security`** page (perm `tenant.offline-edge.security`) plus the
+cancel + revoke routes sit OUTSIDE the subscription/module gate, so an Owner can always
+revoke a device / cancel a code after `offline_edge` is removed, the subscription lapses, or
+`EDGE_FEATURE_ENABLED` is off. Generation + download stay entitlement+rollout gated. The
+one-time pairing code is stored encrypted in session flash (never plaintext). Detail:
+`docs/audits/branch-device-pairing-design-2026-07.md` §13.

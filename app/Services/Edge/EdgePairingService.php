@@ -10,25 +10,37 @@ use App\Models\Master\PlanModule;
 use App\Models\Master\Tenant;
 use App\Models\Tenant\Branch;
 use App\Services\Tenancy\TenancyManager;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 /**
- * BRANCH-DEVICE-PAIRING-1 — issue / cancel a branch pairing code, exchange it for a
- * device registration, authenticate a device, and revoke it.
+ * BRANCH-DEVICE-PAIRING-1 (+ HARDEN-1) — issue / cancel a branch pairing code, exchange
+ * it for a device registration, authenticate a device, and revoke it.
  *
  * SECURITY MODEL
  *  - The six-digit code is never stored; only code_hash = HMAC-SHA256(code, app key).
- *    (The queryable digest omits the public_uuid on purpose: the installer must pair
- *    with the code ALONE — cloud URL + 6 digits — so the server has to find the row
- *    from the code. Generation guarantees the live code's hash is unique among recent
- *    codes, so the lookup is unambiguous.)
+ *    The queryable digest omits the public_uuid on purpose (the installer pairs with the
+ *    code alone). DB-enforced unique(code_hash, active_slot) guarantees two live codes can
+ *    never share the same six digits, so the exchange lookup is unambiguous.
  *  - The device secret is generated CLIENT-side; the cloud stores only sha256(secret).
  *    A lost pairing response is safe: retrying with the same code + installation_uuid +
  *    secret_hash returns the SAME device and never creates a second one.
- *  - Pairing creates a device in pending_bootstrap ONLY. It never activates Local POS,
- *    never blocks cloud sales, never downloads data.
+ *  - Pairing creates a device in pending_bootstrap ONLY. It never activates Local POS.
+ *
+ * HARDEN-1 durability/concurrency
+ *  - Failure-state mutations (attempt increments, expired/exhausted burns) COMMIT: the
+ *    transaction returns an outcome and the structured exception is thrown AFTER commit.
+ *  - Device-slot allocation is serialized with a tenant-row lock, so two DIFFERENT
+ *    branches of one tenant cannot both consume the last licensed slot.
+ *  - Cross-DB writes are ordered as a saga: the master security mutation commits first,
+ *    then the tenant-DB branch lifecycle is reconciled idempotently (never a 500 if the
+ *    reconciliation step fails — the security action stays committed).
+ *
+ * IMPORTANT (honest): max_attempts only bounds failures where a REAL code row was
+ * resolved. A completely wrong six-digit guess matches no row and cannot increment any
+ * counter — unknown-code guessing is bounded by the IP throttle on the exchange endpoint.
  */
 class EdgePairingService
 {
@@ -37,6 +49,7 @@ class EdgePairingService
     /** Fail-closed default when the plan carries no explicit offline_edge device limit. */
     public const DEFAULT_DEVICE_LIMIT = 1;
     public const DEVICE_LIMIT_KEY     = 'max_active_edge_devices';
+    private const CODE_GEN_RETRIES    = 40;
 
     public function __construct(
         private readonly OfflineEdgeEntitlementService $entitlement,
@@ -46,13 +59,11 @@ class EdgePairingService
 
     /* ── hashing ─────────────────────────────────────────────────────────── */
 
-    /** Queryable HMAC of the six-digit code (keyed with the app key). */
     public function digest(string $code): string
     {
         return hash_hmac('sha256', $code, (string) config('app.key'));
     }
 
-    /** sha256 of a client secret — the ONLY device-secret form the cloud ever stores. */
     public function secretHash(string $secret): string
     {
         return hash('sha256', $secret);
@@ -60,7 +71,6 @@ class EdgePairingService
 
     /* ── device limit ────────────────────────────────────────────────────── */
 
-    /** Tenant-wide active-device cap from the offline_edge plan-module limits (fail-closed default). */
     public function deviceLimit(Tenant $tenant): int
     {
         $plan = $tenant->subscription?->loadMissing('plan')->plan;
@@ -71,7 +81,6 @@ class EdgePairingService
         $pm     = $module ? PlanModule::where('plan_id', $plan->id)->where('module_id', $module->id)->first() : null;
         $limit  = $pm?->limits[self::DEVICE_LIMIT_KEY] ?? null;
 
-        // Missing/blank/non-positive → fail closed to the safe default (NOT unlimited).
         return (is_numeric($limit) && (int) $limit > 0) ? (int) $limit : self::DEFAULT_DEVICE_LIMIT;
     }
 
@@ -95,46 +104,51 @@ class EdgePairingService
 
     /* ── generate (tenant, authenticated) ────────────────────────────────── */
 
-    /**
-     * Issue a fresh six-digit code for a branch. Assumes the caller already enforced
-     * entitlement + rollout + Owner permission. Returns the plaintext code ONCE.
-     */
     public function generateCode(Tenant $tenant, Branch $branch, int $userId): array
     {
-        // A branch with an already-active device is not re-pairable without an explicit revoke.
-        if ($this->activeDeviceForBranch($tenant->id, $branch->id)) {
-            throw EdgePairingException::of(EdgePairingException::CODE_DEVICE_CONFLICT);
+        // Race-safe slot allocation + single-live-code creation under a tenant-row lock.
+        // No tenant-DB (branch) write happens inside the master transaction.
+        $result = DB::connection('master')->transaction(function () use ($tenant, $branch, $userId) {
+            Tenant::whereKey($tenant->id)->lockForUpdate()->firstOrFail();
+
+            if ($this->activeDeviceForBranch($tenant->id, $branch->id)) {
+                return ['fail' => EdgePairingException::CODE_DEVICE_CONFLICT];
+            }
+            if ($this->activeDeviceCount($tenant->id) >= $this->deviceLimit($tenant)) {
+                return ['fail' => EdgePairingException::CODE_DEVICE_LIMIT];
+            }
+
+            EdgePairingCode::where('tenant_id', $tenant->id)
+                ->where('branch_id', $branch->id)
+                ->where('active_slot', EdgePairingCode::ACTIVE_SLOT)
+                ->update(['active_slot' => null, 'cancelled_at' => now()]);
+
+            [$code, $row] = $this->createLiveCode($tenant, $branch, $userId);
+
+            return ['ok' => $row, 'code' => $code];
+        });
+
+        if (isset($result['fail'])) {
+            throw EdgePairingException::of($result['fail']);
         }
-        // Licensed device cap.
-        if ($this->activeDeviceCount($tenant->id) >= $this->deviceLimit($tenant)) {
-            throw EdgePairingException::of(EdgePairingException::CODE_DEVICE_LIMIT);
-        }
 
-        // Invalidate any existing live code for this branch (single active code per branch).
-        EdgePairingCode::where('tenant_id', $tenant->id)
-            ->where('branch_id', $branch->id)
-            ->where('active_slot', EdgePairingCode::ACTIVE_SLOT)
-            ->update(['active_slot' => null, 'cancelled_at' => now()]);
+        /** @var EdgePairingCode $row */
+        $row  = $result['ok'];
+        $code = $result['code'];
 
-        // Unique six-digit code among all recent codes (24h) so exchange lookup is unambiguous.
-        [$code, $hash] = $this->freshCode();
-
-        $row = EdgePairingCode::create([
-            'public_uuid'        => (string) Str::uuid(),
-            'tenant_id'          => $tenant->id,
-            'branch_id'          => $branch->id,
-            'code_hash'          => $hash,
-            'attempts'           => 0,
-            'max_attempts'       => self::MAX_ATTEMPTS,
-            'expires_at'         => now()->addMinutes(self::CODE_TTL_MINUTES),
-            'active_slot'        => EdgePairingCode::ACTIVE_SLOT,
-            'created_by_user_id' => $userId,
-        ]);
-
-        // First code on an inactive cloud branch moves it to pending (pending never blocks
-        // cloud sales). Existing pending branches stay pending. Never touches active/closing.
+        // Saga step 2 (tenant DB): move a cloud/inactive branch to pending. Compensation:
+        // if the branch transition fails, burn the just-created code so we never leave a
+        // live code on a branch that stayed cloud/inactive.
         if ($branch->local_edge_status === Branch::STATUS_INACTIVE) {
-            $this->mode->transition($branch, Branch::STATUS_PENDING, $userId, 'edge_pairing_code_generated');
+            try {
+                $this->mode->transition($branch, Branch::STATUS_PENDING, $userId, 'edge_pairing_code_generated');
+            } catch (\Throwable $e) {
+                EdgePairingCode::whereKey($row->id)->update(['active_slot' => null, 'cancelled_at' => now()]);
+                Log::warning('[edge-pairing-audit] edge.pairing_code.compensated', [
+                    'tenant_id' => $tenant->id, 'branch_id' => $branch->id, 'reason' => 'branch_transition_failed',
+                ]);
+                throw $e;
+            }
         }
 
         $this->audit('edge.pairing_code.generated', [
@@ -143,205 +157,219 @@ class EdgePairingService
         ]);
 
         return [
-            'code'        => $code,          // shown ONCE — never stored/logged in plaintext
+            'code'        => $code,
             'public_uuid' => $row->public_uuid,
             'expires_at'  => $row->expires_at->toIso8601String(),
             'branch_id'   => $branch->id,
         ];
     }
 
-    private function freshCode(): array
+    /** Create exactly one live code; retry on the DB live-code-uniqueness collision. */
+    private function createLiveCode(Tenant $tenant, Branch $branch, int $userId): array
     {
-        for ($i = 0; $i < 40; $i++) {
+        for ($i = 0; $i < self::CODE_GEN_RETRIES; $i++) {
             $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
-            $hash = $this->digest($code);
-            $clash = EdgePairingCode::where('code_hash', $hash)
-                ->where('created_at', '>=', now()->subDay())
-                ->exists();
-            if (! $clash) {
-                return [$code, $hash];
+            try {
+                $row = EdgePairingCode::create([
+                    'public_uuid'        => (string) Str::uuid(),
+                    'tenant_id'          => $tenant->id,
+                    'branch_id'          => $branch->id,
+                    'code_hash'          => $this->digest($code),
+                    'attempts'           => 0,
+                    'max_attempts'       => self::MAX_ATTEMPTS,
+                    'expires_at'         => now()->addMinutes(self::CODE_TTL_MINUTES),
+                    'active_slot'        => EdgePairingCode::ACTIVE_SLOT,
+                    'created_by_user_id' => $userId,
+                ]);
+
+                return [$code, $row];
+            } catch (UniqueConstraintViolationException $e) {
+                // Another live code already uses this six-digit value — try a fresh number.
+                continue;
             }
         }
-        // Astronomically unlikely; fail safe rather than loop forever.
+
+        // Astronomically unlikely with a 10^6 space and few live codes; fail controlled.
         throw EdgePairingException::of(EdgePairingException::CODE_INVALID);
     }
 
-    /* ── cancel (tenant, authenticated) ──────────────────────────────────── */
+    /* ── cancel (tenant, authenticated — SECURITY action, no entitlement dep) ─ */
 
     public function cancelCode(Tenant $tenant, Branch $branch, int $userId): void
     {
+        // Idempotent: cancelling again simply updates zero live rows.
         EdgePairingCode::where('tenant_id', $tenant->id)
             ->where('branch_id', $branch->id)
             ->where('active_slot', EdgePairingCode::ACTIVE_SLOT)
             ->update(['active_slot' => null, 'cancelled_at' => now()]);
 
-        // If nothing is paired and no other setup state remains, return a pending branch to cloud.
-        if (! $this->activeDeviceForBranch($tenant->id, $branch->id)
-            && $branch->local_edge_status === Branch::STATUS_PENDING) {
-            $this->mode->transition($branch, Branch::STATUS_INACTIVE, $userId, 'edge_pairing_cancelled');
-        }
+        $this->reconcileBranch($tenant, $branch->id, $userId, 'edge_pairing_cancelled');
 
         $this->audit('edge.pairing_code.cancelled', [
             'tenant_id' => $tenant->id, 'branch_id' => $branch->id, 'user_id' => $userId,
         ]);
     }
 
-    /* ── exchange (public API) ───────────────────────────────────────────── */
+    /* ── exchange (public API) — outcome-based so failure state COMMITS ────── */
 
-    /**
-     * Exchange a pairing code for a device registration. Resolves tenant+branch FROM THE
-     * CODE (never request input). Re-checks entitlement + rollout at exchange time.
-     * Response-loss safe: same code + installation_uuid + secret_hash → same device.
-     *
-     * @param array{code:string,installation_uuid:string,device_name:?string,device_secret_hash:string,app_version:?string,schema_version:?string} $in
-     */
     public function exchange(array $in): array
     {
         $code = preg_replace('/\D+/', '', (string) ($in['code'] ?? ''));
         if (strlen((string) $code) !== 6) {
             throw EdgePairingException::of(EdgePairingException::CODE_INVALID);
         }
+        $installationUuid = (string) ($in['installation_uuid'] ?? '');
+        $deviceSecretHash = strtolower((string) ($in['device_secret_hash'] ?? ''));
 
-        $installationUuid = (string) $in['installation_uuid'];
-        $deviceSecretHash = strtolower((string) $in['device_secret_hash']);
+        // Resolve tenant from the code (unlocked pre-read) so we can activate before the txn.
+        $pcPre = EdgePairingCode::where('code_hash', $this->digest($code))->orderByDesc('id')->first();
+        if (! $pcPre) {
+            throw EdgePairingException::of(EdgePairingException::CODE_INVALID);
+        }
+        $tenant = Tenant::find($pcPre->tenant_id);
+        if (! $tenant) {
+            throw EdgePairingException::of(EdgePairingException::CODE_INVALID);
+        }
 
-        return DB::connection('master')->transaction(function () use ($code, $installationUuid, $deviceSecretHash, $in) {
-            $pc = EdgePairingCode::where('code_hash', $this->digest($code))
-                ->orderByDesc('id')
-                ->lockForUpdate()
-                ->first();
+        $this->tenancy->activate($tenant);   // tenant DB + app('tenant') for entitlement/branch reads
 
-            if (! $pc) {
-                throw EdgePairingException::of(EdgePairingException::CODE_INVALID);
-            }
+        try {
+            $outcome = DB::connection('master')->transaction(function () use ($code, $installationUuid, $deviceSecretHash, $in, $tenant) {
+                // Serialize slot allocation across all branches of this tenant.
+                Tenant::whereKey($tenant->id)->lockForUpdate()->firstOrFail();
 
-            // Response-loss / duplicate delivery: a used code retried by the SAME device.
-            if ($pc->used_at !== null) {
-                $device = $pc->paired_device_id ? EdgeDevice::find($pc->paired_device_id) : null;
-                if ($device && ! $device->isRevoked()
-                    && $device->installation_uuid === $installationUuid
-                    && hash_equals($device->device_secret_hash, $deviceSecretHash)) {
-                    return $this->deviceMeta($device);   // idempotent replay — no new device
+                $pc = EdgePairingCode::where('code_hash', $this->digest($code))
+                    ->orderByDesc('id')->lockForUpdate()->first();
+                if (! $pc) {
+                    return ['fail' => EdgePairingException::CODE_INVALID];
                 }
-                throw EdgePairingException::of(EdgePairingException::CODE_USED);
-            }
 
-            if ($pc->cancelled_at !== null) {
-                throw EdgePairingException::of(EdgePairingException::CODE_INVALID);
-            }
-            if ($pc->isExpired()) {
-                $pc->update(['active_slot' => null]);   // burn
-                throw EdgePairingException::of(EdgePairingException::CODE_EXPIRED);
-            }
-            if ($pc->isExhausted()) {
-                throw EdgePairingException::of(EdgePairingException::CODE_EXHAUSTED);
-            }
+                // Used code → idempotent replay only for the SAME device; else conflict.
+                if ($pc->used_at !== null) {
+                    $device = $pc->paired_device_id ? EdgeDevice::find($pc->paired_device_id) : null;
+                    if ($device && ! $device->isRevoked()
+                        && $device->installation_uuid === $installationUuid
+                        && hash_equals($device->device_secret_hash, $deviceSecretHash)) {
+                        return ['ok' => $this->deviceMeta($device)];
+                    }
+                    return ['fail' => EdgePairingException::CODE_USED];
+                }
 
-            // Resolve tenant + branch strictly from the code row.
-            $tenant = Tenant::find($pc->tenant_id);
-            if (! $tenant) {
-                $this->burnAttempt($pc);
-                throw EdgePairingException::of(EdgePairingException::CODE_INVALID);
-            }
+                if ($pc->cancelled_at !== null) {
+                    return ['fail' => EdgePairingException::CODE_INVALID];
+                }
+                if ($pc->isExpired()) {
+                    $pc->update(['active_slot' => null]);           // burn — COMMITS
+                    return ['fail' => EdgePairingException::CODE_EXPIRED];
+                }
+                if ($pc->isExhausted()) {
+                    $pc->update(['active_slot' => null]);           // burn — COMMITS
+                    return ['fail' => EdgePairingException::CODE_EXHAUSTED];
+                }
 
-            $this->tenancy->activate($tenant);           // sets tenant DB + app('tenant')
-            try {
                 // Re-check entitlement + rollout at EXCHANGE time (never trust generation-time state).
                 if (! $this->entitlement->featureIsEnabled() || ! $this->entitlement->tenantHasOfflineEdgeAccess()) {
                     $this->burnAttempt($pc);
-                    throw EdgePairingException::of(EdgePairingException::CODE_ENTITLEMENT);
+                    return ['fail' => EdgePairingException::CODE_ENTITLEMENT];
                 }
 
+                // Branch must already be pending (generation moved it there — exchange never transitions it).
                 $branch = Branch::find($pc->branch_id);
-                if (! $branch || ! in_array($branch->local_edge_status, [Branch::STATUS_INACTIVE, Branch::STATUS_PENDING], true)) {
+                if (! $branch || $branch->local_edge_status !== Branch::STATUS_PENDING) {
                     $this->burnAttempt($pc);
-                    throw EdgePairingException::of(EdgePairingException::CODE_DEVICE_CONFLICT);
+                    return ['fail' => EdgePairingException::CODE_DEVICE_CONFLICT];
                 }
 
-                // Already an active device on this branch?
+                // Existing active device on this branch → replay (same device) or conflict.
                 $existing = $this->activeDeviceForBranch($pc->tenant_id, $pc->branch_id);
                 if ($existing) {
                     if ($existing->installation_uuid === $installationUuid
                         && hash_equals($existing->device_secret_hash, $deviceSecretHash)) {
-                        // same device re-binding a fresh code — idempotent
                         $pc->update(['used_at' => now(), 'paired_device_id' => $existing->id, 'active_slot' => null]);
-                        return $this->deviceMeta($existing);
+                        return ['ok' => $this->deviceMeta($existing)];
                     }
-                    throw EdgePairingException::of(EdgePairingException::CODE_DEVICE_CONFLICT);
+                    return ['fail' => EdgePairingException::CODE_DEVICE_CONFLICT];
                 }
 
-                // Licensed device cap (re-check at exchange).
+                // This installation must not already be ACTIVE elsewhere (unique installation+active_slot).
+                $instActive = EdgeDevice::active()->where('installation_uuid', $installationUuid)->first();
+                if ($instActive) {
+                    return ['fail' => EdgePairingException::CODE_DEVICE_CONFLICT];
+                }
+
+                // Licensed tenant-wide cap (checked under the tenant lock).
                 if ($this->activeDeviceCount($pc->tenant_id) >= $this->deviceLimit($tenant)) {
                     $this->burnAttempt($pc);
-                    throw EdgePairingException::of(EdgePairingException::CODE_DEVICE_LIMIT);
+                    return ['fail' => EdgePairingException::CODE_DEVICE_LIMIT];
                 }
 
-                $device = EdgeDevice::create([
-                    'public_uuid'        => (string) Str::uuid(),
-                    'tenant_id'          => $pc->tenant_id,
-                    'branch_id'          => $pc->branch_id,
-                    'installation_uuid'  => $installationUuid,
-                    'device_name'        => Str::limit((string) ($in['device_name'] ?? ''), 190, '') ?: null,
-                    'device_secret_hash' => $deviceSecretHash,
-                    'status'             => EdgeDevice::STATUS_PENDING_BOOTSTRAP,
-                    'active_slot'        => EdgeDevice::ACTIVE_SLOT,
-                    'app_version'        => $in['app_version'] ?? null,
-                    'schema_version'     => $in['schema_version'] ?? null,
-                    'paired_at'          => now(),
-                ]);
+                try {
+                    $device = EdgeDevice::create([
+                        'public_uuid'        => (string) Str::uuid(),
+                        'tenant_id'          => $pc->tenant_id,
+                        'branch_id'          => $pc->branch_id,
+                        'installation_uuid'  => $installationUuid,
+                        'device_name'        => Str::limit((string) ($in['device_name'] ?? ''), 190, '') ?: null,
+                        'device_secret_hash' => $deviceSecretHash,
+                        'status'             => EdgeDevice::STATUS_PENDING_BOOTSTRAP,
+                        'active_slot'        => EdgeDevice::ACTIVE_SLOT,
+                        'app_version'        => $in['app_version'] ?? null,
+                        'schema_version'     => $in['schema_version'] ?? null,
+                        'paired_at'          => now(),
+                    ]);
+                } catch (UniqueConstraintViolationException $e) {
+                    // A concurrent winner already created the active device for this branch/installation.
+                    return ['fail' => EdgePairingException::CODE_DEVICE_CONFLICT];
+                }
 
                 $pc->update(['used_at' => now(), 'paired_device_id' => $device->id, 'active_slot' => null]);
-
-                // Branch stays pending (never active here). A stray inactive branch → pending.
-                if ($branch->local_edge_status === Branch::STATUS_INACTIVE) {
-                    $this->mode->transition($branch, Branch::STATUS_PENDING, null, 'edge_device_paired');
-                }
 
                 $this->audit('edge.device.paired', [
                     'tenant_id' => $pc->tenant_id, 'branch_id' => $pc->branch_id,
                     'device_uuid' => $device->public_uuid,
                 ]);
 
-                return $this->deviceMeta($device);
-            } finally {
-                $this->tenancy->deactivate();
-            }
-        });
+                return ['ok' => $this->deviceMeta($device)];
+            });
+        } finally {
+            $this->tenancy->deactivate();
+        }
+
+        if (isset($outcome['fail'])) {
+            throw EdgePairingException::of($outcome['fail']);
+        }
+
+        return $outcome['ok'];
     }
 
+    /** Increment a resolved code's failed-attempt counter; burn it once exhausted. Commits. */
     private function burnAttempt(EdgePairingCode $pc): void
     {
         $pc->increment('attempts');
+        if ($pc->attempts >= $pc->max_attempts) {
+            $pc->update(['active_slot' => null]);
+        }
     }
 
-    /* ── revoke (tenant, authenticated — NO entitlement/flag dependency) ─── */
+    /* ── revoke (tenant, authenticated — SECURITY action, no entitlement dep) ─ */
 
     public function revokeDevice(Tenant $tenant, EdgeDevice $device, int $userId, ?string $reason = null): void
     {
-        // Security control: revocation must work even if entitlement was removed or the
-        // rollout flag was turned off. Only auth + ownership are required (enforced by caller).
-        $wasActive = $device->status === EdgeDevice::STATUS_ACTIVE;
-
-        $device->update([
-            'status'             => EdgeDevice::STATUS_REVOKED,
-            'active_slot'        => null,          // frees the (tenant,branch) slot + kills auth
-            'revoked_at'         => now(),
-            'revoked_by_user_id' => $userId,
-            'revoke_reason'      => $reason ? Str::limit($reason, 190, '') : 'revoked_by_owner',
-        ]);
-
-        $branch = Branch::find($device->branch_id);
-        if ($branch) {
-            if ($wasActive && $branch->local_edge_status === Branch::STATUS_ACTIVE) {
-                // A live Local-POS device is being pulled — go active → suspended (never straight to inactive).
-                $this->mode->transition($branch, Branch::STATUS_SUSPENDED, $userId, 'edge_device_revoked');
-            } elseif ($branch->local_edge_status === Branch::STATUS_PENDING
-                && ! $this->activeDeviceForBranch($tenant->id, $branch->id)
-                && ! $this->liveCodeForBranch($tenant->id, $branch->id)) {
-                // Pre-activation device pulled and nothing else pending → back to cloud.
-                $this->mode->transition($branch, Branch::STATUS_INACTIVE, $userId, 'edge_device_revoked');
-            }
+        // Saga step 1 (master): kill device auth first. Idempotent — a re-revoke still
+        // proceeds to reconcile the branch (repairs any earlier reconciliation drift).
+        if (! $device->isRevoked()) {
+            $device->update([
+                'status'             => EdgeDevice::STATUS_REVOKED,
+                'active_slot'        => null,      // frees the slot + immediately kills auth
+                'revoked_at'         => now(),
+                'revoked_by_user_id' => $userId,
+                'revoke_reason'      => $reason ? Str::limit($reason, 190, '') : 'revoked_by_owner',
+            ]);
         }
+
+        // Saga step 2 (tenant DB): reconcile branch lifecycle idempotently. Never a 500 —
+        // if this fails the security revocation stays committed and we log reconciliation-required.
+        $this->reconcileBranch($tenant, $device->branch_id, $userId, 'edge_device_revoked');
 
         $this->audit('edge.device.revoked', [
             'tenant_id' => $tenant->id, 'branch_id' => $device->branch_id,
@@ -349,26 +377,54 @@ class EdgePairingService
         ]);
     }
 
+    /**
+     * Idempotent branch reconciliation, driven purely by current state (safe to retry):
+     *   active|closing + no active device        → suspended (never straight to inactive)
+     *   pending + no active device + no live code → inactive
+     * Failures are logged as reconciliation-required and swallowed (security action stays committed).
+     */
+    private function reconcileBranch(Tenant $tenant, int $branchId, int $userId, string $reason): void
+    {
+        try {
+            $branch = Branch::find($branchId);
+            if (! $branch) {
+                return;
+            }
+            $hasActiveDevice = (bool) $this->activeDeviceForBranch($tenant->id, $branchId);
+            $hasLiveCode     = (bool) $this->liveCodeForBranch($tenant->id, $branchId);
+
+            if (in_array($branch->local_edge_status, [Branch::STATUS_ACTIVE, Branch::STATUS_CLOSING], true) && ! $hasActiveDevice) {
+                $this->mode->transition($branch, Branch::STATUS_SUSPENDED, $userId, $reason);
+            } elseif ($branch->local_edge_status === Branch::STATUS_PENDING && ! $hasActiveDevice && ! $hasLiveCode) {
+                $this->mode->transition($branch, Branch::STATUS_INACTIVE, $userId, $reason);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('[edge-pairing-audit] edge.branch.reconciliation_required', [
+                'tenant_id' => $tenant->id, 'branch_id' => $branchId,
+                'reason' => $reason, 'error' => substr($e->getMessage(), 0, 190),
+            ]);
+        }
+    }
+
     /* ── shared ──────────────────────────────────────────────────────────── */
 
     public function deviceMeta(EdgeDevice $device): array
     {
-        $tenant = Tenant::find($device->tenant_id);
+        $tenant     = Tenant::find($device->tenant_id);
         $branchName = null;
-        // branch name is best-effort (tenant DB); never leak other tenants' data.
         if (app()->bound('tenant') && app('tenant')->id === $device->tenant_id) {
             $branchName = optional(Branch::find($device->branch_id))->name;
         }
 
         return [
-            'device_id'     => $device->public_uuid,
-            'public_uuid'   => $device->public_uuid,
-            'tenant_code'   => $tenant?->tenant_code,
-            'branch_id'     => $device->branch_id,
-            'branch_name'   => $branchName,
-            'device_status' => $device->status,
+            'device_id'      => $device->public_uuid,
+            'public_uuid'    => $device->public_uuid,
+            'tenant_code'    => $tenant?->tenant_code,
+            'branch_id'      => $device->branch_id,
+            'branch_name'    => $branchName,
+            'device_status'  => $device->status,
             'cloud_base_url' => rtrim((string) config('app.url'), '/'),
-            'paired_at'     => optional($device->paired_at)->toIso8601String(),
+            'paired_at'      => optional($device->paired_at)->toIso8601String(),
         ];
     }
 
