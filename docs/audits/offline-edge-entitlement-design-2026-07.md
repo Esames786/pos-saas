@@ -100,5 +100,59 @@ Installer availability   = whether a real package can be downloaded
 All three stay separate. Default: `EDGE_FEATURE_ENABLED=false` in `.env.example`; installer
 config unset; `offline_edge` granted to no plan.
 
-## 7. Next
+## 7. HARDEN-1 (2026-07-29) — closed 4 gaps
+1. **Entitlement now flows through the ONE canonical engine.** `OfflineEdgeEntitlementService`
+   no longer queries the plan directly; `entitlementCheck()` calls
+   `TenantSubscriptionAccessService::check($tenant, 'tenant.offline-edge.index')` and
+   `tenantHasOfflineEdgeAccess()` returns true **only** on an explicit `module_enabled`
+   verdict (fail-closed: `always_allowed` / `no_module_key` / `unmapped_route_module_key`
+   never silently unlock a paid module). This reuses every subscription-status /
+   plan-status / module-active rule and **fixes a latent bug** — a lapsed (past_due /
+   cancelled / expired) subscription that still carried the module previously passed the
+   direct check and now correctly fails (proven in QA). `assertTenantHasOfflineEdgeAccess()`
+   throws a **structured** `OfflineEdgeAccessException::notEntitled()` (403 `EDGE_NOT_ENTITLED`)
+   instead of a bare `abort(403)`; browser HTTP is still blocked upstream by the
+   subscription middleware's module-disabled page.
+2. **Existing-tenant permission propagation — REUSED, not reinvented.** `deploy.sh`
+   **step 5** already reads every `route_catalogs` row `WHERE route_name LIKE 'tenant.%'`
+   (no `is_published` filter), runs `Permission::findOrCreate($name,'tenant')` per active
+   tenant, and `Owner->givePermissionTo($allNames)` — then step 6 flushes the Spatie
+   cache in master + every tenant table. `tenant.offline-edge.index|download` are in the
+   catalog, so this existing deploy-safe mechanism grants them to **every tenant's Owner
+   role, idempotently, and to Owner only** (non-Owner roles are untouched). No new command
+   was added (reuse-first). **Exact deploy command: `bash deploy.sh`.** Proven locally by
+   running the step-5 grant logic twice across all 7 tenants: 21/21 both runs, Owner has
+   both perms, exactly 2 permission rows (no dups), Cashier/Manager/Demo/Branch-Manager
+   roles did NOT gain them.
+   - Answers: (A) `TenantProvisioner` does **not** re-run for existing tenants on deploy —
+     step 5 is the propagation path. (B) `system:routes-sync` writes only `route_catalogs`,
+     not tenant Permission rows. (C) Yes — step 5 grants new route permissions to existing
+     Owner roles. (D) No — `is_published=0` does **not** block step 5 (it doesn't filter on
+     it). (E) Every prior new permission propagated this same way.
+3. **RouteCatalog `is_published=0` — intentional, left unchanged.** Default is `false` for
+   every newly-synced route. It does **not** affect: subscription-middleware module
+   resolution (reads `route_catalogs.module_key` directly), `route.permission` (checks the
+   Spatie assignment), or the deploy step-5 Owner grant. It **only** gates
+   `PermissionSyncService::syncTenantPermissions()`, which the **tenant Role-editor UI**
+   (`RoleController`) uses to list *assignable* permissions for custom roles. Keeping it
+   `0` while the feature is pre-rollout is correct: Owner still has the perms and the gates
+   all work, but the permission isn't offered in the role editor for arbitrary custom roles
+   until a deliberate central-admin publish at rollout. Not blindly changed.
+4. **Installer availability hardened.** `installerIsAvailable()` now rejects: unset/empty/
+   whitespace path, missing path, a **directory**, a **zero-byte** file, and an
+   **unreadable** file — path from config only, never request input. This is an
+   existence/readability check, **NOT** cryptographic verification; `EDGE_INSTALLER_SHA256`
+   + `_SIGNATURE_PATH` validation is reserved for `EDGE-BUILD-PACKAGING-1`. `.env.example`
+   now carries `EDGE_INSTALLER_PATH/_VERSION/_SHA256/_SIGNATURE_PATH` (all empty → 503
+   `EDGE_INSTALLER_NOT_AVAILABLE`; empty config resolves to unavailable). Print Agent
+   Setup.exe is never a fallback.
+
+HARDEN-1 QA: entitlement/installer service 19/19 (incl. lapsed-subscription block +
+6-way installer probe); permission propagation 21/21 ×2 (idempotent); real-HTTP 6-scenario
+matrix (not-entitled 403 module_disabled / flag-off 403 EDGE_FEATURE_DISABLED / entitled
+page 200 + download 503 EDGE_INSTALLER_NOT_AVAILABLE / non-Owner 403 permission-denied /
+download-bypass gated / POS 200); 7/7 tenants tb=0/neg=0/dept=0, manufacturing regression
+green, no plan auto-entitled, `EDGE_FEATURE_ENABLED=false`.
+
+## 8. Next
 `BRANCH-DEVICE-PAIRING-1` (entitlement + branch/device limits + pairing code → device).

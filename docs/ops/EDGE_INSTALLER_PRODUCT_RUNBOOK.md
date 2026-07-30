@@ -194,3 +194,16 @@ module (granted via plan-module administration; attached to no plan by default) 
 until a real signed `BingooEdgeSetup.exe` is configured via `EDGE_INSTALLER_PATH` /
 `_VERSION` / `_SHA256` / `_SIGNATURE_PATH` (produced later by EDGE-BUILD-PACKAGING-1). No fake
 installer is ever served, and the Print Agent installer is never substituted for the Edge one.
+
+---
+
+## Update — OFFLINE-EDGE-ENTITLEMENT-HARDEN-1 (2026-07)
+- **Existing-tenant permissions:** the two Offline Edge permissions (`tenant.offline-edge.index`,
+  `tenant.offline-edge.download`) propagate to every existing tenant's **Owner** role via the
+  standard **`bash deploy.sh` step 5** (per-tenant `Permission::findOrCreate` + `Owner->givePermissionTo`
+  over all `tenant.%` catalog routes; step 6 flushes the Spatie cache in master + every tenant table).
+  Idempotent, Owner-only, no new command. `route_catalogs.is_published=0` does not block this.
+- **Installer availability** is an existence/readability check only (rejects unset/empty path,
+  directory, zero-byte, unreadable). It is **not** cryptographic verification — SHA-256 + signature
+  (`EDGE_INSTALLER_SHA256` / `EDGE_INSTALLER_SIGNATURE_PATH`) are validated later by EDGE-BUILD-PACKAGING-1.
+  Empty/absent config → **503 `EDGE_INSTALLER_NOT_AVAILABLE`**; the Print Agent installer is never a fallback.

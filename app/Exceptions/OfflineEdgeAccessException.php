@@ -19,6 +19,7 @@ use RuntimeException;
  */
 class OfflineEdgeAccessException extends RuntimeException
 {
+    public const CODE_NOT_ENTITLED            = 'EDGE_NOT_ENTITLED';
     public const CODE_FEATURE_DISABLED        = 'EDGE_FEATURE_DISABLED';
     public const CODE_INSTALLER_NOT_AVAILABLE = 'EDGE_INSTALLER_NOT_AVAILABLE';
 
@@ -26,6 +27,12 @@ class OfflineEdgeAccessException extends RuntimeException
         public readonly string $edgeCode = self::CODE_FEATURE_DISABLED,
     ) {
         parent::__construct($this->defaultMessage());
+    }
+
+    /** Structured commercial-entitlement failure (gate 1) — for direct API/service callers. */
+    public static function notEntitled(): self
+    {
+        return new self(self::CODE_NOT_ENTITLED);
     }
 
     public static function featureDisabled(): self
@@ -42,6 +49,7 @@ class OfflineEdgeAccessException extends RuntimeException
     {
         return match ($this->edgeCode) {
             self::CODE_INSTALLER_NOT_AVAILABLE => 'The Bingoo Edge installer is not available in this release yet.',
+            self::CODE_NOT_ENTITLED            => 'Your current plan does not include the Offline Branch Edge module.',
             default                            => 'Offline Branch Edge is not released yet. It will be enabled for your account soon.',
         };
     }
