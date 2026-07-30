@@ -156,3 +156,12 @@ green, no plan auto-entitled, `EDGE_FEATURE_ENABLED=false`.
 
 ## 8. Next
 `BRANCH-DEVICE-PAIRING-1` (entitlement + branch/device limits + pairing code → device).
+
+## 9. Follow-on — BRANCH-DEVICE-PAIRING-1 (2026-07)
+Pairing is built on this entitlement foundation: three new Owner permissions
+(`tenant.offline-edge.pairing-code.generate|cancel`, `tenant.offline-edge.devices.revoke`)
+propagate via the same deploy.sh step-5 path. Generation/cancel reuse
+`assertSetupAccessAllowed()` (entitlement + rollout); the public exchange re-checks
+`featureIsEnabled()` + `tenantHasOfflineEdgeAccess()` at exchange time; **revocation is
+deliberately outside the subscription/module gate** so it works after entitlement is removed
+or the flag is off. Full design: `docs/audits/branch-device-pairing-design-2026-07.md`.

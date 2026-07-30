@@ -45,6 +45,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->validateCsrfTokens(except: [
             '*/api/print-agent/*',
             '*/api/print-agent/heartbeat',
+            // BRANCH-DEVICE-PAIRING-1: central Edge pairing/device API is called by the
+            // installer/device (no browser session, no CSRF token).
+            'api/edge/*',
         ]);
 
         $middleware->redirectGuestsTo('/login');
@@ -55,6 +58,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'route.permission' => EnsureRoutePermission::class,
             'tenant.subscription.access' => EnsureTenantSubscriptionAccess::class,
             'prevent.demo.mutation' => PreventDemoMutation::class,
+            'edge.device.auth' => \App\Http\Middleware\AuthenticateEdgeDevice::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

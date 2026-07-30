@@ -525,3 +525,13 @@ installer availability (`config('app.edge_installer_*')` + file on disk) — via
 `/download` gate self-render 403 `EDGE_FEATURE_DISABLED` / 503 `EDGE_INSTALLER_NOT_AVAILABLE`
 (no fake EXE, never 500). NOT built: installer, pairing, bootstrap, sync, device/branch
 licensing, lease/grace. `offline_edge` is attached to no plan by default.
+
+---
+
+## Update — BRANCH-DEVICE-PAIRING-1 built (2026-07)
+Secure branch-bound device pairing is implemented (master-DB `edge_devices` +
+`edge_pairing_codes`, central `POST /api/edge/pair` + `GET /api/edge/device/me`,
+client-generated device secret, one active device per branch, revocation). Pairing creates
+a `pending_bootstrap` device only — **no activation, cloud sales unaffected, no
+bootstrap/sync/installer**. See `docs/audits/branch-device-pairing-design-2026-07.md`. Next:
+BRANCH-BOOTSTRAP-SNAPSHOT-1.

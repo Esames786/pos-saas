@@ -7,103 +7,99 @@
     <div class="d-flex align-items-center justify-content-between mb-3">
         <div>
             <h4 class="mb-1">Offline Branch Edge</h4>
-            <p class="text-muted mb-0">Sellable licensed module &mdash; keep selling from a branch-local server during internet outages.</p>
+            <p class="text-muted mb-0">Pair one branch-local server per branch. Keep selling during internet outages.</p>
         </div>
         <span class="badge bg-info-subtle text-info align-self-start">Add-on module</span>
     </div>
 
-    {{-- Status strip: the three independent gates --}}
-    <div class="row g-3 mb-3">
-        <div class="col-md-4">
-            <div class="card h-100">
-                <div class="card-body">
-                    <div class="text-muted small text-uppercase mb-1">Entitlement</div>
-                    <div class="fw-semibold text-success"><i class="ti ti-circle-check me-1"></i>Active for this account</div>
-                    <div class="small text-muted mt-1">Your plan includes the <code>offline_edge</code> module.</div>
-                </div>
+    @if(session('status'))
+        <div class="alert alert-success">{{ session('status') }}</div>
+    @endif
+    @foreach($errors->all() as $err)
+        <div class="alert alert-danger">{{ $err }}</div>
+    @endforeach
+
+    {{-- One-time pairing code display (flashed once; never re-rendered on refresh) --}}
+    @if(!empty($newCode))
+        <div class="alert alert-primary d-flex align-items-center justify-content-between">
+            <div>
+                <div class="fw-semibold mb-1">Pairing code (shown once)</div>
+                <div class="display-6 font-monospace letter-spacing-2">{{ $newCode }}</div>
+                <div class="small text-muted">Enter this in the Bingoo Edge installer on the branch PC. Expires {{ \Illuminate\Support\Carbon::parse($newCodeExpires)->diffForHumans() }}. It will not be shown again.</div>
             </div>
+            <i class="ti ti-shield-lock fs-1 text-primary"></i>
         </div>
-        <div class="col-md-4">
-            <div class="card h-100">
-                <div class="card-body">
-                    <div class="text-muted small text-uppercase mb-1">Rollout</div>
-                    <div class="fw-semibold text-success"><i class="ti ti-rocket me-1"></i>Enabled (controlled release)</div>
-                    <div class="small text-muted mt-1">Feature flag is on for your environment.</div>
-                </div>
+    @endif
+
+    <div class="alert alert-warning py-2 small mb-3">
+        <i class="ti ti-info-circle me-1"></i>
+        Pairing does <strong>not</strong> activate Local POS. Cloud sales stay available until bootstrap &amp; readiness are completed in a later step.
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-body d-flex flex-wrap gap-4">
+            <div><div class="text-muted small text-uppercase">Licensed devices</div><div class="fw-semibold">{{ $activeDevices }} / {{ $deviceLimit }} active</div></div>
+            <div><div class="text-muted small text-uppercase">Installer</div>
+                <div class="fw-semibold">{{ $installerAvailable ? ('Available' . ($installerVersion ? ' v'.$installerVersion : '')) : 'Not available yet' }}</div>
             </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card h-100">
-                <div class="card-body">
-                    <div class="text-muted small text-uppercase mb-1">Installer</div>
-                    @if($installerAvailable)
-                        <div class="fw-semibold text-success"><i class="ti ti-download me-1"></i>Available{{ $installerVersion ? ' — v'.$installerVersion : '' }}</div>
-                    @else
-                        <div class="fw-semibold text-secondary"><i class="ti ti-clock me-1"></i>Not available yet</div>
-                        <div class="small text-muted mt-1">Bingoo Edge installer is not available in this release yet.</div>
-                    @endif
-                </div>
+            <div class="ms-auto align-self-center">
+                @if($installerAvailable)
+                    <a href="{{ url('/settings/offline-edge/download') }}" class="btn btn-primary btn-sm"><i class="ti ti-download me-1"></i>Download BingooEdgeSetup.exe</a>
+                @else
+                    <button class="btn btn-secondary btn-sm" disabled><i class="ti ti-download me-1"></i>Installer not available yet</button>
+                @endif
             </div>
         </div>
     </div>
 
-    <div class="row g-3">
-        <div class="col-lg-7">
-            <div class="card">
-                <div class="card-header"><h5 class="mb-0">How Offline Branch Edge works</h5></div>
-                <div class="card-body">
-                    <ul class="mb-3">
-                        <li><strong>One Branch Server per branch.</strong> A single Windows PC on the branch LAN runs Bingoo Edge; every till is just a browser on its LAN URL.</li>
-                        <li><strong>The cloud stays the official accounting authority.</strong> Stock, COGS and journals are always posted in the cloud — Edge captures sales locally and syncs them up idempotently.</li>
-                        <li><strong>Your existing Print Agent is reused</strong> for local receipt/KOT printing — just pointed at the local Edge server.</li>
-                        <li><strong>Each licensed Edge install binds to one branch</strong> during pairing (coming in a later release).</li>
-                    </ul>
-
-                    <div class="border rounded p-3 bg-light-subtle">
-                        <div class="fw-semibold mb-2">Download the Branch Server installer</div>
-                        @if($installerAvailable)
-                            <a href="{{ url('/settings/offline-edge/download') }}" class="btn btn-primary">
-                                <i class="ti ti-download me-1"></i> Download BingooEdgeSetup.exe{{ $installerVersion ? ' (v'.$installerVersion.')' : '' }}
-                            </a>
-                        @else
-                            <button type="button" class="btn btn-secondary" disabled>
-                                <i class="ti ti-download me-1"></i> Download BingooEdgeSetup.exe
-                            </button>
-                            <div class="small text-muted mt-2">
-                                Bingoo Edge installer is not available in this release yet. This page is ready; the one-click
-                                Setup.exe is delivered in an upcoming update.
-                            </div>
-                        @endif
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-lg-5">
-            <div class="card">
-                <div class="card-header"><h5 class="mb-0">Eligible branches</h5></div>
-                <div class="card-body">
-                    <p class="small text-muted">Read-only. Pairing a licensed Edge install to a specific branch is not enabled in this release.</p>
-                    <div class="table-responsive">
-                        <table class="table table-sm align-middle mb-0">
-                            <thead><tr><th>Branch</th><th>Sales mode</th></tr></thead>
-                            <tbody>
-                            @forelse($branches as $branch)
-                                <tr>
-                                    <td>{{ $branch->name }}</td>
-                                    <td>
-                                        <span class="badge bg-secondary-subtle text-secondary">
-                                            {{ ucfirst(str_replace('_', ' ', $branch->sales_operating_mode ?? 'cloud')) }}
-                                        </span>
-                                    </td>
-                                </tr>
-                            @empty
-                                <tr><td colspan="2" class="text-muted">No active branches.</td></tr>
-                            @endforelse
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+    <div class="card">
+        <div class="card-header"><h5 class="mb-0">Branches</h5></div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table align-middle mb-0">
+                    <thead><tr><th>Branch</th><th>Lifecycle</th><th>Paired device</th><th class="text-end">Actions</th></tr></thead>
+                    <tbody>
+                    @forelse($branchRows as $row)
+                        <tr>
+                            <td class="fw-semibold">{{ $row['name'] }}</td>
+                            <td><span class="badge bg-secondary-subtle text-secondary">{{ ucfirst($row['lifecycle'] ?? 'inactive') }}</span></td>
+                            <td>
+                                @if($row['device'])
+                                    <div class="small">
+                                        <div class="fw-semibold">{{ $row['device']->device_name ?: 'Edge device' }}</div>
+                                        <div class="text-muted">{{ $row['device']->status }} · paired {{ optional($row['device']->paired_at)->diffForHumans() }}</div>
+                                    </div>
+                                @elseif($row['has_live_code'])
+                                    <span class="text-info small">Pairing code active — expires {{ optional($row['code_expires'])->diffForHumans() }}</span>
+                                @else
+                                    <span class="text-muted small">Not paired</span>
+                                @endif
+                            </td>
+                            <td class="text-end">
+                                @if($row['device'])
+                                    <form method="POST" action="{{ url('/settings/offline-edge/devices/' . $row['device']->id . '/revoke') }}" class="d-inline" onsubmit="return confirm('Revoke this Edge device? It will stop authenticating immediately.');">
+                                        @csrf
+                                        <button class="btn btn-outline-danger btn-sm"><i class="ti ti-plug-off me-1"></i>Revoke device</button>
+                                    </form>
+                                @else
+                                    @if($row['has_live_code'])
+                                        <form method="POST" action="{{ url('/settings/offline-edge/branches/' . $row['id'] . '/pairing-code/cancel') }}" class="d-inline">
+                                            @csrf
+                                            <button class="btn btn-outline-secondary btn-sm">Cancel code</button>
+                                        </form>
+                                    @endif
+                                    <form method="POST" action="{{ url('/settings/offline-edge/branches/' . $row['id'] . '/pairing-code') }}" class="d-inline">
+                                        @csrf
+                                        <button class="btn btn-primary btn-sm"><i class="ti ti-key me-1"></i>{{ $row['has_live_code'] ? 'New code' : 'Generate pairing code' }}</button>
+                                    </form>
+                                @endif
+                            </td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="4" class="text-muted">No active branches.</td></tr>
+                    @endforelse
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>

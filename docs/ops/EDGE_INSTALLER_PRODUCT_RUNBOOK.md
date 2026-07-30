@@ -207,3 +207,17 @@ installer is ever served, and the Print Agent installer is never substituted for
   directory, zero-byte, unreadable). It is **not** cryptographic verification — SHA-256 + signature
   (`EDGE_INSTALLER_SHA256` / `EDGE_INSTALLER_SIGNATURE_PATH`) are validated later by EDGE-BUILD-PACKAGING-1.
   Empty/absent config → **503 `EDGE_INSTALLER_NOT_AVAILABLE`**; the Print Agent installer is never a fallback.
+
+---
+
+## Update — BRANCH-DEVICE-PAIRING-1 (2026-07)
+The pairing exchange now exists (cloud side). Installer contract for the future wizard:
+generate `installation_uuid` + a ≥32-byte `device_secret` and persist them **before**
+calling the cloud, then `POST {cloud}/api/edge/pair` with `pairing_code`,
+`installation_uuid`, `device_name`, `device_secret_hash = sha256(device_secret)`. The cloud
+stores only the hash; a lost response is safe to retry with the same three values (returns
+the same device). Authenticated device calls use `X-Edge-Device-ID: <public_uuid>` +
+`Authorization: Bearer <device_secret>`. Pairing returns `device_status = pending_bootstrap`
+and never activates Local POS; cloud sales keep working until a later bootstrap/readiness
+step. Revocation from Settings → Offline Branch Edge kills the device's auth immediately and
+works even if entitlement/flag are removed.
