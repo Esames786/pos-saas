@@ -257,3 +257,14 @@ no branch/device/code/marker residue, `offline_edge` on 0 plans, flag off, manuf
 ## 15. Next
 `BRANCH-BOOTSTRAP-SNAPSHOT-1` — the paired device downloads its branch catalog/settings/
 users/tables/printers (still no activation until readiness).
+
+## 16. Follow-on — BRANCH-BOOTSTRAP-SNAPSHOT-1 (2026-07)
+Two pairing preflight fixes landed with the bootstrap sprint: (a) migration
+`..._000002` `down()` now runs its irreversible/duplicate-history check BEFORE dropping any
+index (no partial rollback); (b) the one-time pairing code is rendered **directly in the
+generate POST response** with `no-store` headers instead of session flash — under concurrent
+same-session generation the loser's session write could otherwise clobber the winner's flashed
+code. Proven across two processes: winner's own 200 response shows a code matching the sole live
+row; loser 409 `PAIRING_CODE_ALREADY_ACTIVE`; GET setup page never shows a code. Bootstrap
+itself (device→ready, branch stays pending) is documented in
+`docs/audits/branch-bootstrap-snapshot-design-2026-07.md`.

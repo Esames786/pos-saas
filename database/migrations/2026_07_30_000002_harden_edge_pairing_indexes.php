@@ -48,10 +48,8 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('edge_pairing_codes', function (Blueprint $table) {
-            $table->dropUnique('edge_pairing_codes_livecode_unique');
-        });
-
+        // HARDEN-2 + BOOTSTRAP preflight: run the irreversible/duplicate-history check FIRST,
+        // BEFORE dropping ANY index, so a refusal never leaves the schema partially modified.
         $hasDuplicateInstallations = DB::connection($this->getConnection())
             ->table('edge_devices')
             ->select('installation_uuid')
@@ -64,9 +62,14 @@ return new class extends Migration
                 'Irreversible migration: edge_devices contains multiple rows per installation_uuid '
                 . '(revoked-device history). Restoring unique(installation_uuid) would require deleting '
                 . 'that history, which this migration will not do. Archive/remove revoked history '
-                . 'deliberately before rolling back, or keep the composite index.'
+                . 'deliberately before rolling back, or keep the composite index. No indexes were dropped.'
             );
         }
+
+        // Safe to proceed — no duplicates exist, so every index change below can complete.
+        Schema::table('edge_pairing_codes', function (Blueprint $table) {
+            $table->dropUnique('edge_pairing_codes_livecode_unique');
+        });
 
         Schema::table('edge_devices', function (Blueprint $table) {
             $table->dropUnique('edge_devices_installation_active_unique');

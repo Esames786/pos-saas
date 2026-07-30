@@ -8,7 +8,6 @@ use App\Models\Tenant\Branch;
 use App\Services\Edge\EdgePairingService;
 use App\Services\Edge\OfflineEdgeEntitlementService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Crypt;
 
 /**
  * OFFLINE-EDGE-ENTITLEMENT-1 + BRANCH-DEVICE-PAIRING-1 (+HARDEN-1) — the entitled Settings
@@ -30,30 +29,11 @@ class OfflineEdgeController extends Controller
     {
         $this->entitlement->assertSetupAccessAllowed();
 
-        // HARDEN-2: CONSUME the one-time code (pull → removed from the session immediately,
-        // so it cannot be read again even within this session's lifetime).
-        $newCode       = $this->pullOneTimeCode();
-        $newCodeBranch = session()->pull('edge_pairing_branch');
-        $newCodeExpires = session()->pull('edge_pairing_expires');
-
-        $response = response()->view('tenant.offline-edge.index', array_merge($this->branchState(), [
-            'securityOnly'       => false,
-            'installerAvailable' => $this->entitlement->installerIsAvailable(),
-            'installerVersion'   => $this->entitlement->installerVersion(),
-            'newCode'            => $newCode,
-            'newCodeBranch'      => $newCodeBranch,
-            'newCodeExpires'     => $newCodeExpires,
-        ]));
-
-        // When a plaintext code is on the page, forbid any caching so a browser Back /
-        // bfcache / proxy can never re-surface it.
-        if ($newCode !== null) {
-            $response->headers->set('Cache-Control', 'no-store, private, max-age=0');
-            $response->headers->set('Pragma', 'no-cache');
-            $response->headers->set('Expires', '0');
-        }
-
-        return $response;
+        // The setup page never carries a pairing code — the code is rendered ONCE, directly
+        // in the generate POST response (see generatePairingCode). This avoids the session
+        // flash entirely, which under concurrent same-session generate requests could be
+        // clobbered by the losing request's session write (BOOTSTRAP preflight finding).
+        return $this->renderSetupPage(securityOnly: false);
     }
 
     /**
@@ -64,14 +44,7 @@ class OfflineEdgeController extends Controller
      */
     public function security(Request $request)
     {
-        return view('tenant.offline-edge.index', array_merge($this->branchState(), [
-            'securityOnly'       => true,
-            'installerAvailable' => false,
-            'installerVersion'   => null,
-            'newCode'            => null,
-            'newCodeBranch'      => null,
-            'newCodeExpires'     => null,
-        ]));
+        return $this->renderSetupPage(securityOnly: true);
     }
 
     public function download(Request $request)
@@ -97,13 +70,16 @@ class OfflineEdgeController extends Controller
 
         $result = $this->pairing->generateCode(app('tenant'), $branch, (int) auth('tenant')->id());
 
-        // The plaintext code is ENCRYPTED before it enters session flash (the server-side
-        // session store is not encrypted at rest), decrypted once for the immediate render,
-        // and never persisted, logged, or placed in a URL.
-        return redirect(url('/settings/offline-edge'))
-            ->with('edge_pairing_code', Crypt::encryptString($result['code']))
-            ->with('edge_pairing_branch', $branch->id)
-            ->with('edge_pairing_expires', $result['expires_at']);
+        // Render the six-digit code ONCE, directly in this POST response — never via session
+        // flash (race-safe under concurrent generation) and never in a URL. no-store headers
+        // stop a Back/bfcache/proxy from re-surfacing it; a refresh re-POSTs → 409 ALREADY_ACTIVE
+        // (the code is not retrievable again).
+        return $this->renderSetupPage(
+            securityOnly: false,
+            newCode: $result['code'],
+            newCodeBranch: $branch->id,
+            newCodeExpires: $result['expires_at'],
+        );
     }
 
     /** Cancel a live code. SECURITY control — no entitlement/flag dependency. */
@@ -157,17 +133,29 @@ class OfflineEdgeController extends Controller
         ];
     }
 
-    private function pullOneTimeCode(): ?string
+    /**
+     * Render the setup/security page. When $newCode is supplied (only on the generate POST
+     * response) the plaintext code is shown ONCE and the response is marked no-store so no
+     * cache/back/bfcache can re-surface it. The code is never written to the session.
+     */
+    private function renderSetupPage(bool $securityOnly, ?string $newCode = null, ?int $newCodeBranch = null, ?string $newCodeExpires = null)
     {
-        $enc = session()->pull('edge_pairing_code');   // read AND forget in one step
-        if (! $enc) {
-            return null;
+        $response = response()->view('tenant.offline-edge.index', array_merge($this->branchState(), [
+            'securityOnly'       => $securityOnly,
+            'installerAvailable' => $securityOnly ? false : $this->entitlement->installerIsAvailable(),
+            'installerVersion'   => $securityOnly ? null : $this->entitlement->installerVersion(),
+            'newCode'            => $newCode,
+            'newCodeBranch'      => $newCodeBranch,
+            'newCodeExpires'     => $newCodeExpires,
+        ]));
+
+        if ($newCode !== null) {
+            $response->headers->set('Cache-Control', 'no-store, private, max-age=0');
+            $response->headers->set('Pragma', 'no-cache');
+            $response->headers->set('Expires', '0');
         }
-        try {
-            return Crypt::decryptString($enc);
-        } catch (\Throwable $e) {
-            return null;
-        }
+
+        return $response;
     }
 
     /** Return to the setup page when reachable, else the security page. */

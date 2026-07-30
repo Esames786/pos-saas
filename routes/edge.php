@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Edge\EdgeBootstrapApiController;
 use App\Http\Controllers\Edge\EdgePairingApiController;
 use Illuminate\Support\Facades\Route;
 
@@ -19,8 +20,16 @@ Route::domain(config('tenancy.central_domain'))
             ->middleware('throttle:5,1')
             ->name('edge.api.pair');
 
-        // Device-authenticated proof endpoint (NOT heartbeat/bootstrap/sync).
+        // Device-authenticated endpoints (NOT heartbeat/sync/activation).
         Route::middleware(['edge.device.auth', 'throttle:60,1'])->group(function () {
             Route::get('/device/me', [EdgePairingApiController::class, 'me'])->name('edge.api.device.me');
+
+            // BRANCH-BOOTSTRAP-SNAPSHOT-1 — branch-scoped bootstrap snapshot download.
+            // Tenant+branch come from the device; snapshots are addressed by public UUID and
+            // ownership-checked. No activation / no sync here.
+            Route::post('/bootstrap/snapshots', [EdgeBootstrapApiController::class, 'create'])->name('edge.api.bootstrap.create');
+            Route::get('/bootstrap/snapshots/{uuid}/manifest', [EdgeBootstrapApiController::class, 'manifest'])->name('edge.api.bootstrap.manifest');
+            Route::get('/bootstrap/snapshots/{uuid}/sections/{section}', [EdgeBootstrapApiController::class, 'section'])->name('edge.api.bootstrap.section');
+            Route::post('/bootstrap/snapshots/{uuid}/acknowledge', [EdgeBootstrapApiController::class, 'acknowledge'])->name('edge.api.bootstrap.acknowledge');
         });
     });

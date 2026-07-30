@@ -246,3 +246,15 @@ back would require deleting device history — the migration refuses to do so). 
 a branch's lifecycle after a cancel/revoke is now backed by a durable `edge_reconciliation_markers`
 row when the lifecycle step fails post-commit; a later cancel/revoke retry clears it. A future
 sprint can add a job to drain pending markers automatically.
+
+---
+
+## Update — BRANCH-BOOTSTRAP-SNAPSHOT-1 (2026-07)
+After pairing, the Edge box calls `POST {cloud}/api/edge/bootstrap/snapshots` (device-auth:
+`X-Edge-Device-ID` + `Authorization: Bearer <device_secret>`), then downloads the manifest and
+each section (verifying `X-Content-SHA256`), then `POST .../acknowledge` with the schema version
++ manifest hash. A valid acknowledgment marks the DEVICE `ready`; the branch stays `pending` and
+cloud sales keep working — Local POS activation is a later readiness sprint. Snapshots are
+branch-scoped and carry no finance/cost data, no other branches, and no staff password hashes or
+tokens (local staff auth/PINs are not part of v1). Snapshots expire (72h default); a revoked
+device can neither download nor acknowledge.

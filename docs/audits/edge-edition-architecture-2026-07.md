@@ -535,3 +535,14 @@ client-generated device secret, one active device per branch, revocation). Pairi
 a `pending_bootstrap` device only — **no activation, cloud sales unaffected, no
 bootstrap/sync/installer**. See `docs/audits/branch-device-pairing-design-2026-07.md`. Next:
 BRANCH-BOOTSTRAP-SNAPSHOT-1.
+
+---
+
+## Update — BRANCH-BOOTSTRAP-SNAPSHOT-1 built (2026-07)
+A paired device can now download a deterministic, immutable, branch-scoped bootstrap snapshot
+(catalog/prices/tax/terminals/tables/printers/min-staff-identity) via device-authenticated
+central APIs, verify per-section + manifest SHA-256, and acknowledge to move the DEVICE
+pending_bootstrap→ready. Strict branch scope + explicit column allowlists exclude
+finance/cost/secrets/other-branches; no password hashes/tokens ship. Branch stays `pending`,
+no Local POS activation, no sync. See `docs/audits/branch-bootstrap-snapshot-design-2026-07.md`.
+Next: a readiness/activation sprint.
