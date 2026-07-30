@@ -30,14 +30,30 @@ class OfflineEdgeController extends Controller
     {
         $this->entitlement->assertSetupAccessAllowed();
 
-        return view('tenant.offline-edge.index', array_merge($this->branchState(), [
+        // HARDEN-2: CONSUME the one-time code (pull → removed from the session immediately,
+        // so it cannot be read again even within this session's lifetime).
+        $newCode       = $this->pullOneTimeCode();
+        $newCodeBranch = session()->pull('edge_pairing_branch');
+        $newCodeExpires = session()->pull('edge_pairing_expires');
+
+        $response = response()->view('tenant.offline-edge.index', array_merge($this->branchState(), [
             'securityOnly'       => false,
             'installerAvailable' => $this->entitlement->installerIsAvailable(),
             'installerVersion'   => $this->entitlement->installerVersion(),
-            'newCode'            => $this->decodeOneTimeCode(),
-            'newCodeBranch'      => session('edge_pairing_branch'),
-            'newCodeExpires'     => session('edge_pairing_expires'),
+            'newCode'            => $newCode,
+            'newCodeBranch'      => $newCodeBranch,
+            'newCodeExpires'     => $newCodeExpires,
         ]));
+
+        // When a plaintext code is on the page, forbid any caching so a browser Back /
+        // bfcache / proxy can never re-surface it.
+        if ($newCode !== null) {
+            $response->headers->set('Cache-Control', 'no-store, private, max-age=0');
+            $response->headers->set('Pragma', 'no-cache');
+            $response->headers->set('Expires', '0');
+        }
+
+        return $response;
     }
 
     /**
@@ -141,9 +157,9 @@ class OfflineEdgeController extends Controller
         ];
     }
 
-    private function decodeOneTimeCode(): ?string
+    private function pullOneTimeCode(): ?string
     {
-        $enc = session('edge_pairing_code');
+        $enc = session()->pull('edge_pairing_code');   // read AND forget in one step
         if (! $enc) {
             return null;
         }

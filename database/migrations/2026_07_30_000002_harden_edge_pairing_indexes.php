@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -37,15 +38,39 @@ return new class extends Migration
         });
     }
 
+    /**
+     * HARDEN-2 rollback safety: once devices are revoked, edge_devices legitimately holds
+     * MULTIPLE rows per installation_uuid (active_slot NULL history). Recreating the old
+     * single-column unique(installation_uuid) would fail — and "fixing" it by deleting
+     * history is not permitted. So drop the composite indexes (safe) and restore the
+     * single-column unique ONLY when no duplicates exist; otherwise fail loudly and
+     * irreversibly rather than destroy device history.
+     */
     public function down(): void
     {
+        Schema::table('edge_pairing_codes', function (Blueprint $table) {
+            $table->dropUnique('edge_pairing_codes_livecode_unique');
+        });
+
+        $hasDuplicateInstallations = DB::connection($this->getConnection())
+            ->table('edge_devices')
+            ->select('installation_uuid')
+            ->groupBy('installation_uuid')
+            ->havingRaw('COUNT(*) > 1')
+            ->exists();
+
+        if ($hasDuplicateInstallations) {
+            throw new \RuntimeException(
+                'Irreversible migration: edge_devices contains multiple rows per installation_uuid '
+                . '(revoked-device history). Restoring unique(installation_uuid) would require deleting '
+                . 'that history, which this migration will not do. Archive/remove revoked history '
+                . 'deliberately before rolling back, or keep the composite index.'
+            );
+        }
+
         Schema::table('edge_devices', function (Blueprint $table) {
             $table->dropUnique('edge_devices_installation_active_unique');
             $table->unique('installation_uuid', 'edge_devices_installation_uuid_unique');
-        });
-
-        Schema::table('edge_pairing_codes', function (Blueprint $table) {
-            $table->dropUnique('edge_pairing_codes_livecode_unique');
         });
     }
 };

@@ -21,6 +21,7 @@ class EdgePairingException extends RuntimeException
     public const CODE_EXPIRED            = 'PAIRING_CODE_EXPIRED';
     public const CODE_EXHAUSTED          = 'PAIRING_CODE_EXHAUSTED';
     public const CODE_USED               = 'PAIRING_CODE_USED';
+    public const CODE_ALREADY_ACTIVE     = 'PAIRING_CODE_ALREADY_ACTIVE';
     public const CODE_DEVICE_CONFLICT    = 'PAIRING_DEVICE_CONFLICT';
     public const CODE_ENTITLEMENT        = 'EDGE_ENTITLEMENT_REQUIRED';
     public const CODE_DEVICE_LIMIT       = 'EDGE_DEVICE_LIMIT_REACHED';
@@ -43,6 +44,7 @@ class EdgePairingException extends RuntimeException
             self::CODE_EXPIRED         => 'This pairing code has expired. Generate a new one.',
             self::CODE_EXHAUSTED       => 'Too many attempts for this pairing code. Generate a new one.',
             self::CODE_USED            => 'This pairing code has already been used.',
+            self::CODE_ALREADY_ACTIVE  => 'A pairing code is already active for this branch. Cancel it before generating a new one.',
             self::CODE_DEVICE_CONFLICT => 'A different device is already paired to this branch.',
             self::CODE_ENTITLEMENT     => 'Offline Branch Edge is not available for this account.',
             self::CODE_DEVICE_LIMIT    => 'The licensed Edge device limit has been reached.',
@@ -53,9 +55,9 @@ class EdgePairingException extends RuntimeException
     public function httpStatus(): int
     {
         return match ($this->pairingCode) {
-            self::CODE_USED, self::CODE_DEVICE_CONFLICT, self::CODE_DEVICE_LIMIT => 409,
-            self::CODE_ENTITLEMENT                                              => 403,
-            default                                                            => 422, // invalid/expired/exhausted
+            self::CODE_USED, self::CODE_DEVICE_CONFLICT, self::CODE_DEVICE_LIMIT, self::CODE_ALREADY_ACTIVE => 409,
+            self::CODE_ENTITLEMENT                                                                          => 403,
+            default                                                                                        => 422, // invalid/expired/exhausted
         };
     }
 

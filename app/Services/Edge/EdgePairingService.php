@@ -118,10 +118,20 @@ class EdgePairingService
                 return ['fail' => EdgePairingException::CODE_DEVICE_LIMIT];
             }
 
-            EdgePairingCode::where('tenant_id', $tenant->id)
+            // HARDEN-2: never silently replace a live code. An existing active_slot=1 code
+            // that is still UNEXPIRED wins → the owner must Cancel it first (controlled 409).
+            // Only an already-EXPIRED live-slot code is burned so the owner isn't stuck.
+            $existing = EdgePairingCode::where('tenant_id', $tenant->id)
                 ->where('branch_id', $branch->id)
                 ->where('active_slot', EdgePairingCode::ACTIVE_SLOT)
-                ->update(['active_slot' => null, 'cancelled_at' => now()]);
+                ->lockForUpdate()
+                ->first();
+            if ($existing) {
+                if (! $existing->isExpired()) {
+                    return ['fail' => EdgePairingException::CODE_ALREADY_ACTIVE];
+                }
+                $existing->update(['active_slot' => null]);   // dead code — clear the slot
+            }
 
             [$code, $row] = $this->createLiveCode($tenant, $branch, $userId);
 
@@ -388,6 +398,7 @@ class EdgePairingService
         try {
             $branch = Branch::find($branchId);
             if (! $branch) {
+                $this->resolveMarker($tenant->id, $branchId);   // nothing to reconcile
                 return;
             }
             $hasActiveDevice = (bool) $this->activeDeviceForBranch($tenant->id, $branchId);
@@ -398,11 +409,47 @@ class EdgePairingService
             } elseif ($branch->local_edge_status === Branch::STATUS_PENDING && ! $hasActiveDevice && ! $hasLiveCode) {
                 $this->mode->transition($branch, Branch::STATUS_INACTIVE, $userId, $reason);
             }
+
+            // Success (including a legitimate no-op) → clear any pending marker for this branch.
+            $this->resolveMarker($tenant->id, $branchId);
         } catch (\Throwable $e) {
+            // The security mutation is already committed; persist a DURABLE marker so a later
+            // retry / job can finish the lifecycle. Never a 500.
+            $this->persistMarker($tenant->id, $branchId, $reason, substr($e->getMessage(), 0, 500));
             Log::warning('[edge-pairing-audit] edge.branch.reconciliation_required', [
                 'tenant_id' => $tenant->id, 'branch_id' => $branchId,
                 'reason' => $reason, 'error' => substr($e->getMessage(), 0, 190),
             ]);
+        }
+    }
+
+    private function persistMarker(int $tenantId, int $branchId, string $operation, string $error): void
+    {
+        try {
+            $marker = \App\Models\Master\EdgeReconciliationMarker::firstOrNew([
+                'tenant_id' => $tenantId, 'branch_id' => $branchId,
+            ]);
+            $marker->operation  = $operation;
+            $marker->status     = \App\Models\Master\EdgeReconciliationMarker::STATUS_PENDING;
+            $marker->attempts   = (int) $marker->attempts + 1;
+            $marker->last_error = $error;
+            $marker->resolved_at = null;
+            $marker->save();
+        } catch (\Throwable $e) {
+            Log::error('[edge-pairing-audit] edge.branch.marker_persist_failed', [
+                'tenant_id' => $tenantId, 'branch_id' => $branchId, 'error' => substr($e->getMessage(), 0, 190),
+            ]);
+        }
+    }
+
+    private function resolveMarker(int $tenantId, int $branchId): void
+    {
+        try {
+            \App\Models\Master\EdgeReconciliationMarker::where('tenant_id', $tenantId)
+                ->where('branch_id', $branchId)
+                ->delete();
+        } catch (\Throwable $e) {
+            // best-effort cleanup only
         }
     }
 

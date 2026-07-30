@@ -233,3 +233,16 @@ Owners always have a security-management path (Settings → Edge Security) to re
 if the subscription lapsed or the feature flag is off. Concurrency has been certified against two
 independent PHP server processes (same DBs): simultaneous pairs converge on exactly one active
 device per branch and never exceed the tenant device cap, with zero 500s.
+
+---
+
+## Update — BRANCH-DEVICE-PAIRING-HARDEN-2 (2026-07-30)
+Code generation is now cancel-first: one live code per branch, and generating while a live
+code exists returns 409 `PAIRING_CODE_ALREADY_ACTIVE` (the owner clicks Cancel, then Generate).
+Expired codes are still replaceable. The one-time code page is sent no-store/no-cache and the
+code is consumed from the session on read (never re-shown). Operational note: migration
+`2026_07_30_000002` becomes effectively irreversible once any device has been revoked (rolling
+back would require deleting device history — the migration refuses to do so). Reconciliation of
+a branch's lifecycle after a cancel/revoke is now backed by a durable `edge_reconciliation_markers`
+row when the lifecycle step fails post-commit; a later cancel/revoke retry clears it. A future
+sprint can add a job to drain pending markers automatically.

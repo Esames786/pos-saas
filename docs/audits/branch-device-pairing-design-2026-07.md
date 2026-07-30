@@ -220,6 +220,40 @@ HARDEN-1 QA: 14/14 durability/race + 27/27 base (no regression) + 2-process conc
 off; 7/7 tenants tb=0/neg=0/dept=0, no branch/device/code left, `offline_edge` on 0 plans,
 flag off, manufacturing green, Print Agent + POS unaffected.
 
-## 14. Next
+## 14. HARDEN-2 (2026-07-30) — code-generation correctness + durable recovery
+1. **No silent code replacement.** Generation previously auto-cancelled the branch's existing
+   live code and issued a new one — under concurrency the first requester could be shown a
+   code that a second request had already invalidated. Now, **inside the tenant-row lock**,
+   an existing live *unexpired* code makes generation fail with **409 `PAIRING_CODE_ALREADY_ACTIVE`**;
+   the owner must **Cancel** first. An already-*expired* live-slot code is burned so the owner
+   is never stuck. The UI shows **Cancel code** while a live code exists and never a "New code"
+   button. Certified with two independent server processes: simultaneous generate for one
+   branch → exactly **one 302 success + one 409 ALREADY_ACTIVE**, one live code.
+2. **One-time code response hardened.** The encrypted flash is consumed with
+   `session()->pull()` (read-and-forget), and the page that renders the plaintext code sends
+   `Cache-Control: no-store, private`, `Pragma: no-cache`, `Expires: 0` so a Back/bfcache/proxy
+   can never re-surface it. Verified over HTTP: headers present, code shown once, absent on
+   refresh; the code stays encrypted in server-side session storage.
+3. **Migration rollback safety.** `2026_07_30_000002` `down()` no longer blindly recreates
+   `unique(installation_uuid)` — with revoked-device history that would fail or force deleting
+   history. It drops the composite indexes (safe) and restores the single-column unique **only
+   when no duplicate installation_uuid exists**, otherwise throws a clear **irreversible-migration**
+   error rather than destroying history. Operational note: once any device has been revoked,
+   this migration is effectively irreversible without deliberately archiving history first.
+4. **Durable reconciliation marker.** New master table `edge_reconciliation_markers`
+   (`tenant_id, branch_id, operation, status, attempts, last_error, resolved_at`; one per
+   branch). When a branch lifecycle reconciliation fails **after** a committed master security
+   mutation (cancel/revoke), a marker is persisted (`pending`, attempts++, last_error) instead
+   of only logging — so the pending work survives a crash/restart. A later cancel/revoke retry
+   re-runs reconciliation and **deletes the marker on success**. No expected reconciliation
+   failure returns a 500 (proven: forced-failure stub → revoke succeeds, device revoked, marker
+   persisted; real retry → branch suspended, marker resolved). This is a minimal durable marker,
+   **not** the full reconciliation engine (a future job can drain pending markers).
+
+HARDEN-2 QA: 11/11 new + base 27/27 + HARDEN-1 14/14 (no regression) + 2-process generate
+(one 302 / one 409) + no-store headers + marker persist/resolve; 7/7 tenants tb=0/neg=0/dept=0,
+no branch/device/code/marker residue, `offline_edge` on 0 plans, flag off, manufacturing green.
+
+## 15. Next
 `BRANCH-BOOTSTRAP-SNAPSHOT-1` — the paired device downloads its branch catalog/settings/
 users/tables/printers (still no activation until readiness).

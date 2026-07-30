@@ -91,17 +91,17 @@
                                     </form>
                                 @else
                                     @if($row['has_live_code'])
+                                        {{-- A live code exists → Cancel first. HARDEN-2: no silent replace, so no "New code" button. --}}
                                         <form method="POST" action="{{ url('/settings/offline-edge/branches/' . $row['id'] . '/pairing-code/cancel') }}" class="d-inline">
                                             @csrf
                                             <button class="btn btn-outline-secondary btn-sm">Cancel code</button>
                                         </form>
+                                    @elseif(empty($securityOnly))
+                                        <form method="POST" action="{{ url('/settings/offline-edge/branches/' . $row['id'] . '/pairing-code') }}" class="d-inline">
+                                            @csrf
+                                            <button class="btn btn-primary btn-sm"><i class="ti ti-key me-1"></i>Generate pairing code</button>
+                                        </form>
                                     @endif
-                                    @unless(!empty($securityOnly))
-                                    <form method="POST" action="{{ url('/settings/offline-edge/branches/' . $row['id'] . '/pairing-code') }}" class="d-inline">
-                                        @csrf
-                                        <button class="btn btn-primary btn-sm"><i class="ti ti-key me-1"></i>{{ $row['has_live_code'] ? 'New code' : 'Generate pairing code' }}</button>
-                                    </form>
-                                    @endunless
                                 @endif
                             </td>
                         </tr>
