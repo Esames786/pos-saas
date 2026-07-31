@@ -272,3 +272,18 @@ cheque and aggregator channels are excluded in v1) plus a `restrictions` section
 blocked capabilities the Edge must enforce. Acknowledgment re-checks the full entitlement/
 subscription/flag/branch-pending contract and is race-safe against device revocation (a revoked
 device can never become `ready`). Branch still stays `pending` — activation is a later sprint.
+
+---
+
+## Update — BRANCH-BOOTSTRAP-SNAPSHOT-HARDEN-2 (2026-08-01)
+Acknowledgment and snapshot build now re-check the FULL contract (active subscription +
+offline_edge + flag + tenant device limit + branch pending) both at request time and under a
+row lock, so a subscription cancelled, entitlement removed, flag turned off, branch suspended,
+or plan device-limit reduced after snapshot creation all block acknowledgment (device never
+becomes `ready`). The Edge box must download every section (server verifies stored bytes and
+rejects a corrupted section with 503 `EDGE_BOOTSTRAP_SECTION_CORRUPTED`) and acknowledge with the
+complete verified section-hash map — echoing manifest hashes for a section that was never
+successfully delivered fails 409 `EDGE_BOOTSTRAP_INCOMPLETE`. The v1 snapshot ships cash payments
+and own delivery only, and drops any combo/modifier that references an excluded product/variant.
+Create responses signal lifecycle (201 new / 200 reused / 202 building / 503 build-failed / 409
+source-changed). Branch stays `pending` — activation remains a later sprint.

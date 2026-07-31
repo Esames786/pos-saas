@@ -171,6 +171,53 @@ base pairing 27/27, HARDEN-1 14/14, HARDEN-2 11/11, cloud POS 200, Print Agents 
 tenants tb=0/neg=0/dept=0, zero snapshot/section/device residue, `offline_edge` on 0 plans,
 flag off.
 
-## 10. Next
+## 10. HARDEN-2 (2026-08-01) — final activation-gate closure
+1. **Tenant device-limit + active-subscription in the contract.** `checkContract` (the pure
+   contract, shared by create and acknowledge) now also blocks when the tenant's active-device
+   count exceeds the current licensed `max_active_edge_devices` (**409
+   `EDGE_BOOTSTRAP_DEVICE_LIMIT_REACHED`**), reusing `EdgePairingService`'s single source of
+   truth. A **cancelled/lapsed subscription** blocks acknowledgment (via the canonical
+   `tenantHasOfflineEdgeAccess()`) — both proven: cancel-after-creation and plan-reduced-below-
+   count → ack blocked, device not `ready`.
+2. **Final contract re-check under the lock.** Create re-checks the full contract immediately
+   before publishing a built snapshot ready; acknowledge re-checks it inside the master
+   transaction (device + snapshot locked) immediately before writing `ready` — proven the
+   contract check runs twice per ack (initial + under-lock). The cross-DB boundary is: master
+   security mutations commit atomically under the device lock; the tenant-DB branch state is a
+   pre-lock read re-validated by the under-lock contract check. Reconciliation of a residual
+   drift is handled by the existing pairing markers.
+3. **Nullable locked model.** `revalidateLocked(?EdgeDevice ...)` — a missing/deleted locked row
+   is a controlled `DEVICE_REVOKED`, never a `TypeError`/500 (proven).
+4. **True source-change detection.** After the REPEATABLE-READ build transaction closes, a
+   **fresh live revision** is read on a purged/reconnected tenant connection; the snapshot
+   publishes ready only when `claim == txn == live`. A forced mutation committed during the
+   build (external connection) is caught → **`SOURCE_CHANGED`**, no ready snapshot published
+   (proven with a deterministic in-build mutation hook).
+5. **Role-assignment revision.** `model_has_roles` is hashed as ordered **`model_id:role_id`
+   pairs** (not role_id values alone) — proven a role **swap** between two branch users (same
+   role multiset) now changes the revision.
+6. **Complete reference coherence.** An included ACTIVE variant set is computed; barcodes and
+   branch-prices with a `product_variant_id` must reference an included variant; a combo ships
+   only if **every** component references an included product + included variant (else the
+   whole combo is dropped); modifiers ship only when their `linked_product_id` is included.
+   Proven: an excluded product's combo is dropped whole and no barcode/price references a
+   non-emitted variant.
+7. **Server-side stored-payload verification.** `sectionPayload` decompresses and hashes the
+   stored bytes and compares to `content_hash` **before** recording delivery — a corrupted
+   at-rest payload throws **`EDGE_BOOTSTRAP_SECTION_CORRUPTED`** (503) and is never marked
+   delivered, so acknowledgment stays impossible even when a dishonest client echoes the
+   manifest hashes (proven). `delivered_hash` stores the **verified** byte hash; the attempts
+   counter is incremented atomically (`attempts = attempts + 1`) to avoid lost increments.
+8. **HTTP-certified lifecycle + ordered races.** Real HTTP: 201 new / 200 reused / **202
+   `EDGE_BOOTSTRAP_BUILD_IN_PROGRESS`** / **503 `EDGE_BOOTSTRAP_BUILD_FAILED`** (no SQL leaked)
+   / partial ack **409 `EDGE_BOOTSTRAP_INCOMPLETE`**. Ordered **revoke-vs-acknowledge** forced
+   both ways: revoke-first → ack 401; ack-first → ack 200 then revoke → final device `revoked`
+   — the device is **never left `ready` after a revoke**, zero 500s.
+
+HARDEN-2 QA: service 16/16 + HARDEN-1 service 34/34 (no regression) + HTTP lifecycle/ordered-
+race certs + regression pairing 27/27, HARDEN-1 14/14, HARDEN-2 11/11, cloud POS 200, Print
+Agents 200; 7/7 tenants tb=0/neg=0/dept=0, zero residue, `offline_edge` on 0 plans, flag off.
+
+## 11. Next
 A readiness/activation sprint: after bootstrap + local receipt/KOT readiness, promote the
 branch `pending → active` (Local POS) under explicit checks. Bootstrap alone never activates.

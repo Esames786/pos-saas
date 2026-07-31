@@ -24,6 +24,9 @@ class EdgeBootstrapException extends RuntimeException
     public const SOURCE_CHANGED       = 'EDGE_BOOTSTRAP_SOURCE_CHANGED';
     public const INCOMPLETE           = 'EDGE_BOOTSTRAP_INCOMPLETE';
     public const SECTION_HASH_MISMATCH = 'EDGE_BOOTSTRAP_SECTION_HASH_MISMATCH';
+    // HARDEN-2: tenant-wide license + server-side stored-payload integrity
+    public const DEVICE_LIMIT_REACHED = 'EDGE_BOOTSTRAP_DEVICE_LIMIT_REACHED';
+    public const SECTION_CORRUPTED    = 'EDGE_BOOTSTRAP_SECTION_CORRUPTED';
 
     public function __construct(public readonly string $bootstrapCode, ?string $message = null)
     {
@@ -49,6 +52,8 @@ class EdgeBootstrapException extends RuntimeException
             self::SOURCE_CHANGED       => 'Source data changed during build. Request a new snapshot.',
             self::INCOMPLETE           => 'Not all required sections have been downloaded and verified.',
             self::SECTION_HASH_MISMATCH => 'A downloaded section hash does not match the manifest.',
+            self::DEVICE_LIMIT_REACHED => 'The licensed Edge device limit has been exceeded.',
+            self::SECTION_CORRUPTED    => 'A stored bootstrap section failed integrity verification. Request a new snapshot.',
             default                    => 'Bootstrap is not available for this device.',
         };
     }
@@ -59,10 +64,10 @@ class EdgeBootstrapException extends RuntimeException
             self::DEVICE_REVOKED    => 401,
             self::NOT_ALLOWED       => 403,
             self::SNAPSHOT_NOT_FOUND => 404,
-            self::BRANCH_NOT_PENDING, self::INCOMPLETE, self::SOURCE_CHANGED => 409,
+            self::BRANCH_NOT_PENDING, self::INCOMPLETE, self::SOURCE_CHANGED, self::DEVICE_LIMIT_REACHED => 409,
             self::SNAPSHOT_EXPIRED  => 410,
             self::BUILD_IN_PROGRESS => 202,
-            self::BUILD_FAILED      => 503,
+            self::BUILD_FAILED, self::SECTION_CORRUPTED => 503,
             default                 => 422, // hash mismatch / section-hash mismatch / unsupported schema
         };
     }
