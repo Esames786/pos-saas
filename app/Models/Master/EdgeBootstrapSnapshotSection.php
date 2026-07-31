@@ -12,7 +12,9 @@ class EdgeBootstrapSnapshotSection extends Model
 {
     protected $connection = 'master';
 
-    protected $fillable = ['snapshot_id', 'name', 'content_hash', 'row_count', 'payload_gz'];
+    protected $fillable = ['snapshot_id', 'name', 'content_hash', 'row_count', 'payload_gz', 'downloaded_at', 'delivered_hash', 'attempts'];
+
+    protected $casts = ['downloaded_at' => 'datetime', 'attempts' => 'integer'];
 
     /** The canonical JSON string (decompressed) — identical bytes on every read (immutable). */
     public function json(): string

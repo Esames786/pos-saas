@@ -120,6 +120,57 @@ revoked 401, tampered 422; **2-process concurrent create → one converged snaps
 base pairing 27/27, HARDEN-1 14/14, HARDEN-2 11/11, cloud POS 200, Print Agents 200. 7/7 tenants
 tb=0/neg=0/dept=0; no snapshot/device/code/marker residue; `offline_edge` on 0 plans; flag off.
 
-## 9. Next
+## 9. HARDEN-1 (2026-07-31) — acknowledgment, complete delivery, consistency
+Closed the review blockers before activation:
+1. **One shared contract.** `assertContract($device)` is the single re-check used by BOTH
+   create and acknowledge — device active-slot/not-revoked/status, subscription + entitlement
+   + `EDGE_FEATURE_ENABLED`, the device is still the **current** active device for its
+   tenant+branch, and branch is `pending`. Proven: removing entitlement / turning the flag
+   off / suspending the branch / a replacement device / a revoked device **all block ack**,
+   and none moves the device to `ready`.
+2. **Race-safe device state.** Create and acknowledge now re-fetch the device **`lockForUpdate`**
+   and re-validate the FRESH locked row (never a stale pre-lock model); acknowledge also locks
+   the snapshot. Real two-process races: revoke-vs-acknowledge and revoke-vs-create → the
+   revoked device is **never resurrected to `ready`**, no usable snapshot for a device revoked
+   before the locked check, **zero 500s**.
+3. **Complete-download tracking.** New per-section columns (`downloaded_at`, `delivered_hash`,
+   `attempts`); fetching one section no longer marks the snapshot downloaded (only when EVERY
+   section is fetched). Acknowledge requires a **complete section-hash receipt map** verified
+   against the immutable manifest: missing/extra sections → 409 `EDGE_BOOTSTRAP_INCOMPLETE`,
+   wrong hash → 422 `EDGE_BOOTSTRAP_SECTION_HASH_MISMATCH`; every required section must have
+   actually been delivered. Repeated downloads are idempotent (single receipt, `attempts++`).
+4. **Guaranteed tenancy cleanup.** Every `TenancyManager::activate()` is paired with a
+   `finally { deactivate() }` in create and acknowledge — proven that after a FAILED and a
+   SUCCESSFUL bootstrap op the default connection is `master` and no `tenant` binding remains.
+5. **Consistent read boundary.** All tenant sections are built inside ONE tenant transaction
+   (MySQL REPEATABLE READ) — proven a concurrently committed insert is not visible inside the
+   build txn. The source revision is computed inside the same boundary; if it moved between
+   the claim and the build, the build is failed as `EDGE_BOOTSTRAP_SOURCE_CHANGED` (retryable)
+   rather than publishing a stale/mixed snapshot.
+6. **Complete source revision.** The watermark now includes `terminal_printer_settings` and
+   `model_has_roles` (+ all emitted tables) — proven a terminal-printer-mapping change yields a
+   new revision / new snapshot instead of an incorrect reuse.
+7. **Build-lifecycle responses.** New ready → **201**, reused ready/downloaded/acknowledged →
+   **200**, still building → **202 `EDGE_BOOTSTRAP_BUILD_IN_PROGRESS`**, failed →
+   **503 `EDGE_BOOTSTRAP_BUILD_FAILED`**, source changed → **409** retryable. Raw SQL/internal
+   errors are never exposed.
+8. **Tightened data policy.** Products = active **and** sellable **and** POS-visible only;
+   variants/barcodes/branch-prices constrained to the included product set (no orphans);
+   payments = **cash only** (card/wallet/bank/cheque excluded); delivery = **own only**
+   (aggregator excluded); a `restrictions` section documents the blocked capabilities. Proven:
+   no inactive/non-POS product, orphan variant/barcode/price, non-cash payment, or aggregator
+   channel is emitted.
+9. **Integrity certified.** `X-Content-SHA256` == SHA-256(response JSON) == manifest section
+   hash for all sections, and **gzip transport is hash-invariant** (28/28 sections clean). A
+   corrupted stored section is client-detectable (served hash ≠ manifest) and its acknowledgment
+   is rejected `SECTION_HASH_MISMATCH`.
+
+HARDEN-1 QA: service 34/34 + HTTP (201 new / 200 reused, complete ack→ready, gzip 28/28,
+corruption detection, 2-process revoke-vs-ack and revoke-vs-create with 0×500) + regression
+base pairing 27/27, HARDEN-1 14/14, HARDEN-2 11/11, cloud POS 200, Print Agents 200; 7/7
+tenants tb=0/neg=0/dept=0, zero snapshot/section/device residue, `offline_edge` on 0 plans,
+flag off.
+
+## 10. Next
 A readiness/activation sprint: after bootstrap + local receipt/KOT readiness, promote the
 branch `pending → active` (Local POS) under explicit checks. Bootstrap alone never activates.

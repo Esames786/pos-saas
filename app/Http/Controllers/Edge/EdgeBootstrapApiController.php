@@ -36,15 +36,25 @@ class EdgeBootstrapApiController extends Controller
     /** POST /api/edge/bootstrap/snapshots */
     public function create(Request $request)
     {
-        $snapshot = $this->bootstrap->createOrReuse($this->device($request));
+        $result   = $this->bootstrap->createOrReuse($this->device($request));
+        $snapshot = $result['snapshot'];
+
+        // Build-lifecycle status codes: new ready = 201, reused ready = 200, still building
+        // = 202, failed = 503 (SOURCE_CHANGED is thrown by the service as a retryable 409).
+        if ($snapshot->status === \App\Models\Master\EdgeBootstrapSnapshot::STATUS_BUILDING) {
+            throw \App\Exceptions\EdgeBootstrapException::of(\App\Exceptions\EdgeBootstrapException::BUILD_IN_PROGRESS);
+        }
+        if ($snapshot->status === \App\Models\Master\EdgeBootstrapSnapshot::STATUS_FAILED) {
+            throw \App\Exceptions\EdgeBootstrapException::of(\App\Exceptions\EdgeBootstrapException::BUILD_FAILED);
+        }
 
         return response()->json([
-            'snapshot_uuid' => $snapshot->public_uuid,
-            'status'        => $snapshot->status,
+            'snapshot_uuid'  => $snapshot->public_uuid,
+            'status'         => $snapshot->status,
             'schema_version' => $snapshot->schema_version,
-            'manifest_hash' => $snapshot->manifest_hash,
-            'expires_at'    => optional($snapshot->expires_at)->toIso8601String(),
-        ], 201);
+            'manifest_hash'  => $snapshot->manifest_hash,
+            'expires_at'     => optional($snapshot->expires_at)->toIso8601String(),
+        ], $result['built'] ? 201 : 200);
     }
 
     /** GET /api/edge/bootstrap/snapshots/{uuid}/manifest */
@@ -80,8 +90,10 @@ class EdgeBootstrapApiController extends Controller
     public function acknowledge(Request $request, string $uuid)
     {
         $data = $request->validate([
-            'schema_version' => ['required', 'string', 'max:40'],
-            'manifest_hash'  => ['required', 'string', 'regex:/^[0-9a-fA-F]{64}$/'],
+            'schema_version'   => ['required', 'string', 'max:40'],
+            'manifest_hash'    => ['required', 'string', 'regex:/^[0-9a-fA-F]{64}$/'],
+            'sections'         => ['required', 'array', 'min:1'],           // name => sha256 receipt
+            'sections.*'       => ['required', 'string', 'regex:/^[0-9a-fA-F]{64}$/'],
         ]);
 
         $snapshot = $this->ownedSnapshot($request, $uuid);
@@ -90,6 +102,7 @@ class EdgeBootstrapApiController extends Controller
             $snapshot,
             $data['schema_version'],
             strtolower($data['manifest_hash']),
+            array_map('strtolower', $data['sections']),
         );
 
         return response()->json($result, 200);

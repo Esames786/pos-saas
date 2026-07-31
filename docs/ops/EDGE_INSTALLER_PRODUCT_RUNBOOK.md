@@ -258,3 +258,17 @@ cloud sales keep working — Local POS activation is a later readiness sprint. S
 branch-scoped and carry no finance/cost data, no other branches, and no staff password hashes or
 tokens (local staff auth/PINs are not part of v1). Snapshots expire (72h default); a revoked
 device can neither download nor acknowledge.
+
+---
+
+## Update — BRANCH-BOOTSTRAP-SNAPSHOT-HARDEN-1 (2026-07-31)
+The Edge box must download EVERY manifest section and then acknowledge with a complete
+section-hash receipt map (`{name: sha256}`) plus the manifest hash and schema version.
+Partial downloads are rejected (409 `EDGE_BOOTSTRAP_INCOMPLETE`); a wrong section hash →
+422 `EDGE_BOOTSTRAP_SECTION_HASH_MISMATCH`. Create responses now signal lifecycle: 201 new /
+200 reused / 202 building / 503 build-failed / 409 source-changed (retryable). The offline
+snapshot carries **cash payments only** and **own/manual delivery only** (card/wallet/bank/
+cheque and aggregator channels are excluded in v1) plus a `restrictions` section listing
+blocked capabilities the Edge must enforce. Acknowledgment re-checks the full entitlement/
+subscription/flag/branch-pending contract and is race-safe against device revocation (a revoked
+device can never become `ready`). Branch still stays `pending` — activation is a later sprint.
