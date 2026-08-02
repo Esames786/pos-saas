@@ -1978,9 +1978,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 tax_amount:         lineTax(product, addQty, price, 0),
                 product:            product,
                 variant:            variant || null,
-                _dbLineId:          line.id || null,
-                kot_sent:           !!line.kot_sent,
-                kot_sent_quantity:  Number(line.kot_sent_quantity || 0),
+                _dbLineId:          null,
+                kot_sent:           false,
+                kot_sent_quantity:  0,
             });
         }
 
