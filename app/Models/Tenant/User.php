@@ -13,6 +13,13 @@ class User extends Authenticatable
 {
     use Notifiable, HasRoles;
 
+    public const ORDER_TYPES = [
+        'dine_in' => 'Dine In',
+        'takeaway' => 'Takeaway',
+        'quick_sale' => 'Quick Sale',
+        'delivery' => 'Delivery',
+    ];
+
     protected $connection = 'tenant';
 
     protected $fillable = [
@@ -23,6 +30,8 @@ class User extends Authenticatable
         'phone',
         'default_branch_id',
         'default_terminal_id',
+        'allowed_order_types',
+        'default_order_type',
         'status',
         'force_password_change',
         'last_login_at',
@@ -41,7 +50,32 @@ class User extends Authenticatable
             'email_verified_at'     => 'datetime',
             'last_login_at'         => 'datetime',
             'force_password_change' => 'boolean',
+            'allowed_order_types'    => 'array',
         ];
+    }
+
+    public function effectiveAllowedOrderTypes(): array
+    {
+        $allowed = array_values(array_intersect(
+            array_keys(self::ORDER_TYPES),
+            $this->allowed_order_types ?: array_keys(self::ORDER_TYPES)
+        ));
+
+        return $allowed ?: array_keys(self::ORDER_TYPES);
+    }
+
+    public function allowsOrderType(string $orderType): bool
+    {
+        return in_array($orderType, $this->effectiveAllowedOrderTypes(), true);
+    }
+
+    public function effectiveDefaultOrderType(): string
+    {
+        $allowed = $this->effectiveAllowedOrderTypes();
+
+        return in_array($this->default_order_type, $allowed, true)
+            ? $this->default_order_type
+            : ($allowed[0] ?? 'quick_sale');
     }
 
     public function scopeActive($query)

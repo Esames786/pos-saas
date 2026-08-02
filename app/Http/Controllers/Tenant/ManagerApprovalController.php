@@ -19,6 +19,12 @@ class ManagerApprovalController extends Controller
             'amount'        => ['nullable', 'numeric'],
             'reason'        => ['nullable', 'string'],
             'payload'       => ['nullable', 'array'],
+            'payload.sales_order_id' => ['nullable', 'integer'],
+            'payload.sales_order_line_id' => ['nullable', 'integer'],
+            'payload.quantity' => ['nullable', 'numeric', 'gt:0'],
+            'payload.cancellations' => ['nullable', 'array', 'min:1'],
+            'payload.cancellations.*.line_id' => ['required_with:payload.cancellations', 'integer'],
+            'payload.cancellations.*.quantity' => ['required_with:payload.cancellations', 'numeric', 'gt:0'],
         ]);
 
         try {

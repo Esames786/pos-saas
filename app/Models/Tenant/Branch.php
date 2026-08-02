@@ -20,6 +20,7 @@ class Branch extends Model
         'is_tax_enabled',
         'show_tax_number_on_invoice',
         'allow_negative_stock',
+        'held_kot_cancellation_approval_mode',
         'receipt_footer',
         'status',
         'sales_operating_mode',
@@ -49,6 +50,9 @@ class Branch extends Model
     public const STATUS_ACTIVE    = 'active';
     public const STATUS_CLOSING   = 'closing';
     public const STATUS_SUSPENDED = 'suspended';
+
+    public const KOT_CANCELLATION_MANAGER_REQUIRED = 'manager_required';
+    public const KOT_CANCELLATION_AUTO_APPROVE = 'auto_approve';
 
     /** This branch runs all sales on a Branch Server (server is the live authority). */
     public function isLocalEdgeActive(): bool

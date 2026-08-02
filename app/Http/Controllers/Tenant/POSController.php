@@ -26,6 +26,8 @@ class POSController extends Controller
 {
     public function index(Request $request)
     {
+        $user = auth('tenant')->user();
+        $allowedOrderTypes = $user?->effectiveAllowedOrderTypes() ?? array_keys(\App\Models\Tenant\User::ORDER_TYPES);
         $branches = Branch::where('status', 'active')->orderBy('name')->get();
 
         $selectedBranchId = (int) (
@@ -60,6 +62,16 @@ class POSController extends Controller
             $tableSession = RestaurantTableSession::with(['table.floor', 'waiter'])
                 ->whereIn('status', ['open', 'bill_requested'])
                 ->find($heldSale->restaurant_table_session_id);
+        }
+
+        $requestedMode = $tableSession || $heldSale?->restaurant_table_session_id
+            ? 'dine_in'
+            : $request->input('mode', $user?->effectiveDefaultOrderType() ?? 'quick_sale');
+        if (!in_array($requestedMode, $allowedOrderTypes, true)) {
+            $requestedMode = $user?->effectiveDefaultOrderType() ?? ($allowedOrderTypes[0] ?? 'quick_sale');
+        }
+        if (($tableSession || $heldSale?->restaurant_table_session_id) && !in_array('dine_in', $allowedOrderTypes, true)) {
+            abort(403, 'Your account is not allowed to use Dine In orders.');
         }
 
         $floors = $this->loadBoardFloors($selectedBranchId);
@@ -286,6 +298,7 @@ class POSController extends Controller
             'waiters'             => $waiters,
             'deliveryChannels'    => $deliveryChannels,
             'deliveryRiders'      => $deliveryRiders,
+            'allowedOrderTypes'   => $allowedOrderTypes,
             'tableSession'        => $tableSession,
             'heldSale'            => $heldSale,
             'terminalPrintConfig' => TerminalPrinterSetting::all()
@@ -294,9 +307,7 @@ class POSController extends Controller
                     'auto_print_receipt' => (bool) $s->auto_print_receipt,
                     'auto_print_kot'     => (bool) $s->auto_print_kot,
                 ]),
-            'activeMode'       => $tableSession || $heldSale?->restaurant_table_session_id
-                ? 'dine_in'
-                : ($request->input('mode', 'quick_sale')),
+            'activeMode'       => $requestedMode,
         ]);
     }
 
@@ -440,6 +451,10 @@ class POSController extends Controller
             'lines.*.discount_amount' => ['nullable', 'numeric', 'min:0'],
             'lines.*.tax_amount'      => ['nullable', 'numeric', 'min:0'],
         ]);
+
+        if (!auth('tenant')->user()?->allowsOrderType($data['order_type'])) {
+            abort(403, 'Your account is not allowed to use this order type.');
+        }
 
         $resolvedLines = collect($data['lines'] ?? [])
             ->filter(fn ($line) => (float) ($line['quantity'] ?? 0) > 0)

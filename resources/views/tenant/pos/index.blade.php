@@ -13,7 +13,7 @@
 
     .pos-card {
         border: 1px solid #edf0f4;
-        border-radius: 22px;
+        border-radius: 8px;
         background: #fff;
         box-shadow: 0 12px 34px rgba(15, 23, 42, .06);
     }
@@ -52,7 +52,9 @@
         border: 1px solid #e9ecef;
         background: #fff;
         border-radius: 999px;
-        padding: .55rem .95rem;
+        min-height: 44px;
+        padding: .6rem 1rem;
+        font-size: .95rem;
         font-weight: 700;
         white-space: nowrap;
         cursor: pointer;
@@ -102,8 +104,8 @@
 
     .product-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
-        gap: .55rem;
+        grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+        gap: .7rem;
         /* POS-UX-1: tighter fit — more products visible per screen */
         max-height: calc(100vh - 300px);
         overflow-y: auto;
@@ -126,10 +128,10 @@
 
     .product-tile {
         border: 1px solid #edf0f4;
-        border-radius: 16px;
+        border-radius: 8px;
         background: linear-gradient(180deg, #ffffff, #fbfcfd);
-        padding: .6rem .7rem;
-        min-height: 112px;
+        padding: .85rem;
+        min-height: 148px;
         cursor: pointer;
         transition: .15s ease;
         text-align: left;
@@ -142,6 +144,9 @@
         box-shadow: 0 14px 30px rgba(15, 23, 42, .10);
         outline: 3px solid rgba(13, 110, 253, .18);
     }
+
+    .product-name { font-size: 1rem; line-height: 1.3; }
+    .product-price { font-size: 1.08rem; }
 
     .product-avatar {
         width: 36px;
@@ -210,8 +215,9 @@
     .pos-actions { flex: 0 0 auto; margin-bottom: 0 !important; }
 
     /* Charge bar — replaces the inline payment panel; opens the payment modal */
-    .pos-charge-bar { flex: 0 0 auto; display: flex; align-items: center; gap: .9rem; padding: .85rem 1.1rem; margin-bottom: 0 !important; }
+    .pos-charge-bar { flex: 0 0 auto; display: flex; align-items: center; gap: .75rem; padding: .6rem .8rem; margin-bottom: 0 !important; }
     .pos-charge-bar .pos-charge-amt { font-size: 1.6rem; font-weight: 800; line-height: 1.1; }
+    .pos-actions .btn { min-height: 42px; padding-top: .45rem; padding-bottom: .45rem; }
 
     details.payment-section { overflow: hidden; }
 
@@ -378,10 +384,11 @@
 {{-- Mode tabs --}}
 <div class="mb-3">
     <div class="mode-tabs" id="mode-tabs-wrapper" role="tablist" aria-label="POS Modes">
-        <button type="button" class="mode-tab {{ $activeMode === 'dine_in'    ? 'active' : '' }}" data-mode-tab="dine_in">Dine In</button>
-        <button type="button" class="mode-tab {{ $activeMode === 'takeaway'   ? 'active' : '' }}" data-mode-tab="takeaway">Takeaway</button>
-        <button type="button" class="mode-tab {{ $activeMode === 'quick_sale' ? 'active' : '' }}" data-mode-tab="quick_sale">Quick Sale</button>
-        <button type="button" class="mode-tab {{ $activeMode === 'delivery'   ? 'active' : '' }}" data-mode-tab="delivery">Delivery</button>
+        @foreach(\App\Models\Tenant\User::ORDER_TYPES as $type => $label)
+            @if(in_array($type, $allowedOrderTypes, true))
+                <button type="button" class="mode-tab {{ $activeMode === $type ? 'active' : '' }}" data-mode-tab="{{ $type }}">{{ $label }}</button>
+            @endif
+        @endforeach
     </div>
 </div>
 
@@ -514,7 +521,7 @@
             <div class="row g-2 mb-2">
                 <div class="col-12">
                     <label for="pos_search" class="form-label small mb-1 visually-hidden">Barcode / Product Search</label>
-                    <input id="pos_search" class="form-control form-control-lg" placeholder="Scan barcode or type product name / SKU  (Ctrl+F)">
+                    <input id="pos_search" class="form-control form-control-lg" placeholder="Scan barcode or type product name / SKU">
                 </div>
             </div>
 
@@ -537,16 +544,8 @@
             </div>
 
             {{-- POS-UX-2: heading + shortcuts on one slim line --}}
-            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-1">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
                 <h2 id="products_heading" class="h6 mb-0">Products</h2>
-                <div class="pos-shortcut-bar mb-0" aria-label="Keyboard shortcuts">
-                    <span><kbd>Ctrl+F</kbd> Search</span>
-                    <span><kbd>Ctrl+Enter</kbd> Pay &amp; Complete</span>
-                    <span><kbd>Ctrl+H</kbd> Hold Sale</span>
-                    <span><kbd>Ctrl+L</kbd> Held Orders</span>
-                    <span><kbd>Ctrl+P</kbd> Payment Method</span>
-                    <span><kbd>Ctrl+M</kbd> Calculator</span>
-                </div>
             </div>
             <div class="product-grid" id="product-grid" aria-live="polite"></div>
         </section>
@@ -557,8 +556,11 @@
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <h2 id="cart_heading" class="h5 mb-0">{{ $tableSession ? 'Table Cart' : 'Cart' }}</h2>
                     <div class="d-flex gap-2">
-                        <button type="button" class="btn btn-sm btn-outline-secondary" id="toggle-calc-btn" title="Toggle Calculator (Ctrl+M)">Calc</button>
-                        <button type="button" class="btn btn-sm btn-outline-danger" id="clear-cart-btn">Clear</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="toggle-calc-btn" title="Calculator"><i class="ti ti-calculator"></i></button>
+                        <button type="button" class="btn btn-sm btn-outline-danger" id="clear-cart-btn" title="Clear cart"><i class="ti ti-trash"></i></button>
+                        <button type="button" class="btn btn-sm btn-outline-dark" id="start-fresh-btn" title="Start another order">
+                            <i class="ti ti-plus me-1"></i><span id="start-fresh-label">New Order</span>
+                        </button>
                     </div>
                 </div>
                 @if($tableSession)
@@ -569,7 +571,7 @@
                     </div>
                 @endif
                 <div class="cart-items" id="cart-items">
-                    <p class="text-muted mb-0"><i class="ti ti-scan me-1"></i>No items yet — scan a barcode or press <kbd>Ctrl+F</kbd> to search.</p>
+                    <p class="text-muted mb-0"><i class="ti ti-scan me-1"></i>No items yet. Scan a barcode or search for a product.</p>
                 </div>
             </section>
 
@@ -607,10 +609,6 @@
                             data-bs-toggle="modal" data-bs-target="#changeOrderModal"
                             disabled>
                         <i class="ti ti-settings me-1"></i>Edit Order
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-dark py-0 px-2" id="start-fresh-btn"
-                            style="font-size:.73rem;white-space:nowrap">
-                        <i class="ti ti-plus me-1"></i>New Order
                     </button>
                 </div>
             </div>
@@ -916,9 +914,11 @@
                     <label class="form-label fw-semibold required">Order Type</label>
                     <div class="d-flex flex-wrap gap-2" id="co-type-btns">
                         @foreach(['quick_sale' => 'Quick Sale','takeaway' => 'Takeaway','dine_in' => 'Dine In','delivery' => 'Delivery'] as $val => $label)
-                            <button type="button" class="btn btn-outline-secondary px-3 py-2 co-type-btn" data-co-type="{{ $val }}">
-                                {{ $label }}
-                            </button>
+                            @if(in_array($val, $allowedOrderTypes, true))
+                                <button type="button" class="btn btn-outline-secondary px-3 py-2 co-type-btn" data-co-type="{{ $val }}">
+                                    {{ $label }}
+                                </button>
+                            @endif
                         @endforeach
                     </div>
                     <input type="hidden" id="co-order-type" value="">
@@ -1086,6 +1086,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const combos     = @json($combosPayload);
     const categories = @json($categories);
     const heldSale   = @json($heldSaleJson);
+    const branchCancellationModes = @json($branches->mapWithKeys(fn ($branch) => [(string) $branch->id => $branch->held_kot_cancellation_approval_mode ?? 'manager_required']));
 
     function buildPosUrl(params) {
         params = params || {};
@@ -1165,6 +1166,7 @@ document.addEventListener('DOMContentLoaded', function () {
         setHidden('restaurant_table_session_id', session.id);
         setHidden('restaurant_table_id', session.table_id || '');
         setCompleteSaleLabel(true);
+        updateStartFreshLabel();
         if (window.history && window.history.replaceState) {
             window.history.replaceState({}, '', buildPosUrl({
                 table_session_id: session.id,
@@ -1232,6 +1234,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const calcDisplay      = document.getElementById('calc-display');
     const orderTypeEl      = document.getElementById('order_type');
     const terminalEl       = document.getElementById('terminal_id');
+    const customerEl       = document.getElementById('customer_id');
 
     /* ── DELIVERY-CHANNELS-1: channel + rider panel ─────────────────── */
 
@@ -1239,6 +1242,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const deliveryChannelEl = document.getElementById('delivery_channel_id');
     const deliveryRiderWrap = document.getElementById('delivery-rider-wrap');
     const deliveryRiderEl   = document.getElementById('delivery_rider_id');
+    const deliveryAddressEl = document.getElementById('delivery_address');
 
     function updateDeliveryPanel() {
         if (!deliveryPanelEl || !orderTypeEl) return;
@@ -1250,8 +1254,6 @@ document.addEventListener('DOMContentLoaded', function () {
         // the rider needs a contact number. Label reflects that.
         const phoneLabel = document.getElementById('phone-label-text');
         if (phoneLabel) phoneLabel.textContent = isDelivery ? 'Customer Phone (needed for delivery)' : 'Customer Phone';
-
-        const deliveryAddressEl = document.getElementById('delivery_address');
 
         if (!isDelivery) {
             // Never post stale channel/rider/address on a non-delivery sale.
@@ -1596,10 +1598,10 @@ document.addEventListener('DOMContentLoaded', function () {
             button.className = 'product-tile' + (isOut && !negOk ? ' stock-out' : '');
             button.innerHTML =
                 '<div class="product-avatar"><i class="ti ti-package"></i></div>' +
-                '<div class="fw-bold mb-1">' + escapeHtml(combo.name) + '</div>' +
+                '<div class="fw-bold mb-1 product-name">' + escapeHtml(combo.name) + '</div>' +
                 '<div class="text-muted small mb-2">' + escapeHtml(combo.code || 'Combo') + '</div>' +
                 '<div class="d-flex justify-content-between align-items-center">' +
-                    '<span class="fw-bold">' + money(combo.price) + '</span>' +
+                    '<span class="fw-bold product-price">' + money(combo.price) + '</span>' +
                     '<span class="stock-badge ' + badgeClass + '">' + badgeText + '</span>' +
                 '</div>' +
                 note;
@@ -1629,10 +1631,10 @@ document.addEventListener('DOMContentLoaded', function () {
             button.className = 'product-tile';
             button.innerHTML =
                 avatarHtml +
-                '<div class="fw-bold mb-1">' + escapeHtml(product.name) + '</div>' +
+                '<div class="fw-bold mb-1 product-name">' + escapeHtml(product.name) + '</div>' +
                 '<div class="text-muted small mb-2">' + escapeHtml(product.sku || 'No SKU') + '</div>' +
                 '<div class="d-flex justify-content-between align-items-center">' +
-                    '<span class="fw-bold">' + money(price) + '</span>' +
+                    '<span class="fw-bold product-price">' + money(price) + '</span>' +
                     '<span class="stock-badge ' + stockClass + '">' + stockText + '</span>' +
                 '</div>' +
                 (product.is_taxable ? '<div class="small text-muted mt-2">Tax ' + product.tax_rate_percent + '%</div>' : '') +
@@ -1976,6 +1978,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 tax_amount:         lineTax(product, addQty, price, 0),
                 product:            product,
                 variant:            variant || null,
+                _dbLineId:          line.id || null,
+                kot_sent:           !!line.kot_sent,
+                kot_sent_quantity:  Number(line.kot_sent_quantity || 0),
             });
         }
 
@@ -1995,12 +2000,135 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    function upsertVoidItem(item, quantity, voidData) {
+        window._voidItems = (window._voidItems || []).filter(function (entry) {
+            return Number(entry.old_line_id) !== Number(item._dbLineId);
+        });
+        if (quantity > 0) {
+            window._voidItems.push({
+                old_line_id: item._dbLineId,
+                quantity: quantity,
+                reason_id: voidData.reason_id,
+                manager_approval_id: voidData.manager_approval_id,
+                product_name: item.product_name || item.product?.name || '',
+            });
+        }
+    }
+
+    function applyItemQuantity(index, newQuantity) {
+        const item = cart[index];
+        if (!item) return;
+        if (newQuantity <= 0.0001) {
+            if (item.line_kind === 'combo_header') {
+                cart = cart.filter(function (row) { return row.key !== item.key && row.parent_key !== item.key; });
+            } else {
+                cart.splice(index, 1);
+            }
+        } else {
+            item.quantity = newQuantity;
+            if (item.line_kind === 'combo_header') updateComboComponents(item.key);
+        }
+        renderCart();
+    }
+
+    function requestComboQuantity(index, newQuantity) {
+        const header = cart[index];
+        const components = cart.filter(function (row) {
+            return row.line_kind === 'component' && row.parent_key === header.key;
+        });
+        const cancellations = components.map(function (component) {
+            const sent = Number(component.kot_sent_quantity || (component.kot_sent ? component.quantity : 0) || 0);
+            const target = Math.max(Number(component.combo_component_qty || 0) * Math.max(newQuantity, 0), 0);
+            return {
+                item: component,
+                line_id: Number(component._dbLineId || 0),
+                quantity: Math.max(sent - Math.min(target, sent), 0),
+            };
+        }).filter(function (entry) { return entry.quantity > 0.000001; });
+
+        if (!cancellations.length) {
+            applyItemQuantity(index, newQuantity);
+            return;
+        }
+        if (!_currentHeldSaleId || cancellations.some(function (entry) { return !entry.line_id; })) {
+            toast('error', 'Recall the held order before cancelling a deal already sent to kitchen.');
+            return;
+        }
+        if (!voidReasons.length) {
+            toast('error', 'Configure an active void reason before cancelling KOT items.');
+            return;
+        }
+
+        const options = {};
+        voidReasons.forEach(function (reason) { options[reason.id] = reason.name; });
+        Swal.fire({
+            title: 'Cancel Sent Deal Quantity',
+            text: 'Select a reason. The kitchen will receive cancellation lines for every affected deal component.',
+            input: 'select',
+            inputOptions: options,
+            inputPlaceholder: 'Select reason',
+            showCancelButton: true,
+            confirmButtonText: 'Continue',
+            inputValidator: function (value) { return value ? undefined : 'Select a cancellation reason'; },
+        }).then(function (result) {
+            if (!result.isConfirmed) return;
+            const reasonId = result.value;
+            const finish = function (approvalId) {
+                cancellations.forEach(function (entry) {
+                    upsertVoidItem(entry.item, entry.quantity, {
+                        reason_id: reasonId,
+                        manager_approval_id: approvalId,
+                    });
+                });
+                applyItemQuantity(index, newQuantity);
+            };
+
+            if (currentCancellationMode() === 'auto_approve') {
+                finish(null);
+                return;
+            }
+
+            const approvalLines = cancellations.map(function (entry) {
+                return { line_id: entry.line_id, quantity: entry.quantity };
+            }).sort(function (a, b) { return a.line_id - b.line_id; });
+            showManagerPinModal('void_kot_items', {
+                sales_order_id: _currentHeldSaleId,
+                cancellations: approvalLines,
+            }, finish);
+        });
+    }
+
+    function requestItemQuantity(index, newQuantity) {
+        const item = cart[index];
+        if (!item) return;
+        if (item.line_kind === 'combo_header') {
+            requestComboQuantity(index, newQuantity);
+            return;
+        }
+        const sentQuantity = Number(item.kot_sent_quantity || (item.kot_sent ? item.quantity : 0) || 0);
+        const cancelQuantity = Math.max(sentQuantity - Math.min(Math.max(newQuantity, 0), sentQuantity), 0);
+
+        if (cancelQuantity <= 0.000001) {
+            if (item._dbLineId) upsertVoidItem(item, 0, {});
+            applyItemQuantity(index, newQuantity);
+            return;
+        }
+        if (!_currentHeldSaleId || !item._dbLineId) {
+            toast('error', 'Recall the held order before cancelling an item already sent to kitchen.');
+            return;
+        }
+        showVoidReasonModal(index, cancelQuantity, function (voidData) {
+            upsertVoidItem(item, cancelQuantity, voidData);
+            applyItemQuantity(index, newQuantity);
+        });
+    }
+
     function renderCart() {
         cartItemsEl.innerHTML = '';
         updateCartActionStates();
 
         if (!cart.length) {
-            cartItemsEl.innerHTML = '<p class="text-muted mb-0"><i class="ti ti-scan me-1"></i>No items yet — scan a barcode or press <kbd>Ctrl+F</kbd> to search.</p>';
+            cartItemsEl.innerHTML = '<p class="text-muted mb-0"><i class="ti ti-scan me-1"></i>No items yet. Scan a barcode or search for a product.</p>';
             updateTotals();
             return;
         }
@@ -2030,6 +2158,17 @@ document.addEventListener('DOMContentLoaded', function () {
             var editBtnHtml = canEditModifiers
                 ? '<button type="button" class="btn btn-sm btn-outline-secondary" data-edit-mod="' + index + '" title="Edit options"><i class="ti ti-adjustments-horizontal"></i></button>'
                 : '';
+            var sentToKitchen = Number(item.kot_sent_quantity || 0) > 0;
+            if (item.line_kind === 'combo_header') {
+                sentToKitchen = cart.some(function (child) {
+                    return child.parent_key === item.key
+                        && child.line_kind === 'component'
+                        && Number(child.kot_sent_quantity || 0) > 0;
+                });
+            }
+            var removeBtnHtml = sentToKitchen
+                ? '<button type="button" class="btn btn-sm btn-outline-warning" data-remove="' + index + '" title="Cancel kitchen item"><i class="ti ti-receipt-off"></i></button>'
+                : '<button type="button" class="btn btn-sm btn-outline-danger" data-remove="' + index + '" title="Remove item"><i class="ti ti-x"></i></button>';
             row.innerHTML =
                 '<div class="d-flex justify-content-between gap-2 mb-2">' +
                     '<div>' +
@@ -2038,8 +2177,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         modifierHtml +
                         componentHtml +
                     '</div>' +
-                    '<div class="d-flex gap-1">' + editBtnHtml +
-                        '<button type="button" class="btn btn-sm btn-outline-danger" data-remove="' + index + '">&times;</button>' +
+                    '<div class="d-flex gap-1">' + editBtnHtml + removeBtnHtml +
                     '</div>' +
                 '</div>' +
                 '<div class="d-flex align-items-center justify-content-between gap-2">' +
@@ -2074,16 +2212,14 @@ document.addEventListener('DOMContentLoaded', function () {
                 } else {
                     newQty = parseFloat(newQty.toFixed(3));
                 }
-                if (newQty <= 0.0001) { cart.splice(i, 1); renderCart(); return; }
+                if (newQty <= 0.0001) { requestItemQuantity(i, 0); return; }
                 var stockQty = availableQty(item.product, item.variant);
                 if (stockQty !== null && newQty > stockQty + 0.0001) {
                     blockAlert(unavailableMessage(item.product, stockQty));
                     input.value = formatQty(item.quantity, item.product);
                     return;
                 }
-                item.quantity = newQty;
-                if (item.line_kind === 'combo_header') updateComboComponents(item.key);
-                renderCart();
+                requestItemQuantity(i, newQty);
             });
         });
 
@@ -2104,19 +2240,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 var i    = Number(btn.dataset.minus);
                 var item = cart[i];
                 var step = qtyStep(item.product);
-                item.quantity = isMeasurableProduct(item.product)
+                const newQuantity = isMeasurableProduct(item.product)
                     ? parseFloat((Number(item.quantity || 0) - step).toFixed(3))
                     : Number(item.quantity || 0) - 1;
-                if (item.quantity <= 0.0001) {
-                    if (item.line_kind === 'combo_header') {
-                        cart = cart.filter(function (row) { return row.key !== item.key && row.parent_key !== item.key; });
-                    } else {
-                        cart.splice(i, 1);
-                    }
-                } else if (item.line_kind === 'combo_header') {
-                    updateComboComponents(item.key);
-                }
-                renderCart();
+                requestItemQuantity(i, newQuantity);
             });
         });
         cartItemsEl.querySelectorAll('[data-edit-mod]').forEach(function (btn) {
@@ -2131,26 +2258,13 @@ document.addEventListener('DOMContentLoaded', function () {
             btn.addEventListener('click', function () {
                 const idx = Number(btn.dataset.remove);
                 const item = cart[idx];
-                // If KOT already sent for this item, require void reason
-                if (item && (item.kot_sent || item._dbLineId) && voidReasons.length > 0) {
-                    showVoidReasonModal(idx, function (voidData) {
-                        if (voidData) {
-                            // Record the void for submission
-                            if (!window._voidItems) window._voidItems = [];
-                            window._voidItems.push({
-                                old_line_id:         item._dbLineId || null,
-                                reason_id:           voidData.reason_id,
-                                manager_approval_id: voidData.manager_approval_id,
-                                product_name:        item.product_name || item.product?.name || '',
-                            });
-                        }
-                        if (item.line_kind === 'combo_header') {
-                            cart = cart.filter(function (row) { return row.key !== item.key && row.parent_key !== item.key; });
-                        } else {
-                            cart.splice(idx, 1);
-                        }
-                        renderCart();
-                    });
+                const hasSentComboComponent = item && item.line_kind === 'combo_header' && cart.some(function (child) {
+                    return child.parent_key === item.key
+                        && child.line_kind === 'component'
+                        && Number(child.kot_sent_quantity || 0) > 0;
+                });
+                if (item && (Number(item.kot_sent_quantity || 0) > 0 || hasSentComboComponent)) {
+                    requestItemQuantity(idx, 0);
                 } else {
                     if (item.line_kind === 'combo_header') {
                         cart = cart.filter(function (row) { return row.key !== item.key && row.parent_key !== item.key; });
@@ -2400,6 +2514,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         cart.forEach(function (item, index) {
             var fields = {
+                sales_order_line_id: item._dbLineId || '',
                 product_id:         item.product_id,
                 product_variant_id: item.product_variant_id || '',
                 client_line_key:    item.client_line_key || item.key || '',
@@ -2442,7 +2557,7 @@ document.addEventListener('DOMContentLoaded', function () {
         // Append void_items collected during this session
         const voidItems = window._voidItems || [];
         voidItems.forEach(function (vi, i) {
-            ['old_line_id', 'reason_id', 'manager_approval_id', 'product_name'].forEach(function (f) {
+            ['old_line_id', 'quantity', 'reason_id', 'manager_approval_id', 'product_name'].forEach(function (f) {
                 if (vi[f] !== null && vi[f] !== undefined) {
                     var inp  = document.createElement('input');
                     inp.type = 'hidden';
@@ -2543,11 +2658,16 @@ document.addEventListener('DOMContentLoaded', function () {
     @php $voidReasons = \App\Models\Tenant\VoidReason::where('is_active', true)->get(['id','name','requires_manager_approval']); @endphp
     const voidReasons = @json($voidReasons->values());
 
-    function showVoidReasonModal(lineIndex, callback) {
+    function currentCancellationMode() {
+        const branchId = document.getElementById('branch_id')?.value || '';
+        return branchCancellationModes[String(branchId)] || 'manager_required';
+    }
+
+    function showVoidReasonModal(lineIndex, cancelQuantity, callback) {
         const line = cart[lineIndex];
         let html = '<div class="mb-3"><strong>' + (line.product_name || line.product?.name || 'Item') + '</strong><br><small class="text-muted">This item was already sent to kitchen (KOT). Please select a void reason.</small></div>';
         if (!voidReasons.length) {
-            callback({ reason_id: null, manager_approval_id: null });
+            toast('error', 'Configure an active void reason before cancelling KOT items.');
             return;
         }
         html += '<div class="list-group">';
@@ -2568,10 +2688,14 @@ document.addEventListener('DOMContentLoaded', function () {
                 popup.querySelectorAll('.void-reason-item').forEach(function (btn) {
                     btn.addEventListener('click', function () {
                         const reasonId = btn.dataset.reasonId;
-                        const requiresPin = btn.dataset.requiresPin === '1';
+                        const requiresPin = currentCancellationMode() !== 'auto_approve';
                         Swal.close();
                         if (requiresPin) {
-                            showManagerPinModal('void_item', function (approvalId) {
+                            showManagerPinModal('void_kot_item', {
+                                sales_order_id: _currentHeldSaleId,
+                                sales_order_line_id: line._dbLineId,
+                                quantity: cancelQuantity,
+                            }, function (approvalId) {
                                 callback({ reason_id: reasonId, manager_approval_id: approvalId });
                             }, function () { /* cancelled — do not remove */ });
                         } else {
@@ -2585,7 +2709,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     /* ── Manager PIN Modal ──────────────────────────────────────────── */
 
-    function showManagerPinModal(actionType, onSuccess, onCancel) {
+    function showManagerPinModal(actionType, payload, onSuccess, onCancel) {
         Swal.fire({
             title: 'Manager Approval',
             html: '<p class="text-muted small mb-3">Enter manager PIN to approve this action.</p>' +
@@ -2599,9 +2723,14 @@ document.addEventListener('DOMContentLoaded', function () {
                 return fetch('{{ url('/api/manager-approvals/verify') }}', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
-                    body: JSON.stringify({ pin: pin, action_type: actionType }),
+                    body: JSON.stringify({ pin: pin, action_type: actionType, payload: payload || {} }),
                 })
-                .then(function (res) { return res.json(); })
+                .then(function (res) {
+                    return res.json().then(function (data) {
+                        if (!res.ok) throw new Error(data.message || 'Approval failed');
+                        return data;
+                    });
+                })
                 .then(function (data) {
                     if (!data.ok) { Swal.showValidationMessage(data.message || 'Invalid PIN'); return false; }
                     return data;
@@ -2627,7 +2756,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
     /* ── Cart clear helper ────────────────────────────────────────────── */
 
-    function clearCart() {
+    function clearCart(options) {
+        options = options || {};
+        const preservedSessionId = options.preserveTable ? (document.getElementById('restaurant_table_session_id')?.value || '') : '';
+        const preservedTableId = options.preserveTable ? (document.getElementById('restaurant_table_id')?.value || '') : '';
         rotateSaleUuid();          // SALE-IDEMPOTENCY-1: next sale gets a fresh uuid
         cart = [];
         _currentHeldSaleId = null;
@@ -2648,10 +2780,21 @@ document.addEventListener('DOMContentLoaded', function () {
         if (tblSessionInput) tblSessionInput.value = '';
         const tblIdInput = document.getElementById('restaurant_table_id');
         if (tblIdInput) tblIdInput.value = '';
+        if (options.preserveTable) {
+            if (tblSessionInput) tblSessionInput.value = preservedSessionId;
+            if (tblIdInput) tblIdInput.value = preservedTableId;
+        }
         renderCart();
         updateSplitBillBtn();
         updateRecalledBar();
         unlockOrderControls();
+        updateStartFreshLabel();
+    }
+
+    function updateStartFreshLabel() {
+        const label = document.getElementById('start-fresh-label');
+        const sessionId = document.getElementById('restaurant_table_session_id')?.value || '';
+        if (label) label.textContent = sessionId ? 'Add Round' : 'New Order';
     }
 
     function updateSplitBillBtn() {
@@ -2738,20 +2881,43 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function fireKotSilently(saleId, terminalId) {
         const query = terminalId ? '?terminal_id=' + encodeURIComponent(terminalId) : '';
-        fetch('{{ url('/printing/jobs/kot') }}/' + saleId + query, {
+        return fetch('{{ url('/printing/jobs/kot') }}/' + saleId + query, {
             method: 'POST',
             headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
         })
-        .then(function (res) { return res.json(); })
+        .then(function (res) {
+            return res.json().then(function (data) {
+                if (!res.ok) throw new Error(data.message || 'KOT could not be queued.');
+                return data;
+            });
+        })
         .then(function (data) {
             (data.jobs || []).forEach(function (job) {
                 if (job.fallback || job.printer_type === 'browser') {
                     toast('warning', 'No printer found — opening KOT for manual print');
                     openPreviewTab(job.preview_url);
+                    return;
                 }
+                Object.keys(job.line_quantities || {}).forEach(function (lineId) {
+                    const item = cart.find(function (candidate) {
+                        return Number(candidate._dbLineId) === Number(lineId);
+                    });
+                    if (item) {
+                        item.kot_sent = true;
+                        item.kot_sent_quantity = Math.min(
+                            Number(item.quantity) || 0,
+                            Number(item.kot_sent_quantity || 0) + Number(job.line_quantities[lineId] || 0)
+                        );
+                    }
+                });
             });
+            renderCart();
+            return data;
         })
-        .catch(function () {});
+        .catch(function (error) {
+            toast('error', error.message || 'KOT could not be queued.');
+            return null;
+        });
     }
 
     function handleKotAfterSale(saleId, saleNo, terminalId) {
@@ -2999,6 +3165,16 @@ document.addEventListener('DOMContentLoaded', function () {
                 _lastSaleNo        = saleNo;
                 if (heldInput) heldInput.value = saleId;
 
+                (result.data.lines || []).forEach(function (savedLine) {
+                    const item = cart.find(function (candidate) {
+                        return (candidate.client_line_key || candidate.key || '') === (savedLine.client_line_key || '');
+                    });
+                    if (!item) return;
+                    item._dbLineId = Number(savedLine.id);
+                    item.kot_sent = !!savedLine.kot_sent;
+                    item.kot_sent_quantity = Number(savedLine.kot_sent_quantity || 0);
+                });
+
                 if (result.data.restaurant_table_session_id) {
                     const tblSessInput = document.getElementById('restaurant_table_session_id');
                     if (tblSessInput) tblSessInput.value = result.data.restaurant_table_session_id;
@@ -3031,7 +3207,7 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
-        var html = '<p class="text-muted mb-3">This table has open held orders. Continue an existing order or create a separate one.</p>';
+        var html = '<p class="text-muted mb-3">This table already has an open check. Continue it to add the next kitchen round.</p>';
         html += '<div class="list-group text-start mb-2">';
         orders.forEach(function (order, idx) {
             html += '<button type="button" class="list-group-item list-group-item-action open-order-choice" data-order-index="' + idx + '">' +
@@ -3047,9 +3223,7 @@ document.addEventListener('DOMContentLoaded', function () {
             html:              html,
             icon:              'info',
             showCancelButton:  true,
-            showDenyButton:    true,
             confirmButtonText: 'Continue Latest Order',
-            denyButtonText:    'Create Separate Order',
             cancelButtonText:  'Cancel',
             didOpen: function (popup) {
                 popup.querySelectorAll('.open-order-choice').forEach(function (btn) {
@@ -3062,39 +3236,78 @@ document.addEventListener('DOMContentLoaded', function () {
         }).then(function (result) {
             if (result.isConfirmed && orders[0]) {
                 continueExistingOrder(orders[0], session);
-            } else if (result.isDenied) {
-                // Start a fresh, separate order on this same table — no reload.
-                clearCart();
-                applyTableSession(session);
-                setHidden('create_separate_order', '1');
-                refreshTableBoard(session.id);
-                if (window.history && window.history.replaceState) {
-                    window.history.replaceState({}, '', buildPosUrl({
-                        table_session_id:      session.id,
-                        mode:                  'dine_in',
-                        branch_id:             session.branch_id || (branchEl ? branchEl.value : ''),
-                        create_separate_order: 1,
-                    }));
-                }
             }
         });
     }
 
     /* ── Cancel order button ──────────────────────────────────────────── */
 
+    function requestOrderCancellationDetails(saleId, callback) {
+        if (!voidReasons.length) {
+            toast('error', 'Configure an active void reason before cancelling held orders.');
+            return;
+        }
+        const options = {};
+        voidReasons.forEach(function (reason) { options[reason.id] = reason.name; });
+        Swal.fire({
+            title: 'Cancel Held Order',
+            text: 'Select the reason. Sent quantities will produce a Cancel KOT.',
+            input: 'select',
+            inputOptions: options,
+            inputPlaceholder: 'Select reason',
+            showCancelButton: true,
+            confirmButtonText: 'Continue',
+            confirmButtonColor: '#dc3545',
+            inputValidator: function (value) { return value ? undefined : 'Select a cancellation reason'; },
+        }).then(function (result) {
+            if (!result.isConfirmed) return;
+            const reasonId = result.value;
+            if (currentCancellationMode() === 'auto_approve') {
+                callback({ reason_id: reasonId, manager_approval_id: null });
+                return;
+            }
+            showManagerPinModal('cancel_held_order', { sales_order_id: saleId }, function (approvalId) {
+                callback({ reason_id: reasonId, manager_approval_id: approvalId });
+            });
+        });
+    }
+
+    function submitHeldOrderCancellation(saleId, details) {
+        return fetch('{{ url('/held-sales') }}/' + saleId + '/cancel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
+            body: JSON.stringify(details),
+        }).then(function (response) {
+            return response.json().then(function (data) {
+                if (!response.ok) throw new Error(data.message || Object.values(data.errors || {})[0] || 'Cancellation failed');
+                (data.cancel_kot_jobs || []).forEach(function (job) {
+                    if (job.fallback && job.preview_url) openPreviewTab(job.preview_url);
+                });
+                return data;
+            });
+        });
+    }
+
     document.getElementById('cancel-order-btn').addEventListener('click', function () {
         if (!cart.length && !_currentHeldSaleId) {
             toast('warning', 'Nothing to cancel');
             return;
         }
-        const msg = _currentHeldSaleId
-            ? 'Cancel held sale ' + _currentHeldSaleNo + '?'
-            : 'Clear the current cart?';
-
-        if (typeof Swal !== 'undefined') {
+        if (_currentHeldSaleId && typeof Swal !== 'undefined') {
+            requestOrderCancellationDetails(_currentHeldSaleId, function (details) {
+                submitHeldOrderCancellation(_currentHeldSaleId, details).then(function () {
+                    clearCart();
+                    toast('success', 'Order cancelled and kitchen notified');
+                }).catch(function (error) {
+                    toast('error', error.message || 'Failed to cancel. Try again.');
+                });
+            });
+        } else if (_currentHeldSaleId) {
+            alert('Cancellation controls are unavailable. Reload the POS and try again.');
+        } else if (typeof Swal !== 'undefined') {
             Swal.fire({
-                title:              'Cancel Order?',
-                text:               msg,
+                title:              'Clear Cart?',
+                text:               'Clear the current unsaved cart?',
                 icon:               'warning',
                 showCancelButton:   true,
                 confirmButtonText:  'Yes, Cancel',
@@ -3103,24 +3316,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 reverseButtons:     true,
             }).then(function (res) {
                 if (!res.isConfirmed) return;
-                if (_currentHeldSaleId) {
-                    fetch('{{ url('/held-sales') }}/' + _currentHeldSaleId + '/cancel', {
-                        method:  'POST',
-                        headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
-                        body:    '{}',
-                    }).then(function () {
-                        clearCart();
-                        toast('success', 'Order cancelled');
-                    }).catch(function () {
-                        toast('error', 'Failed to cancel. Try again.');
-                    });
-                } else {
-                    clearCart();
-                    toast('info', 'Cart cleared');
-                }
+                clearCart();
+                toast('info', 'Cart cleared');
             });
         } else {
-            if (!confirm(msg)) return;
+            if (!confirm('Clear the current unsaved cart?')) return;
             clearCart();
         }
     });
@@ -3242,6 +3442,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 tax_amount:         Number(line.tax_amount || 0),
                 product:            lineProduct,
                 variant:            variant || null,
+                _dbLineId:          line.id || null,
+                kot_sent:           !!line.kot_sent,
+                kot_sent_quantity:  Number(line.kot_sent_quantity || 0),
             });
             recalledLineKeys[line.id] = key;
         });
@@ -3291,26 +3494,17 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function cancelHeldSaleFromModal(saleId, saleNo, btn) {
-        if (!confirm('Cancel ' + saleNo + '?')) return;
-        btn.disabled    = true;
-        btn.textContent = '…';
-
-        fetch('{{ url('/held-sales') }}/' + saleId + '/cancel', {
-            method:  'POST',
-            headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
-            body:    '{}',
-        })
-        .then(function (r) { return r.json(); })
-        .then(function () {
-            const row = btn.closest('tr');
-            if (row) row.remove();
-            // If we just cancelled the currently-recalled sale, clear the cart
-            if (_currentHeldSaleId === saleId) clearCart();
-            toast('success', saleNo + ' cancelled');
-        })
-        .catch(function () {
-            btn.disabled    = false;
-            btn.textContent = 'Cancel';
+        requestOrderCancellationDetails(saleId, function (details) {
+            btn.disabled = true;
+            submitHeldOrderCancellation(saleId, details).then(function () {
+                const row = btn.closest('tr');
+                if (row) row.remove();
+                if (Number(_currentHeldSaleId) === Number(saleId)) clearCart();
+                toast('success', saleNo + ' cancelled and kitchen notified');
+            }).catch(function (error) {
+                btn.disabled = false;
+                toast('error', error.message || 'Cancellation failed');
+            });
         });
     }
 
@@ -3319,16 +3513,26 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     document.getElementById('start-fresh-btn').addEventListener('click', function () {
+        const preserveTable = !!(document.getElementById('restaurant_table_session_id')?.value);
+        if (preserveTable) {
+            searchEl.focus();
+            toast('info', 'Add the next round; only new quantities will print on the next KOT.');
+            return;
+        }
         Swal.fire({
             title: 'Start Fresh Order?',
-            html: 'This will unload recalled order <strong>' + _currentHeldSaleNo + '</strong> from the cart.<br>The held sale is still saved and can be recalled again.',
+            html: 'This unloads the recalled order. The held sale remains saved.',
             icon: 'question',
             showCancelButton: true,
-            confirmButtonText: 'Yes, New Order',
+            confirmButtonText: 'New Order',
             cancelButtonText: 'Cancel',
             confirmButtonColor: '#dc3545',
             reverseButtons: true,
-        }).then(function (r) { if (r.isConfirmed) clearCart(); });
+        }).then(function (r) {
+            if (!r.isConfirmed) return;
+            clearCart();
+            setHidden('create_separate_order', '0');
+        });
     });
 
     /* ── Change Order Details modal ──────────────────────────────────── */
@@ -3433,6 +3637,13 @@ document.addEventListener('DOMContentLoaded', function () {
                     window.location.href = '{{ url('/pos') }}?branch_id=' + newBranch + '&mode=' + newType;
                 }
             });
+            return;
+        }
+
+        if (orderTypeEl && newType !== orderTypeEl.value) {
+            bootstrap.Modal.getInstance(changeOrderModalEl).hide();
+            const targetTab = document.querySelector('[data-mode-tab="' + newType + '"]');
+            if (targetTab) applyModeTab(targetTab);
             return;
         }
 
@@ -3959,15 +4170,43 @@ document.addEventListener('DOMContentLoaded', function () {
 
     /* mode tabs — CSS-locked when recalled; click → apply directly when unlocked */
 
-    function applyModeTab(button) {
+    function applyModeTab(button, confirmed) {
         var mode     = button.dataset.modeTab;
         var branchId = branchEl ? branchEl.value : '{{ $selectedBranchId }}';
         var isDineIn = mode === 'dine_in';
+        var currentMode = orderTypeEl ? orderTypeEl.value : '';
 
-        // In-place switch for EVERY mode — no full page reload (cart is preserved).
-        // Always clear table-session / held-sale state so stale data is never posted
-        // when changing order type; dine-in users re-pick a table from the board.
+        if (mode === currentMode) return;
+
+        var hasOrderState = cart.length > 0 || !!_currentHeldSaleId
+            || !!document.getElementById('restaurant_table_session_id')?.value;
+        if (hasOrderState && !confirmed) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Start a fresh ' + button.textContent.trim() + ' order?',
+                text: 'The current cart, recalled order, table, customer and payment details will be cleared.',
+                showCancelButton: true,
+                confirmButtonText: 'Start Fresh',
+                confirmButtonColor: '#d4a72c',
+            }).then(function (result) {
+                if (result.isConfirmed) applyModeTab(button, true);
+            });
+            return;
+        }
+
+        clearCart();
         clearTableStateInputs();
+
+        if (customerEl) customerEl.value = '';
+        var customerName = document.getElementById('customer_name');
+        var customerPhone = document.getElementById('customer_phone');
+        if (customerName) customerName.value = '';
+        if (customerPhone) customerPhone.value = '';
+        if (deliveryChannelEl) deliveryChannelEl.value = '';
+        if (deliveryRiderEl) deliveryRiderEl.value = '';
+        if (deliveryAddressEl) deliveryAddressEl.value = '';
+        if (transactionRefEl) transactionRefEl.value = '';
+        if (tenderedEl) tenderedEl.value = '0.00';
 
         // Switching mode de-selects any active table → hide its bar + reset the pay button.
         var sessionBar = document.getElementById('pos-session-bar');
@@ -3976,6 +4215,8 @@ document.addEventListener('DOMContentLoaded', function () {
             sessionBar.classList.add('d-none');
         }
         setCompleteSaleLabel(false);
+        updateRecalledBar();
+        updateStartFreshLabel();
 
         // Hidden order_type drives checkout + the totals/service-charge quote.
         if (orderTypeEl) orderTypeEl.value = mode;
@@ -4253,6 +4494,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 variant:            variant || null,
                 _dbLineId:          line.id || null,
                 kot_sent:           !!line.kot_sent,
+                kot_sent_quantity:  Number(line.kot_sent_quantity || 0),
             });
             preloadedLineKeys[line.id] = key;
         });
@@ -4269,6 +4511,7 @@ document.addEventListener('DOMContentLoaded', function () {
     renderCart();
     updateSplitBillBtn();
     updateRecalledBar();
+    updateStartFreshLabel();
     if (_currentHeldSaleId) lockOrderControls();
 });
 </script>

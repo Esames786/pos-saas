@@ -7,7 +7,6 @@ use App\Models\Tenant\Branch;
 use App\Models\Tenant\Customer;
 use App\Models\Tenant\DeliveryChannel;
 use App\Models\Tenant\DeliveryRider;
-use App\Models\Tenant\ManagerApproval;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\ProductVariant;
 use App\Models\Tenant\RestaurantTable;
@@ -15,8 +14,10 @@ use App\Models\Tenant\RestaurantTableSession;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\Terminal;
 use App\Services\Sales\SalesTotalsService;
+use App\Services\Sales\KotCancellationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class HeldSaleController extends Controller
@@ -209,7 +210,7 @@ class HeldSaleController extends Controller
         ));
     }
 
-    public function store(Request $request, SalesTotalsService $totalsService)
+    public function store(Request $request, SalesTotalsService $totalsService, KotCancellationService $cancellationService)
     {
         $data = $request->validate([
             'held_sale_id'                => 'nullable|exists:sales_orders,id',
@@ -231,6 +232,7 @@ class HeldSaleController extends Controller
             'notes'                       => 'nullable|string',
             'lines'                       => 'required|array|min:1',
             'lines.*.product_id'          => 'required_with:lines.*.quantity|nullable|exists:products,id',
+            'lines.*.sales_order_line_id' => 'nullable|integer',
             'lines.*.product_variant_id'  => 'nullable|exists:product_variants,id',
             'lines.*.client_line_key'      => 'nullable|string|max:120',
             'lines.*.parent_client_line_key' => 'nullable|string|max:120',
@@ -242,13 +244,18 @@ class HeldSaleController extends Controller
             'lines.*.modifiers'           => 'nullable|string',
             'void_items'                  => 'nullable|array',
             'void_items.*.old_line_id'    => 'nullable|integer',
-            'void_items.*.reason_id'      => 'nullable|exists:void_reasons,id',
+            'void_items.*.reason_id'      => 'required_with:void_items.*.old_line_id|exists:void_reasons,id',
+            'void_items.*.quantity'       => 'required_with:void_items.*.old_line_id|numeric|gt:0',
             'void_items.*.manager_approval_id' => 'nullable|exists:manager_approvals,id',
             'void_items.*.product_name'   => 'nullable|string',
             'create_separate_order'       => 'nullable|boolean',
         ]);
 
         $data = $this->validateDeliveryAttribution($data);
+
+        if (!auth('tenant')->user()?->allowsOrderType($data['order_type'])) {
+            abort(403, 'Your account is not allowed to use this order type.');
+        }
 
         // BRANCH-OPERATING-MODE-1: block cloud held-sale mutation for an active Local POS branch.
         app(\App\Services\Edge\BranchOperatingModeService::class)
@@ -288,14 +295,27 @@ class HeldSaleController extends Controller
             tipAmount:     0,
         );
 
+        return DB::connection('tenant')->transaction(function () use (
+            $request,
+            $data,
+            $lines,
+            $totals,
+            $cancellationService,
+        ) {
+
         $tableSession = null;
         if (!empty($data['restaurant_table_session_id'])) {
-            $tableSession = RestaurantTableSession::with('table')->find($data['restaurant_table_session_id']);
+            $tableSession = RestaurantTableSession::with('table')
+                ->where('branch_id', $data['branch_id'])
+                ->lockForUpdate()
+                ->find($data['restaurant_table_session_id']);
             $data['order_type'] = 'dine_in';
         } elseif (!empty($data['restaurant_table_id'])) {
             $tableSession = RestaurantTableSession::with('table')
+                ->where('branch_id', $data['branch_id'])
                 ->where('restaurant_table_id', $data['restaurant_table_id'])
                 ->whereIn('status', ['open', 'bill_requested'])
+                ->lockForUpdate()
                 ->latest('opened_at')
                 ->first();
 
@@ -314,8 +334,19 @@ class HeldSaleController extends Controller
             $data['order_type'] = 'dine_in';
         }
 
+        if ($data['order_type'] === 'dine_in' && !$tableSession) {
+            throw ValidationException::withMessages([
+                'restaurant_table_session_id' => 'Select an open table before saving a dine-in order.',
+            ]);
+        }
+        if ($tableSession && !auth('tenant')->user()?->allowsOrderType('dine_in')) {
+            abort(403, 'Your account is not allowed to use Dine In orders.');
+        }
+
         // Guard: prevent accidental duplicate held sales on the same table session
-        $createSeparateOrder = $request->boolean('create_separate_order');
+        // A table has one cashier-facing open check. Additional kitchen rounds
+        // update that check; split billing remains the explicit separation flow.
+        $createSeparateOrder = false;
 
         if ($tableSession && empty($data['held_sale_id']) && !$createSeparateOrder) {
             $openOrders = $this->tableOpenOrdersPayload($tableSession);
@@ -325,7 +356,7 @@ class HeldSaleController extends Controller
                     return response()->json([
                         'ok'               => false,
                         'code'             => 'TABLE_HAS_OPEN_ORDERS',
-                        'message'          => 'This table already has open held orders. Continue an existing order or intentionally create a separate order.',
+                        'message'          => 'This table already has an open check. Continue it to add the next round.',
                         'table_session_id' => $tableSession->id,
                         'branch_id'        => $tableSession->branch_id,
                         'session'          => $this->sessionPayload($tableSession->loadMissing(['table', 'waiter'])),
@@ -334,38 +365,66 @@ class HeldSaleController extends Controller
                 }
 
                 return redirect(url('/restaurant/table-sessions/' . $tableSession->id . '/bill-preview'))
-                    ->withErrors(['table' => 'This table already has open held orders. Continue an existing order or create a separate order intentionally.']);
+                    ->withErrors(['table' => 'This table already has an open check. Continue it to add the next round.']);
             }
         }
 
         $kotSentKeys = [];
+        $kotSentByLineId = [];
 
         if (!empty($data['held_sale_id'])) {
-            $sale = SalesOrder::where('status', 'held')->findOrFail($data['held_sale_id']);
+            $sale = SalesOrder::where('status', 'held')
+                ->lockForUpdate()
+                ->findOrFail($data['held_sale_id']);
 
-            // Audit removed KOT-sent lines BEFORE deleting them
-            $voidItems = collect($data['void_items'] ?? []);
-            foreach ($voidItems as $voidItem) {
-                ManagerApproval::create([
-                    'approval_no'           => 'VOID-' . now()->format('YmdHis') . '-' . random_int(100, 999),
-                    'action_type'           => 'void_item',
-                    'reference_type'        => 'sales_order_line',
-                    'reference_id'          => $voidItem['old_line_id'] ?? null,
-                    'requested_by_user_id'  => Auth::id(),
-                    'approved_by_user_id'   => $voidItem['manager_approval_id']
-                        ? \App\Models\Tenant\ManagerApproval::find($voidItem['manager_approval_id'])?->approved_by_user_id
-                        : null,
-                    'payload'               => [
-                        'sales_order_id'       => $sale->id,
-                        'sale_no'              => $sale->sale_no,
-                        'product_name'         => $voidItem['product_name'] ?? null,
-                        'void_reason_id'       => $voidItem['reason_id'] ?? null,
-                        'manager_approval_id'  => $voidItem['manager_approval_id'] ?? null,
-                    ],
-                    'reason'                => 'Item removed from held order',
-                    'approved_at'           => now(),
+            if ((int) $sale->branch_id !== (int) $data['branch_id']) {
+                throw ValidationException::withMessages([
+                    'branch_id' => 'A recalled order cannot be moved to another branch.',
                 ]);
             }
+
+            $existingLines = $sale->lines()->get()->keyBy('id');
+            $providedLineIds = $lines->pluck('sales_order_line_id')->filter()->map(fn ($id) => (int) $id)->unique();
+            $foreignLineIds = $providedLineIds->diff($existingLines->keys()->map(fn ($id) => (int) $id));
+            if ($foreignLineIds->isNotEmpty()) {
+                throw ValidationException::withMessages([
+                    'lines' => 'One or more recalled line references do not belong to this order.',
+                ]);
+            }
+            $submittedQuantities = $lines
+                ->filter(fn ($line) => !empty($line['sales_order_line_id']))
+                ->mapWithKeys(fn ($line) => [(int) $line['sales_order_line_id'] => (float) $line['quantity']]);
+            $voidItems = collect($data['void_items'] ?? [])->keyBy(fn ($item) => (int) ($item['old_line_id'] ?? 0));
+            $detectedCancellations = [];
+
+            foreach ($existingLines as $existingLine) {
+                $sentQuantity = (float) $existingLine->kot_sent_quantity;
+                if ($sentQuantity <= 0) {
+                    continue;
+                }
+
+                $newQuantity = (float) $submittedQuantities->get($existingLine->id, 0);
+                $cancelQuantity = max($sentQuantity - min($newQuantity, $sentQuantity), 0);
+                if ($cancelQuantity <= 0) {
+                    continue;
+                }
+
+                $voidItem = $voidItems->get($existingLine->id);
+                if (!$voidItem || abs((float) $voidItem['quantity'] - $cancelQuantity) > 0.000001) {
+                    throw ValidationException::withMessages([
+                        'lines' => "A reason and exact cancellation quantity are required for {$existingLine->product_name} because it was sent to kitchen.",
+                    ]);
+                }
+
+                $detectedCancellations[] = [
+                    'line_id' => $existingLine->id,
+                    'quantity' => $cancelQuantity,
+                    'reason_id' => (int) $voidItem['reason_id'],
+                    'manager_approval_id' => !empty($voidItem['manager_approval_id']) ? (int) $voidItem['manager_approval_id'] : null,
+                ];
+            }
+
+            $cancellationService->recordLineCancellations($sale, $detectedCancellations, (int) auth('tenant')->id());
 
             // BUG-014 FIX: include line_kind in the KOT key so a standalone product
             // and the same product appearing as a combo component never share a key
@@ -383,6 +442,12 @@ class HeldSaleController extends Controller
                         . ':' . ($l->combo_id ?? 0);
                     return [$key => $sentQty];
                 })
+                ->all();
+
+            $kotSentByLineId = $sale->lines()
+                ->where('kot_sent_quantity', '>', 0)
+                ->pluck('kot_sent_quantity', 'id')
+                ->map(fn ($quantity) => (float) $quantity)
                 ->all();
 
             $sale->lines()->delete();
@@ -449,6 +514,7 @@ class HeldSaleController extends Controller
         }
 
         $createdLinesByClientKey = [];
+        $savedLinePayload = [];
 
         foreach ($lines as $line) {
             $product = Product::with('unit')->find($line['product_id']);
@@ -463,7 +529,8 @@ class HeldSaleController extends Controller
                 . ':' . (($line['product_variant_id'] ?? null) ?? 0)
                 . ':' . ($line['line_kind'] ?? 'standard')
                 . ':' . (($line['combo_id'] ?? null) ?? 0);
-            $sentQty   = $kotSentKeys[$kotKey] ?? 0;
+            $oldLineId = !empty($line['sales_order_line_id']) ? (int) $line['sales_order_line_id'] : null;
+            $sentQty   = $oldLineId ? ($kotSentByLineId[$oldLineId] ?? 0) : ($kotSentKeys[$kotKey] ?? 0);
             $newQty    = (float) $line['quantity'];
             $kotSent   = $sentQty > 0 && $newQty <= $sentQty;
             $kotSentQty = min($sentQty, $newQty);
@@ -497,6 +564,12 @@ class HeldSaleController extends Controller
             if (!empty($line['client_line_key'])) {
                 $createdLinesByClientKey[$line['client_line_key']] = $createdLine;
             }
+            $savedLinePayload[] = [
+                'id' => (int) $createdLine->id,
+                'client_line_key' => $line['client_line_key'] ?? null,
+                'kot_sent' => (bool) $createdLine->kot_sent,
+                'kot_sent_quantity' => (float) $createdLine->kot_sent_quantity,
+            ];
         }
 
         if ($request->expectsJson()) {
@@ -504,10 +577,12 @@ class HeldSaleController extends Controller
                 'sale_id'                     => $sale->id,
                 'sale_no'                     => $sale->sale_no,
                 'restaurant_table_session_id' => $sale->restaurant_table_session_id,
+                'lines'                       => $savedLinePayload,
             ]);
         }
 
         return redirect(url('/held-sales'))->with('status', "Held sale {$sale->sale_no} saved.");
+        });
     }
 
     private function validateDeliveryAttribution(array $data): array
@@ -567,22 +642,32 @@ class HeldSaleController extends Controller
             ->values();
     }
 
-    public function cancel(SalesOrder $salesOrder)
+    public function cancel(Request $request, SalesOrder $salesOrder, KotCancellationService $cancellationService)
     {
         app(\App\Services\Edge\BranchOperatingModeService::class)
             ->assertSaleMutationAllowed(\App\Models\Tenant\Branch::findOrFail($salesOrder->branch_id));
 
-        if ($salesOrder->status !== 'held') {
-            if (request()->expectsJson()) {
-                return response()->json(['message' => 'Only held sales can be cancelled.'], 422);
-            }
-            return back()->withErrors(['sale' => 'Only held sales can be cancelled.']);
-        }
+        $data = $request->validate([
+            'reason_id' => ['required', 'integer', 'exists:void_reasons,id'],
+            'manager_approval_id' => ['nullable', 'integer', 'exists:manager_approvals,id'],
+        ]);
 
-        $salesOrder->update(['status' => 'cancelled']);
+        $result = $cancellationService->cancelHeldOrder(
+            $salesOrder,
+            (int) $data['reason_id'],
+            !empty($data['manager_approval_id']) ? (int) $data['manager_approval_id'] : null,
+            (int) auth('tenant')->id(),
+        );
 
         if (request()->expectsJson()) {
-            return response()->json(['ok' => true]);
+            return response()->json([
+                'ok' => true,
+                'cancel_kot_jobs' => collect($result['jobs'])->map(fn ($job) => [
+                    'job_id' => $job->id,
+                    'fallback' => empty($job->printer_id),
+                    'preview_url' => url('/printing/documents/' . $job->id . '/kot'),
+                ])->values(),
+            ]);
         }
 
         return redirect(url('/held-sales'))->with('status', 'Held sale cancelled.');

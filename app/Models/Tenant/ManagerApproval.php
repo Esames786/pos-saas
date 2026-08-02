@@ -19,6 +19,8 @@ class ManagerApproval extends Model
         'payload',
         'reason',
         'approved_at',
+        'consumed_at',
+        'consumed_by_user_id',
     ];
 
     protected function casts(): array
@@ -27,6 +29,7 @@ class ManagerApproval extends Model
             'amount'      => 'decimal:2',
             'payload'     => 'json',
             'approved_at' => 'datetime',
+            'consumed_at' => 'datetime',
         ];
     }
 

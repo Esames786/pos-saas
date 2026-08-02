@@ -459,6 +459,7 @@ class TenantProvisioner
             'tenant.pos.index',
             'tenant.pos.store',
             'tenant.pos.customers.quick-store',
+            'tenant.pos.void-kot-item',
 
             // Sales Orders
             'tenant.sales-orders.index',

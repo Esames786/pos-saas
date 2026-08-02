@@ -227,7 +227,10 @@ class TenantDemoSeeder extends Seeder
         ];
 
         foreach ($branches as $b) {
-            Branch::updateOrCreate(['code' => $b['code']], array_merge($b, ['status' => 'active']));
+            Branch::updateOrCreate(['code' => $b['code']], array_merge($b, [
+                'status' => 'active',
+                'held_kot_cancellation_approval_mode' => $b['code'] === 'CITY' ? 'auto_approve' : 'manager_required',
+            ]));
         }
 
         $this->command->line('  Branches seeded: ' . count($branches));
@@ -325,6 +328,8 @@ class TenantDemoSeeder extends Seeder
                 'role'          => $managerRole,
                 'branch'        => $main,
                 'terminal'      => $t1,
+                'allowed_order_types' => ['dine_in', 'takeaway', 'quick_sale', 'delivery'],
+                'default_order_type' => 'dine_in',
             ],
             [
                 'email'         => 'cashier@demo.com',
@@ -335,6 +340,8 @@ class TenantDemoSeeder extends Seeder
                 'role'          => $cashierRole,
                 'branch'        => $city,
                 'terminal'      => $t2,
+                'allowed_order_types' => ['takeaway', 'quick_sale', 'delivery'],
+                'default_order_type' => 'quick_sale',
             ],
         ];
 
@@ -348,6 +355,8 @@ class TenantDemoSeeder extends Seeder
                     'phone'                 => $ud['phone'],
                     'default_branch_id'     => $ud['branch']?->id,
                     'default_terminal_id'   => $ud['terminal']?->id,
+                    'allowed_order_types'   => $ud['allowed_order_types'],
+                    'default_order_type'    => $ud['default_order_type'],
                     'status'                => $ud['status'],
                     'force_password_change' => false,
                 ]
@@ -371,6 +380,10 @@ class TenantDemoSeeder extends Seeder
         // Also ensure owner has access to all branches
         $owner = User::where('email', 'owner@demo.com')->first();
         if ($owner) {
+            $owner->update([
+                'allowed_order_types' => array_keys(User::ORDER_TYPES),
+                'default_order_type' => 'quick_sale',
+            ]);
             foreach (Branch::all() as $branch) {
                 $owner->branches()->syncWithoutDetaching([
                     $branch->id => ['is_default' => $branch->code === 'MAIN', 'is_active' => true],

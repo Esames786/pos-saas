@@ -90,6 +90,7 @@ class PrintJobController extends Controller
                     'printer_type' => $j->printer?->printer_type ?? 'browser',
                     'preview_url'  => url('/printing/documents/' . $j->id . '/kot'),
                     'fallback'     => empty($j->printer_id),
+                    'line_quantities' => $j->payload['line_quantities'] ?? [],
                 ])->values()->all(),
             ]);
         }

@@ -122,6 +122,16 @@ class SalesOrder extends Model
         return $this->hasMany(SalePayment::class);
     }
 
+    public function kotBatches()
+    {
+        return $this->hasMany(KotBatch::class);
+    }
+
+    public function lineCancellations()
+    {
+        return $this->hasMany(SalesOrderLineCancellation::class);
+    }
+
     public function customerPayments()
     {
         return $this->hasMany(CustomerPayment::class);

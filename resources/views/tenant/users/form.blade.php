@@ -137,6 +137,48 @@
         </div>
     </div>
 
+    <div class="card mb-3">
+        <div class="card-header"><strong>POS Order Types</strong></div>
+        <div class="card-body">
+            @php
+                $savedOrderTypes = $isEdit
+                    ? $user->effectiveAllowedOrderTypes()
+                    : array_keys(\App\Models\Tenant\User::ORDER_TYPES);
+                $selectedOrderTypes = old('allowed_order_types', $savedOrderTypes);
+                $selectedDefaultType = old(
+                    'default_order_type',
+                    $isEdit ? $user->effectiveDefaultOrderType() : 'quick_sale'
+                );
+            @endphp
+            <div class="row g-3 align-items-end">
+                <div class="col-lg-8">
+                    <label class="form-label required">Allowed modes</label>
+                    <div class="d-flex flex-wrap gap-3">
+                        @foreach(\App\Models\Tenant\User::ORDER_TYPES as $value => $label)
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox"
+                                       name="allowed_order_types[]" value="{{ $value }}"
+                                       id="order_type_{{ $value }}"
+                                       @checked(in_array($value, (array) $selectedOrderTypes, true))>
+                                <label class="form-check-label" for="order_type_{{ $value }}">{{ $label }}</label>
+                            </div>
+                        @endforeach
+                    </div>
+                    @error('allowed_order_types') <div class="text-danger small mt-1">{{ $message }}</div> @enderror
+                </div>
+                <div class="col-lg-4">
+                    <label for="default_order_type" class="form-label required">Default mode</label>
+                    <select id="default_order_type" name="default_order_type" class="form-select @error('default_order_type') is-invalid @enderror">
+                        @foreach(\App\Models\Tenant\User::ORDER_TYPES as $value => $label)
+                            <option value="{{ $value }}" @selected($selectedDefaultType === $value)>{{ $label }}</option>
+                        @endforeach
+                    </select>
+                    @error('default_order_type') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- Branch Access --}}
     <div class="card mb-3">
         <div class="card-header"><strong>Branch Access</strong></div>

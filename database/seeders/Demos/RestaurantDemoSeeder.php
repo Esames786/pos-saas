@@ -160,6 +160,11 @@ class RestaurantDemoSeeder
         $tenantCode = app('tenant')->tenant_code;
 
         foreach (['waiter' => 'Demo Waiter', 'cashier' => 'Demo Cashier', 'manager' => 'Demo Manager'] as $prefix => $name) {
+            $allowedOrderTypes = match ($prefix) {
+                'waiter' => ['dine_in'],
+                'cashier' => ['takeaway', 'quick_sale', 'delivery'],
+                default => array_keys(User::ORDER_TYPES),
+            };
             $user = User::updateOrCreate(
                 ['email' => $prefix . '@' . $tenantCode . '.com'],
                 [
@@ -168,6 +173,8 @@ class RestaurantDemoSeeder
                     'status'            => 'active',
                     'locale'            => 'en',
                     'default_branch_id' => $branch?->id,
+                    'allowed_order_types' => $allowedOrderTypes,
+                    'default_order_type' => $allowedOrderTypes[0],
                 ]
             );
             if ($branch) $user->branches()->syncWithoutDetaching([$branch->id]);
@@ -292,6 +299,10 @@ class RestaurantDemoSeeder
     {
         $branch = $this->mainBranch();
         if (! $branch) return;
+
+        // Demo cashiers can cancel sent KOT items during rush-hour QA without a
+        // manager PIN; immutable cancellation events and CANCEL KOTs still apply.
+        $branch->update(['held_kot_cancellation_approval_mode' => Branch::KOT_CANCELLATION_AUTO_APPROVE]);
 
         Promotion::updateOrCreate(
             ['code' => 'DINEIN10'],

@@ -10,6 +10,7 @@ use App\Models\Tenant\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 use Spatie\Permission\Models\Role;
 
@@ -68,7 +69,11 @@ class TenantUserController extends Controller
             'terminal_ids.*'        => 'exists:tenant.terminals,id',
             'roles'                 => 'nullable|array',
             'roles.*'               => 'string',
+            'allowed_order_types'   => ['required', 'array', 'min:1'],
+            'allowed_order_types.*' => [Rule::in(array_keys(User::ORDER_TYPES))],
+            'default_order_type'    => ['nullable', Rule::in(array_keys(User::ORDER_TYPES))],
         ]);
+        $data = $this->normalizeOrderTypeAccess($data);
 
         $limit = app(\App\Services\Saas\TenantSubscriptionAccessService::class)
             ->checkLimit(app('tenant'), 'users');
@@ -85,6 +90,8 @@ class TenantUserController extends Controller
                 'phone'                 => $data['phone'] ?? null,
                 'default_branch_id'     => $data['default_branch_id'] ?? null,
                 'default_terminal_id'   => $data['default_terminal_id'] ?? null,
+                'allowed_order_types'   => $data['allowed_order_types'],
+                'default_order_type'    => $data['default_order_type'],
                 'status'                => $data['status'],
                 'force_password_change' => (bool) ($data['force_password_change'] ?? false),
                 'password'              => Hash::make($data['password']),
@@ -130,7 +137,11 @@ class TenantUserController extends Controller
             'terminal_ids.*'        => 'exists:tenant.terminals,id',
             'roles'                 => 'nullable|array',
             'roles.*'               => 'string',
+            'allowed_order_types'   => ['required', 'array', 'min:1'],
+            'allowed_order_types.*' => [Rule::in(array_keys(User::ORDER_TYPES))],
+            'default_order_type'    => ['nullable', Rule::in(array_keys(User::ORDER_TYPES))],
         ]);
+        $data = $this->normalizeOrderTypeAccess($data);
 
         DB::connection('tenant')->transaction(function () use ($data, $user) {
             $user->update([
@@ -140,6 +151,8 @@ class TenantUserController extends Controller
                 'phone'                 => $data['phone'] ?? null,
                 'default_branch_id'     => $data['default_branch_id'] ?? null,
                 'default_terminal_id'   => $data['default_terminal_id'] ?? null,
+                'allowed_order_types'   => $data['allowed_order_types'],
+                'default_order_type'    => $data['default_order_type'],
                 'status'                => $data['status'],
                 'force_password_change' => (bool) ($data['force_password_change'] ?? false),
             ]);
@@ -248,5 +261,19 @@ class TenantUserController extends Controller
         $user->terminals()->sync($terminalSync);
 
         $user->syncRoles($data['roles'] ?? []);
+    }
+
+    private function normalizeOrderTypeAccess(array $data): array
+    {
+        $data['allowed_order_types'] = array_values(array_unique($data['allowed_order_types']));
+        $data['default_order_type'] = $data['default_order_type'] ?: $data['allowed_order_types'][0];
+
+        if (!in_array($data['default_order_type'], $data['allowed_order_types'], true)) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'default_order_type' => 'The default order type must also be enabled for this user.',
+            ]);
+        }
+
+        return $data;
     }
 }

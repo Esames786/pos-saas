@@ -31,9 +31,19 @@
 </head>
 <body>
 
-<div class="center bold" style="font-size:{{ $fontSize + 4 }}px">KOT</div>
-@if($isReprint)
-<div class="center bold">** REPRINT **</div>
+<div class="center bold" style="font-size:{{ $fontSize + 4 }}px">
+    @if(($eventType ?? 'normal') === 'cancel')
+        CANCEL KOT #{{ $sequenceNo ?: 1 }}
+    @elseif(($eventType ?? 'normal') === 'addition')
+        ADDITION KOT #{{ $sequenceNo ?: 1 }}
+    @elseif(($eventType ?? 'normal') === 'duplicate')
+        DUPLICATE KOT #{{ $sequenceNo ?: 1 }}
+    @else
+        KOT #{{ $sequenceNo ?: 1 }}
+    @endif
+</div>
+@if(($eventType ?? '') === 'duplicate')
+<div class="center bold">COPY {{ max($copyNo ?? 2, 2) }}</div>
 @endif
 
 <hr>
@@ -82,9 +92,9 @@
             if ($isReprint) {
                 $displayQty = $totalQty;
                 $isAddition = false;
-            } elseif (isset($lineQuantities) && $lineQuantities->has((string) $line->id)) {
+            } elseif (isset($lineQuantities) && $lineQuantities->has((string) ($line->line_id ?? $line->id ?? ''))) {
                 // Use exact quantity stored in payload at job creation time.
-                $displayQty = (float) $lineQuantities->get((string) $line->id);
+                $displayQty = (float) $lineQuantities->get((string) ($line->line_id ?? $line->id));
                 $isAddition = $totalQty > $displayQty;  // more was ordered than this delta
             } else {
                 // Fallback for old jobs without line_quantities in payload.

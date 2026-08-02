@@ -137,6 +137,21 @@
                     </div>
                 </div>
 
+                <div class="col-md-6">
+                    <label for="held_kot_cancellation_approval_mode" class="form-label required">Held/KOT Cancellation Approval</label>
+                    <select id="held_kot_cancellation_approval_mode" name="held_kot_cancellation_approval_mode" class="form-select" required>
+                        <option value="manager_required" @selected(old('held_kot_cancellation_approval_mode', $branch?->held_kot_cancellation_approval_mode ?? 'manager_required') === 'manager_required')>
+                            Manager PIN required
+                        </option>
+                        <option value="auto_approve" @selected(old('held_kot_cancellation_approval_mode', $branch?->held_kot_cancellation_approval_mode) === 'auto_approve')>
+                            Auto-approve at this branch
+                        </option>
+                    </select>
+                    <div class="form-text">
+                        Auto-approve skips the PIN only. A reason, audit event, and Cancel KOT remain mandatory for sent items.
+                    </div>
+                </div>
+
                 <div class="col-md-8">
                     <label for="receipt_footer" class="form-label">Receipt Footer Text</label>
                     <textarea id="receipt_footer" name="receipt_footer" class="form-control" rows="2"

@@ -36,10 +36,15 @@ class PrintDocumentController extends Controller
             $lineIds        = $printJob->payload['line_ids'] ?? [];
             $lineQuantities = collect($printJob->payload['line_quantities'] ?? []);
             $isReprint      = $printJob->payload['is_reprint'] ?? false;
+            $eventType      = $printJob->payload['kot_event_type'] ?? ($isReprint ? 'duplicate' : 'normal');
 
             $kotLines = $lineIds
                 ? $salesOrder->lines->whereIn('id', $lineIds)->values()
                 : $salesOrder->lines;
+
+            if ($eventType === 'cancel' && !empty($printJob->payload['line_snapshots'])) {
+                $kotLines = collect($printJob->payload['line_snapshots'])->map(fn ($line) => (object) $line);
+            }
 
             if (!$isReprint) {
                 if ($lineQuantities->isNotEmpty()) {
@@ -47,7 +52,7 @@ class PrintDocumentController extends Controller
                     // The model's kot_sent_quantity may already be stamped (network jobs),
                     // so recalculating delta from model would show empty lines.
                     $kotLines = $kotLines->filter(
-                        fn ($l) => (float) $lineQuantities->get((string) $l->id, 0) > 0
+                        fn ($l) => (float) $lineQuantities->get((string) ($l->line_id ?? $l->id ?? ''), 0) > 0
                     )->values();
                 } else {
                     // Backward compat: jobs created before line_quantities was added to payload.
@@ -64,6 +69,9 @@ class PrintDocumentController extends Controller
                 'layout'         => $layout,
                 'isReprint'      => $isReprint,
                 'lineQuantities' => $lineQuantities,
+                'eventType'      => $eventType,
+                'sequenceNo'     => (int) ($printJob->payload['kot_sequence_no'] ?? 0),
+                'copyNo'         => (int) ($printJob->payload['copy_no'] ?? 1),
             ]);
         }
 

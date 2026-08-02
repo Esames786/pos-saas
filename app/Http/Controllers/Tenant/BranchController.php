@@ -118,6 +118,10 @@ class BranchController extends Controller
             'is_tax_enabled'             => ['nullable', 'boolean'],
             'show_tax_number_on_invoice' => ['nullable', 'boolean'],
             'allow_negative_stock'       => ['nullable', 'boolean'],
+            'held_kot_cancellation_approval_mode' => ['nullable', Rule::in([
+                Branch::KOT_CANCELLATION_MANAGER_REQUIRED,
+                Branch::KOT_CANCELLATION_AUTO_APPROVE,
+            ])],
             'receipt_footer'             => ['nullable', 'string'],
             'status'                     => ['required', Rule::in(['active', 'inactive'])],
         ]);
@@ -125,6 +129,9 @@ class BranchController extends Controller
         // Unchecked checkbox is absent from the request; force an explicit value
         // so turning the setting OFF actually persists false.
         $data['allow_negative_stock'] = $request->boolean('allow_negative_stock');
+        $data['held_kot_cancellation_approval_mode'] = $data['held_kot_cancellation_approval_mode']
+            ?? $branch?->held_kot_cancellation_approval_mode
+            ?? Branch::KOT_CANCELLATION_MANAGER_REQUIRED;
 
         return $data;
     }

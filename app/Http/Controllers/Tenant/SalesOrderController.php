@@ -64,9 +64,13 @@ class SalesOrderController extends Controller
         ]);
     }
 
-    public function store(Request $request, SalesService $salesService, InventoryService $inventoryService, SalesTotalsService $totalsService, \App\Services\Sales\SaleIdempotencyService $idempotency)
+    public function store(Request $request, SalesService $salesService, InventoryService $inventoryService, SalesTotalsService $totalsService, \App\Services\Sales\SaleIdempotencyService $idempotency, \App\Services\Sales\KotCancellationService $cancellationService)
     {
         $data = $this->validateSale($request);
+
+        if (!auth('tenant')->user()?->allowsOrderType($data['order_type'])) {
+            abort(403, 'Your account is not allowed to use this order type.');
+        }
 
         // BRANCH-OPERATING-MODE-1: a Local POS (active) branch runs sales on its
         // Branch Server — the cloud must not create them (split-brain guard).
@@ -112,7 +116,7 @@ class SalesOrderController extends Controller
 
         try {
             $sale = DB::connection('tenant')->transaction(function () use (
-                $data, $lines, $payments, $salesService, $inventoryService, $totalsService, $idempotencyFields
+                $data, $lines, $payments, $salesService, $inventoryService, $totalsService, $idempotencyFields, $cancellationService
             ) {
                 $branch   = Branch::findOrFail($data['branch_id']);
                 $terminal = !empty($data['terminal_id']) ? Terminal::find($data['terminal_id']) : null;
@@ -178,30 +182,42 @@ class SalesOrderController extends Controller
 
                 if (!empty($data['restaurant_table_session_id'])) {
                     $tableSession = RestaurantTableSession::with(['table.floor', 'waiter'])
+                        ->where('branch_id', $branch->id)
                         ->whereIn('status', ['open', 'bill_requested'])
+                        ->lockForUpdate()
                         ->findOrFail($data['restaurant_table_session_id']);
                 } elseif (!empty($data['held_sale_id'])) {
                     // If the held sale already has a session (auto-created on hold), inherit it
                     $heldForSession = SalesOrder::find($data['held_sale_id']);
                     if ($heldForSession?->restaurant_table_session_id) {
                         $tableSession = RestaurantTableSession::with(['table.floor', 'waiter'])
+                            ->where('branch_id', $branch->id)
                             ->whereIn('status', ['open', 'bill_requested'])
+                            ->lockForUpdate()
                             ->find($heldForSession->restaurant_table_session_id);
                     }
+                }
+
+                if ($orderType === 'dine_in' && !$tableSession) {
+                    throw ValidationException::withMessages([
+                        'restaurant_table_session_id' => 'Select an open table before completing a dine-in order.',
+                    ]);
+                }
+                if ($tableSession && !auth('tenant')->user()?->allowsOrderType('dine_in')) {
+                    abort(403, 'Your account is not allowed to use Dine In orders.');
                 }
 
                 // Guard: block accidental direct-pay against a table that still has open held orders
                 if (
                     $tableSession
                     && empty($data['held_sale_id'])
-                    && empty($data['create_separate_order'])
                 ) {
                     $hasOpenHeldOrders = SalesOrder::where('restaurant_table_session_id', $tableSession->id)
                         ->where('status', 'held')
                         ->exists();
 
                     if ($hasOpenHeldOrders) {
-                        throw new RuntimeException('This table already has open held orders. Recall an existing order or intentionally create a separate order.');
+                        throw new RuntimeException('This table already has an open check. Recall it before taking payment.');
                     }
                 }
 
@@ -238,8 +254,57 @@ class SalesOrderController extends Controller
                     'notes'                       => $data['notes'] ?? null,
                 ];
 
+                $kotSentByLineId = [];
                 if (!empty($data['held_sale_id'])) {
-                    $sale = SalesOrder::where('status', 'held')->findOrFail($data['held_sale_id']);
+                    $sale = SalesOrder::where('status', 'held')
+                        ->lockForUpdate()
+                        ->findOrFail($data['held_sale_id']);
+                    if ((int) $sale->branch_id !== (int) $data['branch_id']) {
+                        throw ValidationException::withMessages([
+                            'branch_id' => 'A recalled order cannot be moved to another branch.',
+                        ]);
+                    }
+                    $existingLines = $sale->lines()->get()->keyBy('id');
+                    $providedLineIds = collect($resolvedLines)->pluck('sales_order_line_id')->filter()
+                        ->map(fn ($id) => (int) $id)->unique();
+                    $foreignLineIds = $providedLineIds->diff($existingLines->keys()->map(fn ($id) => (int) $id));
+                    if ($foreignLineIds->isNotEmpty()) {
+                        throw ValidationException::withMessages([
+                            'lines' => 'One or more recalled line references do not belong to this order.',
+                        ]);
+                    }
+                    $submittedQuantities = collect($resolvedLines)
+                        ->filter(fn ($line) => !empty($line['sales_order_line_id']))
+                        ->mapWithKeys(fn ($line) => [(int) $line['sales_order_line_id'] => (float) $line['quantity']]);
+                    $voidItems = collect($data['void_items'] ?? [])->keyBy(fn ($item) => (int) ($item['old_line_id'] ?? 0));
+                    $detectedCancellations = [];
+
+                    foreach ($existingLines as $existingLine) {
+                        $sentQuantity = (float) $existingLine->kot_sent_quantity;
+                        if ($sentQuantity <= 0) {
+                            continue;
+                        }
+                        $newQuantity = (float) $submittedQuantities->get($existingLine->id, 0);
+                        $cancelQuantity = max($sentQuantity - min($newQuantity, $sentQuantity), 0);
+                        if ($cancelQuantity <= 0) {
+                            continue;
+                        }
+                        $voidItem = $voidItems->get($existingLine->id);
+                        if (!$voidItem || abs((float) $voidItem['quantity'] - $cancelQuantity) > 0.000001) {
+                            throw ValidationException::withMessages([
+                                'lines' => "A reason and exact cancellation quantity are required for {$existingLine->product_name} because it was sent to kitchen.",
+                            ]);
+                        }
+                        $detectedCancellations[] = [
+                            'line_id' => $existingLine->id,
+                            'quantity' => $cancelQuantity,
+                            'reason_id' => (int) $voidItem['reason_id'],
+                            'manager_approval_id' => !empty($voidItem['manager_approval_id']) ? (int) $voidItem['manager_approval_id'] : null,
+                        ];
+                    }
+
+                    $cancellationService->recordLineCancellations($sale, $detectedCancellations, (int) auth('tenant')->id());
+                    $kotSentByLineId = $existingLines->mapWithKeys(fn ($line) => [$line->id => (float) $line->kot_sent_quantity])->all();
                     $sale->lines()->delete();
                     $sale->payments()->delete();
                     $sale->update(array_merge($saleFields, $idempotencyFields, [
@@ -284,6 +349,8 @@ class SalesOrderController extends Controller
                     $lineTax   = (float) $line['tax_amount'];
                     $lineTotal = ($qty * $unitPrice) - $disc + $lineTax;
                     $parentClientKey = $line['parent_client_line_key'] ?? null;
+                    $oldLineId = !empty($line['sales_order_line_id']) ? (int) $line['sales_order_line_id'] : null;
+                    $sentQuantity = $oldLineId ? min((float) ($kotSentByLineId[$oldLineId] ?? 0), $qty) : 0;
 
                     $createdLine = $sale->lines()->create([
                         'parent_sales_order_line_id' => $parentClientKey && isset($createdLinesByClientKey[$parentClientKey])
@@ -306,6 +373,8 @@ class SalesOrderController extends Controller
                         'tax_amount'         => $lineTax,
                         'line_total'         => $lineTotal,
                         'modifiers'          => $line['modifiers'] ?? [],
+                        'kot_sent'           => $sentQuantity > 0,
+                        'kot_sent_quantity'  => $sentQuantity,
                     ]);
 
                     if (!empty($line['client_line_key'])) {
@@ -512,6 +581,7 @@ class SalesOrderController extends Controller
 
             'lines'                      => ['required', 'array'],
             'lines.*.product_id'         => ['nullable', 'exists:products,id'],
+            'lines.*.sales_order_line_id' => ['nullable', 'integer'],
             'lines.*.product_variant_id' => ['nullable', 'exists:product_variants,id'],
             'lines.*.client_line_key'    => ['nullable', 'string', 'max:120'],
             'lines.*.parent_client_line_key' => ['nullable', 'string', 'max:120'],
@@ -523,6 +593,12 @@ class SalesOrderController extends Controller
             'lines.*.discount_amount'    => ['nullable', 'numeric', 'min:0'],
             'lines.*.tax_amount'         => ['nullable', 'numeric', 'min:0'],
             'lines.*.modifiers'          => ['nullable', 'string'],
+
+            'void_items'                            => ['nullable', 'array'],
+            'void_items.*.old_line_id'              => ['required_with:void_items', 'integer'],
+            'void_items.*.reason_id'                => ['required_with:void_items', 'exists:void_reasons,id'],
+            'void_items.*.quantity'                 => ['required_with:void_items', 'numeric', 'gt:0'],
+            'void_items.*.manager_approval_id'      => ['nullable', 'exists:manager_approvals,id'],
 
             'payments'                         => ['required', 'array'],
             'payments.*.payment_method_id'     => ['nullable', 'exists:payment_methods,id'],

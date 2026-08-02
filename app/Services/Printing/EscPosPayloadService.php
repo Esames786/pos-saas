@@ -142,6 +142,9 @@ class EscPosPayloadService
     {
         $payload        = $job->payload ?? [];
         $isReprint      = !empty($payload['is_reprint']);
+        $eventType      = $payload['kot_event_type'] ?? ($isReprint ? 'duplicate' : 'normal');
+        $sequenceNo     = (int) ($payload['kot_sequence_no'] ?? 0);
+        $copyNo         = (int) ($payload['copy_no'] ?? 1);
         $lineQuantities = collect($payload['line_quantities'] ?? []);
 
         $lineIds = collect($payload['line_ids'] ?? [])
@@ -153,11 +156,21 @@ class EscPosPayloadService
             ? $sale->lines->whereIn('id', $lineIds)->values()
             : $sale->lines;
 
+        if ($eventType === 'cancel' && !empty($payload['line_snapshots'])) {
+            $lines = collect($payload['line_snapshots'])->map(fn ($line) => (object) $line);
+        }
+
         $out = '';
 
-        $out .= $this->center('*** KOT ***') . "\n";
-        if ($isReprint) {
-            $out .= $this->center('** REPRINT **') . "\n";
+        $heading = match ($eventType) {
+            'cancel' => '*** CANCEL KOT #' . $sequenceNo . ' ***',
+            'addition' => '*** ADDITION KOT #' . $sequenceNo . ' ***',
+            'duplicate' => '*** DUPLICATE KOT #' . $sequenceNo . ' ***',
+            default => '*** KOT #' . ($sequenceNo ?: 1) . ' ***',
+        };
+        $out .= $this->center($heading) . "\n";
+        if ($eventType === 'duplicate') {
+            $out .= $this->center('COPY ' . max($copyNo, 2)) . "\n";
         }
         $out .= $this->center($sale->sale_no ?? '') . "\n";
         $out .= str_repeat('-', 42) . "\n";
@@ -179,8 +192,9 @@ class EscPosPayloadService
             }
 
             // Use stored quantity from payload when available; fall back to model quantity.
-            $qtyToPrint = $lineQuantities->has((string) $line->id)
-                ? (float) $lineQuantities->get((string) $line->id)
+            $lineId = $line->line_id ?? $line->id ?? null;
+            $qtyToPrint = $lineId && $lineQuantities->has((string) $lineId)
+                ? (float) $lineQuantities->get((string) $lineId)
                 : (float) $line->quantity;
 
             if ($qtyToPrint <= 0) {

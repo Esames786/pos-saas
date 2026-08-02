@@ -17,6 +17,7 @@ class RestaurantTableSessionController extends Controller
 {
     public function board(Request $request)
     {
+        $this->assertDineInAllowed();
         $branches         = Branch::where('status', 'active')->orderBy('name')->get();
         $selectedBranchId = $request->input('branch_id', $branches->first()?->id);
 
@@ -39,6 +40,7 @@ class RestaurantTableSessionController extends Controller
 
     public function open(Request $request, RestaurantTable $restaurantTable)
     {
+        $this->assertDineInAllowed();
         // BRANCH-OPERATING-MODE-1: table/session mutations belong to the Branch Server for active Local POS branches.
         app(\App\Services\Edge\BranchOperatingModeService::class)
             ->assertSaleMutationAllowed(\App\Models\Tenant\Branch::findOrFail($restaurantTable->branch_id));
@@ -119,6 +121,7 @@ class RestaurantTableSessionController extends Controller
 
     public function billRequested(RestaurantTableSession $restaurantTableSession)
     {
+        $this->assertDineInAllowed();
         app(\App\Services\Edge\BranchOperatingModeService::class)
             ->assertSaleMutationAllowed(\App\Models\Tenant\Branch::findOrFail($restaurantTableSession->branch_id));
 
@@ -145,6 +148,7 @@ class RestaurantTableSessionController extends Controller
 
     public function close(Request $request, RestaurantTableSession $restaurantTableSession)
     {
+        $this->assertDineInAllowed();
         app(\App\Services\Edge\BranchOperatingModeService::class)
             ->assertSaleMutationAllowed(\App\Models\Tenant\Branch::findOrFail($restaurantTableSession->branch_id));
 
@@ -155,14 +159,14 @@ class RestaurantTableSessionController extends Controller
         $closeType     = $request->input('status', 'closed');
         $sessionStatus = $closeType === 'cancelled' ? 'cancelled' : 'closed';
 
-        if ($sessionStatus === 'closed') {
-            $openSales = $restaurantTableSession->salesOrders()
-                ->whereIn('status', ['draft', 'held'])
-                ->exists();
+        $openSales = $restaurantTableSession->salesOrders()
+            ->whereIn('status', ['draft', 'held'])
+            ->exists();
 
-            if ($openSales) {
-                return back()->withErrors(['session' => 'Cannot close: open or held orders exist on this session.']);
-            }
+        if ($openSales) {
+            return back()->withErrors([
+                'session' => 'Cancel or complete every open order through POS before closing this table session.',
+            ]);
         }
 
         $restaurantTableSession->update([
@@ -180,6 +184,7 @@ class RestaurantTableSessionController extends Controller
 
     public function show(RestaurantTableSession $restaurantTableSession)
     {
+        $this->assertDineInAllowed();
         $restaurantTableSession->load([
             'table.floor',
             'waiter',
@@ -192,6 +197,7 @@ class RestaurantTableSessionController extends Controller
 
     public function billPreview(RestaurantTableSession $restaurantTableSession)
     {
+        $this->assertDineInAllowed();
         $restaurantTableSession->load([
             'branch',
             'table.floor.tables',
@@ -209,6 +215,7 @@ class RestaurantTableSessionController extends Controller
 
     public function move(Request $request, RestaurantTableSession $restaurantTableSession)
     {
+        $this->assertDineInAllowed();
         app(\App\Services\Edge\BranchOperatingModeService::class)
             ->assertSaleMutationAllowed(\App\Models\Tenant\Branch::findOrFail($restaurantTableSession->branch_id));
 
@@ -277,6 +284,7 @@ class RestaurantTableSessionController extends Controller
 
     public function merge(Request $request, RestaurantTableSession $restaurantTableSession)
     {
+        $this->assertDineInAllowed();
         app(\App\Services\Edge\BranchOperatingModeService::class)
             ->assertSaleMutationAllowed(\App\Models\Tenant\Branch::findOrFail($restaurantTableSession->branch_id));
 
@@ -322,5 +330,14 @@ class RestaurantTableSessionController extends Controller
         });
 
         return back()->with('status', 'Table sessions merged successfully.');
+    }
+
+    private function assertDineInAllowed(): void
+    {
+        abort_unless(
+            auth('tenant')->user()?->allowsOrderType('dine_in'),
+            403,
+            'Your account is not allowed to use Dine In orders.'
+        );
     }
 }

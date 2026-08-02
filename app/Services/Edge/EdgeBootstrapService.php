@@ -27,7 +27,7 @@ use Illuminate\Support\Str;
  */
 class EdgeBootstrapService
 {
-    public const SCHEMA_VERSION = 'edge-bootstrap-v1';
+    public const SCHEMA_VERSION = 'edge-bootstrap-v2';
     public const TTL_HOURS      = 72;
     private const BUILD_WAIT_MS = 120;
     private const BUILD_WAITS   = 25;
@@ -385,7 +385,10 @@ class EdgeBootstrapService
             $wm[] = $table . '=' . (string) $q->max('updated_at') . '|' . $q->count();
         };
         $termIds = $conn->table('terminals')->where('branch_id', $b)->pluck('id')->all();
-        $userIds = $conn->table('users')->where('default_branch_id', $b)->pluck('id')->all();
+        $assignedUserIds = $conn->table('branch_user')->where('branch_id', $b)->where('is_active', 1)->pluck('user_id');
+        $userIds = $conn->table('users')
+            ->where(fn ($query) => $query->where('default_branch_id', $b)->orWhereIn('id', $assignedUserIds))
+            ->pluck('id')->all();
 
         $add('branches', 'id'); $add('terminals', 'branch_id'); $add('categories'); $add('units');
         $add('products'); $add('product_variants'); $add('product_barcodes'); $add('product_branch_prices', 'branch_id');
@@ -393,7 +396,11 @@ class EdgeBootstrapService
         $add('payment_methods'); $add('restaurant_floors', 'branch_id'); $add('restaurant_tables', 'branch_id');
         $add('restaurant_waiters', 'branch_id'); $add('delivery_channels'); $add('delivery_riders', 'branch_id');
         $add('printers', 'branch_id'); $add('receipt_layout_settings', 'branch_id'); $add('category_printer_mappings', 'branch_id');
-        $add('service_charge_settings', 'branch_id'); $add('void_reasons'); $add('users', 'default_branch_id'); $add('roles');
+        $add('service_charge_settings', 'branch_id'); $add('void_reasons'); $add('roles'); $add('permissions');
+        $add('branch_user', 'branch_id');
+
+        $users = $conn->table('users')->whereIn('id', $userIds ?: [0]);
+        $wm[] = 'users=' . (string) $users->max('updated_at') . '|' . $users->count();
 
         $tps = $conn->table('terminal_printer_settings')->whereIn('terminal_id', $termIds ?: [0]);
         $wm[] = 'terminal_printer_settings=' . (string) $tps->max('updated_at') . '|' . $tps->count();
@@ -403,6 +410,13 @@ class EdgeBootstrapService
         $pairs = $conn->table('model_has_roles')->where('model_type', \App\Models\Tenant\User::class)
             ->whereIn('model_id', $userIds ?: [0])->orderBy('model_id')->orderBy('role_id')->get(['model_id', 'role_id']);
         $wm[] = 'model_has_roles=' . implode(',', $pairs->map(fn ($r) => $r->model_id . ':' . $r->role_id)->all());
+        $roleIds = $pairs->pluck('role_id')->unique()->all();
+        $rolePermissions = $conn->table('role_has_permissions')->whereIn('role_id', $roleIds ?: [0])
+            ->orderBy('role_id')->orderBy('permission_id')->get(['role_id', 'permission_id']);
+        $wm[] = 'role_has_permissions=' . implode(',', $rolePermissions->map(fn ($r) => $r->role_id . ':' . $r->permission_id)->all());
+        $directPermissions = $conn->table('model_has_permissions')->where('model_type', \App\Models\Tenant\User::class)
+            ->whereIn('model_id', $userIds ?: [0])->orderBy('model_id')->orderBy('permission_id')->get(['model_id', 'permission_id']);
+        $wm[] = 'model_has_permissions=' . implode(',', $directPermissions->map(fn ($r) => $r->model_id . ':' . $r->permission_id)->all());
 
         return hash('sha256', implode("\n", $wm));
     }
@@ -443,7 +457,9 @@ class EdgeBootstrapService
             'tenant' => [['tenant_code' => $tenant->tenant_code, 'business_name' => $tenant->business_name, 'currency_code' => $tenant->currency_code]],
             'branch' => [[
                 'id' => $branch->id, 'code' => $branch->code, 'name' => $branch->name, 'business_type' => $branch->business_type,
-                'allow_negative_stock' => (bool) $branch->allow_negative_stock, 'timezone' => $branch->timezone,
+                'allow_negative_stock' => (bool) $branch->allow_negative_stock,
+                'held_kot_cancellation_approval_mode' => $branch->held_kot_cancellation_approval_mode,
+                'timezone' => $branch->timezone,
                 'tax_registration_no' => $branch->tax_registration_no, 'is_tax_enabled' => (bool) $branch->is_tax_enabled,
                 'show_tax_number_on_invoice' => (bool) $branch->show_tax_number_on_invoice, 'receipt_footer' => $branch->receipt_footer,
                 'address' => $branch->address, 'phone' => $branch->phone, 'email' => $branch->email, 'status' => $branch->status,
@@ -495,6 +511,9 @@ class EdgeBootstrapService
                 'phase' => 'offline-v1', 'blocked_payment_types' => ['card', 'wallet', 'bank_transfer', 'cheque', 'customer_credit'],
                 'allowed_payment_types' => self::PHASE1_PAYMENT_TYPES, 'blocked_delivery_types' => ['aggregator'],
                 'allowed_delivery_types' => self::OFFLINE_DELIVERY_TYPES,
+                'held_kot_cancellation' => $branch->held_kot_cancellation_approval_mode === Branch::KOT_CANCELLATION_AUTO_APPROVE
+                    ? 'auto_approve'
+                    : 'blocked_requires_online_manager',
                 'blocked_capabilities' => ['card_gateway', 'external_aggregator_api', 'customer_credit_ledger', 'returns_against_cloud', 'purchasing', 'stock_operations', 'manufacturing', 'cloud_manager_approval'],
             ]],
         ];
@@ -502,20 +521,48 @@ class EdgeBootstrapService
 
     private function userSection($conn, int $branchId): array
     {
-        $users = $conn->table('users')->where('default_branch_id', $branchId)->orderBy('id')
-            ->get(['id', 'employee_code', 'name', 'default_branch_id', 'default_terminal_id', 'status', 'locale']);
+        $assignedUserIds = $conn->table('branch_user')->where('branch_id', $branchId)->where('is_active', 1)->pluck('user_id');
+        $users = $conn->table('users')
+            ->where(fn ($query) => $query->where('default_branch_id', $branchId)->orWhereIn('id', $assignedUserIds))
+            ->orderBy('id')
+            ->get(['id', 'employee_code', 'name', 'default_branch_id', 'default_terminal_id', 'allowed_order_types', 'default_order_type', 'status', 'locale']);
         $userIds = $users->pluck('id')->all();
         $roleMap = [];
+        $roleIdsByUser = [];
+        $permissionMap = [];
         if ($userIds) {
             foreach ($conn->table('model_has_roles as mhr')->join('roles as r', 'r.id', '=', 'mhr.role_id')
                 ->where('mhr.model_type', \App\Models\Tenant\User::class)->whereIn('mhr.model_id', $userIds)
-                ->orderBy('r.name')->get(['mhr.model_id as uid', 'r.name as role']) as $a) {
+                ->orderBy('r.name')->get(['mhr.model_id as uid', 'mhr.role_id', 'r.name as role']) as $a) {
                 $roleMap[$a->uid][] = $a->role;
+                $roleIdsByUser[$a->uid][] = (int) $a->role_id;
+            }
+
+            $allRoleIds = collect($roleIdsByUser)->flatten()->unique()->all();
+            $permissionsByRole = [];
+            foreach ($conn->table('role_has_permissions as rhp')->join('permissions as p', 'p.id', '=', 'rhp.permission_id')
+                ->whereIn('rhp.role_id', $allRoleIds ?: [0])->orderBy('p.name')
+                ->get(['rhp.role_id', 'p.name']) as $permission) {
+                $permissionsByRole[$permission->role_id][] = $permission->name;
+            }
+            foreach ($roleIdsByUser as $userId => $roleIds) {
+                foreach ($roleIds as $roleId) {
+                    $permissionMap[$userId] = array_merge($permissionMap[$userId] ?? [], $permissionsByRole[$roleId] ?? []);
+                }
+            }
+            foreach ($conn->table('model_has_permissions as mhp')->join('permissions as p', 'p.id', '=', 'mhp.permission_id')
+                ->where('mhp.model_type', \App\Models\Tenant\User::class)->whereIn('mhp.model_id', $userIds)
+                ->orderBy('p.name')->get(['mhp.model_id as uid', 'p.name']) as $permission) {
+                $permissionMap[$permission->uid][] = $permission->name;
             }
         }
         return collect($users)->map(fn ($u) => [
             'id' => $u->id, 'employee_code' => $u->employee_code, 'name' => $u->name, 'default_branch_id' => $u->default_branch_id,
-            'default_terminal_id' => $u->default_terminal_id, 'status' => $u->status, 'locale' => $u->locale, 'roles' => $roleMap[$u->id] ?? [],
+            'default_terminal_id' => $u->default_terminal_id, 'status' => $u->status, 'locale' => $u->locale,
+            'allowed_order_types' => json_decode($u->allowed_order_types ?: '[]', true) ?: array_keys(\App\Models\Tenant\User::ORDER_TYPES),
+            'default_order_type' => $u->default_order_type,
+            'roles' => $roleMap[$u->id] ?? [],
+            'permissions' => collect($permissionMap[$u->id] ?? [])->unique()->sort()->values()->all(),
         ])->all();
     }
 

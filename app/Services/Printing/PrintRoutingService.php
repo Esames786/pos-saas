@@ -120,4 +120,55 @@ class PrintRoutingService
 
         return array_values($routes);
     }
+
+    /** Route explicit immutable quantities, used by cancellation KOT events. */
+    public function kotRoutesForQuantities(SalesOrder $sale, array $lineQuantities): array
+    {
+        $sale->loadMissing(['lines.product.category']);
+        $routes = [];
+
+        foreach ($sale->lines->whereIn('id', array_map('intval', array_keys($lineQuantities))) as $line) {
+            $quantity = (float) ($lineQuantities[(string) $line->id] ?? $lineQuantities[$line->id] ?? 0);
+            if ($quantity <= 0) {
+                continue;
+            }
+
+            $printers = collect();
+            $categoryId = $line->product?->category_id;
+
+            if ($categoryId) {
+                $printerIds = CategoryPrinterMapping::where(function ($query) use ($sale) {
+                        $query->whereNull('branch_id')->orWhere('branch_id', $sale->branch_id);
+                    })
+                    ->where('category_id', $categoryId)
+                    ->whereIn('print_role', ['kot', 'both'])
+                    ->where('is_active', true)
+                    ->pluck('printer_id');
+
+                if ($printerIds->isNotEmpty()) {
+                    $printers = Printer::whereIn('id', $printerIds)->where('is_active', true)->get();
+                }
+            }
+
+            if ($printers->isEmpty() && ($default = $this->defaultKotPrinter($sale))) {
+                $printers = collect([$default]);
+            }
+
+            if ($printers->isEmpty()) {
+                $routes['browser']['printer'] = null;
+                $routes['browser']['line_ids'][] = $line->id;
+                $routes['browser']['line_quantities'][(string) $line->id] = $quantity;
+                continue;
+            }
+
+            foreach ($printers as $printer) {
+                $key = 'printer_' . $printer->id;
+                $routes[$key]['printer'] = $printer;
+                $routes[$key]['line_ids'][] = $line->id;
+                $routes[$key]['line_quantities'][(string) $line->id] = $quantity;
+            }
+        }
+
+        return array_values($routes);
+    }
 }

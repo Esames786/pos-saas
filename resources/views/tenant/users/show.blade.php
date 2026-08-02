@@ -51,6 +51,12 @@
                     <dt class="col-sm-4">Default Terminal</dt>
                     <dd class="col-sm-8">{{ $user->defaultTerminal?->name ?? '—' }}</dd>
 
+                    <dt class="col-sm-4">POS Order Types</dt>
+                    <dd class="col-sm-8">
+                        {{ collect($user->effectiveAllowedOrderTypes())->map(fn ($type) => \App\Models\Tenant\User::ORDER_TYPES[$type])->join(', ') }}
+                        <span class="badge bg-light text-dark ms-1">Default: {{ \App\Models\Tenant\User::ORDER_TYPES[$user->effectiveDefaultOrderType()] }}</span>
+                    </dd>
+
                     <dt class="col-sm-4">Status</dt>
                     <dd class="col-sm-8">
                         <span class="badge bg-{{ $user->status === 'active' ? 'success' : 'secondary' }}">
