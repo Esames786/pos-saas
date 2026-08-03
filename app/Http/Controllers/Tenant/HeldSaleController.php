@@ -139,6 +139,8 @@ class HeldSaleController extends Controller
 
     private function sessionPayload(RestaurantTableSession $session): array
     {
+        $session->loadMissing(['salesOrders' => fn ($query) => $query->whereIn('status', ['held', 'paid'])]);
+
         return [
             'id'          => (int) $session->id,
             'session_no'  => $session->session_no,
@@ -148,6 +150,7 @@ class HeldSaleController extends Controller
             'guest_count' => $session->guest_count,
             'status'      => $session->status,
             'branch_id'   => (int) $session->branch_id,
+            'open_check'  => (float) $session->salesOrders->where('status', 'held')->sum('grand_total'),
         ];
     }
 

@@ -1,7 +1,7 @@
 # Bingoo POS — Roadmap & System Gap Register
 
 > Maintained working document. Update after every completed sprint.
-> Last updated: **2026-08-03** (REMINDER-PRINT-1 software QA green; LOCAL-PRINT-LAN-CERT-1 physically blocked; production not deployed) · branch `feat/14d-2-plan-upgrade-requests`
+> Last updated: **2026-08-03** (POS-WORKSPACE-UX-1 built locally; LOCAL-PRINT-LAN-CERT-1 physically blocked; production not deployed) · branch `feat/14d-2-plan-upgrade-requests`
 
 ---
 
@@ -54,6 +54,7 @@ Design: `docs/audits/offline-pos-architecture-2026-07.md` + `docs/ops/OFFLINE_PO
 | F4 | **REMINDER-PRINT-1** - complete-order non-fiscal Reminder on accepted KOT rounds; order-type/category multi-printer routing; same physical KOT+Reminder support; immutable revision and `(R)` delta snapshots; Ask-on-addition with bound confirmation token; isolated per-printer manual duplicates; approved partial/whole cancellation correction Reminder with historical destination union. Existing KOT/Receipt and Print Agent retry contract preserved. Edge bootstrap v3 exports configuration only; Local Mode/sync remain off. | built locally; software QA green; deploy deferred |
 | F4 | **LOCAL-PRINT-LAN-CERT-1** - repository/test/cache preflight, explicit non-fiscal rendering, historical destination, tenant invariants, and Edge-off proofs passed on `a0452e7`. Real paper matrix blocked: only loopback fake printers were configured, no Reminder-capable printer/mappings existed, and agent status was stale. | **BLOCKED** pending real LAN printers/agent; no production deploy |
 | F4 | **DIRECT-PAY-PRINT-ORCHESTRATION-1** - Review & Pay resolves KOT Print/Skip before finalization; paid sale stores durable KOT/Receipt state; server-side orchestration reuses delta KOT, Reminder Auto/Ask and Receipt ensure-once; failures stay paid + retryable; cart clears only after stable result; retry is not a manual duplicate. Cloud canonical contract only, Local Mode/sync unchanged. | built locally; deploy deferred |
+| F4 | **POS-WORKSPACE-UX-1** - compact one-screen Restaurant POS with internal product/cart scrolling; same-page Table Workspace for Open/Continue/Held/Move/Split and permission-controlled setup; live-cart and server-session previews retain separate authority; Move locking hardened. Merge backend locking/paid-history semantics are staged but its UI is deliberately hidden pending deterministic two-process certification. Add Round and Direct Pay/KOT/Reminder/Receipt unchanged. Audit: `docs/audits/pos-workspace-ux-2026-08-03.md`. | built locally; browser/merge certification + deploy deferred |
 | F3 | BRANCH-BOOTSTRAP-SNAPSHOT-1 → EDGE-SALE-CAPTURE-1 → OFFLINE-SYNC-ENGINE-1 → EDGE-BUILD-STRIPPER-1 → EDGE-BUILD-PACKAGING-1 → LOCAL-PRINT-LAN-1 → SYNC-EXCEPTION-DASHBOARD-1 → MODE-RECONCILIATION-1 → pilot | queued |
 
 ## 🔜 TRACK B — Manufacturing Finance Posting (moved to extreme end — after Offline POS)

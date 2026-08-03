@@ -35,6 +35,8 @@ Before production deployment, run browser QA for the required regression matrix 
 
 ## Executive conclusion
 
+> Follow-up on 2026-08-03: `POS-WORKSPACE-UX-1` removes the permanently expanded table board, keeps certified operational table actions in a same-page Table Workspace, and gives current-cart versus table-session Bill Preview separate authority in one visual shell. Merge remains hidden pending deterministic concurrency certification. It does not alter the KOT, Reminder, Receipt, cancellation, or Add Round integrity behavior documented below. See `docs/audits/pos-workspace-ux-2026-08-03.md`.
+
 The report contains four confirmed P0 integrity defects, not only UI problems:
 
 1. **New Order detaches a dine-in order from its table.** The browser clears the table and table-session hidden fields. The second CT3 order was saved and its KOT printed, but it was saved as an orphan dine-in order, so CT3 correctly could not include it.

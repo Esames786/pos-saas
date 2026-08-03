@@ -11,6 +11,8 @@
         align-items: start;
     }
 
+    .pos-products-panel { min-width: 0; }
+
     .pos-card {
         border: 1px solid #edf0f4;
         border-radius: 8px;
@@ -76,7 +78,7 @@
 
     .restaurant-table-tile {
         border: 1px solid #edf0f4;
-        border-radius: 20px;
+        border-radius: 8px;
         background: linear-gradient(180deg, #fff, #fbfcfd);
         padding: .85rem;
         text-align: left;
@@ -111,6 +113,18 @@
         overflow-y: auto;
         padding-right: .25rem;
     }
+
+    .table-workspace-panel { min-height: 420px; }
+    .table-workspace-panel .restaurant-board-grid {
+        grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+        max-height: none;
+        overflow: visible;
+    }
+    .table-workspace-toolbar { position: sticky; top: 0; z-index: 2; background: #fff; }
+    .table-workspace-view[hidden] { display: none !important; }
+    .table-action-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: .75rem; }
+    .pos-session-summary { min-width: 0; }
+    .pos-session-summary .session-context { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
     /* Recalled-order lock */
     .pos-controls-locked {
@@ -279,8 +293,31 @@
         .cart-section   { min-height: 280px; }
     }
 
-    @media (min-width: 1200px) {
-        #dine-in-board.is-collapsed { display: none !important; }
+    @media (min-width: 1200px) and (min-height: 720px) {
+        .pos-shell {
+            height: calc(100vh - 188px);
+            min-height: 520px;
+            align-items: stretch;
+        }
+        .pos-products-panel {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            overflow: hidden;
+        }
+        .product-grid {
+            flex: 1 1 auto;
+            min-height: 0;
+            max-height: none;
+        }
+        .cart-panel {
+            position: static;
+            top: auto;
+            height: 100%;
+            min-height: 0;
+            overflow: hidden;
+        }
+        .cart-section { min-height: 0; }
     }
 
     .waiter-roster {
@@ -347,22 +384,23 @@
 
 {{-- Selected table-session bar — JS-managed: always in the DOM, shown when a dine-in
      session is active. Filled by applyTableSession() so switching tables needs no reload. --}}
-<div id="pos-session-bar" class="pos-card p-3 mb-3 d-flex flex-wrap align-items-center gap-2 {{ $tableSession ? '' : 'd-none' }}"
+<div id="pos-session-bar" class="pos-card px-3 py-2 mb-3 d-flex flex-wrap align-items-center gap-2 pos-session-summary"
      data-session-base="{{ url('/restaurant/table-sessions') }}"
-     style="{{ $tableSession ? '' : 'display:none;' }}">
-    <div class="session-context">
+     style="{{ $activeMode === 'dine_in' ? '' : 'display:none;' }}">
+    <button type="button" id="view-tables-btn" class="btn btn-dark btn-sm">
+        <i class="ti ti-layout-grid me-1"></i>View Tables
+    </button>
+    <div class="session-context {{ $tableSession ? '' : 'd-none' }}" id="pos-session-details">
         <strong>Table <span id="pos-session-table-no">{{ $tableSession?->table?->table_no }}</span></strong>
         <span class="text-muted ms-1" id="pos-session-no">{{ $tableSession?->session_no }}</span>
         &middot; <span id="pos-session-waiter">{{ $tableSession?->waiter?->name ?? 'No waiter' }}</span>
         &middot; <span id="pos-session-guests">{{ $tableSession?->guest_count }}</span> guests
+        &middot; Open check <strong id="pos-session-open-check">{{ number_format((float) ($tableSession?->salesOrders?->where('status', 'held')->sum('grand_total') ?? 0), 2) }}</strong>
     </div>
-    <div class="d-flex gap-2 ms-auto flex-wrap">
-        <button type="button" id="change-table-btn" class="btn btn-sm btn-outline-secondary" title="Change table">
-            <i class="ti ti-layout-grid"></i>
-        </button>
+    <div class="d-flex gap-2 ms-auto flex-wrap {{ $tableSession ? '' : 'd-none' }}" id="pos-session-actions">
         @can('tenant.restaurant.table-sessions.bill-preview')
-            <a href="{{ $tableSession ? url('/restaurant/table-sessions/' . $tableSession->id . '/bill-preview') : '#' }}"
-               id="pos-session-bill-preview" target="_blank" rel="noopener" class="btn btn-sm btn-dark">Bill Preview</a>
+            <button type="button" id="pos-session-bill-preview" class="btn btn-sm btn-outline-dark"
+                    data-session-id="{{ $tableSession?->id }}">Bill Preview</button>
         @endcan
         @can('tenant.restaurant.table-sessions.bill-requested')
             <form method="POST" id="pos-session-request-bill-form" class="d-inline"
@@ -392,25 +430,6 @@
     </div>
 </div>
 
-{{-- Live table board --}}
-<div id="dine-in-board" class="pos-card p-3 mb-3 {{ $tableSession ? 'is-collapsed' : '' }}" style="{{ $activeMode === 'dine_in' && !$tableSession ? '' : 'display:none;' }}">
-    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
-        <div>
-            <h2 class="h5 mb-1">Live Table Board</h2>
-            <p class="text-muted mb-0">Open table, select an active table, then save order or close bill.</p>
-        </div>
-        @can('tenant.restaurant.board')
-            <a href="{{ url('/restaurant/board?branch_id=' . $selectedBranchId) }}" class="btn btn-sm btn-light">Full Board</a>
-        @endcan
-    </div>
-
-    {{-- Refreshable region: re-rendered in place by refreshTableBoard() after
-         open / continue / select, so the board stays accurate with no full reload. --}}
-    <div id="table-board-body" data-board-url="{{ url('/api/pos/table-board') }}">
-        @include('tenant.pos.partials.table-board')
-    </div>
-</div>
-
 {{-- POS form --}}
 <form id="pos-sale-form" method="POST" action="{{ url('/pos') }}">
     @csrf
@@ -430,7 +449,7 @@
 
     <div class="pos-shell">
         {{-- LEFT: products --}}
-        <section class="pos-card p-3" aria-labelledby="products_heading">
+        <section class="pos-card p-3 pos-products-panel" aria-labelledby="products_heading">
             {{-- POS-UX-2: compact header — small controls, order type lives in the tabs only --}}
             <div class="row g-2 mb-2" id="order-controls-row">
                 <div class="col-md-3">
@@ -646,7 +665,7 @@
                         <button type="button" class="btn btn-outline-danger btn-lg w-100" id="cancel-order-btn">Cancel Order</button>
                     </div>
                     <div class="col" id="split-bill-wrap" style="display:none">
-                        <a href="#" target="_blank" rel="noopener" class="btn btn-outline-info btn-lg w-100" id="split-bill-link">Split Bill</a>
+                        <button type="button" class="btn btn-outline-info btn-lg w-100" id="split-bill-link">Split Bill</button>
                     </div>
                     <div class="col-auto">
                         <button type="button" class="btn btn-outline-secondary btn-lg px-3" id="last-print-btn"
@@ -655,14 +674,6 @@
                         </button>
                     </div>
                 </div>
-                @if($tableSession)
-                    @can('tenant.restaurant.table-sessions.bill-requested')
-                        <form method="POST" action="{{ url('/restaurant/table-sessions/' . $tableSession->id . '/bill-requested') }}">
-                            @csrf
-                            <button class="btn btn-info btn-lg w-100" type="submit">Mark Bill Requested</button>
-                        </form>
-                    @endcan
-                @endif
             </div>
         </aside>
     </div>
@@ -777,20 +788,46 @@
 </form>
 
 {{-- Open Table Modal --}}
-<div class="modal fade" id="openTableModal" tabindex="-1" aria-labelledby="openTableModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <form id="open-table-form" method="POST" action="#" class="modal-content">
-            @csrf
+<div class="modal fade" id="tableWorkspaceModal" tabindex="-1" aria-labelledby="tableWorkspaceModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-fullscreen-lg-down modal-dialog-scrollable">
+        <div class="modal-content">
             <div class="modal-header">
-                <h2 class="modal-title h5" id="openTableModalLabel">Open Table</h2>
+                <div>
+                    <h2 class="modal-title h5 mb-0" id="tableWorkspaceModalLabel">Table Workspace</h2>
+                    <p class="text-muted small mb-0">Open, continue and manage active table checks without leaving POS.</p>
+                </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <div class="modal-body row g-3">
-                <div class="col-12">
-                    <div class="alert alert-light border mb-0">
-                        Opening table: <strong id="open-table-no">-</strong>
+            <div class="modal-body table-workspace-panel">
+                <div class="table-workspace-toolbar d-flex align-items-center justify-content-between gap-2 pb-3">
+                    <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="table-workspace-back">
+                        <i class="ti ti-arrow-left me-1"></i>Tables
+                    </button>
+                    <div class="ms-auto d-flex gap-2">
+                        @can('tenant.restaurant.floors.index')
+                            <button type="button" class="btn btn-sm btn-outline-secondary" data-management-url="{{ url('/restaurant/floors?embed=1') }}">
+                                <i class="ti ti-layers me-1"></i>Manage Floors
+                            </button>
+                        @endcan
+                        @can('tenant.restaurant.tables.index')
+                            <button type="button" class="btn btn-sm btn-outline-secondary"
+                                    data-management-url="{{ url('/restaurant/tables?branch_id=' . $selectedBranchId . '&embed=1') }}">
+                                <i class="ti ti-settings me-1"></i>Manage Tables
+                            </button>
+                        @endcan
                     </div>
                 </div>
+
+                <section class="table-workspace-view" id="table-workspace-board">
+                    <div id="table-board-body" data-board-url="{{ url('/api/pos/table-board') }}">
+                        @include('tenant.pos.partials.table-board')
+                    </div>
+                </section>
+
+                <section class="table-workspace-view" id="table-workspace-open" hidden>
+                    <form id="open-table-form" method="POST" action="#" class="row g-3 mx-auto" style="max-width:780px">
+                        @csrf
+                        <div class="col-12"><h3 class="h5 mb-0">Open Table <span id="open-table-no">-</span></h3></div>
                 <div class="col-12">
                     <label for="restaurant_waiter_id" class="form-label">Waiter</label>
                     <select id="restaurant_waiter_id" name="restaurant_waiter_id" class="form-select visually-hidden">
@@ -821,12 +858,56 @@
                     <label for="table_notes" class="form-label">Notes</label>
                     <input id="table_notes" name="notes" class="form-control">
                 </div>
+                        <div class="col-12 d-flex justify-content-end gap-2">
+                            <button class="btn btn-light" type="button" data-table-workspace-home>Cancel</button>
+                            <button class="btn btn-success" type="submit" id="open-table-submit">Open Table</button>
+                        </div>
+                    </form>
+                </section>
+
+                <section class="table-workspace-view" id="table-workspace-held" hidden>
+                    <div id="table-workspace-held-body"></div>
+                </section>
+                <section class="table-workspace-view" id="table-workspace-move" hidden>
+                    <div id="table-workspace-move-body"></div>
+                </section>
+                <section class="table-workspace-view" id="table-workspace-split" hidden>
+                    <div id="table-workspace-split-body"></div>
+                </section>
+                <section class="table-workspace-view" id="table-workspace-manage" hidden>
+                    <iframe id="table-management-frame" title="Table management" class="w-100 border-0" style="min-height:620px"></iframe>
+                </section>
             </div>
+        </div>
+    </div>
+</div>
+
+{{-- One preview shell; live cart and authoritative table session remain separate data sources. --}}
+<div class="modal fade" id="billPreviewModal" tabindex="-1" aria-labelledby="billPreviewModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title h5" id="billPreviewModalLabel">Bill Preview</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="bill-preview-modal-body"></div>
             <div class="modal-footer">
-                <button class="btn btn-light" type="button" data-bs-dismiss="modal">Cancel</button>
-                <button class="btn btn-success" type="submit" id="open-table-submit">Open Table</button>
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="print-bill-preview-btn"><i class="ti ti-printer me-1"></i>Print</button>
             </div>
-        </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="splitBillModal" tabindex="-1" aria-labelledby="splitBillModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-fullscreen-lg-down modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title h5" id="splitBillModalLabel">Split Bill</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0" id="split-bill-modal-body"></div>
+        </div>
     </div>
 </div>
 
@@ -1136,8 +1217,8 @@ document.addEventListener('DOMContentLoaded', function () {
         document.querySelectorAll('[data-mode-tab]').forEach(function (b) {
             b.classList.toggle('active', b.dataset.modeTab === 'dine_in');
         });
-        var board = document.getElementById('dine-in-board');
-        if (board) board.style.display = '';
+        var bar = document.getElementById('pos-session-bar');
+        if (bar) { bar.classList.remove('d-none'); bar.style.display = ''; }
     }
 
     function applyTableSession(session) {
@@ -1150,8 +1231,9 @@ document.addEventListener('DOMContentLoaded', function () {
             put('pos-session-no',       session.session_no);
             put('pos-session-waiter',   session.waiter_name || 'No waiter');
             put('pos-session-guests',   session.guest_count);
+            put('pos-session-open-check', money(session.open_check || 0));
             var bp = document.getElementById('pos-session-bill-preview');
-            if (bp && base) bp.href = base + '/' + session.id + '/bill-preview';
+            if (bp) bp.dataset.sessionId = session.id;
             var rb = document.getElementById('pos-session-request-bill-form');
             if (rb && base) {
                 rb.action = base + '/' + session.id + '/bill-requested';
@@ -1159,13 +1241,12 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             bar.classList.remove('d-none');
             bar.style.display = '';
+            var details = document.getElementById('pos-session-details');
+            var actions = document.getElementById('pos-session-actions');
+            if (details) details.classList.remove('d-none');
+            if (actions) actions.classList.remove('d-none');
         }
         forceDineInMode();
-        var board = document.getElementById('dine-in-board');
-        if (board) {
-            board.classList.add('is-collapsed');
-            board.style.display = 'none';
-        }
         setHidden('restaurant_table_session_id', session.id);
         setHidden('restaurant_table_id', session.table_id || '');
         setCompleteSaleLabel(true);
@@ -1203,6 +1284,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 clearCart();                 // table is open but has no held order yet
                 applyTableSession(session);
                 refreshTableBoard(session.id);
+                closeTableWorkspace();
                 return;
             }
             showOpenOrdersChoice(data.orders, session);
@@ -1214,6 +1296,7 @@ document.addEventListener('DOMContentLoaded', function () {
         applyTableSession(session);
         recallHeldSale(order);               // rebuilds cart + sets held id, in place
         refreshTableBoard(session.id);
+        closeTableWorkspace();
         if (window.history && window.history.replaceState) {
             window.history.replaceState({}, '', buildPosUrl({
                 held_sale_id:     order.id,
@@ -2819,9 +2902,10 @@ document.addEventListener('DOMContentLoaded', function () {
         const link = document.getElementById('split-bill-link');
         if (!wrap || !link) return;
         if (_currentHeldSaleId) {
-            link.href       = '{{ url('/sales-orders') }}/' + _currentHeldSaleId + '/split-bill';
+            link.dataset.saleId = _currentHeldSaleId;
             wrap.style.display = '';
         } else {
+            delete link.dataset.saleId;
             wrap.style.display = 'none';
         }
     }
@@ -3330,6 +3414,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (result.data.restaurant_table_session_id) {
                     const tblSessInput = document.getElementById('restaurant_table_session_id');
                     if (tblSessInput) tblSessInput.value = result.data.restaurant_table_session_id;
+                    const openCheck = document.getElementById('pos-session-open-check');
+                    if (openCheck) openCheck.textContent = money(totals().total);
                 }
 
                 updateSplitBillBtn();
@@ -3356,6 +3442,7 @@ document.addEventListener('DOMContentLoaded', function () {
             clearCart();
             applyTableSession(session);
             refreshTableBoard(session.id);
+            closeTableWorkspace();
             return;
         }
 
@@ -3614,8 +3701,8 @@ document.addEventListener('DOMContentLoaded', function () {
             document.querySelectorAll('[data-mode-tab]').forEach(function (b) {
                 b.classList.toggle('active', b.dataset.modeTab === sale.order_type);
             });
-            const dineBoard = document.getElementById('dine-in-board');
-            if (dineBoard) dineBoard.style.display = sale.order_type === 'dine_in' ? '' : 'none';
+            const sessionBar = document.getElementById('pos-session-bar');
+            if (sessionBar) sessionBar.style.display = sale.order_type === 'dine_in' ? '' : 'none';
         }
         updateDeliveryPanel();
         if (sale.delivery_channel_id && deliveryChannelEl) {
@@ -3808,8 +3895,8 @@ document.addEventListener('DOMContentLoaded', function () {
         });
 
         // Show/hide dine-in board
-        const dineBoard = document.getElementById('dine-in-board');
-        if (dineBoard) dineBoard.style.display = newType === 'dine_in' ? '' : 'none';
+        const sessionBar = document.getElementById('pos-session-bar');
+        if (sessionBar) sessionBar.style.display = newType === 'dine_in' ? '' : 'none';
 
         // Apply terminal
         if (terminalEl) terminalEl.value = newTerminal;
@@ -4176,13 +4263,13 @@ document.addEventListener('DOMContentLoaded', function () {
             const qty = Number(it.quantity) || 0;
             const price = Number(it.unit_price) || 0;
             const lt = (it.line_total != null) ? Number(it.line_total) : qty * price;
-            return '<tr><td>' + (it.name || it.product_name || 'Item') + '</td><td style="text-align:right">' + qty + '</td><td style="text-align:right">' + money(price) + '</td><td style="text-align:right">' + money(lt) + '</td></tr>';
+            return '<tr><td>' + escapeHtml(it.name || it.product_name || 'Item') + '</td><td style="text-align:right">' + qty + '</td><td style="text-align:right">' + money(price) + '</td><td style="text-align:right">' + money(lt) + '</td></tr>';
         }).join('');
         const html = '<html><head><title>Bill Preview</title><style>'
             + 'body{font-family:monospace;max-width:320px;margin:0 auto;padding:8px;font-size:13px}'
             + 'h3{text-align:center;margin:4px 0}table{width:100%;border-collapse:collapse}td,th{padding:2px 0}'
             + '.tot{border-top:1px dashed #000;margin-top:6px;padding-top:6px}.muted{text-align:center;color:#666;font-size:11px}</style></head><body>'
-            + '<h3>' + branchName + '</h3>'
+            + '<h3>' + escapeHtml(branchName) + '</h3>'
             + '<div class="muted">BILL PREVIEW — NOT A TAX RECEIPT</div>'
             + '<div class="muted">' + new Date().toLocaleString() + '</div><hr>'
             + '<table><thead><tr><th style="text-align:left">Item</th><th style="text-align:right">Qty</th><th style="text-align:right">Price</th><th style="text-align:right">Amt</th></tr></thead><tbody>'
@@ -4191,13 +4278,42 @@ document.addEventListener('DOMContentLoaded', function () {
             + '<tr><td>Subtotal</td><td style="text-align:right">' + money(t.subtotal) + '</td></tr>'
             + ((t.discount > 0) ? '<tr><td>Discount</td><td style="text-align:right">' + money(t.discount) + '</td></tr>' : '')
             + ((t.tax > 0) ? '<tr><td>Tax</td><td style="text-align:right">' + money(t.tax) + '</td></tr>' : '')
+            + ((t.serviceCharge > 0) ? '<tr><td>Service Charge</td><td style="text-align:right">' + money(t.serviceCharge) + '</td></tr>' : '')
+            + ((t.tip > 0) ? '<tr><td>Tip</td><td style="text-align:right">' + money(t.tip) + '</td></tr>' : '')
             + '<tr><td><strong>Total</strong></td><td style="text-align:right"><strong>' + money(t.total) + '</strong></td></tr>'
             + '</table></div></body></html>';
-        const w = window.open('', '_blank');
-        if (!w) { toast('warning', 'Allow pop-ups to preview the bill'); return; }
-        w.document.write(html); w.document.close(); w.focus();
-        setTimeout(function () { try { w.print(); } catch (e) {} }, 300);
+        const body = document.getElementById('bill-preview-modal-body');
+        body.innerHTML = '<iframe id="bill-preview-frame" title="Current cart bill preview" class="w-100 border-0" style="min-height:560px"></iframe>';
+        body.querySelector('iframe').srcdoc = html;
+        document.getElementById('billPreviewModalLabel').textContent = 'Current Cart Preview';
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('billPreviewModal')).show();
     }
+
+    function showTableBillPreview(sessionId) {
+        fetch('{{ url('/restaurant/table-sessions') }}/' + sessionId + '/bill-preview', { headers: { 'Accept': 'application/json' } })
+            .then(function (response) { return response.json().then(function (data) { if (!response.ok || !data.ok) throw new Error(data.message || 'Unable to load table bill.'); return data; }); })
+            .then(function (data) {
+                document.getElementById('billPreviewModalLabel').textContent = 'Table Bill Preview';
+                document.getElementById('bill-preview-modal-body').innerHTML = data.html;
+                showModalAfterWorkspace(document.getElementById('billPreviewModal'));
+            }).catch(function (error) { toast('error', error.message); });
+    }
+
+    document.getElementById('pos-session-bill-preview')?.addEventListener('click', function () {
+        if (this.dataset.sessionId) showTableBillPreview(this.dataset.sessionId);
+    });
+
+    document.getElementById('print-bill-preview-btn')?.addEventListener('click', function () {
+        var frame = document.getElementById('bill-preview-frame');
+        if (frame) { frame.contentWindow.focus(); frame.contentWindow.print(); return; }
+        var printable = document.getElementById('bill-preview-modal-body').innerHTML;
+        var printFrame = document.createElement('iframe');
+        printFrame.hidden = true;
+        document.body.appendChild(printFrame);
+        printFrame.contentWindow.document.write('<html><head><title>Table Bill Preview</title><style>body{font-family:Arial,sans-serif;padding:16px}table{width:100%;border-collapse:collapse}th,td{padding:6px;border-bottom:1px solid #ddd}.text-end{text-align:right}.d-flex{display:flex}.justify-content-between{justify-content:space-between}</style></head><body>' + printable + '</body></html>');
+        printFrame.contentWindow.document.close();
+        setTimeout(function () { printFrame.contentWindow.focus(); printFrame.contentWindow.print(); setTimeout(function () { printFrame.remove(); }, 1000); }, 250);
+    });
     const billPreviewBtn = document.getElementById('bill-preview-btn');
     if (billPreviewBtn) { billPreviewBtn.addEventListener('click', billPreview); }
 
@@ -4230,26 +4346,146 @@ document.addEventListener('DOMContentLoaded', function () {
         .catch(function () { toast('error', 'Failed to reprint receipt'); });
     });
 
-    /* ── Table board interactions (delegated on #dine-in-board so they keep
-          working after refreshTableBoard() swaps the tile markup) ────────── */
+    /* Delegated Table Workspace actions remain live after board refreshes. */
 
-    var dineBoardEl = document.getElementById('dine-in-board');
-    if (dineBoardEl) {
-        dineBoardEl.addEventListener('click', function (event) {
+    var tableWorkspaceEl = document.getElementById('tableWorkspaceModal');
+    var tableBoardEl = document.getElementById('table-board-body');
+    var tableWorkspaceBack = document.getElementById('table-workspace-back');
+
+    function showTableWorkspaceView(viewId) {
+        document.querySelectorAll('.table-workspace-view').forEach(function (view) { view.hidden = view.id !== viewId; });
+        if (tableWorkspaceBack) tableWorkspaceBack.classList.toggle('d-none', viewId === 'table-workspace-board');
+    }
+
+    function openTableWorkspace() {
+        showTableWorkspaceView('table-workspace-board');
+        refreshTableBoard(document.getElementById('restaurant_table_session_id')?.value || '');
+        bootstrap.Modal.getOrCreateInstance(tableWorkspaceEl).show();
+    }
+
+    function closeTableWorkspace() {
+        var modal = bootstrap.Modal.getInstance(tableWorkspaceEl);
+        if (modal) modal.hide();
+    }
+
+    function showModalAfterWorkspace(modalElement) {
+        var workspace = bootstrap.Modal.getInstance(tableWorkspaceEl);
+        if (workspace && tableWorkspaceEl.classList.contains('show')) {
+            tableWorkspaceEl.addEventListener('hidden.bs.modal', function () {
+                bootstrap.Modal.getOrCreateInstance(modalElement).show();
+            }, { once: true });
+            workspace.hide();
+            return;
+        }
+        bootstrap.Modal.getOrCreateInstance(modalElement).show();
+    }
+
+    document.getElementById('view-tables-btn')?.addEventListener('click', openTableWorkspace);
+    tableWorkspaceBack?.addEventListener('click', function () { showTableWorkspaceView('table-workspace-board'); });
+    document.querySelectorAll('[data-table-workspace-home]').forEach(function (button) {
+        button.addEventListener('click', function () { showTableWorkspaceView('table-workspace-board'); });
+    });
+    document.querySelectorAll('[data-management-url]').forEach(function (button) {
+        button.addEventListener('click', function () {
+            document.getElementById('table-management-frame').src = this.dataset.managementUrl;
+            showTableWorkspaceView('table-workspace-manage');
+        });
+    });
+    document.getElementById('pos-session-request-bill-form')?.addEventListener('submit', function (event) {
+        event.preventDefault();
+        var requestForm = this;
+        fetch(requestForm.action, { method: 'POST', headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' }, body: new FormData(requestForm) })
+            .then(function (response) { return response.json().then(function (data) { if (!response.ok) throw new Error(data.message || 'Unable to request bill.'); return data; }); })
+            .then(function (data) { requestForm.style.display = 'none'; refreshTableBoard(document.getElementById('restaurant_table_session_id')?.value || ''); toast('success', data.message); })
+            .catch(function (error) { toast('error', error.message); });
+    });
+
+    function loadTableOrders(sessionId, callback) {
+        fetch('{{ url('/api/pos/table-sessions') }}/' + sessionId + '/open-orders', { headers: { 'Accept': 'application/json' } })
+            .then(function (response) { return response.json().then(function (data) { if (!response.ok || !data.ok) throw new Error(data.message || 'Unable to load table orders.'); return data; }); })
+            .then(callback).catch(function (error) { toast('error', error.message); });
+    }
+
+    function showTableHeldOrders(sessionId) {
+        showTableWorkspaceView('table-workspace-held');
+        var body = document.getElementById('table-workspace-held-body');
+        body.innerHTML = '<div class="text-center py-5"><span class="spinner-border"></span></div>';
+        loadTableOrders(sessionId, function (data) {
+            if (!data.orders.length) { body.innerHTML = '<div class="alert alert-light border">This table has no held orders.</div>'; return; }
+            body.innerHTML = '<h3 class="h5 mb-3">Held Orders - Table ' + escapeHtml(data.session.table_no || '') + '</h3><div class="table-action-list">' + data.orders.map(function (order, index) {
+                return '<article class="border rounded p-3"><div class="d-flex justify-content-between gap-2 mb-2"><strong>' + escapeHtml(order.sale_no) + '</strong><strong>' + escapeHtml(order.grand_total_formatted) + '</strong></div><div class="text-muted small mb-3">' + escapeHtml(order.items_count) + ' items &middot; ' + escapeHtml(order.updated_at || '') + '</div><button type="button" class="btn btn-primary w-100" data-workspace-recall="' + index + '">Recall / Continue</button></article>';
+            }).join('') + '</div>';
+            body.querySelectorAll('[data-workspace-recall]').forEach(function (button) {
+                button.addEventListener('click', function () { continueExistingOrder(data.orders[Number(button.dataset.workspaceRecall)], data.session); });
+            });
+        });
+    }
+
+    function postTableOperation(url, fields, callback) {
+        var data = new FormData();
+        Object.keys(fields).forEach(function (key) { data.append(key, fields[key]); });
+        fetch(url, { method: 'POST', headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' }, body: data })
+            .then(function (response) { return response.json().then(function (payload) { if (!response.ok) throw new Error(payload.message || 'Operation failed.'); return payload; }); })
+            .then(function (payload) { toast('success', payload.message || 'Updated'); callback(payload); })
+            .catch(function (error) { toast('error', error.message); });
+    }
+
+    function showTableMove(sessionId, sourceTableId) {
+        showTableWorkspaceView('table-workspace-move');
+        var body = document.getElementById('table-workspace-move-body');
+        var targets = Array.from(tableBoardEl.querySelectorAll('[data-open-table="1"]')).filter(function (button) { return String(button.dataset.tableId) !== String(sourceTableId); });
+        body.innerHTML = '<h3 class="h5 mb-3">Move Table</h3>' + (targets.length ? '<div class="table-action-list">' + targets.map(function (button) { return '<button type="button" class="btn btn-outline-primary p-3" data-move-target="' + escapeHtml(button.dataset.tableId) + '">' + escapeHtml(button.dataset.tableNo) + '</button>'; }).join('') + '</div>' : '<div class="alert alert-light border">No eligible destination table is currently available.</div>');
+        body.querySelectorAll('[data-move-target]').forEach(function (button) {
+            button.addEventListener('click', function () { postTableOperation('{{ url('/restaurant/table-sessions') }}/' + sessionId + '/move', { target_table_id: button.dataset.moveTarget }, function (data) { applyTableSession(data.session); refreshTableBoard(data.session.id); showTableWorkspaceView('table-workspace-board'); }); });
+        });
+    }
+
+    function openSplitForSession(sessionId) {
+        loadTableOrders(sessionId, function (data) {
+            if (!data.orders.length) { toast('warning', 'No held order is available to split.'); return; }
+            if (data.orders.length === 1) { openSplitSale(data.orders[0]); return; }
+            showTableWorkspaceView('table-workspace-split');
+            var body = document.getElementById('table-workspace-split-body');
+            body.innerHTML = '<h3 class="h5 mb-3">Select the exact held order to split</h3><div class="table-action-list">' + data.orders.map(function (order, index) { return '<button type="button" class="btn btn-outline-primary p-3 text-start" data-split-order="' + index + '"><strong>' + escapeHtml(order.sale_no) + '</strong><br><span class="text-muted">' + escapeHtml(order.items_count) + ' items &middot; ' + escapeHtml(order.grand_total_formatted) + '</span></button>'; }).join('') + '</div>';
+            body.querySelectorAll('[data-split-order]').forEach(function (button) { button.addEventListener('click', function () { openSplitSale(data.orders[Number(button.dataset.splitOrder)]); }); });
+        });
+    }
+
+    function openSplitSale(order) {
+        document.getElementById('split-bill-modal-body').innerHTML = '<iframe title="Split bill" class="w-100 border-0" style="min-height:720px" src="{{ url('/sales-orders') }}/' + Number(order.id) + '/split-bill"></iframe>';
+        showModalAfterWorkspace(document.getElementById('splitBillModal'));
+    }
+
+    document.getElementById('split-bill-link')?.addEventListener('click', function () {
+        if (this.dataset.saleId) openSplitSale({ id: Number(this.dataset.saleId) });
+    });
+
+    if (tableBoardEl) {
+        tableBoardEl.addEventListener('click', function (event) {
             // Continue / select an active table — no page reload.
             var sel = event.target.closest('[data-table-session-select="1"]');
-            if (sel && dineBoardEl.contains(sel)) {
+            if (sel && tableBoardEl.contains(sel)) {
                 event.preventDefault();
-                continueTableSession(sel.dataset.sessionId, sel.dataset.branchId, sel.href);
+                continueTableSession(sel.dataset.sessionId, sel.dataset.branchId, sel.dataset.fallbackHref);
                 return;
             }
+            var open = event.target.closest('[data-open-table="1"]');
+            if (open) { document.getElementById('open-table-no').textContent = open.dataset.tableNo; document.getElementById('open-table-form').action = '{{ url('/restaurant/tables') }}/' + open.dataset.tableId + '/open'; selectWaiterChoice(''); showTableWorkspaceView('table-workspace-open'); return; }
+            var held = event.target.closest('[data-table-held-orders]');
+            if (held) { showTableHeldOrders(held.dataset.tableHeldOrders); return; }
+            var preview = event.target.closest('[data-table-bill-preview]');
+            if (preview) { showTableBillPreview(preview.dataset.tableBillPreview); return; }
+            var split = event.target.closest('[data-table-split]');
+            if (split) { openSplitForSession(split.dataset.tableSplit); return; }
+            var move = event.target.closest('[data-table-move]');
+            if (move) { showTableMove(move.dataset.tableMove, move.dataset.sourceTableId); return; }
             // Floor filter tabs.
             var tab = event.target.closest('[data-floor-tab]');
-            if (tab && dineBoardEl.contains(tab)) {
-                dineBoardEl.querySelectorAll('[data-floor-tab]').forEach(function (b) { b.classList.remove('active'); });
+            if (tab && tableBoardEl.contains(tab)) {
+                tableBoardEl.querySelectorAll('[data-floor-tab]').forEach(function (b) { b.classList.remove('active'); });
                 tab.classList.add('active');
                 var floorId = tab.dataset.floorTab;
-                dineBoardEl.querySelectorAll('[data-floor-panel]').forEach(function (panel) {
+                tableBoardEl.querySelectorAll('[data-floor-panel]').forEach(function (panel) {
                     panel.style.display = (!floorId || panel.dataset.floorPanel === floorId) ? '' : 'none';
                 });
             }
@@ -4417,9 +4653,11 @@ document.addEventListener('DOMContentLoaded', function () {
         // Switching mode de-selects any active table → hide its bar + reset the pay button.
         var sessionBar = document.getElementById('pos-session-bar');
         if (sessionBar) {
-            sessionBar.style.display = 'none';
-            sessionBar.classList.add('d-none');
+            sessionBar.style.display = isDineIn ? '' : 'none';
+            sessionBar.classList.toggle('d-none', !isDineIn);
         }
+        document.getElementById('pos-session-details')?.classList.add('d-none');
+        document.getElementById('pos-session-actions')?.classList.add('d-none');
         setCompleteSaleLabel(false);
         updateRecalledBar();
         updateStartFreshLabel();
@@ -4433,12 +4671,6 @@ document.addEventListener('DOMContentLoaded', function () {
         button.classList.add('active');
 
         // Table board is only relevant for dine-in.
-        var board = document.getElementById('dine-in-board');
-        if (board) {
-            board.classList.toggle('is-collapsed', !isDineIn);
-            board.style.display = isDineIn ? '' : 'none';
-        }
-
         // Recompute service charge / totals for the new order type.
         if (typeof refreshServerTotals === 'function') { refreshServerTotals(); }
 
@@ -4504,21 +4736,9 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    /* floor tabs handled by delegation on #dine-in-board (see above) */
+    /* Floor tabs are handled by Table Workspace delegation above. */
 
     /* open table modal — populate table info */
-
-    document.getElementById('openTableModal').addEventListener('show.bs.modal', function (event) {
-        const trigger = event.relatedTarget;
-        if (!trigger) return;
-        document.getElementById('open-table-no').textContent = trigger.getAttribute('data-table-no');
-        document.getElementById('open-table-form').action   = '{{ url('/restaurant/tables') }}/' + trigger.getAttribute('data-table-id') + '/open';
-        const errEl = document.getElementById('open-table-error');
-        if (errEl) errEl.remove();
-        const openBtn = document.getElementById('open-table-submit');
-        if (openBtn) { openBtn.disabled = false; openBtn.textContent = 'Open Table'; }
-        selectWaiterChoice('');
-    });
 
     function selectWaiterChoice(waiterId) {
         var value = String(waiterId || '');
@@ -4536,17 +4756,6 @@ document.addEventListener('DOMContentLoaded', function () {
             selectWaiterChoice(choice.dataset.waiterChoice);
         });
     });
-
-    var changeTableBtn = document.getElementById('change-table-btn');
-    if (changeTableBtn) {
-        changeTableBtn.addEventListener('click', function () {
-            var board = document.getElementById('dine-in-board');
-            if (!board) return;
-            board.classList.remove('is-collapsed');
-            board.style.display = '';
-            board.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        });
-    }
 
     /* open table modal — AJAX submit (stay on POS, land on session) */
 
@@ -4574,9 +4783,7 @@ document.addEventListener('DOMContentLoaded', function () {
         .then(function (result) {
             if (result.ok && result.data.session_id) {
                 // Close the modal and drop straight into the fresh session — no reload.
-                var modalEl = document.getElementById('openTableModal');
-                var modal   = bootstrap.Modal.getInstance(modalEl);
-                if (modal) modal.hide();
+                closeTableWorkspace();
                 openBtn.disabled    = false;
                 openBtn.textContent = 'Open Table';
                 form.reset();
@@ -4594,7 +4801,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 div.id        = 'open-table-error';
                 div.className = 'alert alert-danger mt-2 mb-0';
                 div.textContent = message;
-                form.querySelector('.modal-body').appendChild(div);
+                form.appendChild(div);
                 openBtn.disabled    = false;
                 openBtn.textContent = 'Open Table';
             }

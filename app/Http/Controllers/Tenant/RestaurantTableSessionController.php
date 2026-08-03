@@ -208,9 +208,16 @@ class RestaurantTableSessionController extends Controller
             },
         ]);
 
-        return view('tenant.restaurant.table-sessions.bill-preview', [
-            'session' => $restaurantTableSession,
-        ]);
+        if (request()->expectsJson()) {
+            return response()->json([
+                'ok' => true,
+                'html' => view('tenant.pos.partials.table-bill-preview', [
+                    'session' => $restaurantTableSession,
+                ])->render(),
+            ]);
+        }
+
+        return view('tenant.restaurant.table-sessions.bill-preview', ['session' => $restaurantTableSession]);
     }
 
     public function move(Request $request, RestaurantTableSession $restaurantTableSession)
@@ -224,6 +231,9 @@ class RestaurantTableSessionController extends Controller
         ]);
 
         if (!in_array($restaurantTableSession->status, ['open', 'bill_requested'], true)) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'Only open table sessions can be moved.'], 422);
+            }
             return back()->withErrors(['session' => 'Only open table sessions can be moved.']);
         }
 
@@ -232,6 +242,9 @@ class RestaurantTableSessionController extends Controller
             ->firstOrFail();
 
         if ((int) $targetTable->id === (int) $restaurantTableSession->restaurant_table_id) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'Please select a different target table.'], 422);
+            }
             return back()->withErrors(['table' => 'Please select a different target table.']);
         }
 
@@ -240,13 +253,32 @@ class RestaurantTableSessionController extends Controller
             ->exists();
 
         if ($targetHasOpenSession || !in_array($targetTable->status, ['available', 'cleaning'], true)) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'Target table is not available.'], 422);
+            }
             return back()->withErrors(['table' => 'Target table is not available.']);
         }
 
         try {
             DB::connection('tenant')->transaction(function () use ($restaurantTableSession, $targetTable) {
-                $sourceTableLocked = RestaurantTable::lockForUpdate()->find($restaurantTableSession->restaurant_table_id);
-                $targetTableLocked = RestaurantTable::lockForUpdate()->find($targetTable->id);
+                $sessionLocked = RestaurantTableSession::whereKey($restaurantTableSession->id)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$sessionLocked || !in_array($sessionLocked->status, ['open', 'bill_requested'], true)) {
+                    throw new \RuntimeException('The table session is no longer open. Refresh and try again.');
+                }
+
+                $tableIds = collect([$sessionLocked->restaurant_table_id, $targetTable->id])->sort()->values();
+                $tables = RestaurantTable::whereIn('id', $tableIds)->lockForUpdate()->get()->keyBy('id');
+                $sourceTableLocked = $tables->get($sessionLocked->restaurant_table_id);
+                $targetTableLocked = $tables->get($targetTable->id);
+
+                if (!$sourceTableLocked || !$targetTableLocked
+                    || (int) $sourceTableLocked->branch_id !== (int) $sessionLocked->branch_id
+                    || (int) $targetTableLocked->branch_id !== (int) $sessionLocked->branch_id) {
+                    throw new \RuntimeException('The source or target table is no longer valid.');
+                }
 
                 $targetHasSession = RestaurantTableSession::where('restaurant_table_id', $targetTableLocked->id)
                     ->whereIn('status', ['open', 'bill_requested'])
@@ -257,11 +289,11 @@ class RestaurantTableSessionController extends Controller
                     throw new \RuntimeException('Target table is no longer available.');
                 }
 
-                $restaurantTableSession->update([
+                $sessionLocked->update([
                     'restaurant_table_id' => $targetTableLocked->id,
                 ]);
 
-                SalesOrder::where('restaurant_table_session_id', $restaurantTableSession->id)
+                SalesOrder::where('restaurant_table_session_id', $sessionLocked->id)
                     ->update([
                         'restaurant_floor_id' => $targetTableLocked->restaurant_floor_id,
                         'restaurant_table_id' => $targetTableLocked->id,
@@ -270,13 +302,32 @@ class RestaurantTableSessionController extends Controller
                 $sourceTableLocked?->update(['status' => 'available']);
 
                 $targetTableLocked->update([
-                    'status' => $restaurantTableSession->status === 'bill_requested'
+                    'status' => $sessionLocked->status === 'bill_requested'
                         ? 'bill_requested'
                         : 'occupied',
                 ]);
-            });
+            }, 3);
         } catch (\RuntimeException $e) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => $e->getMessage()], 422);
+            }
             return back()->withErrors(['table' => $e->getMessage()]);
+        } catch (\Throwable $e) {
+            report($e);
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'The table state changed while moving. Refresh and try again.'], 409);
+            }
+            return back()->withErrors(['table' => 'The table state changed while moving. Refresh and try again.']);
+        }
+
+        $restaurantTableSession->refresh()->load(['table', 'waiter', 'salesOrders']);
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'ok' => true,
+                'message' => 'Table moved successfully.',
+                'session' => $this->sessionPayload($restaurantTableSession),
+            ]);
         }
 
         return back()->with('status', 'Table moved successfully.');
@@ -305,31 +356,127 @@ class RestaurantTableSessionController extends Controller
             ->whereIn('status', ['open', 'bill_requested'])
             ->findOrFail($data['target_session_id']);
 
-        DB::connection('tenant')->transaction(function () use ($restaurantTableSession, $targetSession) {
-            SalesOrder::where('restaurant_table_session_id', $restaurantTableSession->id)
-                ->whereIn('status', ['held', 'draft'])
-                ->update([
-                    'restaurant_floor_id'         => $targetSession->table?->restaurant_floor_id,
-                    'restaurant_table_id'          => $targetSession->restaurant_table_id,
-                    'restaurant_table_session_id'  => $targetSession->id,
-                    'restaurant_waiter_id'         => $targetSession->restaurant_waiter_id,
+        try {
+            DB::connection('tenant')->transaction(function () use ($restaurantTableSession, $targetSession) {
+                $sessionIds = collect([$restaurantTableSession->id, $targetSession->id])->sort()->values();
+                $sessions = RestaurantTableSession::whereIn('id', $sessionIds)
+                    ->lockForUpdate()
+                    ->get()
+                    ->keyBy('id');
+
+                $source = $sessions->get($restaurantTableSession->id);
+                $target = $sessions->get($targetSession->id);
+
+                if (!$source || !$target
+                    || (int) $source->branch_id !== (int) $target->branch_id
+                    || !in_array($source->status, ['open', 'bill_requested'], true)
+                    || !in_array($target->status, ['open', 'bill_requested'], true)) {
+                    throw new \RuntimeException('One of the table sessions is no longer available for merge.');
+                }
+
+                $tableIds = collect([$source->restaurant_table_id, $target->restaurant_table_id])->sort()->values();
+                $tables = RestaurantTable::whereIn('id', $tableIds)->lockForUpdate()->get()->keyBy('id');
+                $sourceTable = $tables->get($source->restaurant_table_id);
+                $targetTable = $tables->get($target->restaurant_table_id);
+
+                if (!$sourceTable || !$targetTable || (int) $sourceTable->branch_id !== (int) $targetTable->branch_id) {
+                    throw new \RuntimeException('Source and destination tables are invalid.');
+                }
+                if ((int) $sourceTable->id === (int) $targetTable->id
+                    || !in_array($sourceTable->status, ['occupied', 'bill_requested'], true)
+                    || !in_array($targetTable->status, ['occupied', 'bill_requested'], true)) {
+                    throw new \RuntimeException('One of the tables is no longer in an active mergeable state.');
+                }
+
+                $activeSessionsByTable = RestaurantTableSession::whereIn('restaurant_table_id', [$sourceTable->id, $targetTable->id])
+                    ->whereIn('status', ['open', 'bill_requested'])
+                    ->lockForUpdate()
+                    ->get(['id', 'restaurant_table_id'])
+                    ->groupBy('restaurant_table_id');
+                $activeSourceSessions = $activeSessionsByTable->get($sourceTable->id, collect());
+                $activeTargetSessions = $activeSessionsByTable->get($targetTable->id, collect());
+
+                if ($activeSourceSessions->count() !== 1 || (int) $activeSourceSessions->first()->id !== (int) $source->id) {
+                    throw new \RuntimeException('The source table session changed. Refresh and try again.');
+                }
+                if ($activeTargetSessions->count() !== 1 || (int) $activeTargetSessions->first()->id !== (int) $target->id) {
+                    throw new \RuntimeException('The destination table session changed. Refresh and try again.');
+                }
+
+                $activeSales = SalesOrder::where('restaurant_table_session_id', $source->id)
+                    ->whereIn('status', ['held', 'draft'])
+                    ->lockForUpdate()
+                    ->get();
+
+                if ($activeSales->isEmpty()) {
+                    throw new \RuntimeException('The source table has no active held order to merge.');
+                }
+
+                // Paid fiscal history intentionally remains attached to the original session/table.
+                SalesOrder::whereIn('id', $activeSales->pluck('id'))->update([
+                    'restaurant_floor_id'         => $targetTable->restaurant_floor_id,
+                    'restaurant_table_id'          => $targetTable->id,
+                    'restaurant_table_session_id'  => $target->id,
+                    'restaurant_waiter_id'         => $target->restaurant_waiter_id,
                 ]);
 
-            $restaurantTableSession->update([
-                'status'            => 'cancelled',
-                'closed_at'         => now(),
-                'closed_by_user_id' => auth('tenant')->id(),
-                'notes'             => trim(($restaurantTableSession->notes ? $restaurantTableSession->notes . ' | ' : '') . 'Merged into session ' . $targetSession->session_no),
-            ]);
+                $billWasRequested = in_array('bill_requested', [$source->status, $target->status], true);
+                $source->update([
+                    'status'            => 'cancelled',
+                    'closed_at'         => now(),
+                    'closed_by_user_id' => auth('tenant')->id(),
+                    'notes'             => trim(($source->notes ? $source->notes . ' | ' : '') . 'Active check merged into session ' . $target->session_no . '; paid history retained.'),
+                ]);
 
-            $restaurantTableSession->table?->update(['status' => 'available']);
+                $mergedStatus = $billWasRequested ? 'bill_requested' : 'open';
+                if ($target->status !== $mergedStatus) {
+                    $target->update(['status' => $mergedStatus]);
+                }
+                $sourceTable->update(['status' => 'available']);
+                $targetTable->update([
+                    'status' => $mergedStatus === 'bill_requested' ? 'bill_requested' : 'occupied',
+                ]);
+            }, 3);
+        } catch (\RuntimeException $e) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => $e->getMessage()], 422);
+            }
+            return back()->withErrors(['session' => $e->getMessage()]);
+        } catch (\Throwable $e) {
+            report($e);
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'The table state changed while merging. Refresh and try again.'], 409);
+            }
+            return back()->withErrors(['session' => 'The table state changed while merging. Refresh and try again.']);
+        }
 
-            $targetSession->table?->update([
-                'status' => $targetSession->status === 'bill_requested' ? 'bill_requested' : 'occupied',
+        $targetSession->refresh()->load(['table', 'waiter', 'salesOrders']);
+        if ($request->expectsJson()) {
+            return response()->json([
+                'ok' => true,
+                'message' => 'Table sessions merged successfully.',
+                'session' => $this->sessionPayload($targetSession),
             ]);
-        });
+        }
 
         return back()->with('status', 'Table sessions merged successfully.');
+    }
+
+    private function sessionPayload(RestaurantTableSession $session): array
+    {
+        $session->loadMissing(['table', 'waiter', 'salesOrders']);
+
+        return [
+            'id' => (int) $session->id,
+            'session_no' => $session->session_no,
+            'table_id' => (int) $session->restaurant_table_id,
+            'table_no' => $session->table?->table_no,
+            'waiter_name' => $session->waiter?->name,
+            'guest_count' => (int) $session->guest_count,
+            'status' => $session->status,
+            'branch_id' => (int) $session->branch_id,
+            'open_check' => (float) $session->salesOrders->where('status', 'held')->sum('grand_total'),
+        ];
     }
 
     private function assertDineInAllowed(): void

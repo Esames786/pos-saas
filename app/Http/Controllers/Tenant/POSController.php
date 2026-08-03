@@ -53,13 +53,13 @@ class POSController extends Controller
         $tableSession = null;
 
         if ($request->filled('table_session_id')) {
-            $tableSession = RestaurantTableSession::with(['table.floor', 'waiter'])
+            $tableSession = RestaurantTableSession::with(['table.floor', 'waiter', 'salesOrders' => fn ($query) => $query->where('status', 'held')])
                 ->whereIn('status', ['open', 'bill_requested'])
                 ->find($request->table_session_id);
         }
 
         if (!$tableSession && $heldSale?->restaurant_table_session_id) {
-            $tableSession = RestaurantTableSession::with(['table.floor', 'waiter'])
+            $tableSession = RestaurantTableSession::with(['table.floor', 'waiter', 'salesOrders' => fn ($query) => $query->where('status', 'held')])
                 ->whereIn('status', ['open', 'bill_requested'])
                 ->find($heldSale->restaurant_table_session_id);
         }
@@ -346,6 +346,7 @@ class POSController extends Controller
         if ($request->filled('selected_session_id')) {
             $tableSession = RestaurantTableSession::with(['table.floor', 'waiter'])
                 ->whereIn('status', ['open', 'bill_requested'])
+                ->where('branch_id', $selectedBranchId)
                 ->find($request->selected_session_id);
         }
 

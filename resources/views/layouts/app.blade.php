@@ -30,10 +30,25 @@
             body.pos-workspace .tenant-subscription-banner { display: none; }
         </style>
     @endif
+    @if(request()->boolean('embed'))
+        <style>
+            body.embedded-workspace .header,
+            body.embedded-workspace .sidebar,
+            body.embedded-workspace .skip-link,
+            body.embedded-workspace .tenant-subscription-banner { display: none !important; }
+            body.embedded-workspace .page-wrapper { margin: 0 !important; padding: 0 !important; }
+            body.embedded-workspace .page-wrapper > .content { min-height: 100vh; padding: 12px !important; }
+            body.embedded-workspace .content-wrapper,
+            body.embedded-workspace .content-wrapper > .content { margin: 0 !important; padding: 0 !important; }
+        </style>
+    @endif
     @stack('styles')
 </head>
 
-<body @class(['pos-workspace nosidebar' => request()->is('pos')])>
+<body @class([
+    'pos-workspace nosidebar' => request()->is('pos'),
+    'embedded-workspace' => request()->boolean('embed'),
+])>
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <div id="global-loader">
     <div class="whirly-loader"></div>

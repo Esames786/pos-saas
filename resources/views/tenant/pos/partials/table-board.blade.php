@@ -26,15 +26,18 @@
                 @php
                     $session      = $table->openSession;
                     $sessionTotal = $session ? $session->salesOrders->sum('grand_total') : 0;
+                    $effectiveStatus = $session
+                        ? ($session->status === 'bill_requested' ? 'bill_requested' : 'occupied')
+                        : $table->status;
                 @endphp
                 @php $isSelectedSession = $session && $tableSession && (int) $session->id === (int) $tableSession->id; @endphp
-                <div class="restaurant-table-tile {{ $table->status }} {{ $isSelectedSession ? 'selected' : '' }}">
+                <div class="restaurant-table-tile {{ $effectiveStatus }} {{ $isSelectedSession ? 'selected' : '' }}">
                     <div class="d-flex justify-content-between gap-2 mb-2">
                         <div>
                             <div class="fw-bold">{{ $table->table_no }}</div>
                             <div class="small text-muted">{{ $table->capacity }} seats</div>
                         </div>
-                        <span class="status-chip">{{ str_replace('_', ' ', ucfirst($table->status)) }}</span>
+                        <span class="status-chip">{{ str_replace('_', ' ', ucfirst($effectiveStatus)) }}</span>
                     </div>
 
                     @if($session)
@@ -43,33 +46,37 @@
                             <div class="d-flex align-items-center gap-1"><i class="ti ti-user small text-muted"></i>{{ $session->waiter?->name ?? 'No waiter' }}</div>
                             <div><strong>Total:</strong> {{ number_format($sessionTotal, 2) }}</div>
                         </div>
-                        <a href="{{ url('/pos?table_session_id=' . $session->id . '&mode=dine_in&branch_id=' . $selectedBranchId) }}"
+                        <button type="button"
                            class="btn btn-sm {{ $isSelectedSession ? 'btn-success' : 'btn-primary' }} w-100 mb-1"
                            data-table-session-select="1"
                            data-session-id="{{ $session->id }}"
-                           data-branch-id="{{ $selectedBranchId }}">
+                           data-branch-id="{{ $selectedBranchId }}"
+                           data-fallback-href="{{ url('/pos?table_session_id=' . $session->id . '&mode=dine_in&branch_id=' . $selectedBranchId) }}">
                             {{ $isSelectedSession ? 'Selected / Continue' : 'Continue Table' }}
-                        </a>
+                        </button>
                         @can('tenant.restaurant.table-sessions.bill-preview')
-                            <a href="{{ url('/restaurant/table-sessions/' . $session->id . '/bill-preview') }}"
-                               target="_blank" rel="noopener"
-                               class="btn btn-sm btn-dark w-100 mb-1">Bill Preview</a>
+                            <button type="button" class="btn btn-sm btn-dark w-100 mb-1"
+                                    data-table-bill-preview="{{ $session->id }}">Bill Preview</button>
                         @endcan
                         @php $firstHeld = $session->salesOrders->where('status', 'held')->first(); @endphp
                         @if($firstHeld)
                             @can('tenant.sales-orders.split-bill')
-                                <a href="{{ url('/sales-orders/' . $firstHeld->id . '/split-bill') }}"
-                                   target="_blank" rel="noopener"
-                                   class="btn btn-sm btn-warning w-100 mb-1">Split Bill</a>
+                                <button type="button" class="btn btn-sm btn-warning w-100 mb-1"
+                                        data-table-split="{{ $session->id }}">Split Bill</button>
                             @endcan
-                            <a href="{{ url('/held-sales?table_session_id=' . $session->id) }}"
-                               target="_blank" rel="noopener"
-                               class="btn btn-sm btn-outline-dark w-100">Held Orders</a>
+                            <button type="button" class="btn btn-sm btn-outline-dark w-100"
+                                    data-table-held-orders="{{ $session->id }}">Held Orders</button>
                         @endif
+                        <div class="d-flex gap-1 mt-1">
+                            @can('tenant.restaurant.table-sessions.move')
+                                <button type="button" class="btn btn-sm btn-outline-secondary flex-fill"
+                                        data-table-move="{{ $session->id }}" data-source-table-id="{{ $table->id }}">Move</button>
+                            @endcan
+                        </div>
                     @else
                         @can('tenant.restaurant.table-sessions.open')
                             <button type="button" class="btn btn-sm btn-success w-100"
-                                data-bs-toggle="modal" data-bs-target="#openTableModal"
+                                data-open-table="1"
                                 data-table-id="{{ $table->id }}" data-table-no="{{ $table->table_no }}">
                                 Open Table
                             </button>
