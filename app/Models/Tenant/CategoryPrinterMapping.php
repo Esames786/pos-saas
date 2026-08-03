@@ -9,7 +9,7 @@ class CategoryPrinterMapping extends Model
     protected $connection = 'tenant';
 
     protected $fillable = [
-        'branch_id', 'category_id', 'printer_id', 'print_role', 'is_active',
+        'branch_id', 'category_id', 'printer_id', 'print_role', 'order_type', 'is_active',
     ];
 
     protected function casts(): array

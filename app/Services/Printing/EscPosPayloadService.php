@@ -170,7 +170,7 @@ class EscPosPayloadService
         };
         $out .= $this->center($heading) . "\n";
         if ($eventType === 'duplicate') {
-            $out .= $this->center('COPY ' . max($copyNo, 2)) . "\n";
+            $out .= $this->center('DUPLICATE ' . max($copyNo, 1)) . "\n";
         }
         $out .= $this->center($sale->sale_no ?? '') . "\n";
         $out .= str_repeat('-', 42) . "\n";

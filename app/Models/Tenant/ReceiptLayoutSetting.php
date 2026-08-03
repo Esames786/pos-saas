@@ -6,6 +6,10 @@ use Illuminate\Database\Eloquent\Model;
 
 class ReceiptLayoutSetting extends Model
 {
+    public const CONFIGURABLE_DOCUMENT_TYPES = ['receipt', 'kot'];
+
+    public const SUPPORTED_DOCUMENT_TYPES = ['receipt', 'kot', 'reminder'];
+
     protected $connection = 'tenant';
 
     protected $fillable = [
@@ -13,6 +17,7 @@ class ReceiptLayoutSetting extends Model
         'show_logo', 'show_branch_name', 'show_branch_address',
         'show_branch_phone', 'show_tax_number', 'show_cashier_name',
         'show_customer_name', 'show_table_info', 'show_order_no',
+        'show_order_time', 'show_updated_time', 'show_print_time',
         'show_item_codes', 'show_payment_breakdown',
         'header_text', 'footer_text', 'font_size', 'kot_font_size', 'is_active',
     ];
@@ -29,6 +34,9 @@ class ReceiptLayoutSetting extends Model
             'show_customer_name'      => 'boolean',
             'show_table_info'         => 'boolean',
             'show_order_no'           => 'boolean',
+            'show_order_time'         => 'boolean',
+            'show_updated_time'       => 'boolean',
+            'show_print_time'         => 'boolean',
             'show_item_codes'         => 'boolean',
             'show_payment_breakdown'  => 'boolean',
             'is_active'               => 'boolean',

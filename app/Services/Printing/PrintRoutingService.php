@@ -87,11 +87,18 @@ class PrintRoutingService
                     })
                     ->where('category_id', $categoryId)
                     ->whereIn('print_role', ['kot', 'both'])
+                    ->where(function ($query) use ($sale) {
+                        $query->where('order_type', 'all')->orWhere('order_type', $sale->order_type);
+                    })
                     ->where('is_active', true)
-                    ->pluck('printer_id');
+                    ->pluck('printer_id')
+                    ->unique();
 
                 if ($printerIds->isNotEmpty()) {
-                    $printers = Printer::whereIn('id', $printerIds)->where('is_active', true)->get();
+                    $printers = Printer::whereIn('id', $printerIds)
+                        ->whereIn('print_role', ['kot', 'both'])
+                        ->where('is_active', true)
+                        ->get();
                 }
             }
 
@@ -142,11 +149,18 @@ class PrintRoutingService
                     })
                     ->where('category_id', $categoryId)
                     ->whereIn('print_role', ['kot', 'both'])
+                    ->where(function ($query) use ($sale) {
+                        $query->where('order_type', 'all')->orWhere('order_type', $sale->order_type);
+                    })
                     ->where('is_active', true)
-                    ->pluck('printer_id');
+                    ->pluck('printer_id')
+                    ->unique();
 
                 if ($printerIds->isNotEmpty()) {
-                    $printers = Printer::whereIn('id', $printerIds)->where('is_active', true)->get();
+                    $printers = Printer::whereIn('id', $printerIds)
+                        ->whereIn('print_role', ['kot', 'both'])
+                        ->where('is_active', true)
+                        ->get();
                 }
             }
 

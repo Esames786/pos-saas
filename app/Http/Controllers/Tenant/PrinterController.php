@@ -31,6 +31,7 @@ class PrinterController extends Controller
             'code'                 => ['required', 'string', 'max:50', 'unique:printers,code'],
             'printer_type'         => ['required', Rule::in(['network', 'usb', 'browser'])],
             'print_role'           => ['required', Rule::in(['receipt', 'kot', 'both'])],
+            'supports_reminder'    => ['nullable', 'boolean'],
             'ip_address'           => ['nullable', 'string', 'max:50'],
             'port'                 => ['nullable', 'integer', 'min:1', 'max:65535'],
             'paper_size'           => ['required', Rule::in(['58mm', '80mm', 'A4'])],
@@ -42,6 +43,7 @@ class PrinterController extends Controller
 
         $data['is_default'] = !empty($data['is_default']);
         $data['is_active']  = !empty($data['is_active']);
+        $data['supports_reminder'] = !empty($data['supports_reminder']);
         $data['code']       = strtoupper(trim($data['code']));
 
         Printer::create($data);
@@ -57,6 +59,7 @@ class PrinterController extends Controller
             'code'                 => ['required', 'string', 'max:50', Rule::unique('printers', 'code')->ignore($printer->id)],
             'printer_type'         => ['required', Rule::in(['network', 'usb', 'browser'])],
             'print_role'           => ['required', Rule::in(['receipt', 'kot', 'both'])],
+            'supports_reminder'    => ['nullable', 'boolean'],
             'ip_address'           => ['nullable', 'string', 'max:50'],
             'port'                 => ['nullable', 'integer', 'min:1', 'max:65535'],
             'paper_size'           => ['required', Rule::in(['58mm', '80mm', 'A4'])],
@@ -68,6 +71,7 @@ class PrinterController extends Controller
 
         $data['is_default'] = !empty($data['is_default']);
         $data['is_active']  = !empty($data['is_active']);
+        $data['supports_reminder'] = !empty($data['supports_reminder']);
         $data['code']       = strtoupper(trim($data['code']));
 
         $printer->update($data);

@@ -27,11 +27,11 @@ class EscPosKotPayloadTest extends TestCase
             'is_reprint' => true,
             'kot_event_type' => 'duplicate',
             'kot_sequence_no' => 3,
-            'copy_no' => 2,
+            'copy_no' => 1,
         ]);
 
         $this->assertStringContainsString('*** DUPLICATE KOT #3 ***', $output);
-        $this->assertStringContainsString('COPY 2', $output);
+        $this->assertStringContainsString('DUPLICATE 1', $output);
     }
 
     public function test_cancel_kot_uses_immutable_line_snapshot_quantity(): void

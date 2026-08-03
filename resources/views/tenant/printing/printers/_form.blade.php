@@ -68,3 +68,10 @@
         <label class="form-check-label">Active</label>
     </div>
 </div>
+<div class="col-12">
+    <div class="form-check form-switch">
+        <input class="form-check-input" type="checkbox" name="supports_reminder" value="1" @checked(old('supports_reminder', $p?->supports_reminder ?? false))>
+        <label class="form-check-label">Reminder capable</label>
+    </div>
+    <div class="form-hint">Configuration groundwork only. Reminder jobs are not enabled yet.</div>
+</div>

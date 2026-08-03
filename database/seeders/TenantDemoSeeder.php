@@ -7,6 +7,7 @@ use App\Models\Master\Tenant;
 use App\Models\Tenant\Account;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\Category;
+use App\Models\Tenant\CategoryPrinterMapping;
 use App\Models\Tenant\Combo;
 use App\Models\Tenant\Currency;
 use App\Models\Tenant\Customer;
@@ -2027,6 +2028,7 @@ class TenantDemoSeeder extends Seeder
                 'code'                => 'FAKE-KOT',
                 'printer_type'        => 'network',
                 'print_role'          => 'kot',
+                'supports_reminder'   => false,
                 'ip_address'          => '127.0.0.1',
                 'port'                => 9100,
                 'paper_size'          => '80mm',
@@ -2044,6 +2046,7 @@ class TenantDemoSeeder extends Seeder
                 'code'                => 'FAKE-RECEIPT',
                 'printer_type'        => 'network',
                 'print_role'          => 'receipt',
+                'supports_reminder'   => false,
                 'ip_address'          => '127.0.0.1',
                 'port'                => 9100,
                 'paper_size'          => '80mm',
@@ -2078,6 +2081,9 @@ class TenantDemoSeeder extends Seeder
 
         // ── Terminal Printer Settings (idempotent — safe to re-run) ─────────
         if ($kotPrinter && $receiptPrinter) {
+            $kotPrinter->update(['supports_reminder' => false]);
+            $receiptPrinter->update(['supports_reminder' => false]);
+
             $terminals = Terminal::all();
             foreach ($terminals as $t) {
                 TerminalPrinterSetting::updateOrCreate(
@@ -2091,6 +2097,20 @@ class TenantDemoSeeder extends Seeder
                 );
             }
             $this->command->line('  Terminal printer settings configured for ' . $terminals->count() . ' terminal(s).');
+
+            if ($main && ($restaurantCategory = Category::where('code', 'FASTFOOD')->first())) {
+                CategoryPrinterMapping::updateOrCreate(
+                    [
+                        'branch_id' => $main->id,
+                        'category_id' => $restaurantCategory->id,
+                        'printer_id' => $kotPrinter->id,
+                        'print_role' => 'kot',
+                        'order_type' => 'all',
+                    ],
+                    ['is_active' => true]
+                );
+                $this->command->line('  KOT routing seeded: Fast Food / All order types -> Fake Kitchen Printer.');
+            }
         }
 
         $this->seedSalesControls();
@@ -2212,6 +2232,9 @@ class TenantDemoSeeder extends Seeder
                     'show_customer_name'      => false,
                     'show_table_info'         => true,
                     'show_order_no'           => true,
+                    'show_order_time'         => true,
+                    'show_updated_time'       => true,
+                    'show_print_time'         => true,
                     'show_item_codes'         => false,
                     'show_payment_breakdown'  => true,
                     'header_text'             => 'Dreams POS — Demo Store' . "\n" . 'Thank you for shopping with us!',
@@ -2235,6 +2258,9 @@ class TenantDemoSeeder extends Seeder
                     'show_customer_name'      => false,
                     'show_table_info'         => true,
                     'show_order_no'           => true,
+                    'show_order_time'         => true,
+                    'show_updated_time'       => true,
+                    'show_print_time'         => true,
                     'show_item_codes'         => false,
                     'show_payment_breakdown'  => false,
                     'header_text'             => '*** KITCHEN ORDER TICKET ***',

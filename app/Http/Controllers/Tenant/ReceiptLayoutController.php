@@ -31,7 +31,8 @@ class ReceiptLayoutController extends Controller
     {
         $data = $request->validate([
             'branch_id'              => ['required', 'exists:branches,id'],
-            'document_type'          => ['required', Rule::in(['receipt', 'kot'])],
+            // Reminder is schema-ready but intentionally hidden until its renderer exists.
+            'document_type'          => ['required', Rule::in(ReceiptLayoutSetting::CONFIGURABLE_DOCUMENT_TYPES)],
             'paper_size'             => ['required', Rule::in(['58mm', '80mm', 'A4'])],
             'logo'                   => ['nullable', 'image', 'max:1024'],
             'show_logo'              => ['nullable', 'boolean'],

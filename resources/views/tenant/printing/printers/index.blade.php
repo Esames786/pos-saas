@@ -28,6 +28,7 @@
                     <th>Branch</th>
                     <th>Type</th>
                     <th>Role</th>
+                    <th>Reminder</th>
                     <th>Paper</th>
                     <th>IP / Port</th>
                     <th>Default</th>
@@ -43,6 +44,7 @@
                     <td>{{ $p->branch?->name ?? 'All' }}</td>
                     <td>{{ ucfirst($p->printer_type) }}</td>
                     <td>{{ ucfirst($p->print_role) }}</td>
+                    <td>{{ $p->supports_reminder ? 'Capable' : 'No' }}</td>
                     <td>{{ $p->paper_size }}</td>
                     <td>
                         @if($p->ip_address)
@@ -73,7 +75,7 @@
                     </td>
                 </tr>
                 @empty
-                <tr><td colspan="10" class="text-center text-muted py-4">No printers configured.</td></tr>
+                <tr><td colspan="11" class="text-center text-muted py-4">No printers configured.</td></tr>
                 @endforelse
             </tbody>
         </table>

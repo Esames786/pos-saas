@@ -43,7 +43,7 @@
     @endif
 </div>
 @if(($eventType ?? '') === 'duplicate')
-<div class="center bold">COPY {{ max($copyNo ?? 2, 2) }}</div>
+<div class="center bold">DUPLICATE {{ max($copyNo ?? 1, 1) }}</div>
 @endif
 
 <hr>

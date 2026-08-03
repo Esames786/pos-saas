@@ -9,7 +9,7 @@ class Printer extends Model
     protected $connection = 'tenant';
 
     protected $fillable = [
-        'branch_id', 'name', 'code', 'printer_type', 'print_role',
+        'branch_id', 'name', 'code', 'printer_type', 'print_role', 'supports_reminder',
         'ip_address', 'port', 'paper_size', 'characters_per_line',
         'is_default', 'is_active', 'agent_enabled', 'last_seen_at', 'last_error', 'notes',
     ];
@@ -19,6 +19,7 @@ class Printer extends Model
         return [
             'is_default'    => 'boolean',
             'is_active'     => 'boolean',
+            'supports_reminder' => 'boolean',
             'agent_enabled' => 'boolean',
             'last_seen_at'  => 'datetime',
             'port'          => 'integer',

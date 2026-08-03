@@ -39,9 +39,10 @@
             <thead>
                 <tr>
                     <th>Branch</th>
+                    <th>Order Type</th>
                     <th>Category</th>
                     <th>Printer</th>
-                    <th>Role</th>
+                    <th>Document</th>
                     <th>Active</th>
                     <th></th>
                 </tr>
@@ -49,7 +50,8 @@
             <tbody>
                 @forelse($mappings as $m)
                 <tr>
-                    <td>{{ $m->branch?->name }}</td>
+                    <td>{{ $m->branch?->name ?? 'All Branches' }}</td>
+                    <td>{{ $m->order_type === 'all' ? 'All' : ucwords(str_replace('_', ' ', $m->order_type)) }}</td>
                     <td>{{ $m->category?->name }}</td>
                     <td>{{ $m->printer?->name }}</td>
                     <td>{{ ucfirst($m->print_role) }}</td>
@@ -71,7 +73,7 @@
                     </td>
                 </tr>
                 @empty
-                <tr><td colspan="6" class="text-center text-muted py-4">No mappings configured.</td></tr>
+                <tr><td colspan="7" class="text-center text-muted py-4">No mappings configured.</td></tr>
                 @endforelse
             </tbody>
         </table>
@@ -90,10 +92,18 @@
             <div class="modal-body row g-3">
                 <div class="col-md-6">
                     <label class="form-label required">Branch</label>
-                    <select name="branch_id" class="form-select" required>
-                        <option value="">— Select —</option>
+                    <select name="branch_id" class="form-select">
+                        <option value="">All Branches</option>
                         @foreach($branches as $b)
                             <option value="{{ $b->id }}" @selected(old('branch_id') == $b->id)>{{ $b->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label required">Order Type</label>
+                    <select name="order_type" class="form-select" required>
+                        @foreach(['all' => 'All', 'dine_in' => 'Dine In', 'takeaway' => 'Takeaway', 'quick_sale' => 'Quick Sale', 'delivery' => 'Delivery'] as $value => $label)
+                            <option value="{{ $value }}" @selected(old('order_type', 'all') === $value)>{{ $label }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -111,12 +121,12 @@
                     <select name="printer_id" class="form-select" required>
                         <option value="">— Select —</option>
                         @foreach($printers as $p)
-                            <option value="{{ $p->id }}" @selected(old('printer_id') == $p->id)>{{ $p->name }}</option>
+                            <option value="{{ $p->id }}" @selected(old('printer_id') == $p->id)>{{ $p->name }} ({{ strtoupper($p->print_role) }})</option>
                         @endforeach
                     </select>
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label required">Role</label>
+                    <label class="form-label required">Document</label>
                     <select name="print_role" class="form-select" required>
                         <option value="kot" @selected(old('print_role') === 'kot')>KOT</option>
                         <option value="receipt" @selected(old('print_role') === 'receipt')>Receipt</option>

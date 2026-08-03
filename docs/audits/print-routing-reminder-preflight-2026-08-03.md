@@ -1,7 +1,7 @@
 # PRINT-ROUTING-REMINDER-PREFLIGHT-1
 
 Date: 2026-08-03
-Status: Design approved for implementation planning; no Reminder feature code is included in this document.
+Status: Product decisions locked and ready for implementation review; no Reminder feature code is included in this document.
 Depends on: `pos-table-kot-integrity-investigation-2026-08-03.md` and the current POS/KOT integrity working tree.
 
 ## Executive decision
@@ -19,6 +19,34 @@ The minimum-change design is:
 7. Keep cloud behavior canonical. Export configuration in Edge bootstrap later, but do not activate offline transaction processing in this feature.
 
 No new table is proposed. No new service class is proposed.
+
+## Non-regression contract: KOT and Receipt are frozen
+
+Reminder is an additional document layer. It must not replace, delay, or change the existing KOT or Receipt workflows.
+
+### Existing KOT behavior to preserve exactly
+
+1. The current terminal/device auto-KOT setting remains authoritative.
+2. When auto-KOT is off, the existing `Print Kitchen Order?` Yes/Skip prompt remains unchanged.
+3. Choosing Yes continues through the existing KOT endpoint and current category/default-printer routing.
+4. If no KOT printer route exists, the existing browser/manual KOT preview fallback remains unchanged.
+5. If a configured network printer exists but its Print Agent is temporarily disconnected, the same queued KOT job remains pending/retryable under the current Print Agent workflow. Reminder must not convert, cancel, or duplicate it.
+6. Addition KOT still contains only new/increased quantities.
+7. Explicit KOT reprint, Cancel KOT, sent-quantity mutation, fallback preview, and print status handling remain KOT-owned behavior.
+8. A Reminder failure, decline, or missing configuration can never fail or roll back a KOT job.
+
+### Existing Receipt behavior to preserve exactly
+
+1. Receipt remains payment/completion driven.
+2. Terminal receipt printer, auto-receipt toggle, ensure-once behavior, manual preview fallback, reprint, and Receipt layout remain unchanged.
+3. Reminder mapping is never consulted when selecting a Receipt printer.
+4. A Reminder failure, decline, missing route, or retry can never block payment completion or Receipt output.
+
+### Reminder-only behavior
+
+Reminder starts only after the cashier has chosen the existing KOT send path and the server has created the kitchen round event. It produces separate `print_jobs` rows and a separate immutable payload. It does not alter KOT jobs or Receipt jobs.
+
+For an additional round, the new popup is only a Reminder resend decision. It is shown after KOT is durable. It must never be worded as a KOT confirmation and must never repeat the existing KOT prompt.
 
 ## A. Current printing architecture
 
@@ -246,6 +274,22 @@ Both browser preview and ESC/POS payload must use the immutable job payload, not
 
 When `ask_printers` is non-empty, POS shows one Yes/No popup after KOT queue success. Yes posts the server-bound batch/token and selected destination IDs to the Reminder endpoint. No does nothing. KOT jobs are already durable and are never rolled back by that answer.
 
+The existing `handleKotAfterSale()` and `fireKotSilently()` behavior must remain recognizable and backward compatible. The implementation should append Reminder response handling after a successful KOT response rather than combining the two user prompts or moving KOT decisions into a new workflow.
+
+Required POS sequence:
+
+```text
+Save/Hold/Add Round
+  -> existing KOT auto setting or existing Print KOT prompt
+  -> existing KOT endpoint and fallback behavior
+  -> KOT jobs are durable
+  -> server returns Reminder plan
+  -> auto Reminder jobs are already queued
+  -> optional Reminder-only resend popup for Ask=true printers
+```
+
+If KOT is skipped, no Reminder is sent and no Reminder popup appears.
+
 Manual Reminder reprint belongs in Recent Prints/Recent Orders beside Receipt and KOT. It must clearly say `Reprint Reminder` and display the target printer/revision before enqueue.
 
 ## E. Final mapping UI
@@ -281,7 +325,13 @@ The Layout screen adds `Reminder` as a third type and conditionally exposes Orde
 7. Deduplicate by printer and automatically create one complete-order Reminder per printer.
 8. Use logical keys to make a repeated request return the same jobs.
 
-If the operator explicitly skips KOT under the current prompt, no order-round print event exists and no Reminder is sent. This keeps KOT and Reminder tied to the same deliberate kitchen-send action. If the client wants Reminder despite `Skip KOT`, that is a product-policy change and must be confirmed before implementation.
+If the operator explicitly skips KOT under the current prompt, no order-round print event exists and no Reminder is sent. This decision is now locked.
+
+KOT fallback remains independent:
+
+- No configured KOT printer: open the existing browser/manual KOT preview.
+- Configured printer but agent disconnected: leave the existing KOT job queued for the agent.
+- Reminder has no browser fallback. A configured Reminder destination creates its own queued job; a missing Reminder route produces a readiness/configuration warning without affecting KOT.
 
 ### F2. Add Round
 
@@ -293,6 +343,8 @@ If the operator explicitly skips KOT under the current prompt, no order-round pr
 6. Auto-queue printers whose matching rules are all `Ask=false`.
 7. Return unique `Ask=true` printers to POS.
 8. On Yes, queue one complete updated Reminder per approved printer; on No, queue none for those printers.
+
+The same existing KOT auto/prompt/fallback sequence runs for every Add Round. Reminder processing begins only after that KOT send is accepted. If the cashier skips that round's KOT, neither automatic nor Ask-based updated Reminder is produced for that round.
 
 ### F3. Receipt
 
@@ -307,6 +359,44 @@ Receipt selection remains terminal receipt printer, then branch/global receipt f
 5. Resolve Reminder destinations as the union of currently eligible Reminder printers and printers that received the latest Reminder for this order. This prevents a configuration edit from hiding a required kitchen update.
 6. Queue one cancellation Reminder per destination with cancelled quantities, complete remaining order, reason, requester, approver, and times.
 7. Apply effective positive quantities to customer/fiscal output; never add negative fiscal lines.
+
+Cancellation is an operational correction event and does not use the additional-round Reminder Ask popup. Once cancellation is approved, required Cancel KOT and cancellation Reminder jobs are automatic.
+
+#### Sent item partially cancelled
+
+Example: Burger quantity 3 was sent, then quantity 1 is approved for cancellation.
+
+- Existing KOT cancellation routing prints `CANCEL KOT` for Burger x1 only.
+- Reminder destinations receive one `CANCELLED / UPDATED ORDER` document.
+- Its `Cancelled` section shows Burger x1.
+- Its `Remaining Order` section shows the complete effective order, including Burger x2.
+- The customer bill remains a positive Burger x2; no negative sale line is created.
+
+#### Whole KOT-sent held order cancelled
+
+- Current reason, permission, branch policy, and manager approval controls remain authoritative.
+- All outstanding sent quantities are captured in one atomic cancellation action.
+- Relevant KOT destinations receive Cancel KOT output through the existing fallback rules.
+- Reminder destinations receive one `CANCELLED ORDER` document containing all cancelled items, reason, requester, approver, and times.
+- Remaining-order section is empty or explicitly says `No remaining items`.
+- Only after cancellation events and print jobs are durable may the held order become cancelled.
+
+#### Unsent item removed
+
+An item/quantity that has never been included in a successful KOT/Reminder round can be removed normally. It creates neither Cancel KOT nor cancellation Reminder because the kitchen was never instructed about it.
+
+#### Cancellation destination history
+
+Cancellation Reminder destinations are the union of:
+
+1. printers currently eligible under branch + order type + category Reminder mappings; and
+2. printers with a prior non-cancelled Reminder job for this order, including a job still queued because its agent was disconnected.
+
+This union is deduplicated by physical printer. It intentionally includes a previous destination even when the mapping was later removed or the user declined an updated Reminder for a later round. That destination must receive the final correction because it may still be working from an earlier complete-order Reminder.
+
+If the order never produced any Reminder and has no currently eligible Reminder route, cancellation remains Cancel-KOT-only. It must not invent a browser Reminder fallback.
+
+Cancellation Reminder does not use `(R)`. Its visual priority is `CANCELLED`, cancelled quantities, and the complete remaining effective order.
 
 ### F5. Manual duplicate
 
@@ -420,15 +510,23 @@ Bump `SCHEMA_VERSION` only when the future Edge consumer is ready for the new co
 - Normal KOT, Addition KOT, `(R)`, Reminder, Updated Reminder, manual copies, Cancel KOT, cancellation Reminder, Receipt, failure/retry, and reconnect are tested against a real LAN Print Agent.
 - Verify acknowledgment-loss behavior with local completed-job cache before claiming exactly-once physical printing.
 
-## L. Remaining decisions/blockers
+## L. Locked decisions and remaining blockers
 
-The implementation can start after these product decisions are confirmed:
+The five product decisions are locked:
 
-1. If the cashier chooses `Skip KOT`, should first Reminder also be skipped? Recommended: yes, because no kitchen-send event/revision was created.
-2. For an increased line, should Reminder show `Burger x3 (R +2)` or split it into `Burger x1` and `(R) Burger x2`? Recommended: `x3 (R +2)` for a complete-order document.
-3. If one printer has several matching Reminder rules with mixed Ask values, should Ask win? Recommended: yes.
-4. Should cancellation Reminder go to previously printed Reminder destinations even if configuration changed? Recommended: yes, union with current destinations.
-5. Browser fallback for Reminder: recommended none. Reminder routing should require an explicit capable printer; missing routes should be visible in configuration/readiness UI instead of opening surprise tabs.
+1. Skip KOT also skips Reminder for that round.
+2. Increased complete-order quantity renders as `Burger x3 (R +2)`.
+3. Mixed Reminder rules for one printer resolve to Ask=true.
+4. Cancellation Reminder includes previous Reminder destinations even if current mapping changed.
+5. Reminder has no browser fallback; missing/unavailable configuration is exposed as readiness status without changing KOT fallback.
+
+Additional cancellation decisions are locked:
+
+6. Approved cancellation never asks the additional-round Reminder resend question; cancellation documents are automatic.
+7. Sent-item cancellation produces both relevant Cancel KOT and cancellation Reminder documents.
+8. Whole sent-order cancellation uses the same audited path and automatic correction documents.
+9. Removing never-sent quantity produces no kitchen cancellation document.
+10. A previously queued Reminder destination counts as a historical destination even if its agent was offline.
 
 Technical blockers to close during implementation:
 
@@ -440,13 +538,52 @@ Technical blockers to close during implementation:
 
 ## Recommended implementation sequence
 
-1. Stabilize and deploy current POS/KOT integrity changes.
+1. Treat deployed POS/KOT integrity behavior as the frozen baseline.
 2. Migration + model/controller compatibility for routing/document types.
-3. Order-type-aware KOT routing with regression tests.
-4. Reminder layouts and immutable payload rendering.
-5. First/additional Reminder orchestration and POS confirmation.
-6. Manual duplicate/idempotency hardening.
-7. Cancellation Reminder integration.
-8. Seeders, permissions, reports, and Edge bootstrap export.
-9. Browser and real LAN Print Agent certification.
-10. Offline runtime/auth/sync only in its separate future phase.
+3. Order-type-aware KOT routing while preserving all current fallback/prompt behavior.
+4. Logical-key and per-document/per-printer duplicate hardening.
+5. Reminder layouts and immutable payload rendering.
+6. First/additional Reminder orchestration and POS Reminder-only confirmation.
+7. Cancellation Reminder integration and historical-destination fan-out.
+8. Seeders, permissions, reports, and Edge bootstrap configuration export.
+9. Full cloud regression and real LAN Print Agent certification for KOT, Receipt, and Reminder.
+10. Release as one tested printing candidate; offline runtime/auth/sync remains a separate future phase.
+
+## M. PRINT-ROUTING-FOUNDATION-1 implementation audit
+
+Implemented on 2026-08-03 as the foundation-only sprint. Reminder queueing, rendering, POS prompts, cancellation Reminder output, Edge activation, and sync remain out of scope.
+
+### Schema and compatibility
+
+- Tenant migration `2026_08_03_000002_add_print_routing_foundation.php` adds `category_printer_mappings.order_type` with `NOT NULL DEFAULT 'all'` and normalizes null/empty legacy values to `all`.
+- The old `(branch_id, category_id, print_role)` unique key is replaced by `cpm_route_printer_unique` on `(branch_id, category_id, printer_id, print_role, order_type)`.
+- Global mappings remain nullable by branch. The controller locks the category and performs an exact duplicate check transactionally because MySQL permits duplicate composite keys when the nullable branch component is `NULL`.
+- `category_printer_mappings.print_role`, `receipt_layout_settings.document_type`, and `print_jobs.document_type` are widened to strings so the future `reminder` value is schema-safe. Reminder remains hidden from creation screens until its renderer exists.
+- `printers.supports_reminder` defaults to false. Existing `printers.print_role` and all terminal printer settings remain unchanged.
+- Layout rows gain `show_order_time`, `show_updated_time`, and `show_print_time`, all defaulting true. Existing Receipt/KOT output does not consume these new flags.
+- Print jobs gain nullable unique `logical_key` and unsigned `copy_no` defaulting to 1. Existing rows remain valid because nullable unique keys permit legacy `NULL` values.
+
+### Routing and logical print identity
+
+- Existing `PrintRoutingService` now accepts active rules whose `order_type` is either `all` or the sale's exact order type, then deduplicates by capable physical printer.
+- Existing line delta, terminal/default KOT fallback, browser fallback, queued-agent behavior, KOT prompt, auto-KOT setting, Receipt routing, and ensure-once Receipt logic are unchanged.
+- Automatic KOT jobs use `kot:{kot_batch.event_uuid}:{printer-N|browser}`. Delta calculation, batch creation, job creation, and sent-quantity reservation are serialized under the sale lock.
+- A concurrent unique-key loser returns the existing print job. Print Agent retry continues to update and retry that same row.
+- Manual KOT duplicates use `kot-copy:{source-event}:{destination}:{copy_no}`. `copy_no` is an explicit duplicate ordinal scoped to source KOT revision plus physical printer/browser. The first manual copy is `DUPLICATE 1`; automatic fan-out and agent retries do not increment it.
+
+### QA evidence
+
+- Migration applied cleanly to all seven local tenants. Every tenant reported zero null/empty legacy order types.
+- Actual MySQL index inspection returned the exact five-column `cpm_route_printer_unique` order.
+- Rollback-clean routing harness proved Dine In, Takeaway, Quick Sale, and Delivery can route the same category to four different printers.
+- The same category/order type produced two routes and two automatic logical keys, one per physical printer.
+- Default KOT printer fallback and browser fallback both remained operational.
+- Receipt `ensureOnce` returned the same job on repeated requests.
+- Manual duplicate QA returned copies `[1, 2]` independently for Printer A and Printer B; marking a job failed/retryable kept copy 1.
+- Real two-process enqueue against the same MySQL tenant returned the same job ID and logical key from both workers; the database contained exactly one logical job and no worker failed.
+- Unit regression passed for POS fresh-cart initialization, KOT/addition/cancel payloads, duplicate label, and user order-type policy. The focused routing test is committed and runs where `pdo_sqlite` is available; local PHP lacks that extension, so the MySQL harness is the local routing authority.
+- All seven tenants finished with `tb_diff=0`, zero negative stock on disallowed branches, and zero negative department balances. Temporary routes, printers, batches, and jobs were rolled back or deleted.
+
+### Deferred Edge fields
+
+`EdgeBootstrapService::sourceRevision()` already includes printers, layouts, category mappings, and terminal printer settings, so updates change the source watermark through `updated_at`. The current snapshot allowlists intentionally remain unchanged. A future consumer-ready schema bump must export `printers.supports_reminder`, `category_printer_mappings.order_type`, future `reminder_confirm_on_addition`, and the three Reminder timestamp flags. Local Mode remains inactive.

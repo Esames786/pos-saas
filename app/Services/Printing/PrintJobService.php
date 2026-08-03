@@ -6,6 +6,7 @@ use App\Models\Tenant\PrintJob;
 use App\Models\Tenant\Printer;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\KotBatch;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
@@ -69,6 +70,26 @@ class PrintJobService
         ?string    $terminalId  = null,
         bool       $isReprint   = false,
     ): array {
+        if ($isReprint) {
+            return $this->queueKotResolved($sale, $printer, $lineIds, $terminalId, true);
+        }
+
+        // Serialize delta calculation, immutable batch creation, and sent-quantity
+        // reservation so simultaneous holds cannot create two automatic KOT events.
+        return DB::connection('tenant')->transaction(function () use ($sale, $printer, $lineIds, $terminalId) {
+            $lockedSale = SalesOrder::whereKey($sale->id)->lockForUpdate()->firstOrFail();
+
+            return $this->queueKotResolved($lockedSale, $printer, $lineIds, $terminalId, false);
+        }, 3);
+    }
+
+    private function queueKotResolved(
+        SalesOrder $sale,
+        ?Printer   $printer,
+        array      $lineIds,
+        ?string    $terminalId,
+        bool       $isReprint,
+    ): array {
         $sale->loadMissing([
             'branch', 'terminal', 'customer',
             'lines.product.category',
@@ -115,6 +136,10 @@ class PrintJobService
 
         // No explicit printer — use routing service.
         $routes = $this->routingService->kotRoutesForSale($sale, $lineIds, $isReprint);
+
+        if (!$isReprint && ($pendingFallback = $this->matchingQueuedBrowserFallback($sale, $routes))) {
+            return [$pendingFallback];
+        }
 
         $batchQuantities = [];
         foreach ($routes as $route) {
@@ -250,39 +275,95 @@ class PrintJobService
         ?KotBatch  $batch = null,
         ?string    $eventType = null,
     ): PrintJob {
-        $latestBatch = $batch ?: $sale->kotBatches()->whereIn('event_type', ['normal', 'addition'])->latest('sequence_no')->first();
-        $resolvedEventType = $eventType ?: ($isReprint ? 'duplicate' : ($batch?->event_type ?? 'normal'));
-        $job = PrintJob::create([
-            'job_no'             => $this->nextJobNo(),
-            'branch_id'          => $sale->branch_id,
-            'terminal_id'        => $terminalId ?: $sale->terminal_id,
-            'printer_id'         => $printer?->id,
-            'document_type'      => 'kot',
-            'print_status'       => 'queued',
-            'reference_type'     => 'sales_order',
-            'reference_id'       => $sale->id,
-            'reference_no'       => $sale->sale_no,
-            'payload'            => [
-                'sales_order_id'  => $sale->id,
-                'sale_no'         => $sale->sale_no,
-                'printer_id'      => $printer?->id,
-                'line_ids'        => array_values($lineIds),
-                'line_quantities' => $lineQuantities,
-                'is_reprint'      => $isReprint,
-                'kot_batch_id'    => $latestBatch?->id,
-                'kot_sequence_no' => $latestBatch?->sequence_no,
-                'kot_event_type'  => $resolvedEventType,
-                'copy_no'         => $isReprint ? max((int) $sale->kot_print_count + 1, 2) : 1,
-                'line_snapshots'  => $this->lineSnapshots($sale, $lineQuantities),
-                'fallback'        => $printer === null,
-            ],
-            'attempts'           => 0,
-            'created_by_user_id' => Auth::id(),
-        ]);
+        return DB::connection('tenant')->transaction(function () use (
+            $sale,
+            $printer,
+            $lineIds,
+            $lineQuantities,
+            $terminalId,
+            $isReprint,
+            $batch,
+            $eventType
+        ) {
+            $latestBatch = $batch ?: $sale->kotBatches()
+                ->whereIn('event_type', ['normal', 'addition'])
+                ->latest('sequence_no')
+                ->first();
+            $resolvedEventType = $eventType ?: ($isReprint ? 'duplicate' : ($batch?->event_type ?? 'normal'));
+            $destination = $printer ? 'printer-' . $printer->id : 'browser';
+            $sourceIdentity = $latestBatch?->event_uuid ?: 'legacy-sale-' . $sale->id;
+            $copyNo = 1;
 
-        $job->update(['raw_payload' => app(EscPosPayloadService::class)->build($job)]);
+            if ($isReprint) {
+                if ($latestBatch) {
+                    KotBatch::whereKey($latestBatch->id)->lockForUpdate()->firstOrFail();
+                } else {
+                    SalesOrder::whereKey($sale->id)->lockForUpdate()->firstOrFail();
+                }
 
-        return $job;
+                $copyPrefix = 'kot-copy:' . $sourceIdentity . ':' . $destination . ':';
+                $copyNo = (int) PrintJob::where('logical_key', 'like', $copyPrefix . '%')->max('copy_no') + 1;
+                $logicalKey = $copyPrefix . $copyNo;
+            } else {
+                $logicalKey = $latestBatch
+                    ? 'kot:' . $latestBatch->event_uuid . ':' . $destination
+                    : null;
+            }
+
+            $attributes = [
+                'job_no'             => $this->nextJobNo(),
+                'logical_key'         => $logicalKey,
+                'copy_no'            => $copyNo,
+                'branch_id'          => $sale->branch_id,
+                'terminal_id'        => $terminalId ?: $sale->terminal_id,
+                'printer_id'         => $printer?->id,
+                'document_type'      => 'kot',
+                'print_status'       => 'queued',
+                'reference_type'     => 'sales_order',
+                'reference_id'       => $sale->id,
+                'reference_no'       => $sale->sale_no,
+                'payload'            => [
+                    'sales_order_id'  => $sale->id,
+                    'sale_no'         => $sale->sale_no,
+                    'printer_id'      => $printer?->id,
+                    'line_ids'        => array_values($lineIds),
+                    'line_quantities' => $lineQuantities,
+                    'is_reprint'      => $isReprint,
+                    'kot_batch_id'    => $latestBatch?->id,
+                    'kot_event_uuid'  => $latestBatch?->event_uuid,
+                    'kot_sequence_no' => $latestBatch?->sequence_no,
+                    'kot_event_type'  => $resolvedEventType,
+                    'copy_no'         => $copyNo,
+                    'line_snapshots'  => $this->lineSnapshots($sale, $lineQuantities),
+                    'fallback'        => $printer === null,
+                ],
+                'attempts'           => 0,
+                'created_by_user_id' => Auth::id(),
+            ];
+
+            return $this->createLogicalJob($attributes);
+        }, 3);
+    }
+
+    private function createLogicalJob(array $attributes): PrintJob
+    {
+        try {
+            $job = PrintJob::create($attributes);
+            $job->update(['raw_payload' => app(EscPosPayloadService::class)->build($job)]);
+
+            return $job;
+        } catch (QueryException $exception) {
+            $logicalKey = $attributes['logical_key'] ?? null;
+            $existing = $logicalKey
+                ? PrintJob::where('logical_key', $logicalKey)->first()
+                : null;
+
+            if ($existing) {
+                return $existing;
+            }
+
+            throw $exception;
+        }
     }
 
     private function createKotBatch(SalesOrder $sale, array $lineQuantities, ?string $eventType = null): KotBatch
@@ -341,6 +422,38 @@ class PrintJobService
             ->filter(fn ($snapshot) => $snapshot['quantity'] > 0)
             ->values()
             ->all();
+    }
+
+    private function matchingQueuedBrowserFallback(SalesOrder $sale, array $routes): ?PrintJob
+    {
+        if (count($routes) !== 1 || ($routes[0]['printer'] ?? null) !== null) {
+            return null;
+        }
+
+        $expected = collect($routes[0]['line_quantities'] ?? [])
+            ->mapWithKeys(fn ($quantity, $lineId) => [(string) $lineId => (float) $quantity])
+            ->sortKeys()
+            ->all();
+
+        $candidate = PrintJob::where('reference_type', 'sales_order')
+            ->where('reference_id', $sale->id)
+            ->where('document_type', 'kot')
+            ->whereNull('printer_id')
+            ->where('print_status', 'queued')
+            ->whereNotNull('logical_key')
+            ->latest('id')
+            ->first();
+
+        if (!$candidate || !in_array(data_get($candidate->payload, 'kot_event_type'), ['normal', 'addition'], true)) {
+            return null;
+        }
+
+        $actual = collect(data_get($candidate->payload, 'line_quantities', []))
+            ->mapWithKeys(fn ($quantity, $lineId) => [(string) $lineId => (float) $quantity])
+            ->sortKeys()
+            ->all();
+
+        return $actual === $expected ? $candidate : null;
     }
 
     private function markKotLinesQueued(SalesOrder $sale, array $lineIds): void

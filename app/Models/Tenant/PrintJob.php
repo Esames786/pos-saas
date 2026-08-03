@@ -9,7 +9,7 @@ class PrintJob extends Model
     protected $connection = 'tenant';
 
     protected $fillable = [
-        'job_no', 'branch_id', 'terminal_id', 'printer_id',
+        'job_no', 'logical_key', 'copy_no', 'branch_id', 'terminal_id', 'printer_id',
         'claimed_by_agent_id', 'claimed_at',
         'document_type', 'print_status', 'reference_type', 'reference_id',
         'reference_no', 'payload', 'raw_payload', 'attempts',
@@ -24,6 +24,7 @@ class PrintJob extends Model
             'failed_at'  => 'datetime',
             'claimed_at' => 'datetime',
             'attempts'   => 'integer',
+            'copy_no'    => 'integer',
         ];
     }
 
