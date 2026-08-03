@@ -1,7 +1,7 @@
 # PRINT-ROUTING-REMINDER-PREFLIGHT-1
 
 Date: 2026-08-03
-Status: Implemented by `REMINDER-PRINT-1`; production deployment and physical LAN printer certification remain deferred.
+Status: Implemented by `REMINDER-PRINT-1`; `LOCAL-PRINT-LAN-CERT-1` software preflight passed but physical certification is blocked by unavailable real LAN hardware. Production remains undeployed.
 Depends on: `pos-table-kot-integrity-investigation-2026-08-03.md` and the current POS/KOT integrity working tree.
 
 ## Executive decision
@@ -47,6 +47,12 @@ The implementation follows the locked contract without adding a second engine, q
 - Route cache and Blade cache compile successfully. All seven tenants passed the final accounting/inventory sweep with zero unbalanced journals, zero prohibited negative branch stock, and zero negative department stock.
 
 Physical printing remains at-least-once: if a printer succeeds but agent acknowledgment is lost, a retry can physically print again. Exactly-once physical delivery is not claimed. `LOCAL-PRINT-LAN-CERT-1` remains the next certification step.
+
+### LOCAL-PRINT-LAN-CERT-1 result
+
+The certification preflight was rerun on immutable candidate `a0452e7`. Repository scope, lint, tests, config/route/Blade caches, explicit non-fiscal ESC/POS + HTML rendering, historical printed/queued destination correction routing, all-seven-tenant accounting/inventory smoke, and `EDGE_FEATURE_ENABLED=false` passed.
+
+Physical certification is **BLOCKED** because this environment exposes only loopback fake printers, no Reminder-capable printer, no category mappings, and a stale Print Agent. No physical paper, failure/reconnect, Ask/Auto fan-out, or multi-terminal evidence was available. See `docs/audits/local-print-lan-certification-2026-08-03.md` for the matrix and resume prerequisites.
 
 ## Non-regression contract: KOT and Receipt are frozen
 
