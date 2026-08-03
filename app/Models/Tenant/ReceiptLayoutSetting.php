@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class ReceiptLayoutSetting extends Model
 {
-    public const CONFIGURABLE_DOCUMENT_TYPES = ['receipt', 'kot'];
+    public const CONFIGURABLE_DOCUMENT_TYPES = ['receipt', 'kot', 'reminder'];
 
     public const SUPPORTED_DOCUMENT_TYPES = ['receipt', 'kot', 'reminder'];
 

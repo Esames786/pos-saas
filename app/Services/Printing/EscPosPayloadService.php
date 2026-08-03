@@ -13,6 +13,10 @@ class EscPosPayloadService
             return '';
         }
 
+        if ($job->document_type === 'reminder') {
+            return $this->buildReminder($job);
+        }
+
         $sale = SalesOrder::with([
             'branch',
             'terminal',
@@ -33,6 +37,110 @@ class EscPosPayloadService
             'receipt', 'invoice' => $this->receipt($sale),
             default              => $this->receipt($sale),
         };
+    }
+
+    /** Render exclusively from the immutable job payload. */
+    public function buildReminder(PrintJob $job): string
+    {
+        $payload = $job->payload ?? [];
+        $revision = max((int) ($payload['revision'] ?? 1), 1);
+        $copyNo = max((int) ($payload['copy_no'] ?? 1), 1);
+        $eventType = (string) ($payload['event_type'] ?? 'order');
+        $layout = $payload['layout'] ?? [];
+        $header = trim((string) ($layout['header_text'] ?? ''));
+        if ($header !== '') {
+            $out = $this->center($header) . "\n";
+        } else {
+            $out = '';
+        }
+        $out .= $this->center('*** REMINDER ***') . "\n";
+        $out .= $this->center((string) ($payload['heading'] ?? 'REMINDER')) . "\n";
+        if (!in_array($eventType, ['cancelled_order', 'cancelled_updated_order'], true)) {
+            $out .= $this->center('REVISION ' . $revision) . "\n";
+        }
+        if (!empty($payload['is_reprint'])) {
+            $out .= $this->center('DUPLICATE ' . $copyNo) . "\n";
+        }
+        if ($layout['show_order_no'] ?? true) {
+            $out .= $this->center((string) ($payload['sale_no'] ?? '')) . "\n";
+        }
+        $out .= str_repeat('-', 42) . "\n";
+        if (($layout['show_table_info'] ?? true) && !empty($payload['table'])) {
+            $out .= 'TABLE: ' . $payload['table'] . "\n";
+        }
+        if (($layout['show_table_info'] ?? true) && !empty($payload['waiter'])) {
+            $out .= 'WAITER: ' . $payload['waiter'] . "\n";
+        }
+        if (($layout['show_cashier_name'] ?? true) && !empty($payload['cashier'])) {
+            $out .= 'CASHIER: ' . $payload['cashier'] . "\n";
+        }
+        if (($layout['show_customer_name'] ?? false) && !empty($payload['customer'])) {
+            $out .= 'CUSTOMER: ' . $payload['customer'] . "\n";
+        }
+        $out .= 'TYPE: ' . strtoupper(str_replace('_', ' ', (string) ($payload['order_type'] ?? 'SALE'))) . "\n";
+        if (($layout['show_order_time'] ?? true) && !empty($payload['order_time'])) {
+            $out .= 'ORDER: ' . $this->formatTimestamp($payload['order_time']) . "\n";
+        }
+        if (($layout['show_updated_time'] ?? true) && !empty($payload['updated_time'])) {
+            $out .= 'UPDATED: ' . $this->formatTimestamp($payload['updated_time']) . "\n";
+        }
+        if (($layout['show_print_time'] ?? true) && !empty($payload['generated_at'])) {
+            $out .= 'PRINT: ' . $this->formatTimestamp($payload['generated_at']) . "\n";
+        }
+        $out .= str_repeat('-', 42) . "\n";
+
+        if (!empty($payload['cancelled_lines'])) {
+            $out .= "CANCELLED:\n";
+            foreach ($payload['cancelled_lines'] as $line) {
+                $out .= $this->reminderLine($line, false) . "\n";
+            }
+            $out .= str_repeat('-', 42) . "\n";
+            $out .= "REMAINING ORDER:\n";
+        }
+
+        $lines = collect($payload['lines'] ?? []);
+        $topLevel = $lines->filter(fn ($line) => empty($line['parent_line_id']));
+        if ($topLevel->isEmpty()) {
+            $out .= "NO REMAINING ITEMS\n";
+        }
+        foreach ($topLevel as $line) {
+            $out .= $this->reminderLine($line, $revision > 1) . "\n";
+            foreach ($lines->where('parent_line_id', $line['line_id'] ?? null) as $component) {
+                $out .= '  - ' . $this->reminderLine($component, $revision > 1) . "\n";
+                foreach (($component['modifiers'] ?? []) as $modifier) {
+                    if (!empty($modifier['name'])) { $out .= '    + ' . $modifier['name'] . "\n"; }
+                }
+                if (!empty($component['kitchen_note'])) { $out .= '    NOTE: ' . $component['kitchen_note'] . "\n"; }
+            }
+            foreach (($line['modifiers'] ?? []) as $modifier) {
+                if (!empty($modifier['name'])) {
+                    $out .= '  + ' . $modifier['name'] . "\n";
+                }
+            }
+            if (!empty($line['kitchen_note'])) {
+                $out .= '  NOTE: ' . $line['kitchen_note'] . "\n";
+            }
+        }
+
+        $audit = collect($payload['cancellation_audit'] ?? [])->first();
+        if ($audit) {
+            $out .= str_repeat('-', 42) . "\n";
+            if (!empty($audit['reason'])) { $out .= 'REASON: ' . $audit['reason'] . "\n"; }
+            if (!empty($audit['requested_by'])) { $out .= 'REQUESTED BY: ' . $audit['requested_by'] . "\n"; }
+            if (!empty($audit['approved_by'])) { $out .= 'APPROVED BY: ' . $audit['approved_by'] . "\n"; }
+            if (!empty($audit['requested_at'])) { $out .= 'REQUESTED: ' . $this->formatTimestamp($audit['requested_at']) . "\n"; }
+            if (!empty($audit['approved_at'])) { $out .= 'APPROVED: ' . $this->formatTimestamp($audit['approved_at']) . "\n"; }
+        }
+        if (!empty($payload['order_note'])) {
+            $out .= str_repeat('-', 42) . "\nORDER NOTE:\n" . $payload['order_note'] . "\n";
+        }
+
+        $footer = trim((string) ($layout['footer_text'] ?? ''));
+        if ($footer !== '') {
+            $out .= str_repeat('-', 42) . "\n" . $this->center($footer) . "\n";
+        }
+
+        return $out . str_repeat('-', 42) . "\n\n\n";
     }
 
     private function receipt(SalesOrder $sale): string
@@ -201,7 +309,8 @@ class EscPosPayloadService
                 continue;
             }
 
-            $out .= strtoupper($line->product_name ?? '') . "\n";
+            $runningPrefix = $eventType === 'addition' ? '(R) ' : '';
+            $out .= $runningPrefix . strtoupper($line->product_name ?? '') . "\n";
             $kotQty = number_format($qtyToPrint, 3);
             if ($line->unit_code) { $kotQty .= ' ' . $line->unit_code; }
             $out .= 'QTY: ' . $kotQty . "\n";
@@ -266,5 +375,33 @@ class EscPosPayloadService
             ])
             ->values()
             ->all();
+    }
+
+    private function reminderLine(array $line, bool $showRunning): string
+    {
+        $quantity = (float) ($line['quantity'] ?? 0);
+        $delta = (float) ($line['round_delta'] ?? 0);
+        $prefix = $showRunning && $delta > 0 && abs($delta - $quantity) < 0.000001 ? '(R) ' : '';
+        $suffix = $showRunning && $delta > 0 && $delta < $quantity
+            ? ' (R +' . $this->quantity($delta) . ')'
+            : '';
+        $unit = !empty($line['unit_code']) ? ' ' . $line['unit_code'] : '';
+
+        return $prefix . strtoupper((string) ($line['product_name'] ?? 'ITEM'))
+            . ' x' . $this->quantity($quantity) . $unit . $suffix;
+    }
+
+    private function quantity(float $quantity): string
+    {
+        return rtrim(rtrim(number_format($quantity, 3, '.', ''), '0'), '.');
+    }
+
+    private function formatTimestamp(string $timestamp): string
+    {
+        try {
+            return \Carbon\Carbon::parse($timestamp)->format('Y-m-d H:i');
+        } catch (\Throwable) {
+            return $timestamp;
+        }
     }
 }

@@ -1,10 +1,10 @@
 @extends('layouts.app')
 
-@section('title', 'KOT Routing')
+@section('title', 'Print Routing')
 
 @section('content')
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
-    <h1 class="mb-0">KOT Routing</h1>
+    <h1 class="mb-0">KOT &amp; Reminder Routing</h1>
     @can('tenant.printing.category-mappings.store')
         <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addMappingModal">Add Mapping</button>
     @endcan
@@ -43,6 +43,7 @@
                     <th>Category</th>
                     <th>Printer</th>
                     <th>Document</th>
+                    <th>Addition Policy</th>
                     <th>Active</th>
                     <th></th>
                 </tr>
@@ -55,6 +56,7 @@
                     <td>{{ $m->category?->name }}</td>
                     <td>{{ $m->printer?->name }}</td>
                     <td>{{ ucfirst($m->print_role) }}</td>
+                    <td>{{ $m->print_role === 'reminder' ? ($m->reminder_confirm_on_addition ? 'Ask' : 'Automatic') : '—' }}</td>
                     <td>
                         <span class="badge bg-{{ $m->is_active ? 'success' : 'secondary' }}">
                             {{ $m->is_active ? 'Yes' : 'No' }}
@@ -73,7 +75,7 @@
                     </td>
                 </tr>
                 @empty
-                <tr><td colspan="7" class="text-center text-muted py-4">No mappings configured.</td></tr>
+                <tr><td colspan="8" class="text-center text-muted py-4">No mappings configured.</td></tr>
                 @endforelse
             </tbody>
         </table>
@@ -86,7 +88,7 @@
         <form method="POST" action="{{ url('/printing/category-mappings') }}" class="modal-content">
             @csrf
             <div class="modal-header">
-                <h5 class="modal-title">Add KOT Routing</h5>
+                <h5 class="modal-title">Add Print Routing</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body row g-3">
@@ -127,10 +129,16 @@
                 </div>
                 <div class="col-md-6">
                     <label class="form-label required">Document</label>
-                    <select name="print_role" class="form-select" required>
+                    <select name="print_role" id="mapping-document-type" class="form-select" required>
                         <option value="kot" @selected(old('print_role') === 'kot')>KOT</option>
-                        <option value="receipt" @selected(old('print_role') === 'receipt')>Receipt</option>
+                        <option value="reminder" @selected(old('print_role') === 'reminder')>Reminder</option>
                     </select>
+                </div>
+                <div class="col-md-6" id="reminder-addition-policy" hidden>
+                    <div class="form-check form-switch mt-4">
+                        <input class="form-check-input" type="checkbox" name="reminder_confirm_on_addition" value="1" @checked(old('reminder_confirm_on_addition'))>
+                        <label class="form-check-label">Ask before updated Reminder</label>
+                    </div>
                 </div>
                 <div class="col-12">
                     <div class="form-check form-switch">
@@ -147,4 +155,14 @@
     </div>
 </div>
 @endcan
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const type = document.getElementById('mapping-document-type');
+    const policy = document.getElementById('reminder-addition-policy');
+    if (!type || !policy) return;
+    const sync = () => { policy.hidden = type.value !== 'reminder'; };
+    type.addEventListener('change', sync);
+    sync();
+});
+</script>
 @endsection

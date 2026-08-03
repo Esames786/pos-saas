@@ -1,7 +1,7 @@
 # PRINT-ROUTING-REMINDER-PREFLIGHT-1
 
 Date: 2026-08-03
-Status: Product decisions locked and ready for implementation review; no Reminder feature code is included in this document.
+Status: Implemented by `REMINDER-PRINT-1`; production deployment and physical LAN printer certification remain deferred.
 Depends on: `pos-table-kot-integrity-investigation-2026-08-03.md` and the current POS/KOT integrity working tree.
 
 ## Executive decision
@@ -19,6 +19,34 @@ The minimum-change design is:
 7. Keep cloud behavior canonical. Export configuration in Edge bootstrap later, but do not activate offline transaction processing in this feature.
 
 No new table is proposed. No new service class is proposed.
+
+## Implementation result (REMINDER-PRINT-1)
+
+The implementation follows the locked contract without adding a second engine, queue, routing table, approval flow, or local runtime.
+
+- Reminder is `document_type=reminder` in the existing `print_jobs` queue and current Print Agent claim/printed/failed contract.
+- Eligibility is active branch/global mapping + order type + category + Reminder-capable physical printer. Category matches decide the destination only; every queued Reminder snapshots the complete effective positive order.
+- Automatic identity is `reminder:{kot_event_uuid}:{printer_id}`. The database unique key and existing race recovery return the same row on HTTP/process replay.
+- First accepted KOT round automatically queues all Reminder destinations. Skipping the existing KOT prompt never calls the endpoint, so it produces neither Reminder nor Reminder prompt.
+- Additional KOT remains delta-only. Its lines render `(R)`. Updated Reminder is complete-order and derives new/increased quantities from immutable `kot_batch_lines`, rendering `(R) Item` or `Item (R +delta)`.
+- `reminder_confirm_on_addition` is evaluated per physical printer; any matching Ask rule wins. Auto destinations are durable before the response. Ask destinations are returned once with an encrypted token bound to tenant user, branch, sale, batch UUID, revision, printer IDs, and expiry.
+- Manual Reminder reprint copies the original immutable payload. Its counter is source revision + printer scoped and independent from KOT copies and network retries.
+- Approved sent-item cancellation keeps the existing Cancel KOT and adds an automatic non-interactive correction Reminder. Destinations are the union of current eligible printers and every prior non-cancelled Reminder printer, including queued/offline jobs. Whole-order cancellation renders `CANCELLED ORDER`; partial cancellation renders cancelled and complete remaining sections.
+- Operational Reminder has no default/browser fallback. A configured network destination remains queued while its agent is offline. Settings preview remains available for 58mm/80mm layout review.
+- The Reminder ESC/POS and Blade renderers consume immutable payload only and contain no code path for price, amount, discount, tax, service charge, tip, total, payment, paid, or balance fields.
+- Edge bootstrap is configuration-only `edge-bootstrap-v3`, exporting Reminder printer capability, order-aware routing/Ask policy, and timestamp layout flags. `EDGE_FEATURE_ENABLED` is unchanged; Local Mode and sync are not implemented.
+
+### QA evidence
+
+- PHPUnit: 12 passed / 44 assertions; three isolated SQLite routing tests skipped because this PHP build has no `pdo_sqlite`.
+- Real tenant MySQL: all seven tenant migrations passed.
+- Transactional MySQL harness passed multi-printer deduplication, same physical KOT+Reminder, Ask precedence, all four order types, first/addition rounds, confirmation replay, immutable `(R)` data, non-fiscal output, printer-scoped Duplicate 1/2/1, cancellation historical union, whole cancellation, and unsent/zero suppression; transaction rolled back.
+- Real two-process MySQL enqueue race: both workers returned the same job ID and verification found one Reminder logical row; synthetic rows were deleted.
+- Post-edit cancellation harness proved the correction Reminder is snapshotted after the final cart rewrite: removed unsent quantity stayed absent, a newly added item was present, and the cancelled sent quantity retained its immutable product snapshot after old line replacement; transaction rolled back.
+- Route catalog synchronization found 592 application routes; all seven tenants migrated and received 515 tenant permissions, including the new Reminder endpoints.
+- Route cache and Blade cache compile successfully. All seven tenants passed the final accounting/inventory sweep with zero unbalanced journals, zero prohibited negative branch stock, and zero negative department stock.
+
+Physical printing remains at-least-once: if a printer succeeds but agent acknowledgment is lost, a retry can physically print again. Exactly-once physical delivery is not claimed. `LOCAL-PRINT-LAN-CERT-1` remains the next certification step.
 
 ## Non-regression contract: KOT and Receipt are frozen
 
@@ -584,6 +612,6 @@ Implemented on 2026-08-03 as the foundation-only sprint. Reminder queueing, rend
 - Unit regression passed for POS fresh-cart initialization, KOT/addition/cancel payloads, duplicate label, and user order-type policy. The focused routing test is committed and runs where `pdo_sqlite` is available; local PHP lacks that extension, so the MySQL harness is the local routing authority.
 - All seven tenants finished with `tb_diff=0`, zero negative stock on disallowed branches, and zero negative department balances. Temporary routes, printers, batches, and jobs were rolled back or deleted.
 
-### Deferred Edge fields
+### Edge configuration contract
 
-`EdgeBootstrapService::sourceRevision()` already includes printers, layouts, category mappings, and terminal printer settings, so updates change the source watermark through `updated_at`. The current snapshot allowlists intentionally remain unchanged. A future consumer-ready schema bump must export `printers.supports_reminder`, `category_printer_mappings.order_type`, future `reminder_confirm_on_addition`, and the three Reminder timestamp flags. Local Mode remains inactive.
+`EdgeBootstrapService::sourceRevision()` includes printers, layouts, category mappings, and terminal printer settings. `REMINDER-PRINT-1` bumps the configuration snapshot to `edge-bootstrap-v3` and exports `printers.supports_reminder`, `category_printer_mappings.order_type`, `reminder_confirm_on_addition`, and the three Reminder timestamp flags. This is configuration delivery only: Local Mode remains inactive and no local Reminder runtime or sync behavior is implemented.

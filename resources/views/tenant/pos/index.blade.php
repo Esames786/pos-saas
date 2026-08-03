@@ -2912,11 +2912,50 @@ document.addEventListener('DOMContentLoaded', function () {
                 });
             });
             renderCart();
+            handleReminderPlan(saleId, data.reminder || {});
             return data;
         })
         .catch(function (error) {
             toast('error', error.message || 'KOT could not be queued.');
             return null;
+        });
+    }
+
+    function handleReminderPlan(saleId, reminder) {
+        if (reminder.warning) toast('warning', reminder.warning);
+        const printers = reminder.ask_printers || [];
+        if (!printers.length || !reminder.confirmation_token || typeof Swal === 'undefined') return;
+
+        Swal.fire({
+            title: 'Resend updated Reminder?',
+            html: 'Send the complete updated order to:<br><strong>'
+                + printers.map(function (printer) { return escapeHtml(printer.name); }).join('<br>')
+                + '</strong>',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, Send',
+            cancelButtonText: 'No',
+            reverseButtons: true,
+        }).then(function (result) {
+            if (!result.isConfirmed) return;
+            fetch('{{ url('/printing/jobs/reminder') }}/' + saleId + '/confirm', {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ confirmation_token: reminder.confirmation_token }),
+            }).then(function (response) {
+                return response.json().then(function (data) {
+                    if (!response.ok) throw new Error(data.message || 'Reminder could not be queued.');
+                    return data;
+                });
+            }).then(function (data) {
+                toast('success', (data.jobs || []).length + ' updated Reminder job(s) queued');
+            }).catch(function (error) {
+                toast('error', error.message || 'Reminder could not be queued.');
+            });
         });
     }
 
@@ -3708,9 +3747,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 return '<span class="badge bg-' + (map[s] || 'secondary') + '">' + escapeHtml(s) + '</span>';
             };
             const typeBadge = function (t) {
-                return t === 'kot'
-                    ? '<span class="badge bg-warning text-dark"><i class="ti ti-tool-kitchen-2 me-1"></i>KOT</span>'
-                    : '<span class="badge bg-primary"><i class="ti ti-receipt me-1"></i>Receipt</span>';
+                if (t === 'kot') return '<span class="badge bg-warning text-dark"><i class="ti ti-tool-kitchen-2 me-1"></i>KOT</span>';
+                if (t === 'reminder') return '<span class="badge bg-info text-dark"><i class="ti ti-bell me-1"></i>Reminder</span>';
+                return '<span class="badge bg-primary"><i class="ti ti-receipt me-1"></i>Receipt</span>';
             };
 
             let html = '<div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0">' +
@@ -3724,9 +3763,13 @@ document.addEventListener('DOMContentLoaded', function () {
             data.jobs.forEach(function (j) {
                 if (j.print_status === 'failed') hasFailed = true;
 
-                const itemsCell = j.document_type === 'kot'
+                let itemsCell = ['kot', 'reminder'].includes(j.document_type)
                     ? (j.line_count > 0 ? j.line_count + ' item' + (j.line_count !== 1 ? 's' : '') : 'All items')
                     : '—';
+                if (j.document_type === 'reminder') {
+                    itemsCell += ' · Rev ' + Number(j.revision || 1);
+                    if (Number(j.copy_no || 0) > 0) itemsCell += ' · Duplicate ' + Number(j.copy_no);
+                }
 
                 const viewBtn = j.fallback
                     ? '<a href="' + escapeHtml(j.preview_url) + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-info py-0 me-1"><i class="ti ti-eye me-1"></i>View</a>'
@@ -3746,7 +3789,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     '<td class="pe-3 text-end">' +
                         viewBtn +
                         retryBtn +
-                        '<button class="btn btn-sm btn-outline-secondary py-0" data-requeue-job="' + Number(j.id) + '" data-job-type="' + escapeHtml(j.document_type) + '">' +
+                        '<button class="btn btn-sm btn-outline-secondary py-0" data-requeue-job="' + Number(j.id) + '" data-job-type="' + escapeHtml(j.document_type) + '" title="Reprint ' + escapeHtml(j.printer_name) + (j.document_type === 'reminder' ? ', revision ' + Number(j.revision || 1) : '') + '">' +
                             '<i class="ti ti-printer me-1"></i>Reprint' +
                         '</button>' +
                     '</td>' +
@@ -3841,7 +3884,21 @@ document.addEventListener('DOMContentLoaded', function () {
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
 
-        if (jobType === 'kot') {
+        if (jobType === 'reminder') {
+            fetch('{{ url('/printing/jobs') }}/' + jobId + '/reminder-reprint', {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
+            }).then(function (res) {
+                return res.json().then(function (data) {
+                    if (!res.ok) throw new Error(data.message || 'Reminder could not be reprinted.');
+                    return data;
+                });
+            }).then(function (data) {
+                btn.disabled = false; btn.innerHTML = orig;
+                toast('success', 'Reminder Duplicate ' + data.copy_no + ' queued');
+                loadRecentPrintJobs();
+            }).catch(function (error) { btn.disabled = false; btn.innerHTML = orig; toast('error', error.message || 'Failed'); });
+        } else if (jobType === 'kot') {
             const base  = '{{ url('/printing/jobs/kot') }}/' + _lastSaleId;
             const query = '?reprint=1' + (terminalId ? '&terminal_id=' + encodeURIComponent(terminalId) : '');
             fetch(base + query, { method: 'POST', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' } })

@@ -11,6 +11,7 @@ use App\Models\Tenant\VoidReason;
 use App\Models\Tenant\User;
 use App\Services\Printing\PrintJobService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 class KotCancellationService
@@ -59,9 +60,16 @@ class KotCancellationService
                 $this->record($sale, $line, $quantity, $reason, $approval, $queued['batch']?->id, $requestingUserId);
             }
 
+            $reminderJobs = $this->queueCorrectionReminders($sale, $queued['batch'], true);
+
             $sale->update(['status' => 'cancelled']);
 
-            return ['sale' => $sale, 'jobs' => $queued['jobs'], 'batch' => $queued['batch']];
+            return [
+                'sale' => $sale,
+                'jobs' => $queued['jobs'],
+                'reminder_jobs' => $reminderJobs,
+                'batch' => $queued['batch'],
+            ];
         });
     }
 
@@ -161,8 +169,29 @@ class KotCancellationService
                 );
             }
 
+            $queued['reminder_jobs'] = [];
+
             return $queued;
         });
+    }
+
+    public function queueCorrectionReminders(SalesOrder $sale, $batch, bool $wholeOrder = false): array
+    {
+        if (!$batch) {
+            return [];
+        }
+
+        try {
+            return $this->printJobService->queueCancellationReminders($sale, $batch, $wholeOrder);
+        } catch (\Throwable $exception) {
+            Log::warning('Cancellation Reminder failed after Cancel KOT was queued.', [
+                'sales_order_id' => $sale->id,
+                'kot_batch_id' => $batch->id,
+                'error' => $exception->getMessage(),
+            ]);
+
+            return [];
+        }
     }
 
     private function activeReason(int $reasonId): VoidReason

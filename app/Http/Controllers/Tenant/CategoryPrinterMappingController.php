@@ -42,19 +42,24 @@ class CategoryPrinterMappingController extends Controller
             'branch_id'   => ['nullable', 'exists:branches,id'],
             'category_id' => ['required', 'exists:categories,id'],
             'printer_id'  => ['required', 'exists:printers,id'],
-            'print_role'  => ['required', Rule::in(['kot', 'receipt'])],
+            'print_role'  => ['required', Rule::in(['kot', 'receipt', 'reminder'])],
             'order_type'  => ['required', Rule::in(['all', 'dine_in', 'takeaway', 'quick_sale', 'delivery'])],
+            'reminder_confirm_on_addition' => ['nullable', 'boolean'],
             'is_active'   => ['nullable', 'boolean'],
         ]);
 
         $data['branch_id'] = $data['branch_id'] ?? null;
         $data['order_type'] = trim((string) ($data['order_type'] ?? '')) ?: 'all';
         $data['is_active'] = !empty($data['is_active']);
+        $data['reminder_confirm_on_addition'] = $data['print_role'] === 'reminder'
+            && !empty($data['reminder_confirm_on_addition']);
         $printer = Printer::findOrFail($data['printer_id']);
 
-        $capable = $data['print_role'] === 'kot'
-            ? in_array($printer->print_role, ['kot', 'both'], true)
-            : in_array($printer->print_role, ['receipt', 'both'], true);
+        $capable = match ($data['print_role']) {
+            'kot' => in_array($printer->print_role, ['kot', 'both'], true),
+            'receipt' => in_array($printer->print_role, ['receipt', 'both'], true),
+            'reminder' => (bool) $printer->supports_reminder,
+        };
         if (!$capable) {
             throw ValidationException::withMessages([
                 'printer_id' => 'The selected printer is not capable of this document type.',

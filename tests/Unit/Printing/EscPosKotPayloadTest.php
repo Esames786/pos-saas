@@ -19,6 +19,7 @@ class EscPosKotPayloadTest extends TestCase
 
         $this->assertStringContainsString('*** KOT #1 ***', $normal);
         $this->assertStringContainsString('*** ADDITION KOT #2 ***', $addition);
+        $this->assertStringContainsString('(R) CHICKEN BURGER', $addition);
     }
 
     public function test_duplicate_heading_has_sequence_and_copy_number(): void

@@ -51,6 +51,7 @@ class PrintRoutingFoundationTest extends TestCase
             $table->unsignedBigInteger('printer_id');
             $table->string('print_role')->default('kot');
             $table->string('order_type')->default('all');
+            $table->boolean('reminder_confirm_on_addition')->default(false);
             $table->boolean('is_active')->default(true);
             $table->timestamps();
         });
@@ -61,6 +62,29 @@ class PrintRoutingFoundationTest extends TestCase
             $table->unsignedBigInteger('receipt_printer_id')->nullable();
             $table->timestamps();
         });
+    }
+
+    public function test_reminder_routes_are_order_aware_deduplicated_and_ask_wins(): void
+    {
+        $printer = $this->printer('reminder');
+        $printer->update(['supports_reminder' => true]);
+        CategoryPrinterMapping::create([
+            'branch_id' => 10, 'category_id' => 20, 'printer_id' => $printer->id,
+            'print_role' => 'reminder', 'order_type' => 'dine_in',
+            'reminder_confirm_on_addition' => false, 'is_active' => true,
+        ]);
+        CategoryPrinterMapping::create([
+            'branch_id' => null, 'category_id' => 20, 'printer_id' => $printer->id,
+            'print_role' => 'reminder', 'order_type' => 'dine_in',
+            'reminder_confirm_on_addition' => true, 'is_active' => true,
+        ]);
+
+        $routes = app(PrintRoutingService::class)->reminderRoutesForSale($this->sale('dine_in'));
+
+        $this->assertCount(1, $routes);
+        $this->assertSame($printer->id, $routes[0]['printer']->id);
+        $this->assertTrue($routes[0]['ask_on_addition']);
+        $this->assertSame([], app(PrintRoutingService::class)->reminderRoutesForSale($this->sale('delivery')));
     }
 
     public function test_same_category_routes_by_each_order_type_and_legacy_all(): void

@@ -6,9 +6,62 @@ use App\Models\Tenant\CategoryPrinterMapping;
 use App\Models\Tenant\Printer;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\TerminalPrinterSetting;
+use Illuminate\Support\Collection;
 
 class PrintRoutingService
 {
+    /**
+     * Resolve explicit Reminder destinations. There is deliberately no default
+     * printer or browser fallback for this operational document.
+     *
+     * @return array<int, array{printer: Printer, ask_on_addition: bool}>
+     */
+    public function reminderRoutesForSale(SalesOrder $sale, array $effectiveQuantities = []): array
+    {
+        $sale->loadMissing(['lines.product.category']);
+
+        $categoryIds = $sale->lines
+            ->filter(function ($line) use ($effectiveQuantities) {
+                $quantity = array_key_exists((string) $line->id, $effectiveQuantities)
+                    ? (float) $effectiveQuantities[(string) $line->id]
+                    : (float) $line->quantity;
+
+                return $quantity > 0 && $line->product?->category_id;
+            })
+            ->pluck('product.category_id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        if ($categoryIds->isEmpty()) {
+            return [];
+        }
+
+        $mappings = CategoryPrinterMapping::with('printer')
+            ->where(function ($query) use ($sale) {
+                $query->whereNull('branch_id')->orWhere('branch_id', $sale->branch_id);
+            })
+            ->whereIn('category_id', $categoryIds)
+            ->where('print_role', 'reminder')
+            ->where(function ($query) use ($sale) {
+                $query->where('order_type', 'all')->orWhere('order_type', $sale->order_type);
+            })
+            ->where('is_active', true)
+            ->get()
+            ->filter(fn ($mapping) => $mapping->printer?->is_active && $mapping->printer?->supports_reminder);
+
+        return $mappings
+            ->groupBy('printer_id')
+            ->map(fn (Collection $rules) => [
+                'printer' => $rules->first()->printer,
+                'ask_on_addition' => $rules->contains(
+                    fn ($rule) => (bool) $rule->reminder_confirm_on_addition
+                ),
+            ])
+            ->values()
+            ->all();
+    }
+
     public function receiptPrinter(SalesOrder $sale): ?Printer
     {
         if ($sale->terminal_id) {

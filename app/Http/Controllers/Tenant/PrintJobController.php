@@ -8,6 +8,7 @@ use App\Models\Tenant\PrintJob;
 use App\Models\Tenant\SalesOrder;
 use App\Services\Printing\PrintJobService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class PrintJobController extends Controller
 {
@@ -75,6 +76,24 @@ class PrintJobController extends Controller
             isReprint:  $isReprint,
         );
 
+        $reminder = [
+            'revision' => null,
+            'auto_jobs' => [],
+            'ask_printers' => [],
+            'confirmation_token' => null,
+        ];
+        if (!$isReprint && !empty($jobs)) {
+            try {
+                $reminder = $this->printJobService->planRemindersForKotJobs($salesOrder, $jobs);
+            } catch (\Throwable $exception) {
+                Log::warning('Reminder planning failed after KOT was queued.', [
+                    'sales_order_id' => $salesOrder->id,
+                    'error' => $exception->getMessage(),
+                ]);
+                $reminder['warning'] = 'KOT was queued, but Reminder could not be queued.';
+            }
+        }
+
         if (empty($jobs)) {
             if ($request->expectsJson()) {
                 return response()->json(['jobs' => [], 'message' => 'No new items to send to kitchen']);
@@ -92,6 +111,17 @@ class PrintJobController extends Controller
                     'fallback'     => empty($j->printer_id),
                     'line_quantities' => $j->payload['line_quantities'] ?? [],
                 ])->values()->all(),
+                'reminder' => [
+                    'revision' => $reminder['revision'],
+                    'auto_jobs' => collect($reminder['auto_jobs'])->map(fn ($job) => [
+                        'job_id' => $job->id,
+                        'job_no' => $job->job_no,
+                        'printer_id' => $job->printer_id,
+                    ])->values()->all(),
+                    'ask_printers' => $reminder['ask_printers'],
+                    'confirmation_token' => $reminder['confirmation_token'],
+                    'warning' => $reminder['warning'] ?? null,
+                ],
             ]);
         }
 
@@ -103,6 +133,34 @@ class PrintJobController extends Controller
         }
 
         return back()->with('status', count($jobs) . ' KOT print job(s) queued.');
+    }
+
+    public function confirmReminders(Request $request, SalesOrder $salesOrder)
+    {
+        $data = $request->validate([
+            'confirmation_token' => ['required', 'string'],
+        ]);
+        $jobs = $this->printJobService->queueConfirmedReminders($salesOrder, $data['confirmation_token']);
+
+        return response()->json([
+            'jobs' => collect($jobs)->map(fn ($job) => [
+                'job_id' => $job->id,
+                'job_no' => $job->job_no,
+                'printer_id' => $job->printer_id,
+            ])->values(),
+        ]);
+    }
+
+    public function reprintReminder(Request $request, PrintJob $printJob)
+    {
+        $job = $this->printJobService->queueReminderReprint($printJob);
+
+        return response()->json([
+            'job_id' => $job->id,
+            'job_no' => $job->job_no,
+            'copy_no' => $job->copy_no,
+            'printer_id' => $job->printer_id,
+        ]);
     }
 
     public function ajaxForSale(Request $request, int $saleId)
@@ -121,7 +179,15 @@ class PrintJobController extends Controller
                 'print_status'  => $j->print_status,
                 'printer_name'  => $j->printer?->name ?? 'Default Printer',
                 'printer_type'  => $j->printer?->printer_type ?? 'browser',
-                'line_count'    => count($j->payload['line_ids'] ?? []),
+                'line_count'    => $j->document_type === 'reminder'
+                    ? count($j->payload['lines'] ?? [])
+                    : count($j->payload['line_ids'] ?? []),
+                'revision'      => $j->document_type === 'reminder'
+                    ? (int) ($j->payload['revision'] ?? 1)
+                    : null,
+                'copy_no'       => $j->document_type === 'reminder'
+                    ? (int) ($j->copy_no ?? 0)
+                    : null,
                 'fallback'      => empty($j->printer_id),
                 'preview_url'   => url('/printing/documents/' . $j->id . '/' . $j->document_type),
                 'created_at'    => $j->created_at->diffForHumans(),

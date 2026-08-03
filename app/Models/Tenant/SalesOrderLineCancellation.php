@@ -31,4 +31,19 @@ class SalesOrderLineCancellation extends Model
             'cancelled_at' => 'datetime',
         ];
     }
+
+    public function reason()
+    {
+        return $this->belongsTo(VoidReason::class, 'void_reason_id');
+    }
+
+    public function requestedBy()
+    {
+        return $this->belongsTo(User::class, 'requested_by_user_id');
+    }
+
+    public function approvedBy()
+    {
+        return $this->belongsTo(User::class, 'approved_by_user_id');
+    }
 }

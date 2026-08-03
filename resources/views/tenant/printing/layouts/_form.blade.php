@@ -43,10 +43,13 @@
             'show_customer_name'     => 'Customer Name',
             'show_table_info'        => 'Table Info',
             'show_order_no'          => 'Order No',
+            'show_order_time'        => 'Order Time',
+            'show_updated_time'      => 'Updated Time',
+            'show_print_time'        => 'Print Time',
             'show_item_codes'        => 'Item Codes',
             'show_payment_breakdown' => 'Payment Breakdown',
         ] as $field => $label)
-        <div class="col-md-4">
+        <div class="col-md-4 layout-option" data-layout-field="{{ $field }}">
             <div class="form-check form-switch">
                 <input class="form-check-input" type="checkbox" name="{{ $field }}" value="1"
                        @checked(old($field, $l?->{$field} ?? true))>

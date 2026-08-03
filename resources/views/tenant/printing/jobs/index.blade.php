@@ -30,6 +30,7 @@
                     <option value="">All Types</option>
                     <option value="receipt" @selected(request('document_type') === 'receipt')>Receipt</option>
                     <option value="kot" @selected(request('document_type') === 'kot')>KOT</option>
+                    <option value="reminder" @selected(request('document_type') === 'reminder')>Reminder</option>
                 </select>
             </div>
             <div class="col-md-2">

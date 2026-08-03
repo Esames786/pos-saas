@@ -31,7 +31,6 @@ class ReceiptLayoutController extends Controller
     {
         $data = $request->validate([
             'branch_id'              => ['required', 'exists:branches,id'],
-            // Reminder is schema-ready but intentionally hidden until its renderer exists.
             'document_type'          => ['required', Rule::in(ReceiptLayoutSetting::CONFIGURABLE_DOCUMENT_TYPES)],
             'paper_size'             => ['required', Rule::in(['58mm', '80mm', 'A4'])],
             'logo'                   => ['nullable', 'image', 'max:1024'],
@@ -44,6 +43,9 @@ class ReceiptLayoutController extends Controller
             'show_customer_name'     => ['nullable', 'boolean'],
             'show_table_info'        => ['nullable', 'boolean'],
             'show_order_no'          => ['nullable', 'boolean'],
+            'show_order_time'        => ['nullable', 'boolean'],
+            'show_updated_time'      => ['nullable', 'boolean'],
+            'show_print_time'        => ['nullable', 'boolean'],
             'show_item_codes'        => ['nullable', 'boolean'],
             'show_payment_breakdown' => ['nullable', 'boolean'],
             'header_text'            => ['nullable', 'string', 'max:500'],
@@ -61,7 +63,8 @@ class ReceiptLayoutController extends Controller
         $boolFields = [
             'show_logo', 'show_branch_name', 'show_branch_address', 'show_branch_phone',
             'show_tax_number', 'show_cashier_name', 'show_customer_name', 'show_table_info',
-            'show_order_no', 'show_item_codes', 'show_payment_breakdown', 'is_active',
+            'show_order_no', 'show_order_time', 'show_updated_time', 'show_print_time',
+            'show_item_codes', 'show_payment_breakdown', 'is_active',
         ];
 
         foreach ($boolFields as $f) {
@@ -89,7 +92,8 @@ class ReceiptLayoutController extends Controller
         $boolFields = [
             'show_logo', 'show_branch_name', 'show_branch_address', 'show_branch_phone',
             'show_tax_number', 'show_cashier_name', 'show_customer_name', 'show_table_info',
-            'show_order_no', 'show_item_codes', 'show_payment_breakdown',
+            'show_order_no', 'show_order_time', 'show_updated_time', 'show_print_time',
+            'show_item_codes', 'show_payment_breakdown',
         ];
 
         // Build a live layout object from request params (or fall back to saved values)
@@ -122,9 +126,19 @@ class ReceiptLayoutController extends Controller
             ->latest('sale_date')
             ->first() ?? $this->fakeSalesOrder($base->branch);
 
-        $view = $base->document_type === 'kot'
-            ? 'tenant.printing.documents.kot'
-            : 'tenant.printing.documents.receipt';
+        $view = match ($base->document_type) {
+            'kot' => 'tenant.printing.documents.kot',
+            'reminder' => 'tenant.printing.documents.reminder',
+            default => 'tenant.printing.documents.receipt',
+        };
+
+        if ($base->document_type === 'reminder') {
+            return view($view, [
+                'layout' => $layout,
+                'job' => null,
+                'reminder' => $this->fakeReminder($salesOrder),
+            ]);
+        }
 
         return view($view, [
             'salesOrder'     => $salesOrder,
@@ -133,6 +147,36 @@ class ReceiptLayoutController extends Controller
             'lineQuantities' => collect(),
             'isReprint'      => true,
         ]);
+    }
+
+    private function fakeReminder(object $salesOrder): array
+    {
+        return [
+            'heading' => 'UPDATED ORDER',
+            'revision' => 2,
+            'copy_no' => 1,
+            'sale_no' => $salesOrder->sale_no,
+            'order_type' => $salesOrder->order_type,
+            'table' => $salesOrder->restaurantTable?->table_no,
+            'waiter' => $salesOrder->restaurantWaiter?->name,
+            'cashier' => $salesOrder->createdBy?->name,
+            'customer' => $salesOrder->customer_name,
+            'order_time' => optional($salesOrder->sale_date)->toIso8601String(),
+            'updated_time' => now()->toIso8601String(),
+            'generated_at' => now()->toIso8601String(),
+            'lines' => collect($salesOrder->lines)->values()->map(fn ($line, $index) => [
+                'line_id' => (int) ($line->id ?? $index + 1),
+                'parent_line_id' => null,
+                'line_kind' => 'standard',
+                'product_name' => $line->product_name,
+                'variant_name' => $line->variant_name,
+                'unit_code' => $line->unit_code,
+                'quantity' => (float) $line->quantity,
+                'round_delta' => $index === 2 ? (float) $line->quantity : 0,
+                'modifiers' => [],
+                'kitchen_note' => $line->kitchen_note,
+            ])->all(),
+        ];
     }
 
     private function fakeSalesOrder($branch): object

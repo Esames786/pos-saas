@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Receipt / KOT Layouts')
+@section('title', 'Receipt / KOT / Reminder Layouts')
 
 @section('content')
 <style>
@@ -29,7 +29,7 @@
 </style>
 
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
-    <h1 class="mb-0">Receipt &amp; KOT Layouts</h1>
+    <h1 class="mb-0">Receipt, KOT &amp; Reminder Layouts</h1>
     @can('tenant.printing.layouts.store')
         <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addLayoutModal">Add Layout</button>
     @endcan
@@ -174,9 +174,10 @@
                 </div>
                 <div class="col-md-6">
                     <label class="form-label required">Document Type</label>
-                    <select name="document_type" class="form-select" required>
+                    <select name="document_type" id="add-layout-document-type" class="form-select" required>
                         <option value="receipt" @selected(old('document_type') === 'receipt')>Receipt</option>
                         <option value="kot" @selected(old('document_type') === 'kot')>KOT</option>
+                        <option value="reminder" @selected(old('document_type') === 'reminder')>Reminder</option>
                     </select>
                 </div>
                 @include('tenant.printing.layouts._form')
@@ -213,6 +214,9 @@ foreach ($layouts as $l) {
         'show_customer_name'     => (bool)$l->show_customer_name,
         'show_table_info'        => (bool)$l->show_table_info,
         'show_order_no'          => (bool)$l->show_order_no,
+        'show_order_time'        => (bool)$l->show_order_time,
+        'show_updated_time'      => (bool)$l->show_updated_time,
+        'show_print_time'        => (bool)$l->show_print_time,
         'show_item_codes'        => (bool)$l->show_item_codes,
         'show_payment_breakdown' => (bool)$l->show_payment_breakdown,
         'is_active'              => (bool)$l->is_active,
@@ -233,7 +237,7 @@ function openEditLayout(layoutId, branchName, docType) {
 
     // Set modal title
     document.getElementById('editLayoutModalLabel').textContent =
-        'Edit Layout — ' + branchName + ' (' + (docType === 'kot' ? 'KOT' : 'Receipt') + ')';
+        'Edit Layout — ' + branchName + ' (' + (docType === 'kot' ? 'KOT' : (docType === 'reminder' ? 'Reminder' : 'Receipt')) + ')';
 
     // Set hidden fields
     document.getElementById('edit-branch-id').value = data.branch_id;
@@ -249,12 +253,14 @@ function openEditLayout(layoutId, branchName, docType) {
 
     var boolFields = ['show_logo','show_branch_name','show_branch_address','show_branch_phone',
         'show_tax_number','show_cashier_name','show_customer_name','show_table_info',
-        'show_order_no','show_item_codes','show_payment_breakdown','is_active'];
+        'show_order_no','show_order_time','show_updated_time','show_print_time',
+        'show_item_codes','show_payment_breakdown','is_active'];
 
     boolFields.forEach(function(f) {
         var el = form.querySelector('[name="' + f + '"]');
         if (el) el.checked = !!data[f];
     });
+    syncLayoutOptions(form, docType);
 
     // Load preview
     refreshPreview();
@@ -267,6 +273,16 @@ function openEditLayout(layoutId, branchName, docType) {
 function setFormValue(form, name, value) {
     var el = form.querySelector('[name="' + name + '"]');
     if (el) el.value = value !== null && value !== undefined ? value : '';
+}
+
+function syncLayoutOptions(form, docType) {
+    const reminderOnly = ['show_order_time', 'show_updated_time', 'show_print_time'];
+    const fiscal = ['show_tax_number', 'show_payment_breakdown'];
+    form.querySelectorAll('[data-layout-field]').forEach(function (wrapper) {
+        const field = wrapper.dataset.layoutField;
+        wrapper.hidden = (reminderOnly.includes(field) && docType !== 'reminder')
+            || (fiscal.includes(field) && docType === 'reminder');
+    });
 }
 
 function buildPreviewUrl() {
@@ -285,7 +301,8 @@ function buildPreviewUrl() {
 
     var boolFields = ['show_logo','show_branch_name','show_branch_address','show_branch_phone',
         'show_tax_number','show_cashier_name','show_customer_name','show_table_info',
-        'show_order_no','show_item_codes','show_payment_breakdown'];
+        'show_order_no','show_order_time','show_updated_time','show_print_time',
+        'show_item_codes','show_payment_breakdown'];
 
     boolFields.forEach(function(f) {
         var el = form.querySelector('[name="' + f + '"]');
@@ -319,6 +336,14 @@ document.addEventListener('DOMContentLoaded', function () {
             schedulePreviewRefresh();
         });
     });
+
+    const addType = document.getElementById('add-layout-document-type');
+    if (addType) {
+        const addForm = addType.closest('form');
+        const syncAdd = function () { syncLayoutOptions(addForm, addType.value); };
+        addType.addEventListener('change', syncAdd);
+        syncAdd();
+    }
 });
 </script>
 @endsection

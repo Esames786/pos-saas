@@ -9,13 +9,15 @@ class CategoryPrinterMapping extends Model
     protected $connection = 'tenant';
 
     protected $fillable = [
-        'branch_id', 'category_id', 'printer_id', 'print_role', 'order_type', 'is_active',
+        'branch_id', 'category_id', 'printer_id', 'print_role', 'order_type',
+        'reminder_confirm_on_addition', 'is_active',
     ];
 
     protected function casts(): array
     {
         return [
             'is_active' => 'boolean',
+            'reminder_confirm_on_addition' => 'boolean',
         ];
     }
 

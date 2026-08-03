@@ -27,7 +27,7 @@ use Illuminate\Support\Str;
  */
 class EdgeBootstrapService
 {
-    public const SCHEMA_VERSION = 'edge-bootstrap-v2';
+    public const SCHEMA_VERSION = 'edge-bootstrap-v3';
     public const TTL_HOURS      = 72;
     private const BUILD_WAIT_MS = 120;
     private const BUILD_WAITS   = 25;
@@ -497,11 +497,11 @@ class EdgeBootstrapService
                 ['id', 'name', 'type', 'commission_percent', 'is_active', 'sort_order']),
             'delivery_riders' => $rows($conn->table('delivery_riders')->where('branch_id', $b), ['id', 'branch_id', 'name', 'phone', 'status']),
             'printers' => $rows($conn->table('printers')->where('branch_id', $b),
-                ['id', 'branch_id', 'name', 'code', 'printer_type', 'print_role', 'ip_address', 'port', 'paper_size', 'characters_per_line', 'is_default', 'is_active', 'agent_enabled']),
+                ['id', 'branch_id', 'name', 'code', 'printer_type', 'print_role', 'supports_reminder', 'ip_address', 'port', 'paper_size', 'characters_per_line', 'is_default', 'is_active', 'agent_enabled']),
             'receipt_layout_settings' => $rows($conn->table('receipt_layout_settings')->where('branch_id', $b),
                 ['id', 'branch_id', 'document_type', 'paper_size', 'show_logo', 'show_branch_name', 'show_branch_address', 'show_branch_phone', 'show_tax_number',
-                 'show_cashier_name', 'show_customer_name', 'show_table_info', 'show_order_no', 'show_item_codes', 'show_payment_breakdown', 'header_text', 'footer_text', 'font_size', 'kot_font_size', 'is_active']),
-            'category_printer_mappings' => $rows($conn->table('category_printer_mappings')->where('branch_id', $b), ['id', 'branch_id', 'category_id', 'printer_id', 'print_role', 'is_active']),
+                 'show_cashier_name', 'show_customer_name', 'show_table_info', 'show_order_no', 'show_order_time', 'show_updated_time', 'show_print_time', 'show_item_codes', 'show_payment_breakdown', 'header_text', 'footer_text', 'font_size', 'kot_font_size', 'is_active']),
+            'category_printer_mappings' => $rows($conn->table('category_printer_mappings')->where('branch_id', $b), ['id', 'branch_id', 'category_id', 'printer_id', 'print_role', 'order_type', 'reminder_confirm_on_addition', 'is_active']),
             'terminal_printer_settings' => $rows($conn->table('terminal_printer_settings')->whereIn('terminal_id', $terminalIds ?: [0]), ['id', 'terminal_id', 'receipt_printer_id', 'kot_printer_id', 'auto_print_receipt', 'auto_print_kot']),
             'service_charge_settings' => $rows($conn->table('service_charge_settings')->where('branch_id', $b), ['id', 'branch_id', 'charge_type', 'charge_value', 'order_types', 'is_taxable', 'is_active']),
             'void_reasons' => $rows($conn->table('void_reasons')->where('is_active', 1), ['id', 'name', 'reason_type', 'requires_manager_approval', 'is_active']),

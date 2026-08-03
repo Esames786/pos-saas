@@ -16,7 +16,7 @@ The approved integrity plan is now implemented in the working tree:
 - reductions of KOT-sent quantities are calculated by the server and require a reason plus either a single-use manager approval or the branch `auto_approve` policy;
 - whole held-order cancellation follows the same audited flow and creates cancellation KOT work before the sale becomes cancelled;
 - a dedicated `tenant.pos.void-kot-item` permission is provisioned and enforced server-side;
-- branch cancellation policy, user order types, permissions, and role assignments are included in the versioned `edge-bootstrap-v2` snapshot; manager PIN hashes are not exported;
+- branch cancellation policy, user order types, permissions, role assignments, and Reminder printing configuration are included in the versioned `edge-bootstrap-v3` snapshot; manager PIN hashes are not exported;
 - demo seeders include branch-policy and per-user order-type examples.
 
 The existing Edge work remains a bootstrap foundation rather than a complete offline transaction runtime. Under `manager_required`, disconnected cancellation is therefore represented as blocked until an online manager approval can be verified; `auto_approve` remains available offline from the signed branch snapshot. Live production records listed below have not been modified or auto-repaired.

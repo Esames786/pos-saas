@@ -371,6 +371,7 @@ class HeldSaleController extends Controller
 
         $kotSentKeys = [];
         $kotSentByLineId = [];
+        $cancellationBatch = null;
 
         if (!empty($data['held_sale_id'])) {
             $sale = SalesOrder::where('status', 'held')
@@ -424,7 +425,12 @@ class HeldSaleController extends Controller
                 ];
             }
 
-            $cancellationService->recordLineCancellations($sale, $detectedCancellations, (int) auth('tenant')->id());
+            $cancellationResult = $cancellationService->recordLineCancellations(
+                $sale,
+                $detectedCancellations,
+                (int) auth('tenant')->id()
+            );
+            $cancellationBatch = $cancellationResult['batch'] ?? null;
 
             // BUG-014 FIX: include line_kind in the KOT key so a standalone product
             // and the same product appearing as a combo component never share a key
@@ -572,6 +578,11 @@ class HeldSaleController extends Controller
             ];
         }
 
+        if ($cancellationBatch) {
+            $sale->unsetRelation('lines');
+            $cancellationService->queueCorrectionReminders($sale, $cancellationBatch);
+        }
+
         if ($request->expectsJson()) {
             return response()->json([
                 'sale_id'                     => $sale->id,
@@ -666,6 +677,10 @@ class HeldSaleController extends Controller
                     'job_id' => $job->id,
                     'fallback' => empty($job->printer_id),
                     'preview_url' => url('/printing/documents/' . $job->id . '/kot'),
+                ])->values(),
+                'cancellation_reminder_jobs' => collect($result['reminder_jobs'] ?? [])->map(fn ($job) => [
+                    'job_id' => $job->id,
+                    'printer_id' => $job->printer_id,
                 ])->values(),
             ]);
         }

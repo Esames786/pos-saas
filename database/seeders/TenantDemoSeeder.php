@@ -2028,7 +2028,7 @@ class TenantDemoSeeder extends Seeder
                 'code'                => 'FAKE-KOT',
                 'printer_type'        => 'network',
                 'print_role'          => 'kot',
-                'supports_reminder'   => false,
+                'supports_reminder'   => true,
                 'ip_address'          => '127.0.0.1',
                 'port'                => 9100,
                 'paper_size'          => '80mm',
@@ -2081,7 +2081,7 @@ class TenantDemoSeeder extends Seeder
 
         // ── Terminal Printer Settings (idempotent — safe to re-run) ─────────
         if ($kotPrinter && $receiptPrinter) {
-            $kotPrinter->update(['supports_reminder' => false]);
+            $kotPrinter->update(['supports_reminder' => true]);
             $receiptPrinter->update(['supports_reminder' => false]);
 
             $terminals = Terminal::all();
@@ -2109,7 +2109,21 @@ class TenantDemoSeeder extends Seeder
                     ],
                     ['is_active' => true]
                 );
+                CategoryPrinterMapping::updateOrCreate(
+                    [
+                        'branch_id' => $main->id,
+                        'category_id' => $restaurantCategory->id,
+                        'printer_id' => $kotPrinter->id,
+                        'print_role' => 'reminder',
+                        'order_type' => 'all',
+                    ],
+                    [
+                        'reminder_confirm_on_addition' => true,
+                        'is_active' => true,
+                    ]
+                );
                 $this->command->line('  KOT routing seeded: Fast Food / All order types -> Fake Kitchen Printer.');
+                $this->command->line('  Reminder routing seeded: Fast Food / All order types -> Fake Kitchen Printer (ask on additions).');
             }
         }
 
@@ -2270,9 +2284,35 @@ class TenantDemoSeeder extends Seeder
                     'is_active'               => true,
                 ]
             );
+
+            ReceiptLayoutSetting::updateOrCreate(
+                ['branch_id' => $branch->id, 'document_type' => 'reminder'],
+                [
+                    'paper_size' => '80mm',
+                    'show_logo' => false,
+                    'show_branch_name' => true,
+                    'show_branch_address' => false,
+                    'show_branch_phone' => false,
+                    'show_tax_number' => false,
+                    'show_cashier_name' => true,
+                    'show_customer_name' => false,
+                    'show_table_info' => true,
+                    'show_order_no' => true,
+                    'show_order_time' => true,
+                    'show_updated_time' => true,
+                    'show_print_time' => true,
+                    'show_item_codes' => false,
+                    'show_payment_breakdown' => false,
+                    'header_text' => '*** ORDER REMINDER ***',
+                    'footer_text' => null,
+                    'font_size' => 12,
+                    'kot_font_size' => 14,
+                    'is_active' => true,
+                ]
+            );
         }
 
-        $this->command->line('  Receipt & KOT layouts seeded for ' . $branches->count() . ' branch(es).');
+        $this->command->line('  Receipt, KOT & Reminder layouts seeded for ' . $branches->count() . ' branch(es).');
     }
 
     // ── Kitchen Recipes ──────────────────────────────────────────────────────

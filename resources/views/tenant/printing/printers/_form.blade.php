@@ -73,5 +73,5 @@
         <input class="form-check-input" type="checkbox" name="supports_reminder" value="1" @checked(old('supports_reminder', $p?->supports_reminder ?? false))>
         <label class="form-check-label">Reminder capable</label>
     </div>
-    <div class="form-hint">Configuration groundwork only. Reminder jobs are not enabled yet.</div>
+    <div class="form-hint">Allows this network printer to receive complete-order Reminder documents.</div>
 </div>

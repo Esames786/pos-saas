@@ -574,12 +574,15 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/printing/jobs', [PrintJobController::class, 'index'])->name('tenant.printing.jobs.index');
                 Route::post('/printing/jobs/receipt/{salesOrder}', [PrintJobController::class, 'queueReceipt'])->name('tenant.printing.jobs.queue-receipt');
                 Route::post('/printing/jobs/kot/{salesOrder}', [PrintJobController::class, 'queueKot'])->name('tenant.printing.jobs.queue-kot');
+                Route::post('/printing/jobs/reminder/{salesOrder}/confirm', [PrintJobController::class, 'confirmReminders'])->name('tenant.printing.jobs.confirm-reminders');
+                Route::post('/printing/jobs/{printJob}/reminder-reprint', [PrintJobController::class, 'reprintReminder'])->name('tenant.printing.jobs.reprint-reminder');
                 Route::post('/printing/jobs/{printJob}/mark-printed', [PrintJobController::class, 'markPrinted'])->name('tenant.printing.jobs.mark-printed');
                 Route::post('/printing/jobs/{printJob}/retry', [PrintJobController::class, 'retry'])->name('tenant.printing.jobs.retry');
 
                 // Printing — Document preview (receipt / KOT browser print)
                 Route::get('/printing/documents/{printJob}/receipt', [PrintDocumentController::class, 'preview'])->name('tenant.printing.documents.receipt');
                 Route::get('/printing/documents/{printJob}/kot', [PrintDocumentController::class, 'preview'])->name('tenant.printing.documents.kot');
+                Route::get('/printing/documents/{printJob}/reminder', [PrintDocumentController::class, 'preview'])->name('tenant.printing.documents.reminder');
                 Route::get('/printing/documents/{printJob}/preview', [PrintDocumentController::class, 'preview'])->name('tenant.printing.documents.preview');
 
                 // Printing — Print Agents (web management)

@@ -6,9 +6,13 @@ use App\Models\Tenant\PrintJob;
 use App\Models\Tenant\Printer;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\KotBatch;
+use App\Models\Tenant\SalesOrderLineCancellation;
+use App\Models\Tenant\ReceiptLayoutSetting;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class PrintJobService
 {
@@ -212,6 +216,196 @@ class PrintJobService
 
         return ['batch' => $batch, 'jobs' => $jobs];
     }
+
+    /** Queue automatic Reminder destinations and return any destinations needing POS confirmation. */
+    public function planRemindersForKotJobs(SalesOrder $sale, array $kotJobs): array
+    {
+        $batchId = collect($kotJobs)->pluck('payload.kot_batch_id')->filter()->first();
+        $batch = $batchId ? KotBatch::with('lines')->find($batchId) : null;
+
+        if (!$batch || !in_array($batch->event_type, ['normal', 'addition'], true)) {
+            return $this->emptyReminderPlan();
+        }
+
+        $revision = $this->reminderRevision($sale, $batch);
+        $routes = $this->routingService->reminderRoutesForSale($sale);
+        $autoRoutes = collect($routes)->filter(
+            fn ($route) => $revision === 1 || !$route['ask_on_addition']
+        );
+        $askRoutes = collect($routes)->filter(
+            fn ($route) => $revision > 1 && $route['ask_on_addition']
+        )->values();
+
+        $autoJobs = $autoRoutes->map(
+            fn ($route) => $this->queueReminder($sale, $batch, $route['printer'], $revision)
+        )->values();
+
+        $token = null;
+        if ($askRoutes->isNotEmpty()) {
+            $token = Crypt::encryptString(json_encode([
+                'sale_id' => (int) $sale->id,
+                'batch_id' => (int) $batch->id,
+                'event_uuid' => (string) $batch->event_uuid,
+                'revision' => $revision,
+                'printer_ids' => $askRoutes->pluck('printer.id')->map(fn ($id) => (int) $id)->all(),
+                'branch_id' => (int) $sale->branch_id,
+                'user_id' => (int) (auth('tenant')->id() ?: Auth::id()),
+                'expires_at' => now()->addMinutes(30)->timestamp,
+            ], JSON_THROW_ON_ERROR));
+        }
+
+        return [
+            'revision' => $revision,
+            'auto_jobs' => $autoJobs->all(),
+            'ask_printers' => $askRoutes->map(fn ($route) => [
+                'id' => (int) $route['printer']->id,
+                'name' => $route['printer']->name,
+            ])->all(),
+            'confirmation_token' => $token,
+        ];
+    }
+
+    public function queueConfirmedReminders(SalesOrder $sale, string $token): array
+    {
+        try {
+            $bound = json_decode(Crypt::decryptString($token), true, flags: JSON_THROW_ON_ERROR);
+        } catch (\Throwable) {
+            throw ValidationException::withMessages(['confirmation_token' => 'Reminder confirmation is invalid or expired.']);
+        }
+
+        if ((int) ($bound['sale_id'] ?? 0) !== (int) $sale->id
+            || (int) ($bound['branch_id'] ?? 0) !== (int) $sale->branch_id
+            || (int) ($bound['user_id'] ?? 0) !== (int) (auth('tenant')->id() ?: Auth::id())
+            || (int) ($bound['expires_at'] ?? 0) < now()->timestamp) {
+            throw ValidationException::withMessages(['confirmation_token' => 'Reminder confirmation does not belong to this order.']);
+        }
+
+        $batch = KotBatch::where('sales_order_id', $sale->id)
+            ->whereKey((int) ($bound['batch_id'] ?? 0))
+            ->where('event_uuid', (string) ($bound['event_uuid'] ?? ''))
+            ->whereIn('event_type', ['normal', 'addition'])
+            ->firstOrFail();
+
+        $boundRevision = (int) ($bound['revision'] ?? 0);
+        if ($boundRevision !== $this->reminderRevision($sale, $batch)
+            || $boundRevision !== $this->latestOrderRevision($sale)) {
+            throw ValidationException::withMessages(['confirmation_token' => 'This Reminder round is stale; save the order again.']);
+        }
+
+        $allowedIds = collect($bound['printer_ids'] ?? [])->map(fn ($id) => (int) $id)->unique();
+        $currentAskIds = collect($this->routingService->reminderRoutesForSale($sale))
+            ->filter(fn ($route) => $route['ask_on_addition'])
+            ->pluck('printer.id')->map(fn ($id) => (int) $id);
+
+        if ($allowedIds->diff($currentAskIds)->isNotEmpty()) {
+            throw ValidationException::withMessages(['confirmation_token' => 'Reminder routing changed; save the order again.']);
+        }
+
+        return Printer::whereIn('id', $allowedIds)->where('is_active', true)->where('supports_reminder', true)
+            ->get()->map(fn ($printer) => $this->queueReminder(
+                $sale,
+                $batch,
+                $printer,
+                (int) $bound['revision']
+            ))->values()->all();
+    }
+
+    public function queueReminderReprint(PrintJob $source): PrintJob
+    {
+        if ($source->document_type !== 'reminder' || !$source->printer_id) {
+            throw ValidationException::withMessages(['print_job' => 'Select a network Reminder job to reprint.']);
+        }
+
+        return DB::connection('tenant')->transaction(function () use ($source) {
+            PrintJob::whereKey($source->id)->lockForUpdate()->firstOrFail();
+            $eventUuid = (string) data_get($source->payload, 'event_uuid', 'legacy-' . $source->id);
+            $prefix = 'reminder-copy:' . $eventUuid . ':printer-' . $source->printer_id . ':';
+            $copyNo = (int) PrintJob::where('logical_key', 'like', $prefix . '%')->max('copy_no') + 1;
+            $payload = $source->payload;
+            $payload['copy_no'] = $copyNo;
+            $payload['is_reprint'] = true;
+
+            return $this->createLogicalJob([
+                'job_no' => $this->nextJobNo(),
+                'logical_key' => $prefix . $copyNo,
+                'copy_no' => $copyNo,
+                'branch_id' => $source->branch_id,
+                'terminal_id' => $source->terminal_id,
+                'printer_id' => $source->printer_id,
+                'document_type' => 'reminder',
+                'print_status' => 'queued',
+                'reference_type' => $source->reference_type,
+                'reference_id' => $source->reference_id,
+                'reference_no' => $source->reference_no,
+                'payload' => $payload,
+                'attempts' => 0,
+                'created_by_user_id' => Auth::id(),
+            ]);
+        }, 3);
+    }
+
+    /** Queue non-interactive correction Reminders after cancellation approval/audit is durable. */
+    public function queueCancellationReminders(SalesOrder $sale, KotBatch $batch, bool $wholeOrder): array
+    {
+        $sale->loadMissing(['lines.product.category']);
+        $cancellations = SalesOrderLineCancellation::with(['reason', 'requestedBy', 'approvedBy'])
+            ->where('sales_order_id', $sale->id)->where('kot_batch_id', $batch->id)->get();
+        $effective = $sale->lines->mapWithKeys(fn ($line) => [
+            (string) $line->id => $wholeOrder ? 0.0 : (float) $line->quantity,
+        ])->all();
+        $current = collect($this->routingService->reminderRoutesForSale($sale, $effective))->pluck('printer');
+        $historicalIds = PrintJob::where('reference_type', 'sales_order')
+            ->where('reference_id', $sale->id)->where('document_type', 'reminder')
+            ->whereNotNull('printer_id')->where('print_status', '!=', 'cancelled')
+            ->pluck('printer_id');
+        $printers = Printer::whereIn('id', $current->pluck('id')->merge($historicalIds)->unique())
+            ->where('is_active', true)->where('supports_reminder', true)->get();
+
+        return $printers->map(fn ($printer) => $this->queueReminder(
+            $sale,
+            $batch,
+            $printer,
+            $this->latestOrderRevision($sale),
+            $wholeOrder ? 'cancelled_order' : 'cancelled_updated_order',
+            [],
+            $effective,
+            $cancellations
+        ))->values()->all();
+    }
+
+    private function queueReminder(
+        SalesOrder $sale,
+        KotBatch $batch,
+        Printer $printer,
+        int $revision,
+        string $eventType = 'order',
+        array $cancelledQuantities = [],
+        array $effectiveQuantities = [],
+        $cancellations = null,
+    ): PrintJob {
+        $payload = $this->reminderSnapshot(
+            $sale, $batch, $printer, $revision, $eventType,
+            $cancelledQuantities, $effectiveQuantities, $cancellations
+        );
+
+        return $this->createLogicalJob([
+            'job_no' => $this->nextJobNo(),
+            'logical_key' => 'reminder:' . $batch->event_uuid . ':' . $printer->id,
+            'copy_no' => 1,
+            'branch_id' => $sale->branch_id,
+            'terminal_id' => $sale->terminal_id,
+            'printer_id' => $printer->id,
+            'document_type' => 'reminder',
+            'print_status' => 'queued',
+            'reference_type' => 'sales_order',
+            'reference_id' => $sale->id,
+            'reference_no' => $sale->sale_no,
+            'payload' => $payload,
+            'attempts' => 0,
+            'created_by_user_id' => Auth::id(),
+        ]);
+    }
+
 
     public function markPrinted(PrintJob $job): void
     {
@@ -422,6 +616,146 @@ class PrintJobService
             ->filter(fn ($snapshot) => $snapshot['quantity'] > 0)
             ->values()
             ->all();
+    }
+
+    private function reminderSnapshot(
+        SalesOrder $sale,
+        KotBatch $batch,
+        Printer $printer,
+        int $revision,
+        string $eventType,
+        array $cancelledQuantities,
+        array $effectiveQuantities,
+        $cancellations,
+    ): array {
+        $sale->loadMissing([
+            'branch', 'customer', 'createdBy', 'restaurantTable', 'restaurantWaiter',
+            'lines.product.category', 'lines.variant',
+        ]);
+        $batch->loadMissing('lines');
+        $roundDeltas = $batch->lines->mapWithKeys(
+            fn ($line) => [(string) $line->sales_order_line_id => (float) $line->quantity]
+        );
+        $effective = collect($effectiveQuantities);
+
+        $lines = $sale->lines->map(function ($line) use ($roundDeltas, $effective, $effectiveQuantities) {
+            $quantity = array_key_exists((string) $line->id, $effectiveQuantities)
+                ? (float) $effective->get((string) $line->id)
+                : (float) $line->quantity;
+
+            return [
+                'line_id' => (int) $line->id,
+                'parent_line_id' => $line->parent_sales_order_line_id ? (int) $line->parent_sales_order_line_id : null,
+                'line_kind' => $line->line_kind ?? 'standard',
+                'combo_id' => $line->combo_id ? (int) $line->combo_id : null,
+                'product_name' => (string) $line->product_name,
+                'variant_name' => $line->variant_name,
+                'unit_code' => $line->unit_code,
+                'quantity' => $quantity,
+                'round_delta' => (float) $roundDeltas->get((string) $line->id, 0),
+                'modifiers' => collect($line->modifiers ?? [])->filter(fn ($modifier) => is_array($modifier))
+                    ->map(fn ($modifier) => ['name' => (string) ($modifier['name'] ?? '')])
+                    ->filter(fn ($modifier) => $modifier['name'] !== '')->values()->all(),
+                'kitchen_note' => $line->kitchen_note,
+            ];
+        })->filter(fn ($line) => $line['quantity'] > 0)->values()->all();
+
+        $cancelled = collect($cancellations ?? [])->map(fn ($event) => [
+            'line_id' => $event->sales_order_line_id ? (int) $event->sales_order_line_id : null,
+            'product_name' => (string) $event->product_name,
+            'variant_name' => $event->variant_name,
+            'unit_code' => null,
+            'quantity' => (float) $event->quantity,
+        ])->filter(fn ($line) => $line['quantity'] > 0)->values()->all();
+
+        if (!$cancelled && $cancelledQuantities) {
+            $cancelled = $sale->lines->map(function ($line) use ($cancelledQuantities) {
+                $quantity = (float) ($cancelledQuantities[(string) $line->id] ?? 0);
+
+                return [
+                    'line_id' => (int) $line->id,
+                    'product_name' => (string) $line->product_name,
+                    'variant_name' => $line->variant_name,
+                    'unit_code' => $line->unit_code,
+                    'quantity' => $quantity,
+                ];
+            })->filter(fn ($line) => $line['quantity'] > 0)->values()->all();
+        }
+
+        $audit = collect($cancellations ?? [])->map(fn ($event) => [
+            'reason' => $event->reason?->name ?? $event->reason?->reason ?? null,
+            'requested_by' => $event->requestedBy?->name,
+            'approved_by' => $event->approvedBy?->name,
+            'requested_at' => $event->created_at?->toIso8601String(),
+            'approved_at' => $event->cancelled_at?->toIso8601String(),
+        ])->values()->all();
+        $layout = ReceiptLayoutSetting::where('branch_id', $sale->branch_id)
+            ->where('document_type', 'reminder')->where('is_active', true)->first();
+
+        return [
+            'event_uuid' => (string) $batch->event_uuid,
+            'kot_batch_id' => (int) $batch->id,
+            'event_type' => $eventType,
+            'heading' => match ($eventType) {
+                'cancelled_order' => 'CANCELLED ORDER',
+                'cancelled_updated_order' => 'CANCELLED / UPDATED ORDER',
+                default => $revision > 1 ? 'UPDATED ORDER' : 'REMINDER',
+            },
+            'revision' => $revision,
+            'copy_no' => 1,
+            'is_reprint' => false,
+            'printer_id' => (int) $printer->id,
+            'sale_no' => $sale->sale_no,
+            'order_type' => $sale->order_type,
+            'table' => $sale->restaurantTable?->table_no,
+            'waiter' => $sale->restaurantWaiter?->name,
+            'cashier' => $sale->createdBy?->name,
+            'customer' => $sale->customer?->name ?? $sale->customer_name,
+            'order_note' => $sale->notes,
+            'order_time' => optional($sale->sale_date)->toIso8601String(),
+            'updated_time' => optional($sale->updated_at)->toIso8601String(),
+            'generated_at' => now()->toIso8601String(),
+            'layout' => [
+                'paper_size' => $layout?->paper_size ?? $printer->paper_size ?? '80mm',
+                'font_size' => (int) ($layout?->font_size ?? 12),
+                'header_text' => $layout?->header_text,
+                'footer_text' => $layout?->footer_text,
+                'show_order_time' => (bool) ($layout?->show_order_time ?? true),
+                'show_updated_time' => (bool) ($layout?->show_updated_time ?? true),
+                'show_print_time' => (bool) ($layout?->show_print_time ?? true),
+                'show_order_no' => (bool) ($layout?->show_order_no ?? true),
+                'show_cashier_name' => (bool) ($layout?->show_cashier_name ?? true),
+                'show_customer_name' => (bool) ($layout?->show_customer_name ?? false),
+                'show_table_info' => (bool) ($layout?->show_table_info ?? true),
+            ],
+            'lines' => $lines,
+            'cancelled_lines' => $cancelled,
+            'cancellation_audit' => $audit,
+        ];
+    }
+
+    private function reminderRevision(SalesOrder $sale, KotBatch $batch): int
+    {
+        return max(1, (int) KotBatch::where('sales_order_id', $sale->id)
+            ->whereIn('event_type', ['normal', 'addition'])
+            ->where('sequence_no', '<=', $batch->sequence_no)
+            ->count());
+    }
+
+    private function latestOrderRevision(SalesOrder $sale): int
+    {
+        return max(1, (int) KotBatch::where('sales_order_id', $sale->id)
+            ->whereIn('event_type', ['normal', 'addition'])->count());
+    }
+
+    private function emptyReminderPlan(): array
+    {
+        return [
+            'revision' => null,
+            'auto_jobs' => [],
+            'ask_printers' => [],
+            'confirmation_token' => null,
+        ];
     }
 
     private function matchingQueuedBrowserFallback(SalesOrder $sale, array $routes): ?PrintJob

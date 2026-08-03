@@ -13,6 +13,14 @@ class PrintDocumentController extends Controller
     {
         $printJob->load(['branch', 'printer']);
 
+        if ($printJob->document_type === 'reminder') {
+            return view('tenant.printing.documents.reminder', [
+                'job' => $printJob,
+                'reminder' => $printJob->payload ?? [],
+                'layout' => (object) ($printJob->payload['layout'] ?? []),
+            ]);
+        }
+
         $salesOrderId = $printJob->reference_id ?: ($printJob->payload['sales_order_id'] ?? null);
         if (!$salesOrderId) {
             abort(404, 'No sales order reference in print job.');

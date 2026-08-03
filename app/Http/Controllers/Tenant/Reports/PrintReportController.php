@@ -40,7 +40,7 @@ class PrintReportController extends Controller
         $jobs = $query->paginate(30)->withQueryString();
         $branches = Branch::where('status', 'active')->orderBy('name')->get();
         $printers = Printer::where('is_active', true)->orderBy('name')->get();
-        $documentTypes = ['kot', 'receipt'];
+        $documentTypes = ['kot', 'reminder', 'receipt'];
         $statuses = ['pending', 'queued', 'printed', 'failed'];
 
         if ($request->boolean('export_csv')) {

@@ -114,7 +114,7 @@
                 @endif
             </td>
             <td class="item-name">
-                <span class="bold">{{ $line->product_name }}</span>
+                <span class="bold">{{ ($eventType ?? null) === 'addition' ? '(R) ' : '' }}{{ $line->product_name }}</span>
                 @if($line->variant_name)
                     <br><small>{{ $line->variant_name }}</small>
                 @endif

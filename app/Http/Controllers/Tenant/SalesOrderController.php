@@ -255,6 +255,7 @@ class SalesOrderController extends Controller
                 ];
 
                 $kotSentByLineId = [];
+                $cancellationBatch = null;
                 if (!empty($data['held_sale_id'])) {
                     $sale = SalesOrder::where('status', 'held')
                         ->lockForUpdate()
@@ -303,7 +304,12 @@ class SalesOrderController extends Controller
                         ];
                     }
 
-                    $cancellationService->recordLineCancellations($sale, $detectedCancellations, (int) auth('tenant')->id());
+                    $cancellationResult = $cancellationService->recordLineCancellations(
+                        $sale,
+                        $detectedCancellations,
+                        (int) auth('tenant')->id()
+                    );
+                    $cancellationBatch = $cancellationResult['batch'] ?? null;
                     $kotSentByLineId = $existingLines->mapWithKeys(fn ($line) => [$line->id => (float) $line->kot_sent_quantity])->all();
                     $sale->lines()->delete();
                     $sale->payments()->delete();
@@ -380,6 +386,11 @@ class SalesOrderController extends Controller
                     if (!empty($line['client_line_key'])) {
                         $createdLinesByClientKey[$line['client_line_key']] = $createdLine;
                     }
+                }
+
+                if ($cancellationBatch) {
+                    $sale->unsetRelation('lines');
+                    $cancellationService->queueCorrectionReminders($sale, $cancellationBatch);
                 }
 
                 foreach ($payments as $payment) {
