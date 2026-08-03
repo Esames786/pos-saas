@@ -7,6 +7,7 @@ use App\Models\Tenant\Branch;
 use App\Models\Tenant\PrintJob;
 use App\Models\Tenant\SalesOrder;
 use App\Services\Printing\PrintJobService;
+use App\Services\Printing\DirectPayPrintOrchestrator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -14,6 +15,7 @@ class PrintJobController extends Controller
 {
     public function __construct(
         private PrintJobService $printJobService,
+        private DirectPayPrintOrchestrator $directPayPrintOrchestrator,
     ) {}
 
     public function index(Request $request)
@@ -139,8 +141,16 @@ class PrintJobController extends Controller
     {
         $data = $request->validate([
             'confirmation_token' => ['required', 'string'],
+            'decision' => ['nullable', 'in:confirm,decline'],
         ]);
+        $context = $this->printJobService->validateReminderConfirmation($salesOrder, $data['confirmation_token']);
+        if (($data['decision'] ?? 'confirm') === 'decline') {
+            $this->directPayPrintOrchestrator->markReminderDecision($salesOrder, $context['batch']->id, 'declined');
+            return response()->json(['jobs' => [], 'declined' => true]);
+        }
+
         $jobs = $this->printJobService->queueConfirmedReminders($salesOrder, $data['confirmation_token']);
+        $this->directPayPrintOrchestrator->markReminderDecision($salesOrder, $context['batch']->id, 'confirmed');
 
         return response()->json([
             'jobs' => collect($jobs)->map(fn ($job) => [

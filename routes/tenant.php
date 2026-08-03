@@ -443,6 +443,8 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 // POS
                 Route::get('/pos', [POSController::class, 'index'])->name('tenant.pos.index');
                 Route::post('/pos', [SalesOrderController::class, 'store'])->name('tenant.pos.store');
+                Route::post('/pos/{salesOrder}/printing/retry', [SalesOrderController::class, 'retryDirectPayPrinting'])
+                    ->name('tenant.pos.printing.retry');
                 Route::post('/pos/customers/quick-store', [CustomerController::class, 'quickStore'])
                     ->name('tenant.pos.customers.quick-store');
 

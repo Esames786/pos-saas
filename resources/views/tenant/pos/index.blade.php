@@ -738,6 +738,9 @@
                                                 <span class="text-muted d-block" id="receipt-status-hint">—</span>
                                             </label>
                                         </div>
+                                        <div class="small text-muted mt-2">
+                                            Reminder follows every accepted KOT round. Additional rounds use each printer's Auto/Ask setting.
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -2552,6 +2555,18 @@ document.addEventListener('DOMContentLoaded', function () {
                 inp.value = payFields[field];
                 dynamicInputs.appendChild(inp);
             });
+
+            var printIntents = {
+                kot_print_intent: _directPayKotIntent || 'skip',
+                receipt_print_intent: _directPayReceiptIntent || 'skip',
+            };
+            Object.keys(printIntents).forEach(function (field) {
+                var inp = document.createElement('input');
+                inp.type = 'hidden';
+                inp.name = field;
+                inp.value = printIntents[field];
+                dynamicInputs.appendChild(inp);
+            });
         }
 
         // Append void_items collected during this session
@@ -2758,6 +2773,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function clearCart(options) {
         options = options || {};
+        _directPayKotIntent = null;
+        _directPayReceiptIntent = null;
         const preservedSessionId = options.preserveTable ? (document.getElementById('restaurant_table_session_id')?.value || '') : '';
         const preservedTableId = options.preserveTable ? (document.getElementById('restaurant_table_id')?.value || '') : '';
         rotateSaleUuid();          // SALE-IDEMPOTENCY-1: next sale gets a fresh uuid
@@ -2924,9 +2941,9 @@ document.addEventListener('DOMContentLoaded', function () {
     function handleReminderPlan(saleId, reminder) {
         if (reminder.warning) toast('warning', reminder.warning);
         const printers = reminder.ask_printers || [];
-        if (!printers.length || !reminder.confirmation_token || typeof Swal === 'undefined') return;
+        if (!printers.length || !reminder.confirmation_token || typeof Swal === 'undefined') return Promise.resolve();
 
-        Swal.fire({
+        return Swal.fire({
             title: 'Resend updated Reminder?',
             html: 'Send the complete updated order to:<br><strong>'
                 + printers.map(function (printer) { return escapeHtml(printer.name); }).join('<br>')
@@ -2937,22 +2954,27 @@ document.addEventListener('DOMContentLoaded', function () {
             cancelButtonText: 'No',
             reverseButtons: true,
         }).then(function (result) {
-            if (!result.isConfirmed) return;
-            fetch('{{ url('/printing/jobs/reminder') }}/' + saleId + '/confirm', {
+            var decision = result.isConfirmed ? 'confirm' : 'decline';
+            return fetch('{{ url('/printing/jobs/reminder') }}/' + saleId + '/confirm', {
                 method: 'POST',
                 headers: {
                     'X-CSRF-TOKEN': '{{ csrf_token() }}',
                     'Accept': 'application/json',
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ confirmation_token: reminder.confirmation_token }),
+                body: JSON.stringify({
+                    confirmation_token: reminder.confirmation_token,
+                    decision: decision,
+                }),
             }).then(function (response) {
                 return response.json().then(function (data) {
                     if (!response.ok) throw new Error(data.message || 'Reminder could not be queued.');
                     return data;
                 });
             }).then(function (data) {
-                toast('success', (data.jobs || []).length + ' updated Reminder job(s) queued');
+                if (result.isConfirmed) {
+                    toast('success', (data.jobs || []).length + ' updated Reminder job(s) queued');
+                }
             }).catch(function (error) {
                 toast('error', error.message || 'Reminder could not be queued.');
             });
@@ -3049,9 +3071,96 @@ document.addEventListener('DOMContentLoaded', function () {
     /* ── Complete sale ────────────────────────────────────────────────── */
 
     var _backorderConfirmed = false;
+    var _directPayKotIntent = null;
+    var _directPayReceiptIntent = null;
+
+    function resolveDirectPayKotIntent() {
+        if (_directPayKotIntent !== null) return Promise.resolve(true);
+        if (kotPending().pending <= 0) {
+            _directPayKotIntent = 'skip';
+            return Promise.resolve(true);
+        }
+        if (terminalAutoKot()) {
+            _directPayKotIntent = 'print';
+            return Promise.resolve(true);
+        }
+        if (typeof Swal === 'undefined') {
+            _directPayKotIntent = 'skip';
+            return Promise.resolve(true);
+        }
+
+        return Swal.fire({
+            title: 'Print Kitchen Order?',
+            html: 'Choose before payment is completed. Reminder follows an accepted KOT round.',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Print KOT',
+            cancelButtonText: 'Skip',
+            confirmButtonColor: '#0d6efd',
+            reverseButtons: true,
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+        }).then(function (result) {
+            _directPayKotIntent = result.isConfirmed ? 'print' : 'skip';
+            return true;
+        });
+    }
+
+    function processDirectPayPrinting(saleId, printing) {
+        printing = printing || {};
+        (printing.kot_jobs || []).forEach(function (job) {
+            if ((job.fallback || job.printer_type === 'browser') && job.preview_url) {
+                toast('warning', 'No printer found - opening KOT for manual print');
+                openPreviewTab(job.preview_url);
+            }
+        });
+        if (printing.receipt && (printing.receipt.fallback || printing.receipt.printer_type === 'browser')) {
+            toast('warning', 'No printer found - opening receipt for manual print');
+            openPreviewTab(printing.receipt.preview_url);
+        }
+
+        return handleReminderPlan(saleId, printing.reminder || {}).then(function () {
+            if (!printing.retry_available) return printing;
+            if (typeof Swal === 'undefined') {
+                toast('warning', 'Sale paid. Printing is pending and can be retried from Recent Prints.');
+                return printing;
+            }
+
+            return Swal.fire({
+                icon: 'warning',
+                title: 'Payment Successful',
+                html: 'The sale is paid, but one or more print instructions are pending.',
+                showCancelButton: true,
+                confirmButtonText: 'Retry Printing',
+                cancelButtonText: 'Continue',
+                confirmButtonColor: '#d4a72c',
+            }).then(function (choice) {
+                if (!choice.isConfirmed) return printing;
+                return fetch('{{ url('/pos') }}/' + saleId + '/printing/retry', {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
+                }).then(function (response) {
+                    return response.json().then(function (data) {
+                        if (!response.ok) throw new Error(data.message || 'Printing retry failed.');
+                        return data.printing || {};
+                    });
+                }).then(function (retried) {
+                    return processDirectPayPrinting(saleId, retried);
+                }).catch(function (error) {
+                    toast('error', error.message || 'Printing retry failed.');
+                    return printing;
+                });
+            });
+        });
+    }
 
     function submitPaidSale() {
         if (!cart.length) { toast('warning', 'Add at least one item'); return; }
+
+        if (_directPayKotIntent === null) {
+            resolveDirectPayKotIntent().then(function () { submitPaidSale(); });
+            return;
+        }
 
         // NEGATIVE-STOCK-SETTING-1B: warn once when the cart will push official
         // stock negative on a branch that allows it. Backend remains authoritative.
@@ -3078,12 +3187,15 @@ document.addEventListener('DOMContentLoaded', function () {
                     if (res.isConfirmed) {
                         _backorderConfirmed = true;
                         submitPaidSale();
+                    } else {
+                        _directPayKotIntent = null;
                     }
                 });
                 return;
             }
         }
         _backorderConfirmed = false;
+        _directPayReceiptIntent = autoPrintEnabled('receipt') ? 'print' : 'skip';
 
         const submitBtn  = document.getElementById('complete-sale-btn');
         const origLabel  = submitBtn.textContent;
@@ -3105,10 +3217,9 @@ document.addEventListener('DOMContentLoaded', function () {
             })
             .then(function (res) { return res.json().then(function (d) { return { ok: res.ok, data: d }; }); })
             .then(function (result) {
-                submitBtn.disabled    = false;
-                submitBtn.textContent = origLabel;
-
                 if (!result.ok) {
+                    submitBtn.disabled    = false;
+                    submitBtn.textContent = origLabel;
                     var failMsg = result.data.message || 'Sale failed. Please try again.';
                     if (typeof Swal !== 'undefined') {
                         Swal.fire({ icon: 'error', title: 'Cannot complete sale', text: failMsg, confirmButtonColor: '#dc3545' });
@@ -3132,20 +3243,22 @@ document.addEventListener('DOMContentLoaded', function () {
                 // recovers a missed copy without ever duplicating one.
                 var isReplay = !!result.data.idempotent_replay;
 
-                // Receipt — honours the Auto-Receipt toggle + opens preview if no printer
-                maybePrintReceipt(saleId, terminalId);
-
-                // KOT — only the un-sent delta; nothing new → no print, no prompt, no double
-                if (kotPending().pending > 0) {
-                    handleKotAfterSale(saleId, saleNo, terminalId);
-                }
-
-                clearCart();
-                toast(isReplay ? 'info' : 'success',
-                      isReplay ? ('Sale ' + saleNo + ' already completed — print re-checked.')
-                               : ('Sale complete! ' + saleNo));
-                var pmEl = document.getElementById('paymentModal');
-                if (pmEl && window.bootstrap) { var pmInst = bootstrap.Modal.getInstance(pmEl); if (pmInst) { pmInst.hide(); } }
+                return processDirectPayPrinting(saleId, result.data.printing || {}).then(function () {
+                    clearCart();
+                    _directPayKotIntent = null;
+                    _directPayReceiptIntent = null;
+                    toast(isReplay ? 'info' : 'success',
+                          isReplay ? ('Sale ' + saleNo + ' already completed - printing re-checked.')
+                                   : ('Sale complete! ' + saleNo));
+                    var pmEl = document.getElementById('paymentModal');
+                    if (pmEl && window.bootstrap) {
+                        var pmInst = bootstrap.Modal.getInstance(pmEl);
+                        if (pmInst) pmInst.hide();
+                    }
+                }).finally(function () {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = origLabel;
+                });
             })
             .catch(function () {
                 submitBtn.disabled    = false;
@@ -3973,13 +4086,20 @@ document.addEventListener('DOMContentLoaded', function () {
                 return;
             }
             const rows = sales.map(function (s) {
+                var printStatus = '';
+                if (s.printing && s.printing.resume_available) {
+                    printStatus = '<div class="small text-warning mt-1"><i class="ti ti-alert-circle me-1"></i>Printing needs attention</div>';
+                }
                 return '<tr>' +
-                    '<td><strong>' + escapeHtml(s.sale_no) + '</strong><div class="text-muted small">' + escapeHtml(s.time || s.ago || '') + '</div></td>' +
+                    '<td><strong>' + escapeHtml(s.sale_no) + '</strong><div class="text-muted small">' + escapeHtml(s.time || s.ago || '') + '</div>' + printStatus + '</td>' +
                     '<td>' + escapeHtml(s.customer || 'Walk-in') + '<div class="text-muted small text-capitalize">' + escapeHtml(String(s.order_type || '').replace(/_/g, ' ')) + '</div></td>' +
                     '<td class="text-end fw-semibold">' + escapeHtml(s.total) + '</td>' +
                     '<td class="text-end text-nowrap">' +
                         '<button type="button" class="btn btn-sm btn-outline-primary me-1" data-reprint-receipt="' + Number(s.id) + '"><i class="ti ti-printer me-1"></i>Receipt</button>' +
                         '<button type="button" class="btn btn-sm btn-outline-warning me-1" data-reprint-kot="' + Number(s.id) + '"><i class="ti ti-tool-kitchen-2 me-1"></i>KOT</button>' +
+                        (s.printing && s.printing.resume_available
+                            ? '<button type="button" class="btn btn-sm btn-warning me-1" data-resume-printing="' + Number(s.id) + '"><i class="ti ti-refresh me-1"></i>Resume</button>'
+                            : '') +
                         '<a href="{{ url('/sales-orders') }}/' + Number(s.id) + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="View"><i class="ti ti-eye"></i></a>' +
                     '</td>' +
                 '</tr>';
@@ -3993,8 +4113,35 @@ document.addEventListener('DOMContentLoaded', function () {
             body.querySelectorAll('[data-reprint-kot]').forEach(function (b) {
                 b.addEventListener('click', function () { reprintSale(Number(b.dataset.reprintKot), 'kot', b); });
             });
+            body.querySelectorAll('[data-resume-printing]').forEach(function (b) {
+                b.addEventListener('click', function () { resumeDirectPayPrinting(Number(b.dataset.resumePrinting), b); });
+            });
         })
         .catch(function () { body.innerHTML = '<div class="alert alert-danger m-3 mb-0">Failed to load completed orders.</div>'; });
+    }
+
+    function resumeDirectPayPrinting(saleId, btn) {
+        var orig = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+        fetch('{{ url('/pos') }}/' + saleId + '/printing/retry', {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
+        }).then(function (response) {
+            return response.json().then(function (data) {
+                if (!response.ok) throw new Error(data.message || 'Printing could not be resumed.');
+                return data.printing || {};
+            });
+        }).then(function (printing) {
+            return processDirectPayPrinting(saleId, printing);
+        }).then(function () {
+            toast('success', 'Printing state re-checked');
+            loadRecentSales();
+        }).catch(function (error) {
+            btn.disabled = false;
+            btn.innerHTML = orig;
+            toast('error', error.message || 'Printing could not be resumed.');
+        });
     }
 
     // Reprint receipt/KOT for a chosen completed sale (reuses print endpoints + fallback).
@@ -4122,6 +4269,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
                 return;
             }
+            _directPayKotIntent = null;
+            _directPayReceiptIntent = null;
             bootstrap.Modal.getOrCreateInstance(paymentModalEl).show();
         });
         paymentModalEl.addEventListener('shown.bs.modal', function () {

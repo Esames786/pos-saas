@@ -43,8 +43,10 @@ class PrintJobService
 
         $printer = $printer ?: $this->routingService->receiptPrinter($sale);
 
-        $job = PrintJob::create([
+        $attributes = [
             'job_no'             => $this->nextJobNo(),
+            'logical_key'         => $ensureOnce ? 'receipt:auto:sale-' . $sale->id : null,
+            'copy_no'            => 1,
             'branch_id'          => $sale->branch_id,
             'terminal_id'        => $terminalId ?: $sale->terminal_id,
             'printer_id'         => $printer?->id,
@@ -60,11 +62,13 @@ class PrintJobService
             ],
             'attempts'           => 0,
             'created_by_user_id' => Auth::id(),
-        ]);
+        ];
 
-        $job->update(['raw_payload' => app(EscPosPayloadService::class)->build($job)]);
-
-        return $job;
+        return $ensureOnce
+            ? $this->createLogicalJob($attributes)
+            : tap(PrintJob::create($attributes), function (PrintJob $job) {
+                $job->update(['raw_payload' => app(EscPosPayloadService::class)->build($job)]);
+            });
     }
 
     public function queueKot(
@@ -267,6 +271,20 @@ class PrintJobService
 
     public function queueConfirmedReminders(SalesOrder $sale, string $token): array
     {
+        $context = $this->validateReminderConfirmation($sale, $token);
+
+        return Printer::whereIn('id', $context['printer_ids'])->where('is_active', true)->where('supports_reminder', true)
+            ->get()->map(fn ($printer) => $this->queueReminder(
+                $sale,
+                $context['batch'],
+                $printer,
+                $context['revision']
+            ))->values()->all();
+    }
+
+    /** Validate a server-bound Ask decision without queuing it. */
+    public function validateReminderConfirmation(SalesOrder $sale, string $token): array
+    {
         try {
             $bound = json_decode(Crypt::decryptString($token), true, flags: JSON_THROW_ON_ERROR);
         } catch (\Throwable) {
@@ -301,13 +319,11 @@ class PrintJobService
             throw ValidationException::withMessages(['confirmation_token' => 'Reminder routing changed; save the order again.']);
         }
 
-        return Printer::whereIn('id', $allowedIds)->where('is_active', true)->where('supports_reminder', true)
-            ->get()->map(fn ($printer) => $this->queueReminder(
-                $sale,
-                $batch,
-                $printer,
-                (int) $bound['revision']
-            ))->values()->all();
+        return [
+            'batch' => $batch,
+            'revision' => (int) $bound['revision'],
+            'printer_ids' => $allowedIds->values()->all(),
+        ];
     }
 
     public function queueReminderReprint(PrintJob $source): PrintJob

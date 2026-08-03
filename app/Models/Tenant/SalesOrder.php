@@ -27,6 +27,8 @@ class SalesOrder extends Model
         'sale_no',
         'client_uuid',
         'client_payload_hash',
+        'direct_pay_print_state',
+        'direct_pay_print_orchestrated_at',
         'branch_id',
         'terminal_id',
         'shift_id',
@@ -84,6 +86,8 @@ class SalesOrder extends Model
             'change_amount'         => 'decimal:2',
             'inventory_posted'      => 'boolean',
             'completed_at'          => 'datetime',
+            'direct_pay_print_state' => 'array',
+            'direct_pay_print_orchestrated_at' => 'datetime',
         ];
     }
 

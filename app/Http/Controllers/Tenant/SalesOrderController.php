@@ -17,6 +17,7 @@ use App\Services\Inventory\InventoryService;
 use App\Services\Sales\SalesService;
 use App\Services\Sales\SalesTotalsService;
 use App\Services\Sales\PromotionService;
+use App\Services\Printing\DirectPayPrintOrchestrator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -64,9 +65,18 @@ class SalesOrderController extends Controller
         ]);
     }
 
-    public function store(Request $request, SalesService $salesService, InventoryService $inventoryService, SalesTotalsService $totalsService, \App\Services\Sales\SaleIdempotencyService $idempotency, \App\Services\Sales\KotCancellationService $cancellationService)
+    public function store(Request $request, SalesService $salesService, InventoryService $inventoryService, SalesTotalsService $totalsService, \App\Services\Sales\SaleIdempotencyService $idempotency, \App\Services\Sales\KotCancellationService $cancellationService, DirectPayPrintOrchestrator $printOrchestrator)
     {
         $data = $this->validateSale($request);
+        if ($request->routeIs('tenant.pos.store')
+            && (!isset($data['kot_print_intent']) || !isset($data['receipt_print_intent']))) {
+            throw ValidationException::withMessages([
+                'printing' => 'Choose the Direct Pay KOT and Receipt intent before completing the sale.',
+            ]);
+        }
+        $directPayPrintState = isset($data['kot_print_intent'], $data['receipt_print_intent'])
+            ? DirectPayPrintOrchestrator::initialState($data['kot_print_intent'], $data['receipt_print_intent'])
+            : null;
 
         if (!auth('tenant')->user()?->allowsOrderType($data['order_type'])) {
             abort(403, 'Your account is not allowed to use this order type.');
@@ -83,7 +93,7 @@ class SalesOrderController extends Controller
         $payloadHash = $idempotency->buildPayloadHash($this->canonicalSalePayload($data));
 
         if ($clientUuid !== null && $existing = $idempotency->findFinalized($clientUuid)) {
-            return $this->idempotentReplayOrThrow($request, $idempotency, $existing, $payloadHash);
+            return $this->idempotentReplayOrThrow($request, $idempotency, $existing, $payloadHash, $printOrchestrator);
         }
 
         $lines = collect($data['lines'])
@@ -116,7 +126,7 @@ class SalesOrderController extends Controller
 
         try {
             $sale = DB::connection('tenant')->transaction(function () use (
-                $data, $lines, $payments, $salesService, $inventoryService, $totalsService, $idempotencyFields, $cancellationService
+                $data, $lines, $payments, $salesService, $inventoryService, $totalsService, $idempotencyFields, $cancellationService, $directPayPrintState
             ) {
                 $branch   = Branch::findOrFail($data['branch_id']);
                 $terminal = !empty($data['terminal_id']) ? Terminal::find($data['terminal_id']) : null;
@@ -221,7 +231,7 @@ class SalesOrderController extends Controller
                     }
                 }
 
-                $saleFields = [
+                $saleFields = array_merge([
                     'branch_id'                   => $branch->id,
                     'terminal_id'                 => $terminal?->id,
                     'shift_id'                    => $shift?->id,
@@ -252,7 +262,7 @@ class SalesOrderController extends Controller
                     'tip_amount'                  => $totals['tip_amount'],
                     'grand_total'                 => $totals['grand_total'],
                     'notes'                       => $data['notes'] ?? null,
-                ];
+                ], $directPayPrintState ? ['direct_pay_print_state' => $directPayPrintState] : []);
 
                 $kotSentByLineId = [];
                 $cancellationBatch = null;
@@ -426,7 +436,7 @@ class SalesOrderController extends Controller
             // return a retryable PENDING (never a 500) — the caller retries same uuid.
             if ($clientUuid !== null) {
                 if ($winner = $idempotency->resolveFinalizedWithRetry($clientUuid)) {
-                    return $this->idempotentReplayOrThrow($request, $idempotency, $winner, $payloadHash);
+                    return $this->idempotentReplayOrThrow($request, $idempotency, $winner, $payloadHash, $printOrchestrator);
                 }
                 throw new \App\Exceptions\SaleIdempotencyConflictException(null, \App\Exceptions\SaleIdempotencyConflictException::CODE_PENDING);
             }
@@ -438,7 +448,9 @@ class SalesOrderController extends Controller
             return back()->withErrors(['sale' => $e->getMessage()])->withInput();
         }
 
-        return $this->saleResponse($request, $sale, false);
+        $printing = $directPayPrintState ? $printOrchestrator->orchestrate($sale) : null;
+
+        return $this->saleResponse($request, $sale, false, $printing);
     }
 
     /**
@@ -449,14 +461,18 @@ class SalesOrderController extends Controller
      *   verified hash differs   → 409 SALE_IDEMPOTENCY_CONFLICT
      *   no stored hash          → 409 SALE_IDEMPOTENCY_UNVERIFIABLE (never silently replay)
      */
-    private function idempotentReplayOrThrow(Request $request, \App\Services\Sales\SaleIdempotencyService $idempotency, SalesOrder $existing, string $payloadHash)
+    private function idempotentReplayOrThrow(Request $request, \App\Services\Sales\SaleIdempotencyService $idempotency, SalesOrder $existing, string $payloadHash, DirectPayPrintOrchestrator $printOrchestrator)
     {
         if (! $idempotency->hasVerifiableHash($existing)) {
             throw new \App\Exceptions\SaleIdempotencyConflictException($existing->id, \App\Exceptions\SaleIdempotencyConflictException::CODE_UNVERIFIABLE);
         }
 
         if ($idempotency->payloadMatches($existing, $payloadHash)) {
-            return $this->saleResponse($request, $existing, true);
+            $printing = $existing->direct_pay_print_state
+                ? $printOrchestrator->orchestrate($existing)
+                : null;
+
+            return $this->saleResponse($request, $existing, true, $printing);
         }
 
         throw new \App\Exceptions\SaleIdempotencyConflictException($existing->id);
@@ -467,7 +483,7 @@ class SalesOrderController extends Controller
      * replay. The `idempotent_replay` flag lets the POS know this sale already
      * posted (it still ensures print jobs; see POS JS).
      */
-    private function saleResponse(Request $request, SalesOrder $sale, bool $replay): \Illuminate\Http\Response|\Illuminate\Http\JsonResponse|\Illuminate\Http\RedirectResponse
+    private function saleResponse(Request $request, SalesOrder $sale, bool $replay, ?array $printing = null): \Illuminate\Http\Response|\Illuminate\Http\JsonResponse|\Illuminate\Http\RedirectResponse
     {
         if ($request->expectsJson()) {
             return response()->json([
@@ -475,6 +491,7 @@ class SalesOrderController extends Controller
                 'sale_no'           => $sale->sale_no,
                 'redirect'          => url('/sales-orders/' . $sale->id),
                 'idempotent_replay' => $replay,
+                'printing'          => $printing,
             ]);
         }
 
@@ -506,6 +523,8 @@ class SalesOrderController extends Controller
             'discount_value'              => $data['discount_value'] ?? null,
             'promo_code'                  => $data['promo_code'] ?? null,
             'tip_amount'                  => $data['tip_amount'] ?? null,
+            'kot_print_intent'            => $data['kot_print_intent'] ?? null,
+            'receipt_print_intent'        => $data['receipt_print_intent'] ?? null,
             // HARDEN-1: line ordering is NOT material — sort by stable identity so
             // harmless browser reordering never causes a false conflict.
             'lines' => collect($data['lines'] ?? [])->map(fn ($l) => [
@@ -579,6 +598,8 @@ class SalesOrderController extends Controller
             'create_separate_order'       => ['nullable', 'boolean'],
             'order_source'        => ['nullable', Rule::in(['pos', 'manual'])],
             'client_uuid'         => ['nullable', 'string', 'max:36'],
+            'kot_print_intent'    => ['nullable', Rule::in(['print', 'skip'])],
+            'receipt_print_intent' => ['nullable', Rule::in(['print', 'skip'])],
             'order_type'          => ['required', Rule::in(['quick_sale', 'takeaway', 'dine_in', 'delivery'])],
             'delivery_channel_id' => ['nullable', 'exists:delivery_channels,id'],
             'delivery_rider_id'   => ['nullable', 'exists:delivery_riders,id'],
@@ -625,6 +646,22 @@ class SalesOrderController extends Controller
         ]);
 
         return $this->validateDeliveryAttribution($data);
+    }
+
+    public function retryDirectPayPrinting(SalesOrder $salesOrder, DirectPayPrintOrchestrator $printOrchestrator)
+    {
+        if (!$salesOrder->direct_pay_print_state) {
+            return response()->json(['message' => 'This sale has no Direct Pay print intent.'], 422);
+        }
+        if ($salesOrder->status !== 'paid') {
+            return response()->json(['message' => 'Only a paid sale can resume Direct Pay printing.'], 422);
+        }
+
+        return response()->json([
+            'sale_id' => $salesOrder->id,
+            'sale_no' => $salesOrder->sale_no,
+            'printing' => $printOrchestrator->orchestrate($salesOrder),
+        ]);
     }
 
     private function validateDeliveryAttribution(array $data): array

@@ -391,3 +391,14 @@ The future LAN printing certification must explicitly test normal KOT, Addition 
 Do not treat this as a cosmetic POS release. Fix P0-A and P0-B together behind focused automated tests, run the demo repair separately, then deploy. The table/KOT data model work should be completed before further restaurant UX polish, because the current UI is exposing unsafe state transitions.
 
 The cloud fix must define the canonical behavior now. The Edge implementation must not be advertised as cancellation-safe until local authorization, event capture, LAN Cancel KOT printing, idempotent sync, and reconciliation tests are implemented and pass. No production or offline activation should rely on browser-only controls.
+
+## Direct Review & Pay race closure
+
+`DIRECT-PAY-PRINT-ORCHESTRATION-1` closes the separate paid-sale browser race without changing the table/check or cancellation model above:
+
+- KOT Print/Skip intent is decided before payment finalization and stored on the paid sale.
+- Direct Pay uses the same `kot_sent_quantity` delta and immutable KOT batch rules as Hold/Add Round. A recalled check with only Fries added produces only the Fries Addition KOT; Reminder remains a complete updated-order document.
+- Payment is authoritative. KOT, Reminder, Receipt, agent, or browser-preview failures cannot revert a paid sale.
+- Cart clear waits for a stable queued/skipped/pending-retry result. Optional Reminder confirmation is bound to sale + exact batch/revision, not cart objects.
+- Automatic retry converges on the original batch/logical jobs; explicit manual reprint remains the only path that creates Duplicate numbering.
+- `direct_pay_print_state` is the cloud contract future Local Branch Server storage must mirror before UI state is discarded. Local Mode remains disabled and sync remains unbuilt.

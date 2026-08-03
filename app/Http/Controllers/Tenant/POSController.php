@@ -510,7 +510,15 @@ class POSController extends Controller
             ->get();
 
         return response()->json([
-            'sales' => $sales->map(fn ($s) => [
+            'sales' => $sales->map(function ($s) {
+                $printState = $s->direct_pay_print_state;
+                $resumePrinting = $printState && (
+                    in_array($printState['kot_status'] ?? null, ['pending', 'pending_retry'], true)
+                    || in_array($printState['receipt_status'] ?? null, ['pending', 'pending_retry'], true)
+                    || in_array($printState['reminder_status'] ?? null, ['pending_retry', 'awaiting_confirmation'], true)
+                );
+
+                return [
                 'id'             => (int) $s->id,
                 'sale_no'        => $s->sale_no,
                 'order_type'     => $s->order_type,
@@ -520,7 +528,14 @@ class POSController extends Controller
                 'total'          => number_format((float) $s->grand_total, 2),
                 'time'           => optional($s->sale_date ?? $s->created_at)->format('d M, h:i A'),
                 'ago'            => optional($s->sale_date ?? $s->created_at)->diffForHumans(),
-            ])->values(),
+                'printing'       => $printState ? [
+                    'kot' => $printState['kot_status'] ?? null,
+                    'receipt' => $printState['receipt_status'] ?? null,
+                    'reminder' => $printState['reminder_status'] ?? null,
+                    'resume_available' => $resumePrinting,
+                ] : null,
+                ];
+            })->values(),
         ]);
     }
 }

@@ -621,3 +621,44 @@ Implemented on 2026-08-03 as the foundation-only sprint. Reminder queueing, rend
 ### Edge configuration contract
 
 `EdgeBootstrapService::sourceRevision()` includes printers, layouts, category mappings, and terminal printer settings. `REMINDER-PRINT-1` bumps the configuration snapshot to `edge-bootstrap-v3` and exports `printers.supports_reminder`, `category_printer_mappings.order_type`, `reminder_confirm_on_addition`, and the three Reminder timestamp flags. This is configuration delivery only: Local Mode remains inactive and no local Reminder runtime or sync behavior is implemented.
+
+## N. DIRECT REVIEW & PAY PRINT ORCHESTRATION
+
+Implemented by `DIRECT-PAY-PRINT-ORCHESTRATION-1` on 2026-08-03.
+
+### Previous race
+
+Direct Pay previously committed the paid sale, then launched Receipt and KOT requests from unrelated browser promises and immediately cleared the cart. A browser/network loss could therefore leave a valid paid sale without a durable record of whether KOT was accepted or skipped. Additional-round Reminder Ask could also outlive the mutable cart it came from.
+
+### Canonical flow
+
+1. Before final payment submission, POS resolves KOT intent to `print` or explicit `skip`. Auto-KOT resolves to `print`; otherwise the existing Print KOT/Skip choice is shown before payment.
+2. The payment transaction stores `direct_pay_print_state` with KOT and Receipt intent/status alongside the paid sale. Accepted KOT therefore survives browser loss.
+3. After the payment transaction commits, `DirectPayPrintOrchestrator` locks the sale and reuses `PrintJobService` for Receipt ensure-once, delta-only KOT batching/routing, automatic Reminder jobs, and server-bound Reminder Ask tokens.
+4. Each recoverable application failure is stored as `pending_retry`; it never rolls back or invalidates payment.
+5. The POS clears the cart only after a stable server result exists. Fallback preview URLs and the Reminder Ask plan no longer read mutable cart lines.
+
+### Locked behavior
+
+- Skip KOT is durable and produces no KOT, no Reminder, and no KOT retry warning.
+- Receipt remains payment-driven and independent of KOT/Reminder success.
+- KOT routing, browser fallback, queued-agent behavior, and manual Duplicate numbering are unchanged.
+- A recalled/held sale with no unsent delta becomes `not_required`; Direct Pay never reuses or reopens an older KOT batch as a new round.
+- Reminder follows an accepted KOT batch only. First revision auto-sends; later Auto/Ask routing is unchanged.
+- Ask Yes/No is recorded against the exact server-bound batch. Browser disappearance leaves it `awaiting_confirmation`; it is never silently auto-sent.
+- Recent Orders exposes `Printing needs attention` and a Resume action for pending/retryable or unanswered Ask state, so recovery after browser loss uses the original automatic identities rather than manual reprint.
+- Retry Printing resumes the same sale/state and automatic logical jobs. It is not a manual duplicate and does not increment `copy_no`.
+- Hold Sale and cancellation/return flows do not write this Direct Pay state and retain their existing behavior.
+
+### Idempotency and QA evidence
+
+- Auto Receipt now uses unique logical key `receipt:auto:sale-{id}`; simultaneous ensure requests converge while manual receipt reprint remains separate.
+- Existing KOT identity remains `kot:{batch_event_uuid}:{destination}` and Reminder remains `reminder:{batch_event_uuid}:{printer}`.
+- All seven local tenants accepted migration `2026_08_03_000004_add_direct_pay_print_state.php`.
+- A rollback-clean real MySQL Direct Pay replay created one KOT batch and one logical KOT job on the first run; the second run created zero batches/jobs and returned the same job IDs. The sale remained paid.
+- A committed two-process MySQL race converged to one Receipt job, one KOT batch, and one KOT job; both workers returned identical IDs, no worker failed, and `copy_no > 1` remained zero. The synthetic sale and all related rows were deleted after evidence capture.
+- Blade and route caches compile. KOT/Reminder payload regression is green. Isolated SQLite feature tests are committed but skip on this local PHP build because `pdo_sqlite` is unavailable.
+
+### Future Edge parity
+
+Local Branch Server payment/order finalization must persist the same print intent/event state before browser state is discarded. Local browser JavaScript must never be the sole owner of pending KOT, Reminder, or Receipt work. Edge retry/reconnect must preserve the cloud event identities above. This sprint does not activate Local Mode and does not implement sales synchronization.
