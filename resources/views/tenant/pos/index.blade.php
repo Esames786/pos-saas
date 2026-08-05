@@ -582,6 +582,10 @@
                         <button type="button" class="btn btn-sm btn-outline-dark" id="start-fresh-btn" title="Start another order">
                             <i class="ti ti-plus me-1"></i><span id="start-fresh-label">New Order</span>
                         </button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="new-sale-btn"
+                                title="Start a completely new sale. Any open table check stays on its table and can be recalled later.">
+                            <i class="ti ti-file-plus me-1"></i>New Sale
+                        </button>
                     </div>
                 </div>
                 @if($tableSession)
@@ -3765,6 +3769,18 @@ document.addEventListener('DOMContentLoaded', function () {
 
     document.getElementById('held-orders-btn').addEventListener('click', function () {
         new bootstrap.Modal(heldSalesModalEl).show();
+    });
+
+    // #8: an always-available escape to a brand-new sale, even mid-table, so the cashier
+    // is never stuck. Any open table check stays HELD on its table and can be recalled.
+    document.getElementById('new-sale-btn')?.addEventListener('click', function () {
+        const hasContext = (cart && cart.length > 0)
+            || !!(document.getElementById('restaurant_table_session_id')?.value)
+            || _currentHeldSaleId;
+        if (hasContext && !confirm('Start a completely new sale?\n\nAny open table check stays on its table and can be recalled later. Unsaved cart items will be discarded.')) {
+            return;
+        }
+        window.location.href = '{{ url('/pos') }}';
     });
 
     document.getElementById('start-fresh-btn').addEventListener('click', function () {
