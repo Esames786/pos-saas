@@ -63,7 +63,7 @@ class HeldSaleController extends Controller
                 'delivery_address'            => $s->delivery_address,
                 'customer'                    => $s->customer_name ?: $s->customer?->name ?: 'Walk-in',
                 'total'                       => number_format($s->grand_total, 2),
-                'items'                       => round((float) $s->lines->sum('quantity'), 3),
+                'items'                       => $s->lines->count(),
                 'time'                        => $s->created_at->diffForHumans(),
                 'notes'                       => $s->notes,
                 'lines'                       => $s->lines->map(fn ($l) => [
@@ -165,7 +165,7 @@ class HeldSaleController extends Controller
             'restaurant_table_id'         => $sale->restaurant_table_id,
             'grand_total'                 => (float) $sale->grand_total,
             'grand_total_formatted'       => number_format((float) $sale->grand_total, 2),
-            'items_count'                 => round((float) $sale->lines->sum('quantity'), 3),
+            'items_count'                 => $sale->lines->count(),
             'created_at'                  => $sale->created_at?->format('d M Y H:i'),
             'updated_at'                  => $sale->updated_at?->diffForHumans(),
             'recall_url'                  => url('/pos?held_sale_id=' . $sale->id
