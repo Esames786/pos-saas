@@ -2848,9 +2848,21 @@ document.addEventListener('DOMContentLoaded', function () {
 
     let _currentHeldSaleId = null;   // held sale ID currently loaded in cart
     let _currentHeldSaleNo = null;
-    let _lastSaleId        = null;   // last processed sale (for reprint)
-    let _lastSaleNo        = null;
+    // Recent-print pointer persists across reloads so the Recent Prints / reprint
+    // modal still works after the POS page is refreshed (the jobs themselves live
+    // server-side; only the "which sale" pointer was being lost in memory).
+    let _lastSaleId        = localStorage.getItem('pos_last_sale_id') || null;
+    let _lastSaleNo        = localStorage.getItem('pos_last_sale_no') || null;
     let _lastPrintModal    = null;
+
+    function rememberLastSale(id, no) {
+        _lastSaleId = id || null;
+        _lastSaleNo = no || null;
+        try {
+            if (id) { localStorage.setItem('pos_last_sale_id', id); }
+            localStorage.setItem('pos_last_sale_no', no || '');
+        } catch (e) { /* localStorage unavailable — in-memory still works this session */ }
+    }
 
     /* ── Cart clear helper ────────────────────────────────────────────── */
 
@@ -3316,8 +3328,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 const saleId = result.data.sale_id;
                 const saleNo = result.data.sale_no;
 
-                _lastSaleId = saleId;
-                _lastSaleNo = saleNo;
+                rememberLastSale(saleId, saleNo);
 
                 // SALE-IDEMPOTENCY-HARDEN-1: a replay means this sale already POSTED on
                 // an earlier attempt (retry / network timeout). The accounting is NOT
@@ -3397,8 +3408,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 _currentHeldSaleId = saleId;
                 _currentHeldSaleNo = saleNo;
-                _lastSaleId        = saleId;
-                _lastSaleNo        = saleNo;
+                rememberLastSale(saleId, saleNo);
                 if (heldInput) heldInput.value = saleId;
 
                 (result.data.lines || []).forEach(function (savedLine) {
@@ -3690,8 +3700,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         _currentHeldSaleId = sale.id;
         _currentHeldSaleNo = sale.sale_no;
-        _lastSaleId        = sale.id;
-        _lastSaleNo        = sale.sale_no;
+        rememberLastSale(sale.id, sale.sale_no);
         const heldInput = document.querySelector('input[name="held_sale_id"]');
         if (heldInput) heldInput.value = sale.id;
 
@@ -4110,7 +4119,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 loadRecentPrintJobs();
             }).catch(function () { btn.disabled = false; btn.innerHTML = orig; toast('error', 'Failed'); });
         } else {
-            const q = terminalId ? '?terminal_id=' + encodeURIComponent(terminalId) : '';
+            const q = '?reprint=1' + (terminalId ? '&terminal_id=' + encodeURIComponent(terminalId) : '');
             fetch('{{ url('/printing/jobs/receipt') }}/' + _lastSaleId + q, { method: 'POST', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' } })
             .then(function (res) { return res.json(); })
             .then(function (data) {
@@ -4335,7 +4344,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     document.getElementById('reprint-receipt-btn').addEventListener('click', function () {
         const terminalId = (document.getElementById('terminal_id') || {}).value || '';
-        const q = terminalId ? '?terminal_id=' + encodeURIComponent(terminalId) : '';
+        const q = '?reprint=1' + (terminalId ? '&terminal_id=' + encodeURIComponent(terminalId) : '');
         fetch('{{ url('/printing/jobs/receipt') }}/' + _lastSaleId + q, { method: 'POST', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' } })
         .then(function (res) { return res.json(); })
         .then(function (data) {
@@ -4915,8 +4924,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     /* preload: also track last sale for reprint if page-loaded with held sale */
     if (heldSale) {
-        _lastSaleId = heldSale.id;
-        _lastSaleNo = heldSale.sale_no || '';
+        rememberLastSale(heldSale.id, heldSale.sale_no || '');
     }
 
     /* initial render */

@@ -2098,32 +2098,36 @@ class TenantDemoSeeder extends Seeder
             }
             $this->command->line('  Terminal printer settings configured for ' . $terminals->count() . ' terminal(s).');
 
-            if ($main && ($restaurantCategory = Category::where('code', 'FASTFOOD')->first())) {
-                CategoryPrinterMapping::updateOrCreate(
-                    [
-                        'branch_id' => $main->id,
-                        'category_id' => $restaurantCategory->id,
-                        'printer_id' => $kotPrinter->id,
-                        'print_role' => 'kot',
-                        'order_type' => 'all',
-                    ],
-                    ['is_active' => true]
-                );
-                CategoryPrinterMapping::updateOrCreate(
-                    [
-                        'branch_id' => $main->id,
-                        'category_id' => $restaurantCategory->id,
-                        'printer_id' => $kotPrinter->id,
-                        'print_role' => 'reminder',
-                        'order_type' => 'all',
-                    ],
-                    [
-                        'reminder_confirm_on_addition' => true,
-                        'is_active' => true,
-                    ]
-                );
-                $this->command->line('  KOT routing seeded: Fast Food / All order types -> Fake Kitchen Printer.');
-                $this->command->line('  Reminder routing seeded: Fast Food / All order types -> Fake Kitchen Printer (ask on additions).');
+            if ($restaurantCategory = Category::where('code', 'FASTFOOD')->first()) {
+                // Seed KOT + Reminder routing for EVERY branch so reminder printing works
+                // out of the box on whichever branch the cashier is using (not only MAIN).
+                foreach (Branch::all() as $branch) {
+                    CategoryPrinterMapping::updateOrCreate(
+                        [
+                            'branch_id' => $branch->id,
+                            'category_id' => $restaurantCategory->id,
+                            'printer_id' => $kotPrinter->id,
+                            'print_role' => 'kot',
+                            'order_type' => 'all',
+                        ],
+                        ['is_active' => true]
+                    );
+                    CategoryPrinterMapping::updateOrCreate(
+                        [
+                            'branch_id' => $branch->id,
+                            'category_id' => $restaurantCategory->id,
+                            'printer_id' => $kotPrinter->id,
+                            'print_role' => 'reminder',
+                            'order_type' => 'all',
+                        ],
+                        [
+                            'reminder_confirm_on_addition' => true,
+                            'is_active' => true,
+                        ]
+                    );
+                }
+                $this->command->line('  KOT routing seeded: Fast Food / All order types -> Fake Kitchen Printer (all branches).');
+                $this->command->line('  Reminder routing seeded: Fast Food / All order types -> Fake Kitchen Printer, ask on additions (all branches).');
             }
         }
 
