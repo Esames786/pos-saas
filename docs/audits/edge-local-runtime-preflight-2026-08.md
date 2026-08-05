@@ -947,3 +947,264 @@ are decided first so the artifact isn't rebuilt later.** **No local runtime, aut
 until §H2.1 (refresh), §H2.7 (identity), §H2.8 (sale_no), §H2.4 (recipe phase), §H2.5 (activation
 fence), and §H2.9 (envelope) are signed off. Everything in Part II is design only — no code, migration,
 sync, activation, or deploy performed here.
+
+---
+---
+
+# Part III — EDGE-LOCAL-RUNTIME-CONTRACT-CLOSURE-1
+
+Base `4e51eee`. **Design / code-trace only** — no application code, migrations, deploy, prod mutation,
+or Local-Mode activation. This part does **not** rewrite Parts I–II; it closes the remaining
+contracts so the first implementation sprint can be approved.
+
+## LOCKED product decisions (user, 2026-08)
+1. **Restaurant offline pilot MUST support operational recipe/component consumption** (phase-1b) — the
+   "block all recipe products" shortcut is **rejected**. Local Edge computes operational **quantity**
+   consumption for stock_item + recipe + ingredients + unit conversions + consuming combo components +
+   consume_stock modifiers. Edge computes **no** COGS / FEFO / valuation / GL.
+2. **Complex / global / usage-limited promotions BLOCKED** in the first pilot; permission-controlled
+   **manual discount** may remain **iff** code proves no unavailable cloud dependency (§P-D below).
+3. **No gapless invoice numbering** unless a legal requirement is separately approved.
+4. **Physical printing = at-least-once + durable duplicate suppression** (never "exactly-once").
+These supersede the "DECISION-OPEN" markers in §H2.4/§H2.18/§8/§H2.11.
+
+---
+
+## Contract A — Config revision physical model (CLOSED, refined)
+**Code trace:** `Product extends Model` with **no global scope** ([Product.php:7](../../app/Models/Tenant/Product.php));
+`SalesTotalsService` totals **pre-resolved** lines (it does not fetch prices — [SalesTotalsService.php:15-46](../../app/Services/Sales/SalesTotalsService.php));
+held-sale lines **store their own `unit_price` and `product_name`** and are re-loaded from storage,
+not re-priced ([HeldSaleController.php:77,182,285](../../app/Http/Controllers/Tenant/HeldSaleController.php)).
+**Consequence:** an open check does **not** depend on the live product row for price/name — it captured
+them. So the config store needs only **one live set**, not multi-revision retention.
+
+**Mechanism (minimum change): transactional full-set DML swap — NOT DDL, NOT a revision pointer.**
+- Import revision N+1 into shadow tables `*_incoming` (INSERT-only).
+- Verify every section sha256 vs the acknowledged manifest.
+- In **one InnoDB transaction**: `DELETE FROM <ref_table>; INSERT INTO <ref_table> SELECT … FROM
+  <ref_table>_incoming;` for the whole reference set, then commit. This is **DML, fully
+  transactional and crash-safe** (a crash rolls back → old set intact); it is **not** DDL, so no
+  auto-commit trap.
+- **Reads need no change**: current Laravel models query the same tables. InnoDB **MVCC** means a
+  concurrent POS `SELECT` sees the pre-commit snapshot until commit, then the new set — the cutover is
+  atomic with **no half-old/half-new** and **no global scope / composite key / revision predicate**.
+- **IDs are stable across revisions** (product keeps `id=42`) — required for sync references (§H2.7);
+  the swap replaces row *contents*, not identities.
+- **Open held check referencing a product removed in N+1**: the check renders from its **stored line
+  snapshot** (name/price already captured); **re-adding** that product is blocked (not in the live
+  set) — matches contract H.
+- **Cleanup**: none needed (single live set); drop `*_incoming` after commit.
+- **Crash recovery**: mid-import crash → `*_incoming` partial + ignored; mid-swap crash → transaction
+  rolls back → revision N intact; re-run import.
+- This **refines §H2.1**: the transactional-swap is simpler and safer than the revision-pointer, made
+  possible by the verified per-line snapshot behavior. Revision-pointer/composite-key is the fallback
+  only if concurrent multi-revision live sets are ever required (not for phase 1).
+- **SPIKE-REQUIRED:** measure the full-set DELETE+INSERT transaction duration on a real catalog to
+  confirm the lock/commit window is acceptable during service (expected small — single branch).
+
+## Contract B — Immutable cloud config archive (CLOSED design; retention = product decision)
+The bootstrap already stores immutable snapshot bytes (`edge_bootstrap_snapshots` + `_sections`,
+per-section sha256 + manifest). **Extend the same store to every issued config revision** (initial +
+each refresh) in a master archive keyed `{tenant, branch, device, branch_activation_epoch, revision,
+manifest_hash, issued_at}`, holding the **immutable issued payload** (or a content-addressed reference
+to it). At sync, cloud validates the envelope's `config_revision`/policy hashes against this archive —
+so it can prove the historic **price, tax, service charge, manual-discount permission/policy,
+order-type permission, and cancellation policy** that were in force under that revision, **even after
+today's cloud config changed**. Retention: keep an issued revision until **all** sales/events under it
+are reconciled (then it may be pruned). **Retention-window minimum is a product/legal decision.**
+**Status: CLOSED (design); retention window = product decision.**
+
+## Contract C — Branch activation epoch / fencing (CLOSED)
+Add a monotonic **`branch_activation_epoch`** to the master branch/device record. **Every** lease,
+bootstrap, config revision, sale envelope, and sync request **carries the current epoch**. Controlled
+server replacement / recovery **increments** the epoch; the cloud **permanently rejects** any event
+whose epoch < current (`EPOCH_SUPERSEDED`). This defeats: an old Branch Server coming back online after
+replacement, a restored/cloned backup running in parallel, and two servers claiming one branch —
+only the current-epoch device is accepted; all others are inert. Pairs with the single-active-device
+rule already in `edge_devices` (unique active slot). **Status: CLOSED.**
+
+## Contract D — Operational recipe/component stock (CLOSED design; code-traced)
+**Traced cloud consumption (all inside `finalizePaidSale`'s `inventory_posted` guard):**
+- `stock_item` + `is_stock_tracked` → `postOutFefo(product)` ([SalesService.php:74-96](../../app/Services/Sales/SalesService.php)).
+- `recipe` → `RecipeConsumptionService::consumeForSalesOrderLine`: per ingredient `required =
+  quantity × soldQty/recipe.yield_quantity`, **unit-converted** (`UnitConversionService::convert`,
+  which **throws → blocks the sale** if no rule), order-type filtered (`appliesToOrderType`),
+  ingredient must be `is_stock_tracked` ([RecipeConsumptionService.php:25-123](../../app/Services/Kitchen/RecipeConsumptionService.php)).
+- `consume_stock` **modifiers** → deduct `linkedProduct` by `linked_quantity`, unit-converted
+  (`linked_unit_id`→product unit; throws if no rule) ([SalesService.php:160-210](../../app/Services/Sales/SalesService.php), [Modifier.php:53](../../app/Models/Tenant/Modifier.php)).
+- **Combos**: the `combo_header` line is **skipped**; each combo **component is its own
+  `sales_order_line`** consuming per its own method ([SalesService.php:50-52](../../app/Services/Sales/SalesService.php)).
+- `allow_negative_stock` is passed to every `postOutFefo` as `allowNegative`.
+
+**Design — `EdgeOperationalStockService`** reuses the **exact same quantity rules** (yield, unit
+conversion, order-type filter, modifier linked-qty, combo-component expansion) but calls a **local
+operational decrement** instead of `postOutFefo` — **no cost, no FEFO layers, no GL**. When
+`allow_negative_stock = false` it **hard-blocks** the paid sale on insufficient **operational**
+quantity (mirroring cloud); a **missing unit conversion throws and blocks** exactly as cloud does. A
+**pre-payment** cancellation restores operational quantity only if the cloud would (i.e. it never
+posted for an unpaid/held line) — no invented stock movements.
+
+**Bootstrap/config additions required** (verified currently absent): `recipes` (incl.
+`yield_quantity`), `recipe_ingredients` (product_id, variant, quantity, unit_id,
+`applicable_order_types`, line_section), `unit_conversions`. Already shipped: `modifiers`
+(consume_stock, linked_product_id, linked_quantity, linked_unit_id), `combos`, `combo_components`.
+
+**Worked operational examples (quantity only):**
+| Case | Local operational effect |
+|---|---|
+| stock_item Water ×3 | Water −3 |
+| recipe Burger ×2, yield 1, ingredients bun×1/patty×1 | bun −2, patty −2 |
+| recipe with conversion: sauce 50 g, stocked in KG | sauce −0.05 KG (convert g→KG) |
+| consume_stock modifier "+Cheese 30 g" on Burger ×2 | cheese −0.06 KG |
+| combo "Meal" (Burger+Fries+Drink) ×1 | each component decremented per its method; combo_header no stock |
+| recipe + modifier | ingredient decrements **plus** modifier linked decrement |
+| ingredient short, `allow_negative_stock=false` | **sale hard-blocked locally** |
+| same, branch `allow_negative_stock=true` | allowed; negative recorded + reported |
+| missing unit conversion | **sale blocked** (mirror cloud throw) |
+**Status: CLOSED (design + examples); requires the 3 new bootstrap sections in phase-1b.**
+
+## Contract E — Stock baseline + acknowledgement cursor (CLOSED)
+Operational availability is **not** overwritten by config refresh. Model:
+```
+operational_available = official_baseline@R
+                        − (local operational events after R NOT yet acknowledged by cloud)
+```
+- The activation baseline is stamped at revision **R** (contract §H2.5 fence).
+- Each reconnect, the cloud returns an **acknowledged-event cursor** (which local event UUIDs are now
+  reflected in official stock). A new baseline **R′** may only advance **together with** that cursor,
+  so Edge recomputes availability as `baseline@R′ − (local events after R′ not in the cursor)` —
+  **never double-subtracting** already-synced sales.
+- **Ordinary config refresh (contract A swap) MUST NOT touch operational-stock tables** — stock lives
+  in operational tables, not the swapped reference set. Baseline advance is a **reconciliation
+  protocol**, not a config refresh.
+**Status: CLOSED (design).**
+
+## Contract F — Sale number + business time (CLOSED)
+**Compatibility audit (code-traced):** no code parses/decomposes `sale_no`; the only consumers are a
+`LIKE %q%` search ([SaleLookupController.php:36](../../app/Http/Controllers/Tenant/Ajax/SaleLookupController.php))
+and display/reference. **No `orderBy('sale_no')` chronological assumption** exists. So
+`sale_no = "SO-" + branchCode + "-" + terminalCode + "-" + ULID` is **compatibility-safe** within the
+`varchar(255) UNIQUE` column. Printed == stored (cloud honors verbatim). **Lock the format.**
+**Business time is separate from the ULID:** persist on each sale `occurred_at` (device clock at
+capture), `branch_timezone`, `device_clock_at_capture`, `last_trusted_server_time`, and
+`detected_clock_drift`. The **ULID timestamp is never the authoritative accounting timestamp** —
+`occurred_at` (with drift evidence) is the business time; the cloud may flag/adjust on drift.
+**Status: CLOSED.**
+
+## Contract G — Sale envelope + non-printing print history (CLOSED)
+The immutable envelope (§H2.9) carries all UUIDs, captured policy/config revision, timestamps, and
+payment state for atomic ingest. **Add a non-printing print-audit representation** synced alongside —
+for each locally produced KOT / Reminder / Receipt / Cancel KOT / Cancellation Reminder:
+`{print_event_uuid, doc_type, printer_id, logical_key, copy_no, status(queued|printed|failed),
+queued_at, printed_at}`. **Code note:** `reminderRoutesForSale` selects printers by `is_active &&
+supports_reminder` ([PrintRoutingService.php:19-51](../../app/Services/Printing/PrintRoutingService.php));
+cancellation Reminders must reach **historical** destinations. So cloud ingest **preserves the recorded
+`printer_id`s** from this audit history, letting a later cancellation apply the existing historical-
+destination rule **without creating any physical print job during sync**. Ingest is print-suppressed
+(§H2.9); these rows are **evidence only**. **Status: CLOSED.**
+
+## Contract H — Held check / Add Round config semantics (CLOSED by code trace)
+**Current cloud behavior (verified):** each `sales_order_line` stores its own `unit_price` +
+`product_name`; held checks **re-load stored line prices**, they are **not** re-priced
+([HeldSaleController.php:77,182,285](../../app/Http/Controllers/Tenant/HeldSaleController.php));
+`SalesTotalsService` totals the supplied lines and does not fetch current prices. So the canonical model
+is **per-line captured price**, NOT a "whole-check freeze" (HARDEN-1/2's phrasing was imprecise):
+- Round-1 lines keep their captured `unit_price` even if the product price later changes.
+- **Add Round** adds **new** lines at the **current active price**.
+- A product **disabled/deleted** while in a held order: the existing line renders from its stored
+  snapshot; **re-adding** it is blocked.
+Edge must mirror this **per-line** model exactly (contract A already delivers it: existing lines carry
+their snapshot; new lines resolve against the live set). **Open item (small):** tax / service-charge
+are **recomputed** by `SalesTotalsService` at quote time — the precise behavior when tax/service-charge
+config changes **mid open-check** must be confirmed against cloud in EDGE-LOCAL-POS-1; if cloud has no
+explicit rule, that is a **cloud business-rule decision to make first**, not something Edge invents.
+**Status: CLOSED for price; tax/service-charge mid-check = confirm-in-POS-sprint.**
+
+## Contract I — Local key separation (CLOSED design; escrow tradeoff stated)
+Two independent keys:
+1. **`EDGE_LOCAL_APP_KEY`** — sessions/cookies/CSRF/runtime encryption; **machine-local** (DPAPI/
+   service-account store); **regenerated fresh** on PC replacement; recovering it is **not required**
+   (credentials re-enroll, §H2.2).
+2. **`DATA_RECOVERY_KEY`** — encrypts the persistent PII/business backup + journal; has its own
+   wrapping/recovery policy, **decoupled** from the app/session key.
+**Escrow tradeoff (stated, per contract K honesty rule):** cloud-escrowing a wrapped `DATA_RECOVERY_KEY`
+means the **cloud can decrypt a branch's local backups** — a real tradeoff. **Recommended default:**
+escrow a **cloud-wrapped** key **AND** gate its release on authenticated device **re-pair** (so a
+passive cloud DB leak alone is insufficient). **Higher-security option:** a **customer-held recovery
+passphrase** wraps the key so the cloud **cannot** unilaterally decrypt (cost: a lost passphrase =
+unrecoverable backup). **Do not escrow an unrestricted plaintext key.** **Status: CLOSED (design);
+escrow-vs-passphrase mode = security decision for the user.**
+
+## Contract J — LAN TLS / local name (CLOSED recommendation; lock before packaging)
+POS browser → Branch Server HTTPS **and** Print Agent → Branch Server HTTPS via a **branch-local CA**:
+- The installer **generates a local CA + a server certificate for a stable local hostname**
+  (e.g. `branch-<code>.bingoo.local`), resolved by a hosts entry / mDNS — **cert is bound to the
+  hostname, not the IP**, so **DHCP/IP changes don't break it**.
+- **Terminal trust**: a one-click "trust this branch" installs the local CA **root** into the Windows
+  cert store on each terminal; **tablets/other browsers** install the same root profile.
+- **Print Agent trust**: add the local CA to the agent's trust bundle (the agent already accepts an
+  arbitrary `baseUrl` — verified §8b); config points at `https://branch-<code>.bingoo.local`.
+- **Offline renewal**: the local CA issues a **long-lived** server cert (e.g. 2 years); renewal is
+  **local**, needs no internet.
+This is the **packaging-critical** decision — **lock it before EDGE-RUNTIME-BOUNDARY-1 packaging** so
+the appliance/installer isn't rebuilt. **Status: CLOSED (recommendation); confirm before packaging.**
+
+## Contract K — Local sale tamper evidence (CLOSED design; threat boundary stated)
+Committed envelopes are **append-only + hash-chained**: each envelope stores `prev_envelope_hash` +
+its own **HMAC/content signature under a device-held signing key**; the chain + signature are verified
+by cloud ingest. This **detects** accidental or manual DB edits/deletes/reordering of committed sales
+**before** the cloud accepts them (breaks the chain / fails HMAC → **sync exception**). Combined with
+config-provenance (§H2.10) it also catches fabricated prices. **Threat boundary (stated honestly):** a
+**fully compromised Branch Server that holds the signing key can forge a new valid chain** — this
+mechanism does **not** prevent that; it makes non-key-holding and manual tampering **detectable**, not
+impossible. **Status: CLOSED (design + boundary).**
+
+## Contract L — MySQL test infrastructure (CLOSED plan; FIRST sprint)
+**Code trace:** [phpunit.xml:26-27](../../phpunit.xml) runs `DB_CONNECTION=sqlite`, `:memory:`. The
+earlier `PrintRoutingFoundationTest` "no such table: categories" failures were **SQLite not building
+the base tenant tables**, not a code bug (they pass on real MySQL). **SQLite is not an Edge-correctness
+authority.** Plan:
+- Add a **MySQL/MariaDB test suite** (separate phpunit config or a CI service DB) that runs the full
+  tenant migration set, for all Edge-critical tests: **transactions, row locks, concurrent processes,
+  unique constraints, the config-swap cutover (A), activation fencing (§H2.5), UUID idempotency,
+  operational stock consumption (D), and sale-envelope ingestion (§H2.9)**.
+- Keep SQLite only for pure, DB-agnostic unit tests.
+- **Close the categories/skipped-test ambiguity**: the MySQL suite builds `categories` and all base
+  tables, so those 3 tests are green there; document that SQLite skips are expected and non-authoritative.
+**This is the first implementation sprint — before any Edge runtime code.** **Status: CLOSED (plan).**
+
+## Contract M — Final GO / NO-GO
+**Fully closed contracts:** A (transactional swap, code-grounded), C (activation epoch), D
+(operational consumption design + examples), E (baseline+cursor), F (ULID + business time), G (print
+audit history), H (per-line price, code-verified), K (hash-chain tamper + boundary), L (MySQL test
+plan). Parts I–II items remain as previously closed.
+**Closed with a decision still owed by the user (not blocking boundary work):** B (retention window),
+I (escrow-vs-passphrase mode), J (confirm local-CA before packaging).
+**Still genuinely open (small, scheduled into their sprints):** H tax/service-charge mid-check
+confirmation (EDGE-LOCAL-POS-1); §P-D manual-discount cloud-dependency spike; the physical LAN ACK-loss
+cert (§H2.11, needs hardware); durability RPO/RTO measurement (§H2.12, needs hardware).
+
+**Is `EDGE-RUNTIME-BOUNDARY-1` implementation-safe now?** **Yes — but it is not the first sprint.**
+The honest first implementation order (matches the locked decisions):
+1. **MYSQL-TEST-FOUNDATION-1** (contract L) — deterministic isolated MySQL test DB + Edge-critical
+   suites. *Every* later correctness proof depends on it, so it goes first.
+2. **EDGE-RUNTIME-BOUNDARY-1** — restricted build / route-allowlist / one-click appliance skeleton,
+   **with contract J (local-CA TLS) and §H2.14 (update channel) locked** so the artifact isn't rebuilt.
+   No DB, no auth, no selling.
+3. **EDGE-LOCAL-RUNTIME-1** — local MariaDB + **transactional-swap** bootstrap import (A) + branch
+   binding + `EnsureEdgeBranchBound` + activation epoch (C).
+4. **EDGE-LOCAL-AUTH-1** — Edge verifier + enrollment assertion (§H2.2) + key separation (I).
+Then EDGE-IDENTITY-1 → EDGE-LOCAL-POS-1 (phase-1a stock_item first, then recipe phase-1b via the 3 new
+bootstrap sections) → print → sync/envelope → recovery → lease/update/observability → activation.
+**Sales and sync remain later**, after the runtime + auth + identity foundation.
+
+**Everything in Part III is design/code-trace only — no application code, migration, sync, activation,
+or deploy was performed.**
+
+### §P-D — Manual discount cloud-dependency (scheduled spike, not closed here)
+Locked decision 2 permits permission-controlled **manual discount** offline **iff** it has no
+unavailable cloud dependency. `sales_orders` already stores `discount_type/discount_value/
+discount_amount`, and a manual discount typically routes through `ManagerApprovalService` (present) +
+a permission. The spike (in EDGE-LOCAL-POS-1) must confirm the manual-discount path calls no
+cloud-only service (e.g. no central promotion/loyalty lookup). Usage-limited/global promotions stay
+BLOCKED regardless.
