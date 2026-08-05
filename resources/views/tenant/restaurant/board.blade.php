@@ -92,10 +92,18 @@
                                     @endcan
                                 @endif
                                 @can('tenant.restaurant.table-sessions.close')
+                                @php $__heldOrders = $session->salesOrders->whereIn('status', ['held', 'draft']); @endphp
+                                @if($__heldOrders->isNotEmpty())
+                                    <div class="small text-danger">{{ $__heldOrders->count() }} unpaid order(s) — pay or cancel before closing.</div>
+                                    @foreach($__heldOrders as $__ho)
+                                    <a href="{{ url('/pos') . '?held_sale_id=' . $__ho->id . '&table_session_id=' . $session->id . '&mode=dine_in&branch_id=' . $selectedBranchId }}"
+                                       class="btn btn-sm btn-warning w-100"><i class="ti ti-cash me-1"></i>Recall &amp; Pay {{ $__ho->sale_no }}</a>
+                                    @endforeach
+                                @endif
                                 <form method="POST" action="{{ url('/restaurant/table-sessions/' . $session->id . '/close') }}">
                                     @csrf
                                     <input type="hidden" name="status" value="closed">
-                                    <button class="btn btn-sm btn-success w-100">Close (Paid)</button>
+                                    <button class="btn btn-sm btn-success w-100" @if($__heldOrders->isNotEmpty()) disabled @endif>Close (Paid)</button>
                                 </form>
                                 <form method="POST" action="{{ url('/restaurant/table-sessions/' . $session->id . '/close') }}">
                                     @csrf
