@@ -173,6 +173,11 @@ class SplitBillController extends Controller
                             'discount_amount' => round((float) $heldLine->discount_amount * $remainingRatio, 2),
                             'tax_amount'      => round((float) $heldLine->tax_amount * $remainingRatio, 2),
                             'line_total'      => round((float) $heldLine->line_total * $remainingRatio, 2),
+                            // BUGFIX: the split portion is billed on the new paid sale, so the
+                            // remainder's kitchen-sent quantity must not exceed what's left.
+                            // Without this, kot_sent_quantity > quantity and paying the remainder
+                            // is blocked by a spurious "cancellation required" guard.
+                            'kot_sent_quantity' => min((float) $heldLine->kot_sent_quantity, $remainingQty),
                         ]);
                     }
                 }
