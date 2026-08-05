@@ -30,6 +30,8 @@ class Shift extends Model
         'counted_cash',
         'cash_variance',
         'status',
+        'business_date',
+        'timezone_name',
         'opened_at',
         'closed_at',
         'opening_notes',
@@ -57,6 +59,7 @@ class Shift extends Model
             'cash_variance' => 'decimal:2',
             'opened_at' => 'datetime',
             'closed_at' => 'datetime',
+            'business_date' => 'date:Y-m-d',
         ];
     }
 

@@ -8,8 +8,10 @@ use App\Models\Tenant\CashCountLine;
 use App\Models\Tenant\Currency;
 use App\Models\Tenant\Shift;
 use App\Models\Tenant\Terminal;
+use App\Support\TenantClock;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
 class ShiftController extends Controller
 {
@@ -53,30 +55,49 @@ class ShiftController extends Controller
         app(\App\Services\Edge\BranchOperatingModeService::class)
             ->assertSaleMutationAllowed(\App\Models\Tenant\Branch::findOrFail($data['branch_id']));
 
-        $terminal = Terminal::where('id', $data['terminal_id'])
-            ->where('branch_id', $data['branch_id'])
-            ->firstOrFail();
+        try {
+            $shift = DB::connection('tenant')->transaction(function () use ($data) {
+                // Serialize concurrent opens for THIS terminal: lock the terminal row, then
+                // re-check for an open shift under the lock, so two requests can never both
+                // create an open shift for the same terminal (per-terminal invariant).
+                $terminal = Terminal::where('id', $data['terminal_id'])
+                    ->where('branch_id', $data['branch_id'])
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
-        $hasOpenShift = Shift::where('terminal_id', $terminal->id)
-            ->where('status', 'open')
-            ->exists();
+                $hasOpenShift = Shift::where('terminal_id', $terminal->id)
+                    ->where('status', 'open')
+                    ->exists();
 
-        if ($hasOpenShift) {
-            return back()->withErrors(['terminal_id' => 'This terminal already has an open shift.'])->withInput();
+                if ($hasOpenShift) {
+                    throw new RuntimeException('This terminal already has an open shift.');
+                }
+
+                // Freeze the shift's timezone + business date at OPEN. Immutable afterwards:
+                // crossing midnight or changing user/tenant timezone never moves this shift's
+                // business date. Branch timezone is the org anchor (falls back to Asia/Karachi).
+                $branch = Branch::findOrFail($data['branch_id']);
+                $clock  = app(TenantClock::class);
+                $tz     = $clock->normalize($branch->timezone) ?? TenantClock::DEFAULT_TIMEZONE;
+
+                return Shift::create([
+                    'branch_id'           => $data['branch_id'],
+                    'terminal_id'         => $terminal->id,
+                    'opened_by_user_id'   => auth('tenant')->id(),
+                    'opening_cash'        => $data['opening_cash'],
+                    'expected_cash'       => $data['opening_cash'],
+                    'status'              => 'open',
+                    'opened_at'           => now(),
+                    'business_date'       => $clock->businessDateForOpening($tz),
+                    'timezone_name'       => $tz,
+                    'opening_notes'       => $data['opening_notes'] ?? null,
+                ]);
+            });
+        } catch (RuntimeException $e) {
+            return back()->withErrors(['terminal_id' => $e->getMessage()])->withInput();
         }
 
-        Shift::create([
-            'branch_id'           => $data['branch_id'],
-            'terminal_id'         => $terminal->id,
-            'opened_by_user_id'   => auth('tenant')->id(),
-            'opening_cash'        => $data['opening_cash'],
-            'expected_cash'       => $data['opening_cash'],
-            'status'              => 'open',
-            'opened_at'           => now(),
-            'opening_notes'       => $data['opening_notes'] ?? null,
-        ]);
-
-        return redirect('/shifts')->with('status', 'Shift opened successfully.');
+        return redirect('/shifts')->with('status', 'Shift opened. Business date ' . $shift->business_date . ' (' . $shift->timezone_name . ').');
     }
 
     public function show(Shift $shift)
