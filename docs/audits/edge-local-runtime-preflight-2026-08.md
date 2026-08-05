@@ -1,15 +1,20 @@
 # EDGE-LOCAL-RUNTIME-PREFLIGHT — code-grounded offline runtime architecture
 
-Status: **audit / design only**. Revised as **EDGE-LOCAL-RUNTIME-PREFLIGHT-HARDEN-1** (2026-08).
+Status: **audit / design only**. Revised through **EDGE-LOCAL-RUNTIME-PREFLIGHT-HARDEN-2** (2026-08).
 No code, no migrations, no sync, no Local-Mode activation, no deploy, no Print-Agent binary changes.
-Branch `feat/14d-2-plan-upgrade-requests`, HEAD `75172e9` (PREFLIGHT-1 baseline). The **cloud POS is
+Branch `feat/14d-2-plan-upgrade-requests`, HEAD `a5b2694` (HARDEN-1 baseline). The **cloud POS is
 canonical**; this maps the minimum-*safe* path to a real disconnected Branch POS that reuses it.
 `EDGE_FEATURE_ENABLED=false`.
 
-> **This revision exists because PREFLIGHT-1 was challenged as a code review and did not survive it
-> unchanged.** Several PREFLIGHT-1 statements were assumptions declared as "verified"; §0 lists every
-> one that changed and every newly discovered blocker. Nothing in this doc is implementation-approved.
-> The first coding sprint is gated behind the contracts below being closed — see §18.
+> **Part I (§0–§18) = HARDEN-1**: re-grounded PREFLIGHT-1 against code (16 corrected statements).
+> **Part II (§H2) = HARDEN-2**: closes the deeper *runtime-level* contracts that HARDEN-1's
+> architecture claims still left open (bootstrap atomicity mechanism, first-credential enrollment,
+> app-key recovery, recipe/ingredient operational stock, atomic activation fence, trusted sync
+> bypass, complete identity set, sale-number format, sync envelope atomicity, config provenance,
+> print delivery semantics, concrete durability, lease/clock security, software-update channel,
+> terminal authorization, observability, PII, phase-1 re-verification) plus sequence diagrams.
+> Nothing here is implementation-approved. The first coding sprint is gated behind the Part II
+> contracts being closed — see §H2.19.
 
 Companion docs: `edge-edition-architecture-2026-07.md`, `edge-edition-boundary-manifest-2026-07.md`,
 `branch-bootstrap-snapshot-design-2026-07.md`, `branch-device-pairing-design-2026-07.md`,
@@ -495,3 +500,450 @@ EDGE-LOCAL-AUTH-1) follow once the boundary exists. **No selling code until §8/
 signed off.**
 
 No implementation, migration, sync, activation, or deploy is performed by this document.
+
+---
+---
+
+# Part II — EDGE-LOCAL-RUNTIME-PREFLIGHT-HARDEN-2 (runtime contracts)
+
+HARDEN-1 fixed the surface. These are the deeper contracts a real runtime needs. **This part does not
+restate HARDEN-1.** Each item ends with a **status** (CLOSED / DECISION-OPEN / SPIKE-REQUIRED).
+
+## H2.0 What changed from HARDEN-1
+| Ref | HARDEN-1 said | HARDEN-2 replaces it with |
+|---|---|---|
+| §4 import | "stage → flip in one transaction" | **Revision-pointer model** (no multi-table DDL; single-row DML flip). MySQL DDL auto-commits, so a multi-table atomic "flip" was not a real mechanism. → §H2.1 |
+| §5 auth | "Owner sets Edge creds at first-run" | + **cloud-signed one-time enrollment assertion** resolving the first-login circular dependency. → §H2.2 |
+| §5b key | "DPAPI-protect the local key" | + **PC-replacement recovery** (DPAPI is machine-bound → escrowed recovery-wrapped backup key; local key regenerated on new box). → §H2.3 |
+| §10 stock | "baseline − sales + cancellations (product/variant)" | **Insufficient for restaurants** — recipe/modifier/combo consumption decrements *ingredient/linked* products; needs recipe+conversion export or a phase-1a block. → §H2.4 |
+| §10b/§17 activation | "block stock mutations while active" | + **atomic activation fence** (freeze → baseline@R → import+ack → verify → active → unfence-on-fail). → §H2.5 |
+| §13 sync | "loose per-object upsert via ingestion" | **Immutable versioned sale ENVELOPE** (atomic per-envelope) + follow-up events. → §H2.9 |
+| §13 provenance | "cloud honors frozen payload" | + **config-revision provenance validation** (cloud verifies the revision was issued to that device). → §H2.10 |
+| §8b print | "exactly-once physical printing" gate | **Downgraded to at-least-once + durable dedup**; exactly-once is not achievable on dumb ESC/POS. → §H2.11 |
+| §14 recovery | "append-only journal (a table)" | **Not a second InnoDB table** (same failure domain) — binlog on separate volume + off-box upload; concrete fsync policy + RPO/RTO. → §H2.12 |
+| §9 identity | lines/payments/kot-lines/shifts/customers | + **table-session, approval-target, print-event**; and the cloud-origin vs Edge-origin distinction. → §H2.7 |
+| §8 number | "SO-ts-terminal-rand" | **ULID-based** (clock-skew/restore/replacement safe). → §H2.8 |
+| — | (absent) | **Software-update channel (§H2.14), terminal authorization (§H2.15), observability (§H2.16), PII policy (§H2.17)** added. |
+
+## H2.1 Bootstrap / config atomicity — executable mechanism
+**Problem:** MySQL/MariaDB **DDL auto-commits**; you cannot wrap `RENAME`/`TRUNCATE`/recreate of many
+reference tables in one transaction. A mid-refresh crash could leave POS reading a half-old/half-new
+catalog.
+**Decision — revision-pointer (no DDL on the hot path):**
+- Every materialized reference table carries a `config_revision` column (part of its PK/index).
+- Import of revision `N+1` is **INSERT-only** into the same tables under that revision tag — a normal
+  DML transaction, fully rollback-able; a crash leaves revision `N` untouched and `N+1` partial-and-
+  ignored.
+- A single control row `edge_local_meta.active_config_revision` is flipped `N → N+1` with **one
+  atomic `UPDATE`** after all sections are inserted and per-section sha256 verified against the
+  acknowledged manifest. That single-row DML commit is the atomic cutover.
+- **All POS reads join `WHERE config_revision = @active`** (a view or a query scope). Readers mid-
+  request see a consistent revision; the flip is instantaneous and transactional.
+- **Open checks pin the revision they opened under** (`restaurant_table_sessions.config_revision`,
+  held sale's captured revision) so an in-progress bill never changes prices mid-service (§13b).
+- Garbage-collect revision `N` only when no open check / unsynced sale references it.
+- Rejected alternatives documented: multi-table `RENAME TABLE` swap (atomic for a pair but fragile
+  with FKs and many tables); shadow schema (heavier, still needs a pointer); `TRUNCATE+INSERT` (DDL,
+  not crash-safe). Trade-off accepted: reference tables carry a revision dimension (bounded — single
+  branch, few live revisions).
+- **Status: CLOSED (mechanism chosen); SPIKE-REQUIRED** to benchmark revision-scoped read cost on
+  target hardware.
+
+## H2.2 First local credential enrollment — breaking the circular dependency
+**Problem:** an authenticated manager must set the first Edge credential, but no Edge credential exists
+to authenticate against locally.
+**Decision — cloud-signed one-time enrollment assertion (issued at pairing/activation):**
+- At activation the cloud issues, per enrolling user, a **signed, single-use, short-TTL enrollment
+  assertion**: `{tenant, branch, device, user_id, role, nonce, issued_at, expires_at, sig}`, delivered
+  inside the acknowledged bootstrap (encrypted section) — it rides the existing device-authed channel.
+- First run: the Owner/Manager presents the assertion (or a setup code that maps to it) to the Branch
+  Server; the server verifies the cloud signature + device binding + expiry, **burns the nonce**
+  (stored in `edge_local_meta.consumed_enrollment_nonces`), and lets that user set their Edge-local
+  credential (§5). Replay is blocked by the burned nonce; the assertion never authenticates *sales*,
+  only enrollment.
+- **Manager enrollment**: same mechanism per manager, or an already-enrolled Owner enrolls others
+  locally (permission-gated). **Offline reset/revocation**: an enrolled Owner/Manager resets a
+  credential locally; a cloud-side disable propagates via config refresh (§13b) and invalidates
+  sessions. **Long-offline**: enrollment assertions are only needed once; thereafter the Edge
+  credential works within the entitlement grace (§14b/§H2.13).
+- **Status: CLOSED (protocol defined).**
+
+## H2.3 `EDGE_LOCAL_APP_KEY` lifecycle + PC-replacement recovery
+- **Scope split:** the local app key protects only *local-only* secrets (session/cookie/CSRF, Edge
+  credential salts). It is **not** required to recover business data.
+- **Normal storage:** generated at first run, machine-protected (Windows DPAPI / credential store).
+- **Rotation:** supported (re-encrypt local secrets under a new key); does not affect synced data.
+- **PC replacement (DPAPI is machine-bound → old key is unrecoverable, by design):**
+  1. New box generates a **fresh** `EDGE_LOCAL_APP_KEY` (old local-only secrets are discarded, not
+     needed).
+  2. **Edge credentials are re-enrolled** (§H2.2) — cheap, expected on hardware change.
+  3. **Business data** is restored from the encrypted journal/backup (§H2.12), which is encrypted with
+     a **separate data-recovery key escrowed (wrapped) to the cloud at activation** and re-fetched via
+     authenticated device re-pair on the new box. The cloud `APP_KEY` is **never** exported; only the
+     branch's own wrapped data key is returned to its own re-paired device.
+- **Status: CLOSED (design); SPIKE-REQUIRED** on DPAPI + service-account interaction (the Branch
+  Server runs as a service, so the DPAPI scope must be machine/service, not interactive user).
+
+## H2.4 Recipe / component operational stock (the restaurant gap) — code-grounded
+**Verified:** `products.inventory_consumption_method ∈ {stock_item, recipe, none}`. On a paid sale
+line ([SalesService.php:60-101](../../app/Services/Sales/SalesService.php)):
+- `stock_item` → decrement the **product** (FEFO+cost on cloud).
+- `recipe` → `RecipeConsumptionService` decrements each **ingredient product**: `required = ingredient.quantity
+  × (soldQty / recipe.yield_quantity)`, with **unit conversion** (ingredient unit → ingredient
+  product base unit) that **throws and blocks the sale if no conversion rule exists**, filtered by
+  `ingredient.appliesToOrderType(order_type)`; ingredient product must be `is_stock_tracked`.
+- `none` → no decrement.
+- **Modifiers** with `consume_stock` + `linked_product_id` decrement the **linked product**
+  (`linked_quantity`, `linked_unit_id`) — `Modifier::consumesStock()`.
+- **Combos** expand to `combo_components` (each component consumes per its own method).
+
+**So HARDEN-1's "baseline − sales at product/variant level" is wrong for restaurants** — the entities
+whose operational quantity actually moves are ingredient/linked/component products.
+**Decision — phased:**
+- **Phase 1a (ship first): BLOCK offline sale of any product with `inventory_consumption_method='recipe'`,
+  any modifier with `consume_stock=1`, and any combo whose components trigger recipe/consume-stock.**
+  Offline phase 1a supports only `stock_item` (+`none`) products → local operational decrement is the
+  simple product/variant model and is provably correct.
+- **Phase 1b (later, gated): full ingredient decrement.** Requires the bootstrap to **additionally
+  export** `recipes`, `recipe_ingredients` (product_id, variant, quantity, unit_id,
+  applicable_order_types, line_section, yield_quantity) and **`unit_conversions`** (currently **NOT in
+  the bootstrap** — verified: `EdgeBootstrapService` ships modifiers/combos/components but no recipe or
+  conversion sections). Edge then replicates the three consumption computations for **operational
+  quantity only** (no cost/FEFO/GL), and — like cloud — **blocks the sale on a missing unit
+  conversion**. COGS/FEFO still happen only at cloud replay.
+- **Status: DECISION-OPEN** (1a vs 1b for first restaurant pilot) — but the phase-1a block is the safe
+  default and is now the recommended first cut. Retail (stock_item) is unaffected.
+
+## H2.5 Atomic activation stock fence (`pending → active`)
+```
+pending
+  → FENCE:   block cloud sales (assertSaleMutationAllowed) AND all branch-stock mutations
+             (assertBranchStockMutationAllowed §10b) for this branch — one guard, actor-scoped
+  → BASELINE@R: in a consistent read, snapshot operational stock (+ config) at revision R
+  → SNAPSHOT/IMPORT: build+deliver bootstrap incl. baseline@R; Edge imports atomically (§H2.1)
+  → ACK R:   Edge acknowledges baseline R + section hashes + readiness (§H2.16)
+  → VERIFY:  cloud checks readiness gates (§H2.19); on fail/timeout → UNFENCE, revert to pending
+  → ACTIVE:  branch active; UNFENCE only the trusted Edge ingestion path (§H2.6)
+```
+No cloud stock/sale mutation can occur between BASELINE@R and ACTIVE because the fence holds the whole
+time. Any failure releases the fence and returns to `pending` (no half-activated state). This extends
+`BranchOperatingModeService::TRANSITIONS` with an explicit fenced sub-state.
+**Status: CLOSED (protocol); SPIKE-REQUIRED** on baseline read consistency for large catalogs.
+
+## H2.6 Trusted sync bypass (not a generic hole)
+While a branch is `active/closing`, `assertBranchStockMutationAllowed` blocks **all** actors — except
+one narrow trusted path: **the authenticated *current* Edge device of that branch, calling only
+`EdgeSyncIngestionService`**, may create canonical cloud sales + official stock/finance posting. The
+guard checks an **ingestion capability token** derived from the device auth context (not a global
+flag, not a request header a UI can set); it is valid only for that device+branch and only inside the
+ingestion service. No admin UI, no other API, no other device gets the bypass.
+**Status: CLOSED (design).**
+
+## H2.7 Complete cross-system identity set
+**Two classes:**
+- **Cloud-origin (stable cloud id, shipped read-only — safe as sync references):** tenant, branch,
+  terminal (`terminals.code`+`device_identifier`), user (`users.id`/`employee_code`), product/variant,
+  **existing** customer. Edge never mints these.
+- **Edge-origin (must carry a durable UUID minted locally):**
+  | Object | Today | Action |
+  |---|---|---|
+  | sale | `client_uuid` ✓ | keep |
+  | kot_batch | `event_uuid` ✓ | keep |
+  | line-cancellation | `event_uuid` ✓ (target ref = int) | keep + reference target by UUID |
+  | **sale line** | int only | **add `line_uuid`** |
+  | **payment** | int only | **add `payment_uuid`** |
+  | **kot_batch_line** | int only | **add `line_uuid`** |
+  | **shift** | int only | **add `shift_uuid`** |
+  | **table session** | `session_no` (label) | **add `session_uuid`** (keep session_no as a human label, NOT a sync key) |
+  | **manager approval** | `approval_no` (label) + polymorphic `reference_id`(int) | **add `approval_uuid`**; reference target by UUID |
+  | **offline-created customer** | int + optional `code` | **add `customer_uuid`** |
+  | **print event** | `logical_key`/`copy_no` | add `print_event_uuid` for sync history |
+- **Rule:** local auto-increment IDs are **never** cross-system references; every synced cross-object
+  reference carries the *referenced UUID*. `session_no`/`approval_no`/`sale_no` remain human labels.
+- **Status: CLOSED (identity set fixed).** Additive schema on **both** cloud and Edge in EDGE-IDENTITY-1.
+
+## H2.8 Offline sale number — collision-safe, restore-safe
+- **Verified constraints:** `sales_orders.sale_no` = `varchar(255) UNIQUE` (ample); cloud
+  `nextSaleNo()` is timestamp+random and **not gapless**.
+- **Decision:** offline `sale_no = "SO-" + branchCode + "-" + terminalCode + "-" + ULID`. A ULID
+  (48-bit ms timestamp + 80-bit randomness, lexicographically sortable) is **unique across
+  branches/terminals**, **survives clock skew** (randomness dominates; even a wrong clock yields a
+  unique value), and needs **no shared sequence** (reboot/restore/replacement safe — nothing to reuse
+  or exhaust). `client_uuid` remains the idempotency key.
+- **Invariant (hard gate):** the number **printed offline is stored verbatim in the cloud** — cloud
+  ingestion honors the Edge `sale_no`, never regenerates it.
+- **Not gapless** (cloud isn't either); gapless fiscal numbering only if a jurisdiction demands it
+  (then reserved cloud ranges — bigger change, §8).
+- **Status: CLOSED (format decided within existing column).**
+
+## H2.9 Sync envelope / transport atomicity
+- **Primary unit = immutable versioned SALE ENVELOPE**, ingested atomically & idempotently (one cloud
+  transaction per envelope): `{sale(client_uuid, sale_no), lines[line_uuid…], payments[payment_uuid…],
+  edge_config_revision, policy_hashes{price,tax,service_charge,promo}, captured timestamps, device
+  identity}`. Partial ingestion is impossible — the envelope commits whole or not at all; a retry with
+  the same `client_uuid` is a no-op (idempotent upsert).
+- **Follow-up immutable events** (reference stable UUIDs): KOT batch/lines (`event_uuid`),
+  cancellations (`event_uuid` → `line_uuid`), approvals (`approval_uuid`), shift close, customer
+  upserts (`customer_uuid`).
+- **Outbox state machine:** `pending → uploading → ingested → officially_posted → reconciled |
+  exception`. **Edge must NOT mark an item fully-synced on `ingested` alone** — only after
+  `officially_posted` is acked does it retire from the retry set (ingestion without posting is not
+  done).
+- **Status: CLOSED (contract); endpoints enumerated in §17.**
+
+## H2.10 Config / policy provenance (anti-tamper)
+Every offline sale carries `edge_config_revision` + per-domain `policy_hash` (price list, tax config,
+service charge, promotions) + captured timestamps + device identity. **The cloud maintains a registry
+of which config revisions (and their content hashes) it issued to each tenant/branch/device** (the
+bootstrap/refresh already computes `sourceRevision()` — persist the issued revisions server-side). At
+ingestion the cloud **validates** that the sale's `edge_config_revision`/policy hashes match a revision
+actually issued to *that* device, and that captured prices/taxes are consistent with it. A compromised
+local DB that fabricates arbitrary prices → **sync exception**, not silent "honor frozen payload".
+**Status: CLOSED (design).**
+
+## H2.11 Print delivery semantics — realistic guarantee
+Drop "exactly-once physical printing" as a release requirement (unattainable on dumb ESC/POS).
+**Contract: at-least-once delivery + durable agent-side duplicate suppression + tested recovery.**
+Crash windows enumerated:
+| Window | Behavior | Duplicate? |
+|---|---|---|
+| Before physical send (agent crash) | job re-served on restart; nothing printed yet | **No** |
+| **After send, before local completed-cache write** | agent restarts, re-serves, reprints | **Yes — cannot be fully eliminated** without printer-side ACK |
+| After cache write, before server ACK | server re-serves; agent dedups by local completed-cache (`logical_key`/`copy_no`) | **No** |
+Mitigation for the residual window: agent writes a **write-ahead intent** (job id + logical_key)
+*before* send, so on restart it can flag "possibly printed" for that job rather than blind reprint.
+Residual physical duplicate probability is reduced but non-zero. **Physical LAN cert (BLOCKED) must
+validate this on real hardware.**
+**Status: CLOSED (semantics corrected); SPIKE/CERT-REQUIRED on hardware.**
+
+## H2.12 Concrete durability (fsync policy, failure domains, RPO/RTO)
+- **NOT a second InnoDB table as "journal"** (same failure domain as the data).
+- MariaDB config on the Branch Server: `innodb_flush_log_at_trx_commit = 1` + `sync_binlog = 1`
+  (every commit fsynced to the redo log and binlog).
+- **Durable log = the binlog on a SEPARATE physical volume** from the InnoDB data files.
+- **Backup:** periodic encrypted logical/physical backup to a **second volume**, cadence ≤ 15 min
+  incremental; **plus opportunistic off-box upload of the outbox/envelopes to the cloud whenever
+  online** (so unsynced sales exist off the box too).
+- **RPO target: ≤ seconds** (binlog fsync per commit) for local-disk failure; **≤ last-online moment**
+  for total box loss (off-box outbox). **RTO: minutes** (restore data volume → replay binlog → resume).
+- **Proof matrix (drills):** (a) InnoDB data-disk corruption → restore backup + replay binlog from the
+  separate volume; (b) total box loss → new box, re-pair, restore from off-box outbox + cloud-side
+  already-ingested envelopes; unsynced cash sales survive both.
+- **Status: DECISION-OPEN** on exact backup tooling (mariabackup vs mysqldump vs volume snapshot);
+  **SPIKE-REQUIRED** to measure real RPO on target branch hardware.
+
+## H2.13 Entitlement lease + clock-rollback security
+Lease `{tenant, branch, device, entitlement, issued_at, expires_at, grace_until, monotonic_seq, sig}`.
+- **Public signing key** shipped at pairing; **rotation** via a signed key-rotation message chained to
+  the prior key (Edge trusts a new key only if signed by the current one).
+- **Clock-rollback defense:** Edge persists `last_trusted_server_time = max(all server timestamps
+  seen)` and a **monotonic uptime counter**; it evaluates expiry against
+  `max(local_clock, last_trusted_server_time)` and **refuses** to honor anything if `local_clock <
+  last_trusted_server_time` (backward clock detected). Turning the Windows clock back cannot extend a
+  lease.
+- **Stolen/revoked device:** cloud revokes on reconnect; within grace the device keeps operating, past
+  `grace_until` it degrades per policy (block new sales / read-only).
+- **Long offline:** operate to `grace_until`; the pilot must set grace to a business-acceptable window.
+- **Status: CLOSED (design); SPIKE-REQUIRED** on secure monotonic-time source under Windows.
+
+## H2.14 Edge software-update channel (new — was absent)
+Config refresh ≠ app update. Add a **signed release channel**: manifest `{app_version,
+min_bootstrap_schema (v3+), min_sync_api_version, migrations[], rollback_to, signature}`. Edge verifies
+the signature, applies DB migrations transactionally, supports **rollback** (keep previous version +
+down-migration or pre-update snapshot), **staged rollout** by cohort, and **forced critical security
+update**: the cloud publishes a `min_supported_version`; an Edge below it, past a grace window,
+**refuses to sync/sell** until updated. Prevents branch appliances running a stale/vulnerable binary
+for months.
+**Status: CLOSED (architecture); belongs on the mandatory roadmap.**
+
+## H2.15 Terminal authorization (not IP/LAN alone)
+A browser on the LAN must become an **authorized terminal** before it can sell: on first use an
+authenticated manager **enrols** the browser to a `terminals` row (columns exist: `code`,
+`device_identifier`), issuing a **terminal token** stored in that browser and bound server-side.
+Sessions, sales, and shifts are **bound to `terminal_id`**; an un-enrolled device on the same Wi-Fi is
+rejected. Any manager may log into any *enrolled* terminal per existing permissions. LAN-only binding +
+firewall remain, but are not the authorization.
+**Status: CLOSED (design).**
+
+## H2.16 Readiness / observability (new — device-ready ≠ branch-ready)
+Edge heartbeat/readiness payload the cloud must see **before activation** and continuously after:
+`{app_version, bootstrap_revision, config_revision, local_schema_version, branch/device binding,
+clock_drift_vs_cloud, disk_free, db_health, last_backup_age, outbox_depth, last_successful_sync,
+entitlement_lease_expiry, print_agent_status, printer_readiness}`. The activation gate (§H2.5 VERIFY)
+consumes this — a bootstrap device `ready` ack alone does **not** prove a Branch Server is fit to go
+active.
+**Status: CLOSED (contract).**
+
+## H2.17 Customer / PII boundary
+For the local customer baseline + offline-created customers: **minimize** (name/phone/address only
+where a workflow needs it — delivery), **branch-scoped**, **encrypted at rest** (under the local key,
+recoverable via §H2.3), defined **retention**, **backup** includes encrypted PII only, **server
+replacement** requires secure wipe of the old disk, **cloud dedupe** on sync by phone/email
+(offline-created `customer_uuid` reconciled to an existing cloud customer or inserted).
+**Status: DECISION-OPEN** (retention window is a product/legal decision).
+
+## H2.18 Phase-1 SUPPORTED features — re-verified against cloud dependency
+| Feature | Cloud service traced | Verdict |
+|---|---|---|
+| Fixed discount | `SalesTotalsService` (local compute) | **SUPPORTED** |
+| Tax | computed locally, frozen on payload; cloud honors (§H2.10) | **SUPPORTED** |
+| Service charge | `service_charge_settings` shipped; local compute | **SUPPORTED** |
+| Cash tip | recorded on sale; ledger `tip` enum exists; no external authority | **SUPPORTED** |
+| Own delivery | channels/riders shipped; no aggregator API | **SUPPORTED** |
+| Existing customer select | local `customers` table | **SUPPORTED** |
+| New offline customer | needs `customer_uuid` + dedupe (§H2.7/§H2.17) | **SUPPORTED (with UUID)** |
+| Simple/fixed promotion | `PromotionService` — **SPIKE: confirm the applied path has no cloud-only call**; usage-limit counter IS cloud | **CONDITIONAL** — fixed only, usage-limited **BLOCKED** |
+| `stock_item`/`none` products | local product/variant decrement | **SUPPORTED** |
+| `recipe` products / `consume_stock` modifiers / consuming combos | ingredient decrement + unit conversion (§H2.4) | **BLOCKED in phase 1a**; phase-1b after recipe/conversion export |
+| Card/wallet/bank/aggregator/credit | no offline settlement authority | **BLOCKED** |
+| Completed-sale return/refund | needs sale sync + finance/inventory reconcile | **BLOCKED (Pending-Cloud)** |
+**Rule reaffirmed:** "SUPPORTED" requires the traced cloud dependency to be locally satisfiable — not
+merely that columns exist. Promotions need a code spike before final sign-off.
+**Status: DECISION-OPEN** on promotions (spike) + recipe phase (1a/1b).
+
+## H2.19 Revised activation gates + first implementation order
+**Added gates (on top of §18):** revision-pointer refresh proven crash-safe (§H2.1); enrollment-nonce
+replay-safe (§H2.2); PC-replacement recovery drill incl. data-key re-fetch (§H2.3); recipe phase
+decided + (1b) recipe/conversion export parity proven (§H2.4); activation fence proven — zero mutation
+between baseline and active (§H2.5); trusted-bypass is device+service-scoped only (§H2.6); full UUID
+identity on cloud+Edge (§H2.7); ULID sale_no printed==stored (§H2.8); envelope atomic + not-done-until-
+posted (§H2.9); config-provenance rejects fabricated prices (§H2.10); print at-least-once + dedup
+certified on hardware (§H2.11); durability RPO/RTO measured on target hardware (§H2.12); lease clock-
+rollback defended (§H2.13); signed update channel + forced-security-upgrade (§H2.14); terminal
+enrolment enforced (§H2.15); readiness observability green (§H2.16); PII retention/wipe defined
+(§H2.17); promotions spike resolved (§H2.18).
+
+**First implementation order (unchanged intent, sharpened):**
+1. **EDGE-RUNTIME-BOUNDARY-1** — restricted build/route-allowlist skeleton (safe now; no DB/sell).
+   *Design-closure prerequisites to run in parallel and sign off before any selling code:*
+   **§H2.1 refresh mechanism, §H2.7 identity set, §H2.8 sale_no, §H2.4 recipe phase, §H2.9 envelope,
+   §H2.5 activation fence.**
+2. EDGE-LOCAL-RUNTIME-1 (local DB + revision-pointer import + branch binding + `EnsureEdgeBranchBound`).
+3. EDGE-LOCAL-AUTH-1 (Edge verifier + §H2.2 enrollment + §H2.3 key lifecycle).
+4. EDGE-IDENTITY-1 (additive UUIDs on cloud+Edge, §H2.7).
+5. EDGE-LOCAL-POS-1 (**phase-1a**: stock_item/none only, cash Review&Pay, local hard-block stock,
+   KOT/Reminder/Receipt).
+6. EDGE-LOCAL-PRINT-1 (local `/api/print-agent/*` + at-least-once dedup §H2.11 + LAN cert).
+7. EDGE-SPLITBRAIN-STOCK-1 (`assertBranchStockMutationAllowed` + activation fence §H2.5/§H2.6).
+8. EDGE-CONFIG-REFRESH-1 (revision-pointer refresh §H2.1/§13b).
+9. OFFLINE-SYNC-ENGINE-1 (envelope §H2.9 + ingestion + provenance §H2.10 + official posting).
+10. OFFLINE-RECOVERY-HARDEN-1 (durability §H2.12 + RPO/RTO drills + two-tier shift).
+11. EDGE-ENTITLEMENT-LEASE-1 (§H2.13) + EDGE-UPDATE-CHANNEL-1 (§H2.14) + EDGE-OBSERVABILITY-1 (§H2.16).
+12. EDGE-RECIPE-OFFLINE-1 (**phase-1b**, only if the pilot needs restaurant ingredient tracking, §H2.4).
+13. EDGE-ACTIVATION-1 (controlled `pending→active` after all gates).
+
+## H2.20 Sequence diagrams
+### Activation (fence)
+```mermaid
+sequenceDiagram
+  participant A as Admin (cloud)
+  participant C as Cloud
+  participant D as Edge device
+  A->>C: activate branch (pending)
+  C->>C: FENCE sales + stock mutations (branch-scoped)
+  C->>C: snapshot baseline + config @ revision R (consistent read)
+  C-->>D: bootstrap (baseline@R, sections, enrollment assertions)
+  D->>D: atomic import (revision-pointer flip)
+  D-->>C: ACK R + section hashes + readiness heartbeat
+  C->>C: verify readiness gates
+  alt ok
+    C->>C: state=active; UNFENCE only Edge ingestion path
+    C-->>D: activated
+  else fail/timeout
+    C->>C: UNFENCE; state=pending (no half-activation)
+  end
+```
+### Local sale (offline)
+```mermaid
+sequenceDiagram
+  participant T as Terminal (browser)
+  participant B as Branch Server
+  participant P as Print Agent
+  T->>B: login (Edge verifier, terminal-bound)
+  T->>B: Review & Pay (client_uuid, cash)
+  B->>B: totals (local), phase-1a stock hard-block if disallowed
+  B->>B: EdgeSaleCaptureService: sale+lines+payments (NO GL/COGS/FEFO), sale_no=ULID
+  B->>B: write-ahead journal + outbox(pending) + KOT/Reminder/Receipt jobs
+  B-->>P: serve local print jobs (logical_key)
+  P-->>B: printed/failed ack (at-least-once + dedup)
+  B-->>T: receipt (sale_no printed == stored)
+```
+### Sync (reconnect)
+```mermaid
+sequenceDiagram
+  participant B as Branch Server
+  participant C as Cloud (EdgeSyncIngestionService)
+  B->>C: upload SALE ENVELOPE (uuids, config_revision, policy hashes)
+  C->>C: validate provenance (revision issued to device?) + totals
+  C->>C: atomic idempotent upsert by UUID; honor sale_no; SUPPRESS print
+  C->>C: finalizePaidSale internally (COGS/FEFO/GL)
+  C-->>B: ack officially_posted
+  B->>B: outbox: ingested->officially_posted->reconciled
+  Note over B,C: follow-up events (KOT/cancellation/approval/shift) by UUID
+  alt conflict (oversell/price/promo)
+    C-->>B: sync exception (no silent corruption)
+  end
+```
+### Config refresh
+```mermaid
+sequenceDiagram
+  participant C as Cloud
+  participant B as Branch Server
+  C-->>B: config revision N+1 (sections + hashes)
+  B->>B: INSERT-only import under revision N+1 (verify hashes)
+  B->>B: atomic UPDATE active_config_revision = N+1
+  Note over B: open checks stay pinned to their opened revision
+  B->>B: GC revision N when unreferenced
+```
+### Server replacement / recovery
+```mermaid
+sequenceDiagram
+  participant M as Manager
+  participant N as New Branch Server
+  participant C as Cloud
+  M->>N: install; generate fresh EDGE_LOCAL_APP_KEY
+  N->>C: re-pair (controlled recovery, same branch)
+  C-->>N: wrapped data-recovery key + fresh bootstrap
+  N->>N: restore encrypted backup/journal + off-box outbox
+  M->>N: re-enroll Edge credentials (cloud-signed assertions)
+  N->>C: replay unsynced envelopes idempotently (by UUID)
+  N-->>M: operational (no double-post, sale_no preserved)
+```
+
+## H2.21 Newly discovered blockers (HARDEN-2)
+1. **Recipe/modifier/combo consumption** makes product-level stock wrong for restaurants; needs
+   recipe+conversion export or a phase-1a block (§H2.4). *(blocks restaurant offline)*
+2. **Bootstrap lacks recipes/recipe_ingredients/unit_conversions** sections (verified absent) —
+   required for phase-1b (§H2.4).
+3. **First-credential circular dependency** unsolved before H2.2 (§H2.2).
+4. **DPAPI key is unrecoverable on PC replacement** — needs escrowed data-recovery key (§H2.3).
+5. **No activation fence** — baseline can go stale between snapshot and activation (§H2.5).
+6. **DDL auto-commit** makes the HARDEN-1 "flip in one transaction" non-existent — needs revision
+   pointer (§H2.1).
+7. **Ingestion-without-posting** could be marked done — outbox must not retire before
+   `officially_posted` (§H2.9).
+8. **Config provenance** — "honor frozen payload" is exploitable without revision validation (§H2.10).
+9. **No software-update channel** — appliances would run stale binaries (§H2.14).
+10. **No terminal authorization** — any LAN browser could sell (§H2.15).
+11. **Clock rollback** could extend entitlement (§H2.13).
+
+## H2.22 Open product decisions (need the user / business, not code)
+- Restaurant offline: **phase-1a (block recipe) vs phase-1b (ship ingredient tracking)** for the first
+  pilot (§H2.4).
+- **Entitlement grace window** length (§H2.13) and **PII retention** window (§H2.17).
+- Whether any target jurisdiction **requires gapless fiscal numbering** (drives §8/§H2.8).
+- Promotions offline scope after the spike (§H2.18).
+
+## H2.23 Remaining uncertain (spikes, not claims)
+Revision-scoped read cost (§H2.1); DPAPI under a service account (§H2.3); baseline read consistency at
+scale (§H2.5); real RPO on branch hardware + backup tool choice (§H2.12); secure monotonic time on
+Windows (§H2.13); promotions cloud-dependency trace (§H2.18); physical ACK-loss dup on real printers
+(§H2.11).
+
+## H2.24 First implementation sprint — verdict
+**Safe to start: EDGE-RUNTIME-BOUNDARY-1** (pure restricted-build/route-allowlist skeleton — no DB, no
+auth, no selling, no sync), **provided the packaging/runtime/TLS/update contracts (§H2.14/§15/§H2.1)
+are decided first so the artifact isn't rebuilt later.** **No local runtime, auth, or selling code**
+until §H2.1 (refresh), §H2.7 (identity), §H2.8 (sale_no), §H2.4 (recipe phase), §H2.5 (activation
+fence), and §H2.9 (envelope) are signed off. Everything in Part II is design only — no code, migration,
+sync, activation, or deploy performed here.
