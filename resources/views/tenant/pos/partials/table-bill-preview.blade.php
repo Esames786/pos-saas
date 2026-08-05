@@ -1,105 +1,107 @@
 @php
+    $layout    = $layout ?? null;
+    $branch    = $session->branch;
+    $fontSize  = $layout?->font_size ?? 12;
+    $paperSize = $layout?->paper_size ?? '80mm';
+    $width     = match ($paperSize) { '58mm' => '52mm', '80mm' => '72mm', default => '180mm' };
     $heldSales = $session->salesOrders->where('status', 'held');
     $paidSales = $session->salesOrders->where('status', 'paid');
     $heldTotal = (float) $heldSales->sum('grand_total');
     $paidTotal = (float) $paidSales->sum('grand_total');
+    $fmtQty    = fn ($q) => rtrim(rtrim(number_format((float) $q, 3, '.', ''), '0'), '.');
 @endphp
 
-<div class="table-bill-preview" data-session-id="{{ $session->id }}">
-    <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
-        <div>
-            <h3 class="h5 mb-1">Table {{ $session->table?->table_no }}</h3>
-            <div class="text-muted small">
-                {{ $session->session_no }} &middot; {{ $session->waiter?->name ?? 'No waiter' }}
-                &middot; {{ $session->guest_count }} guests
-            </div>
-        </div>
-        <span class="badge bg-light text-dark">{{ str_replace('_', ' ', ucfirst($session->status)) }}</span>
-    </div>
+{{-- Receipt-style bill preview so the on-screen preview AND its browser print match the
+     configured Receipt layout (font / paper width / header / footer / show-flags). The
+     styles are scoped to .tbill-receipt and travel with the markup, so the print output
+     (which reuses this innerHTML) looks the same as the preview. --}}
+<style>
+    .tbill-receipt { font-family: 'Courier New', Courier, monospace; font-size: {{ $fontSize }}px; width: {{ $width }}; max-width: 100%; margin: 0 auto; color: #000; padding: 4px; }
+    .tbill-receipt .center { text-align: center; }
+    .tbill-receipt .bold   { font-weight: bold; }
+    .tbill-receipt hr      { border: none; border-top: 1px dashed #000; margin: 4px 0; }
+    .tbill-receipt table   { width: 100%; border-collapse: collapse; }
+    .tbill-receipt td      { vertical-align: top; padding: 1px 0; border: none !important; }
+    .tbill-receipt .r      { text-align: right; white-space: nowrap; }
+    @media screen { .tbill-receipt { width: 320px; } }
+</style>
 
-    <div class="row g-2 mb-3">
-        <div class="col-6">
-            <div class="border rounded p-2 h-100">
-                <div class="text-muted small">Open check</div>
-                <strong class="fs-5">{{ number_format($heldTotal, 2) }}</strong>
-            </div>
-        </div>
-        <div class="col-6">
-            <div class="border rounded p-2 h-100">
-                <div class="text-muted small">Previously paid</div>
-                <strong class="fs-5">{{ number_format($paidTotal, 2) }}</strong>
-            </div>
-        </div>
-    </div>
+<div class="tbill-receipt" data-session-id="{{ $session->id }}">
+    @if(!($layout?->show_logo === false) && $layout?->logo_path)
+        <div class="center" style="margin-bottom:4px"><img src="{{ asset('storage/' . $layout->logo_path) }}" style="max-width:80px;max-height:40px"></div>
+    @endif
+    @if(!($layout?->show_branch_name === false))
+        <div class="center bold">{{ $branch?->name }}</div>
+    @endif
+    @if(!($layout?->show_branch_address === false) && $branch?->address)
+        <div class="center">{{ $branch->address }}</div>
+    @endif
+    @if(!($layout?->show_branch_phone === false) && $branch?->phone)
+        <div class="center">Tel: {{ $branch->phone }}</div>
+    @endif
+    @if($layout?->header_text)
+        <div class="center" style="margin-top:4px">{{ $layout->header_text }}</div>
+    @endif
 
-    <h4 class="h6">Held / Unpaid Orders</h4>
+    <hr>
+    <div class="center bold">TABLE BILL — NOT A TAX RECEIPT</div>
+    <hr>
+
+    @if(!($layout?->show_table_info === false))
+        <div>Table: <span class="bold">{{ $session->table?->table_no }}</span> &nbsp; {{ ucfirst(str_replace('_', ' ', $session->status)) }}</div>
+        <div>Check: {{ $session->session_no }}</div>
+        <div>Waiter: {{ $session->waiter?->name ?? '-' }} &nbsp; Guests: {{ $session->guest_count }}</div>
+    @endif
+    <div>{{ now()->format('d/m/Y H:i') }}</div>
+    <hr>
+
     @forelse($heldSales as $sale)
-        <section class="border rounded mb-2">
-            <div class="d-flex justify-content-between align-items-center gap-2 p-2 bg-light">
-                <div>
-                    <strong>{{ $sale->sale_no }}</strong>
-                    <div class="small text-muted">
-                        Sub {{ number_format((float) $sale->subtotal, 2) }}
-                        @if((float) $sale->discount_amount > 0)
-                            &middot; Disc -{{ number_format((float) $sale->discount_amount, 2) }}
-                        @endif
-                        @if((float) $sale->tax_amount > 0)
-                            &middot; Tax {{ number_format((float) $sale->tax_amount, 2) }}
-                        @endif
-                        @if((float) $sale->service_charge_amount > 0)
-                            &middot; Service {{ number_format((float) $sale->service_charge_amount, 2) }}
-                        @endif
-                        @if((float) $sale->tip_amount > 0)
-                            &middot; Tip {{ number_format((float) $sale->tip_amount, 2) }}
-                        @endif
-                    </div>
-                </div>
-                <strong class="text-nowrap">{{ number_format((float) $sale->grand_total, 2) }}</strong>
-            </div>
-            <div class="table-responsive">
-                <table class="table table-sm align-middle mb-0">
-                    <tbody>
-                    @foreach($sale->lines as $line)
-                        @if(($line->line_kind ?? 'standard') === 'component') @continue @endif
-                        <tr>
-                            <td>
-                                {{ $line->product_name }}
-                                @if($line->variant_name)<span class="text-muted small">({{ $line->variant_name }})</span>@endif
-                                @foreach(($line->modifiers ?? []) as $modifier)
-                                    @if(!empty($modifier['name']))
-                                        <div class="small text-muted ps-2">+ {{ $modifier['name'] }}</div>
-                                    @endif
-                                @endforeach
-                            </td>
-                            <td class="text-end text-nowrap">{{ number_format((float) $line->quantity, 3) }}</td>
-                            <td class="text-end text-nowrap">{{ number_format((float) $line->line_total, 2) }}</td>
-                        </tr>
-                    @endforeach
-                    </tbody>
-                </table>
-            </div>
-        </section>
+        <div class="bold">{{ $sale->sale_no }}</div>
+        <table>
+            @foreach($sale->lines as $line)
+                @if(($line->line_kind ?? 'standard') === 'component') @continue @endif
+                <tr>
+                    <td>{{ $line->product_name }}@if($line->variant_name) ({{ $line->variant_name }})@endif</td>
+                    <td class="r">{{ $fmtQty($line->quantity) }}</td>
+                    <td class="r">{{ number_format((float) $line->line_total, 2) }}</td>
+                </tr>
+                @foreach(($line->modifiers ?? []) as $modifier)
+                    @if(!empty($modifier['name']))
+                        <tr><td colspan="3" style="padding-left:8px">+ {{ $modifier['name'] }}</td></tr>
+                    @endif
+                @endforeach
+            @endforeach
+            <tr><td class="r bold" colspan="2">Order total</td><td class="r bold">{{ number_format((float) $sale->grand_total, 2) }}</td></tr>
+        </table>
+        <hr>
     @empty
-        <div class="alert alert-light border">No held orders for this table.</div>
+        <div class="center">No held orders for this table.</div>
+        <hr>
     @endforelse
 
+    <table>
+        <tr><td class="r bold">OPEN CHECK</td><td class="r bold">{{ number_format($heldTotal, 2) }}</td></tr>
+        @if($paidTotal > 0)
+            <tr><td class="r">Previously paid</td><td class="r">{{ number_format($paidTotal, 2) }}</td></tr>
+        @endif
+    </table>
+
     @if($paidSales->isNotEmpty())
-        <details class="mt-3">
-            <summary class="fw-semibold">Paid order history ({{ $paidSales->count() }})</summary>
-            <div class="table-responsive mt-2">
-                <table class="table table-sm align-middle mb-0">
-                    <thead><tr><th>Sale</th><th>Date</th><th class="text-end">Total</th></tr></thead>
-                    <tbody>
-                    @foreach($paidSales as $sale)
-                        <tr>
-                            <td>{{ $sale->sale_no }}</td>
-                            <td>{{ $sale->sale_date?->format('d M H:i') }}</td>
-                            <td class="text-end">{{ number_format((float) $sale->grand_total, 2) }}</td>
-                        </tr>
-                    @endforeach
-                    </tbody>
-                </table>
-            </div>
-        </details>
+        <hr>
+        <div class="bold">Paid history ({{ $paidSales->count() }})</div>
+        <table>
+            @foreach($paidSales as $sale)
+                <tr>
+                    <td>{{ $sale->sale_no }}</td>
+                    <td class="r">{{ $sale->sale_date?->format('d/m H:i') }}</td>
+                    <td class="r">{{ number_format((float) $sale->grand_total, 2) }}</td>
+                </tr>
+            @endforeach
+        </table>
+    @endif
+
+    @if($layout?->footer_text)
+        <hr>
+        <div class="center">{{ $layout->footer_text }}</div>
     @endif
 </div>

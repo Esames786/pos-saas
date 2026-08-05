@@ -208,16 +208,27 @@ class RestaurantTableSessionController extends Controller
             },
         ]);
 
+        // Render the bill preview using the branch's configured RECEIPT layout so the
+        // preview + its print match the actual receipt look (header/footer/font/paper),
+        // instead of generic admin styling.
+        $layout = \App\Models\Tenant\ReceiptLayoutSetting::where('branch_id', $restaurantTableSession->branch_id)
+            ->where('document_type', 'receipt')
+            ->first();
+
         if (request()->expectsJson()) {
             return response()->json([
                 'ok' => true,
                 'html' => view('tenant.pos.partials.table-bill-preview', [
                     'session' => $restaurantTableSession,
+                    'layout'  => $layout,
                 ])->render(),
             ]);
         }
 
-        return view('tenant.restaurant.table-sessions.bill-preview', ['session' => $restaurantTableSession]);
+        return view('tenant.restaurant.table-sessions.bill-preview', [
+            'session' => $restaurantTableSession,
+            'layout'  => $layout,
+        ]);
     }
 
     public function move(Request $request, RestaurantTableSession $restaurantTableSession)
