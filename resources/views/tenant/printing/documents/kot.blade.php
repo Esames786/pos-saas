@@ -33,13 +33,13 @@
 
 <div class="center bold" style="font-size:{{ $fontSize + 4 }}px">
     @if(($eventType ?? 'normal') === 'cancel')
-        CANCEL KOT #{{ $sequenceNo ?: 1 }}
+        CANCEL KOT #{{ ($sequenceNo ?? 0) ?: 1 }}
     @elseif(($eventType ?? 'normal') === 'addition')
-        ADDITION KOT #{{ $sequenceNo ?: 1 }}
+        ADDITION KOT #{{ ($sequenceNo ?? 0) ?: 1 }}
     @elseif(($eventType ?? 'normal') === 'duplicate')
-        DUPLICATE KOT #{{ $sequenceNo ?: 1 }}
+        DUPLICATE KOT #{{ ($sequenceNo ?? 0) ?: 1 }}
     @else
-        KOT #{{ $sequenceNo ?: 1 }}
+        KOT #{{ ($sequenceNo ?? 0) ?: 1 }}
     @endif
 </div>
 @if(($eventType ?? '') === 'duplicate')
