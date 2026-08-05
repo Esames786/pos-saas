@@ -899,7 +899,14 @@
             <div class="modal-body" id="bill-preview-modal-body"></div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-primary" id="print-bill-preview-btn"><i class="ti ti-printer me-1"></i>Print</button>
+                <button type="button" class="btn btn-outline-primary" id="send-network-receipt-btn"
+                        title="Send this order's receipt to the network printer (via the Print Agent).">
+                    <i class="ti ti-broadcast me-1"></i>Send to network
+                </button>
+                <button type="button" class="btn btn-primary" id="print-bill-preview-btn"
+                        title="Open your browser print dialog to print on the printer attached to this screen.">
+                    <i class="ti ti-printer me-1"></i>Print here
+                </button>
             </div>
         </div>
     </div>
@@ -4330,6 +4337,36 @@ document.addEventListener('DOMContentLoaded', function () {
                 showModalAfterWorkspace(document.getElementById('billPreviewModal'));
             }).catch(function (error) { toast('error', error.message); });
     }
+
+    // #4/#12: "Send to network" prints this order's receipt on the network printer via the
+    // Print Agent (reuses the hardened receipt queue). It needs a SAVED order (a recalled
+    // held sale or a just-paid sale); on the unsaved current cart, ask to hold/pay first.
+    // If no network printer is mapped, the endpoint returns fallback -> browser preview.
+    document.getElementById('send-network-receipt-btn')?.addEventListener('click', function () {
+        const saleId = _currentHeldSaleId || _lastSaleId;
+        if (!saleId) {
+            toast('warning', 'Hold or pay this order first — sending to a network printer needs a saved order.');
+            return;
+        }
+        const terminalId = (document.getElementById('terminal_id') || {}).value || '';
+        const q = '?reprint=1' + (terminalId ? '&terminal_id=' + encodeURIComponent(terminalId) : '');
+        const btn = this, orig = btn.innerHTML;
+        btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+        fetch('{{ url('/printing/jobs/receipt') }}/' + saleId + q, {
+            method: 'POST', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
+        })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+            btn.disabled = false; btn.innerHTML = orig;
+            if (data.fallback) {
+                toast('warning', 'No network receipt printer is mapped — opening a browser preview instead.');
+                openFallbackPreviews(data);
+            } else {
+                toast('success', 'Receipt sent to the network printer.');
+            }
+        })
+        .catch(function () { btn.disabled = false; btn.innerHTML = orig; toast('error', 'Could not send to the network printer.'); });
+    });
 
     document.getElementById('pos-session-bill-preview')?.addEventListener('click', function () {
         if (this.dataset.sessionId) showTableBillPreview(this.dataset.sessionId);
