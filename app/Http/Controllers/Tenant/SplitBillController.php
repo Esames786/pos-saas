@@ -43,9 +43,6 @@ class SplitBillController extends Controller
             ->assertSaleMutationAllowed(\App\Models\Tenant\Branch::findOrFail($salesOrder->branch_id));
 
         $data = $request->validate([
-            'payment_method_id'              => ['required', 'exists:payment_methods,id'],
-            'tendered_amount'                => ['nullable', 'numeric', 'min:0'],
-            'transaction_ref'               => ['nullable', 'string', 'max:190'],
             'notes'                          => ['nullable', 'string'],
             'lines'                          => ['required', 'array'],
             'lines.*.sales_order_line_id'    => ['nullable', 'exists:sales_order_lines,id'],
@@ -61,7 +58,7 @@ class SplitBillController extends Controller
         }
 
         try {
-            $paidSale = DB::connection('tenant')->transaction(function () use ($salesOrder, $selectedLines, $data, $salesService) {
+            $splitSale = DB::connection('tenant')->transaction(function () use ($salesOrder, $selectedLines, $data, $salesService) {
                 $salesOrder->refresh()->load(['lines.product', 'lines.variant']);
 
                 if ($salesOrder->status !== 'held') {
@@ -104,7 +101,9 @@ class SplitBillController extends Controller
                     'grand_total'                 => 0,
                     'paid_amount'                 => 0,
                     'change_amount'               => 0,
-                    'status'                      => 'draft',
+                    // Split creates a NEW HELD order (never auto-paid). Each split order is
+                    // paid individually later from the POS. The table/waiter/session are kept.
+                    'status'                      => 'held',
                     'inventory_posted'            => false,
                     'created_by_user_id'          => auth('tenant')->id(),
                     'notes'                       => $data['notes'] ?? 'Split from ' . $salesOrder->sale_no,
@@ -156,6 +155,11 @@ class SplitBillController extends Controller
                         'line_kind'          => $heldLine->line_kind ?? 'standard',
                         'combo_id'           => $heldLine->combo_id,
                         'kitchen_note'       => $heldLine->kitchen_note,
+                        // The split portion was already sent to the kitchen as part of the
+                        // original order, so mark it sent — paying it later must not re-KOT it
+                        // or trip the "cancellation required" guard.
+                        'kot_sent'           => (float) $heldLine->kot_sent_quantity > 0,
+                        'kot_sent_quantity'  => min((float) $heldLine->kot_sent_quantity, $splitQty),
                     ]);
 
                     $subtotal      += $splitSubtotal;
@@ -209,32 +213,26 @@ class SplitBillController extends Controller
                 $grandTotal += $splitSC;
                 $newSale->update(['grand_total' => $grandTotal]);
 
-                $tendered = isset($data['tendered_amount']) && $data['tendered_amount'] !== null
-                    ? (float) $data['tendered_amount']
-                    : $grandTotal;
-
-                $paymentMethod = PaymentMethod::find($data['payment_method_id']);
-                $isCash        = $paymentMethod?->method_type === 'cash';
-                $changeAmount  = $isCash ? max($tendered - $grandTotal, 0) : 0;
-
-                $newSale->payments()->create([
-                    'payment_method_id' => $data['payment_method_id'],
-                    'amount'            => $grandTotal,
-                    'tendered_amount'   => $tendered,
-                    'change_amount'     => $changeAmount,
-                    'transaction_ref'   => $data['transaction_ref'] ?? null,
-                ]);
-
                 $this->recalculateHeldSale($salesOrder);
 
-                return $salesService->finalizePaidSale($newSale);
+                return $newSale->fresh();
             });
         } catch (RuntimeException $e) {
             return back()->withErrors(['split' => $e->getMessage()])->withInput();
         }
 
-        return redirect(url('/sales-orders/' . $paidSale->id))
-            ->with('status', 'Split bill paid successfully.');
+        // Back to the POS on the same table so the cashier can select and pay each held
+        // order individually. Recall the remaining original if it still has items, else
+        // the new split order. A fresh POS load also means no stale cart can overwrite it.
+        $salesOrder->refresh();
+        $recallId  = $salesOrder->status === 'held' ? $salesOrder->id : $splitSale->id;
+        $sessionId = $splitSale->restaurant_table_session_id;
+        $url = '/pos?held_sale_id=' . $recallId
+            . ($sessionId ? '&table_session_id=' . $sessionId : '')
+            . '&mode=dine_in&branch_id=' . $splitSale->branch_id;
+
+        return redirect(url($url))
+            ->with('status', 'Split into held order ' . $splitSale->sale_no . '. Pay each order from the POS.');
     }
 
     private function recalculateHeldSale(SalesOrder $salesOrder): void

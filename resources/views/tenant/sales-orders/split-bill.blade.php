@@ -84,32 +84,20 @@
             </div>
 
             <div class="card mb-3">
-                <div class="card-body row g-3">
-                    <div class="col-md-4">
-                        <label for="payment_method_id" class="form-label">Payment Method <span class="text-danger">*</span></label>
-                        <select id="payment_method_id" name="payment_method_id" class="form-select" required>
-                            @foreach($paymentMethods as $method)
-                                <option value="{{ $method->id }}" @selected($method->method_type === 'cash')>{{ $method->name }}</option>
-                            @endforeach
-                        </select>
+                <div class="card-body">
+                    <div class="alert alert-info mb-3 py-2">
+                        <i class="ti ti-info-circle me-1"></i>
+                        Splitting creates a <strong>new held order</strong> for the selected items on the
+                        same table — it is <strong>not</strong> paid here. Pay each order individually from
+                        the POS (recall it, preview the bill, then Review &amp; Pay).
                     </div>
-                    <div class="col-md-4">
-                        <label for="tendered_amount" class="form-label">Tendered Amount</label>
-                        <input id="tendered_amount" type="number" step="0.01" min="0" name="tendered_amount" class="form-control">
-                    </div>
-                    <div class="col-md-4">
-                        <label for="transaction_ref" class="form-label">Reference</label>
-                        <input id="transaction_ref" name="transaction_ref" class="form-control" placeholder="Card / wallet ref">
-                    </div>
-                    <div class="col-12">
-                        <label for="notes" class="form-label">Notes</label>
-                        <input id="notes" name="notes" class="form-control" placeholder="Split payment notes">
-                    </div>
+                    <label for="notes" class="form-label">Notes (optional)</label>
+                    <input id="notes" name="notes" class="form-control" placeholder="e.g. Guest 2's items">
                 </div>
             </div>
 
-            <button class="btn btn-primary btn-lg" type="submit" onclick="return confirm('Post selected items as a paid split bill?')">
-                Pay Selected Items
+            <button class="btn btn-primary btn-lg" type="submit" onclick="return confirm('Split the selected items into a new held order?')">
+                <i class="ti ti-arrows-split me-1"></i>Split into held order
             </button>
         </form>
     </div>
