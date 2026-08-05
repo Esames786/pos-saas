@@ -506,7 +506,8 @@
                 <div class="col-md-3">
                     <label for="customer_phone" class="form-label small mb-1"><span id="phone-label-text">Customer Phone</span></label>
                     <input id="customer_phone" name="customer_phone" class="form-control form-control-sm"
-                           placeholder="03xx-xxxxxxx" value="{{ $heldSale?->customer_phone }}">
+                           placeholder="03xx-xxxxxxx" value="{{ $heldSale?->customer_phone }}"
+                           title="Optional. Stored on the sale — useful for delivery orders (contacting the customer) and for looking the sale up later by phone. Leave blank for walk-ins.">
                 </div>
             </div>
 
@@ -2906,8 +2907,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function updateStartFreshLabel() {
         const label = document.getElementById('start-fresh-label');
+        const btn = document.getElementById('start-fresh-btn');
         const sessionId = document.getElementById('restaurant_table_session_id')?.value || '';
         if (label) label.textContent = sessionId ? 'Add Round' : 'New Order';
+        // #7: make the button's meaning obvious in each state.
+        if (btn) btn.title = sessionId
+            ? 'Add Round — start another order for THIS table without closing it. Previously sent items stay; the new items become a fresh round on the same table.'
+            : 'New Order — clear the screen and start a brand-new sale.';
     }
 
     function updateSplitBillBtn() {
