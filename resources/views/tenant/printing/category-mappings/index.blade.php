@@ -120,12 +120,13 @@
                 </div>
                 <div class="col-md-6">
                     <label class="form-label required">Printer</label>
-                    <select name="printer_id" class="form-select" required>
+                    <select name="printer_id" id="mapping-printer" class="form-select" required>
                         <option value="">— Select —</option>
                         @foreach($printers as $p)
-                            <option value="{{ $p->id }}" @selected(old('printer_id') == $p->id)>{{ $p->name }} ({{ strtoupper($p->print_role) }})</option>
+                            <option value="{{ $p->id }}" data-reminder="{{ $p->supports_reminder ? '1' : '0' }}" @selected(old('printer_id') == $p->id)>{{ $p->name }} ({{ strtoupper($p->print_role) }}){{ $p->supports_reminder ? ' · Reminder' : '' }}</option>
                         @endforeach
                     </select>
+                    <div class="form-text" id="reminder-printer-hint" hidden>Only Reminder-capable printers are shown. Turn on “Reminder capable” on a printer to use it here.</div>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label required">Document</label>
@@ -157,10 +158,27 @@
 @endcan
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    const type = document.getElementById('mapping-document-type');
-    const policy = document.getElementById('reminder-addition-policy');
-    if (!type || !policy) return;
-    const sync = () => { policy.hidden = type.value !== 'reminder'; };
+    const type    = document.getElementById('mapping-document-type');
+    const policy  = document.getElementById('reminder-addition-policy');
+    const printer = document.getElementById('mapping-printer');
+    const hint    = document.getElementById('reminder-printer-hint');
+    if (!type) return;
+    const sync = () => {
+        const isReminder = type.value === 'reminder';
+        if (policy) policy.hidden = !isReminder;
+        if (hint)   hint.hidden   = !isReminder;
+        // Reminder documents can only go to Reminder-capable printers — hide the rest
+        // so no dead (never-printing) mapping can be created.
+        if (printer) {
+            Array.prototype.forEach.call(printer.options, function (opt) {
+                if (!opt.value) return; // keep the "— Select —" placeholder
+                const hide = isReminder && opt.dataset.reminder !== '1';
+                opt.disabled = hide;
+                opt.hidden   = hide;
+                if (hide && opt.selected) { printer.value = ''; }
+            });
+        }
+    };
     type.addEventListener('change', sync);
     sync();
 });
