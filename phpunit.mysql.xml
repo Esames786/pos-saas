@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  MYSQL-TEST-FOUNDATION-1 — authoritative MySQL/MariaDB integration + concurrency suite.
+  This config is the CORRECTNESS AUTHORITY for Edge runtime work (transactions, row locks,
+  FK behavior, config cutover, UUID idempotency, operational stock). The default phpunit.xml
+  (SQLite :memory:) stays for fast, DB-agnostic unit tests only.
+
+  Canonical command:
+      vendor/bin/phpunit -c phpunit.mysql.xml
+  (or)  php artisan test -c phpunit.mysql.xml
+
+  Requires a local MySQL/MariaDB with dedicated test databases (see docs/ops/EDGE_MYSQL_TEST_RUNBOOK.md).
+  The harness FAILS CLOSED unless the tenant DB name contains "test".
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+>
+    <testsuites>
+        <testsuite name="EdgeMySql">
+            <directory>tests/MySql</directory>
+        </testsuite>
+    </testsuites>
+    <source>
+        <include>
+            <directory>app</directory>
+        </include>
+    </source>
+    <php>
+        <env name="APP_ENV" value="testing"/>
+        <env name="APP_MAINTENANCE_DRIVER" value="file"/>
+        <env name="BCRYPT_ROUNDS" value="4"/>
+        <env name="CACHE_STORE" value="array"/>
+        <env name="MAIL_MAILER" value="array"/>
+        <env name="QUEUE_CONNECTION" value="sync"/>
+        <env name="SESSION_DRIVER" value="array"/>
+        <env name="PULSE_ENABLED" value="false"/>
+        <env name="TELESCOPE_ENABLED" value="false"/>
+        <env name="NIGHTWATCH_ENABLED" value="false"/>
+
+        <!-- Master (central) test DB — dedicated, name MUST contain "test". -->
+        <env name="DB_CONNECTION" value="master"/>
+        <env name="DB_HOST" value="127.0.0.1"/>
+        <env name="DB_PORT" value="3306"/>
+        <env name="DB_DATABASE" value="pos_test_master"/>
+        <env name="DB_USERNAME" value="root"/>
+        <env name="DB_PASSWORD" value=""/>
+
+        <!-- Tenant test DB — the harness sets .database at runtime and asserts the name. -->
+        <env name="TENANT_DB_HOST" value="127.0.0.1"/>
+        <env name="TENANT_DB_PORT" value="3306"/>
+        <env name="TENANT_DB_USERNAME" value="root"/>
+        <env name="TENANT_DB_PASSWORD" value=""/>
+        <env name="EDGE_TEST_TENANT_DB" value="pos_test_tenant"/>
+
+        <env name="EDGE_FEATURE_ENABLED" value="false"/>
+    </php>
+</phpunit>

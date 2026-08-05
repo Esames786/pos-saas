@@ -970,7 +970,14 @@ These supersede the "DECISION-OPEN" markers in §H2.4/§H2.18/§8/§H2.11.
 
 ---
 
-## Contract A — Config revision physical model (CLOSED, refined)
+## Contract A — Config revision physical model (**SUPERSEDED — see §MTF for the MySQL verdict**)
+> ⚠️ **The "transactional full-set DELETE + INSERT" mechanism below was REJECTED by the
+> MYSQL-TEST-FOUNDATION-1 executable spike (§MTF.1).** A real `DELETE` of a config table
+> **CASCADE-destroys** referencing history (39 CASCADE + 85 SET NULL FKs). The corrected mechanism is
+> **UPSERT-existing-id + tombstone-missing (never DELETE referenced config rows)** — see §MTF.1. The
+> code-trace reasoning below (per-line price capture) still holds and still means only one live set is
+> needed; only the *write* strategy changed from DELETE+INSERT to UPSERT+tombstone.
+
 **Code trace:** `Product extends Model` with **no global scope** ([Product.php:7](../../app/Models/Tenant/Product.php));
 `SalesTotalsService` totals **pre-resolved** lines (it does not fetch prices — [SalesTotalsService.php:15-46](../../app/Services/Sales/SalesTotalsService.php));
 held-sale lines **store their own `unit_price` and `product_name`** and are re-loaded from storage,
@@ -1208,3 +1215,97 @@ discount_amount`, and a manual discount typically routes through `ManagerApprova
 a permission. The spike (in EDGE-LOCAL-POS-1) must confirm the manual-discount path calls no
 cloud-only service (e.g. no central promotion/loyalty lookup). Usage-limited/global promotions stay
 BLOCKED regardless.
+
+---
+---
+
+# Part IV — MYSQL-TEST-FOUNDATION-1 (executable results)
+
+**Test-infrastructure sprint** (base `54ee08c`). No Edge runtime/sales/sync/activation, no production
+change, no deploy. This part records what was *proven by running code* on real MySQL, not designed on
+paper. Suite: `phpunit.mysql.xml` → `tests/MySql/` (11 tests / 29 assertions green on **MySQL 8.0.30**).
+Runbook: `docs/ops/EDGE_MYSQL_TEST_RUNBOOK.md`.
+
+## §MTF.1 Contract A verdict — blind DELETE+INSERT is REJECTED (executable)
+`ConfigRefreshFkSpikeTest`, against the **real** tenant schema:
+- **FK census referencing config tables** (products/users/printers/terminals/tables/…):
+  **CASCADE = 39, SET NULL = 85, RESTRICT = 1, NO ACTION = 4.**
+- **Concrete:** seeded a `product` referenced by a `sales_order_line`, then ran `DELETE FROM products`
+  (the Contract A swap step) → the historical sale line was **CASCADE-deleted** (0 rows remained).
+  **Operational history is destroyed.** Blind DELETE would also be *rejected* where RESTRICT/NO ACTION
+  applies (e.g. `void_reasons ← sales_order_line_cancellations`).
+- **Safe pattern proven:** UPSERT the existing id + set `status='inactive'` (tombstone) → the historical
+  line still resolves, the id is stable, contents updated.
+
+**Corrected Contract A mechanism (replaces the DELETE+INSERT in Part III):**
+> Config refresh **reconciles in place**: for each reference table, **UPSERT by the cloud business id**
+> (insert new, update changed — ids stay stable), and **tombstone** rows absent from the new revision
+> (`is_active=0`/`status='inactive'`) **instead of deleting them**. Referenced config rows are **never
+> DELETEd** while history points at them. Do the reconcile in one transaction per table. Only genuinely
+> unreferenced child/mapping tables (e.g. `category_printer_mappings`) may be safely replaced. This
+> preserves every FK-referenced history row, needs no revision predicate on reads, and keeps ids stable
+> for sync. **The MySQL suite is the gate that proves any future refresh implementation is FK-safe.**
+
+## §MTF.2 Historical Reminder destination (executable)
+`HistoricalReminderDestinationTest`: `print_jobs.printer_id` has **no FK** to `printers` and
+`print_jobs` snapshots **no destination** (name/ip/port). Deleting a printer leaves the job with a
+**dangling `printer_id`** and the destination name/ip becomes **unresolvable** (join → NULL);
+**tombstoning** the printer keeps it resolvable. **Contract (§G) refined:** the Edge print-audit event
+**MUST snapshot the physical destination** (printer name + ip/port + routing identity) **and** printers
+must be **tombstoned, not deleted** on refresh (consistent with §MTF.1). Either alone is fragile; do
+both.
+
+## §MTF.3 Concurrency foundation (executable)
+`SaleClientUuidRaceTest`: two independent PDO connections open overlapping transactions and race the
+same `client_uuid`; InnoDB serializes on the unique index → exactly **one** sale row survives, the
+loser fails on the duplicate key. This is genuine engine-level contention (not sequential calls) and is
+the reusable base for future Edge sale-idempotency / KOT `logical_key` / table-session races.
+
+## §MTF.4 Recipe/operational-stock reference (executable, real service)
+`RecipeConsumptionReferenceTest`: pins the operational-quantity expectations the future
+`EdgeOperationalStockService` must reproduce, and drives the **real `UnitConversionService`** —
+50 g → **0.05 KG**, and a **missing conversion throws** (the exact offline hard-block condition).
+`allow_negative_stock` gates the local hard-block. (Full wiring through `RecipeConsumptionService` with
+inventory posting is scheduled for EDGE-LOCAL-POS-1; these are the reference fixtures it must match.)
+
+## §MTF.5 Routing suite on real schema (executable)
+`PrintRoutingMySqlTest`: the real `PrintRoutingService::reminderRoutesForSale` runs against the real
+schema (traversing `lines.product.category` on the real `categories` table) — order-type-aware and
+deduplicated. **This closes the old SQLite "no such table: categories" gap**: it was the hand-rolled
+3-table SQLite mini-schema in `PrintRoutingFoundationTest`, not a code bug (verified). The MySQL suite
+uses real migrations (132 tables) and does not skip.
+
+## §MTF.6 Test harness + safety
+`tests/MySql/MySqlTenantTestCase` provisions dedicated `pos_test_master` + `pos_test_tenant` via the
+**real** migrations, and **fails closed** unless `APP_ENV=testing` and both DB names contain `test`.
+The default SQLite `phpunit.xml` stays for fast unit tests; **MySQL is the authority for Edge DB
+correctness.** Zero critical tests skipped in the MySQL suite.
+
+## §MTF.7 Locked decisions recorded (user, 2026-08)
+- **Config-archive retention (Contract B):** never delete an issued revision while any dependent Edge
+  event is unresolved; after the final dependent event is officially reconciled, **retain the immutable
+  validation snapshot ≥ 12 months** (longer if compliance later requires). Store only validation
+  material (revision, manifest hash, prices/tax/service-charge/discount+order-type permissions,
+  cancellation policy, issued_at) — not a full SaaS DB copy.
+- **Data recovery (Contract I):** `EDGE_LOCAL_APP_KEY` stays **machine-local, not escrowed** (new box =
+  new key). A **separate `DATA_RECOVERY_KEY`** encrypts the recoverable backup and is **KMS-wrapped and
+  cloud-escrowed** (ciphertext only, never plaintext). Replacement requires controlled re-pair + current
+  activation epoch + Owner-authorized recovery + audit event + KMS unwrap; **Edge credentials
+  re-enroll**. Pure customer-passphrase is **rejected** (forgotten passphrase = unrecoverable records).
+- **LAN TLS pilot (Contract J):** first offline pilot supports **managed Windows POS terminals only**;
+  Branch Server on a **fixed/DHCP-reserved LAN IP**; installer **branch-local CA** issues the server
+  cert (SAN = stable Edge hostname **+** reserved LAN IP); CA root installed on authorized Windows POS /
+  Print-Agent machines; **tablets/mobile are not promised** unless the local CA root is explicitly
+  installed on them.
+
+## §MTF.8 Go / No-Go after this sprint
+- **CLOSED (executable):** MySQL test authority; §7 Contract A **corrected to UPSERT+tombstone**; §8
+  destination snapshot+tombstone; §6 concurrency base; §9 conversion/hard-block reference; §5 categories
+  gap.
+- **Next sprint now safe to implement: EDGE-RUNTIME-BOUNDARY-1** (restricted build/route-allowlist/
+  appliance skeleton, with Contract J TLS + §H2.14 update channel locked). The FK-safe refresh
+  (UPSERT+tombstone) and every later Edge DB claim will be gated by this MySQL suite.
+- **Deferred to their sprints (scaffolded, not yet built here):** additional two-process races
+  (logical_key, table, Direct-Pay); full `EdgeOperationalStockService` wiring through
+  `RecipeConsumptionService`; porting `DirectPayPrintOrchestratorTest`/idempotency suites to MySQL.
+  These have a proven harness to build on.

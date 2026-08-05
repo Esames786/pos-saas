@@ -62,6 +62,17 @@ class PrintRoutingFoundationTest extends TestCase
             $table->unsignedBigInteger('receipt_printer_id')->nullable();
             $table->timestamps();
         });
+        // MYSQL-TEST-FOUNDATION-1: reminderRoutesForSale loadMissing('lines.product.category')
+        // resolves the category relation, so the mini-schema must expose `categories`
+        // (routing itself only uses product.category_id). Without this table the SQLite
+        // isolated tests errored "no such table: categories". The AUTHORITATIVE coverage of
+        // this routing on the real schema is tests/MySql/PrintRoutingMySqlTest.
+        Schema::connection('tenant')->create('categories', function (Blueprint $table) {
+            $table->id();
+            $table->string('name')->nullable();
+            $table->string('slug')->nullable();
+            $table->timestamps();
+        });
     }
 
     public function test_reminder_routes_are_order_aware_deduplicated_and_ask_wins(): void
