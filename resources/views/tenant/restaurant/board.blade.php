@@ -87,7 +87,8 @@
                                     @can('tenant.restaurant.table-sessions.bill-requested')
                                     <form method="POST" action="{{ url('/restaurant/table-sessions/' . $session->id . '/bill-requested') }}">
                                         @csrf
-                                        <button class="btn btn-sm btn-warning w-100">Request Bill</button>
+                                        <button class="btn btn-sm btn-warning w-100"
+                                                title="Signal that the guest wants their bill. Marks this table as 'Bill Requested' so the cashier knows to prepare and close it — it does not charge anything.">Request Bill</button>
                                     </form>
                                     @endcan
                                 @endif

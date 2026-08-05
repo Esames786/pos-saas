@@ -89,7 +89,7 @@
                         <label for="payment_method_id" class="form-label">Payment Method <span class="text-danger">*</span></label>
                         <select id="payment_method_id" name="payment_method_id" class="form-select" required>
                             @foreach($paymentMethods as $method)
-                                <option value="{{ $method->id }}">{{ $method->name }}</option>
+                                <option value="{{ $method->id }}" @selected($method->method_type === 'cash')>{{ $method->name }}</option>
                             @endforeach
                         </select>
                     </div>
@@ -131,6 +131,21 @@
                     <span class="text-muted">Est. Remaining</span>
                     <strong id="remaining-total">{{ number_format($salesOrder->grand_total, 2) }}</strong>
                 </div>
+                @php($__paidOrders = optional($salesOrder->restaurantTableSession)->salesOrders?->where('status', 'paid') ?? collect())
+                @if($__paidOrders->isNotEmpty())
+                    <hr>
+                    <div class="small text-muted mb-1">Already paid on this table ({{ $__paidOrders->count() }})</div>
+                    @foreach($__paidOrders as $__po)
+                        <div class="d-flex justify-content-between small">
+                            <span>{{ $__po->sale_no }}</span>
+                            <span>{{ number_format($__po->grand_total, 2) }}</span>
+                        </div>
+                    @endforeach
+                    <div class="d-flex justify-content-between small fw-semibold mt-1">
+                        <span>Paid so far</span>
+                        <span>{{ number_format($__paidOrders->sum('grand_total'), 2) }}</span>
+                    </div>
+                @endif
             </div>
         </div>
     </div>

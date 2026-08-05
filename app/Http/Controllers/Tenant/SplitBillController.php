@@ -21,6 +21,7 @@ class SplitBillController extends Controller
             'terminal',
             'customer',
             'restaurantTableSession.table',
+            'restaurantTableSession.salesOrders',
             'restaurantWaiter',
             'lines.product.unit',
             'lines.variant',

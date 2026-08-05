@@ -407,7 +407,8 @@
                   action="{{ $tableSession ? url('/restaurant/table-sessions/' . $tableSession->id . '/bill-requested') : '#' }}"
                   style="{{ $tableSession && $tableSession->status === 'open' ? '' : 'display:none;' }}">
                 @csrf
-                <button class="btn btn-sm btn-info" type="submit">Request Bill</button>
+                <button class="btn btn-sm btn-info" type="submit"
+                        title="Signal that the guest wants their bill. Marks this table as 'Bill Requested' so the cashier knows to prepare and close it — it does not charge anything.">Request Bill</button>
             </form>
         @endcan
     </div>
