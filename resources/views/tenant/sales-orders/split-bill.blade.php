@@ -57,10 +57,12 @@
                                 <td>{{ number_format($line->quantity, 3) }}</td>
                                 <td>
                                     <label for="split_qty_{{ $index }}" class="visually-hidden">Split quantity for {{ $line->product_name }}</label>
+                                    @php($__measurable = $line->product && $line->product->unit && in_array($line->product->unit->unit_type, ['weight', 'volume', 'length']))
                                     <input
                                         id="split_qty_{{ $index }}"
                                         type="number"
-                                        step="0.001"
+                                        step="{{ $__measurable ? '0.001' : '1' }}"
+                                        inputmode="{{ $__measurable ? 'decimal' : 'numeric' }}"
                                         min="0"
                                         max="{{ $line->quantity }}"
                                         name="lines[{{ $index }}][quantity]"

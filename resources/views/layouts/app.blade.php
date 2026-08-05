@@ -131,6 +131,17 @@ document.addEventListener('DOMContentLoaded', function () {
         localStorage.setItem(KEY, inner.scrollTop);
     });
 })();
+
+// Portal-wide: prevent the mouse wheel from silently changing <input type="number">
+// values. Scrolling over a FOCUSED number input used to increment/decrement it by its
+// step (e.g. 1 -> 1.001 on a 0.001-step field), silently corrupting quantities on the
+// split-bill / POS / edit screens. Ignore the wheel while a number input is focused.
+document.addEventListener('wheel', function (e) {
+    var el = e.target;
+    if (el && el.tagName === 'INPUT' && el.type === 'number' && el === document.activeElement) {
+        e.preventDefault();
+    }
+}, { passive: false });
 </script>
 </body>
 </html>

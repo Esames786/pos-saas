@@ -22,7 +22,7 @@ class SplitBillController extends Controller
             'customer',
             'restaurantTableSession.table',
             'restaurantWaiter',
-            'lines.product',
+            'lines.product.unit',
             'lines.variant',
         ]);
 
