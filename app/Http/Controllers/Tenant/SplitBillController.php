@@ -227,12 +227,23 @@ class SplitBillController extends Controller
         $salesOrder->refresh();
         $recallId  = $salesOrder->status === 'held' ? $salesOrder->id : $splitSale->id;
         $sessionId = $splitSale->restaurant_table_session_id;
-        $url = '/pos?held_sale_id=' . $recallId
+        $target = url('/pos?held_sale_id=' . $recallId
             . ($sessionId ? '&table_session_id=' . $sessionId : '')
-            . '&mode=dine_in&branch_id=' . $splitSale->branch_id;
+            . '&mode=dine_in&branch_id=' . $splitSale->branch_id);
 
-        return redirect(url($url))
-            ->with('status', 'Split into held order ' . $splitSale->sale_no . '. Pay each order from the POS.');
+        session()->flash('status', 'Split into held order ' . $splitSale->sale_no . '. Pay each order from the POS.');
+
+        // The split form is loaded inside an IFRAME in the POS "Split Bill" modal, so a plain
+        // redirect would just reload the POS inside that iframe (leaving the parent POS stale).
+        // Break OUT to the top window so the whole POS reloads to the fresh post-split state and
+        // the modal closes. When the page is opened directly, window.top === self, so it still
+        // just navigates normally.
+        $encodedTarget = json_encode($target, JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+
+        return response(
+            '<!doctype html><meta charset="utf-8"><script>window.top.location.href=' . $encodedTarget . ';</script>'
+            . 'Split complete — returning to the POS…'
+        );
     }
 
     private function recalculateHeldSale(SalesOrder $salesOrder): void
