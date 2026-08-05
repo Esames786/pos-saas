@@ -301,6 +301,16 @@ class POSController extends Controller
             'allowedOrderTypes'   => $allowedOrderTypes,
             'tableSession'        => $tableSession,
             'heldSale'            => $heldSale,
+            // Per-branch RECEIPT layout so the Current Cart Preview matches the receipt look.
+            'receiptLayouts'      => \App\Models\Tenant\ReceiptLayoutSetting::where('document_type', 'receipt')
+                ->get()
+                ->keyBy('branch_id')
+                ->map(fn ($l) => [
+                    'header_text'      => $l->header_text,
+                    'footer_text'      => $l->footer_text,
+                    'paper_size'       => $l->paper_size,
+                    'show_branch_name' => (bool) $l->show_branch_name,
+                ]),
             'terminalPrintConfig' => TerminalPrinterSetting::all()
                 ->keyBy('terminal_id')
                 ->map(fn ($s) => [

@@ -2972,6 +2972,7 @@ document.addEventListener('DOMContentLoaded', function () {
     /* ── Terminal auto-print config ───────────────────────────────────── */
 
     const terminalPrintConfig = @json($terminalPrintConfig);
+    const receiptLayouts = @json($receiptLayouts);
 
     // Session-only print overrides (this device): '1' force on, '0' force off, null = follow terminal.
     const PRINT_OVERRIDE_KEY = { kot: 'pos_auto_kot', receipt: 'pos_auto_receipt' };
@@ -4304,11 +4305,18 @@ document.addEventListener('DOMContentLoaded', function () {
             const lt = (it.line_total != null) ? Number(it.line_total) : qty * price;
             return '<tr><td>' + escapeHtml(it.name || it.product_name || 'Item') + '</td><td style="text-align:right">' + qty + '</td><td style="text-align:right">' + money(price) + '</td><td style="text-align:right">' + money(lt) + '</td></tr>';
         }).join('');
+        // Use the branch's RECEIPT layout so this matches the receipt / table-bill look.
+        const lay = (receiptLayouts && receiptLayouts[selectedBranchId()]) || {};
+        const paper = lay.paper_size || '80mm';
+        const printW = paper === '58mm' ? '52mm' : (paper === '80mm' ? '72mm' : '180mm');
+        const headerName = (lay.show_branch_name === false) ? '' : branchName;
         const html = '<html><head><title>Bill Preview</title><style>'
-            + 'body{font-family:monospace;max-width:320px;margin:0 auto;padding:8px;font-size:13px}'
+            + 'body{font-family:\'Courier New\',Courier,monospace;width:' + printW + ';margin:0 auto;padding:8px;font-size:13px;color:#000}'
+            + '@media screen{body{width:320px}}'
             + 'h3{text-align:center;margin:4px 0}table{width:100%;border-collapse:collapse}td,th{padding:2px 0}'
             + '.tot{border-top:1px dashed #000;margin-top:6px;padding-top:6px}.muted{text-align:center;color:#666;font-size:11px}</style></head><body>'
-            + '<h3>' + escapeHtml(branchName) + '</h3>'
+            + (headerName ? '<h3>' + escapeHtml(headerName) + '</h3>' : '')
+            + (lay.header_text ? '<div style="text-align:center">' + escapeHtml(lay.header_text) + '</div>' : '')
             + '<div class="muted">BILL PREVIEW — NOT A TAX RECEIPT</div>'
             + '<div class="muted">' + new Date().toLocaleString() + '</div><hr>'
             + '<table><thead><tr><th style="text-align:left">Item</th><th style="text-align:right">Qty</th><th style="text-align:right">Price</th><th style="text-align:right">Amt</th></tr></thead><tbody>'
@@ -4320,7 +4328,9 @@ document.addEventListener('DOMContentLoaded', function () {
             + ((t.serviceCharge > 0) ? '<tr><td>Service Charge</td><td style="text-align:right">' + money(t.serviceCharge) + '</td></tr>' : '')
             + ((t.tip > 0) ? '<tr><td>Tip</td><td style="text-align:right">' + money(t.tip) + '</td></tr>' : '')
             + '<tr><td><strong>Total</strong></td><td style="text-align:right"><strong>' + money(t.total) + '</strong></td></tr>'
-            + '</table></div></body></html>';
+            + '</table></div>'
+            + (lay.footer_text ? '<hr><div style="text-align:center">' + escapeHtml(lay.footer_text) + '</div>' : '')
+            + '</body></html>';
         const body = document.getElementById('bill-preview-modal-body');
         body.innerHTML = '<iframe id="bill-preview-frame" title="Current cart bill preview" class="w-100 border-0" style="min-height:560px"></iframe>';
         body.querySelector('iframe').srcdoc = html;
