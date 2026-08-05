@@ -232,6 +232,30 @@ class TenantProvisioner
             ['name' => 'Default Waiter', 'status' => 'active']
         );
 
+        // Default print layouts (KOT / Receipt / Reminder) so a new tenant can preview,
+        // edit, and print all three document types out of the box — including the Reminder
+        // layout — without any manual database insertion. Layouts are templates only (no
+        // physical printer is seeded; the tenant maps their own hardware).
+        $layoutDefaults = [
+            'paper_size' => '80mm', 'show_logo' => false, 'show_branch_name' => true,
+            'show_branch_address' => false, 'show_branch_phone' => false, 'show_tax_number' => false,
+            'show_cashier_name' => true, 'show_customer_name' => false, 'show_table_info' => true,
+            'show_order_no' => true, 'show_order_time' => true, 'show_updated_time' => true,
+            'show_print_time' => true, 'show_item_codes' => false, 'show_payment_breakdown' => false,
+            'font_size' => 12, 'kot_font_size' => 14, 'is_active' => true,
+        ];
+        $layoutTexts = [
+            'kot'      => ['header_text' => '*** KITCHEN ORDER TICKET ***', 'footer_text' => null],
+            'receipt'  => ['header_text' => $tenant->name ?: 'Receipt', 'footer_text' => 'Thank you!', 'show_payment_breakdown' => true],
+            'reminder' => ['header_text' => '*** ORDER REMINDER ***', 'footer_text' => null],
+        ];
+        foreach ($layoutTexts as $docType => $texts) {
+            DB::connection('tenant')->table('receipt_layout_settings')->updateOrInsert(
+                ['branch_id' => $branch->id, 'document_type' => $docType],
+                array_merge($layoutDefaults, $texts, ['created_at' => now(), 'updated_at' => now()])
+            );
+        }
+
         $tenantPermissions = [
             'tenant.dashboard',
 
