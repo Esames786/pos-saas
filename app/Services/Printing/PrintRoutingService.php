@@ -33,7 +33,18 @@ class PrintRoutingService
             ->unique()
             ->values();
 
-        if ($categoryIds->isEmpty()) {
+        // A reminder fires when at least one line is active this round. Category-specific
+        // routes match the order's categories; an "All categories" (NULL) route fires on
+        // any active order — even when no line carries a category.
+        $hasActiveLine = $sale->lines->contains(function ($line) use ($effectiveQuantities) {
+            $quantity = array_key_exists((string) $line->id, $effectiveQuantities)
+                ? (float) $effectiveQuantities[(string) $line->id]
+                : (float) $line->quantity;
+
+            return $quantity > 0;
+        });
+
+        if (! $hasActiveLine) {
             return [];
         }
 
@@ -41,7 +52,12 @@ class PrintRoutingService
             ->where(function ($query) use ($sale) {
                 $query->whereNull('branch_id')->orWhere('branch_id', $sale->branch_id);
             })
-            ->whereIn('category_id', $categoryIds)
+            ->where(function ($query) use ($categoryIds) {
+                $query->whereNull('category_id');
+                if ($categoryIds->isNotEmpty()) {
+                    $query->orWhereIn('category_id', $categoryIds->all());
+                }
+            })
             ->where('print_role', 'reminder')
             ->where(function ($query) use ($sale) {
                 $query->where('order_type', 'all')->orWhere('order_type', $sale->order_type);
@@ -134,25 +150,29 @@ class PrintRoutingService
             $printers  = collect();
             $categoryId = $line->product?->category_id;
 
-            if ($categoryId) {
-                $printerIds = CategoryPrinterMapping::where(function ($q) use ($sale) {
-                        $q->whereNull('branch_id')->orWhere('branch_id', $sale->branch_id);
-                    })
-                    ->where('category_id', $categoryId)
-                    ->whereIn('print_role', ['kot', 'both'])
-                    ->where(function ($query) use ($sale) {
-                        $query->where('order_type', 'all')->orWhere('order_type', $sale->order_type);
-                    })
-                    ->where('is_active', true)
-                    ->pluck('printer_id')
-                    ->unique();
+            // Match this line's category route OR an "All categories" (NULL) wildcard route.
+            $printerIds = CategoryPrinterMapping::where(function ($q) use ($sale) {
+                    $q->whereNull('branch_id')->orWhere('branch_id', $sale->branch_id);
+                })
+                ->where(function ($q) use ($categoryId) {
+                    $q->whereNull('category_id');
+                    if ($categoryId) {
+                        $q->orWhere('category_id', $categoryId);
+                    }
+                })
+                ->whereIn('print_role', ['kot', 'both'])
+                ->where(function ($query) use ($sale) {
+                    $query->where('order_type', 'all')->orWhere('order_type', $sale->order_type);
+                })
+                ->where('is_active', true)
+                ->pluck('printer_id')
+                ->unique();
 
-                if ($printerIds->isNotEmpty()) {
-                    $printers = Printer::whereIn('id', $printerIds)
-                        ->whereIn('print_role', ['kot', 'both'])
-                        ->where('is_active', true)
-                        ->get();
-                }
+            if ($printerIds->isNotEmpty()) {
+                $printers = Printer::whereIn('id', $printerIds)
+                    ->whereIn('print_role', ['kot', 'both'])
+                    ->where('is_active', true)
+                    ->get();
             }
 
             if ($printers->isEmpty()) {

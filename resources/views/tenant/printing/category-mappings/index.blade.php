@@ -53,7 +53,7 @@
                 <tr>
                     <td>{{ $m->branch?->name ?? 'All Branches' }}</td>
                     <td>{{ $m->order_type === 'all' ? 'All' : ucwords(str_replace('_', ' ', $m->order_type)) }}</td>
-                    <td>{{ $m->category?->name }}</td>
+                    <td>{{ $m->category?->name ?? 'All categories' }}</td>
                     <td>{{ $m->printer?->name }}</td>
                     <td>{{ ucfirst($m->print_role) }}</td>
                     <td>{{ $m->print_role === 'reminder' ? ($m->reminder_confirm_on_addition ? 'Ask' : 'Automatic') : '—' }}</td>
@@ -113,10 +113,12 @@
                     <label class="form-label required">Category</label>
                     <select name="category_id" class="form-select" required>
                         <option value="">— Select —</option>
+                        <option value="0" @selected(old('category_id') === '0')>— All categories (whole order) —</option>
                         @foreach($categories as $c)
                             <option value="{{ $c->id }}" @selected(old('category_id') == $c->id)>{{ $c->name }}</option>
                         @endforeach
                     </select>
+                    <div class="form-text" id="all-categories-hint" hidden>Reminder always prints the complete order, so “All categories” is the natural choice.</div>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label required">Printer</label>
@@ -162,11 +164,13 @@ document.addEventListener('DOMContentLoaded', function () {
     const policy  = document.getElementById('reminder-addition-policy');
     const printer = document.getElementById('mapping-printer');
     const hint    = document.getElementById('reminder-printer-hint');
+    const catHint = document.getElementById('all-categories-hint');
     if (!type) return;
     const sync = () => {
         const isReminder = type.value === 'reminder';
-        if (policy) policy.hidden = !isReminder;
-        if (hint)   hint.hidden   = !isReminder;
+        if (policy)  policy.hidden  = !isReminder;
+        if (hint)    hint.hidden    = !isReminder;
+        if (catHint) catHint.hidden = !isReminder;
         // Reminder documents can only go to Reminder-capable printers — hide the rest
         // so no dead (never-printing) mapping can be created.
         if (printer) {

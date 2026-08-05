@@ -38,9 +38,14 @@ class CategoryPrinterMappingController extends Controller
 
     public function store(Request $request)
     {
+        // "All categories" (wildcard) arrives as 0 / empty → store as NULL.
+        if (in_array($request->input('category_id'), ['0', '', null], true)) {
+            $request->merge(['category_id' => null]);
+        }
+
         $data = $request->validate([
             'branch_id'   => ['nullable', 'exists:branches,id'],
-            'category_id' => ['required', 'exists:categories,id'],
+            'category_id' => ['nullable', 'exists:categories,id'],
             'printer_id'  => ['required', 'exists:printers,id'],
             'print_role'  => ['required', Rule::in(['kot', 'receipt', 'reminder'])],
             'order_type'  => ['required', Rule::in(['all', 'dine_in', 'takeaway', 'quick_sale', 'delivery'])],
@@ -68,7 +73,10 @@ class CategoryPrinterMappingController extends Controller
 
         DB::connection('tenant')->transaction(function () use ($data) {
             // Serializes NULL-branch inserts, which a MySQL unique index cannot protect.
-            Category::whereKey($data['category_id'])->lockForUpdate()->firstOrFail();
+            // Skip for the "All categories" wildcard (no concrete category to lock).
+            if ($data['category_id'] !== null) {
+                Category::whereKey($data['category_id'])->lockForUpdate()->firstOrFail();
+            }
 
             $duplicate = CategoryPrinterMapping::query()
                 ->when(
@@ -76,7 +84,11 @@ class CategoryPrinterMappingController extends Controller
                     fn ($query) => $query->whereNull('branch_id'),
                     fn ($query) => $query->where('branch_id', $data['branch_id'])
                 )
-                ->where('category_id', $data['category_id'])
+                ->when(
+                    $data['category_id'] === null,
+                    fn ($query) => $query->whereNull('category_id'),
+                    fn ($query) => $query->where('category_id', $data['category_id'])
+                )
                 ->where('printer_id', $data['printer_id'])
                 ->where('print_role', $data['print_role'])
                 ->where('order_type', $data['order_type'])
