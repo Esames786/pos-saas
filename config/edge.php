@@ -113,8 +113,10 @@ return [
             '#(^|/)id_ed25519(\..+)?$#',
             '#\.(sql|dump|sqlite)$#i',
             '#(^|/)tests(/|$)#',
-            '#(^|/)storage/logs/#',
-            '#(^|/)storage/app/backups/#',
+            // Forbid copied LOG/BACKUP content, but allow the empty runtime-dir .gitkeep marker the
+            // builder creates for storage/logs.
+            '#(^|/)storage/logs/(?!\.gitkeep$).#',
+            '#(^|/)storage/app/backups/(?!\.gitkeep$).#',
             '#FakePrinter\.exe$#i',
             '#(^|/)\.psysh_history$#',
         ],
