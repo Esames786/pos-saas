@@ -1,7 +1,7 @@
 # Bingoo POS — Roadmap & System Gap Register
 
 > Maintained working document. Update after every completed sprint.
-> Last updated: **2026-08-07** (Shift Track S DEPLOYED to prod `0d8d656`; **EDGE-RUNTIME-BOUNDARY-1 + HARDEN-1** built locally — fail-closed artifacts, Cloud/API exposure closed, per-mode route registration; MySQL 49/149 + fast 94/31035 green; HARDEN not yet deployed) · branch `feat/14d-2-plan-upgrade-requests`
+> Last updated: **2026-08-07** (EDGE-RUNTIME-BOUNDARY-1 + HARDEN-1 + BUILD-RELEASE-CLOSURE-1 built; reproducible fail-closed artifacts + exact route census; branch-shift UX & grouped shifts + reminder-print demo fix shipped; MySQL 49/149 + fast 96/30890 green; prod on e68e2e4, cloud) · branch `feat/14d-2-plan-upgrade-requests`
 
 ---
 

@@ -136,6 +136,35 @@ to clients (do not treat runtime middleware as equivalent to source minimisation
 Tests: `EdgeBranchServerRegistrationTest` (real HTTP + per-mode registration, Web+API), boundary
 explicit-allowlist + cloud-404 + fail-closed-marker regressions, artifact runtime-dir + marker test.
 
+## BUILD-RELEASE-CLOSURE-1 (2026-08-07) — reproducible, physically-fail-closed artifacts
+
+Closes build-pipeline holes found after HARDEN-1:
+
+- **Physical recursive audit:** `EdgeArtifactBuilder::physicalForbidden($dir)` walks EVERY file under a
+  built artifact (independent of the include allowlist), so a stray file that was never in the plan
+  (e.g. a copied `.env`, `.pem`, `.git/`, dump) is still caught. `build()` runs it after copy, and
+  `edge:audit-artifact` now uses it (was plan-based and blind to out-of-plan files). Paths only.
+- **`--force` never preserves stale files:** a non-empty destination is refused without `--force`;
+  with `--force` the destination is **deleted and recreated empty** — but only if it is a previous
+  artifact (`edge-build-manifest.json` present) and not an unsafe path (filesystem/drive root, too
+  shallow, the project dir or an ancestor, the home dir).
+- **Release provenance:** default (RELEASE) mode **refuses a dirty tree**, stamps
+  `git_commit = actual HEAD`, sets `source_dirty=false`, `build_mode=release`, and **rejects
+  `--git-commit`**. `--allow-dirty` (DEV/TEST) permits a dirty tree + commit override but records
+  `source_dirty=true` / `build_mode=dev` so it can never be mistaken for a release. (This fixes the
+  earlier build that stamped `--git-commit=0d8d656` onto a dirty HARDEN-1 tree.)
+- **Manifest hash order:** the integrity manifest is generated LAST, after every source file + runtime
+  dir is finalized; nothing mutates the artifact afterwards.
+- **Exact route census:** `EdgeBranchServerRegistrationTest` enumerates EVERY registered route URI on
+  a Branch Server and asserts the surface is only `up`, `edge/local/{health,ready,build-info}` — any
+  new/framework/fallback route fails until deliberately approved. This caught Laravel's
+  `storage/{path}` file-serving route; **public-disk `serve` is now disabled on branch_server**
+  (`config/filesystems.php` → `serve = EdgeRuntime::isCloud()`), so it is not registered there.
+- **Release vendor contract:** a client RELEASE artifact must be built against
+  `composer install --no-dev --optimize-autoloader` (the local dev vendor ships phpunit/mockery). The
+  builder does not run composer; this remains a documented **RELEASE gate** (the physical audit still
+  passes, but dev packages are present in a dev build).
+
 ## LAN TLS + local name contract
 
 Pilot contract (locked): managed Windows POS terminals; Branch Server on a DHCP-reserved IP; TLS via

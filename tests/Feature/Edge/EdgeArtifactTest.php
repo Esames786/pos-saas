@@ -136,6 +136,29 @@ class EdgeArtifactTest extends TestCase
         $this->assertSame('branch_server', $manifest['runtime_mode_supported']);
     }
 
+    public function test_physical_audit_catches_stale_files_outside_the_include_allowlist(): void
+    {
+        $builder = new EdgeArtifactBuilder([
+            'include' => ['app'], 'exclude' => [],
+            'forbidden' => ['#(^|/)\.env$#', '#\.pem$#i', '#(^|/)\.git(/|$)#'],
+        ]);
+        $dir = $this->tempDir();
+        $this->writeFile($dir, 'app/Good.php', '<?php');
+        $this->writeFile($dir, '.env', 'DB_PASSWORD=secret');            // NOT under include -> plan misses it
+        $this->writeFile($dir, 'vendor/acme/pkg/private.pem', 'KEY');    // NOT under include
+        $this->writeFile($dir, '.git/config', '[core]');                 // NOT under include
+
+        // The plan-based scan is BLIND to these (they are outside the include allowlist)...
+        $plan = $builder->plan($dir);
+        $this->assertNotContains('.env', $plan);
+
+        // ...but the PHYSICAL audit walks the whole tree and catches every one.
+        $hits = $builder->physicalForbidden($dir);
+        $this->assertContains('.env', $hits, 'physical audit must catch a stale .env');
+        $this->assertContains('vendor/acme/pkg/private.pem', $hits, 'physical audit must catch a stray private key');
+        $this->assertTrue((bool) collect($hits)->first(fn ($p) => str_starts_with($p, '.git/')), 'physical audit must catch .git');
+    }
+
     public function test_real_repo_plan_is_secret_free(): void
     {
         $builder = EdgeArtifactBuilder::fromConfig();

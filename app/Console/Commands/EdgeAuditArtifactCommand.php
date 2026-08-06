@@ -23,11 +23,12 @@ class EdgeAuditArtifactCommand extends Command
         $dir = (string) ($this->argument('dir') ?: base_path());
         $builder = EdgeArtifactBuilder::fromConfig();
 
-        $plan = $builder->plan($dir);
-        $forbidden = $builder->forbidden($plan);
+        // PHYSICAL audit: walk EVERY file under $dir, independent of the include allowlist, so a stale
+        // file that was never in the plan (e.g. a copied .env) is still detected.
+        $forbidden = $builder->physicalForbidden($dir);
 
         if ($forbidden !== []) {
-            $this->error(count($forbidden) . ' forbidden file(s) would be packaged:');
+            $this->error(count($forbidden) . ' forbidden/secret file(s) found under [' . $dir . ']:');
             foreach (array_slice($forbidden, 0, 50) as $f) {
                 $this->line('  - ' . $f);
             }
@@ -35,7 +36,7 @@ class EdgeAuditArtifactCommand extends Command
             return self::FAILURE;
         }
 
-        $this->info('Artifact audit clean — ' . count($plan) . ' files, no forbidden/secret paths.');
+        $this->info('Physical artifact audit clean — no forbidden/secret paths under [' . $dir . '].');
 
         return self::SUCCESS;
     }

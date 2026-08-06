@@ -73,6 +73,37 @@ class EdgeArtifactBuilder
         return $hits;
     }
 
+    /**
+     * PHYSICAL audit — recursively scan EVERY file/dir under $dir for forbidden patterns, INDEPENDENT
+     * of the include allowlist. This is the authoritative audit of a BUILT artifact: a stale file that
+     * was never in the plan (e.g. a `.env` left in the destination) is still caught here, whereas the
+     * plan-based forbidden() would never see it. Paths only, never contents.
+     *
+     * @return array<int,string> sorted relative paths that are forbidden (empty = clean)
+     */
+    public function physicalForbidden(string $dir): array
+    {
+        $dir = rtrim(str_replace('\\', '/', $dir), '/');
+        if (! is_dir($dir)) {
+            return [];
+        }
+
+        $patterns = (array) ($this->config['forbidden'] ?? []);
+        $hits = [];
+        foreach ($this->walk($dir) as $abs) {
+            $rel = ltrim(substr(str_replace('\\', '/', $abs), strlen($dir) + 1), '/');
+            foreach ($patterns as $pattern) {
+                if (preg_match($pattern, $rel)) {
+                    $hits[] = $rel;
+                    break;
+                }
+            }
+        }
+        sort($hits);
+
+        return $hits;
+    }
+
     /** Build the manifest (per-file SHA-256 + a manifest hash over the sorted map). */
     public function manifest(string $root, array $relPaths, array $meta = []): array
     {
@@ -146,13 +177,18 @@ class EdgeArtifactBuilder
             @file_put_contents($abs . '/.gitkeep', '');
         }
 
+        // Integrity manifest LAST — after every file + runtime dir is finalized, nothing mutates the
+        // artifact afterwards. (Its own edge-build-manifest.json is written after and is not a hashed
+        // source file.)
         $manifest = $this->manifest($dest, $plan, $meta);
         file_put_contents($dest . '/edge-build-manifest.json', json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
-        // Re-audit the physical output as a belt-and-suspenders check.
-        $writtenForbidden = $this->forbidden($this->plan($dest));
+        // Authoritative PHYSICAL re-audit: walk the ENTIRE built tree (not just the plan) so any
+        // stray forbidden/secret file that slipped into the destination fails the build.
+        $writtenForbidden = $this->physicalForbidden($dest);
         if ($writtenForbidden !== []) {
-            throw new RuntimeException('Edge artifact audit FAILED after copy: ' . implode(', ', $writtenForbidden));
+            throw new RuntimeException('Edge artifact PHYSICAL audit FAILED after build: '
+                . implode(', ', array_slice($writtenForbidden, 0, 20)));
         }
 
         $summary = $manifest;

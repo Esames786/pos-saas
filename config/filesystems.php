@@ -33,7 +33,11 @@ return [
         'local' => [
             'driver' => 'local',
             'root' => storage_path('app/private'),
-            'serve' => true,
+            // EDGE-RUNTIME-BUILD-RELEASE-CLOSURE-1: the framework registers a `storage/{path}`
+            // file-serving route when serve=true. A Branch Server must expose ONLY the Edge runtime
+            // routes, so serving is disabled there (the route is then never registered). Cloud
+            // behaviour is unchanged.
+            'serve' => \App\Support\EdgeRuntime::isCloud(),
             'throw' => false,
             'report' => false,
         ],

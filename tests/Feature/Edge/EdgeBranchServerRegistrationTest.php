@@ -61,6 +61,28 @@ class EdgeBranchServerRegistrationTest extends TestCase
         $this->getJson('/edge/local/ready')->assertStatus(200);
     }
 
+    public function test_branch_server_route_census_is_only_the_approved_surface(): void
+    {
+        // EXACT census: enumerate EVERY registered route URI (not just known cloud names) so a
+        // framework/fallback/unnamed route can never sneak onto a Branch Server. Any new route fails
+        // this test until it is deliberately added to the approved set.
+        $approved = [
+            'up',                    // framework health probe (non-secret) — deliberately approved
+            'edge/local/health',
+            'edge/local/ready',
+            'edge/local/build-info',
+        ];
+
+        $uris = collect(\Illuminate\Support\Facades\Route::getRoutes()->getRoutes())
+            ->map(fn ($r) => $r->uri())
+            ->unique()
+            ->values()
+            ->all();
+
+        $unexpected = array_values(array_diff($uris, $approved));
+        $this->assertSame([], $unexpected, 'Unexpected routes registered on a Branch Server: ' . implode(', ', $unexpected));
+    }
+
     public function test_branch_server_returns_404_for_unregistered_cloud_paths(): void
     {
         // Not registered -> 404 (routing), regardless of middleware. Proves no cloud surface exists.
