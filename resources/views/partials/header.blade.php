@@ -28,6 +28,29 @@
 
         <ul class="nav user-menu">
             @if($isTenant)
+                @php
+                    $clock = app(\App\Support\TenantClock::class);
+                    $displayTz = $clock->displayTimezone();
+                    $businessTz = $clock->businessTimezone();
+                    $businessToday = \Illuminate\Support\Carbon::parse(
+                        $clock->businessDateForOpening($businessTz)
+                    )->format('D, d M Y');
+                @endphp
+                {{-- SHIFT-TIMEZONE-BUSINESS-DATE-1 (D/R/S): live 24h clock, server-anchored so it
+                     ticks correctly even if the client wall clock is wrong; shows the display
+                     timezone and today's business date. --}}
+                <li class="nav-item d-none d-lg-flex align-items-center shift-clock-widget me-2"
+                    data-epoch="{{ (int) round(microtime(true) * 1000) }}"
+                    data-tz="{{ $displayTz }}"
+                    title="Live time ({{ $displayTz }}) · Business date {{ $businessToday }} ({{ $businessTz }})">
+                    <i class="ti ti-clock-hour-3 me-1 text-muted"></i>
+                    <span class="shift-clock-time fw-semibold" aria-hidden="true">--:--:--</span>
+                    <span class="shift-clock-tz small text-muted ms-1">{{ $displayTz }}</span>
+                    <span class="shift-clock-bizdate badge bg-light text-dark border ms-2">
+                        <i class="ti ti-calendar-event me-1"></i>{{ $businessToday }}
+                    </span>
+                </li>
+
                 <li class="nav-item pos-nav">
                     @can('tenant.pos.index')
                         <a href="{{ url('/pos') }}" class="btn btn-dark btn-md d-inline-flex align-items-center">
@@ -92,3 +115,41 @@
         </ul>
     </div>
 </div>
+
+@once
+@if($isTenant)
+{{-- Server-anchored ticking clock. We seed an absolute instant (ms since epoch) from the
+     server at render time, then advance it locally using performance.now() deltas and render
+     the wall-clock time for the display timezone with Intl — so a wrong client clock cannot
+     skew it. --}}
+<script>
+(function () {
+    var el = document.querySelector('.shift-clock-widget');
+    if (!el) return;
+    var out = el.querySelector('.shift-clock-time');
+    var serverMs = parseInt(el.getAttribute('data-epoch'), 10);
+    var tz = el.getAttribute('data-tz') || undefined;
+    if (!out || isNaN(serverMs)) return;
+
+    var perfBase = (window.performance && performance.now) ? performance.now() : null;
+    var fmt;
+    try {
+        fmt = new Intl.DateTimeFormat('en-GB', {
+            timeZone: tz, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+        });
+    } catch (e) {
+        fmt = new Intl.DateTimeFormat('en-GB', {
+            hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+        });
+    }
+
+    function tick() {
+        var elapsed = perfBase !== null ? (performance.now() - perfBase) : 0;
+        out.textContent = fmt.format(new Date(serverMs + elapsed));
+    }
+    tick();
+    setInterval(tick, 1000);
+})();
+</script>
+@endif
+@endonce
