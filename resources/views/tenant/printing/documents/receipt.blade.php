@@ -8,6 +8,8 @@
             $fontSize  = $layout?->font_size ?? 12;
             $paperSize = $layout?->paper_size ?? '80mm';
             $width     = match($paperSize) { '58mm' => '52mm', '80mm' => '72mm', default => '180mm' };
+            // SHIFT-TIMEZONE-BUSINESS-DATE-1 (N): print in the store's local (branch) timezone.
+            $printTz = app(\App\Support\TenantClock::class)->businessTimezone($salesOrder->branch ?? null);
         @endphp
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -73,7 +75,7 @@
 <div>Order: <span class="bold">{{ $salesOrder->sale_no ?? $salesOrder->order_no }}</span></div>
 @endif
 
-<div>Date: {{ ($salesOrder->sale_date ?? $salesOrder->created_at)?->format('d/m/Y H:i') }}</div>
+<div>Date: {{ ($salesOrder->sale_date ?? $salesOrder->created_at)?->copy()->timezone($printTz)->format('d/m/Y H:i') }}</div>
 
 @if(!($layout?->show_cashier_name === false) && $salesOrder->createdBy)
 <div>Cashier: {{ $salesOrder->createdBy->name }}</div>
@@ -223,7 +225,7 @@
 @endif
 
 <div class="center" style="margin-top:4px; font-size:10px">
-    {{ ($salesOrder->sale_date ?? $salesOrder->created_at)?->format('d/m/Y H:i:s') }}
+    {{ ($salesOrder->sale_date ?? $salesOrder->created_at)?->copy()->timezone($printTz)->format('d/m/Y H:i:s') }}
 </div>
 
 <div class="no-print" style="text-align:center;margin:12px 0;display:flex;gap:8px;justify-content:center">

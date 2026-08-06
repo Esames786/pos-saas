@@ -2,11 +2,22 @@
 
 namespace App\Services\Printing;
 
+use App\Models\Tenant\Branch;
 use App\Models\Tenant\PrintJob;
 use App\Models\Tenant\SalesOrder;
+use App\Support\TenantClock;
 
 class EscPosPayloadService
 {
+    /**
+     * SHIFT-TIMEZONE-BUSINESS-DATE-1 (N): a printed ticket shows the store's local wall-clock time.
+     * DB timestamps are UTC-canonical, so we render them in the branch business timezone. This is
+     * a pure display concern — the ESC-POS engine and stored data are unchanged.
+     */
+    private function branchTz(?Branch $branch): string
+    {
+        return app(TenantClock::class)->businessTimezone($branch);
+    }
     public function build(PrintJob $job): string
     {
         if ($job->reference_type !== 'sales_order') {
@@ -43,6 +54,8 @@ class EscPosPayloadService
     public function buildReminder(PrintJob $job): string
     {
         $payload = $job->payload ?? [];
+        // Render reminder timestamps in the store's local (branch business) timezone.
+        $tz = $this->branchTz(optional(SalesOrder::with('branch')->find($job->reference_id))->branch);
         $revision = max((int) ($payload['revision'] ?? 1), 1);
         $copyNo = max((int) ($payload['copy_no'] ?? 1), 1);
         $eventType = (string) ($payload['event_type'] ?? 'order');
@@ -79,13 +92,13 @@ class EscPosPayloadService
         }
         $out .= 'TYPE: ' . strtoupper(str_replace('_', ' ', (string) ($payload['order_type'] ?? 'SALE'))) . "\n";
         if (($layout['show_order_time'] ?? true) && !empty($payload['order_time'])) {
-            $out .= 'ORDER: ' . $this->formatTimestamp($payload['order_time']) . "\n";
+            $out .= 'ORDER: ' . $this->formatTimestamp($payload['order_time'], $tz) . "\n";
         }
         if (($layout['show_updated_time'] ?? true) && !empty($payload['updated_time'])) {
-            $out .= 'UPDATED: ' . $this->formatTimestamp($payload['updated_time']) . "\n";
+            $out .= 'UPDATED: ' . $this->formatTimestamp($payload['updated_time'], $tz) . "\n";
         }
         if (($layout['show_print_time'] ?? true) && !empty($payload['generated_at'])) {
-            $out .= 'PRINT: ' . $this->formatTimestamp($payload['generated_at']) . "\n";
+            $out .= 'PRINT: ' . $this->formatTimestamp($payload['generated_at'], $tz) . "\n";
         }
         $out .= str_repeat('-', 42) . "\n";
 
@@ -128,8 +141,8 @@ class EscPosPayloadService
             if (!empty($audit['reason'])) { $out .= 'REASON: ' . $audit['reason'] . "\n"; }
             if (!empty($audit['requested_by'])) { $out .= 'REQUESTED BY: ' . $audit['requested_by'] . "\n"; }
             if (!empty($audit['approved_by'])) { $out .= 'APPROVED BY: ' . $audit['approved_by'] . "\n"; }
-            if (!empty($audit['requested_at'])) { $out .= 'REQUESTED: ' . $this->formatTimestamp($audit['requested_at']) . "\n"; }
-            if (!empty($audit['approved_at'])) { $out .= 'APPROVED: ' . $this->formatTimestamp($audit['approved_at']) . "\n"; }
+            if (!empty($audit['requested_at'])) { $out .= 'REQUESTED: ' . $this->formatTimestamp($audit['requested_at'], $tz) . "\n"; }
+            if (!empty($audit['approved_at'])) { $out .= 'APPROVED: ' . $this->formatTimestamp($audit['approved_at'], $tz) . "\n"; }
         }
         if (!empty($payload['order_note'])) {
             $out .= str_repeat('-', 42) . "\nORDER NOTE:\n" . $payload['order_note'] . "\n";
@@ -153,7 +166,8 @@ class EscPosPayloadService
         }
         $out .= str_repeat('-', 42) . "\n";
         $out .= "Receipt: {$sale->sale_no}\n";
-        $out .= 'Date: ' . optional($sale->sale_date)->format('Y-m-d H:i') . "\n";
+        $tz = $this->branchTz($sale->branch);
+        $out .= 'Date: ' . ($sale->sale_date ? $sale->sale_date->copy()->timezone($tz)->format('Y-m-d H:i') : '') . "\n";
         $out .= 'Cashier: ' . ($sale->createdBy?->name ?? '-') . "\n";
 
         if ($sale->restaurantTable) {
@@ -291,7 +305,7 @@ class EscPosPayloadService
         }
 
         $out .= 'TYPE: ' . strtoupper(str_replace('_', ' ', $sale->order_type ?? 'SALE')) . "\n";
-        $out .= 'TIME: ' . now()->format('Y-m-d H:i') . "\n";
+        $out .= 'TIME: ' . now()->timezone($this->branchTz($sale->branch))->format('Y-m-d H:i') . "\n";
         $out .= str_repeat('-', 42) . "\n";
 
         foreach ($lines as $line) {
@@ -396,10 +410,14 @@ class EscPosPayloadService
         return rtrim(rtrim(number_format($quantity, 3, '.', ''), '0'), '.');
     }
 
-    private function formatTimestamp(string $timestamp): string
+    private function formatTimestamp(string $timestamp, ?string $tz = null): string
     {
         try {
-            return \Carbon\Carbon::parse($timestamp)->format('Y-m-d H:i');
+            $moment = \Carbon\Carbon::parse($timestamp);
+            if ($tz) {
+                $moment = $moment->timezone($tz);
+            }
+            return $moment->format('Y-m-d H:i');
         } catch (\Throwable) {
             return $timestamp;
         }
