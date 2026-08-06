@@ -477,6 +477,13 @@
                     <div id="no-terminal-warning" class="small text-warning-emphasis mt-1" style="display:none">
                         <i class="ti ti-alert-triangle me-1"></i>No terminal — auto receipt/KOT print is off
                     </div>
+                    {{-- SHIFT-TIMEZONE-BUSINESS-DATE-1 (R/S): per-terminal shift status. No open shift
+                         means POS operations on this terminal are blocked. --}}
+                    <div id="pos-shift-status" class="small mt-1" style="display:none">
+                        <span class="badge bg-secondary" id="pos-shift-badge"></span>
+                        <span id="pos-shift-detail" class="text-muted ms-1"></span>
+                        <a href="{{ url('/shifts/open') }}" id="pos-shift-open-link" class="ms-1" style="display:none">Open shift</a>
+                    </div>
                 </div>
                 {{-- Order type is driven by the mode tabs above; keep the select for the
                      form payload + existing JS, but never show the duplicate control. --}}
@@ -1402,6 +1409,43 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
+    // SHIFT-TIMEZONE-BUSINESS-DATE-1 (R/S): reflect the selected terminal's open-shift status so
+    // the cashier knows before ringing anything whether POS operations are allowed here.
+    var _shiftStatusSeq = 0;
+    function refreshShiftStatus() {
+        var wrap = document.getElementById('pos-shift-status');
+        if (!wrap || !terminalEl) return;
+        var badge  = document.getElementById('pos-shift-badge');
+        var detail = document.getElementById('pos-shift-detail');
+        var link   = document.getElementById('pos-shift-open-link');
+        var tid    = terminalEl.value || '';
+
+        if (!tid) { wrap.style.display = 'none'; return; }
+
+        var seq = ++_shiftStatusSeq;
+        fetch('{{ url('/api/pos/shift-status') }}?terminal_id=' + encodeURIComponent(tid), {
+            headers: { 'Accept': 'application/json' }, credentials: 'same-origin'
+        })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (d) {
+                if (!d || seq !== _shiftStatusSeq) return; // ignore stale responses
+                wrap.style.display = '';
+                if (d.open) {
+                    badge.className = 'badge bg-success';
+                    badge.textContent = 'Shift open';
+                    detail.textContent = 'Business date ' + (d.business_date || '') +
+                        (d.opened_at ? ' · opened ' + d.opened_at : '');
+                    if (link) link.style.display = 'none';
+                } else {
+                    badge.className = 'badge bg-danger';
+                    badge.textContent = 'No open shift';
+                    detail.textContent = 'POS operations are blocked on this terminal.';
+                    if (link) link.style.display = '';
+                }
+            })
+            .catch(function () { /* status is advisory; never block the POS on a fetch error */ });
+    }
+
     function autoSelectTerminal() {
         if (!terminalEl) return;
         if (terminalEl.value) { updateTerminalWarning(); return; }
@@ -1434,9 +1478,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 try { localStorage.setItem('pos_terminal_' + branchId, terminalEl.value); } catch (e) {}
             }
             updateTerminalWarning();
+            refreshShiftStatus();
         });
     }
     autoSelectTerminal();
+    refreshShiftStatus();
 
     const posSidebarToggle = document.getElementById('pos-sidebar-toggle');
     if (posSidebarToggle) {

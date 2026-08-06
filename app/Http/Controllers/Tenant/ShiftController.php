@@ -77,6 +77,30 @@ class ShiftController extends Controller
             . $shift->business_date->toDateString() . ' (' . $shift->timezone_name . ').');
     }
 
+    /**
+     * SHIFT-TIMEZONE-BUSINESS-DATE-1 (R/S): lightweight shift status for the POS badge. Given the
+     * client-selected terminal, report whether it has an open shift and that shift's frozen
+     * business date/timezone, so the cashier sees at a glance that POS operations are allowed.
+     */
+    public function posStatus(Request $request, ShiftService $shiftService)
+    {
+        $terminal = $request->filled('terminal_id')
+            ? Terminal::find($request->input('terminal_id'))
+            : null;
+
+        $shift = $shiftService->activeShiftForTerminal($terminal);
+
+        return response()->json([
+            'has_terminal'  => (bool) $terminal,
+            'open'          => (bool) $shift,
+            'shift_id'      => $shift?->id,
+            'business_date' => $shift?->business_date?->toDateString(),
+            'timezone'      => $shift?->timezone_name,
+            'opened_at'     => $shift ? app(\App\Support\TenantClock::class)->format($shift->opened_at, 'd M H:i') : null,
+            'open_url'      => url('/shifts/open'),
+        ]);
+    }
+
     public function show(Shift $shift)
     {
         $shift->load(['branch', 'terminal', 'openedBy', 'closedBy', 'cashCountLines.denomination']);
