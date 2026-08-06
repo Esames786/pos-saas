@@ -5,6 +5,7 @@ namespace Database\Seeders\Demos;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\Category;
 use App\Models\Tenant\Combo;
+use Database\Seeders\Demos\Concerns\SeedsFakePrinters;
 use App\Models\Tenant\DeliveryChannel;
 use App\Models\Tenant\DeliveryRider;
 use App\Models\Tenant\Modifier;
@@ -38,6 +39,8 @@ use Spatie\Permission\Models\Role;
  */
 class RestaurantDemoSeeder
 {
+    use SeedsFakePrinters;
+
     protected InventoryService $inv;
     protected SalesService $sales;
     protected array $counts = [];
@@ -57,6 +60,7 @@ class RestaurantDemoSeeder
         $this->seedMenu();
         $this->seedModifiersAndCombos();
         $this->seedSalesControls();
+        $this->seedFakePrintersAndReminderRouting(); // Receipt + KOT + Reminder -> 127.0.0.1:9100
         $this->seedSampleOrders();
 
         return $this->counts;

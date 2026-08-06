@@ -49,6 +49,7 @@ class RestaurantProDemoSeeder extends RestaurantDemoSeeder
         $this->seedRecipes();
         $this->seedSuppliersAndPurchases();
         $this->seedSalesControls();
+        $this->seedFakePrintersAndReminderRouting(); // Receipt + KOT + Reminder -> 127.0.0.1:9100 (all branches/terminals)
         $this->seedSampleOrders();     // recipe items consume ingredients
         $this->seedKdsOrders();        // held orders for kitchen display
 
