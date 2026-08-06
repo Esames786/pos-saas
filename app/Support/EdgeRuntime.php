@@ -55,6 +55,20 @@ class EdgeRuntime
     }
 
     /**
+     * NON-THROWING cloud check, safe to call at CONFIG-LOAD time (a config file must never throw, or
+     * the framework cannot bootstrap far enough to render a controlled error). Returns true ONLY for
+     * the documented cloud role (unset/empty or 'cloud'); a branch_server OR any INVALID role returns
+     * false — fail closed. The throwing mode()/isCloud() remain the runtime source of truth and still
+     * refuse the boot for an invalid role at the controlled guard point.
+     */
+    public static function isCloudSafe(): bool
+    {
+        $raw = config('app.role');
+
+        return $raw === null || $raw === '' || $raw === self::MODE_CLOUD;
+    }
+
+    /**
      * HARDEN-1: is this running from a PACKAGED Edge artifact? The builder writes
      * edge-build-manifest.json (runtime_mode_supported = branch_server) into the artifact root; the
      * normal Cloud working tree does NOT contain it (git-ignored, only produced by the builder). A

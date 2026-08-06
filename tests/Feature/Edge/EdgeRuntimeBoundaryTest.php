@@ -156,6 +156,30 @@ class EdgeRuntimeBoundaryTest extends TestCase
         $this->assertSame('cloud', EdgeRuntime::mode());
     }
 
+    /**
+     * CLOSURE-1 boot-proof regression: isCloudSafe() is used at CONFIG-LOAD time (config/filesystems)
+     * and MUST never throw — even for an invalid role — or the framework cannot bootstrap far enough
+     * to render a controlled error (the invalid-role artifact leaked a fatal + file path instead of a
+     * clean refusal). It fails closed: only a valid cloud role is "cloud".
+     */
+    public function test_is_cloud_safe_never_throws_and_fails_closed(): void
+    {
+        config(['app.role' => 'bogus_role']);
+        $this->assertFalse(EdgeRuntime::isCloudSafe(), 'An invalid role must not be treated as cloud.');
+
+        config(['app.role' => 'branch_server']);
+        $this->assertFalse(EdgeRuntime::isCloudSafe());
+
+        config(['app.role' => 'cloud']);
+        $this->assertTrue(EdgeRuntime::isCloudSafe());
+
+        config(['app.role' => null]);
+        $this->assertTrue(EdgeRuntime::isCloudSafe());
+
+        config(['app.role' => '']);
+        $this->assertTrue(EdgeRuntime::isCloudSafe());
+    }
+
     public function test_branch_server_boot_problems_detect_missing_config(): void
     {
         config(['app.role' => 'branch_server']);

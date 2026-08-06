@@ -37,7 +37,7 @@ return [
             // file-serving route when serve=true. A Branch Server must expose ONLY the Edge runtime
             // routes, so serving is disabled there (the route is then never registered). Cloud
             // behaviour is unchanged.
-            'serve' => \App\Support\EdgeRuntime::isCloud(),
+            'serve' => \App\Support\EdgeRuntime::isCloudSafe(),
             'throw' => false,
             'report' => false,
         ],
