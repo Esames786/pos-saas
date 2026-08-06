@@ -94,6 +94,53 @@ class EdgeRuntimeBoundaryTest extends TestCase
         $this->assertSame('PASS', $this->runBoundary($routeName)->getContent());
     }
 
+    public function test_explicit_allowlist_denies_undeclared_edge_local_route(): void
+    {
+        config(['app.role' => 'branch_server']);
+        // The three declared endpoints are allowed...
+        $this->assertSame('PASS', $this->runBoundary('edge.local.health')->getContent());
+        // ...but a NEW edge.local.* route is NOT auto-exposed (no wildcard) — must be added explicitly.
+        try {
+            $this->runBoundary('edge.local.dangerous-admin');
+            $this->fail('A new edge.local.* route must be denied until explicitly allowlisted.');
+        } catch (NotFoundHttpException) {
+            $this->assertTrue(true);
+        }
+    }
+
+    public function test_cloud_does_not_register_edge_local_but_keeps_saas_routes(): void
+    {
+        // Default boot is cloud. The appliance-local Edge endpoints are NOT registered on Cloud
+        // (so /edge/local/* is a 404 — no runtime/build fingerprint exposed publicly)...
+        $this->assertFalse(\Illuminate\Support\Facades\Route::has('edge.local.health'));
+        $this->assertFalse(\Illuminate\Support\Facades\Route::has('edge.local.build-info'));
+        // ...while the normal Cloud SaaS routes remain registered.
+        $this->assertTrue(\Illuminate\Support\Facades\Route::has('tenant.pos.store'));
+        $this->assertTrue(\Illuminate\Support\Facades\Route::has('central.tenants.index'));
+        $this->assertTrue(\Illuminate\Support\Facades\Route::has('edge.api.pair'));
+    }
+
+    public function test_packaged_edge_artifact_on_cloud_fails_closed(): void
+    {
+        // Simulate a packaged artifact marker while APP_ROLE is (mis)set to cloud.
+        config(['app.role' => 'cloud']);
+        $marker = base_path('edge-build-manifest.json');
+        $pre = is_file($marker);
+        if (! $pre) {
+            file_put_contents($marker, json_encode(['runtime_mode_supported' => 'branch_server']));
+        }
+        try {
+            $this->assertTrue(\App\Support\EdgeRuntime::isPackagedEdgeArtifact());
+            $this->assertNotEmpty(\App\Support\EdgeRuntime::bootProblems(), 'A packaged Edge artifact must not boot as cloud.');
+            $this->expectException(RuntimeException::class);
+            \App\Support\EdgeRuntime::assertBootConfig();
+        } finally {
+            if (! $pre) {
+                @unlink($marker);
+            }
+        }
+    }
+
     public function test_mode_fails_closed_on_unrecognized_role(): void
     {
         config(['app.role' => 'branchserver']); // typo — must NOT silently become cloud

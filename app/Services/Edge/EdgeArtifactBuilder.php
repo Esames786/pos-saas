@@ -135,6 +135,17 @@ class EdgeArtifactBuilder
             copy($src, $out);
         }
 
+        // Create EMPTY writable runtime directories the appliance needs to boot (a file-copy omits
+        // empty dirs). Never copies dev logs/cache — these are created fresh and empty.
+        foreach ((array) ($this->config['runtime_dirs'] ?? []) as $runtimeDir) {
+            $abs = $dest . '/' . $runtimeDir;
+            if (! is_dir($abs)) {
+                mkdir($abs, 0755, true);
+            }
+            // .gitkeep so the empty dir is real on disk / survives packaging.
+            @file_put_contents($abs . '/.gitkeep', '');
+        }
+
         $manifest = $this->manifest($dest, $plan, $meta);
         file_put_contents($dest . '/edge-build-manifest.json', json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 

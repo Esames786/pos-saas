@@ -35,7 +35,11 @@ return [
     | '*' is a suffix wildcard on the route name.
     */
     'route_allowlist' => [
-        'edge.local.*', // health / readiness / build-info — the only Branch Server surface today
+        // EXPLICIT names (no wildcard) — a future edge.local.* route is NOT auto-exposed; each must
+        // be added here deliberately. Default remains DENY.
+        'edge.local.health',
+        'edge.local.ready',
+        'edge.local.build-info',
     ],
 
     /*
@@ -74,6 +78,10 @@ return [
             'storage/app/backups/*',
             'bootstrap/cache/*',
             'tools/print-agent/dist/*',
+            // vendor dev cruft (docs/tests/CI) — NOT secrets, just reduces artifact bloat/surface.
+            // NOTE: a release build must run `composer install --no-dev` first so dev packages
+            // (phpunit/mockery/etc.) are absent entirely; this only trims incidental cruft.
+            '*/docs/*', '*/tests/*', '*/test/*', '*/.github/*', '*/examples/*',
             '*.pem', '*.key', '*.pfx', '*.p12', '*.crt',
             '*.sql', '*.dump', '*.sqlite',
             'id_rsa', 'id_rsa.*', 'id_ed25519', 'id_ed25519.*',
@@ -84,6 +92,19 @@ return [
         | never-ship classes of file (secrets, VCS, dev, dumps). The scan reports paths only, never
         | file contents.
         */
+        /*
+        | Empty writable runtime directories the appliance needs to boot. An allowlisted file-copy
+        | omits empty dirs, so the builder creates these fresh (empty — never copied dev logs/cache).
+        */
+        'runtime_dirs' => [
+            'storage/framework/cache/data',
+            'storage/framework/sessions',
+            'storage/framework/views',
+            'storage/framework/testing',
+            'storage/logs',
+            'storage/app/public',
+            'bootstrap/cache',
+        ],
         'forbidden' => [
             '#(^|/)\.env(\..+)?$#',
             '#(^|/)\.git(/|$)#',

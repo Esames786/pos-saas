@@ -1,0 +1,71 @@
+<?php
+
+namespace Tests\Feature\Edge;
+
+use Illuminate\Support\Facades\Route;
+use Tests\TestCase;
+
+/**
+ * EDGE-RUNTIME-BOUNDARY-HARDEN-1 (#4/#5/#6) — proves route REGISTRATION per runtime mode by booting
+ * the app AS a Branch Server (APP_ROLE forced before boot). On a Branch Server the entire Cloud SaaS
+ * surface (web AND the central API) is not even registered; only the Edge runtime endpoints are —
+ * and they actually answer over HTTP. Cloud-side behavior (edge.local.* absent) is asserted in
+ * EdgeRuntimeBoundaryTest which boots in the default cloud mode.
+ */
+class EdgeBranchServerRegistrationTest extends TestCase
+{
+    protected function setUp(): void
+    {
+        putenv('APP_ROLE=branch_server');
+        $_ENV['APP_ROLE'] = 'branch_server';
+        $_SERVER['APP_ROLE'] = 'branch_server';
+        parent::setUp();
+    }
+
+    protected function tearDown(): void
+    {
+        putenv('APP_ROLE');
+        unset($_ENV['APP_ROLE'], $_SERVER['APP_ROLE']);
+        parent::tearDown();
+    }
+
+    public function test_branch_server_registers_only_edge_runtime_routes(): void
+    {
+        $this->assertSame('branch_server', \App\Support\EdgeRuntime::mode());
+
+        // Edge runtime endpoints ARE registered.
+        $this->assertTrue(Route::has('edge.local.health'));
+        $this->assertTrue(Route::has('edge.local.ready'));
+        $this->assertTrue(Route::has('edge.local.build-info'));
+
+        // The whole Cloud SaaS surface (web) is NOT registered.
+        foreach ([
+            'tenant.pos.store', 'tenant.shifts.store', 'tenant.sales-orders.split-bill.store',
+            'tenant.purchase-orders.index', 'tenant.finance.accounts.index',
+            'tenant.manufacturing.production-orders.store', 'central.tenants.index',
+            'central.tenants.provision', 'public.home',
+        ] as $name) {
+            $this->assertFalse(Route::has($name), "Cloud route [$name] must NOT be registered on a Branch Server.");
+        }
+
+        // The central/API surface (edge.api.*) is NOT registered either — proves the boundary is not
+        // web-only; the API group simply does not exist on a Branch Server.
+        $this->assertFalse(Route::has('edge.api.pair'));
+        $this->assertFalse(Route::has('edge.api.bootstrap.create'));
+    }
+
+    public function test_branch_server_edge_endpoints_answer_over_http(): void
+    {
+        $this->getJson('/edge/local/health')->assertOk()->assertJson(['status' => 'ok', 'runtime_mode' => 'branch_server']);
+        $this->getJson('/edge/local/build-info')->assertOk()->assertJson(['product' => 'Bingoo POS Edge']);
+        $this->getJson('/edge/local/ready')->assertStatus(200);
+    }
+
+    public function test_branch_server_returns_404_for_unregistered_cloud_paths(): void
+    {
+        // Not registered -> 404 (routing), regardless of middleware. Proves no cloud surface exists.
+        $this->get('/pos')->assertNotFound();
+        $this->get('/login')->assertNotFound();
+        $this->get('/api/edge/pair')->assertNotFound();
+    }
+}

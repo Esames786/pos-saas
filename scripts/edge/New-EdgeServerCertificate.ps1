@@ -62,12 +62,14 @@ if (-not (Test-Path $OutDir)) {
 Write-Host "Issuing Branch Server certificate for $Hostname / $ReservedIp (signed by CA $CaThumbprint)"
 
 if ($PSCmdlet.ShouldProcess("$Hostname / $ReservedIp", "Issue server certificate from branch CA")) {
-    # SAN must include BOTH the hostname (DNS) and the reserved IP (IPAddress). New-SelfSignedCertificate
-    # renders -DnsName IPv4 values as IPAddress SAN entries in addition to DNS, so we pass both.
+    # SAN must include BOTH the hostname as a DNS entry AND the reserved IP as a true IPAddress entry.
+    # VERIFIED semantics: `-DnsName @($Hostname,$ReservedIp)` renders the IP as another *DNS* SAN
+    # (NOT an IPAddress SAN), which fails validation when a client connects by IP. The correct
+    # mechanism is an explicit SAN TextExtension (OID 2.5.29.17) with DNS= and IPAddress=.
     $cert = New-SelfSignedCertificate `
         -Type SSLServerAuthentication `
         -Subject "CN=$Hostname, O=Bingoo POS Edge" `
-        -DnsName @($Hostname, $ReservedIp) `
+        -TextExtension @("2.5.29.17={text}DNS=$Hostname&IPAddress=$ReservedIp") `
         -Signer $ca `
         -KeyAlgorithm RSA -KeyLength 2048 `
         -HashAlgorithm SHA256 `

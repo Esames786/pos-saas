@@ -113,6 +113,29 @@ class EdgeArtifactTest extends TestCase
         }
     }
 
+    public function test_build_creates_empty_runtime_dirs_and_fail_closed_marker(): void
+    {
+        $builder = new EdgeArtifactBuilder([
+            'include' => ['app', 'composer.json'], 'exclude' => [], 'forbidden' => [],
+            'runtime_dirs' => ['storage/framework/cache/data', 'storage/logs', 'bootstrap/cache'],
+        ]);
+        $root = $this->tempDir();
+        $this->writeFile($root, 'app/A.php', '<?php');
+        $this->writeFile($root, 'composer.json', '{}');
+        $dest = $this->tempDir();
+
+        $builder->build($root, $dest, []);
+
+        // Empty writable runtime dirs created (a copy would have omitted them).
+        $this->assertDirectoryExists($dest . '/storage/framework/cache/data');
+        $this->assertDirectoryExists($dest . '/storage/logs');
+        $this->assertDirectoryExists($dest . '/bootstrap/cache');
+
+        // The manifest carries the branch_server marker used by EdgeRuntime to fail closed.
+        $manifest = json_decode(file_get_contents($dest . '/edge-build-manifest.json'), true);
+        $this->assertSame('branch_server', $manifest['runtime_mode_supported']);
+    }
+
     public function test_real_repo_plan_is_secret_free(): void
     {
         $builder = EdgeArtifactBuilder::fromConfig();

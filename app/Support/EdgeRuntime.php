@@ -55,6 +55,23 @@ class EdgeRuntime
     }
 
     /**
+     * HARDEN-1: is this running from a PACKAGED Edge artifact? The builder writes
+     * edge-build-manifest.json (runtime_mode_supported = branch_server) into the artifact root; the
+     * normal Cloud working tree does NOT contain it (git-ignored, only produced by the builder). A
+     * present, branch_server-marked manifest is the signal "this is an appliance build".
+     */
+    public static function isPackagedEdgeArtifact(): bool
+    {
+        $path = base_path('edge-build-manifest.json');
+        if (! is_file($path) || ! is_readable($path)) {
+            return false;
+        }
+        $manifest = json_decode((string) file_get_contents($path), true);
+
+        return is_array($manifest) && ($manifest['runtime_mode_supported'] ?? null) === self::MODE_BRANCH_SERVER;
+    }
+
+    /**
      * FAIL-CLOSED boot validation for a Branch Server. Validates only what THIS sprint owns — the
      * runtime can describe itself (mode + versions + a supported bootstrap schema). It deliberately
      * does NOT require local DB / device credentials / tenant-branch binding: those belong to later
@@ -73,8 +90,16 @@ class EdgeRuntime
             return [$e->getMessage()];
         }
 
+        // HARDEN-1: a packaged Edge artifact MUST run as branch_server. If the artifact marker is
+        // present but APP_ROLE is missing/cloud/anything-but-branch_server, fail closed — a
+        // misconfigured appliance must NEVER silently become a Cloud SaaS runtime.
+        if (self::isPackagedEdgeArtifact() && $mode !== self::MODE_BRANCH_SERVER) {
+            return ['This is a packaged Bingoo Edge artifact but APP_ROLE is not branch_server '
+                . "(got '" . (config('app.role') ?? '') . "'). Refusing to run as Cloud."];
+        }
+
         if ($mode !== self::MODE_BRANCH_SERVER) {
-            return $problems; // cloud has no extra runtime requirements
+            return $problems; // cloud (non-artifact) has no extra runtime requirements
         }
 
         if (! is_string(config('edge.app_version')) || config('edge.app_version') === '') {

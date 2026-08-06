@@ -19,7 +19,8 @@ class AppServiceProvider extends ServiceProvider
         // that cannot describe its own runtime must NOT silently boot as the full Cloud SaaS. Only
         // enforced for the HTTP/CLI runtime (not during migrations/config caching, where config may
         // not be fully resolved), and never for the cloud role.
-        if (\App\Support\EdgeRuntime::isBranchServer() && ! $this->app->runningInConsole()) {
+        if ((\App\Support\EdgeRuntime::isBranchServer() || \App\Support\EdgeRuntime::isPackagedEdgeArtifact())
+            && ! $this->app->runningInConsole()) {
             \App\Support\EdgeRuntime::assertBootConfig();
         }
 

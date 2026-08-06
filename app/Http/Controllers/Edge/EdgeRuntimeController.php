@@ -18,13 +18,24 @@ class EdgeRuntimeController extends Controller
     {
     }
 
-    /** Liveness + non-secret build facts + current server UTC epoch. */
+    /**
+     * Liveness — MINIMISED (HARDEN-1): only status, runtime mode, the version/compat essentials a
+     * peer needs, and the server epoch. The fuller build fingerprint (php version, git commit, build
+     * timestamp, min_php) lives on /build-info so /health does not broadcast an OS/runtime
+     * fingerprint on the LAN. Still non-secret.
+     */
     public function health(): JsonResponse
     {
-        return response()->json(array_merge($this->buildInfo->info(), [
-            'status'         => 'ok',
-            'server_epoch_ms' => (int) round(microtime(true) * 1000),
-        ]));
+        $info = $this->buildInfo->info();
+
+        return response()->json([
+            'status'           => 'ok',
+            'runtime_mode'     => $info['runtime_mode'],
+            'edge_app_version' => $info['edge_app_version'],
+            'bootstrap_schema' => $info['bootstrap_schema'],
+            'sync_protocol'    => $info['sync_protocol'],
+            'server_epoch_ms'  => (int) round(microtime(true) * 1000),
+        ]);
     }
 
     /**

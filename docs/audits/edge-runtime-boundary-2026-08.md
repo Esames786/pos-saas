@@ -100,6 +100,42 @@ It reports paths only, never contents.
 > route boundary. Finer-grained *class-level* exclusion of cloud-only application source is deferred
 > to a later Edge packaging sprint (documented here rather than half-done).
 
+## HARDEN-1 (2026-08-07) — fail-closed artifacts + close Cloud/API exposure
+
+Hardening pass on top of the boundary, after the production deploy of `0d8d656`:
+
+- **Fail-closed artifact identity:** the builder writes `edge-build-manifest.json` with
+  `runtime_mode_supported=branch_server` (git-ignored in the source tree). `EdgeRuntime::isPackagedEdgeArtifact()`
+  detects it; if the marker is present but `APP_ROLE` is missing/cloud/invalid the boot **fails
+  closed** (a packaged appliance can never silently run as Cloud). A bare Cloud working tree has no
+  marker, so `APP_ROLE`-absent still means cloud there.
+- **Per-mode route REGISTRATION** (`routes/web.php`): a Branch Server registers **only** the Edge
+  runtime routes — the entire Cloud SaaS surface (public/central/tenant **and** the central `api/edge`
+  pairing API) is not even registered. Cloud registers the full SaaS and does **not** register the
+  appliance endpoints, so **`/edge/local/*` → 404 on Cloud** (no runtime/build fingerprint exposed
+  publicly). The middleware remains as defence-in-depth. This closes the earlier finding that
+  `/edge/local/health` was publicly reachable on the cloud domain.
+- **Explicit allowlist** (no wildcard): `edge.local.health|ready|build-info` only; a future
+  `edge.local.*` route is denied until deliberately added.
+- **Health minimisation:** `/edge/local/health` now returns only `status`, `runtime_mode`, version/
+  compat essentials + `server_epoch_ms`; the fuller fingerprint (php version, git commit, build
+  timestamp) stays on `/edge/local/build-info` (which may later require local auth).
+- **Artifact runtime dirs:** the builder creates the empty writable dirs a Laravel boot needs
+  (`storage/framework/{cache,sessions,views}`, `storage/logs`, `bootstrap/cache`) — a file-copy omits
+  empty dirs.
+- **TLS SAN corrected:** verified that `New-SelfSignedCertificate -DnsName @(host,ip)` renders the IP
+  as a *DNS* SAN (fails IP validation); the server-cert script now uses an explicit SAN
+  `TextExtension` (`2.5.29.17={text}DNS=…&IPAddress=…`), verified to emit a real `IP Address` SAN.
+
+**Status honesty:** the **runtime route boundary is implemented and enforced** (registration + middleware
++ fail-closed). **Physical source minimisation is PARTIAL** — Cloud route *registration* is eliminated
+on a Branch Server, but the Cloud application *source/classes* are still present in the artifact. A
+class-level dependency-closure minimisation remains a **RELEASE GATE** before distributing the appliance
+to clients (do not treat runtime middleware as equivalent to source minimisation).
+
+Tests: `EdgeBranchServerRegistrationTest` (real HTTP + per-mode registration, Web+API), boundary
+explicit-allowlist + cloud-404 + fail-closed-marker regressions, artifact runtime-dir + marker test.
+
 ## LAN TLS + local name contract
 
 Pilot contract (locked): managed Windows POS terminals; Branch Server on a DHCP-reserved IP; TLS via

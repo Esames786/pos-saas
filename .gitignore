@@ -27,3 +27,6 @@ Thumbs.db
 /tools/print-agent/dist/BingooPrintAgent.exe
 /tools/print-agent/installer/windows/output/
 /tools/print-agent/node_modules/
+
+# EDGE-RUNTIME-BOUNDARY-HARDEN-1: artifact marker is generated into a built artifact, never the source tree
+edge-build-manifest.json
