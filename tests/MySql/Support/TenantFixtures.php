@@ -58,6 +58,25 @@ trait TenantFixtures
         ], $attrs));
     }
 
+    protected function makeTerminal(int $branchId, array $attrs = []): int
+    {
+        $u = uniqid();
+        return $this->tenant()->table('terminals')->insertGetId(array_merge([
+            'branch_id' => $branchId, 'code' => 'TERM-' . $u, 'name' => 'Terminal ' . $u,
+            'requires_shift' => 1, 'status' => 'active', 'created_at' => now(), 'updated_at' => now(),
+        ], $attrs));
+    }
+
+    protected function makeUser(array $attrs = []): int
+    {
+        $u = uniqid();
+        return $this->tenant()->table('users')->insertGetId(array_merge([
+            'name' => 'Cashier ' . $u, 'email' => 'u' . $u . '@test.local',
+            'password' => bcrypt('secret'), 'status' => 'active',
+            'created_at' => now(), 'updated_at' => now(),
+        ], $attrs));
+    }
+
     protected function makePrinter(array $attrs = []): int
     {
         $u = uniqid();
