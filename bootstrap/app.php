@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\CentralOnly;
+use App\Http\Middleware\EnsureEdgeRuntimeRouteAllowed;
 use App\Http\Middleware\EnsureRoutePermission;
 use App\Http\Middleware\EnsureTenantSubscriptionAccess;
 use App\Http\Middleware\IdentifyTenant;
@@ -21,6 +22,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             SetLocale::class,
             IdentifyTenant::class,
+            // EDGE-RUNTIME-BOUNDARY-1: default-DENY route boundary for branch_server runtime.
+            // No-op on cloud. Runs after tenant identification so the matched route is available.
+            EnsureEdgeRuntimeRouteAllowed::class,
         ]);
 
         // IdentifyTenant must run before Authenticate (auth:*) so the tenant
@@ -59,6 +63,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'tenant.subscription.access' => EnsureTenantSubscriptionAccess::class,
             'prevent.demo.mutation' => PreventDemoMutation::class,
             'edge.device.auth' => \App\Http\Middleware\AuthenticateEdgeDevice::class,
+            'edge.runtime.boundary' => EnsureEdgeRuntimeRouteAllowed::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

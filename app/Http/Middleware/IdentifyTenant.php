@@ -12,6 +12,15 @@ class IdentifyTenant
 {
     public function handle(Request $request, Closure $next)
     {
+        // EDGE-RUNTIME-BOUNDARY-1: a Branch Server is a single-purpose appliance, not a multi-tenant
+        // host. It does not resolve a tenant from the request host (the single tenant/branch binding
+        // comes from env in a later activation sprint), so skip tenant identification entirely — the
+        // route boundary then restricts what may run. This also lets the Edge health endpoint answer
+        // on the local host without a registered tenant domain.
+        if (\App\Support\EdgeRuntime::isBranchServer()) {
+            return $next($request);
+        }
+
         // Each PHP-FPM worker may be reused across requests. A previous request
         // that activated a tenant will have set the default connection to 'tenant'.
         // Reset to master before looking up the tenant domain.

@@ -1,0 +1,112 @@
+<?php
+
+use App\Services\Edge\EdgeBootstrapService;
+
+/**
+ * EDGE-RUNTIME-BOUNDARY-1 — the canonical Branch Server runtime manifest.
+ *
+ * ONE source of truth for: what version/schema/protocol this build speaks, which routes may execute
+ * on a Branch Server (default DENY), and which files an Edge artifact may/again-never contain. The
+ * runtime MODE itself is NOT here — it stays `config('app.role')` (cloud | branch_server), read via
+ * App\Support\EdgeRuntime so there is exactly one role reader.
+ *
+ * No secrets live in this file. It is safe to ship inside an Edge artifact and is the input to the
+ * future signed update channel.
+ */
+return [
+
+    /*
+    | Version / compatibility surface (reported by EdgeBuildInfoService + the health endpoint, and
+    | consumed by the future signed updater to decide "can this build accept schema X / speak
+    | protocol Y"). Bootstrap schema is reused from the existing bootstrap service — single source.
+    */
+    'app_version'             => env('EDGE_APP_VERSION', '0.1.0-edge'),
+    'git_commit'              => env('EDGE_GIT_COMMIT'), // stamped into a built artifact's manifest
+    'artifact_format_version' => '1',
+    'bootstrap_schema'        => EdgeBootstrapService::SCHEMA_VERSION, // edge-bootstrap-v3
+    'sync_protocol'           => 'edge-sync-v0', // placeholder ONLY — offline sync is not built yet
+    'min_php'                 => '8.2.0',
+
+    /*
+    | Restricted route boundary (DEFENCE-IN-DEPTH, first line). In branch_server runtime, ONLY routes
+    | whose name matches one of these patterns may execute; everything else is denied (default DENY).
+    | It is DELIBERATELY minimal this sprint because offline POS/auth/sales are not built — do not add
+    | future POS routes here in anticipation; each future Edge sprint expands this on purpose.
+    | '*' is a suffix wildcard on the route name.
+    */
+    'route_allowlist' => [
+        'edge.local.*', // health / readiness / build-info — the only Branch Server surface today
+    ],
+
+    /*
+    | Restricted artifact contents. The builder copies ONLY these top-level paths (allowlist), then
+    | prunes the exclude globs, then FAILS if any forbidden pattern survives (secret/source audit).
+    | We ship the Laravel app + vendor closure so the appliance can boot and answer its health
+    | endpoint; finer-grained exclusion of cloud-only application classes is deferred to a later Edge
+    | packaging sprint and is defended at runtime by the route boundary until then.
+    */
+    'artifact' => [
+        'include' => [
+            'app',
+            'bootstrap',
+            'config',
+            'database/migrations',
+            'lang',
+            'public',
+            'resources',
+            'routes',
+            'vendor',
+            'artisan',
+            'composer.json',
+            'composer.lock',
+        ],
+        'exclude' => [
+            '.git', '.git/*',
+            '.github', '.github/*',
+            '.env', '.env.*',
+            'tests', 'tests/*',
+            'docs', 'docs/*',
+            'node_modules', 'node_modules/*',
+            'storage/logs/*',
+            'storage/framework/cache/*',
+            'storage/framework/sessions/*',
+            'storage/framework/views/*',
+            'storage/app/backups/*',
+            'bootstrap/cache/*',
+            'tools/print-agent/dist/*',
+            '*.pem', '*.key', '*.pfx', '*.p12', '*.crt',
+            '*.sql', '*.dump', '*.sqlite',
+            'id_rsa', 'id_rsa.*', 'id_ed25519', 'id_ed25519.*',
+            '.psysh_history', '.bash_history',
+        ],
+        /*
+        | Forbidden — if ANY packaged file matches one of these, the build FAILS. These are the
+        | never-ship classes of file (secrets, VCS, dev, dumps). The scan reports paths only, never
+        | file contents.
+        */
+        'forbidden' => [
+            '#(^|/)\.env(\..+)?$#',
+            '#(^|/)\.git(/|$)#',
+            '#\.(pem|key|pfx|p12|crt)$#i',
+            '#(^|/)id_rsa(\..+)?$#',
+            '#(^|/)id_ed25519(\..+)?$#',
+            '#\.(sql|dump|sqlite)$#i',
+            '#(^|/)tests(/|$)#',
+            '#(^|/)storage/logs/#',
+            '#(^|/)storage/app/backups/#',
+            '#FakePrinter\.exe$#i',
+            '#(^|/)\.psysh_history$#',
+        ],
+    ],
+
+    /*
+    | LAN name contract for the future Branch Server appliance. mDNS `.local` is NOT reliable on every
+    | Windows LAN, so the PILOT mechanism is a DHCP-reserved IP + a hosts-file/router-DNS entry. The
+    | certificate SAN (see scripts/edge) must cover BOTH the hostname and the reserved IP.
+    */
+    'lan' => [
+        'hostname'       => env('EDGE_LAN_HOSTNAME', 'bingoo-edge.local'),
+        'reserved_ip'    => env('EDGE_LAN_IP'), // DHCP-reserved; set per branch
+        'name_mechanism' => env('EDGE_LAN_NAME_MECHANISM', 'hosts_file'), // hosts_file | router_dns | mdns
+    ],
+];

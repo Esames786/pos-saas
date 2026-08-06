@@ -15,6 +15,14 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // EDGE-RUNTIME-BOUNDARY-1: fail closed on a misconfigured Branch Server. A branch appliance
+        // that cannot describe its own runtime must NOT silently boot as the full Cloud SaaS. Only
+        // enforced for the HTTP/CLI runtime (not during migrations/config caching, where config may
+        // not be fully resolved), and never for the cloud role.
+        if (\App\Support\EdgeRuntime::isBranchServer() && ! $this->app->runningInConsole()) {
+            \App\Support\EdgeRuntime::assertBootConfig();
+        }
+
         Paginator::useBootstrapFive();
 
         // The tenant domain constraint uses {subdomain} for wildcard matching only.
