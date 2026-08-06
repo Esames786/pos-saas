@@ -1,7 +1,7 @@
 # Bingoo POS — Roadmap & System Gap Register
 
 > Maintained working document. Update after every completed sprint.
-> Last updated: **2026-08-03** (POS-WORKSPACE-UX-1 built locally; LOCAL-PRINT-LAN-CERT-1 physically blocked; production not deployed) · branch `feat/14d-2-plan-upgrade-requests`
+> Last updated: **2026-08-06** (SHIFT-TIMEZONE-BUSINESS-DATE-1 built locally — Track S; MySQL suite 25/71 green; production not deployed) · branch `feat/14d-2-plan-upgrade-requests`
 
 ---
 
@@ -30,6 +30,19 @@
 | A3 | **Merge → main + tag `v0.9.0-pilot`** | release discipline / rollback point | ✅ 2026-07-11: main fast-forwarded 173 commits (23e1738→e7fce39, zero divergence), annotated tag `v0.9.0-pilot` pushed — rollback point established |
 | A4 | **deploy.sh hardening** | every deploy hits gotchas by hand | ✅ deploy.sh now: MasterSeeder + `system:clear-tenant-permission-cache` (new command) + queue:restart + chown/chmod |
 | A5 | Ops: nightly demo:reset-all green check; SSL auto-renew (cert ~Sep 2026); rotate root+MySQL passwords; re-register lost client tenant | | 🟡 manual ops — documented in RELEASE_CHECKLIST/DESTRUCTIVE_COMMANDS docs |
+
+## 🟢 TRACK S — Shift / Timezone / Business Date (2026-08, precedes EDGE-RUNTIME-BOUNDARY-1)
+
+Core invariant: **No active shift = no POS business operation. Midnight changes the actual calendar date, but NOT the business date of an already-open shift.** Business timezone (branch → Asia/Karachi) anchors a shift and freezes its `business_date`; display timezone (user → branch → Asia/Karachi) is portal-only. App timezone is UTC so stored timestamps stay canonical. Same semantics are reused by the future Edge (one canonical `ShiftService` + `TenantClock`). Built on branch `feat/14d-2-plan-upgrade-requests`; **not deployed**.
+
+| # | Item | Status |
+|---|---|---|
+| S1 | **Foundation + correction pass** (`dd9826d`, `38d77df`, `926f18c`) — migrations: `shifts.business_date`+`timezone_name`, `sales_orders.business_date`(+idx), `users.timezone`, `restaurant_table_sessions.opened_shift_id`+`business_date`. `TenantClock` split into **businessTimezone** vs **displayTimezone** + central branch resolution (IANA-only, numeric offsets rejected). Canonical **`ShiftService`** (open/activeShiftForTerminal/assertOpenShift/unresolvedWork/canClose) + `ShiftException`; row-locked per-terminal open freezes business_date+tz; thin `ShiftController`. **Genuine two-process** MySQL concurrency proof (real service, two OS processes → exactly one OPEN shift, one controlled ALREADY_OPEN, 0 crash). | ✅ built; branch only |
+| S2 | **Universal enforcement + business_date inheritance** (`c967299`) — POS direct-pay + held sales require an open shift via `assertOpenShift` (ignores `requires_shift`; non-POS sources exempt; held enforces pre-txn → clean 422). New sale/held freezes business_date from the shift; **Add Round / recall-to-pay keeps the original** shift+business_date; a round joining an open table inherits the **table session's** business_date; **split child inherits the parent's**. Table sessions bind `opened_shift_id`+business_date. **Shift close blocks on unresolved work** (held sales + open tables; offline print never blocks). Backfill migration (`000003`) for existing rows. MySQL tests: business-date-at-open across midnight, sale date frozen by shift, tz rejects offsets, close-guard blocks-then-clears. | ✅ built; branch only |
+| S3 | **Live clock + POS shift badge** (`e8edc50`, `118c40d`) — server-anchored 24h `HH:mm:ss` header clock (seeds server instant, ticks via `performance.now`, renders display-tz via `Intl`) + today's business-date badge. POS shows the selected terminal's shift status (green open + business date / red "no open shift" + Open-shift link) via `GET /api/pos/shift-status`; advisory only. | ✅ built; branch only |
+| S4 | **Timezone settings** (`5603ab3`) — branch business tz validated IANA-only (full datalist); personal **display** timezone preference `POST /preferences/timezone` on the account page (empty = follow branch). | ✅ built; branch only |
+| S5 | **Business-date reporting + print tz** (`ad6a3c1`, `b54d9b8`) — sales reports filter/group by `COALESCE(business_date, DATE(sale_date))` (summary/items/payments/channels/riders + today stat); receipt+reminder+KOT timestamps render in the branch (store-local) timezone (ESC-POS engine + stored data untouched). MySQL test: after-midnight sale reports on its business day. | ✅ built; branch only |
+| S6 | Formal MySQL suite: `ShiftServiceTest`, `ShiftBusinessDateTest`, `SalesReportBusinessDateTest`, `TenantClockTest` — business/display tz split, DST-aware business date, frozen-by-shift, universal enforcement, two-process open, close guard, business-date reporting. `pos_test_*` only, zero skips. | ✅ green |
 
 ## 🔜 TRACK F — Offline POS / Branch Edge (NOW the primary direction, 2026-07)
 
