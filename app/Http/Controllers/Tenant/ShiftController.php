@@ -17,7 +17,11 @@ class ShiftController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Shift::with(['branch', 'terminal', 'openedBy', 'closedBy'])->latest();
+        // SHIFT-BRANCH-UX-1: history is grouped by branch (open/close happen per branch), so order
+        // branch-first, newest shift within each branch.
+        $query = Shift::with(['branch', 'terminal', 'openedBy', 'closedBy'])
+            ->orderBy('branch_id')
+            ->orderByDesc('id');
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);
@@ -27,9 +31,18 @@ class ShiftController extends Controller
             $query->where('branch_id', $request->branch_id);
         }
 
+        // True open-shift count per branch (not just the current page) so the "Close Branch" action
+        // is accurate even when a branch's shifts span pages.
+        $openCounts = Shift::where('status', 'open')
+            ->when($request->filled('branch_id'), fn ($q) => $q->where('branch_id', $request->branch_id))
+            ->selectRaw('branch_id, COUNT(*) as c')
+            ->groupBy('branch_id')
+            ->pluck('c', 'branch_id');
+
         return view('tenant.shifts.index', [
-            'shifts'   => $query->paginate(15)->withQueryString(),
-            'branches' => Branch::where('status', 'active')->orderBy('name')->get(),
+            'shifts'     => $query->paginate(15)->withQueryString(),
+            'branches'   => Branch::where('status', 'active')->orderBy('name')->get(),
+            'openCounts' => $openCounts,
         ]);
     }
 

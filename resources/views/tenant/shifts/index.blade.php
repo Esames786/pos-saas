@@ -60,11 +60,11 @@
 <div class="card">
     <div class="card-body table-responsive">
         <table class="table table-nowrap align-middle">
-            <caption>Shift history</caption>
+            <caption>Shift history (grouped by branch)</caption>
             <thead>
                 <tr>
                     <th scope="col">#</th>
-                    <th scope="col">Branch / Terminal</th>
+                    <th scope="col">Terminal</th>
                     <th scope="col">Opened By</th>
                     <th scope="col">Opened At</th>
                     <th scope="col">Closed At</th>
@@ -74,40 +74,54 @@
                 </tr>
             </thead>
             <tbody>
-            @forelse($shifts as $shift)
-                <tr>
-                    <td>{{ $shift->id }}</td>
-                    <td>
-                        <strong>{{ $shift->branch?->name }}</strong>
-                        <small class="d-block text-muted">{{ $shift->terminal?->name }}</small>
-                    </td>
-                    <td>{{ $shift->openedBy?->name }}</td>
-                    <td>{{ $shift->opened_at?->format('Y-m-d H:i') }}</td>
-                    <td>{{ $shift->closed_at?->format('Y-m-d H:i') ?? '—' }}</td>
-                    <td>{{ number_format($shift->opening_cash, 2) }}</td>
-                    <td>
-                        @if($shift->status === 'open')
-                            <span class="badge bg-warning text-dark">Open</span>
+            @php $grouped = collect($shifts->items())->groupBy('branch_id'); @endphp
+            @forelse($grouped as $branchId => $branchShifts)
+                @php
+                    $branchName = $branchShifts->first()->branch?->name ?? ('Branch #' . $branchId);
+                    $branchOpen = (int) ($openCounts[$branchId] ?? 0);
+                @endphp
+                <tr class="table-light">
+                    <td colspan="7">
+                        <i class="ti ti-building-store me-1" aria-hidden="true"></i>
+                        <strong>{{ $branchName }}</strong>
+                        @if($branchOpen > 0)
+                            <span class="badge bg-warning text-dark ms-2">{{ $branchOpen }} open</span>
                         @else
-                            <span class="badge bg-secondary">Closed</span>
+                            <span class="badge bg-secondary ms-2">all closed</span>
                         @endif
                     </td>
                     <td class="text-end">
-                        <div class="action-toolbar justify-content-end">
+                        @if($branchOpen > 0)
+                            @can('tenant.shifts.close')
+                                <a href="{{ url('/shifts-close-branch?branch_id=' . $branchId) }}" class="btn btn-sm btn-danger">
+                                    <i class="ti ti-lock me-1" aria-hidden="true"></i>Close Branch
+                                </a>
+                            @endcan
+                        @endif
+                    </td>
+                </tr>
+                @foreach($branchShifts as $shift)
+                    <tr>
+                        <td class="text-muted">{{ $shift->id }}</td>
+                        <td class="ps-4">{{ $shift->terminal?->name ?? ('Terminal #' . $shift->terminal_id) }}</td>
+                        <td>{{ $shift->openedBy?->name }}</td>
+                        <td>{{ $shift->opened_at?->format('Y-m-d H:i') }}</td>
+                        <td>{{ $shift->closed_at?->format('Y-m-d H:i') ?? '—' }}</td>
+                        <td>{{ number_format($shift->opening_cash, 2) }}</td>
+                        <td>
+                            @if($shift->status === 'open')
+                                <span class="badge bg-warning text-dark">Open</span>
+                            @else
+                                <span class="badge bg-secondary">Closed</span>
+                            @endif
+                        </td>
+                        <td class="text-end">
                             @can('tenant.shifts.show')
                                 <a href="{{ url('/shifts/' . $shift->id) }}" class="btn btn-sm btn-dark">View</a>
                             @endcan
-
-                            @if($shift->status === 'open')
-                                @can('tenant.shifts.close-form')
-                                    <a href="{{ url('/shifts/' . $shift->id . '/close') }}" class="btn btn-sm btn-danger">
-                                        Close
-                                    </a>
-                                @endcan
-                            @endif
-                        </div>
-                    </td>
-                </tr>
+                        </td>
+                    </tr>
+                @endforeach
             @empty
                 <tr>
                     <td colspan="8" class="text-center text-muted py-4">No shifts found.</td>
