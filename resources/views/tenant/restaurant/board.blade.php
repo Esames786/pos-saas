@@ -49,8 +49,52 @@
                             <option value="{{ $b->id }}" @selected($b->id == $selectedBranchId)>{{ $b->name }}</option>
                         @endforeach
                     </select>
+
+                    {{-- SHIFT-POS-INTEGRATION-CLOSURE-1: a table binds to THIS terminal's open shift. --}}
+                    <label class="form-label mb-0 fw-medium ms-3">Terminal:</label>
+                    <select id="board-terminal" class="form-select w-auto" data-branch="{{ $selectedBranchId }}">
+                        <option value="">— Select terminal —</option>
+                        @foreach($terminals as $t)
+                            <option value="{{ $t->id }}">{{ $t->name }}</option>
+                        @endforeach
+                    </select>
                 </div>
+                @if($terminals->isEmpty())
+                    <div class="small text-warning-emphasis mt-1"><i class="ti ti-alert-triangle me-1"></i>No active terminals in this branch — open a terminal/shift before opening tables.</div>
+                @endif
             </form>
+
+            @push('scripts')
+            <script>
+            (function () {
+                // Remember the board terminal per branch, and stamp it onto every Open-Table form so
+                // the session binds to the exact terminal shift (server enforces this too).
+                var sel = document.getElementById('board-terminal');
+                if (!sel) return;
+                var key = 'board_terminal_' + (sel.getAttribute('data-branch') || '');
+                try { var saved = localStorage.getItem(key); if (saved) sel.value = saved; } catch (e) {}
+                sel.addEventListener('change', function () { try { localStorage.setItem(key, sel.value); } catch (e) {} });
+
+                document.querySelectorAll('form[action$="/open"]').forEach(function (form) {
+                    form.addEventListener('submit', function (event) {
+                        if (!sel.value) {
+                            event.preventDefault();
+                            alert('Select a terminal (with an open shift) before opening a table.');
+                            return;
+                        }
+                        var hidden = form.querySelector('input[name="terminal_id"]');
+                        if (!hidden) {
+                            hidden = document.createElement('input');
+                            hidden.type = 'hidden';
+                            hidden.name = 'terminal_id';
+                            form.appendChild(hidden);
+                        }
+                        hidden.value = sel.value;
+                    });
+                });
+            })();
+            </script>
+            @endpush
 
             @forelse($floors as $floor)
             <div class="floor-panel">

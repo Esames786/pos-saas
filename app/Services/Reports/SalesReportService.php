@@ -126,10 +126,10 @@ class SalesReportService
     /** Dashboard quick stats for today. */
     public function todayStats(int $branchId = null): array
     {
-        $q = SalesOrder::query()
-            ->where('status', 'paid')
-            ->whereRaw($this->businessDayExpr() . ' = ?', [today()->toDateString()])
-            ->when($branchId, fn ($q, $v) => $q->where('branch_id', $v));
+        $q = $this->currentBusinessDay(
+            SalesOrder::query()->where('status', 'paid')->when($branchId, fn ($q, $v) => $q->where('branch_id', $v)),
+            $branchId
+        );
 
         $count    = (clone $q)->count();
         $net      = (clone $q)->sum('grand_total');
@@ -253,5 +253,32 @@ class SalesReportService
     private function businessDayExpr(string $prefix = ''): string
     {
         return "COALESCE({$prefix}business_date, DATE({$prefix}sale_date))";
+    }
+
+    /**
+     * SHIFT-POS-INTEGRATION-CLOSURE-1: constrain a sales_orders query to the CURRENT business day.
+     * "Today" is the branch business-timezone calendar date (via TenantClock), never Laravel's UTC
+     * today(). A single branch uses its own business date; an all-branch aggregate lets each branch
+     * contribute its OWN current business day (branches in different timezones may differ).
+     */
+    private function currentBusinessDay($query, ?int $branchId, string $prefix = '')
+    {
+        $clock = app(\App\Support\TenantClock::class);
+        $day = $this->businessDayExpr($prefix);
+
+        if ($branchId) {
+            return $query->whereRaw("$day = ?", [$clock->currentBusinessDate(\App\Models\Tenant\Branch::find($branchId))]);
+        }
+
+        $map = $clock->currentBusinessDatesByBranch();
+
+        return $query->where(function ($q) use ($map, $day, $prefix) {
+            foreach ($map as $bid => $date) {
+                $q->orWhere(fn ($w) => $w->where("{$prefix}branch_id", $bid)->whereRaw("$day = ?", [$date]));
+            }
+            if (empty($map)) {
+                $q->whereRaw('1 = 0');
+            }
+        });
     }
 }

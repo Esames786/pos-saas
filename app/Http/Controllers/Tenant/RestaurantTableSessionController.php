@@ -9,6 +9,7 @@ use App\Models\Tenant\RestaurantTable;
 use App\Models\Tenant\RestaurantTableSession;
 use App\Models\Tenant\RestaurantWaiter;
 use App\Models\Tenant\SalesOrder;
+use App\Models\Tenant\Terminal;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -35,7 +36,12 @@ class RestaurantTableSessionController extends Controller
             $q->where('branch_id', $selectedBranchId)->orWhereNull('branch_id');
         })->where('status', 'active')->orderBy('name')->get();
 
-        return view('tenant.restaurant.board', compact('floors', 'waiters', 'branches', 'selectedBranchId'));
+        // SHIFT-POS-INTEGRATION-CLOSURE-1: opening a table binds to a specific terminal's shift, so
+        // the board must let the host pick the terminal they are working from.
+        $terminals = Terminal::where('branch_id', $selectedBranchId)
+            ->where('status', 'active')->orderBy('name')->get();
+
+        return view('tenant.restaurant.board', compact('floors', 'waiters', 'branches', 'selectedBranchId', 'terminals'));
     }
 
     public function open(Request $request, RestaurantTable $restaurantTable)
@@ -46,6 +52,7 @@ class RestaurantTableSessionController extends Controller
             ->assertSaleMutationAllowed(\App\Models\Tenant\Branch::findOrFail($restaurantTable->branch_id));
 
         $data = $request->validate([
+            'terminal_id'          => 'required|exists:terminals,id',
             'restaurant_waiter_id' => 'nullable|exists:restaurant_waiters,id',
             'guest_count'          => 'required|integer|min:1|max:100',
             'notes'                => 'nullable|string|max:255',
@@ -61,19 +68,31 @@ class RestaurantTableSessionController extends Controller
             }
         }
 
+        // SHIFT-POS-INTEGRATION-CLOSURE-1: shifts are PER-TERMINAL and a branch may have several open
+        // terminal shifts, so a table must be bound to the EXACT terminal that opened it — never an
+        // arbitrary branch shift (that would mis-attribute cash / close-blocking / sync identity).
+        // The terminal must be active and belong to this table's branch.
+        $terminal = Terminal::where('id', $data['terminal_id'])
+            ->where('branch_id', $restaurantTable->branch_id)
+            ->where('status', 'active')
+            ->first();
+        if (! $terminal) {
+            $msg = 'Select an active terminal in this branch before opening a table.';
+            if ($request->expectsJson()) {
+                return response()->json(['message' => $msg, 'code' => 'INVALID_TERMINAL'], 422);
+            }
+            return back()->withErrors(['terminal_id' => $msg]);
+        }
+
         $sessionNo = 'TS-' . now()->format('YmdHis') . '-' . random_int(100, 999);
-        $terminalId = $request->input('terminal_id');
 
         try {
-            DB::connection('tenant')->transaction(function () use ($restaurantTable, $data, $sessionNo, $terminalId) {
-                // SHIFT-TIMEZONE-BUSINESS-DATE-HARDEN-1: opening a table is NEW commercial state, so
-                // it requires an open shift and must be bound to it (opened_shift_id + business_date)
-                // — otherwise the table would be invisible to the shift-close guard. Lock the shift
-                // FIRST (consistent order), then the table row.
-                $shiftService = app(\App\Services\Sales\ShiftService::class);
-                $shift = $terminalId
-                    ? $shiftService->lockOpenShiftForTerminal(\App\Models\Tenant\Terminal::find($terminalId))
-                    : $shiftService->lockOpenShiftForBranch((int) $restaurantTable->branch_id);
+            DB::connection('tenant')->transaction(function () use ($restaurantTable, $data, $sessionNo, $terminal) {
+                // Opening a table is NEW commercial state: it requires the EXACT terminal's open shift
+                // and binds to it (opened_shift_id + business_date) so it is visible to that terminal's
+                // shift-close guard and carries the correct shift identity. Lock the shift FIRST
+                // (consistent order), then the table row.
+                $shift = app(\App\Services\Sales\ShiftService::class)->lockOpenShiftForTerminal($terminal);
 
                 $table = RestaurantTable::lockForUpdate()->findOrFail($restaurantTable->id);
 

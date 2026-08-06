@@ -840,6 +840,9 @@
                 <section class="table-workspace-view" id="table-workspace-open" hidden>
                     <form id="open-table-form" method="POST" action="#" class="row g-3 mx-auto" style="max-width:780px">
                         @csrf
+                        {{-- SHIFT-POS-INTEGRATION-CLOSURE-1: the table binds to the POS-selected terminal's
+                             open shift; synced from #terminal_id on submit. --}}
+                        <input type="hidden" name="terminal_id" id="open-table-terminal-id">
                         <div class="col-12"><h3 class="h5 mb-0">Open Table <span id="open-table-no">-</span></h3></div>
                 <div class="col-12">
                     <label for="restaurant_waiter_id" class="form-label">Waiter</label>
@@ -1442,9 +1445,18 @@ document.addEventListener('DOMContentLoaded', function () {
                     detail.textContent = 'POS operations are blocked on this terminal.';
                     if (link) link.style.display = '';
                 }
+                // One source of truth: retune the shop clock to THIS terminal's shift timezone +
+                // business date + server epoch. Falls back to the branch business tz when closed.
+                if (window.__setPosClock) {
+                    window.__setPosClock({ tz: d.timezone, businessDate: d.business_date, serverEpochMs: d.server_epoch_ms });
+                }
             })
             .catch(function () { /* status is advisory; never block the POS on a fetch error */ });
     }
+
+    // Terminal-aware periodic resync: refresh shift status (tz + business date + server epoch) so a
+    // long POS session stays aligned to the server for the currently selected terminal.
+    setInterval(function () { refreshShiftStatus(); }, 300000);
 
     function autoSelectTerminal() {
         if (!terminalEl) return;
@@ -4890,6 +4902,15 @@ document.addEventListener('DOMContentLoaded', function () {
         const openBtn = document.getElementById('open-table-submit');
         const errEl   = document.getElementById('open-table-error');
         if (errEl) errEl.remove();
+
+        // SHIFT-POS-INTEGRATION-CLOSURE-1: bind the table to the POS-selected terminal's shift.
+        const termHidden = document.getElementById('open-table-terminal-id');
+        const termSel    = document.getElementById('terminal_id');
+        if (termHidden) termHidden.value = termSel ? (termSel.value || '') : '';
+        if (termHidden && !termHidden.value) {
+            openBtn.insertAdjacentHTML('beforebegin', '<div id="open-table-error" class="alert alert-warning w-100 mb-2">Select a terminal (with an open shift) before opening a table.</div>');
+            return;
+        }
 
         openBtn.disabled    = true;
         openBtn.textContent = 'Opening…';

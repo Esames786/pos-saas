@@ -79,6 +79,15 @@ trait TenantFixtures
         ], $attrs));
     }
 
+    protected function makePaymentMethod(array $attrs = []): int
+    {
+        $u = uniqid();
+        return $this->tenant()->table('payment_methods')->insertGetId(array_merge([
+            'code' => 'PM-' . $u, 'name' => 'Cash ' . $u, 'method_type' => 'cash',
+            'is_active' => 1, 'created_at' => now(), 'updated_at' => now(),
+        ], $attrs));
+    }
+
     protected function makeUser(array $attrs = []): int
     {
         $u = uniqid();

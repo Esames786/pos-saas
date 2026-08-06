@@ -90,14 +90,23 @@ class ShiftController extends Controller
 
         $shift = $shiftService->activeShiftForTerminal($terminal);
 
+        // SHIFT-POS-INTEGRATION-CLOSURE-1: one source of truth for the POS clock + badge. The clock
+        // ticks in the SELECTED terminal's shift timezone (falling back to the branch business tz
+        // when no shift is open), anchored to this server epoch.
+        $branchTz = app(\App\Support\TenantClock::class)->businessTimezone(
+            $terminal?->branch ?: ($terminal ? \App\Models\Tenant\Branch::find($terminal->branch_id) : null)
+        );
+
         return response()->json([
-            'has_terminal'  => (bool) $terminal,
-            'open'          => (bool) $shift,
-            'shift_id'      => $shift?->id,
-            'business_date' => $shift?->business_date?->toDateString(),
-            'timezone'      => $shift?->timezone_name,
-            'opened_at'     => $shift ? app(\App\Support\TenantClock::class)->format($shift->opened_at, 'd M H:i') : null,
-            'open_url'      => url('/shifts/open'),
+            'has_terminal'   => (bool) $terminal,
+            'open'           => (bool) $shift,
+            'shift_id'       => $shift?->id,
+            'shift_uuid'     => $shift?->shift_uuid,
+            'business_date'  => $shift?->business_date?->toDateString(),
+            'timezone'       => $shift?->timezone_name ?: $branchTz,
+            'opened_at'      => $shift ? app(\App\Support\TenantClock::class)->format($shift->opened_at, 'd M H:i', $shift->timezone_name) : null,
+            'server_epoch_ms' => (int) round(microtime(true) * 1000),
+            'open_url'       => url('/shifts/open'),
         ]);
     }
 

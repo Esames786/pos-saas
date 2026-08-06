@@ -172,6 +172,27 @@
     tick();
     setInterval(tick, 1000);
 
+    // SHIFT-POS-INTEGRATION-CLOSURE-1: let the POS reconfigure this clock to the SELECTED terminal's
+    // shift timezone + business date + server epoch (one source of truth), on terminal change.
+    window.__setPosClock = function (cfg) {
+        cfg = cfg || {};
+        if (cfg.tz) {
+            tz = cfg.tz;
+            fmt = makeFmt(tz, false);
+            var lbl = el.querySelector('.shift-clock-tz');
+            if (lbl) lbl.textContent = tz;
+        }
+        if (typeof cfg.serverEpochMs === 'number') {
+            serverMs = cfg.serverEpochMs;
+            perfBase = (window.performance && performance.now) ? performance.now() : null;
+        }
+        if (cfg.businessDate) {
+            var badge = el.querySelector('.shift-clock-bizdate');
+            if (badge) badge.innerHTML = '<i class="ti ti-calendar-event me-1"></i>' + cfg.businessDate;
+        }
+        tick();
+    };
+
     // Periodic server resync so a long-running session (server NTP/time correction, or a very long
     // uptime) stays aligned to server time. Re-seed the anchor pair from the server every 5 min.
     if (resyncUrl) {

@@ -118,6 +118,30 @@ class TenantClock
         return $this->businessDateForOpening($this->businessTimezone($branch));
     }
 
+    /**
+     * SHIFT-POS-INTEGRATION-CLOSURE-1: the CURRENT business (calendar) date for a branch, in its
+     * business timezone. This is what an operational "Today" must use — NEVER Laravel's today(),
+     * which is UTC and can be a day behind for e.g. Asia/Karachi just after midnight.
+     */
+    public function currentBusinessDate(?Branch $branch = null): string
+    {
+        return $this->businessDateForOpening($this->businessTimezone($branch));
+    }
+
+    /**
+     * The current business date for every active branch, keyed by branch id. A multi-branch
+     * dashboard aggregating "Today" uses this so each branch contributes its OWN current business
+     * day (branches in different timezones can legitimately be on different calendar days).
+     *
+     * @return array<int,string> branch_id => Y-m-d
+     */
+    public function currentBusinessDatesByBranch(): array
+    {
+        return Branch::where('status', 'active')->get()
+            ->mapWithKeys(fn (Branch $b) => [$b->id => $this->currentBusinessDate($b)])
+            ->all();
+    }
+
     /** True if the given string is a valid IANA timezone identifier (rejects numeric offsets). */
     public function normalize(?string $timezone): ?string
     {

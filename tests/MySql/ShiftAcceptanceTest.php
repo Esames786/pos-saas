@@ -154,6 +154,54 @@ class ShiftAcceptanceTest extends MySqlTenantTestCase
         $this->tenant()->table('shifts')->where('id', $s2->id)->update(['shift_uuid' => $original]);
     }
 
+    /** CLOSURE-1 #2 — operational "Today" uses the branch business day, not Laravel's UTC today(). */
+    public function test_dashboard_today_uses_branch_business_day_not_utc_today(): void
+    {
+        $this->cleanTenant(['sales_orders', 'branches']);
+        $branchId = $this->makeBranch(['timezone' => 'Asia/Karachi']);
+
+        // Freeze the clock at 2026-08-05 19:30 UTC = 2026-08-06 00:30 in Karachi. Laravel today()
+        // (UTC) is 5 Aug, but the branch's current business day is 6 Aug.
+        Carbon::setTestNow(Carbon::parse('2026-08-05 19:30:00', 'UTC'));
+        try {
+            $this->assertSame('2026-08-05', today()->toDateString(), 'Precondition: UTC today() is a day behind.');
+            $this->assertSame('2026-08-06', app(\App\Support\TenantClock::class)->currentBusinessDate(Branch::on('tenant')->find($branchId)));
+
+            // A paid sale on the CURRENT business day (6 Aug) rung just after midnight (5 Aug 19:30 UTC).
+            $this->makeSale($branchId, ['status' => 'paid', 'business_date' => '2026-08-06', 'sale_date' => '2026-08-05 19:30:00', 'grand_total' => 100]);
+            // A sale from the PREVIOUS business day (5 Aug) must NOT count as "today".
+            $this->makeSale($branchId, ['status' => 'paid', 'business_date' => '2026-08-05', 'sale_date' => '2026-08-05 10:00:00', 'grand_total' => 999]);
+
+            $stats = app(SalesReportService::class)->todayStats($branchId);
+            $this->assertEquals(1, $stats['order_count'], 'Only the 6 Aug (current business day) sale counts as today.');
+            $this->assertEquals(100, $stats['net_sales'], 'UTC today() would have wrongly picked the 5 Aug 999 sale.');
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    /** CLOSURE-1 #3 — shift_uuid cannot be changed once assigned; normal updates still work. */
+    public function test_shift_uuid_is_immutable_after_assignment(): void
+    {
+        $this->cleanTenant(['shifts', 'terminals', 'branches']);
+        $branchId = $this->makeBranch(['timezone' => 'Asia/Karachi']);
+        $terminalId = $this->makeTerminal($branchId);
+        $shift = $this->svc()->open(Branch::on('tenant')->find($branchId), Terminal::on('tenant')->find($terminalId), $this->makeUser(), 0.0);
+
+        // A normal (non-uuid) update is fine.
+        $shift->update(['closing_notes' => 'ok']);
+        $this->assertSame('ok', $shift->refresh()->closing_notes);
+
+        // Changing shift_uuid is rejected.
+        try {
+            $shift->shift_uuid = (string) Str::ulid();
+            $shift->save();
+            $this->fail('Expected shift_uuid change to be rejected.');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsStringIgnoringCase('immutable', $e->getMessage());
+        }
+    }
+
     /** #12 — the historical backfill uses the branch timezone, not a UTC DATE(). */
     public function test_karachi_backfill_around_utc_midnight_uses_branch_timezone(): void
     {

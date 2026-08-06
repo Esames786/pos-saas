@@ -8,6 +8,21 @@ class Shift extends Model
 {
     protected $connection = 'tenant';
 
+    /**
+     * SHIFT-POS-INTEGRATION-CLOSURE-1: shift_uuid is the stable cross-system sync identity, so once
+     * a shift has one it must NEVER change. Generation at open and the null->value backfill are
+     * allowed (original is null); any later change is rejected. Normal status/cash/close updates
+     * are unaffected.
+     */
+    protected static function booted(): void
+    {
+        static::updating(function (Shift $shift) {
+            if ($shift->isDirty('shift_uuid') && $shift->getOriginal('shift_uuid') !== null) {
+                throw new \RuntimeException('shift_uuid is immutable once assigned and cannot be changed.');
+            }
+        });
+    }
+
     protected $fillable = [
         'shift_uuid',
         'branch_id',

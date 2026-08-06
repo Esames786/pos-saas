@@ -195,6 +195,13 @@ class ShiftService
      * (unpaid) sales — which includes unpaid SPLIT children, since a split creates a held order that
      * inherits the parent's shift_id — and its open/bill-requested restaurant table sessions.
      *
+     * DRAFT is deliberately NOT counted: it is a transient in-transaction state during direct-pay
+     * checkout only (SalesOrderController@store creates 'draft' then finalizePaidSale flips it to
+     * 'paid' before commit, or the whole transaction rolls back). No committed row ever survives as
+     * 'draft', and an in-flight checkout locks the same shift row (lockOpenShiftForTerminal), so it
+     * cannot straddle a close. (Proven by test_direct_pay_..._real_path asserting the committed
+     * status is 'paid'.)
+     *
      * $lockForUpdate makes these CURRENT reads (used by the atomic close guard so it can never miss
      * a row a racing operation just committed). Left false for read-only display callers.
      *
