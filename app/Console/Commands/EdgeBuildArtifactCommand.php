@@ -34,9 +34,9 @@ class EdgeBuildArtifactCommand extends Command
         $dest = rtrim(str_replace('\\', '/', (string) $this->argument('dest')), '/');
         $release = ! $this->option('allow-dirty');
 
-        // ── Provenance ────────────────────────────────────────────────────────────────────────
-        $head = trim((string) @exec('git rev-parse HEAD 2>/dev/null'));
-        $dirty = trim((string) @exec('git status --porcelain --untracked-files=no 2>/dev/null')) !== '';
+        // ── Provenance (cross-platform git; no shell stderr redirect — invalid on Windows cmd) ──
+        $head = (string) ($this->git(['rev-parse', 'HEAD']) ?? '');
+        $dirty = ($this->git(['status', '--porcelain', '--untracked-files=no']) ?? '') !== '';
 
         if ($release) {
             if ($head === '') {
@@ -103,6 +103,17 @@ class EdgeBuildArtifactCommand extends Command
         $this->table(['field', 'value'], collect($summary)->map(fn ($v, $k) => [$k, is_scalar($v) ? var_export($v, true) : json_encode($v)])->values()->all());
 
         return self::SUCCESS;
+    }
+
+    /** Run git portably (no shell redirects) and return trimmed stdout, or null on failure. */
+    private function git(array $args): ?string
+    {
+        $cmd = 'git ' . implode(' ', array_map('escapeshellarg', $args));
+        $out = [];
+        $code = 0;
+        @exec($cmd, $out, $code);
+
+        return $code === 0 ? trim(implode("\n", $out)) : null;
     }
 
     /** Return a reason string if $dest is an unsafe delete target, else null. */
