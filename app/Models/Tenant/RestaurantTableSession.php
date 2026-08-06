@@ -15,6 +15,8 @@ class RestaurantTableSession extends Model
         'restaurant_waiter_id',
         'opened_by_user_id',
         'closed_by_user_id',
+        'opened_shift_id',
+        'business_date',
         'guest_count',
         'status',
         'opened_at',
@@ -25,10 +27,16 @@ class RestaurantTableSession extends Model
     protected function casts(): array
     {
         return [
-            'guest_count' => 'integer',
-            'opened_at'   => 'datetime',
-            'closed_at'   => 'datetime',
+            'guest_count'   => 'integer',
+            'business_date' => 'date:Y-m-d',
+            'opened_at'     => 'datetime',
+            'closed_at'     => 'datetime',
         ];
+    }
+
+    public function openedShift()
+    {
+        return $this->belongsTo(Shift::class, 'opened_shift_id');
     }
 
     public function branch()

@@ -41,6 +41,7 @@ class SalesOrder extends Model
         'order_source',
         'order_type',
         'sale_date',
+        'business_date',
         'subtotal',
         'discount_type',
         'discount_value',
@@ -73,6 +74,7 @@ class SalesOrder extends Model
     {
         return [
             'sale_date'             => 'datetime',
+            'business_date'         => 'date:Y-m-d',
             'subtotal'              => 'decimal:2',
             'discount_value'        => 'decimal:4',
             'discount_amount'       => 'decimal:2',

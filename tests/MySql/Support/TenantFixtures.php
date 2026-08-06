@@ -67,6 +67,18 @@ trait TenantFixtures
         ], $attrs));
     }
 
+    protected function makeTable(int $branchId, array $attrs = []): int
+    {
+        $floorId = $this->tenant()->table('restaurant_floors')->insertGetId([
+            'branch_id' => $branchId, 'name' => 'Floor ' . uniqid(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        return $this->tenant()->table('restaurant_tables')->insertGetId(array_merge([
+            'branch_id' => $branchId, 'restaurant_floor_id' => $floorId, 'table_no' => 'T' . random_int(1, 9999),
+            'created_at' => now(), 'updated_at' => now(),
+        ], $attrs));
+    }
+
     protected function makeUser(array $attrs = []): int
     {
         $u = uniqid();

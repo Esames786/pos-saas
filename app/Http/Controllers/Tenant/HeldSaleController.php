@@ -15,6 +15,9 @@ use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\Terminal;
 use App\Services\Sales\SalesTotalsService;
 use App\Services\Sales\KotCancellationService;
+use App\Services\Sales\ShiftService;
+use App\Exceptions\ShiftException;
+use App\Support\TenantClock;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -264,6 +267,19 @@ class HeldSaleController extends Controller
         app(\App\Services\Edge\BranchOperatingModeService::class)
             ->assertSaleMutationAllowed(\App\Models\Tenant\Branch::findOrFail($data['branch_id']));
 
+        // SHIFT-TIMEZONE-BUSINESS-DATE-1: holding an order is a POS business operation, so it
+        // requires an open shift on its terminal (universal — no requires_shift bypass). Enforced
+        // before the write transaction so the loser gets a clean 422, not a rolled-back 500.
+        $terminal = !empty($data['terminal_id']) ? Terminal::find($data['terminal_id']) : null;
+        try {
+            $shift = app(ShiftService::class)->assertOpenShift($terminal);
+        } catch (ShiftException $e) {
+            if ($request->expectsJson()) {
+                return response()->json(['ok' => false, 'code' => 'NO_OPEN_SHIFT', 'message' => $e->getMessage()], 422);
+            }
+            return back()->withErrors(['terminal_id' => $e->getMessage()])->withInput();
+        }
+
         $lines = collect($data['lines'])->filter(fn ($l) => !empty($l['product_id']) && !empty($l['quantity']));
 
         if ($lines->isEmpty()) {
@@ -304,6 +320,7 @@ class HeldSaleController extends Controller
             $lines,
             $totals,
             $cancellationService,
+            $shift,
         ) {
 
         $tableSession = null;
@@ -328,6 +345,10 @@ class HeldSaleController extends Controller
                     'branch_id'           => $data['branch_id'],
                     'restaurant_table_id' => $data['restaurant_table_id'],
                     'opened_by_user_id'   => Auth::id(),
+                    // Anchor the check to the shift that opened it; its business_date rides every
+                    // round and never rolls over at midnight.
+                    'opened_shift_id'     => $shift->id,
+                    'business_date'       => $shift->business_date->toDateString(),
                     'status'              => 'open',
                     'opened_at'           => now(),
                 ]);
@@ -345,6 +366,12 @@ class HeldSaleController extends Controller
         if ($tableSession && !auth('tenant')->user()?->allowsOrderType('dine_in')) {
             abort(403, 'Your account is not allowed to use Dine In orders.');
         }
+
+        // Business date for this round: an existing open check keeps its OWN business date (Add
+        // Round never rolls it forward); a fresh check/quick hold inherits the current shift's.
+        $businessDate = ($tableSession && $tableSession->business_date)
+            ? $tableSession->business_date->toDateString()
+            : $shift->business_date->toDateString();
 
         // Guard: prevent accidental duplicate held sales on the same table session
         // A table has one cashier-facing open check. Additional kitchen rounds
@@ -463,6 +490,10 @@ class HeldSaleController extends Controller
             $sale->update([
                 'branch_id'                   => $data['branch_id'],
                 'terminal_id'                 => $data['terminal_id'] ?? null,
+                // Add Round keeps the order's original shift + business date (preserve if the held
+                // order predates the shift columns).
+                'shift_id'                    => $sale->shift_id ?? $shift->id,
+                'business_date'               => $sale->business_date?->toDateString() ?? $businessDate,
                 'order_type'                  => $data['order_type'],
                 'delivery_channel_id'         => $data['order_type'] === 'delivery' ? ($data['delivery_channel_id'] ?? null) : null,
                 'delivery_rider_id'           => $data['order_type'] === 'delivery' ? ($data['delivery_rider_id'] ?? null) : null,
@@ -491,6 +522,8 @@ class HeldSaleController extends Controller
                 'sale_no'                     => $saleNo,
                 'branch_id'                   => $data['branch_id'],
                 'terminal_id'                 => $data['terminal_id'] ?? null,
+                'shift_id'                    => $shift->id,
+                'business_date'               => $businessDate,
                 'order_source'                => 'pos',
                 'order_type'                  => $data['order_type'],
                 'delivery_channel_id'         => $data['order_type'] === 'delivery' ? ($data['delivery_channel_id'] ?? null) : null,

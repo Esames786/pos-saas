@@ -94,12 +94,30 @@ class ShiftController extends Controller
         ]);
     }
 
-    public function close(Request $request, Shift $shift)
+    public function close(Request $request, Shift $shift, ShiftService $shiftService)
     {
         abort_if($shift->status !== 'open', 404);
 
         app(\App\Services\Edge\BranchOperatingModeService::class)
             ->assertSaleMutationAllowed(\App\Models\Tenant\Branch::findOrFail($shift->branch_id));
+
+        // A shift owns real, unsettled cash/kitchen work — held (unpaid) sales and open restaurant
+        // tables — that must be resolved before the drawer can be reconciled. (Offline print jobs
+        // are NOT operational work and never block a close.)
+        $work = $shiftService->unresolvedWork($shift);
+        if (! empty($work['held_sales']) || ! empty($work['open_tables'])) {
+            $bits = [];
+            if (! empty($work['held_sales'])) {
+                $bits[] = count($work['held_sales']) . ' held order(s): ' . implode(', ', $work['held_sales']);
+            }
+            if (! empty($work['open_tables'])) {
+                $bits[] = count($work['open_tables']) . ' open table(s): ' . implode(', ', $work['open_tables']);
+            }
+
+            return back()->withErrors([
+                'shift' => 'Settle all open work before closing this shift — ' . implode('; ', $bits) . '.',
+            ])->withInput();
+        }
 
         $data = $request->validate([
             'counted_cash'    => ['nullable', 'numeric', 'min:0'],

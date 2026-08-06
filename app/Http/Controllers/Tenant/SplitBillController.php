@@ -77,6 +77,12 @@ class SplitBillController extends Controller
                     $shiftId = $openShift?->id;
                 }
 
+                // A split child is the SAME check money-wise: it inherits the parent's business
+                // date (never recomputed from "now"), so splitting after midnight cannot move part
+                // of a bill onto a different business day. Legacy orders fall back to their shift.
+                $businessDate = $salesOrder->business_date?->toDateString()
+                    ?? optional(Shift::find($shiftId))->business_date?->toDateString();
+
                 $newSale = SalesOrder::create([
                     'sale_no'                     => $salesService->nextSaleNo(),
                     'branch_id'                   => $salesOrder->branch_id,
@@ -93,6 +99,7 @@ class SplitBillController extends Controller
                     'order_source'                => $salesOrder->order_source,
                     'order_type'                  => $salesOrder->order_type,
                     'sale_date'                   => now(),
+                    'business_date'               => $businessDate,
                     'subtotal'                    => 0,
                     'discount_type'               => 'none',
                     'discount_value'              => 0,

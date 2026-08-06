@@ -17,7 +17,9 @@ use App\Services\Inventory\InventoryService;
 use App\Services\Sales\SalesService;
 use App\Services\Sales\SalesTotalsService;
 use App\Services\Sales\PromotionService;
+use App\Services\Sales\ShiftService;
 use App\Services\Printing\DirectPayPrintOrchestrator;
+use App\Support\TenantClock;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -130,7 +132,10 @@ class SalesOrderController extends Controller
             ) {
                 $branch   = Branch::findOrFail($data['branch_id']);
                 $terminal = !empty($data['terminal_id']) ? Terminal::find($data['terminal_id']) : null;
-                $shift    = $this->resolveOpenShift($terminal);
+                $shift    = $this->resolveOpenShift($terminal, $data['order_source'] ?? 'pos');
+                // Business date for a NEW sale = the open shift's frozen date (falls back to the
+                // branch business-tz calendar date). Crossing midnight never changes it.
+                $businessDate = app(TenantClock::class)->businessDateForSale($shift, $branch);
                 $orderType = $data['order_type'];
 
                 // Resolve line prices first so SalesTotalsService gets accurate per-line data
@@ -253,6 +258,7 @@ class SalesOrderController extends Controller
                     'delivery_rider_id'           => (! $tableSession && $orderType === 'delivery') ? ($data['delivery_rider_id'] ?? null) : null,
                     'delivery_address'            => (! $tableSession && $orderType === 'delivery') ? ($data['delivery_address'] ?? null) : null,
                     'sale_date'                   => now(),
+                    'business_date'               => $businessDate,
                     'subtotal'                    => $totals['subtotal'],
                     'discount_type'               => $data['discount_type'],
                     'discount_value'              => $data['discount_value'] ?? 0,
@@ -329,6 +335,11 @@ class SalesOrderController extends Controller
                         'status'           => 'draft',
                         'inventory_posted' => false,
                         'completed_at'     => null,
+                        // Add Round / recall-to-pay keeps the ORIGINAL shift + business date. A held
+                        // check opened before midnight stays on its opening business day even when
+                        // paid after midnight (and even from a different shift).
+                        'shift_id'         => $sale->shift_id ?? $shift?->id,
+                        'business_date'    => $sale->business_date?->toDateString() ?? $businessDate,
                     ]));
                 } else {
                     $sale = SalesOrder::create(array_merge($saleFields, $idempotencyFields, [
@@ -783,21 +794,22 @@ class SalesOrderController extends Controller
         return round(($taxableAmount * (float) $product->tax_rate_percent) / 100, 2);
     }
 
-    private function resolveOpenShift(?Terminal $terminal): ?Shift
+    /**
+     * SHIFT-TIMEZONE-BUSINESS-DATE-1 — resolve the open shift for a POS operation.
+     *
+     * A POS business operation requires an open shift on its terminal (universal — the rule
+     * ignores terminals.requires_shift, so no terminal can bypass it). Non-POS order sources
+     * (imported/online orders that never touch a terminal) are exempt. Delegates to the one
+     * canonical ShiftService so Cloud and future Edge enforce identically.
+     */
+    private function resolveOpenShift(?Terminal $terminal, string $orderSource): ?Shift
     {
-        if (!$terminal) {
-            return null;
+        $shiftService = app(ShiftService::class);
+
+        if ($orderSource === 'pos') {
+            return $shiftService->assertOpenShift($terminal);
         }
 
-        $shift = Shift::where('terminal_id', $terminal->id)
-            ->where('status', 'open')
-            ->latest()
-            ->first();
-
-        if ($terminal->requires_shift && !$shift) {
-            throw new RuntimeException('Selected terminal requires an open shift.');
-        }
-
-        return $shift;
+        return $shiftService->activeShiftForTerminal($terminal);
     }
 }
