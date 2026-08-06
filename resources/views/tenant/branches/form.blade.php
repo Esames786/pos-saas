@@ -74,13 +74,14 @@
                         class="form-control" required maxlength="100"
                         list="timezone-list">
                     <datalist id="timezone-list">
-                        <option value="Asia/Karachi">
-                        <option value="Asia/Dubai">
-                        <option value="Asia/Riyadh">
-                        <option value="UTC">
-                        <option value="America/New_York">
-                        <option value="Europe/London">
+                        @foreach(timezone_identifiers_list() as $tzId)
+                            <option value="{{ $tzId }}">
+                        @endforeach
                     </datalist>
+                    <small class="text-muted d-block mt-1">
+                        Anchors this branch's business date for shifts. Use an IANA name
+                        (e.g. Asia/Karachi) — numeric offsets like UTC+5 are not accepted.
+                    </small>
                 </div>
 
                 <div class="col-md-3">

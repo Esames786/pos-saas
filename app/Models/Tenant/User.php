@@ -36,6 +36,7 @@ class User extends Authenticatable
         'force_password_change',
         'last_login_at',
         'locale',
+        'timezone',
     ];
 
     protected $hidden = [

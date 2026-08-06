@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class AuthController extends Controller
 {
@@ -80,6 +81,28 @@ class AuthController extends Controller
         $user->update(['password' => Hash::make($data['password'])]);
 
         return redirect('/dashboard')->with('status', __('auth.password_updated'));
+    }
+
+    /**
+     * SHIFT-TIMEZONE-BUSINESS-DATE-1 (C): set the current user's DISPLAY timezone — used only for
+     * rendering timestamps in the portal. It never affects a shift's business date, which is
+     * anchored to the branch business timezone at open. Empty clears the override (falls back to
+     * branch -> Asia/Karachi). IANA identifiers only; numeric offsets are rejected.
+     */
+    public function updateTimezone(Request $request)
+    {
+        $data = $request->validate([
+            'timezone' => ['nullable', 'string', Rule::in(timezone_identifiers_list())],
+        ]);
+
+        $guard = app()->bound('tenant') ? 'tenant' : 'central';
+        $user  = auth($guard)->user();
+
+        if ($user) {
+            $user->update(['timezone' => $data['timezone'] ?: null]);
+        }
+
+        return back()->with('status', 'Display timezone updated.');
     }
 
     public function switchLocale(string $locale)

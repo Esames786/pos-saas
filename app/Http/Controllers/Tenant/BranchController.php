@@ -113,7 +113,9 @@ class BranchController extends Controller
             'address'                    => ['nullable', 'string'],
             'phone'                      => ['nullable', 'string', 'max:50'],
             'email'                      => ['nullable', 'email', 'max:190'],
-            'timezone'                   => ['required', 'string', 'max:100'],
+            // SHIFT-TIMEZONE-BUSINESS-DATE-1: the branch business timezone anchors every shift's
+            // business date, so it must be a real IANA identifier (numeric offsets are rejected).
+            'timezone'                   => ['required', 'string', Rule::in(timezone_identifiers_list())],
             'tax_registration_no'        => ['nullable', 'string', 'max:100'],
             'is_tax_enabled'             => ['nullable', 'boolean'],
             'show_tax_number_on_invoice' => ['nullable', 'boolean'],

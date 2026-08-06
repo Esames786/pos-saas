@@ -132,6 +132,10 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
             Route::post('/password/change', [AuthController::class, 'changePassword'])
                 ->name('tenant.password.update');
 
+            // SHIFT-TIMEZONE-BUSINESS-DATE-1 (C): personal display-timezone preference.
+            Route::post('/preferences/timezone', [AuthController::class, 'updateTimezone'])
+                ->name('tenant.preferences.timezone');
+
             // AJAX Select2 lookups (authenticated only — no per-permission gate;
             // they are read-only searchable pickers used across forms/filters).
             Route::get('/ajax/products', ProductLookupController::class)->name('tenant.ajax.products');

@@ -79,6 +79,43 @@
                                 </div>
                             </div>
                         </form>
+
+                        {{-- SHIFT-TIMEZONE-BUSINESS-DATE-1 (C): personal DISPLAY timezone. Affects only
+                             how timestamps are shown to me; it never changes any shift's business date. --}}
+                        @php
+                            $clock = app(\App\Support\TenantClock::class);
+                            $me = auth('tenant')->user();
+                            $effectiveTz = $clock->displayTimezone($me);
+                        @endphp
+                        <form method="POST" action="{{ url('/preferences/timezone') }}" class="mt-4">
+                            @csrf
+                            <div class="card">
+                                <div class="card-body p-5">
+                                    <div class="login-userheading">
+                                        <h3>Display timezone</h3>
+                                        <h4>How dates &amp; times are shown to you. Business dates are unaffected.</h4>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label" for="user-timezone">Your timezone</label>
+                                        <input type="text" id="user-timezone" name="timezone"
+                                            value="{{ old('timezone', $me?->timezone) }}"
+                                            placeholder="{{ $effectiveTz }} (current effective)"
+                                            class="form-control" maxlength="64" list="user-timezone-list">
+                                        <datalist id="user-timezone-list">
+                                            @foreach($clock->identifiers() as $tzId)
+                                                <option value="{{ $tzId }}">
+                                            @endforeach
+                                        </datalist>
+                                        <small class="text-muted">Leave empty to follow your branch timezone. Numeric offsets (e.g. UTC+5) are not accepted.</small>
+                                    </div>
+
+                                    <div class="form-login">
+                                        <button type="submit" class="btn btn-outline-primary w-100">Save timezone</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </form>
                     </div>
 
                     <div class="my-4 d-flex justify-content-center align-items-center copyright-text">
