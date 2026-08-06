@@ -64,6 +64,44 @@ class ShiftService
         });
     }
 
+    /**
+     * SHIFT-BRANCH-UX-1: bulk-open shifts for several terminals of ONE branch in a single manager
+     * action (branch opens → all its terminals go live at once). Each terminal is still opened via
+     * the canonical per-terminal open() (row-locked, freezes business_date/timezone/shift_uuid), so
+     * every invariant holds. Terminals that already have an open shift, or are not active in this
+     * branch, are SKIPPED (with a reason) — never a hard failure.
+     *
+     * @param array<int> $terminalIds
+     * @param array<int,float> $openingCashByTerminal per-terminal override; else $defaultOpeningCash
+     * @return array{opened: array<int,Shift>, skipped: array<int,string>}
+     */
+    public function openMany(Branch $branch, array $terminalIds, int $userId, float $defaultOpeningCash, array $openingCashByTerminal = [], ?string $notes = null): array
+    {
+        $opened = [];
+        $skipped = [];
+
+        foreach (array_unique(array_map('intval', $terminalIds)) as $tid) {
+            $terminal = Terminal::where('id', $tid)->where('branch_id', $branch->id)->where('status', 'active')->first();
+            if (! $terminal) {
+                $skipped[$tid] = 'Terminal #' . $tid . ' is not an active terminal in this branch';
+                continue;
+            }
+            if ($this->activeShiftForTerminal($terminal)) {
+                $skipped[$tid] = $terminal->name . ' already has an open shift';
+                continue;
+            }
+            try {
+                $cash = array_key_exists($tid, $openingCashByTerminal) ? (float) $openingCashByTerminal[$tid] : $defaultOpeningCash;
+                $opened[$tid] = $this->open($branch, $terminal, $userId, $cash, $notes);
+            } catch (ShiftException $e) {
+                // open() re-checks under lock; a concurrent open just becomes a skip, not a 500.
+                $skipped[$tid] = $terminal->name . ': ' . $e->getMessage();
+            }
+        }
+
+        return ['opened' => $opened, 'skipped' => $skipped];
+    }
+
     /** The current open shift for a terminal, or null. */
     public function activeShiftForTerminal(?Terminal $terminal): ?Shift
     {

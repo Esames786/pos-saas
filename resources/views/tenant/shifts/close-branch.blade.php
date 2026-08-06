@@ -1,0 +1,137 @@
+@extends('layouts.app')
+
+@section('title', 'Close Branch Shifts')
+
+@section('content')
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
+    <div>
+        <h1 class="mb-1">Close Branch</h1>
+        <p class="fw-medium">Close all open terminal shifts of a branch at once.</p>
+    </div>
+    <a href="{{ url('/shifts') }}" class="btn btn-light">Back</a>
+</div>
+
+@if($errors->any())
+    <div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>
+@endif
+
+<div class="card mb-3">
+    <div class="card-body">
+        <form method="GET" action="{{ url('/shifts-close-branch') }}" class="d-flex align-items-end gap-2 flex-wrap">
+            <div>
+                <label for="branch_id" class="form-label">Branch</label>
+                <select id="branch_id" name="branch_id" class="form-select" onchange="this.form.submit()">
+                    <option value="">Select branch…</option>
+                    @foreach($branches as $branch)
+                        <option value="{{ $branch->id }}" @selected((string) $selectedBranchId === (string) $branch->id)>{{ $branch->name }}</option>
+                    @endforeach
+                </select>
+            </div>
+        </form>
+    </div>
+</div>
+
+@if($selectedBranchId)
+    @if($openShifts->isEmpty())
+        <div class="alert alert-info">This branch has no open shifts.</div>
+    @else
+        @php
+            $sumExpected = $openShifts->sum(fn ($s) => (float) $s->expected_cash);
+            $sumOpening  = $openShifts->sum(fn ($s) => (float) $s->opening_cash);
+            $sumSales    = $openShifts->sum(fn ($s) => (float) $s->total_sales);
+        @endphp
+        <form method="POST" action="{{ url('/shifts-close-branch') }}">
+            @csrf
+            <input type="hidden" name="branch_id" value="{{ $selectedBranchId }}">
+
+            <div class="card mb-3">
+                <div class="card-body">
+                    <div class="d-flex gap-4 flex-wrap mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="mode" id="mode-per" value="per_terminal" checked>
+                            <label class="form-check-label" for="mode-per">Count each terminal</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="mode" id="mode-total" value="branch_total">
+                            <label class="form-check-label" for="mode-total">One total for the branch</label>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Terminal</th>
+                                    <th class="text-end">Opening</th>
+                                    <th class="text-end">Sales</th>
+                                    <th class="text-end">Expected</th>
+                                    <th class="text-end col-counted" style="min-width:180px">Counted</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach($openShifts as $shift)
+                                    <tr>
+                                        <td>{{ $shift->terminal?->name ?? ('Terminal #' . $shift->terminal_id) }}</td>
+                                        <td class="text-end">{{ number_format((float) $shift->opening_cash, 2) }}</td>
+                                        <td class="text-end">{{ number_format((float) $shift->total_sales, 2) }}</td>
+                                        <td class="text-end">{{ number_format((float) $shift->expected_cash, 2) }}</td>
+                                        <td class="text-end col-counted">
+                                            <input type="number" min="0" step="0.01" class="form-control form-control-sm text-end"
+                                                name="counted[{{ $shift->id }}]"
+                                                value="{{ old('counted.' . $shift->id, number_format((float) $shift->expected_cash, 2, '.', '')) }}">
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                            <tfoot>
+                                <tr class="fw-semibold">
+                                    <td>Total</td>
+                                    <td class="text-end">{{ number_format($sumOpening, 2) }}</td>
+                                    <td class="text-end">{{ number_format($sumSales, 2) }}</td>
+                                    <td class="text-end">{{ number_format($sumExpected, 2) }}</td>
+                                    <td class="text-end col-branch-total" style="display:none">
+                                        <input type="number" min="0" step="0.01" class="form-control form-control-sm text-end"
+                                            name="branch_counted_cash" value="{{ old('branch_counted_cash', number_format($sumExpected, 2, '.', '')) }}">
+                                    </td>
+                                    <td class="text-end col-counted"></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                    <p class="form-text mb-0">“One total for the branch” closes each terminal at its expected amount and records the branch total + variance on a Daily Closing.</p>
+                </div>
+            </div>
+
+            <div class="card mb-3">
+                <div class="card-body">
+                    <label for="closing_notes" class="form-label">Closing Notes</label>
+                    <input type="text" id="closing_notes" name="closing_notes" class="form-control" maxlength="500" value="{{ old('closing_notes') }}">
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-danger">
+                <i class="ti ti-lock me-1" aria-hidden="true"></i>Close {{ $openShifts->count() }} shift(s)
+            </button>
+            <a href="{{ url('/shifts') }}" class="btn btn-light ms-2">Cancel</a>
+        </form>
+
+        @push('scripts')
+        <script>
+        (function () {
+            function setMode(total) {
+                document.querySelectorAll('.col-counted').forEach(function (c) { c.style.display = total ? 'none' : ''; });
+                document.querySelectorAll('.col-branch-total').forEach(function (c) { c.style.display = total ? '' : 'none'; });
+                // per-terminal counted inputs are disabled in branch-total mode so they don't submit.
+                document.querySelectorAll('input[name^="counted["]').forEach(function (i) { i.disabled = total; });
+                var bt = document.querySelector('input[name="branch_counted_cash"]');
+                if (bt) bt.disabled = !total;
+            }
+            document.getElementById('mode-per').addEventListener('change', function () { setMode(false); });
+            document.getElementById('mode-total').addEventListener('change', function () { setMode(true); });
+            setMode(document.getElementById('mode-total').checked);
+        })();
+        </script>
+        @endpush
+    @endif
+@endif
+@endsection

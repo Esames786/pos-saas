@@ -225,6 +225,9 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/shifts/{shift}', [ShiftController::class, 'show'])->name('tenant.shifts.show');
                 Route::get('/shifts/{shift}/close', [ShiftController::class, 'closeForm'])->name('tenant.shifts.close-form');
                 Route::post('/shifts/{shift}/close', [ShiftController::class, 'close'])->name('tenant.shifts.close');
+                // SHIFT-BRANCH-UX-1: branch-wise close (all open terminal shifts of a branch at once).
+                Route::get('/shifts-close-branch', [ShiftController::class, 'closeBranchForm'])->name('tenant.shifts.close-branch-form');
+                Route::post('/shifts-close-branch', [ShiftController::class, 'closeBranch'])->name('tenant.shifts.close-branch');
 
                 // Units
                 Route::get('/units', [UnitController::class, 'index'])->name('tenant.units.index');

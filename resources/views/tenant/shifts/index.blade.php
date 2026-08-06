@@ -9,11 +9,18 @@
         <p class="fw-medium">View and manage terminal shifts.</p>
     </div>
 
-    @can('tenant.shifts.create')
-        <a href="{{ url('/shifts/open') }}" class="btn btn-primary">
-            <i class="ti ti-plus me-1" aria-hidden="true"></i>Open Shift
-        </a>
-    @endcan
+    <div class="d-flex gap-2">
+        @can('tenant.shifts.close')
+            <a href="{{ url('/shifts-close-branch') }}" class="btn btn-outline-danger">
+                <i class="ti ti-lock me-1" aria-hidden="true"></i>Close Branch
+            </a>
+        @endcan
+        @can('tenant.shifts.create')
+            <a href="{{ url('/shifts/open') }}" class="btn btn-primary">
+                <i class="ti ti-plus me-1" aria-hidden="true"></i>Open Shift
+            </a>
+        @endcan
+    </div>
 </div>
 
 @if($errors->any())

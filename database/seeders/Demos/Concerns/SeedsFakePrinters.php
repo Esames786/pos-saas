@@ -38,10 +38,23 @@ trait SeedsFakePrinters
             ]
         );
 
-        // KOT + Reminder routing for EVERY category on EVERY branch, so KOT and Reminder both fire on
-        // whatever the cashier rings (Reminder asks for confirmation on additions).
+        // KOT + Reminder routing for the FOOD categories only (kitchen prints food; drinks are skipped)
+        // on every branch. Reminder is ONE per-order document routed to this printer — routing several
+        // food categories does NOT print multiple reminders, it just ensures the order's reminder
+        // reaches the kitchen printer whatever food was rung.
+        $drinkKeywords = ['drink', 'beverage', 'bev', 'juice', 'soda', 'cold ', 'hot drink'];
+        $foodCategories = Category::all()->reject(function ($category) use ($drinkKeywords) {
+            $haystack = strtolower(($category->name ?? '') . ' ' . ($category->code ?? ''));
+            foreach ($drinkKeywords as $kw) {
+                if (str_contains($haystack, $kw)) {
+                    return true;
+                }
+            }
+            return false;
+        });
+
         foreach (Branch::all() as $branch) {
-            foreach (Category::all() as $category) {
+            foreach ($foodCategories as $category) {
                 CategoryPrinterMapping::updateOrCreate(
                     ['branch_id' => $branch->id, 'category_id' => $category->id, 'printer_id' => $kot->id, 'print_role' => 'kot', 'order_type' => 'all'],
                     ['is_active' => true]

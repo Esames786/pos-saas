@@ -43,11 +43,21 @@ class ShiftController extends Controller
 
     public function store(Request $request, ShiftService $shiftService)
     {
+        // SHIFT-BRANCH-UX-1: branch-oriented open. Accepts one or more terminals of a branch (the UI
+        // pre-selects ALL of the branch's terminals) with a shared opening cash + optional per-terminal
+        // override. Backward compatible: a single legacy `terminal_id` is folded into `terminal_ids`.
+        if ($request->filled('terminal_id') && ! $request->filled('terminal_ids')) {
+            $request->merge(['terminal_ids' => [$request->input('terminal_id')]]);
+        }
+
         $data = $request->validate([
-            'branch_id'    => ['required', 'exists:branches,id'],
-            'terminal_id'  => ['required', 'exists:terminals,id'],
-            'opening_cash' => ['required', 'numeric', 'min:0'],
-            'opening_notes' => ['nullable', 'string'],
+            'branch_id'                 => ['required', 'exists:branches,id'],
+            'terminal_ids'              => ['required', 'array', 'min:1'],
+            'terminal_ids.*'            => ['integer', 'exists:terminals,id'],
+            'opening_cash'              => ['required', 'numeric', 'min:0'],
+            'terminal_opening_cash'     => ['nullable', 'array'],
+            'terminal_opening_cash.*'   => ['nullable', 'numeric', 'min:0'],
+            'opening_notes'             => ['nullable', 'string'],
         ]);
 
         $branch = Branch::findOrFail($data['branch_id']);
@@ -56,25 +66,33 @@ class ShiftController extends Controller
         // shifts on its Branch Server — cloud must not, or cash reconciliation forks.
         app(\App\Services\Edge\BranchOperatingModeService::class)->assertSaleMutationAllowed($branch);
 
-        $terminal = Terminal::where('id', $data['terminal_id'])
-            ->where('branch_id', $branch->id)
-            ->firstOrFail();
-
-        try {
-            // Canonical, row-locked open (reused by Cloud + future Edge). Freezes business_date + tz.
-            $shift = $shiftService->open(
-                $branch,
-                $terminal,
-                (int) auth('tenant')->id(),
-                (float) $data['opening_cash'],
-                $data['opening_notes'] ?? null,
-            );
-        } catch (ShiftException $e) {
-            return back()->withErrors(['terminal_id' => $e->getMessage()])->withInput();
+        $overrides = [];
+        foreach ((array) ($data['terminal_opening_cash'] ?? []) as $tid => $value) {
+            if ($value !== null && $value !== '') {
+                $overrides[(int) $tid] = (float) $value;
+            }
         }
 
-        return redirect('/shifts')->with('status', 'Shift opened. Business date '
-            . $shift->business_date->toDateString() . ' (' . $shift->timezone_name . ').');
+        $result = $shiftService->openMany(
+            $branch,
+            $data['terminal_ids'],
+            (int) auth('tenant')->id(),
+            (float) $data['opening_cash'],
+            $overrides,
+            $data['opening_notes'] ?? null,
+        );
+
+        $openedCount = count($result['opened']);
+        if ($openedCount === 0) {
+            return back()->withErrors(['terminal_ids' => 'No shift was opened. ' . implode('; ', $result['skipped'])])->withInput();
+        }
+
+        $msg = $openedCount . ' shift(s) opened for ' . $branch->name;
+        if (! empty($result['skipped'])) {
+            $msg .= ' — skipped ' . implode('; ', $result['skipped']);
+        }
+
+        return redirect('/shifts')->with('status', $msg . '.');
     }
 
     /**
@@ -171,6 +189,127 @@ class ShiftController extends Controller
         }
 
         return redirect('/shifts/' . $shift->id)->with('status', 'Shift closed successfully.');
+    }
+
+    /**
+     * SHIFT-BRANCH-UX-1: branch-wise close screen. Pick a branch → see all its OPEN terminal shifts
+     * with per-terminal Opening / Sales / Expected cash, then close them all at once (per-terminal
+     * counts, or one branch total).
+     */
+    public function closeBranchForm(Request $request)
+    {
+        $branches = Branch::where('status', 'active')->orderBy('name')->get();
+        $selectedBranchId = $request->input('branch_id');
+        $openShifts = collect();
+
+        if ($selectedBranchId) {
+            $openShifts = Shift::with('terminal')
+                ->where('branch_id', $selectedBranchId)
+                ->where('status', 'open')
+                ->orderBy('terminal_id')
+                ->get();
+        }
+
+        return view('tenant.shifts.close-branch', compact('branches', 'selectedBranchId', 'openShifts'));
+    }
+
+    public function closeBranch(Request $request, ShiftService $shiftService)
+    {
+        $data = $request->validate([
+            'branch_id'           => ['required', 'exists:branches,id'],
+            'mode'                => ['required', 'in:per_terminal,branch_total'],
+            'branch_counted_cash' => ['nullable', 'numeric', 'min:0'],
+            'counted'             => ['nullable', 'array'],
+            'counted.*'           => ['nullable', 'numeric', 'min:0'],
+            'closing_notes'       => ['nullable', 'string'],
+        ]);
+
+        $branch = Branch::findOrFail($data['branch_id']);
+        app(\App\Services\Edge\BranchOperatingModeService::class)->assertSaleMutationAllowed($branch);
+
+        try {
+            $result = DB::connection('tenant')->transaction(function () use ($branch, $data, $shiftService) {
+                // Lock all the branch's open shifts up front (consistent order), then close each via
+                // the canonical guard (still blocks on held sales / open tables per terminal).
+                $shifts = Shift::where('branch_id', $branch->id)
+                    ->where('status', 'open')
+                    ->orderBy('terminal_id')
+                    ->lockForUpdate()
+                    ->get();
+
+                if ($shifts->isEmpty()) {
+                    throw new ShiftException('No open shifts on this branch.');
+                }
+
+                $userId = (int) auth('tenant')->id();
+                $closed = [];
+
+                foreach ($shifts as $shift) {
+                    $locked = $shiftService->assertClosableUnderLock($shift);
+                    $expected = (float) $locked->expected_cash;
+
+                    // per_terminal: the entered count for THIS terminal. branch_total: each terminal
+                    // closes at its expected (per-terminal variance 0 — drawers weren't counted
+                    // separately); the real figure is recorded at branch level on a Daily Closing.
+                    $counted = $data['mode'] === 'per_terminal'
+                        ? (float) ($data['counted'][$locked->id] ?? 0)
+                        : $expected;
+
+                    $locked->update([
+                        'closed_by_user_id' => $userId,
+                        'counted_cash'      => $counted,
+                        'cash_variance'     => $counted - $expected,
+                        'status'            => 'closed',
+                        'closed_at'         => now(),
+                        'closing_notes'     => $data['closing_notes'] ?? null,
+                    ]);
+                    $closed[] = $locked;
+                }
+
+                $daily = null;
+                if ($data['mode'] === 'branch_total') {
+                    $sumExpected = array_sum(array_map(fn ($s) => (float) $s->getOriginal('expected_cash'), $closed));
+                    $branchTotal = (float) ($data['branch_counted_cash'] ?? 0);
+                    $sum = fn (string $col) => array_sum(array_map(fn ($s) => (float) $s->{$col}, $closed));
+
+                    $daily = \App\Models\Tenant\DailyClosing::updateOrCreate(
+                        [
+                            'branch_id'    => $branch->id,
+                            'terminal_id'  => null,
+                            'closing_date' => $closed[0]->business_date?->toDateString(),
+                        ],
+                        [
+                            'closed_by_user_id'   => $userId,
+                            'total_sales'         => $sum('total_sales'),
+                            'total_cash'          => $sum('total_cash'),
+                            'total_card'          => $sum('total_card'),
+                            'total_bank_transfer' => $sum('total_bank_transfer'),
+                            'total_cheque'        => $sum('total_cheque'),
+                            'total_refunds'       => $sum('total_refunds'),
+                            'total_cash_refunds'  => $sum('total_cash_refunds'),
+                            'total_discount'      => $sum('total_discount'),
+                            'total_tax'           => $sum('total_tax'),
+                            'expected_cash'       => $sumExpected,
+                            'counted_cash'        => $branchTotal,
+                            'cash_variance'       => $branchTotal - $sumExpected,
+                            'notes'               => $data['closing_notes'] ?? null,
+                        ]
+                    );
+                }
+
+                return ['closed' => $closed, 'daily' => $daily];
+            });
+        } catch (ShiftException $e) {
+            return back()->withErrors(['branch' => $e->getMessage()])->withInput();
+        }
+
+        $msg = count($result['closed']) . ' shift(s) closed for ' . $branch->name;
+        if ($result['daily']) {
+            $msg .= ' — branch variance ' . number_format((float) $result['daily']->cash_variance, 2)
+                . ' recorded on Daily Closing';
+        }
+
+        return redirect('/shifts')->with('status', $msg . '.');
     }
 
     private function calculateCashCount(array $data, string $sourceType, int $sourceId): ?float
