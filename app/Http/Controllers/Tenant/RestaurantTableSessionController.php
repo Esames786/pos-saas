@@ -62,9 +62,19 @@ class RestaurantTableSessionController extends Controller
         }
 
         $sessionNo = 'TS-' . now()->format('YmdHis') . '-' . random_int(100, 999);
+        $terminalId = $request->input('terminal_id');
 
         try {
-            DB::connection('tenant')->transaction(function () use ($restaurantTable, $data, $sessionNo) {
+            DB::connection('tenant')->transaction(function () use ($restaurantTable, $data, $sessionNo, $terminalId) {
+                // SHIFT-TIMEZONE-BUSINESS-DATE-HARDEN-1: opening a table is NEW commercial state, so
+                // it requires an open shift and must be bound to it (opened_shift_id + business_date)
+                // — otherwise the table would be invisible to the shift-close guard. Lock the shift
+                // FIRST (consistent order), then the table row.
+                $shiftService = app(\App\Services\Sales\ShiftService::class);
+                $shift = $terminalId
+                    ? $shiftService->lockOpenShiftForTerminal(\App\Models\Tenant\Terminal::find($terminalId))
+                    : $shiftService->lockOpenShiftForBranch((int) $restaurantTable->branch_id);
+
                 $table = RestaurantTable::lockForUpdate()->findOrFail($restaurantTable->id);
 
                 if ($table->openSession()->exists()) {
@@ -77,6 +87,8 @@ class RestaurantTableSessionController extends Controller
                     'restaurant_table_id'  => $table->id,
                     'restaurant_waiter_id' => $data['restaurant_waiter_id'] ?? null,
                     'opened_by_user_id'    => Auth::id(),
+                    'opened_shift_id'      => $shift->id,
+                    'business_date'        => $shift->business_date->toDateString(),
                     'guest_count'          => $data['guest_count'],
                     'status'               => 'open',
                     'opened_at'            => now(),
@@ -85,6 +97,11 @@ class RestaurantTableSessionController extends Controller
 
                 $table->update(['status' => 'occupied']);
             });
+        } catch (\App\Exceptions\ShiftException $e) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => $e->getMessage(), 'code' => 'NO_OPEN_SHIFT'], 422);
+            }
+            return back()->withErrors(['table' => $e->getMessage()]);
         } catch (\RuntimeException $e) {
             if ($request->expectsJson()) {
                 return response()->json(['message' => $e->getMessage()], 422);

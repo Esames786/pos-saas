@@ -8,8 +8,13 @@
             $fontSize  = $layout?->font_size ?? 12;
             $paperSize = $layout?->paper_size ?? '80mm';
             $width     = match($paperSize) { '58mm' => '52mm', '80mm' => '72mm', default => '180mm' };
-            // SHIFT-TIMEZONE-BUSINESS-DATE-1 (N): print in the store's local (branch) timezone.
-            $printTz = app(\App\Support\TenantClock::class)->businessTimezone($salesOrder->branch ?? null);
+            // SHIFT-TIMEZONE-BUSINESS-DATE-HARDEN-1: print in the ORIGINAL operational timezone —
+            // frozen shift tz first, then branch, then default — so changing the branch timezone
+            // later never shifts a historical receipt/reprint's time.
+            $clock = app(\App\Support\TenantClock::class);
+            $printTz = $clock->normalize($salesOrder->shift?->timezone_name)
+                ?? $clock->normalize($salesOrder->branch?->timezone)
+                ?? \App\Support\TenantClock::DEFAULT_TIMEZONE;
         @endphp
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {

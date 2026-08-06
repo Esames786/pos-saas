@@ -23,12 +23,18 @@ class DashboardController extends Controller
         // Today's sales stats
         $today = $salesService->todayStats($selectedBranch);
 
+        // SHIFT-TIMEZONE-BUSINESS-DATE-HARDEN-1: operational "today" dashboards group by BUSINESS
+        // date (a sale rung after midnight belongs to its shift's business day), matching
+        // SalesReportService. COALESCE keeps any legacy pre-backfill row on its sale_date.
+        $businessDay = 'COALESCE(sales_orders.business_date, DATE(sales_orders.sale_date))';
+        $businessToday = today()->toDateString();
+
         // Cash vs card today (split from payment methods)
         $cashToday = \App\Models\Tenant\SalePayment::query()
             ->join('sales_orders', 'sale_payments.sales_order_id', '=', 'sales_orders.id')
             ->join('payment_methods', 'sale_payments.payment_method_id', '=', 'payment_methods.id')
             ->where('sales_orders.status', 'paid')
-            ->whereDate('sales_orders.sale_date', today())
+            ->whereRaw("$businessDay = ?", [$businessToday])
             ->when($selectedBranch, fn ($q) => $q->where('sales_orders.branch_id', $selectedBranch))
             ->where('payment_methods.method_type', 'cash')
             ->sum('sale_payments.amount');
@@ -37,7 +43,7 @@ class DashboardController extends Controller
             ->join('sales_orders', 'sale_payments.sales_order_id', '=', 'sales_orders.id')
             ->join('payment_methods', 'sale_payments.payment_method_id', '=', 'payment_methods.id')
             ->where('sales_orders.status', 'paid')
-            ->whereDate('sales_orders.sale_date', today())
+            ->whereRaw("$businessDay = ?", [$businessToday])
             ->when($selectedBranch, fn ($q) => $q->where('sales_orders.branch_id', $selectedBranch))
             ->whereIn('payment_methods.method_type', ['card', 'bank_transfer'])
             ->sum('sale_payments.amount');
@@ -64,7 +70,7 @@ class DashboardController extends Controller
         $topProducts = SalesOrderLine::query()
             ->join('sales_orders', 'sales_order_lines.sales_order_id', '=', 'sales_orders.id')
             ->where('sales_orders.status', 'paid')
-            ->whereDate('sales_orders.sale_date', today())
+            ->whereRaw("$businessDay = ?", [$businessToday])
             ->when($selectedBranch, fn ($q) => $q->where('sales_orders.branch_id', $selectedBranch))
             ->selectRaw('sales_order_lines.product_name, SUM(sales_order_lines.quantity) as qty_sold, SUM(sales_order_lines.line_total) as revenue')
             ->groupBy('sales_order_lines.product_name')
@@ -73,12 +79,13 @@ class DashboardController extends Controller
             ->get();
 
         // Last 7 days net sales (for sparkline/chart)
+        $businessDayNoPrefix = 'COALESCE(business_date, DATE(sale_date))';
         $last7Days = SalesOrder::query()
             ->where('status', 'paid')
             ->when($selectedBranch, fn ($q) => $q->where('branch_id', $selectedBranch))
-            ->whereDate('sale_date', '>=', now()->subDays(6))
-            ->selectRaw('DATE(sale_date) as day, COALESCE(SUM(grand_total), 0) as net_sales, COUNT(*) as orders')
-            ->groupByRaw('DATE(sale_date)')
+            ->whereRaw("$businessDayNoPrefix >= ?", [now()->subDays(6)->toDateString()])
+            ->selectRaw("$businessDayNoPrefix as day, COALESCE(SUM(grand_total), 0) as net_sales, COUNT(*) as orders")
+            ->groupByRaw($businessDayNoPrefix)
             ->orderBy('day')
             ->get()
             ->keyBy('day');

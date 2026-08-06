@@ -32,20 +32,32 @@
                     $clock = app(\App\Support\TenantClock::class);
                     $displayTz = $clock->displayTimezone();
                     $businessTz = $clock->businessTimezone();
+                    $isPos = request()->is('pos');
+                    // HARDEN-1: on the POS the PRIMARY shop clock ticks in the BUSINESS timezone
+                    // (branch/shift), never the cashier's personal display timezone. Elsewhere the
+                    // portal header uses the user's display timezone. When they differ on POS, the
+                    // user's display timezone rides along as a small secondary.
+                    $primaryTz = $isPos ? $businessTz : $displayTz;
+                    $secondaryTz = ($isPos && $displayTz !== $businessTz) ? $displayTz : null;
                     $businessToday = \Illuminate\Support\Carbon::parse(
                         $clock->businessDateForOpening($businessTz)
                     )->format('D, d M Y');
                 @endphp
-                {{-- SHIFT-TIMEZONE-BUSINESS-DATE-1 (D/R/S): live 24h clock, server-anchored so it
-                     ticks correctly even if the client wall clock is wrong; shows the display
-                     timezone and today's business date. --}}
+                {{-- SHIFT-TIMEZONE-BUSINESS-DATE-1 (D/R/S) + HARDEN-1: live 24h clock, server-anchored
+                     (ticks correctly even if the client wall clock is wrong) with periodic server
+                     resync; primary timezone is business (shift) on POS, display elsewhere. --}}
                 <li class="nav-item d-none d-lg-flex align-items-center shift-clock-widget me-2"
                     data-epoch="{{ (int) round(microtime(true) * 1000) }}"
-                    data-tz="{{ $displayTz }}"
-                    title="Live time ({{ $displayTz }}) · Business date {{ $businessToday }} ({{ $businessTz }})">
+                    data-tz="{{ $primaryTz }}"
+                    @if($secondaryTz) data-tz-secondary="{{ $secondaryTz }}" @endif
+                    data-resync-url="{{ url('/api/server-time') }}"
+                    title="Live time ({{ $primaryTz }}) · Business date {{ $businessToday }} ({{ $businessTz }})">
                     <i class="ti ti-clock-hour-3 me-1 text-muted"></i>
                     <span class="shift-clock-time fw-semibold" aria-hidden="true">--:--:--</span>
-                    <span class="shift-clock-tz small text-muted ms-1">{{ $displayTz }}</span>
+                    <span class="shift-clock-tz small text-muted ms-1">{{ $primaryTz }}</span>
+                    @if($secondaryTz)
+                        <span class="shift-clock-secondary small text-muted ms-2" aria-hidden="true"></span>
+                    @endif
                     <span class="shift-clock-bizdate badge bg-light text-dark border ms-2">
                         <i class="ti ti-calendar-event me-1"></i>{{ $businessToday }}
                     </span>
@@ -127,28 +139,54 @@
     var el = document.querySelector('.shift-clock-widget');
     if (!el) return;
     var out = el.querySelector('.shift-clock-time');
+    var out2 = el.querySelector('.shift-clock-secondary');
     var serverMs = parseInt(el.getAttribute('data-epoch'), 10);
     var tz = el.getAttribute('data-tz') || undefined;
+    var tz2 = el.getAttribute('data-tz-secondary') || null;
+    var resyncUrl = el.getAttribute('data-resync-url') || null;
     if (!out || isNaN(serverMs)) return;
 
+    // performance.now() is monotonic and independent of the wall clock, so the tick can't be
+    // skewed by the client changing its clock. We advance our server-anchored instant by the
+    // elapsed monotonic time.
     var perfBase = (window.performance && performance.now) ? performance.now() : null;
-    var fmt;
-    try {
-        fmt = new Intl.DateTimeFormat('en-GB', {
-            timeZone: tz, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
-        });
-    } catch (e) {
-        fmt = new Intl.DateTimeFormat('en-GB', {
-            hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
-        });
-    }
 
-    function tick() {
+    function makeFmt(zone, withDate) {
+        var opts = { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
+        if (withDate) { opts.day = '2-digit'; opts.month = 'short'; opts.year = 'numeric'; }
+        try { return new Intl.DateTimeFormat('en-GB', Object.assign({ timeZone: zone }, opts)); }
+        catch (e) { return new Intl.DateTimeFormat('en-GB', opts); }
+    }
+    var fmt = makeFmt(tz, false);
+    var fmt2 = tz2 ? makeFmt(tz2, false) : null;
+
+    function nowMs() {
         var elapsed = perfBase !== null ? (performance.now() - perfBase) : 0;
-        out.textContent = fmt.format(new Date(serverMs + elapsed));
+        return serverMs + elapsed;
+    }
+    function tick() {
+        var d = new Date(nowMs());
+        out.textContent = fmt.format(d);
+        if (out2 && fmt2) { out2.textContent = fmt2.format(d) + ' ' + tz2; }
     }
     tick();
     setInterval(tick, 1000);
+
+    // Periodic server resync so a long-running session (server NTP/time correction, or a very long
+    // uptime) stays aligned to server time. Re-seed the anchor pair from the server every 5 min.
+    if (resyncUrl) {
+        setInterval(function () {
+            fetch(resyncUrl, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (d) {
+                    if (d && typeof d.epoch_ms === 'number') {
+                        serverMs = d.epoch_ms;
+                        perfBase = (window.performance && performance.now) ? performance.now() : null;
+                    }
+                })
+                .catch(function () { /* transient — keep ticking on the last good anchor */ });
+        }, 300000);
+    }
 })();
 </script>
 @endif

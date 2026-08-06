@@ -530,6 +530,11 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/api/pos/table-board', [POSController::class, 'tableBoard'])->name('tenant.api.pos.table-board');
                 Route::get('/api/pos/recent-sales', [POSController::class, 'recentSales'])->name('tenant.api.pos.recent-sales');
                 Route::get('/api/pos/shift-status', [ShiftController::class, 'posStatus'])->name('tenant.api.pos.shift-status');
+                // SHIFT-TIMEZONE-BUSINESS-DATE-HARDEN-1: server-authoritative clock resync source for
+                // the live header/POS clock (protects a long-running session from server time drift).
+                Route::get('/api/server-time', fn () => response()->json([
+                    'epoch_ms' => (int) round(microtime(true) * 1000),
+                ]))->name('tenant.api.server-time');
                 Route::get('/api/pos/table-sessions/{restaurantTableSession}/open-orders', [HeldSaleController::class, 'tableSessionOpenOrders'])->name('tenant.api.pos.table-sessions.open-orders');
 
                 // Unit Conversions

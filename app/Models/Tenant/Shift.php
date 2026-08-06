@@ -9,6 +9,7 @@ class Shift extends Model
     protected $connection = 'tenant';
 
     protected $fillable = [
+        'shift_uuid',
         'branch_id',
         'terminal_id',
         'opened_by_user_id',

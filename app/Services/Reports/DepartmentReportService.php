@@ -41,8 +41,9 @@ class DepartmentReportService
             ->join('sales_orders as o', 'o.id', '=', 'l.sales_order_id')
             ->leftJoin('products as p', 'p.id', '=', 'l.product_id')
             ->where('o.status', 'paid')
-            ->when(!empty($filters['date_from']),  fn ($q) => $q->whereDate('o.sale_date', '>=', $filters['date_from']))
-            ->when(!empty($filters['date_to']),    fn ($q) => $q->whereDate('o.sale_date', '<=', $filters['date_to']))
+            // HARDEN-1: operational department sales group by BUSINESS date (COALESCE keeps legacy).
+            ->when(!empty($filters['date_from']),  fn ($q) => $q->whereRaw('COALESCE(o.business_date, DATE(o.sale_date)) >= ?', [$filters['date_from']]))
+            ->when(!empty($filters['date_to']),    fn ($q) => $q->whereRaw('COALESCE(o.business_date, DATE(o.sale_date)) <= ?', [$filters['date_to']]))
             ->when(!empty($filters['branch_id']),  fn ($q) => $q->where('o.branch_id', $filters['branch_id']))
             ->when(!empty($filters['order_type']), fn ($q) => $q->where('o.order_type', $filters['order_type']))
             ->groupBy('o.branch_id', 'l.product_id')

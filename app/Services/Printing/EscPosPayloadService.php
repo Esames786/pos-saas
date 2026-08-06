@@ -14,12 +14,21 @@ class EscPosPayloadService
      * DB timestamps are UTC-canonical, so we render them in the branch business timezone. This is
      * a pure display concern — the ESC-POS engine and stored data are unchanged.
      */
-    private function branchTz(?Branch $branch): string
+    /**
+     * SHIFT-TIMEZONE-BUSINESS-DATE-HARDEN-1: a printed/reprinted ticket must show the local time of
+     * the ORIGINAL operational context, not the branch's current timezone. So we prefer the frozen
+     * shift timezone, then a timezone snapshot carried in the print payload, then the branch's
+     * current timezone, then the platform default. Immutable-first so changing a branch timezone
+     * later never shifts the time on a historical receipt/reprint. DB-free (no currentBranch()).
+     */
+    private function printTz(?SalesOrder $sale, ?string $payloadTz = null): string
     {
-        // DB-free: use the given branch's own timezone (or the platform default). We deliberately
-        // do NOT fall back to TenantClock::currentBranch() here — printing runs in contexts (e.g.
-        // pure-payload reminder rendering) where no tenant DB query should be triggered.
-        return app(TenantClock::class)->normalize($branch?->timezone) ?? TenantClock::DEFAULT_TIMEZONE;
+        $clock = app(TenantClock::class);
+
+        return $clock->normalize($sale?->shift?->timezone_name)
+            ?? $clock->normalize($payloadTz)
+            ?? $clock->normalize($sale?->branch?->timezone)
+            ?? TenantClock::DEFAULT_TIMEZONE;
     }
     public function build(PrintJob $job): string
     {
@@ -33,6 +42,7 @@ class EscPosPayloadService
 
         $sale = SalesOrder::with([
             'branch',
+            'shift',
             'terminal',
             'customer',
             'createdBy',
@@ -57,15 +67,16 @@ class EscPosPayloadService
     public function buildReminder(PrintJob $job): string
     {
         $payload = $job->payload ?? [];
-        // Render reminder timestamps in the store's local (branch) timezone. The lookup is guarded
-        // so pure-payload rendering (no tenant DB bound) still works, defaulting the timezone.
-        $branch = null;
+        // Render reminder timestamps in the ORIGINAL operational timezone (frozen shift tz, then a
+        // payload snapshot, then branch, then default). The lookup is guarded so pure-payload
+        // rendering (no tenant DB bound) still works, defaulting the timezone.
+        $sale = null;
         try {
-            $branch = optional(SalesOrder::with('branch')->find($job->reference_id))->branch;
+            $sale = SalesOrder::with(['branch', 'shift'])->find($job->reference_id);
         } catch (\Throwable) {
-            // no tenant DB context — fall back to the default timezone
+            // no tenant DB context — fall back to the payload snapshot / default timezone
         }
-        $tz = $this->branchTz($branch);
+        $tz = $this->printTz($sale, $payload['timezone'] ?? null);
         $revision = max((int) ($payload['revision'] ?? 1), 1);
         $copyNo = max((int) ($payload['copy_no'] ?? 1), 1);
         $eventType = (string) ($payload['event_type'] ?? 'order');
@@ -176,7 +187,7 @@ class EscPosPayloadService
         }
         $out .= str_repeat('-', 42) . "\n";
         $out .= "Receipt: {$sale->sale_no}\n";
-        $tz = $this->branchTz($sale->branch);
+        $tz = $this->printTz($sale);
         $out .= 'Date: ' . ($sale->sale_date ? $sale->sale_date->copy()->timezone($tz)->format('Y-m-d H:i') : '') . "\n";
         $out .= 'Cashier: ' . ($sale->createdBy?->name ?? '-') . "\n";
 
@@ -315,7 +326,7 @@ class EscPosPayloadService
         }
 
         $out .= 'TYPE: ' . strtoupper(str_replace('_', ' ', $sale->order_type ?? 'SALE')) . "\n";
-        $out .= 'TIME: ' . now()->timezone($this->branchTz($sale->branch))->format('Y-m-d H:i') . "\n";
+        $out .= 'TIME: ' . now()->timezone($this->printTz($sale))->format('Y-m-d H:i') . "\n";
         $out .= str_repeat('-', 42) . "\n";
 
         foreach ($lines as $line) {

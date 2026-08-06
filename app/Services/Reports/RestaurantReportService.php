@@ -7,6 +7,16 @@ use Illuminate\Support\Facades\DB;
 
 class RestaurantReportService
 {
+    /**
+     * SHIFT-TIMEZONE-BUSINESS-DATE-HARDEN-1: operational restaurant-sales aggregations filter by
+     * BUSINESS date (matching SalesReportService), so an after-midnight sale lands on its shift's
+     * business day. COALESCE keeps legacy pre-backfill rows on their sale_date.
+     */
+    private function businessDayExpr(string $prefix = ''): string
+    {
+        return "COALESCE({$prefix}business_date, DATE({$prefix}sale_date))";
+    }
+
     public function tables(array $filters)
     {
         return SalesOrder::query()
@@ -15,8 +25,8 @@ class RestaurantReportService
             ->where('sales_orders.status', 'paid')
             ->whereNotNull('sales_orders.restaurant_table_id')
             ->when(!empty($filters['branch_id']),   fn ($q) => $q->where('sales_orders.branch_id', $filters['branch_id']))
-            ->when(!empty($filters['date_from']),   fn ($q) => $q->whereDate('sales_orders.sale_date', '>=', $filters['date_from']))
-            ->when(!empty($filters['date_to']),     fn ($q) => $q->whereDate('sales_orders.sale_date', '<=', $filters['date_to']))
+            ->when(!empty($filters['date_from']),   fn ($q) => $q->whereRaw($this->businessDayExpr('sales_orders.') . ' >= ?', [$filters['date_from']]))
+            ->when(!empty($filters['date_to']),     fn ($q) => $q->whereRaw($this->businessDayExpr('sales_orders.') . ' <= ?', [$filters['date_to']]))
             ->selectRaw('
                 restaurant_tables.id as table_id,
                 restaurant_tables.table_no,
@@ -43,8 +53,8 @@ class RestaurantReportService
             ->where('sales_orders.status', 'paid')
             ->whereNotNull('sales_orders.restaurant_waiter_id')
             ->when(!empty($filters['branch_id']),   fn ($q) => $q->where('sales_orders.branch_id', $filters['branch_id']))
-            ->when(!empty($filters['date_from']),   fn ($q) => $q->whereDate('sales_orders.sale_date', '>=', $filters['date_from']))
-            ->when(!empty($filters['date_to']),     fn ($q) => $q->whereDate('sales_orders.sale_date', '<=', $filters['date_to']))
+            ->when(!empty($filters['date_from']),   fn ($q) => $q->whereRaw($this->businessDayExpr('sales_orders.') . ' >= ?', [$filters['date_from']]))
+            ->when(!empty($filters['date_to']),     fn ($q) => $q->whereRaw($this->businessDayExpr('sales_orders.') . ' <= ?', [$filters['date_to']]))
             ->selectRaw('
                 restaurant_waiters.id as waiter_id,
                 restaurant_waiters.name as waiter_name,
@@ -67,8 +77,8 @@ class RestaurantReportService
         return SalesOrder::query()
             ->where('status', 'paid')
             ->when(!empty($filters['branch_id']),   fn ($q) => $q->where('branch_id', $filters['branch_id']))
-            ->when(!empty($filters['date_from']),   fn ($q) => $q->whereDate('sale_date', '>=', $filters['date_from']))
-            ->when(!empty($filters['date_to']),     fn ($q) => $q->whereDate('sale_date', '<=', $filters['date_to']))
+            ->when(!empty($filters['date_from']),   fn ($q) => $q->whereRaw($this->businessDayExpr() . ' >= ?', [$filters['date_from']]))
+            ->when(!empty($filters['date_to']),     fn ($q) => $q->whereRaw($this->businessDayExpr() . ' <= ?', [$filters['date_to']]))
             ->selectRaw('
                 order_type,
                 COUNT(*) as order_count,

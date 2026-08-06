@@ -125,24 +125,6 @@ class ShiftController extends Controller
         app(\App\Services\Edge\BranchOperatingModeService::class)
             ->assertSaleMutationAllowed(\App\Models\Tenant\Branch::findOrFail($shift->branch_id));
 
-        // A shift owns real, unsettled cash/kitchen work — held (unpaid) sales and open restaurant
-        // tables — that must be resolved before the drawer can be reconciled. (Offline print jobs
-        // are NOT operational work and never block a close.)
-        $work = $shiftService->unresolvedWork($shift);
-        if (! empty($work['held_sales']) || ! empty($work['open_tables'])) {
-            $bits = [];
-            if (! empty($work['held_sales'])) {
-                $bits[] = count($work['held_sales']) . ' held order(s): ' . implode(', ', $work['held_sales']);
-            }
-            if (! empty($work['open_tables'])) {
-                $bits[] = count($work['open_tables']) . ' open table(s): ' . implode(', ', $work['open_tables']);
-            }
-
-            return back()->withErrors([
-                'shift' => 'Settle all open work before closing this shift — ' . implode('; ', $bits) . '.',
-            ])->withInput();
-        }
-
         $data = $request->validate([
             'counted_cash'    => ['nullable', 'numeric', 'min:0'],
             'closing_notes'   => ['nullable', 'string'],
@@ -150,23 +132,34 @@ class ShiftController extends Controller
             'denominations.*' => ['nullable', 'integer', 'min:0'],
         ]);
 
-        DB::transaction(function () use ($shift, $data) {
-            $expectedCash = (float) $shift->expected_cash;
-            $countedCash  = $this->calculateCashCount($data, 'shift', $shift->id);
+        // HARDEN-1: the close is atomic. Inside the transaction we row-lock the shift and, still
+        // holding the lock, assert it is open with no unresolved work — this deterministically
+        // orders the close against any in-flight sale/hold (which locks the same shift row via
+        // lockOpenShiftForTerminal). A blocked close is a controlled ShiftException, never a 500.
+        // (Offline print jobs are NOT operational work and never block a close.)
+        try {
+            DB::connection('tenant')->transaction(function () use ($shift, $data, $shiftService) {
+                $locked = $shiftService->assertClosableUnderLock($shift);
 
-            if ($countedCash === null) {
-                $countedCash = (float) ($data['counted_cash'] ?? 0);
-            }
+                $expectedCash = (float) $locked->expected_cash;
+                $countedCash  = $this->calculateCashCount($data, 'shift', $locked->id);
 
-            $shift->update([
-                'closed_by_user_id' => auth('tenant')->id(),
-                'counted_cash'      => $countedCash,
-                'cash_variance'     => $countedCash - $expectedCash,
-                'status'            => 'closed',
-                'closed_at'         => now(),
-                'closing_notes'     => $data['closing_notes'] ?? null,
-            ]);
-        });
+                if ($countedCash === null) {
+                    $countedCash = (float) ($data['counted_cash'] ?? 0);
+                }
+
+                $locked->update([
+                    'closed_by_user_id' => auth('tenant')->id(),
+                    'counted_cash'      => $countedCash,
+                    'cash_variance'     => $countedCash - $expectedCash,
+                    'status'            => 'closed',
+                    'closed_at'         => now(),
+                    'closing_notes'     => $data['closing_notes'] ?? null,
+                ]);
+            });
+        } catch (ShiftException $e) {
+            return back()->withErrors(['shift' => $e->getMessage()])->withInput();
+        }
 
         return redirect('/shifts/' . $shift->id)->with('status', 'Shift closed successfully.');
     }

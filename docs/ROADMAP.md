@@ -1,7 +1,7 @@
 # Bingoo POS — Roadmap & System Gap Register
 
 > Maintained working document. Update after every completed sprint.
-> Last updated: **2026-08-06** (SHIFT-TIMEZONE-BUSINESS-DATE-1 built locally — Track S; MySQL suite 25/71 green; production not deployed) · branch `feat/14d-2-plan-upgrade-requests`
+> Last updated: **2026-08-06** (SHIFT-TIMEZONE-BUSINESS-DATE-1 + HARDEN-1 built locally — Track S; MySQL suite 38/111 green; production not deployed) · branch `feat/14d-2-plan-upgrade-requests`
 
 ---
 
@@ -43,6 +43,7 @@ Core invariant: **No active shift = no POS business operation. Midnight changes 
 | S4 | **Timezone settings** (`5603ab3`) — branch business tz validated IANA-only (full datalist); personal **display** timezone preference `POST /preferences/timezone` on the account page (empty = follow branch). | ✅ built; branch only |
 | S5 | **Business-date reporting + print tz** (`ad6a3c1`, `b54d9b8`) — sales reports filter/group by `COALESCE(business_date, DATE(sale_date))` (summary/items/payments/channels/riders + today stat); receipt+reminder+KOT timestamps render in the branch (store-local) timezone (ESC-POS engine + stored data untouched). MySQL test: after-midnight sale reports on its business day. | ✅ built; branch only |
 | S6 | Formal MySQL suite: `ShiftServiceTest`, `ShiftBusinessDateTest`, `SalesReportBusinessDateTest`, `TenantClockTest` — business/display tz split, DST-aware business date, frozen-by-shift, universal enforcement, two-process open, close guard, business-date reporting. `pos_test_*` only, zero skips. | ✅ green |
+| S7 | **SHIFT-TIMEZONE-BUSINESS-DATE-HARDEN-1** — concurrency/history/tz hardening before Edge. (1) **Atomic shift boundary:** sale/hold/open-table now row-lock the open shift via `ShiftService::lockOpenShiftForTerminal`/`lockOpenShiftForBranch` INSIDE the write txn (killing the held-sale TOCTOU); close uses `assertClosableUnderLock` (locks the shift + **locking** unresolved-work reads — fixed a REPEATABLE-READ snapshot miss) so a mutation can never commit against a just-closed shift. (2) **Open Table** now requires + binds an open shift (`opened_shift_id`+`business_date`) — the last unguarded new-state path; every other mutation is safe because close is blocked by any existing held/table, so an existing record guarantees an open shift. (3) **`shifts.shift_uuid`** immutable ULID (unique, generated at open, backfilled) = the cross-system identity the future Edge sale envelope carries. (4) **Backfill tz fix:** historical business_date derived in the branch business tz (not UTC `DATE()`). (5) **Historical print tz:** receipts/reprints/reminders render in the frozen `shift.timezone_name` first (branch tz change never shifts a historical receipt). (6) **POS clock** ticks in business (shift) tz with a display-tz secondary + 5-min server resync. (7) Dashboard/Restaurant/Department operational dailies moved to `COALESCE(business_date, DATE(sale_date))`. Tests: `ShiftCloseRaceTest` (two-process close-vs-sale/hold/table, both orderings) + `ShiftAcceptanceTest` (rejections, midnight, split/add-round inheritance, uuid, Karachi backfill, receipt tz, 23:59+00:01 grouping). MySQL 38/111, fast 22/108, zero skips. | ✅ built; branch only |
 
 ## 🔜 TRACK F — Offline POS / Branch Edge (NOW the primary direction, 2026-07)
 

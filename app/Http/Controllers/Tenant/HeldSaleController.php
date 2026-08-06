@@ -267,18 +267,12 @@ class HeldSaleController extends Controller
         app(\App\Services\Edge\BranchOperatingModeService::class)
             ->assertSaleMutationAllowed(\App\Models\Tenant\Branch::findOrFail($data['branch_id']));
 
-        // SHIFT-TIMEZONE-BUSINESS-DATE-1: holding an order is a POS business operation, so it
-        // requires an open shift on its terminal (universal — no requires_shift bypass). Enforced
-        // before the write transaction so the loser gets a clean 422, not a rolled-back 500.
+        // SHIFT-TIMEZONE-BUSINESS-DATE-HARDEN-1: holding an order requires an open shift (universal,
+        // no requires_shift bypass). The AUTHORITATIVE check is a row-locked re-validation INSIDE the
+        // transaction (lockOpenShiftForTerminal, below) so a concurrent close cannot race between
+        // check and write. ShiftException is caught around the transaction and returned as a clean
+        // 422 (never a rolled-back 500).
         $terminal = !empty($data['terminal_id']) ? Terminal::find($data['terminal_id']) : null;
-        try {
-            $shift = app(ShiftService::class)->assertOpenShift($terminal);
-        } catch (ShiftException $e) {
-            if ($request->expectsJson()) {
-                return response()->json(['ok' => false, 'code' => 'NO_OPEN_SHIFT', 'message' => $e->getMessage()], 422);
-            }
-            return back()->withErrors(['terminal_id' => $e->getMessage()])->withInput();
-        }
 
         $lines = collect($data['lines'])->filter(fn ($l) => !empty($l['product_id']) && !empty($l['quantity']));
 
@@ -314,14 +308,20 @@ class HeldSaleController extends Controller
             tipAmount:     0,
         );
 
+        try {
         return DB::connection('tenant')->transaction(function () use (
             $request,
             $data,
             $lines,
             $totals,
             $cancellationService,
-            $shift,
+            $terminal,
         ) {
+
+        // HARDEN-1: lock the open shift FIRST (before table-session / held-order locks) so all POS
+        // writes acquire locks in a consistent order (shift -> record) and this can never commit
+        // against a shift that a concurrent request has just closed.
+        $shift = app(ShiftService::class)->lockOpenShiftForTerminal($terminal);
 
         $tableSession = null;
         if (!empty($data['restaurant_table_session_id'])) {
@@ -630,6 +630,12 @@ class HeldSaleController extends Controller
 
         return redirect(url('/held-sales'))->with('status', "Held sale {$sale->sale_no} saved.");
         });
+        } catch (ShiftException $e) {
+            if ($request->expectsJson()) {
+                return response()->json(['ok' => false, 'code' => 'NO_OPEN_SHIFT', 'message' => $e->getMessage()], 422);
+            }
+            return back()->withErrors(['terminal_id' => $e->getMessage()])->withInput();
+        }
     }
 
     private function validateDeliveryAttribution(array $data): array

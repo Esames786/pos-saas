@@ -806,8 +806,11 @@ class SalesOrderController extends Controller
     {
         $shiftService = app(ShiftService::class);
 
+        // HARDEN-1: called inside the sale transaction — LOCK the open shift (FOR UPDATE) and
+        // re-validate under the lock, so a concurrent shift close cannot close it out from under
+        // this in-flight sale (no TOCTOU). Non-POS sources (imported/online) stay lenient.
         if ($orderSource === 'pos') {
-            return $shiftService->assertOpenShift($terminal);
+            return $shiftService->lockOpenShiftForTerminal($terminal);
         }
 
         return $shiftService->activeShiftForTerminal($terminal);
