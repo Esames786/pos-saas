@@ -35,18 +35,19 @@ class SalesReportService
             ->whereNotNull('promotion_id')
             ->sum('discount_amount');
 
-        // Daily breakdown
+        // Daily breakdown — by business day.
+        $day = $this->businessDayExpr();
         $daily = (clone $query)
-            ->selectRaw('DATE(sale_date) as sale_day,
+            ->selectRaw("$day as sale_day,
                 COUNT(*) as order_count,
                 COALESCE(SUM(subtotal), 0)              as gross_sales,
                 COALESCE(SUM(discount_amount), 0)       as total_discount,
                 COALESCE(SUM(tax_amount), 0)            as total_tax,
                 COALESCE(SUM(service_charge_amount), 0) as total_service_charge,
                 COALESCE(SUM(tip_amount), 0)            as total_tips,
-                COALESCE(SUM(grand_total), 0)           as net_sales'
+                COALESCE(SUM(grand_total), 0)           as net_sales"
             )
-            ->groupByRaw('DATE(sale_date)')
+            ->groupByRaw($day)
             ->orderBy('sale_day')
             ->get();
 
@@ -70,8 +71,8 @@ class SalesReportService
             ->leftJoin('categories', 'products.category_id', '=', 'categories.id')
             ->where('sales_orders.status', 'paid')
             ->when($branchIds, fn ($q) => $q->whereIn('sales_orders.branch_id', $branchIds))
-            ->when(!empty($filters['date_from']),    fn ($q) => $q->whereDate('sales_orders.sale_date', '>=', $filters['date_from']))
-            ->when(!empty($filters['date_to']),      fn ($q) => $q->whereDate('sales_orders.sale_date', '<=', $filters['date_to']))
+            ->when(!empty($filters['date_from']),    fn ($q) => $q->whereRaw($this->businessDayExpr('sales_orders.') . ' >= ?', [$filters['date_from']]))
+            ->when(!empty($filters['date_to']),      fn ($q) => $q->whereRaw($this->businessDayExpr('sales_orders.') . ' <= ?', [$filters['date_to']]))
             ->when(!empty($filters['terminal_id']),  fn ($q) => $q->where('sales_orders.terminal_id', $filters['terminal_id']))
             ->when(!empty($filters['order_type']),   fn ($q) => $q->where('sales_orders.order_type', $filters['order_type']))
             // BUG-061 FIX: group by product_id + variant_id (stable identifiers), not
@@ -107,8 +108,8 @@ class SalesReportService
             ->join('payment_methods', 'sale_payments.payment_method_id', '=', 'payment_methods.id')
             ->where('sales_orders.status', 'paid')
             ->when($branchIds, fn ($q) => $q->whereIn('sales_orders.branch_id', $branchIds))
-            ->when(!empty($filters['date_from']),   fn ($q) => $q->whereDate('sales_orders.sale_date', '>=', $filters['date_from']))
-            ->when(!empty($filters['date_to']),     fn ($q) => $q->whereDate('sales_orders.sale_date', '<=', $filters['date_to']))
+            ->when(!empty($filters['date_from']),   fn ($q) => $q->whereRaw($this->businessDayExpr('sales_orders.') . ' >= ?', [$filters['date_from']]))
+            ->when(!empty($filters['date_to']),     fn ($q) => $q->whereRaw($this->businessDayExpr('sales_orders.') . ' <= ?', [$filters['date_to']]))
             ->when(!empty($filters['terminal_id']), fn ($q) => $q->where('sales_orders.terminal_id', $filters['terminal_id']))
             ->selectRaw('
                 payment_methods.id as method_id,
@@ -127,7 +128,7 @@ class SalesReportService
     {
         $q = SalesOrder::query()
             ->where('status', 'paid')
-            ->whereDate('sale_date', today())
+            ->whereRaw($this->businessDayExpr() . ' = ?', [today()->toDateString()])
             ->when($branchId, fn ($q, $v) => $q->where('branch_id', $v));
 
         $count    = (clone $q)->count();
@@ -198,13 +199,13 @@ class SalesReportService
         $daily = $this->baseDeliveryQuery($filters)
             ->leftJoin('delivery_riders', 'sales_orders.delivery_rider_id', '=', 'delivery_riders.id')
             ->selectRaw("
-                DATE(sales_orders.sale_date)                        as sale_day,
+                {$this->businessDayExpr('sales_orders.')}          as sale_day,
                 sales_orders.delivery_rider_id,
                 COALESCE(MAX(delivery_riders.name), '(No rider)')  as rider_name,
                 COUNT(*)                                            as delivery_count,
                 COALESCE(SUM(sales_orders.grand_total), 0)          as total_amount
             ")
-            ->groupByRaw('DATE(sales_orders.sale_date), sales_orders.delivery_rider_id')
+            ->groupByRaw($this->businessDayExpr('sales_orders.') . ', sales_orders.delivery_rider_id')
             ->orderByDesc('sale_day')
             ->orderByDesc('delivery_count')
             ->get();
@@ -223,8 +224,8 @@ class SalesReportService
             ->where('sales_orders.status', 'paid')
             ->where('sales_orders.order_type', 'delivery')
             ->when($branchIds, fn ($q) => $q->whereIn('sales_orders.branch_id', $branchIds))
-            ->when(!empty($filters['date_from']), fn ($q) => $q->whereDate('sales_orders.sale_date', '>=', $filters['date_from']))
-            ->when(!empty($filters['date_to']),   fn ($q) => $q->whereDate('sales_orders.sale_date', '<=', $filters['date_to']))
+            ->when(!empty($filters['date_from']), fn ($q) => $q->whereRaw($this->businessDayExpr('sales_orders.') . ' >= ?', [$filters['date_from']]))
+            ->when(!empty($filters['date_to']),   fn ($q) => $q->whereRaw($this->businessDayExpr('sales_orders.') . ' <= ?', [$filters['date_to']]))
             ->when(!empty($filters['delivery_channel_id']), fn ($q) => $q->where('sales_orders.delivery_channel_id', $filters['delivery_channel_id']))
             ->when(!empty($filters['delivery_rider_id']),   fn ($q) => $q->where('sales_orders.delivery_rider_id', $filters['delivery_rider_id']));
     }
@@ -232,14 +233,25 @@ class SalesReportService
     private function baseSalesQuery(array $filters)
     {
         $branchIds = $this->resolveBranchIds($filters);
+        $day = $this->businessDayExpr();
 
         return SalesOrder::query()
             ->where('status', 'paid')
             ->when($branchIds, fn ($q) => $q->whereIn('branch_id', $branchIds))
-            ->when(!empty($filters['date_from']),    fn ($q) => $q->whereDate('sale_date', '>=', $filters['date_from']))
-            ->when(!empty($filters['date_to']),      fn ($q) => $q->whereDate('sale_date', '<=', $filters['date_to']))
+            ->when(!empty($filters['date_from']),    fn ($q) => $q->whereRaw("$day >= ?", [$filters['date_from']]))
+            ->when(!empty($filters['date_to']),      fn ($q) => $q->whereRaw("$day <= ?", [$filters['date_to']]))
             ->when(!empty($filters['terminal_id']),  fn ($q) => $q->where('terminal_id', $filters['terminal_id']))
             ->when(!empty($filters['order_type']),   fn ($q) => $q->where('order_type', $filters['order_type']))
             ->when(!empty($filters['cashier_id']),   fn ($q) => $q->where('created_by_user_id', $filters['cashier_id']));
+    }
+
+    /**
+     * SHIFT-TIMEZONE-BUSINESS-DATE-1 (L): the operational day for reporting is the shift's frozen
+     * business_date — so a sale rung after midnight books to the business day it belongs to, not
+     * the wall-clock date. COALESCE keeps legacy rows (pre-backfill) grouped by their sale_date.
+     */
+    private function businessDayExpr(string $prefix = ''): string
+    {
+        return "COALESCE({$prefix}business_date, DATE({$prefix}sale_date))";
     }
 }

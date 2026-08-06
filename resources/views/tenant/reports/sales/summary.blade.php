@@ -69,6 +69,10 @@
         </div>
 
         {{-- Daily table --}}
+        <p class="small text-muted mb-2">
+            <i class="ti ti-info-circle me-1"></i>Dates are <strong>business dates</strong> (a sale rung
+            after midnight is counted on the business day of its open shift, not the wall-clock date).
+        </p>
         <div class="card border-0 shadow-sm">
             <div class="card-body p-0">
                 <div class="table-responsive">
@@ -76,7 +80,7 @@
                         <caption class="visually-hidden">Daily sales summary</caption>
                         <thead class="table-light">
                             <tr>
-                                <th scope="col">Date</th>
+                                <th scope="col">Business Date</th>
                                 <th scope="col" class="text-end">Orders</th>
                                 <th scope="col" class="text-end">Gross Sales</th>
                                 <th scope="col" class="text-end">Discount</th>
