@@ -16,7 +16,10 @@ class EscPosPayloadService
      */
     private function branchTz(?Branch $branch): string
     {
-        return app(TenantClock::class)->businessTimezone($branch);
+        // DB-free: use the given branch's own timezone (or the platform default). We deliberately
+        // do NOT fall back to TenantClock::currentBranch() here — printing runs in contexts (e.g.
+        // pure-payload reminder rendering) where no tenant DB query should be triggered.
+        return app(TenantClock::class)->normalize($branch?->timezone) ?? TenantClock::DEFAULT_TIMEZONE;
     }
     public function build(PrintJob $job): string
     {
@@ -54,8 +57,15 @@ class EscPosPayloadService
     public function buildReminder(PrintJob $job): string
     {
         $payload = $job->payload ?? [];
-        // Render reminder timestamps in the store's local (branch business) timezone.
-        $tz = $this->branchTz(optional(SalesOrder::with('branch')->find($job->reference_id))->branch);
+        // Render reminder timestamps in the store's local (branch) timezone. The lookup is guarded
+        // so pure-payload rendering (no tenant DB bound) still works, defaulting the timezone.
+        $branch = null;
+        try {
+            $branch = optional(SalesOrder::with('branch')->find($job->reference_id))->branch;
+        } catch (\Throwable) {
+            // no tenant DB context — fall back to the default timezone
+        }
+        $tz = $this->branchTz($branch);
         $revision = max((int) ($payload['revision'] ?? 1), 1);
         $copyNo = max((int) ($payload['copy_no'] ?? 1), 1);
         $eventType = (string) ($payload['event_type'] ?? 'order');
