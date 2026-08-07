@@ -34,6 +34,30 @@ class EdgeLocalMeta extends Model
         'imported_at' => 'datetime',
     ];
 
+    /** Identity fields that become IMMUTABLE once set (fix 5). */
+    public const IMMUTABLE_FIELDS = ['tenant_code', 'tenant_id', 'branch_id', 'device_uuid', 'activation_epoch'];
+
+    /**
+     * Defence-in-depth (fix 5): force the singleton key on create (so the UNIQUE index guarantees one
+     * row and you cannot mint a second via the model), and forbid mutating the immutable identity
+     * fields once they have been set — so a different tenant/branch/device/epoch can never silently
+     * rebind an already-provisioned appliance, even if importer discipline were bypassed.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (self $meta) {
+            $meta->singleton_guard = self::SINGLETON;
+        });
+
+        static::updating(function (self $meta) {
+            foreach (self::IMMUTABLE_FIELDS as $field) {
+                if ($meta->isDirty($field) && $meta->getOriginal($field) !== null) {
+                    throw new \RuntimeException("Edge binding field [{$field}] is immutable once set and cannot be changed.");
+                }
+            }
+        });
+    }
+
     /** The single binding row, or null if the appliance has not been initialised/imported yet. */
     public static function current(): ?self
     {

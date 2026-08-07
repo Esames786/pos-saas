@@ -59,6 +59,25 @@ class EdgeActivationEpochService
         for ($attempt = 1; $attempt <= self::MAX_RETRIES; $attempt++) {
             try {
                 return DB::connection(self::MASTER)->transaction(function () use ($tenantId, $branchId, $deviceUuid, $device) {
+                    // NEVER trust the passed-in (possibly stale) device object. Re-read + lock the row
+                    // and revalidate INSIDE the transaction, so a revoked/replaced device cannot bump
+                    // the generation after it has lost authority.
+                    $locked = EdgeDevice::whereKey($device->id)->lockForUpdate()->first();
+                    if (! $locked
+                        || $locked->isRevoked()
+                        || $locked->active_slot !== EdgeDevice::ACTIVE_SLOT
+                        || (int) $locked->tenant_id !== $tenantId
+                        || (int) $locked->branch_id !== $branchId
+                        || (string) $locked->public_uuid !== $deviceUuid) {
+                        throw new \RuntimeException('Cannot allocate an activation generation for a revoked/replaced device.');
+                    }
+                    // Must still be THE current active device for this tenant+branch (a newer device
+                    // replacing it must own the newer generation instead).
+                    $current = EdgeDevice::active()->where('tenant_id', $tenantId)->where('branch_id', $branchId)->first();
+                    if (! $current || (int) $current->id !== (int) $locked->id) {
+                        throw new \RuntimeException('This device is no longer the active appliance for its branch.');
+                    }
+
                     // Lock the branch's latest generation row (if any) to serialise concurrent
                     // allocations once a branch has at least one generation.
                     $latest = EdgeBranchActivation::query()

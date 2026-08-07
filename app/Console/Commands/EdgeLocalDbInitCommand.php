@@ -5,22 +5,23 @@ namespace App\Console\Commands;
 use App\Support\EdgeLocalDatabase;
 use App\Support\EdgeRuntime;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use PDO;
+use Throwable;
 
 /**
- * EDGE-LOCAL-RUNTIME-1 (Section U) — provision / migrate the Branch Server's own local database.
+ * EDGE-LOCAL-RUNTIME-1 (Section U + fix 2) — provision / migrate the Branch Server's own local DB.
  *
  *   php artisan edge:local:db-init [--fresh]
  *
  * Runs the REAL tenant migrations plus the Edge-only migrations (database/migrations/edge) against
  * the dedicated Edge-local database — never the Cloud master or a Cloud tenant DB. Fails closed
- * unless this is a branch_server runtime pointed at a loopback, Edge-named database
- * (EdgeLocalDatabase safety guard). Idempotent: re-running only applies new migrations.
+ * unless this is a branch_server runtime pointed at a loopback, Edge-named database.
  *
- * This command is on the Branch Server CLI allowlist; it is NOT run on Cloud during deployment
- * (deploy.sh only ships the code — see DEPLOYMENT POLICY).
+ * IMPORTANT: it drives Laravel's Migrator DIRECTLY (not Artisan::call('migrate')). Raw `migrate` /
+ * `migrate:fresh` / `db:wipe` stay DENIED on a Branch Server by the console boundary; this guarded
+ * command is the only sanctioned way to build the appliance schema, and its internal migration run
+ * does not dispatch (and therefore is not blocked by) the CLI boundary.
  */
 class EdgeLocalDbInitCommand extends Command
 {
@@ -43,37 +44,18 @@ class EdgeLocalDbInitCommand extends Command
             return self::FAILURE;
         }
 
-        // Point the `tenant` connection at the Edge-local database for this process.
+        // Bind the `tenant` connection to the Edge-local DB (lazy — no socket opened yet).
         EdgeLocalDatabase::useAsTenantConnection();
         $host = EdgeLocalDatabase::host();
         $database = EdgeLocalDatabase::database();
         $this->info("Edge-local target: {$database} @ {$host}");
 
-        // Create the database if needed via a server-level PDO (no DB selected). Guarded again.
         $this->ensureDatabaseExists($database);
 
-        $fresh = (bool) $this->option('fresh');
-
-        // Real tenant schema (full tenant migration set — Cloud-only tables may exist empty locally).
-        $tenantCode = Artisan::call($fresh ? 'migrate:fresh' : 'migrate', [
-            '--database' => 'tenant',
-            '--path' => 'database/migrations/tenant',
-            '--force' => true,
-        ], $this->output);
-        if ($tenantCode !== 0) {
-            $this->error('Tenant migrations failed on the Edge-local database.');
-
-            return self::FAILURE;
-        }
-
-        // Edge-only migrations (edge_local_meta, …). Never run on Cloud tenant DBs.
-        $edgeCode = Artisan::call('migrate', [
-            '--database' => 'tenant',
-            '--path' => 'database/migrations/edge',
-            '--force' => true,
-        ], $this->output);
-        if ($edgeCode !== 0) {
-            $this->error('Edge migrations failed on the Edge-local database.');
+        try {
+            $this->runEdgeMigrations((bool) $this->option('fresh'));
+        } catch (Throwable $e) {
+            $this->error('Edge-local migration failed: ' . $e->getMessage());
 
             return self::FAILURE;
         }
@@ -81,6 +63,33 @@ class EdgeLocalDbInitCommand extends Command
         $this->info('Edge-local database initialised.');
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Run the real tenant schema + Edge-only migrations against the Edge-local database using the
+     * Migrator directly — bypassing the Artisan `migrate` command (which the CLI boundary denies).
+     */
+    private function runEdgeMigrations(bool $fresh): void
+    {
+        /** @var \Illuminate\Database\Migrations\Migrator $migrator */
+        $migrator = app('migrator');
+
+        $migrator->usingConnection('tenant', function () use ($migrator, $fresh) {
+            if ($fresh) {
+                // Destructive rebuild — LOCAL Edge DB only (the safety guard already validated the target).
+                DB::connection('tenant')->getSchemaBuilder()->dropAllTables();
+                DB::purge('tenant');
+            }
+
+            if (! $migrator->repositoryExists()) {
+                $migrator->getRepository()->createRepository();
+            }
+
+            $migrator->setOutput($this->output);
+            // Real tenant schema first, then the Edge-only migrations (edge_local_meta …).
+            $migrator->run([database_path('migrations/tenant')]);
+            $migrator->run([database_path('migrations/edge')]);
+        });
     }
 
     private function ensureDatabaseExists(?string $database): void
@@ -99,7 +108,6 @@ class EdgeLocalDbInitCommand extends Command
             [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
         );
         $pdo->exec("CREATE DATABASE IF NOT EXISTS `{$database}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
-        DB::purge('tenant');
-        DB::reconnect('tenant');
+        DB::purge('tenant'); // next query connects to the now-existing DB
     }
 }

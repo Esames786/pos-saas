@@ -133,6 +133,9 @@ class EdgeBootstrapService
 
                 $existing = EdgeBootstrapSnapshot::where('edge_device_id', $device->id)
                     ->where('source_revision', $claimRevision)
+                    // fix 6: only reuse a snapshot that belongs to the CURRENT activation generation —
+                    // a snapshot minted under an older epoch must never be reused/served.
+                    ->where('activation_epoch', $activationEpoch)
                     ->whereIn('status', [
                         EdgeBootstrapSnapshot::STATUS_READY, EdgeBootstrapSnapshot::STATUS_DOWNLOADED,
                         EdgeBootstrapSnapshot::STATUS_ACKNOWLEDGED, EdgeBootstrapSnapshot::STATUS_BUILDING,

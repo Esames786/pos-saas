@@ -36,10 +36,11 @@ class EdgeLocalDatabase
 
     /**
      * Resolve the Laravel `tenant` connection to the Edge-local database for this branch_server
-     * process. Copies the edge_local connection config onto `tenant` and reconnects, so every
-     * tenant-scoped model now speaks to the local MariaDB. This only reconfigures the connection —
-     * it does not open a socket, so it is safe to call before the local DB has been provisioned
-     * (health/ready must work while uninitialized).
+     * process. Copies the edge_local connection config onto `tenant`, PURGES any stale tenant
+     * connection instance, and makes it the default. It deliberately does NOT open a socket
+     * (no reconnect) — a purged connection is rebuilt lazily on the first query — so this is safe to
+     * call before the local DB has even been provisioned (health/ready and edge:local:db-init must all
+     * work from an uninitialised state). The socket only opens when an actual DB operation runs.
      */
     public static function useAsTenantConnection(): void
     {
@@ -53,8 +54,7 @@ class EdgeLocalDatabase
         }
 
         config(['database.connections.tenant' => $edge]);
-        DB::purge('tenant');
-        DB::reconnect('tenant');
+        DB::purge('tenant');               // drop any stale instance; next query reconnects lazily
         DB::setDefaultConnection('tenant');
     }
 
