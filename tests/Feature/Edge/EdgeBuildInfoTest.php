@@ -19,7 +19,7 @@ class EdgeBuildInfoTest extends TestCase
         foreach (['product', 'runtime_mode', 'edge_app_version', 'bootstrap_schema', 'sync_protocol', 'php_version'] as $key) {
             $this->assertArrayHasKey($key, $info);
         }
-        $this->assertSame('edge-bootstrap-v3', $info['bootstrap_schema']);
+        $this->assertSame('edge-bootstrap-v4', $info['bootstrap_schema']);
 
         // No secret-ish keys, and no secret values anywhere in the payload.
         $blob = strtolower(json_encode($info));
@@ -31,8 +31,8 @@ class EdgeBuildInfoTest extends TestCase
     public function test_schema_and_protocol_compatibility_checks(): void
     {
         $svc = app(EdgeBuildInfoService::class);
-        $this->assertTrue($svc->supportsBootstrapSchema('edge-bootstrap-v3'));
-        $this->assertFalse($svc->supportsBootstrapSchema('edge-bootstrap-v2'));
+        $this->assertTrue($svc->supportsBootstrapSchema('edge-bootstrap-v4'));
+        $this->assertFalse($svc->supportsBootstrapSchema('edge-bootstrap-v3'));
         $this->assertFalse($svc->supportsBootstrapSchema(''));
         $this->assertTrue($svc->supportsSyncProtocol('edge-sync-v0'));
         $this->assertFalse($svc->supportsSyncProtocol('edge-sync-v1'));

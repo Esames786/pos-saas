@@ -27,7 +27,12 @@ use Illuminate\Support\Str;
  */
 class EdgeBootstrapService
 {
-    public const SCHEMA_VERSION = 'edge-bootstrap-v3';
+    // EDGE-LOCAL-RUNTIME-1 (Section J): bumped v3 -> v4. The wire contract materially changed — the
+    // manifest now carries the Cloud-authoritative activation_epoch (stale-device fencing), and three
+    // new sections are emitted (recipes, recipe_ingredients, unit_conversions) so the config bootstrap
+    // can carry the future phase-1b recipe configuration. No real appliance consumes v3 yet
+    // (EDGE_FEATURE_ENABLED=false, none deployed), so this is a clean forward bump, not a compat break.
+    public const SCHEMA_VERSION = 'edge-bootstrap-v4';
     public const TTL_HOURS      = 72;
     private const BUILD_WAIT_MS = 120;
     private const BUILD_WAITS   = 25;
@@ -116,7 +121,13 @@ class EdgeBootstrapService
             [$tenant, $branch] = $this->assertContract($device);
             $claimRevision = $this->sourceRevision($branch);
 
-            $claim = DB::connection('master')->transaction(function () use ($device, $tenant, $branch, $claimRevision) {
+            // EDGE-LOCAL-RUNTIME-1 (Section I): allocate (idempotently) the Cloud-authoritative
+            // activation generation for THIS device BEFORE opening the snapshot transaction (the
+            // allocator has its own locked+retry txn). The snapshot then carries the epoch so the
+            // importer can store it and ack can fence a stale generation.
+            $activationEpoch = app(EdgeActivationEpochService::class)->allocateForDevice($device);
+
+            $claim = DB::connection('master')->transaction(function () use ($device, $tenant, $branch, $claimRevision, $activationEpoch) {
                 $locked = EdgeDevice::whereKey($device->id)->lockForUpdate()->first();
                 $this->revalidateLocked($locked, $device);
 
@@ -135,6 +146,7 @@ class EdgeBootstrapService
                     'public_uuid' => (string) Str::uuid(), 'tenant_id' => $tenant->id, 'branch_id' => $branch->id,
                     'edge_device_id' => $device->id, 'schema_version' => self::SCHEMA_VERSION,
                     'status' => EdgeBootstrapSnapshot::STATUS_BUILDING, 'source_revision' => $claimRevision,
+                    'activation_epoch' => $activationEpoch,
                 ]);
                 return ['snapshot' => $snapshot, 'build' => true];
             });
@@ -233,7 +245,9 @@ class EdgeBootstrapService
         $tenant = Tenant::find($snapshot->tenant_id);
         return [
             'schema_version' => $snapshot->schema_version, 'snapshot_uuid' => $snapshot->public_uuid,
-            'tenant_code' => $tenant?->tenant_code, 'branch_id' => $snapshot->branch_id, 'status' => $snapshot->status,
+            'tenant_code' => $tenant?->tenant_code, 'tenant_id' => (int) $snapshot->tenant_id,
+            'branch_id' => $snapshot->branch_id, 'status' => $snapshot->status,
+            'activation_epoch' => $snapshot->activation_epoch !== null ? (int) $snapshot->activation_epoch : null,
             'manifest_hash' => $snapshot->manifest_hash, 'generated_at' => optional($snapshot->generated_at)->toIso8601String(),
             'expires_at' => optional($snapshot->expires_at)->toIso8601String(), 'sections' => $snapshot->section_summary ?? [],
         ];
@@ -315,6 +329,16 @@ class EdgeBootstrapService
                 // ready — catches entitlement/subscription/flag/branch/limit changes that landed
                 // after the initial check.
                 $this->checkContract($locked, $tenant);
+
+                // EDGE-LOCAL-RUNTIME-1 (Section I): fence a stale activation generation. If a newer
+                // generation was allocated for this branch (an appliance replacement) after this
+                // snapshot was built, its epoch is no longer current and must not be acknowledged.
+                if ($lockedSnap->activation_epoch !== null) {
+                    $current = app(EdgeActivationEpochService::class)->currentGeneration((int) $lockedSnap->tenant_id, (int) $lockedSnap->branch_id);
+                    if ((int) $lockedSnap->activation_epoch !== $current) {
+                        throw EdgeBootstrapException::of(EdgeBootstrapException::STALE_ACTIVATION);
+                    }
+                }
 
                 if (! $lockedSnap->acknowledged_at) {
                     $lockedSnap->forceFill(['status' => EdgeBootstrapSnapshot::STATUS_ACKNOWLEDGED, 'acknowledged_at' => now()])->save();
@@ -398,6 +422,9 @@ class EdgeBootstrapService
         $add('printers', 'branch_id'); $add('receipt_layout_settings', 'branch_id'); $add('category_printer_mappings', 'branch_id');
         $add('service_charge_settings', 'branch_id'); $add('void_reasons'); $add('roles'); $add('permissions');
         $add('branch_user', 'branch_id');
+        // EDGE-LOCAL-RUNTIME-1 (K): recipe config is now part of the snapshot, so a recipe edit must
+        // change the revision and trigger a fresh bootstrap.
+        $add('recipes'); $add('recipe_ingredients'); $add('unit_conversions');
 
         $users = $conn->table('users')->whereIn('id', $userIds ?: [0]);
         $wm[] = 'users=' . (string) $users->max('updated_at') . '|' . $users->count();
@@ -453,6 +480,38 @@ class EdgeBootstrapService
         $coherentComboIds = array_values(array_filter($branchComboIds, fn ($id) => empty($incoherentCombo[$id])));
         $cid = $coherentComboIds ?: [0];
 
+        // EDGE-LOCAL-RUNTIME-1 (Section K): recipe configuration for INCLUDED sellable products. This
+        // sprint does NOT execute recipe stock — it only makes the config bootstrap CAPABLE of carrying
+        // phase-1b recipe config. recipe_ingredients reference raw-material products/variants that are
+        // not in the sellable set, so we EXPAND the shipped product/variant/unit coverage to keep the
+        // import FK-coherent (parents before children); never a stock baseline.
+        $recipeRows = $conn->table('recipes')->where('is_active', 1)->whereIn('product_id', $pid)->orderBy('id')
+            ->get(['id', 'product_id', 'name', 'yield_quantity', 'yield_unit_id', 'is_active', 'notes']);
+        $recipeIds = $recipeRows->pluck('id')->all();
+        $ingredientRows = $conn->table('recipe_ingredients')->whereIn('recipe_id', $recipeIds ?: [0])->orderBy('id')
+            ->get(['id', 'recipe_id', 'product_id', 'product_variant_id', 'quantity', 'unit_id', 'cost_override', 'sort_order']);
+        $ingredientProductIds = $ingredientRows->pluck('product_id')->filter()->map(fn ($x) => (int) $x)->unique()->values()->all();
+        $ingredientVariantIds = $ingredientRows->pluck('product_variant_id')->filter()->map(fn ($x) => (int) $x)->unique()->values()->all();
+
+        // Full product/variant coverage the appliance must know about = sellable + recipe raw materials.
+        $allProductIds = array_values(array_unique(array_merge($productIds, $ingredientProductIds)));
+        $apid = $allProductIds ?: [0];
+        $ingredientVariantRows = $ingredientVariantIds
+            ? $conn->table('product_variants')->whereIn('id', $ingredientVariantIds)->orderBy('id')
+                ->get(['id', 'product_id', 'sku', 'name', 'barcode', 'selling_price', 'is_default', 'is_active'])
+            : collect();
+        $allVariantRows = collect($variantRowsRaw)->concat($ingredientVariantRows)->unique('id')->values();
+
+        // unit_conversions are tenant-global; ship all, and make sure every unit a recipe/ingredient/
+        // conversion references is in the units section (active units may not cover raw-material units).
+        $unitConversionRows = $conn->table('unit_conversions')->orderBy('id')->get(['id', 'from_unit_id', 'to_unit_id', 'factor']);
+        $referencedUnitIds = collect()
+            ->concat($recipeRows->pluck('yield_unit_id'))
+            ->concat($ingredientRows->pluck('unit_id'))
+            ->concat($unitConversionRows->pluck('from_unit_id'))
+            ->concat($unitConversionRows->pluck('to_unit_id'))
+            ->filter()->map(fn ($x) => (int) $x)->unique()->values()->all();
+
         return [
             'tenant' => [['tenant_code' => $tenant->tenant_code, 'business_name' => $tenant->business_name, 'currency_code' => $tenant->currency_code]],
             'branch' => [[
@@ -467,11 +526,15 @@ class EdgeBootstrapService
             'terminals' => $rows($conn->table('terminals')->where('branch_id', $b)->where('status', 'active'),
                 ['id', 'branch_id', 'code', 'name', 'device_identifier', 'requires_shift', 'status']),
             'categories' => $rows($conn->table('categories')->where('is_active', 1), ['id', 'parent_id', 'code', 'name', 'slug', 'sort_order', 'is_active']),
-            'units' => $rows($conn->table('units')->where('is_active', 1), ['id', 'code', 'name', 'unit_type', 'base_factor', 'is_base', 'is_active']),
-            'products' => $rows($conn->table('products')->whereIn('id', $pid),
+            'units' => $rows($conn->table('units')->where(fn ($q) => $q->where('is_active', 1)->orWhereIn('id', $referencedUnitIds ?: [0])),
+                ['id', 'code', 'name', 'unit_type', 'base_factor', 'is_base', 'is_active']),
+            // Products = sellable set PLUS recipe raw-material products (bare config rows), so
+            // recipe_ingredients import FK-coherently. Sellable-only sections (variants/barcodes/prices/
+            // modifiers/combos) below stay keyed on the sellable set and are unchanged.
+            'products' => $rows($conn->table('products')->whereIn('id', $apid),
                 ['id', 'category_id', 'unit_id', 'sku', 'name', 'slug', 'product_type', 'item_kind', 'is_pos_visible',
                  'is_stock_tracked', 'has_variants', 'default_selling_price', 'is_taxable', 'tax_rate_percent', 'image_path', 'status']),
-            'product_variants' => collect($variantRowsRaw)->map(fn ($r) => (array) $r)->all(),
+            'product_variants' => $allVariantRows->map(fn ($r) => (array) $r)->all(),
             'product_barcodes' => $rows($conn->table('product_barcodes')->whereIn('product_id', $pid)
                 ->where(fn ($q) => $q->whereNull('product_variant_id')->orWhereIn('product_variant_id', $vid)),
                 ['id', 'product_id', 'product_variant_id', 'barcode', 'barcode_type', 'is_primary']),
@@ -505,6 +568,10 @@ class EdgeBootstrapService
             'terminal_printer_settings' => $rows($conn->table('terminal_printer_settings')->whereIn('terminal_id', $terminalIds ?: [0]), ['id', 'terminal_id', 'receipt_printer_id', 'kot_printer_id', 'auto_print_receipt', 'auto_print_kot']),
             'service_charge_settings' => $rows($conn->table('service_charge_settings')->where('branch_id', $b), ['id', 'branch_id', 'charge_type', 'charge_value', 'order_types', 'is_taxable', 'is_active']),
             'void_reasons' => $rows($conn->table('void_reasons')->where('is_active', 1), ['id', 'name', 'reason_type', 'requires_manager_approval', 'is_active']),
+            // EDGE-LOCAL-RUNTIME-1 (Section K) — recipe CONFIG (no stock execution this sprint).
+            'recipes' => $recipeRows->map(fn ($r) => (array) $r)->all(),
+            'recipe_ingredients' => $ingredientRows->map(fn ($r) => (array) $r)->all(),
+            'unit_conversions' => $unitConversionRows->map(fn ($r) => (array) $r)->all(),
             'users' => $this->userSection($conn, $b),
             'roles' => $rows($conn->table('roles')->where('guard_name', 'tenant'), ['id', 'name', 'guard_name']),
             'restrictions' => [[
@@ -589,7 +656,9 @@ class EdgeBootstrapService
     {
         return hash('sha256', $this->canonicalJson([
             'schema_version' => $snapshot->schema_version, 'snapshot_uuid' => $snapshot->public_uuid,
-            'tenant_id' => $snapshot->tenant_id, 'branch_id' => $snapshot->branch_id, 'sections' => $summary,
+            'tenant_id' => $snapshot->tenant_id, 'branch_id' => $snapshot->branch_id,
+            'activation_epoch' => $snapshot->activation_epoch !== null ? (int) $snapshot->activation_epoch : null,
+            'sections' => $summary,
         ]));
     }
 

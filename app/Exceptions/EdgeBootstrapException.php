@@ -27,6 +27,7 @@ class EdgeBootstrapException extends RuntimeException
     // HARDEN-2: tenant-wide license + server-side stored-payload integrity
     public const DEVICE_LIMIT_REACHED = 'EDGE_BOOTSTRAP_DEVICE_LIMIT_REACHED';
     public const SECTION_CORRUPTED    = 'EDGE_BOOTSTRAP_SECTION_CORRUPTED';
+    public const STALE_ACTIVATION     = 'EDGE_BOOTSTRAP_STALE_ACTIVATION';
 
     public function __construct(public readonly string $bootstrapCode, ?string $message = null)
     {
@@ -54,6 +55,7 @@ class EdgeBootstrapException extends RuntimeException
             self::SECTION_HASH_MISMATCH => 'A downloaded section hash does not match the manifest.',
             self::DEVICE_LIMIT_REACHED => 'The licensed Edge device limit has been exceeded.',
             self::SECTION_CORRUPTED    => 'A stored bootstrap section failed integrity verification. Request a new snapshot.',
+            self::STALE_ACTIVATION     => 'This bootstrap belongs to an older activation generation and can no longer be acknowledged.',
             default                    => 'Bootstrap is not available for this device.',
         };
     }

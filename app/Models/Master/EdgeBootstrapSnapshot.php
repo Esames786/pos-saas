@@ -22,7 +22,7 @@ class EdgeBootstrapSnapshot extends Model
     protected $fillable = [
         'public_uuid', 'tenant_id', 'branch_id', 'edge_device_id', 'schema_version', 'status',
         'source_revision', 'manifest_hash', 'section_summary', 'generated_at', 'expires_at',
-        'downloaded_at', 'acknowledged_at', 'failure_code', 'last_error',
+        'downloaded_at', 'acknowledged_at', 'failure_code', 'last_error', 'activation_epoch',
     ];
 
     protected $casts = [
@@ -31,6 +31,7 @@ class EdgeBootstrapSnapshot extends Model
         'expires_at'      => 'datetime',
         'downloaded_at'   => 'datetime',
         'acknowledged_at' => 'datetime',
+        'activation_epoch' => 'integer',
     ];
 
     public function sections(): HasMany
