@@ -131,6 +131,13 @@ class EdgeLocalBootstrapImporter
         ) {
             $meta = $this->markImporting($tenantCode, $tenantId, $branchId, $deviceUuid, $epoch, $snapshotUuid, $manifestHash, $sourceRevision, $manifest);
 
+            // Initial bootstrap: db-init ran the real tenant migrations, some of which SEED default
+            // config rows (e.g. a default delivery channel / payment method). Clear the config tables
+            // (children first) so the package's authoritative rows import without a PK collision. This
+            // is DML inside the one transaction (no TRUNCATE/DDL, no FOREIGN_KEY_CHECKS toggling) and
+            // applies to the fresh appliance only — it is NOT the blocked config-REFRESH path.
+            $this->clearExistingConfig();
+
             foreach (self::PLAN as [$section, $table, $branchScoped]) {
                 $rows = $sections[$section] ?? [];
                 if ($rows === []) {
@@ -273,6 +280,16 @@ class EdgeLocalBootstrapImporter
             'manifest_hash' => $manifestHash,
             'runtime_state' => EdgeLocalMeta::STATE_IMPORTING,
         ]);
+    }
+
+    /** Clear migration-seeded config so the package's authoritative rows import cleanly (children first). */
+    private function clearExistingConfig(): void
+    {
+        $conn = DB::connection(self::CONN);
+        $conn->table('model_has_roles')->where('model_type', \App\Models\Tenant\User::class)->delete();
+        foreach (array_reverse(self::PLAN) as [$section, $table, $branchScoped]) {
+            $conn->table($table)->delete();
+        }
     }
 
     private function insertRows(string $table, array $rows): void

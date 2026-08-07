@@ -33,6 +33,10 @@ class EdgeLocalStatusCommand extends Command
             return self::FAILURE;
         }
 
+        // Bind the `tenant` connection to the Edge-local DB (lazy) so readiness reads the local
+        // binding — a bare CLI process would otherwise query the unbound default connection.
+        EdgeLocalDatabase::useAsTenantConnection();
+
         $report = $readiness->report();
         $report['edge_db_host'] = EdgeLocalDatabase::host();
         $report['edge_db_database'] = EdgeLocalDatabase::database();
