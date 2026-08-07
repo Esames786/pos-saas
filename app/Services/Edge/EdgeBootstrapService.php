@@ -250,10 +250,30 @@ class EdgeBootstrapService
             'schema_version' => $snapshot->schema_version, 'snapshot_uuid' => $snapshot->public_uuid,
             'tenant_code' => $tenant?->tenant_code, 'tenant_id' => (int) $snapshot->tenant_id,
             'branch_id' => $snapshot->branch_id, 'status' => $snapshot->status,
+            'device_public_uuid' => EdgeDevice::whereKey($snapshot->edge_device_id)->value('public_uuid'),
             'activation_epoch' => $snapshot->activation_epoch !== null ? (int) $snapshot->activation_epoch : null,
+            'source_revision' => $snapshot->source_revision,
             'manifest_hash' => $snapshot->manifest_hash, 'generated_at' => optional($snapshot->generated_at)->toIso8601String(),
             'expires_at' => optional($snapshot->expires_at)->toIso8601String(), 'sections' => $snapshot->section_summary ?? [],
         ];
+    }
+
+    /**
+     * Serialise a READY snapshot into the self-contained package the local importer consumes:
+     * {manifest, sections:{name:[rows]}}. This is the exact data the authenticated Cloud download API
+     * serves (manifest + section payloads) — no miniature alternate format.
+     *
+     * @return array{manifest: array<string,mixed>, sections: array<string, array<int,array<string,mixed>>>}
+     */
+    public function exportPackage(EdgeBootstrapSnapshot $snapshot): array
+    {
+        $manifest = $this->manifest($snapshot);
+        $sections = [];
+        foreach (EdgeBootstrapSnapshotSection::where('snapshot_id', $snapshot->id)->orderBy('name')->get() as $section) {
+            $sections[$section->name] = json_decode($section->json(), true) ?: [];
+        }
+
+        return ['manifest' => $manifest, 'sections' => $sections];
     }
 
     public function sectionPayload(EdgeBootstrapSnapshot $snapshot, string $name): array
@@ -657,11 +677,36 @@ class EdgeBootstrapService
 
     private function manifestHash(EdgeBootstrapSnapshot $snapshot, array $summary): string
     {
+        return $this->computeManifestHash(
+            (string) $snapshot->schema_version,
+            (string) $snapshot->public_uuid,
+            (int) $snapshot->tenant_id,
+            (int) $snapshot->branch_id,
+            EdgeDevice::whereKey($snapshot->edge_device_id)->value('public_uuid'),
+            $snapshot->activation_epoch !== null ? (int) $snapshot->activation_epoch : null,
+            $summary,
+        );
+    }
+
+    /**
+     * The ONE manifest-hash formula, used both when building a snapshot and by the local importer to
+     * re-verify a package self-consistently. Any change here is a wire-contract change.
+     */
+    public function computeManifestHash(
+        string $schemaVersion,
+        string $snapshotUuid,
+        int $tenantId,
+        int $branchId,
+        ?string $deviceUuid,
+        ?int $activationEpoch,
+        array $sectionSummary,
+    ): string {
         return hash('sha256', $this->canonicalJson([
-            'schema_version' => $snapshot->schema_version, 'snapshot_uuid' => $snapshot->public_uuid,
-            'tenant_id' => $snapshot->tenant_id, 'branch_id' => $snapshot->branch_id,
-            'activation_epoch' => $snapshot->activation_epoch !== null ? (int) $snapshot->activation_epoch : null,
-            'sections' => $summary,
+            'schema_version' => $schemaVersion, 'snapshot_uuid' => $snapshotUuid,
+            'tenant_id' => $tenantId, 'branch_id' => $branchId,
+            'device_public_uuid' => $deviceUuid,
+            'activation_epoch' => $activationEpoch,
+            'sections' => $sectionSummary,
         ]));
     }
 
