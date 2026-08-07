@@ -13,13 +13,13 @@
             <div class="page-btn d-flex gap-2">
                 <form method="GET" class="d-inline">
                     @foreach($filters as $k => $val)
-                        @if($val)<input type="hidden" name="{{ $k }}" value="{{ $val }}">@endif
+                        @if(is_array($val))@foreach($val as $item)@if($item !== null && $item !== '')<input type="hidden" name="{{ $k }}[]" value="{{ $item }}">@endif@endforeach @elseif($val !== null && $val !== '')<input type="hidden" name="{{ $k }}" value="{{ $val }}">@endif
                     @endforeach
                     <button type="submit" name="export_csv" value="1" class="btn btn-outline-success btn-sm"><i class="ti ti-download me-1"></i>Entries CSV</button>
                 </form>
                 <form method="GET" class="d-inline">
                     @foreach($filters as $k => $val)
-                        @if($val)<input type="hidden" name="{{ $k }}" value="{{ $val }}">@endif
+                        @if(is_array($val))@foreach($val as $item)@if($item !== null && $item !== '')<input type="hidden" name="{{ $k }}[]" value="{{ $item }}">@endif@endforeach @elseif($val !== null && $val !== '')<input type="hidden" name="{{ $k }}" value="{{ $val }}">@endif
                     @endforeach
                     <button type="submit" name="export_csv" value="lines" class="btn btn-outline-success btn-sm"><i class="ti ti-download me-1"></i>Lines CSV</button>
                 </form>
