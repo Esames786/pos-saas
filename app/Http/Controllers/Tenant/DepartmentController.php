@@ -135,6 +135,9 @@ class DepartmentController extends Controller
             'status'                    => ['required', Rule::in(['active', 'inactive'])],
             'allow_stock_issue'         => ['nullable', 'boolean'],
             'require_end_day_count'     => ['nullable', 'boolean'],
+            'is_third_party'            => ['nullable', 'boolean'],
+            'owner_name'                => ['nullable', 'string', 'max:190'],
+            'owner_contact'             => ['nullable', 'string', 'max:190'],
             'sort_order'                => ['nullable', 'integer', 'min:0'],
             'category_ids'              => ['nullable', 'array'],
             'category_ids.*'            => ['integer', 'exists:categories,id'],
@@ -154,6 +157,9 @@ class DepartmentController extends Controller
             'status'                => $data['status'],
             'allow_stock_issue'     => $request->boolean('allow_stock_issue'),
             'require_end_day_count' => $request->boolean('require_end_day_count'),
+            'is_third_party'        => $request->boolean('is_third_party'),
+            'owner_name'            => $data['owner_name'] ?? null,
+            'owner_contact'         => $data['owner_contact'] ?? null,
             'sort_order'            => (int) ($data['sort_order'] ?? 0),
         ];
     }

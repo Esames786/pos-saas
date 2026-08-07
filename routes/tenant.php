@@ -85,6 +85,7 @@ use App\Http\Controllers\Tenant\Reports\AuditReportController;
 use App\Http\Controllers\Tenant\Reports\PrintReportController;
 use App\Http\Controllers\Tenant\Reports\DepartmentReportController;
 use App\Http\Controllers\Tenant\DepartmentController;
+use App\Http\Controllers\Tenant\DepartmentHandoverController;
 use App\Http\Controllers\Tenant\DepartmentStockTransferController;
 use App\Http\Controllers\Tenant\DepartmentCountController;
 use App\Http\Controllers\Tenant\Manufacturing\ManufacturingCustomerController;
@@ -316,6 +317,12 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 // NB: registered BEFORE /departments/{department} or the model
                 // binding would swallow "dashboard" as a department id.
                 Route::get('/departments/dashboard', [\App\Http\Controllers\Tenant\DepartmentDashboardController::class, 'index'])->name('tenant.departments.dashboard');
+                // Third-party department handovers (THIRD-PARTY-DEPARTMENT-HANDOVER-1) — registered
+                // BEFORE /departments/{department} so "handovers" is not swallowed as a department id.
+                Route::get('/departments/handovers', [DepartmentHandoverController::class, 'index'])->name('tenant.departments.handovers.index');
+                Route::post('/departments/handovers', [DepartmentHandoverController::class, 'store'])->name('tenant.departments.handovers.store');
+                Route::post('/departments/handovers/{handover}/payout', [DepartmentHandoverController::class, 'payout'])->name('tenant.departments.handovers.payout');
+                Route::post('/departments/handovers/{handover}/reverse', [DepartmentHandoverController::class, 'reverse'])->name('tenant.departments.handovers.reverse');
                 Route::get('/departments/create', [DepartmentController::class, 'create'])->name('tenant.departments.create');
                 Route::post('/departments', [DepartmentController::class, 'store'])->name('tenant.departments.store');
                 Route::get('/departments/{department}', [DepartmentController::class, 'show'])->name('tenant.departments.show');
