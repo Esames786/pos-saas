@@ -70,7 +70,7 @@ generate-once + immutability guard (defence-in-depth, not a DB trigger — hones
 
 ## Migration / backfill (staged, production-safe)
 `database/migrations/tenant/2026_08_08_000010_add_canonical_cross_system_identities.php`: for each table,
-(1) add the column NULLABLE, (2) deterministic memory-bounded IDEMPOTENT backfill (only rows still NULL,
+(1) add the column NULLABLE, (2) idempotent generate-once, memory-bounded backfill (only rows still NULL; each gets a fresh ULID, already-populated rows never change,
 batched by id), (3) add the UNIQUE index once every row is populated. The column stays nullable at the DB
 level (documented staged step, mirroring the shipped `shifts.shift_uuid` migration): the trait guarantees new
 rows are non-null and backfill leaves zero nulls, so a NOT NULL constraint is a later stage — avoiding a risky
@@ -131,6 +131,50 @@ is locked now so no migration ever violates it. Every schema decision here alrea
   recovery action — never reachable through "Update", and not prominent in normal UI.
 - **Backup MVP is a release gate before real offline selling:** before a branch is allowed to sell locally,
   at minimum a manual verified "Backup Now" + automatic mandatory pre-update backup must exist.
+
+## Final-proof closure (EDGE-IDENTITY-FINAL-PROOF-1)
+Real controller/service integration replaced the earlier model-level mirrors, and it surfaced a genuine
+refinement of the contract (this is what real-flow testing is for):
+
+- **Honest line/payment lifecycle (code-proven).** `HeldSaleController::store` does `$sale->lines()->delete()`
+  and recreates every line on Add Round / held-edit; `SalesOrderController::store` does the same for
+  `lines()` + `payments()` on held→pay. So a line/payment ROW is deleted and recreated on those transitions —
+  its `line_uuid`/`payment_uuid` is **stable for a finalized sale and across an idempotent replay, but is NOT
+  preserved across a held re-save**. The column values are still immutable (a given row's identity never
+  changes); it is the row lifecycle that churns. The durable, lifecycle-stable identity of the check is
+  **`sale_uuid`** (the `sales_orders` row is UPDATED, never recreated — stable across hold → add rounds → pay
+  and across replay). Proven by `EdgeIdentityFlowMySqlTest` through the REAL controllers (Direct Pay + real
+  idempotent replay: same row, no duplicate sale/payment; Add Round: `sale_uuid` stable, lines re-created with
+  fresh unique identities; Split: parent `sale_uuid` unchanged, child distinct).
+- **Cross-system relationship snapshots (Option B, required by evidence).** Because lines are deleted on
+  re-save and the FKs `kot_batch_lines.sales_order_line_id` / `sales_order_line_cancellations.sales_order_
+  line_id` are `nullOnDelete`, a KOT line or cancellation would lose its link to the originating sale line —
+  and numeric ids are useless across Cloud/Edge anyway. Fix (migration `2026_08_08_000011`): capture the
+  originating canonical identity as an **immutable snapshot** at creation time —
+  `kot_batch_lines.source_line_uuid` (the source line's `line_uuid`) and
+  `sales_order_line_cancellations.source_line_uuid` + `source_kot_event_uuid` (source line + original KOT
+  batch). These are reference *copies* (nullable, not uniquely indexed), set once by the trusted service. Proven
+  to be captured by the real `PrintJobService`/`KotCancellationService` and to **survive the source line's
+  deletion** (`EdgeIdentityFlowMySqlTest`). So a synced KOT/cancellation stays self-contained and cross-system
+  resolvable regardless of line churn or divergent numeric ids.
+- **Full two-database matrix.** `EdgeIdentityMySqlTest` now resolves ALL ten entities (sale, line, payment,
+  shift, table session, approval, KOT batch, KOT line, cancellation, customer) across two genuinely
+  independent databases with deliberately divergent numeric ids (Cloud id 9000 / Edge id 1, same canonical
+  identity) — and asserts the resolver honours its EXPLICIT connection even when the default connection points
+  at the master DB.
+
+## Activation-time schema-hardening gate (NOT NULL)
+The identity columns are deliberately left DB-nullable in this sprint (staged; the trait + backfill guarantee
+non-null in practice). **Before real Edge activation**, every required canonical operational identity must
+either be made DB `NOT NULL`, or have executable proof that every trusted write/ingestion path (including the
+future sync ingestion boundary, which does not exist yet) cannot persist NULL. That NOT NULL / no-null-path
+proof is a mandatory pre-activation gate, tracked here — do not treat the nullable staging as permanent.
+
+## Backup gate before real offline selling
+Restated as a hard release gate (see §AE): **before the first real offline sale / pilot activation,
+`EDGE-APPLIANCE-BACKUP-MVP-1` is mandatory** — at minimum manual "Backup Now" + transaction-consistent local
+DB backup + manifest/checksum verification + automatic verified pre-update backup (backup failure blocks the
+update) + no machine-local secrets in the backup bundle. The full setup/update/restore GUI may come later.
 
 ## Not done here (later sprints)
 No offline sale creation, no sync engine/ingestion boundary, no reconciliation, no Local Mode, no offline

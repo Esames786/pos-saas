@@ -8,6 +8,7 @@ use App\Models\Tenant\ManagerApproval;
 use App\Models\Tenant\SalePayment;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\SalesOrderLine;
+use App\Models\Tenant\SalesOrderLineCancellation;
 use App\Support\Edge\EdgeIdentity;
 use App\Support\Edge\EdgeIdentityResolver;
 use Illuminate\Support\Facades\DB;
@@ -237,7 +238,7 @@ class EdgeIdentityMySqlTest extends MySqlTenantTestCase
     public function test_two_independent_dbs_with_divergent_pks_resolve_same_canonical_identity(): void
     {
         $edgeDb = $this->tenantDb . '_edge';
-        $this->createEdgeSchema($edgeDb);
+        $this->cloneEdgeTables($edgeDb, ['branches', 'sales_orders', 'sales_order_lines']);
         config(['database.connections.identity_edge' => array_merge(config('database.connections.tenant'), ['database' => $edgeDb])]);
         DB::purge('identity_edge');
 
@@ -276,6 +277,107 @@ class EdgeIdentityMySqlTest extends MySqlTenantTestCase
         DB::connection('identity_edge')->getPdo()->exec("DROP DATABASE IF EXISTS `{$edgeDb}`");
     }
 
+    // ── 25b. FULL matrix: every entity resolves across two divergent-PK databases ──
+    public function test_full_cross_db_matrix_all_entities_resolve_by_canonical_identity(): void
+    {
+        $edgeDb = $this->tenantDb . '_edge';
+        $tables = ['sales_orders', 'sales_order_lines', 'sale_payments', 'shifts', 'restaurant_table_sessions', 'manager_approvals', 'kot_batches', 'kot_batch_lines', 'sales_order_line_cancellations', 'customers'];
+        $this->cloneEdgeTables($edgeDb, $tables);
+        config(['database.connections.identity_edge' => array_merge(config('database.connections.tenant'), ['database' => $edgeDb])]);
+        DB::purge('identity_edge');
+        foreach ($tables as $t) {
+            DB::connection('tenant')->table($t)->delete();
+        }
+
+        // entity => [modelClass, idColumn, format, minimal required row]
+        $matrix = [
+            'sales_orders'                   => [SalesOrder::class, 'sale_uuid', 'ulid', ['sale_no' => 'M'.Str::random(6), 'branch_id' => 1, 'sale_date' => now()]],
+            'sales_order_lines'              => [SalesOrderLine::class, 'line_uuid', 'ulid', ['sales_order_id' => 1, 'product_id' => 1, 'product_name' => 'X', 'quantity' => 1]],
+            'sale_payments'                  => [SalePayment::class, 'payment_uuid', 'ulid', ['sales_order_id' => 1, 'payment_method_id' => 1, 'amount' => 1]],
+            'shifts'                         => [\App\Models\Tenant\Shift::class, 'shift_uuid', 'ulid', ['branch_id' => 1, 'terminal_id' => 1, 'opened_by_user_id' => 1, 'opened_at' => now()]],
+            'restaurant_table_sessions'      => [\App\Models\Tenant\RestaurantTableSession::class, 'session_uuid', 'ulid', ['session_no' => 'S'.Str::random(6), 'branch_id' => 1, 'restaurant_table_id' => 1, 'opened_by_user_id' => 1]],
+            'manager_approvals'              => [ManagerApproval::class, 'approval_uuid', 'ulid', ['approval_no' => 'A'.Str::random(6), 'action_type' => 'void']],
+            'kot_batches'                    => [KotBatch::class, 'event_uuid', 'uuid', ['sales_order_id' => 1, 'sequence_no' => 1, 'event_type' => 'normal']],
+            'kot_batch_lines'                => [\App\Models\Tenant\KotBatchLine::class, 'kot_line_uuid', 'ulid', ['kot_batch_id' => 1, 'product_name' => 'X', 'quantity' => 1]],
+            'sales_order_line_cancellations' => [SalesOrderLineCancellation::class, 'event_uuid', 'uuid', ['sales_order_id' => 1, 'void_reason_id' => 1, 'approval_mode' => 'auto', 'product_name' => 'X', 'quantity' => 1, 'cancelled_at' => now()]],
+            'customers'                      => [Customer::class, 'customer_uuid', 'ulid', ['name' => 'C']],
+        ];
+
+        foreach ($matrix as $table => [$model, $idcol, $format, $row]) {
+            $idval = EdgeIdentity::generate($format);
+            // deliberately divergent numeric ids: Cloud id 9000, Edge id 1 — same canonical identity.
+            $this->matrixInsert('tenant', $table, 9000, $idcol, $idval, $row);
+            $this->matrixInsert('identity_edge', $table, 1, $idcol, $idval, $row);
+
+            $rawCloud = DB::connection('tenant')->table($table)->where($idcol, $idval)->count();
+            $rawEdge = DB::connection('identity_edge')->table($table)->where($idcol, $idval)->count();
+            $this->assertSame(1, $rawCloud, "[$table] Cloud row must exist (raw)");
+            $this->assertSame(1, $rawEdge, "[$table] Edge row must exist (raw)");
+            // sanity: the model must be a REGISTERED canonical-identity model (guards against a wrong FQCN).
+            $this->assertNotNull(EdgeIdentityResolver::fieldFor($model), "[$table] model must be a registered canonical-identity model");
+            $cloud = EdgeIdentityResolver::resolve($model, $idval, 'tenant');
+            $edge = EdgeIdentityResolver::resolve($model, $idval, 'identity_edge');
+            $this->assertNotNull($cloud, "[$table] must resolve on Cloud by $idcol (raw count=$rawCloud)");
+            $this->assertNotNull($edge, "[$table] must resolve on Edge by $idcol");
+            $this->assertSame(9000, (int) $cloud->id, "[$table] Cloud numeric id");
+            $this->assertSame(1, (int) $edge->id, "[$table] Edge numeric id");
+            $this->assertNotSame((int) $cloud->id, (int) $edge->id, "[$table] numeric ids MUST diverge");
+            $this->assertSame($idval, $cloud->{$idcol}, "[$table] same canonical identity across systems");
+            $this->assertSame($cloud->{$idcol}, $edge->{$idcol});
+        }
+
+        DB::connection('identity_edge')->getPdo()->exec("DROP DATABASE IF EXISTS `{$edgeDb}`");
+    }
+
+    // ── 6. resolver honours its EXPLICIT connection regardless of the default connection ──
+    public function test_resolver_honours_explicit_connection_regardless_of_default(): void
+    {
+        $edgeDb = $this->tenantDb . '_edge';
+        $this->cloneEdgeTables($edgeDb, ['sales_orders']);
+        config(['database.connections.identity_edge' => array_merge(config('database.connections.tenant'), ['database' => $edgeDb])]);
+        DB::purge('identity_edge');
+        DB::connection('tenant')->table('sales_orders')->delete();
+
+        $idval = (string) Str::ulid();
+        $this->matrixInsert('tenant', 'sales_orders', 9000, 'sale_uuid', $idval, ['sale_no' => 'R'.Str::random(6), 'branch_id' => 1, 'sale_date' => now()]);
+        $this->matrixInsert('identity_edge', 'sales_orders', 1, 'sale_uuid', $idval, ['sale_no' => 'R'.Str::random(6), 'branch_id' => 1, 'sale_date' => now()]);
+
+        // Point the DEFAULT connection at the master DB — the resolver must ignore it and use the arg.
+        $prevDefault = DB::getDefaultConnection();
+        DB::setDefaultConnection(config('tenancy.master_connection', 'master'));
+        try {
+            $this->assertSame(9000, (int) EdgeIdentityResolver::resolve(SalesOrder::class, $idval, 'tenant')->id, 'explicit tenant connection honoured despite master default');
+            $this->assertSame(1, (int) EdgeIdentityResolver::resolve(SalesOrder::class, $idval, 'identity_edge')->id, 'explicit edge connection honoured despite master default');
+        } finally {
+            DB::setDefaultConnection($prevDefault);
+        }
+
+        DB::connection('identity_edge')->getPdo()->exec("DROP DATABASE IF EXISTS `{$edgeDb}`");
+    }
+
+    private function matrixInsert(string $conn, string $table, int $id, string $idcol, string $idval, array $row): void
+    {
+        $c = DB::connection($conn);
+        $c->statement('SET FOREIGN_KEY_CHECKS=0');
+        $c->table($table)->insert(array_merge($row, ['id' => $id, $idcol => $idval, 'created_at' => now(), 'updated_at' => now()]));
+        $c->statement('SET FOREIGN_KEY_CHECKS=1');
+    }
+
+    private function cloneEdgeTables(string $edgeDb, array $tables): void
+    {
+        $c = config('database.connections.tenant');
+        $pdo = new \PDO("mysql:host={$c['host']};port={$c['port']};charset=utf8mb4", $c['username'], $c['password'] ?? '');
+        if (stripos($edgeDb, 'test') === false) {
+            throw new RuntimeException("refusing non-test edge db [{$edgeDb}]");
+        }
+        $pdo->exec("DROP DATABASE IF EXISTS `{$edgeDb}`");
+        $pdo->exec("CREATE DATABASE `{$edgeDb}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+        $pdo->exec("USE `{$edgeDb}`");
+        foreach ($tables as $t) {
+            $pdo->exec("CREATE TABLE `{$t}` LIKE `{$this->tenantDb}`.`{$t}`");
+        }
+    }
+
     // ── 26. identity generation needs no master/landlord DB ─────────────────
     public function test_identity_generation_has_no_master_dependency(): void
     {
@@ -307,19 +409,4 @@ class EdgeIdentityMySqlTest extends MySqlTenantTestCase
         $migration->up();
     }
 
-    private function createEdgeSchema(string $edgeDb): void
-    {
-        $c = config('database.connections.tenant');
-        $pdo = new \PDO("mysql:host={$c['host']};port={$c['port']};charset=utf8mb4", $c['username'], $c['password'] ?? '');
-        if (stripos($edgeDb, 'test') === false) {
-            throw new RuntimeException("refusing non-test edge db [{$edgeDb}]");
-        }
-        $pdo->exec("DROP DATABASE IF EXISTS `{$edgeDb}`");
-        $pdo->exec("CREATE DATABASE `{$edgeDb}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
-        // clone only the two tables we need for the resolution proof
-        $pdo->exec("USE `{$edgeDb}`");
-        foreach (['branches', 'sales_orders', 'sales_order_lines'] as $t) {
-            $pdo->exec("CREATE TABLE `{$t}` LIKE `{$this->tenantDb}`.`{$t}`");
-        }
-    }
 }

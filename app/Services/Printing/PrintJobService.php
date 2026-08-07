@@ -594,6 +594,9 @@ class PrintJobService
             foreach ($this->lineSnapshots($sale, $lineQuantities) as $snapshot) {
                 $batch->lines()->create([
                     'sales_order_line_id' => $snapshot['line_id'],
+                    // EDGE-IDENTITY: immutable snapshot of the source line's canonical identity — survives the
+                    // Add Round line delete+recreate churn and divergent Cloud/Edge numeric ids.
+                    'source_line_uuid' => $snapshot['line_uuid'],
                     'product_id' => $snapshot['product_id'],
                     'product_variant_id' => $snapshot['product_variant_id'],
                     'product_name' => $snapshot['product_name'],
@@ -618,6 +621,7 @@ class PrintJobService
         return $sale->lines->whereIn('id', array_map('intval', array_keys($lineQuantities)))
             ->map(fn ($line) => [
                 'line_id' => (int) $line->id,
+                'line_uuid' => $line->line_uuid,
                 'product_id' => $line->product_id ? (int) $line->product_id : null,
                 'product_variant_id' => $line->product_variant_id ? (int) $line->product_variant_id : null,
                 'product_name' => $line->product_name,

@@ -16,7 +16,7 @@ use Illuminate\Support\Str;
  *
  * Staged, production-safe (mirrors the shipped `shifts.shift_uuid` migration):
  *   1. add the column NULLABLE (additive, non-locking on modern MySQL);
- *   2. deterministic, memory-bounded, IDEMPOTENT backfill (only rows still NULL, batched by id);
+ *   2. idempotent generate-once, memory-bounded backfill (only rows still NULL, batched by id — each gets a fresh ULID; already-populated rows are never changed);
  *   3. add the UNIQUE index once every existing row is populated.
  * The column is deliberately left NULLABLE at the DB level (not NOT NULL): the model trait
  * {@see \App\Models\Concerns\HasCanonicalIdentity} guarantees every NEW row is generated non-null, and the
@@ -64,7 +64,7 @@ return new class extends Migration
                 });
             }
 
-            // 2. idempotent, memory-bounded backfill of rows still NULL (deterministic per-row ULID).
+            // 2. idempotent generate-once, memory-bounded backfill of rows still NULL (fresh ULID each; never re-generates).
             do {
                 $ids = $conn->table($table)->whereNull($column)->orderBy('id')->limit(1000)->pluck('id');
                 foreach ($ids as $id) {
