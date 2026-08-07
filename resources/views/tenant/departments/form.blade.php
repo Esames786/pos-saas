@@ -84,6 +84,32 @@
                 <small class="text-muted">When a product matches multiple departments, the lowest sort order wins in reports.</small>
             </div>
         </div>
+        {{-- Third-party ownership (THIRD-PARTY-DEPARTMENT-HANDOVER-1) --}}
+        <div class="row g-3 mt-1 pt-2 border-top">
+            <div class="col-md-3">
+                <label class="form-label d-block">Ownership</label>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="is_third_party" name="is_third_party" value="1"
+                           @checked(old('is_third_party', $department?->is_third_party))>
+                    <label class="form-check-label" for="is_third_party">Owned by a third party</label>
+                </div>
+                <small class="text-muted">Its sales can be handed over to the owner.</small>
+            </div>
+            <div class="col-md-4">
+                <label for="owner_name" class="form-label">Owner name</label>
+                <input id="owner_name" type="text" name="owner_name" maxlength="190"
+                       class="form-control @error('owner_name') is-invalid @enderror"
+                       value="{{ old('owner_name', $department?->owner_name) }}" placeholder="e.g. Kashif Kitchen">
+                @error('owner_name') <div class="invalid-feedback">{{ $message }}</div> @enderror
+            </div>
+            <div class="col-md-5">
+                <label for="owner_contact" class="form-label">Owner contact</label>
+                <input id="owner_contact" type="text" name="owner_contact" maxlength="190"
+                       class="form-control @error('owner_contact') is-invalid @enderror"
+                       value="{{ old('owner_contact', $department?->owner_contact) }}" placeholder="Phone / email (optional)">
+                @error('owner_contact') <div class="invalid-feedback">{{ $message }}</div> @enderror
+            </div>
+        </div>
     </div>
 
     {{-- 2. Category Responsibility --}}

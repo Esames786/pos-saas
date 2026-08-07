@@ -42,6 +42,9 @@ class DefaultChartOfAccountsSeeder
             ['2100', 'Accounts Payable',    'liability', '2000', null, 110],
             ['2200', 'Sales Tax Payable',   'liability', '2000', null, 120],
             ['2300', 'Customer Advances',   'liability', '2000', null, 130],
+            // Third-party department handover (THIRD-PARTY-DEPARTMENT-HANDOVER-1): parent liability;
+            // one child per owner (e.g. "2410 Payable — Kashif Kitchen") is auto-created on first handover.
+            ['2400', 'Payable to Third-Party Departments', 'liability', '2000', null, 135],
 
             // ── Equity ──
             ['3000', 'Equity',              'equity', null,   null, 140],
@@ -57,6 +60,10 @@ class DefaultChartOfAccountsSeeder
             ['4140', 'Tips Income',         'income', '4100', null, 220],
             // Contra-income: reduces revenue, so debit-normal under the Income tree.
             ['4200', 'Sales Discounts',     'income', '4000', 'debit', 230],
+            // Third-party department handover (THIRD-PARTY-DEPARTMENT-HANDOVER-1): contra-income,
+            // debit-normal — reduces net income by the sales handed to a third-party department owner,
+            // while leaving gross Retail/Restaurant Sales intact.
+            ['4210', 'Third-Party Department Handover', 'income', '4000', 'debit', 235],
 
             // ── Cost of Goods Sold (expense type) ──
             ['5000', 'Cost of Goods Sold',         'expense', null,   null, 240],

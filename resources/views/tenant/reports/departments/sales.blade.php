@@ -8,7 +8,12 @@
         <h1 class="mb-1">Department Sales</h1>
         <p class="fw-medium text-muted mb-0">Paid sales grouped into departments via category mappings and product overrides.</p>
     </div>
-    <a href="{{ url('/departments') }}" class="btn btn-light">Manage Departments</a>
+    <div class="d-flex gap-2">
+        @can('tenant.departments.handovers.index')
+        <a href="{{ url('/departments/handovers') }}" class="btn btn-outline-primary"><i class="ti ti-arrow-right me-1"></i>Handovers</a>
+        @endcan
+        <a href="{{ url('/departments') }}" class="btn btn-light">Manage Departments</a>
+    </div>
 </div>
 
 <div class="card border-primary-subtle mb-3">
@@ -91,6 +96,7 @@
                     <th scope="col" class="text-end">Net Sales</th>
                     <th scope="col" class="text-end">COGS</th>
                     <th scope="col" class="text-end">Gross Profit</th>
+                    <th scope="col" class="text-end">Action</th>
                 </tr>
             </thead>
             <tbody>
@@ -111,9 +117,24 @@
                     <td class="text-end fw-semibold">{{ number_format($row['net'], 2) }}</td>
                     <td class="text-end">{{ number_format($row['cogs'], 2) }}</td>
                     <td class="text-end {{ $row['gross_profit'] < 0 ? 'text-danger' : 'text-success' }}">{{ number_format($row['gross_profit'], 2) }}</td>
+                    <td class="text-end">
+                        @php $dept = $row['department_id'] ? $departments->firstWhere('id', $row['department_id']) : null; @endphp
+                        @if($dept?->is_third_party && $row['net'] > 0)
+                            @can('tenant.departments.handovers.store')
+                            <form method="POST" action="{{ url('/departments/handovers') }}" class="d-inline"
+                                  onsubmit="return confirm('Hand over {{ number_format($row['net'], 2) }} of {{ $dept->name }} sales to {{ $dept->owner_name ?: 'the owner' }}? This moves it out of your income into a payable.');">
+                                @csrf
+                                <input type="hidden" name="department_id" value="{{ $dept->id }}">
+                                <input type="hidden" name="date_from" value="{{ $filters['date_from'] }}">
+                                <input type="hidden" name="date_to" value="{{ $filters['date_to'] }}">
+                                <button type="submit" class="btn btn-outline-primary btn-sm"><i class="ti ti-arrow-right me-1"></i>Hand over</button>
+                            </form>
+                            @endcan
+                        @endif
+                    </td>
                 </tr>
             @empty
-                <tr><td colspan="9" class="text-center text-muted py-4">No paid sales found for the selected filters.</td></tr>
+                <tr><td colspan="10" class="text-center text-muted py-4">No paid sales found for the selected filters.</td></tr>
             @endforelse
             </tbody>
             @if(!empty($report['rows']))
@@ -126,6 +147,7 @@
                     <td class="text-end">{{ number_format($report['totals']['net'], 2) }}</td>
                     <td class="text-end">{{ number_format($report['totals']['cogs'], 2) }}</td>
                     <td class="text-end">{{ number_format($report['totals']['gross_profit'], 2) }}</td>
+                    <td></td>
                 </tr>
             </tfoot>
             @endif

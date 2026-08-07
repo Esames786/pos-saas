@@ -24,6 +24,11 @@ class Department extends Model
         'allow_stock_issue',
         'require_end_day_count',
         'sort_order',
+        // THIRD-PARTY-DEPARTMENT-HANDOVER-1
+        'is_third_party',
+        'owner_name',
+        'owner_contact',
+        'payable_account_id',
     ];
 
     protected function casts(): array
@@ -32,7 +37,18 @@ class Department extends Model
             'allow_stock_issue'     => 'boolean',
             'require_end_day_count' => 'boolean',
             'sort_order'            => 'integer',
+            'is_third_party'        => 'boolean',
         ];
+    }
+
+    public function payableAccount()
+    {
+        return $this->belongsTo(Account::class, 'payable_account_id');
+    }
+
+    public function handovers()
+    {
+        return $this->hasMany(DepartmentHandover::class);
     }
 
     public function branch()
