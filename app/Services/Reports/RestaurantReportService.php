@@ -41,9 +41,12 @@ class RestaurantReportService
             ->groupBy('restaurant_tables.id', 'restaurant_tables.table_no', 'restaurant_floors.name')
             ->orderByDesc('net_sales')
             ->get()
-            ->map(fn ($row) => array_merge((array) $row, [
-                'avg_bill' => $row->order_count > 0 ? round($row->net_sales / $row->order_count, 2) : 0,
-            ]));
+            ->map(function ($row) {
+                // Keep the row an object — the view reads $t->floor_name etc. (object syntax).
+                $row->avg_bill = $row->order_count > 0 ? round($row->net_sales / $row->order_count, 2) : 0;
+
+                return $row;
+            });
     }
 
     public function waiters(array $filters)
@@ -67,9 +70,12 @@ class RestaurantReportService
             ->groupBy('restaurant_waiters.id', 'restaurant_waiters.name')
             ->orderByDesc('net_sales')
             ->get()
-            ->map(fn ($row) => array_merge((array) $row, [
-                'avg_order' => $row->order_count > 0 ? round($row->net_sales / $row->order_count, 2) : 0,
-            ]));
+            ->map(function ($row) {
+                // Keep the row an object — the view reads $w->waiter_name etc. (object syntax).
+                $row->avg_order = $row->order_count > 0 ? round($row->net_sales / $row->order_count, 2) : 0;
+
+                return $row;
+            });
     }
 
     public function orderTypes(array $filters)
