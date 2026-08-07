@@ -24,6 +24,16 @@ class AppServiceProvider extends ServiceProvider
             \App\Support\EdgeRuntime::assertBootConfig();
         }
 
+        // EDGE-LOCAL-RUNTIME-1 (Section E): DEFAULT-DENY console boundary. On a branch_server runtime,
+        // any Artisan command not on the Edge CLI allowlist is refused before it runs — so a Cloud-only
+        // command can never operate against the appliance's local database. No-op on Cloud.
+        \Illuminate\Support\Facades\Event::listen(
+            \Illuminate\Console\Events\CommandStarting::class,
+            function (\Illuminate\Console\Events\CommandStarting $event) {
+                \App\Support\EdgeConsoleBoundary::assertAllowed($event->command);
+            }
+        );
+
         Paginator::useBootstrapFive();
 
         // The tenant domain constraint uses {subdomain} for wildcard matching only.

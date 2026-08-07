@@ -43,6 +43,32 @@ return [
     ],
 
     /*
+    | EDGE-LOCAL-RUNTIME-1 (Section E) — Branch Server CLI boundary (DEFAULT DENY). Now that a real
+    | local database exists, restricting HTTP routes is not enough: a Cloud-only Artisan command
+    | (tenant provisioning, system:reset, demo reset, master seed, central sync, finance/mfg jobs,
+    | Cloud backup, or a raw tenant migrate against the local DB) must not be runnable on the
+    | appliance. On a branch_server runtime ONLY the names below may execute; everything else is
+    | refused. Raw destructive migrate/reset is intentionally NOT here — the guarded edge:local:*
+    | commands perform the appliance's schema/import work. '*' is a suffix wildcard on the command name.
+    */
+    'cli_allowlist' => [
+        // Guarded Edge-local operator commands.
+        'edge:local:db-init',
+        'edge:local:bootstrap-import',
+        'edge:local:status',
+        // Framework cache/runtime operations the appliance explicitly needs.
+        'config:cache', 'config:clear',
+        'route:cache', 'route:clear',
+        'view:cache', 'view:clear',
+        'event:cache', 'event:clear',
+        'optimize', 'optimize:clear',
+        'package:discover',
+        'storage:link',
+        // Harmless introspection + the framework internals artisan itself invokes.
+        'about', 'list', 'help', 'completion', 'env', 'inspire',
+    ],
+
+    /*
     | Restricted artifact contents. The builder copies ONLY these top-level paths (allowlist), then
     | prunes the exclude globs, then FAILS if any forbidden pattern survives (secret/source audit).
     | We ship the Laravel app + vendor closure so the appliance can boot and answer its health

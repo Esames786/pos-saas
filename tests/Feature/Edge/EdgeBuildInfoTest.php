@@ -48,12 +48,16 @@ class EdgeBuildInfoTest extends TestCase
         $this->assertArrayHasKey('edge_app_version', $health);
 
         config(['app.role' => 'branch_server']);
-        $ready = json_decode($controller->ready()->getContent(), true);
-        $this->assertTrue($ready['ready']);
+        $ready = json_decode($controller->ready(app(\App\Services\Edge\EdgeLocalReadiness::class))->getContent(), true);
+        // EDGE-LOCAL-RUNTIME-1: without a provisioned local DB the runtime FOUNDATION is not ready, and
+        // selling capabilities are honestly reported as not-yet-implemented (nothing faked).
+        $this->assertFalse($ready['ready']);
         $this->assertSame([], $ready['problems']);
-        // Later-sprint checks are honestly reported as not yet implemented (nothing faked).
-        $this->assertSame('implemented', $ready['checks']['runtime_boundary']);
-        $this->assertSame('not_implemented', $ready['checks']['local_database']);
-        $this->assertSame('not_implemented', $ready['checks']['local_auth']);
+        $this->assertSame('ready', $ready['runtime_boundary']);
+        $this->assertSame('not_ready', $ready['local_database']);
+        $this->assertSame('not_ready', $ready['bootstrap_binding']);
+        $this->assertSame('not_ready', $ready['operational_stock']);
+        $this->assertSame('not_implemented', $ready['local_auth']);
+        $this->assertFalse($ready['activation_ready']);
     }
 }

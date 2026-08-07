@@ -58,7 +58,18 @@ class EdgeBranchServerRegistrationTest extends TestCase
     {
         $this->getJson('/edge/local/health')->assertOk()->assertJson(['status' => 'ok', 'runtime_mode' => 'branch_server']);
         $this->getJson('/edge/local/build-info')->assertOk()->assertJson(['product' => 'Bingoo POS Edge']);
-        $this->getJson('/edge/local/ready')->assertStatus(200);
+
+        // EDGE-LOCAL-RUNTIME-1: before the local DB is provisioned / a bootstrap is imported, readiness
+        // FAILS the local-runtime checks (503) and must never claim selling readiness.
+        $this->getJson('/edge/local/ready')
+            ->assertStatus(503)
+            ->assertJson([
+                'ready' => false,
+                'local_database' => 'not_ready',
+                'bootstrap_binding' => 'not_ready',
+                'operational_stock' => 'not_ready',
+                'activation_ready' => false,
+            ]);
     }
 
     public function test_branch_server_route_census_is_only_the_approved_surface(): void

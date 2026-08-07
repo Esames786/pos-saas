@@ -145,6 +145,30 @@ return [
             'engine' => null,
         ],
 
+        /*
+         * EDGE-LOCAL-RUNTIME-1 — the Branch Server appliance's OWN local database. On a branch_server
+         * runtime the `tenant` connection is resolved to THIS database (see EdgeLocalDatabase), so the
+         * appliance never needs the Cloud master/tenant DBs for normal runtime. On Cloud this
+         * connection is simply unused. Its credentials are machine-local; production/master creds are
+         * never copied into the appliance. The C-safety guard refuses destructive schema work unless
+         * the host is loopback and the database name matches the dedicated Edge convention.
+         */
+        'edge_local' => [
+            'driver' => 'mysql',
+            'host' => env('EDGE_DB_HOST', '127.0.0.1'),
+            'port' => env('EDGE_DB_PORT', '3306'),
+            'database' => env('EDGE_DB_DATABASE', 'bingoo_edge_local'),
+            'username' => env('EDGE_DB_USERNAME', 'root'),
+            'password' => env('EDGE_DB_PASSWORD', ''),
+            'unix_socket' => env('DB_SOCKET', ''),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => true,
+            'engine' => null,
+        ],
+
     ],
 
     /*

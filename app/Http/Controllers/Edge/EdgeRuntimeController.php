@@ -44,24 +44,20 @@ class EdgeRuntimeController extends Controller
      * branch binding / local DB / config revision / backup age / sync queue — reported here as
      * explicitly not-yet-implemented so nothing is faked.
      */
-    public function ready(): JsonResponse
+    public function ready(\App\Services\Edge\EdgeLocalReadiness $readiness): JsonResponse
     {
         $problems = EdgeRuntime::bootProblems();
+        $report = $readiness->report();
 
-        return response()->json([
-            'runtime_mode' => EdgeRuntime::mode(),
-            'ready'        => $problems === [],
-            'problems'     => $problems,
-            'checks'       => [
-                'runtime_boundary' => 'implemented',
-                'branch_binding'   => 'not_implemented', // EDGE-LOCAL-RUNTIME-1
-                'local_database'   => 'not_implemented', // EDGE-LOCAL-RUNTIME-1
-                'local_auth'       => 'not_implemented', // EDGE-LOCAL-AUTH-1
-                'config_revision'  => 'not_implemented',
-                'sync_queue'       => 'not_implemented',
-                'print_agent'      => 'not_implemented',
-            ],
-        ], $problems === [] ? 200 : 503);
+        // "ready" here = runtime foundation ready (boundary + local DB + bootstrap binding). It is
+        // deliberately NOT selling readiness — activation_ready stays false and operational_stock is
+        // never reported ready (no local sale capability exists).
+        $foundationReady = $problems === [] && ($report['foundation_ready'] ?? false) === true;
+
+        return response()->json(array_merge([
+            'ready'    => $foundationReady,
+            'problems' => $problems,
+        ], $report), $foundationReady ? 200 : 503);
     }
 
     /** Build/version/compatibility surface for the future signed updater. */

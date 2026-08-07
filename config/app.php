@@ -131,7 +131,11 @@ return [
 
     'cipher' => 'AES-256-CBC',
 
-    'key' => env('APP_KEY'),
+    // EDGE-LOCAL-RUNTIME-1 (Section F): a packaged Branch Server uses its OWN machine-local key and
+    // must never depend on or reuse the Cloud APP_KEY. isCloudSafe() is non-throwing at config-load
+    // time (a config file must never throw); a missing EDGE_LOCAL_APP_KEY on a branch_server is
+    // fail-closed by EdgeRuntime::bootProblems(), not by throwing here.
+    'key' => \App\Support\EdgeRuntime::isCloudSafe() ? env('APP_KEY') : env('EDGE_LOCAL_APP_KEY'),
 
     'previous_keys' => [
         ...array_filter(

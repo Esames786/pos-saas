@@ -12,12 +12,16 @@ class IdentifyTenant
 {
     public function handle(Request $request, Closure $next)
     {
-        // EDGE-RUNTIME-BOUNDARY-1: a Branch Server is a single-purpose appliance, not a multi-tenant
-        // host. It does not resolve a tenant from the request host (the single tenant/branch binding
-        // comes from env in a later activation sprint), so skip tenant identification entirely — the
-        // route boundary then restricts what may run. This also lets the Edge health endpoint answer
-        // on the local host without a registered tenant domain.
+        // EDGE-RUNTIME-BOUNDARY-1 / EDGE-LOCAL-RUNTIME-1: a Branch Server is a single-purpose
+        // appliance, not a multi-tenant host. It never resolves a tenant from the request host. It
+        // does, however, RESOLVE the `tenant` connection to its own local Edge database so
+        // tenant-scoped models speak to the local MariaDB (the immutable tenant/branch binding itself
+        // lives in edge_local_meta). Binding only reconfigures the connection (no socket opened), so
+        // /edge/local/health still answers while the appliance is uninitialised. The route boundary
+        // then restricts what may run.
         if (\App\Support\EdgeRuntime::isBranchServer()) {
+            \App\Support\EdgeLocalDatabase::useAsTenantConnection();
+
             return $next($request);
         }
 

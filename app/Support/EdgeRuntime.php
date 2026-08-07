@@ -130,6 +130,13 @@ class EdgeRuntime
                 . config('edge.min_php') . ').';
         }
 
+        // EDGE-LOCAL-RUNTIME-1 (Section F): the appliance must carry its OWN machine-local application
+        // key (EDGE_LOCAL_APP_KEY, resolved into app.key). Fail closed if it is missing rather than
+        // silently running without encryption/session key material or reaching for the Cloud APP_KEY.
+        if (! is_string(config('app.key')) || config('app.key') === '') {
+            $problems[] = 'EDGE_LOCAL_APP_KEY is not set — a Branch Server requires its own machine-local application key.';
+        }
+
         return $problems;
     }
 
