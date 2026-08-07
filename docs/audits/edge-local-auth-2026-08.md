@@ -126,6 +126,26 @@ types, logout invalidates the session, `/pos` 404, `/api/edge/pair` 404.
   name); Owner (granted the permission via the deploy's Owner-grant-all) passes, a cashier without it
   is 403, unauthenticated is redirected — proven.
 
+## Final-proof closure (EDGE-LOCAL-AUTH-FINAL-PROOF-1)
+- **Canonical-HEAD artifact provenance:** the physical login/manager proof is re-run from a release
+  artifact whose manifest `git_commit` equals the accepted canonical HEAD (the earlier proof predated the
+  squash; provenance is a locked contract, so it is re-established against the final commit).
+- **Real-HTTP Cloud authorization proof** (`EdgeEnrollmentAuthzHttpMySqlTest`): the enrollment-issue
+  authorization now runs through the actual stack — a live tenant + active domain seeded in master so
+  `IdentifyTenant → auth:tenant → route.permission` all execute for real on the tenant host
+  (`{sub}.{tenant_base_domain}`, derived from config; only CSRF is bypassed). Proven: the route exists and
+  carries `route.permission`; unauthenticated → 401; cashier without the permission → 403; authorized
+  Owner passes authorization and reaches the controller, which fails CLOSED with the controlled 422 (no
+  active device / no signing key) — a bare 404 is explicitly rejected as an Owner "pass". The test fails
+  if the route disappears, `route.permission` is removed, or the tenant guard wiring breaks; master test
+  rows are torn down deterministically. No signing key is inserted.
+- **Production Owner-permission census** (read-only): 7/7 Cloud tenants have `tenant.offline-edge.
+  enrollment.issue` granted to the Owner role after routes-sync/Owner-grant-all — no remediation needed.
+- **Environment note:** during this closure the dev box's InnoDB DDL slowed sharply while two release
+  artifacts were being copied in parallel; classified as ENVIRONMENT ISSUE / local I/O slowdown suspected
+  (not a proven root cause) — it cleared once the parallel copies stopped and the full MySQL suite ran in
+  ~3.4 min. No code implicated.
+
 ## Release gates still open (unchanged)
 True client-appliance release still needs `composer install --no-dev` + stronger source minimisation;
 installer / cert binding / CA distribution / update signing / physical printer certification remain
