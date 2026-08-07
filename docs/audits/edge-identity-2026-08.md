@@ -152,7 +152,7 @@ refinement of the contract (this is what real-flow testing is for):
   and numeric ids are useless across Cloud/Edge anyway. Fix (migration `2026_08_08_000011`): capture the
   originating canonical identity as an **immutable snapshot** at creation time —
   `kot_batch_lines.source_line_uuid` (the source line's `line_uuid`) and
-  `sales_order_line_cancellations.source_line_uuid` + `source_kot_event_uuid` (source line + original KOT
+  `sales_order_line_cancellations.source_line_uuid` + `referenced_kot_event_uuid` (source line + the referenced cancel-KOT
   batch). These are reference *copies* (nullable, not uniquely indexed), set once by the trusted service. Proven
   to be captured by the real `PrintJobService`/`KotCancellationService` and to **survive the source line's
   deletion** (`EdgeIdentityFlowMySqlTest`). So a synced KOT/cancellation stays self-contained and cross-system
@@ -162,6 +162,26 @@ refinement of the contract (this is what real-flow testing is for):
   independent databases with deliberately divergent numeric ids (Cloud id 9000 / Edge id 1, same canonical
   identity) — and asserts the resolver honours its EXPLICIT connection even when the default connection points
   at the master DB.
+
+## Freeze closure (EDGE-IDENTITY-FREEZE-CLOSURE-1)
+- **Real KOT reprint proof.** `EdgeIdentityFlowMySqlTest` now drives the ACTUAL public reprint path
+  (`PrintJobService::queueKot($sale, $printer, $lineIds, $terminalId, isReprint: true)`), not the private
+  `createKotBatch`. Proven: a reprint creates NO new `kot_batches` business event; the batch `event_uuid`,
+  `sequence_no`, every `kot_line_uuid`, and every `source_line_uuid` snapshot are unchanged; sent quantities
+  are not mutated; each reprint only adds a `print_jobs` row keyed `kot-copy:<event_uuid>:<destination>:<n>`
+  with `copy_no` incrementing per the existing print contract (two reprints prove the increment).
+- **Cancellation KOT reference renamed for accuracy.** `sales_order_line_cancellations.source_kot_event_uuid`
+  → **`referenced_kot_event_uuid`** (safe forward migration `2026_08_08_000012`, additive-copy-then-drop,
+  values preserved, all tenants + fresh Edge db-init converge on the new name only). Executable evidence
+  proved the field is the canonical `event_uuid` form of THIS cancellation row's `kot_batch_id` — which the
+  workflow sets to the **CANCEL** KOT batch (`queueCancellationKot`), NOT necessarily the original sending
+  batch. The name no longer implies "original".
+- **No singular "original KOT" is modelled.** A sale line may appear in one OR MANY historical KOT batches
+  across rounds, so the schema deliberately does not fabricate a single `original_kot_uuid`. Future sync
+  resolves historical KOT-line membership through `kot_batch_lines.source_line_uuid` + `kot_batches.event_uuid`
+  (a line's identity plus each batch it appeared in). The cancellation carries `source_line_uuid` (the
+  historical line) + `referenced_kot_event_uuid` (its cancel-batch reference) + its own `event_uuid`; all
+  three resolve across divergent Cloud/Edge numeric ids (proven).
 
 ## Activation-time schema-hardening gate (NOT NULL)
 The identity columns are deliberately left DB-nullable in this sprint (staged; the trait + backfill guarantee

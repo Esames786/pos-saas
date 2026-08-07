@@ -252,7 +252,9 @@ class KotCancellationService
             // EDGE-IDENTITY: immutable canonical-reference snapshots so this cancellation stays self-contained
             // and cross-system resolvable after the source line is churned (Add Round) or across divergent ids.
             'source_line_uuid' => $line->line_uuid,
-            'source_kot_event_uuid' => $batchId ? \App\Models\Tenant\KotBatch::find($batchId)?->event_uuid : null,
+            // canonical event_uuid form of THIS row's kot_batch_id (the cancel KOT batch the workflow creates,
+            // NOT necessarily the original sending batch) — makes the numeric FK cross-system resolvable.
+            'referenced_kot_event_uuid' => $batchId ? \App\Models\Tenant\KotBatch::find($batchId)?->event_uuid : null,
             'void_reason_id' => $reason->id,
             'manager_approval_id' => $approval?->id,
             'kot_batch_id' => $batchId,

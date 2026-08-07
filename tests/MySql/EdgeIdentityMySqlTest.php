@@ -355,6 +355,57 @@ class EdgeIdentityMySqlTest extends MySqlTenantTestCase
         DB::connection('identity_edge')->getPdo()->exec("DROP DATABASE IF EXISTS `{$edgeDb}`");
     }
 
+    // ── cancellation canonical references resolve across two divergent-PK databases ──
+    public function test_cancellation_references_resolve_across_divergent_pk_databases(): void
+    {
+        $edgeDb = $this->tenantDb . '_edge';
+        $tables = ['sales_order_lines', 'kot_batches', 'sales_order_line_cancellations'];
+        $this->cloneEdgeTables($edgeDb, $tables);
+        config(['database.connections.identity_edge' => array_merge(config('database.connections.tenant'), ['database' => $edgeDb])]);
+        DB::purge('identity_edge');
+        foreach ($tables as $t) {
+            DB::connection('tenant')->table($t)->delete();
+        }
+
+        $lineUuid = (string) Str::ulid();           // the historical sale line
+        $batchUuid = (string) Str::uuid();          // the referenced (cancel) KOT batch
+        $cancelUuid = (string) Str::uuid();         // the cancellation event itself
+
+        // Cloud (high ids) + Edge (low ids) — SAME canonical identities, divergent numeric PKs.
+        foreach (['tenant' => 9000, 'identity_edge' => 1] as $conn => $base) {
+            $c = DB::connection($conn);
+            $c->statement('SET FOREIGN_KEY_CHECKS=0');
+            $c->table('sales_order_lines')->insert(['id' => $base, 'line_uuid' => $lineUuid, 'sales_order_id' => 1, 'product_id' => 1, 'product_name' => 'X', 'quantity' => 1, 'created_at' => now(), 'updated_at' => now()]);
+            $c->table('kot_batches')->insert(['id' => $base, 'event_uuid' => $batchUuid, 'sales_order_id' => 1, 'sequence_no' => 1, 'event_type' => 'cancel', 'created_at' => now(), 'updated_at' => now()]);
+            $c->table('sales_order_line_cancellations')->insert([
+                'id' => $base, 'event_uuid' => $cancelUuid, 'sales_order_id' => 1,
+                'source_line_uuid' => $lineUuid, 'kot_batch_id' => $base, 'referenced_kot_event_uuid' => $batchUuid,
+                'void_reason_id' => 1, 'approval_mode' => 'auto', 'product_name' => 'X', 'quantity' => 1,
+                'cancelled_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+            ]);
+            $c->statement('SET FOREIGN_KEY_CHECKS=1');
+        }
+
+        foreach (['tenant' => 9000, 'identity_edge' => 1] as $conn => $expectId) {
+            $cancel = SalesOrderLineCancellation::on($conn)->where('event_uuid', $cancelUuid)->firstOrFail();
+            $this->assertSame($expectId, (int) $cancel->id, "[$conn] cancellation numeric id (divergent)");
+            // the cancellation's canonical references resolve the correct line + batch on THIS system by identity.
+            $line = EdgeIdentityResolver::resolve(SalesOrderLine::class, $cancel->source_line_uuid, $conn);
+            $batch = EdgeIdentityResolver::resolve(KotBatch::class, $cancel->referenced_kot_event_uuid, $conn);
+            $this->assertNotNull($line, "[$conn] source_line_uuid must resolve the sale line");
+            $this->assertNotNull($batch, "[$conn] referenced_kot_event_uuid must resolve the KOT batch");
+            $this->assertSame($expectId, (int) $line->id);
+            $this->assertSame($expectId, (int) $batch->id);
+        }
+        // divergent numeric ids, identical canonical references across systems.
+        $this->assertSame(
+            SalesOrderLineCancellation::on('tenant')->where('event_uuid', $cancelUuid)->value('source_line_uuid'),
+            SalesOrderLineCancellation::on('identity_edge')->where('event_uuid', $cancelUuid)->value('source_line_uuid')
+        );
+
+        DB::connection('identity_edge')->getPdo()->exec("DROP DATABASE IF EXISTS `{$edgeDb}`");
+    }
+
     private function matrixInsert(string $conn, string $table, int $id, string $idcol, string $idval, array $row): void
     {
         $c = DB::connection($conn);

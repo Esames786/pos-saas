@@ -7,6 +7,8 @@ use App\Http\Controllers\Tenant\SalesOrderController;
 use App\Http\Controllers\Tenant\SplitBillController;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\KotBatch;
+use App\Models\Tenant\PrintJob;
+use App\Models\Tenant\Printer;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\SalesOrderLine;
 use App\Models\Tenant\Shift;
@@ -283,18 +285,64 @@ class EdgeIdentityFlowMySqlTest extends MySqlTenantTestCase
         $this->assertNotNull($cancel, 'a durable cancellation record must be created');
         $this->assertTrue(Str::isUuid($cancel->event_uuid), 'cancellation has its canonical event_uuid');
         $this->assertSame($lineUuid, $cancel->source_line_uuid, 'cancellation snapshots the source line canonical identity');
-        // source_kot_event_uuid is the canonical form of whatever kot_batch_id references (the cancel batch the
+        // referenced_kot_event_uuid is the canonical form of whatever kot_batch_id references (the cancel batch the
         // service links) — so the numeric kot_batch FK becomes cross-system resolvable.
         $this->assertNotNull($cancel->kot_batch_id);
         $referencedBatchUuid = KotBatch::on('tenant')->whereKey($cancel->kot_batch_id)->value('event_uuid');
-        $this->assertSame($referencedBatchUuid, $cancel->source_kot_event_uuid, 'source_kot_event_uuid is the canonical identity of the referenced KOT batch');
-        $this->assertTrue(Str::isUuid($cancel->source_kot_event_uuid));
+        $this->assertSame($referencedBatchUuid, $cancel->referenced_kot_event_uuid, 'referenced_kot_event_uuid is the canonical identity of the referenced KOT batch');
+        $this->assertTrue(Str::isUuid($cancel->referenced_kot_event_uuid));
 
         // Add Round churn deletes the source line — the cancellation must remain self-contained.
         SalesOrderLine::on('tenant')->whereKey($line->id)->delete();
         $cancel->refresh();
         $this->assertNull($cancel->sales_order_line_id, 'numeric line FK is nulled by the delete');
         $this->assertSame($lineUuid, $cancel->source_line_uuid, 'canonical source-line snapshot SURVIVES the line deletion');
-        $this->assertSame($referencedBatchUuid, $cancel->source_kot_event_uuid, 'canonical source-KOT snapshot survives');
+        $this->assertSame($referencedBatchUuid, $cancel->referenced_kot_event_uuid, 'canonical source-KOT snapshot survives');
+    }
+
+    // ── F. REAL KOT reprint (public queueKot isReprint=true): batch/line identities unchanged ──
+    public function test_real_kot_reprint_preserves_batch_and_line_identities_and_only_adds_a_copy_job(): void
+    {
+        ['branchId' => $b, 'terminalId' => $t, 'productId' => $p] = $this->scaffold();
+        $resp = app()->call([app(HeldSaleController::class), 'store'], ['request' => $this->req([
+            'branch_id' => $b, 'terminal_id' => $t, 'order_type' => 'quick_sale', 'discount_type' => 'none',
+            'lines' => [['product_id' => $p, 'quantity' => 2, 'unit_price' => 40, 'client_line_key' => 'a']],
+        ])]);
+        $sale = SalesOrder::on('tenant')->find(json_decode($resp->getContent(), true)['sale_id']);
+        $line = $sale->lines()->first();
+        $printer = Printer::on('tenant')->find($this->makePrinter());
+        $svc = app(PrintJobService::class);
+
+        // Initial KOT through the REAL public path (creates the batch + marks the line sent).
+        $svc->queueKot($sale->fresh(), $printer, [$line->id], (string) $t, false);
+        $batch = KotBatch::on('tenant')->where('sales_order_id', $sale->id)->firstOrFail();
+        $eventUuid = $batch->event_uuid;
+        $seq = (int) $batch->sequence_no;
+        $kotLineUuids = $batch->lines()->orderBy('id')->pluck('kot_line_uuid')->all();
+        $sourceLineUuids = $batch->lines()->orderBy('id')->pluck('source_line_uuid')->all();
+        $sentQty = (float) $line->fresh()->kot_sent_quantity;
+        $batchesBefore = KotBatch::on('tenant')->where('sales_order_id', $sale->id)->count();
+        $initialJob = PrintJob::on('tenant')->where('reference_id', $sale->id)->where('document_type', 'kot')->latest('id')->first();
+        $this->assertStringStartsWith('kot:' . $eventUuid, (string) $initialJob->logical_key, 'initial KOT job keyed on kot:<event_uuid>');
+
+        // REAL reprint #1, then #2 — via the actual public reprint path.
+        $svc->queueKot($sale->fresh(), $printer, [$line->id], (string) $t, true);
+        $copy1 = PrintJob::on('tenant')->where('reference_id', $sale->id)->where('document_type', 'kot')->latest('id')->first();
+        $svc->queueKot($sale->fresh(), $printer, [$line->id], (string) $t, true);
+        $copy2 = PrintJob::on('tenant')->where('reference_id', $sale->id)->where('document_type', 'kot')->latest('id')->first();
+
+        // No new KOT business event; the batch + line canonical identities are unchanged.
+        $this->assertSame($batchesBefore, KotBatch::on('tenant')->where('sales_order_id', $sale->id)->count(), 'reprint creates NO new KOT batch');
+        $batch->refresh();
+        $this->assertSame($eventUuid, $batch->event_uuid, 'event_uuid unchanged by reprint');
+        $this->assertSame($seq, (int) $batch->sequence_no, 'sequence_no unchanged by reprint');
+        $this->assertSame($kotLineUuids, $batch->lines()->orderBy('id')->pluck('kot_line_uuid')->all(), 'kot_line_uuid values unchanged');
+        $this->assertSame($sourceLineUuids, $batch->lines()->orderBy('id')->pluck('source_line_uuid')->all(), 'source_line_uuid snapshots unchanged');
+        $this->assertSame($sentQty, (float) $line->fresh()->kot_sent_quantity, 'reprint does NOT mutate sent quantity');
+
+        // Reprint only adds copy jobs keyed kot-copy:<event_uuid>:...; copy_no increments per existing contract.
+        $this->assertStringStartsWith('kot-copy:' . $eventUuid, (string) $copy1->logical_key, 'reprint keyed kot-copy:<event_uuid>');
+        $this->assertStringStartsWith('kot-copy:' . $eventUuid, (string) $copy2->logical_key);
+        $this->assertGreaterThan((int) $copy1->copy_no, (int) $copy2->copy_no, 'copy_no increments across reprints');
     }
 }
