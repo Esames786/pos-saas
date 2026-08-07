@@ -260,6 +260,20 @@ class EdgeLocalImportMySqlTest extends MySqlTenantTestCase
         $this->importer()->import($refresh);
     }
 
+    public function test_multi_binding_corruption_is_detected_not_ignored(): void
+    {
+        // Matrix D: a corrupt second binding row must be rejected, never silently ignored.
+        $this->importer()->import($this->package);
+        DB::connection('tenant')->table('edge_local_meta')->insert([
+            'singleton_guard' => 2, 'tenant_code' => 'x', 'tenant_id' => 1, 'branch_id' => 1,
+            'device_uuid' => 'y', 'activation_epoch' => 1, 'runtime_state' => EdgeLocalMeta::STATE_BOOTSTRAPPED,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $this->expectExceptionMessage('more than one');
+        app(\App\Services\Edge\EdgeBranchContext::class)->tryCurrent();
+    }
+
     /** Recompute a section's hash + the manifest hash after mutating that section's rows. */
     private function rehash(array $pkg, string $section): array
     {
