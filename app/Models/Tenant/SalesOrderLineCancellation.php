@@ -21,6 +21,14 @@ class SalesOrderLineCancellation extends Model
         static::creating(function (SalesOrderLineCancellation $cancellation) {
             $cancellation->event_uuid ??= (string) Str::uuid();
         });
+
+        // EDGE-IDENTITY-1: event_uuid is this cancellation record's canonical cross-system identity
+        // (reused, UUID v4). Immutable once assigned.
+        static::updating(function (SalesOrderLineCancellation $cancellation) {
+            if ($cancellation->isDirty('event_uuid') && $cancellation->getOriginal('event_uuid') !== null) {
+                throw new \RuntimeException('event_uuid is immutable once assigned and cannot be changed.');
+            }
+        });
     }
 
     protected function casts(): array

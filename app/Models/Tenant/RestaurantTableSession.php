@@ -2,11 +2,20 @@
 
 namespace App\Models\Tenant;
 
+use App\Models\Concerns\HasCanonicalIdentity;
 use Illuminate\Database\Eloquent\Model;
 
 class RestaurantTableSession extends Model
 {
+    use HasCanonicalIdentity;
+
     protected $connection = 'tenant';
+
+    /**
+     * EDGE-IDENTITY-1: canonical cross-system identity of the table session (immutable; not mass-assignable).
+     * Distinct from `session_no`, which is a locally time/random-generated human display label.
+     */
+    protected string $canonicalIdentityColumn = 'session_uuid';
 
     protected $fillable = [
         'session_no',

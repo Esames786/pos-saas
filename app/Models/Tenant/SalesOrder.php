@@ -2,12 +2,26 @@
 
 namespace App\Models\Tenant;
 
+use App\Models\Concerns\HasCanonicalIdentity;
+use App\Support\Edge\EdgeIdentity;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
 class SalesOrder extends Model
 {
+    use HasCanonicalIdentity;
+
     protected $connection = 'tenant';
+
+    /**
+     * EDGE-IDENTITY-1: `sale_uuid` (ULID) is the canonical cross-system identity of the SALE itself —
+     * immutable, generated once, stable across the held->pay update (same row). It is DISTINCT from
+     * `client_uuid`, which is a per-write idempotency token (may change on held->pay, or differ per split
+     * child). The sale_uuid column is intentionally not in $fillable so a request cannot supply it.
+     */
+    protected string $canonicalIdentityColumn = 'sale_uuid';
+
+    protected string $canonicalIdentityFormat = EdgeIdentity::FORMAT_ULID;
 
     /**
      * SALE-IDEMPOTENCY-1: every sale carries a client_uuid. Cloud POS/manual

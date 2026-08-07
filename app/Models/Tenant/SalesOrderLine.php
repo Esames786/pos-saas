@@ -2,11 +2,17 @@
 
 namespace App\Models\Tenant;
 
+use App\Models\Concerns\HasCanonicalIdentity;
 use Illuminate\Database\Eloquent\Model;
 
 class SalesOrderLine extends Model
 {
+    use HasCanonicalIdentity;
+
     protected $connection = 'tenant';
+
+    /** EDGE-IDENTITY-1: canonical cross-system identity of the sale line (immutable; not mass-assignable). */
+    protected string $canonicalIdentityColumn = 'line_uuid';
 
     protected $fillable = [
         'sales_order_id',

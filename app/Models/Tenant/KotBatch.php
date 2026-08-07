@@ -19,6 +19,14 @@ class KotBatch extends Model
         static::creating(function (KotBatch $batch) {
             $batch->event_uuid ??= (string) Str::uuid();
         });
+
+        // EDGE-IDENTITY-1: event_uuid is the batch's canonical cross-system identity (reused, UUID v4).
+        // Immutable once assigned — reprints reuse the same batch (never regenerate); this guards tampering.
+        static::updating(function (KotBatch $batch) {
+            if ($batch->isDirty('event_uuid') && $batch->getOriginal('event_uuid') !== null) {
+                throw new \RuntimeException('event_uuid is immutable once assigned and cannot be changed.');
+            }
+        });
     }
 
     public function sale()

@@ -2,11 +2,21 @@
 
 namespace App\Models\Tenant;
 
+use App\Models\Concerns\HasCanonicalIdentity;
 use Illuminate\Database\Eloquent\Model;
 
 class Customer extends Model
 {
+    use HasCanonicalIdentity;
+
     protected $connection = 'tenant';
+
+    /**
+     * EDGE-IDENTITY-1: canonical cross-system identity of the customer (immutable; not mass-assignable),
+     * so a customer created offline on an Edge appliance preserves its identity into Cloud. Distinct from
+     * the optional human `code`. Offline customer-create UI is NOT exposed in this sprint.
+     */
+    protected string $canonicalIdentityColumn = 'customer_uuid';
 
     protected $fillable = [
         'code',

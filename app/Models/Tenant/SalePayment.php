@@ -2,11 +2,20 @@
 
 namespace App\Models\Tenant;
 
+use App\Models\Concerns\HasCanonicalIdentity;
 use Illuminate\Database\Eloquent\Model;
 
 class SalePayment extends Model
 {
+    use HasCanonicalIdentity;
+
     protected $connection = 'tenant';
+
+    /**
+     * EDGE-IDENTITY-1: canonical cross-system identity of the payment (immutable; not mass-assignable).
+     * Distinct from `transaction_ref`, which is the external/provider reference (free-text, non-unique).
+     */
+    protected string $canonicalIdentityColumn = 'payment_uuid';
 
     protected $fillable = [
         'sales_order_id',
