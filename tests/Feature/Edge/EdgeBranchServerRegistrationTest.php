@@ -19,6 +19,12 @@ class EdgeBranchServerRegistrationTest extends TestCase
         putenv('APP_ROLE=branch_server');
         $_ENV['APP_ROLE'] = 'branch_server';
         $_SERVER['APP_ROLE'] = 'branch_server';
+        // A real appliance always carries its own machine-local key (config/app.php resolves app.key
+        // from EDGE_LOCAL_APP_KEY on a branch_server); provide one so the fail-closed boot guard passes.
+        $key = 'base64:' . base64_encode(random_bytes(32));
+        putenv("EDGE_LOCAL_APP_KEY={$key}");
+        $_ENV['EDGE_LOCAL_APP_KEY'] = $key;
+        $_SERVER['EDGE_LOCAL_APP_KEY'] = $key;
         parent::setUp();
     }
 
@@ -26,6 +32,8 @@ class EdgeBranchServerRegistrationTest extends TestCase
     {
         putenv('APP_ROLE');
         unset($_ENV['APP_ROLE'], $_SERVER['APP_ROLE']);
+        putenv('EDGE_LOCAL_APP_KEY');
+        unset($_ENV['EDGE_LOCAL_APP_KEY'], $_SERVER['EDGE_LOCAL_APP_KEY']);
         parent::tearDown();
     }
 
