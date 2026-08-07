@@ -28,6 +28,19 @@ return [
     'min_php'                 => '8.2.0',
 
     /*
+    | EDGE-LOCAL-AUTH-1 — Cloud-authorised one-time enrollment assertion (Ed25519). The CLOUD holds
+    | the private signing key ONLY (EDGE_ENROLLMENT_SIGNING_KEY, base64); a BRANCH SERVER holds the
+    | public verification key ONLY (EDGE_ENROLLMENT_PUBLIC_KEY, base64). Never both on one host, never
+    | a shared HMAC secret. The Cloud issuer fails closed if its signing key is absent; the Edge
+    | consumer fails closed if the public key is absent. TTL is short.
+    */
+    'enrollment' => [
+        'signing_key'   => env('EDGE_ENROLLMENT_SIGNING_KEY'),  // CLOUD only (private, base64)
+        'public_key'    => env('EDGE_ENROLLMENT_PUBLIC_KEY'),   // BRANCH SERVER only (public, base64)
+        'assertion_ttl' => (int) env('EDGE_ENROLLMENT_TTL', 900), // seconds
+    ],
+
+    /*
     | Restricted route boundary (DEFENCE-IN-DEPTH, first line). In branch_server runtime, ONLY routes
     | whose name matches one of these patterns may execute; everything else is denied (default DENY).
     | It is DELIBERATELY minimal this sprint because offline POS/auth/sales are not built — do not add
@@ -40,6 +53,11 @@ return [
         'edge.local.health',
         'edge.local.ready',
         'edge.local.build-info',
+        // EDGE-LOCAL-AUTH-1 — local login/logout/status (Edge-credential auth; NOT POS).
+        'edge.local.auth.login',
+        'edge.local.auth.login.post',
+        'edge.local.auth.logout',
+        'edge.local.auth.status',
     ],
 
     /*
@@ -56,6 +74,7 @@ return [
         'edge:local:db-init',
         'edge:local:bootstrap-import',
         'edge:local:status',
+        'edge:local:enroll',
         // Framework cache/runtime operations the appliance explicitly needs.
         'config:cache', 'config:clear',
         'route:cache', 'route:clear',

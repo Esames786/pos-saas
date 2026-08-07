@@ -61,8 +61,21 @@ class EdgeLocalReadiness
             'config_ready' => $bound,
             'operational_stock' => 'not_ready',
 
-            // Capabilities that do not exist yet — reported honestly, never faked.
-            'local_auth' => 'not_implemented',       // EDGE-LOCAL-AUTH-1
+            // EDGE-LOCAL-AUTH-1 crypto prerequisites (Section 7): honest, so local_auth never claims
+            // ready/needs_enrollment when enrollment is cryptographically impossible.
+            'crypto_ready' => \App\Services\Edge\EdgeEnrollmentCrypto::available(),
+            'enrollment_public_key_ready' => (string) config('edge.enrollment.public_key') !== '',
+
+            // Session/cookie contract (Sections 5/6). Appliance sessions are LOCAL (file). Production
+            // (TLS-managed terminals) must have a secure cookie; a plain-HTTP localhost proof overrides.
+            'session_driver' => config('session.driver'),
+            'session_local' => ! in_array(config('session.driver'), ['database', 'redis', 'memcached', 'dynamodb'], true),
+            'secure_cookie' => (bool) config('session.secure'),
+
+            // EDGE-LOCAL-AUTH-1: not_ready (no auth schema / no crypto) | needs_enrollment (runtime ok,
+            // no eligible credential yet) | ready (>=1 active, epoch-current, branch-authorized,
+            // login-eligible credential). FOUNDATION auth readiness only — NEVER "ready to sell".
+            'local_auth' => $this->localAuthState($bound),
             'local_pos' => 'not_implemented',        // EDGE-LOCAL-POS-1
             'local_print' => 'not_implemented',      // EDGE-LOCAL-PRINT-1
             'sync' => 'not_implemented',             // OFFLINE-SYNC-ENGINE-1
@@ -72,6 +85,40 @@ class EdgeLocalReadiness
             'activation_ready' => false,
             'runtime_state' => $this->safeRuntimeState($dbReady),
         ];
+    }
+
+    /** local_auth: not_ready (no schema/crypto) | needs_enrollment (no eligible credential) | ready. */
+    private function localAuthState(bool $bound): string
+    {
+        if (! $bound) {
+            return 'not_ready';
+        }
+        // Enrollment is cryptographically impossible without ext-sodium + a public verification key —
+        // never report needs_enrollment/ready then (Section 7).
+        if (! \App\Services\Edge\EdgeEnrollmentCrypto::available() || (string) config('edge.enrollment.public_key') === '') {
+            return 'not_ready';
+        }
+        try {
+            if (! Schema::connection('tenant')->hasTable('edge_local_user_credentials')) {
+                return 'not_ready';
+            }
+            $epoch = (int) $this->context->activationEpoch();
+            $branchId = (int) $this->context->boundBranchId();
+            // Count only credentials whose user is genuinely login-eligible (non-empty employee_code).
+            $hasEligible = \App\Models\Edge\EdgeLocalUserCredential::query()
+                ->join('users', 'users.id', '=', 'edge_local_user_credentials.user_id')
+                ->where('edge_local_user_credentials.status', \App\Models\Edge\EdgeLocalUserCredential::STATUS_ACTIVE)
+                ->where('edge_local_user_credentials.activation_epoch', $epoch)
+                ->where('edge_local_user_credentials.branch_id', $branchId)
+                ->whereNotNull('users.employee_code')
+                ->where('users.employee_code', '!=', '')
+                ->where('users.status', 'active')
+                ->exists();
+
+            return $hasEligible ? 'ready' : 'needs_enrollment';
+        } catch (Throwable $e) {
+            return 'not_ready';
+        }
     }
 
     private function safeRuntimeState(bool $dbReady): string

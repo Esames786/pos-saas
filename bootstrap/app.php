@@ -64,6 +64,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'prevent.demo.mutation' => PreventDemoMutation::class,
             'edge.device.auth' => \App\Http\Middleware\AuthenticateEdgeDevice::class,
             'edge.runtime.boundary' => EnsureEdgeRuntimeRouteAllowed::class,
+            'edge.auth' => \App\Http\Middleware\EnsureEdgeAuthenticated::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

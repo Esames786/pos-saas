@@ -160,6 +160,10 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                     ->name('tenant.offline-edge.pairing-code.cancel');
                 Route::post('/settings/offline-edge/devices/{edgeDevice}/revoke', [OfflineEdgeController::class, 'revokeDevice'])
                     ->name('tenant.offline-edge.devices.revoke');
+                // EDGE-LOCAL-AUTH-1 (Section 6) — an authorized Cloud actor issues a signed, single-use
+                // enrollment assertion for a Branch Server user (permission == route name).
+                Route::post('/settings/offline-edge/enrollment-assertions', [\App\Http\Controllers\Tenant\EdgeEnrollmentController::class, 'issue'])
+                    ->middleware('throttle:20,1')->name('tenant.offline-edge.enrollment.issue');
             });
 
             Route::middleware(['tenant.subscription.access', 'route.permission', 'prevent.demo.mutation'])->group(function () {

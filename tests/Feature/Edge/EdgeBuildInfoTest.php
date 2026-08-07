@@ -57,7 +57,7 @@ class EdgeBuildInfoTest extends TestCase
         $this->assertSame('not_ready', $ready['local_database']);
         $this->assertSame('not_ready', $ready['bootstrap_binding']);
         $this->assertSame('not_ready', $ready['operational_stock']);
-        $this->assertSame('not_implemented', $ready['local_auth']);
+        $this->assertSame('not_ready', $ready['local_auth']); // EDGE-LOCAL-AUTH-1: real state, uninitialised
         $this->assertFalse($ready['activation_ready']);
     }
 }

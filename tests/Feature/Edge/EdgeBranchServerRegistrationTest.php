@@ -90,6 +90,10 @@ class EdgeBranchServerRegistrationTest extends TestCase
             'edge/local/health',
             'edge/local/ready',
             'edge/local/build-info',
+            // EDGE-LOCAL-AUTH-1 — local login/logout/status (Edge-credential auth; NOT POS).
+            'edge/local/login',
+            'edge/local/logout',
+            'edge/local/status',
         ];
 
         $uris = collect(\Illuminate\Support\Facades\Route::getRoutes()->getRoutes())

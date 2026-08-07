@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Edge\EdgeLocalAuthController;
 use App\Http\Controllers\Edge\EdgeRuntimeController;
 use Illuminate\Support\Facades\Route;
 
@@ -15,7 +16,15 @@ use Illuminate\Support\Facades\Route;
  * They intentionally carry NO auth (no local auth exists yet) and expose non-secret data only.
  */
 Route::prefix('edge/local')->name('edge.local.')->group(function () {
+    // Non-secret liveness/readiness/build (no auth — health must answer while uninitialised).
     Route::get('/health', [EdgeRuntimeController::class, 'health'])->name('health');
     Route::get('/ready', [EdgeRuntimeController::class, 'ready'])->name('ready');
     Route::get('/build-info', [EdgeRuntimeController::class, 'buildInfo'])->name('build-info');
+
+    // EDGE-LOCAL-AUTH-1 — local login/logout + authenticated status. These authenticate via the Edge
+    // credential (never the Cloud password) and establish the `tenant` session. /pos is NOT opened.
+    Route::get('/login', [EdgeLocalAuthController::class, 'showLogin'])->name('auth.login');
+    Route::post('/login', [EdgeLocalAuthController::class, 'login'])->middleware('throttle:edge-login')->name('auth.login.post');
+    Route::post('/logout', [EdgeLocalAuthController::class, 'logout'])->name('auth.logout');
+    Route::get('/status', [EdgeLocalAuthController::class, 'status'])->middleware('edge.auth')->name('auth.status');
 });

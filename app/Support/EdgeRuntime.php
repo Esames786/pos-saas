@@ -137,6 +137,14 @@ class EdgeRuntime
             $problems[] = 'EDGE_LOCAL_APP_KEY is not set — a Branch Server requires its own machine-local application key.';
         }
 
+        // EDGE-LOCAL-AUTH-1 (Section 5): the appliance session/cache must be LOCAL. A connection-backed
+        // session driver is read by StartSession BEFORE the tenant→edge-local binding, so it would query
+        // an unbound/wrong connection. Enforce a file (local) session driver — the chosen appliance
+        // contract. (Tests may override; this only guards a real branch_server HTTP/CLI runtime.)
+        if (in_array(config('session.driver'), ['database', 'redis', 'memcached', 'dynamodb'], true)) {
+            $problems[] = 'Branch Server SESSION_DRIVER must be local (file); a connection-backed session is read before the local DB is bound.';
+        }
+
         return $problems;
     }
 

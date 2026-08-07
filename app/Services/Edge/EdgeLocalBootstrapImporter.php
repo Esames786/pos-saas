@@ -286,7 +286,11 @@ class EdgeLocalBootstrapImporter
     private function clearExistingConfig(): void
     {
         $conn = DB::connection(self::CONN);
+        // Spatie graph (children first) — reconstructed on import (EDGE-LOCAL-AUTH-1).
+        $conn->table('model_has_permissions')->where('model_type', \App\Models\Tenant\User::class)->delete();
         $conn->table('model_has_roles')->where('model_type', \App\Models\Tenant\User::class)->delete();
+        $conn->table('role_has_permissions')->delete();
+        $conn->table('permissions')->where('guard_name', 'tenant')->delete();
         foreach (array_reverse(self::PLAN) as [$section, $table, $branchScoped]) {
             $conn->table($table)->delete();
         }
@@ -331,16 +335,34 @@ class EdgeLocalBootstrapImporter
         }
     }
 
-    /** Users carry denormalised roles/permissions arrays (no secrets). Import the user rows and wire
-     *  model_has_roles from role names; full permission reconstruction is EDGE-LOCAL-AUTH-1. */
+    /**
+     * Users carry denormalised roles/permissions arrays (no secrets — password/remember_token/PIN are
+     * never exported). Import the user rows (WITHOUT a Cloud password — the column is nullable on the
+     * Edge-local DB) and reconstruct the Spatie permission graph so $user->can()/hasRole() resolve
+     * LOCALLY exactly as the auth gate needs (EDGE-LOCAL-AUTH-1):
+     *   - model_has_roles from role names (for hasRole());
+     *   - the user's EFFECTIVE permissions granted DIRECTLY (model_has_permissions) — identical
+     *     effective can() behaviour without needing to export role_has_permissions (documented
+     *     denormalisation; role->permission is empty locally, but the user-level gate is exact).
+     */
     private function insertUsers(array $rows): void
     {
         $conn = DB::connection(self::CONN);
         $roleIdByName = $conn->table('roles')->where('guard_name', 'tenant')->pluck('id', 'name');
 
+        // Upsert every distinct permission the bootstrap grants, then build name->id.
+        $permNames = collect($rows)->flatMap(fn ($r) => $r['permissions'] ?? [])->filter()->unique()->values();
+        foreach ($permNames as $name) {
+            $conn->table('permissions')->insert(['name' => $name, 'guard_name' => 'tenant', 'created_at' => now(), 'updated_at' => now()]);
+        }
+        $permIdByName = $conn->table('permissions')->where('guard_name', 'tenant')->pluck('id', 'name');
+
         foreach ($rows as $row) {
             $roles = $row['roles'] ?? [];
+            $permissions = $row['permissions'] ?? [];
             unset($row['roles'], $row['permissions']);
+            // Never a Cloud password on the appliance.
+            unset($row['password'], $row['remember_token']);
             // allowed_order_types is a JSON column in the schema.
             if (isset($row['allowed_order_types']) && is_array($row['allowed_order_types'])) {
                 $row['allowed_order_types'] = json_encode($row['allowed_order_types']);
@@ -348,10 +370,18 @@ class EdgeLocalBootstrapImporter
             $conn->table('users')->insert($row);
 
             foreach ($roles as $roleName) {
-                $roleId = $roleIdByName[$roleName] ?? null;
-                if ($roleId) {
+                if ($roleId = $roleIdByName[$roleName] ?? null) {
                     $conn->table('model_has_roles')->insert([
                         'role_id' => $roleId,
+                        'model_type' => \App\Models\Tenant\User::class,
+                        'model_id' => $row['id'],
+                    ]);
+                }
+            }
+            foreach ($permissions as $permName) {
+                if ($permId = $permIdByName[$permName] ?? null) {
+                    $conn->table('model_has_permissions')->insert([
+                        'permission_id' => $permId,
                         'model_type' => \App\Models\Tenant\User::class,
                         'model_id' => $row['id'],
                     ]);

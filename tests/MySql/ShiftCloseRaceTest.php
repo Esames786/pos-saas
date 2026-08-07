@@ -63,7 +63,7 @@ class ShiftCloseRaceTest extends MySqlTenantTestCase
             [PHP_BINARY, $this->opWorker, (string) $branchId, (string) $terminalId, (string) $userId, $mode, (string) $tableId],
             ['SHIFT_OP_SLEEP_MS' => '900', 'SHIFT_OP_READY_FILE' => $readyFile]
         );
-        $this->waitForFile($readyFile, 10.0); // start close ONLY once op holds the lock
+        $this->waitForFile($readyFile, $op, 30.0); // start close ONLY once op holds the lock
         $close = $this->startWorker([PHP_BINARY, $this->closeWorker, (string) $shiftA->id], []);
 
         $opOut = $this->finishWorker($op);
@@ -139,7 +139,13 @@ class ShiftCloseRaceTest extends MySqlTenantTestCase
         return $out;
     }
 
-    private function waitForFile(string $path, float $timeoutSeconds): void
+    /**
+     * Deterministic worker-ready handshake: wait (bounded) for the op worker to signal it holds the
+     * shift lock via $path. Generous bound tolerates worker Laravel-boot latency under full-suite load;
+     * fails FAST (with the worker's stderr) if the process exits before signalling, instead of masking a
+     * real crash behind the full timeout.
+     */
+    private function waitForFile(string $path, array $workerHandle, float $timeoutSeconds): void
     {
         $deadline = microtime(true) + $timeoutSeconds;
         while (microtime(true) < $deadline) {
@@ -147,8 +153,13 @@ class ShiftCloseRaceTest extends MySqlTenantTestCase
             if (is_file($path) && filesize($path) > 0) {
                 return;
             }
+            $status = proc_get_status($workerHandle['proc']);
+            if (! ($status['running'] ?? true)) {
+                $err = trim(stream_get_contents($workerHandle['pipes'][2]) ?: '');
+                $this->fail("Op worker exited (code {$status['exitcode']}) before acquiring the shift lock. stderr: {$err}");
+            }
             usleep(20000);
         }
-        $this->fail('Timed out waiting for the op worker to acquire the shift lock.');
+        $this->fail('Timed out waiting for the op worker to acquire the shift lock after ' . $timeoutSeconds . 's.');
     }
 }

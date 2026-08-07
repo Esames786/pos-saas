@@ -34,6 +34,16 @@ class AppServiceProvider extends ServiceProvider
             }
         );
 
+        // EDGE-LOCAL-AUTH-1 (Section 3): HTTP throttle for the Branch Server local login, keyed by
+        // employee_code + client IP — so even an UNKNOWN employee_code cannot be brute-forced without a
+        // throttle (the per-user DB lockout only protects known users). Generic responses elsewhere
+        // avoid leaking whether a code exists.
+        \Illuminate\Support\Facades\RateLimiter::for('edge-login', function (\Illuminate\Http\Request $request) {
+            $key = \Illuminate\Support\Str::lower((string) $request->input('employee_code')) . '|' . $request->ip();
+
+            return \Illuminate\Cache\RateLimiting\Limit::perMinute(10)->by($key);
+        });
+
         Paginator::useBootstrapFive();
 
         // The tenant domain constraint uses {subdomain} for wildcard matching only.
