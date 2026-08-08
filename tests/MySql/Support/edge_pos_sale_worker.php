@@ -54,10 +54,12 @@ try {
     if ($mode === 'baseline') {
         // Args: baseline <baseline_uuid> <product_id> <qty> — races INITIAL baseline acceptance.
         [, , $baselineUuid, $productId, $qty] = array_pad($argv, 5, null);
+        $rev = (string) DB::connection('tenant')->table('edge_local_meta')->value('source_revision');
         $row = app(\App\Services\Edge\EdgeOperationalBaselineService::class)->accept(
             (string) $baselineUuid,
             null,
-            [['product_id' => (int) $productId, 'product_variant_id' => null, 'quantity' => (float) $qty]]
+            [['product_id' => (int) $productId, 'product_variant_id' => null, 'quantity' => (float) $qty]],
+            $rev
         );
         echo 'OK:baseline:' . $row->id . ':' . $row->baseline_uuid . "\n";
         exit(0);

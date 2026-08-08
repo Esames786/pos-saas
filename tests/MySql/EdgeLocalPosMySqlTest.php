@@ -328,7 +328,7 @@ class EdgeLocalPosMySqlTest extends MySqlTenantTestCase
         $svc::canonicalHash([['product_id' => 1, 'product_variant_id' => null, 'quantity' => 1], ['product_id' => 1, 'product_variant_id' => null, 'quantity' => 2]]);
     }
 
-    // ── (#5) baseline source revision must match the imported binding revision ──
+    // ── (#5) baseline source revision must match the imported binding revision — NOT optional ──
     public function test_wrong_source_revision_refuses_baseline_acceptance(): void
     {
         foreach (['edge_operational_stock_movements', 'edge_operational_stock_balances', 'edge_operational_stock_baselines'] as $t) {
@@ -340,6 +340,66 @@ class EdgeLocalPosMySqlTest extends MySqlTenantTestCase
         app(\App\Services\Edge\EdgeOperationalBaselineService::class)->accept(
             \App\Services\Edge\EdgeOperationalBaselineService::newBaselineUuid(), null, $items, 'some-OTHER-revision'
         );
+    }
+
+    public function test_omitted_source_revision_refuses_baseline_acceptance(): void
+    {
+        foreach (['edge_operational_stock_movements', 'edge_operational_stock_balances', 'edge_operational_stock_baselines'] as $t) {
+            DB::connection('tenant')->table($t)->delete();
+        }
+        $items = [['product_id' => $this->productId, 'product_variant_id' => null, 'quantity' => 10]];
+        // (C) omission is NOT a bypass: the binding carries a real revision, so null/empty must refuse.
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessageMatches('/revision/i');
+        app(\App\Services\Edge\EdgeOperationalBaselineService::class)->accept(
+            \App\Services\Edge\EdgeOperationalBaselineService::newBaselineUuid(), null, $items, null
+        );
+    }
+
+    public function test_binding_revision_change_lapses_selling_authority_fail_closed(): void
+    {
+        $this->openShift();
+        // (D) baseline accepted at test-rev-1; the binding's imported revision moves to R2 (future config
+        // refresh) — the baseline no longer authorizes selling; fail closed until a future cutover protocol.
+        DB::connection('tenant')->table('edge_local_meta')->update(['source_revision' => 'test-rev-2']);
+        app()->forgetInstance(\App\Services\Edge\EdgeBranchContext::class);
+        try {
+            $this->complete();
+            $this->fail('a revision-lapsed baseline must not authorize selling');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('baseline', strtolower($e->getMessage()));
+        }
+        $this->assertSame(0, SalesOrder::on('tenant')->count(), 'nothing persisted');
+        // and the fence still blocks a sneak replacement under the new revision.
+        $items = [['product_id' => $this->productId, 'product_variant_id' => null, 'quantity' => 10]];
+        try {
+            app(\App\Services\Edge\EdgeOperationalBaselineService::class)->accept(
+                \App\Services\Edge\EdgeOperationalBaselineService::newBaselineUuid(),
+                null, $items, 'test-rev-2'
+            );
+            $this->fail('the replacement fence must still block a new baseline after a revision change');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('refused', strtolower($e->getMessage()));
+        }
+    }
+
+    // ── (#2 micro-closure) unrelated unique violation in baseline acceptance propagates ──
+    public function test_unrelated_baseline_unique_violation_propagates_not_binding_conflict(): void
+    {
+        $current = DB::connection('tenant')->table('edge_operational_stock_baselines')->first();
+        // rebind to a DIFFERENT device (different binding → no fence, different active_binding_key), then try
+        // to accept a baseline reusing the SAME globally-unique baseline_uuid → the baseline_uuid unique index
+        // violates. That is NOT the first-acceptance binding race and must propagate untouched.
+        $this->bindEdgeLocalMeta($this->branchId, 1, 42, 'second-device-uuid');
+        $items = [['product_id' => $this->productId, 'product_variant_id' => null, 'quantity' => 10]];
+        try {
+            app(\App\Services\Edge\EdgeOperationalBaselineService::class)->accept($current->baseline_uuid, null, $items, 'test-rev-1');
+            $this->fail('duplicate baseline_uuid must surface as the real unique failure');
+        } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+            $this->assertStringContainsString('baseline_uuid', $e->getMessage(), 'the real unrelated unique failure propagates');
+        } catch (\RuntimeException $e) {
+            $this->fail('an unrelated unique violation must NOT be classified as a concurrent-binding conflict: ' . $e->getMessage());
+        }
     }
 
     // ── REAL Edge local-auth integration: genuine credential → EdgeLocalAuthService → sale ──
@@ -502,7 +562,7 @@ class EdgeLocalPosMySqlTest extends MySqlTenantTestCase
 
         // same identity + different hash → conflict.
         try {
-            $svc->accept($current->baseline_uuid, 'different-hash', $items);
+            $svc->accept($current->baseline_uuid, 'different-hash', $items, 'test-rev-1');
             $this->fail('same baseline uuid with a different hash must conflict');
         } catch (\RuntimeException $e) {
             $this->assertStringContainsString('conflict', strtolower($e->getMessage()));
@@ -512,7 +572,7 @@ class EdgeLocalPosMySqlTest extends MySqlTenantTestCase
         $sale = $this->complete(['lines' => [['product_id' => $this->productId, 'quantity' => 3]], 'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 300]]]);
         $this->assertSame(7.0, $this->onHand());
         try {
-            $svc->accept(\App\Services\Edge\EdgeOperationalBaselineService::newBaselineUuid(), \App\Services\Edge\EdgeOperationalBaselineService::hashItems($items), $items);
+            $svc->accept(\App\Services\Edge\EdgeOperationalBaselineService::newBaselineUuid(), \App\Services\Edge\EdgeOperationalBaselineService::hashItems($items), $items, 'test-rev-1');
             $this->fail('a different baseline must be refused while an accepted baseline exists');
         } catch (\RuntimeException $e) {
             $this->assertStringContainsString('refused', strtolower($e->getMessage()));

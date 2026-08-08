@@ -60,8 +60,17 @@ class EdgeOperationalBaselineService
         $deviceUuid = (string) $meta->device_uuid;
         $epoch = (int) $meta->activation_epoch;
 
-        // (#5) the baseline must come from the revision this appliance actually imported.
-        if ($sourceRevision !== null && (string) $meta->source_revision !== $sourceRevision) {
+        // (#5) the baseline must come from the revision this appliance actually imported — and the revision
+        // is NOT optional authority: a bootstrapped binding always carries source_revision (the importer's
+        // config watermark), so an omitted/empty baseline revision is REFUSED, never treated as a bypass.
+        $bindingRevision = (string) $meta->source_revision;
+        if ($bindingRevision === '') {
+            throw new RuntimeException('This binding has no imported source revision — baseline acceptance refused.');
+        }
+        if ($sourceRevision === null || $sourceRevision === '') {
+            throw new RuntimeException('Baseline source revision is required and must match the imported binding revision.');
+        }
+        if ($bindingRevision !== $sourceRevision) {
             throw new RuntimeException('Baseline source revision does not match the imported binding revision — refused.');
         }
 
@@ -137,13 +146,32 @@ class EdgeOperationalBaselineService
                 throw $e;
             }
         } catch (UniqueConstraintViolationException $e) {
-            // (#7) the DB unique active_binding_key serialized a first-acceptance race. The loser gets a
-            // controlled conflict — never split authority.
+            // (#7) ONLY a collision on the active-binding unique key is the first-acceptance race. Any other
+            // unique index (baseline_uuid, balance_key, …) is an unrelated real failure that must propagate —
+            // the same lesson the client_uuid classifier taught: classify by the violated KEY NAME, never by
+            // whole-message text (the SQL in the message contains unrelated column names).
+            if (! $this->isActiveBindingCollision($e->getMessage())) {
+                throw $e;
+            }
             throw new RuntimeException('Baseline acceptance conflict: another baseline was accepted concurrently for this binding.');
         }
     }
 
-    /** The accepted baseline for the CURRENT full binding (branch + device + activation_epoch), or null. */
+    /** True ONLY when the violated MySQL unique key is the single-accepted-baseline binding invariant. */
+    private function isActiveBindingCollision(string $message): bool
+    {
+        return preg_match("/for key '[^']*eosb_active_binding_unique'/i", $message) === 1;
+    }
+
+    /**
+     * The accepted baseline that AUTHORIZES selling for the CURRENT full binding, or null.
+     *
+     * (#5-D) Deliberately revision-strict: if the binding's imported source_revision has moved past the
+     * baseline's revision (a future config refresh), the baseline no longer authorizes selling — fail
+     * CLOSED until the future reconciliation/cutover protocol re-establishes stock authority. (The
+     * replacement FENCE inside accept() stays revision-agnostic on purpose: an existing accepted baseline
+     * still blocks any new baseline, so a revision change cannot be used to sneak a replacement in.)
+     */
     public function currentAccepted(): ?object
     {
         $meta = $this->context->tryCurrent();
@@ -151,7 +179,12 @@ class EdgeOperationalBaselineService
             return null;
         }
 
-        return $this->acceptedForBinding((int) $meta->branch_id, (string) $meta->device_uuid, (int) $meta->activation_epoch, lock: false);
+        $baseline = $this->acceptedForBinding((int) $meta->branch_id, (string) $meta->device_uuid, (int) $meta->activation_epoch, lock: false);
+        if ($baseline !== null && (string) $baseline->source_revision !== (string) $meta->source_revision) {
+            return null; // authority lapsed with the revision — no selling until a future cutover protocol
+        }
+
+        return $baseline;
     }
 
     /** (#2/#3) resolve by the FULL binding; >1 accepted row is corruption and FAILS CLOSED (never first()). */
