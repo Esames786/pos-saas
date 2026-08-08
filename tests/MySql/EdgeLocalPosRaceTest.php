@@ -155,6 +155,32 @@ class EdgeLocalPosRaceTest extends MySqlTenantTestCase
         $this->assertSame(0.0, $this->edgeOnHand($this->baselineId, $this->productId), 'final qty = 0, never negative');
     }
 
+    // ── D. (#7) two FIRST baseline acceptances race: exactly one authority, no split ──
+    public function test_baseline_acceptance_two_process_race_yields_exactly_one_authority(): void
+    {
+        // no baseline yet — both workers try to accept DIFFERENT first baselines simultaneously.
+        [$outA, $outB] = $this->race(
+            ['baseline', \App\Services\Edge\EdgeOperationalBaselineService::newBaselineUuid(), $this->productId, 10],
+            ['baseline', \App\Services\Edge\EdgeOperationalBaselineService::newBaselineUuid(), $this->productId, 10]
+        );
+
+        $oks = array_filter([$outA, $outB], fn ($o) => str_starts_with($o, 'OK:baseline:'));
+        $errs = array_filter([$outA, $outB], fn ($o) => str_starts_with($o, 'ERR:'));
+        $this->assertCount(1, $oks, "exactly one baseline may win. A=$outA B=$outB");
+        $this->assertCount(1, $errs, 'the loser gets a controlled refusal');
+        // Two valid serialized loser outcomes: it lost the DB unique race ("conflict") or it blocked on the
+        // winner's row lock and then saw the accepted baseline ("refused" — the replacement fence). Both are
+        // controlled; neither is split authority.
+        $loser = strtolower(implode(' ', $errs));
+        $this->assertTrue(
+            str_contains($loser, 'conflict') || str_contains($loser, 'refused'),
+            "loser must get a controlled conflict/refusal, got: $loser"
+        );
+
+        $this->assertSame(1, DB::connection('tenant')->table('edge_operational_stock_baselines')->where('status', 'accepted')->count(), 'exactly ONE accepted baseline — no split authority');
+        $this->assertSame(1, DB::connection('tenant')->table('edge_operational_stock_balances')->count(), 'exactly ONE initial balance set');
+    }
+
     // ── C. shift close vs sale: only serialized valid outcomes ───────────────
     public function test_shift_close_vs_sale_two_process_race_is_serialized(): void
     {

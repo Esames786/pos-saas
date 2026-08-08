@@ -28,7 +28,17 @@ use App\Models\Tenant\Shift;
  */
 class SaleOperationalSettlementService
 {
-    /** Post the operational sales subledger + shift counters for a paid sale. Idempotent per sale. */
+    /**
+     * Post the operational sales subledger + shift counters for a paid sale.
+     *
+     * HONEST idempotency contract (not "idempotent per sale" as a whole):
+     *   - the sales_ledgers rows ARE idempotent (firstOrCreate per entry type);
+     *   - the shift counters are plain atomic INCREMENTS — settle() itself is NOT safely re-entrant.
+     * Correctness relies on the orchestrators: Cloud finalizePaidSale runs settle() exactly once inside the
+     * finalizing transaction (guarded by the status='paid' early-return), and EdgeLocalPosService runs it
+     * exactly once inside the sale transaction (idempotent replays return BEFORE settlement). A rolled-back
+     * transaction rolls the increments back with the sale.
+     */
     public function settle(SalesOrder $sale): void
     {
         $sale->loadMissing(['payments.method']);

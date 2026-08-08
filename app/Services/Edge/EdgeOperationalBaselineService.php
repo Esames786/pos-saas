@@ -3,28 +3,41 @@
 namespace App\Services\Edge;
 
 use App\Support\EdgeRuntime;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
- * EDGE-LOCAL-POS-1 (I) — the ACCEPTED operational-stock baseline authority.
+ * EDGE-LOCAL-POS-1 (I, hardened) — the ACCEPTED operational-stock baseline AUTHORITY.
  *
- * Selling stock on a Branch Server exists ONLY under an accepted baseline bound to the current
- * branch / device / activation_epoch / generation + a content hash. Ordinary bootstrap does NOT create
- * selling authority. Contract (locked):
+ * Selling stock on a Branch Server exists ONLY under an accepted baseline bound to the FULL current
+ * binding: branch + device + activation_epoch (a baseline accepted for device A never authorizes device B,
+ * even when branch+epoch match). Contract (locked):
  *
- *   - no accepted baseline                      → local paid sale REFUSED before any mutation;
- *   - exact same baseline (uuid + hash) retry   → idempotent (returns the existing baseline);
- *   - same baseline uuid, different hash        → CONFLICT (tampered/eq-id different payload);
- *   - wrong branch/device/epoch                 → REFUSED;
- *   - ANY different baseline once one is accepted → REFUSED (replacement fence): a newer Cloud snapshot
- *     must never erase already-consumed local quantity while unsynced operational activity exists —
- *     that would oversell. B1→B2 cutover belongs to the future sync/reconciliation sprint.
+ *   - no accepted baseline for the CURRENT binding      → local paid sale REFUSED before any mutation;
+ *   - exact same baseline (uuid + canonical hash) retry → idempotent;
+ *   - same baseline uuid, different canonical payload   → CONFLICT;
+ *   - wrong branch/device/epoch                         → no authority;
+ *   - >1 accepted baseline for one binding              → controlled CORRUPTION failure (never pick one);
+ *   - ANY different baseline once one is accepted       → REFUSED (replacement fence — a newer snapshot must
+ *     never erase already-consumed local quantity; B1→B2 cutover belongs to future sync/reconciliation).
  *
- * There is deliberately NO artisan command and NO HTTP route for this service: production has no
- * invocation path. Tests / physical-artifact QA call it directly — a controlled TEST/QA entry that cannot
- * become a hidden production "sell anyway" bypass. It never touches activation_ready.
+ * AUTHORITY IS COMPUTED, NOT CALLER-SUPPLIED:
+ *   - the content hash is canonicalized + SHA-256'd INTERNALLY from the actual items (sorted, normalized to
+ *     the persistence precision, duplicates rejected); a caller-supplied expected hash must MATCH the
+ *     computed hash or acceptance refuses — the DB stores the computed hash;
+ *   - the baseline source_revision must equal the currently imported edge_local_meta.source_revision;
+ *   - generation is fixed internally at 1 for the INITIAL baseline (no independent generation authority
+ *     exists yet; advancement belongs to the future sync/reconciliation protocol).
+ *
+ * DB-level invariant (migration 2026_08_08_000004): a UNIQUE `active_binding_key` (fixed-size hash of
+ * branch|device|epoch, populated only on accepted rows) guarantees at most ONE accepted baseline per binding
+ * even when two first-acceptance transactions race from a zero-row state — the loser gets a controlled
+ * conflict, never split authority.
+ *
+ * There is deliberately NO artisan command and NO HTTP route for this service: production has no invocation
+ * path. Tests / physical-artifact QA call it directly. It never touches activation_ready.
  */
 class EdgeOperationalBaselineService
 {
@@ -35,8 +48,9 @@ class EdgeOperationalBaselineService
     /**
      * Accept the INITIAL operational-stock baseline for the bound appliance.
      * $items: [['product_id' => int, 'product_variant_id' => ?int, 'quantity' => float], ...]
+     * $expectedHash: optional import/manifest hash — must equal the internally computed canonical hash.
      */
-    public function accept(string $baselineUuid, string $contentHash, array $items, ?string $sourceRevision = null, int $generation = 1): object
+    public function accept(string $baselineUuid, ?string $expectedHash, array $items, ?string $sourceRevision = null): object
     {
         if (! EdgeRuntime::isBranchServer()) {
             throw new RuntimeException('Operational stock baselines exist only on a Branch Server.');
@@ -46,63 +60,90 @@ class EdgeOperationalBaselineService
         $deviceUuid = (string) $meta->device_uuid;
         $epoch = (int) $meta->activation_epoch;
 
-        return DB::connection('tenant')->transaction(function () use ($baselineUuid, $contentHash, $items, $sourceRevision, $generation, $branchId, $deviceUuid, $epoch) {
-            $existing = DB::connection('tenant')->table('edge_operational_stock_baselines')
-                ->where('branch_id', $branchId)
-                ->where('activation_epoch', $epoch)
-                ->where('status', 'accepted')
-                ->lockForUpdate()
-                ->first();
+        // (#5) the baseline must come from the revision this appliance actually imported.
+        if ($sourceRevision !== null && (string) $meta->source_revision !== $sourceRevision) {
+            throw new RuntimeException('Baseline source revision does not match the imported binding revision — refused.');
+        }
 
-            if ($existing) {
-                if ($existing->baseline_uuid === $baselineUuid && $existing->content_hash === $contentHash) {
-                    return $existing; // idempotent same-baseline retry
+        // (#4) canonical, internally computed content hash — caller metadata is never authority.
+        $canonical = self::canonicalizeItems($items);
+        $computedHash = hash('sha256', json_encode($canonical));
+        if ($expectedHash !== null && ! hash_equals($computedHash, $expectedHash)) {
+            throw new RuntimeException('Baseline conflict: supplied content hash does not match the canonical payload.');
+        }
+
+        $attempt = function () use ($baselineUuid, $computedHash, $canonical, $sourceRevision, $branchId, $deviceUuid, $epoch) {
+            return DB::connection('tenant')->transaction(function () use ($baselineUuid, $computedHash, $canonical, $sourceRevision, $branchId, $deviceUuid, $epoch) {
+                $existing = $this->acceptedForBinding($branchId, $deviceUuid, $epoch, lock: true);
+
+                if ($existing) {
+                    if ($existing->baseline_uuid === $baselineUuid && $existing->content_hash === $computedHash) {
+                        return $existing; // idempotent same-baseline retry
+                    }
+                    if ($existing->baseline_uuid === $baselineUuid) {
+                        throw new RuntimeException('Baseline conflict: same baseline identity with a different canonical payload.');
+                    }
+                    // REPLACEMENT FENCE — no reset/refresh while this appliance has an accepted baseline.
+                    throw new RuntimeException(
+                        'Operational stock baseline replacement is refused: an accepted baseline already exists for this '
+                        . 'appliance binding. Replacing selling stock while unsynced local activity may exist would '
+                        . 'oversell; baseline cutover belongs to the future sync/reconciliation protocol.'
+                    );
                 }
-                if ($existing->baseline_uuid === $baselineUuid) {
-                    throw new RuntimeException('Baseline conflict: same baseline identity with a different content hash.');
-                }
-                // REPLACEMENT FENCE — no reset/refresh while this appliance has an accepted baseline.
-                throw new RuntimeException(
-                    'Operational stock baseline replacement is refused: an accepted baseline already exists for this '
-                    . 'appliance generation. Replacing selling stock while unsynced local activity may exist would '
-                    . 'oversell; baseline cutover belongs to the future sync/reconciliation protocol.'
-                );
-            }
 
-            $baselineId = DB::connection('tenant')->table('edge_operational_stock_baselines')->insertGetId([
-                'baseline_uuid' => $baselineUuid,
-                'branch_id' => $branchId,
-                'device_uuid' => $deviceUuid,
-                'activation_epoch' => $epoch,
-                'generation' => $generation,
-                'source_revision' => $sourceRevision,
-                'content_hash' => $contentHash,
-                'status' => 'accepted',
-                'accepted_at' => now(),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-
-            foreach ($items as $item) {
-                $productId = (int) $item['product_id'];
-                $variantId = isset($item['product_variant_id']) ? (int) $item['product_variant_id'] : null;
-                DB::connection('tenant')->table('edge_operational_stock_balances')->insert([
-                    'balance_key' => $baselineId . '-' . $productId . '-' . ($variantId ?: 0),
-                    'baseline_id' => $baselineId,
+                $baselineId = DB::connection('tenant')->table('edge_operational_stock_baselines')->insertGetId([
+                    'baseline_uuid' => $baselineUuid,
                     'branch_id' => $branchId,
-                    'product_id' => $productId,
-                    'product_variant_id' => $variantId,
-                    'quantity_on_hand' => (float) $item['quantity'],
+                    'device_uuid' => $deviceUuid,
+                    'activation_epoch' => $epoch,
+                    'generation' => 1,                       // (#6) fixed internally for the INITIAL baseline
+                    'source_revision' => $sourceRevision,
+                    'content_hash' => $computedHash,
+                    'status' => 'accepted',
+                    'active_binding_key' => self::bindingKey($branchId, $deviceUuid, $epoch), // (#7) DB uniqueness
+                    'accepted_at' => now(),
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
-            }
 
-            return DB::connection('tenant')->table('edge_operational_stock_baselines')->where('id', $baselineId)->first();
-        });
+                foreach ($canonical as $item) {
+                    DB::connection('tenant')->table('edge_operational_stock_balances')->insert([
+                        'balance_key' => $baselineId . '-' . $item['product_id'] . '-' . ($item['product_variant_id'] ?: 0),
+                        'baseline_id' => $baselineId,
+                        'branch_id' => $branchId,
+                        'product_id' => $item['product_id'],
+                        'product_variant_id' => $item['product_variant_id'],
+                        'quantity_on_hand' => $item['quantity'],
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                }
+
+                return DB::connection('tenant')->table('edge_operational_stock_baselines')->where('id', $baselineId)->first();
+            });
+        };
+
+        try {
+            try {
+                return $attempt();
+            } catch (\Illuminate\Database\QueryException $e) {
+                // Two first-acceptance transactions racing from a zero-row state can DEADLOCK on the gap
+                // locks (MySQL 1213: "try restarting transaction"). Retry ONCE: the retry observes the
+                // winner's committed row and produces the correct controlled outcome (idempotent return,
+                // hash conflict, or the replacement fence). Anything else propagates.
+                if (($e->errorInfo[1] ?? null) === 1213) {
+                    return $attempt();
+                }
+                throw $e;
+            }
+        } catch (UniqueConstraintViolationException $e) {
+            // (#7) the DB unique active_binding_key serialized a first-acceptance race. The loser gets a
+            // controlled conflict — never split authority.
+            throw new RuntimeException('Baseline acceptance conflict: another baseline was accepted concurrently for this binding.');
+        }
     }
 
-    /** The accepted baseline for the CURRENT binding (branch + activation_epoch), or null. */
+    /** The accepted baseline for the CURRENT full binding (branch + device + activation_epoch), or null. */
     public function currentAccepted(): ?object
     {
         $meta = $this->context->tryCurrent();
@@ -110,17 +151,84 @@ class EdgeOperationalBaselineService
             return null;
         }
 
-        return DB::connection('tenant')->table('edge_operational_stock_baselines')
-            ->where('branch_id', (int) $meta->branch_id)
-            ->where('activation_epoch', (int) $meta->activation_epoch)
-            ->where('status', 'accepted')
-            ->first();
+        return $this->acceptedForBinding((int) $meta->branch_id, (string) $meta->device_uuid, (int) $meta->activation_epoch, lock: false);
     }
 
-    /** Convenience for tests/QA: mint a baseline uuid + content hash for an item payload. */
+    /** (#2/#3) resolve by the FULL binding; >1 accepted row is corruption and FAILS CLOSED (never first()). */
+    private function acceptedForBinding(int $branchId, string $deviceUuid, int $epoch, bool $lock): ?object
+    {
+        $query = DB::connection('tenant')->table('edge_operational_stock_baselines')
+            ->where('branch_id', $branchId)
+            ->where('device_uuid', $deviceUuid)
+            ->where('activation_epoch', $epoch)
+            ->where('status', 'accepted');
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+        $rows = $query->get();
+
+        if ($rows->count() > 1) {
+            throw new RuntimeException(
+                'Operational stock authority corruption: multiple accepted baselines exist for one appliance binding. '
+                . 'Refusing to select one arbitrarily — this requires manual/support intervention.'
+            );
+        }
+
+        return $rows->first();
+    }
+
+    /**
+     * (#4) Canonical baseline payload: validated rows, quantities normalized to the persistence precision
+     * (decimal 14,3), duplicates rejected, deterministically sorted — so semantically identical payloads hash
+     * identically regardless of input order, and a tampered/reused stale hash cannot pass.
+     */
+    public static function canonicalizeItems(array $items): array
+    {
+        $canonical = [];
+        $seen = [];
+        foreach ($items as $i => $item) {
+            $productId = $item['product_id'] ?? null;
+            if (! is_numeric($productId) || (int) $productId <= 0) {
+                throw new RuntimeException("Baseline item #{$i} has an invalid product_id.");
+            }
+            $variantRaw = $item['product_variant_id'] ?? null;
+            $variantId = ($variantRaw === null || $variantRaw === '' || (int) $variantRaw === 0) ? null : (int) $variantRaw;
+            $qty = $item['quantity'] ?? null;
+            if (! is_numeric($qty) || ! is_finite((float) $qty)) {
+                throw new RuntimeException("Baseline item #{$i} has an invalid quantity.");
+            }
+            $key = (int) $productId . ':' . ($variantId ?: 0);
+            if (isset($seen[$key])) {
+                throw new RuntimeException("Baseline contains duplicate rows for product/variant [{$key}].");
+            }
+            $seen[$key] = true;
+            $canonical[] = [
+                'product_id' => (int) $productId,
+                'product_variant_id' => $variantId,
+                'quantity' => number_format((float) $qty, 3, '.', ''), // persistence precision decimal(14,3)
+            ];
+        }
+        usort($canonical, fn ($a, $b) => [$a['product_id'], $a['product_variant_id'] ?? 0] <=> [$b['product_id'], $b['product_variant_id'] ?? 0]);
+
+        return $canonical;
+    }
+
+    /** The canonical content hash for an item payload (what accept() computes and stores). */
+    public static function canonicalHash(array $items): string
+    {
+        return hash('sha256', json_encode(self::canonicalizeItems($items)));
+    }
+
+    /** Fixed-size deterministic binding key for the DB single-accepted-baseline unique index. */
+    public static function bindingKey(int $branchId, string $deviceUuid, int $epoch): string
+    {
+        return hash('sha1', $branchId . '|' . $deviceUuid . '|' . $epoch);
+    }
+
+    /** @deprecated tests should use canonicalHash(); kept as an alias. */
     public static function hashItems(array $items): string
     {
-        return hash('sha256', json_encode($items));
+        return self::canonicalHash($items);
     }
 
     public static function newBaselineUuid(): string

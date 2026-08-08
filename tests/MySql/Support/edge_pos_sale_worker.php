@@ -51,6 +51,18 @@ if ($start) {
 $mode = $argv[1] ?? 'sale';
 
 try {
+    if ($mode === 'baseline') {
+        // Args: baseline <baseline_uuid> <product_id> <qty> — races INITIAL baseline acceptance.
+        [, , $baselineUuid, $productId, $qty] = array_pad($argv, 5, null);
+        $row = app(\App\Services\Edge\EdgeOperationalBaselineService::class)->accept(
+            (string) $baselineUuid,
+            null,
+            [['product_id' => (int) $productId, 'product_variant_id' => null, 'quantity' => (float) $qty]]
+        );
+        echo 'OK:baseline:' . $row->id . ':' . $row->baseline_uuid . "\n";
+        exit(0);
+    }
+
     if ($mode === 'close') {
         [, , $shiftId, $userId] = array_pad($argv, 4, null);
         $shift = Shift::on('tenant')->findOrFail((int) $shiftId);
@@ -71,6 +83,11 @@ try {
 
     [, , $clientUuid, $userId, $terminalId, $productId, $qty, $methodId, $amount] = array_pad($argv, 9, null);
     $user = User::on('tenant')->findOrFail((int) $userId);
+    // The service REQUIRES an authenticated tenant principal (a bare User model is not authority). This
+    // worker process establishes it explicitly; the real credential-login path is proven separately by the
+    // EdgeLocalAuthService integration test.
+    \Illuminate\Support\Facades\Auth::guard('tenant')->setUser($user);
+    \Illuminate\Support\Facades\Auth::shouldUse('tenant');
     $sale = app(EdgeLocalPosService::class)->completePaidSale([
         'order_type' => 'quick_sale',
         'client_uuid' => (string) $clientUuid,

@@ -68,9 +68,13 @@ class EdgeLocalPosService
     }
 
     /**
-     * (2C test seam) Called AFTER pre-flight validation and BEFORE the sale transaction opens. A no-op in
-     * production; TOCTOU tests override it to change state (deactivate cashier/terminal) in the window the
-     * in-transaction revalidation must catch.
+     * (2C test seam — AUDIT NOTE) Called AFTER pre-flight validation and BEFORE the sale transaction opens.
+     * Safety review: it is `protected` (not public API), its production body is an UNCONDITIONAL no-op, no
+     * request/env/config value can select behaviour, and nothing binds a callback into it at runtime — the
+     * only way to change it is a subclass, which the production container never registers (the service is
+     * resolved by its own class name). It exists solely so TOCTOU tests can deterministically mutate state
+     * (deactivate cashier/terminal) inside the preflight→transaction window that the in-transaction
+     * revalidation must catch. It cannot alter production business behaviour.
      */
     protected function beforeSaleTransaction(): void
     {
@@ -85,10 +89,15 @@ class EdgeLocalPosService
         $activationEpoch = (int) $meta->activation_epoch;
         $branch = Branch::on('tenant')->findOrFail($branchId);
 
-        // (B) The sale principal MUST be the authenticated local cashier — a caller cannot attribute the sale
-        // to another branch-authorized user. (Manager re-auth is a SEPARATE identity for manager actions.)
+        // (B) The sale principal MUST be the authenticated local cashier — an authenticated tenant session is
+        // REQUIRED (a bare User model is not authority), and it must be the same user. A caller can neither
+        // sell unauthenticated nor attribute the sale to another branch-authorized user. (Manager re-auth is
+        // a SEPARATE identity for manager actions.)
         $authUser = auth('tenant')->user();
-        if ($authUser && (int) $authUser->id !== (int) $user->id) {
+        if (! $authUser) {
+            throw ValidationException::withMessages(['user' => 'A local sale requires an authenticated Edge cashier session.']);
+        }
+        if ((int) $authUser->id !== (int) $user->id) {
             throw ValidationException::withMessages(['user' => 'The sale principal must be the authenticated cashier.']);
         }
         if (! EdgeUserAuthz::isActive($user) || ! EdgeUserAuthz::isEdgeLoginEligible($user) || ! EdgeUserAuthz::mayOperateBranch($user, $branchId)) {
@@ -152,7 +161,7 @@ class EdgeLocalPosService
                 // cashier/terminal deactivated (or a principal swapped) after preflight must still be refused.
                 $user = User::on('tenant')->find($user->id);
                 $authId = auth('tenant')->id();
-                if (! $user || ($authId && (int) $authId !== (int) $user->id)) {
+                if (! $user || ! $authId || (int) $authId !== (int) $user->id) {
                     throw ValidationException::withMessages(['user' => 'The sale principal must be the authenticated cashier.']);
                 }
                 if (! EdgeUserAuthz::isActive($user) || ! EdgeUserAuthz::isEdgeLoginEligible($user) || ! EdgeUserAuthz::mayOperateBranch($user, $branchId)) {

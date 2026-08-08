@@ -233,6 +233,115 @@ class EdgeLocalPosMySqlTest extends MySqlTenantTestCase
         $this->complete(['client_uuid' => $uuid, 'lines' => [['product_id' => $this->productId, 'quantity' => 3]], 'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 300]]]);
     }
 
+    // ── (#10) authenticated principal is REQUIRED — a bare User model is not authority ──
+    public function test_unauthenticated_service_call_is_refused_even_with_valid_user_model(): void
+    {
+        $this->openShift();
+        auth('tenant')->logout();
+        try {
+            app(EdgeLocalPosService::class)->completePaidSale([
+                'order_type' => 'quick_sale', 'client_uuid' => (string) Str::uuid(),
+                'lines' => [['product_id' => $this->productId, 'quantity' => 2]],
+                'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 200]],
+            ], User::on('tenant')->find($this->userId), $this->terminalId);
+            $this->fail('an unauthenticated service call must be refused');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('user', $e->errors());
+        }
+        $this->assertSame(0, SalesOrder::on('tenant')->count());
+        $this->assertSame(0, DB::connection('tenant')->table('sale_payments')->count());
+        $this->assertSame(10.0, $this->onHand());
+    }
+
+    public function test_authenticated_user_a_cannot_attribute_sale_to_user_b(): void
+    {
+        $this->openShift();
+        $userB = $this->makeUser(['default_branch_id' => $this->branchId, 'employee_code' => 'B' . Str::random(4)]);
+        // session belongs to A (setUp); supplying branch-authorized B must be refused.
+        $this->expectException(ValidationException::class);
+        app(EdgeLocalPosService::class)->completePaidSale([
+            'order_type' => 'quick_sale', 'client_uuid' => (string) Str::uuid(),
+            'lines' => [['product_id' => $this->productId, 'quantity' => 2]],
+            'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 200]],
+        ], User::on('tenant')->find($userB), $this->terminalId);
+    }
+
+    // ── (#2) baseline authority is DEVICE-bound, not just branch+epoch ──────
+    public function test_baseline_for_another_device_gives_no_selling_authority(): void
+    {
+        $this->openShift();
+        // same branch + same epoch, DIFFERENT device: the accepted baseline must not authorize this box.
+        $this->bindEdgeLocalMeta($this->branchId, 1, 42, 'other-device-uuid');
+        try {
+            $this->complete();
+            $this->fail('a baseline accepted for device A must not authorize device B');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('baseline', strtolower($e->getMessage()));
+        }
+        $this->assertSame(0, SalesOrder::on('tenant')->count(), 'no sale persisted');
+        $this->assertSame(0, DB::connection('tenant')->table('sale_payments')->count());
+        $this->assertSame(0, DB::connection('tenant')->table('edge_operational_stock_movements')->count());
+    }
+
+    // ── (#3) multiple accepted baselines = corruption, FAIL CLOSED ──────────
+    public function test_multiple_accepted_baselines_fail_closed_as_corruption(): void
+    {
+        $this->openShift();
+        // forge a second accepted row for the SAME binding (NULL active_binding_key bypasses the unique index
+        // — exactly the corruption the lookup must refuse to arbitrate).
+        DB::connection('tenant')->table('edge_operational_stock_baselines')->insert([
+            'baseline_uuid' => \App\Services\Edge\EdgeOperationalBaselineService::newBaselineUuid(),
+            'branch_id' => $this->branchId, 'device_uuid' => 'test-device-uuid', 'activation_epoch' => 1,
+            'generation' => 1, 'content_hash' => 'forged', 'status' => 'accepted', 'active_binding_key' => null,
+            'accepted_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        try {
+            $this->complete();
+            $this->fail('multiple accepted baselines must fail closed');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('corruption', strtolower($e->getMessage()));
+        }
+        $this->assertSame(0, SalesOrder::on('tenant')->count());
+    }
+
+    // ── (#4) canonical hash is computed authority ───────────────────────────
+    public function test_canonical_hash_is_order_independent_and_rejects_tamper_and_duplicates(): void
+    {
+        $svc = \App\Services\Edge\EdgeOperationalBaselineService::class;
+        $a = [['product_id' => 1, 'product_variant_id' => null, 'quantity' => 5], ['product_id' => 2, 'product_variant_id' => 7, 'quantity' => 3]];
+        $b = [['product_id' => 2, 'product_variant_id' => 7, 'quantity' => 3], ['product_id' => 1, 'product_variant_id' => null, 'quantity' => 5]];
+        $this->assertSame($svc::canonicalHash($a), $svc::canonicalHash($b), 'same semantic rows in a different order hash identically');
+
+        // changed quantity while reusing the OLD hash → acceptance refuses (computed != expected).
+        $current = DB::connection('tenant')->table('edge_operational_stock_baselines')->first();
+        $tampered = [['product_id' => $this->productId, 'product_variant_id' => null, 'quantity' => 999]];
+        try {
+            app(\App\Services\Edge\EdgeOperationalBaselineService::class)->accept($current->baseline_uuid, $current->content_hash, $tampered, 'test-rev-1');
+            $this->fail('a stale hash over a changed payload must refuse');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('hash', strtolower($e->getMessage()));
+        }
+
+        // duplicate product+variant rows → refused.
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessageMatches('/duplicate/i');
+        $svc::canonicalHash([['product_id' => 1, 'product_variant_id' => null, 'quantity' => 1], ['product_id' => 1, 'product_variant_id' => null, 'quantity' => 2]]);
+    }
+
+    // ── (#5) baseline source revision must match the imported binding revision ──
+    public function test_wrong_source_revision_refuses_baseline_acceptance(): void
+    {
+        foreach (['edge_operational_stock_movements', 'edge_operational_stock_balances', 'edge_operational_stock_baselines'] as $t) {
+            DB::connection('tenant')->table($t)->delete();
+        }
+        $items = [['product_id' => $this->productId, 'product_variant_id' => null, 'quantity' => 10]];
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessageMatches('/revision/i');
+        app(\App\Services\Edge\EdgeOperationalBaselineService::class)->accept(
+            \App\Services\Edge\EdgeOperationalBaselineService::newBaselineUuid(), null, $items, 'some-OTHER-revision'
+        );
+    }
+
     // ── REAL Edge local-auth integration: genuine credential → EdgeLocalAuthService → sale ──
     public function test_real_edge_credential_login_then_sale_attributed_to_that_cashier(): void
     {

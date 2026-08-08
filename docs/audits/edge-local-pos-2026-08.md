@@ -102,6 +102,43 @@ ON/OFF, **multi-component atomic rollback** (component A restored when component
   never became replay/PENDING) + the two-process same-client_uuid race (loser's real MySQL collision resolves
   the winner). A fabricated-message unit test would never have caught this.
 
+## Authority correction pass (after checkpoint ec9a9d3 — review found 7 gaps; all closed executably)
+1. **Baseline authority is DEVICE-bound**: `accept()`/`currentAccepted()` now resolve by branch + device_uuid +
+   activation_epoch (a baseline for device A proven to give device B NO selling authority — sale refused,
+   nothing persisted).
+2. **Fail closed on corruption**: >1 accepted baseline for one binding throws a controlled corruption error —
+   never `first()`-arbitrated (forged-second-row test).
+3. **Content hash is COMPUTED authority**: the service canonicalizes the items itself (validated rows,
+   quantities normalized to the persistence precision, duplicates rejected, deterministic sort) and stores its
+   own SHA-256; a caller-supplied hash must match or acceptance refuses. Proven: order-independence, stale-hash-
+   over-changed-payload refusal, duplicate-row refusal.
+4. **source_revision must match** the imported `edge_local_meta.source_revision` (wrong revision refused).
+5. **generation is internal** (fixed 1 for the INITIAL baseline — no fabricated generation authority).
+6. **DB-level single-accepted-baseline invariant** (migration `2026_08_08_000004`): unique `active_binding_key`
+   = SHA-1(branch|device|epoch) on accepted rows. Genuine two-process first-acceptance race proven: exactly ONE
+   accepted baseline + ONE balance set; the loser gets a controlled outcome. The race also surfaced a REAL
+   third path — a MySQL gap-lock **deadlock (1213)** between the two zero-row lockForUpdate scans — which the
+   service now converts by retrying once (the retry observes the winner and lands on the idempotent/conflict/
+   fence path) instead of leaking a raw QueryException.
+7. **Append-only movements**: the baseline FK is now RESTRICT (was cascade) — deleting a baseline with sale
+   movement history fails and the history/balance survive (proven).
+8. **Settlement idempotency contract corrected**: sales_ledgers rows are idempotent (firstOrCreate); the shift
+   counters are atomic increments and `settle()` is NOT independently re-entrant — correctness comes from the
+   orchestrators invoking it exactly once inside the successful transaction (replays return before settlement;
+   rollback reverts the increments). Docblock now says exactly that.
+9. **Authenticated principal is REQUIRED at the service boundary**: a bare User model is no longer authority —
+   `auth('tenant')` must exist AND match, preflight and in-txn (unauthenticated call refused with nothing
+   persisted; authenticated A supplying B refused). The race worker now establishes the tenant principal
+   explicitly (`Auth::guard('tenant')->setUser`), the credential-login path being separately proven by the real
+   EdgeLocalAuthService integration test.
+10. **`beforeSaleTransaction()` seam audited**: protected, unconditionally no-op in production, no
+    request/env/config selects behaviour, nothing binds a callback at runtime; subclass-only test seam.
+11. **Real Cloud cash-semantics proof** (`SaleCashSemanticsMySqlTest`): the REAL Cloud `SalesOrderController::
+    store` with grand 100 / tendered 500 persists amount=100, tendered=500, payment change=400, paid=100,
+    sale change=0; shift total_sales/expected_cash/total_cash each +100 (never 500); and the REAL close
+    calculation (assertClosableUnderLock + variance) reconciles counted 100 against expected_cash=100 →
+    variance 0.
+
 ## Executable status (honest)
 GREEN: low-level fencing (8/61 + 3/17 Cloud), Edge runtime/binding harness (real edge migrations +
 `edge_local_meta`, nothing mocked), basic paid-sale scaffolding + effective-intent idempotency +

@@ -263,6 +263,26 @@ class EdgeOperationalStockMySqlTest extends MySqlTenantTestCase
         $this->assertSame(-1.0, $this->edgeOnHand($b->id, $p), 'allow_negative_stock=true records the negative');
     }
 
+    // ── (#8) movement history is append-only: a baseline delete must NOT erase it ──
+    public function test_baseline_delete_is_restricted_while_movement_history_exists(): void
+    {
+        $p = $this->makeProduct($this->makeCategory(), ['inventory_consumption_method' => 'stock_item', 'is_stock_tracked' => 1]);
+        $b = $this->acceptTestBaseline([['product_id' => $p, 'product_variant_id' => null, 'quantity' => 10]]);
+        $this->consume($this->makeSaleWithLine($p, 3));
+        $this->assertSame(1, DB::connection('tenant')->table('edge_operational_stock_movements')->count());
+
+        try {
+            DB::connection('tenant')->table('edge_operational_stock_baselines')->where('id', $b->id)->delete();
+            $this->fail('deleting a baseline with movement history must be restricted');
+        } catch (\Illuminate\Database\QueryException $e) {
+            $this->assertStringContainsStringIgnoringCase('foreign key', $e->getMessage());
+        }
+        // history + balance intact.
+        $this->assertSame(1, DB::connection('tenant')->table('edge_operational_stock_movements')->count(), 'movement history survives');
+        $this->assertSame(7.0, $this->edgeOnHand($b->id, $p), 'balance intact');
+        $this->assertSame(1, DB::connection('tenant')->table('edge_operational_stock_baselines')->where('id', $b->id)->count(), 'baseline intact');
+    }
+
     public function test_multi_component_failure_rolls_back_everything(): void
     {
         $cat = $this->makeCategory();
