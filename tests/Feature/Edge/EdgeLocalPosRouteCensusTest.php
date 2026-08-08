@@ -17,6 +17,7 @@ class EdgeLocalPosRouteCensusTest extends TestCase
         'edge.local.pos.terminal.select',
         'edge.local.pos.shift.status',
         'edge.local.pos.shift.open',
+        'edge.local.pos.shift.close',
         'edge.local.pos.sales.store',
     ];
 

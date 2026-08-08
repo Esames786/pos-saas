@@ -214,6 +214,31 @@ class ShiftService
         return $locked;
     }
 
+    /**
+     * EDGE-LOCAL-POS-1 (slice 1.1) — the ONE shared close operation (Cloud ShiftController + the Edge local
+     * shift endpoint), extracted so the locking/update logic never forks: atomic txn, row lock + closable
+     * assertion (assertClosableUnderLock — unresolved held/table work blocks automatically), variance from
+     * expected_cash, close stamp. Throws ShiftException (controlled) when blocked.
+     */
+    public function closeShift(Shift $shift, int $userId, float $countedCash, ?string $closingNotes = null): Shift
+    {
+        return DB::connection('tenant')->transaction(function () use ($shift, $userId, $countedCash, $closingNotes) {
+            $locked = $this->assertClosableUnderLock($shift);
+            $expectedCash = (float) $locked->expected_cash;
+
+            $locked->update([
+                'closed_by_user_id' => $userId,
+                'counted_cash' => $countedCash,
+                'cash_variance' => $countedCash - $expectedCash,
+                'status' => 'closed',
+                'closed_at' => now(),
+                'closing_notes' => $closingNotes,
+            ]);
+
+            return $locked->fresh();
+        });
+    }
+
     /** Human-readable summary of what is blocking a shift close. */
     public function describeUnresolvedWork(array $work): string
     {

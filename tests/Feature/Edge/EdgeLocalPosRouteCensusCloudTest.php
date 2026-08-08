@@ -20,6 +20,7 @@ class EdgeLocalPosRouteCensusCloudTest extends TestCase
             'edge.local.pos.terminal.select',
             'edge.local.pos.shift.status',
             'edge.local.pos.shift.open',
+            'edge.local.pos.shift.close',
             'edge.local.pos.sales.store',
         ] as $name) {
             $this->assertFalse(Route::has($name), "Cloud must NOT register [$name]");

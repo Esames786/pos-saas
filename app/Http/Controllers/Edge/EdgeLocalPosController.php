@@ -58,10 +58,18 @@ class EdgeLocalPosController extends Controller
                 ];
             })->values();
 
+        // (slice 1.1) never echo a stale selection: if the stored terminal is gone/inactive/wrong-branch,
+        // clear it so the UX starts from "select a terminal" (EdgeLocalPosService stays the sale authority).
+        $selectedId = (int) $request->session()->get(self::TERMINAL_SESSION_KEY, 0);
+        if ($selectedId > 0 && ! $terminals->contains(fn ($t) => (int) $t['id'] === $selectedId)) {
+            $request->session()->forget(self::TERMINAL_SESSION_KEY);
+            $selectedId = 0;
+        }
+
         return response()->json([
             'branch_id' => $branchId,
             'terminals' => $terminals,
-            'selected_terminal_id' => $request->session()->get(self::TERMINAL_SESSION_KEY),
+            'selected_terminal_id' => $selectedId > 0 ? $selectedId : null,
             'operational_stock_ready' => $this->baselines->currentAccepted() !== null,
             'payment_methods' => PaymentMethod::on('tenant')->where('is_active', true)->where('method_type', 'cash')
                 ->get(['id', 'code', 'name', 'method_type']),
@@ -121,6 +129,36 @@ class EdgeLocalPosController extends Controller
         }
 
         return response()->json(['shift_id' => $shift->id, 'shift_uuid' => $shift->shift_uuid, 'business_date' => $shift->business_date?->toDateString()], 201);
+    }
+
+    /** Close the selected terminal's open shift — the SHARED ShiftService::closeShift operation. */
+    public function closeShift(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'counted_cash' => ['required', 'numeric', 'min:0'],
+            'closing_notes' => ['nullable', 'string', 'max:1000'],
+        ]);
+        $terminal = $this->selectedTerminal($request);
+        if ($terminal instanceof JsonResponse) {
+            return $terminal;
+        }
+        $open = Shift::on('tenant')->where('terminal_id', $terminal->id)->where('status', 'open')->latest('id')->first();
+        if (! $open) {
+            return response()->json(['message' => 'No open shift on this terminal.'], 422);
+        }
+        try {
+            $closed = $this->shifts->closeShift($open, (int) auth('tenant')->id(), (float) $data['counted_cash'], $data['closing_notes'] ?? null);
+        } catch (ShiftException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'shift_id' => $closed->id,
+            'status' => $closed->status,
+            'expected_cash' => (float) $closed->expected_cash,
+            'counted_cash' => (float) $closed->counted_cash,
+            'cash_variance' => (float) $closed->cash_variance,
+        ]);
     }
 
     /** Local paid Direct Pay (quick_sale/takeaway, cash) through EdgeLocalPosService. */

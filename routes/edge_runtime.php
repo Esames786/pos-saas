@@ -38,6 +38,7 @@ Route::prefix('edge/local')->name('edge.local.')->group(function () {
         Route::post('/terminal/select', [EdgeLocalPosController::class, 'selectTerminal'])->name('terminal.select');
         Route::get('/shift', [EdgeLocalPosController::class, 'shiftStatus'])->name('shift.status');
         Route::post('/shift/open', [EdgeLocalPosController::class, 'openShift'])->name('shift.open');
+        Route::post('/shift/close', [EdgeLocalPosController::class, 'closeShift'])->name('shift.close');
         Route::post('/sales', [EdgeLocalPosController::class, 'storeSale'])->name('sales.store');
     });
 });

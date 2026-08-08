@@ -100,6 +100,7 @@ class EdgeBranchServerRegistrationTest extends TestCase
             'edge/local/pos/terminal/select',
             'edge/local/pos/shift',
             'edge/local/pos/shift/open',
+            'edge/local/pos/shift/close',
             'edge/local/pos/sales',
         ];
 

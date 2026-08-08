@@ -75,8 +75,13 @@ class EdgeLocalReadiness
             // EDGE-LOCAL-AUTH-1: not_ready (no auth schema / no crypto) | needs_enrollment (runtime ok,
             // no eligible credential yet) | ready (>=1 active, epoch-current, branch-authorized,
             // login-eligible credential). FOUNDATION auth readiness only — NEVER "ready to sell".
-            'local_auth' => $this->localAuthState($bound),
-            'local_pos' => 'not_implemented',        // EDGE-LOCAL-POS-1
+            'local_auth' => $localAuth = $this->localAuthState($bound),
+            // EDGE-LOCAL-POS-1: not_ready (unbound / auth not ready / no POS schema) |
+            // needs_operational_baseline (runtime present, no accepted device-bound baseline) |
+            // basic_runtime_ready (cash quick_sale/takeaway runtime usable). This is a LOCAL-RUNTIME
+            // state only — it never implies activation_ready and never flips the global
+            // operational_stock verdict above (a config snapshot is still not a selling authority).
+            'local_pos' => $this->localPosState($bound, $localAuth),
             'local_print' => 'not_implemented',      // EDGE-LOCAL-PRINT-1
             'sync' => 'not_implemented',             // OFFLINE-SYNC-ENGINE-1
 
@@ -116,6 +121,28 @@ class EdgeLocalReadiness
                 ->exists();
 
             return $hasEligible ? 'ready' : 'needs_enrollment';
+        } catch (Throwable $e) {
+            return 'not_ready';
+        }
+    }
+
+    /**
+     * local_pos: not_ready | needs_operational_baseline | basic_runtime_ready. Fail-closed: any
+     * doubt (no binding, auth not ready, POS stock schema missing, baseline authority lapsed)
+     * reports the lesser state. NEVER consulted for activation_ready (always false this sprint).
+     */
+    private function localPosState(bool $bound, string $localAuth): string
+    {
+        if (! $bound || $localAuth !== 'ready') {
+            return 'not_ready';
+        }
+        try {
+            if (! Schema::connection('tenant')->hasTable('edge_operational_stock_baselines')) {
+                return 'not_ready';
+            }
+            $accepted = app(EdgeOperationalBaselineService::class)->currentAccepted();
+
+            return $accepted !== null ? 'basic_runtime_ready' : 'needs_operational_baseline';
         } catch (Throwable $e) {
             return 'not_ready';
         }

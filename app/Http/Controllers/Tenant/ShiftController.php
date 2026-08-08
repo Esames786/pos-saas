@@ -178,25 +178,14 @@ class ShiftController extends Controller
         // lockOpenShiftForTerminal). A blocked close is a controlled ShiftException, never a 500.
         // (Offline print jobs are NOT operational work and never block a close.)
         try {
-            DB::connection('tenant')->transaction(function () use ($shift, $data, $shiftService) {
-                $locked = $shiftService->assertClosableUnderLock($shift);
-
-                $expectedCash = (float) $locked->expected_cash;
-                $countedCash  = $this->calculateCashCount($data, 'shift', $locked->id);
-
-                if ($countedCash === null) {
-                    $countedCash = (float) ($data['counted_cash'] ?? 0);
-                }
-
-                $locked->update([
-                    'closed_by_user_id' => auth('tenant')->id(),
-                    'counted_cash'      => $countedCash,
-                    'cash_variance'     => $countedCash - $expectedCash,
-                    'status'            => 'closed',
-                    'closed_at'         => now(),
-                    'closing_notes'     => $data['closing_notes'] ?? null,
-                ]);
-            });
+            // EDGE-LOCAL-POS-1 (slice 1.1): the lock/assert/update itself is the SHARED ShiftService
+            // closeShift operation (also used by the Edge local shift endpoint) — behavior unchanged; the
+            // denomination-based counted-cash resolution stays a Cloud-controller concern.
+            $countedCash = $this->calculateCashCount($data, 'shift', $shift->id);
+            if ($countedCash === null) {
+                $countedCash = (float) ($data['counted_cash'] ?? 0);
+            }
+            $shiftService->closeShift($shift, (int) auth('tenant')->id(), $countedCash, $data['closing_notes'] ?? null);
         } catch (ShiftException $e) {
             return back()->withErrors(['shift' => $e->getMessage()])->withInput();
         }

@@ -154,15 +154,40 @@ ON/OFF, **multi-component atomic rollback** (component A restored when component
   fast 113/31107; caches green; `git diff --check` clean. Foundation heads `ec9a9d3` → `cc2b339` →
   `ca02646` (all pushed; production unchanged at `10d3e0d`, Cloud-only, Edge dormant).
 
-## Executable status (honest)
-GREEN: low-level fencing (8/61 + 3/17 Cloud), Edge runtime/binding harness (real edge migrations +
-`edge_local_meta`, nothing mocked), basic paid-sale scaffolding + effective-intent idempotency +
-security refusals, shared settlement wiring (shift totals once / no double on replay — in validation).
-PENDING before the WIP checkpoint: real Edge local-auth → sale integration test; real 2A client_uuid
-catch-path race; real 2C TOCTOU (deactivate-in-window); H10/I Edge-only stock + baseline + fence; stock
-quantity/atomicity matrix on the new tables; genuine 2-process races (client_uuid, final-unit,
-shift-close-vs-sale); full Cloud non-regression; then ONE WIP commit (`WIP EDGE-LOCAL-POS-1: harden local
-sale authority, settlement and operational stock boundary`) — **NO deploy**.
+## Route slice 1 (`faa4939`) — the branch-local POS HTTP surface OPEN
+Five routes under `edge/local/pos/*` (`terminals`, `terminal/select`, `shift`, `shift/open`, `sales`),
+registered ONLY in `routes/edge_runtime.php` behind `edge.auth` + `edge.branch`, each name explicitly
+on the `config/edge.php` allowlist. Census-proven on BOTH sides (branch_server registers exactly the
+approved URI set incl. the new routes; Cloud gets genuine 404s — names not even registered). Real
+branch_server-BOOTED HTTP proofs: terminals→select→shift-open→cash sale→replay idempotent→409 on
+changed intent; cross-branch terminal refused; unauthenticated → local login redirect. Gate on that
+tree: full authoritative MySQL 169/789 ZERO skips + fast 115/31,139.
+
+## Route slice 1.1 — session authority freshness + complete shift HTTP lifecycle
+- **`edge.auth` session FRESHNESS**: `auth()->check()` alone is no longer authority. Every protected
+  request re-establishes a CURRENT principal: bound appliance + fresh user row (active, Edge-eligible,
+  authorized for the bound branch) + an ACTIVE local credential matching the bound branch AND current
+  `activation_epoch`. A stale session is logged out + invalidated (not merely refused). HTTP-proven
+  A–E: user disabled ✓, branch revoked ✓, credential disabled ✓, epoch superseded ✓ (re-login refused
+  until the single credential row is re-enrolled at the new epoch — `edge_cred_user_unique`), valid
+  session works ✓; after a stale logout, restoring the row does NOT resurrect the session ✓.
+- **`POST /edge/local/pos/shift/close`**: smallest shared extraction — new `ShiftService::closeShift()`
+  (txn + `assertClosableUnderLock` + variance vs `expected_cash`) now used by BOTH the Cloud
+  `ShiftController::close` (denomination counting stays in the controller) and the Edge endpoint.
+  HTTP lifecycle proven: sale APPLIED 100/tendered 500 → `expected_cash` 100 → counted 100 → closed,
+  variance 0, closer stamped; post-close sale refused; re-close refused; close-with-no-shift refused.
+  `SaleCashSemanticsMySqlTest` now exercises the SHARED close (no hand-rolled calculation left).
+- **Takeaway over HTTP** ✓ + the cashier's `allowed_order_types` policy refused THROUGH HTTP ✓ (stock
+  unmoved on refusal ✓).
+- **Master-DB-unavailable proof**: master connection pointed at a nonexistent database (probed dead),
+  then the ENTIRE real HTTP flow (terminals → select → open → sale → close) runs green; Edge
+  operational stock moves; official `stock_ledgers`/`journal_entries` stay 0.
+- **Terminals endpoint never echoes a stale selection** (vanished/inactive terminal → selection
+  cleared, dependent endpoints refuse).
+- **Truthful readiness**: `local_pos` is now a computed state — `not_ready` (unbound / local_auth not
+  ready / no POS schema) | `needs_operational_baseline` (runtime present, no accepted device-bound
+  baseline) | `basic_runtime_ready`. It NEVER flips the global `operational_stock` verdict and
+  `activation_ready` stays hard false.
 
 ## Release position
 Offline production readiness ≈ **40–45%**. A basic local sale running ≠ production-safe appliance: still

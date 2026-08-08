@@ -176,6 +176,8 @@ class EdgeLocalRuntimeBoundaryTest extends TestCase
         $report = app(\App\Services\Edge\EdgeLocalReadiness::class)->report();
         $this->assertSame('not_ready', $report['operational_stock']);
         $this->assertFalse($report['activation_ready']);
-        $this->assertSame('not_implemented', $report['local_pos']);
+        // EDGE-LOCAL-POS-1: local_pos is now a truthful runtime state; with no binding/auth it must
+        // be the fail-closed floor — and never a selling claim (activation_ready above stays false).
+        $this->assertSame('not_ready', $report['local_pos']);
     }
 }

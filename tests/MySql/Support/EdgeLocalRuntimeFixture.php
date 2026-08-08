@@ -59,6 +59,20 @@ trait EdgeLocalRuntimeFixture
         app()->forgetInstance(EdgeBranchContext::class);
     }
 
+    /**
+     * Seed a genuine ACTIVE Edge local credential (what enrollment produces) so the slice-1.1
+     * session-freshness guard (EnsureEdgeAuthenticated) accepts the user's session. Returns the row id.
+     */
+    protected function seedEdgeCredential(int $userId, int $branchId, int $activationEpoch = 1, string $password = 'CashierPass1'): int
+    {
+        return (int) DB::connection('tenant')->table('edge_local_user_credentials')->insertGetId([
+            'user_id' => $userId, 'branch_id' => $branchId, 'activation_epoch' => $activationEpoch,
+            'credential_hash' => password_hash($password, PASSWORD_ARGON2ID),
+            'credential_type' => 'password', 'credential_version' => 1, 'status' => 'active',
+            'enrolled_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+    }
+
     /** Accept a TEST operational-stock baseline for the current binding. $items: [[product_id, variant, qty]]. */
     protected function acceptTestBaseline(array $items): object
     {

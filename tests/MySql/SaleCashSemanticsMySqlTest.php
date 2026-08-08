@@ -91,21 +91,13 @@ class SaleCashSemanticsMySqlTest extends MySqlTenantTestCase
         $this->assertSame(100.0, (float) $shift->expected_cash, 'expected_cash += APPLIED 100 — never tendered 500');
         $this->assertSame(100.0, (float) $shift->total_cash, 'total_cash += APPLIED 100');
 
-        // REAL close calculation (the ShiftController contract): counted 100 against expected_cash.
-        DB::connection('tenant')->transaction(function () use ($shift, $userId) {
-            $locked = app(ShiftService::class)->assertClosableUnderLock($shift);
-            $expected = (float) $locked->expected_cash;
-            $counted = 100.0;
-            $locked->update([
-                'closed_by_user_id' => $userId,
-                'counted_cash' => $counted,
-                'cash_variance' => $counted - $expected,
-                'status' => 'closed',
-                'closed_at' => now(),
-            ]);
-        });
+        // REAL close: the SHARED ShiftService::closeShift (used by BOTH Cloud ShiftController and the
+        // Edge shift/close endpoint) — counted 100 against expected_cash.
+        app(ShiftService::class)->closeShift($shift, $userId, 100.0);
         $shift->refresh();
         $this->assertSame('closed', $shift->status);
+        $this->assertSame($userId, (int) $shift->closed_by_user_id);
+        $this->assertSame(100.0, (float) $shift->counted_cash);
         $this->assertSame(0.0, (float) $shift->cash_variance, 'close reconciles against expected_cash=100 (variance 0) — NOT tendered 500');
     }
 }

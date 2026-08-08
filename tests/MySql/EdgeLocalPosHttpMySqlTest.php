@@ -51,7 +51,7 @@ class EdgeLocalPosHttpMySqlTest extends MySqlTenantTestCase
         DB::setDefaultConnection('tenant');
 
         $this->ensureEdgeSchema();
-        $this->cleanTenant(['edge_operational_stock_movements', 'edge_operational_stock_balances', 'edge_operational_stock_baselines', 'edge_local_meta', 'sales_ledgers', 'cash_bank_account_transactions', 'journal_lines', 'journal_entries', 'stock_ledgers', 'stock_balances', 'sale_payments', 'sales_order_lines', 'sales_orders', 'payment_methods', 'products', 'categories', 'shifts', 'terminals', 'branches', 'users']);
+        $this->cleanTenant(['edge_operational_stock_movements', 'edge_operational_stock_balances', 'edge_operational_stock_baselines', 'edge_auth_audit', 'edge_local_user_credentials', 'edge_local_meta', 'sales_ledgers', 'cash_bank_account_transactions', 'journal_lines', 'journal_entries', 'stock_ledgers', 'stock_balances', 'sale_payments', 'sales_order_lines', 'sales_orders', 'payment_methods', 'products', 'categories', 'shifts', 'terminals', 'branches', 'users']);
         $this->branchId = $this->makeBranch(['allow_negative_stock' => 0, 'timezone' => 'Asia/Karachi']);
         $this->userId = $this->makeUser(['default_branch_id' => $this->branchId, 'employee_code' => 'HTTP' . Str::random(4)]);
         $this->terminalId = $this->makeTerminal($this->branchId);
@@ -59,6 +59,9 @@ class EdgeLocalPosHttpMySqlTest extends MySqlTenantTestCase
         $this->cashMethodId = $this->makePaymentMethod(['method_type' => 'cash']);
         $this->bindEdgeLocalMeta($this->branchId, 1);
         $this->baselineId = (int) $this->acceptTestBaseline([['product_id' => $this->productId, 'product_variant_id' => null, 'quantity' => 10]])->id;
+        // Slice 1.1: edge.auth now enforces session FRESHNESS — an actingAs session without a genuine
+        // ACTIVE local credential (matching bound branch + epoch) is logged out. Seed what enrollment produces.
+        $this->seedEdgeCredential($this->userId, $this->branchId, 1);
         $this->actingAs(User::on('tenant')->find($this->userId), 'tenant');
         Auth::shouldUse('tenant');
     }
@@ -140,5 +143,217 @@ class EdgeLocalPosHttpMySqlTest extends MySqlTenantTestCase
         auth('tenant')->logout();
         $this->flushSession();
         $this->get('/edge/local/pos/terminals')->assertStatus(302)->assertRedirect('/edge/local/login');
+    }
+
+    // ── slice 1.1: session FRESHNESS — a stale principal is logged out and fails closed ──────────
+
+    /** A/E: user disabled mid-session → refused + session dead; restored user must RE-LOGIN. */
+    public function test_freshness_disabled_user_is_logged_out(): void
+    {
+        $this->getJson('/edge/local/pos/terminals')->assertOk(); // valid session works (E)
+
+        DB::connection('tenant')->table('users')->where('id', $this->userId)->update(['status' => 'inactive']);
+        $this->getJson('/edge/local/pos/terminals')->assertStatus(401);
+
+        // the middleware LOGGED OUT the stale session — restoring the row does not resurrect it.
+        DB::connection('tenant')->table('users')->where('id', $this->userId)->update(['status' => 'active']);
+        $this->getJson('/edge/local/pos/terminals')->assertStatus(401);
+
+        // a fresh authentication works again.
+        $this->actingAs(User::on('tenant')->find($this->userId), 'tenant');
+        $this->getJson('/edge/local/pos/terminals')->assertOk();
+    }
+
+    /** B: branch authorization revoked mid-session (default branch moved, no active assignment) → refused. */
+    public function test_freshness_branch_revoked_user_is_logged_out(): void
+    {
+        $this->getJson('/edge/local/pos/terminals')->assertOk();
+
+        $otherBranch = $this->makeBranch();
+        DB::connection('tenant')->table('users')->where('id', $this->userId)->update(['default_branch_id' => $otherBranch]);
+        $this->getJson('/edge/local/pos/terminals')->assertStatus(401);
+
+        DB::connection('tenant')->table('users')->where('id', $this->userId)->update(['default_branch_id' => $this->branchId]);
+        $this->actingAs(User::on('tenant')->find($this->userId), 'tenant');
+        $this->getJson('/edge/local/pos/terminals')->assertOk();
+    }
+
+    /** C: local credential disabled mid-session → refused even though the Cloud user row is fine. */
+    public function test_freshness_disabled_credential_is_logged_out(): void
+    {
+        $this->getJson('/edge/local/pos/terminals')->assertOk();
+
+        DB::connection('tenant')->table('edge_local_user_credentials')->where('user_id', $this->userId)->update(['status' => 'disabled']);
+        $this->getJson('/edge/local/pos/terminals')->assertStatus(401);
+
+        DB::connection('tenant')->table('edge_local_user_credentials')->where('user_id', $this->userId)->update(['status' => 'active']);
+        $this->actingAs(User::on('tenant')->find($this->userId), 'tenant');
+        $this->getJson('/edge/local/pos/terminals')->assertOk();
+    }
+
+    /** D: activation epoch superseded (re-activation) → every pre-epoch session/credential is stale. */
+    public function test_freshness_superseded_activation_epoch_is_logged_out(): void
+    {
+        $this->getJson('/edge/local/pos/terminals')->assertOk();
+
+        $this->bindEdgeLocalMeta($this->branchId, 2); // appliance re-activated at epoch 2; credential is epoch 1
+        $this->getJson('/edge/local/pos/terminals')->assertStatus(401);
+
+        // even re-authenticating does not help until an epoch-2 credential exists.
+        $this->actingAs(User::on('tenant')->find($this->userId), 'tenant');
+        $this->getJson('/edge/local/pos/terminals')->assertStatus(401);
+        // re-enrollment REPLACES the user's single credential row at the new epoch (edge_cred_user_unique).
+        DB::connection('tenant')->table('edge_local_user_credentials')->where('user_id', $this->userId)
+            ->update(['activation_epoch' => 2, 'credential_version' => 2, 'updated_at' => now()]);
+        $this->actingAs(User::on('tenant')->find($this->userId), 'tenant');
+        $this->getJson('/edge/local/pos/terminals')->assertOk();
+    }
+
+    // ── slice 1.1: complete shift HTTP lifecycle ─────────────────────────────────────────────────
+
+    public function test_shift_close_http_lifecycle_with_variance_and_post_close_refusal(): void
+    {
+        $this->postJson('/edge/local/pos/terminal/select', ['terminal_id' => $this->terminalId])->assertOk();
+
+        // close with no open shift → controlled refusal.
+        $this->postJson('/edge/local/pos/shift/close', ['counted_cash' => 0])->assertStatus(422);
+
+        $open = $this->postJson('/edge/local/pos/shift/open', ['opening_cash' => 0]);
+        $open->assertStatus(201);
+        $shiftId = $open->json('shift_id');
+
+        // one cash sale: APPLIED 100, tendered 500 → expected_cash grows by the APPLIED amount only.
+        $this->postJson('/edge/local/pos/sales', [
+            'order_type' => 'quick_sale', 'client_uuid' => (string) Str::uuid(),
+            'lines' => [['product_id' => $this->productId, 'quantity' => 1]],
+            'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 100, 'tendered_amount' => 500]],
+        ])->assertStatus(201)->assertJsonPath('change_amount', 400);
+
+        $this->assertSame(100.0, (float) DB::connection('tenant')->table('shifts')->where('id', $shiftId)->value('expected_cash'));
+
+        // counted == expected → closed, variance 0 (the SHARED ShiftService::closeShift semantics).
+        $close = $this->postJson('/edge/local/pos/shift/close', ['counted_cash' => 100, 'closing_notes' => 'edge close']);
+        $close->assertOk()
+            ->assertJsonPath('shift_id', $shiftId)
+            ->assertJsonPath('status', 'closed')
+            ->assertJsonPath('expected_cash', 100)
+            ->assertJsonPath('counted_cash', 100)
+            ->assertJsonPath('cash_variance', 0);
+        $row = DB::connection('tenant')->table('shifts')->where('id', $shiftId)->first();
+        $this->assertSame('closed', $row->status);
+        $this->assertSame($this->userId, (int) $row->closed_by_user_id);
+        $this->assertNotNull($row->closed_at);
+
+        // after close: no open shift → a new sale is refused (mandatory-open-shift), and re-close refused.
+        $this->postJson('/edge/local/pos/sales', [
+            'order_type' => 'quick_sale', 'client_uuid' => (string) Str::uuid(),
+            'lines' => [['product_id' => $this->productId, 'quantity' => 1]],
+            'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 100]],
+        ])->assertStatus(422);
+        $this->postJson('/edge/local/pos/shift/close', ['counted_cash' => 100])->assertStatus(422);
+    }
+
+    // ── slice 1.1: takeaway through HTTP + the user's order-type policy is enforced ──────────────
+
+    public function test_takeaway_sale_over_http_and_order_type_restriction_refusal(): void
+    {
+        $this->postJson('/edge/local/pos/terminal/select', ['terminal_id' => $this->terminalId])->assertOk();
+        $this->postJson('/edge/local/pos/shift/open', ['opening_cash' => 0])->assertStatus(201);
+
+        $this->postJson('/edge/local/pos/sales', [
+            'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
+            'lines' => [['product_id' => $this->productId, 'quantity' => 1]],
+            'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 100]],
+        ])->assertStatus(201)->assertJsonPath('status', 'paid');
+        $this->assertSame(9.0, $this->edgeOnHand($this->baselineId, $this->productId));
+
+        // restrict the cashier to quick_sale only → takeaway is refused THROUGH HTTP (allowsOrderType).
+        DB::connection('tenant')->table('users')->where('id', $this->userId)
+            ->update(['allowed_order_types' => json_encode(['quick_sale'])]);
+        $this->actingAs(User::on('tenant')->find($this->userId), 'tenant');
+        $this->postJson('/edge/local/pos/sales', [
+            'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
+            'lines' => [['product_id' => $this->productId, 'quantity' => 1]],
+            'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 100]],
+        ])->assertStatus(422);
+        $this->assertSame(9.0, $this->edgeOnHand($this->baselineId, $this->productId), 'refused sale must not move stock');
+    }
+
+    // ── slice 1.1: the whole local flow works with the MASTER database unreachable ───────────────
+
+    public function test_full_flow_works_with_master_database_unavailable(): void
+    {
+        // point the master connection at a nonexistent database and PROVE it is dead.
+        config(['database.connections.master.database' => 'nonexistent_master_slice11']);
+        DB::purge('master');
+        try {
+            DB::connection('master')->select('select 1');
+            $this->fail('master must be unreachable in this proof');
+        } catch (\Throwable $e) {
+            $this->assertTrue(true);
+        }
+
+        // full REAL HTTP flow: terminals → select → shift open → cash sale — no master dependency.
+        $this->getJson('/edge/local/pos/terminals')->assertOk()->assertJsonPath('branch_id', $this->branchId);
+        $this->postJson('/edge/local/pos/terminal/select', ['terminal_id' => $this->terminalId])->assertOk();
+        $this->postJson('/edge/local/pos/shift/open', ['opening_cash' => 0])->assertStatus(201);
+        $this->postJson('/edge/local/pos/sales', [
+            'order_type' => 'quick_sale', 'client_uuid' => (string) Str::uuid(),
+            'lines' => [['product_id' => $this->productId, 'quantity' => 2]],
+            'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 200, 'tendered_amount' => 200]],
+        ])->assertStatus(201)->assertJsonPath('status', 'paid');
+
+        // Edge operational stock moved; official Cloud authorities untouched.
+        $this->assertSame(8.0, $this->edgeOnHand($this->baselineId, $this->productId));
+        $this->assertSame(0, DB::connection('tenant')->table('stock_ledgers')->count());
+        $this->assertSame(0, DB::connection('tenant')->table('journal_entries')->count());
+
+        // close the shift too — the COMPLETE lifecycle holds offline.
+        $this->postJson('/edge/local/pos/shift/close', ['counted_cash' => 200])
+            ->assertOk()->assertJsonPath('status', 'closed')->assertJsonPath('cash_variance', 0);
+    }
+
+    // ── slice 1.1: terminals endpoint never echoes a stale selection ─────────────────────────────
+
+    public function test_terminals_endpoint_clears_stale_terminal_selection(): void
+    {
+        $this->postJson('/edge/local/pos/terminal/select', ['terminal_id' => $this->terminalId])->assertOk();
+        $this->getJson('/edge/local/pos/terminals')->assertOk()->assertJsonPath('selected_terminal_id', $this->terminalId);
+
+        // terminal deactivated (e.g. re-provisioned) → the stored selection must be cleared, not echoed.
+        DB::connection('tenant')->table('terminals')->where('id', $this->terminalId)->update(['status' => 'inactive']);
+        $this->getJson('/edge/local/pos/terminals')->assertOk()
+            ->assertJsonPath('selected_terminal_id', null)
+            ->assertJsonPath('terminals', []);
+
+        // and shift/sale endpoints refuse instead of operating on the vanished terminal.
+        $this->postJson('/edge/local/pos/shift/open', ['opening_cash' => 0])->assertStatus(422);
+    }
+
+    // ── slice 1.1: readiness reports a TRUTHFUL local_pos state (never a selling claim) ──────────
+
+    public function test_readiness_reports_truthful_local_pos_state(): void
+    {
+        // local_auth 'ready' requires the enrollment crypto surface — provide a public key for the report.
+        config(['edge.enrollment.public_key' => base64_encode(random_bytes(32))]);
+
+        $ready = $this->getJson('/edge/local/ready');
+        $this->assertSame('basic_runtime_ready', $ready->json('local_pos'));
+        $this->assertSame('ready', $ready->json('local_auth'));
+        // the truthful POS state NEVER flips the global stock/selling verdicts.
+        $this->assertSame('not_ready', $ready->json('operational_stock'));
+        $this->assertFalse($ready->json('activation_ready'));
+
+        // no accepted baseline → needs_operational_baseline (authority, not schema, is the gate).
+        DB::connection('tenant')->table('edge_operational_stock_movements')->delete();
+        DB::connection('tenant')->table('edge_operational_stock_balances')->delete();
+        DB::connection('tenant')->table('edge_operational_stock_baselines')->delete();
+        $this->assertSame('needs_operational_baseline', $this->getJson('/edge/local/ready')->json('local_pos'));
+
+        // credential disabled → local_auth degrades and local_pos fails closed with it.
+        DB::connection('tenant')->table('edge_local_user_credentials')->where('user_id', $this->userId)->update(['status' => 'disabled']);
+        $degraded = $this->getJson('/edge/local/ready');
+        $this->assertSame('needs_enrollment', $degraded->json('local_auth'));
+        $this->assertSame('not_ready', $degraded->json('local_pos'));
     }
 }
