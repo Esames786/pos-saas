@@ -823,6 +823,20 @@ class PrintJobService
 
     private function markKotLinesPrinted(SalesOrder $sale, PrintJob $job): void
     {
+        $this->applyKotSentBookkeeping($sale, $job);
+    }
+
+    /**
+     * EDGE-LOCAL-POS-1 — acknowledge the KOT BUSINESS EVENT's sent quantities WITHOUT claiming a
+     * physical print. This is exactly the bookkeeping the browser flow applies at markPrinted() and the
+     * network-printer flow applies at queue time (markKotLinesQueued): set-to-line-quantity, so it is
+     * idempotent and never over-advances. A Branch Server calls this right after queueKot() commits the
+     * batch — the print_jobs row stays `queued` with printed_at NULL (no transport ran; a future
+     * EDGE-LOCAL-PRINT-1 delivers the intent). LOCKED RULE: `printed` means an actual transport/preview
+     * completion — nothing in the Edge runtime may set it until one exists.
+     */
+    public function applyKotSentBookkeeping(SalesOrder $sale, PrintJob $job): void
+    {
         $payload = $job->payload ?? [];
 
         if (!empty($payload['is_reprint'])) {

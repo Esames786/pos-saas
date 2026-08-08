@@ -65,6 +65,54 @@ try {
         exit(0);
     }
 
+    // ── EDGE-LOCAL-POS-1 restaurant races: every mode drives the REAL EdgeLocalPosService with an
+    //    authenticated principal (master unreachable — config above). ──
+    if (in_array($mode, ['open_table', 'hold', 'revise', 'kot', 'settle'], true)) {
+        $user = User::on('tenant')->findOrFail((int) $argv[2]);
+        \Illuminate\Support\Facades\Auth::guard('tenant')->setUser($user);
+        \Illuminate\Support\Facades\Auth::shouldUse('tenant');
+        $terminalId = (int) $argv[3];
+        $pos = app(EdgeLocalPosService::class);
+
+        switch ($mode) {
+            case 'open_table': // open_table <user> <terminal> <table_id>
+                $session = $pos->openTableSession((int) $argv[4], ['guest_count' => 1], $user, $terminalId);
+                echo 'OK:open_table:' . $session->id . "\n";
+                exit(0);
+            case 'hold': // hold <user> <terminal> <session_id> <product_id> <qty>
+                $sale = $pos->holdOrReviseSale([
+                    'order_type' => 'dine_in',
+                    'restaurant_table_session_id' => (int) $argv[4],
+                    'lines' => [['product_id' => (int) $argv[5], 'quantity' => (float) $argv[6]]],
+                ], $user, $terminalId);
+                echo 'OK:hold:' . $sale->id . "\n";
+                exit(0);
+            case 'revise': // revise <user> <terminal> <session_id> <sale_id> <old_line_id> <old_product_id> <old_qty> <new_product_id> <new_qty>
+                $sale = $pos->holdOrReviseSale([
+                    'held_sale_id' => (int) $argv[5],
+                    'order_type' => 'dine_in',
+                    'restaurant_table_session_id' => (int) $argv[4],
+                    'lines' => [
+                        ['sales_order_line_id' => (int) $argv[6], 'product_id' => (int) $argv[7], 'quantity' => (float) $argv[8]],
+                        ['product_id' => (int) $argv[9], 'quantity' => (float) $argv[10]],
+                    ],
+                ], $user, $terminalId);
+                echo 'OK:revise:' . $sale->id . ':' . $sale->lines()->count() . "\n";
+                exit(0);
+            case 'kot': // kot <user> <terminal> <sale_id>
+                $result = $pos->queueKotEvents((int) $argv[4], $user, $terminalId);
+                echo 'OK:kot:' . ($result['batch']?->id ?? 'none') . ':' . ($result['batch']?->sequence_no ?? 0) . "\n";
+                exit(0);
+            case 'settle': // settle <user> <terminal> <sale_id> <client_uuid> <method_id> <amount>
+                $sale = $pos->settleHeldSale((int) $argv[4], [
+                    'client_uuid' => (string) $argv[5],
+                    'payments' => [['payment_method_id' => (int) $argv[6], 'amount' => (float) $argv[7]]],
+                ], $user, $terminalId);
+                echo 'OK:settle:' . $sale->id . ':' . $sale->status . "\n";
+                exit(0);
+        }
+    }
+
     if ($mode === 'close') {
         [, , $shiftId, $userId] = array_pad($argv, 4, null);
         $shift = Shift::on('tenant')->findOrFail((int) $shiftId);

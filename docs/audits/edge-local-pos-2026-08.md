@@ -231,6 +231,48 @@ controller adds no authority). Reuses CLOUD semantics + frozen identities end-to
 Proof: `EdgeLocalRestaurantHttpMySqlTest` (4 tests / 106 assertions, branch_server-BOOTED real HTTP;
 official stock_ledgers/journal_entries stay 0 throughout).
 
+## Restaurant final authority closure (correction on top of `e0f099d`)
+Review of the restaurant checkpoint found 4 authority gaps; all closed executably:
+1. **Edge manager authority = the manager's OWN Edge credential, never manager_pins.** The Cloud PIN
+   path could not work on a real appliance (pin_hash never ships). `ManagerApprovalService` split into
+   the identity paths + ONE shared `createApprovalForAuthenticatedManager` (order-branch authorization,
+   approval identity, payload binding; expiry/single-use in `consume()` unchanged). Cloud `verifyPin`
+   delegates to it (semantics pinned by NEW `CloudManagerApprovalMySqlTest` — Hash::check, branch refusal,
+   payload mismatch, 10-min expiry, single-use). Edge: `EdgeLocalAuthService::verifyManager` (real
+   Argon2id credential, epoch/lockout/audit, required permission per action — unknown actions fail
+   closed) → same creator. HTTP-proven with ZERO manager_pins rows and the master DB dead: wrong
+   credential / missing permission / wrong branch / disabled / stale-epoch manager all refused; approval
+   consumed exactly once; the cashier session is never replaced. Local manager-PIN *enrollment UX*
+   remains the named future sprint — the AUTHORITY path is now real.
+2. **KOT business event ≠ physical print (LOCKED).** Edge no longer calls `markPrinted` — extracted
+   public `applyKotSentBookkeeping` (the exact set-to-quantity rule markPrinted/markKotLinesQueued
+   apply; idempotent) acknowledges the business event while every print_jobs row stays a `queued`
+   logical intent: printed_at NULL, no printer attached, kot_print_count untouched. Cloud markPrinted
+   delegates to the same method — behavior unchanged.
+3. **Phantom-read concurrency bugs — found by the new GENUINE two-process races and fixed.** Under
+   REPEATABLE READ a plain `exists()`/`lines()->get()` reads the transaction's snapshot even after
+   row locks are acquired. Proven consequences before the fix: the same table opened TWICE from two
+   terminals; a conflicting Add Round silently overwrote another terminal's committed round. Fixes:
+   LOCKING (current) reads for open-session existence, one-open-check, revision line set, settle's
+   consumed lines (passed to stock via setRelation), and both session-close paths (session lock +
+   locking remaining-held read; table freed atomically). ONE documented lock order everywhere:
+   shift → table/table-session → sale → dependent rows; a dine-in revision REQUIRES its session (so
+   the session lock is always held); settle discovers ids by probe then locks in order.
+   Races (separate OS processes, spin-barrier, master pointed at a nonexistent DB): same-table open →
+   exactly one session, loser controlled; same KOT send → exactly one batch, delta once, nothing
+   printed; conflicting Add Round → winner intact (KOT-sent + captured price survive), loser refused;
+   settle-vs-new-hold → NEVER a closed session/freed table with live held work, shift close blocked
+   until resolved then both shifts close cleanly. No deadlock/SQL leakage in any loser.
+4. **Captured price is identity-bound.** A carried `sales_order_line_id` must match its original
+   product/variant/line_kind and appear at most once; foreign ids refused. Proven A–E: different
+   product, variant switch, duplicate id, foreign order id all refused; same-identity carry still
+   keeps its captured price after a catalog move.
+KNOWN residual (controlled, documented): `KotCancellationService`'s internal eager-load uses the
+transaction snapshot; under an extreme revise-vs-revise interleaving a void can fail with a controlled
+ValidationException (retryable) — never a wrong cancellation. Cloud `RestaurantTableSessionController::open`
+carries the same snapshot-exists() pattern the Edge race exposed; Cloud-side hardening is deliberately
+out of this Edge sprint's scope and flagged for a Cloud pass.
+
 ## Release position
 Offline production readiness ≈ **40–45%**. A basic local sale running ≠ production-safe appliance: still
 missing operational stock authority (H10), sync, printing transport, backup/updater (hard gate), recovery,

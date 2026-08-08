@@ -390,16 +390,24 @@ class EdgeLocalPosController extends Controller
         return response()->json(['sale_id' => $result['sale']->id, 'status' => $result['sale']->status]);
     }
 
-    /** Manager re-auth: verify a PIN, mint a single-use approval (consumed by the action that needs it). */
+    /**
+     * Manager re-auth: the manager presents THEIR OWN Edge-local credential (employee code + local
+     * password — never a Cloud manager PIN, which does not exist on an appliance) and receives a
+     * single-use approval consumed by the action that needs it. The cashier session is untouched.
+     */
     public function verifyManagerApproval(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'pin' => ['required', 'string', 'max:20'],
+            'manager_employee_code' => ['required', 'string', 'max:64'],
+            'manager_credential' => ['required', 'string', 'max:255'],
             'action_type' => ['required', 'string', 'max:80'],
             'payload' => ['nullable', 'array'],
         ]);
         try {
-            $approval = $this->pos->verifyManagerPin($data['pin'], $data['action_type'], auth('tenant')->user(), $data['payload'] ?? null);
+            $approval = $this->pos->verifyManagerApproval(
+                $data['manager_employee_code'], $data['manager_credential'], $data['action_type'],
+                auth('tenant')->user(), $data['payload'] ?? null
+            );
         } catch (RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }

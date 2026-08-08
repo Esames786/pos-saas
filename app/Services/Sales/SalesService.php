@@ -4,6 +4,7 @@ namespace App\Services\Sales;
 
 use App\Models\Tenant\Modifier;
 use App\Models\Tenant\PaymentMethod;
+use App\Models\Tenant\RestaurantTable;
 use App\Models\Tenant\RestaurantTableSession;
 use App\Models\Tenant\SalesLedger;
 use App\Models\Tenant\SalesOrder;
@@ -263,6 +264,14 @@ class SalesService
      * PUBLIC (EDGE-LOCAL-POS-1): the ONE shared custody rule for "payment settles the table" — used by
      * Cloud finalizePaidSale below AND the Branch Server settle path (which never calls finalizePaidSale;
      * that whole method is fenced on branch_server). Operational custody only — no accounting effect.
+     *
+     * CONCURRENCY (restaurant closure hardening): callers run this inside the paying transaction, and on
+     * a shared multi-terminal branch DB a plain find()/exists() is not enough — a concurrent hold could
+     * commit between the check and the close, leaving a CLOSED session (and freed table) with a live held
+     * order. The session row is therefore LOCKED, its status re-checked under the lock, and the
+     * remaining-held check is a LOCKING (current) read — its index range is gap-locked, so a concurrent
+     * new hold on this session serializes against the close instead of slipping past the snapshot.
+     * Lock order matches every restaurant mutation: shift → table-session → sale rows.
      */
     public function closeRestaurantTableSession(SalesOrder $sale): void
     {
@@ -270,7 +279,8 @@ class SalesService
             return;
         }
 
-        $session = RestaurantTableSession::with('table')->find($sale->restaurant_table_session_id);
+        $session = RestaurantTableSession::where('id', $sale->restaurant_table_session_id)
+            ->lockForUpdate()->first();
 
         if (!$session || !in_array($session->status, ['open', 'bill_requested'], true)) {
             return;
@@ -279,6 +289,7 @@ class SalesService
         $remainingHeld = SalesOrder::where('restaurant_table_session_id', $session->id)
             ->where('status', 'held')
             ->where('id', '!=', $sale->id)
+            ->lockForUpdate()
             ->exists();
 
         if ($remainingHeld) {
@@ -291,7 +302,7 @@ class SalesService
             'closed_by_user_id' => $sale->created_by_user_id,
         ]);
 
-        $session->table?->update(['status' => 'available']);
+        RestaurantTable::where('id', $session->restaurant_table_id)->update(['status' => 'available']);
     }
 
     public function nextSaleNo(): string

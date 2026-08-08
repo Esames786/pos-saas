@@ -33,6 +33,7 @@ class EdgeLocalRestaurantHttpMySqlTest extends MySqlTenantTestCase
     private int $cashMethodId;
     private int $voidReasonId;
     private int $baselineId;
+    private string $managerCode;
 
     protected function setUp(): void
     {
@@ -78,21 +79,24 @@ class EdgeLocalRestaurantHttpMySqlTest extends MySqlTenantTestCase
         $this->voidReasonId = (int) DB::connection('tenant')->table('void_reasons')->insertGetId([
             'name' => 'Guest changed mind', 'reason_type' => 'cancel', 'is_active' => 1, 'created_at' => now(), 'updated_at' => now(),
         ]);
-        DB::connection('tenant')->table('manager_pins')->insert([
-            'user_id' => $this->managerId, 'pin_hash' => Hash::make('4321'), 'is_active' => 1, 'created_at' => now(), 'updated_at' => now(),
-        ]);
-        // the cashier needs the REAL Cloud cancellation permission (spatie, tenant guard).
+        // cashier AND manager need the REAL Cloud cancellation permission (spatie, tenant guard) — the
+        // cashier to request a cancellation, the manager to APPROVE it (Edge manager contract).
         $permId = (int) DB::connection('tenant')->table('permissions')->insertGetId([
             'name' => 'tenant.pos.void-kot-item', 'guard_name' => 'tenant', 'created_at' => now(), 'updated_at' => now(),
         ]);
-        DB::connection('tenant')->table('model_has_permissions')->insert([
-            'permission_id' => $permId, 'model_type' => User::class, 'model_id' => $this->userId,
-        ]);
+        foreach ([$this->userId, $this->managerId] as $uid) {
+            DB::connection('tenant')->table('model_has_permissions')->insert([
+                'permission_id' => $permId, 'model_type' => User::class, 'model_id' => $uid,
+            ]);
+        }
         app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
 
         $this->bindEdgeLocalMeta($this->branchId, 1);
         $this->baselineId = (int) $this->acceptTestBaseline([['product_id' => $this->productId, 'product_variant_id' => null, 'quantity' => 20]])->id;
         $this->seedEdgeCredential($this->userId, $this->branchId, 1);
+        // the manager's OWN Edge-local credential — manager_pins are deliberately NEVER seeded on Edge.
+        $this->seedEdgeCredential($this->managerId, $this->branchId, 1, 'MgrPass1');
+        $this->managerCode = (string) User::on('tenant')->find($this->managerId)->employee_code;
         $this->actingAs(User::on('tenant')->find($this->userId), 'tenant');
         Auth::shouldUse('tenant');
 
@@ -161,11 +165,19 @@ class EdgeLocalRestaurantHttpMySqlTest extends MySqlTenantTestCase
         $kot1->assertOk()
             ->assertJsonPath('batch.sequence_no', 1)
             ->assertJsonPath('batch.event_type', 'normal')
-            ->assertJsonPath('batch.lines.0.source_line_uuid', $line1Uuid)
-            ->assertJsonPath('jobs.0.print_status', 'printed'); // fallback route completed server-side
+            ->assertJsonPath('batch.lines.0.source_line_uuid', $line1Uuid);
         $this->assertSame(2.0, (float) $kot1->json('batch.lines.0.quantity'), 'round 1 sends the full unsent delta');
         $this->assertTrue(Str::isUlid($kot1->json('batch.lines.0.kot_line_uuid')));
         $this->assertSame(2.0, (float) DB::connection('tenant')->table('sales_order_lines')->where('id', $line1Id)->value('kot_sent_quantity'));
+        // LOCKED RULE — business event ≠ physical print: the sent bookkeeping above advanced, but NO
+        // print was claimed: every job is a queued logical intent, printed_at NULL, no printer attached.
+        $kot1->assertJsonPath('jobs.0.print_status', 'queued');
+        foreach (DB::connection('tenant')->table('print_jobs')->get() as $job) {
+            $this->assertSame('queued', $job->print_status, 'no Edge print job may claim completion');
+            $this->assertNull($job->printed_at);
+            $this->assertNull($job->printer_id, 'no transport/printer is attached on the appliance');
+        }
+        $this->assertSame(0, (int) DB::connection('tenant')->table('sales_orders')->where('id', $saleId)->value('kot_print_count'), 'print counters never advance without a real print');
         // no unsent delta → NO new batch.
         $this->postJson("/edge/local/pos/held-sales/{$saleId}/kot")->assertOk()->assertJsonPath('batch', null);
         $this->assertSame(1, DB::connection('tenant')->table('kot_batches')->where('sales_order_id', $saleId)->count());
@@ -247,16 +259,29 @@ class EdgeLocalRestaurantHttpMySqlTest extends MySqlTenantTestCase
         $reduce()->assertStatus(422);
         $reduce(['void_items' => [['old_line_id' => $lineId, 'quantity' => 2, 'reason_id' => $this->voidReasonId]]])->assertStatus(422);
 
-        // manager re-auth: WRONG pin refused; correct pin mints a single-use approval (real Hash::check).
+        // ── manager re-auth is PURELY LOCAL: zero manager_pins exist (they never ship to an appliance)
+        //    and the master DB is dead for the whole approval + void flow. ──
+        $this->assertSame(0, DB::connection('tenant')->table('manager_pins')->count(), 'no manager_pins dependency on Edge');
+        config(['database.connections.master.database' => 'nonexistent_master_mgr_proof']);
+        DB::purge('master');
+
+        // wrong Edge credential refused (real Argon2id verification, generic error).
         $this->postJson('/edge/local/pos/manager-approvals/verify', [
-            'pin' => '9999', 'action_type' => 'void_kot_item',
+            'manager_employee_code' => $this->managerCode, 'manager_credential' => 'WrongPass9', 'action_type' => 'void_kot_item',
             'payload' => ['sales_order_id' => $saleId, 'sales_order_line_id' => $lineId, 'quantity' => 2],
         ])->assertStatus(422);
+        // unknown action type has no offline contract → fail closed.
+        $this->postJson('/edge/local/pos/manager-approvals/verify', [
+            'manager_employee_code' => $this->managerCode, 'manager_credential' => 'MgrPass1', 'action_type' => 'approve_anything',
+            'payload' => ['sales_order_id' => $saleId],
+        ])->assertStatus(422);
+        // the manager's OWN Edge-local credential mints the single-use approval; cashier session untouched.
         $verify = $this->postJson('/edge/local/pos/manager-approvals/verify', [
-            'pin' => '4321', 'action_type' => 'void_kot_item',
+            'manager_employee_code' => $this->managerCode, 'manager_credential' => 'MgrPass1', 'action_type' => 'void_kot_item',
             'payload' => ['sales_order_id' => $saleId, 'sales_order_line_id' => $lineId, 'quantity' => 2],
         ]);
         $verify->assertStatus(201);
+        $this->assertSame($this->userId, (int) auth('tenant')->id(), 'manager re-auth must not replace the cashier session');
         $approvalId = $verify->json('approval_id');
         $this->assertTrue(Str::isUlid($verify->json('approval_uuid')));
         $this->assertSame($this->managerId, (int) DB::connection('tenant')->table('manager_approvals')->where('id', $approvalId)->value('approved_by_user_id'));
@@ -273,10 +298,112 @@ class EdgeLocalRestaurantHttpMySqlTest extends MySqlTenantTestCase
         $this->assertSame($cancelBatch->event_uuid, $cancellation->referenced_kot_event_uuid);
         $this->assertSame(2.0, (float) $cancellation->quantity);
         $this->assertNotNull(DB::connection('tenant')->table('manager_approvals')->where('id', $approvalId)->value('consumed_at'), 'approval is single-use');
-
-        // the consumed approval can NOT authorize a second void.
-        $this->postJson("/edge/local/pos/held-sales/{$saleId}/kot")->assertOk(); // resend delta irrelevant; just ensure sale intact
         $this->assertSame('held', SalesOrder::on('tenant')->find($saleId)->status);
+
+        // the CONSUMED approval cannot authorize a second void (single-use, payload-bound).
+        $takeaway = $this->postJson('/edge/local/pos/held-sales', [
+            'order_type' => 'takeaway', 'lines' => [['product_id' => $this->productId, 'quantity' => 2]],
+        ]);
+        $tSaleId = $takeaway->json('sale_id');
+        $tLineId = $takeaway->json('lines.0.id');
+        $this->postJson("/edge/local/pos/held-sales/{$tSaleId}/kot")->assertOk();
+        $this->postJson('/edge/local/pos/held-sales', [
+            'held_sale_id' => $tSaleId, 'order_type' => 'takeaway',
+            'lines' => [['sales_order_line_id' => $tLineId, 'product_id' => $this->productId, 'quantity' => 1]],
+            'void_items' => [['old_line_id' => $tLineId, 'quantity' => 1, 'reason_id' => $this->voidReasonId, 'manager_approval_id' => $approvalId]],
+        ])->assertStatus(422);
+    }
+
+    /** Every stale/ineligible manager identity fails closed — with the master DB unavailable throughout. */
+    public function test_manager_reauth_refusal_matrix_on_pure_local_authority(): void
+    {
+        $sessionId = $this->postJson("/edge/local/pos/restaurant/tables/{$this->tableId}/open", ['guest_count' => 1])->json('session_id');
+        $hold = $this->postJson('/edge/local/pos/held-sales', [
+            'order_type' => 'dine_in', 'restaurant_table_session_id' => $sessionId,
+            'lines' => [['product_id' => $this->productId, 'quantity' => 2]],
+        ]);
+        $saleId = $hold->json('sale_id');
+        $lineId = $hold->json('lines.0.id');
+        $this->postJson("/edge/local/pos/held-sales/{$saleId}/kot")->assertOk();
+
+        config(['database.connections.master.database' => 'nonexistent_master_mgr_matrix']);
+        DB::purge('master');
+
+        $verify = fn (string $code, string $cred) => $this->postJson('/edge/local/pos/manager-approvals/verify', [
+            'manager_employee_code' => $code, 'manager_credential' => $cred, 'action_type' => 'void_kot_item',
+            'payload' => ['sales_order_id' => $saleId, 'sales_order_line_id' => $lineId, 'quantity' => 1],
+        ]);
+
+        // missing permission: enrolled Edge manager credential but NO tenant.pos.void-kot-item.
+        $noPermId = $this->makeUser(['default_branch_id' => $this->branchId, 'employee_code' => 'NOPERM' . Str::random(3)]);
+        $this->seedEdgeCredential($noPermId, $this->branchId, 1, 'NoPermPass1');
+        $verify(User::on('tenant')->find($noPermId)->employee_code, 'NoPermPass1')->assertStatus(422);
+
+        // wrong branch: manager belongs to another branch (no assignment here) — refused before permission.
+        $otherBranch = $this->makeBranch();
+        $wrongBranchId = $this->makeUser(['default_branch_id' => $otherBranch, 'employee_code' => 'WRBR' . Str::random(4)]);
+        $this->seedEdgeCredential($wrongBranchId, $this->branchId, 1, 'WrongBranch1');
+        $verify(User::on('tenant')->find($wrongBranchId)->employee_code, 'WrongBranch1')->assertStatus(422);
+
+        // disabled manager user.
+        DB::connection('tenant')->table('users')->where('id', $this->managerId)->update(['status' => 'inactive']);
+        $verify($this->managerCode, 'MgrPass1')->assertStatus(422);
+        DB::connection('tenant')->table('users')->where('id', $this->managerId)->update(['status' => 'active']);
+
+        // stale activation epoch on the manager credential (superseded appliance generation).
+        DB::connection('tenant')->table('edge_local_user_credentials')->where('user_id', $this->managerId)->update(['activation_epoch' => 0]);
+        $verify($this->managerCode, 'MgrPass1')->assertStatus(422);
+        DB::connection('tenant')->table('edge_local_user_credentials')->where('user_id', $this->managerId)->update(['activation_epoch' => 1]);
+
+        // and the restored, current manager works — proving the matrix refused for the right reasons.
+        $ok = $verify($this->managerCode, 'MgrPass1');
+        $ok->assertStatus(201);
+        $this->assertSame($this->managerId, (int) DB::connection('tenant')->table('manager_approvals')->where('id', $ok->json('approval_id'))->value('approved_by_user_id'));
+    }
+
+    /** Captured price is bound to the line's economic identity — an old line id is not a price token. */
+    public function test_captured_price_cannot_be_inherited_across_identity_changes(): void
+    {
+        // holds/revisions never touch operational stock, so the second product needs no baseline entry.
+        $expensiveId = $this->makeProduct($this->makeCategory(), ['inventory_consumption_method' => 'stock_item', 'is_stock_tracked' => 1, 'is_sellable' => 1, 'is_pos_visible' => 1, 'status' => 'active', 'default_selling_price' => 500]);
+
+        $sessionId = $this->postJson("/edge/local/pos/restaurant/tables/{$this->tableId}/open", ['guest_count' => 1])->json('session_id');
+        $hold = $this->postJson('/edge/local/pos/held-sales', [
+            'order_type' => 'dine_in', 'restaurant_table_session_id' => $sessionId,
+            'lines' => [['product_id' => $this->productId, 'quantity' => 1]], // captured at 100
+        ]);
+        $saleId = $hold->json('sale_id');
+        $cheapLineId = $hold->json('lines.0.id');
+
+        $revise = fn (array $lines) => $this->postJson('/edge/local/pos/held-sales', [
+            'held_sale_id' => $saleId, 'order_type' => 'dine_in', 'restaurant_table_session_id' => $sessionId,
+            'lines' => $lines,
+        ]);
+
+        // A. old cheap line id + DIFFERENT product → cannot inherit the 100 price.
+        $revise([['sales_order_line_id' => $cheapLineId, 'product_id' => $expensiveId, 'quantity' => 1]])->assertStatus(422);
+
+        // B. old no-variant line id + a variant of the same product → refused (variant identity differs).
+        $variantId = (int) DB::connection('tenant')->table('product_variants')->insertGetId(['product_id' => $this->productId, 'sku' => 'V' . Str::random(5), 'name' => 'Large', 'is_default' => 0, 'is_active' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        $revise([['sales_order_line_id' => $cheapLineId, 'product_id' => $this->productId, 'product_variant_id' => $variantId, 'quantity' => 1]])->assertStatus(422);
+
+        // C. the same old line id supplied twice → controlled refusal, not duplicated captured price.
+        $revise([
+            ['sales_order_line_id' => $cheapLineId, 'product_id' => $this->productId, 'quantity' => 1],
+            ['sales_order_line_id' => $cheapLineId, 'product_id' => $this->productId, 'quantity' => 2],
+        ])->assertStatus(422);
+
+        // D. a line id belonging to a DIFFERENT held order → refused.
+        $foreign = $this->postJson('/edge/local/pos/held-sales', [
+            'order_type' => 'takeaway', 'lines' => [['product_id' => $expensiveId, 'quantity' => 1]],
+        ]);
+        $revise([['sales_order_line_id' => $foreign->json('lines.0.id'), 'product_id' => $expensiveId, 'quantity' => 1]])->assertStatus(422);
+
+        // E. same-identity Add Round still preserves the captured price after a catalog move.
+        DB::connection('tenant')->table('products')->where('id', $this->productId)->update(['default_selling_price' => 999]);
+        $ok = $revise([['sales_order_line_id' => $cheapLineId, 'product_id' => $this->productId, 'quantity' => 2]]);
+        $ok->assertOk();
+        $this->assertSame(100.0, (float) collect($ok->json('lines'))->first()['unit_price'], 'captured price survives for the SAME identity only');
     }
 
     public function test_cancel_held_order_and_close_session_frees_the_table_and_shift(): void
@@ -291,7 +418,8 @@ class EdgeLocalRestaurantHttpMySqlTest extends MySqlTenantTestCase
         // whole-order cancel of sent food requires the manager (branch mode) — without approval refused.
         $this->postJson("/edge/local/pos/held-sales/{$saleId}/cancel", ['reason_id' => $this->voidReasonId])->assertStatus(422);
         $approvalId = $this->postJson('/edge/local/pos/manager-approvals/verify', [
-            'pin' => '4321', 'action_type' => 'cancel_held_order', 'payload' => ['sales_order_id' => $saleId],
+            'manager_employee_code' => $this->managerCode, 'manager_credential' => 'MgrPass1',
+            'action_type' => 'cancel_held_order', 'payload' => ['sales_order_id' => $saleId],
         ])->json('approval_id');
         $this->postJson("/edge/local/pos/held-sales/{$saleId}/cancel", ['reason_id' => $this->voidReasonId, 'manager_approval_id' => $approvalId])
             ->assertOk()->assertJsonPath('status', 'cancelled');

@@ -408,10 +408,18 @@ class EdgeLocalPosService
     // session; durable sale_uuid across held→revise→settle (line/payment rows churn — proven in
     // EDGE-IDENTITY); KOT business events through the REAL PrintJobService::queueKot (kot_batches +
     // kot_batch_lines with event_uuid / kot_line_uuid / source_line_uuid). NO print transport runs on the
-    // appliance this sprint — with no printers configured the Cloud routing degrades to its browser-fallback
-    // route; Edge completes that route server-side (markPrinted) exactly as the Cloud POS browser does, so
-    // kot_sent bookkeeping stays canonical. Held orders NEVER touch operational stock or settlement —
-    // both happen exactly once at settle, mirroring "inventory posts at finalize".
+    // appliance this sprint: the KOT BUSINESS EVENT's sent bookkeeping is acknowledged explicitly
+    // (applyKotSentBookkeeping) while every print_jobs row stays a queued logical intent — nothing may
+    // claim `printed` until a real transport exists. Held orders NEVER touch operational stock or
+    // settlement — both happen exactly once at settle, mirroring "inventory posts at finalize".
+    //
+    // CANONICAL LOCK ORDER for every restaurant mutation (documented once, enforced everywhere):
+    //     shift row → table / table-session row → sale row → dependent rows (lines/payments/ledger)
+    //   open-table: shift → table;  hold/Add Round: shift → session → sale;  settle: shift → session →
+    //   sale (ids discovered by a non-locking probe first);  session close paths lock the session then
+    //   take LOCKING (current) reads of remaining held work, so a concurrent hold — which always holds
+    //   the session lock (a dine-in revision REQUIRES its session) — serializes against the close.
+    //   Invariant: a session is never closed (and its table never freed) while a held order survives.
 
     /** Open a dine-in table session (Cloud RestaurantTableSessionController::open semantics). */
     public function openTableSession(int $tableId, array $data, User $user, ?int $terminalId): RestaurantTableSession
@@ -446,7 +454,13 @@ class EdgeLocalPosService
             if (! $table) {
                 throw ValidationException::withMessages(['table' => 'Select an active table on this branch.']);
             }
-            if ($table->openSession()->exists()) {
+            // LOCKING (current) read — under REPEATABLE READ a plain exists() reads this transaction's
+            // snapshot and can MISS a session another terminal committed after our snapshot but before we
+            // acquired the table lock (proven by the two-process same-table race). The locking read sees
+            // the current committed state and gap-locks the index, so exactly one open ever wins.
+            $hasOpen = RestaurantTableSession::on('tenant')->where('restaurant_table_id', $table->id)
+                ->whereIn('status', ['open', 'bill_requested'])->lockForUpdate()->exists();
+            if ($hasOpen) {
                 throw new RuntimeException('Table already has an open session.');
             }
 
@@ -529,8 +543,9 @@ class EdgeLocalPosService
                 return $this->reviseHeldSale($data, $user, $branch, $branchId, $shift, $session, $lines);
             }
 
-            // ── new held sale (one open check per session) ──
-            if ($session && SalesOrder::on('tenant')->where('restaurant_table_session_id', $session->id)->where('status', 'held')->exists()) {
+            // ── new held sale (one open check per session) — LOCKING read: a snapshot exists() could
+            //    miss a check committed by another terminal after this transaction's snapshot. ──
+            if ($session && SalesOrder::on('tenant')->where('restaurant_table_session_id', $session->id)->where('status', 'held')->lockForUpdate()->exists()) {
                 throw new RuntimeException('This table already has an open order — continue it (Add Round) instead of starting another.');
             }
 
@@ -580,15 +595,31 @@ class EdgeLocalPosService
         if (! $sale) {
             throw ValidationException::withMessages(['held_sale_id' => 'No held sale found to revise.']);
         }
-        if ($session && (int) $sale->restaurant_table_session_id !== (int) $session->id) {
-            throw ValidationException::withMessages(['restaurant_table_session_id' => 'This held sale belongs to a different table session.']);
+        // LOCK-ORDER GUARD: a dine-in check may only be revised with its session supplied (and therefore
+        // LOCKED, shift → session → sale) — otherwise a revision could run unserialized against a
+        // concurrent session close. A mismatched or omitted session is refused, never inferred.
+        if ((int) $sale->restaurant_table_session_id !== (int) ($session?->id ?? 0)) {
+            throw ValidationException::withMessages(['restaurant_table_session_id' => 'This held sale belongs to a different table session — submit its own session.']);
         }
 
-        $existing = $sale->lines()->get()->keyBy('id');
+        // LOCKING (current) read of the lines — a stale snapshot here is how a conflicting Add Round
+        // could silently overwrite another terminal's committed round (proven by the two-process race):
+        // the loser must see the CURRENT lines, fail the belongs-to check, and be refused.
+        $existing = $sale->lines()->lockForUpdate()->get()->keyBy('id');
+        $seenOldIds = [];
         foreach ($lines as $l) {
-            if (! empty($l['sales_order_line_id']) && ! $existing->has((int) $l['sales_order_line_id'])) {
+            if (empty($l['sales_order_line_id'])) {
+                continue;
+            }
+            $oldId = (int) $l['sales_order_line_id'];
+            if (! $existing->has($oldId)) {
                 throw ValidationException::withMessages(['lines' => 'A submitted line does not belong to this order.']);
             }
+            // (captured-price authority) an old line id is NOT a reusable cheap-price token.
+            if (isset($seenOldIds[$oldId])) {
+                throw ValidationException::withMessages(['lines' => 'The same order line was submitted more than once.']);
+            }
+            $seenOldIds[$oldId] = true;
         }
 
         // ── implicit-cancellation detection (Cloud rule): reducing below the KITCHEN-SENT quantity
@@ -629,15 +660,23 @@ class EdgeLocalPosService
         }
 
         // ── per-line captured price + KOT-sent carry-over, then Cloud's delete+recreate churn ──
-        $capturedPrice = $existing->map(fn ($l) => (float) $l->unit_price);
         $kotSentByLineId = $existing->map(fn ($l) => (float) $l->kot_sent_quantity);
         $resolved = [];
         foreach ($lines as $l) {
             $oldId = ! empty($l['sales_order_line_id']) ? (int) $l['sales_order_line_id'] : null;
             $r = $this->resolveLines([$l], $branch)[0];
-            if ($oldId !== null && $capturedPrice->has($oldId)) {
+            if ($oldId !== null) {
+                // The stored captured price belongs to ONE economic identity — a carried line id whose
+                // product/variant/kind differs from the original is refused outright (it could otherwise
+                // inherit a cheaper captured price, and its KOT-sent state would be nonsense anyway).
+                $old = $existing->get($oldId);
+                if ((int) $old->product_id !== (int) $r['product_id']
+                    || (int) ($old->product_variant_id ?? 0) !== (int) ($r['_variant']?->id ?? 0)
+                    || (string) $old->line_kind !== (string) $r['line_kind']) {
+                    throw ValidationException::withMessages(['lines' => 'A carried line no longer matches its original product/variant — submit the change as a new line.']);
+                }
                 // captured price: the round the guest ordered at keeps its price even if the catalog moved.
-                $price = $capturedPrice->get($oldId);
+                $price = (float) $old->unit_price;
                 $r['unit_price'] = $price;
                 $r['tax_amount'] = $this->pricing->resolveTaxAmount($r['_product'], (float) $r['quantity'], $price, 0.0, null);
             }
@@ -683,9 +722,13 @@ class EdgeLocalPosService
     /**
      * Record the KOT BUSINESS EVENT for a held sale's unsent delta through the REAL Cloud pipeline
      * (kot_batches sequence/event_type + kot_batch_lines with kot_line_uuid + source_line_uuid snapshots,
-     * logical_key idempotency). With no printers configured the routing degrades to the browser-fallback
-     * route; Edge completes it server-side (markPrinted — the same call the Cloud POS browser makes), so
-     * kot_sent/kot_sent_quantity bookkeeping is canonical and a later round only sends its true delta.
+     * logical_key idempotency, sale-row lock serialization inside queueKot).
+     *
+     * LOCKED RULE — business event ≠ physical print: NO transport runs on the appliance this sprint, so
+     * nothing here may claim `printed`. After the batch commits, the SENT bookkeeping is advanced exactly
+     * once via the shared applyKotSentBookkeeping (idempotent set-to-quantity — the same rule the network
+     * path applies at queue time), while the print_jobs row remains a durable logical intent: `queued`,
+     * printed_at NULL, no Print Agent invoked. EDGE-LOCAL-PRINT-1 will deliver these intents.
      * @return array{batch: ?KotBatch, jobs: array<int, \App\Models\Tenant\PrintJob>}
      */
     public function queueKotEvents(int $saleId, User $user, ?int $terminalId): array
@@ -703,8 +746,10 @@ class EdgeLocalPosService
 
         $jobs = $this->printJobs->queueKot($sale);
         foreach ($jobs as $job) {
-            if ($job->printer_id === null && $job->print_status === 'queued') {
-                $this->printJobs->markPrinted($job); // completes the browser-fallback route (marks lines sent)
+            $eventType = (string) data_get($job->payload, 'kot_event_type', 'normal');
+            if ($job->document_type === 'kot' && ! in_array($eventType, ['cancel', 'duplicate'], true)) {
+                // acknowledge the BUSINESS EVENT only — the job itself stays queued / not printed.
+                $this->printJobs->applyKotSentBookkeeping($sale->fresh(), $job);
             }
         }
         $batch = KotBatch::on('tenant')->where('sales_order_id', $sale->id)->orderByDesc('sequence_no')->first();
@@ -712,13 +757,36 @@ class EdgeLocalPosService
         return ['batch' => $jobs ? $batch : null, 'jobs' => $jobs];
     }
 
-    /** Manager re-auth: verify a manager PIN and mint a single-use approval (REAL ManagerApprovalService). */
-    public function verifyManagerPin(string $pin, string $actionType, User $user, ?array $payload = null): \App\Models\Tenant\ManagerApproval
+    /** Which manager permission each offline approval action demands — unknown actions fail closed. */
+    private const MANAGER_ACTION_PERMISSIONS = [
+        'void_kot_item' => 'tenant.pos.void-kot-item',
+        'void_kot_items' => 'tenant.pos.void-kot-item',
+        'cancel_held_order' => 'tenant.pos.void-kot-item',
+    ];
+
+    /**
+     * Manager re-auth on the appliance: the manager authenticates with THEIR OWN Edge-local credential
+     * (EdgeLocalAuthService::verifyManager — branch_server-only, bound-branch, current activation_epoch,
+     * lockout + durable audit, required permission). manager_pins are NEVER consulted: PIN hashes are
+     * deliberately excluded from the bootstrap, so the Cloud PIN path cannot work offline. The approval
+     * row is minted by the SAME shared ManagerApprovalService creator Cloud verifyPin uses (identity,
+     * payload binding, expiry + single-use consume unchanged). The cashier session stays the cashier
+     * session — this is elevation for ONE action, never login-as-manager.
+     */
+    public function verifyManagerApproval(string $employeeCode, string $credential, string $actionType, User $requestingUser, ?array $payload = null): \App\Models\Tenant\ManagerApproval
     {
         $meta = $this->context->requireCurrent();
-        $this->requireAuthorizedPrincipal($user, (int) $meta->branch_id);
+        $this->requireAuthorizedPrincipal($requestingUser, (int) $meta->branch_id);
 
-        return app(\App\Services\Sales\ManagerApprovalService::class)->verifyPin($pin, $actionType, (int) $user->id, $payload);
+        $permission = self::MANAGER_ACTION_PERMISSIONS[$actionType] ?? null;
+        if ($permission === null) {
+            throw ValidationException::withMessages(['action_type' => "No offline manager-approval contract exists for [{$actionType}]."]);
+        }
+
+        $manager = app(\App\Services\Edge\EdgeLocalAuthService::class)->verifyManager($employeeCode, $credential, $permission);
+
+        return app(\App\Services\Sales\ManagerApprovalService::class)
+            ->createApprovalForAuthenticatedManager($manager, $actionType, (int) $requestingUser->id, $payload);
     }
 
     /**
@@ -772,17 +840,36 @@ class EdgeLocalPosService
                 }
                 [$user, $terminal] = $this->revalidateInTxn($user, $branchId, $terminal->id);
 
-                $sale = SalesOrder::on('tenant')->where('id', $heldSaleId)->where('branch_id', $branchId)
-                    ->where('status', 'held')->lockForUpdate()->first();
-                if (! $sale) {
+                // ── CANONICAL RESTAURANT LOCK ORDER: shift → table-session → sale (matches open-table,
+                // hold and Add Round, so no two restaurant mutations acquire these rows in opposite
+                // order). The sale's ids are discovered with a non-locking read first, then each row is
+                // locked in order and re-verified under its lock. ──
+                $probe = SalesOrder::on('tenant')->where('id', $heldSaleId)->where('branch_id', $branchId)
+                    ->where('status', 'held')->first();
+                if (! $probe) {
                     throw ValidationException::withMessages(['held_sale_id' => 'No held sale found to settle.']);
                 }
+
                 // The check's OWN shift takes the cash (it is still open — a held sale blocks its close);
                 // row-lock it so a concurrent close cannot interleave with the counter increments.
-                $shift = Shift::on('tenant')->where('id', (int) $sale->shift_id)->lockForUpdate()->first();
+                $shift = Shift::on('tenant')->where('id', (int) $probe->shift_id)->lockForUpdate()->first();
                 if (! $shift || $shift->status !== 'open') {
                     throw new RuntimeException('The shift this check belongs to is not open.');
                 }
+                if ($probe->restaurant_table_session_id) {
+                    RestaurantTableSession::on('tenant')->where('id', (int) $probe->restaurant_table_session_id)
+                        ->lockForUpdate()->first();
+                }
+
+                $sale = SalesOrder::on('tenant')->where('id', $heldSaleId)->where('branch_id', $branchId)
+                    ->where('status', 'held')->lockForUpdate()->first();
+                if (! $sale || (int) $sale->shift_id !== (int) $shift->id) {
+                    // settled/cancelled (or impossibly re-homed) while we acquired locks — fail closed.
+                    throw ValidationException::withMessages(['held_sale_id' => 'No held sale found to settle.']);
+                }
+                // LOCKING (current) read of the lines: the stock consumed MUST be the committed final
+                // rounds, never this transaction's stale snapshot of them (phantom-read hazard).
+                $currentLines = $sale->lines()->lockForUpdate()->get();
 
                 $paidAmount = array_sum(array_map(fn ($p) => (float) $p['amount'], $payments));
                 if ($paidAmount + 1e-6 < (float) $sale->grand_total) {
@@ -812,7 +899,10 @@ class EdgeLocalPosService
                 ]);
 
                 // Operational stock: the FINAL quantities, exactly once, at settle (never during rounds).
-                $this->opStock->consumeForSale($sale->fresh(), $user->id);
+                // The sale carries the LOCKED current lines (loadMissing respects a set relation).
+                $saleForStock = $sale->fresh();
+                $saleForStock->setRelation('lines', $currentLines);
+                $this->opStock->consumeForSale($saleForStock, $user->id);
                 $sale->update(['edge_operational_stock_posted' => true]);
 
                 // Shared operational settlement + the shared "payment settles the table" custody rule.
@@ -863,7 +953,9 @@ class EdgeLocalPosService
             if (! $session || in_array($session->status, ['closed', 'cancelled'], true)) {
                 throw ValidationException::withMessages(['session' => 'No open table session found.']);
             }
-            if (SalesOrder::on('tenant')->where('restaurant_table_session_id', $session->id)->whereIn('status', ['draft', 'held'])->exists()) {
+            // LOCKING (current) read — a concurrent hold on this session serializes against the close
+            // instead of slipping past the transaction snapshot (same rule as closeRestaurantTableSession).
+            if (SalesOrder::on('tenant')->where('restaurant_table_session_id', $session->id)->whereIn('status', ['draft', 'held'])->lockForUpdate()->exists()) {
                 throw new RuntimeException('This table still has open orders — settle or cancel them first.');
             }
             $session->update(['status' => $targetStatus, 'closed_by_user_id' => $user->id, 'closed_at' => now()]);
