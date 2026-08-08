@@ -38,6 +38,12 @@ class DepartmentConsumptionService
      */
     public function processSaleOrder(SalesOrder $sale): void
     {
+        // EDGE-LOCAL-POS-1 (H9/F) — department custody/finance sub-ledger is Cloud authority; fail closed on a
+        // Branch Server before any custody mutation.
+        if (\App\Support\EdgeRuntime::isBranchServer()) {
+            throw new \RuntimeException('Department custody posting must not run on a Branch Server.');
+        }
+
         $ledgers = StockLedger::query()
             ->with('product:id,sku,name,category_id')
             ->where('reference_type', 'sales_order')

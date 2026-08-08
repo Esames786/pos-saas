@@ -519,47 +519,8 @@ class SalesOrderController extends Controller
      */
     private function canonicalSalePayload(array $data): array
     {
-        return [
-            'branch_id'                   => $data['branch_id'] ?? null,
-            'terminal_id'                 => $data['terminal_id'] ?? null,
-            'customer_id'                 => $data['customer_id'] ?? null,
-            'order_source'                => $data['order_source'] ?? null,
-            'order_type'                  => $data['order_type'] ?? null,
-            'restaurant_table_session_id' => $data['restaurant_table_session_id'] ?? null,
-            'held_sale_id'                => $data['held_sale_id'] ?? null,
-            'delivery_channel_id'         => $data['delivery_channel_id'] ?? null,
-            'delivery_rider_id'           => $data['delivery_rider_id'] ?? null,
-            'delivery_address'            => $data['delivery_address'] ?? null,
-            'discount_type'               => $data['discount_type'] ?? null,
-            'discount_value'              => $data['discount_value'] ?? null,
-            'promo_code'                  => $data['promo_code'] ?? null,
-            'tip_amount'                  => $data['tip_amount'] ?? null,
-            'kot_print_intent'            => $data['kot_print_intent'] ?? null,
-            'receipt_print_intent'        => $data['receipt_print_intent'] ?? null,
-            // HARDEN-1: line ordering is NOT material — sort by stable identity so
-            // harmless browser reordering never causes a false conflict.
-            'lines' => collect($data['lines'] ?? [])->map(fn ($l) => [
-                'product_id'         => $l['product_id'] ?? null,
-                'product_variant_id' => $l['product_variant_id'] ?? null,
-                'line_kind'          => $l['line_kind'] ?? 'standard',
-                'combo_id'           => $l['combo_id'] ?? null,
-                'client_line_key'    => $l['client_line_key'] ?? null,
-                'quantity'           => $l['quantity'] ?? null,
-                'unit_price'         => $l['unit_price'] ?? null,
-                'discount_amount'    => $l['discount_amount'] ?? null,
-                'tax_amount'         => $l['tax_amount'] ?? null,
-                'modifiers'          => $l['modifiers'] ?? null,
-            ])
-            ->sortBy(fn ($l) => implode('|', [$l['client_line_key'] ?? '', $l['product_id'] ?? '', $l['product_variant_id'] ?? '', $l['line_kind'] ?? '']))
-            ->values()->all(),
-            'payments' => collect($data['payments'] ?? [])->map(fn ($p) => [
-                'payment_method_id' => $p['payment_method_id'] ?? null,
-                'amount'            => $p['amount'] ?? null,
-                'tendered_amount'   => $p['tendered_amount'] ?? null,
-            ])
-            ->sortBy(fn ($p) => ($p['payment_method_id'] ?? '') . '|' . ($p['amount'] ?? ''))
-            ->values()->all(),
-        ];
+        // EDGE-LOCAL-POS-1: single source of truth shared with the offline Branch Server.
+        return app(\App\Services\Sales\SaleIdempotencyService::class)->canonicalSalePayload($data);
     }
 
     public function show(SalesOrder $salesOrder)
@@ -723,35 +684,9 @@ class SalesOrderController extends Controller
 
     private function resolveSellingPrice(Product $product, $variant, int $branchId, ?float $submittedPrice): float
     {
-        // BUG-015 FIX: accept an explicitly submitted price of 0 as a legitimate
-        // free/complimentary item. Only fall back to catalog price when null (i.e.
-        // the field was absent from the request, not when it was intentionally set to 0).
-        if ($submittedPrice !== null) {
-            return $submittedPrice; // includes 0 for free items
-        }
-
-        $branchPrice = $product->branchPrices()
-            ->where('branch_id', $branchId)
-            ->where(function ($q) use ($variant) {
-                if ($variant) {
-                    $q->where('product_variant_id', $variant->id)->orWhereNull('product_variant_id');
-                } else {
-                    $q->whereNull('product_variant_id');
-                }
-            })
-            ->where('is_available', true)
-            ->orderByRaw('product_variant_id IS NULL')
-            ->first();
-
-        if ($branchPrice) {
-            return (float) $branchPrice->selling_price;
-        }
-
-        if ($variant && (float) ($variant->selling_price ?? 0) > 0) {
-            return (float) $variant->selling_price;
-        }
-
-        return (float) ($product->default_selling_price ?? 0);
+        // EDGE-LOCAL-POS-1: single source of truth shared with the offline Branch Server.
+        return app(\App\Services\Sales\SalePricingService::class)
+            ->resolveSellingPrice($product, $variant, $branchId, $submittedPrice);
     }
 
     private function normalizeLineModifiers(mixed $value): array
@@ -781,17 +716,9 @@ class SalesOrderController extends Controller
 
     private function resolveTaxAmount(Product $product, float $quantity, float $unitPrice, float $lineDiscount, ?float $submittedTax): float
     {
-        if ($submittedTax !== null && $submittedTax > 0) {
-            return $submittedTax;
-        }
-
-        if (!(bool) ($product->is_taxable ?? false) || (float) ($product->tax_rate_percent ?? 0) <= 0) {
-            return 0;
-        }
-
-        $taxableAmount = max(($quantity * $unitPrice) - $lineDiscount, 0);
-
-        return round(($taxableAmount * (float) $product->tax_rate_percent) / 100, 2);
+        // EDGE-LOCAL-POS-1: single source of truth shared with the offline Branch Server.
+        return app(\App\Services\Sales\SalePricingService::class)
+            ->resolveTaxAmount($product, $quantity, $unitPrice, $lineDiscount, $submittedTax);
     }
 
     /**

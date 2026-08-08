@@ -28,6 +28,10 @@ class InventoryService
         ?string $notes = null,
         ?int $userId = null,
     ): StockLedger {
+        // EDGE-LOCAL-POS-1 (H9/F) — official inventory-IN mutates cost layers/valuation; Cloud authority only.
+        if (\App\Support\EdgeRuntime::isBranchServer()) {
+            throw new RuntimeException('Official inventory posting must not run on a Branch Server.');
+        }
         $this->ensureStockTracked($product);
 
         $batch = $this->findOrCreateBatch(
@@ -69,6 +73,12 @@ class InventoryService
         ?int $userId = null,
         bool $allowNegative = false,
     ): array {
+        // EDGE-LOCAL-POS-1 (H9/F) — FEFO out couples the operational decrement with COGS/FEFO valuation. On a
+        // Branch Server, stock is decremented ONLY by EdgeOperationalStockService (quantity-only); this
+        // authoritative path must fail CLOSED before any valuation/cost row is written offline.
+        if (\App\Support\EdgeRuntime::isBranchServer()) {
+            throw new RuntimeException('FEFO/valuation stock posting must not run on a Branch Server.');
+        }
         $this->ensureStockTracked($product);
 
         // BUG-006 FIX: always use the tenant connection so inventory writes stay
@@ -174,6 +184,10 @@ class InventoryService
         ?string $notes = null,
         ?int $userId = null,
     ): void {
+        // EDGE-LOCAL-POS-1 (H9/F) — official stock transfer/valuation is Cloud authority; fail closed on Edge.
+        if (\App\Support\EdgeRuntime::isBranchServer()) {
+            throw new RuntimeException('Official inventory transfer must not run on a Branch Server.');
+        }
         if ($fromBranch->id === $toBranch->id) {
             throw new RuntimeException('Transfer branches must be different.');
         }

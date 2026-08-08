@@ -36,6 +36,12 @@ class JournalService
         array $lines,
         ?int $userId = null
     ): JournalEntry {
+        // EDGE-LOCAL-POS-1 (H9) — the lowest-level GL mutator. GL is Cloud accounting authority and must
+        // never post on a Branch Server, regardless of caller. Fail closed before any journal row is written.
+        if (\App\Support\EdgeRuntime::isBranchServer()) {
+            throw new \RuntimeException('General-ledger posting must not run on a Branch Server.');
+        }
+
         if ($existing = $this->findPostedForSource($sourceType, $sourceId)) {
             return $existing;
         }
@@ -74,6 +80,11 @@ class JournalService
      */
     public function reverse(JournalEntry $entry, string $reason, ?int $userId = null): JournalEntry
     {
+        // EDGE-LOCAL-POS-1 (H9) — GL mutation (reversal) is Cloud authority; fail closed on a Branch Server.
+        if (\App\Support\EdgeRuntime::isBranchServer()) {
+            throw new \RuntimeException('General-ledger reversal must not run on a Branch Server.');
+        }
+
         if ($existing = JournalEntry::where('reversed_entry_id', $entry->id)->first()) {
             return $existing;
         }

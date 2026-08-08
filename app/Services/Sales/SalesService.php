@@ -25,6 +25,14 @@ class SalesService
 
     public function finalizePaidSale(SalesOrder $sale): SalesOrder
     {
+        // EDGE-LOCAL-POS-1 (H9) — defence-in-depth: this is the Cloud-authoritative finalize (GL/COGS/FEFO/
+        // cash-bank/department). It must NEVER run on a Branch Server. The offline path uses EdgeLocalPosService
+        // + EdgeOperationalStockService and never reaches here; any accidental invocation fails CLOSED before
+        // a single authoritative row is written.
+        if (\App\Support\EdgeRuntime::isBranchServer()) {
+            throw new \RuntimeException('finalizePaidSale (Cloud accounting authority) must not run on a Branch Server.');
+        }
+
         $sale = DB::connection('tenant')->transaction(function () use ($sale) {
             $sale->load([
                 'branch',
@@ -122,8 +130,9 @@ class SalesService
 
             $sale->refresh()->load(['payments.method']);
 
-            $this->postSalesLedger($sale);
-            $this->updateShiftTotals($sale);
+            // EDGE-LOCAL-POS-1 (G): the operational settlement (sales subledger + shift counters) is the
+            // SHARED Cloud/Edge implementation — one set of rules, no drift.
+            app(SaleOperationalSettlementService::class)->settle($sale);
             $this->closeRestaurantTableSession($sale);
 
             return $sale->fresh();
@@ -249,115 +258,6 @@ class SalesService
         return round($totalCost, 4);
     }
 
-    private function postSalesLedger(SalesOrder $sale): void
-    {
-        SalesLedger::firstOrCreate(
-            [
-                'sales_order_id' => $sale->id,
-                'entry_type'     => 'sale_total',
-            ],
-            [
-                'branch_id'           => $sale->branch_id,
-                'sale_payment_id'     => null,
-                'direction'           => 'credit',
-                'amount'              => $sale->grand_total,
-                'reference_no'        => $sale->sale_no,
-                'created_by_user_id'  => $sale->created_by_user_id,
-                'notes'               => 'Sale posted',
-            ]
-        );
-
-        foreach ($sale->payments as $payment) {
-            SalesLedger::firstOrCreate(
-                [
-                    'sales_order_id'  => $sale->id,
-                    'sale_payment_id' => $payment->id,
-                    'entry_type'      => 'sale_payment',
-                ],
-                [
-                    'branch_id'          => $sale->branch_id,
-                    'direction'          => 'debit',
-                    'amount'             => $payment->amount,
-                    'reference_no'       => $sale->sale_no,
-                    'created_by_user_id' => $sale->created_by_user_id,
-                    'notes'              => 'Sale payment received',
-                ]
-            );
-        }
-
-        if ((float) $sale->discount_amount > 0) {
-            SalesLedger::firstOrCreate(
-                [
-                    'sales_order_id' => $sale->id,
-                    'entry_type'     => 'sale_discount',
-                ],
-                [
-                    'branch_id'          => $sale->branch_id,
-                    'sale_payment_id'    => null,
-                    'direction'          => 'debit',
-                    'amount'             => $sale->discount_amount,
-                    'reference_no'       => $sale->sale_no,
-                    'created_by_user_id' => $sale->created_by_user_id,
-                    'notes'              => 'Sale discount',
-                ]
-            );
-        }
-
-        if ((float) $sale->tax_amount > 0) {
-            SalesLedger::firstOrCreate(
-                [
-                    'sales_order_id' => $sale->id,
-                    'entry_type'     => 'sale_tax',
-                ],
-                [
-                    'branch_id'          => $sale->branch_id,
-                    'sale_payment_id'    => null,
-                    'direction'          => 'credit',
-                    'amount'             => $sale->tax_amount,
-                    'reference_no'       => $sale->sale_no,
-                    'created_by_user_id' => $sale->created_by_user_id,
-                    'notes'              => 'Sale tax',
-                ]
-            );
-        }
-
-        if ((float) ($sale->service_charge_amount ?? 0) > 0) {
-            SalesLedger::firstOrCreate(
-                [
-                    'sales_order_id' => $sale->id,
-                    'entry_type'     => 'service_charge',
-                ],
-                [
-                    'branch_id'          => $sale->branch_id,
-                    'sale_payment_id'    => null,
-                    'direction'          => 'credit',
-                    'amount'             => $sale->service_charge_amount,
-                    'reference_no'       => $sale->sale_no,
-                    'created_by_user_id' => $sale->created_by_user_id,
-                    'notes'              => 'Service charge',
-                ]
-            );
-        }
-
-        if ((float) ($sale->tip_amount ?? 0) > 0) {
-            SalesLedger::firstOrCreate(
-                [
-                    'sales_order_id' => $sale->id,
-                    'entry_type'     => 'tip',
-                ],
-                [
-                    'branch_id'          => $sale->branch_id,
-                    'sale_payment_id'    => null,
-                    'direction'          => 'credit',
-                    'amount'             => $sale->tip_amount,
-                    'reference_no'       => $sale->sale_no,
-                    'created_by_user_id' => $sale->created_by_user_id,
-                    'notes'              => 'Tip',
-                ]
-            );
-        }
-    }
-
     private function closeRestaurantTableSession(SalesOrder $sale): void
     {
         if (!$sale->restaurant_table_session_id) {
@@ -386,43 +286,6 @@ class SalesService
         ]);
 
         $session->table?->update(['status' => 'available']);
-    }
-
-    private function updateShiftTotals(SalesOrder $sale): void
-    {
-        if (!$sale->shift_id) {
-            return;
-        }
-
-        // BUG-032 FIX: use increment() for atomic updates — avoids read-modify-write
-        // race condition when two sales on the same shift finalize concurrently.
-        $shift = Shift::find($sale->shift_id);
-
-        if (!$shift || $shift->status !== 'open') {
-            return;
-        }
-
-        $cash         = 0;
-        $card         = 0;
-        $bankTransfer = 0;
-        $cheque       = 0;
-
-        foreach ($sale->payments as $payment) {
-            $type = $payment->method?->method_type;
-            if ($type === 'cash')          $cash         += (float) $payment->amount;
-            if ($type === 'card')          $card         += (float) $payment->amount;
-            if ($type === 'bank_transfer') $bankTransfer += (float) $payment->amount;
-            if ($type === 'cheque')        $cheque       += (float) $payment->amount;
-        }
-
-        $shift->increment('total_sales',         (float) $sale->grand_total);
-        $shift->increment('total_discount',       (float) $sale->discount_amount);
-        $shift->increment('total_tax',            (float) $sale->tax_amount);
-        $shift->increment('expected_cash',        $cash);
-        if ($cash > 0)         $shift->increment('total_cash',          $cash);
-        if ($card > 0)         $shift->increment('total_card',          $card);
-        if ($bankTransfer > 0) $shift->increment('total_bank_transfer', $bankTransfer);
-        if ($cheque > 0)       $shift->increment('total_cheque',        $cheque);
     }
 
     public function nextSaleNo(): string

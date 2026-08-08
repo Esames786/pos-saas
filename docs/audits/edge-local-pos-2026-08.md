@@ -1,0 +1,119 @@
+# EDGE-LOCAL-POS-1 — branch-local shifts, sales and operational stock (WIP)
+
+Status: **FOUNDATION IN PROGRESS — uncommitted WIP on `feat/14d-2-plan-upgrade-requests` (base `10d3e0d`).
+NOT deployed. No routes/dine-in/held/KOT yet.** Production stays Cloud (`APP_ROLE=cloud`, Edge dormant).
+
+## Scope of the sprint
+First real Branch Server local POS operational runtime: local cashier auth, branch-bound terminal, local
+shift, quick-sale/takeaway cash sale, operational stock decrement, KOT business events — all against the
+edge-local MariaDB with Cloud master unavailable. **No sync, no Cloud GL/COGS/FEFO locally, no Local Mode
+activation, no real pilot.** Backup MVP remains a hard release gate before the first real offline sale.
+
+## Grounded authority boundary (executable)
+The paid-sale pipeline was code-grounded end-to-end. Classification:
+- **Operational (Edge-safe):** sale/lines/payment rows + canonical identities, operational stock quantity
+  decrement, KOT batches/print intents, shift/business-date binding, sales operational subledger, shift
+  counters, table-session close.
+- **Cloud-only accounting authority (NEVER offline):** GL journal (`JournalService::post/reverse`,
+  `JournalPostingService::postPaidSale`), cash/bank finance movement (`postSalesCashBankMovement`),
+  COGS/FEFO valuation (`InventoryService::postOutFefo/postIn/transfer`), department custody
+  (`DepartmentConsumptionService::processSaleOrder`), `SalesService::finalizePaidSale` itself.
+
+**Low-level fencing = GREEN (frozen):** every official mutator above fails CLOSED on a branch_server
+(`EdgeBranchServerFencingMySqlTest` 8/61 — refusals leave `quantity_on_hand`/`average_cost` VALUES and all
+journal/finance tables untouched; real Cloud `post` + a real Cloud finance suite `DepartmentHandoverTest`
+3/17 prove Cloud is unfenced). Guards sit OUTSIDE any swallowing try/catch. Pure helpers
+(`resolveVariant`) stay usable.
+
+## Grounded cash semantics (Cloud reference, reused by Edge)
+`payment.amount` = amount APPLIED to the invoice; `tendered_amount` = physical cash handed over;
+per-payment `change_amount = max(tendered − amount, 0)` (SalesOrderController payment create);
+`sale.paid_amount = Σ payments.amount`; `sale.change_amount = max(paid − grand_total, 0)`;
+shift counters (`total_sales`, `total_discount`, `total_tax`, `expected_cash`, `total_cash/card/…`)
+increment by the APPLIED amounts (`updateShiftTotals`), and shift close compares `expected_cash`.
+Example (grand 100, tendered 500): amount=100, tendered=500, payment.change=400, paid=100, sale.change=0,
+expected_cash += 100. **Edge MVP: exactly ONE cash payment row per sale (split payments refused).**
+
+## Shared services (single source of truth, no Cloud/Edge drift)
+- `SaleIdempotencyService::canonicalSalePayload` — the canonical sale-intent builder (moved from the
+  controller; both Cloud and Edge hash through it; Edge feeds it the EFFECTIVE authoritative intent).
+- `SalePricingService` — price/tax resolution extracted from `SalesOrderController` (behavior preserved on
+  Cloud; Edge adds a stricter trust boundary: standard-line price/tax NEVER taken from the request).
+- `SaleOperationalSettlementService` — the operational settlement (sales subledger + shift counters)
+  extracted verbatim from `SalesService`; **Cloud `finalizePaidSale` and `EdgeLocalPosService` both call
+  it**, Edge inside the same sale transaction (rolls back with the sale).
+
+## EdgeLocalPosService (offline paid-sale orchestrator) — locked contract
+- Authority from `EdgeBranchContext::requireCurrent()` (tenant/branch/device/activation_epoch), never the
+  request; terminal validated against the bound branch; cashier must BE the authenticated tenant user
+  (active, Edge-eligible, branch-authorized), re-validated with the terminal INSIDE the transaction
+  (TOCTOU); the open shift is LOCKED via `ShiftService::lockOpenShiftForTerminal` in the same transaction;
+  business_date from the locked shift.
+- `client_uuid` REQUIRED; replay-vs-conflict via the shared payload hash over the EFFECTIVE intent (bound
+  branch, validated terminal, `order_source=pos`, discounts normalized off, ignored price/tax/print flags
+  stripped); only a `client_uuid` unique collision is an idempotency race (others rethrow).
+- quick_sale/takeaway only; cash only; discounts/promo/combo/dine-in/delivery refused; standard-line
+  price/tax resolved server-side (tamper ignored).
+- ONE ULID: `sale_uuid = U`, `sale_no = SO-{branch}-{terminal}-{U}` (display label traceable to identity).
+- Sale marked `edge_sync_state='pending'` + `edge_activation_epoch`; `edge_operational_stock_posted` set
+  TRUE only after every operational stock movement succeeds (same txn); **`inventory_posted` stays FALSE**
+  (Cloud posts official FEFO/COGS at sync). Line `unit_cost=0/cost_total=0` are NON-AUTHORITATIVE schema
+  placeholders — no local profit/COGS reporting may consume them; Cloud recomputes at sync.
+
+## Current temporary scaffolding (NOT final)
+The stock decrement currently still writes the official `stock_balances`/`stock_ledgers` (quantity-only,
+cost=0). This is **test scaffolding until H10**: the final design uses Edge-ONLY tables under
+`database/migrations/edge/` (`edge_operational_stock_baselines/balances/movements`, no valuation columns,
+canonical sale_uuid/line_uuid references) with an accepted-baseline authority (branch/device/epoch/
+generation/hash bound; no baseline → no sale) and a **baseline-replacement fence** (no reset while
+unsynced operational activity exists — prevents oversell). Every final Edge sale test must assert official
+stock tables unchanged.
+
+## H10/I — Edge-only operational stock (EXECUTABLE GREEN)
+Three EDGE-ONLY tables under `database/migrations/edge/` (`2026_08_08_000003`): `edge_operational_stock_
+baselines` (immutable baseline identity bound to branch/device/activation_epoch/generation + content hash),
+`edge_operational_stock_balances` (`balance_key = {baseline}-{product}-{variant|0}` unique, quantity only),
+`edge_operational_stock_movements` (movement_uuid ULID, canonical `sale_uuid`/`line_uuid` references,
+balance_after, epoch). **NO valuation columns anywhere** — "cost unknown" can never masquerade as an official
+zero cost. `EdgeOperationalStockService` reworked to write ONLY these tables (InventoryService used solely for
+the `resolveVariant` helper). `EdgeOperationalBaselineService` = the accepted-baseline authority: no baseline →
+sale refused before mutation; exact same baseline retry → idempotent; same identity + different hash →
+conflict; **any different baseline while one is accepted → REFUSED (replacement fence)** — proven: B1 qty 10 →
+sale consumes 3 → B2 refused, balance stays 7, movement + pending sale preserved. No artisan command / HTTP
+route exists for baselines (tests/QA call the service directly — no production "sell anyway" path).
+Proof: orchestrator suite (16/56) + stock matrix `EdgeOperationalStockMySqlTest` (10/35): stock_item, recipe
+yield=1 and yield≠1, order-type-specific ingredient, unit conversion (50 g→0.05 KG), missing-conversion
+hard-block, modifier consume+conversion+missing-linked-product block, variant-keyed balance, negative-stock
+ON/OFF, **multi-component atomic rollback** (component A restored when component B fails) — with official
+`stock_balances`/`stock_ledgers` asserted untouched in every Edge test.
+
+## Real-path proofs (auth / TOCTOU / collision classification)
+- **Real Edge local-auth → sale:** a genuine Argon2id `edge_local_user_credentials` row (current epoch) →
+  `EdgeLocalAuthService::verifyForLogin` + `login()` → tenant session → local sale; `created_by_user_id` =
+  that cashier; the user's **Cloud password is proven NOT to authenticate** on the Edge path.
+- **2C TOCTOU (both cases):** via the production no-op `beforeSaleTransaction()` seam, the cashier (case A)
+  and terminal (case B) are deactivated AFTER preflight passes and BEFORE the in-transaction reload — the
+  sale is refused and NOTHING persists (no sale/payment/stock movement/settlement).
+- **2A real catch path — the executable test caught a REAL bug:** `UniqueConstraintViolationException`
+  messages embed the full INSERT SQL, whose column list contains `client_uuid` for EVERY sales_orders
+  violation — so a whole-message substring classifier misclassified unrelated collisions (e.g. a duplicate
+  `sale_uuid`) as idempotency races. Fixed to match only the violated KEY NAME (`for key '…client_uuid…'`).
+  Proven by a REAL frozen-ULID duplicate-`sale_uuid` violation through the real write path (must propagate,
+  never became replay/PENDING) + the two-process same-client_uuid race (loser's real MySQL collision resolves
+  the winner). A fabricated-message unit test would never have caught this.
+
+## Executable status (honest)
+GREEN: low-level fencing (8/61 + 3/17 Cloud), Edge runtime/binding harness (real edge migrations +
+`edge_local_meta`, nothing mocked), basic paid-sale scaffolding + effective-intent idempotency +
+security refusals, shared settlement wiring (shift totals once / no double on replay — in validation).
+PENDING before the WIP checkpoint: real Edge local-auth → sale integration test; real 2A client_uuid
+catch-path race; real 2C TOCTOU (deactivate-in-window); H10/I Edge-only stock + baseline + fence; stock
+quantity/atomicity matrix on the new tables; genuine 2-process races (client_uuid, final-unit,
+shift-close-vs-sale); full Cloud non-regression; then ONE WIP commit (`WIP EDGE-LOCAL-POS-1: harden local
+sale authority, settlement and operational stock boundary`) — **NO deploy**.
+
+## Release position
+Offline production readiness ≈ **40–45%**. A basic local sale running ≠ production-safe appliance: still
+missing operational stock authority (H10), sync, printing transport, backup/updater (hard gate), recovery,
+activation/lease, physical unplug pilot. Appliance lifecycle (update-never-wipes, expand→contract schema
+changes, pre-update verified backup) stays as locked in `edge-identity-2026-08.md` §AE.

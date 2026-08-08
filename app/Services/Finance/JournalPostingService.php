@@ -152,6 +152,12 @@ class JournalPostingService
      */
     public function postPaidSale(SalesOrder $sale, ?int $userId = null): ?JournalEntry
     {
+        // EDGE-LOCAL-POS-1 (H9) — GL posting is Cloud accounting authority; never post a journal on a Branch
+        // Server. Fail closed rather than write authoritative GL offline.
+        if (\App\Support\EdgeRuntime::isBranchServer()) {
+            throw new \RuntimeException('GL journal posting must not run on a Branch Server.');
+        }
+
         try {
             $grand = round((float) $sale->grand_total, 4);
             if ($grand <= 0) {
@@ -410,6 +416,12 @@ class JournalPostingService
      */
     public function postSalesCashBankMovement(SalesOrder $sale, ?int $userId = null): void
     {
+        // EDGE-LOCAL-POS-1 (H9/F) — cash/bank finance movement is Cloud authority. Guard OUTSIDE the try below
+        // so the refusal is never swallowed by its Throwable catch.
+        if (\App\Support\EdgeRuntime::isBranchServer()) {
+            throw new \RuntimeException('Cash/bank finance movement must not run on a Branch Server.');
+        }
+
         try {
             $sale->loadMissing('payments.method');
 

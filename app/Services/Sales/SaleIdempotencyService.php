@@ -30,9 +30,53 @@ class SaleIdempotencyService
     }
 
     /**
+     * The canonical INTENT of a sale request — the single source of truth for both the Cloud
+     * SalesOrderController and the offline Branch Server (EdgeLocalPosService). Line/payment order is not
+     * material (sorted by stable identity) so harmless browser reordering never causes a false conflict.
+     * Browser-only fields and server-resolved values are deliberately excluded.
+     */
+    public function canonicalSalePayload(array $data): array
+    {
+        return [
+            'branch_id'                   => $data['branch_id'] ?? null,
+            'terminal_id'                 => $data['terminal_id'] ?? null,
+            'customer_id'                 => $data['customer_id'] ?? null,
+            'order_source'                => $data['order_source'] ?? null,
+            'order_type'                  => $data['order_type'] ?? null,
+            'restaurant_table_session_id' => $data['restaurant_table_session_id'] ?? null,
+            'held_sale_id'                => $data['held_sale_id'] ?? null,
+            'delivery_channel_id'         => $data['delivery_channel_id'] ?? null,
+            'delivery_rider_id'           => $data['delivery_rider_id'] ?? null,
+            'delivery_address'            => $data['delivery_address'] ?? null,
+            'discount_type'               => $data['discount_type'] ?? null,
+            'discount_value'              => $data['discount_value'] ?? null,
+            'promo_code'                  => $data['promo_code'] ?? null,
+            'tip_amount'                  => $data['tip_amount'] ?? null,
+            'kot_print_intent'            => $data['kot_print_intent'] ?? null,
+            'receipt_print_intent'        => $data['receipt_print_intent'] ?? null,
+            'lines' => collect($data['lines'] ?? [])->map(fn ($l) => [
+                'product_id'         => $l['product_id'] ?? null,
+                'product_variant_id' => $l['product_variant_id'] ?? null,
+                'line_kind'          => $l['line_kind'] ?? 'standard',
+                'combo_id'           => $l['combo_id'] ?? null,
+                'client_line_key'    => $l['client_line_key'] ?? null,
+                'quantity'           => $l['quantity'] ?? null,
+                'unit_price'         => $l['unit_price'] ?? null,
+                'discount_amount'    => $l['discount_amount'] ?? null,
+                'tax_amount'         => $l['tax_amount'] ?? null,
+                'modifiers'          => $l['modifiers'] ?? null,
+            ])->sortBy(fn ($l) => implode('|', [$l['client_line_key'] ?? '', $l['product_id'] ?? '', $l['product_variant_id'] ?? '', $l['line_kind'] ?? '']))->values()->all(),
+            'payments' => collect($data['payments'] ?? [])->map(fn ($p) => [
+                'payment_method_id' => $p['payment_method_id'] ?? null,
+                'amount'            => $p['amount'] ?? null,
+                'tendered_amount'   => $p['tendered_amount'] ?? null,
+            ])->sortBy(fn ($p) => ($p['payment_method_id'] ?? '') . '|' . ($p['amount'] ?? ''))->values()->all(),
+        ];
+    }
+
+    /**
      * Deterministic SHA-256 of the customer's INTENDED sale — stable regardless of
-     * request key order or browser-only fields. See canonicalSalePayload() in the
-     * controller for exactly which fields are included/excluded.
+     * request key order or browser-only fields. See {@see canonicalSalePayload()} for the exact fields.
      */
     public function buildPayloadHash(array $canonicalPayload): string
     {
