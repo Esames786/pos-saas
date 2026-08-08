@@ -273,6 +273,22 @@ ValidationException (retryable) — never a wrong cancellation. Cloud `Restauran
 carries the same snapshot-exists() pattern the Edge race exposed; Cloud-side hardening is deliberately
 out of this Edge sprint's scope and flagged for a Cloud pass.
 
+## SPRINT VERDICT — GREEN + FROZEN + DEPLOYED DORMANT (2026-08-09)
+`EDGE-LOCAL-POS-1` accepted GREEN+FROZEN at `5b965b9`. **Production dormant deploy executed and proven**:
+prod `10d3e0d` → `5b965b9` (exact reviewed HEAD; tracked tree clean; `.env.bak-binaries` md5
+`55ded5ce38a5a26acef0371aed2347df` IDENTICAL pre/post, contents never printed). Cloud stays cloud:
+zero `APP_ROLE`/`EDGE_*` env entries, `route:list` registers **0** `edge.local.pos.*` names, HTTP census
+`/edge/local/health|pos/terminals|pos/held-sales|pos/manager-approvals/verify` all genuine 404, Cloud
+POS/tenant routes present, `/login` 200. Migration convergence on ALL 7 tenants: 3/3 edge-origin
+columns on sales_orders, `session_no` widened to 64, **0 edge_operational_stock tables on Cloud**
+(edge path never runs on tenants), sales row counts preserved (no data loss). Smoke identical to the
+pre-deploy baseline: `tb_diff=0.00`, `neg_on_disallowed=0`, `dept_neg=0` ×7; public site + 3 demo
+logins 200; **zero new log errors since deploy** (only the 3 pre-deploy Aug-7 entries of the two
+already-fixed view bugs). Local Mode inactive, `activation_ready=false`, no feature activation.
+KNOWN NON-BLOCKING (recorded, sprint NOT to be reopened): (A) extreme concurrent cancellation/revision
+→ controlled retryable refusal, never corruption; (B) Cloud `RestaurantTableSessionController::open`
+snapshot-exists pattern → separate Cloud-hardening pass.
+
 ## Release position
 Offline production readiness ≈ **40–45%**. A basic local sale running ≠ production-safe appliance: still
 missing operational stock authority (H10), sync, printing transport, backup/updater (hard gate), recovery,
