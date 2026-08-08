@@ -6,6 +6,7 @@ use App\Exceptions\ShiftException;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\PaymentMethod;
+use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\Shift;
 use App\Models\Tenant\Terminal;
 use App\Services\Edge\EdgeBranchContext;
@@ -204,6 +205,206 @@ class EdgeLocalPosController extends Controller
             'change_amount' => (float) $sale->payments()->first()?->change_amount,
             'edge_sync_state' => $sale->edge_sync_state,
         ], 201);
+    }
+
+    // ═══════════════════════ EDGE-LOCAL-POS-1 — restaurant layer (dine-in / held / KOT) ═══════════════════════
+
+    /** Table board data for the bound branch: floors → tables → open session + open-check summary. */
+    public function restaurantBoard(): JsonResponse
+    {
+        $branchId = (int) $this->context->requireCurrent()->branch_id;
+        $floors = \App\Models\Tenant\RestaurantFloor::on('tenant')->where('branch_id', $branchId)
+            ->where('status', 'active')->orderBy('sort_order')->orderBy('name')
+            ->with(['tables' => fn ($q) => $q->where('status', '!=', 'inactive')->orderBy('sort_order')->orderBy('table_no')
+                ->with(['openSession' => fn ($s) => $s->with('waiter')])])
+            ->get()
+            ->map(fn ($floor) => [
+                'id' => $floor->id, 'name' => $floor->name,
+                'tables' => $floor->tables->map(function ($t) {
+                    $session = $t->openSession;
+                    $held = $session ? SalesOrder::on('tenant')->where('restaurant_table_session_id', $session->id)
+                        ->where('status', 'held')->get(['id', 'sale_no', 'sale_uuid', 'grand_total']) : collect();
+
+                    return [
+                        'id' => $t->id, 'table_no' => $t->table_no, 'name' => $t->name, 'capacity' => $t->capacity,
+                        'status' => $session ? ($session->status === 'bill_requested' ? 'bill_requested' : 'occupied') : $t->status,
+                        'session' => $session ? [
+                            'id' => $session->id, 'session_uuid' => $session->session_uuid, 'session_no' => $session->session_no,
+                            'guest_count' => $session->guest_count, 'status' => $session->status,
+                            'business_date' => $session->business_date?->toDateString(),
+                            'waiter_name' => $session->waiter?->name,
+                            'held_orders' => $held->values(),
+                        ] : null,
+                    ];
+                })->values(),
+            ])->values();
+
+        return response()->json(['branch_id' => $branchId, 'floors' => $floors]);
+    }
+
+    /** Open a dine-in table session on the selected terminal. */
+    public function openTable(Request $request, int $table): JsonResponse
+    {
+        $data = $request->validate([
+            'restaurant_waiter_id' => ['nullable', 'integer'],
+            'guest_count' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'notes' => ['nullable', 'string', 'max:500'],
+        ]);
+        $terminal = $this->selectedTerminal($request);
+        if ($terminal instanceof JsonResponse) {
+            return $terminal;
+        }
+        try {
+            $session = $this->pos->openTableSession($table, $data, auth('tenant')->user(), $terminal->id);
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'session_id' => $session->id, 'session_uuid' => $session->session_uuid, 'session_no' => $session->session_no,
+            'table_id' => $session->restaurant_table_id, 'status' => $session->status,
+            'business_date' => $session->business_date?->toDateString(),
+        ], 201);
+    }
+
+    /** Close/cancel a table session that has no remaining open orders. */
+    public function closeTableSession(Request $request, int $session): JsonResponse
+    {
+        $data = $request->validate(['status' => ['nullable', 'string', 'in:closed,cancelled']]);
+        try {
+            $closed = $this->pos->closeTableSession($session, $data['status'] ?? 'closed', auth('tenant')->user());
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['session_id' => $closed->id, 'status' => $closed->status]);
+    }
+
+    /** Create or revise (Add Round) a HELD sale. */
+    public function storeHeldSale(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'held_sale_id' => ['nullable', 'integer'],
+            'order_type' => ['required', 'string'],
+            'restaurant_table_session_id' => ['nullable', 'integer'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+            'lines' => ['required', 'array', 'min:1'],
+            'lines.*.sales_order_line_id' => ['nullable', 'integer'],
+            'lines.*.product_id' => ['required', 'integer'],
+            'lines.*.product_variant_id' => ['nullable', 'integer'],
+            'lines.*.quantity' => ['required', 'numeric', 'gt:0'],
+            'lines.*.modifiers' => ['nullable', 'array'],
+            'void_items' => ['nullable', 'array'],
+            'void_items.*.old_line_id' => ['required_with:void_items', 'integer'],
+            'void_items.*.quantity' => ['required_with:void_items', 'numeric', 'gt:0'],
+            'void_items.*.reason_id' => ['required_with:void_items', 'integer'],
+            'void_items.*.manager_approval_id' => ['nullable', 'integer'],
+        ]);
+        $terminal = $this->selectedTerminal($request);
+        if ($terminal instanceof JsonResponse) {
+            return $terminal;
+        }
+        try {
+            $sale = $this->pos->holdOrReviseSale($data, auth('tenant')->user(), $terminal->id);
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'sale_id' => $sale->id, 'sale_no' => $sale->sale_no, 'sale_uuid' => $sale->sale_uuid,
+            'status' => $sale->status, 'grand_total' => (float) $sale->grand_total,
+            'restaurant_table_session_id' => $sale->restaurant_table_session_id,
+            'lines' => $sale->lines()->get(['id', 'line_uuid', 'product_id', 'quantity', 'unit_price', 'kot_sent', 'kot_sent_quantity']),
+        ], empty($data['held_sale_id']) ? 201 : 200);
+    }
+
+    /** Record the KOT business event for a held sale's unsent delta. */
+    public function queueKot(Request $request, int $sale): JsonResponse
+    {
+        $terminal = $this->selectedTerminal($request);
+        if ($terminal instanceof JsonResponse) {
+            return $terminal;
+        }
+        try {
+            $result = $this->pos->queueKotEvents($sale, auth('tenant')->user(), $terminal->id);
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+        $batch = $result['batch'];
+
+        return response()->json([
+            'batch' => $batch ? [
+                'id' => $batch->id, 'event_uuid' => $batch->event_uuid, 'sequence_no' => $batch->sequence_no,
+                'event_type' => $batch->event_type,
+                'lines' => $batch->lines()->get(['id', 'kot_line_uuid', 'source_line_uuid', 'product_name', 'quantity']),
+            ] : null,
+            'jobs' => collect($result['jobs'])->map(fn ($j) => ['id' => $j->id, 'logical_key' => $j->logical_key, 'print_status' => $j->fresh()->print_status])->values(),
+            'message' => $batch ? null : 'No new items to send to kitchen.',
+        ]);
+    }
+
+    /** Settle (pay) a held sale with cash — closes the table session when it was the last open check. */
+    public function settleHeldSale(Request $request, int $sale): JsonResponse
+    {
+        $data = $request->validate([
+            'client_uuid' => ['required', 'string', 'max:36'],
+            'payments' => ['required', 'array', 'min:1'],
+            'payments.*.payment_method_id' => ['required', 'integer'],
+            'payments.*.amount' => ['required', 'numeric', 'gt:0'],
+            'payments.*.tendered_amount' => ['nullable', 'numeric'],
+        ]);
+        $terminal = $this->selectedTerminal($request);
+        if ($terminal instanceof JsonResponse) {
+            return $terminal;
+        }
+        try {
+            $settled = $this->pos->settleHeldSale($sale, $data, auth('tenant')->user(), $terminal->id);
+        } catch (\App\Exceptions\SaleIdempotencyConflictException $e) {
+            throw $e; // renders its own 409/503
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'sale_id' => $settled->id, 'sale_no' => $settled->sale_no, 'sale_uuid' => $settled->sale_uuid,
+            'status' => $settled->status, 'grand_total' => (float) $settled->grand_total,
+            'paid_amount' => (float) $settled->paid_amount,
+            'change_amount' => (float) $settled->payments()->first()?->change_amount,
+            'edge_sync_state' => $settled->edge_sync_state,
+        ]);
+    }
+
+    /** Cancel a whole held order (reason + branch-mode manager approval enforced by the real Cloud service). */
+    public function cancelHeldSale(Request $request, int $sale): JsonResponse
+    {
+        $data = $request->validate([
+            'reason_id' => ['required', 'integer'],
+            'manager_approval_id' => ['nullable', 'integer'],
+        ]);
+        try {
+            $result = $this->pos->cancelHeldSale($sale, (int) $data['reason_id'], isset($data['manager_approval_id']) ? (int) $data['manager_approval_id'] : null, auth('tenant')->user());
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['sale_id' => $result['sale']->id, 'status' => $result['sale']->status]);
+    }
+
+    /** Manager re-auth: verify a PIN, mint a single-use approval (consumed by the action that needs it). */
+    public function verifyManagerApproval(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'pin' => ['required', 'string', 'max:20'],
+            'action_type' => ['required', 'string', 'max:80'],
+            'payload' => ['nullable', 'array'],
+        ]);
+        try {
+            $approval = $this->pos->verifyManagerPin($data['pin'], $data['action_type'], auth('tenant')->user(), $data['payload'] ?? null);
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['approval_id' => $approval->id, 'approval_no' => $approval->approval_no, 'approval_uuid' => $approval->approval_uuid], 201);
     }
 
     /** The session-selected terminal, re-validated against the bound branch on EVERY use. */

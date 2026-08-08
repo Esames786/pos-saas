@@ -4,9 +4,14 @@ namespace App\Services\Edge;
 
 use App\Exceptions\SaleIdempotencyConflictException;
 use App\Models\Tenant\Branch;
+use App\Models\Tenant\KotBatch;
 use App\Models\Tenant\PaymentMethod;
 use App\Models\Tenant\Product;
+use App\Models\Tenant\RestaurantTable;
+use App\Models\Tenant\RestaurantTableSession;
+use App\Models\Tenant\RestaurantWaiter;
 use App\Models\Tenant\SalesOrder;
+use App\Models\Tenant\Shift;
 use App\Models\Tenant\Terminal;
 use App\Models\Tenant\User;
 use App\Services\Inventory\InventoryService;
@@ -55,6 +60,9 @@ class EdgeLocalPosService
     /** Only order types whose full offline workflow exists yet. dine_in/delivery are added when wired. */
     private const OFFLINE_ORDER_TYPES = ['quick_sale', 'takeaway'];
 
+    /** Order types a HELD (open-check) workflow exists for offline — dine_in additionally requires a table session. */
+    private const OFFLINE_HELD_ORDER_TYPES = ['quick_sale', 'takeaway', 'dine_in'];
+
     public function __construct(
         private readonly EdgeBranchContext $context,
         private readonly ShiftService $shiftService,
@@ -64,6 +72,9 @@ class EdgeLocalPosService
         private readonly EdgeOperationalStockService $opStock,
         private readonly SaleIdempotencyService $idempotency,
         private readonly SaleOperationalSettlementService $settlement,
+        private readonly \App\Services\Printing\PrintJobService $printJobs,
+        private readonly \App\Services\Sales\KotCancellationService $kotCancellations,
+        private readonly \App\Services\Sales\SalesService $salesService, // closeRestaurantTableSession ONLY (everything else is fenced on branch_server)
     ) {
     }
 
@@ -93,21 +104,8 @@ class EdgeLocalPosService
         // REQUIRED (a bare User model is not authority), and it must be the same user. A caller can neither
         // sell unauthenticated nor attribute the sale to another branch-authorized user. (Manager re-auth is
         // a SEPARATE identity for manager actions.)
-        $authUser = auth('tenant')->user();
-        if (! $authUser) {
-            throw ValidationException::withMessages(['user' => 'A local sale requires an authenticated Edge cashier session.']);
-        }
-        if ((int) $authUser->id !== (int) $user->id) {
-            throw ValidationException::withMessages(['user' => 'The sale principal must be the authenticated cashier.']);
-        }
-        if (! EdgeUserAuthz::isActive($user) || ! EdgeUserAuthz::isEdgeLoginEligible($user) || ! EdgeUserAuthz::mayOperateBranch($user, $branchId)) {
-            throw ValidationException::withMessages(['user' => 'This user is not authorized to sell on this Branch Server.']);
-        }
-
-        $terminal = Terminal::on('tenant')->where('id', (int) $terminalId)->where('branch_id', $branchId)->where('status', 'active')->first();
-        if (! $terminal) {
-            throw ValidationException::withMessages(['terminal_id' => 'Select an active terminal on this branch.']);
-        }
+        $this->requireAuthorizedPrincipal($user, $branchId);
+        $terminal = $this->requireActiveTerminal($terminalId, $branchId);
 
         // (D) Only order types whose offline workflow exists this sprint — AND the user must be allowed it.
         $orderType = (string) ($data['order_type'] ?? 'quick_sale');
@@ -159,18 +157,7 @@ class EdgeLocalPosService
 
                 // (2C) Revalidate the principal + terminal INSIDE the transaction against fresh rows — a
                 // cashier/terminal deactivated (or a principal swapped) after preflight must still be refused.
-                $user = User::on('tenant')->find($user->id);
-                $authId = auth('tenant')->id();
-                if (! $user || ! $authId || (int) $authId !== (int) $user->id) {
-                    throw ValidationException::withMessages(['user' => 'The sale principal must be the authenticated cashier.']);
-                }
-                if (! EdgeUserAuthz::isActive($user) || ! EdgeUserAuthz::isEdgeLoginEligible($user) || ! EdgeUserAuthz::mayOperateBranch($user, $branchId)) {
-                    throw ValidationException::withMessages(['user' => 'This user is not authorized to sell on this Branch Server.']);
-                }
-                $terminal = Terminal::on('tenant')->where('id', $terminal->id)->where('branch_id', $branchId)->where('status', 'active')->first();
-                if (! $terminal) {
-                    throw ValidationException::withMessages(['terminal_id' => 'Select an active terminal on this branch.']);
-                }
+                [$user, $terminal] = $this->revalidateInTxn($user, $branchId, $terminal->id);
 
                 // Lock + revalidate the open shift for THIS terminal in the same transaction (TOCTOU-safe vs close).
                 $shift = $this->shiftService->lockOpenShiftForTerminal($terminal);
@@ -375,6 +362,515 @@ class EdgeLocalPosService
                 ]);
             }
         }
+    }
+
+    /** (B) The principal MUST be the authenticated local cashier and be branch-authorized (preflight + in-txn). */
+    private function requireAuthorizedPrincipal(User $user, int $branchId): void
+    {
+        $authUser = auth('tenant')->user();
+        if (! $authUser) {
+            throw ValidationException::withMessages(['user' => 'A local sale requires an authenticated Edge cashier session.']);
+        }
+        if ((int) $authUser->id !== (int) $user->id) {
+            throw ValidationException::withMessages(['user' => 'The sale principal must be the authenticated cashier.']);
+        }
+        if (! EdgeUserAuthz::isActive($user) || ! EdgeUserAuthz::isEdgeLoginEligible($user) || ! EdgeUserAuthz::mayOperateBranch($user, $branchId)) {
+            throw ValidationException::withMessages(['user' => 'This user is not authorized to sell on this Branch Server.']);
+        }
+    }
+
+    private function requireActiveTerminal(?int $terminalId, int $branchId): Terminal
+    {
+        $terminal = Terminal::on('tenant')->where('id', (int) $terminalId)->where('branch_id', $branchId)->where('status', 'active')->first();
+        if (! $terminal) {
+            throw ValidationException::withMessages(['terminal_id' => 'Select an active terminal on this branch.']);
+        }
+
+        return $terminal;
+    }
+
+    /** (2C) Fresh-row revalidation INSIDE a write transaction. @return array{0: User, 1: Terminal} */
+    private function revalidateInTxn(User $user, int $branchId, int $terminalId): array
+    {
+        $user = User::on('tenant')->find($user->id);
+        $authId = auth('tenant')->id();
+        if (! $user || ! $authId || (int) $authId !== (int) $user->id) {
+            throw ValidationException::withMessages(['user' => 'The sale principal must be the authenticated cashier.']);
+        }
+        $this->requireAuthorizedPrincipal($user, $branchId);
+
+        return [$user, $this->requireActiveTerminal($terminalId, $branchId)];
+    }
+
+    // ═══════════════════════════════ EDGE-LOCAL-POS-1 — restaurant layer ═══════════════════════════════
+    //
+    // Reuses the CLOUD restaurant semantics with the frozen identity contracts: session_uuid on the table
+    // session; durable sale_uuid across held→revise→settle (line/payment rows churn — proven in
+    // EDGE-IDENTITY); KOT business events through the REAL PrintJobService::queueKot (kot_batches +
+    // kot_batch_lines with event_uuid / kot_line_uuid / source_line_uuid). NO print transport runs on the
+    // appliance this sprint — with no printers configured the Cloud routing degrades to its browser-fallback
+    // route; Edge completes that route server-side (markPrinted) exactly as the Cloud POS browser does, so
+    // kot_sent bookkeeping stays canonical. Held orders NEVER touch operational stock or settlement —
+    // both happen exactly once at settle, mirroring "inventory posts at finalize".
+
+    /** Open a dine-in table session (Cloud RestaurantTableSessionController::open semantics). */
+    public function openTableSession(int $tableId, array $data, User $user, ?int $terminalId): RestaurantTableSession
+    {
+        $meta = $this->context->requireCurrent();
+        $branchId = (int) $meta->branch_id;
+        $this->requireAuthorizedPrincipal($user, $branchId);
+        $terminal = $this->requireActiveTerminal($terminalId, $branchId);
+        if (! $user->allowsOrderType('dine_in')) {
+            throw ValidationException::withMessages(['order_type' => 'Dine-in is not allowed for this user.']);
+        }
+
+        $waiterId = isset($data['restaurant_waiter_id']) && $data['restaurant_waiter_id'] !== null ? (int) $data['restaurant_waiter_id'] : null;
+        if ($waiterId !== null) {
+            $waiter = RestaurantWaiter::on('tenant')->where('id', $waiterId)->where('status', 'active')
+                ->where(fn ($q) => $q->whereNull('branch_id')->orWhere('branch_id', $branchId))->first();
+            if (! $waiter) {
+                throw ValidationException::withMessages(['restaurant_waiter_id' => 'Select an active waiter on this branch.']);
+            }
+        }
+        $guests = (int) ($data['guest_count'] ?? 1);
+        if ($guests < 1 || $guests > 100) {
+            throw ValidationException::withMessages(['guest_count' => 'Guest count must be between 1 and 100.']);
+        }
+
+        return DB::connection('tenant')->transaction(function () use ($user, $branchId, $terminal, $tableId, $waiterId, $guests, $data) {
+            [$user, $terminal] = $this->revalidateInTxn($user, $branchId, $terminal->id);
+            // Cloud lock order: shift FIRST, then the table row.
+            $shift = $this->shiftService->lockOpenShiftForTerminal($terminal);
+            $table = RestaurantTable::on('tenant')->where('id', $tableId)->where('branch_id', $branchId)
+                ->where('status', '!=', 'inactive')->lockForUpdate()->first();
+            if (! $table) {
+                throw ValidationException::withMessages(['table' => 'Select an active table on this branch.']);
+            }
+            if ($table->openSession()->exists()) {
+                throw new RuntimeException('Table already has an open session.');
+            }
+
+            // ONE pre-minted ULID: the canonical session identity, with the display number derived from it.
+            $sessionUlid = (string) Str::ulid();
+            $session = new RestaurantTableSession([
+                'session_no' => 'TS-' . $branchId . '-' . $sessionUlid,
+                'branch_id' => $branchId,
+                'restaurant_table_id' => $table->id,
+                'restaurant_waiter_id' => $waiterId,
+                'opened_by_user_id' => $user->id,
+                'opened_shift_id' => $shift->id,
+                'business_date' => $shift->business_date->toDateString(),
+                'guest_count' => $guests,
+                'status' => 'open',
+                'opened_at' => now(),
+                'notes' => $data['notes'] ?? null,
+            ]);
+            $session->session_uuid = $sessionUlid; // not mass-assignable — frozen identity, set directly
+            $session->save();
+
+            $table->update(['status' => 'occupied']);
+
+            return $session->fresh();
+        });
+    }
+
+    /**
+     * Create a HELD sale or revise it (Add Round) — Cloud HeldSaleController::store semantics: status
+     * stays `held`, shift_id/business_date preserved on revise, lines delete+recreate with the KOT-sent
+     * state carried over, PER-LINE CAPTURED PRICE (a carried line keeps its stored unit_price; only NEW
+     * lines price from the catalog — the server never trusts a submitted price), and reducing a line
+     * below its kitchen-sent quantity REQUIRES an explicit void with reason (+ manager approval when the
+     * branch demands it) through the REAL KotCancellationService. No stock, no settlement, no payments.
+     */
+    public function holdOrReviseSale(array $data, User $user, ?int $terminalId): SalesOrder
+    {
+        $meta = $this->context->requireCurrent();
+        $branchId = (int) $meta->branch_id;
+        $activationEpoch = (int) $meta->activation_epoch;
+        $branch = Branch::on('tenant')->findOrFail($branchId);
+        $this->requireAuthorizedPrincipal($user, $branchId);
+        $terminal = $this->requireActiveTerminal($terminalId, $branchId);
+
+        $orderType = (string) ($data['order_type'] ?? 'quick_sale');
+        if (! in_array($orderType, self::OFFLINE_HELD_ORDER_TYPES, true)) {
+            throw ValidationException::withMessages(['order_type' => "Order type [{$orderType}] is not yet available on the Branch Server."]);
+        }
+        if (! $user->allowsOrderType($orderType)) {
+            throw ValidationException::withMessages(['order_type' => "Order type [{$orderType}] is not allowed for this user."]);
+        }
+        $this->assertNoDiscountOrPromo($data);
+        $lines = array_values(array_filter($data['lines'] ?? [], fn ($l) => (float) ($l['quantity'] ?? 0) > 0));
+        if (! $lines) {
+            throw ValidationException::withMessages(['lines' => 'A held order needs at least one line.']);
+        }
+        $this->assertNoComboSelling($lines);
+
+        return DB::connection('tenant')->transaction(function () use ($data, $user, $branch, $branchId, $terminal, $activationEpoch, $orderType, $lines) {
+            [$user, $terminal] = $this->revalidateInTxn($user, $branchId, $terminal->id);
+            $shift = $this->shiftService->lockOpenShiftForTerminal($terminal);
+
+            // ── table-session resolution (dine_in REQUIRES one; explicit session forces dine_in) ──
+            $session = null;
+            if (! empty($data['restaurant_table_session_id'])) {
+                $session = RestaurantTableSession::on('tenant')->where('id', (int) $data['restaurant_table_session_id'])
+                    ->where('branch_id', $branchId)->whereIn('status', ['open', 'bill_requested'])->lockForUpdate()->first();
+                if (! $session) {
+                    throw ValidationException::withMessages(['restaurant_table_session_id' => 'No open table session found.']);
+                }
+                $orderType = 'dine_in';
+            }
+            if ($orderType === 'dine_in' && ! $session) {
+                throw ValidationException::withMessages(['restaurant_table_session_id' => 'Dine-in requires an open table session — open the table first.']);
+            }
+            // The check keeps the SESSION's frozen business date (Add Round never rolls it forward).
+            $businessDate = $session?->business_date?->toDateString() ?? $shift->business_date->toDateString();
+
+            if (! empty($data['held_sale_id'])) {
+                return $this->reviseHeldSale($data, $user, $branch, $branchId, $shift, $session, $lines);
+            }
+
+            // ── new held sale (one open check per session) ──
+            if ($session && SalesOrder::on('tenant')->where('restaurant_table_session_id', $session->id)->where('status', 'held')->exists()) {
+                throw new RuntimeException('This table already has an open order — continue it (Add Round) instead of starting another.');
+            }
+
+            $resolved = $this->resolveLines($lines, $branch);
+            $totals = $this->totals->calculate($resolved, 'none', 0, $branchId, $orderType, null, 0);
+
+            $saleUlid = (string) Str::ulid();
+            $sale = new SalesOrder([
+                'sale_no' => 'SO-' . $branchId . '-' . $terminal->id . '-' . $saleUlid,
+                'branch_id' => $branchId,
+                'terminal_id' => $terminal->id,
+                'shift_id' => $shift->id,
+                'business_date' => $businessDate,
+                'order_source' => 'pos',
+                'order_type' => $orderType,
+                'sale_date' => now(),
+                'subtotal' => $totals['subtotal'],
+                'discount_type' => 'none', 'discount_value' => 0, 'discount_amount' => $totals['discount_amount'],
+                'tax_amount' => $totals['tax_amount'],
+                'service_charge_amount' => $totals['service_charge_amount'],
+                'tip_amount' => 0,
+                'grand_total' => $totals['grand_total'],
+                'paid_amount' => 0, 'change_amount' => 0,
+                'status' => 'held',
+                'created_by_user_id' => $user->id,
+                'restaurant_table_session_id' => $session?->id,
+                'restaurant_table_id' => $session?->restaurant_table_id,
+                'restaurant_floor_id' => $session?->table?->restaurant_floor_id,
+                'restaurant_waiter_id' => $session?->restaurant_waiter_id,
+                'inventory_posted' => false,
+                'edge_sync_state' => 'pending',
+                'edge_activation_epoch' => $activationEpoch,
+            ]);
+            $sale->sale_uuid = $saleUlid;
+            $sale->save();
+            $this->createHeldLines($sale, $resolved, []);
+
+            return $sale->fresh();
+        });
+    }
+
+    /** Add Round / revision of an existing held sale — runs INSIDE holdOrReviseSale's transaction. */
+    private function reviseHeldSale(array $data, User $user, Branch $branch, int $branchId, Shift $shift, ?RestaurantTableSession $session, array $lines): SalesOrder
+    {
+        $sale = SalesOrder::on('tenant')->where('id', (int) $data['held_sale_id'])
+            ->where('branch_id', $branchId)->where('status', 'held')->lockForUpdate()->first();
+        if (! $sale) {
+            throw ValidationException::withMessages(['held_sale_id' => 'No held sale found to revise.']);
+        }
+        if ($session && (int) $sale->restaurant_table_session_id !== (int) $session->id) {
+            throw ValidationException::withMessages(['restaurant_table_session_id' => 'This held sale belongs to a different table session.']);
+        }
+
+        $existing = $sale->lines()->get()->keyBy('id');
+        foreach ($lines as $l) {
+            if (! empty($l['sales_order_line_id']) && ! $existing->has((int) $l['sales_order_line_id'])) {
+                throw ValidationException::withMessages(['lines' => 'A submitted line does not belong to this order.']);
+            }
+        }
+
+        // ── implicit-cancellation detection (Cloud rule): reducing below the KITCHEN-SENT quantity
+        //    requires an explicit matching void entry — silent shrinkage of sent food is refused. ──
+        $newQtyByLineId = [];
+        foreach ($lines as $l) {
+            if (! empty($l['sales_order_line_id'])) {
+                $id = (int) $l['sales_order_line_id'];
+                $newQtyByLineId[$id] = ($newQtyByLineId[$id] ?? 0) + (float) $l['quantity'];
+            }
+        }
+        $voidByLineId = collect($data['void_items'] ?? [])->keyBy(fn ($v) => (int) ($v['old_line_id'] ?? 0));
+        $detected = [];
+        foreach ($existing as $line) {
+            $sent = (float) $line->kot_sent_quantity;
+            if ($sent <= 0) {
+                continue;
+            }
+            $newQty = (float) ($newQtyByLineId[$line->id] ?? 0);
+            $cancelQty = $sent - min($newQty, $sent);
+            if ($cancelQty <= 0) {
+                continue;
+            }
+            $void = $voidByLineId->get($line->id);
+            if (! $void || abs((float) ($void['quantity'] ?? 0) - $cancelQty) > 1e-6 || empty($void['reason_id'])) {
+                throw ValidationException::withMessages(['void_items' => "Reducing [{$line->product_name}] below its kitchen-sent quantity requires a void with a reason" . ($cancelQty > 0 ? " (qty {$cancelQty})" : '') . '.']);
+            }
+            $detected[] = [
+                'line_id' => $line->id, 'quantity' => $cancelQty,
+                'reason_id' => (int) $void['reason_id'],
+                'manager_approval_id' => isset($void['manager_approval_id']) ? (int) $void['manager_approval_id'] : null,
+            ];
+        }
+        if ($detected) {
+            // REAL Cloud service: permission + (branch-mode) manager approval consumption + cancel-KOT
+            // business event + sales_order_line_cancellations rows with the frozen snapshot identities.
+            $this->kotCancellations->recordLineCancellations($sale, $detected, (int) $user->id);
+        }
+
+        // ── per-line captured price + KOT-sent carry-over, then Cloud's delete+recreate churn ──
+        $capturedPrice = $existing->map(fn ($l) => (float) $l->unit_price);
+        $kotSentByLineId = $existing->map(fn ($l) => (float) $l->kot_sent_quantity);
+        $resolved = [];
+        foreach ($lines as $l) {
+            $oldId = ! empty($l['sales_order_line_id']) ? (int) $l['sales_order_line_id'] : null;
+            $r = $this->resolveLines([$l], $branch)[0];
+            if ($oldId !== null && $capturedPrice->has($oldId)) {
+                // captured price: the round the guest ordered at keeps its price even if the catalog moved.
+                $price = $capturedPrice->get($oldId);
+                $r['unit_price'] = $price;
+                $r['tax_amount'] = $this->pricing->resolveTaxAmount($r['_product'], (float) $r['quantity'], $price, 0.0, null);
+            }
+            $r['_old_line_id'] = $oldId;
+            $resolved[] = $r;
+        }
+        $totals = $this->totals->calculate($resolved, 'none', 0, $branchId, (string) $sale->order_type, null, 0);
+
+        $sale->lines()->delete();
+        $sale->update([
+            // shift_id + business_date are FROZEN at first hold; a revision never rolls them forward.
+            'subtotal' => $totals['subtotal'],
+            'discount_amount' => $totals['discount_amount'],
+            'tax_amount' => $totals['tax_amount'],
+            'service_charge_amount' => $totals['service_charge_amount'],
+            'grand_total' => $totals['grand_total'],
+        ]);
+        $this->createHeldLines($sale, $resolved, $kotSentByLineId->all());
+
+        return $sale->fresh();
+    }
+
+    /** @param array<int,float> $kotSentByLineId sent quantities of the PRE-churn lines, keyed by old line id */
+    private function createHeldLines(SalesOrder $sale, array $resolved, array $kotSentByLineId): void
+    {
+        foreach ($resolved as $r) {
+            $qty = (float) $r['quantity'];
+            $price = (float) $r['unit_price'];
+            $sentQty = min((float) ($kotSentByLineId[$r['_old_line_id'] ?? 0] ?? 0), $qty);
+            $sale->lines()->create([
+                'product_id' => $r['product_id'], 'product_name' => $r['_product']->name,
+                'product_variant_id' => $r['_variant']?->id, 'line_kind' => 'standard',
+                'quantity' => $qty, 'unit_price' => $price, 'unit_cost' => 0, 'cost_total' => 0,
+                'discount_amount' => (float) $r['discount_amount'], 'tax_amount' => (float) $r['tax_amount'],
+                'line_total' => $qty * $price - (float) $r['discount_amount'] + (float) $r['tax_amount'],
+                'modifiers' => $r['modifiers'] ?? null,
+                'kot_sent' => $sentQty > 0 && $qty <= $sentQty,
+                'kot_sent_quantity' => $sentQty,
+            ]);
+        }
+    }
+
+    /**
+     * Record the KOT BUSINESS EVENT for a held sale's unsent delta through the REAL Cloud pipeline
+     * (kot_batches sequence/event_type + kot_batch_lines with kot_line_uuid + source_line_uuid snapshots,
+     * logical_key idempotency). With no printers configured the routing degrades to the browser-fallback
+     * route; Edge completes it server-side (markPrinted — the same call the Cloud POS browser makes), so
+     * kot_sent/kot_sent_quantity bookkeeping is canonical and a later round only sends its true delta.
+     * @return array{batch: ?KotBatch, jobs: array<int, \App\Models\Tenant\PrintJob>}
+     */
+    public function queueKotEvents(int $saleId, User $user, ?int $terminalId): array
+    {
+        $meta = $this->context->requireCurrent();
+        $branchId = (int) $meta->branch_id;
+        $this->requireAuthorizedPrincipal($user, $branchId);
+        $this->requireActiveTerminal($terminalId, $branchId);
+
+        $sale = SalesOrder::on('tenant')->where('id', $saleId)->where('branch_id', $branchId)
+            ->whereIn('status', ['held', 'paid'])->first();
+        if (! $sale) {
+            throw ValidationException::withMessages(['sale' => 'No held or paid sale found for KOT.']);
+        }
+
+        $jobs = $this->printJobs->queueKot($sale);
+        foreach ($jobs as $job) {
+            if ($job->printer_id === null && $job->print_status === 'queued') {
+                $this->printJobs->markPrinted($job); // completes the browser-fallback route (marks lines sent)
+            }
+        }
+        $batch = KotBatch::on('tenant')->where('sales_order_id', $sale->id)->orderByDesc('sequence_no')->first();
+
+        return ['batch' => $jobs ? $batch : null, 'jobs' => $jobs];
+    }
+
+    /** Manager re-auth: verify a manager PIN and mint a single-use approval (REAL ManagerApprovalService). */
+    public function verifyManagerPin(string $pin, string $actionType, User $user, ?array $payload = null): \App\Models\Tenant\ManagerApproval
+    {
+        $meta = $this->context->requireCurrent();
+        $this->requireAuthorizedPrincipal($user, (int) $meta->branch_id);
+
+        return app(\App\Services\Sales\ManagerApprovalService::class)->verifyPin($pin, $actionType, (int) $user->id, $payload);
+    }
+
+    /**
+     * Settle a HELD sale with cash — the dine-in/open-check counterpart of completePaidSale. Same row
+     * (durable sale_uuid), payments created, operational stock consumed ONCE for the final quantities,
+     * shared settlement, and the table session closes exactly as Cloud payment does. client_uuid is
+     * REQUIRED (idempotent retry); the held sale's own OPEN shift takes the cash (row-locked vs close).
+     */
+    public function settleHeldSale(int $heldSaleId, array $data, User $user, ?int $terminalId): SalesOrder
+    {
+        $meta = $this->context->requireCurrent();
+        $branchId = (int) $meta->branch_id;
+        $this->requireAuthorizedPrincipal($user, $branchId);
+        $terminal = $this->requireActiveTerminal($terminalId, $branchId);
+
+        $payments = array_values(array_filter($data['payments'] ?? [], fn ($p) => (float) ($p['amount'] ?? 0) > 0));
+        if (! $payments) {
+            throw ValidationException::withMessages(['payments' => 'A paid sale needs at least one payment.']);
+        }
+        $this->assertPaymentsOffline($payments);
+
+        $clientUuid = $this->idempotency->normalizeClientUuid($data['client_uuid'] ?? null);
+        if ($clientUuid === null) {
+            throw ValidationException::withMessages(['client_uuid' => 'Settling a held sale requires a valid client_uuid for safe retries.']);
+        }
+
+        $preflight = SalesOrder::on('tenant')->where('id', $heldSaleId)->where('branch_id', $branchId)->first();
+        if (! $preflight) {
+            throw ValidationException::withMessages(['held_sale_id' => 'No held sale found to settle.']);
+        }
+        // Effective settle intent: the held sale's durable identity + payments (lines are already
+        // server-authoritative rows — nothing about them is request-controlled here).
+        $payloadHash = $this->idempotency->buildPayloadHash($this->idempotency->canonicalSalePayload([
+            'branch_id' => $branchId, 'terminal_id' => $terminal->id, 'order_source' => 'pos',
+            'order_type' => (string) $preflight->order_type,
+            'held_sale_id' => $preflight->sale_uuid, // the durable identity, never the local PK
+            'restaurant_table_session_id' => $preflight->restaurant_table_session_id,
+            'discount_type' => 'none', 'discount_value' => 0, 'promo_code' => null,
+            'payments' => array_map(fn ($p) => ['payment_method_id' => $p['payment_method_id'] ?? null, 'amount' => $p['amount'] ?? null], $payments),
+        ]));
+        if ($existing = $this->idempotency->findFinalized($clientUuid)) {
+            return $this->replayOrConflict($existing, $payloadHash);
+        }
+
+        $this->beforeSaleTransaction(); // shared 2C seam — no-op in production
+
+        try {
+            return DB::connection('tenant')->transaction(function () use ($heldSaleId, $user, $branchId, $terminal, $payments, $clientUuid, $payloadHash) {
+                if ($winner = $this->idempotency->findFinalized($clientUuid)) {
+                    return $this->replayOrConflict($winner, $payloadHash);
+                }
+                [$user, $terminal] = $this->revalidateInTxn($user, $branchId, $terminal->id);
+
+                $sale = SalesOrder::on('tenant')->where('id', $heldSaleId)->where('branch_id', $branchId)
+                    ->where('status', 'held')->lockForUpdate()->first();
+                if (! $sale) {
+                    throw ValidationException::withMessages(['held_sale_id' => 'No held sale found to settle.']);
+                }
+                // The check's OWN shift takes the cash (it is still open — a held sale blocks its close);
+                // row-lock it so a concurrent close cannot interleave with the counter increments.
+                $shift = Shift::on('tenant')->where('id', (int) $sale->shift_id)->lockForUpdate()->first();
+                if (! $shift || $shift->status !== 'open') {
+                    throw new RuntimeException('The shift this check belongs to is not open.');
+                }
+
+                $paidAmount = array_sum(array_map(fn ($p) => (float) $p['amount'], $payments));
+                if ($paidAmount + 1e-6 < (float) $sale->grand_total) {
+                    throw ValidationException::withMessages(['payments' => 'Paid amount is less than the sale total.']);
+                }
+
+                $sale->payments()->delete();
+                foreach ($payments as $p) {
+                    $amount = (float) $p['amount'];
+                    $tendered = isset($p['tendered_amount']) && $p['tendered_amount'] !== null ? (float) $p['tendered_amount'] : null;
+                    $sale->payments()->create([
+                        'payment_method_id' => (int) $p['payment_method_id'],
+                        'amount' => $amount,
+                        'tendered_amount' => $tendered,
+                        'change_amount' => $tendered !== null ? max($tendered - $amount, 0) : 0,
+                        'transaction_ref' => $p['transaction_ref'] ?? null,
+                    ]);
+                }
+
+                $sale->update([
+                    'client_uuid' => $clientUuid,
+                    'client_payload_hash' => $payloadHash,
+                    'paid_amount' => $paidAmount,
+                    'change_amount' => max($paidAmount - (float) $sale->grand_total, 0),
+                    'status' => 'paid',
+                    'completed_at' => now(),
+                ]);
+
+                // Operational stock: the FINAL quantities, exactly once, at settle (never during rounds).
+                $this->opStock->consumeForSale($sale->fresh(), $user->id);
+                $sale->update(['edge_operational_stock_posted' => true]);
+
+                // Shared operational settlement + the shared "payment settles the table" custody rule.
+                $this->settlement->settle($sale->fresh());
+                $this->salesService->closeRestaurantTableSession($sale->fresh());
+
+                return $sale->fresh();
+            }, 3);
+        } catch (UniqueConstraintViolationException $e) {
+            if (! $this->isClientUuidCollision($e->getMessage())) {
+                throw $e;
+            }
+            $winner = $this->idempotency->resolveFinalizedWithRetry($clientUuid);
+            if ($winner) {
+                return $this->replayOrConflict($winner, $payloadHash);
+            }
+            throw new SaleIdempotencyConflictException(null, SaleIdempotencyConflictException::CODE_PENDING);
+        }
+    }
+
+    /** Cancel a whole held order (REAL KotCancellationService — permission + branch approval mode + cancel-KOT event). */
+    public function cancelHeldSale(int $saleId, int $reasonId, ?int $managerApprovalId, User $user): array
+    {
+        $meta = $this->context->requireCurrent();
+        $branchId = (int) $meta->branch_id;
+        $this->requireAuthorizedPrincipal($user, $branchId);
+
+        $sale = SalesOrder::on('tenant')->where('id', $saleId)->where('branch_id', $branchId)->where('status', 'held')->first();
+        if (! $sale) {
+            throw ValidationException::withMessages(['held_sale_id' => 'No held sale found to cancel.']);
+        }
+
+        return $this->kotCancellations->cancelHeldOrder($sale, $reasonId, $managerApprovalId, (int) $user->id);
+    }
+
+    /** Close/cancel a table session with NO remaining open orders (Cloud close semantics) and free the table. */
+    public function closeTableSession(int $sessionId, string $targetStatus, User $user): RestaurantTableSession
+    {
+        $meta = $this->context->requireCurrent();
+        $branchId = (int) $meta->branch_id;
+        $this->requireAuthorizedPrincipal($user, $branchId);
+        if (! in_array($targetStatus, ['closed', 'cancelled'], true)) {
+            throw ValidationException::withMessages(['status' => 'A table session can only be closed or cancelled.']);
+        }
+
+        return DB::connection('tenant')->transaction(function () use ($sessionId, $branchId, $targetStatus, $user) {
+            $session = RestaurantTableSession::on('tenant')->where('id', $sessionId)->where('branch_id', $branchId)->lockForUpdate()->first();
+            if (! $session || in_array($session->status, ['closed', 'cancelled'], true)) {
+                throw ValidationException::withMessages(['session' => 'No open table session found.']);
+            }
+            if (SalesOrder::on('tenant')->where('restaurant_table_session_id', $session->id)->whereIn('status', ['draft', 'held'])->exists()) {
+                throw new RuntimeException('This table still has open orders — settle or cancel them first.');
+            }
+            $session->update(['status' => $targetStatus, 'closed_by_user_id' => $user->id, 'closed_at' => now()]);
+            RestaurantTable::on('tenant')->where('id', $session->restaurant_table_id)->update(['status' => 'available']);
+
+            return $session->fresh();
+        });
     }
 
     /** Server-side line resolution. STANDARD lines NEVER trust request price/tax — resolved from catalog/config. */

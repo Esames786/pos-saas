@@ -102,6 +102,15 @@ class EdgeBranchServerRegistrationTest extends TestCase
             'edge/local/pos/shift/open',
             'edge/local/pos/shift/close',
             'edge/local/pos/sales',
+            // EDGE-LOCAL-POS-1 restaurant layer (deliberately approved).
+            'edge/local/pos/restaurant/board',
+            'edge/local/pos/restaurant/tables/{table}/open',
+            'edge/local/pos/restaurant/table-sessions/{session}/close',
+            'edge/local/pos/held-sales',
+            'edge/local/pos/held-sales/{sale}/kot',
+            'edge/local/pos/held-sales/{sale}/settle',
+            'edge/local/pos/held-sales/{sale}/cancel',
+            'edge/local/pos/manager-approvals/verify',
         ];
 
         $uris = collect(\Illuminate\Support\Facades\Route::getRoutes()->getRoutes())

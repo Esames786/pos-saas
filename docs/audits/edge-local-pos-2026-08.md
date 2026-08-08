@@ -189,6 +189,48 @@ tree: full authoritative MySQL 169/789 ZERO skips + fast 115/31,139.
   baseline) | `basic_runtime_ready`. It NEVER flips the global `operational_stock` verdict and
   `activation_ready` stays hard false.
 
+## Restaurant layer — dine-in / held / Add Round / KOT business events / manager re-auth
+Eight new `edge/local/pos/*` routes (board, table open, session close, held store, held KOT, held settle,
+held cancel, manager verify) — each explicitly allowlisted + census-updated, same authority envelope
+(`EdgeBranchContext` + authenticated principal + in-txn revalidation; `EdgeLocalPosService` extended, the
+controller adds no authority). Reuses CLOUD semantics + frozen identities end-to-end:
+- **Table session**: Cloud open semantics (shift lock FIRST then table row lock, one open session per
+  table, table→occupied). Pre-minted ULID = `session_uuid` with `session_no = TS-{branch}-{ulid}` derived
+  from it (migration `2026_08_08_000014` WIDENS `session_no` varchar 30→64 — additive, Cloud formats
+  unaffected). Close/cancel endpoint refuses while draft/held orders remain; frees the table.
+- **Held order / Add Round**: Cloud HeldSaleController contract — status `held`, shift_id + business_date
+  FROZEN at first hold (a session keeps its own business_date), one open check per session,
+  lines delete+recreate churn with `sale_uuid` durable (EDGE-IDENTITY), KOT-sent state carried over
+  (`kot_sent_quantity = min(sent, newQty)`), and **per-line CAPTURED price**: a carried line keeps its
+  stored unit_price even when the catalog moves (proven 100→150: carried 2×100 + new 1×150 = 350); NEW
+  lines price from the catalog — a submitted price is never trusted. Held orders NEVER touch operational
+  stock or settlement.
+- **KOT business events**: through the REAL public `PrintJobService::queueKot` — `kot_batches`
+  (sequence 1 = normal, 2+ = addition; immutable `event_uuid`) + `kot_batch_lines` (`kot_line_uuid`,
+  `source_line_uuid` snapshot that survives the line churn, DELTA quantities). NO print transport runs:
+  with zero printers configured routing degrades to the browser-fallback route and Edge completes it
+  server-side (`markPrinted` — the same call the Cloud POS browser makes), so `kot_sent` bookkeeping is
+  canonical and a later round sends only its true delta; no unsent delta → NO batch (proven).
+- **Implicit cancellation + manager re-auth**: reducing a line below its kitchen-sent quantity REQUIRES a
+  matching void (reason + exact qty); with branch mode `manager_required` the REAL
+  `ManagerApprovalService::verifyPin` (manager_pins `Hash::check`; wrong PIN refused) mints a single-use
+  approval consumed by the REAL `KotCancellationService` (payload-bound, 10-min expiry) — cancel-KOT batch
+  (`event_type=cancel`) + `sales_order_line_cancellations` row with `source_line_uuid` +
+  `referenced_kot_event_uuid` written, approval `consumed_at` stamped. Whole-order cancel same path.
+  **NAMED GAP**: bootstrap deliberately never ships `pin_hash` (SECRET_FIELDS) → a real appliance has no
+  manager_pins rows until a local manager-PIN enrollment exists (future sprint, like Edge credentials).
+  The spatie permission graph DOES ship (importer reconstructs it), so `$user->can()` is real on Edge.
+- **Settle**: same-row held→paid (durable sale_uuid), cash-only, client_uuid REQUIRED (replay proven —
+  same sale, no second stock consumption), operational stock consumed ONCE for the FINAL quantities at
+  settle, shared `SaleOperationalSettlementService` (ledger = exactly sale_total + sale_payment), and the
+  shared `SalesService::closeRestaurantTableSession` (made public — smallest extraction; Cloud
+  finalizePaidSale unchanged) closes the session + frees the table. The check's OWN open shift is
+  row-locked and takes the APPLIED cash (close variance 0 proven end-to-end over HTTP).
+- **Shift-close blockers**: an open check + open table session block `shift/close` (real
+  `assertClosableUnderLock` rule) until settled/cancelled+closed — proven both ways over HTTP.
+Proof: `EdgeLocalRestaurantHttpMySqlTest` (4 tests / 106 assertions, branch_server-BOOTED real HTTP;
+official stock_ledgers/journal_entries stay 0 throughout).
+
 ## Release position
 Offline production readiness ≈ **40–45%**. A basic local sale running ≠ production-safe appliance: still
 missing operational stock authority (H10), sync, printing transport, backup/updater (hard gate), recovery,

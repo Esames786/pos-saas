@@ -258,7 +258,13 @@ class SalesService
         return round($totalCost, 4);
     }
 
-    private function closeRestaurantTableSession(SalesOrder $sale): void
+    /**
+     * Close the sale's dine-in table session (and free the table) once no other held order remains.
+     * PUBLIC (EDGE-LOCAL-POS-1): the ONE shared custody rule for "payment settles the table" — used by
+     * Cloud finalizePaidSale below AND the Branch Server settle path (which never calls finalizePaidSale;
+     * that whole method is fenced on branch_server). Operational custody only — no accounting effect.
+     */
+    public function closeRestaurantTableSession(SalesOrder $sale): void
     {
         if (!$sale->restaurant_table_session_id) {
             return;

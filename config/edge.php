@@ -65,6 +65,15 @@ return [
         'edge.local.pos.shift.open',
         'edge.local.pos.shift.close',
         'edge.local.pos.sales.store',
+        // EDGE-LOCAL-POS-1 restaurant layer (each name deliberate).
+        'edge.local.pos.restaurant.board',
+        'edge.local.pos.restaurant.table.open',
+        'edge.local.pos.restaurant.session.close',
+        'edge.local.pos.held.store',
+        'edge.local.pos.held.kot',
+        'edge.local.pos.held.settle',
+        'edge.local.pos.held.cancel',
+        'edge.local.pos.manager.verify',
     ],
 
     /*

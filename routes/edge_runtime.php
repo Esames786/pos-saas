@@ -40,5 +40,16 @@ Route::prefix('edge/local')->name('edge.local.')->group(function () {
         Route::post('/shift/open', [EdgeLocalPosController::class, 'openShift'])->name('shift.open');
         Route::post('/shift/close', [EdgeLocalPosController::class, 'closeShift'])->name('shift.close');
         Route::post('/sales', [EdgeLocalPosController::class, 'storeSale'])->name('sales.store');
+
+        // Restaurant layer: dine-in table sessions, held orders (Add Round), KOT business events,
+        // settle/cancel, manager re-auth. Same authority envelope (EdgeLocalPosService); NO print transport.
+        Route::get('/restaurant/board', [EdgeLocalPosController::class, 'restaurantBoard'])->name('restaurant.board');
+        Route::post('/restaurant/tables/{table}/open', [EdgeLocalPosController::class, 'openTable'])->name('restaurant.table.open');
+        Route::post('/restaurant/table-sessions/{session}/close', [EdgeLocalPosController::class, 'closeTableSession'])->name('restaurant.session.close');
+        Route::post('/held-sales', [EdgeLocalPosController::class, 'storeHeldSale'])->name('held.store');
+        Route::post('/held-sales/{sale}/kot', [EdgeLocalPosController::class, 'queueKot'])->name('held.kot');
+        Route::post('/held-sales/{sale}/settle', [EdgeLocalPosController::class, 'settleHeldSale'])->name('held.settle');
+        Route::post('/held-sales/{sale}/cancel', [EdgeLocalPosController::class, 'cancelHeldSale'])->name('held.cancel');
+        Route::post('/manager-approvals/verify', [EdgeLocalPosController::class, 'verifyManagerApproval'])->name('manager.verify');
     });
 });
