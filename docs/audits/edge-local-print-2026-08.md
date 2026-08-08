@@ -99,6 +99,20 @@ Review found 4 transport-correctness issues + 1 proof gap; all closed:
    (a printed job never gains a failure counter or a printed+terminal_failed contradiction) and
    completeSuccess converges idempotently on printed. Proven with markPrinted racing an active lease.
 
+## SLICE 1 VERDICT — GREEN + FROZEN + DEPLOYED DORMANT (2026-08-09)
+`cc65339` accepted as final Slice-1 HEAD. **Production dormant deploy proven**: `5b965b9` →
+`cc653397c8257fccff4eb9a4c6825b23b42a7292` (exact reviewed HEAD, single deploy.sh run, tracked tree
+clean, `.env.bak-binaries` md5 identical pre/post). Cloud stays cloud: 0 `APP_ROLE`/`EDGE_*` env,
+0 `edge/local` routes (HTTP 404), **`edge_local_print_deliveries` on ZERO Cloud tenants** (edge-path
+migration never runs there), Print Agent API routes registered normally, `edge:local:print-worker`
+FAIL-CLOSES on Cloud ("only runs on a Branch Server"), no worker process. Smoke identical to
+baseline: tb_diff=0.00 / neg_on_disallowed=0 / dept_neg=0 ×7 tenants; site + demo logins 200; print
+admin pages resolve (302→login); zero new log errors. Local Mode inactive, activation_ready=false.
+WORDING RULE (accepted policy, keep in future docs): strict automatic FIFO holds only while work is
+automatically deliverable/retrying — a `terminal_failed` job deliberately does NOT block later jobs,
+so a manual operator retry afterwards does not recover historical physical order. "Addition can never
+print before original" is therefore NOT unconditional; it holds up to terminal failure.
+
 ## Out of scope (unchanged)
 Local Mode activation (`activation_ready=false`), sync, Windows service/installer wiring, ESC/POS
 capability upgrades, reroute-unresolved-intent operation (deliberate audited op, later), Cloud agent
