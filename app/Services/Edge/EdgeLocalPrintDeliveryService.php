@@ -39,11 +39,14 @@ class EdgeLocalPrintDeliveryService
 {
     public const LEASE_SECONDS = 120;
 
-    /** Bounded, deliberately conservative backoff after the Nth temporary failure. */
+    /**
+     * Bounded backoff contract (exact): temporary failure N (1..5) schedules retry after
+     * BACKOFF_SECONDS[N-1] — every configured slot is reachable; failure #6 is TERMINAL (the shared
+     * markFailed runs once and the job waits for an explicit retry).
+     */
     public const BACKOFF_SECONDS = [5, 15, 30, 60, 120];
 
-    /** The Nth failure is terminal: shared markFailed runs once and the job waits for an explicit retry. */
-    public const MAX_FAILURES = 5;
+    public const MAX_FAILURES = 6;
 
     public function __construct(
         private readonly EdgeBranchContext $context,
@@ -83,7 +86,24 @@ class EdgeLocalPrintDeliveryService
                                 ->orWhereIn('d.delivery_state', [EdgeLocalPrintDelivery::STATE_DELIVERED, EdgeLocalPrintDelivery::STATE_TERMINAL_FAILED]);
                         });
                 })
+                // PER-PRINTER FIFO (head-of-line): a NEWER job for the SAME printer must not overtake
+                // an OLDER queued job that is merely leased-live or waiting out its retry backoff — a
+                // kitchen must never receive the Addition/CANCEL KOT before the original round.
+                // A terminal_failed older job does NOT block (it never auto-runs again; an operator
+                // must explicitly resolve/retry it, and later jobs may proceed meanwhile).
+                ->whereNotExists(function ($q) {
+                    $q->selectRaw('1')->from('print_jobs as older')
+                        ->join('edge_local_print_deliveries as od', 'od.print_job_id', '=', 'older.id')
+                        ->whereColumn('older.printer_id', 'print_jobs.printer_id')
+                        ->whereColumn('older.id', '<', 'print_jobs.id')
+                        ->where('older.print_status', 'queued')
+                        ->where(function ($w) {
+                            $w->where('od.lease_expires_at', '>', now())
+                                ->orWhere('od.next_attempt_at', '>', now());
+                        });
+                })
                 ->orderBy('created_at')
+                ->orderBy('id')
                 ->lockForUpdate()
                 ->first();
 
@@ -126,10 +146,16 @@ class EdgeLocalPrintDeliveryService
     public function completeSuccess(int $printJobId, string $leaseToken): bool
     {
         return DB::connection('tenant')->transaction(function () use ($printJobId, $leaseToken) {
-            $delivery = EdgeLocalPrintDelivery::where('print_job_id', $printJobId)->lockForUpdate()->first();
+            // ONE lock order everywhere: print_job FIRST, then its delivery row (matches claimNext).
             $job = PrintJob::where('id', $printJobId)->lockForUpdate()->first();
+            $delivery = EdgeLocalPrintDelivery::where('print_job_id', $printJobId)->lockForUpdate()->first();
             if (! $delivery || ! $job || ! $this->tokenIsCurrent($delivery, $leaseToken)) {
                 return false; // stale worker — refuse silently, no state mutation
+            }
+            // state consistency: the lease authorizes completing a queued delivery intent — a job that
+            // is already `printed` converges idempotently via markPrinted; anything else refuses.
+            if (! in_array($job->print_status, ['queued', 'printed'], true)) {
+                return false;
             }
 
             $this->printJobs->markPrinted($job); // the REAL shared completion (idempotent)
@@ -151,9 +177,16 @@ class EdgeLocalPrintDeliveryService
     public function completeFailure(int $printJobId, string $leaseToken, string $error): bool
     {
         return DB::connection('tenant')->transaction(function () use ($printJobId, $leaseToken, $error) {
-            $delivery = EdgeLocalPrintDelivery::where('print_job_id', $printJobId)->lockForUpdate()->first();
+            // ONE lock order everywhere: print_job FIRST, then its delivery row (matches claimNext).
             $job = PrintJob::where('id', $printJobId)->lockForUpdate()->first();
+            $delivery = EdgeLocalPrintDelivery::where('print_job_id', $printJobId)->lockForUpdate()->first();
             if (! $delivery || ! $job || ! $this->tokenIsCurrent($delivery, $leaseToken)) {
+                return false;
+            }
+            // state consistency: a temporary failure may only be recorded against a QUEUED delivery
+            // intent — `printed` (or any other) state must never gain a failure counter or a
+            // printed+terminal_failed contradiction.
+            if ($job->print_status !== 'queued') {
                 return false;
             }
 
@@ -192,20 +225,24 @@ class EdgeLocalPrintDeliveryService
         });
     }
 
-    /** §10 — explicit local retry of a terminally-failed job (same field contract as the Cloud admin retry). */
+    /**
+     * §10 — explicit local retry of a TERMINALLY-failed job: delegates to the ONE shared
+     * PrintJobService::requeueFailed (the same operation Cloud PrintJobController::retry uses — no
+     * duplicated field contract), then resets the Edge-only delivery metadata. Refuses anything that
+     * is not an Edge terminal_failed delivery — the Edge path can never retry a random queued/printed
+     * or Cloud-owned job.
+     */
     public function retryTerminalFailed(int $printJobId): void
     {
         DB::connection('tenant')->transaction(function () use ($printJobId) {
-            $delivery = EdgeLocalPrintDelivery::where('print_job_id', $printJobId)->lockForUpdate()->first();
+            // ONE lock order everywhere: print_job FIRST, then its delivery row.
             $job = PrintJob::where('id', $printJobId)->lockForUpdate()->first();
-            if (! $job || $job->print_status !== 'failed') {
-                throw new RuntimeException('Only a failed print job can be retried.');
+            $delivery = EdgeLocalPrintDelivery::where('print_job_id', $printJobId)->lockForUpdate()->first();
+            if (! $job || ! $delivery || $delivery->delivery_state !== EdgeLocalPrintDelivery::STATE_TERMINAL_FAILED) {
+                throw new RuntimeException('Only a terminally-failed local delivery can be retried.');
             }
-            $job->update([
-                'print_status' => 'queued', 'error_message' => null, 'failed_at' => null,
-                'claimed_by_agent_id' => null, 'claimed_at' => null,
-            ]);
-            $delivery?->update([
+            $this->printJobs->requeueFailed($job); // shared eligibility + field contract (failed|cancelled only)
+            $delivery->update([
                 'delivery_state' => EdgeLocalPrintDelivery::STATE_WAITING,
                 'failure_count' => 0, 'worker_uuid' => null, 'lease_token' => null,
                 'claimed_at' => null, 'lease_expires_at' => null, 'next_attempt_at' => null,
@@ -213,12 +250,19 @@ class EdgeLocalPrintDeliveryService
         });
     }
 
-    /** The one ownership rule: only the CURRENT active lease token may complete (state must still be leased). */
+    /**
+     * The one ownership rule: only the CURRENT ACTIVE lease token may complete — state still leased,
+     * token equal, AND the lease NOT expired. Expiry itself revokes authority: an expired lease is
+     * stale even if no other worker has reclaimed the job yet (the transport may still be in flight
+     * on a stalled worker — its outcome must never land after its authority window closed).
+     */
     private function tokenIsCurrent(EdgeLocalPrintDelivery $delivery, string $leaseToken): bool
     {
         return $delivery->delivery_state === EdgeLocalPrintDelivery::STATE_LEASED
             && is_string($delivery->lease_token)
             && $delivery->lease_token !== ''
-            && hash_equals($delivery->lease_token, $leaseToken);
+            && hash_equals($delivery->lease_token, $leaseToken)
+            && $delivery->lease_expires_at !== null
+            && $delivery->lease_expires_at->isFuture();
     }
 }

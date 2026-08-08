@@ -218,20 +218,15 @@ class PrintJobController extends Controller
 
     public function retry(Request $request, PrintJob $printJob)
     {
-        if (!in_array($printJob->print_status, ['failed', 'cancelled'])) {
+        // the ONE shared requeue operation (also used by the Edge local retry) — never duplicated.
+        try {
+            app(\App\Services\Printing\PrintJobService::class)->requeueFailed($printJob);
+        } catch (\RuntimeException $e) {
             if ($request->expectsJson()) {
-                return response()->json(['message' => 'Only failed or cancelled jobs can be retried.'], 422);
+                return response()->json(['message' => $e->getMessage()], 422);
             }
-            return back()->withErrors(['job' => 'Only failed or cancelled jobs can be retried.']);
+            return back()->withErrors(['job' => $e->getMessage()]);
         }
-
-        $printJob->update([
-            'print_status'        => 'queued',
-            'error_message'       => null,
-            'failed_at'           => null,
-            'claimed_by_agent_id' => null,
-            'claimed_at'          => null,
-        ]);
 
         if ($request->expectsJson()) {
             return response()->json(['status' => 'queued', 'job_no' => $printJob->job_no]);

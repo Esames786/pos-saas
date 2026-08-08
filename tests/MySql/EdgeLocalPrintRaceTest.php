@@ -174,6 +174,94 @@ class EdgeLocalPrintRaceTest extends MySqlTenantTestCase
         $this->assertSame(0, (int) $row->attempts);
     }
 
+    // ── closure fix 2: completion RACING reclaim at the lease boundary — one lock order, no leaks ─
+    public function test_race_completion_vs_reclaim_at_lease_boundary_is_deadlock_free_and_coherent(): void
+    {
+        $jobId = $this->queuedJob("RACE-LOCK\n\n\n");
+        $claim = null;
+        // claim in-process to hold a real token, then push the lease to the exact boundary.
+        \Illuminate\Support\Facades\Auth::shouldUse('tenant');
+        $svc = app(\App\Services\Edge\EdgeLocalPrintDeliveryService::class);
+        $claim = $svc->claimNext('worker-A');
+        $this->assertNotNull($claim);
+        EdgeLocalPrintDelivery::where('print_job_id', $jobId)->update(['lease_expires_at' => now()]);
+
+        // GENUINE two processes on the barrier: completion(with A's token) vs reclaim(worker-B).
+        $startFile = sys_get_temp_dir() . '/edge_print_boundary_' . Str::random(8) . '.start';
+        @unlink($startFile);
+        $p1 = $this->worker(['print_success', $jobId, $claim['lease_token']], $startFile);
+        $p2 = $this->worker(['print_claim', 'worker-B'], $startFile);
+        sleep(4);
+        file_put_contents($startFile, '1');
+        $out1 = $this->finish($p1);
+        $out2 = $this->finish($p2);
+        @unlink($startFile);
+
+        // no deadlock/SQL leakage — every outcome is a controlled protocol answer.
+        foreach ([$out1, $out2] as $out) {
+            $this->assertMatchesRegularExpression('/^(OK:|REFUSED:)/', $out, "raw error leaked: $out");
+            $this->assertStringNotContainsString('Deadlock', $out);
+            $this->assertStringNotContainsString('QueryException', $out);
+            $this->assertStringNotContainsString('PDOException', $out);
+        }
+
+        // coherent final state, whichever side won the locks:
+        $row = DB::connection('tenant')->table('print_jobs')->where('id', $jobId)->first();
+        $d = EdgeLocalPrintDelivery::where('print_job_id', $jobId)->first();
+        if ($row->print_status === 'printed') {
+            // completion won while its token was still active → delivered, no live token.
+            $this->assertSame(EdgeLocalPrintDelivery::STATE_DELIVERED, $d->delivery_state);
+            $this->assertNull($d->lease_token);
+            $this->assertSame('OK:claim:none', $out2, 'a delivered job is not reclaimable');
+        } else {
+            // the expired lease lost authority → still queued; at most ONE current token (B's or none).
+            $this->assertSame('queued', $row->print_status);
+            $this->assertSame('REFUSED:stale', $out1, 'the boundary token was refused');
+            if ($d->delivery_state === EdgeLocalPrintDelivery::STATE_LEASED) {
+                $this->assertNotNull($d->lease_token);
+                $this->assertNotSame($claim['lease_token'], $d->lease_token, 'exactly one CURRENT token — the reclaimer\'s');
+            }
+        }
+        $this->assertNotSame('failed', $row->print_status, 'the race can never fabricate a failure');
+    }
+
+    // ── closure fix 3: two workers + two queued jobs on ONE printer must preserve FIFO ───────────
+    public function test_race_two_workers_same_printer_never_deliver_out_of_order(): void
+    {
+        $payloadA = "FIFO-FIRST\n\n\n";
+        $payloadB = "FIFO-SECOND\n\n\n";
+        $jobA = $this->makePrintJob($this->printerId, ['print_status' => 'queued', 'printed_at' => null, 'attempts' => 0, 'branch_id' => $this->branchId, 'raw_payload' => $payloadA, 'created_at' => now()->subMinute()]);
+        $jobB = $this->makePrintJob($this->printerId, ['print_status' => 'queued', 'printed_at' => null, 'attempts' => 0, 'branch_id' => $this->branchId, 'raw_payload' => $payloadB]);
+
+        $fp = $this->startFakePrinter(2);
+        $startFile = sys_get_temp_dir() . '/edge_print_fifo_' . Str::random(8) . '.start';
+        @unlink($startFile);
+        $p1 = $this->worker(['print_cycle', 'worker-1'], $startFile);
+        $p2 = $this->worker(['print_cycle', 'worker-2'], $startFile);
+        sleep(4);
+        file_put_contents($startFile, '1');
+        $out1 = $this->finish($p1);
+        $out2 = $this->finish($p2);
+        @unlink($startFile);
+
+        // legitimate interleavings: (a) one racer delivers A while the FIFO gate returns none to the
+        // other; (b) the second racer runs after A completed and delivers B. NEVER B before/without A.
+        $joined = $out1 . ' ' . $out2;
+        foreach ([$out1, $out2] as $out) {
+            $this->assertMatchesRegularExpression('/^OK:cycle:/', $out, "raw error leaked: $out");
+        }
+        $this->assertStringContainsString("OK:cycle:{$jobA}:delivered", $joined, "A must be the first delivery: 1=$out1 2=$out2");
+        $this->assertSame('printed', DB::connection('tenant')->table('print_jobs')->where('id', $jobA)->value('print_status'));
+
+        // drain B if the race left it queued, then prove the PHYSICAL byte order: A strictly before B.
+        if (! str_contains($joined, "OK:cycle:{$jobB}:delivered")) {
+            $out3 = $this->runWorker(['print_cycle', 'worker-3']);
+            $this->assertSame("OK:cycle:{$jobB}:delivered", $out3, $out3);
+        }
+        $bytes = $this->fakePrinterBytes($fp);
+        $this->assertSame($payloadA . "\n\n\n" . $payloadB . "\n\n\n", $bytes, 'the printer received A then B — never reordered');
+    }
+
     // ── D. died BEFORE sending → nothing on the wire; the next worker completes normally ────────
     public function test_race_death_before_send_leaves_no_bytes_and_next_worker_completes(): void
     {

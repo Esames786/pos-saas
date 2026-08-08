@@ -69,6 +69,36 @@ on/against the appliance (a future agent-compat mode would be mutually exclusive
   claim, then exactly one delivery after expiry.
 - `EdgeLocalImportMySqlTest` +1 (8/32): the §16 global-printer parity proof.
 
+## Slice-1 closure — active-lease authority + printer FIFO (correction on `5cf6966`)
+Review found 4 transport-correctness issues + 1 proof gap; all closed:
+1. **Lease EXPIRY revokes authority**: `tokenIsCurrent` now also requires `lease_expires_at` in the
+   future — an expired lease is stale even before any reclaim. Proven: A claims → lease expires with
+   NO reclaim → A's completeSuccess AND completeFailure both refused with zero mutation (queued,
+   attempts 0, failure_count 0) → B reclaims with a new token and completes.
+2. **ONE lock order everywhere**: print_job → delivery (claimNext already led with the job row;
+   completeSuccess/completeFailure/retryTerminalFailed now match — the inverted delivery→job order
+   could deadlock a reclaim against a completion). Two-process boundary race proven: completion(with
+   the boundary token) vs reclaim-after-expiry — no deadlock/SQL leakage, coherent final state either
+   way (printed+delivered+no token, or queued with exactly ONE current token — the reclaimer's), and
+   a failure can never be fabricated.
+3. **Per-printer FIFO (head-of-line)**: a NEWER queued job for the SAME printer is blocked while an
+   OLDER queued job is leased-live or waiting out retry backoff — the kitchen can never receive the
+   Addition/CANCEL KOT before the original round. Different printers proceed independently; a
+   `terminal_failed` older job does NOT block (it never auto-runs; an operator must explicitly
+   resolve/retry — documented rule). Proven: A retry_wait + printer recovered → B refused until A's
+   backoff elapses → captured FakePrinter stream is A-bytes strictly before B-bytes; plus a
+   two-process same-printer race (A always first, byte order proven; both interleavings controlled).
+4. **Exact backoff contract**: `MAX_FAILURES = 6` — temporary failures 1..5 schedule exactly
+   [5,15,30,60,120]s (every configured slot reachable, each delay asserted), failure #6 is terminal.
+5. **Shared requeue — no duplicated retry semantics**: new `PrintJobService::requeueFailed`
+   (failed|cancelled only) is the ONE requeue; Cloud `PrintJobController::retry` delegates to it
+   (REAL controller path now tested: failed → 200/queued → claimable via the real agent `pending()`;
+   printed → 422) and Edge `retryTerminalFailed` delegates to the SAME operation (and refuses
+   anything that is not an Edge `terminal_failed` delivery).
+6. **Completion state consistency**: under the job lock, completeFailure refuses any non-queued job
+   (a printed job never gains a failure counter or a printed+terminal_failed contradiction) and
+   completeSuccess converges idempotently on printed. Proven with markPrinted racing an active lease.
+
 ## Out of scope (unchanged)
 Local Mode activation (`activation_ready=false`), sync, Windows service/installer wiring, ESC/POS
 capability upgrades, reroute-unresolved-intent operation (deliberate audited op, later), Cloud agent

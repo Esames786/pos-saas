@@ -164,12 +164,35 @@ class CloudPrintAgentContractMySqlTest extends MySqlTenantTestCase
         $this->assertNotNull($row->failed_at);
         $this->assertSame('connection refused', $row->error_message);
 
-        // admin retry contract: failed → queued, error/claim cleared (the ONLY requeue in the codebase).
-        PrintJob::findOrFail($jobId)->update([
-            'print_status' => 'queued', 'error_message' => null, 'failed_at' => null,
-            'claimed_by_agent_id' => null, 'claimed_at' => null,
-        ]);
+        // admin retry through the REAL PrintJobController::retry (which delegates to the ONE shared
+        // PrintJobService::requeueFailed — the same operation the Edge local retry uses).
+        $retryReq = Request::create('/printing/jobs/x/retry', 'POST');
+        $retryReq->headers->set('Accept', 'application/json');
+        $resp = app(\App\Http\Controllers\Tenant\PrintJobController::class)->retry($retryReq, PrintJob::findOrFail($jobId));
+        $this->assertSame(200, $resp->getStatusCode());
+        $this->assertSame('queued', $resp->getData(true)['status']);
+        $row = DB::connection('tenant')->table('print_jobs')->where('id', $jobId)->first();
+        $this->assertSame('queued', $row->print_status);
+        $this->assertNull($row->error_message);
+        $this->assertNull($row->failed_at);
+        $this->assertNull($row->claimed_by_agent_id);
+        $this->assertNull($row->claimed_at);
+
+        // and the retried job is claimable through the REAL agent pending() again.
         $ids = collect($this->controller()->pending($this->agentRequest())->getData(true)['jobs'])->pluck('id');
         $this->assertSame([$jobId], $ids->all(), 'a retried job is claimable again');
+    }
+
+    public function test_real_controller_retry_refuses_a_printed_job(): void
+    {
+        $jobId = $this->queuedJob();
+        $this->controller()->pending($this->agentRequest());
+        $this->controller()->printed($this->agentRequest(), PrintJob::findOrFail($jobId), app(PrintJobService::class));
+
+        $retryReq = Request::create('/printing/jobs/x/retry', 'POST');
+        $retryReq->headers->set('Accept', 'application/json');
+        $resp = app(\App\Http\Controllers\Tenant\PrintJobController::class)->retry($retryReq, PrintJob::findOrFail($jobId));
+        $this->assertSame(422, $resp->getStatusCode(), 'a printed job can never be retried');
+        $this->assertSame('printed', DB::connection('tenant')->table('print_jobs')->where('id', $jobId)->value('print_status'));
     }
 }

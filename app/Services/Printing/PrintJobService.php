@@ -465,6 +465,26 @@ class PrintJobService
         });
     }
 
+    /**
+     * The ONE shared requeue of a failed/cancelled job (EDGE-LOCAL-PRINT-1 §5 closure): Cloud
+     * PrintJobController::retry and the Edge local retry both delegate here so the field contract
+     * can never drift. Only failed|cancelled jobs are eligible — anything else throws.
+     */
+    public function requeueFailed(PrintJob $job): void
+    {
+        if (! in_array($job->print_status, ['failed', 'cancelled'], true)) {
+            throw new \RuntimeException('Only failed or cancelled jobs can be retried.');
+        }
+
+        $job->update([
+            'print_status'        => 'queued',
+            'error_message'       => null,
+            'failed_at'           => null,
+            'claimed_by_agent_id' => null,
+            'claimed_at'          => null,
+        ]);
+    }
+
     public function markFailed(PrintJob $job, string $message): void
     {
         // A COMPLETED print can never be demoted to failed (EDGE-LOCAL-PRINT-1 §19, protects Cloud

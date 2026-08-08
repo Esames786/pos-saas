@@ -171,12 +171,18 @@ class EdgeLocalPrintDeliveryMySqlTest extends MySqlTenantTestCase
         // before next_attempt_at: NOT claimable.
         $this->assertNull($this->svc()->claimNext((string) Str::uuid()), 'no redelivery before the backoff elapses');
 
-        // drive to the terminal threshold (time-travel the backoff; each failure re-claims + fails).
+        // EXACT backoff contract: failures 1..5 schedule [5,15,30,60,120]s — every slot reachable —
+        // and failure #6 is terminal. (failure 1 already happened through the worker above.)
+        $delay = fn () => now()->diffInSeconds(EdgeLocalPrintDelivery::where('print_job_id', $jobId)->value('next_attempt_at'), false);
+        $this->assertEqualsWithDelta(EdgeLocalPrintDeliveryService::BACKOFF_SECONDS[0], $delay(), 3, 'failure 1 → 5s');
         for ($i = 2; $i <= EdgeLocalPrintDeliveryService::MAX_FAILURES; $i++) {
             EdgeLocalPrintDelivery::where('print_job_id', $jobId)->update(['next_attempt_at' => now()->subSecond()]);
             $claim = $this->svc()->claimNext((string) Str::uuid());
             $this->assertNotNull($claim, "failure $i must be claimable after backoff");
             $this->assertTrue($this->svc()->completeFailure($claim['job_id'], $claim['lease_token'], "unreachable $i"));
+            if ($i < EdgeLocalPrintDeliveryService::MAX_FAILURES) {
+                $this->assertEqualsWithDelta(EdgeLocalPrintDeliveryService::BACKOFF_SECONDS[$i - 1], $delay(), 3, "failure $i schedules its exact configured wait");
+            }
         }
         $row = DB::connection('tenant')->table('print_jobs')->where('id', $jobId)->first();
         $this->assertSame('failed', $row->print_status, 'the terminal threshold marks the shared status failed ONCE');
@@ -217,6 +223,117 @@ class EdgeLocalPrintDeliveryMySqlTest extends MySqlTenantTestCase
         $this->assertNotNull($row->printed_at);
         $this->assertSame(0, (int) $row->attempts);
         $this->assertSame(EdgeLocalPrintDelivery::STATE_DELIVERED, EdgeLocalPrintDelivery::where('print_job_id', $jobId)->value('delivery_state'));
+    }
+
+    /** Closure fix 1: lease EXPIRY itself revokes completion authority — even before any reclaim. */
+    public function test_expired_lease_loses_authority_before_any_reclaim(): void
+    {
+        $printerId = $this->makeNetworkPrinter();
+        $jobId = $this->makePrintJob($printerId, ['print_status' => 'queued', 'printed_at' => null, 'attempts' => 0, 'branch_id' => $this->branchId, 'raw_payload' => 'E']);
+
+        $claim = $this->svc()->claimNext('worker-A');
+        $this->assertNotNull($claim);
+        EdgeLocalPrintDelivery::where('print_job_id', $jobId)->update(['lease_expires_at' => now()->subSecond()]);
+
+        // NOBODY has reclaimed — the expired token must still be refused, with zero state mutation.
+        $this->assertFalse($this->svc()->completeSuccess($jobId, $claim['lease_token']), 'expired lease may not complete');
+        $this->assertFalse($this->svc()->completeFailure($jobId, $claim['lease_token'], 'late error'), 'expired lease may not record failure');
+        $row = DB::connection('tenant')->table('print_jobs')->where('id', $jobId)->first();
+        $this->assertSame('queued', $row->print_status);
+        $this->assertSame(0, (int) $row->attempts);
+        $d = EdgeLocalPrintDelivery::where('print_job_id', $jobId)->first();
+        $this->assertSame(0, (int) $d->failure_count);
+
+        // the job stays reclaimable; a NEW lease completes normally.
+        $fresh = $this->svc()->claimNext('worker-B');
+        $this->assertNotNull($fresh, 'the expired lease leaves the job reclaimable');
+        $this->assertNotSame($claim['lease_token'], $fresh['lease_token']);
+        $this->assertTrue($this->svc()->completeSuccess($jobId, $fresh['lease_token']));
+        $this->assertSame('printed', DB::connection('tenant')->table('print_jobs')->where('id', $jobId)->value('print_status'));
+    }
+
+    /** Closure fix 6: a job printed by another legitimate path can never gain a failure/terminal contradiction. */
+    public function test_completion_state_consistency_printed_never_gains_failure_state(): void
+    {
+        $printerId = $this->makeNetworkPrinter();
+        $jobId = $this->makePrintJob($printerId, ['print_status' => 'queued', 'printed_at' => null, 'attempts' => 0, 'branch_id' => $this->branchId, 'raw_payload' => 'C']);
+        $claim = $this->svc()->claimNext('worker-A');
+        $this->assertNotNull($claim);
+
+        // another legitimate path marks the job printed while the lease is still ACTIVE.
+        app(PrintJobService::class)->markPrinted(\App\Models\Tenant\PrintJob::findOrFail($jobId));
+
+        // a temporary failure against the printed job is refused — no counter, no contradiction.
+        $this->assertFalse($this->svc()->completeFailure($jobId, $claim['lease_token'], 'socket flaked'));
+        $d = EdgeLocalPrintDelivery::where('print_job_id', $jobId)->first();
+        $this->assertSame(0, (int) $d->failure_count);
+        $this->assertNotSame(EdgeLocalPrintDelivery::STATE_TERMINAL_FAILED, $d->delivery_state);
+
+        // success with the current token converges idempotently to delivered.
+        $this->assertTrue($this->svc()->completeSuccess($jobId, $claim['lease_token']));
+        $row = DB::connection('tenant')->table('print_jobs')->where('id', $jobId)->first();
+        $this->assertSame('printed', $row->print_status);
+        $this->assertSame(EdgeLocalPrintDelivery::STATE_DELIVERED, EdgeLocalPrintDelivery::where('print_job_id', $jobId)->value('delivery_state'));
+    }
+
+    /** Closure fix 3: per-printer FIFO — a newer job must never physically overtake an older retrying one. */
+    public function test_per_printer_fifo_newer_job_never_overtakes_a_retrying_older_one(): void
+    {
+        $printerId = $this->makeNetworkPrinter(); // nothing listening yet
+        $jobA = $this->makePrintJob($printerId, ['print_status' => 'queued', 'printed_at' => null, 'attempts' => 0, 'branch_id' => $this->branchId, 'raw_payload' => "KOT-A-ORIGINAL\n\n\n", 'created_at' => now()->subMinute()]);
+        $jobB = $this->makePrintJob($printerId, ['print_status' => 'queued', 'printed_at' => null, 'attempts' => 0, 'branch_id' => $this->branchId, 'raw_payload' => "KOT-B-ADDITION\n\n\n"]);
+
+        // A fails temporarily → retry_wait. The printer recovers IMMEDIATELY — but B must still wait.
+        $this->assertSame(0, Artisan::call('edge:local:print-worker', ['--once' => true]));
+        $this->assertSame(EdgeLocalPrintDelivery::STATE_RETRY_WAIT, EdgeLocalPrintDelivery::where('print_job_id', $jobA)->value('delivery_state'));
+        $this->assertNull($this->svc()->claimNext('w1'), 'B must NOT overtake A while A is in retry_wait on the same printer');
+
+        // a DIFFERENT printer proceeds independently.
+        $otherPort = $this->printerPort + 1;
+        $otherPrinter = $this->makeNetworkPrinter($otherPort);
+        $jobC = $this->makePrintJob($otherPrinter, ['print_status' => 'queued', 'printed_at' => null, 'attempts' => 0, 'branch_id' => $this->branchId, 'raw_payload' => 'C']);
+        $claimC = $this->svc()->claimNext('w2');
+        $this->assertSame($jobC, $claimC['job_id'] ?? null, 'another printer\'s queue is independent');
+        $this->assertTrue($this->svc()->completeFailure($jobC, $claimC['lease_token'], 'park C')); // park it out of the way
+
+        // A becomes eligible → A prints FIRST, then B — proven by the captured byte ORDER.
+        EdgeLocalPrintDelivery::where('print_job_id', $jobA)->update(['next_attempt_at' => now()->subSecond()]);
+        $fp = $this->startFakePrinter(2);
+        $this->assertSame(0, Artisan::call('edge:local:print-worker', ['--once' => true]));
+        $this->assertSame(0, Artisan::call('edge:local:print-worker', ['--once' => true]));
+        $captured = $this->waitFakePrinterDone($fp);
+        $this->assertSame("KOT-A-ORIGINAL\n\n\n\n\n\nKOT-B-ADDITION\n\n\n\n\n\n", $captured, 'A bytes strictly BEFORE B bytes');
+        $this->assertSame('printed', DB::connection('tenant')->table('print_jobs')->where('id', $jobA)->value('print_status'));
+        $this->assertSame('printed', DB::connection('tenant')->table('print_jobs')->where('id', $jobB)->value('print_status'));
+    }
+
+    /** Closure fix 3 (documented rule): a TERMINALLY-failed older job does not block the printer queue. */
+    public function test_terminal_failed_older_job_does_not_block_newer_jobs(): void
+    {
+        $printerId = $this->makeNetworkPrinter();
+        $jobA = $this->makePrintJob($printerId, ['print_status' => 'queued', 'printed_at' => null, 'attempts' => 0, 'branch_id' => $this->branchId, 'raw_payload' => 'A', 'created_at' => now()->subMinute()]);
+        $jobB = $this->makePrintJob($printerId, ['print_status' => 'queued', 'printed_at' => null, 'attempts' => 0, 'branch_id' => $this->branchId, 'raw_payload' => "B-LATER\n\n\n"]);
+
+        // drive A to terminal_failed (an operator must resolve it explicitly).
+        for ($i = 1; $i <= \App\Services\Edge\EdgeLocalPrintDeliveryService::MAX_FAILURES; $i++) {
+            EdgeLocalPrintDelivery::where('print_job_id', $jobA)->update(['next_attempt_at' => now()->subSecond()]);
+            $claim = $this->svc()->claimNext('w');
+            $this->assertSame($jobA, $claim['job_id'], 'FIFO: A stays first while retryable');
+            $this->assertTrue($this->svc()->completeFailure($jobA, $claim['lease_token'], "down $i"));
+        }
+        $this->assertSame('failed', DB::connection('tenant')->table('print_jobs')->where('id', $jobA)->value('print_status'));
+
+        // B now proceeds — the head of line is only held by LIVE (leased/retry_wait) work.
+        $claimB = $this->svc()->claimNext('w');
+        $this->assertSame($jobB, $claimB['job_id'] ?? null, 'terminal_failed must not freeze the printer queue');
+
+        // the Edge retry path can ONLY act on a terminal_failed local delivery — never a random job.
+        try {
+            $this->svc()->retryTerminalFailed($jobB);
+            $this->fail('a non-terminal job must not be retryable through the Edge path');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('terminally-failed', $e->getMessage());
+        }
     }
 
     public function test_local_print_readiness_is_truthful_and_never_an_activation_claim(): void
