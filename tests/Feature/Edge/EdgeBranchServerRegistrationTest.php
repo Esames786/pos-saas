@@ -94,6 +94,13 @@ class EdgeBranchServerRegistrationTest extends TestCase
             'edge/local/login',
             'edge/local/logout',
             'edge/local/status',
+            // EDGE-LOCAL-POS-1 — the branch-local POS surface (edge.auth + edge.branch gated; cash
+            // quick_sale/takeaway only; deliberately approved).
+            'edge/local/pos/terminals',
+            'edge/local/pos/terminal/select',
+            'edge/local/pos/shift',
+            'edge/local/pos/shift/open',
+            'edge/local/pos/sales',
         ];
 
         $uris = collect(\Illuminate\Support\Facades\Route::getRoutes()->getRoutes())

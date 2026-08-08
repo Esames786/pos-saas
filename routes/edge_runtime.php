@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Edge\EdgeLocalAuthController;
+use App\Http\Controllers\Edge\EdgeLocalPosController;
 use App\Http\Controllers\Edge\EdgeRuntimeController;
 use Illuminate\Support\Facades\Route;
 
@@ -27,4 +28,16 @@ Route::prefix('edge/local')->name('edge.local.')->group(function () {
     Route::post('/login', [EdgeLocalAuthController::class, 'login'])->middleware('throttle:edge-login')->name('auth.login.post');
     Route::post('/logout', [EdgeLocalAuthController::class, 'logout'])->name('auth.logout');
     Route::get('/status', [EdgeLocalAuthController::class, 'status'])->middleware('edge.auth')->name('auth.status');
+
+    // EDGE-LOCAL-POS-1 — the branch-local POS surface: authenticated local session (edge.auth) + bound
+    // appliance (edge.branch — request tenant/branch ids can never override the binding). Registered ONLY
+    // on a branch_server (this file is not loaded on Cloud), and every name is on the explicit allowlist.
+    // Cash quick_sale/takeaway only; the service refuses everything else. activation_ready stays false.
+    Route::prefix('pos')->name('pos.')->middleware(['edge.auth', 'edge.branch'])->group(function () {
+        Route::get('/terminals', [EdgeLocalPosController::class, 'terminals'])->name('terminals');
+        Route::post('/terminal/select', [EdgeLocalPosController::class, 'selectTerminal'])->name('terminal.select');
+        Route::get('/shift', [EdgeLocalPosController::class, 'shiftStatus'])->name('shift.status');
+        Route::post('/shift/open', [EdgeLocalPosController::class, 'openShift'])->name('shift.open');
+        Route::post('/sales', [EdgeLocalPosController::class, 'storeSale'])->name('sales.store');
+    });
 });

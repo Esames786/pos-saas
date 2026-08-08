@@ -65,6 +65,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'edge.device.auth' => \App\Http\Middleware\AuthenticateEdgeDevice::class,
             'edge.runtime.boundary' => EnsureEdgeRuntimeRouteAllowed::class,
             'edge.auth' => \App\Http\Middleware\EnsureEdgeAuthenticated::class,
+            // EDGE-LOCAL-POS-1: branch-bound request guard for the local POS surface.
+            'edge.branch' => \App\Http\Middleware\EnsureEdgeBranchBound::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

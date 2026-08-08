@@ -139,6 +139,21 @@ ON/OFF, **multi-component atomic rollback** (component A restored when component
     calculation (assertClosableUnderLock + variance) reconciles counted 100 against expected_cash=100 →
     variance 0.
 
+## Foundation micro-closure (`ca02646`) — FOUNDATION GREEN + FROZEN
+- **`source_revision` is mandatory, current-binding strict authority**: acceptance requires a non-empty
+  revision equal to the imported `edge_local_meta.source_revision` — an omitted/null revision can NOT bypass
+  the binding (A match ✓ / B wrong refused ✓ / C omitted refused ✓). `currentAccepted()` is revision-STRICT:
+  when the binding's imported revision moves past the baseline's, selling authority **lapses fail-closed**
+  (D ✓) until the future reconciliation/cutover protocol; the replacement fence stays revision-agnostic inside
+  `accept()` so a revision change cannot sneak a new baseline in (✓).
+- **Only `eosb_active_binding_unique` is the accepted-baseline race**: classification is by the violated KEY
+  NAME (same lesson as the client_uuid classifier — never whole-message text). An unrelated unique violation
+  (duplicate globally-unique `baseline_uuid` on a different device binding) propagates as the original
+  `UniqueConstraintViolationException` (✓). The deadlock retry remains limited to MySQL errno 1213.
+- Final gate on this exact tree: targeted 44/159; **full authoritative MySQL 166/755 ZERO skips**;
+  fast 113/31107; caches green; `git diff --check` clean. Foundation heads `ec9a9d3` → `cc2b339` →
+  `ca02646` (all pushed; production unchanged at `10d3e0d`, Cloud-only, Edge dormant).
+
 ## Executable status (honest)
 GREEN: low-level fencing (8/61 + 3/17 Cloud), Edge runtime/binding harness (real edge migrations +
 `edge_local_meta`, nothing mocked), basic paid-sale scaffolding + effective-intent idempotency +
