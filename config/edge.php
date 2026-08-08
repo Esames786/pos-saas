@@ -91,6 +91,8 @@ return [
         'edge:local:bootstrap-import',
         'edge:local:status',
         'edge:local:enroll',
+        // EDGE-LOCAL-PRINT-1 — the local lease-safe physical print worker (deliberately allowlisted).
+        'edge:local:print-worker',
         // Framework cache/runtime operations the appliance explicitly needs.
         'config:cache', 'config:clear',
         'route:cache', 'route:clear',

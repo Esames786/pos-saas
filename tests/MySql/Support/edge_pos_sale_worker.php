@@ -113,6 +113,49 @@ try {
         }
     }
 
+    // ── EDGE-LOCAL-PRINT-1 transport races: lease-token claim / delivery / stale completion. ──
+    if (in_array($mode, ['print_claim', 'print_cycle', 'print_success', 'print_failure', 'print_deliver_die'], true)) {
+        if ($mode === 'print_deliver_die') {
+            // claim + REAL TCP delivery, then die WITHOUT completing (simulated power loss before
+            // markPrinted) — prints the token so the test can later prove the stale-completion refusal.
+            $svc = app(\App\Services\Edge\EdgeLocalPrintDeliveryService::class);
+            $claim = $svc->claimNext((string) $argv[2]);
+            if (! $claim) {
+                echo "OK:deliver_die:none\n";
+                exit(0);
+            }
+            app(\App\Services\Edge\EdgeNetworkPrinterTransport::class)->send($claim['ip'], $claim['port'], $claim['raw_payload']);
+            echo 'OK:deliver_die:' . $claim['job_id'] . ':' . $claim['lease_token'] . "\n";
+            exit(0); // no completeSuccess — the lease dies with this process
+        }
+    }
+
+    if (in_array($mode, ['print_claim', 'print_cycle', 'print_success', 'print_failure'], true)) {
+        $svc = app(\App\Services\Edge\EdgeLocalPrintDeliveryService::class);
+        switch ($mode) {
+            case 'print_claim': // print_claim <worker_uuid> — claim only; prints the token; NO completion (simulated death).
+                $claim = $svc->claimNext((string) $argv[2]);
+                echo $claim ? 'OK:claim:' . $claim['job_id'] . ':' . $claim['lease_token'] . "\n" : "OK:claim:none\n";
+                exit(0);
+            case 'print_cycle': // print_cycle <worker_uuid> — full claim → real TCP → token-verified success.
+                $claim = $svc->claimNext((string) $argv[2]);
+                if (! $claim) {
+                    echo "OK:cycle:none\n";
+                    exit(0);
+                }
+                app(\App\Services\Edge\EdgeNetworkPrinterTransport::class)->send($claim['ip'], $claim['port'], $claim['raw_payload']);
+                $done = $svc->completeSuccess($claim['job_id'], $claim['lease_token']);
+                echo 'OK:cycle:' . $claim['job_id'] . ':' . ($done ? 'delivered' : 'stale') . "\n";
+                exit(0);
+            case 'print_success': // print_success <job_id> <token>
+                echo $svc->completeSuccess((int) $argv[2], (string) $argv[3]) ? "OK:success\n" : "REFUSED:stale\n";
+                exit(0);
+            case 'print_failure': // print_failure <job_id> <token> <error>
+                echo $svc->completeFailure((int) $argv[2], (string) $argv[3], (string) ($argv[4] ?? 'err')) ? "OK:failure\n" : "REFUSED:stale\n";
+                exit(0);
+        }
+    }
+
     if ($mode === 'close') {
         [, , $shiftId, $userId] = array_pad($argv, 4, null);
         $shift = Shift::on('tenant')->findOrFail((int) $shiftId);

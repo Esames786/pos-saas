@@ -467,6 +467,14 @@ class PrintJobService
 
     public function markFailed(PrintJob $job, string $message): void
     {
+        // A COMPLETED print can never be demoted to failed (EDGE-LOCAL-PRINT-1 §19, protects Cloud
+        // too): an agent that already reported printed may double-report — its own claim ownership
+        // still matches, so the controller check alone does not stop the stale printed→failed flip.
+        $job->refresh();
+        if ($job->print_status === 'printed') {
+            return;
+        }
+
         $job->update([
             'print_status'  => 'failed',
             'failed_at'     => now(),

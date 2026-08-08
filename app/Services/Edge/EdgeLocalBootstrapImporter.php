@@ -227,7 +227,10 @@ class EdgeLocalBootstrapImporter
                 continue;
             }
             foreach ($sections[$section] ?? [] as $row) {
-                if (array_key_exists('branch_id', $row) && (int) $row['branch_id'] !== $branchId) {
+                // A NULL branch_id row is GLOBAL/shared (e.g. a tenant-wide default printer or category
+                // mapping the Cloud routing may select for this branch — §16 parity), not another
+                // branch's data. Only a row bound to a DIFFERENT branch is a cross-branch violation.
+                if (array_key_exists('branch_id', $row) && $row['branch_id'] !== null && (int) $row['branch_id'] !== $branchId) {
                     throw new RuntimeException("CROSS_BRANCH: section [{$section}] contains a row for branch " . $row['branch_id'] . " (bound branch is {$branchId}).");
                 }
             }

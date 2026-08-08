@@ -82,7 +82,10 @@ class EdgeLocalReadiness
             // state only — it never implies activation_ready and never flips the global
             // operational_stock verdict above (a config snapshot is still not a selling authority).
             'local_pos' => $this->localPosState($bound, $localAuth),
-            'local_print' => 'not_implemented',      // EDGE-LOCAL-PRINT-1
+            // EDGE-LOCAL-PRINT-1 (§17): not_configured (no routable network printer for the bound
+            // branch) | blocked (unresolved NULL-printer intents or dangling printer references) |
+            // ready. A print-runtime state ONLY — never an activation claim.
+            'local_print' => $this->localPrintState($bound),
             'sync' => 'not_implemented',             // OFFLINE-SYNC-ENGINE-1
 
             // The runtime FOUNDATION may be ready; the appliance still cannot sell.
@@ -145,6 +148,48 @@ class EdgeLocalReadiness
             return $accepted !== null ? 'basic_runtime_ready' : 'needs_operational_baseline';
         } catch (Throwable $e) {
             return 'not_ready';
+        }
+    }
+
+    /**
+     * local_print: not_configured | blocked | ready — truthful PRINT-RUNTIME diagnostics (§17).
+     * Fail-closed to not_configured on any doubt; NEVER consulted for activation_ready.
+     */
+    private function localPrintState(bool $bound): string
+    {
+        if (! $bound) {
+            return 'not_configured';
+        }
+        try {
+            $conn = \Illuminate\Support\Facades\DB::connection('tenant');
+            if (! Schema::connection('tenant')->hasTable('printers')) {
+                return 'not_configured';
+            }
+            $branchId = (int) $this->context->boundBranchId();
+            $routable = $conn->table('printers')->where('is_active', 1)->where('printer_type', 'network')
+                ->whereNotNull('ip_address')
+                ->where(fn ($q) => $q->whereNull('branch_id')->orWhere('branch_id', $branchId))
+                ->exists();
+            if (! $routable) {
+                return 'not_configured';
+            }
+
+            // blockers: historical NULL-printer intents (never auto-claimed — §20) and dangling refs.
+            $unresolvedIntents = $conn->table('print_jobs')->where('print_status', 'queued')->whereNull('printer_id')->exists();
+            $danglingMappings = $conn->table('category_printer_mappings')->where('is_active', 1)
+                ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('printers')->whereColumn('printers.id', 'category_printer_mappings.printer_id'))
+                ->exists();
+            $danglingTerminals = $conn->table('terminal_printer_settings')
+                ->where(function ($q) {
+                    $q->where(fn ($w) => $w->whereNotNull('kot_printer_id')
+                        ->whereNotExists(fn ($e) => $e->selectRaw('1')->from('printers')->whereColumn('printers.id', 'terminal_printer_settings.kot_printer_id')))
+                        ->orWhere(fn ($w) => $w->whereNotNull('receipt_printer_id')
+                            ->whereNotExists(fn ($e) => $e->selectRaw('1')->from('printers')->whereColumn('printers.id', 'terminal_printer_settings.receipt_printer_id')));
+                })->exists();
+
+            return ($unresolvedIntents || $danglingMappings || $danglingTerminals) ? 'blocked' : 'ready';
+        } catch (Throwable $e) {
+            return 'not_configured';
         }
     }
 

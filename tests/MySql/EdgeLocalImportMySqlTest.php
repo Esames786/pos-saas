@@ -260,6 +260,66 @@ class EdgeLocalImportMySqlTest extends MySqlTenantTestCase
         $this->importer()->import($refresh);
     }
 
+    /**
+     * EDGE-LOCAL-PRINT-1 (§16) — GLOBAL printer routing parity. Cloud PrintRoutingService selects
+     * printers/mappings with branch_id = branch OR NULL; the bootstrap must preserve that SAME
+     * effective set: a global default printer resolves to the SAME device on the appliance, another
+     * branch's printers never leak, and no dangling references survive.
+     */
+    public function test_global_printer_routing_parity_survives_bootstrap(): void
+    {
+        // back on the CLOUD source: one GLOBAL kot printer (the routing default), one own-branch
+        // receipt printer, one foreign-branch printer, one GLOBAL wildcard kot mapping to the global.
+        config(['database.connections.tenant.database' => $this->tenantDb]);
+        DB::purge('tenant');
+        $conn = DB::connection('tenant');
+        $mk = fn (?int $branchId, string $role, string $name) => $conn->table('printers')->insertGetId([
+            'branch_id' => $branchId, 'name' => $name, 'code' => 'P-' . uniqid(), 'printer_type' => 'network',
+            'print_role' => $role, 'supports_reminder' => 0, 'ip_address' => '10.0.0.9', 'port' => 9100,
+            'is_default' => 1, 'is_active' => 1, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $globalKot = $mk(null, 'kot', 'Global KOT');
+        $ownReceipt = $mk($this->branchId, 'receipt', 'Own Receipt');
+        $foreign = $mk($this->branchB, 'kot', 'Foreign B');
+        $globalMapping = $conn->table('category_printer_mappings')->insertGetId([
+            'branch_id' => null, 'category_id' => null, 'printer_id' => $globalKot, 'print_role' => 'kot',
+            'order_type' => 'all', 'reminder_confirm_on_addition' => 0, 'is_active' => 1, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $package = $this->buildRealPackage();
+
+        // export parity: global + own present; the FOREIGN branch printer never leaves the Cloud.
+        $printerIds = array_column($package['sections']['printers'], 'id');
+        $this->assertContains($globalKot, $printerIds, 'a global routing-eligible printer must be exported');
+        $this->assertContains($ownReceipt, $printerIds);
+        $this->assertNotContains($foreign, $printerIds, 'another branch\'s printer must never leak');
+        $this->assertContains($globalMapping, array_column($package['sections']['category_printer_mappings'], 'id'));
+
+        // CLOUD resolution for this branch: the global printer is the KOT default.
+        $cloudSale = \App\Models\Tenant\SalesOrder::on('tenant')->find($conn->table('sales_orders')->insertGetId([
+            'sale_no' => 'SO-PARITY-C-' . uniqid(), 'branch_id' => $this->branchId, 'order_source' => 'pos',
+            'order_type' => 'quick_sale', 'sale_date' => now(), 'status' => 'held', 'created_at' => now(), 'updated_at' => now(),
+        ]));
+        $cloudPick = app(\App\Services\Printing\PrintRoutingService::class)->defaultKotPrinter($cloudSale);
+        $this->assertSame($globalKot, (int) $cloudPick?->id, 'Cloud routing resolves the GLOBAL printer');
+
+        // import to the appliance, then the SAME resolution on the Edge DB.
+        $this->provisionEdgeLocalDb();
+        $this->importer()->import($package);
+        $edgeConn = DB::connection('tenant');
+        $this->assertSame(1, $edgeConn->table('printers')->where('id', $globalKot)->whereNull('branch_id')->count(), 'the global printer row imported as GLOBAL');
+        $this->assertSame(0, $edgeConn->table('printers')->where('id', $foreign)->count());
+        $this->assertSame(0, $edgeConn->table('category_printer_mappings')->whereNotExists(function ($q) {
+            $q->selectRaw('1')->from('printers')->whereColumn('printers.id', 'category_printer_mappings.printer_id');
+        })->count(), 'no dangling mapping → printer references on the appliance');
+
+        $edgeSale = \App\Models\Tenant\SalesOrder::on('tenant')->find($edgeConn->table('sales_orders')->insertGetId([
+            'sale_no' => 'SO-PARITY-E-' . uniqid(), 'branch_id' => $this->branchId, 'order_source' => 'pos',
+            'order_type' => 'quick_sale', 'sale_date' => now(), 'status' => 'held', 'created_at' => now(), 'updated_at' => now(),
+        ]));
+        $edgePick = app(\App\Services\Printing\PrintRoutingService::class)->defaultKotPrinter($edgeSale);
+        $this->assertSame($globalKot, (int) $edgePick?->id, 'Edge routing resolves the SAME global printer as Cloud');
+    }
+
     public function test_multi_binding_corruption_is_detected_not_ignored(): void
     {
         // Matrix D: a corrupt second binding row must be rejected, never silently ignored.
