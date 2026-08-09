@@ -170,6 +170,12 @@ class EdgeLocalPosService
                 if ($paidAmount + 1e-6 < (float) $totals['grand_total']) {
                     throw ValidationException::withMessages(['payments' => 'Paid amount is less than the sale total.']);
                 }
+                // Same grounded change rule as Cloud finalizePaidSale: tendered − applied per payment.
+                $changeTotal = array_sum(array_map(function ($p) {
+                    $tendered = isset($p['tendered_amount']) && $p['tendered_amount'] !== null ? (float) $p['tendered_amount'] : null;
+
+                    return $tendered !== null ? max($tendered - (float) $p['amount'], 0) : 0;
+                }, $payments));
 
                 // (E) ONE ULID: pre-mint the canonical sale identity and derive the display number from it, so
                 // sale_no is directly traceable to the immutable sale_uuid (sale_no stays a human label).
@@ -199,7 +205,7 @@ class EdgeLocalPosService
                     'tip_amount' => 0,
                     'grand_total' => $totals['grand_total'],
                     'paid_amount' => $paidAmount,
-                    'change_amount' => max($paidAmount - (float) $totals['grand_total'], 0),
+                    'change_amount' => max($changeTotal, max($paidAmount - (float) $totals['grand_total'], 0)),
                     'status' => 'paid',
                     'completed_at' => now(),
                     'created_by_user_id' => $user->id,

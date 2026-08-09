@@ -776,6 +776,7 @@ class PrintJobService
                 'show_cashier_name' => (bool) ($layout?->show_cashier_name ?? true),
                 'show_customer_name' => (bool) ($layout?->show_customer_name ?? false),
                 'show_table_info' => (bool) ($layout?->show_table_info ?? true),
+                'show_bingoo_branding' => (bool) ($layout?->show_bingoo_branding ?? false),
             ],
             'lines' => $lines,
             'cancelled_lines' => $cancelled,

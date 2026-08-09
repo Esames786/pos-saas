@@ -48,6 +48,7 @@ class ReceiptLayoutController extends Controller
             'show_print_time'        => ['nullable', 'boolean'],
             'show_item_codes'        => ['nullable', 'boolean'],
             'show_payment_breakdown' => ['nullable', 'boolean'],
+            'show_bingoo_branding'   => ['nullable', 'boolean'],
             'header_text'            => ['nullable', 'string', 'max:500'],
             'footer_text'            => ['nullable', 'string', 'max:500'],
             'font_size'              => ['required', 'integer', 'min:8', 'max:24'],
@@ -64,7 +65,7 @@ class ReceiptLayoutController extends Controller
             'show_logo', 'show_branch_name', 'show_branch_address', 'show_branch_phone',
             'show_tax_number', 'show_cashier_name', 'show_customer_name', 'show_table_info',
             'show_order_no', 'show_order_time', 'show_updated_time', 'show_print_time',
-            'show_item_codes', 'show_payment_breakdown', 'is_active',
+            'show_item_codes', 'show_payment_breakdown', 'show_bingoo_branding', 'is_active',
         ];
 
         foreach ($boolFields as $f) {

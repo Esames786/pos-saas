@@ -224,7 +224,7 @@
 <table class="totals">
     <tr>
         <td>{{ $payment->method?->name ?? ucfirst($payment->payment_method) }}:</td>
-        <td>{{ number_format($payment->amount, 2) }}</td>
+        <td>{{ number_format($payment->tendered_amount ?? $payment->amount, 2) }}</td>
     </tr>
 </table>
 @endforeach
@@ -236,6 +236,10 @@
 <div class="center" style="margin-top:4px">{{ $layout->footer_text }}</div>
 @else
 <div class="center">Thank you for your visit!</div>
+@endif
+@if($layout?->show_bingoo_branding ?? true)
+<div class="center" style="margin-top:4px">BingooPos</div>
+<div class="center">Bingoopos.com</div>
 @endif
 
 <div class="center" style="margin-top:4px; font-size:10px">

@@ -128,7 +128,9 @@ class EdgeLocalPosMySqlTest extends MySqlTenantTestCase
         $this->assertSame(500.0, (float) $payment->tendered_amount, 'tendered_amount = physical cash handed over');
         $this->assertSame(300.0, (float) $payment->change_amount, 'payment change = tendered - applied');
         $this->assertSame(200.0, (float) $sale->paid_amount);
-        $this->assertSame(0.0, (float) $sale->change_amount, 'sale-level change 0 (applied == grand_total)');
+        // CHANGE-AMOUNT-1: the sale-level change is the DRAWER change (tendered − applied), the
+        // number the receipt prints — not paid − grand (which is always 0 with capped amounts).
+        $this->assertSame(300.0, (float) $sale->change_amount, 'sale-level change = tendered 500 − applied 200');
         // shift cash counters use the APPLIED amount (net drawer cash), not the tendered amount.
         $shift->refresh();
         $this->assertSame(200.0, (float) $shift->expected_cash, 'expected_cash uses APPLIED cash, never tendered');

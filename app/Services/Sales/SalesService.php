@@ -119,7 +119,14 @@ class SalesService
                 }
             }
 
-            $changeAmount = max($paidAmount - (float) $sale->grand_total, 0);
+            // Change is what physically left the drawer: per-payment tendered − applied
+            // (the POS caps applied 'amount' at the bill, so paid − grand is 0 even when the
+            // customer hands over more cash — the receipt was printing "Change 0.00" on a
+            // 5,000 tendered / 3,600 bill). Legacy payloads without tendered keep the old rule.
+            $changeAmount = max(
+                (float) $sale->payments->sum('change_amount'),
+                max($paidAmount - (float) $sale->grand_total, 0)
+            );
 
             $sale->update([
                 'paid_amount'       => $paidAmount,

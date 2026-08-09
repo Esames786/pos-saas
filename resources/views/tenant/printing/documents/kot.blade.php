@@ -137,6 +137,10 @@
 
 <hr>
 
+@if($layout?->show_bingoo_branding)
+<div class="center">BingooPos</div>
+<div class="center">Bingoopos.com</div>
+@endif
 @if($layout?->footer_text)
 <div class="center">{{ $layout->footer_text }}</div>
 @endif

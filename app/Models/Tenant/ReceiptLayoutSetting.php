@@ -18,7 +18,7 @@ class ReceiptLayoutSetting extends Model
         'show_branch_phone', 'show_tax_number', 'show_cashier_name',
         'show_customer_name', 'show_table_info', 'show_order_no',
         'show_order_time', 'show_updated_time', 'show_print_time',
-        'show_item_codes', 'show_payment_breakdown',
+        'show_item_codes', 'show_payment_breakdown', 'show_bingoo_branding',
         'header_text', 'footer_text', 'font_size', 'kot_font_size', 'is_active',
     ];
 
@@ -39,6 +39,7 @@ class ReceiptLayoutSetting extends Model
             'show_print_time'         => 'boolean',
             'show_item_codes'         => 'boolean',
             'show_payment_breakdown'  => 'boolean',
+            'show_bingoo_branding'    => 'boolean',
             'is_active'               => 'boolean',
             'font_size'               => 'integer',
             'kot_font_size'           => 'integer',

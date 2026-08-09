@@ -48,6 +48,7 @@
             'show_print_time'        => 'Print Time',
             'show_item_codes'        => 'Item Codes',
             'show_payment_breakdown' => 'Payment Breakdown',
+            'show_bingoo_branding'   => 'Bingoo Branding',
         ] as $field => $label)
         <div class="col-md-4 layout-option" data-layout-field="{{ $field }}">
             <div class="form-check form-switch">

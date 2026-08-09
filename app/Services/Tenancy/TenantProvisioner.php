@@ -240,13 +240,14 @@ class TenantProvisioner
             'paper_size' => '80mm', 'show_logo' => false, 'show_branch_name' => true,
             'show_branch_address' => false, 'show_branch_phone' => false, 'show_tax_number' => false,
             'show_cashier_name' => true, 'show_customer_name' => false, 'show_table_info' => true,
+            'show_bingoo_branding' => false,
             'show_order_no' => true, 'show_order_time' => true, 'show_updated_time' => true,
             'show_print_time' => true, 'show_item_codes' => false, 'show_payment_breakdown' => false,
             'font_size' => 12, 'kot_font_size' => 14, 'is_active' => true,
         ];
         $layoutTexts = [
             'kot'      => ['header_text' => '*** KITCHEN ORDER TICKET ***', 'footer_text' => null],
-            'receipt'  => ['header_text' => $tenant->name ?: 'Receipt', 'footer_text' => 'Thank you!', 'show_payment_breakdown' => true],
+            'receipt'  => ['header_text' => $tenant->name ?: 'Receipt', 'footer_text' => 'Thank you!', 'show_payment_breakdown' => true, 'show_bingoo_branding' => true],
             'reminder' => ['header_text' => '*** ORDER REMINDER ***', 'footer_text' => null],
         ];
         foreach ($layoutTexts as $docType => $texts) {

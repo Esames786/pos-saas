@@ -10,6 +10,38 @@ use App\Support\TenantClock;
 class EscPosPayloadService
 {
     /**
+     * ESC/POS "feed and partial cut" (GS V B 0). Raw port-9100 printing bypasses the Windows
+     * driver, so the printer's "auto cut" driver setting never applies — the cut must be a byte
+     * command inside the payload (Black Copper / Epson-compatible; harmless on printers
+     * without a cutter).
+     */
+    private const CUT = "\x1D\x56\x42\x00";
+
+    /** Centered "BingooPos / Bingoopos.com" branding footer (per-layout toggle). */
+    private function brandingFooter(): string
+    {
+        return $this->center('BingooPos') . "\n" . $this->center('Bingoopos.com') . "\n";
+    }
+
+    /** The branch's saved layout row for this document type (null = never configured). */
+    private function layoutFor(?int $branchId, string $documentType): ?\App\Models\Tenant\ReceiptLayoutSetting
+    {
+        try {
+            return \App\Models\Tenant\ReceiptLayoutSetting::where('document_type', $documentType)
+                ->where(function ($q) use ($branchId) {
+                    $q->whereNull('branch_id');
+                    if ($branchId) {
+                        $q->orWhere('branch_id', $branchId);
+                    }
+                })
+                ->orderByDesc('branch_id')
+                ->first();
+        } catch (\Throwable) {
+            return null; // payload-only rendering without a tenant DB bound
+        }
+    }
+
+    /**
      * SHIFT-TIMEZONE-BUSINESS-DATE-1 (N): a printed ticket shows the store's local wall-clock time.
      * DB timestamps are UTC-canonical, so we render them in the branch business timezone. This is
      * a pure display concern — the ESC-POS engine and stored data are unchanged.
@@ -176,8 +208,11 @@ class EscPosPayloadService
         if ($footer !== '') {
             $out .= str_repeat('-', 42) . "\n" . $this->center($footer) . "\n";
         }
+        if ($layout['show_bingoo_branding'] ?? false) {
+            $out .= $this->brandingFooter();
+        }
 
-        return $out . str_repeat('-', 42) . "\n\n\n";
+        return $out . str_repeat('-', 42) . "\n\n\n" . self::CUT;
     }
 
     private function receipt(SalesOrder $sale): string
@@ -281,13 +316,21 @@ class EscPosPayloadService
 
         foreach ($sale->payments as $payment) {
             $methodName = $payment->method?->name ?? ucfirst($payment->payment_method ?? 'Payment');
-            $out .= $this->columns($methodName, number_format((float) $payment->amount, 2), 42) . "\n";
+            // Show the physical cash handed over (tendered) when captured — "Cash 5,000.00 /
+            // Change 1,400.00" tells the drawer story; applied-only amounts hide the change.
+            $out .= $this->columns($methodName, number_format((float) ($payment->tendered_amount ?? $payment->amount), 2), 42) . "\n";
         }
 
         $out .= str_repeat('-', 42) . "\n";
-        $out .= $this->center('Thank you for your visit!') . "\n\n\n";
+        $out .= $this->center('Thank you for your visit!') . "\n";
+        // Branding default: ON for receipts unless the branch layout explicitly turns it off.
+        $receiptLayout = $this->layoutFor($sale->branch_id, 'receipt');
+        if ($receiptLayout === null || $receiptLayout->show_bingoo_branding) {
+            $out .= $this->brandingFooter();
+        }
+        $out .= "\n\n";
 
-        return $out;
+        return $out . self::CUT;
     }
 
     private function kot(SalesOrder $sale, PrintJob $job): string
@@ -380,9 +423,14 @@ class EscPosPayloadService
             $out .= "ORDER NOTE:\n{$sale->notes}\n";
         }
 
+        // Branding on KOT only when the branch layout explicitly enables it (default OFF).
+        if ($this->layoutFor($sale->branch_id, 'kot')?->show_bingoo_branding) {
+            $out .= $this->brandingFooter();
+        }
+
         $out .= str_repeat('-', 42) . "\n\n\n";
 
-        return $out;
+        return $out . self::CUT;
     }
 
     private function center(string $text, int $width = 42): string
