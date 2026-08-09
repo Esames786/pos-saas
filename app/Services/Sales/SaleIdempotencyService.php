@@ -49,6 +49,7 @@ class SaleIdempotencyService
             'delivery_rider_id'           => $data['delivery_rider_id'] ?? null,
             'delivery_address'            => $data['delivery_address'] ?? null,
             'delivery_charge_amount'      => $data['delivery_charge_amount'] ?? null,
+            'vehicle_number'              => $data['vehicle_number'] ?? null,
             'discount_type'               => $data['discount_type'] ?? null,
             'discount_value'              => $data['discount_value'] ?? null,
             'promo_code'                  => $data['promo_code'] ?? null,

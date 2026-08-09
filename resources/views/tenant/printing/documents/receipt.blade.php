@@ -110,6 +110,9 @@
 @if($salesOrder->delivery_address)
 <div>Deliver to: {{ $salesOrder->delivery_address }}</div>
 @endif
+@if($salesOrder->vehicle_number)
+<div>Vehicle: {{ $salesOrder->vehicle_number }}</div>
+@endif
 
 <hr>
 

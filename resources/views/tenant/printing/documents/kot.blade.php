@@ -55,6 +55,9 @@
 @if(!($layout?->show_order_no === false))
 <div>Order: <span class="bold">{{ $salesOrder->sale_no ?? $salesOrder->order_no }}</span></div>
 @endif
+@if($salesOrder->vehicle_number)
+<div class="bold">Vehicle: {{ $salesOrder->vehicle_number }}</div>
+@endif
 
 <div>Time: {{ now()->format('d/m/Y H:i') }}</div>
 

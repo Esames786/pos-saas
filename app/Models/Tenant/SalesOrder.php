@@ -86,6 +86,7 @@ class SalesOrder extends Model
         'delivery_channel_id',
         'delivery_rider_id',
         'delivery_address',
+        'vehicle_number',
     ];
 
     protected function casts(): array

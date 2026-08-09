@@ -759,6 +759,7 @@ class PrintJobService
             'waiter' => $sale->restaurantWaiter?->name,
             'cashier' => $sale->createdBy?->name,
             'customer' => $sale->customer?->name ?? $sale->customer_name,
+            'vehicle' => $sale->vehicle_number,
             'order_note' => $sale->notes,
             'order_time' => optional($sale->sale_date)->toIso8601String(),
             'updated_time' => optional($sale->updated_at)->toIso8601String(),

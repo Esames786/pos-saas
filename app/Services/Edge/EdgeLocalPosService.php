@@ -185,6 +185,8 @@ class EdgeLocalPosService
                     'business_date' => $businessDate,
                     'order_source' => 'pos',
                     'order_type' => $orderType,
+                    // VEHICLE-NUMBER-1: quick-sale (drive-through) capture — offline parity with Cloud.
+                    'vehicle_number' => $this->vehicleNumberFor($orderType, $data),
                     'sale_date' => now(),
                     'subtotal' => $totals['subtotal'],
                     'discount_type' => (string) ($data['discount_type'] ?? 'none'),
@@ -396,6 +398,20 @@ class EdgeLocalPosService
     }
 
     /** (2C) Fresh-row revalidation INSIDE a write transaction. @return array{0: User, 1: Terminal} */
+    /**
+     * VEHICLE-NUMBER-1: quick-sale-only drive-through capture, trimmed and length-capped to the
+     * column width. Other order types always persist NULL (never a stale carried-over value).
+     */
+    private function vehicleNumberFor(string $orderType, array $data): ?string
+    {
+        if ($orderType !== 'quick_sale') {
+            return null;
+        }
+        $value = trim((string) ($data['vehicle_number'] ?? ''));
+
+        return $value === '' ? null : mb_substr($value, 0, 50);
+    }
+
     private function revalidateInTxn(User $user, int $branchId, int $terminalId): array
     {
         $user = User::on('tenant')->find($user->id);
@@ -567,6 +583,7 @@ class EdgeLocalPosService
                 'business_date' => $businessDate,
                 'order_source' => 'pos',
                 'order_type' => $orderType,
+                'vehicle_number' => $this->vehicleNumberFor($orderType, $data),
                 'sale_date' => now(),
                 'subtotal' => $totals['subtotal'],
                 'discount_type' => 'none', 'discount_value' => 0, 'discount_amount' => $totals['discount_amount'],

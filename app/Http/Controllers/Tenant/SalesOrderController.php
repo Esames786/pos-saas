@@ -259,6 +259,8 @@ class SalesOrderController extends Controller
                     'delivery_rider_id'           => (! $tableSession && $orderType === 'delivery') ? ($data['delivery_rider_id'] ?? null) : null,
                     'delivery_address'            => (! $tableSession && $orderType === 'delivery') ? ($data['delivery_address'] ?? null) : null,
                     'delivery_charge_amount'      => $totals['delivery_charge_amount'] ?? 0,
+                    // Vehicle number is quick-sale (drive-through) attribution only — never stale on other types.
+                    'vehicle_number'              => (! $tableSession && $orderType === 'quick_sale') ? ($data['vehicle_number'] ?? null) : null,
                     'sale_date'                   => now(),
                     'business_date'               => $businessDate,
                     'subtotal'                    => $totals['subtotal'],
@@ -579,6 +581,7 @@ class SalesOrderController extends Controller
             'delivery_rider_id'   => ['nullable', 'exists:delivery_riders,id'],
             'delivery_address'    => ['nullable', 'string', 'max:500'],
             'delivery_charge_amount' => ['nullable', 'numeric', 'min:0', 'max:99999'],
+            'vehicle_number'      => ['nullable', 'string', 'max:50'],
             'discount_type'       => ['required', Rule::in(['none', 'fixed', 'percent'])],
             'discount_value'      => ['nullable', 'numeric', 'min:0'],
             'promo_code'          => ['nullable', 'string', 'max:50'],

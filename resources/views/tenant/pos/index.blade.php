@@ -516,6 +516,13 @@
                            placeholder="03xx-xxxxxxx" value="{{ $heldSale?->customer_phone }}"
                            title="Optional. Stored on the sale — useful for delivery orders (contacting the customer) and for looking the sale up later by phone. Leave blank for walk-ins.">
                 </div>
+                {{-- VEHICLE-NUMBER-1: drive-through capture, quick-sale orders only --}}
+                <div class="col-md-3" id="vehicle-wrap" style="display:none">
+                    <label for="vehicle_number" class="form-label small mb-1">Vehicle Number</label>
+                    <input id="vehicle_number" name="vehicle_number" class="form-control form-control-sm"
+                           maxlength="50" placeholder="e.g. LEA-1234" value="{{ $heldSale?->vehicle_number }}"
+                           title="Optional. Customer's vehicle number for quick-sale / drive-through orders — printed on KOT and receipt so staff can match the order to the car.">
+                </div>
             </div>
 
             {{-- DELIVERY-CHANNELS-1 + POS-UX-2: channel, rider + delivery address (delivery orders only) --}}
@@ -1364,6 +1371,16 @@ document.addEventListener('DOMContentLoaded', function () {
         const isDelivery = orderTypeEl.value === 'delivery';
         deliveryPanelEl.style.display = isDelivery ? '' : 'none';
         if (deliveryChannelEl) deliveryChannelEl.required = isDelivery;
+
+        // VEHICLE-NUMBER-1: vehicle input is quick-sale only; never post a stale value on
+        // other order types. TDZ-safe scoped lookup (this runs before later script blocks).
+        {
+            const isQuickSale = orderTypeEl.value === 'quick_sale';
+            const vWrap = document.getElementById('vehicle-wrap');
+            const vEl = document.getElementById('vehicle_number');
+            if (vWrap) vWrap.style.display = isQuickSale ? '' : 'none';
+            if (!isQuickSale && vEl) vEl.value = '';
+        }
 
         // POS-UX-2: for delivery orders the phone stops being "optional" in spirit —
         // the rider needs a contact number. Label reflects that.
@@ -4805,6 +4822,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (deliveryRiderEl) deliveryRiderEl.value = '';
         if (deliveryAddressEl) deliveryAddressEl.value = '';
         { const dcEl = document.getElementById('delivery_charge_amount'); if (dcEl) dcEl.value = ''; }
+        { const vEl = document.getElementById('vehicle_number'); if (vEl) vEl.value = ''; }
         if (transactionRefEl) transactionRefEl.value = '';
         if (tenderedEl) tenderedEl.value = '0.00';
 

@@ -112,6 +112,9 @@ class EscPosPayloadService
             $out .= 'CUSTOMER: ' . $payload['customer'] . "\n";
         }
         $out .= 'TYPE: ' . strtoupper(str_replace('_', ' ', (string) ($payload['order_type'] ?? 'SALE'))) . "\n";
+        if (!empty($payload['vehicle'])) {
+            $out .= 'VEHICLE: ' . $payload['vehicle'] . "\n";
+        }
         if (($layout['show_order_time'] ?? true) && !empty($payload['order_time'])) {
             $out .= 'ORDER: ' . $this->formatTimestamp($payload['order_time'], $tz) . "\n";
         }
@@ -205,6 +208,9 @@ class EscPosPayloadService
         }
         if ($sale->delivery_address) {
             $out .= 'Deliver to: ' . $sale->delivery_address . "\n";
+        }
+        if ($sale->vehicle_number) {
+            $out .= 'Vehicle: ' . $sale->vehicle_number . "\n";
         }
 
         $out .= str_repeat('-', 42) . "\n";
@@ -329,6 +335,9 @@ class EscPosPayloadService
         }
 
         $out .= 'TYPE: ' . strtoupper(str_replace('_', ' ', $sale->order_type ?? 'SALE')) . "\n";
+        if ($sale->vehicle_number) {
+            $out .= 'VEHICLE: ' . $sale->vehicle_number . "\n";
+        }
         $out .= 'TIME: ' . now()->timezone($this->printTz($sale))->format('Y-m-d H:i') . "\n";
         $out .= str_repeat('-', 42) . "\n";
 

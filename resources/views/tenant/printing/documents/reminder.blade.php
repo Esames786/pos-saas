@@ -44,6 +44,7 @@
     @if(($layout->show_cashier_name ?? true) && !empty($reminder['cashier']))<div>CASHIER: {{ $reminder['cashier'] }}</div>@endif
     @if(($layout->show_customer_name ?? false) && !empty($reminder['customer']))<div>CUSTOMER: {{ $reminder['customer'] }}</div>@endif
     <div>TYPE: {{ strtoupper(str_replace('_', ' ', $reminder['order_type'] ?? 'sale')) }}</div>
+    @if(!empty($reminder['vehicle']))<div>VEHICLE: {{ $reminder['vehicle'] }}</div>@endif
     @if(($layout->show_order_time ?? true) && !empty($reminder['order_time']))<div>ORDER: {{ $time($reminder['order_time']) }}</div>@endif
     @if(($layout->show_updated_time ?? true) && !empty($reminder['updated_time']))<div>UPDATED: {{ $time($reminder['updated_time']) }}</div>@endif
     @if(($layout->show_print_time ?? true) && !empty($reminder['generated_at']))<div>PRINT: {{ $time($reminder['generated_at']) }}</div>@endif
