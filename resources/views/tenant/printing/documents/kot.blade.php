@@ -45,6 +45,7 @@
 @if(($eventType ?? '') === 'duplicate')
 <div class="center bold">DUPLICATE {{ max($copyNo ?? 1, 1) }}</div>
 @endif
+<div class="center bold" style="font-size:{{ $fontSize + 2 }}px">** {{ strtoupper(str_replace('_', ' ', $salesOrder->order_type ?? 'SALE')) }} **</div>
 
 <hr>
 
@@ -111,9 +112,9 @@
                 @if($isAddition)
                     <span style="font-size:{{ $fontSize - 1 }}px">ADD</span><br>
                 @endif
-                {{ number_format($displayQty, 2) }}
+                {{ rtrim(rtrim(number_format($displayQty, 3, '.', ''), '0'), '.') }}
                 @if($isAddition)
-                    <br><small style="font-weight:normal">(T:{{ number_format($totalQty, 2) }})</small>
+                    <br><small style="font-weight:normal">(T:{{ rtrim(rtrim(number_format($totalQty, 3, '.', ''), '0'), '.') }})</small>
                 @endif
             </td>
             <td class="item-name">

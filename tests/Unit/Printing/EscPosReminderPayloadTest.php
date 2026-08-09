@@ -32,9 +32,10 @@ class EscPosReminderPayloadTest extends TestCase
 
         $this->assertStringContainsString('UPDATED ORDER', $output);
         $this->assertStringContainsString('REVISION 2', $output);
-        $this->assertStringContainsString('BURGER x3 PCS (R +2)', $output);
-        $this->assertStringContainsString('DRINK x1 PCS', $output);
-        $this->assertStringContainsString('(R) FRIES x1 PCS', $output);
+        // PRINT-FORMAT-PARITY-1: single line, name left + clean qty right-aligned.
+        $this->assertMatchesRegularExpression('/BURGER \(R \+2\) +3 PCS/', $output);
+        $this->assertMatchesRegularExpression('/DRINK +1 PCS/', $output);
+        $this->assertMatchesRegularExpression('/\(R\) FRIES +1 PCS/', $output);
         $this->assertStringNotContainsString('999', $output);
         $this->assertStringNotContainsString('1098', $output);
         foreach (['SUBTOTAL', 'TAX', 'TOTAL', 'PAYMENT', 'BALANCE', 'CASH'] as $forbidden) {

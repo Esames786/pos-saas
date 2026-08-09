@@ -73,6 +73,7 @@
 <hr>
 
 <div class="bold center">RECEIPT</div>
+<div class="bold center">** {{ strtoupper(str_replace('_', ' ', $salesOrder->order_type ?? 'SALE')) }} **</div>
 
 <hr>
 
@@ -151,10 +152,10 @@
                     <br><small>* {{ $line->kitchen_note }}</small>
                 @endif
                 @foreach($salesOrder->lines->where('parent_sales_order_line_id', $line->id) as $component)
-                    <br><small>- {{ number_format((float) $component->quantity, 3) }}{{ $component->unit_code ? ' '.$component->unit_code : '' }} x {{ $component->product_name }}</small>
+                    <br><small>- {{ rtrim(rtrim(number_format((float) $component->quantity, 3, '.', ''), '0'), '.') }}{{ $component->unit_code ? ' '.$component->unit_code : '' }} x {{ $component->product_name }}</small>
                 @endforeach
             </td>
-            <td class="item-qty">{{ number_format((float) $line->quantity, 3) }}{{ $line->unit_code ? ' '.$line->unit_code : '' }}</td>
+            <td class="item-qty">{{ rtrim(rtrim(number_format((float) $line->quantity, 3, '.', ''), '0'), '.') }}{{ $line->unit_code ? ' '.$line->unit_code : '' }}</td>
             <td class="item-price">{{ number_format($line->unit_price, 2) }}</td>
             <td class="item-total">{{ number_format($line->line_total, 2) }}</td>
         </tr>

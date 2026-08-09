@@ -127,6 +127,8 @@ class EscPosPayloadService
         if (!empty($payload['is_reprint'])) {
             $out .= $this->center('DUPLICATE ' . $copyNo) . "\n";
         }
+        // PRINT-FORMAT-PARITY-1: order type leads the ticket (kitchen reads it first).
+        $out .= $this->center('** ' . strtoupper(str_replace('_', ' ', (string) ($payload['order_type'] ?? 'SALE'))) . ' **') . "\n";
         if ($layout['show_order_no'] ?? true) {
             $out .= $this->center((string) ($payload['sale_no'] ?? '')) . "\n";
         }
@@ -143,7 +145,6 @@ class EscPosPayloadService
         if (($layout['show_customer_name'] ?? false) && !empty($payload['customer'])) {
             $out .= 'CUSTOMER: ' . $payload['customer'] . "\n";
         }
-        $out .= 'TYPE: ' . strtoupper(str_replace('_', ' ', (string) ($payload['order_type'] ?? 'SALE'))) . "\n";
         if (!empty($payload['vehicle'])) {
             $out .= 'VEHICLE: ' . $payload['vehicle'] . "\n";
         }
@@ -217,23 +218,51 @@ class EscPosPayloadService
 
     private function receipt(SalesOrder $sale): string
     {
+        // PRINT-FORMAT-PARITY-1: the physical slip honours the SAME saved layout as the
+        // browser preview (missing row keeps every toggle's documented default), the order
+        // type leads the ticket, and items are single-line with a qty prefix.
+        $layout = $this->layoutFor($sale->branch_id, 'receipt');
+        $show = fn (string $field, bool $default = true) => $layout === null ? $default : (bool) $layout->{$field};
         $out = '';
 
-        $out .= $this->center($sale->branch?->name ?? 'Receipt') . "\n";
-        if ($sale->branch?->phone) {
-            $out .= $this->center($sale->branch->phone) . "\n";
+        if ($show('show_branch_name')) {
+            $out .= $this->center($sale->branch?->name ?? 'Receipt') . "\n";
+        }
+        if ($show('show_branch_address') && $sale->branch?->address) {
+            $out .= $this->center($sale->branch->address) . "\n";
+        }
+        if ($show('show_branch_phone') && $sale->branch?->phone) {
+            $out .= $this->center('Tel: ' . $sale->branch->phone) . "\n";
+        }
+        if ($show('show_tax_number') && $sale->branch?->tax_number) {
+            $out .= $this->center('Tax No: ' . $sale->branch->tax_number) . "\n";
+        }
+        $headerText = trim((string) ($layout?->header_text ?? ''));
+        if ($headerText !== '') {
+            $out .= $this->center($headerText) . "\n";
         }
         $out .= str_repeat('-', 42) . "\n";
-        $out .= "Receipt: {$sale->sale_no}\n";
+        $out .= $this->center('** ' . strtoupper(str_replace('_', ' ', $sale->order_type ?? 'SALE')) . ' **') . "\n";
+        $out .= str_repeat('-', 42) . "\n";
+        if ($show('show_order_no')) {
+            $out .= "Receipt: {$sale->sale_no}\n";
+        }
         $tz = $this->printTz($sale);
         $out .= 'Date: ' . ($sale->sale_date ? $sale->sale_date->copy()->timezone($tz)->format('Y-m-d H:i') : '') . "\n";
-        $out .= 'Cashier: ' . ($sale->createdBy?->name ?? '-') . "\n";
-
-        if ($sale->restaurantTable) {
-            $out .= 'Table: ' . $sale->restaurantTable->table_no . "\n";
+        if ($show('show_cashier_name')) {
+            $out .= 'Cashier: ' . ($sale->createdBy?->name ?? '-') . "\n";
         }
-        if ($sale->restaurantWaiter) {
-            $out .= 'Waiter: ' . $sale->restaurantWaiter->name . "\n";
+        if ($show('show_customer_name', false) && ($sale->customer?->name ?? $sale->customer_name)) {
+            $out .= 'Customer: ' . ($sale->customer?->name ?? $sale->customer_name) . "\n";
+        }
+
+        if ($show('show_table_info')) {
+            if ($sale->restaurantTable) {
+                $out .= 'Table: ' . $sale->restaurantTable->table_no . "\n";
+            }
+            if ($sale->restaurantWaiter) {
+                $out .= 'Waiter: ' . $sale->restaurantWaiter->name . "\n";
+            }
         }
         if ($sale->deliveryChannel) {
             $out .= 'Channel: ' . $sale->deliveryChannel->name . "\n";
@@ -255,17 +284,16 @@ class EscPosPayloadService
                 continue;
             }
 
-            $name  = mb_substr($line->product_name ?? '', 0, 24);
-            $qty   = number_format((float) $line->quantity, 3);
-            if ($line->unit_code) { $qty .= ' ' . $line->unit_code; }
+            // Single line: "2x Beef Changezi Pulao @450.00      900.00" — qty leads,
+            // unit price shown inline only when qty ≠ 1, total right-aligned.
+            $qty = $this->quantity((float) $line->quantity);
             $total = number_format((float) $line->line_total, 2);
-
-            $out .= $name . "\n";
-            $out .= $this->columns(
-                "  {$qty} x " . number_format((float) $line->unit_price, 2),
-                $total,
-                42
-            ) . "\n";
+            $left = $qty . 'x ' . ($line->product_name ?? '');
+            if ((float) $line->quantity !== 1.0) {
+                $left .= ' @' . number_format((float) $line->unit_price, 2);
+            }
+            $left = mb_substr($left, 0, 41 - mb_strlen($total));
+            $out .= $this->columns($left, $total, 42) . "\n";
 
             if ($line->kitchen_note) {
                 $out .= "  * {$line->kitchen_note}\n";
@@ -314,18 +342,20 @@ class EscPosPayloadService
 
         $out .= str_repeat('-', 42) . "\n";
 
-        foreach ($sale->payments as $payment) {
-            $methodName = $payment->method?->name ?? ucfirst($payment->payment_method ?? 'Payment');
-            // Show the physical cash handed over (tendered) when captured — "Cash 5,000.00 /
-            // Change 1,400.00" tells the drawer story; applied-only amounts hide the change.
-            $out .= $this->columns($methodName, number_format((float) ($payment->tendered_amount ?? $payment->amount), 2), 42) . "\n";
+        if ($show('show_payment_breakdown')) {
+            foreach ($sale->payments as $payment) {
+                $methodName = $payment->method?->name ?? ucfirst($payment->payment_method ?? 'Payment');
+                // Show the physical cash handed over (tendered) when captured — "Cash 5,000.00 /
+                // Change 1,400.00" tells the drawer story; applied-only amounts hide the change.
+                $out .= $this->columns($methodName, number_format((float) ($payment->tendered_amount ?? $payment->amount), 2), 42) . "\n";
+            }
+            $out .= str_repeat('-', 42) . "\n";
         }
 
-        $out .= str_repeat('-', 42) . "\n";
-        $out .= $this->center('Thank you for your visit!') . "\n";
+        $footerText = trim((string) ($layout?->footer_text ?? ''));
+        $out .= $this->center($footerText !== '' ? $footerText : 'Thank you for your visit!') . "\n";
         // Branding default: ON for receipts unless the branch layout explicitly turns it off.
-        $receiptLayout = $this->layoutFor($sale->branch_id, 'receipt');
-        if ($receiptLayout === null || $receiptLayout->show_bingoo_branding) {
+        if ($show('show_bingoo_branding')) {
             $out .= $this->brandingFooter();
         }
         $out .= "\n\n";
@@ -355,7 +385,16 @@ class EscPosPayloadService
             $lines = collect($payload['line_snapshots'])->map(fn ($line) => (object) $line);
         }
 
+        // PRINT-FORMAT-PARITY-1: honour the saved KOT layout like the browser preview does,
+        // lead with the ORDER TYPE (kitchen reads it first), single-line item + qty column.
+        $layout = $this->layoutFor($sale->branch_id, 'kot');
+        $show = fn (string $field, bool $default = true) => $layout === null ? $default : (bool) $layout->{$field};
         $out = '';
+
+        $headerText = trim((string) ($layout?->header_text ?? ''));
+        if ($headerText !== '') {
+            $out .= $this->center($headerText) . "\n";
+        }
 
         $heading = match ($eventType) {
             'cancel' => '*** CANCEL KOT #' . $sequenceNo . ' ***',
@@ -367,17 +406,23 @@ class EscPosPayloadService
         if ($eventType === 'duplicate') {
             $out .= $this->center('DUPLICATE ' . max($copyNo, 1)) . "\n";
         }
-        $out .= $this->center($sale->sale_no ?? '') . "\n";
+        $out .= $this->center('** ' . strtoupper(str_replace('_', ' ', $sale->order_type ?? 'SALE')) . ' **') . "\n";
+        if ($show('show_order_no')) {
+            $out .= $this->center($sale->sale_no ?? '') . "\n";
+        }
         $out .= str_repeat('-', 42) . "\n";
 
-        if ($sale->restaurantTable) {
-            $out .= 'TABLE: ' . $sale->restaurantTable->table_no . "\n";
+        if ($show('show_table_info')) {
+            if ($sale->restaurantTable) {
+                $out .= 'TABLE: ' . $sale->restaurantTable->table_no . "\n";
+            }
+            if ($sale->restaurantWaiter) {
+                $out .= 'WAITER: ' . $sale->restaurantWaiter->name . "\n";
+            }
         }
-        if ($sale->restaurantWaiter) {
-            $out .= 'WAITER: ' . $sale->restaurantWaiter->name . "\n";
+        if ($show('show_cashier_name') && $sale->createdBy) {
+            $out .= 'CASHIER: ' . $sale->createdBy->name . "\n";
         }
-
-        $out .= 'TYPE: ' . strtoupper(str_replace('_', ' ', $sale->order_type ?? 'SALE')) . "\n";
         if ($sale->vehicle_number) {
             $out .= 'VEHICLE: ' . $sale->vehicle_number . "\n";
         }
@@ -399,23 +444,22 @@ class EscPosPayloadService
                 continue;
             }
 
+            // Single line, qty right-aligned: "BEEF CHANGEZI PULAO (1 KG)            2"
             $runningPrefix = $eventType === 'addition' ? '(R) ' : '';
-            $out .= $runningPrefix . strtoupper($line->product_name ?? '') . "\n";
-            $kotQty = number_format($qtyToPrint, 3);
+            $kotQty = $this->quantity($qtyToPrint);
             if ($line->unit_code) { $kotQty .= ' ' . $line->unit_code; }
-            $out .= 'QTY: ' . $kotQty . "\n";
+            $name = mb_substr($runningPrefix . strtoupper($line->product_name ?? ''), 0, 41 - mb_strlen($kotQty));
+            $out .= $this->columns($name, $kotQty, 42) . "\n";
 
             if ($line->variant_name) {
-                $out .= "Variant: {$line->variant_name}\n";
+                $out .= "  Variant: {$line->variant_name}\n";
             }
             foreach ($this->lineModifiers($line) as $modifier) {
-                $out .= '+ ' . $modifier['name'] . "\n";
+                $out .= '  + ' . $modifier['name'] . "\n";
             }
             if ($line->kitchen_note) {
-                $out .= "NOTE: {$line->kitchen_note}\n";
+                $out .= "  NOTE: {$line->kitchen_note}\n";
             }
-
-            $out .= "\n";
         }
 
         if ($sale->notes) {
@@ -423,8 +467,12 @@ class EscPosPayloadService
             $out .= "ORDER NOTE:\n{$sale->notes}\n";
         }
 
+        $footerText = trim((string) ($layout?->footer_text ?? ''));
+        if ($footerText !== '') {
+            $out .= str_repeat('-', 42) . "\n" . $this->center($footerText) . "\n";
+        }
         // Branding on KOT only when the branch layout explicitly enables it (default OFF).
-        if ($this->layoutFor($sale->branch_id, 'kot')?->show_bingoo_branding) {
+        if ($show('show_bingoo_branding', false)) {
             $out .= $this->brandingFooter();
         }
 
@@ -474,6 +522,8 @@ class EscPosPayloadService
 
     private function reminderLine(array $line, bool $showRunning): string
     {
+        // PRINT-FORMAT-PARITY-1: single line, qty in a right-aligned column ("ITEM …… 2")
+        // instead of the confusing inline "x2 EA".
         $quantity = (float) ($line['quantity'] ?? 0);
         $delta = (float) ($line['round_delta'] ?? 0);
         $prefix = $showRunning && $delta > 0 && abs($delta - $quantity) < 0.000001 ? '(R) ' : '';
@@ -482,8 +532,10 @@ class EscPosPayloadService
             : '';
         $unit = !empty($line['unit_code']) ? ' ' . $line['unit_code'] : '';
 
-        return $prefix . strtoupper((string) ($line['product_name'] ?? 'ITEM'))
-            . ' x' . $this->quantity($quantity) . $unit . $suffix;
+        $right = $this->quantity($quantity) . $unit;
+        $left = mb_substr($prefix . strtoupper((string) ($line['product_name'] ?? 'ITEM')) . $suffix, 0, 41 - mb_strlen($right));
+
+        return $this->columns($left, $right, 42);
     }
 
     private function quantity(float $quantity): string

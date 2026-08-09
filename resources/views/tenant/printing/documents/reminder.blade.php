@@ -37,13 +37,13 @@
     <div class="heading center">{{ $reminder['heading'] ?? 'REMINDER' }}</div>
     @unless($isCorrection)<div class="center">REVISION {{ $revision }}</div>@endunless
     @if(!empty($reminder['is_reprint']))<div class="center"><strong>DUPLICATE {{ max((int) ($reminder['copy_no'] ?? 1), 1) }}</strong></div>@endif
+    <div class="heading center">** {{ strtoupper(str_replace('_', ' ', $reminder['order_type'] ?? 'sale')) }} **</div>
     @if($layout->show_order_no ?? true)<div class="center">{{ $reminder['sale_no'] ?? '' }}</div>@endif
     <div class="rule"></div>
     @if(($layout->show_table_info ?? true) && !empty($reminder['table']))<div>TABLE: {{ $reminder['table'] }}</div>@endif
     @if(($layout->show_table_info ?? true) && !empty($reminder['waiter']))<div>WAITER: {{ $reminder['waiter'] }}</div>@endif
     @if(($layout->show_cashier_name ?? true) && !empty($reminder['cashier']))<div>CASHIER: {{ $reminder['cashier'] }}</div>@endif
     @if(($layout->show_customer_name ?? false) && !empty($reminder['customer']))<div>CUSTOMER: {{ $reminder['customer'] }}</div>@endif
-    <div>TYPE: {{ strtoupper(str_replace('_', ' ', $reminder['order_type'] ?? 'sale')) }}</div>
     @if(!empty($reminder['vehicle']))<div>VEHICLE: {{ $reminder['vehicle'] }}</div>@endif
     @if(($layout->show_order_time ?? true) && !empty($reminder['order_time']))<div>ORDER: {{ $time($reminder['order_time']) }}</div>@endif
     @if(($layout->show_updated_time ?? true) && !empty($reminder['updated_time']))<div>UPDATED: {{ $time($reminder['updated_time']) }}</div>@endif
@@ -53,7 +53,7 @@
     @if(!empty($reminder['cancelled_lines']))
         <strong>CANCELLED:</strong>
         @foreach($reminder['cancelled_lines'] as $line)
-            <div class="line">{{ strtoupper($line['product_name'] ?? 'Item') }} x{{ $qty($line['quantity'] ?? 0) }} {{ $line['unit_code'] ?? '' }}</div>
+            <div class="line" style="display:flex;justify-content:space-between;gap:8px"><span>{{ strtoupper($line['product_name'] ?? 'Item') }}</span><span style="white-space:nowrap">{{ $qty($line['quantity'] ?? 0) }} {{ $line['unit_code'] ?? '' }}</span></div>
         @endforeach
         <div class="rule"></div><strong>REMAINING ORDER:</strong>
     @endif
@@ -65,7 +65,7 @@
             $newLine = $revision > 1 && $delta > 0 && abs($delta - $quantity) < .000001;
             $increase = $revision > 1 && $delta > 0 && $delta < $quantity;
         @endphp
-        <div class="line">{{ $newLine ? '(R) ' : '' }}{{ strtoupper($line['product_name'] ?? 'Item') }} x{{ $qty($quantity) }} {{ $line['unit_code'] ?? '' }}{{ $increase ? ' (R +' . $qty($delta) . ')' : '' }}</div>
+        <div class="line" style="display:flex;justify-content:space-between;gap:8px"><span>{{ $newLine ? '(R) ' : '' }}{{ strtoupper($line['product_name'] ?? 'Item') }}{{ $increase ? ' (R +' . $qty($delta) . ')' : '' }}</span><span style="white-space:nowrap">{{ $qty($quantity) }} {{ $line['unit_code'] ?? '' }}</span></div>
         @foreach($lines->where('parent_line_id', $line['line_id'] ?? null) as $component)
             <div class="child">- {{ strtoupper($component['product_name'] ?? 'Item') }} x{{ $qty($component['quantity'] ?? 0) }}</div>
             @foreach($component['modifiers'] ?? [] as $modifier)<div class="modifier">&nbsp;&nbsp;+ {{ $modifier['name'] ?? '' }}</div>@endforeach

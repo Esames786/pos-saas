@@ -45,8 +45,9 @@
 
     .category-strip {
         display: flex;
+        /* Wrap onto extra rows instead of hiding categories behind a sideways scroll. */
+        flex-wrap: wrap;
         gap: .6rem;
-        overflow-x: auto;
         padding-bottom: .25rem;
     }
 
@@ -150,7 +151,24 @@
         transition: .15s ease;
         text-align: left;
         width: 100%;
+        /* Column layout with the price row pinned to the bottom: long names can never
+           push the price/badge outside the card or into the next grid row. */
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
     }
+
+    .product-tile .tile-footer {
+        margin-top: auto;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: .25rem .5rem;
+        padding-top: .35rem;
+    }
+
+    .product-tile .stock-badge { flex-shrink: 0; }
 
     .product-tile:hover,
     .product-tile:focus {
@@ -159,8 +177,17 @@
         outline: 3px solid rgba(13, 110, 253, .18);
     }
 
-    .product-name { font-size: 1rem; line-height: 1.3; }
-    .product-price { font-size: 1.08rem; }
+    .product-name {
+        font-size: 1rem;
+        line-height: 1.3;
+        /* keep tiles uniform: at most 2 lines of name, ellipsis after */
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        word-break: break-word;
+    }
+    .product-price { font-size: 1.08rem; white-space: nowrap; }
 
     .product-avatar {
         width: 36px;
@@ -1782,7 +1809,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 '<div class="product-avatar"><i class="ti ti-package"></i></div>' +
                 '<div class="fw-bold mb-1 product-name">' + escapeHtml(combo.name) + '</div>' +
                 '<div class="text-muted small mb-2">' + escapeHtml(combo.code || 'Combo') + '</div>' +
-                '<div class="d-flex justify-content-between align-items-center">' +
+                '<div class="tile-footer">' +
                     '<span class="fw-bold product-price">' + money(combo.price) + '</span>' +
                     '<span class="stock-badge ' + badgeClass + '">' + badgeText + '</span>' +
                 '</div>' +
@@ -1815,7 +1842,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 avatarHtml +
                 '<div class="fw-bold mb-1 product-name">' + escapeHtml(product.name) + '</div>' +
                 '<div class="text-muted small mb-2">' + escapeHtml(product.sku || 'No SKU') + '</div>' +
-                '<div class="d-flex justify-content-between align-items-center">' +
+                '<div class="tile-footer">' +
                     '<span class="fw-bold product-price">' + money(price) + '</span>' +
                     '<span class="stock-badge ' + stockClass + '">' + stockText + '</span>' +
                 '</div>' +

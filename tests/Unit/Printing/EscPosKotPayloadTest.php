@@ -54,8 +54,8 @@ class EscPosKotPayloadTest extends TestCase
         ]);
 
         $this->assertStringContainsString('*** CANCEL KOT #4 ***', $output);
-        $this->assertStringContainsString('BURGER PATTY', $output);
-        $this->assertStringContainsString('QTY: 2.000 PCS', $output);
+        // PRINT-FORMAT-PARITY-1: single line, name left + clean qty right-aligned.
+        $this->assertMatchesRegularExpression('/BURGER PATTY +2 PCS/', $output);
         $this->assertStringContainsString('NOTE: Cancel from combo', $output);
     }
 
