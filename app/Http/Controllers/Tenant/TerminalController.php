@@ -67,7 +67,22 @@ class TerminalController extends Controller
 
     public function update(Request $request, Terminal $terminal)
     {
-        $terminal->update($this->validateTerminal($request, $terminal));
+        $data = $this->validateTerminal($request, $terminal);
+
+        // TERMINAL-LIMIT hardening (Khatri go-live §21): terminal_limit caps ACTIVE terminals, and the
+        // usage counter only counts active rows — so RE-ACTIVATING an inactive terminal must re-check
+        // the cap exactly like store() does, or the edit path silently exceeds the plan. Activating up
+        // to the limit succeeds (e.g. Khatri may bring T3/T4 live within its 4); one beyond is refused.
+        $activating = ($data['status'] ?? null) === 'active' && $terminal->status !== 'active';
+        if ($activating) {
+            $limit = app(\App\Services\Saas\TenantSubscriptionAccessService::class)
+                ->checkLimit(app('tenant'), 'terminals');
+            if (! $limit['allowed']) {
+                return back()->withInput()->withErrors(['limit' => $limit['message']]);
+            }
+        }
+
+        $terminal->update($data);
 
         return redirect('/terminals')->with('status', 'Terminal updated successfully.');
     }
