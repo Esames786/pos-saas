@@ -36,47 +36,68 @@ class EdgeLocalPrintWorkerSupervisor
     {
     }
 
-    /** Claim the singleton worker slot. TRUE = this process is THE worker; FALSE = another one is live. */
+    /**
+     * Claim the singleton worker slot. TRUE = this process is THE worker; FALSE = another one is live.
+     *
+     * FIRST-EVER-START RACE (fresh appliance, empty table): two simultaneous processes can both see
+     * zero rows, so creation must be DETERMINISTIC, not read-then-create: an INSERT IGNORE (the only
+     * unique on this table is the singleton_guard) mints the placeholder row exactly once, then BOTH
+     * processes lock the now-existing row and the normal ownership decision picks exactly one winner —
+     * the loser gets the clean duplicate-start refusal, never a duplicate-key exception. A zero-row
+     * gap-lock deadlock (MySQL errno 1213) gets ONE bounded retry landing on the same decision.
+     */
     public function acquire(string $workerUuid, ?string $runtimeVersion = null): bool
     {
         $this->requireBranchServer();
 
-        return DB::connection('tenant')->transaction(function () use ($workerUuid, $runtimeVersion) {
-            $row = EdgeLocalPrintWorkerState::query()->lockForUpdate()->where('singleton_guard', EdgeLocalPrintWorkerState::SINGLETON)->first();
-            if (! $row) {
-                EdgeLocalPrintWorkerState::create([
-                    'state' => EdgeLocalPrintWorkerState::STATE_RUNNING,
-                    'worker_uuid' => $workerUuid,
-                    'runtime_version' => $runtimeVersion,
-                    'started_at' => now(),
-                    'heartbeat_at' => now(),
-                    'stop_requested_at' => null,
+        $attempt = function () use ($workerUuid, $runtimeVersion): bool {
+            return DB::connection('tenant')->transaction(function () use ($workerUuid, $runtimeVersion) {
+                DB::connection('tenant')->table('edge_local_print_worker_state')->insertOrIgnore([
+                    'singleton_guard' => EdgeLocalPrintWorkerState::SINGLETON,
+                    'state' => EdgeLocalPrintWorkerState::STATE_STOPPED,
+                    'created_at' => now(),
+                    'updated_at' => now(),
                 ]);
+                $row = EdgeLocalPrintWorkerState::query()->lockForUpdate()->where('singleton_guard', EdgeLocalPrintWorkerState::SINGLETON)->first();
 
-                return true;
+                return $this->decideOwnership($row, $workerUuid, $runtimeVersion);
+            });
+        };
+
+        try {
+            return $attempt();
+        } catch (\Illuminate\Database\QueryException $e) {
+            if ((int) ($e->errorInfo[1] ?? 0) !== 1213) {
+                throw $e; // only the known zero-row gap-lock deadlock is retried
             }
 
-            $liveOther = $row->state === EdgeLocalPrintWorkerState::STATE_RUNNING
-                && $row->worker_uuid !== null
-                && $row->worker_uuid !== $workerUuid
-                && $row->heartbeat_at !== null
-                && $row->heartbeat_at->gt(now()->subSeconds(self::HEARTBEAT_STALE_SECONDS));
-            if ($liveOther) {
-                return false; // §12: duplicate daemon exits cleanly
-            }
+            return $attempt();
+        }
+    }
 
-            $row->update([
-                'state' => EdgeLocalPrintWorkerState::STATE_RUNNING,
-                'worker_uuid' => $workerUuid,
-                'runtime_version' => $runtimeVersion,
-                'started_at' => now(),
-                'heartbeat_at' => now(),
-                'stop_requested_at' => null, // a fresh supervised start clears any stale stop request
-                'last_error' => null,
-            ]);
+    /** The one ownership decision, always made under the singleton row lock. */
+    private function decideOwnership(EdgeLocalPrintWorkerState $row, string $workerUuid, ?string $runtimeVersion): bool
+    {
+        $liveOther = $row->state === EdgeLocalPrintWorkerState::STATE_RUNNING
+            && $row->worker_uuid !== null
+            && $row->worker_uuid !== $workerUuid
+            && $row->heartbeat_at !== null
+            && $row->heartbeat_at->gt(now()->subSeconds(self::HEARTBEAT_STALE_SECONDS));
+        if ($liveOther) {
+            return false; // §12: duplicate daemon exits cleanly
+        }
 
-            return true;
-        });
+        $row->update([
+            'state' => EdgeLocalPrintWorkerState::STATE_RUNNING,
+            'worker_uuid' => $workerUuid,
+            'runtime_version' => $runtimeVersion,
+            'started_at' => now(),
+            'heartbeat_at' => now(),
+            'stop_requested_at' => null, // a fresh supervised start clears any stale stop request
+            'last_error' => null,
+        ]);
+
+        return true;
     }
 
     /**
@@ -137,8 +158,13 @@ class EdgeLocalPrintWorkerSupervisor
     }
 
     /**
-     * Process-health verdict for readiness/diagnostics (§10): running | stale | stopped | not_installed.
-     * NEVER a lease authority.
+     * Process-health verdict for readiness/diagnostics (§10):
+     * running | stale | stopped | not_installed | unavailable. NEVER a lease authority.
+     *
+     * TRUTHFULNESS CONTRACT: "not installed" and "database failure" are DIFFERENT facts (the same
+     * distinction the Edge runtime readiness already draws). Only a GENUINELY absent table/row is
+     * not_installed; a connection/query failure reports `unavailable` with a sanitized reason —
+     * never a false "not installed" (and never raw connection details/credentials).
      * @return array{state: string, worker_uuid: ?string, started_at: ?string, heartbeat_at: ?string, heartbeat_age_seconds: ?int, last_graceful_stop_at: ?string, last_error: ?string}
      */
     public function health(): array
@@ -146,11 +172,11 @@ class EdgeLocalPrintWorkerSupervisor
         $base = ['state' => 'not_installed', 'worker_uuid' => null, 'started_at' => null, 'heartbeat_at' => null, 'heartbeat_age_seconds' => null, 'last_graceful_stop_at' => null, 'last_error' => null];
         try {
             if (! Schema::connection('tenant')->hasTable('edge_local_print_worker_state')) {
-                return $base;
+                return $base; // genuinely absent schema → not_installed
             }
             $row = EdgeLocalPrintWorkerState::current();
             if (! $row) {
-                return $base;
+                return $base; // schema present, worker never ran → not_installed
             }
             $state = EdgeLocalPrintWorkerState::STATE_STOPPED === $row->state ? 'stopped'
                 : (($row->heartbeat_at !== null && $row->heartbeat_at->gt(now()->subSeconds(self::HEARTBEAT_STALE_SECONDS))) ? 'running' : 'stale');
@@ -165,7 +191,10 @@ class EdgeLocalPrintWorkerSupervisor
                 'last_error' => $row->last_error,
             ];
         } catch (Throwable $e) {
-            return $base;
+            // DB unreachable/corrupt ≠ not installed — report honestly, sanitized (class only, no DSN).
+            return ['state' => 'unavailable', 'worker_uuid' => null, 'started_at' => null, 'heartbeat_at' => null,
+                'heartbeat_age_seconds' => null, 'last_graceful_stop_at' => null,
+                'last_error' => 'database unavailable (' . class_basename($e) . ')'];
         }
     }
 

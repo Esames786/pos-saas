@@ -113,6 +113,14 @@ try {
         }
     }
 
+    if ($mode === 'print_worker_acquire') {
+        // print_worker_acquire <worker_uuid> — races the SINGLETON worker-slot acquisition (Slice-2
+        // closure §2: the zero-row first-ever-start race on a fresh appliance).
+        $won = app(\App\Services\Edge\EdgeLocalPrintWorkerSupervisor::class)->acquire((string) $argv[2]);
+        echo $won ? "OK:worker_acquire:won\n" : "OK:worker_acquire:refused\n";
+        exit(0);
+    }
+
     // ── EDGE-LOCAL-PRINT-1 transport races: lease-token claim / delivery / stale completion. ──
     if (in_array($mode, ['print_claim', 'print_cycle', 'print_success', 'print_failure', 'print_deliver_die'], true)) {
         if ($mode === 'print_deliver_die') {

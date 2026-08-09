@@ -160,6 +160,38 @@ long-running process; `pcntl` is unavailable on Windows php-cli, so stop must be
 - **Physical certification** (§15): grounded procedure only → `docs/ops/EDGE_PRINTER_CERTIFICATION_PLAN.md`;
   FakePrinter ≠ certification; no ESC/POS changes until real-hardware requirements are recorded.
 
+## Slice-2 supervision closure (correction on `86822a8`)
+Review found 3 correctness/security defects + 2 certification gaps; all closed:
+1. **Worker NEVER runs as SYSTEM/Highest.** The install script's default principal is now
+   `NT AUTHORITY\LOCAL SERVICE`, LogonType ServiceAccount, RunLevel **Limited** (the grounded
+   appliance contract: restricted service account, not admin at runtime; `-ServiceAccount
+   BingooEdgeSvc` supported for installs where LOCAL SERVICE cannot be ACLed; passwords never in the
+   artifact/repo; the installer elevates only to REGISTER). The script REFUSES `SYSTEM` outright
+   (guard proven firing). Generated-object proof (un-elevated session): UserId=LOCAL SERVICE,
+   LogonType=ServiceAccount, RunLevel=Limited, boot trigger, RestartCount 999/PT1M, correct
+   quoted action + WorkingDirectory. ACL prerequisites documented in the script header.
+2. **Zero-row first-start race fixed**: acquire() now does deterministic `INSERT IGNORE` of the
+   singleton placeholder (the only unique key on the table) → lock the now-existing row → ONE
+   ownership decision; errno-1213-only single retry lands on the same decision. GENUINE two-process
+   empty-table race proven: exactly one winner, loser gets the controlled duplicate-start refusal,
+   one row/one worker_uuid, no duplicate-key/deadlock/QueryException leakage.
+3. **health() truthfulness**: `unavailable` added — a DB connection/query failure reports
+   `database unavailable (<exception class>)` (sanitized, no DSN/credentials) and can NEVER
+   masquerade as `not_installed` (matrix proven: absent-schema→not_installed, no-row→not_installed,
+   running, stale, stopped, unreachable-DB→unavailable; readiness carries it through).
+4. **Artifact surface narrowed** to `scripts/edge` (never the whole `scripts/` tree).
+5. **Scheduled-Task physical registration = EXPLICIT RELEASE GATE (NOT certified here).** The dev
+   session is un-elevated, so `Register-ScheduledTask` with a ServiceAccount principal cannot run;
+   certified instead: AST-parse of ALL 5 edge scripts (zero syntax errors) + the generated
+   action/trigger/settings/principal objects + the SYSTEM-refusal guard. Actual registration /
+   boot-start / restart-policy execution belongs to the installer/pilot on real hardware —
+   recorded, not fabricated.
+Production re-proof (evidence hygiene, cc65339 unchanged): process census with a split pattern that
+cannot self-match → **ZERO** real print-worker processes; `edge:local:print-worker --once` on Cloud →
+authoritative branch_server-only refusal; logs actually written since the deploy: NO Laravel log file
+at all, nginx = 18 lines all `access forbidden by rule` on scanner `.env` probes (the block rule
+working; unrelated to the deploy), php-fpm = daily log-reopen NOTICE only.
+
 ## Out of scope (unchanged)
 Local Mode activation (`activation_ready=false`), sync, Windows service/installer wiring, ESC/POS
 capability upgrades, reroute-unresolved-intent operation (deliberate audited op, later), Cloud agent

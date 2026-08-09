@@ -123,10 +123,11 @@ return [
             'public',
             'resources',
             'routes',
-            // EDGE-LOCAL-PRINT-1 Slice 2: the appliance supervision scripts (Install/Stop/Uninstall
-            // Scheduled Task + TLS helpers) must ship inside the artifact — the include list is a hard
-            // allowlist and previously dropped them. Non-secret; the forbidden scan still runs.
-            'scripts',
+            // EDGE-LOCAL-PRINT-1 Slice 2: ONLY the reviewed Edge appliance scripts ship (supervision
+            // Install/Stop/Uninstall Scheduled Task + TLS helpers) — the include list is a hard
+            // allowlist and previously dropped them entirely; the whole scripts/ tree would over-ship
+            // unreviewed Cloud/dev scripts. Non-secret; the forbidden scan still runs.
+            'scripts/edge',
             'vendor',
             'artisan',
             'composer.json',

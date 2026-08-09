@@ -279,6 +279,86 @@ class EdgeLocalPrintWorkerLifecycleMySqlTest extends MySqlTenantTestCase
         $this->assertSame(0, EdgeLocalPrintDelivery::count());
     }
 
+    // ── closure §2: the ZERO-ROW first-ever-start race (fresh appliance, empty state table) ──────
+    public function test_race_zero_row_first_start_exactly_one_worker_wins(): void
+    {
+        $this->assertSame(0, EdgeLocalPrintWorkerState::count(), 'the race must start from a genuinely EMPTY state table');
+
+        $startFile = sys_get_temp_dir() . '/edge_worker_first_' . Str::random(8) . '.start';
+        @unlink($startFile);
+        $spawn = function (string $uuid) use ($startFile): array {
+            $pipes = [];
+            $proc = proc_open(
+                [PHP_BINARY, base_path('tests/MySql/Support/edge_pos_sale_worker.php'), 'print_worker_acquire', $uuid],
+                [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+                $pipes,
+                base_path(),
+                array_merge(getenv() ?: [], ['EDGE_TEST_TENANT_DB' => $this->tenantDb, 'APP_ENV' => 'testing', 'START_FILE' => $startFile])
+            );
+
+            return ['proc' => $proc, 'pipes' => $pipes];
+        };
+        $a = $spawn('first-boot-A');
+        $b = $spawn('first-boot-B');
+        sleep(4);
+        file_put_contents($startFile, '1');
+        $outA = $this->finishProc($a)['out'];
+        $outB = $this->finishProc($b)['out'];
+        @unlink($startFile);
+
+        $wins = array_filter([$outA, $outB], fn ($o) => $o === 'OK:worker_acquire:won');
+        $refusals = array_filter([$outA, $outB], fn ($o) => $o === 'OK:worker_acquire:refused');
+        $this->assertCount(1, $wins, "exactly one first-boot worker may win: A=$outA B=$outB");
+        $this->assertCount(1, $refusals, "the loser gets the CONTROLLED duplicate-start refusal: A=$outA B=$outB");
+        foreach ([$outA, $outB] as $out) {
+            $this->assertStringNotContainsString('QueryException', $out, "raw DB error leaked: $out");
+            $this->assertStringNotContainsString('Duplicate entry', $out, "duplicate-key leaked: $out");
+            $this->assertStringNotContainsString('Deadlock', $out, "deadlock leaked: $out");
+        }
+
+        $rows = EdgeLocalPrintWorkerState::all();
+        $this->assertCount(1, $rows, 'exactly ONE singleton row');
+        $this->assertSame(EdgeLocalPrintWorkerState::STATE_RUNNING, $rows[0]->state);
+        $this->assertContains($rows[0]->worker_uuid, ['first-boot-A', 'first-boot-B'], 'the winner owns the slot');
+    }
+
+    // ── closure §3: health() truthfulness matrix — DB failure is NEVER "not_installed" ──────────
+    public function test_worker_health_never_masks_db_failure_as_not_installed(): void
+    {
+        $supervisor = fn () => app(EdgeLocalPrintWorkerSupervisor::class);
+
+        // B: table present + no row → not_installed (worker never ran here).
+        $this->assertSame('not_installed', $supervisor()->health()['state']);
+
+        // C: fresh running row → running.  D: stale heartbeat → stale.  B2: stopped row → stopped.
+        EdgeLocalPrintWorkerState::create(['state' => EdgeLocalPrintWorkerState::STATE_RUNNING, 'worker_uuid' => 'w1', 'started_at' => now(), 'heartbeat_at' => now()]);
+        $this->assertSame('running', $supervisor()->health()['state']);
+        EdgeLocalPrintWorkerState::query()->update(['heartbeat_at' => now()->subSeconds(EdgeLocalPrintWorkerSupervisor::HEARTBEAT_STALE_SECONDS + 5)]);
+        $this->assertSame('stale', $supervisor()->health()['state']);
+        EdgeLocalPrintWorkerState::query()->update(['state' => EdgeLocalPrintWorkerState::STATE_STOPPED]);
+        $this->assertSame('stopped', $supervisor()->health()['state']);
+
+        // E: the Edge DB genuinely unreachable → `unavailable` — NEVER a false not_installed;
+        // sanitized reason only (no DSN/credentials).
+        $original = config('database.connections.tenant');
+        try {
+            config(['database.connections.tenant.database' => 'nonexistent_edge_health_db']);
+            DB::purge('tenant');
+            $health = $supervisor()->health();
+            $this->assertSame('unavailable', $health['state'], 'a DB failure must never report not_installed');
+            $this->assertStringContainsString('database unavailable', (string) $health['last_error']);
+            $this->assertStringNotContainsString('password', strtolower((string) $health['last_error']));
+            // readiness carries the honest state through.
+            $this->assertSame('unavailable', app(\App\Services\Edge\EdgeLocalReadiness::class)->report()['local_print_worker']);
+        } finally {
+            config(['database.connections.tenant' => $original]);
+            DB::purge('tenant');
+            DB::setDefaultConnection('tenant');
+        }
+        // A (schema genuinely absent → not_installed) is proven by every pre-db-init readiness test
+        // (EdgeLocalRuntimeBoundaryTest boots without the edge schema).
+    }
+
     // ── §10/§14: readiness distinguishes config from process; diagnostics are read-only ─────────
     public function test_readiness_splits_config_from_process_and_status_command_reports(): void
     {
