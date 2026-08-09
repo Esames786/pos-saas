@@ -76,24 +76,54 @@ class RoleController extends Controller
         return back()->with('status', 'Role deleted successfully.');
     }
 
-    public function editPermissions(Role $role, PermissionSyncService $syncService)
+    public function editPermissions(Role $role, \App\Services\Permissions\PermissionCatalogService $catalog)
     {
         abort_unless($role->guard_name === 'tenant', 404);
 
         $role->load('permissions');
 
+        // Entitlement-aware editor: only the tenant's ENABLED modules are rendered/managed. Grants
+        // outside the managed set (non-entitled modules, unmapped keys) are PRESERVED untouched by
+        // updatePermissions — the editor can neither wipe nor grant what it does not display.
+        $entitled = null;
+        if (app()->bound('tenant') && app('tenant')?->subscription?->plan) {
+            $entitled = app('tenant')->subscription->plan->enabledModules()->pluck('key')->all();
+        }
+        $built = $catalog->build(
+            \Spatie\Permission\Models\Permission::where('guard_name', 'tenant')->get(),
+            $entitled
+        );
+
         return view('tenant.roles.permissions', [
             'role'                => $role,
-            'permissionGroups'    => $syncService->tenantPermissionGroups(),
+            'catalog'             => $built['modules'],
+            'managed'             => $built['managed'],
+            'unavailableModules'  => $built['unavailable_modules'],
             'assignedPermissions' => $role->permissions->pluck('name')->toArray(),
         ]);
     }
 
-    public function updatePermissions(UpdateRolePermissionsRequest $request, Role $role)
+    public function updatePermissions(UpdateRolePermissionsRequest $request, Role $role, \App\Services\Permissions\PermissionCatalogService $catalog)
     {
         abort_unless($role->guard_name === 'tenant', 404);
 
-        $role->syncPermissions($request->input('permissions', []));
+        // Rebuild the SERVER-side managed set (never trust a posted list of managed names): only
+        // permissions the entitled editor actually displays may be granted or revoked here.
+        $entitled = null;
+        if (app()->bound('tenant') && app('tenant')?->subscription?->plan) {
+            $entitled = app('tenant')->subscription->plan->enabledModules()->pluck('key')->all();
+        }
+        $managed = $catalog->build(
+            \Spatie\Permission\Models\Permission::where('guard_name', 'tenant')->get(),
+            $entitled
+        )['managed'];
+
+        $submitted = array_values(array_intersect($request->input('permissions', []), $managed));
+        // preserve every grant OUTSIDE the managed scope (non-entitled modules, unmapped keys) —
+        // the friendly editor is a management UX, never a stealth revoker (safety test F).
+        $preserved = $role->permissions->pluck('name')->reject(fn ($n) => in_array($n, $managed, true))->values()->all();
+
+        $role->syncPermissions(array_values(array_unique(array_merge($preserved, $submitted))));
 
         return redirect('/roles')->with('status', 'Role permissions updated successfully.');
     }
