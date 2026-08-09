@@ -285,14 +285,19 @@ class EscPosPayloadService
             }
 
             // Single line: "2x Beef Changezi Pulao @450.00      900.00" — qty leads,
-            // unit price shown inline only when qty ≠ 1, total right-aligned.
+            // unit price shown inline only when qty ≠ 1, total right-aligned. When space
+            // runs out, the NAME is truncated — the price is dropped whole, never mangled
+            // ("@450.00" must never print as "@45").
             $qty = $this->quantity((float) $line->quantity);
             $total = number_format((float) $line->line_total, 2);
-            $left = $qty . 'x ' . ($line->product_name ?? '');
-            if ((float) $line->quantity !== 1.0) {
-                $left .= ' @' . number_format((float) $line->unit_price, 2);
+            $qtyPrefix = $qty . 'x ';
+            $priceSuffix = (float) $line->quantity !== 1.0 ? ' @' . number_format((float) $line->unit_price, 2) : '';
+            $maxName = 41 - mb_strlen($total) - mb_strlen($qtyPrefix) - mb_strlen($priceSuffix);
+            if ($maxName < 8) {
+                $priceSuffix = '';
+                $maxName = 41 - mb_strlen($total) - mb_strlen($qtyPrefix);
             }
-            $left = mb_substr($left, 0, 41 - mb_strlen($total));
+            $left = $qtyPrefix . mb_substr($line->product_name ?? '', 0, max($maxName, 1)) . $priceSuffix;
             $out .= $this->columns($left, $total, 42) . "\n";
 
             if ($line->kitchen_note) {
