@@ -3959,6 +3959,14 @@ document.addEventListener('DOMContentLoaded', function () {
             terminalEl.value = sale.terminal_id || '';
         }
 
+        // CUSTOMER-UX-1: restore the attached customer + address + vehicle and show the chip.
+        { const el = document.getElementById('customer_id'); if (el) el.value = sale.customer_id || ''; }
+        { const el = document.getElementById('customer_name'); if (el) el.value = sale.customer_name || ''; }
+        { const el = document.getElementById('customer_phone'); if (el) el.value = sale.customer_phone || ''; }
+        { const el = document.getElementById('delivery_address'); if (el) el.value = sale.delivery_address || ''; }
+        { const el = document.getElementById('vehicle_number'); if (el && sale.vehicle_number) el.value = sale.vehicle_number; }
+        if (window.posRenderCustomerChip) window.posRenderCustomerChip();
+
         // Sync table session and table for dine-in
         const tableSessionInput = document.querySelector('input[name="restaurant_table_session_id"]');
         if (tableSessionInput) tableSessionInput.value = sale.restaurant_table_session_id || '';
@@ -5454,6 +5462,8 @@ document.addEventListener('DOMContentLoaded', function () {
     /* init: held-sale preload renders the chip; delivery defaults apply on load */
     renderChip();
     applyDeliveryChargeDefaults();
+    // recallHeldSale (earlier script block) restores customer fields, then re-renders via this hook.
+    window.posRenderCustomerChip = renderChip;
 })();
 </script>
 

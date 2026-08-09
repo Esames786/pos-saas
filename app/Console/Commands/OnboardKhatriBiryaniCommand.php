@@ -343,7 +343,7 @@ class OnboardKhatriBiryaniCommand extends Command
         $routeKeys = Module::whereIn('key', self::PLAN_MODULES)->pluck('route_module_keys')->flatten()->all();
         $exclude = ['tenant.roles', 'tenant.permissions', 'tenant.billing', 'tenant.manufacturing',
             'tenant.offline-edge', 'tenant.quotations', 'tenant.purchase-requisitions',
-            'tenant.finance.bank-reconciliation'];
+            'tenant.finance.bank-reconciliation', 'tenant.system-reset'];
         $manager = \Spatie\Permission\Models\Role::findOrCreate('Manager', 'tenant');
         $names = \Spatie\Permission\Models\Permission::where('guard_name', 'tenant')->pluck('name')
             ->filter(function (string $name) use ($routeKeys, $exclude) {

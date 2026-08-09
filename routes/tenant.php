@@ -185,6 +185,11 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::post('/users/{user}/manager-pin', [TenantUserController::class, 'managerPinStore'])->name('tenant.users.manager-pin.store');
 
                 // Roles & Permissions
+                // TENANT-RESET-1: Owner-facing transactional reset (permission-gated; the artisan
+                // command underneath carries its own guards).
+                Route::get('/system-reset', [\App\Http\Controllers\Tenant\SystemResetController::class, 'index'])->name('tenant.system-reset.index');
+                Route::post('/system-reset', [\App\Http\Controllers\Tenant\SystemResetController::class, 'execute'])->name('tenant.system-reset.execute');
+
                 Route::get('/roles', [RoleController::class, 'index'])->name('tenant.roles.index');
                 Route::get('/roles/create', [RoleController::class, 'create'])->name('tenant.roles.create');
                 Route::post('/roles', [RoleController::class, 'store'])->name('tenant.roles.store');

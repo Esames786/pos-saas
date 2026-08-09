@@ -1245,6 +1245,14 @@
                                 </a>
                             </li>
                         @endcan
+                        @can('tenant.system-reset.index')
+                            @php $a = $isIn('system-reset*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/system-reset') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-alert-triangle fs-16 me-2"></i><span>System Reset</span>
+                                </a>
+                            </li>
+                        @endcan
                     </ul>
                 </li>
                 @endcanany

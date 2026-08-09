@@ -66,6 +66,10 @@ class HeldSaleController extends Controller
                 'delivery_address'            => $s->delivery_address,
                 'vehicle_number'              => $s->vehicle_number,
                 'customer'                    => $s->customer_name ?: $s->customer?->name ?: 'Walk-in',
+                // CUSTOMER-UX-1: recall must restore the attached customer (chip + hidden fields).
+                'customer_id'                 => $s->customer_id,
+                'customer_name'               => $s->customer_name ?: $s->customer?->name,
+                'customer_phone'              => $s->customer_phone ?: $s->customer?->phone,
                 'total'                       => number_format($s->grand_total, 2),
                 'items'                       => $s->lines->count(),
                 'time'                        => $s->created_at->diffForHumans(),
