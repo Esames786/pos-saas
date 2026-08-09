@@ -931,7 +931,11 @@ class TenantProvisioner
         }
 
         $role = Role::findOrCreate('Owner', 'tenant');
-        $role->syncPermissions($tenantPermissions);
+        // givePermissionTo, NOT syncPermissions: on a re-provision of an existing tenant,
+        // sync REPLACES the whole set and silently strips permissions granted after first
+        // provision (deploy.sh grants every route-catalog permission to Owner — newer ones
+        // like tenant.reports.center.* were wiped by onboarding re-runs; found on prod 2026-08-09).
+        $role->givePermissionTo($tenantPermissions);
         $owner->syncRoles([$role]);
 
         // Seed the default Chart of Accounts (FIN-2). Idempotent; tenant DB is active here.
