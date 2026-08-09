@@ -205,6 +205,40 @@ class OnboardKhatriBiryaniCommand extends Command
         }
         $this->info("menu seeded: " . count(self::MENU) . " categories, {$productCount} service-based products.");
 
+        // ── Network KOT printers + order-type-aware half/half category routing (user request) ──
+        // Two LAN printers; dine_in/quick_sale split categories 1-4 → P1, 5-8 → P2; takeaway/delivery
+        // use a DIFFERENT alternating half so order-type-aware routing is genuinely exercised.
+        $printerIds = [];
+        foreach ([['KOT-NET-1', 'Kitchen Printer 1', '192.168.1.54'], ['KOT-NET-2', 'Kitchen Printer 2', '192.168.1.87']] as $i => [$code, $name, $ip]) {
+            DB::connection('tenant')->table('printers')->updateOrInsert(
+                ['code' => $code],
+                ['branch_id' => $branchId, 'name' => $name, 'printer_type' => 'network',
+                 'print_role' => 'kot', 'supports_reminder' => 0, 'ip_address' => $ip, 'port' => 9100,
+                 'is_default' => $i === 0 ? 1 : 0, 'is_active' => 1, 'created_at' => now(), 'updated_at' => now()]
+            );
+            $printerIds[] = (int) DB::connection('tenant')->table('printers')->where('code', $code)->value('id');
+        }
+        $categoryIds = DB::connection('tenant')->table('categories')->orderBy('sort_order')->pluck('id')->values();
+        $half = (int) ceil($categoryIds->count() / 2);
+        $mapRow = function (int $categoryId, int $printerId, string $orderType) use ($branchId) {
+            DB::connection('tenant')->table('category_printer_mappings')->updateOrInsert(
+                ['branch_id' => $branchId, 'category_id' => $categoryId, 'print_role' => 'kot', 'order_type' => $orderType],
+                ['printer_id' => $printerId, 'reminder_confirm_on_addition' => 0, 'is_active' => 1,
+                 'created_at' => now(), 'updated_at' => now()]
+            );
+        };
+        foreach ($categoryIds as $idx => $categoryId) {
+            $firstHalfPrinter = $idx < $half ? $printerIds[0] : $printerIds[1];          // block split
+            $alternatingPrinter = $idx % 2 === 0 ? $printerIds[0] : $printerIds[1];     // alternating split
+            foreach (['dine_in', 'quick_sale'] as $ot) {
+                $mapRow($categoryId, $firstHalfPrinter, $ot);
+            }
+            foreach (['takeaway', 'delivery'] as $ot) {
+                $mapRow($categoryId, $alternatingPrinter, $ot);
+            }
+        }
+        $this->info('KOT routing: 2 network printers (192.168.1.54 / 192.168.1.87), half/half category split per order type (' . $categoryIds->count() * 4 . ' mappings).');
+
         // Manager role: every synced permission belonging to an ENABLED plan module, minus admin/owner
         // concerns. Data-driven from the plan's module route keys — nothing Khatri-specific in code.
         $routeKeys = Module::whereIn('key', self::PLAN_MODULES)->pluck('route_module_keys')->flatten()->all();
