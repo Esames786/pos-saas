@@ -239,6 +239,38 @@ class OnboardKhatriBiryaniCommand extends Command
         }
         $this->info('KOT routing: 2 network printers (192.168.1.54 / 192.168.1.87), half/half category split per order type (' . $categoryIds->count() * 4 . ' mappings).');
 
+        // ── Reminder printer + wildcard route (user request) ──
+        // One dedicated Reminder destination on the second kitchen device. print_role stays 'kot'
+        // (printers enum has no 'reminder'); reminder routing keys ONLY on supports_reminder +
+        // the 'reminder' mapping below, and this printer is never picked for KOT (no kot mappings,
+        // is_default=0). NULL category = "All categories"; order_type 'all'; confirm=0 → no prompt.
+        DB::connection('tenant')->table('printers')->updateOrInsert(
+            ['code' => 'REMINDER-NET-1'],
+            ['branch_id' => $branchId, 'name' => 'Reminder Printer', 'printer_type' => 'network',
+             'print_role' => 'kot', 'supports_reminder' => 1, 'ip_address' => '192.168.1.87', 'port' => 9100,
+             'is_default' => 0, 'is_active' => 1, 'created_at' => now(), 'updated_at' => now()]
+        );
+        $reminderPrinterId = (int) DB::connection('tenant')->table('printers')->where('code', 'REMINDER-NET-1')->value('id');
+        DB::connection('tenant')->table('category_printer_mappings')->updateOrInsert(
+            ['branch_id' => $branchId, 'category_id' => null, 'print_role' => 'reminder', 'order_type' => 'all'],
+            ['printer_id' => $reminderPrinterId, 'reminder_confirm_on_addition' => 0, 'is_active' => 1,
+             'created_at' => now(), 'updated_at' => now()]
+        );
+        $this->info('Reminder: REMINDER-NET-1 (192.168.1.87) + all-categories/all-order-types route (no confirm).');
+
+        // ── Auto-print defaults: KOT + Receipt ON for every terminal (user request) ──
+        // No settings row = auto OFF in POS, so seed one per terminal. Printer ids are left
+        // untouched: KOT resolves via category routing, receipts fall back to the browser tab
+        // until a counter receipt printer is configured. Manual printer picks are never clobbered.
+        $terminalIds = DB::connection('tenant')->table('terminals')->pluck('id');
+        foreach ($terminalIds as $tid) {
+            DB::connection('tenant')->table('terminal_printer_settings')->updateOrInsert(
+                ['terminal_id' => $tid],
+                ['auto_print_receipt' => 1, 'auto_print_kot' => 1, 'created_at' => now(), 'updated_at' => now()]
+            );
+        }
+        $this->info('auto-print: KOT + Receipt ON for ' . $terminalIds->count() . ' terminals.');
+
         // Manager role: every synced permission belonging to an ENABLED plan module, minus admin/owner
         // concerns. Data-driven from the plan's module route keys — nothing Khatri-specific in code.
         $routeKeys = Module::whereIn('key', self::PLAN_MODULES)->pluck('route_module_keys')->flatten()->all();
