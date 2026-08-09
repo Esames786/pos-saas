@@ -454,6 +454,7 @@ class POSController extends Controller
             'discount_value'          => ['nullable', 'numeric', 'min:0'],
             'promo_code'              => ['nullable', 'string', 'max:50'],
             'tip_amount'              => ['nullable', 'numeric', 'min:0'],
+            'delivery_charge_amount'  => ['nullable', 'numeric', 'min:0'],
             'lines'                   => ['nullable', 'array'],
             'lines.*.product_id'      => ['nullable', 'integer'],
             'lines.*.category_id'     => ['nullable', 'integer'],
@@ -488,6 +489,7 @@ class POSController extends Controller
             orderType:     $data['order_type'],
             promoCode:     $data['promo_code'] ?? null,
             tipAmount:     (float) ($data['tip_amount'] ?? 0),
+            deliveryCharge: $data['order_type'] === 'delivery' ? (float) ($data['delivery_charge_amount'] ?? 0) : 0,
         );
 
         return response()->json([
@@ -500,6 +502,7 @@ class POSController extends Controller
             'tax_amount'                 => $totals['tax_amount'],
             'service_charge_amount'      => $totals['service_charge_amount'],
             'tip_amount'                 => $totals['tip_amount'],
+            'delivery_charge_amount'     => $totals['delivery_charge_amount'],
             'grand_total'                => $totals['grand_total'],
         ]);
     }

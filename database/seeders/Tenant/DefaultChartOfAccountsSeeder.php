@@ -58,6 +58,7 @@ class DefaultChartOfAccountsSeeder
             ['4120', 'Restaurant Sales',    'income', '4100', null, 200],
             ['4130', 'Service Charges',     'income', '4100', null, 210],
             ['4140', 'Tips Income',         'income', '4100', null, 220],
+            ['4150', 'Delivery Charges Income', 'income', '4100', null, 225],
             // Contra-income: reduces revenue, so debit-normal under the Income tree.
             ['4200', 'Sales Discounts',     'income', '4000', 'debit', 230],
             // Third-party department handover (THIRD-PARTY-DEPARTMENT-HANDOVER-1): contra-income,

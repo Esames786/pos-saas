@@ -297,6 +297,12 @@ class EdgeLocalPosService
         if ($type !== 'none' || (float) ($data['discount_value'] ?? 0) != 0.0 || ! empty($data['promo_code'])) {
             throw ValidationException::withMessages(['discount' => 'Discounts and promotions are not yet available on the Branch Server.']);
         }
+        // DELIVERY-CHARGE-1: delivery orders are not offered offline, so a delivery charge can never be
+        // part of a local sale — refusing (rather than ignoring) keeps the effective-intent hash contract
+        // and the Cloud/Edge money semantics identical.
+        if ((float) ($data['delivery_charge_amount'] ?? 0) != 0.0) {
+            throw ValidationException::withMessages(['delivery_charge_amount' => 'Delivery charges are not available on the Branch Server (delivery orders are Cloud-only).']);
+        }
         foreach ($data['lines'] ?? [] as $line) {
             if ((float) ($line['discount_amount'] ?? 0) != 0.0) {
                 throw ValidationException::withMessages(['discount' => 'Line discounts are not yet available on the Branch Server.']);

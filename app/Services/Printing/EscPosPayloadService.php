@@ -260,6 +260,9 @@ class EscPosPayloadService
         if ((float) ($sale->service_charge_amount ?? 0) > 0) {
             $out .= $this->columns('Service Charge', number_format((float) $sale->service_charge_amount, 2), 42) . "\n";
         }
+        if ((float) ($sale->delivery_charge_amount ?? 0) > 0) {
+            $out .= $this->columns('Delivery Charge', number_format((float) $sale->delivery_charge_amount, 2), 42) . "\n";
+        }
         if ((float) ($sale->tip_amount ?? 0) > 0) {
             $out .= $this->columns('Tip', number_format((float) $sale->tip_amount, 2), 42) . "\n";
         }

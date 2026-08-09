@@ -191,6 +191,7 @@ class SalesOrderController extends Controller
                     orderType:     $orderType,
                     promoCode:     $data['promo_code'] ?? null,
                     tipAmount:     (float) ($data['tip_amount'] ?? 0),
+                    deliveryCharge: ($orderType === 'delivery' && empty($data['restaurant_table_session_id'])) ? (float) ($data['delivery_charge_amount'] ?? 0) : 0,
                 );
 
                 $tableSession = null;
@@ -257,6 +258,7 @@ class SalesOrderController extends Controller
                     'delivery_channel_id'         => (! $tableSession && $orderType === 'delivery') ? ($data['delivery_channel_id'] ?? null) : null,
                     'delivery_rider_id'           => (! $tableSession && $orderType === 'delivery') ? ($data['delivery_rider_id'] ?? null) : null,
                     'delivery_address'            => (! $tableSession && $orderType === 'delivery') ? ($data['delivery_address'] ?? null) : null,
+                    'delivery_charge_amount'      => $totals['delivery_charge_amount'] ?? 0,
                     'sale_date'                   => now(),
                     'business_date'               => $businessDate,
                     'subtotal'                    => $totals['subtotal'],
@@ -576,6 +578,7 @@ class SalesOrderController extends Controller
             'delivery_channel_id' => ['nullable', 'exists:delivery_channels,id'],
             'delivery_rider_id'   => ['nullable', 'exists:delivery_riders,id'],
             'delivery_address'    => ['nullable', 'string', 'max:500'],
+            'delivery_charge_amount' => ['nullable', 'numeric', 'min:0', 'max:99999'],
             'discount_type'       => ['required', Rule::in(['none', 'fixed', 'percent'])],
             'discount_value'      => ['nullable', 'numeric', 'min:0'],
             'promo_code'          => ['nullable', 'string', 'max:50'],

@@ -183,6 +183,7 @@ class JournalPostingService
             $tax      = round((float) ($sale->tax_amount ?? 0), 4);
             $service  = round((float) ($sale->service_charge_amount ?? 0), 4);
             $tip      = round((float) ($sale->tip_amount ?? 0), 4);
+            $delivery = round((float) ($sale->delivery_charge_amount ?? 0), 4);
 
             $undepositedId = $this->journal->accountId('1500');
 
@@ -216,7 +217,7 @@ class JournalPostingService
             }
 
             $revenueCode = in_array($sale->order_type, ['dine_in', 'takeaway', 'delivery'], true) ? '4120' : '4110';
-            $revenue = round($grand + $discount - $tax - $service - $tip, 4);
+            $revenue = round($grand + $discount - $tax - $service - $tip - $delivery, 4);
 
             if ($revenue > 0) {
                 if ($discount > 0) {
@@ -230,6 +231,9 @@ class JournalPostingService
                 }
                 if ($tip > 0) {
                     $lines[] = ['account_code' => '4140', 'branch_id' => $sale->branch_id, 'description' => 'Tips', 'debit' => 0, 'credit' => $tip];
+                }
+                if ($delivery > 0) {
+                    $lines[] = ['account_code' => '4150', 'branch_id' => $sale->branch_id, 'description' => 'Delivery charge', 'debit' => 0, 'credit' => $delivery];
                 }
                 $lines[] = ['account_code' => $revenueCode, 'branch_id' => $sale->branch_id, 'description' => 'Sales revenue ' . $sale->sale_no, 'debit' => 0, 'credit' => $revenue];
             } else {

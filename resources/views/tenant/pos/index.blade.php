@@ -538,11 +538,17 @@
                         @endforeach
                     </select>
                 </div>
-                <div class="col-md-6">
+                <div class="col-md-4">
                     <label for="delivery_address" class="form-label small mb-1">Delivery Address</label>
                     <input id="delivery_address" name="delivery_address" class="form-control form-control-sm"
                            maxlength="500" placeholder="House / street / area for the rider"
                            value="{{ $heldSale?->delivery_address }}">
+                </div>
+                <div class="col-md-2">
+                    <label for="delivery_charge_amount" class="form-label small mb-1">Delivery Charge</label>
+                    <input id="delivery_charge_amount" name="delivery_charge_amount" type="number" min="0" step="1"
+                           class="form-control form-control-sm" placeholder="0"
+                           value="{{ (float) ($heldSale?->delivery_charge_amount ?? 0) > 0 ? $heldSale->delivery_charge_amount : '' }}">
                 </div>
             </div>
 
@@ -1371,6 +1377,8 @@ document.addEventListener('DOMContentLoaded', function () {
             if (deliveryRiderEl)   deliveryRiderEl.required = false;
             if (deliveryRiderWrap) deliveryRiderWrap.style.display = 'none';
             if (deliveryAddressEl) deliveryAddressEl.value = '';
+        if (deliveryChargeEl) deliveryChargeEl.value = '';
+            if (deliveryChargeEl) deliveryChargeEl.value = '';
             return;
         }
 
@@ -2442,6 +2450,10 @@ document.addEventListener('DOMContentLoaded', function () {
     let _promoCode = '';
     let _promoName = '';
     let _tipAmount = 0;
+    const deliveryChargeEl = document.getElementById('delivery_charge_amount');
+    function deliveryChargeValue() {
+        return (orderTypeEl && orderTypeEl.value === 'delivery') ? Math.max(Number(deliveryChargeEl?.value || 0), 0) : 0;
+    }
     let _serviceChargeAmount = 0;
 
     function totals() {
@@ -2453,13 +2465,15 @@ document.addEventListener('DOMContentLoaded', function () {
         });
         const promoDiscount = _promoDiscountAmount;
         const totalDiscount = discount + promoDiscount;
-        const total = Math.max(subtotal - totalDiscount + tax + _serviceChargeAmount + _tipAmount, 0);
+        const deliveryCharge = deliveryChargeValue();
+        const total = Math.max(subtotal - totalDiscount + tax + _serviceChargeAmount + _tipAmount, 0) + deliveryCharge;
         return {
             subtotal:       subtotal,
             discount:       discount,
             promoDiscount:  promoDiscount,
             tax:            tax,
             serviceCharge:  _serviceChargeAmount,
+            deliveryCharge: deliveryCharge,
             tip:            _tipAmount,
             total:          total,
         };
@@ -2584,6 +2598,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 discount_value: document.querySelector('input[name="discount_value"]')?.value || 0,
                 promo_code:     _promoCode || '',
                 tip_amount:     _tipAmount || 0,
+                delivery_charge_amount: deliveryChargeValue(),
                 lines:          collectQuoteLines(),
             }),
         })
@@ -2821,6 +2836,11 @@ document.addEventListener('DOMContentLoaded', function () {
             updateTotals();
         });
     });
+
+    /* ── Delivery Charge input → live total refresh (delivery orders only) ── */
+    if (deliveryChargeEl) {
+        deliveryChargeEl.addEventListener('input', function () { updateTotals(); });
+    }
 
     /* ── Void Reason Modal (for KOT-sent items) ─────────────────────── */
 
@@ -4784,6 +4804,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (deliveryChannelEl) deliveryChannelEl.value = '';
         if (deliveryRiderEl) deliveryRiderEl.value = '';
         if (deliveryAddressEl) deliveryAddressEl.value = '';
+        if (deliveryChargeEl) deliveryChargeEl.value = '';
         if (transactionRefEl) transactionRefEl.value = '';
         if (tenderedEl) tenderedEl.value = '0.00';
 

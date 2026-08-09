@@ -35,6 +35,7 @@ class SalesTotalsService
         string $orderType,
         ?string $promoCode = null,
         float $tipAmount = 0,
+        float $deliveryCharge = 0,
     ): array {
         // 1. Aggregate line totals
         $subtotal     = 0;
@@ -98,11 +99,14 @@ class SalesTotalsService
         // 5. Tip — caller enforces 0 for held sales
         $tipAmount = max((float) $tipAmount, 0);
 
+        // 5b. Delivery charge — caller passes non-zero ONLY for delivery orders (0 elsewhere/offline).
+        $deliveryCharge = round(max((float) $deliveryCharge, 0), 2);
+
         // 6. Grand total — never negative
         $grandTotal = max(
             $subtotal - $discountAmount + $tax + $serviceChargeAmount + $tipAmount,
             0
-        );
+        ) + $deliveryCharge;
 
         return [
             'subtotal'                  => round($subtotal, 2),
@@ -115,6 +119,7 @@ class SalesTotalsService
             'service_charge_amount'     => round($serviceChargeAmount, 2),
             'service_charge_taxable'    => (bool) ($scResult['is_taxable'] ?? false),
             'tip_amount'                => round($tipAmount, 2),
+            'delivery_charge_amount'    => $deliveryCharge,
             'grand_total'               => round($grandTotal, 2),
         ];
     }

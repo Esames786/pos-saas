@@ -178,6 +178,12 @@
         <td>{{ number_format($salesOrder->tax_amount, 2) }}</td>
     </tr>
     @endif
+    @if((float) ($salesOrder->delivery_charge_amount ?? 0) > 0)
+    <tr>
+        <td>Delivery Charge:</td>
+        <td>{{ number_format($salesOrder->delivery_charge_amount, 2) }}</td>
+    </tr>
+    @endif
     @if((float) ($salesOrder->service_charge_amount ?? 0) > 0)
     <tr>
         <td>Service Charge:</td>

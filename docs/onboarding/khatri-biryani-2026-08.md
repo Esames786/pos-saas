@@ -124,6 +124,11 @@ activation_ready=false).
   renames/deletes; entitlement-aware editor; ajax/support perms shown under consuming feature with
   shared-dependency guard.
 
+## SCOPE ADDITIONS (user, 2026-08-09 mid-implementation)
+- **Delivery charges input** (DELIVERY-CHARGE-1): sales_orders.delivery_charge_amount (additive, default 0); POS input for delivery orders; totals/grand_total; GL credit 4150 Delivery Charges Income (revenue formula minus delivery); receipts (HTML + ESC/POS); canonical payload key; Edge REFUSES non-zero value offline (delivery not offered; hash stability); Report Center column.
+- **Cash & Bank must show department handover payouts**: include dept_handover_payout / dept_handover_payout_reversal transaction types as labeled money-out rows (“paid from cash/bank to third-party department owners”).
+- **Departments section in the overall sales report**: new Departments tab in the Report Center using the existing department-sales authority (is_third_party depts incl.).
+
 ## Menu / rate list (extracted from client screenshots)
 AUTHORITY ORDER: Z-report item prices (actual POS data 02-Aug-2026) > new "Kashif Kitchen" menu >
 old printed menu. ⚠ VERIFY WITH CLIENT flags noted. Branding on materials says "KASHIF KITCHEN /
