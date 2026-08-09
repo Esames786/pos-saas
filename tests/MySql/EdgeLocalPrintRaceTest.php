@@ -33,6 +33,14 @@ class EdgeLocalPrintRaceTest extends MySqlTenantTestCase
     {
         parent::setUp();
         DB::setDefaultConnection('tenant');
+        // the reworked worker maps tenant := edge_local (the REAL appliance path) — point the
+        // edge_local connection at the test tenant DB so the mapping lands on the right database.
+        config(['database.connections.edge_local' => array_merge(
+            config('database.connections.edge_local', []),
+            ['host' => config('database.connections.tenant.host'), 'port' => config('database.connections.tenant.port'),
+             'database' => $this->tenantDb, 'username' => config('database.connections.tenant.username'),
+             'password' => config('database.connections.tenant.password')]
+        )]);
         $this->ensureEdgeSchema();
         $this->cleanTenant(['edge_local_print_deliveries', 'edge_local_meta', 'kot_batch_lines', 'kot_batches', 'print_jobs', 'printers', 'sales_order_lines', 'sales_orders', 'terminals', 'branches', 'users']);
         $this->branchId = $this->makeBranch();

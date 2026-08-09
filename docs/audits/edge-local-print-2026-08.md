@@ -113,6 +113,53 @@ automatically deliverable/retrying — a `terminal_failed` job deliberately does
 so a manual operator retry afterwards does not recover historical physical order. "Addition can never
 print before original" is therefore NOT unconditional; it holds up to terminal failure.
 
+## Slice 2 — appliance worker lifecycle (supervision, health, safe stop)
+INSPECT-FIRST grounding established: the repository's ONE native supervision mechanism is the
+print-agent's **Scheduled Task** (`Register-ScheduledTask -AtStartup`, SYSTEM/Highest, RestartCount
+999 / 1-min interval, unregister-first idempotent reinstall) — no NSSM/WinSW anywhere; no scheduler
+or queue exists on the appliance (`routes/console.php` registers nothing on branch_server; neither
+`schedule:run` nor `queue:work` is CLI-allowlisted), so the print worker is the appliance's FIRST
+long-running process; `pcntl` is unavailable on Windows php-cli, so stop must be COOPERATIVE.
+- **Supervision** (§6/§7): `scripts/edge/Install-EdgePrintWorkerTask.ps1` /
+  `Stop-EdgePrintWorkerTask.ps1` / `Uninstall-EdgePrintWorkerTask.ps1` mirror the print-agent task
+  policy verbatim (task `BingooEdgePrintWorker`). `scripts` is now on the artifact include allowlist
+  (it previously never shipped). The worker itself now runs the REAL appliance DB path
+  (`EdgeLocalDatabase::useAsTenantConnection()` — a genuine bug the real-process proof exposed: the
+  Slice-1 worker only worked because in-process tests pre-mapped the connection), waits with bounded
+  retries (20×3s) for MariaDB after a reboot, and one job's failure never kills the loop.
+- **One-worker topology + heartbeat** (§9/§12, explicit): `edge_local_print_worker_state` (edge-only
+  singleton_guard row) — running|stopped, worker_uuid, started/heartbeat/stop-request/graceful-stop
+  timestamps, last_error. Liveness = heartbeat staleness (90s, below the 120s job lease); a duplicate
+  daemon observes a FRESH-heartbeat running row and exits cleanly; a STALE row (crash) is taken over.
+  NEVER a lease authority — job lease tokens remain the sole completion authority (a takeover found a
+  MySQL affected-rows gotcha: a same-second guarded heartbeat UPDATE reports 0 rows → read-verify-save
+  with the ≤1-iteration-overlap window documented).
+- **Cooperative stop** (§7/§8): `--stop` sets the DB flag; the loop checks it BETWEEN jobs, finishes
+  any in-flight delivery, records a graceful stop. `Stop-EdgePrintWorkerTask.ps1` = cooperative stop
+  FIRST (150s > one lease), then task stop/disable. Leases are NEVER rewritten on start or stop; a
+  hard kill falls back to lease-expiry recovery. **§AE flags for the update-contract owner** (recorded,
+  not silently worked around): (a) §AE's maintenance-mode step is currently unexecutable on an
+  appliance — `down`/`up` are not CLI-allowlisted; (b) §AE names no process-quiescing step — proposed
+  addendum: `Stop-EdgePrintWorkerTask` → backup/update/forward-migrate → `Install/Start` again.
+- **Readiness config ≠ process** (§10): `local_print` (config: not_configured|blocked|ready) is now
+  joined by `local_print_worker` (process: running|stale|stopped|not_installed) — a configured
+  printer with a dead worker can no longer look healthy. `activation_ready` stays hard false.
+- **Diagnostics** (§14): read-only `edge:local:print-status` (allowlisted) — worker health, bound
+  branch, routable printers, queue counts by delivery state, unresolved NULL-printer intents, oldest
+  queued age; proven to mutate nothing and to leak no tokens/secrets.
+- **Proofs** (`EdgeLocalPrintWorkerLifecycleMySqlTest`, 7/70): §13 REAL supervised start — the exact
+  Scheduled-Task command line (`php artisan edge:local:print-worker --once`) spawned as a separate OS
+  process with `DB_DATABASE` pointed at a nonexistent master → delivers to FakePrinter, exact bytes,
+  graceful state row; duplicate-start refused (nothing claimed) then stale-takeover works; restart
+  respects a live lease then resumes after expiry (B); restart preserves next_attempt_at (no
+  hot-loop, D) and terminal_failed (never auto-reset, E); clean restart regenerates no KOT business
+  events (F); cooperative stop of a REAL background looping worker (state row observed running →
+  --stop → graceful exit code 0, last_graceful_stop_at set, zero leases touched); readiness split +
+  read-only diagnostics. (§11 C — die-after-send redelivery — remains proven by
+  EdgeLocalPrintRaceTest; documented physical duplicate.)
+- **Physical certification** (§15): grounded procedure only → `docs/ops/EDGE_PRINTER_CERTIFICATION_PLAN.md`;
+  FakePrinter ≠ certification; no ESC/POS changes until real-hardware requirements are recorded.
+
 ## Out of scope (unchanged)
 Local Mode activation (`activation_ready=false`), sync, Windows service/installer wiring, ESC/POS
 capability upgrades, reroute-unresolved-intent operation (deliberate audited op, later), Cloud agent

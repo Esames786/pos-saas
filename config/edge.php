@@ -93,6 +93,7 @@ return [
         'edge:local:enroll',
         // EDGE-LOCAL-PRINT-1 — the local lease-safe physical print worker (deliberately allowlisted).
         'edge:local:print-worker',
+        'edge:local:print-status',
         // Framework cache/runtime operations the appliance explicitly needs.
         'config:cache', 'config:clear',
         'route:cache', 'route:clear',
@@ -122,6 +123,10 @@ return [
             'public',
             'resources',
             'routes',
+            // EDGE-LOCAL-PRINT-1 Slice 2: the appliance supervision scripts (Install/Stop/Uninstall
+            // Scheduled Task + TLS helpers) must ship inside the artifact — the include list is a hard
+            // allowlist and previously dropped them. Non-secret; the forbidden scan still runs.
+            'scripts',
             'vendor',
             'artisan',
             'composer.json',

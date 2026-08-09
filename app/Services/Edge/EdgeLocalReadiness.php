@@ -86,6 +86,10 @@ class EdgeLocalReadiness
             // branch) | blocked (unresolved NULL-printer intents or dangling printer references) |
             // ready. A print-runtime state ONLY — never an activation claim.
             'local_print' => $this->localPrintState($bound),
+            // Slice 2 (§10): CONFIG readiness ≠ PROCESS health. A configured printer with a dead
+            // worker must never look like a healthy print runtime: running | stale | stopped |
+            // not_installed (heartbeat-based; NEVER a job-lease authority).
+            'local_print_worker' => app(EdgeLocalPrintWorkerSupervisor::class)->health()['state'],
             'sync' => 'not_implemented',             // OFFLINE-SYNC-ENGINE-1
 
             // The runtime FOUNDATION may be ready; the appliance still cannot sell.
