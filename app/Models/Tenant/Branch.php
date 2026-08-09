@@ -20,6 +20,8 @@ class Branch extends Model
         'is_tax_enabled',
         'show_tax_number_on_invoice',
         'allow_negative_stock',
+        'default_delivery_charge',
+        'delivery_charge_locked',
         'held_kot_cancellation_approval_mode',
         'receipt_footer',
         'status',

@@ -138,6 +138,25 @@
                     </div>
                 </div>
 
+                {{-- CUSTOMER-UX-1: default delivery charge + cashier lock --}}
+                <div class="col-md-3">
+                    <label for="default_delivery_charge" class="form-label">Default Delivery Charge</label>
+                    <input type="number" min="0" step="1" class="form-control"
+                        id="default_delivery_charge" name="default_delivery_charge"
+                        value="{{ old('default_delivery_charge', $branch?->default_delivery_charge ?? 0) }}">
+                    <div class="form-text">Auto-filled on delivery orders at the POS.</div>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label d-block">Delivery Charge Lock</label>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" role="switch"
+                            id="delivery_charge_locked" name="delivery_charge_locked" value="1"
+                            @checked(old('delivery_charge_locked', $branch?->delivery_charge_locked))>
+                        <label class="form-check-label" for="delivery_charge_locked">Lock at default</label>
+                    </div>
+                    <div class="form-text">When locked, cashiers cannot change the delivery charge — the branch default is always applied (enforced server-side).</div>
+                </div>
+
                 <div class="col-md-6">
                     <label for="held_kot_cancellation_approval_mode" class="form-label required">Held/KOT Cancellation Approval</label>
                     <select id="held_kot_cancellation_approval_mode" name="held_kot_cancellation_approval_mode" class="form-select" required>

@@ -191,7 +191,13 @@ class SalesOrderController extends Controller
                     orderType:     $orderType,
                     promoCode:     $data['promo_code'] ?? null,
                     tipAmount:     (float) ($data['tip_amount'] ?? 0),
-                    deliveryCharge: ($orderType === 'delivery' && empty($data['restaurant_table_session_id'])) ? (float) ($data['delivery_charge_amount'] ?? 0) : 0,
+                    // CUSTOMER-UX-1: a branch with the delivery charge LOCKED always uses its
+                    // configured default — the client-submitted value is never trusted.
+                    deliveryCharge: ($orderType === 'delivery' && empty($data['restaurant_table_session_id']))
+                        ? ($branch->delivery_charge_locked
+                            ? (float) $branch->default_delivery_charge
+                            : (float) ($data['delivery_charge_amount'] ?? 0))
+                        : 0,
                 );
 
                 $tableSession = null;

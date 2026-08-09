@@ -97,9 +97,10 @@ class CustomerController extends Controller
     public function quickStore(Request $request)
     {
         $data = $request->validate([
-            'name'  => ['required', 'string', 'max:190'],
-            'phone' => ['nullable', 'string', 'max:50'],
-            'email' => ['nullable', 'email', 'max:190'],
+            'name'    => ['required', 'string', 'max:190'],
+            'phone'   => ['nullable', 'string', 'max:50'],
+            'email'   => ['nullable', 'email', 'max:190'],
+            'address' => ['nullable', 'string', 'max:500'],
         ]);
 
         $customer = Customer::create([
@@ -110,12 +111,39 @@ class CustomerController extends Controller
             'status' => 'active',
         ]);
 
+        // CUSTOMER-UX-1: an address supplied at quick-create becomes the default book entry.
+        if (! empty($data['address'])) {
+            $customer->addresses()->create(['address' => $data['address'], 'is_default' => true]);
+        }
+
         if ($request->expectsJson()) {
-            return response()->json(['ok' => true, 'customer' => $customer]);
+            return response()->json(['ok' => true, 'customer' => $customer->load('addresses')]);
         }
 
         return redirect(url('/pos?customer_id=' . $customer->id))
             ->with('status', 'Customer created successfully.');
+    }
+
+    /** CUSTOMER-UX-1: add an address to a customer's book from the POS modal. */
+    public function storeAddress(Request $request, Customer $customer)
+    {
+        $data = $request->validate([
+            'label'      => ['nullable', 'string', 'max:50'],
+            'address'    => ['required', 'string', 'max:500'],
+            'is_default' => ['nullable', 'boolean'],
+        ]);
+
+        $makeDefault = ! empty($data['is_default']) || $customer->addresses()->count() === 0;
+        if ($makeDefault) {
+            $customer->addresses()->update(['is_default' => false]);
+        }
+        $address = $customer->addresses()->create([
+            'label' => $data['label'] ?? null,
+            'address' => $data['address'],
+            'is_default' => $makeDefault,
+        ]);
+
+        return response()->json(['ok' => true, 'address' => $address]);
     }
 
     private function validateCustomer(Request $request, ?Customer $customer = null): array

@@ -141,6 +141,7 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
             // they are read-only searchable pickers used across forms/filters).
             Route::get('/ajax/products', ProductLookupController::class)->name('tenant.ajax.products');
             Route::get('/ajax/sales', \App\Http\Controllers\Tenant\Ajax\SaleLookupController::class)->name('tenant.ajax.sales');
+            Route::get('/ajax/customers', \App\Http\Controllers\Tenant\Ajax\CustomerLookupController::class)->name('tenant.ajax.customers');
             Route::get('/ajax/goods-receipts', \App\Http\Controllers\Tenant\Ajax\GrnLookupController::class)->name('tenant.ajax.goods-receipts');
             Route::get('/ajax/manufacturing-customers', ManufacturingCustomerLookupController::class)->name('tenant.ajax.manufacturing-customers');
             Route::get('/ajax/production-orders', ProductionOrderLookupController::class)->name('tenant.ajax.production-orders');
@@ -465,6 +466,8 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                     ->name('tenant.pos.printing.retry');
                 Route::post('/pos/customers/quick-store', [CustomerController::class, 'quickStore'])
                     ->name('tenant.pos.customers.quick-store');
+                Route::post('/pos/customers/{customer}/addresses', [CustomerController::class, 'storeAddress'])
+                    ->name('tenant.pos.customers.addresses.store');
 
                 // Sales Orders
                 Route::get('/sales-orders', [SalesOrderController::class, 'index'])->name('tenant.sales-orders.index');

@@ -204,3 +204,27 @@ shows returns as negative qty lines — Bingoo's return authority handles this p
 must show returned qty separately, per spec). Order types observed on legacy Z: DELIVERY / DINE IN /
 TAKEAWAY / TAKEAWAY WAITER / POS — map to Bingoo's delivery/dine_in/takeaway/quick_sale (TAKEAWAY
 WAITER ≈ waiter-attributed takeaway; handled by waiter attribution, not a new order type).
+
+---
+
+## Post-go-live UX/print hardening (2026-08-10)
+
+Driven by first-real-sales-day feedback (screenshots + printed slips):
+
+- **CHANGE-AMOUNT-1** (`c592657`): sale-level change now = per-payment tendered − applied
+  (was always 0); receipts print tendered cash + real change; ESC/POS auto-cut (GS V) on all
+  documents; **Bingoo branding** layout toggle (default ON receipts only). 9 historical Khatri
+  sales backfilled (display-only; GL untouched).
+- **PRINT-FORMAT-PARITY-1** (`09a9cf6`): ESC/POS receipt/KOT honour the SAME
+  receipt_layout_settings as the browser preview (toggles previously applied to HTML only);
+  ORDER TYPE leads every document; single-line items with clean quantities ("2" not "2.000")
+  across receipt/KOT/reminder in both renderers. POS tiles overlap fix + category wrap.
+- **CUSTOMER-UX-1**: POS "Add / Search Customer" modal (server-side name/phone search via new
+  `tenant.ajax.customers`, mapped into the pos module for entitlement + Manager sync);
+  per-customer **address book** (`customer_addresses`, one default; legacy customers.address
+  as fallback); attached-customer **chip** near the order-type tabs; branch
+  **default_delivery_charge + delivery_charge_locked** (lock enforced SERVER-side in both the
+  quote and the paid-sale path — client input ignored when locked). The render-every-customer
+  dropdown is gone (page weight + 1000-customer hang).
+- Offline/Edge: unaffected by design — delivery (and therefore the charge/address flow) stays
+  Cloud-only (Edge refuses `delivery_charge_amount`); vehicle_number retains offline parity.

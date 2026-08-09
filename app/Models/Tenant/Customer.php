@@ -50,6 +50,11 @@ class Customer extends Model
         return $this->hasMany(SalesOrder::class);
     }
 
+    public function addresses()
+    {
+        return $this->hasMany(CustomerAddress::class);
+    }
+
     public function ledgers()
     {
         return $this->hasMany(CustomerLedger::class);

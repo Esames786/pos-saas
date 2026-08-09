@@ -281,7 +281,8 @@ class POSController extends Controller
             'branches'         => $branches,
             'selectedBranchId' => $selectedBranchId,
             'terminals'        => Terminal::where('status', 'active')->with('branch')->orderBy('name')->get(),
-            'customers'        => Customer::where('status', 'active')->orderBy('name')->get(),
+            // CUSTOMER-UX-1: customers are looked up on demand via /ajax/customers — rendering
+            // the whole book into the page hung the POS once a tenant passed a few hundred rows.
             'categories'       => Category::with('children')
                 ->whereNull('parent_id')
                 ->where('is_active', true)
@@ -489,7 +490,12 @@ class POSController extends Controller
             orderType:     $data['order_type'],
             promoCode:     $data['promo_code'] ?? null,
             tipAmount:     (float) ($data['tip_amount'] ?? 0),
-            deliveryCharge: $data['order_type'] === 'delivery' ? (float) ($data['delivery_charge_amount'] ?? 0) : 0,
+            // CUSTOMER-UX-1: locked branches quote their configured default, never client input.
+            deliveryCharge: $data['order_type'] === 'delivery'
+                ? (($quoteBranch = \App\Models\Tenant\Branch::find((int) $data['branch_id']))?->delivery_charge_locked
+                    ? (float) $quoteBranch->default_delivery_charge
+                    : (float) ($data['delivery_charge_amount'] ?? 0))
+                : 0,
         );
 
         return response()->json([
