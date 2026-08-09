@@ -1,3 +1,22 @@
+# ✅ KHATRI BIRYANI = LIVE (2026-08-09)
+
+- **Domain**: https://khatribiryani.bingoopos.com (valid TLS, login 200, protected pages auth-gated)
+- **Application HEAD**: 44654aec22772072e7b1254205f576439b0b7ce0 (deployed; envbak md5 unchanged)
+- **Tenant**: khatribiryani / plan khatri_restaurant / active subscription (exactly one each)
+- **Limits**: branch 1, terminal 4 (ACTIVE cap; update-path bypass closed + tested), user 10
+- **Terminals**: T1/T2 active, T3/T4 inactive (initial state; activation to 4 allowed)
+- **Menu**: 8 categories / 39 products, 100% service-based (0 stock-tracked; live sale proof: 0 stock_ledgers rows)
+- **Modules**: manufacturing + erp_extensions + offline_edge DISABLED (entitlement authority BLOCKED proof incl. quotations/purchase-requisitions fail-open closure)
+- **Manager**: 371 perms, zero MFG/ERP/roles/billing leakage (live single-child round-trip 371→370→371)
+- **Delivery charge**: live delivery sale 450+100 → GL 1110 D550 / 4150 C100 / 4120 C450 BALANCED, tb_diff 0.00, receipt line, report column
+- **Report Center**: live overview orders 4 / grand 2080 / delivery 100 / cash 2080; Cash&Bank opening 1000 separate (expected formula 3080)
+- **Backup**: /var/backups/khatri/khatri-biryani-post-onboarding-2026-08-09-20260809-093502.sql.gz (35,965 B, sha256 46683456e48bcbaa50b4644dd8e8e9bb3db28b62f0adcdd84cfd9e7cc01225c3) + master manifest (sha256 595b739f…) — **RESTORE-VERIFIED** into pos_test_restore_* (15/15 counts MATCH incl. 8/39/4-terminals/483 perms) then dropped
+- **Owner credential**: /root/khatri-owner-credential.txt (600) — never logged
+- **REPORT EMAIL = NOT CONFIGURED** (Email Now/Schedules give the controlled error until owner_email is set)
+- **Platform**: all 8 tenants tb=0/neg=0/dept=0; khatri menu isolated to its DB; demos unchanged; 0 new log errors; Edge dormant (APP_ROLE=cloud, Local Mode inactive, activation_ready=false)
+- **Test data note**: 4 clearly-labeled TEST sales (customer "DEPLOY TEST") + one closed shift (variance 0) remain in the fresh tenant as deployment evidence; smoke script created sales pre-paid so SHIFT counters intentionally skipped settlement (real POS controller path is suite-proven) — no dangling open shift.
+- **Client follow-ups**: confirm ⚠-flagged prices; provide owner email for report emails; native XLSX/PDF pending composer approval.
+
 # KHATRI BIRYANI — onboarding + Sales Report Center + Permission Center (2026-08)
 
 ONE connected production-facing implementation (user prompt 2026-08-09):
