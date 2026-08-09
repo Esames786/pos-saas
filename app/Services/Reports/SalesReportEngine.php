@@ -1,0 +1,453 @@
+<?php
+
+namespace App\Services\Reports;
+
+use App\Services\Concerns\ResolvesBranchIds;
+use App\Support\TenantClock;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * SALES REPORT CENTER — the ONE shared filter/query engine (Khatri onboarding, sections O–W).
+ *
+ * LOCKED PRINCIPLES:
+ *  - Sales reports answer "what did we sell?"; Cash & Bank answers "where did money come from/go?" —
+ *    never merged into one grand total. Opening float / transfers are NEVER revenue.
+ *  - Population = status IN (paid, partially_returned, returned): a returned order keeps its original
+ *    sale visible; returns are ALWAYS separate columns (returned qty by lines.returned_quantity;
+ *    return VALUE = sales_returns.grand_total, the money-movement authority, allocated by return_date
+ *    within the period). Net Sales = SUM(grand_total) − period returns. Existing report screens keep
+ *    their old formulas untouched — this engine is the single home for the NEW center.
+ *  - ONE businessDayExpr home: COALESCE(business_date, DATE(sale_date)).
+ *
+ * Every report variant reads the SAME normalized filter array so all tabs/exports reconcile:
+ *   date_from/date_to (business dates), branch_ids[], terminal_id, shift_id, cashier_id, waiter_id,
+ *   order_type, category_id (self+descendants), product_id, payment_method_id.
+ */
+class SalesReportEngine
+{
+    use ResolvesBranchIds;
+
+    public const POPULATION = ['paid', 'partially_returned', 'returned'];
+
+    public function businessDayExpr(string $prefix = 'o.'): string
+    {
+        return "COALESCE({$prefix}business_date, DATE({$prefix}sale_date))";
+    }
+
+    /** Normalize raw request filters (fills default = current business day per TenantClock). */
+    public function normalizeFilters(array $raw): array
+    {
+        $today = app(TenantClock::class)->currentBusinessDate();
+
+        return [
+            'date_from' => $raw['date_from'] ?? $today,
+            'date_to' => $raw['date_to'] ?? $today,
+            'branch_ids' => $this->resolveBranchIds($raw),
+            'terminal_id' => $raw['terminal_id'] ?? null,
+            'shift_id' => $raw['shift_id'] ?? null,
+            'cashier_id' => $raw['cashier_id'] ?? null,
+            'waiter_id' => $raw['waiter_id'] ?? null,
+            'order_type' => $raw['order_type'] ?? null,
+            'category_id' => $raw['category_id'] ?? null,
+            'product_id' => $raw['product_id'] ?? null,
+            'payment_method_id' => $raw['payment_method_id'] ?? null,
+        ];
+    }
+
+    /** Base sales_orders query with EVERY shared filter applied. */
+    private function salesBase(array $f)
+    {
+        return DB::connection('tenant')->table('sales_orders as o')
+            ->whereIn('o.status', self::POPULATION)
+            ->whereRaw($this->businessDayExpr() . ' >= ?', [$f['date_from']])
+            ->whereRaw($this->businessDayExpr() . ' <= ?', [$f['date_to']])
+            ->when($f['branch_ids'], fn ($q) => $q->whereIn('o.branch_id', $f['branch_ids']))
+            ->when($f['terminal_id'], fn ($q) => $q->where('o.terminal_id', $f['terminal_id']))
+            ->when($f['shift_id'], fn ($q) => $q->where('o.shift_id', $f['shift_id']))
+            ->when($f['cashier_id'], fn ($q) => $q->where('o.created_by_user_id', $f['cashier_id']))
+            ->when($f['waiter_id'], fn ($q) => $q->where('o.restaurant_waiter_id', $f['waiter_id']))
+            ->when($f['order_type'], fn ($q) => $q->where('o.order_type', $f['order_type']))
+            ->when($f['payment_method_id'], fn ($q) => $q->whereExists(function ($s) use ($f) {
+                $s->selectRaw('1')->from('sale_payments as sp')
+                    ->whereColumn('sp.sales_order_id', 'o.id')
+                    ->where('sp.payment_method_id', $f['payment_method_id']);
+            }))
+            ->when($f['category_id'], fn ($q) => $q->whereExists(function ($s) use ($f) {
+                $s->selectRaw('1')->from('sales_order_lines as fl')
+                    ->join('products as fp', 'fp.id', '=', 'fl.product_id')
+                    ->whereColumn('fl.sales_order_id', 'o.id')
+                    ->whereIn('fp.category_id', $this->categoryWithDescendants((int) $f['category_id']));
+            }))
+            ->when($f['product_id'], fn ($q) => $q->whereExists(function ($s) use ($f) {
+                $s->selectRaw('1')->from('sales_order_lines as fl')
+                    ->whereColumn('fl.sales_order_id', 'o.id')->where('fl.product_id', $f['product_id']);
+            }));
+    }
+
+    /** Line-level base (joins products/categories) constrained to the same sale population. */
+    private function linesBase(array $f)
+    {
+        return DB::connection('tenant')->table('sales_order_lines as l')
+            ->joinSub($this->salesBase($f)->select('o.*'), 'o', 'o.id', '=', 'l.sales_order_id')
+            ->leftJoin('products as p', 'p.id', '=', 'l.product_id')
+            ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+            ->when($f['category_id'], fn ($q) => $q->whereIn('p.category_id', $this->categoryWithDescendants((int) $f['category_id'])))
+            ->when($f['product_id'], fn ($q) => $q->where('l.product_id', $f['product_id']));
+    }
+
+    /** Period returns (allocated by return_date) constrained to the same branch scope. */
+    private function returnsBase(array $f)
+    {
+        return DB::connection('tenant')->table('sales_returns as r')
+            ->join('sales_orders as o', 'o.id', '=', 'r.sales_order_id')
+            ->where('r.status', 'posted')
+            ->whereRaw('DATE(r.return_date) >= ?', [$f['date_from']])
+            ->whereRaw('DATE(r.return_date) <= ?', [$f['date_to']])
+            ->when($f['branch_ids'], fn ($q) => $q->whereIn('r.branch_id', $f['branch_ids']))
+            ->when($f['order_type'], fn ($q) => $q->where('o.order_type', $f['order_type']))
+            ->when($f['waiter_id'], fn ($q) => $q->where('o.restaurant_waiter_id', $f['waiter_id']))
+            ->when($f['terminal_id'], fn ($q) => $q->where('o.terminal_id', $f['terminal_id']))
+            ->when($f['cashier_id'], fn ($q) => $q->where('o.created_by_user_id', $f['cashier_id']))
+            ->when($f['shift_id'], fn ($q) => $q->where('o.shift_id', $f['shift_id']));
+    }
+
+    /** category id + all descendants (MySQL 8 recursive CTE — adjacency list authority). */
+    public function categoryWithDescendants(int $categoryId): array
+    {
+        $rows = DB::connection('tenant')->select(
+            'WITH RECURSIVE tree AS (
+                SELECT id FROM categories WHERE id = ?
+                UNION ALL
+                SELECT c.id FROM categories c JOIN tree t ON c.parent_id = t.id
+            ) SELECT id FROM tree',
+            [$categoryId]
+        );
+
+        return array_map(fn ($r) => (int) $r->id, $rows);
+    }
+
+    /** Root ancestor map for category rollups: [category_id => root_id]. */
+    private function rootMap(): array
+    {
+        $rows = DB::connection('tenant')->select(
+            'WITH RECURSIVE tree AS (
+                SELECT id, id AS root_id FROM categories WHERE parent_id IS NULL
+                UNION ALL
+                SELECT c.id, t.root_id FROM categories c JOIN tree t ON c.parent_id = t.id
+            ) SELECT id, root_id FROM tree'
+        );
+        $map = [];
+        foreach ($rows as $r) {
+            $map[(int) $r->id] = (int) $r->root_id;
+        }
+
+        return $map;
+    }
+
+    // ── Q. Overview KPIs ─────────────────────────────────────────────────────────────────────────
+    public function overview(array $f): array
+    {
+        $s = $this->salesBase($f)->selectRaw(
+            'COUNT(*) as orders,
+             COALESCE(SUM(o.subtotal),0) as gross_sales,
+             COALESCE(SUM(o.discount_amount),0) as discount,
+             COALESCE(SUM(o.tax_amount),0) as tax,
+             COALESCE(SUM(o.service_charge_amount),0) as service_charge,
+             COALESCE(SUM(o.delivery_charge_amount),0) as delivery_charge,
+             COALESCE(SUM(o.tip_amount),0) as tips,
+             COALESCE(SUM(o.grand_total),0) as grand_total'
+        )->first();
+        $q = $this->linesBase($f)->selectRaw(
+            'COALESCE(SUM(l.quantity),0) as sold_qty, COALESCE(SUM(l.returned_quantity),0) as returned_qty'
+        )->first();
+        $returns = (float) $this->returnsBase($f)->sum('r.grand_total');
+        $payments = DB::connection('tenant')->table('sale_payments as sp')
+            ->joinSub($this->salesBase($f)->select('o.*'), 'o', 'o.id', '=', 'sp.sales_order_id')
+            ->join('payment_methods as pm', 'pm.id', '=', 'sp.payment_method_id')
+            ->groupBy('pm.method_type')
+            ->selectRaw('pm.method_type, COALESCE(SUM(sp.amount),0) as amount')
+            ->pluck('amount', 'method_type')->map(fn ($v) => (float) $v)->all();
+
+        return [
+            'orders' => (int) $s->orders,
+            'sold_qty' => (float) $q->sold_qty,
+            'returned_qty' => (float) $q->returned_qty,
+            'net_qty' => (float) $q->sold_qty - (float) $q->returned_qty,
+            'gross_sales' => (float) $s->gross_sales,
+            'discount' => (float) $s->discount,
+            'tax' => (float) $s->tax,
+            'service_charge' => (float) $s->service_charge,
+            'delivery_charge' => (float) $s->delivery_charge,
+            'tips' => (float) $s->tips,
+            'grand_total' => (float) $s->grand_total,
+            'returns_amount' => $returns,
+            'net_sales' => (float) $s->grand_total - $returns,
+            'payments' => $payments,
+        ];
+    }
+
+    // ── R. Category → child → item rollup ───────────────────────────────────────────────────────
+    public function byCategory(array $f): array
+    {
+        $rows = $this->linesBase($f)
+            ->groupBy('p.category_id')
+            ->selectRaw(
+                'p.category_id,
+                 MAX(c.name) as category_name, MAX(c.parent_id) as parent_id,
+                 COUNT(DISTINCT o.id) as orders,
+                 COALESCE(SUM(l.quantity),0) as sold_qty,
+                 COALESCE(SUM(l.returned_quantity),0) as returned_qty,
+                 COALESCE(SUM(l.quantity * l.unit_price),0) as gross,
+                 COALESCE(SUM(l.discount_amount),0) as discount,
+                 COALESCE(SUM(l.tax_amount),0) as tax,
+                 COALESCE(SUM(l.line_total),0) as net'
+            )->get();
+        $returnByCategory = $this->returnValueBy($f, 'p.category_id');
+        $rootMap = $this->rootMap();
+        $names = DB::connection('tenant')->table('categories')->pluck('name', 'id');
+
+        $tree = [];
+        foreach ($rows as $row) {
+            $catId = $row->category_id !== null ? (int) $row->category_id : 0;
+            $rootId = $catId !== 0 ? ($rootMap[$catId] ?? $catId) : 0;
+            $tree[$rootId]['id'] = $rootId;
+            $tree[$rootId]['name'] = $rootId === 0 ? 'Uncategorised' : ($names[$rootId] ?? ('#' . $rootId));
+            $child = &$tree[$rootId]['children'][$catId];
+            $child['id'] = $catId;
+            $child['name'] = $catId === 0 ? 'Uncategorised' : ($names[$catId] ?? ('#' . $catId));
+            foreach (['orders', 'sold_qty', 'returned_qty', 'gross', 'discount', 'tax', 'net'] as $k) {
+                $child[$k] = (float) $row->{$k};
+                $tree[$rootId][$k] = ($tree[$rootId][$k] ?? 0) + (float) $row->{$k};
+            }
+            $ret = (float) ($returnByCategory[$catId] ?? 0);
+            $child['returns_amount'] = $ret;
+            $tree[$rootId]['returns_amount'] = ($tree[$rootId]['returns_amount'] ?? 0) + $ret;
+            unset($child);
+        }
+        foreach ($tree as &$root) {
+            $root['net_qty'] = $root['sold_qty'] - $root['returned_qty'];
+            $root['children'] = array_values($root['children'] ?? []);
+            foreach ($root['children'] as &$c) {
+                $c['net_qty'] = $c['sold_qty'] - $c['returned_qty'];
+            }
+        }
+
+        return array_values($tree);
+    }
+
+    // ── S. Item report ───────────────────────────────────────────────────────────────────────────
+    public function byItem(array $f, string $sort = 'net'): array
+    {
+        $rows = $this->linesBase($f)
+            ->leftJoin('product_variants as v', 'v.id', '=', 'l.product_variant_id')
+            ->groupBy('l.product_id', 'l.product_variant_id')
+            ->selectRaw(
+                'l.product_id, l.product_variant_id,
+                 MAX(l.product_name) as item, MAX(v.name) as variant, MAX(c.name) as category,
+                 COALESCE(SUM(l.quantity),0) as sold_qty,
+                 COALESCE(SUM(l.returned_quantity),0) as returned_qty,
+                 COALESCE(SUM(l.quantity * l.unit_price),0) as gross,
+                 COALESCE(SUM(l.discount_amount),0) as discount,
+                 COALESCE(SUM(l.tax_amount),0) as tax,
+                 COALESCE(SUM(l.line_total),0) as net'
+            )->get()->map(function ($r) {
+                $r->net_qty = (float) $r->sold_qty - (float) $r->returned_qty;
+
+                return $r;
+            });
+
+        return $rows->sortByDesc(fn ($r) => match ($sort) {
+            'qty' => (float) $r->sold_qty,
+            'returns' => (float) $r->returned_qty,
+            'alpha' => null,
+            default => (float) $r->net,
+        })->when($sort === 'alpha', fn ($c) => $c->sortBy('item'))->values()->all();
+    }
+
+    // ── T. Waiter report (explicit Unassigned bucket) ────────────────────────────────────────────
+    public function byWaiter(array $f): array
+    {
+        return $this->dimensionReport($f, 'o.restaurant_waiter_id', function ($id) {
+            static $names = null;
+            $names ??= DB::connection('tenant')->table('restaurant_waiters')->pluck('name', 'id');
+
+            return $id === null ? 'Unassigned' : ($names[$id] ?? ('#' . $id));
+        });
+    }
+
+    // ── U. Order-type report ─────────────────────────────────────────────────────────────────────
+    public function byOrderType(array $f): array
+    {
+        $labels = \App\Models\Tenant\User::ORDER_TYPES;
+
+        return $this->dimensionReport($f, 'o.order_type', fn ($v) => $labels[$v] ?? (string) $v);
+    }
+
+    /** Shared per-sale-dimension aggregation (waiter / order type). */
+    private function dimensionReport(array $f, string $column, callable $label): array
+    {
+        $rows = $this->salesBase($f)->groupBy(DB::raw($column))
+            ->selectRaw(
+                "$column as dim,
+                 COUNT(*) as orders,
+                 COALESCE(SUM(o.subtotal),0) as gross,
+                 COALESCE(SUM(o.discount_amount),0) as discount,
+                 COALESCE(SUM(o.tax_amount),0) as tax,
+                 COALESCE(SUM(o.service_charge_amount),0) as service_charge,
+                 COALESCE(SUM(o.delivery_charge_amount),0) as delivery_charge,
+                 COALESCE(SUM(o.grand_total),0) as grand_total"
+            )->get();
+        $qty = $this->linesBase($f)->groupBy(DB::raw($column))
+            ->selectRaw("$column as dim, COALESCE(SUM(l.quantity),0) as sold_qty, COALESCE(SUM(l.returned_quantity),0) as returned_qty")
+            ->get()->keyBy('dim');
+        $returns = $this->returnsBase($f)->groupBy(DB::raw($column))
+            ->selectRaw("$column as dim, COALESCE(SUM(r.grand_total),0) as amount")
+            ->pluck('amount', 'dim');
+
+        return $rows->map(function ($r) use ($qty, $label, $returns) {
+            $q = $qty->get($r->dim);
+            $ret = (float) ($returns[$r->dim] ?? 0);
+
+            return [
+                'label' => $label($r->dim),
+                'orders' => (int) $r->orders,
+                'sold_qty' => (float) ($q->sold_qty ?? 0),
+                'returned_qty' => (float) ($q->returned_qty ?? 0),
+                'net_qty' => (float) ($q->sold_qty ?? 0) - (float) ($q->returned_qty ?? 0),
+                'gross' => (float) $r->gross,
+                'discount' => (float) $r->discount,
+                'tax' => (float) $r->tax,
+                'service_charge' => (float) $r->service_charge,
+                'delivery_charge' => (float) $r->delivery_charge,
+                'grand_total' => (float) $r->grand_total,
+                'returns_amount' => $ret,
+                'net_sales' => (float) $r->grand_total - $ret,
+            ];
+        })->values()->all();
+    }
+
+    /** Return VALUE grouped by an arbitrary line-side column (category rollup helper). */
+    private function returnValueBy(array $f, string $column): array
+    {
+        $rows = DB::connection('tenant')->table('sales_return_lines as rl')
+            ->join('sales_returns as r', 'r.id', '=', 'rl.sales_return_id')
+            ->join('sales_orders as o', 'o.id', '=', 'r.sales_order_id')
+            ->leftJoin('products as p', 'p.id', '=', 'rl.product_id')
+            ->where('r.status', 'posted')
+            ->whereRaw('DATE(r.return_date) >= ?', [$f['date_from']])
+            ->whereRaw('DATE(r.return_date) <= ?', [$f['date_to']])
+            ->when($f['branch_ids'], fn ($q) => $q->whereIn('r.branch_id', $f['branch_ids']))
+            ->groupBy(DB::raw($column))
+            ->selectRaw("$column as dim, COALESCE(SUM(rl.line_total + rl.tax_amount),0) as amount")
+            ->get();
+        $map = [];
+        foreach ($rows as $r) {
+            $map[$r->dim !== null ? (int) $r->dim : 0] = (float) $r->amount;
+        }
+
+        return $map;
+    }
+
+    // ── V. Detailed report (paginated; exports use the FULL filtered set via cursor) ─────────────
+    public function detailedQuery(array $f)
+    {
+        return $this->linesBase($f)
+            ->leftJoin('product_variants as v', 'v.id', '=', 'l.product_variant_id')
+            ->leftJoin('restaurant_waiters as w', 'w.id', '=', 'o.restaurant_waiter_id')
+            ->leftJoin('users as u', 'u.id', '=', 'o.created_by_user_id')
+            ->leftJoin('terminals as t', 't.id', '=', 'o.terminal_id')
+            ->orderBy('o.sale_date')->orderBy('o.id')->orderBy('l.id')
+            ->select([
+                'o.sale_date', 'o.sale_no', 'o.order_type', 'o.status as sale_status',
+                't.name as terminal', 'o.shift_id', 'u.name as cashier', 'w.name as waiter',
+                'l.product_name as item', 'v.name as variant', 'c.name as category',
+                'l.quantity', 'l.returned_quantity', 'l.unit_price',
+                DB::raw('(l.quantity * l.unit_price) as gross'),
+                'l.discount_amount', 'l.tax_amount', 'l.line_total',
+                'o.delivery_charge_amount', 'o.grand_total',
+            ]);
+    }
+
+    // ── W. Cash & Bank Movement — a DIFFERENT question, never merged with sales ─────────────────
+    public function cashBank(array $f): array
+    {
+        // shift side (business-date scoped like sales).
+        $shifts = DB::connection('tenant')->table('shifts as s')
+            ->whereRaw("COALESCE(s.business_date, DATE(s.opened_at)) >= ?", [$f['date_from']])
+            ->whereRaw("COALESCE(s.business_date, DATE(s.opened_at)) <= ?", [$f['date_to']])
+            ->when($f['branch_ids'], fn ($q) => $q->whereIn('s.branch_id', $f['branch_ids']))
+            ->when($f['terminal_id'], fn ($q) => $q->where('s.terminal_id', $f['terminal_id']))
+            ->selectRaw(
+                'COUNT(*) as shifts,
+                 COALESCE(SUM(s.opening_cash),0) as opening_cash,
+                 COALESCE(SUM(s.expected_cash),0) as expected_cash,
+                 COALESCE(SUM(s.counted_cash),0) as counted_cash,
+                 COALESCE(SUM(s.cash_variance),0) as cash_variance,
+                 COALESCE(SUM(s.total_refunds),0) as refunds'
+            )->first();
+
+        // real payment-method money (sale_payments — includes wallet/other the shift buckets miss).
+        $methodMoney = DB::connection('tenant')->table('sale_payments as sp')
+            ->joinSub($this->salesBase($f)->select('o.*'), 'o', 'o.id', '=', 'sp.sales_order_id')
+            ->join('payment_methods as pm', 'pm.id', '=', 'sp.payment_method_id')
+            ->groupBy('pm.method_type')
+            ->selectRaw('pm.method_type, COALESCE(SUM(sp.amount),0) as amount')
+            ->pluck('amount', 'method_type')->map(fn ($v) => (float) $v)->all();
+
+        // cash/bank ledger movements (transaction_date basis — NOTE: sale-dated, can differ from
+        // business_date across midnight; surfaced in the UI footnote).
+        $movements = DB::connection('tenant')->table('cash_bank_account_transactions as t')
+            ->join('cash_bank_accounts as a', 'a.id', '=', 't.cash_bank_account_id')
+            ->whereBetween('t.transaction_date', [$f['date_from'], $f['date_to']])
+            ->when($f['branch_ids'], fn ($q) => $q->where(fn ($w) => $w->whereNull('a.branch_id')->orWhereIn('a.branch_id', $f['branch_ids'])))
+            ->groupBy('t.transaction_type', 't.direction', 'a.account_type')
+            ->selectRaw('t.transaction_type, t.direction, a.account_type, COALESCE(SUM(t.amount),0) as amount, COUNT(*) as rows_count')
+            ->get()
+            ->map(fn ($r) => [
+                'type' => $r->transaction_type,
+                'label' => self::MOVEMENT_LABELS[$r->transaction_type] ?? \Illuminate\Support\Str::title(str_replace('_', ' ', $r->transaction_type)),
+                'direction' => $r->direction,
+                'account_type' => $r->account_type,
+                'amount' => (float) $r->amount,
+                'rows' => (int) $r->rows_count,
+            ])->values()->all();
+
+        $cashIn = collect($movements)->where('account_type', 'cash')->where('direction', 'in')->sum('amount');
+        $cashOut = collect($movements)->where('account_type', 'cash')->where('direction', 'out')->sum('amount');
+        $bankIn = collect($movements)->whereIn('account_type', ['bank', 'card', 'wallet'])->where('direction', 'in')->sum('amount');
+        $bankOut = collect($movements)->whereIn('account_type', ['bank', 'card', 'wallet'])->where('direction', 'out')->sum('amount');
+
+        return [
+            'shifts' => (array) $shifts,
+            'method_money' => $methodMoney,
+            'movements' => $movements,
+            'cash_in' => (float) $cashIn, 'cash_out' => (float) $cashOut,
+            'net_cash_movement' => (float) $cashIn - (float) $cashOut,
+            'bank_in' => (float) $bankIn, 'bank_out' => (float) $bankOut,
+            'net_bank_movement' => (float) $bankIn - (float) $bankOut,
+            // reconciliation view: opening + cash sales + other in − outflows = expected.
+            'expected_cash_formula' => (float) $shifts->opening_cash + ($methodMoney['cash'] ?? 0) - (float) $shifts->refunds,
+        ];
+    }
+
+    /** Business labels for movement types (incl. the dept-handover payout journey + stale-const types). */
+    public const MOVEMENT_LABELS = [
+        'sales_payment' => 'Sales receipts',
+        'sales_return_refund' => 'Sales return refunds',
+        'sales_payment_void_reversal' => 'Sales receipt reversals',
+        'sales_return_void_reversal' => 'Return refund reversals',
+        'opening_balance' => 'Opening balances',
+        'opening_balance_void_reversal' => 'Opening balance reversals',
+        'manual_adjustment' => 'Manual adjustments',
+        'expense_payment' => 'Expenses paid',
+        'expense_void_reversal' => 'Expense reversals',
+        'supplier_payment' => 'Paid to suppliers',
+        'supplier_payment_void_reversal' => 'Supplier payment reversals',
+        'customer_payment' => 'Received from customers',
+        'customer_payment_void_reversal' => 'Customer payment reversals',
+        'manual_journal' => 'Manual journal movements',
+        'manual_journal_reversal' => 'Manual journal reversals',
+        'dept_handover_payout' => 'Paid to department owners (handover payout)',
+        'dept_handover_payout_reversal' => 'Department payout reversals',
+    ];
+}
