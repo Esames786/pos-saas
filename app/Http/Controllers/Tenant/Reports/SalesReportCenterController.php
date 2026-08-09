@@ -20,7 +20,28 @@ use Illuminate\Support\Facades\Mail;
  */
 class SalesReportCenterController extends Controller
 {
-    public const SECTIONS = ['overview', 'categories', 'items', 'waiters', 'order_types', 'detailed', 'cash_bank'];
+    public const SECTIONS = ['overview', 'categories', 'items', 'waiters', 'order_types', 'order_type_combos', 'cancellations', 'detailed', 'cash_bank'];
+
+    /**
+     * Per-section permission (Khatri #7): a role sees/prints/exports ONLY its assigned sections.
+     * These are synthetic (non-route) spatie keys — seeded by the tenant migration which also
+     * back-grants them to every role that already had Report Center access.
+     */
+    public static function sectionPermission(string $section): string
+    {
+        return 'tenant.reports.center.sections.' . str_replace('_', '-', $section);
+    }
+
+    /** Sections the current user may see, in canonical order. */
+    private function allowedSections(): array
+    {
+        $user = auth('tenant')->user();
+
+        return array_values(array_filter(
+            self::SECTIONS,
+            fn ($s) => $user && $user->can(self::sectionPermission($s))
+        ));
+    }
 
     public function __construct(
         private readonly SalesReportEngine $engine,
@@ -39,18 +60,26 @@ class SalesReportCenterController extends Controller
 
     public function index(Request $request)
     {
+        $allowed = $this->allowedSections();
         $tab = $request->input('tab', 'overview');
         $preset = $request->input('preset');
         $filters = $this->filters($request);
 
-        $data = ['overview' => $this->engine->overview($filters)];
+        // Section permissions: an unassigned tab is refused (departments rides the order_types
+        // grant; the Z preset needs its constituent sections).
+        $tabSection = $tab === 'departments' ? 'order_types' : $tab;
+        if ($tab !== 'z' && ! in_array($tabSection, $allowed, true) && in_array($tabSection, self::SECTIONS, true)) {
+            $tab = $allowed[0] ?? 'overview';
+        }
+
+        $data = in_array('overview', $allowed, true) ? ['overview' => $this->engine->overview($filters)] : ['overview' => null];
         if ($preset === 'z') {
             $tab = 'z';
             $data += [
-                'order_types' => $this->engine->byOrderType($filters),
-                'categories' => $this->engine->byCategory($filters),
-                'waiters' => $this->engine->byWaiter($filters),
-                'cash_bank' => $this->engine->cashBank($filters),
+                'order_types' => in_array('order_types', $allowed, true) ? $this->engine->byOrderType($filters) : [],
+                'categories' => in_array('categories', $allowed, true) ? $this->engine->byCategory($filters) : [],
+                'waiters' => in_array('waiters', $allowed, true) ? $this->engine->byWaiter($filters) : [],
+                'cash_bank' => in_array('cash_bank', $allowed, true) ? $this->engine->cashBank($filters) : null,
             ];
         } else {
             $data += match ($tab) {
@@ -58,6 +87,8 @@ class SalesReportCenterController extends Controller
                 'items' => ['items' => $this->engine->byItem($filters, $request->input('sort', 'net'))],
                 'waiters' => ['waiters' => $this->engine->byWaiter($filters)],
                 'order_types' => ['order_types' => $this->engine->byOrderType($filters)],
+                'order_type_combos' => ['order_type_combos' => $this->engine->orderTypeCombos($filters)],
+                'cancellations' => ['cancellations' => $this->engine->cancellations($filters)],
                 'departments' => ['departments' => $this->departments($filters)],
                 'detailed' => ['detailed' => $this->engine->detailedQuery($filters)->paginate(50)->withQueryString()],
                 'cash_bank' => ['cash_bank' => $this->engine->cashBank($filters)],
@@ -67,6 +98,7 @@ class SalesReportCenterController extends Controller
 
         return view('tenant.reports.center.index', [
             'tab' => $tab,
+            'allowedSections' => $allowed,
             'filters' => $filters,
             'data' => $data,
             'branches' => \App\Models\Tenant\Branch::where('status', 'active')->orderBy('name')->get(['id', 'name']),
@@ -95,8 +127,9 @@ class SalesReportCenterController extends Controller
     public function export(Request $request)
     {
         $filters = $this->filters($request);
-        $sections = array_values(array_intersect((array) $request->input('sections', self::SECTIONS), self::SECTIONS));
-        $csvBySection = $this->exporter->sections($filters, $sections ?: self::SECTIONS);
+        $allowed = $this->allowedSections();
+        $sections = array_values(array_intersect((array) $request->input('sections', $allowed), $allowed));
+        $csvBySection = $this->exporter->sections($filters, $sections);
 
         return CsvStreamer::download(
             'sales-report-' . $filters['date_from'] . '_' . $filters['date_to'] . '.csv',
@@ -119,15 +152,27 @@ class SalesReportCenterController extends Controller
         $mode = $request->input('mode', 'a4') === 'thermal' ? 'thermal' : 'a4';
         $paper = in_array($request->input('paper'), ['58mm', '80mm'], true) ? $request->input('paper') : '80mm';
 
+        // Checkbox selection (Khatri #2): print ONLY the requested sections, capped to the
+        // sections this user is permitted. No selection = everything permitted ("Print All").
+        $allowed = $this->allowedSections();
+        $requested = (array) $request->input('sections', []);
+        $sections = array_values(array_intersect($requested ?: $allowed, $allowed));
+
+        $pick = fn (string $key, callable $loader) => in_array($key, $sections, true) ? $loader() : null;
+
         return view('tenant.reports.center.print', [
             'mode' => $mode,
             'paper' => $paper,
             'filters' => $filters,
-            'overview' => $this->engine->overview($filters),
-            'orderTypes' => $this->engine->byOrderType($filters),
-            'categories' => $this->engine->byCategory($filters),
-            'waiters' => $this->engine->byWaiter($filters),
-            'cashBank' => $this->engine->cashBank($filters),
+            'sections' => $sections,
+            'overview' => $pick('overview', fn () => $this->engine->overview($filters)),
+            'orderTypes' => $pick('order_types', fn () => $this->engine->byOrderType($filters)),
+            'categories' => $pick('categories', fn () => $this->engine->byCategory($filters)),
+            'items' => $pick('items', fn () => $this->engine->byItem($filters)),
+            'waiters' => $pick('waiters', fn () => $this->engine->byWaiter($filters)),
+            'combos' => $pick('order_type_combos', fn () => $this->engine->orderTypeCombos($filters)),
+            'cancellations' => $pick('cancellations', fn () => $this->engine->cancellations($filters)),
+            'cashBank' => $pick('cash_bank', fn () => $this->engine->cashBank($filters)),
         ]);
     }
 
@@ -139,8 +184,9 @@ class SalesReportCenterController extends Controller
             return back()->withErrors(['email' => 'The tenant default email (owner email) is not configured — set it in tenant settings first.']);
         }
         $filters = $this->filters($request);
-        $sections = array_values(array_intersect((array) $request->input('sections', self::SECTIONS), self::SECTIONS));
-        $csv = $this->exporter->sections($filters, $sections ?: self::SECTIONS);
+        $allowed = $this->allowedSections();
+        $sections = array_values(array_intersect((array) $request->input('sections', $allowed), $allowed));
+        $csv = $this->exporter->sections($filters, $sections);
         Mail::to($recipient)->send(new SalesReportMail(
             (string) app('tenant')->business_name,
             $filters['date_from'] . ' → ' . $filters['date_to'],

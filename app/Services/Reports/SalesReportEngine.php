@@ -326,6 +326,118 @@ class SalesReportEngine
         })->values()->all();
     }
 
+    // ── V. Order-type COMBINATION reports (Khatri request 2026-08-10): for every order type,
+    //      its categories (root rollup), items and waiters — qty + line-net columns. ─────────────
+    public function orderTypeCombos(array $f): array
+    {
+        $labels = \App\Models\Tenant\User::ORDER_TYPES;
+        $ot = fn ($v) => $labels[$v] ?? (string) $v;
+
+        $rootMap = $this->rootMap();
+        $names = DB::connection('tenant')->table('categories')->pluck('name', 'id');
+        $categories = [];
+        $catRows = $this->linesBase($f)->groupBy('o.order_type', 'p.category_id')
+            ->selectRaw(
+                'o.order_type, p.category_id,
+                 COUNT(DISTINCT o.id) as orders,
+                 COALESCE(SUM(l.quantity),0) as sold_qty,
+                 COALESCE(SUM(l.returned_quantity),0) as returned_qty,
+                 COALESCE(SUM(l.line_total),0) as net'
+            )->get();
+        foreach ($catRows as $r) {
+            $catId = $r->category_id !== null ? (int) $r->category_id : 0;
+            $rootId = $catId !== 0 ? ($rootMap[$catId] ?? $catId) : 0;
+            $bucket = &$categories[$ot($r->order_type)][$rootId];
+            $bucket['label'] = $rootId === 0 ? 'Uncategorised' : ($names[$rootId] ?? ('#' . $rootId));
+            foreach (['orders', 'sold_qty', 'returned_qty', 'net'] as $k) {
+                $bucket[$k] = ($bucket[$k] ?? 0) + (float) $r->{$k};
+            }
+            unset($bucket);
+        }
+        foreach ($categories as &$rows) {
+            foreach ($rows as &$b) {
+                $b['net_qty'] = $b['sold_qty'] - $b['returned_qty'];
+            }
+            unset($b);
+            $rows = array_values($rows);
+            usort($rows, fn ($a, $b2) => $b2['net'] <=> $a['net']);
+        }
+        unset($rows);
+
+        $items = [];
+        $itemRows = $this->linesBase($f)->groupBy('o.order_type', 'l.product_id')
+            ->selectRaw(
+                'o.order_type, l.product_id, MAX(l.product_name) as item,
+                 COALESCE(SUM(l.quantity),0) as sold_qty,
+                 COALESCE(SUM(l.returned_quantity),0) as returned_qty,
+                 COALESCE(SUM(l.line_total),0) as net'
+            )->get();
+        foreach ($itemRows as $r) {
+            $items[$ot($r->order_type)][] = [
+                'label' => (string) $r->item,
+                'sold_qty' => (float) $r->sold_qty,
+                'returned_qty' => (float) $r->returned_qty,
+                'net_qty' => (float) $r->sold_qty - (float) $r->returned_qty,
+                'net' => (float) $r->net,
+            ];
+        }
+        foreach ($items as &$rows2) {
+            usort($rows2, fn ($a, $b2) => $b2['net'] <=> $a['net']);
+        }
+        unset($rows2);
+
+        $waiterNames = DB::connection('tenant')->table('restaurant_waiters')->pluck('name', 'id');
+        $waiters = [];
+        $waiterRows = $this->salesBase($f)->groupBy('o.order_type', 'o.restaurant_waiter_id')
+            ->selectRaw('o.order_type, o.restaurant_waiter_id as wid, COUNT(*) as orders, COALESCE(SUM(o.grand_total),0) as grand_total')
+            ->get();
+        foreach ($waiterRows as $r) {
+            $waiters[$ot($r->order_type)][] = [
+                'label' => $r->wid === null ? 'Unassigned' : ($waiterNames[$r->wid] ?? ('#' . $r->wid)),
+                'orders' => (int) $r->orders,
+                'grand_total' => (float) $r->grand_total,
+            ];
+        }
+
+        return ['categories' => $categories, 'items' => $items, 'waiters' => $waiters];
+    }
+
+    // ── W. Cancellations: items voided / decreased AFTER the KOT went to the kitchen. Anchored on
+    //      cancelled_at (the day the cancellation happened) — the sale itself may even be unpaid. ──
+    public function cancellations(array $f): array
+    {
+        $labels = \App\Models\Tenant\User::ORDER_TYPES;
+        $rows = DB::connection('tenant')->table('sales_order_line_cancellations as x')
+            ->join('sales_orders as o', 'o.id', '=', 'x.sales_order_id')
+            ->leftJoin('void_reasons as vr', 'vr.id', '=', 'x.void_reason_id')
+            ->whereRaw('DATE(x.cancelled_at) >= ?', [$f['date_from']])
+            ->whereRaw('DATE(x.cancelled_at) <= ?', [$f['date_to']])
+            ->when($f['branch_ids'], fn ($q) => $q->whereIn('o.branch_id', $f['branch_ids']))
+            ->when($f['terminal_id'], fn ($q) => $q->where('o.terminal_id', $f['terminal_id']))
+            ->when($f['waiter_id'], fn ($q) => $q->where('o.restaurant_waiter_id', $f['waiter_id']))
+            ->when($f['order_type'], fn ($q) => $q->where('o.order_type', $f['order_type']))
+            ->groupBy('x.product_name', 'o.order_type', 'vr.name')
+            ->selectRaw(
+                'x.product_name, o.order_type, vr.name as reason,
+                 COUNT(*) as events, COALESCE(SUM(x.quantity),0) as qty'
+            )
+            ->orderByDesc(DB::raw('SUM(x.quantity)'))
+            ->get()
+            ->map(fn ($r) => [
+                'item' => (string) $r->product_name,
+                'order_type' => $labels[$r->order_type] ?? (string) $r->order_type,
+                'reason' => $r->reason ?: '—',
+                'events' => (int) $r->events,
+                'qty' => (float) $r->qty,
+            ])->values()->all();
+
+        return [
+            'rows' => $rows,
+            'total_events' => array_sum(array_column($rows, 'events')),
+            'total_qty' => array_sum(array_column($rows, 'qty')),
+        ];
+    }
+
     /** Return VALUE grouped by an arbitrary line-side column (category rollup helper). */
     private function returnValueBy(array $f, string $column): array
     {

@@ -123,7 +123,14 @@ class RoleController extends Controller
         // the friendly editor is a management UX, never a stealth revoker (safety test F).
         $preserved = $role->permissions->pluck('name')->reject(fn ($n) => in_array($n, $managed, true))->values()->all();
 
-        $role->syncPermissions(array_values(array_unique(array_merge($preserved, $submitted))));
+        // BASELINE (Khatri #6): every role keeps its landing page — a role saved without the
+        // Reports group was 403'd off /dashboard right after login.
+        $baseline = ['tenant.dashboard'];
+        foreach ($baseline as $name) {
+            \Spatie\Permission\Models\Permission::findOrCreate($name, 'tenant');
+        }
+
+        $role->syncPermissions(array_values(array_unique(array_merge($preserved, $submitted, $baseline))));
 
         return redirect('/roles')->with('status', 'Role permissions updated successfully.');
     }

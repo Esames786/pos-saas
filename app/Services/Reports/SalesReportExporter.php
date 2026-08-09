@@ -25,6 +25,8 @@ class SalesReportExporter
                 'items' => $this->itemsCsv($filters),
                 'waiters' => $this->dimensionCsv($this->engine->byWaiter($filters), 'Waiter'),
                 'order_types' => $this->dimensionCsv($this->engine->byOrderType($filters), 'Order Type'),
+                'order_type_combos' => $this->combosCsv($filters),
+                'cancellations' => $this->cancellationsCsv($filters),
                 'detailed' => $this->detailedCsv($filters),
                 'cash_bank' => $this->cashBankCsv($filters),
                 default => '',
@@ -32,6 +34,38 @@ class SalesReportExporter
         }
 
         return array_filter($out);
+    }
+
+    private function combosCsv(array $f): string
+    {
+        $combos = $this->engine->orderTypeCombos($f);
+        $rows = [];
+        foreach (['categories' => ['Category', 'Orders'], 'items' => ['Item', null], 'waiters' => ['Waiter', 'Orders']] as $kind => [$labelCol, $ordersCol]) {
+            foreach ($combos[$kind] as $orderType => $lines) {
+                $rows[] = [strtoupper($orderType) . ' — BY ' . strtoupper(rtrim($labelCol, 's'))];
+                $rows[] = array_values(array_filter([$labelCol, $ordersCol, $kind === 'waiters' ? 'Sales' : 'Net Qty', $kind === 'waiters' ? null : 'Net'], fn ($c) => $c !== null));
+                foreach ($lines as $line) {
+                    $rows[] = $kind === 'waiters'
+                        ? [$line['label'], $line['orders'], $line['grand_total']]
+                        : array_values(array_filter([$line['label'], $line['orders'] ?? null, $line['net_qty'], $line['net']], fn ($c) => $c !== null));
+                }
+                $rows[] = [];
+            }
+        }
+
+        return $this->csv($rows ?: [['No data']]);
+    }
+
+    private function cancellationsCsv(array $f): string
+    {
+        $c = $this->engine->cancellations($f);
+        $rows = [['Item', 'Order Type', 'Reason', 'Events', 'Cancelled Qty']];
+        foreach ($c['rows'] as $r) {
+            $rows[] = [$r['item'], $r['order_type'], $r['reason'], $r['events'], $r['qty']];
+        }
+        $rows[] = ['TOTAL', '', '', $c['total_events'], $c['total_qty']];
+
+        return $this->csv($rows);
     }
 
     private function csv(array $rows): string

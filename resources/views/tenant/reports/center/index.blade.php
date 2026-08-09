@@ -12,9 +12,9 @@
     <h1 class="mb-0">Sales Report Center</h1>
     <div class="d-flex gap-2 flex-wrap">
         <a class="btn btn-outline-dark btn-sm" href="{{ url('/reports/center?' . $qs(['preset' => 'z'])) }}">Z Report (End of Day)</a>
-        <a class="btn btn-outline-secondary btn-sm" target="_blank" href="{{ url('/reports/center/print?' . $qs(['mode' => 'thermal'])) }}">Print Thermal</a>
-        <a class="btn btn-outline-secondary btn-sm" target="_blank" href="{{ url('/reports/center/print?' . $qs(['mode' => 'a4'])) }}">Print A4</a>
-        <a class="btn btn-outline-primary btn-sm" href="{{ url('/reports/center/export?' . $qs()) }}">Export CSV</a>
+        <a class="btn btn-outline-secondary btn-sm" target="_blank" href="{{ url('/reports/center/print?' . $qs(['mode' => 'thermal'])) }}">Print All (Thermal)</a>
+        <a class="btn btn-outline-secondary btn-sm" target="_blank" href="{{ url('/reports/center/print?' . $qs(['mode' => 'a4'])) }}">Print All (A4)</a>
+        <a class="btn btn-outline-primary btn-sm" href="{{ url('/reports/center/export?' . $qs()) }}">Export All CSV</a>
         <form method="POST" action="{{ url('/reports/center/email') }}" class="d-inline">
             @csrf
             @foreach(request()->except('_token') as $k => $v)
@@ -91,8 +91,56 @@
     </div>
 </form>
 
-{{-- ── KPI cards (always) ── --}}
+{{-- ── section selection: tick sections → print/export ONLY those (permission-capped) ── --}}
+@php
+    $sectionLabels = array_intersect_key([
+        'overview' => 'Overview', 'categories' => 'Categories', 'items' => 'Items',
+        'waiters' => 'Waiters', 'order_types' => 'Order Types', 'order_type_combos' => 'By Order Type',
+        'cancellations' => 'Cancellations', 'detailed' => 'Details (CSV only)', 'cash_bank' => 'Cash & Bank',
+    ], array_flip($allowedSections));
+@endphp
+<div class="card mb-3"><div class="card-body py-2">
+    <div class="d-flex flex-wrap align-items-center gap-2">
+        <strong class="small me-1">Selected sections:</strong>
+        @foreach($sectionLabels as $key => $label)
+            <div class="form-check form-check-inline mb-0">
+                <input class="form-check-input section-pick" type="checkbox" value="{{ $key }}" id="sec-{{ $key }}">
+                <label class="form-check-label small" for="sec-{{ $key }}">{{ $label }}</label>
+            </div>
+        @endforeach
+        <span class="vr d-none d-md-inline"></span>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-sec-print="thermal">Print Selected (Thermal)</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-sec-print="a4">Print Selected (A4)</button>
+        <button type="button" class="btn btn-sm btn-outline-primary" id="sec-export">Export Selected CSV</button>
+    </div>
+</div></div>
+<script>
+(function () {
+    function picked() {
+        return Array.prototype.map.call(document.querySelectorAll('.section-pick:checked'), function (el) { return el.value; });
+    }
+    function withSections(baseUrl, sections) {
+        return baseUrl + sections.map(function (s) { return '&sections[]=' + encodeURIComponent(s); }).join('');
+    }
+    document.querySelectorAll('[data-sec-print]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var sections = picked();
+            if (!sections.length) { alert('Tick at least one section first.'); return; }
+            window.open(withSections('{{ url('/reports/center/print') }}?{{ $qs() }}&mode=' + btn.dataset.secPrint, sections), '_blank');
+        });
+    });
+    var exp = document.getElementById('sec-export');
+    if (exp) exp.addEventListener('click', function () {
+        var sections = picked();
+        if (!sections.length) { alert('Tick at least one section first.'); return; }
+        window.location.href = withSections('{{ url('/reports/center/export') }}?{{ $qs() }}', sections);
+    });
+})();
+</script>
+
+{{-- ── KPI cards (overview permission) ── --}}
 @php $o = $data['overview']; @endphp
+@if($o)
 <div class="row g-2 mb-3">
     @foreach([
         'Orders' => number_format($o['orders']),
@@ -113,15 +161,17 @@
         </div>
     @endforeach
 </div>
+@endif
 
-{{-- ── tabs ── --}}
+{{-- ── tabs (permission-filtered; Departments rides the Order Types grant) ── --}}
 <ul class="nav nav-tabs mb-3 flex-nowrap overflow-auto">
-    @foreach(['overview' => 'Overview', 'categories' => 'Categories', 'items' => 'Items', 'waiters' => 'Waiters', 'order_types' => 'Order Types', 'departments' => 'Departments', 'detailed' => 'Details', 'cash_bank' => 'Cash & Bank'] as $key => $label)
+    @foreach(['overview' => 'Overview', 'categories' => 'Categories', 'items' => 'Items', 'waiters' => 'Waiters', 'order_types' => 'Order Types', 'order_type_combos' => 'By Order Type', 'departments' => 'Departments', 'cancellations' => 'Cancellations', 'detailed' => 'Details', 'cash_bank' => 'Cash & Bank'] as $key => $label)
+        @continue(! in_array($key === 'departments' ? 'order_types' : $key, $allowedSections, true))
         <li class="nav-item"><a class="nav-link @if($tab === $key) active @endif" href="{{ url('/reports/center?' . $qs(['tab' => $key, 'preset' => null])) }}">{{ $label }}</a></li>
     @endforeach
 </ul>
 
-@if($tab === 'overview' || $tab === 'z')
+@if(($tab === 'overview' || $tab === 'z') && $o)
     <div class="card mb-3"><div class="card-body">
         <h6>Payments</h6>
         <div class="table-responsive"><table class="table table-sm w-auto">
@@ -186,6 +236,58 @@
         </div></div>
     @endif
 @endforeach
+
+@if(isset($data['order_type_combos']))
+    @php $combos = $data['order_type_combos']; @endphp
+    @foreach(['categories' => ['Category', true], 'items' => ['Item', false], 'waiters' => ['Waiter', null]] as $kind => [$dimLabel, $withOrders])
+        @foreach($combos[$kind] as $orderType => $rows)
+            <div class="card mb-3"><div class="card-body table-responsive">
+                <h6 class="mb-2">{{ strtoupper($orderType) }} — by {{ $dimLabel }}</h6>
+                <table class="table table-sm">
+                    <thead><tr>
+                        <th>{{ $dimLabel }}</th>
+                        @if($withOrders !== null && $withOrders)<th class="text-end">Orders</th>@endif
+                        @if($withOrders === null)<th class="text-end">Orders</th><th class="text-end">Sales</th>
+                        @else<th class="text-end">Net Qty</th><th class="text-end">Net</th>@endif
+                    </tr></thead>
+                    <tbody>
+                    @foreach($rows as $r)
+                        <tr>
+                            <td>{{ $r['label'] }}</td>
+                            @if($withOrders !== null && $withOrders)<td class="text-end">{{ (int) $r['orders'] }}</td>@endif
+                            @if($withOrders === null)<td class="text-end">{{ $r['orders'] }}</td><td class="text-end">{{ $fmt($r['grand_total']) }}</td>
+                            @else<td class="text-end">{{ $fmt($r['net_qty']) }}</td><td class="text-end">{{ $fmt($r['net']) }}</td>@endif
+                        </tr>
+                    @endforeach
+                    <tr class="table-light fw-semibold">
+                        <td>Total</td>
+                        @if($withOrders !== null && $withOrders)<td class="text-end">{{ collect($rows)->sum('orders') }}</td>@endif
+                        @if($withOrders === null)<td class="text-end">{{ collect($rows)->sum('orders') }}</td><td class="text-end">{{ $fmt(collect($rows)->sum('grand_total')) }}</td>
+                        @else<td class="text-end">{{ $fmt(collect($rows)->sum('net_qty')) }}</td><td class="text-end">{{ $fmt(collect($rows)->sum('net')) }}</td>@endif
+                    </tr>
+                    </tbody>
+                </table>
+            </div></div>
+        @endforeach
+    @endforeach
+@endif
+
+@if(isset($data['cancellations']))
+    <div class="card mb-3"><div class="card-body table-responsive">
+        <p class="text-muted small mb-2">Items voided or decreased AFTER the KOT reached the kitchen (order cancellations / quantity reductions). Returns of PAID sales appear in the Returns columns of the other tabs.</p>
+        <table class="table table-sm">
+            <thead><tr><th>Item</th><th>Order Type</th><th>Reason</th><th class="text-end">Events</th><th class="text-end">Cancelled Qty</th></tr></thead>
+            <tbody>
+            @forelse($data['cancellations']['rows'] as $r)
+                <tr><td>{{ $r['item'] }}</td><td>{{ $r['order_type'] }}</td><td>{{ $r['reason'] }}</td><td class="text-end">{{ $r['events'] }}</td><td class="text-end text-danger">−{{ $fmt($r['qty']) }}</td></tr>
+            @empty
+                <tr><td colspan="5" class="text-muted">No cancellations in this period.</td></tr>
+            @endforelse
+            <tr class="table-light fw-semibold"><td>Total</td><td></td><td></td><td class="text-end">{{ $data['cancellations']['total_events'] }}</td><td class="text-end text-danger">−{{ $fmt($data['cancellations']['total_qty']) }}</td></tr>
+            </tbody>
+        </table>
+    </div></div>
+@endif
 
 @if(isset($data['departments']))
     <div class="card mb-3"><div class="card-body table-responsive">
