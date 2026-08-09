@@ -1377,8 +1377,8 @@ document.addEventListener('DOMContentLoaded', function () {
             if (deliveryRiderEl)   deliveryRiderEl.required = false;
             if (deliveryRiderWrap) deliveryRiderWrap.style.display = 'none';
             if (deliveryAddressEl) deliveryAddressEl.value = '';
-        if (deliveryChargeEl) deliveryChargeEl.value = '';
-            if (deliveryChargeEl) deliveryChargeEl.value = '';
+            // TDZ-safe: this runs before the later script block declares `const deliveryChargeEl`.
+            { const dcEl = document.getElementById('delivery_charge_amount'); if (dcEl) dcEl.value = ''; }
             return;
         }
 
@@ -4804,7 +4804,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (deliveryChannelEl) deliveryChannelEl.value = '';
         if (deliveryRiderEl) deliveryRiderEl.value = '';
         if (deliveryAddressEl) deliveryAddressEl.value = '';
-        if (deliveryChargeEl) deliveryChargeEl.value = '';
+        { const dcEl = document.getElementById('delivery_charge_amount'); if (dcEl) dcEl.value = ''; }
         if (transactionRefEl) transactionRefEl.value = '';
         if (tenderedEl) tenderedEl.value = '0.00';
 
