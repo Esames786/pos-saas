@@ -1630,6 +1630,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     let selectedParentCategory = '';
     let selectedChildCategory  = '';
+    let selectedParentChildIds = [];   // KHATRI-MENU-2: child category ids of the selected parent
     let cart = [];
 
     /* helpers */
@@ -1832,7 +1833,11 @@ document.addEventListener('DOMContentLoaded', function () {
         const dealsOnly = selectedParentCategory === '__deals__';
 
         const filtered = dealsOnly ? [] : products.filter(function (product) {
-            const matchParent = !selectedParentCategory || Number(product.category_id) === Number(selectedParentCategory);
+            // KHATRI-MENU-2: a parent pill matches its OWN products AND its children's products
+            // (menu items now live in child categories like "Saada"/"Non-Saada").
+            const matchParent = !selectedParentCategory
+                || Number(product.category_id) === Number(selectedParentCategory)
+                || selectedParentChildIds.includes(Number(product.category_id));
             const matchChild  = !selectedChildCategory  || Number(product.category_id) === Number(selectedChildCategory);
 
             const barcodeMatch = (product.barcodes || []).some(function (barcode) {
@@ -4970,6 +4975,9 @@ document.addEventListener('DOMContentLoaded', function () {
             strip.innerHTML = '';
 
             const parent = categories.find(function (c) { return Number(c.id) === Number(selectedParentCategory); });
+            selectedParentChildIds = parent && parent.children
+                ? parent.children.map(function (ch) { return Number(ch.id); })
+                : [];
 
             if (parent && parent.children && parent.children.length) {
                 wrap.style.display = '';

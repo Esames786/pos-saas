@@ -54,17 +54,35 @@ class OnboardKhatriBiryaniCommand extends Command
     private const PLAN_FEATURES = ['branch_limit' => 1, 'terminal_limit' => 4, 'user_limit' => 10, 'product_limit' => null];
 
     /** Menu (Z-report prices authoritative — see the onboarding doc for ⚠ client-verification flags). */
+    /**
+     * KHATRI-MENU-2 (client's handwritten note, 2026-08-10): child categories per parent
+     * ('Saada' = plain / no meat in Urdu — items named Saada/Saadi go there; meat versions
+     * are 'Non-Saada'; 'Matka' is its own child), every list ordered SMALL → LARGE, and the
+     * new items: Beef Changezi Pulao Special (1 kg) @1200, 750 ML Box @30, 1500 ML Box @50.
+     * '_children' marks a parent with child categories; product order = display order.
+     */
     private const MENU = [
-        'Beef Khatri Biryani' => [
-            ['Beef Khatri Biryani (1/2 kg)', 450], ['Beef Khatri Biryani (1 kg)', 900],
-            ['Beef Khatri Biryani Special (1/2 kg)', 600], ['Beef Khatri Biryani Special (1 kg)', 1200],
-            ['Saadi Khatri Biryani (1/2 kg)', 250], ['Saadi Khatri Biryani (1 kg)', 500],
-            ['Saadi Biryani (1/2 kg)', 200], ['Matka Biryani Beef', 4000],
-        ],
-        'Beef Changezi Pulao' => [
-            ['Beef Changezi Pulao (1/2 kg)', 450], ['Beef Changezi Pulao (1 kg)', 900],
-            ['Beef Changezi Pulao Special (1/2 kg)', 600], ['Saada Beef Changezi Pulao (1/2 kg)', 250],
-        ],
+        'Beef Khatri Biryani' => ['_children' => [
+            'Non-Saada' => [
+                ['Beef Khatri Biryani (1/2 kg)', 450], ['Beef Khatri Biryani (1 kg)', 900],
+                ['Beef Khatri Biryani Special (1/2 kg)', 600], ['Beef Khatri Biryani Special (1 kg)', 1200],
+            ],
+            'Saada' => [
+                ['Saadi Biryani (1/2 kg)', 200], ['Saadi Khatri Biryani (1/2 kg)', 250], ['Saadi Khatri Biryani (1 kg)', 500],
+            ],
+            'Matka' => [
+                ['Matka Biryani Beef', 4000],
+            ],
+        ]],
+        'Beef Changezi Pulao' => ['_children' => [
+            'Non-Saada' => [
+                ['Beef Changezi Pulao (1/2 kg)', 450], ['Beef Changezi Pulao (1 kg)', 900],
+                ['Beef Changezi Pulao Special (1/2 kg)', 600], ['Beef Changezi Pulao Special (1 kg)', 1200],
+            ],
+            'Saada' => [
+                ['Saada Beef Changezi Pulao (1/2 kg)', 250],
+            ],
+        ]],
         'Chicken Biryani' => [
             ['Chicken Biryani (1/2 kg)', 330], ['Chicken Biryani (1 kg)', 650],
             ['Chicken Biryani Family Pack', 1600], ['Chicken Extra Piece', 150],
@@ -82,12 +100,12 @@ class OnboardKhatriBiryaniCommand extends Command
             ['Mango Delight (Cup)', 130], ['Mango Delight (Half)', 650], ['Mango Delight (Full)', 1300],
         ],
         'Beverages' => [
-            ['Mineral Water (Small)', 60], ['Mineral Water (Large)', 120],
-            ['Cola Next 300 ml', 90], ['Cola Next 500 ml', 110], ['Cola Next 1.5 Ltr', 180],
-            ['Coldrink Jumbo', 240], ['1 Ltr Coldrink', 160], ['Pakola 300 ml', 90],
+            ['Mineral Water (Small)', 60], ['Pakola 300 ml', 90], ['Cola Next 300 ml', 90],
+            ['Cola Next 500 ml', 110], ['1 Ltr Coldrink', 160], ['Mineral Water (Large)', 120],
+            ['Cola Next 1.5 Ltr', 180], ['Coldrink Jumbo', 240],
         ],
         'Extras' => [
-            ['Raita', 70],
+            ['Raita', 70], ['750 ML Box', 30], ['1500 ML Box', 50],
         ],
     ];
 
@@ -191,17 +209,26 @@ class OnboardKhatriBiryaniCommand extends Command
 
         $sort = 0;
         $productCount = 0;
-        foreach (self::MENU as $categoryName => $products) {
-            $slug = Str::slug($categoryName);
-            $categoryId = DB::connection('tenant')->table('categories')->where('slug', $slug)->value('id')
-                ?: DB::connection('tenant')->table('categories')->insertGetId([
-                    'name' => $categoryName, 'slug' => $slug, 'code' => strtoupper(Str::slug($categoryName, '_')),
-                    'sort_order' => ++$sort, 'is_active' => 1, 'created_at' => now(), 'updated_at' => now(),
-                ]);
-            foreach ($products as [$name, $price]) {
-                $pslug = Str::slug($name);
+        $seedCategory = function (string $name, ?int $parentId, int $sortOrder, ?string $slug = null): int {
+            $slug = $slug ?: Str::slug($name);
+            $existing = DB::connection('tenant')->table('categories')->where('slug', $slug)->value('id');
+            if ($existing) {
+                DB::connection('tenant')->table('categories')->where('id', $existing)
+                    ->update(['name' => $name, 'parent_id' => $parentId, 'sort_order' => $sortOrder, 'is_active' => 1, 'updated_at' => now()]);
+
+                return (int) $existing;
+            }
+
+            return (int) DB::connection('tenant')->table('categories')->insertGetId([
+                'name' => $name, 'slug' => $slug, 'code' => strtoupper(Str::slug($slug, '_')),
+                'parent_id' => $parentId, 'sort_order' => $sortOrder, 'is_active' => 1,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        };
+        $seedProducts = function (int $categoryId, array $products) use (&$productCount, $unitId): void {
+            foreach ($products as $idx => [$name, $price]) {
                 DB::connection('tenant')->table('products')->updateOrInsert(
-                    ['slug' => $pslug],
+                    ['slug' => Str::slug($name)],
                     [
                         'category_id' => $categoryId, 'unit_id' => $unitId,
                         'sku' => strtoupper(Str::slug($name, '-')),
@@ -210,13 +237,30 @@ class OnboardKhatriBiryaniCommand extends Command
                         'is_stock_tracked' => 0, 'inventory_consumption_method' => 'none',
                         'is_sellable' => 1, 'is_pos_visible' => 1,
                         'default_selling_price' => $price, 'status' => 'active',
+                        // KHATRI-MENU-2: display order = list order (small → large).
+                        'sort_order' => $idx + 1,
                         'created_at' => now(), 'updated_at' => now(),
                     ]
                 );
                 $productCount++;
             }
+        };
+        $childCount = 0;
+        foreach (self::MENU as $categoryName => $definition) {
+            $parentCategoryId = $seedCategory($categoryName, null, ++$sort);
+            if (isset($definition['_children'])) {
+                $childSort = 0;
+                foreach ($definition['_children'] as $childName => $childProducts) {
+                    // child slugs are namespaced by parent ("Saada" exists under BOTH biryani parents)
+                    $childId = $seedCategory($childName, $parentCategoryId, ++$childSort, Str::slug($categoryName) . '-' . Str::slug($childName));
+                    $seedProducts($childId, $childProducts);
+                    $childCount++;
+                }
+            } else {
+                $seedProducts($parentCategoryId, $definition);
+            }
         }
-        $this->info("menu seeded: " . count(self::MENU) . " categories, {$productCount} service-based products.");
+        $this->info('menu seeded: ' . count(self::MENU) . " parents + {$childCount} child categories, {$productCount} service-based products (small→large ordering).");
 
         // ── Network KOT printers + order-type-aware half/half category routing (user request) ──
         // Two LAN printers; dine_in/quick_sale split categories 1-4 → P1, 5-8 → P2; takeaway/delivery
@@ -231,8 +275,11 @@ class OnboardKhatriBiryaniCommand extends Command
             );
             $printerIds[] = (int) DB::connection('tenant')->table('printers')->where('code', $code)->value('id');
         }
-        $categoryIds = DB::connection('tenant')->table('categories')->orderBy('sort_order')->pluck('id')->values();
-        $half = (int) ceil($categoryIds->count() / 2);
+        // Split by PARENT category; child categories inherit their parent's printer (KOT routing
+        // keys on the product's own category_id, which is now a CHILD for Biryani/Changezi items —
+        // without child mappings those lines would silently fall to the default printer).
+        $parentIds = DB::connection('tenant')->table('categories')->whereNull('parent_id')->orderBy('sort_order')->pluck('id')->values();
+        $half = (int) ceil($parentIds->count() / 2);
         $mapRow = function (int $categoryId, int $printerId, string $orderType) use ($branchId) {
             DB::connection('tenant')->table('category_printer_mappings')->updateOrInsert(
                 ['branch_id' => $branchId, 'category_id' => $categoryId, 'print_role' => 'kot', 'order_type' => $orderType],
@@ -240,17 +287,24 @@ class OnboardKhatriBiryaniCommand extends Command
                  'created_at' => now(), 'updated_at' => now()]
             );
         };
-        foreach ($categoryIds as $idx => $categoryId) {
+        $mapped = 0;
+        foreach ($parentIds as $idx => $parentCategoryId) {
             $firstHalfPrinter = $idx < $half ? $printerIds[0] : $printerIds[1];          // block split
             $alternatingPrinter = $idx % 2 === 0 ? $printerIds[0] : $printerIds[1];     // alternating split
-            foreach (['dine_in', 'quick_sale'] as $ot) {
-                $mapRow($categoryId, $firstHalfPrinter, $ot);
-            }
-            foreach (['takeaway', 'delivery'] as $ot) {
-                $mapRow($categoryId, $alternatingPrinter, $ot);
+            $familyIds = DB::connection('tenant')->table('categories')
+                ->where('parent_id', $parentCategoryId)->pluck('id')->prepend($parentCategoryId);
+            foreach ($familyIds as $categoryId) {
+                foreach (['dine_in', 'quick_sale'] as $ot) {
+                    $mapRow($categoryId, $firstHalfPrinter, $ot);
+                    $mapped++;
+                }
+                foreach (['takeaway', 'delivery'] as $ot) {
+                    $mapRow($categoryId, $alternatingPrinter, $ot);
+                    $mapped++;
+                }
             }
         }
-        $this->info('KOT routing: 2 network printers (192.168.1.54 / 192.168.1.87), half/half category split per order type (' . $categoryIds->count() * 4 . ' mappings).');
+        $this->info("KOT routing: 2 network printers (192.168.1.54 / 192.168.1.87), half/half PARENT split, children inherit ({$mapped} mappings).");
 
         // ── Reminder printer + wildcard route (user request) ──
         // One dedicated Reminder destination on the second kitchen device. print_role stays 'kot'

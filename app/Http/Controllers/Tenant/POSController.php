@@ -111,6 +111,8 @@ class POSController extends Controller
             ->where('status', 'active')
             ->where('is_sellable', true)
             ->where('is_pos_visible', true)   // PRODUCT-BOUNDARY-2: hide manufacturing/internal items
+            // KHATRI-MENU-2: explicit small→large tile ordering, name as tiebreaker.
+            ->orderBy('sort_order')
             ->orderBy('name')
             ->get();
 
