@@ -938,7 +938,7 @@
                 @endif
 
                 {{-- ── REPORTS ─────────────────────────────────────────────────── --}}
-                @canany(['tenant.reports.sales.summary','tenant.reports.sales.channels','tenant.reports.sales.riders','tenant.reports.sales.receivables','tenant.reports.shifts','tenant.reports.inventory.valuation','tenant.reports.inventory.negative-stock','tenant.reports.purchases.payables','tenant.reports.purchases.returns','tenant.reports.restaurant.tables','tenant.reports.kitchen.recipe-consumption','tenant.reports.departments.sales','tenant.reports.departments.consumption-exceptions','tenant.reports.audit.manager-approvals','tenant.reports.printing.jobs'])
+                @canany(['tenant.reports.center.index','tenant.reports.sales.summary','tenant.reports.sales.channels','tenant.reports.sales.riders','tenant.reports.sales.receivables','tenant.reports.shifts','tenant.reports.inventory.valuation','tenant.reports.inventory.negative-stock','tenant.reports.purchases.payables','tenant.reports.purchases.returns','tenant.reports.restaurant.tables','tenant.reports.kitchen.recipe-consumption','tenant.reports.departments.sales','tenant.reports.departments.consumption-exceptions','tenant.reports.audit.manager-approvals','tenant.reports.printing.jobs'])
                 <li class="submenu">
                     <a href="javascript:void(0);">
                         <i class="ti ti-chart-bar fs-16 me-2"></i>
@@ -946,6 +946,9 @@
                         <span class="menu-arrow"></span>
                     </a>
                     <ul style="display:none;">
+                        @can('tenant.reports.center.index')
+                            <li><a class="dropdown-item" href="{{ url('/reports/center') }}">Sales Report Center</a></li>
+                        @endcan
                         @can('tenant.reports.sales.summary')
                             @php $a = $isIn('reports/sales*') && !$isIn('reports/sales/receivables') && !$isIn('reports/sales/channels') && !$isIn('reports/sales/riders'); @endphp
                             <li class="{{ $a ? 'active' : '' }}">

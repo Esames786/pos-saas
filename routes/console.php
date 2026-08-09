@@ -34,4 +34,9 @@ if (\App\Support\EdgeRuntime::isCloudSafe()) {
     if (config('backup.schedule_enabled', false)) {
         Schedule::command('tenants:backup --prune')->dailyAt('02:00')->withoutOverlapping();
     }
+
+    // SALES REPORT CENTER — scheduled owner report emails. Safe at any cadence: each schedule's
+    // reporting period is claimed idempotently (unique schedule+period), so retries/overlaps can
+    // never double-send. Cloud-only (Edge CLI boundary default-denies the command anyway).
+    Schedule::command('reports:dispatch-scheduled')->everyFifteenMinutes()->withoutOverlapping();
 }

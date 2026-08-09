@@ -1,0 +1,188 @@
+<?php
+
+namespace App\Http\Controllers\Tenant\Reports;
+
+use App\Http\Controllers\Controller;
+use App\Mail\SalesReportMail;
+use App\Services\Reports\ReportScheduleService;
+use App\Services\Reports\SalesReportEngine;
+use App\Services\Reports\SalesReportExporter;
+use App\Support\CsvStreamer;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
+
+/**
+ * SALES REPORT CENTER (Khatri onboarding, sections O–AC) — ONE responsive screen over the ONE shared
+ * SalesReportEngine. Tabs: Overview / Categories / Items / Waiters / Order Types / Departments /
+ * Details / Cash & Bank. Z-Report preset = today's Overview + Order Types + Categories + Waiters +
+ * Payments + Cash & Bank in one action. Exports/prints/emails all render from the SAME engine output.
+ */
+class SalesReportCenterController extends Controller
+{
+    public const SECTIONS = ['overview', 'categories', 'items', 'waiters', 'order_types', 'detailed', 'cash_bank'];
+
+    public function __construct(
+        private readonly SalesReportEngine $engine,
+        private readonly SalesReportExporter $exporter,
+    ) {
+    }
+
+    private function filters(Request $request): array
+    {
+        // date presets (today/yesterday/this_week/this_month handled client-side into from/to).
+        return $this->engine->normalizeFilters($request->only([
+            'date_from', 'date_to', 'branch_ids', 'branch_id', 'terminal_id', 'shift_id',
+            'cashier_id', 'waiter_id', 'order_type', 'category_id', 'product_id', 'payment_method_id',
+        ]));
+    }
+
+    public function index(Request $request)
+    {
+        $tab = $request->input('tab', 'overview');
+        $preset = $request->input('preset');
+        $filters = $this->filters($request);
+
+        $data = ['overview' => $this->engine->overview($filters)];
+        if ($preset === 'z') {
+            $tab = 'z';
+            $data += [
+                'order_types' => $this->engine->byOrderType($filters),
+                'categories' => $this->engine->byCategory($filters),
+                'waiters' => $this->engine->byWaiter($filters),
+                'cash_bank' => $this->engine->cashBank($filters),
+            ];
+        } else {
+            $data += match ($tab) {
+                'categories' => ['categories' => $this->engine->byCategory($filters)],
+                'items' => ['items' => $this->engine->byItem($filters, $request->input('sort', 'net'))],
+                'waiters' => ['waiters' => $this->engine->byWaiter($filters)],
+                'order_types' => ['order_types' => $this->engine->byOrderType($filters)],
+                'departments' => ['departments' => $this->departments($filters)],
+                'detailed' => ['detailed' => $this->engine->detailedQuery($filters)->paginate(50)->withQueryString()],
+                'cash_bank' => ['cash_bank' => $this->engine->cashBank($filters)],
+                default => [],
+            };
+        }
+
+        return view('tenant.reports.center.index', [
+            'tab' => $tab,
+            'filters' => $filters,
+            'data' => $data,
+            'branches' => \App\Models\Tenant\Branch::where('status', 'active')->orderBy('name')->get(['id', 'name']),
+            'terminals' => \App\Models\Tenant\Terminal::orderBy('name')->get(['id', 'name', 'branch_id']),
+            'waiters' => DB::connection('tenant')->table('restaurant_waiters')->where('status', 'active')->orderBy('name')->get(['id', 'name']),
+            'categories' => DB::connection('tenant')->table('categories')->where('is_active', 1)->orderBy('name')->get(['id', 'name', 'parent_id']),
+            'paymentMethods' => DB::connection('tenant')->table('payment_methods')->where('is_active', 1)->orderBy('name')->get(['id', 'name']),
+            'orderTypes' => \App\Models\Tenant\User::ORDER_TYPES,
+            'schedules' => DB::connection('tenant')->table('report_schedules')->orderBy('id')->get(),
+        ]);
+    }
+
+    /** Departments tab — delegates to the EXISTING department-sales authority (resolver + Unassigned). */
+    private function departments(array $filters): array
+    {
+        return app(\App\Services\Reports\DepartmentReportService::class)->sales([
+            'date_from' => $filters['date_from'],
+            'date_to' => $filters['date_to'],
+            'branch_id' => $filters['branch_ids'][0] ?? null,
+            'order_type' => $filters['order_type'],
+            'department_id' => null,
+        ]);
+    }
+
+    /** Export the selected sections — ONE Excel-friendly CSV, full filtered set. */
+    public function export(Request $request)
+    {
+        $filters = $this->filters($request);
+        $sections = array_values(array_intersect((array) $request->input('sections', self::SECTIONS), self::SECTIONS));
+        $csvBySection = $this->exporter->sections($filters, $sections ?: self::SECTIONS);
+
+        return CsvStreamer::download(
+            'sales-report-' . $filters['date_from'] . '_' . $filters['date_to'] . '.csv',
+            CsvStreamer::financeHeader('Sales Report Center', ['Period' => $filters['date_from'] . ' → ' . $filters['date_to']]),
+            function ($out) use ($csvBySection) {
+                foreach ($csvBySection as $section => $csv) {
+                    fputcsv($out, ['== ' . strtoupper(str_replace('_', ' ', $section)) . ' ==']);
+                    // strip the per-section BOM; rows are already CSV text.
+                    fwrite($out, preg_replace('/^\xEF\xBB\xBF/', '', $csv));
+                    fputcsv($out, []);
+                }
+            }
+        );
+    }
+
+    /** Thermal (58/80mm Z-style) or A4 print view — same engine output, browser-print = PDF path. */
+    public function print(Request $request)
+    {
+        $filters = $this->filters($request);
+        $mode = $request->input('mode', 'a4') === 'thermal' ? 'thermal' : 'a4';
+        $paper = in_array($request->input('paper'), ['58mm', '80mm'], true) ? $request->input('paper') : '80mm';
+
+        return view('tenant.reports.center.print', [
+            'mode' => $mode,
+            'paper' => $paper,
+            'filters' => $filters,
+            'overview' => $this->engine->overview($filters),
+            'orderTypes' => $this->engine->byOrderType($filters),
+            'categories' => $this->engine->byCategory($filters),
+            'waiters' => $this->engine->byWaiter($filters),
+            'cashBank' => $this->engine->cashBank($filters),
+        ]);
+    }
+
+    /** Email Now — tenant default email; controlled error when unconfigured (spec Z). */
+    public function emailNow(Request $request)
+    {
+        $recipient = app()->bound('tenant') ? app('tenant')?->owner_email : null;
+        if (! $recipient) {
+            return back()->withErrors(['email' => 'The tenant default email (owner email) is not configured — set it in tenant settings first.']);
+        }
+        $filters = $this->filters($request);
+        $sections = array_values(array_intersect((array) $request->input('sections', self::SECTIONS), self::SECTIONS));
+        $csv = $this->exporter->sections($filters, $sections ?: self::SECTIONS);
+        Mail::to($recipient)->send(new SalesReportMail(
+            (string) app('tenant')->business_name,
+            $filters['date_from'] . ' → ' . $filters['date_to'],
+            $csv
+        ));
+
+        return back()->with('status', 'Report emailed to ' . $recipient . '.');
+    }
+
+    public function storeSchedule(Request $request, ReportScheduleService $schedules)
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:120'],
+            'sections' => ['required', 'array', 'min:1'],
+            'sections.*' => ['string', 'in:' . implode(',', self::SECTIONS)],
+            'frequency' => ['required', 'in:daily,weekly,monthly'],
+            'weekday' => ['nullable', 'integer', 'min:1', 'max:7', 'required_if:frequency,weekly'],
+            'day_of_month' => ['nullable', 'integer', 'min:1', 'max:31', 'required_if:frequency,monthly'],
+            'send_time' => ['required', 'date_format:H:i'],
+        ]);
+        if (! (app()->bound('tenant') ? app('tenant')?->owner_email : null)) {
+            return back()->withErrors(['email' => 'Set the tenant default email (owner email) before scheduling reports.']);
+        }
+        DB::connection('tenant')->table('report_schedules')->insert([
+            'name' => $data['name'],
+            'sections' => json_encode(array_values($data['sections'])),
+            'frequency' => $data['frequency'],
+            'weekday' => $data['weekday'] ?? null,
+            'day_of_month' => $data['day_of_month'] ?? null,
+            'send_time' => $data['send_time'],
+            'is_active' => true,
+            'created_by_user_id' => auth('tenant')->id(),
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        return back()->with('status', 'Schedule created (' . $data['frequency'] . ' at ' . $data['send_time'] . ', ' . $schedules->timezone() . ').');
+    }
+
+    public function destroySchedule(int $schedule)
+    {
+        DB::connection('tenant')->table('report_schedules')->where('id', $schedule)->delete();
+
+        return back()->with('status', 'Schedule removed.');
+    }
+}
