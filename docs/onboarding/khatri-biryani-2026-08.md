@@ -228,3 +228,25 @@ Driven by first-real-sales-day feedback (screenshots + printed slips):
   dropdown is gone (page weight + 1000-customer hang).
 - Offline/Edge: unaffected by design — delivery (and therefore the charge/address flow) stays
   Cloud-only (Edge refuses `delivery_charge_amount`); vehicle_number retains offline parity.
+
+## Day-2 evening sprint (2026-08-10, prod @ `74d9415`)
+
+- **KHATRI-MENU-2** (`071c983`): child categories per the client's handwritten note — Beef
+  Khatri Biryani → Non-Saada / Saada / Matka; Beef Changezi Pulao → Non-Saada / Saada
+  (Saada = plain/no meat; items named Saada/Saadi matched there). New items: Beef Changezi
+  Pulao Special (1 kg) @1200, 750 ML Box @30, 1500 ML Box @50. products.sort_order drives
+  small→large ordering everywhere. KOT routing splits by PARENT, children inherit
+  (52 mappings). 13 categories / 42 products.
+- **KHATRI-UX-2** (`d5fc95e`): one-row POS context bar (branch/terminal → summary + Change
+  modal), duplicate delivery-address input removed (customer modal + chip carry it),
+  vehicle inline.
+- **REPORT-CENTER-3** (`6331060`): order-type combination reports + cancellations report
+  (post-KOT voids/decreases w/ reasons); checkbox section selection for Print Selected
+  (Thermal/A4) + Export Selected CSV; Print All renamed; thermal = A4 column parity; TOTAL
+  rows everywhere. Per-section permissions `tenant.reports.center.sections.*` (9 keys,
+  back-granted to Report-Center roles; enforced across tabs/print/export/email).
+  `tenant.dashboard` = baseline permission on every role (fixes "dashboard forbidden +
+  logout error" for custom roles like `cash`).
+- **TENANT-RESET-1** (`74d9415`): `tenant:reset-transactions {code} --yes --confirm={code}` —
+  wipes transactions, keeps ALL master data; triple-guarded + integrity-verified.
+  **NOT yet run on Khatri** — planned after the client demo (backup first).
