@@ -154,7 +154,20 @@ class OnboardKhatriBiryaniCommand extends Command
 
             return self::FAILURE;
         }
+        // provisionTenant's base seed updateOrCreate's the Owner WITH a password hash, so a
+        // re-run without --owner-password would silently rotate the live credential. Capture
+        // the existing hash first and restore it after, so re-runs never change the password.
+        $ownerEmail = $tenant->owner_email ?: 'owner@' . self::TENANT_CODE . '.local';
+        $existingHash = null;
+        if ($alreadyProvisioned && ! $password) {
+            $tenancy->activate($tenant->fresh());
+            $existingHash = DB::connection('tenant')->table('users')->where('email', $ownerEmail)->value('password');
+        }
         $provisioner->provisionTenant($tenant->fresh(), $password ?: Str::random(24));
+        if ($existingHash !== null) {
+            DB::connection('tenant')->table('users')->where('email', $ownerEmail)->update(['password' => $existingHash]);
+            $this->info('owner password preserved (re-run without --owner-password never rotates it).');
+        }
         $this->info('tenant provisioned: ' . self::TENANT_CODE . '.' . config('tenancy.tenant_base_domain'));
 
         // ── 5. tenant data: terminals + menu + Manager role ──
