@@ -509,63 +509,83 @@
     <div class="pos-shell">
         {{-- LEFT: products --}}
         <section class="pos-card p-3 pos-products-panel" aria-labelledby="products_heading">
-            {{-- POS-UX-2: compact header — small controls, order type lives in the tabs only --}}
-            <div class="row g-2 mb-2" id="order-controls-row">
-                <div class="col-md-3">
-                    <label for="branch_id" class="form-label small mb-1 required">Branch</label>
-                    <select id="branch_id" name="branch_id" class="form-select form-select-sm" required>
-                        @foreach($branches as $branch)
-                            <option value="{{ $branch->id }}"
-                                data-allow-negative="{{ $branch->allow_negative_stock ? 1 : 0 }}"
-                                data-delivery-charge="{{ (float) ($branch->default_delivery_charge ?? 0) }}"
-                                data-charge-locked="{{ $branch->delivery_charge_locked ? 1 : 0 }}"
-                                @selected((int) $selectedBranchId === (int) $branch->id)>
-                                {{ $branch->name }}
-                            </option>
-                        @endforeach
-                    </select>
+            {{-- KHATRI-UX-2: ONE compact context row — branch/terminal collapse to a summary
+                 with a Change modal (they are pre-selected and rarely change); vehicle inline. --}}
+            <div class="d-flex align-items-center flex-wrap gap-2 mb-2" id="order-controls-row">
+                <span class="small">
+                    <i class="ti ti-building-store me-1"></i><strong id="ctx-branch-name"></strong>
+                    <span class="text-muted mx-1">·</span><span id="ctx-terminal-name" class="text-muted"></span>
+                </span>
+                <div id="pos-shift-status" class="small" style="display:none">
+                    <span class="badge bg-secondary" id="pos-shift-badge"></span>
+                    <span id="pos-shift-detail" class="text-muted ms-1"></span>
+                    <a href="{{ url('/shifts/open') }}" id="pos-shift-open-link" class="ms-1" style="display:none">Open shift</a>
                 </div>
-                <div class="col-md-3">
-                    <label for="terminal_id" class="form-label small mb-1">Terminal</label>
-                    <select id="terminal_id" name="terminal_id" class="form-select form-select-sm">
-                        <option value="">No Terminal</option>
-                        @foreach($terminals as $terminal)
-                            <option value="{{ $terminal->id }}" data-branch="{{ $terminal->branch_id ?? '' }}">{{ $terminal->name }} &mdash; {{ $terminal->branch?->name }}</option>
-                        @endforeach
-                    </select>
-                    {{-- Auto-print is terminal-driven; warn when none is selected --}}
-                    <div id="no-terminal-warning" class="small text-warning-emphasis mt-1" style="display:none">
-                        <i class="ti ti-alert-triangle me-1"></i>No terminal — auto receipt/KOT print is off
-                    </div>
-                    {{-- SHIFT-TIMEZONE-BUSINESS-DATE-1 (R/S): per-terminal shift status. No open shift
-                         means POS operations on this terminal are blocked. --}}
-                    <div id="pos-shift-status" class="small mt-1" style="display:none">
-                        <span class="badge bg-secondary" id="pos-shift-badge"></span>
-                        <span id="pos-shift-detail" class="text-muted ms-1"></span>
-                        <a href="{{ url('/shifts/open') }}" id="pos-shift-open-link" class="ms-1" style="display:none">Open shift</a>
-                    </div>
+                <div id="no-terminal-warning" class="small text-warning-emphasis" style="display:none">
+                    <i class="ti ti-alert-triangle me-1"></i>No terminal — auto receipt/KOT print is off
                 </div>
-                {{-- Order type is driven by the mode tabs above; keep the select for the
-                     form payload + existing JS, but never show the duplicate control. --}}
-                <div class="d-none">
-                    <select id="order_type" name="order_type">
-                        <option value="dine_in"    @selected($activeMode === 'dine_in')>Dine In</option>
-                        <option value="takeaway"   @selected($activeMode === 'takeaway')>Takeaway</option>
-                        <option value="quick_sale" @selected($activeMode === 'quick_sale')>Quick Sale</option>
-                        <option value="delivery"   @selected($activeMode === 'delivery')>Delivery</option>
-                    </select>
-                </div>
-                {{-- CUSTOMER-UX-1: customer attaches via the Add/Search Customer modal (chip near
-                     the order-type tabs). Hidden fields keep the form payload + existing JS ids. --}}
-                <input type="hidden" id="customer_id" name="customer_id" value="{{ $heldSale?->customer_id }}">
-                <input type="hidden" id="customer_name" name="customer_name" value="{{ $heldSale?->customer_name ?? $heldSale?->customer?->name }}">
-                <input type="hidden" id="customer_phone" name="customer_phone" value="{{ $heldSale?->customer_phone ?? $heldSale?->customer?->phone }}">
-                {{-- VEHICLE-NUMBER-1: drive-through capture, quick-sale orders only --}}
-                <div class="col-md-3" id="vehicle-wrap" style="display:none">
-                    <label for="vehicle_number" class="form-label small mb-1">Vehicle Number</label>
-                    <input id="vehicle_number" name="vehicle_number" class="form-control form-control-sm"
-                           maxlength="50" placeholder="e.g. LEA-1234" value="{{ $heldSale?->vehicle_number }}"
+                <button type="button" class="btn btn-sm btn-outline-secondary py-0" data-bs-toggle="modal" data-bs-target="#posContextModal" title="Change branch or terminal">
+                    <i class="ti ti-adjustments-horizontal me-1"></i>Change
+                </button>
+                {{-- VEHICLE-NUMBER-1: drive-through capture, quick-sale orders only (inline) --}}
+                <div id="vehicle-wrap" class="align-items-center gap-1" style="display:none">
+                    <label for="vehicle_number" class="form-label small mb-0">Vehicle</label>
+                    <input id="vehicle_number" name="vehicle_number" class="form-control form-control-sm d-inline-block ms-1"
+                           style="width:150px" maxlength="50" placeholder="e.g. LEA-1234" value="{{ $heldSale?->vehicle_number }}"
                            title="Optional. Customer's vehicle number for quick-sale / drive-through orders — printed on KOT and receipt so staff can match the order to the car.">
+                </div>
+            </div>
+
+            {{-- Order type is driven by the mode tabs above; keep the select for the
+                 form payload + existing JS, but never show the duplicate control. --}}
+            <div class="d-none">
+                <select id="order_type" name="order_type">
+                    <option value="dine_in"    @selected($activeMode === 'dine_in')>Dine In</option>
+                    <option value="takeaway"   @selected($activeMode === 'takeaway')>Takeaway</option>
+                    <option value="quick_sale" @selected($activeMode === 'quick_sale')>Quick Sale</option>
+                    <option value="delivery"   @selected($activeMode === 'delivery')>Delivery</option>
+                </select>
+            </div>
+            {{-- CUSTOMER-UX-1: customer attaches via the Add/Search Customer modal (chip near
+                 the order-type tabs). Hidden fields keep the form payload + existing JS ids. --}}
+            <input type="hidden" id="customer_id" name="customer_id" value="{{ $heldSale?->customer_id }}">
+            <input type="hidden" id="customer_name" name="customer_name" value="{{ $heldSale?->customer_name ?? $heldSale?->customer?->name }}">
+            <input type="hidden" id="customer_phone" name="customer_phone" value="{{ $heldSale?->customer_phone ?? $heldSale?->customer?->phone }}">
+
+            {{-- Branch/terminal selects live in this modal (INSIDE the form: values still post).
+                 All ids are unchanged so every existing JS hook keeps working. --}}
+            <div class="modal fade" id="posContextModal" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered" style="max-width:420px">
+                    <div class="modal-content">
+                        <div class="modal-header py-2">
+                            <h2 class="modal-title h6 mb-0">Branch &amp; Terminal</h2>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <label for="branch_id" class="form-label small mb-1 required">Branch</label>
+                            <select id="branch_id" name="branch_id" class="form-select form-select-sm mb-3" required>
+                                @foreach($branches as $branch)
+                                    <option value="{{ $branch->id }}"
+                                        data-allow-negative="{{ $branch->allow_negative_stock ? 1 : 0 }}"
+                                        data-delivery-charge="{{ (float) ($branch->default_delivery_charge ?? 0) }}"
+                                        data-charge-locked="{{ $branch->delivery_charge_locked ? 1 : 0 }}"
+                                        @selected((int) $selectedBranchId === (int) $branch->id)>
+                                        {{ $branch->name }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            <label for="terminal_id" class="form-label small mb-1">Terminal</label>
+                            <select id="terminal_id" name="terminal_id" class="form-select form-select-sm">
+                                <option value="">No Terminal</option>
+                                @foreach($terminals as $terminal)
+                                    <option value="{{ $terminal->id }}" data-branch="{{ $terminal->branch_id ?? '' }}">{{ $terminal->name }} &mdash; {{ $terminal->branch?->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="modal-footer py-2">
+                            <button type="button" class="btn btn-sm btn-primary" data-bs-dismiss="modal">Done</button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -589,12 +609,9 @@
                         @endforeach
                     </select>
                 </div>
-                <div class="col-md-4">
-                    <label for="delivery_address" class="form-label small mb-1">Delivery Address</label>
-                    <input id="delivery_address" name="delivery_address" class="form-control form-control-sm"
-                           maxlength="500" placeholder="House / street / area for the rider"
-                           value="{{ $heldSale?->delivery_address }}">
-                </div>
+                {{-- KHATRI-UX-2: address is captured via the Customer modal (shown on the chip);
+                     a visible duplicate input was redundant. Hidden field keeps the payload + JS id. --}}
+                <input type="hidden" id="delivery_address" name="delivery_address" value="{{ $heldSale?->delivery_address }}">
                 <div class="col-md-2">
                     <label for="delivery_charge_amount" class="form-label small mb-1">Delivery Charge</label>
                     <input id="delivery_charge_amount" name="delivery_charge_amount" type="number" min="0" step="1"
@@ -1473,7 +1490,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const isQuickSale = orderTypeEl.value === 'quick_sale';
             const vWrap = document.getElementById('vehicle-wrap');
             const vEl = document.getElementById('vehicle_number');
-            if (vWrap) vWrap.style.display = isQuickSale ? '' : 'none';
+            if (vWrap) vWrap.style.display = isQuickSale ? 'inline-flex' : 'none';
             if (!isQuickSale && vEl) vEl.value = '';
         }
 
@@ -5410,6 +5427,23 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const branchSel = $id('branch_id');
     if (branchSel) branchSel.addEventListener('change', applyDeliveryChargeDefaults);
+
+    /* ── KHATRI-UX-2: context bar summary (branch · terminal, Change modal) ───── */
+    function updateContextSummary() {
+        const b = $id('branch_id');
+        const t = $id('terminal_id');
+        const bn = $id('ctx-branch-name');
+        const tn = $id('ctx-terminal-name');
+        if (bn && b) bn.textContent = b.selectedOptions[0] ? b.selectedOptions[0].textContent.trim() : '—';
+        if (tn && t) tn.textContent = t.value && t.selectedOptions[0]
+            ? t.selectedOptions[0].textContent.trim().split('—')[0].trim()
+            : 'No terminal';
+    }
+    ['branch_id', 'terminal_id'].forEach(function (id) {
+        const el = $id(id);
+        if (el) el.addEventListener('change', updateContextSummary);
+    });
+    updateContextSummary();
 
     /* modal opens fresh: seed a first result page */
     const modalEl = $id('customerModal');
