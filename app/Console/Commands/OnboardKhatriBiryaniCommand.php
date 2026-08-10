@@ -37,6 +37,7 @@ class OnboardKhatriBiryaniCommand extends Command
     protected $signature = 'onboard:khatri-biryani
         {--owner-password= : Owner password (required on first provision)}
         {--owner-email= : Tenant owner/default report email (can be set later)}
+        {--delivery-password= : Password for the delivery counter user (generated when omitted)}
         {--yes : Confirm execution}';
 
     protected $description = 'Onboard the Khatri Biryani tenant (idempotent; see docs/onboarding/khatri-biryani-2026-08.md).';
@@ -192,14 +193,19 @@ class OnboardKhatriBiryaniCommand extends Command
         $tenancy->activate($tenant->fresh());
         $branchId = (int) DB::connection('tenant')->table('branches')->orderBy('id')->value('id');
 
-        foreach ([['T1', 'Counter 1', 'active'], ['T2', 'Counter 2', 'active'], ['T3', 'Terminal 3', 'inactive'], ['T4', 'Terminal 4', 'inactive']] as [$code, $name, $status]) {
+        // GO-LIVE (2026-08-10): the shop runs THREE named terminals. The legacy Counter 1/2 rows are
+        // renamed in place (same ids → existing shifts/sales keep pointing at the right terminal);
+        // any older extra terminal is retired to 'inactive' so it never consumes an active slot.
+        foreach ([['T1', 'Delivery'], ['T2', 'Takeaway'], ['T3', 'Dine In']] as [$code, $name]) {
             DB::connection('tenant')->table('terminals')->updateOrInsert(
                 ['code' => $code],
-                ['branch_id' => $branchId, 'name' => $name, 'requires_shift' => 1, 'status' => $status,
+                ['branch_id' => $branchId, 'name' => $name, 'requires_shift' => 1, 'status' => 'active',
                  'created_at' => now(), 'updated_at' => now()]
             );
         }
-        $this->info('terminals T1..T4 seeded (T1/T2 active — contract: 4 allowed, 2 active).');
+        DB::connection('tenant')->table('terminals')->whereNotIn('code', ['T1', 'T2', 'T3'])
+            ->update(['status' => 'inactive', 'updated_at' => now()]);
+        $this->info('terminals: Delivery / Takeaway / Dine In active (plan allows 4 — one slot spare).');
 
         $unitId = DB::connection('tenant')->table('units')->where('code', 'EA')->value('id')
             ?: DB::connection('tenant')->table('units')->insertGetId([
@@ -262,24 +268,42 @@ class OnboardKhatriBiryaniCommand extends Command
         }
         $this->info('menu seeded: ' . count(self::MENU) . " parents + {$childCount} child categories, {$productCount} service-based products (small→large ordering).");
 
-        // ── Network KOT printers + order-type-aware half/half category routing (user request) ──
-        // Two LAN printers; dine_in/quick_sale split categories 1-4 → P1, 5-8 → P2; takeaway/delivery
-        // use a DIFFERENT alternating half so order-type-aware routing is genuinely exercised.
+        // ── GO-LIVE printers (2026-08-10 final decision): TWO Xprinter units ──────────────────
+        // P1 "Delivery Printer" sits at the delivery counter: reachable over the LAN (our agent
+        // prints raw ESC/POS to ip:9100) AND by USB for the POS "print here" preview button. It is
+        // the DEFAULT printer and prints the receipt/bill plus the KOT for every category.
+        // P2 is network-only and takes the drinks/sweets side: Beverages, Desserts, Extras.
+        // IPs are placeholders — set the real ones on site (Printing → Printers).
+        $printers = [
+            'PRINTER-1' => ['Delivery Printer (Receipt + KOT)', '192.168.1.50', 'both', 1],
+            'PRINTER-2' => ['Beverages / Desserts Printer', '192.168.1.51', 'kot', 0],
+        ];
         $printerIds = [];
-        foreach ([['KOT-NET-1', 'Kitchen Printer 1', '192.168.1.54'], ['KOT-NET-2', 'Kitchen Printer 2', '192.168.1.87']] as $i => [$code, $name, $ip]) {
+        foreach ($printers as $code => [$name, $ip, $role, $isDefault]) {
             DB::connection('tenant')->table('printers')->updateOrInsert(
                 ['code' => $code],
                 ['branch_id' => $branchId, 'name' => $name, 'printer_type' => 'network',
-                 'print_role' => 'kot', 'supports_reminder' => 0, 'ip_address' => $ip, 'port' => 9100,
-                 'is_default' => $i === 0 ? 1 : 0, 'is_active' => 1, 'created_at' => now(), 'updated_at' => now()]
+                 'print_role' => $role, 'supports_reminder' => 0, 'ip_address' => $ip, 'port' => 9100,
+                 'is_default' => $isDefault, 'is_active' => 1, 'created_at' => now(), 'updated_at' => now()]
             );
-            $printerIds[] = (int) DB::connection('tenant')->table('printers')->where('code', $code)->value('id');
+            $printerIds[$code] = (int) DB::connection('tenant')->table('printers')->where('code', $code)->value('id');
         }
-        // Split by PARENT category; child categories inherit their parent's printer (KOT routing
-        // keys on the product's own category_id, which is now a CHILD for Biryani/Changezi items —
-        // without child mappings those lines would silently fall to the default printer).
-        $parentIds = DB::connection('tenant')->table('categories')->whereNull('parent_id')->orderBy('sort_order')->pluck('id')->values();
-        $half = (int) ceil($parentIds->count() / 2);
+        // Retire the earlier trial printers (incl. the reminder unit) — this restaurant runs two
+        // devices only. Their mappings go with them so nothing routes to a dead destination.
+        $retired = DB::connection('tenant')->table('printers')->whereNotIn('code', array_keys($printers))->pluck('id');
+        if ($retired->isNotEmpty()) {
+            DB::connection('tenant')->table('category_printer_mappings')->whereIn('printer_id', $retired)->delete();
+            DB::connection('tenant')->table('terminal_printer_settings')->whereIn('receipt_printer_id', $retired)->update(['receipt_printer_id' => null]);
+            DB::connection('tenant')->table('terminal_printer_settings')->whereIn('kot_printer_id', $retired)->update(['kot_printer_id' => null]);
+            DB::connection('tenant')->table('printers')->whereIn('id', $retired)->update(['is_active' => 0, 'is_default' => 0, 'updated_at' => now()]);
+        }
+        // No reminder route at all for this restaurant (client decision) — reminders are off.
+        DB::connection('tenant')->table('category_printer_mappings')->where('print_role', 'reminder')->delete();
+
+        // Category → printer: Beverages / Desserts / Extras (and any children) go to P2; everything
+        // else to P1. Mapped for ALL order types so routing is right whichever terminal takes the
+        // order. KOT routing keys on the product's OWN category, so children need their own rows.
+        $p2Parents = ['Beverages', 'Desserts', 'Extras'];
         $mapRow = function (int $categoryId, int $printerId, string $orderType) use ($branchId) {
             DB::connection('tenant')->table('category_printer_mappings')->updateOrInsert(
                 ['branch_id' => $branchId, 'category_id' => $categoryId, 'print_role' => 'kot', 'order_type' => $orderType],
@@ -288,55 +312,34 @@ class OnboardKhatriBiryaniCommand extends Command
             );
         };
         $mapped = 0;
-        foreach ($parentIds as $idx => $parentCategoryId) {
-            $firstHalfPrinter = $idx < $half ? $printerIds[0] : $printerIds[1];          // block split
-            $alternatingPrinter = $idx % 2 === 0 ? $printerIds[0] : $printerIds[1];     // alternating split
+        foreach (DB::connection('tenant')->table('categories')->whereNull('parent_id')->orderBy('sort_order')->get(['id', 'name']) as $parent) {
+            $printerId = in_array($parent->name, $p2Parents, true) ? $printerIds['PRINTER-2'] : $printerIds['PRINTER-1'];
             $familyIds = DB::connection('tenant')->table('categories')
-                ->where('parent_id', $parentCategoryId)->pluck('id')->prepend($parentCategoryId);
+                ->where('parent_id', $parent->id)->pluck('id')->prepend($parent->id);
             foreach ($familyIds as $categoryId) {
-                foreach (['dine_in', 'quick_sale'] as $ot) {
-                    $mapRow($categoryId, $firstHalfPrinter, $ot);
-                    $mapped++;
-                }
-                foreach (['takeaway', 'delivery'] as $ot) {
-                    $mapRow($categoryId, $alternatingPrinter, $ot);
+                foreach (['dine_in', 'takeaway', 'delivery', 'quick_sale'] as $ot) {
+                    $mapRow($categoryId, $printerId, $ot);
                     $mapped++;
                 }
             }
         }
-        $this->info("KOT routing: 2 network printers (192.168.1.54 / 192.168.1.87), half/half PARENT split, children inherit ({$mapped} mappings).");
+        $this->info("printers: PRINTER-1 {$printers['PRINTER-1'][1]} (default, receipt + all KOT) / PRINTER-2 {$printers['PRINTER-2'][1]} (Beverages, Desserts, Extras) — {$mapped} category routes, no reminder printer.");
 
-        // ── Reminder printer + wildcard route (user request) ──
-        // One dedicated Reminder destination on the second kitchen device. print_role stays 'kot'
-        // (printers enum has no 'reminder'); reminder routing keys ONLY on supports_reminder +
-        // the 'reminder' mapping below, and this printer is never picked for KOT (no kot mappings,
-        // is_default=0). NULL category = "All categories"; order_type 'all'; confirm=0 → no prompt.
-        DB::connection('tenant')->table('printers')->updateOrInsert(
-            ['code' => 'REMINDER-NET-1'],
-            ['branch_id' => $branchId, 'name' => 'Reminder Printer', 'printer_type' => 'network',
-             'print_role' => 'kot', 'supports_reminder' => 1, 'ip_address' => '192.168.1.87', 'port' => 9100,
-             'is_default' => 0, 'is_active' => 1, 'created_at' => now(), 'updated_at' => now()]
-        );
-        $reminderPrinterId = (int) DB::connection('tenant')->table('printers')->where('code', 'REMINDER-NET-1')->value('id');
-        DB::connection('tenant')->table('category_printer_mappings')->updateOrInsert(
-            ['branch_id' => $branchId, 'category_id' => null, 'print_role' => 'reminder', 'order_type' => 'all'],
-            ['printer_id' => $reminderPrinterId, 'reminder_confirm_on_addition' => 0, 'is_active' => 1,
-             'created_at' => now(), 'updated_at' => now()]
-        );
-        $this->info('Reminder: REMINDER-NET-1 (192.168.1.87) + all-categories/all-order-types route (no confirm).');
-
-        // ── Auto-print defaults: KOT + Receipt ON for every terminal (user request) ──
-        // No settings row = auto OFF in POS, so seed one per terminal. Printer ids are left
-        // untouched: KOT resolves via category routing, receipts fall back to the browser tab
-        // until a counter receipt printer is configured. Manual printer picks are never clobbered.
-        $terminalIds = DB::connection('tenant')->table('terminals')->pluck('id');
+        // ── Auto-print ON for all three terminals; the Delivery terminal is BOUND to P1 today ──
+        // (Takeaway / Dine In keep auto-print on but no explicit binding yet — their KOTs still
+        // route by category and receipts fall back to the default printer.)
+        $deliveryTerminalId = (int) DB::connection('tenant')->table('terminals')->where('code', 'T1')->value('id');
+        $terminalIds = DB::connection('tenant')->table('terminals')->where('status', 'active')->pluck('id');
         foreach ($terminalIds as $tid) {
+            $binding = (int) $tid === $deliveryTerminalId
+                ? ['receipt_printer_id' => $printerIds['PRINTER-1'], 'kot_printer_id' => $printerIds['PRINTER-1']]
+                : [];
             DB::connection('tenant')->table('terminal_printer_settings')->updateOrInsert(
                 ['terminal_id' => $tid],
-                ['auto_print_receipt' => 1, 'auto_print_kot' => 1, 'created_at' => now(), 'updated_at' => now()]
+                array_merge(['auto_print_receipt' => 1, 'auto_print_kot' => 1, 'updated_at' => now(), 'created_at' => now()], $binding)
             );
         }
-        $this->info('auto-print: KOT + Receipt ON for ' . $terminalIds->count() . ' terminals.');
+        $this->info('auto-print: KOT + Receipt ON for ' . $terminalIds->count() . ' terminals; Delivery terminal bound to PRINTER-1.');
 
         // Manager role: every synced permission belonging to an ENABLED plan module, minus admin/owner
         // concerns. Data-driven from the plan's module route keys — nothing Khatri-specific in code.
@@ -364,8 +367,107 @@ class OnboardKhatriBiryaniCommand extends Command
         app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
         $this->info('Manager role synced: ' . count($names) . ' permissions (no MFG/ERP/roles/billing).');
 
+        $this->seedDeliveryUser($branchId, $deliveryTerminalId);
+
         $this->info('DONE. Verify prices flagged ⚠ in docs/onboarding/khatri-biryani-2026-08.md before go-live.');
 
         return self::SUCCESS;
+    }
+
+    /**
+     * GO-LIVE (2026-08-10): the delivery counter operator. Runs the POS end to end (customers,
+     * delivery charge, hold, bill preview, pay, print) but sees NO master-data administration and
+     * has NO delete permission anywhere. His Sales Orders / Ledger / Report Center are additionally
+     * locked to HIS terminal + delivery order type by UserDataScope (see that service).
+     */
+    private function seedDeliveryUser(int $branchId, int $deliveryTerminalId): void
+    {
+        // Everything the POS screen and its linked flows touch, plus the operational screens the
+        // client listed. Prefix match against the synced route-permission catalog.
+        $allow = [
+            'tenant.dashboard',
+            'tenant.pos', 'tenant.api.pos', 'tenant.api.catalog',
+            'tenant.held-sales', 'tenant.sales-orders', 'tenant.sales-returns', 'tenant.sales-ledger',
+            'tenant.customers', 'tenant.delivery-channels', 'tenant.delivery-riders', 'tenant.payment-methods',
+            'tenant.restaurant',
+            'tenant.shifts',
+            // catalog — view/add/edit only (delete is stripped globally below)
+            'tenant.products', 'tenant.product-variants', 'tenant.product-barcodes', 'tenant.product-branch-prices',
+            'tenant.categories', 'tenant.units', 'tenant.unit-conversions', 'tenant.modifier-groups', 'tenant.combos',
+            // POS lookups + printing of the documents he raises
+            'tenant.ajax.products', 'tenant.ajax.customers', 'tenant.ajax.sales',
+            'tenant.printing.documents', 'tenant.printing.jobs',
+            // Sales Report Center (sections are granted separately below)
+            'tenant.reports.center.index', 'tenant.reports.center.print', 'tenant.reports.center.export',
+        ];
+        // Administration / money / stock stays invisible even if a prefix above would match.
+        $deny = [
+            'tenant.branches', 'tenant.terminals', 'tenant.users', 'tenant.roles', 'tenant.permissions',
+            'tenant.billing', 'tenant.settings', 'tenant.system-reset', 'tenant.currencies',
+            'tenant.finance', 'tenant.inventory', 'tenant.stock', 'tenant.purchas', 'tenant.suppliers',
+            'tenant.goods-receipts', 'tenant.departments', 'tenant.manufacturing', 'tenant.offline-edge',
+            'tenant.quotations', 'tenant.kitchen', 'tenant.promotions', 'tenant.daily-closing',
+            'tenant.reports.center.schedules', 'tenant.reports.center.email',
+        ];
+        // Report sections he may see/print. Overview, Details and Cash & Bank are deliberately OUT:
+        // Overview would expose the restaurant's overall sales (client decision).
+        $sections = ['categories', 'items', 'waiters', 'order-types', 'order-type-combos', 'cancellations'];
+
+        $names = \Spatie\Permission\Models\Permission::where('guard_name', 'tenant')->pluck('name')
+            ->filter(function (string $name) use ($allow, $deny) {
+                // NO DELETE ANYWHERE — the single hard rule for this account.
+                if (str_ends_with($name, '.destroy') || str_contains($name, '.delete')) {
+                    return false;
+                }
+                foreach ($deny as $d) {
+                    if (str_starts_with($name, $d)) {
+                        return false;
+                    }
+                }
+                foreach ($allow as $a) {
+                    if (str_starts_with($name, $a)) {
+                        return true;
+                    }
+                }
+
+                return false;
+            })->values()->all();
+
+        foreach ($sections as $section) {
+            $key = 'tenant.reports.center.sections.' . $section;
+            \Spatie\Permission\Models\Permission::findOrCreate($key, 'tenant');
+            $names[] = $key;
+        }
+
+        $role = \Spatie\Permission\Models\Role::findOrCreate('Delivery', 'tenant');
+        $role->syncPermissions(array_values(array_unique($names)));
+
+        $email = 'delivery_kb@bingoopos.com';
+        $existing = \App\Models\Tenant\User::where('email', $email)->first();
+        $password = $existing ? null : ($this->option('delivery-password') ?: Str::random(16));
+
+        $user = \App\Models\Tenant\User::updateOrCreate(
+            ['email' => $email],
+            array_merge([
+                'name' => 'Delivery Counter',
+                'status' => 'active',
+                'locale' => 'en',
+                'default_branch_id' => $branchId,
+                // POS-side guard: this account can only run DELIVERY orders.
+                'allowed_order_types' => ['delivery'],
+            ], $password ? ['password' => \Illuminate\Support\Facades\Hash::make($password)] : [])
+        );
+        $user->syncRoles([$role]);
+        $user->branches()->syncWithoutDetaching([$branchId]);
+        if ($deliveryTerminalId) {
+            $user->terminals()->sync([$deliveryTerminalId]);   // data scope anchors on this binding
+        }
+        app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
+
+        $this->info('Delivery user ' . $email . ' ready: role Delivery = ' . count($names)
+            . ' permissions (0 delete, no admin/finance/stock), locked to the Delivery terminal + delivery orders.');
+        if ($password) {
+            $this->warn('Delivery password (store securely, shown once): ' . $password);
+        }
     }
 }

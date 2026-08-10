@@ -34,6 +34,10 @@ class SalesOrderController extends Controller
             ->orderByDesc('sale_date')
             ->orderByDesc('id');
 
+        // USER-DATA-SCOPE-1: a terminal/order-type restricted operator only ever lists his own
+        // sales — applied to the QUERY so a hand-edited filter cannot widen it.
+        app(\App\Services\Security\UserDataScope::class)->applyToSales($query, auth('tenant')->user());
+
         if ($request->filled('branch_id')) {
             $query->where('branch_id', $request->branch_id);
         }
@@ -535,6 +539,13 @@ class SalesOrderController extends Controller
 
     public function show(SalesOrder $salesOrder)
     {
+        // USER-DATA-SCOPE-1: out-of-scope sale ids are refused, not just hidden from the list.
+        abort_if(
+            app(\App\Services\Security\UserDataScope::class)->deniesSale(auth('tenant')->user(), $salesOrder),
+            403,
+            'This order belongs to another terminal or order type.'
+        );
+
         $salesOrder->load([
             'branch',
             'terminal',

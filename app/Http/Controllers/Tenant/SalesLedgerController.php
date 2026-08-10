@@ -14,6 +14,14 @@ class SalesLedgerController extends Controller
         $query = SalesLedger::with(['branch', 'order', 'createdBy'])
             ->orderByDesc('created_at');
 
+        // USER-DATA-SCOPE-1: ledger rows follow their sale's scope (rows with no sale stay visible
+        // only to unscoped users, so a counter operator never sees another terminal's money).
+        $scope = app(\App\Services\Security\UserDataScope::class);
+        $user = auth('tenant')->user();
+        if ($scope->isScoped($user)) {
+            $query->whereHas('order', fn ($q) => $scope->applyToSales($q, $user));
+        }
+
         if ($request->filled('branch_id')) {
             $query->where('branch_id', $request->branch_id);
         }

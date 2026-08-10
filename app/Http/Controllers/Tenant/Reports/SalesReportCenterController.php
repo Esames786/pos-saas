@@ -52,10 +52,14 @@ class SalesReportCenterController extends Controller
     private function filters(Request $request): array
     {
         // date presets (today/yesterday/this_week/this_month handled client-side into from/to).
-        return $this->engine->normalizeFilters($request->only([
+        $filters = $this->engine->normalizeFilters($request->only([
             'date_from', 'date_to', 'branch_ids', 'branch_id', 'terminal_id', 'shift_id',
             'cashier_id', 'waiter_id', 'order_type', 'category_id', 'product_id', 'payment_method_id',
         ]));
+
+        // USER-DATA-SCOPE-1: a terminal/order-type restricted operator's reports (screen, print,
+        // export, email) can only ever describe his own terminal and order types.
+        return app(\App\Services\Security\UserDataScope::class)->applyToReportFilters($filters, auth('tenant')->user());
     }
 
     public function index(Request $request)

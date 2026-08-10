@@ -264,3 +264,30 @@ Closing a drawer **short** now shows the difference live on both close screens (
   mode raises one per short drawer.
 - **Draft only**: nothing posts to the GL or the cash-bank ledger until finance posts the voucher
   in Finance → Expenses. Over/exact counts raise nothing.
+
+## GO-LIVE configuration (2026-08-10 final client decision)
+
+**Printers — two Xprinter units** (auto-cut works: the cut command is inside the ESC/POS payload):
+- `PRINTER-1` "Delivery Printer" — LAN (agent prints to `ip:9100`) + USB (POS "print here" preview).
+  Default printer; prints the **receipt/bill** and the **KOT for every category**.
+- `PRINTER-2` — network only; KOT for **Beverages, Desserts, Extras** (incl. their child categories).
+- Seeded IPs are placeholders (`192.168.1.50` / `.51`) — set the real ones on site.
+- **No reminder printer** for this restaurant; earlier trial printers are retired (inactive, routes removed).
+
+**Terminals** — `Delivery`, `Takeaway`, `Dine In`, all active, **auto KOT + auto receipt ON**.
+Only the Delivery terminal is bound to a printer today (receipt + default KOT → PRINTER-1).
+
+**Shifts** — the seeder opens none; the owner opens the shift on site.
+
+**Delivery counter user** — `delivery_kb@bingoopos.com`, role `Delivery` (134 permissions):
+- POS end-to-end (customers + address book, delivery charge, hold/recall, bill preview, pay, print),
+  shifts open/close, held sales, sales orders/returns/ledger, restaurant floors/tables/split bill,
+  customers, delivery channels, payment methods, catalog **view/add/edit**.
+- **Zero delete permissions anywhere**; branches/terminals/users/roles/billing/settings/finance/
+  stock/purchasing/departments/system-reset all denied.
+- **Data lock (`UserDataScope`)**: Sales Orders, Sales Ledger and the whole Report Center are forced
+  to **his terminal + delivery order type** — enforced in the query and on single-record access, so a
+  hand-edited URL cannot widen it. Owner/manager stay unscoped.
+- **Report Center**: both A4 and Thermal print; sections allowed = Categories, Items, Waiters,
+  Order Types, By Order Type, Cancellations. **Overview (overall restaurant sales), Details and
+  Cash & Bank are denied** — the KPI cards disappear with the Overview section.
