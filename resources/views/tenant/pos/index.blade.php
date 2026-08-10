@@ -2332,7 +2332,7 @@ document.addEventListener('DOMContentLoaded', function () {
         ['complete-sale-btn', 'hold-sale-btn', 'bill-preview-btn'].forEach(function (id) {
             var b = document.getElementById(id);
             if (b) {
-                b.disabled = empty;
+                b.disabled = empty || buttonIsBusy(b);
                 b.classList.toggle('opacity-50', empty);
             }
         });
@@ -2954,8 +2954,11 @@ document.addEventListener('DOMContentLoaded', function () {
     /* ── Promo Code ────────────────────────────────────────────────── */
 
     document.getElementById('apply-promo-btn').addEventListener('click', function () {
+        const applyBtn = this;
+        if (buttonIsBusy(applyBtn)) return;
         const code = document.getElementById('promo-code-input').value.trim().toUpperCase();
         if (!code) return;
+        setButtonBusy(applyBtn, true, 'Applying');
         const t = totals();
         const branchId = document.getElementById('branch_id')?.value || '';
         const orderType = document.getElementById('order_type')?.value || 'quick_sale';
@@ -2987,7 +2990,8 @@ document.addEventListener('DOMContentLoaded', function () {
         })
         .catch(function () {
             document.getElementById('promo-feedback').innerHTML = '<span class="text-danger">Failed to validate promo code.</span>';
-        });
+        })
+        .finally(function () { setButtonBusy(applyBtn, false); });
     });
 
     document.getElementById('remove-promo-btn').addEventListener('click', function () {
@@ -4596,7 +4600,7 @@ document.addEventListener('DOMContentLoaded', function () {
             q   = '?reprint=1' + (terminalId ? '&terminal_id=' + encodeURIComponent(terminalId) : '');
         } else {
             url = '{{ url('/printing/jobs/receipt') }}/' + saleId;
-            q   = terminalId ? '?terminal_id=' + encodeURIComponent(terminalId) : '';
+            q   = '?reprint=1' + (terminalId ? '&terminal_id=' + encodeURIComponent(terminalId) : '');
         }
         fetch(url + q, { method: 'POST', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' } })
         .then(function (res) { return res.json(); })
@@ -4613,7 +4617,10 @@ document.addEventListener('DOMContentLoaded', function () {
        template + saved layout as the printed bill, so preview and paper can never drift.
        Nothing is saved: the sale is built in memory and thrown away. ── */
     function billPreview() {
+        const previewBtn = document.getElementById('bill-preview-btn');
+        if (buttonIsBusy(previewBtn)) return;
         if (!cart.length) { toast('warning', 'Cart is empty'); return; }
+        setButtonBusy(previewBtn, true, 'Building preview');
         const body = document.getElementById('bill-preview-modal-body');
         body.innerHTML = '<div class="text-center text-muted py-4">Building bill preview…</div>';
         document.getElementById('billPreviewModalLabel').textContent = 'Current Cart Preview';
@@ -4657,7 +4664,8 @@ document.addEventListener('DOMContentLoaded', function () {
         })
         .catch(function (error) {
             body.innerHTML = '<div class="alert alert-danger m-3">' + escapeHtml(error.message || 'Preview failed') + '</div>';
-        });
+        })
+        .finally(function () { setButtonBusy(previewBtn, false); });
     }
     function showTableBillPreview(sessionId) {
         fetch('{{ url('/restaurant/table-sessions') }}/' + sessionId + '/bill-preview', { headers: { 'Accept': 'application/json' } })
@@ -4674,6 +4682,8 @@ document.addEventListener('DOMContentLoaded', function () {
     // held sale or a just-paid sale); on the unsaved current cart, ask to hold/pay first.
     // If no network printer is mapped, the endpoint returns fallback -> browser preview.
     document.getElementById('send-network-receipt-btn')?.addEventListener('click', function () {
+        const btn = this;
+        if (buttonIsBusy(btn)) return;
         const saleId = _currentHeldSaleId || _lastSaleId;
         if (!saleId) {
             toast('warning', 'Hold or pay this order first — sending to a network printer needs a saved order.');
@@ -4681,14 +4691,12 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         const terminalId = (document.getElementById('terminal_id') || {}).value || '';
         const q = '?reprint=1' + (terminalId ? '&terminal_id=' + encodeURIComponent(terminalId) : '');
-        const btn = this, orig = btn.innerHTML;
-        btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+        setButtonBusy(btn, true, 'Sending');
         fetch('{{ url('/printing/jobs/receipt') }}/' + saleId + q, {
             method: 'POST', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
         })
         .then(function (res) { return res.json(); })
         .then(function (data) {
-            btn.disabled = false; btn.innerHTML = orig;
             if (data.fallback) {
                 toast('warning', 'No network receipt printer is mapped — opening a browser preview instead.');
                 openFallbackPreviews(data);
@@ -4696,7 +4704,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 toast('success', 'Receipt sent to the network printer.');
             }
         })
-        .catch(function () { btn.disabled = false; btn.innerHTML = orig; toast('error', 'Could not send to the network printer.'); });
+        .catch(function () { toast('error', 'Could not send to the network printer.'); })
+        .finally(function () { setButtonBusy(btn, false); });
     });
 
     document.getElementById('pos-session-bill-preview')?.addEventListener('click', function () {
@@ -4720,6 +4729,9 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('last-print-btn').addEventListener('click', openRecentPrints);
 
     document.getElementById('reprint-all-kot-btn').addEventListener('click', function () {
+        const btn = this;
+        if (buttonIsBusy(btn)) return;
+        setButtonBusy(btn, true, 'Reprinting KOT');
         const terminalId = (document.getElementById('terminal_id') || {}).value || '';
         const base  = '{{ url('/printing/jobs/kot') }}/' + _lastSaleId;
         const query = '?reprint=1' + (terminalId ? '&terminal_id=' + encodeURIComponent(terminalId) : '');
@@ -4730,7 +4742,8 @@ document.addEventListener('DOMContentLoaded', function () {
             toast('success', 'All KOT re-queued for ' + _lastSaleNo);
             loadRecentPrintJobs();
         })
-        .catch(function () { toast('error', 'Failed to reprint KOT'); });
+        .catch(function () { toast('error', 'Failed to reprint KOT'); })
+        .finally(function () { setButtonBusy(btn, false); });
     });
 
     document.getElementById('reprint-receipt-btn').addEventListener('click', function () {

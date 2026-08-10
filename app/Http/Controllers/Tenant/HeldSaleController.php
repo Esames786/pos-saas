@@ -16,6 +16,7 @@ use App\Models\Tenant\Terminal;
 use App\Services\Sales\SalesTotalsService;
 use App\Services\Sales\KotCancellationService;
 use App\Services\Sales\ShiftService;
+use App\Services\Security\UserDataScope;
 use App\Exceptions\ShiftException;
 use App\Support\TenantClock;
 use Illuminate\Http\Request;
@@ -30,6 +31,7 @@ class HeldSaleController extends Controller
         $query = SalesOrder::with(['branch', 'customer', 'restaurantTable', 'restaurantWaiter'])
             ->where('status', 'held')
             ->orderByDesc('updated_at');
+        app(UserDataScope::class)->applyToSales($query, auth('tenant')->user());
 
         if ($request->filled('table_session_id')) {
             $query->where('restaurant_table_session_id', $request->table_session_id);
@@ -44,6 +46,9 @@ class HeldSaleController extends Controller
     public function ajaxList(Request $request)
     {
         $branchId = $request->integer('branch_id');
+        if ($branchId) {
+            app(UserDataScope::class)->assertPosSelection(auth('tenant')->user(), $branchId, null);
+        }
 
         // Same rule as Recent Orders: an operator only ever sees the order types he may run.
         $allowedTypes = auth("tenant")->user()?->effectiveAllowedOrderTypes() ?? [];
@@ -55,6 +60,7 @@ class HeldSaleController extends Controller
             ->when($allowedTypes, fn ($q) => $q->whereIn('order_type', $allowedTypes))
             ->when($filterType !== '' && in_array($filterType, $allowedTypes, true),
                 fn ($q) => $q->where('order_type', $filterType))
+            ->tap(fn ($query) => app(UserDataScope::class)->applyToSales($query, auth('tenant')->user()))
             ->orderByDesc('updated_at')
             ->limit(50)
             ->get();
@@ -109,10 +115,16 @@ class HeldSaleController extends Controller
     public function ajaxTableSessions(Request $request)
     {
         $branchId = $request->integer('branch_id');
+        $scope = app(UserDataScope::class);
+        if ($branchId) {
+            $scope->assertPosSelection(auth('tenant')->user(), $branchId, null);
+        }
 
         $tables = RestaurantTable::with(['openSession.waiter', 'floor'])
             ->where('status', 'active')
             ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
+            ->when(! $branchId && $scope->hasBranchAssignments(auth('tenant')->user()),
+                fn ($q) => $q->whereIn('branch_id', $scope->branchIds(auth('tenant')->user())))
             ->orderBy('table_no')
             ->limit(100)
             ->get();
@@ -133,6 +145,11 @@ class HeldSaleController extends Controller
     /** AJAX: open held orders for a specific table session */
     public function tableSessionOpenOrders(RestaurantTableSession $restaurantTableSession)
     {
+        app(UserDataScope::class)->assertPosSelection(
+            auth('tenant')->user(),
+            (int) $restaurantTableSession->branch_id,
+            null
+        );
         $restaurantTableSession->loadMissing(['table', 'waiter']);
 
         $orders = SalesOrder::with(['lines'])
@@ -274,6 +291,17 @@ class HeldSaleController extends Controller
 
         if (!auth('tenant')->user()?->allowsOrderType($data['order_type'])) {
             abort(403, 'Your account is not allowed to use this order type.');
+        }
+
+        app(\App\Services\Security\UserDataScope::class)->assertPosSelection(
+            auth('tenant')->user(),
+            (int) $data['branch_id'],
+            ! empty($data['terminal_id']) ? (int) $data['terminal_id'] : null
+        );
+        if (! empty($data['held_sale_id'])) {
+            $held = SalesOrder::where('status', 'held')->findOrFail((int) $data['held_sale_id']);
+            abort_unless((int) $held->branch_id === (int) $data['branch_id'], 422, 'The recalled order belongs to another branch.');
+            abort_if(app(UserDataScope::class)->deniesSale(auth('tenant')->user(), $held), 403);
         }
 
         // BRANCH-OPERATING-MODE-1: block cloud held-sale mutation for an active Local POS branch.
@@ -712,6 +740,7 @@ class HeldSaleController extends Controller
 
     public function cancel(Request $request, SalesOrder $salesOrder, KotCancellationService $cancellationService)
     {
+        abort_if(app(UserDataScope::class)->deniesSale(auth('tenant')->user(), $salesOrder), 403);
         app(\App\Services\Edge\BranchOperatingModeService::class)
             ->assertSaleMutationAllowed(\App\Models\Tenant\Branch::findOrFail($salesOrder->branch_id));
 

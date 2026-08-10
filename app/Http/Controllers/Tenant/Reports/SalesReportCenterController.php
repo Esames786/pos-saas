@@ -105,12 +105,16 @@ class SalesReportCenterController extends Controller
             'allowedSections' => $allowed,
             'filters' => $filters,
             'data' => $data,
-            'branches' => \App\Models\Tenant\Branch::where('status', 'active')->orderBy('name')->get(['id', 'name']),
-            'terminals' => \App\Models\Tenant\Terminal::orderBy('name')->get(['id', 'name', 'branch_id']),
+            'branches' => app(\App\Services\Security\UserDataScope::class)
+                ->branchesForPos(auth('tenant')->user()),
+            'terminals' => app(\App\Services\Security\UserDataScope::class)
+                ->terminalsForPos(auth('tenant')->user()),
             'waiters' => DB::connection('tenant')->table('restaurant_waiters')->where('status', 'active')->orderBy('name')->get(['id', 'name']),
             'categories' => DB::connection('tenant')->table('categories')->where('is_active', 1)->orderBy('name')->get(['id', 'name', 'parent_id']),
             'paymentMethods' => DB::connection('tenant')->table('payment_methods')->where('is_active', 1)->orderBy('name')->get(['id', 'name']),
-            'orderTypes' => \App\Models\Tenant\User::ORDER_TYPES,
+            'orderTypes' => ($types = app(\App\Services\Security\UserDataScope::class)->orderTypes(auth('tenant')->user()))
+                ? array_intersect_key(\App\Models\Tenant\User::ORDER_TYPES, array_flip($types))
+                : \App\Models\Tenant\User::ORDER_TYPES,
             'schedules' => DB::connection('tenant')->table('report_schedules')->orderBy('id')->get(),
         ]);
     }

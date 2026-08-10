@@ -208,13 +208,26 @@ class OnboardKhatriBiryaniCommand extends Command
         // stray "Main Branch" after the rename; remove any extra branch, but ONLY when it carries
         // no operational data — a branch with real activity is never touched.
         foreach (DB::connection('tenant')->table('branches')->where('id', '!=', $branchId)->get() as $stray) {
-            $used = 0;
-            foreach (['sales_orders', 'shifts', 'printers', 'terminals', 'category_printer_mappings',
-                      'stock_balances', 'daily_closings', 'restaurant_table_sessions'] as $table) {
-                $used += DB::connection('tenant')->table($table)->where('branch_id', $stray->id)->count();
+            // Fail closed: inspect every tenant table carrying branch_id. A fixed shortlist can
+            // silently miss finance, purchasing, inventory, or manufacturing activity added later.
+            $scaffolding = ['restaurant_tables', 'restaurant_floors', 'restaurant_waiters',
+                'receipt_layout_settings', 'branch_user'];
+            $database = DB::connection('tenant')->getDatabaseName();
+            $branchTables = collect(DB::connection('tenant')->select(
+                'SELECT TABLE_NAME AS table_name FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND COLUMN_NAME = ?',
+                [$database, 'branch_id']
+            ))->pluck('table_name')->map(fn ($table) => (string) $table)->unique();
+
+            $activity = [];
+            foreach ($branchTables->reject(fn ($table) => $table === 'branches' || in_array($table, $scaffolding, true)) as $table) {
+                $count = DB::connection('tenant')->table($table)->where('branch_id', $stray->id)->count();
+                if ($count > 0) {
+                    $activity[$table] = $count;
+                }
             }
-            if ($used > 0) {
-                $this->warn("branch #{$stray->id} ({$stray->name}) has {$used} operational rows — left in place.");
+            if ($activity !== []) {
+                $summary = collect($activity)->map(fn ($count, $table) => "{$table}:{$count}")->implode(', ');
+                $this->warn("branch #{$stray->id} ({$stray->name}) has operational rows ({$summary}) — left in place.");
                 continue;
             }
             // detach the empty scaffolding the provisioner seeded for it
@@ -222,7 +235,7 @@ class OnboardKhatriBiryaniCommand extends Command
             if ($tableIds->isNotEmpty()) {
                 DB::connection('tenant')->table('restaurant_tables')->whereIn('id', $tableIds)->delete();
             }
-            foreach (['restaurant_floors', 'restaurant_waiters', 'receipt_layout_settings', 'branch_user', 'cash_bank_accounts'] as $table) {
+            foreach (['restaurant_floors', 'restaurant_waiters', 'receipt_layout_settings', 'branch_user'] as $table) {
                 DB::connection('tenant')->table($table)->where('branch_id', $stray->id)->delete();
             }
             DB::connection('tenant')->table('users')->where('default_branch_id', $stray->id)->update(['default_branch_id' => $branchId]);

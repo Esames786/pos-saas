@@ -20,6 +20,7 @@ use App\Models\Tenant\Terminal;
 use App\Models\Tenant\TerminalPrinterSetting;
 use App\Services\Kitchen\UnitConversionService;
 use App\Services\Sales\SalesTotalsService;
+use App\Services\Security\UserDataScope;
 use Illuminate\Http\Request;
 
 class POSController extends Controller
@@ -28,12 +29,14 @@ class POSController extends Controller
     {
         $user = auth('tenant')->user();
         $allowedOrderTypes = $user?->effectiveAllowedOrderTypes() ?? array_keys(\App\Models\Tenant\User::ORDER_TYPES);
-        $branches = Branch::where('status', 'active')->orderBy('name')->get();
+        $scope = app(UserDataScope::class);
+        $branches = $scope->branchesForPos($user);
+        abort_if($branches->isEmpty(), 403, 'Your account has no active branch access.');
 
-        $selectedBranchId = (int) (
-            $request->branch_id
-            ?: optional($branches->first())->id
-        );
+        $requestedBranchId = (int) $request->branch_id;
+        $selectedBranchId = $branches->contains('id', $requestedBranchId)
+            ? $requestedBranchId
+            : (int) $branches->first()->id;
 
         $heldSale = null;
 
@@ -47,6 +50,7 @@ class POSController extends Controller
                     'restaurantWaiter',
                 ])
                 ->where('status', 'held')
+                ->whereIn('branch_id', $branches->pluck('id'))
                 ->find($request->held_sale_id);
         }
 
@@ -55,6 +59,7 @@ class POSController extends Controller
         if ($request->filled('table_session_id')) {
             $tableSession = RestaurantTableSession::with(['table.floor', 'waiter', 'salesOrders' => fn ($query) => $query->where('status', 'held')])
                 ->whereIn('status', ['open', 'bill_requested'])
+                ->whereIn('branch_id', $branches->pluck('id'))
                 ->find($request->table_session_id);
         }
 
@@ -282,7 +287,7 @@ class POSController extends Controller
         return view('tenant.pos.index', [
             'branches'         => $branches,
             'selectedBranchId' => $selectedBranchId,
-            'terminals'        => Terminal::where('status', 'active')->with('branch')->orderBy('name')->get(),
+            'terminals'        => $scope->terminalsForPos($user, $branches->pluck('id')->map(fn ($id) => (int) $id)->all()),
             // CUSTOMER-UX-1: customers are looked up on demand via /ajax/customers — rendering
             // the whole book into the page hung the POS once a tenant passed a few hundred rows.
             'categories'       => Category::with('children')
@@ -350,10 +355,12 @@ class POSController extends Controller
      */
     public function tableBoard(Request $request)
     {
-        $selectedBranchId = (int) (
-            $request->branch_id
-            ?: optional(Branch::where('status', 'active')->orderBy('name')->first())->id
-        );
+        $branches = app(UserDataScope::class)->branchesForPos(auth('tenant')->user());
+        abort_if($branches->isEmpty(), 403, 'Your account has no active branch access.');
+        $requestedBranchId = (int) $request->branch_id;
+        $selectedBranchId = $branches->contains('id', $requestedBranchId)
+            ? $requestedBranchId
+            : (int) $branches->first()->id;
 
         $tableSession = null;
         if ($request->filled('selected_session_id')) {
@@ -480,6 +487,11 @@ class POSController extends Controller
         ]);
 
         abort_unless(auth('tenant')->user()?->allowsOrderType($data['order_type']), 403);
+        app(UserDataScope::class)->assertPosSelection(
+            auth('tenant')->user(),
+            (int) $data['branch_id'],
+            ! empty($data['terminal_id']) ? (int) $data['terminal_id'] : null
+        );
 
         $branch = Branch::findOrFail((int) $data['branch_id']);
         $orderType = (string) $data['order_type'];
@@ -606,6 +618,7 @@ class POSController extends Controller
         if (!auth('tenant')->user()?->allowsOrderType($data['order_type'])) {
             abort(403, 'Your account is not allowed to use this order type.');
         }
+        app(UserDataScope::class)->assertPosSelection(auth('tenant')->user(), (int) $data['branch_id'], null);
 
         $resolvedLines = collect($data['lines'] ?? [])
             ->filter(fn ($line) => (float) ($line['quantity'] ?? 0) > 0)
@@ -658,6 +671,9 @@ class POSController extends Controller
     public function recentSales(Request $request)
     {
         $branchId = $request->integer('branch_id');
+        if ($branchId) {
+            app(UserDataScope::class)->assertPosSelection(auth('tenant')->user(), $branchId, null);
+        }
 
         // Only the order types this operator is allowed to run — a delivery counter never sees
         // dine-in/takeaway orders. An optional filter narrows further, but never widens.
@@ -671,6 +687,7 @@ class POSController extends Controller
             ->when($allowedTypes, fn ($q) => $q->whereIn('order_type', $allowedTypes))
             ->when($filterType !== '' && in_array($filterType, $allowedTypes, true),
                 fn ($q) => $q->where('order_type', $filterType))
+            ->tap(fn ($query) => app(UserDataScope::class)->applyToSales($query, auth('tenant')->user()))
             ->orderByDesc('id')
             ->limit(50)
             ->get();

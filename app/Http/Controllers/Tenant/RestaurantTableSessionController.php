@@ -19,8 +19,14 @@ class RestaurantTableSessionController extends Controller
     public function board(Request $request)
     {
         $this->assertDineInAllowed();
-        $branches         = Branch::where('status', 'active')->orderBy('name')->get();
-        $selectedBranchId = $request->input('branch_id', $branches->first()?->id);
+        $scope = app(\App\Services\Security\UserDataScope::class);
+        $branches = $scope->branchesForPos(auth('tenant')->user());
+        abort_if($branches->isEmpty(), 403, 'Your account has no active branch assignment.');
+
+        $requestedBranchId = (int) $request->input('branch_id', 0);
+        $selectedBranchId = $branches->contains('id', $requestedBranchId)
+            ? $requestedBranchId
+            : (int) $branches->first()->id;
 
         $floors = RestaurantFloor::with([
             'tables' => fn ($q) => $q->orderBy('sort_order'),
@@ -38,8 +44,7 @@ class RestaurantTableSessionController extends Controller
 
         // SHIFT-POS-INTEGRATION-CLOSURE-1: opening a table binds to a specific terminal's shift, so
         // the board must let the host pick the terminal they are working from.
-        $terminals = Terminal::where('branch_id', $selectedBranchId)
-            ->where('status', 'active')->orderBy('name')->get();
+        $terminals = $scope->terminalsForPos(auth('tenant')->user(), [$selectedBranchId]);
 
         return view('tenant.restaurant.board', compact('floors', 'waiters', 'branches', 'selectedBranchId', 'terminals'));
     }
@@ -47,6 +52,11 @@ class RestaurantTableSessionController extends Controller
     public function open(Request $request, RestaurantTable $restaurantTable)
     {
         $this->assertDineInAllowed();
+        app(\App\Services\Security\UserDataScope::class)->assertPosSelection(
+            auth('tenant')->user(),
+            (int) $restaurantTable->branch_id,
+            $request->filled('terminal_id') ? (int) $request->input('terminal_id') : null,
+        );
         // BRANCH-OPERATING-MODE-1: table/session mutations belong to the Branch Server for active Local POS branches.
         app(\App\Services\Edge\BranchOperatingModeService::class)
             ->assertSaleMutationAllowed(\App\Models\Tenant\Branch::findOrFail($restaurantTable->branch_id));
@@ -158,6 +168,7 @@ class RestaurantTableSessionController extends Controller
     public function billRequested(RestaurantTableSession $restaurantTableSession)
     {
         $this->assertDineInAllowed();
+        $this->assertSessionAccess($restaurantTableSession);
         app(\App\Services\Edge\BranchOperatingModeService::class)
             ->assertSaleMutationAllowed(\App\Models\Tenant\Branch::findOrFail($restaurantTableSession->branch_id));
 
@@ -185,6 +196,7 @@ class RestaurantTableSessionController extends Controller
     public function close(Request $request, RestaurantTableSession $restaurantTableSession)
     {
         $this->assertDineInAllowed();
+        $this->assertSessionAccess($restaurantTableSession);
         app(\App\Services\Edge\BranchOperatingModeService::class)
             ->assertSaleMutationAllowed(\App\Models\Tenant\Branch::findOrFail($restaurantTableSession->branch_id));
 
@@ -221,6 +233,7 @@ class RestaurantTableSessionController extends Controller
     public function show(RestaurantTableSession $restaurantTableSession)
     {
         $this->assertDineInAllowed();
+        $this->assertSessionAccess($restaurantTableSession);
         $restaurantTableSession->load([
             'table.floor',
             'waiter',
@@ -234,6 +247,7 @@ class RestaurantTableSessionController extends Controller
     public function billPreview(RestaurantTableSession $restaurantTableSession)
     {
         $this->assertDineInAllowed();
+        $this->assertSessionAccess($restaurantTableSession);
         $restaurantTableSession->load([
             'branch',
             'table.floor.tables',
@@ -270,6 +284,7 @@ class RestaurantTableSessionController extends Controller
     public function move(Request $request, RestaurantTableSession $restaurantTableSession)
     {
         $this->assertDineInAllowed();
+        $this->assertSessionAccess($restaurantTableSession);
         app(\App\Services\Edge\BranchOperatingModeService::class)
             ->assertSaleMutationAllowed(\App\Models\Tenant\Branch::findOrFail($restaurantTableSession->branch_id));
 
@@ -383,6 +398,7 @@ class RestaurantTableSessionController extends Controller
     public function merge(Request $request, RestaurantTableSession $restaurantTableSession)
     {
         $this->assertDineInAllowed();
+        $this->assertSessionAccess($restaurantTableSession);
         app(\App\Services\Edge\BranchOperatingModeService::class)
             ->assertSaleMutationAllowed(\App\Models\Tenant\Branch::findOrFail($restaurantTableSession->branch_id));
 
@@ -532,6 +548,15 @@ class RestaurantTableSessionController extends Controller
             auth('tenant')->user()?->allowsOrderType('dine_in'),
             403,
             'Your account is not allowed to use Dine In orders.'
+        );
+    }
+
+    private function assertSessionAccess(RestaurantTableSession $session): void
+    {
+        app(\App\Services\Security\UserDataScope::class)->assertPosSelection(
+            auth('tenant')->user(),
+            (int) $session->branch_id,
+            null,
         );
     }
 }

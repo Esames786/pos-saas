@@ -68,6 +68,18 @@ class UserDataScopeMySqlTest extends MySqlTenantTestCase
         $this->assertSame(4, $ownerQuery->count());
     }
 
+    public function test_terminal_assignment_also_limits_the_pos_branch_list(): void
+    {
+        $otherBranchId = $this->makeBranch(['name' => 'Other Branch']);
+        $scope = app(UserDataScope::class);
+
+        $this->assertSame(
+            [$this->branchId],
+            $scope->branchesForPos($this->deliveryUser)->pluck('id')->map(fn ($id) => (int) $id)->all(),
+        );
+        $this->assertTrue($scope->branchesForPos($this->owner)->contains('id', $otherBranchId));
+    }
+
     public function test_out_of_scope_sale_ids_are_denied_individually(): void
     {
         $scope = app(UserDataScope::class);
@@ -90,13 +102,17 @@ class UserDataScopeMySqlTest extends MySqlTenantTestCase
             ['terminal_id' => $this->otherTerminalId, 'order_type' => 'dine_in'],
             $this->deliveryUser
         );
-        $this->assertSame($this->deliveryTerminalId, $forced['terminal_id']);
-        $this->assertSame('delivery', $forced['order_type']);
+        $this->assertNull($forced['terminal_id']);
+        $this->assertNull($forced['order_type']);
+        $this->assertSame([$this->deliveryTerminalId], $forced['allowed_terminal_ids']);
+        $this->assertSame(['delivery'], $forced['allowed_order_types']);
 
         // "All" (no filter) is likewise narrowed to his own scope
         $narrowed = $scope->applyToReportFilters(['terminal_id' => null, 'order_type' => null], $this->deliveryUser);
-        $this->assertSame($this->deliveryTerminalId, $narrowed['terminal_id']);
-        $this->assertSame('delivery', $narrowed['order_type']);
+        $this->assertNull($narrowed['terminal_id']);
+        $this->assertNull($narrowed['order_type']);
+        $this->assertSame([$this->deliveryTerminalId], $narrowed['allowed_terminal_ids']);
+        $this->assertSame(['delivery'], $narrowed['allowed_order_types']);
 
         // the owner keeps whatever he asked for (including "All")
         $ownerFilters = $scope->applyToReportFilters(['terminal_id' => null, 'order_type' => null], $this->owner);

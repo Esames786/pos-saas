@@ -199,8 +199,10 @@ class PrintRoutingService
             }
 
             if ($printers->isEmpty()) {
-                $key = 'browser';
+                $key = 'browser_cat_' . ($categoryId ?: 0);
                 $routes[$key]['printer']                           = null;
+                $routes[$key]['category_id']                       = $categoryId ? (int) $categoryId : null;
+                $routes[$key]['category_name']                     = $this->categoryLabel($line);
                 $routes[$key]['line_ids'][]                        = $line->id;
                 $routes[$key]['line_quantities'][(string) $line->id] = $qtyToPrint;
                 continue;

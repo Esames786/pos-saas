@@ -44,10 +44,12 @@ class SalesReportEngine
             'date_to' => $raw['date_to'] ?? $today,
             'branch_ids' => $this->resolveBranchIds($raw),
             'terminal_id' => $raw['terminal_id'] ?? null,
+            'allowed_terminal_ids' => array_values(array_filter(array_map('intval', $raw['allowed_terminal_ids'] ?? []))),
             'shift_id' => $raw['shift_id'] ?? null,
             'cashier_id' => $raw['cashier_id'] ?? null,
             'waiter_id' => $raw['waiter_id'] ?? null,
             'order_type' => $raw['order_type'] ?? null,
+            'allowed_order_types' => array_values(array_filter($raw['allowed_order_types'] ?? [])),
             'category_id' => $raw['category_id'] ?? null,
             'product_id' => $raw['product_id'] ?? null,
             'payment_method_id' => $raw['payment_method_id'] ?? null,
@@ -63,10 +65,12 @@ class SalesReportEngine
             ->whereRaw($this->businessDayExpr() . ' <= ?', [$f['date_to']])
             ->when($f['branch_ids'], fn ($q) => $q->whereIn('o.branch_id', $f['branch_ids']))
             ->when($f['terminal_id'], fn ($q) => $q->where('o.terminal_id', $f['terminal_id']))
+            ->when(! $f['terminal_id'] && $f['allowed_terminal_ids'], fn ($q) => $q->whereIn('o.terminal_id', $f['allowed_terminal_ids']))
             ->when($f['shift_id'], fn ($q) => $q->where('o.shift_id', $f['shift_id']))
             ->when($f['cashier_id'], fn ($q) => $q->where('o.created_by_user_id', $f['cashier_id']))
             ->when($f['waiter_id'], fn ($q) => $q->where('o.restaurant_waiter_id', $f['waiter_id']))
             ->when($f['order_type'], fn ($q) => $q->where('o.order_type', $f['order_type']))
+            ->when(! $f['order_type'] && $f['allowed_order_types'], fn ($q) => $q->whereIn('o.order_type', $f['allowed_order_types']))
             ->when($f['payment_method_id'], fn ($q) => $q->whereExists(function ($s) use ($f) {
                 $s->selectRaw('1')->from('sale_payments as sp')
                     ->whereColumn('sp.sales_order_id', 'o.id')
@@ -105,8 +109,10 @@ class SalesReportEngine
             ->whereRaw('DATE(r.return_date) <= ?', [$f['date_to']])
             ->when($f['branch_ids'], fn ($q) => $q->whereIn('r.branch_id', $f['branch_ids']))
             ->when($f['order_type'], fn ($q) => $q->where('o.order_type', $f['order_type']))
+            ->when(! $f['order_type'] && $f['allowed_order_types'], fn ($q) => $q->whereIn('o.order_type', $f['allowed_order_types']))
             ->when($f['waiter_id'], fn ($q) => $q->where('o.restaurant_waiter_id', $f['waiter_id']))
             ->when($f['terminal_id'], fn ($q) => $q->where('o.terminal_id', $f['terminal_id']))
+            ->when(! $f['terminal_id'] && $f['allowed_terminal_ids'], fn ($q) => $q->whereIn('o.terminal_id', $f['allowed_terminal_ids']))
             ->when($f['cashier_id'], fn ($q) => $q->where('o.created_by_user_id', $f['cashier_id']))
             ->when($f['shift_id'], fn ($q) => $q->where('o.shift_id', $f['shift_id']));
     }
@@ -414,8 +420,10 @@ class SalesReportEngine
             ->whereRaw('DATE(x.cancelled_at) <= ?', [$f['date_to']])
             ->when($f['branch_ids'], fn ($q) => $q->whereIn('o.branch_id', $f['branch_ids']))
             ->when($f['terminal_id'], fn ($q) => $q->where('o.terminal_id', $f['terminal_id']))
+            ->when(! $f['terminal_id'] && $f['allowed_terminal_ids'], fn ($q) => $q->whereIn('o.terminal_id', $f['allowed_terminal_ids']))
             ->when($f['waiter_id'], fn ($q) => $q->where('o.restaurant_waiter_id', $f['waiter_id']))
             ->when($f['order_type'], fn ($q) => $q->where('o.order_type', $f['order_type']))
+            ->when(! $f['order_type'] && $f['allowed_order_types'], fn ($q) => $q->whereIn('o.order_type', $f['allowed_order_types']))
             ->groupBy('x.product_name', 'o.order_type', 'vr.name')
             ->selectRaw(
                 'x.product_name, o.order_type, vr.name as reason,
@@ -489,6 +497,7 @@ class SalesReportEngine
             ->whereRaw("COALESCE(s.business_date, DATE(s.opened_at)) <= ?", [$f['date_to']])
             ->when($f['branch_ids'], fn ($q) => $q->whereIn('s.branch_id', $f['branch_ids']))
             ->when($f['terminal_id'], fn ($q) => $q->where('s.terminal_id', $f['terminal_id']))
+            ->when(! $f['terminal_id'] && $f['allowed_terminal_ids'], fn ($q) => $q->whereIn('s.terminal_id', $f['allowed_terminal_ids']))
             ->selectRaw(
                 'COUNT(*) as shifts,
                  COALESCE(SUM(s.opening_cash),0) as opening_cash,

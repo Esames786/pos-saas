@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Printing;
 
+use App\Models\Tenant\Category;
 use App\Models\Tenant\CategoryPrinterMapping;
 use App\Models\Tenant\Printer;
 use App\Models\Tenant\Product;
@@ -136,6 +137,34 @@ class PrintRoutingFoundationTest extends TestCase
         $this->assertSame([$printerA->id, $printerB->id], $printerIds);
         $this->assertCount(2, $routes);
         $this->assertSame([1], collect($routes)->pluck('line_ids.0')->unique()->values()->all());
+    }
+
+    public function test_browser_fallback_keeps_each_category_on_its_own_ticket(): void
+    {
+        $food = new Category(['name' => 'Food']);
+        $food->id = 20;
+        $drinks = new Category(['name' => 'Drinks']);
+        $drinks->id = 21;
+
+        $lines = collect([[$food, 1], [$drinks, 2]])->map(function ($entry) {
+            [$category, $lineId] = $entry;
+            $product = new Product(['category_id' => $category->id]);
+            $product->id = 30 + $lineId;
+            $product->setRelation('category', $category);
+            $line = new SalesOrderLine(['quantity' => 1, 'kot_sent_quantity' => 0]);
+            $line->id = $lineId;
+            $line->setRelation('product', $product);
+
+            return $line;
+        });
+
+        $sale = new SalesOrder(['branch_id' => 10, 'order_type' => 'dine_in']);
+        $sale->setRelation('lines', $lines);
+        $routes = app(PrintRoutingService::class)->kotRoutesForSale($sale);
+
+        $this->assertCount(2, $routes);
+        $this->assertSame(['Drinks', 'Food'], collect($routes)->pluck('category_name')->sort()->values()->all());
+        $this->assertSame([[1], [2]], collect($routes)->pluck('line_ids')->sortBy(fn ($ids) => $ids[0])->values()->all());
     }
 
     private function printer(string $suffix): Printer

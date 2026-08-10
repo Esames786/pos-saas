@@ -110,7 +110,7 @@ class User extends Authenticatable
 
     public function canAccessBranch(int $branchId): bool
     {
-        return $this->branches()->where('branch_id', $branchId)->exists();
+        return $this->branches()->wherePivot('is_active', true)->where('branches.id', $branchId)->exists();
     }
 
     public function canAccessTerminal(int $terminalId): bool

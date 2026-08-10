@@ -119,6 +119,14 @@ class ShiftController extends Controller
             ? Terminal::find($request->input('terminal_id'))
             : null;
 
+        if ($terminal) {
+            app(\App\Services\Security\UserDataScope::class)->assertPosSelection(
+                auth('tenant')->user(),
+                (int) $terminal->branch_id,
+                (int) $terminal->id,
+            );
+        }
+
         $shift = $shiftService->activeShiftForTerminal($terminal);
 
         // SHIFT-POS-INTEGRATION-CLOSURE-1: one source of truth for the POS clock + badge. The clock

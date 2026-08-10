@@ -88,6 +88,17 @@ class SalesOrderController extends Controller
             abort(403, 'Your account is not allowed to use this order type.');
         }
 
+        app(\App\Services\Security\UserDataScope::class)->assertPosSelection(
+            auth('tenant')->user(),
+            (int) $data['branch_id'],
+            ! empty($data['terminal_id']) ? (int) $data['terminal_id'] : null
+        );
+        if (! empty($data['held_sale_id'])) {
+            $held = SalesOrder::where('status', 'held')->findOrFail((int) $data['held_sale_id']);
+            abort_unless((int) $held->branch_id === (int) $data['branch_id'], 422, 'The recalled order belongs to another branch.');
+            abort_if(app(\App\Services\Security\UserDataScope::class)->deniesSale(auth('tenant')->user(), $held), 403);
+        }
+
         // BRANCH-OPERATING-MODE-1: a Local POS (active) branch runs sales on its
         // Branch Server — the cloud must not create them (split-brain guard).
         app(\App\Services\Edge\BranchOperatingModeService::class)

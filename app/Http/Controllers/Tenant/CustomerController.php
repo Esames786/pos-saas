@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Tenant\Customer;
 use App\Models\Tenant\CustomerLedger;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class CustomerController extends Controller
@@ -107,34 +108,31 @@ class CustomerController extends Controller
         // again (a real book had five "tabish 0333…" rows). A known phone REUSES that customer
         // and just tops up what is missing, instead of minting another duplicate.
         $phone = trim((string) ($data['phone'] ?? ''));
-        $customer = $phone !== '' ? Customer::where('phone', $phone)->first() : null;
-        $reused = (bool) $customer;
+        [$customer, $reused] = DB::connection('tenant')->transaction(function () use ($data, $phone) {
+            $customer = $phone !== '' ? $this->customerByPhone($phone, true) : null;
+            $reused = (bool) $customer;
 
-        if ($customer) {
-            $customer->fill(array_filter([
-                'name' => $customer->name ?: $data['name'],
-                'email' => $customer->email ?: ($data['email'] ?? null),
-            ]))->save();
-        } else {
-            $customer = Customer::create([
-                'code'   => null,
-                'name'   => $data['name'],
-                'phone'  => $phone ?: null,
-                'email'  => $data['email'] ?? null,
-                'status' => 'active',
-            ]);
-        }
-
-        // CUSTOMER-UX-1: an address supplied at quick-create becomes the default book entry
-        // (never duplicated if this customer already has the same one).
-        if (! empty($data['address'])) {
-            $address = trim($data['address']);
-            $already = $customer->addresses()->where('address', $address)->exists();
-            if (! $already) {
-                $makeDefault = $customer->addresses()->count() === 0;
-                $customer->addresses()->create(['address' => $address, 'is_default' => $makeDefault]);
+            if ($customer) {
+                $customer->fill(array_filter([
+                    'name' => $customer->name ?: $data['name'],
+                    'email' => $customer->email ?: ($data['email'] ?? null),
+                ]))->save();
+            } else {
+                $customer = Customer::create([
+                    'code' => null,
+                    'name' => $data['name'],
+                    'phone' => $phone !== '' ? $this->normalizePhone($phone) : null,
+                    'email' => $data['email'] ?? null,
+                    'status' => 'active',
+                ]);
             }
-        }
+
+            if (! empty($data['address'])) {
+                $this->storeAddressOnce($customer, $data['address']);
+            }
+
+            return [$customer, $reused];
+        });
 
         if ($request->expectsJson()) {
             return response()->json([
@@ -157,17 +155,70 @@ class CustomerController extends Controller
             'is_default' => ['nullable', 'boolean'],
         ]);
 
-        $makeDefault = ! empty($data['is_default']) || $customer->addresses()->count() === 0;
-        if ($makeDefault) {
-            $customer->addresses()->update(['is_default' => false]);
-        }
-        $address = $customer->addresses()->create([
-            'label' => $data['label'] ?? null,
-            'address' => $data['address'],
-            'is_default' => $makeDefault,
-        ]);
+        $address = DB::connection('tenant')->transaction(function () use ($customer, $data) {
+            $makeDefault = ! empty($data['is_default']) || $customer->addresses()->count() === 0;
+            if ($makeDefault) {
+                $customer->addresses()->update(['is_default' => false]);
+            }
+
+            return $this->storeAddressOnce($customer, $data['address'], $data['label'] ?? null, $makeDefault);
+        });
 
         return response()->json(['ok' => true, 'address' => $address]);
+    }
+
+    private function normalizePhone(string $phone): string
+    {
+        return preg_replace('/\D+/', '', $phone) ?? '';
+    }
+
+    private function customerByPhone(string $phone, bool $lock = false): ?Customer
+    {
+        $normalized = $this->normalizePhone($phone);
+        if ($normalized === '') {
+            return null;
+        }
+
+        // The exact normalized lookup uses the phone index. Under InnoDB's normal repeatable-read
+        // isolation, lockForUpdate also locks the missing key gap, preventing two simultaneous POS
+        // requests from inserting the same newly-normalized phone.
+        $exact = Customer::where('phone', $normalized);
+        if ($lock) {
+            $exact->lockForUpdate();
+        }
+        if ($customer = $exact->first()) {
+            return $customer;
+        }
+
+        $query = Customer::whereNotNull('phone')->whereRaw(
+            "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '(', ''), ')', ''), '+', '') = ?",
+            [$normalized]
+        );
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+
+        return $query->first();
+    }
+
+    private function storeAddressOnce(Customer $customer, string $address, ?string $label = null, ?bool $makeDefault = null)
+    {
+        $address = trim(preg_replace('/\s+/', ' ', $address) ?? $address);
+        $existing = $customer->addresses()->lockForUpdate()->get()->first(
+            fn ($row) => mb_strtolower(trim(preg_replace('/\s+/', ' ', $row->address) ?? $row->address)) === mb_strtolower($address)
+        );
+        if ($existing) {
+            if ($makeDefault && ! $existing->is_default) {
+                $existing->update(['is_default' => true, 'label' => $label ?: $existing->label]);
+            }
+            return $existing;
+        }
+
+        return $customer->addresses()->create([
+            'label' => $label,
+            'address' => $address,
+            'is_default' => $makeDefault ?? $customer->addresses()->count() === 0,
+        ]);
     }
 
     private function validateCustomer(Request $request, ?Customer $customer = null): array

@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Tenant;
 
 use App\Http\Controllers\Controller;
-use App\Models\Tenant\Branch;
 use App\Models\Tenant\PrintJob;
 use App\Models\Tenant\SalesOrder;
 use App\Services\Printing\PrintJobService;
@@ -20,8 +19,26 @@ class PrintJobController extends Controller
 
     public function index(Request $request)
     {
+        $scope = app(\App\Services\Security\UserDataScope::class);
+        $branches = $scope->branchesForPos(auth('tenant')->user());
         $query = PrintJob::with(['branch', 'printer', 'createdBy', 'claimedByAgent'])
             ->orderByDesc('id');
+
+        if ($scope->hasBranchAssignments(auth('tenant')->user())) {
+            $query->whereIn('branch_id', $branches->pluck('id'));
+        }
+        if ($terminalIds = $scope->terminalIds(auth('tenant')->user())) {
+            $query->whereIn('terminal_id', $terminalIds);
+        }
+        if ($orderTypes = $scope->orderTypes(auth('tenant')->user())) {
+            $query->where('reference_type', 'sales_order')
+                ->whereExists(function ($subquery) use ($orderTypes) {
+                    $subquery->selectRaw('1')
+                        ->from('sales_orders')
+                        ->whereColumn('sales_orders.id', 'print_jobs.reference_id')
+                        ->whereIn('sales_orders.order_type', $orderTypes);
+                });
+        }
 
         if ($request->filled('branch_id')) {
             $query->where('branch_id', $request->branch_id);
@@ -34,13 +51,12 @@ class PrintJobController extends Controller
         }
 
         $jobs     = $query->paginate(30)->withQueryString();
-        $branches = Branch::where('status', 'active')->orderBy('name')->get();
-
         return view('tenant.printing.jobs.index', compact('jobs', 'branches'));
     }
 
     public function queueReceipt(Request $request, SalesOrder $salesOrder)
     {
+        $this->assertSaleAccess($salesOrder);
         // Auto print after a sale is ensure-once (idempotent); explicit reprint forces a new job.
         $ensureOnce = ! $request->boolean('reprint');
         $job = $this->printJobService->queueReceipt($salesOrder, ensureOnce: $ensureOnce);
@@ -62,6 +78,7 @@ class PrintJobController extends Controller
 
     public function queueKot(Request $request, SalesOrder $salesOrder)
     {
+        $this->assertSaleAccess($salesOrder);
         $isReprint = $request->boolean('reprint');
 
         $lineIds = collect($request->input('line_ids', []))
@@ -139,6 +156,7 @@ class PrintJobController extends Controller
 
     public function confirmReminders(Request $request, SalesOrder $salesOrder)
     {
+        $this->assertSaleAccess($salesOrder);
         $data = $request->validate([
             'confirmation_token' => ['required', 'string'],
             'decision' => ['nullable', 'in:confirm,decline'],
@@ -163,6 +181,7 @@ class PrintJobController extends Controller
 
     public function reprintReminder(Request $request, PrintJob $printJob)
     {
+        $this->assertPrintJobAccess($printJob);
         $job = $this->printJobService->queueReminderReprint($printJob);
 
         return response()->json([
@@ -175,6 +194,9 @@ class PrintJobController extends Controller
 
     public function ajaxForSale(Request $request, int $saleId)
     {
+        $sale = SalesOrder::findOrFail($saleId);
+        $this->assertSaleAccess($sale);
+
         $jobs = PrintJob::where('reference_id', $saleId)
             ->where('reference_type', 'sales_order')
             ->with('printer')
@@ -207,6 +229,7 @@ class PrintJobController extends Controller
 
     public function markPrinted(Request $request, PrintJob $printJob)
     {
+        $this->assertPrintJobAccess($printJob);
         $this->printJobService->markPrinted($printJob);
 
         if ($request->expectsJson()) {
@@ -218,6 +241,7 @@ class PrintJobController extends Controller
 
     public function retry(Request $request, PrintJob $printJob)
     {
+        $this->assertPrintJobAccess($printJob);
         // the ONE shared requeue operation (also used by the Edge local retry) — never duplicated.
         try {
             app(\App\Services\Printing\PrintJobService::class)->requeueFailed($printJob);
@@ -233,5 +257,33 @@ class PrintJobController extends Controller
         }
 
         return back()->with('status', 'Job re-queued.');
+    }
+
+    private function assertSaleAccess(SalesOrder $sale): void
+    {
+        abort_if(
+            app(\App\Services\Security\UserDataScope::class)->deniesSale(auth('tenant')->user(), $sale),
+            403,
+        );
+    }
+
+    private function assertPrintJobAccess(PrintJob $job): void
+    {
+        $scope = app(\App\Services\Security\UserDataScope::class);
+        if ($job->reference_type === 'sales_order' && $job->reference_id) {
+            $this->assertSaleAccess(SalesOrder::findOrFail($job->reference_id));
+
+            return;
+        }
+
+        if ($scope->hasBranchAssignments(auth('tenant')->user())) {
+            abort_unless(
+                in_array((int) $job->branch_id, $scope->branchIds(auth('tenant')->user()), true),
+                403,
+            );
+        }
+        if (($terminalIds = $scope->terminalIds(auth('tenant')->user())) && ! in_array((int) $job->terminal_id, $terminalIds, true)) {
+            abort(403);
+        }
     }
 }
