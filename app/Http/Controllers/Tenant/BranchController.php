@@ -126,6 +126,10 @@ class BranchController extends Controller
                 Branch::KOT_CANCELLATION_MANAGER_REQUIRED,
                 Branch::KOT_CANCELLATION_AUTO_APPROVE,
             ])],
+            'held_kot_line_cancellation_approval_mode' => ['nullable', Rule::in([
+                Branch::KOT_CANCELLATION_MANAGER_REQUIRED,
+                Branch::KOT_CANCELLATION_AUTO_APPROVE,
+            ])],
             'receipt_footer'             => ['nullable', 'string'],
             'status'                     => ['required', Rule::in(['active', 'inactive'])],
         ]);
@@ -138,6 +142,9 @@ class BranchController extends Controller
         $data['held_kot_cancellation_approval_mode'] = $data['held_kot_cancellation_approval_mode']
             ?? $branch?->held_kot_cancellation_approval_mode
             ?? Branch::KOT_CANCELLATION_MANAGER_REQUIRED;
+        $data['held_kot_line_cancellation_approval_mode'] = $data['held_kot_line_cancellation_approval_mode']
+            ?? $branch?->held_kot_line_cancellation_approval_mode
+            ?? $data['held_kot_cancellation_approval_mode'];
 
         return $data;
     }

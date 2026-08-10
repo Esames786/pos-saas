@@ -69,7 +69,16 @@ class TenantResetTransactionsCommand extends Command
     ];
 
     /** Master-data sanity tables: their counts must be IDENTICAL before and after. */
-    private const KEEP_SENTINELS = ['products', 'categories', 'customers', 'customer_addresses', 'users', 'printers', 'category_printer_mappings', 'accounts', 'payment_methods', 'terminals', 'branches', 'suppliers', 'report_schedules'];
+    private const KEEP_SENTINELS = [
+        'products', 'categories', 'customers', 'customer_addresses', 'users', 'suppliers',
+        // printing setup must survive a reset untouched: devices, kitchen routing, per-terminal
+        // bindings/auto-print and the receipt/KOT layouts.
+        'printers', 'category_printer_mappings', 'terminal_printer_settings', 'receipt_layout_settings',
+        // operational configuration
+        'accounts', 'payment_methods', 'terminals', 'branches', 'report_schedules',
+        'void_reasons', 'manager_pins', 'delivery_channels', 'delivery_riders',
+        'restaurant_tables', 'restaurant_floors', 'restaurant_waiters', 'roles', 'permissions',
+    ];
 
     public function handle(TenancyManager $tenancy): int
     {

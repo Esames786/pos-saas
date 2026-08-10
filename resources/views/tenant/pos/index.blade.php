@@ -1171,86 +1171,70 @@
 
 {{-- Quick Customer Modal --}}
 {{-- CUSTOMER-UX-1: single Add/Search Customer modal (search by name/phone, address book, quick create) --}}
+{{-- CUSTOMER-UX-2 (2026-08-11): ONE box. Type a phone (or name) — matches appear as you type;
+     click one to attach instantly. No match? The same box becomes the quick-add: it already holds
+     the phone, you type the name, press Enter and the customer is created AND attached. --}}
 <div class="modal fade" id="customerModal" tabindex="-1" aria-labelledby="customerModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content">
-            <div class="modal-header">
-                <h2 class="modal-title h5" id="customerModalLabel">Add / Search Customer</h2>
+            <div class="modal-header py-2">
+                <h2 class="modal-title h6 mb-0" id="customerModalLabel">Customer</h2>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <ul class="nav nav-tabs mb-3" role="tablist">
-                    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#cust-tab-search" type="button" role="tab">Search</button></li>
-                    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#cust-tab-new" type="button" role="tab">New Customer</button></li>
-                </ul>
-                <div class="tab-content">
-                    <div class="tab-pane fade show active" id="cust-tab-search" role="tabpanel">
-                        <input id="cust-search-input" class="form-control mb-2" autocomplete="off"
-                               placeholder="Type a name or phone number…">
-                        <div id="cust-search-results" class="list-group mb-3" style="max-height:220px;overflow-y:auto"></div>
-                        <div id="cust-selected-panel" class="border rounded p-3 d-none">
-                            <div class="d-flex align-items-center justify-content-between">
-                                <div>
-                                    <strong id="sel-cust-name"></strong>
-                                    <span id="sel-cust-phone" class="text-muted ms-2"></span>
-                                </div>
-                            </div>
-                            <div class="mt-3">
-                                <label class="form-label small fw-bold mb-1">Delivery Address</label>
-                                <div id="cust-address-list" class="mb-2"></div>
-                                <div class="row g-2 align-items-end">
-                                    <div class="col-md-3">
-                                        <input id="new-addr-label" class="form-control form-control-sm" placeholder="Label (Home…)" maxlength="50">
-                                    </div>
-                                    <div class="col-md-5">
-                                        <input id="new-addr-text" class="form-control form-control-sm" placeholder="New address" maxlength="500">
-                                    </div>
-                                    <div class="col-md-2 form-check ms-2">
-                                        <input type="checkbox" class="form-check-input" id="new-addr-default">
-                                        <label class="form-check-label small" for="new-addr-default">Default</label>
-                                    </div>
-                                    <div class="col-md-1">
-                                        <button type="button" class="btn btn-sm btn-outline-primary" id="new-addr-save">Save</button>
-                                    </div>
-                                </div>
-                            </div>
-                            <button type="button" class="btn btn-primary mt-3" id="cust-attach-btn">
-                                <i class="ti ti-user-check me-1"></i>Attach to Order
+                <div class="input-group input-group-lg mb-2">
+                    <span class="input-group-text"><i class="ti ti-search"></i></span>
+                    <input id="cust-search-input" class="form-control" autocomplete="off"
+                           placeholder="Phone number or name…" aria-label="Search customer by phone or name">
+                </div>
+
+                <div id="cust-search-results" class="list-group mb-2" style="max-height:230px;overflow-y:auto"></div>
+
+                {{-- Quick add: appears the moment the typed phone/name has no exact match --}}
+                <div id="cust-quick-add" class="border rounded p-3 bg-light d-none">
+                    <div class="fw-semibold mb-2"><i class="ti ti-user-plus me-1"></i>New customer</div>
+                    <div class="row g-2 align-items-end">
+                        <div class="col-md-4">
+                            <label for="qa-phone" class="form-label small mb-1">Phone</label>
+                            <input id="qa-phone" class="form-control form-control-sm" autocomplete="off">
+                        </div>
+                        <div class="col-md-4">
+                            <label for="qa-name" class="form-label small mb-1">Name</label>
+                            <input id="qa-name" class="form-control form-control-sm" autocomplete="off" placeholder="Customer name">
+                        </div>
+                        <div class="col-md-4" id="qa-address-wrap">
+                            <label for="qa-address" class="form-label small mb-1">Delivery address</label>
+                            <input id="qa-address" class="form-control form-control-sm" maxlength="500" autocomplete="off">
+                        </div>
+                        <div class="col-12">
+                            <button type="button" class="btn btn-primary btn-sm" id="qa-save">
+                                <i class="ti ti-check me-1"></i>Add &amp; Attach <span class="opacity-75 small">(Enter)</span>
                             </button>
+                            <span id="qa-error" class="text-danger small ms-2"></span>
                         </div>
                     </div>
-                    <div class="tab-pane fade" id="cust-tab-new" role="tabpanel">
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label for="quick_customer_name" class="form-label required">Name</label>
-                                <input id="quick_customer_name" class="form-control" required>
-                            </div>
-                            <div class="col-md-6">
-                                <label for="quick_customer_phone" class="form-label">Phone</label>
-                                <input id="quick_customer_phone" class="form-control">
-                            </div>
-                            <div class="col-md-6">
-                                <label for="quick_customer_email" class="form-label">Email</label>
-                                <input id="quick_customer_email" type="email" class="form-control">
-                            </div>
-                            <div class="col-md-6">
-                                <label for="quick_customer_address" class="form-label">Address (saved as default)</label>
-                                <input id="quick_customer_address" class="form-control" maxlength="500">
-                            </div>
-                            <div class="col-12">
-                                <button type="button" class="btn btn-primary" id="quick-cust-create">
-                                    <i class="ti ti-user-plus me-1"></i>Create &amp; Attach
-                                </button>
-                                <span id="quick-cust-error" class="text-danger small ms-2"></span>
-                            </div>
-                        </div>
+                </div>
+
+                {{-- Address chooser: only shown when the chosen customer has more than one --}}
+                <div id="cust-selected-panel" class="border rounded p-3 d-none">
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <div><strong id="sel-cust-name"></strong> <span id="sel-cust-phone" class="text-muted small ms-1"></span></div>
+                        <button type="button" class="btn btn-sm btn-primary" id="cust-attach-btn">
+                            <i class="ti ti-user-check me-1"></i>Attach to Order
+                        </button>
+                    </div>
+                    <label class="form-label small fw-bold mb-1">Delivery address</label>
+                    <div id="cust-address-list" class="mb-2"></div>
+                    <div class="row g-2 align-items-end">
+                        <div class="col-md-4"><input id="new-addr-label" class="form-control form-control-sm" placeholder="Label (Home…)" maxlength="50"></div>
+                        <div class="col-md-6"><input id="new-addr-text" class="form-control form-control-sm" placeholder="Add another address" maxlength="500"></div>
+                        <div class="col-md-2"><button type="button" class="btn btn-sm btn-outline-primary w-100" id="new-addr-save">Save</button></div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 </div>
-
 {{-- Quantity Entry Modal (measurable/weighted items) --}}
 <div class="modal fade" id="qtyEntryModal" tabindex="-1" aria-labelledby="qtyEntryModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-sm modal-dialog-centered">
@@ -5311,7 +5295,7 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 
-{{-- CUSTOMER-UX-1: Add/Search Customer modal + chip + branch delivery-charge defaults --}}
+{{-- CUSTOMER-UX-2: one-box customer flow (search → attach, or type-and-add) + chip + charge defaults --}}
 <script>
 (function () {
     'use strict';
@@ -5322,8 +5306,17 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     };
     const CSRF = '{{ csrf_token() }}';
+    /** Local notifier — toast() lives inside another script block scope and is unreachable here. */
+    const notify = function (icon, title) {
+        if (typeof Swal !== "undefined") { Swal.mixin({ toast: true, position: "top-end", showConfirmButton: false, timer: 2500 }).fire({ icon: icon, title: title }); }
+    };
+
     let searchTimer = null;
     let selectedCustomer = null;
+    let lastResults = [];
+
+    const isPhoneLike = function (value) { return /^[0-9+\-\s()]{3,}$/.test(value.trim()); };
+    const isDelivery = function () { return (($id('order_type') || {}).value === 'delivery'); };
 
     /* ── chip ─────────────────────────────────────────────────────────── */
     function renderChip() {
@@ -5333,10 +5326,10 @@ document.addEventListener('DOMContentLoaded', function () {
         const phone = ($id('customer_phone') || {}).value || '';
         const address = ($id('delivery_address') || {}).value || '';
         if (!name && !(($id('customer_id') || {}).value)) { chip.classList.add('d-none'); return; }
-        $id('chip-cust-name').textContent = name || 'Customer #' + ($id('customer_id') || {}).value;
+        $id('chip-cust-name').textContent = name || 'Customer';
         $id('chip-cust-phone').textContent = phone ? '· ' + phone : '';
         const addrEl = $id('chip-cust-address');
-        if (address && ($id('order_type') || {}).value === 'delivery') {
+        if (address && isDelivery()) {
             addrEl.textContent = '· ' + address;
             addrEl.classList.remove('d-none');
         } else {
@@ -5351,45 +5344,49 @@ document.addEventListener('DOMContentLoaded', function () {
         renderChip();
     });
 
-    /* ── search ───────────────────────────────────────────────────────── */
-    function runSearch(q) {
-        fetch('{{ url('/ajax/customers') }}?q=' + encodeURIComponent(q), { headers: { 'Accept': 'application/json' } })
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
-                const box = $id('cust-search-results');
-                if (!box) return;
-                const customers = (data && data.customers) || [];
-                box.innerHTML = customers.length ? '' : '<div class="list-group-item text-muted small">No customers found — use the New Customer tab.</div>';
-                customers.forEach(function (c) {
-                    const btn = document.createElement('button');
-                    btn.type = 'button';
-                    btn.className = 'list-group-item list-group-item-action';
-                    btn.innerHTML = '<strong>' + esc(c.name) + '</strong>'
-                        + (c.phone ? ' <span class="text-muted small">' + esc(c.phone) + '</span>' : '')
-                        + (c.addresses.length ? ' <span class="badge bg-light text-dark ms-1">' + c.addresses.length + ' address(es)</span>' : '');
-                    btn.addEventListener('click', function () { selectCustomer(c); });
-                    box.appendChild(btn);
-                });
-            })
-            .catch(function () {});
+    /* ── attach ───────────────────────────────────────────────────────── */
+    function attach(customer, address) {
+        if ($id('customer_id')) $id('customer_id').value = customer.id || '';
+        if ($id('customer_name')) $id('customer_name').value = customer.name || '';
+        if ($id('customer_phone')) $id('customer_phone').value = customer.phone || '';
+        const addrEl = $id('delivery_address');
+        if (addrEl && address) addrEl.value = address;
+        renderChip();
+        const modalEl = $id('customerModal');
+        const modal = window.bootstrap && bootstrap.Modal.getInstance(modalEl);
+        if (modal) modal.hide();
+        notify('success', 'Customer attached: ' + (customer.name || customer.phone || ''));
     }
 
-    const searchInput = $id('cust-search-input');
-    if (searchInput) searchInput.addEventListener('input', function () {
-        clearTimeout(searchTimer);
-        const q = this.value.trim();
-        searchTimer = setTimeout(function () { runSearch(q); }, 300);
-    });
+    /** Addresses of a customer, with the legacy single-address field as a fallback entry. */
+    function addressesOf(customer) {
+        const list = (customer.addresses || []).slice();
+        if (!list.length && customer.legacy_address) {
+            list.push({ id: 'legacy', label: null, address: customer.legacy_address, is_default: true });
+        }
+        return list;
+    }
 
-    /* ── selection + address book ─────────────────────────────────────── */
+    /** One click is enough unless the customer has a real choice of addresses. */
+    function chooseCustomer(customer) {
+        const addresses = addressesOf(customer);
+        if (addresses.length <= 1 || !isDelivery()) {
+            attach(customer, addresses.length ? addresses[0].address : '');
+            return;
+        }
+        selectedCustomer = customer;
+        $id('sel-cust-name').textContent = customer.name || '';
+        $id('sel-cust-phone').textContent = customer.phone || '';
+        $id('cust-quick-add').classList.add('d-none');
+        $id('cust-selected-panel').classList.remove('d-none');
+        renderAddresses();
+    }
+
     function renderAddresses() {
         const list = $id('cust-address-list');
         if (!list || !selectedCustomer) return;
-        const addresses = selectedCustomer.addresses.slice();
-        if (!addresses.length && selectedCustomer.legacy_address) {
-            addresses.push({ id: 'legacy', label: null, address: selectedCustomer.legacy_address, is_default: true });
-        }
-        list.innerHTML = addresses.length ? '' : '<div class="text-muted small">No saved address yet — add one below.</div>';
+        const addresses = addressesOf(selectedCustomer);
+        list.innerHTML = '';
         addresses.forEach(function (a, idx) {
             const wrap = document.createElement('div');
             wrap.className = 'form-check';
@@ -5401,13 +5398,12 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    function selectCustomer(c) {
-        selectedCustomer = c;
-        $id('sel-cust-name').textContent = c.name;
-        $id('sel-cust-phone').textContent = c.phone || '';
-        $id('cust-selected-panel').classList.remove('d-none');
-        renderAddresses();
-    }
+    const attachBtn = $id('cust-attach-btn');
+    if (attachBtn) attachBtn.addEventListener('click', function () {
+        if (!selectedCustomer) return;
+        const picked = document.querySelector('input[name="cust-addr-pick"]:checked');
+        attach(selectedCustomer, picked ? picked.value : '');
+    });
 
     const saveAddrBtn = $id('new-addr-save');
     if (saveAddrBtn) saveAddrBtn.addEventListener('click', function () {
@@ -5417,68 +5413,147 @@ document.addEventListener('DOMContentLoaded', function () {
         const body = new FormData();
         body.append('label', ($id('new-addr-label') || {}).value || '');
         body.append('address', address.trim());
-        if (($id('new-addr-default') || {}).checked) body.append('is_default', '1');
         fetch('{{ url('/pos/customers') }}/' + selectedCustomer.id + '/addresses', {
             method: 'POST', headers: { 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' }, body: body,
         })
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
-                if (!data || !data.ok) return;
-                if (data.address.is_default) selectedCustomer.addresses.forEach(function (a) { a.is_default = false; });
-                selectedCustomer.addresses.push(data.address);
-                ['new-addr-label', 'new-addr-text'].forEach(function (id) { const el = $id(id); if (el) el.value = ''; });
-                const def = $id('new-addr-default'); if (def) def.checked = false;
-                renderAddresses();
-            })
-            .catch(function () {});
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (!data || !data.ok) return;
+            selectedCustomer.addresses = (selectedCustomer.addresses || []).concat([data.address]);
+            ['new-addr-label', 'new-addr-text'].forEach(function (id) { const el = $id(id); if (el) el.value = ''; });
+            renderAddresses();
+        })
+        .catch(function () {});
     });
 
-    function attachSelected() {
-        if (!selectedCustomer) return;
-        if ($id('customer_id')) $id('customer_id').value = selectedCustomer.id || '';
-        if ($id('customer_name')) $id('customer_name').value = selectedCustomer.name || '';
-        if ($id('customer_phone')) $id('customer_phone').value = selectedCustomer.phone || '';
-        const picked = document.querySelector('input[name="cust-addr-pick"]:checked');
-        const addrEl = $id('delivery_address');
-        if (addrEl && picked) addrEl.value = picked.value;
-        renderChip();
-        const modalEl = $id('customerModal');
-        const modal = window.bootstrap && bootstrap.Modal.getInstance(modalEl);
-        if (modal) modal.hide();
+    /* ── search (one box, phone or name) ──────────────────────────────── */
+    function showQuickAdd(term) {
+        const wrap = $id('cust-quick-add');
+        if (!wrap) return;
+        const phoneEl = $id('qa-phone');
+        const nameEl = $id('qa-name');
+        // Whatever was typed lands in the right field, so nothing is retyped.
+        if (isPhoneLike(term)) {
+            if (phoneEl) phoneEl.value = term.trim();
+            if (nameEl && !nameEl.value) nameEl.value = '';
+        } else {
+            if (nameEl) nameEl.value = term.trim();
+        }
+        const addrWrap = $id('qa-address-wrap');
+        if (addrWrap) addrWrap.classList.toggle('d-none', !isDelivery());
+        wrap.classList.remove('d-none');
+        $id('cust-selected-panel').classList.add('d-none');
     }
 
-    const attachBtn = $id('cust-attach-btn');
-    if (attachBtn) attachBtn.addEventListener('click', attachSelected);
+    function runSearch(q) {
+        fetch('{{ url('/ajax/customers') }}?q=' + encodeURIComponent(q), { headers: { 'Accept': 'application/json' } })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                const box = $id('cust-search-results');
+                if (!box) return;
+                lastResults = (data && data.customers) || [];
+                box.innerHTML = '';
+                lastResults.forEach(function (c) {
+                    const addresses = addressesOf(c);
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'list-group-item list-group-item-action py-2';
+                    btn.innerHTML = '<strong>' + esc(c.name || '(no name)') + '</strong>'
+                        + (c.phone ? ' <span class="text-muted">· ' + esc(c.phone) + '</span>' : '')
+                        + (addresses.length ? '<div class="small text-muted text-truncate">' + esc(addresses[0].address) + (addresses.length > 1 ? ' (+' + (addresses.length - 1) + ' more)' : '') + '</div>' : '');
+                    btn.addEventListener('click', function () { chooseCustomer(c); });
+                    box.appendChild(btn);
+                });
 
-    /* ── quick create ─────────────────────────────────────────────────── */
-    const createBtn = $id('quick-cust-create');
-    if (createBtn) createBtn.addEventListener('click', function () {
-        const err = $id('quick-cust-error');
+                const term = q.trim();
+                if (!term) {
+                    $id('cust-quick-add').classList.add('d-none');
+                    if (!lastResults.length) {
+                        box.innerHTML = '<div class="list-group-item text-muted small">Start typing a phone number or name…</div>';
+                    }
+                    return;
+                }
+                // An exact phone/name match means "this is the customer" — no quick-add prompt.
+                const exact = lastResults.some(function (c) {
+                    return (c.phone || '').replace(/\D/g, '') === term.replace(/\D/g, '')
+                        || (c.name || '').toLowerCase() === term.toLowerCase();
+                });
+                if (exact) {
+                    $id('cust-quick-add').classList.add('d-none');
+                } else {
+                    showQuickAdd(term);
+                }
+            })
+            .catch(function () {});
+    }
+
+    const searchInput = $id('cust-search-input');
+    if (searchInput) {
+        searchInput.addEventListener('input', function () {
+            clearTimeout(searchTimer);
+            const q = this.value.trim();
+            searchTimer = setTimeout(function () { runSearch(q); }, 250);
+        });
+        // Enter: exactly one match → attach it; otherwise jump straight into the quick-add.
+        searchInput.addEventListener('keydown', function (e) {
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            if (lastResults.length === 1) { chooseCustomer(lastResults[0]); return; }
+            const term = this.value.trim();
+            if (!term) return;
+            showQuickAdd(term);
+            const nameEl = $id('qa-name');
+            if (nameEl && !nameEl.value) { nameEl.focus(); } else { quickSave(); }
+        });
+    }
+
+    /* ── quick add: create AND attach in one action ───────────────────── */
+    function quickSave() {
+        const err = $id('qa-error');
+        const name = ($id('qa-name') || {}).value.trim();
+        const phone = ($id('qa-phone') || {}).value.trim();
+        if (!name && !phone) { if (err) err.textContent = 'Enter a name or a phone number.'; return; }
+        if (err) err.textContent = '';
+
         const body = new FormData();
-        body.append('name', ($id('quick_customer_name') || {}).value || '');
-        body.append('phone', ($id('quick_customer_phone') || {}).value || '');
-        body.append('email', ($id('quick_customer_email') || {}).value || '');
-        body.append('address', ($id('quick_customer_address') || {}).value || '');
+        body.append('name', name || phone);          // a phone-only walk-in still gets a label
+        body.append('phone', phone);
+        body.append('address', ($id('qa-address') || {}).value || '');
+        const btn = $id('qa-save');
+        if (btn) btn.disabled = true;
+
         fetch('{{ url('/pos/customers/quick-store') }}', {
             method: 'POST', headers: { 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' }, body: body,
         })
             .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, json: j }; }); })
             .then(function (res) {
+                if (btn) btn.disabled = false;
                 if (!res.ok || !res.json.ok) {
-                    if (err) err.textContent = (res.json && res.json.message) || 'Could not create the customer.';
+                    if (err) err.textContent = (res.json && res.json.message) || 'Could not save the customer.';
                     return;
                 }
-                if (err) err.textContent = '';
                 const c = res.json.customer;
-                selectedCustomer = {
-                    id: c.id, name: c.name, phone: c.phone, email: c.email,
+                if (res.json.reused) notify('info', 'Existing customer matched on this phone number');
+                const customer = {
+                    id: c.id, name: c.name, phone: c.phone,
                     addresses: (c.addresses || []).map(function (a) { return { id: a.id, label: a.label, address: a.address, is_default: !!a.is_default }; }),
                     legacy_address: null,
                 };
-                attachSelected();
-                ['quick_customer_name', 'quick_customer_phone', 'quick_customer_email', 'quick_customer_address'].forEach(function (id) { const el = $id(id); if (el) el.value = ''; });
+                const addresses = addressesOf(customer);
+                attach(customer, addresses.length ? addresses[0].address : (($id('qa-address') || {}).value || ''));
+                ['qa-name', 'qa-phone', 'qa-address'].forEach(function (id) { const el = $id(id); if (el) el.value = ''; });
             })
-            .catch(function () { if (err) err.textContent = 'Could not create the customer.'; });
+            .catch(function () {
+                if (btn) btn.disabled = false;
+                if (err) err.textContent = 'Could not save the customer.';
+            });
+    }
+
+    const qaSave = $id('qa-save');
+    if (qaSave) qaSave.addEventListener('click', quickSave);
+    ['qa-name', 'qa-phone', 'qa-address'].forEach(function (id) {
+        const el = $id(id);
+        if (el) el.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); quickSave(); } });
     });
 
     /* ── branch delivery-charge default + lock ────────────────────────── */
@@ -5490,15 +5565,15 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!opt) return;
         const def = parseFloat(opt.dataset.deliveryCharge || '0') || 0;
         const locked = opt.dataset.chargeLocked === '1';
-        const isDelivery = (($id('order_type') || {}).value === 'delivery');
+        const delivery = isDelivery();
         if (locked) {
-            dcEl.value = isDelivery && def > 0 ? def : (isDelivery ? '0' : '');
+            dcEl.value = delivery && def > 0 ? def : (delivery ? '0' : '');
             dcEl.readOnly = true;
             dcEl.title = 'Delivery charge is locked at the branch default (' + def.toFixed(2) + '). Change it in Branch settings.';
         } else {
             dcEl.readOnly = false;
             dcEl.title = '';
-            if (isDelivery && !dcEl.value && def > 0) dcEl.value = def;
+            if (delivery && !dcEl.value && def > 0) dcEl.value = def;
         }
         if (typeof dcEl.dispatchEvent === 'function') dcEl.dispatchEvent(new Event('input', { bubbles: true }));
     }
@@ -5506,7 +5581,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const branchSel = $id('branch_id');
     if (branchSel) branchSel.addEventListener('change', applyDeliveryChargeDefaults);
 
-    /* ── KHATRI-UX-2: context bar summary (branch · terminal, Change modal) ───── */
+    /* ── context bar summary (branch · terminal, Change modal) ────────── */
     function updateContextSummary() {
         const b = $id('branch_id');
         const t = $id('terminal_id');
@@ -5523,18 +5598,21 @@ document.addEventListener('DOMContentLoaded', function () {
     });
     updateContextSummary();
 
-    /* modal opens fresh: seed a first result page */
+    /* modal opens: clean slate, focused on the one box */
     const modalEl = $id('customerModal');
     if (modalEl) modalEl.addEventListener('shown.bs.modal', function () {
-        if (searchInput) { searchInput.focus(); runSearch(searchInput.value.trim()); }
+        selectedCustomer = null;
+        lastResults = [];
+        $id('cust-quick-add').classList.add('d-none');
+        $id('cust-selected-panel').classList.add('d-none');
+        ['qa-name', 'qa-phone', 'qa-address', 'new-addr-label', 'new-addr-text'].forEach(function (id) { const el = $id(id); if (el) el.value = ''; });
+        if (searchInput) { searchInput.value = ''; searchInput.focus(); }
+        runSearch('');
     });
 
-    /* init: held-sale preload renders the chip; delivery defaults apply on load */
     renderChip();
     applyDeliveryChargeDefaults();
-    // recallHeldSale (earlier script block) restores customer fields, then re-renders via this hook.
     window.posRenderCustomerChip = renderChip;
-})();
-</script>
+})();</script>
 
 @endsection

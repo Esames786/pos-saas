@@ -157,8 +157,9 @@
                     <div class="form-text">When locked, cashiers cannot change the delivery charge — the branch default is always applied (enforced server-side).</div>
                 </div>
 
+                {{-- Two separate risks, two separate settings (client 2026-08-11) --}}
                 <div class="col-md-6">
-                    <label for="held_kot_cancellation_approval_mode" class="form-label required">Held/KOT Cancellation Approval</label>
+                    <label for="held_kot_cancellation_approval_mode" class="form-label required">Cancel whole order (after KOT)</label>
                     <select id="held_kot_cancellation_approval_mode" name="held_kot_cancellation_approval_mode" class="form-select" required>
                         <option value="manager_required" @selected(old('held_kot_cancellation_approval_mode', $branch?->held_kot_cancellation_approval_mode ?? 'manager_required') === 'manager_required')>
                             Manager PIN required
@@ -168,7 +169,23 @@
                         </option>
                     </select>
                     <div class="form-text">
-                        Auto-approve skips the PIN only. A reason, audit event, and Cancel KOT remain mandatory for sent items.
+                        Applies when the cashier cancels an entire order whose items already went to the kitchen.
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <label for="held_kot_line_cancellation_approval_mode" class="form-label required">Reduce item quantity (after KOT)</label>
+                    <select id="held_kot_line_cancellation_approval_mode" name="held_kot_line_cancellation_approval_mode" class="form-select" required>
+                        <option value="manager_required" @selected(old('held_kot_line_cancellation_approval_mode', $branch?->held_kot_line_cancellation_approval_mode ?? 'manager_required') === 'manager_required')>
+                            Manager PIN required
+                        </option>
+                        <option value="auto_approve" @selected(old('held_kot_line_cancellation_approval_mode', $branch?->held_kot_line_cancellation_approval_mode) === 'auto_approve')>
+                            Auto-approve at this branch
+                        </option>
+                    </select>
+                    <div class="form-text">
+                        Applies when only a quantity is reduced. Auto-approve skips the PIN only —
+                        a reason, the audit trail and the Cancel KOT are always produced.
                     </div>
                 </div>
 

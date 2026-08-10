@@ -38,6 +38,7 @@ class OnboardKhatriBiryaniCommand extends Command
         {--owner-password= : Owner password (required on first provision)}
         {--owner-email= : Tenant owner/default report email (can be set later)}
         {--delivery-password= : Password for the delivery counter user (generated when omitted)}
+        {--manager-pin= : Manager PIN for the delivery counter user (defaults to the agreed value)}
         {--yes : Confirm execution}';
 
     protected $description = 'Onboard the Khatri Biryani tenant (idempotent; see docs/onboarding/khatri-biryani-2026-08.md).';
@@ -193,8 +194,15 @@ class OnboardKhatriBiryaniCommand extends Command
         $tenancy->activate($tenant->fresh());
         $branchId = (int) DB::connection('tenant')->table('branches')->orderBy('id')->value('id');
         // The branch carries the shop's name on every screen and printed document.
-        DB::connection('tenant')->table('branches')->where('id', $branchId)
-            ->update(['name' => 'Khatri Biryani', 'updated_at' => now()]);
+        // Cancellation policy (client 2026-08-11): cancelling a WHOLE order needs a manager PIN
+        // + reason; reducing a quantity after the KOT is allowed at the counter (reason + Cancel
+        // KOT + audit trail still always happen — auto-approve only skips the PIN).
+        DB::connection('tenant')->table('branches')->where('id', $branchId)->update([
+            'name' => 'Khatri Biryani',
+            'held_kot_cancellation_approval_mode' => \App\Models\Tenant\Branch::KOT_CANCELLATION_MANAGER_REQUIRED,
+            'held_kot_line_cancellation_approval_mode' => \App\Models\Tenant\Branch::KOT_CANCELLATION_AUTO_APPROVE,
+            'updated_at' => now(),
+        ]);
 
         // GO-LIVE (2026-08-10): the shop runs THREE named terminals. The legacy Counter 1/2 rows are
         // renamed in place (same ids → existing shifts/sales keep pointing at the right terminal);
@@ -472,8 +480,18 @@ class OnboardKhatriBiryaniCommand extends Command
         if ($deliveryTerminalId) {
             $user->terminals()->sync([$deliveryTerminalId]);   // data scope anchors on this binding
         }
+        // Manager PIN for the counter (client decision): whole-order cancellations prompt for a
+        // PIN, and this account is the one that answers it on site.
+        $pin = $this->option('manager-pin') ?: 'password@';
+        DB::connection('tenant')->table('manager_pins')->updateOrInsert(
+            ['user_id' => $user->id],
+            ['pin_hash' => \Illuminate\Support\Facades\Hash::make($pin), 'is_active' => 1,
+             'created_at' => now(), 'updated_at' => now()]
+        );
+
         app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
 
+        $this->info('manager PIN set for ' . $email . ' (used to approve whole-order cancellations).');
         $this->info('Delivery user ' . $email . ' ready: role Delivery = ' . count($names)
             . ' permissions (0 delete, no admin/finance/stock), locked to the Delivery terminal + delivery orders.');
         if ($password) {

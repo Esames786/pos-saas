@@ -541,6 +541,7 @@ class EdgeBootstrapService
                 'id' => $branch->id, 'code' => $branch->code, 'name' => $branch->name, 'business_type' => $branch->business_type,
                 'allow_negative_stock' => (bool) $branch->allow_negative_stock,
                 'held_kot_cancellation_approval_mode' => $branch->held_kot_cancellation_approval_mode,
+                'held_kot_line_cancellation_approval_mode' => $branch->held_kot_line_cancellation_approval_mode,
                 'timezone' => $branch->timezone,
                 'tax_registration_no' => $branch->tax_registration_no, 'is_tax_enabled' => (bool) $branch->is_tax_enabled,
                 'show_tax_number_on_invoice' => (bool) $branch->show_tax_number_on_invoice, 'receipt_footer' => $branch->receipt_footer,

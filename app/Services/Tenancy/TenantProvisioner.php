@@ -258,6 +258,23 @@ class TenantProvisioner
             );
         }
 
+        // Cancelling a KOT-sent item ALWAYS needs a reason, so a tenant must never start with an
+        // empty list (Khatri hit exactly that on go-live day and could not cancel anything).
+        foreach ([
+            ['Customer changed mind', 'cancel'],
+            ['Wrong item punched', 'void'],
+            ['Item out of stock', 'void'],
+            ['Kitchen delay', 'cancel'],
+            ['Duplicate order', 'cancel'],
+            ['Order cancelled by customer', 'cancel'],
+        ] as $index => [$name, $type]) {
+            DB::connection('tenant')->table('void_reasons')->updateOrInsert(
+                ['name' => $name],
+                ['reason_type' => $type, 'requires_manager_approval' => false, 'is_active' => true,
+                 'created_at' => now(), 'updated_at' => now()]
+            );
+        }
+
         $tenantPermissions = [
             'tenant.dashboard',
 

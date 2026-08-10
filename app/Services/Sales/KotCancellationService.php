@@ -106,7 +106,7 @@ class KotCancellationService
                 ];
             }
 
-            if ($this->requiresManager($sale->branch)) {
+            if ($this->requiresManager($sale->branch, 'line')) {
                 if (count($resolved) === 1) {
                     $item = $resolved[0];
                     $approval = $this->consumeApproval(
@@ -204,9 +204,18 @@ class KotCancellationService
         return $reason;
     }
 
-    private function requiresManager(Branch $branch): bool
+    /**
+     * Cancelling a WHOLE order and reducing ONE line's quantity are separately configurable —
+     * a shop may want a manager for a full cancellation but not for shaving a quantity (or the
+     * reverse). Unset line setting falls back to the order setting (pre-split behaviour).
+     */
+    private function requiresManager(Branch $branch, string $scope = 'order'): bool
     {
-        return $branch->held_kot_cancellation_approval_mode !== Branch::KOT_CANCELLATION_AUTO_APPROVE;
+        $mode = $scope === 'line'
+            ? ($branch->held_kot_line_cancellation_approval_mode ?: $branch->held_kot_cancellation_approval_mode)
+            : $branch->held_kot_cancellation_approval_mode;
+
+        return $mode !== Branch::KOT_CANCELLATION_AUTO_APPROVE;
     }
 
     private function assertCancellationPermission(int $userId): void

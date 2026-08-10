@@ -103,21 +103,45 @@ class CustomerController extends Controller
             'address' => ['nullable', 'string', 'max:500'],
         ]);
 
-        $customer = Customer::create([
-            'code'   => null,
-            'name'   => $data['name'],
-            'phone'  => $data['phone'] ?? null,
-            'email'  => $data['email'] ?? null,
-            'status' => 'active',
-        ]);
+        // The counter creates customers mid-rush, so the same phone was being added again and
+        // again (a real book had five "tabish 0333…" rows). A known phone REUSES that customer
+        // and just tops up what is missing, instead of minting another duplicate.
+        $phone = trim((string) ($data['phone'] ?? ''));
+        $customer = $phone !== '' ? Customer::where('phone', $phone)->first() : null;
+        $reused = (bool) $customer;
 
-        // CUSTOMER-UX-1: an address supplied at quick-create becomes the default book entry.
+        if ($customer) {
+            $customer->fill(array_filter([
+                'name' => $customer->name ?: $data['name'],
+                'email' => $customer->email ?: ($data['email'] ?? null),
+            ]))->save();
+        } else {
+            $customer = Customer::create([
+                'code'   => null,
+                'name'   => $data['name'],
+                'phone'  => $phone ?: null,
+                'email'  => $data['email'] ?? null,
+                'status' => 'active',
+            ]);
+        }
+
+        // CUSTOMER-UX-1: an address supplied at quick-create becomes the default book entry
+        // (never duplicated if this customer already has the same one).
         if (! empty($data['address'])) {
-            $customer->addresses()->create(['address' => $data['address'], 'is_default' => true]);
+            $address = trim($data['address']);
+            $already = $customer->addresses()->where('address', $address)->exists();
+            if (! $already) {
+                $makeDefault = $customer->addresses()->count() === 0;
+                $customer->addresses()->create(['address' => $address, 'is_default' => $makeDefault]);
+            }
         }
 
         if ($request->expectsJson()) {
-            return response()->json(['ok' => true, 'customer' => $customer->load('addresses')]);
+            return response()->json([
+                'ok' => true,
+                'reused' => $reused,
+                'customer' => $customer->fresh()->load('addresses'),
+            ]);
         }
 
         return redirect(url('/pos?customer_id=' . $customer->id))

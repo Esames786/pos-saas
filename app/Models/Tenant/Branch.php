@@ -23,6 +23,7 @@ class Branch extends Model
         'default_delivery_charge',
         'delivery_charge_locked',
         'held_kot_cancellation_approval_mode',
+        'held_kot_line_cancellation_approval_mode',
         'receipt_footer',
         'status',
         'sales_operating_mode',
