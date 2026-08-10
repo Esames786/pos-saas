@@ -251,14 +251,10 @@ function openEditLayout(layoutId, branchName, docType) {
     setFormValue(form, 'header_text',  data.header_text || '');
     setFormValue(form, 'footer_text',  data.footer_text || '');
 
-    var boolFields = ['show_logo','show_branch_name','show_branch_address','show_branch_phone',
-        'show_tax_number','show_cashier_name','show_customer_name','show_table_info',
-        'show_order_no','show_order_time','show_updated_time','show_print_time',
-        'show_item_codes','show_payment_breakdown','is_active'];
-
-    boolFields.forEach(function(f) {
-        var el = form.querySelector('[name="' + f + '"]');
-        if (el) el.checked = !!data[f];
+    // Derive the toggle list from the DOM, never a hardcoded array: a new switch added to the
+    // form used to load blank and have NO effect on the live preview until this list was edited too.
+    layoutToggles(form).forEach(function (el) {
+        el.checked = !!data[el.name];
     });
     syncLayoutOptions(form, docType);
 
@@ -268,6 +264,11 @@ function openEditLayout(layoutId, branchName, docType) {
     // Open modal
     var modal = new bootstrap.Modal(document.getElementById('editLayoutModal'));
     modal.show();
+}
+
+/** Every boolean switch on the layout form (single source of truth for load + preview). */
+function layoutToggles(form) {
+    return Array.prototype.slice.call(form.querySelectorAll('input[type="checkbox"]'));
 }
 
 function setFormValue(form, name, value) {
@@ -299,14 +300,9 @@ function buildPreviewUrl() {
     params.set('header_text',  form.querySelector('[name="header_text"]')?.value  || '');
     params.set('footer_text',  form.querySelector('[name="footer_text"]')?.value  || '');
 
-    var boolFields = ['show_logo','show_branch_name','show_branch_address','show_branch_phone',
-        'show_tax_number','show_cashier_name','show_customer_name','show_table_info',
-        'show_order_no','show_order_time','show_updated_time','show_print_time',
-        'show_item_codes','show_payment_breakdown'];
-
-    boolFields.forEach(function(f) {
-        var el = form.querySelector('[name="' + f + '"]');
-        params.set(f, el && el.checked ? '1' : '0');
+    layoutToggles(form).forEach(function (el) {
+        if (el.name === 'is_active') return;      // not a print-content switch
+        params.set(el.name, el.checked ? '1' : '0');
     });
 
     return data.preview_url + '?' + params.toString();

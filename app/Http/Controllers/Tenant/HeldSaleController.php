@@ -45,9 +45,16 @@ class HeldSaleController extends Controller
     {
         $branchId = $request->integer('branch_id');
 
+        // Same rule as Recent Orders: an operator only ever sees the order types he may run.
+        $allowedTypes = auth("tenant")->user()?->effectiveAllowedOrderTypes() ?? [];
+        $filterType = (string) $request->input('order_type', '');
+
         $sales = SalesOrder::with(['customer', 'lines'])
             ->where('status', 'held')
             ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
+            ->when($allowedTypes, fn ($q) => $q->whereIn('order_type', $allowedTypes))
+            ->when($filterType !== '' && in_array($filterType, $allowedTypes, true),
+                fn ($q) => $q->where('order_type', $filterType))
             ->orderByDesc('updated_at')
             ->limit(50)
             ->get();

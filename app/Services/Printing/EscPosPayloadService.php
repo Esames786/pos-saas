@@ -255,8 +255,10 @@ class EscPosPayloadService
             $out .= $this->center($headerText) . "\n";
         }
         $out .= str_repeat('-', 42) . "\n";
-        $out .= $this->center('** ' . strtoupper(str_replace('_', ' ', $sale->order_type ?? 'SALE')) . ' **') . "\n";
-        $out .= str_repeat('-', 42) . "\n";
+        if ($show('show_order_type')) {
+            $out .= $this->center('** ' . strtoupper(str_replace('_', ' ', $sale->order_type ?? 'SALE')) . ' **') . "\n";
+            $out .= str_repeat('-', 42) . "\n";
+        }
         if ($show('show_order_no')) {
             $out .= "Receipt: {$sale->sale_no}\n";
         }
@@ -286,16 +288,18 @@ class EscPosPayloadService
                 $out .= 'Waiter: ' . $sale->restaurantWaiter->name . "\n";
             }
         }
-        if ($sale->deliveryChannel) {
-            $out .= 'Channel: ' . $sale->deliveryChannel->name . "\n";
+        if ($show('show_delivery_details')) {
+            if ($sale->deliveryChannel) {
+                $out .= 'Channel: ' . $sale->deliveryChannel->name . "\n";
+            }
+            if ($sale->deliveryRider) {
+                $out .= 'Rider: ' . $sale->deliveryRider->name . "\n";
+            }
+            if ($sale->delivery_address) {
+                $out .= 'Deliver to: ' . $sale->delivery_address . "\n";
+            }
         }
-        if ($sale->deliveryRider) {
-            $out .= 'Rider: ' . $sale->deliveryRider->name . "\n";
-        }
-        if ($sale->delivery_address) {
-            $out .= 'Deliver to: ' . $sale->delivery_address . "\n";
-        }
-        if ($sale->vehicle_number) {
+        if ($show('show_vehicle_number') && $sale->vehicle_number) {
             $out .= 'Vehicle: ' . $sale->vehicle_number . "\n";
         }
 

@@ -659,10 +659,18 @@ class POSController extends Controller
     {
         $branchId = $request->integer('branch_id');
 
+        // Only the order types this operator is allowed to run — a delivery counter never sees
+        // dine-in/takeaway orders. An optional filter narrows further, but never widens.
+        $allowedTypes = auth("tenant")->user()?->effectiveAllowedOrderTypes() ?? [];
+        $filterType = (string) $request->input('order_type', '');
+
         $sales = SalesOrder::with('customer')
             ->where('status', '!=', 'held')
             ->whereNotNull('sale_no')
             ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
+            ->when($allowedTypes, fn ($q) => $q->whereIn('order_type', $allowedTypes))
+            ->when($filterType !== '' && in_array($filterType, $allowedTypes, true),
+                fn ($q) => $q->where('order_type', $filterType))
             ->orderByDesc('id')
             ->limit(50)
             ->get();

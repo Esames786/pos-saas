@@ -1021,6 +1021,17 @@
                 </h2>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
+            {{-- ORDER-TYPE-SCOPE-1: quick filter, only the types THIS user may run --}}
+            @if(count($allowedOrderTypes) > 1)
+            <div class="px-3 pt-2 d-flex gap-1 flex-wrap" id="held-type-filters">
+                <button type="button" class="btn btn-sm btn-dark" data-held-type="">All</button>
+                @foreach(\App\Models\Tenant\User::ORDER_TYPES as $type => $label)
+                    @if(in_array($type, $allowedOrderTypes, true))
+                        <button type="button" class="btn btn-sm btn-outline-dark" data-held-type="{{ $type }}">{{ $label }}</button>
+                    @endif
+                @endforeach
+            </div>
+            @endif
             <div class="modal-body p-0" id="held-sales-modal-body">
                 <div class="text-center py-5">
                     <div class="spinner-border text-secondary" role="status"></div>
@@ -1040,6 +1051,16 @@
                 </h2>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
+            @if(count($allowedOrderTypes) > 1)
+            <div class="px-3 pt-2 d-flex gap-1 flex-wrap" id="recent-type-filters">
+                <button type="button" class="btn btn-sm btn-dark" data-recent-type="">All</button>
+                @foreach(\App\Models\Tenant\User::ORDER_TYPES as $type => $label)
+                    @if(in_array($type, $allowedOrderTypes, true))
+                        <button type="button" class="btn btn-sm btn-outline-dark" data-recent-type="{{ $type }}">{{ $label }}</button>
+                    @endif
+                @endforeach
+            </div>
+            @endif
             <div class="modal-body p-0" id="completed-orders-modal-body">
                 <div class="text-center py-5">
                     <div class="spinner-border text-secondary" role="status"></div>
@@ -3825,12 +3846,25 @@ document.addEventListener('DOMContentLoaded', function () {
 
     heldSalesModalEl.addEventListener('show.bs.modal', loadHeldSales);
 
+    let _heldTypeFilter = '';
+    document.querySelectorAll('[data-held-type]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            _heldTypeFilter = btn.dataset.heldType || '';
+            document.querySelectorAll('[data-held-type]').forEach(function (b) {
+                b.classList.toggle('btn-dark', b === btn);
+                b.classList.toggle('btn-outline-dark', b !== btn);
+            });
+            loadHeldSales();
+        });
+    });
+
     function loadHeldSales() {
         const body     = document.getElementById('held-sales-modal-body');
         const branchId = document.getElementById('branch_id').value;
         body.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-secondary" role="status"></div></div>';
 
-        fetch('{{ url('/api/pos/held-sales') }}?branch_id=' + encodeURIComponent(branchId), {
+        fetch('{{ url('/api/pos/held-sales') }}?branch_id=' + encodeURIComponent(branchId)
+            + (_heldTypeFilter ? '&order_type=' + encodeURIComponent(_heldTypeFilter) : ''), {
             headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
         })
         .then(function (r) { return r.json(); })
@@ -4434,11 +4468,26 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    /* ORDER-TYPE-SCOPE-1: the list is already limited server-side to the types this user may
+       run; these buttons only narrow it further (the server ignores a type he isn't allowed). */
+    let _recentTypeFilter = '';
+    document.querySelectorAll('[data-recent-type]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            _recentTypeFilter = btn.dataset.recentType || '';
+            document.querySelectorAll('[data-recent-type]').forEach(function (b) {
+                b.classList.toggle('btn-dark', b === btn);
+                b.classList.toggle('btn-outline-dark', b !== btn);
+            });
+            loadRecentSales();
+        });
+    });
+
     function loadRecentSales() {
         const body = document.getElementById('completed-orders-modal-body');
         const branchId = (branchEl ? branchEl.value : '') || '';
         body.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-secondary" role="status"></div></div>';
-        fetch('{{ url('/api/pos/recent-sales') }}?branch_id=' + encodeURIComponent(branchId), { headers: { 'Accept': 'application/json' } })
+        fetch('{{ url('/api/pos/recent-sales') }}?branch_id=' + encodeURIComponent(branchId)
+            + (_recentTypeFilter ? '&order_type=' + encodeURIComponent(_recentTypeFilter) : ''), { headers: { 'Accept': 'application/json' } })
         .then(function (res) { return res.json(); })
         .then(function (data) {
             const sales = data.sales || [];

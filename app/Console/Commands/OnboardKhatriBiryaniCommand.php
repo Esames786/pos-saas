@@ -192,6 +192,9 @@ class OnboardKhatriBiryaniCommand extends Command
         // ── 5. tenant data: terminals + menu + Manager role ──
         $tenancy->activate($tenant->fresh());
         $branchId = (int) DB::connection('tenant')->table('branches')->orderBy('id')->value('id');
+        // The branch carries the shop's name on every screen and printed document.
+        DB::connection('tenant')->table('branches')->where('id', $branchId)
+            ->update(['name' => 'Khatri Biryani', 'updated_at' => now()]);
 
         // GO-LIVE (2026-08-10): the shop runs THREE named terminals. The legacy Counter 1/2 rows are
         // renamed in place (same ids → existing shifts/sales keep pointing at the right terminal);
@@ -280,12 +283,17 @@ class OnboardKhatriBiryaniCommand extends Command
         ];
         $printerIds = [];
         foreach ($printers as $code => [$name, $ip, $role, $isDefault]) {
-            DB::connection('tenant')->table('printers')->updateOrInsert(
-                ['code' => $code],
-                ['branch_id' => $branchId, 'name' => $name, 'printer_type' => 'network',
-                 'print_role' => $role, 'supports_reminder' => 0, 'ip_address' => $ip, 'port' => 9100,
-                 'is_default' => $isDefault, 'is_active' => 1, 'created_at' => now(), 'updated_at' => now()]
-            );
+            $existing = DB::connection('tenant')->table('printers')->where('code', $code)->first();
+            $attributes = ['branch_id' => $branchId, 'name' => $name, 'printer_type' => 'network',
+                'print_role' => $role, 'supports_reminder' => 0, 'port' => $existing->port ?? 9100,
+                'is_default' => $isDefault, 'is_active' => 1, 'updated_at' => now()];
+            // NEVER overwrite an IP the shop has already set on site — the seeded address is only
+            // a placeholder for the first run (re-running this command must stay safe on a live till).
+            if (! $existing) {
+                $attributes['ip_address'] = $ip;
+                $attributes['created_at'] = now();
+            }
+            DB::connection('tenant')->table('printers')->updateOrInsert(['code' => $code], $attributes);
             $printerIds[$code] = (int) DB::connection('tenant')->table('printers')->where('code', $code)->value('id');
         }
         // Retire the earlier trial printers (incl. the reminder unit) — this restaurant runs two
@@ -323,7 +331,9 @@ class OnboardKhatriBiryaniCommand extends Command
                 }
             }
         }
-        $this->info("printers: PRINTER-1 {$printers['PRINTER-1'][1]} (default, receipt + all KOT) / PRINTER-2 {$printers['PRINTER-2'][1]} (Beverages, Desserts, Extras) — {$mapped} category routes, no reminder printer.");
+        // report the CURRENT addresses (a re-run keeps whatever the shop configured on site)
+        $liveIps = DB::connection('tenant')->table('printers')->whereIn('code', array_keys($printers))->pluck('ip_address', 'code');
+        $this->info("printers: PRINTER-1 {$liveIps['PRINTER-1']} (default, receipt + all KOT) / PRINTER-2 {$liveIps['PRINTER-2']} (Beverages, Desserts, Extras) — {$mapped} category routes, no reminder printer.");
 
         // ── Auto-print ON for all three terminals; the Delivery terminal is BOUND to P1 today ──
         // (Takeaway / Dine In keep auto-print on but no explicit binding yet — their KOTs still

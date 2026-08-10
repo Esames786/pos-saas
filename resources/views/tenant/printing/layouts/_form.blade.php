@@ -49,6 +49,9 @@
             'show_item_codes'        => 'Item Codes',
             'show_payment_breakdown' => 'Payment Breakdown',
             'show_bingoo_branding'   => 'Bingoo Branding',
+            'show_delivery_details'  => 'Delivery Details',
+            'show_vehicle_number'    => 'Vehicle Number',
+            'show_order_type'        => 'Order Type',
         ] as $field => $label)
         <div class="col-md-4 layout-option" data-layout-field="{{ $field }}">
             <div class="form-check form-switch">

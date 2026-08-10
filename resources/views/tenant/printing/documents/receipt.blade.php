@@ -77,7 +77,9 @@
 <hr>
 
 <div class="bold center">{{ ($isPreview ?? false) ? 'BILL PREVIEW' : 'RECEIPT' }}</div>
+@if(!($layout?->show_order_type === false))
 <div class="bold center">** {{ strtoupper(str_replace('_', ' ', $salesOrder->order_type ?? 'SALE')) }} **</div>
+@endif
 @if($isPreview ?? false)<div class="center" style="font-size:10px">NOT A TAX RECEIPT</div>@endif
 
 <hr>
@@ -112,16 +114,12 @@
 @endif
 @endif
 
-@if($salesOrder->deliveryChannel)
-<div>Channel: {{ $salesOrder->deliveryChannel->name }}</div>
+@if(!($layout?->show_delivery_details === false))
+    @if($salesOrder->deliveryChannel)<div>Channel: {{ $salesOrder->deliveryChannel->name }}</div>@endif
+    @if($salesOrder->deliveryRider)<div>Rider: {{ $salesOrder->deliveryRider->name }}{{ $salesOrder->deliveryRider->phone ? ' - ' . $salesOrder->deliveryRider->phone : '' }}</div>@endif
+    @if($salesOrder->delivery_address)<div>Deliver to: {{ $salesOrder->delivery_address }}</div>@endif
 @endif
-@if($salesOrder->deliveryRider)
-<div>Rider: {{ $salesOrder->deliveryRider->name }}{{ $salesOrder->deliveryRider->phone ? ' - ' . $salesOrder->deliveryRider->phone : '' }}</div>
-@endif
-@if($salesOrder->delivery_address)
-<div>Deliver to: {{ $salesOrder->delivery_address }}</div>
-@endif
-@if($salesOrder->vehicle_number)
+@if(!($layout?->show_vehicle_number === false) && $salesOrder->vehicle_number)
 <div>Vehicle: {{ $salesOrder->vehicle_number }}</div>
 @endif
 
