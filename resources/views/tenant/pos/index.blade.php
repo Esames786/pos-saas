@@ -5367,10 +5367,15 @@ document.addEventListener('DOMContentLoaded', function () {
         return list;
     }
 
-    /** One click is enough unless the customer has a real choice of addresses. */
+    /**
+     * Non-delivery: one click attaches, the address is irrelevant.
+     * Delivery: ALWAYS open the address panel — the rider needs an address, and the cashier must
+     * be able to pick a saved one OR add a new one for an existing customer (a regular ordering
+     * to a different place). The usual one is preselected, so it is still Enter-to-confirm.
+     */
     function chooseCustomer(customer) {
         const addresses = addressesOf(customer);
-        if (addresses.length <= 1 || !isDelivery()) {
+        if (!isDelivery()) {
             attach(customer, addresses.length ? addresses[0].address : '');
             return;
         }
@@ -5380,13 +5385,19 @@ document.addEventListener('DOMContentLoaded', function () {
         $id('cust-quick-add').classList.add('d-none');
         $id('cust-selected-panel').classList.remove('d-none');
         renderAddresses();
+        // Saving a new address for an existing customer is the common case for a regular
+        // ordering somewhere different — put the cursor where the cashier will type.
+        const newAddr = $id('new-addr-text');
+        if (newAddr && addressesOf(customer).length === 0) { newAddr.focus(); }
     }
 
     function renderAddresses() {
         const list = $id('cust-address-list');
         if (!list || !selectedCustomer) return;
         const addresses = addressesOf(selectedCustomer);
-        list.innerHTML = '';
+        list.innerHTML = addresses.length
+            ? ''
+            : '<div class="text-muted small mb-1">No saved address yet — add one below.</div>';
         addresses.forEach(function (a, idx) {
             const wrap = document.createElement('div');
             wrap.className = 'form-check';
@@ -5422,8 +5433,19 @@ document.addEventListener('DOMContentLoaded', function () {
             selectedCustomer.addresses = (selectedCustomer.addresses || []).concat([data.address]);
             ['new-addr-label', 'new-addr-text'].forEach(function (id) { const el = $id(id); if (el) el.value = ''; });
             renderAddresses();
+            // the address just typed is the one this order goes to — select it straight away
+            const justAdded = document.querySelector('#addr-' + CSS.escape(String(data.address.id)));
+            if (justAdded) justAdded.checked = true;
+            notify('success', 'Address saved');
         })
         .catch(function () {});
+    });
+    // Enter in the address box saves it (no reaching for the mouse)
+    ['new-addr-text', 'new-addr-label'].forEach(function (id) {
+        const el = $id(id);
+        if (el) el.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') { e.preventDefault(); saveAddrBtn && saveAddrBtn.click(); }
+        });
     });
 
     /* ── search (one box, phone or name) ──────────────────────────────── */
