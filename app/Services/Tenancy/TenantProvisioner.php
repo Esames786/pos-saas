@@ -190,18 +190,18 @@ class TenantProvisioner
             );
         }
 
-        $branch = Branch::firstOrCreate(
-            ['name' => 'Main Branch'],
-            [
-                'code'          => 'MAIN',
-                'business_type' => 'hybrid',
-                'address'       => 'Main Branch Address',
-                'phone'         => null,
-                'email'         => null,
-                'timezone'      => 'Asia/Karachi',
-                'status'        => 'active',
-            ]
-        );
+        // Keyed on EXISTENCE, never on the name: a tenant that renames its branch (Khatri →
+        // "Khatri Biryani") used to get a SECOND "Main Branch" created on the next provision run.
+        $branch = Branch::orderBy('id')->first() ?: Branch::create([
+            'name'          => 'Main Branch',
+            'code'          => 'MAIN',
+            'business_type' => 'hybrid',
+            'address'       => 'Main Branch Address',
+            'phone'         => null,
+            'email'         => null,
+            'timezone'      => 'Asia/Karachi',
+            'status'        => 'active',
+        ]);
 
         $owner = User::updateOrCreate(
             ['email' => $tenant->owner_email ?: 'owner@' . $tenant->tenant_code . '.local'],

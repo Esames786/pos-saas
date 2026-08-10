@@ -204,6 +204,32 @@ class OnboardKhatriBiryaniCommand extends Command
             'updated_at' => now(),
         ]);
 
+        // The contract is ONE branch. An earlier provisioner bug (branch keyed on name) created a
+        // stray "Main Branch" after the rename; remove any extra branch, but ONLY when it carries
+        // no operational data — a branch with real activity is never touched.
+        foreach (DB::connection('tenant')->table('branches')->where('id', '!=', $branchId)->get() as $stray) {
+            $used = 0;
+            foreach (['sales_orders', 'shifts', 'printers', 'terminals', 'category_printer_mappings',
+                      'stock_balances', 'daily_closings', 'restaurant_table_sessions'] as $table) {
+                $used += DB::connection('tenant')->table($table)->where('branch_id', $stray->id)->count();
+            }
+            if ($used > 0) {
+                $this->warn("branch #{$stray->id} ({$stray->name}) has {$used} operational rows — left in place.");
+                continue;
+            }
+            // detach the empty scaffolding the provisioner seeded for it
+            $tableIds = DB::connection('tenant')->table('restaurant_tables')->where('branch_id', $stray->id)->pluck('id');
+            if ($tableIds->isNotEmpty()) {
+                DB::connection('tenant')->table('restaurant_tables')->whereIn('id', $tableIds)->delete();
+            }
+            foreach (['restaurant_floors', 'restaurant_waiters', 'receipt_layout_settings', 'branch_user', 'cash_bank_accounts'] as $table) {
+                DB::connection('tenant')->table($table)->where('branch_id', $stray->id)->delete();
+            }
+            DB::connection('tenant')->table('users')->where('default_branch_id', $stray->id)->update(['default_branch_id' => $branchId]);
+            DB::connection('tenant')->table('branches')->where('id', $stray->id)->delete();
+            $this->info("removed stray empty branch #{$stray->id} ({$stray->name}).");
+        }
+
         // GO-LIVE (2026-08-10): the shop runs THREE named terminals. The legacy Counter 1/2 rows are
         // renamed in place (same ids → existing shifts/sales keep pointing at the right terminal);
         // any older extra terminal is retired to 'inactive' so it never consumes an active slot.
