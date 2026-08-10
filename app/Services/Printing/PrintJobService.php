@@ -27,11 +27,25 @@ class PrintJobService
         // it (a replay/timeout-retry must not create a duplicate). An explicit
         // reprint passes ensureOnce=false and always makes a fresh job. A previously
         // FAILED receipt is not reused, so a genuine miss can still be recovered.
+        // A receipt raised BEFORE payment (the "Bill / Preview" proforma) is a different document
+        // from the customer's FINAL bill. Treating them as one made the preview satisfy
+        // ensure-once, so the closing bill never printed after Review & Pay. The phase is part of
+        // the identity, and the final bill is only ever satisfied by a job raised after payment.
+        $isFinal = $sale->completed_at !== null
+            && in_array($sale->status, ['paid', 'partially_returned', 'returned'], true);
+        $logicalKey = $ensureOnce
+            ? 'receipt:' . ($isFinal ? 'final' : 'proforma') . ':sale-' . $sale->id
+            : null;
+
         if ($ensureOnce) {
             $existing = PrintJob::where('reference_type', 'sales_order')
                 ->where('reference_id', $sale->id)
                 ->where('document_type', 'receipt')
                 ->whereIn('print_status', ['queued', 'printed'])
+                // legacy jobs carry the old 'receipt:auto:…' key; accepting them only when they
+                // were raised after payment keeps old paid sales from reprinting on a replay.
+                ->when($isFinal, fn ($q) => $q->where('created_at', '>=', $sale->completed_at))
+                ->when(! $isFinal, fn ($q) => $q->where('logical_key', $logicalKey))
                 ->latest('id')
                 ->first();
             if ($existing) {
@@ -45,7 +59,7 @@ class PrintJobService
 
         $attributes = [
             'job_no'             => $this->nextJobNo(),
-            'logical_key'         => $ensureOnce ? 'receipt:auto:sale-' . $sale->id : null,
+            'logical_key'         => $logicalKey,
             'copy_no'            => 1,
             'branch_id'          => $sale->branch_id,
             'terminal_id'        => $terminalId ?: $sale->terminal_id,

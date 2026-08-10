@@ -426,6 +426,9 @@
 
 {{-- Selected table-session bar — JS-managed: always in the DOM, shown when a dine-in
      session is active. Filled by applyTableSession() so switching tables needs no reload. --}}
+{{-- Tables belong to dine-in. An operator who cannot run dine-in orders (the delivery counter)
+     never gets the table bar at all — every JS reference to it is null-guarded. --}}
+@if(in_array('dine_in', $allowedOrderTypes, true))
 <div id="pos-session-bar" class="pos-card px-3 py-2 mb-3 d-flex flex-wrap align-items-center gap-2 pos-session-summary"
      data-session-base="{{ url('/restaurant/table-sessions') }}"
      style="{{ $activeMode === 'dine_in' ? '' : 'display:none;' }}">
@@ -455,6 +458,7 @@
         @endcan
     </div>
 </div>
+@endif
 
 @if($heldSale)
     <div class="alert alert-warning" role="status">
@@ -1327,6 +1331,33 @@ document.addEventListener('DOMContentLoaded', function () {
     const categories = @json($categories);
     const heldSale   = @json($heldSaleJson);
     const branchCancellationModes = @json($branches->mapWithKeys(fn ($branch) => [(string) $branch->id => $branch->held_kot_cancellation_approval_mode ?? 'manager_required']));
+
+    function buttonIsBusy(button) {
+        return !!(button && button.dataset.posBusy === '1');
+    }
+
+    function setButtonBusy(button, busy, label) {
+        if (!button) return;
+        if (busy) {
+            if (buttonIsBusy(button)) return;
+            button.dataset.posBusy = '1';
+            button.dataset.posOriginalHtml = button.innerHTML;
+            button.dataset.posWasDisabled = button.disabled ? '1' : '0';
+            button.disabled = true;
+            button.setAttribute('aria-busy', 'true');
+            button.innerHTML = '<span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>'
+                + '<span>' + (label || 'Please wait') + '</span>';
+            return;
+        }
+
+        if (!buttonIsBusy(button)) return;
+        button.innerHTML = button.dataset.posOriginalHtml || '';
+        button.disabled = button.dataset.posWasDisabled === '1';
+        button.removeAttribute('aria-busy');
+        delete button.dataset.posBusy;
+        delete button.dataset.posOriginalHtml;
+        delete button.dataset.posWasDisabled;
+    }
 
     function buildPosUrl(params) {
         params = params || {};
@@ -3140,6 +3171,19 @@ document.addEventListener('DOMContentLoaded', function () {
             if (tblSessionInput) tblSessionInput.value = preservedSessionId;
             if (tblIdInput) tblIdInput.value = preservedTableId;
         }
+        // A finished/abandoned order must not leave its CUSTOMER (or delivery details) attached to
+        // the next one — Review & Pay, New Order, Cancel and mode switches all land here. Add Round
+        // (preserveTable) is the one case that continues the same party's order, so it keeps them.
+        if (!options.preserveTable) {
+            ['customer_id', 'customer_name', 'customer_phone', 'delivery_address', 'vehicle_number']
+                .forEach(function (id) { const el = document.getElementById(id); if (el) el.value = ''; });
+            const dch = document.getElementById('delivery_channel_id'); if (dch) dch.value = '';
+            const drd = document.getElementById('delivery_rider_id');   if (drd) drd.value = '';
+            const dcAmt = document.getElementById('delivery_charge_amount');
+            if (dcAmt && !dcAmt.readOnly) { dcAmt.value = ''; }   // locked branches keep their default
+            if (window.posRenderCustomerChip) window.posRenderCustomerChip();
+            if (typeof updateDeliveryPanel === 'function') updateDeliveryPanel();
+        }
         renderCart();
         updateSplitBillBtn();
         updateRecalledBar();
@@ -3418,6 +3462,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     var _backorderConfirmed = false;
     var _directPayKotIntent = null;
+    var _completeSaleFlowActive = false;
     var _directPayReceiptIntent = null;
 
     function resolveDirectPayKotIntent() {
@@ -3500,11 +3545,16 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    function submitPaidSale() {
+    function submitPaidSale(continuingFlow) {
+        const submitBtn = document.getElementById('complete-sale-btn');
+        if (!continuingFlow && (_completeSaleFlowActive || buttonIsBusy(submitBtn))) return;
         if (!cart.length) { toast('warning', 'Add at least one item'); return; }
+        _completeSaleFlowActive = true;
 
         if (_directPayKotIntent === null) {
-            resolveDirectPayKotIntent().then(function () { submitPaidSale(); });
+            resolveDirectPayKotIntent()
+                .then(function () { submitPaidSale(true); })
+                .catch(function () { _completeSaleFlowActive = false; });
             return;
         }
 
@@ -3532,9 +3582,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 }).then(function (res) {
                     if (res.isConfirmed) {
                         _backorderConfirmed = true;
-                        submitPaidSale();
+                        submitPaidSale(true);
                     } else {
                         _directPayKotIntent = null;
+                        _completeSaleFlowActive = false;
                     }
                 });
                 return;
@@ -3543,10 +3594,7 @@ document.addEventListener('DOMContentLoaded', function () {
         _backorderConfirmed = false;
         _directPayReceiptIntent = autoPrintEnabled('receipt') ? 'print' : 'skip';
 
-        const submitBtn  = document.getElementById('complete-sale-btn');
-        const origLabel  = submitBtn.textContent;
-        submitBtn.disabled    = true;
-        submitBtn.textContent = 'Processing…';
+        setButtonBusy(submitBtn, true, 'Completing sale');
 
         ensureSaleUuid();  // SALE-IDEMPOTENCY-1: stamp the sale's uuid before submit
 
@@ -3564,8 +3612,8 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(function (res) { return res.json().then(function (d) { return { ok: res.ok, data: d }; }); })
             .then(function (result) {
                 if (!result.ok) {
-                    submitBtn.disabled    = false;
-                    submitBtn.textContent = origLabel;
+                    setButtonBusy(submitBtn, false);
+                    _completeSaleFlowActive = false;
                     var failMsg = result.data.message || 'Sale failed. Please try again.';
                     if (typeof Swal !== 'undefined') {
                         Swal.fire({ icon: 'error', title: 'Cannot complete sale', text: failMsg, confirmButtonColor: '#dc3545' });
@@ -3601,13 +3649,13 @@ document.addEventListener('DOMContentLoaded', function () {
                         if (pmInst) pmInst.hide();
                     }
                 }).finally(function () {
-                    submitBtn.disabled = false;
-                    submitBtn.textContent = origLabel;
+                    setButtonBusy(submitBtn, false);
+                    _completeSaleFlowActive = false;
                 });
             })
             .catch(function () {
-                submitBtn.disabled    = false;
-                submitBtn.textContent = origLabel;
+                setButtonBusy(submitBtn, false);
+                _completeSaleFlowActive = false;
                 toast('error', 'Network error. Please try again.');
             });
         });
@@ -3616,12 +3664,10 @@ document.addEventListener('DOMContentLoaded', function () {
     /* ── Hold sale ────────────────────────────────────────────────────── */
 
     function submitHeldSale() {
+        const holdBtn = document.getElementById('hold-sale-btn');
+        if (buttonIsBusy(holdBtn)) return;
         if (!cart.length) { toast('warning', 'Add at least one item'); return; }
-
-        const holdBtn    = document.getElementById('hold-sale-btn');
-        const origLabel  = holdBtn.textContent;
-        holdBtn.disabled    = true;
-        holdBtn.textContent = 'Saving…';
+        setButtonBusy(holdBtn, true, 'Saving order');
 
         refreshServerTotals().finally(function () {
             // Sync any current held sale ID into the form
@@ -3639,8 +3685,7 @@ document.addEventListener('DOMContentLoaded', function () {
             })
             .then(function (res) { return res.json().then(function (d) { return { ok: res.ok, data: d }; }); })
             .then(function (result) {
-                holdBtn.disabled    = false;
-                holdBtn.textContent = origLabel;
+                setButtonBusy(holdBtn, false);
 
                 if (!result.ok) {
                     if (result.data && result.data.code === 'TABLE_HAS_OPEN_ORDERS') {
@@ -3688,8 +3733,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
             })
             .catch(function () {
-                holdBtn.disabled    = false;
-                holdBtn.textContent = origLabel;
+                setButtonBusy(holdBtn, false);
                 toast('error', 'Network error. Please try again.');
             });
         });
@@ -3788,18 +3832,21 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     document.getElementById('cancel-order-btn').addEventListener('click', function () {
+        const cancelBtn = this;
+        if (buttonIsBusy(cancelBtn)) return;
         if (!cart.length && !_currentHeldSaleId) {
             toast('warning', 'Nothing to cancel');
             return;
         }
         if (_currentHeldSaleId && typeof Swal !== 'undefined') {
             requestOrderCancellationDetails(_currentHeldSaleId, function (details) {
+                setButtonBusy(cancelBtn, true, 'Cancelling order');
                 submitHeldOrderCancellation(_currentHeldSaleId, details).then(function () {
                     clearCart();
                     toast('success', 'Order cancelled and kitchen notified');
                 }).catch(function (error) {
                     toast('error', error.message || 'Failed to cancel. Try again.');
-                });
+                }).finally(function () { setButtonBusy(cancelBtn, false); });
             });
         } else if (_currentHeldSaleId) {
             alert('Cancellation controls are unavailable. Reload the POS and try again.');
@@ -4013,17 +4060,17 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function cancelHeldSaleFromModal(saleId, saleNo, btn) {
+        if (buttonIsBusy(btn)) return;
         requestOrderCancellationDetails(saleId, function (details) {
-            btn.disabled = true;
+            setButtonBusy(btn, true, 'Cancelling');
             submitHeldOrderCancellation(saleId, details).then(function () {
                 const row = btn.closest('tr');
                 if (row) row.remove();
                 if (Number(_currentHeldSaleId) === Number(saleId)) clearCart();
                 toast('success', saleNo + ' cancelled and kitchen notified');
             }).catch(function (error) {
-                btn.disabled = false;
                 toast('error', error.message || 'Cancellation failed');
-            });
+            }).finally(function () { setButtonBusy(btn, false); });
         });
     }
 
@@ -4747,10 +4794,14 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('pos-session-request-bill-form')?.addEventListener('submit', function (event) {
         event.preventDefault();
         var requestForm = this;
+        var requestButton = requestForm.querySelector('button[type="submit"]');
+        if (buttonIsBusy(requestButton)) return;
+        setButtonBusy(requestButton, true, 'Requesting bill');
         fetch(requestForm.action, { method: 'POST', headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' }, body: new FormData(requestForm) })
             .then(function (response) { return response.json().then(function (data) { if (!response.ok) throw new Error(data.message || 'Unable to request bill.'); return data; }); })
             .then(function (data) { requestForm.style.display = 'none'; refreshTableBoard(document.getElementById('restaurant_table_session_id')?.value || ''); toast('success', data.message); })
-            .catch(function (error) { toast('error', error.message); });
+            .catch(function (error) { toast('error', error.message); })
+            .finally(function () { setButtonBusy(requestButton, false); });
     });
 
     function loadTableOrders(sessionId, callback) {
@@ -4774,13 +4825,16 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    function postTableOperation(url, fields, callback) {
+    function postTableOperation(url, fields, callback, button) {
+        if (buttonIsBusy(button)) return;
+        setButtonBusy(button, true, 'Updating');
         var data = new FormData();
         Object.keys(fields).forEach(function (key) { data.append(key, fields[key]); });
         fetch(url, { method: 'POST', headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' }, body: data })
             .then(function (response) { return response.json().then(function (payload) { if (!response.ok) throw new Error(payload.message || 'Operation failed.'); return payload; }); })
             .then(function (payload) { toast('success', payload.message || 'Updated'); callback(payload); })
-            .catch(function (error) { toast('error', error.message); });
+            .catch(function (error) { toast('error', error.message); })
+            .finally(function () { setButtonBusy(button, false); });
     }
 
     function showTableMove(sessionId, sourceTableId) {
@@ -4789,7 +4843,7 @@ document.addEventListener('DOMContentLoaded', function () {
         var targets = Array.from(tableBoardEl.querySelectorAll('[data-open-table="1"]')).filter(function (button) { return String(button.dataset.tableId) !== String(sourceTableId); });
         body.innerHTML = '<h3 class="h5 mb-3">Move Table</h3>' + (targets.length ? '<div class="table-action-list">' + targets.map(function (button) { return '<button type="button" class="btn btn-outline-primary p-3" data-move-target="' + escapeHtml(button.dataset.tableId) + '">' + escapeHtml(button.dataset.tableNo) + '</button>'; }).join('') + '</div>' : '<div class="alert alert-light border">No eligible destination table is currently available.</div>');
         body.querySelectorAll('[data-move-target]').forEach(function (button) {
-            button.addEventListener('click', function () { postTableOperation('{{ url('/restaurant/table-sessions') }}/' + sessionId + '/move', { target_table_id: button.dataset.moveTarget }, function (data) { applyTableSession(data.session); refreshTableBoard(data.session.id); showTableWorkspaceView('table-workspace-board'); }); });
+            button.addEventListener('click', function () { postTableOperation('{{ url('/restaurant/table-sessions') }}/' + sessionId + '/move', { target_table_id: button.dataset.moveTarget }, function (data) { applyTableSession(data.session); refreshTableBoard(data.session.id); showTableWorkspaceView('table-workspace-board'); }, button); });
         });
     }
 
@@ -4845,7 +4899,7 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    document.getElementById('complete-sale-btn').addEventListener('click', submitPaidSale);
+    document.getElementById('complete-sale-btn').addEventListener('click', function () { submitPaidSale(false); });
 
     // "Review & Pay" opens the payment modal (guarded on empty cart); focus tendered when shown.
     var paymentModalEl = document.getElementById('paymentModal');
@@ -5121,6 +5175,7 @@ document.addEventListener('DOMContentLoaded', function () {
         event.preventDefault();
         const form    = this;
         const openBtn = document.getElementById('open-table-submit');
+        if (buttonIsBusy(openBtn)) return;
         const errEl   = document.getElementById('open-table-error');
         if (errEl) errEl.remove();
 
@@ -5133,8 +5188,7 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
-        openBtn.disabled    = true;
-        openBtn.textContent = 'Opening…';
+        setButtonBusy(openBtn, true, 'Opening table');
 
         fetch(form.action, {
             method:  'POST',
@@ -5151,8 +5205,7 @@ document.addEventListener('DOMContentLoaded', function () {
             if (result.ok && result.data.session_id) {
                 // Close the modal and drop straight into the fresh session — no reload.
                 closeTableWorkspace();
-                openBtn.disabled    = false;
-                openBtn.textContent = 'Open Table';
+                setButtonBusy(openBtn, false);
                 form.reset();
 
                 clearCart();                 // fresh table → empty cart
@@ -5169,13 +5222,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 div.className = 'alert alert-danger mt-2 mb-0';
                 div.textContent = message;
                 form.appendChild(div);
-                openBtn.disabled    = false;
-                openBtn.textContent = 'Open Table';
+                setButtonBusy(openBtn, false);
             }
         })
         .catch(function () {
-            openBtn.disabled    = false;
-            openBtn.textContent = 'Open Table';
+            setButtonBusy(openBtn, false);
             toast('error', 'Network error. Please try again.');
         });
     });
@@ -5340,7 +5391,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const clearBtn = $id('chip-cust-clear');
     if (clearBtn) clearBtn.addEventListener('click', function () {
-        ['customer_id', 'customer_name', 'customer_phone'].forEach(function (id) { const el = $id(id); if (el) el.value = ''; });
+        ['customer_id', 'customer_name', 'customer_phone', 'delivery_address'].forEach(function (id) { const el = $id(id); if (el) el.value = ''; });
         renderChip();
     });
 
@@ -5350,7 +5401,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if ($id('customer_name')) $id('customer_name').value = customer.name || '';
         if ($id('customer_phone')) $id('customer_phone').value = customer.phone || '';
         const addrEl = $id('delivery_address');
-        if (addrEl && address) addrEl.value = address;
+        if (addrEl) addrEl.value = address || '';
         renderChip();
         const modalEl = $id('customerModal');
         const modal = window.bootstrap && bootstrap.Modal.getInstance(modalEl);
@@ -5418,12 +5469,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const saveAddrBtn = $id('new-addr-save');
     if (saveAddrBtn) saveAddrBtn.addEventListener('click', function () {
+        if (buttonIsBusy(saveAddrBtn)) return;
         if (!selectedCustomer || selectedCustomer.id == null) return;
         const address = ($id('new-addr-text') || {}).value || '';
         if (!address.trim()) return;
         const body = new FormData();
         body.append('label', ($id('new-addr-label') || {}).value || '');
         body.append('address', address.trim());
+        setButtonBusy(saveAddrBtn, true, 'Saving address');
         fetch('{{ url('/pos/customers') }}/' + selectedCustomer.id + '/addresses', {
             method: 'POST', headers: { 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' }, body: body,
         })
@@ -5438,7 +5491,8 @@ document.addEventListener('DOMContentLoaded', function () {
             if (justAdded) justAdded.checked = true;
             notify('success', 'Address saved');
         })
-        .catch(function () {});
+        .catch(function () { notify('error', 'Could not save the address.'); })
+        .finally(function () { setButtonBusy(saveAddrBtn, false); });
     });
     // Enter in the address box saves it (no reaching for the mouse)
     ['new-addr-text', 'new-addr-label'].forEach(function (id) {
@@ -5531,6 +5585,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
     /* ── quick add: create AND attach in one action ───────────────────── */
     function quickSave() {
+        const btn = $id('qa-save');
+        if (buttonIsBusy(btn)) return;
         const err = $id('qa-error');
         const name = ($id('qa-name') || {}).value.trim();
         const phone = ($id('qa-phone') || {}).value.trim();
@@ -5541,15 +5597,13 @@ document.addEventListener('DOMContentLoaded', function () {
         body.append('name', name || phone);          // a phone-only walk-in still gets a label
         body.append('phone', phone);
         body.append('address', ($id('qa-address') || {}).value || '');
-        const btn = $id('qa-save');
-        if (btn) btn.disabled = true;
+        setButtonBusy(btn, true, 'Saving customer');
 
         fetch('{{ url('/pos/customers/quick-store') }}', {
             method: 'POST', headers: { 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' }, body: body,
         })
             .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, json: j }; }); })
             .then(function (res) {
-                if (btn) btn.disabled = false;
                 if (!res.ok || !res.json.ok) {
                     if (err) err.textContent = (res.json && res.json.message) || 'Could not save the customer.';
                     return;
@@ -5566,9 +5620,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 ['qa-name', 'qa-phone', 'qa-address'].forEach(function (id) { const el = $id(id); if (el) el.value = ''; });
             })
             .catch(function () {
-                if (btn) btn.disabled = false;
                 if (err) err.textContent = 'Could not save the customer.';
-            });
+            })
+            .finally(function () { setButtonBusy(btn, false); });
     }
 
     const qaSave = $id('qa-save');
