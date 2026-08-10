@@ -853,6 +853,9 @@
                                 <div class="pos-total-line"><span>Tax</span><strong id="tax-view">0.00</strong></div>
                                 <div class="pos-total-line d-none" id="service-charge-row"><span>Service Charge</span><strong id="service-charge-view">0.00</strong></div>
                                 <div class="pos-total-line d-none" id="tip-row"><span>Tip</span><strong id="tip-view">0.00</strong></div>
+                                {{-- DELIVERY-CHARGE display (client 2026-08-11): visible on screen, in the
+                                     bill preview and on the printed bill whenever it is charged. --}}
+                                <div class="pos-total-line d-none" id="delivery-charge-row"><span>Delivery Charge</span><strong id="delivery-charge-view">0.00</strong></div>
                                 <hr>
                                 <div class="pos-total-line">
                                     <span class="pos-grand-total">Total</span>
@@ -2670,6 +2673,17 @@ document.addEventListener('DOMContentLoaded', function () {
             scRow.classList.remove('d-none');
         } else {
             scRow.classList.add('d-none');
+        }
+
+        // Delivery charge row
+        const dcRow = document.getElementById('delivery-charge-row');
+        if (dcRow) {
+            if (t.deliveryCharge > 0) {
+                document.getElementById('delivery-charge-view').textContent = money(t.deliveryCharge);
+                dcRow.classList.remove('d-none');
+            } else {
+                dcRow.classList.add('d-none');
+            }
         }
 
         // Tip row
@@ -4515,49 +4529,56 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     /* ── Bill / Preview — client-side proforma of the current cart (no save) ── */
+    /* ── Bill / Preview — BILL-PREVIEW-PARITY-1: rendered server-side from the SAME receipt
+       template + saved layout as the printed bill, so preview and paper can never drift.
+       Nothing is saved: the sale is built in memory and thrown away. ── */
     function billPreview() {
         if (!cart.length) { toast('warning', 'Cart is empty'); return; }
-        const t = totals();
-        const branchName = (branchEl && branchEl.selectedOptions[0]) ? branchEl.selectedOptions[0].textContent.trim() : '';
-        const rowsHtml = cart.map(function (it) {
-            const qty = Number(it.quantity) || 0;
-            const price = Number(it.unit_price) || 0;
-            const lt = (it.line_total != null) ? Number(it.line_total) : qty * price;
-            return '<tr><td>' + escapeHtml(it.name || it.product_name || 'Item') + '</td><td style="text-align:right">' + qty + '</td><td style="text-align:right">' + money(price) + '</td><td style="text-align:right">' + money(lt) + '</td></tr>';
-        }).join('');
-        // Use the branch's RECEIPT layout so this matches the receipt / table-bill look.
-        const lay = (receiptLayouts && receiptLayouts[selectedBranchId()]) || {};
-        const paper = lay.paper_size || '80mm';
-        const printW = paper === '58mm' ? '52mm' : (paper === '80mm' ? '72mm' : '180mm');
-        const headerName = (lay.show_branch_name === false) ? '' : branchName;
-        const html = '<html><head><title>Bill Preview</title><style>'
-            + 'body{font-family:\'Courier New\',Courier,monospace;width:' + printW + ';margin:0 auto;padding:8px;font-size:13px;color:#000}'
-            + '@media screen{body{width:320px}}'
-            + 'h3{text-align:center;margin:4px 0}table{width:100%;border-collapse:collapse}td,th{padding:2px 0}'
-            + '.tot{border-top:1px dashed #000;margin-top:6px;padding-top:6px}.muted{text-align:center;color:#666;font-size:11px}</style></head><body>'
-            + (headerName ? '<h3>' + escapeHtml(headerName) + '</h3>' : '')
-            + (lay.header_text ? '<div style="text-align:center">' + escapeHtml(lay.header_text) + '</div>' : '')
-            + '<div class="muted">BILL PREVIEW — NOT A TAX RECEIPT</div>'
-            + '<div class="muted">' + new Date().toLocaleString() + '</div><hr>'
-            + '<table><thead><tr><th style="text-align:left">Item</th><th style="text-align:right">Qty</th><th style="text-align:right">Price</th><th style="text-align:right">Amt</th></tr></thead><tbody>'
-            + rowsHtml + '</tbody></table>'
-            + '<div class="tot"><table>'
-            + '<tr><td>Subtotal</td><td style="text-align:right">' + money(t.subtotal) + '</td></tr>'
-            + ((t.discount > 0) ? '<tr><td>Discount</td><td style="text-align:right">' + money(t.discount) + '</td></tr>' : '')
-            + ((t.tax > 0) ? '<tr><td>Tax</td><td style="text-align:right">' + money(t.tax) + '</td></tr>' : '')
-            + ((t.serviceCharge > 0) ? '<tr><td>Service Charge</td><td style="text-align:right">' + money(t.serviceCharge) + '</td></tr>' : '')
-            + ((t.tip > 0) ? '<tr><td>Tip</td><td style="text-align:right">' + money(t.tip) + '</td></tr>' : '')
-            + '<tr><td><strong>Total</strong></td><td style="text-align:right"><strong>' + money(t.total) + '</strong></td></tr>'
-            + '</table></div>'
-            + (lay.footer_text ? '<hr><div style="text-align:center">' + escapeHtml(lay.footer_text) + '</div>' : '')
-            + '</body></html>';
         const body = document.getElementById('bill-preview-modal-body');
-        body.innerHTML = '<iframe id="bill-preview-frame" title="Current cart bill preview" class="w-100 border-0" style="min-height:560px"></iframe>';
-        body.querySelector('iframe').srcdoc = html;
+        body.innerHTML = '<div class="text-center text-muted py-4">Building bill preview…</div>';
         document.getElementById('billPreviewModalLabel').textContent = 'Current Cart Preview';
         bootstrap.Modal.getOrCreateInstance(document.getElementById('billPreviewModal')).show();
-    }
 
+        const payload = {
+            branch_id:              selectedBranchId(),
+            terminal_id:            currentTerminalId() || null,
+            order_type:             (orderTypeEl || {}).value,
+            discount_type:          'none',
+            discount_value:         0,
+            promo_code:             (document.getElementById('pos-promo-code') || {}).value || null,
+            tip_amount:             _tipAmount || 0,
+            delivery_charge_amount: deliveryChargeValue(),
+            customer_name:          (document.getElementById('customer_name') || {}).value || null,
+            customer_phone:         (document.getElementById('customer_phone') || {}).value || null,
+            delivery_address:       (document.getElementById('delivery_address') || {}).value || null,
+            vehicle_number:         (document.getElementById('vehicle_number') || {}).value || null,
+            lines: cart.map(function (it) {
+                return {
+                    product_id:      it.product_id || it.id || null,
+                    product_name:    it.name || it.product_name || 'Item',
+                    category_id:     (it.product && it.product.category_id) || it.category_id || 0,
+                    quantity:        Number(it.quantity) || 0,
+                    unit_price:      Number(it.unit_price) || 0,
+                    discount_amount: Number(it.discount_amount || 0),
+                    tax_amount:      Number(it.tax_amount || 0),
+                };
+            }),
+        };
+
+        fetch('{{ url('/api/pos/bill-preview') }}', {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json', 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        })
+        .then(function (res) { return res.json().then(function (d) { if (!res.ok || !d.ok) throw new Error(d.message || 'Unable to build the bill preview.'); return d; }); })
+        .then(function (data) {
+            body.innerHTML = '<iframe id="bill-preview-frame" title="Current cart bill preview" class="w-100 border-0" style="min-height:560px"></iframe>';
+            body.querySelector('iframe').srcdoc = data.html;
+        })
+        .catch(function (error) {
+            body.innerHTML = '<div class="alert alert-danger m-3">' + escapeHtml(error.message || 'Preview failed') + '</div>';
+        });
+    }
     function showTableBillPreview(sessionId) {
         fetch('{{ url('/restaurant/table-sessions') }}/' + sessionId + '/bill-preview', { headers: { 'Accept': 'application/json' } })
             .then(function (response) { return response.json().then(function (data) { if (!response.ok || !data.ok) throw new Error(data.message || 'Unable to load table bill.'); return data; }); })

@@ -247,7 +247,8 @@ class TenantProvisioner
         ];
         $layoutTexts = [
             'kot'      => ['header_text' => '*** KITCHEN ORDER TICKET ***', 'footer_text' => null],
-            'receipt'  => ['header_text' => $tenant->name ?: 'Receipt', 'footer_text' => 'Thank you!', 'show_payment_breakdown' => true, 'show_bingoo_branding' => true],
+            // customer name + phone print on the bill by default (delivery/counter need the number)
+            'receipt'  => ['header_text' => $tenant->name ?: 'Receipt', 'footer_text' => 'Thank you!', 'show_payment_breakdown' => true, 'show_bingoo_branding' => true, 'show_customer_name' => true],
             'reminder' => ['header_text' => '*** ORDER REMINDER ***', 'footer_text' => null],
         ];
         foreach ($layoutTexts as $docType => $texts) {

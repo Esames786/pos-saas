@@ -448,6 +448,142 @@ class POSController extends Controller
         return ['is_recipe' => true, 'makeable' => $makeable, 'limiting' => $limiting];
     }
 
+    /**
+     * BILL-PREVIEW-PARITY-1 (2026-08-11): the POS "Bill / Preview" used to be hand-built HTML in
+     * JavaScript, so it drifted from the real bill. It now renders the SAME receipt template with
+     * the SAME saved layout as the printed receipt, from a TRANSIENT (unsaved) sale built out of
+     * the current cart — nothing is persisted, no number is issued.
+     */
+    public function billPreview(Request $request, SalesTotalsService $totalsService)
+    {
+        $data = $request->validate([
+            'branch_id'               => ['required', 'exists:branches,id'],
+            'terminal_id'             => ['nullable', 'exists:terminals,id'],
+            'order_type'              => ['required', 'in:quick_sale,takeaway,dine_in,delivery'],
+            'discount_type'           => ['nullable', 'in:none,fixed,percent'],
+            'discount_value'          => ['nullable', 'numeric', 'min:0'],
+            'promo_code'              => ['nullable', 'string', 'max:50'],
+            'tip_amount'              => ['nullable', 'numeric', 'min:0'],
+            'delivery_charge_amount'  => ['nullable', 'numeric', 'min:0'],
+            'customer_name'           => ['nullable', 'string', 'max:190'],
+            'customer_phone'          => ['nullable', 'string', 'max:50'],
+            'delivery_address'        => ['nullable', 'string', 'max:500'],
+            'vehicle_number'          => ['nullable', 'string', 'max:50'],
+            'lines'                   => ['required', 'array', 'min:1'],
+            'lines.*.product_id'      => ['nullable', 'integer'],
+            'lines.*.product_name'    => ['nullable', 'string', 'max:190'],
+            'lines.*.category_id'     => ['nullable', 'integer'],
+            'lines.*.quantity'        => ['nullable', 'numeric', 'min:0'],
+            'lines.*.unit_price'      => ['nullable', 'numeric', 'min:0'],
+            'lines.*.discount_amount' => ['nullable', 'numeric', 'min:0'],
+            'lines.*.tax_amount'      => ['nullable', 'numeric', 'min:0'],
+        ]);
+
+        abort_unless(auth('tenant')->user()?->allowsOrderType($data['order_type']), 403);
+
+        $branch = Branch::findOrFail((int) $data['branch_id']);
+        $orderType = (string) $data['order_type'];
+
+        $resolvedLines = collect($data['lines'])
+            ->filter(fn ($line) => (float) ($line['quantity'] ?? 0) > 0)
+            ->map(fn ($line) => [
+                'product_id'      => (int) ($line['product_id'] ?? 0),
+                'category_id'     => (int) ($line['category_id'] ?? 0),
+                'quantity'        => (float) ($line['quantity'] ?? 0),
+                'unit_price'      => (float) ($line['unit_price'] ?? 0),
+                'discount_amount' => (float) ($line['discount_amount'] ?? 0),
+                'tax_amount'      => (float) ($line['tax_amount'] ?? 0),
+            ])->values();
+
+        abort_if($resolvedLines->isEmpty(), 422, 'Cart is empty.');
+
+        $totals = $totalsService->calculate(
+            resolvedLines: $resolvedLines->all(),
+            discountType:  $data['discount_type'] ?? 'none',
+            discountValue: (float) ($data['discount_value'] ?? 0),
+            branchId:      $branch->id,
+            orderType:     $orderType,
+            promoCode:     $data['promo_code'] ?? null,
+            tipAmount:     (float) ($data['tip_amount'] ?? 0),
+            deliveryCharge: $orderType === 'delivery'
+                ? ($branch->delivery_charge_locked
+                    ? (float) $branch->default_delivery_charge
+                    : (float) ($data['delivery_charge_amount'] ?? 0))
+                : 0,
+        );
+
+        // Transient sale — never saved. Relations are set in memory so the receipt view renders
+        // exactly as it will when the bill is really printed.
+        $sale = new \App\Models\Tenant\SalesOrder([
+            'branch_id' => $branch->id,
+            'terminal_id' => $data['terminal_id'] ?? null,
+            'order_type' => $orderType,
+            'customer_name' => $data['customer_name'] ?? null,
+            'customer_phone' => $data['customer_phone'] ?? null,
+            'delivery_address' => $orderType === 'delivery' ? ($data['delivery_address'] ?? null) : null,
+            'vehicle_number' => $orderType === 'quick_sale' ? ($data['vehicle_number'] ?? null) : null,
+            'subtotal' => $totals['subtotal'],
+            'discount_amount' => $totals['discount_amount'],
+            'tax_amount' => $totals['tax_amount'],
+            'service_charge_amount' => $totals['service_charge_amount'],
+            'delivery_charge_amount' => $totals['delivery_charge_amount'] ?? 0,
+            'tip_amount' => $totals['tip_amount'],
+            'grand_total' => $totals['grand_total'],
+            'paid_amount' => 0,
+            'change_amount' => 0,
+        ]);
+        $sale->sale_no = 'PREVIEW';
+        $sale->sale_date = now();
+        $sale->setRelation('branch', $branch);
+        $sale->setRelation('customer', null);
+        $sale->setRelation('createdBy', auth('tenant')->user());
+        $sale->setRelation('payments', collect());
+        $sale->setRelation('restaurantTable', null);
+        $sale->setRelation('restaurantWaiter', null);
+        $sale->setRelation('deliveryChannel', null);
+        $sale->setRelation('deliveryRider', null);
+        $sale->setRelation('shift', null);
+
+        $products = \App\Models\Tenant\Product::with('unit')
+            ->whereIn('id', $resolvedLines->pluck('product_id')->filter()->all())->get()->keyBy('id');
+        $postedNames = collect($data['lines'])->pluck('product_name', 'product_id');
+
+        $sale->setRelation('lines', $resolvedLines->values()->map(function ($line, $index) use ($products, $postedNames) {
+            $product = $products->get($line['product_id']);
+            $saleLine = new \App\Models\Tenant\SalesOrderLine([
+                'product_id' => $line['product_id'] ?: null,
+                'product_name' => $product?->name ?: ($postedNames[$line['product_id']] ?? 'Item'),
+                'unit_code' => $product?->unit?->code,
+                'quantity' => $line['quantity'],
+                'unit_price' => $line['unit_price'],
+                'discount_amount' => $line['discount_amount'],
+                'tax_amount' => $line['tax_amount'],
+                'line_total' => $line['quantity'] * $line['unit_price'] - $line['discount_amount'] + $line['tax_amount'],
+            ]);
+            $saleLine->id = $index + 1;                 // stable key for the component lookup
+            $saleLine->setRelation('product', $product);
+
+            return $saleLine;
+        }));
+
+        $layout = \App\Models\Tenant\ReceiptLayoutSetting::where('document_type', 'receipt')
+            ->where(function ($q) use ($branch) {
+                $q->whereNull('branch_id')->orWhere('branch_id', $branch->id);
+            })
+            ->orderByDesc('branch_id')
+            ->first();
+
+        return response()->json([
+            'ok' => true,
+            'html' => view('tenant.printing.documents.receipt', [
+                'job' => null,
+                'salesOrder' => $sale,
+                'layout' => $layout,
+                'isPreview' => true,
+            ])->render(),
+        ]);
+    }
+
     public function quoteTotals(Request $request, SalesTotalsService $totalsService)
     {
         $data = $request->validate([

@@ -291,3 +291,22 @@ Only the Delivery terminal is bound to a printer today (receipt + default KOT �
 - **Report Center**: both A4 and Thermal print; sections allowed = Categories, Items, Waiters,
   Order Types, By Order Type, Cancellations. **Overview (overall restaurant sales), Details and
   Cash & Bank are denied** — the KPI cards disappear with the Overview section.
+
+### Print fixes from the live counter (2026-08-11)
+
+- **One KOT per category.** KOT routes group by printer **and category**, and the print job's
+  logical key carries the category — without that, two categories on the SAME printer deduped into
+  one ticket and the second category's lines were lost. Each ticket names its station,
+  parent-qualified ("Beef Khatri Biryani / Non-Saada") since both biryani parents have a
+  "Non-Saada" child. All tickets of a round share one KOT sequence number.
+- **Layout preview 500 fixed** — the preview builder didn't carry `show_bingoo_branding` into its
+  temporary layout object; added, and the template made defensive.
+- **Piece units suppressed** ("2 EA" → "2") on KOT/receipt/reminder, printed and on-screen.
+  Real measures (KG/LTR) still print.
+- **Delivery charge is visible** on the POS payment screen, the bill preview and the printed bill.
+- **Customer name + phone print on the bill**, ON by default for receipts (migration for existing
+  tenants + provisioner default), including typed walk-in details.
+- **Bill preview = the real bill.** The POS "Bill / Preview" was hand-built HTML in JavaScript and
+  drifted from the receipt. It now POSTs the cart to `/api/pos/bill-preview`, which builds a
+  TRANSIENT (never saved) sale and renders the SAME receipt template with the SAME saved layout,
+  headed "BILL PREVIEW / NOT A TAX RECEIPT".

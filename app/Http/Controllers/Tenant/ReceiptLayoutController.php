@@ -94,7 +94,7 @@ class ReceiptLayoutController extends Controller
             'show_logo', 'show_branch_name', 'show_branch_address', 'show_branch_phone',
             'show_tax_number', 'show_cashier_name', 'show_customer_name', 'show_table_info',
             'show_order_no', 'show_order_time', 'show_updated_time', 'show_print_time',
-            'show_item_codes', 'show_payment_breakdown',
+            'show_item_codes', 'show_payment_breakdown', 'show_bingoo_branding',
         ];
 
         // Build a live layout object from request params (or fall back to saved values)

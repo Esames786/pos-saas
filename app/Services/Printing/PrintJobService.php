@@ -174,7 +174,10 @@ class PrintJobService
                 $routeQuantities,
                 $terminalId,
                 $isReprint,
-                $batch
+                $batch,
+                null,
+                $route['category_id'] ?? null,
+                $route['category_name'] ?? null
             );
 
             // Only mark lines sent at queue time for real network printers.
@@ -214,7 +217,9 @@ class PrintJobService
                 $terminalId,
                 false,
                 $batch,
-                'cancel'
+                'cancel',
+                $route['category_id'] ?? null,
+                $route['category_name'] ?? null
             );
         }
 
@@ -512,6 +517,8 @@ class PrintJobService
         bool       $isReprint,
         ?KotBatch  $batch = null,
         ?string    $eventType = null,
+        ?int       $routeCategoryId = null,
+        ?string    $routeCategoryName = null,
     ): PrintJob {
         return DB::connection('tenant')->transaction(function () use (
             $sale,
@@ -521,14 +528,20 @@ class PrintJobService
             $terminalId,
             $isReprint,
             $batch,
-            $eventType
+            $eventType,
+            $routeCategoryId,
+            $routeCategoryName
         ) {
             $latestBatch = $batch ?: $sale->kotBatches()
                 ->whereIn('event_type', ['normal', 'addition'])
                 ->latest('sequence_no')
                 ->first();
             $resolvedEventType = $eventType ?: ($isReprint ? 'duplicate' : ($batch?->event_type ?? 'normal'));
-            $destination = $printer ? 'printer-' . $printer->id : 'browser';
+            // ONE KOT PER CATEGORY: the destination (and therefore the job's logical key) carries
+            // the category, so two categories routed to the SAME printer produce two tickets
+            // instead of the second deduping into the first.
+            $destination = ($printer ? 'printer-' . $printer->id : 'browser')
+                . ($routeCategoryId !== null ? '#cat-' . $routeCategoryId : '');
             $sourceIdentity = $latestBatch?->event_uuid ?: 'legacy-sale-' . $sale->id;
             $copyNo = 1;
 
@@ -571,6 +584,8 @@ class PrintJobService
                     'kot_event_uuid'  => $latestBatch?->event_uuid,
                     'kot_sequence_no' => $latestBatch?->sequence_no,
                     'kot_event_type'  => $resolvedEventType,
+                    'kot_category_id' => $routeCategoryId,
+                    'kot_category'    => $routeCategoryName,
                     'copy_no'         => $copyNo,
                     'line_snapshots'  => $this->lineSnapshots($sale, $lineQuantities),
                     'fallback'        => $printer === null,

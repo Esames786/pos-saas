@@ -80,6 +80,8 @@ class PrintDocumentController extends Controller
                 'eventType'      => $eventType,
                 'sequenceNo'     => (int) ($printJob->payload['kot_sequence_no'] ?? 0),
                 'copyNo'         => (int) ($printJob->payload['copy_no'] ?? 1),
+                // one ticket per category — name the station this slip belongs to
+                'kotCategory'    => $printJob->payload['kot_category'] ?? null,
             ]);
         }
 

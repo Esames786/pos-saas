@@ -549,6 +549,8 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/api/pos/table-sessions', [HeldSaleController::class, 'ajaxTableSessions'])->name('tenant.api.pos.table-sessions');
                 Route::get('/api/pos/print-jobs/{saleId}', [PrintJobController::class, 'ajaxForSale'])->name('tenant.api.pos.print-jobs');
                 Route::post('/api/pos/totals/quote', [POSController::class, 'quoteTotals'])->name('tenant.api.pos.totals.quote');
+                // BILL-PREVIEW-PARITY-1: proforma of the current cart rendered from the REAL receipt template.
+                Route::post('/api/pos/bill-preview', [POSController::class, 'billPreview'])->name('tenant.api.pos.bill-preview');
                 Route::get('/api/pos/table-board', [POSController::class, 'tableBoard'])->name('tenant.api.pos.table-board');
                 Route::get('/api/pos/recent-sales', [POSController::class, 'recentSales'])->name('tenant.api.pos.recent-sales');
                 Route::get('/api/pos/shift-status', [ShiftController::class, 'posStatus'])->name('tenant.api.pos.shift-status');

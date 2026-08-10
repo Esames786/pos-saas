@@ -17,6 +17,19 @@ class EscPosPayloadService
      */
     private const CUT = "\x1D\x56\x42\x00";
 
+    /**
+     * Unit suffix for a printed quantity. Piece units ("2 EA") are noise on a ticket — the number
+     * alone is the count. Real measures (KG, LTR, GM…) still print so staff can weigh correctly.
+     */
+    private const PIECE_UNITS = ['EA', 'EACH', 'PC', 'PCS', 'PIECE', 'PIECES', 'NOS', 'NO', 'UNIT', 'UNITS', 'QTY'];
+
+    private function unitSuffix(?string $unitCode): string
+    {
+        $code = trim((string) $unitCode);
+
+        return ($code === '' || in_array(strtoupper($code), self::PIECE_UNITS, true)) ? '' : ' ' . $code;
+    }
+
     /** Centered "BingooPos / Bingoopos.com" branding footer (per-layout toggle). */
     private function brandingFooter(): string
     {
@@ -252,8 +265,17 @@ class EscPosPayloadService
         if ($show('show_cashier_name')) {
             $out .= 'Cashier: ' . ($sale->createdBy?->name ?? '-') . "\n";
         }
-        if ($show('show_customer_name', false) && ($sale->customer?->name ?? $sale->customer_name)) {
-            $out .= 'Customer: ' . ($sale->customer?->name ?? $sale->customer_name) . "\n";
+        // Customer name AND contact number on the bill (default ON for receipts) — the delivery
+        // rider and the counter both need the number; typed walk-in details count too.
+        if ($show('show_customer_name')) {
+            $customerName = $sale->customer_name ?: $sale->customer?->name;
+            $customerPhone = $sale->customer_phone ?: $sale->customer?->phone;
+            if ($customerName) {
+                $out .= 'Customer: ' . $customerName . "\n";
+            }
+            if ($customerPhone) {
+                $out .= 'Phone: ' . $customerPhone . "\n";
+            }
         }
 
         if ($show('show_table_info')) {
@@ -315,9 +337,7 @@ class EscPosPayloadService
 
             foreach ($sale->lines->where('parent_sales_order_line_id', $line->id) as $component) {
                 $componentQty = number_format((float) $component->quantity, 3);
-                if ($component->unit_code) {
-                    $componentQty .= ' ' . $component->unit_code;
-                }
+                $componentQty .= $this->unitSuffix($component->unit_code);
                 $out .= '  - ' . $componentQty . ' x ' . ($component->product_name ?? '') . "\n";
             }
         }
@@ -412,6 +432,10 @@ class EscPosPayloadService
             $out .= $this->center('DUPLICATE ' . max($copyNo, 1)) . "\n";
         }
         $out .= $this->center('** ' . strtoupper(str_replace('_', ' ', $sale->order_type ?? 'SALE')) . ' **') . "\n";
+        // One ticket per category — name the category so the station knows the slip is theirs.
+        if (! empty($payload['kot_category'])) {
+            $out .= $this->center('[ ' . strtoupper((string) $payload['kot_category']) . ' ]') . "\n";
+        }
         if ($show('show_order_no')) {
             $out .= $this->center($sale->sale_no ?? '') . "\n";
         }
@@ -452,7 +476,7 @@ class EscPosPayloadService
             // Single line, qty right-aligned: "BEEF CHANGEZI PULAO (1 KG)            2"
             $runningPrefix = $eventType === 'addition' ? '(R) ' : '';
             $kotQty = $this->quantity($qtyToPrint);
-            if ($line->unit_code) { $kotQty .= ' ' . $line->unit_code; }
+            $kotQty .= $this->unitSuffix($line->unit_code);
             $name = mb_substr($runningPrefix . strtoupper($line->product_name ?? ''), 0, 41 - mb_strlen($kotQty));
             $out .= $this->columns($name, $kotQty, 42) . "\n";
 
@@ -535,7 +559,7 @@ class EscPosPayloadService
         $suffix = $showRunning && $delta > 0 && $delta < $quantity
             ? ' (R +' . $this->quantity($delta) . ')'
             : '';
-        $unit = !empty($line['unit_code']) ? ' ' . $line['unit_code'] : '';
+        $unit = $this->unitSuffix($line['unit_code'] ?? null);
 
         $right = $this->quantity($quantity) . $unit;
         $left = mb_substr($prefix . strtoupper((string) ($line['product_name'] ?? 'ITEM')) . $suffix, 0, 41 - mb_strlen($right));

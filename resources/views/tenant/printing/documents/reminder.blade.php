@@ -31,6 +31,10 @@
     </style>
 </head>
 <body>
+@php
+    // Piece units ("2 EA") are noise on a ticket — print the number alone; real measures still show.
+    $unitSuffix = fn ($code) => ($code && ! in_array(strtoupper(trim((string) $code)), ['EA','EACH','PC','PCS','PIECE','PIECES','NOS','NO','UNIT','UNITS','QTY'], true)) ? ' ' . $code : '';
+@endphp
 <main class="ticket">
     @if(!empty($layout->header_text))<div class="center">{{ $layout->header_text }}</div>@endif
     <div class="heading center">REMINDER</div>
@@ -53,7 +57,7 @@
     @if(!empty($reminder['cancelled_lines']))
         <strong>CANCELLED:</strong>
         @foreach($reminder['cancelled_lines'] as $line)
-            <div class="line" style="display:flex;justify-content:space-between;gap:8px"><span>{{ strtoupper($line['product_name'] ?? 'Item') }}</span><span style="white-space:nowrap">{{ $qty($line['quantity'] ?? 0) }} {{ $line['unit_code'] ?? '' }}</span></div>
+            <div class="line" style="display:flex;justify-content:space-between;gap:8px"><span>{{ strtoupper($line['product_name'] ?? 'Item') }}</span><span style="white-space:nowrap">{{ $qty($line['quantity'] ?? 0) }}{{ $unitSuffix($line['unit_code'] ?? null) }}</span></div>
         @endforeach
         <div class="rule"></div><strong>REMAINING ORDER:</strong>
     @endif
@@ -65,7 +69,7 @@
             $newLine = $revision > 1 && $delta > 0 && abs($delta - $quantity) < .000001;
             $increase = $revision > 1 && $delta > 0 && $delta < $quantity;
         @endphp
-        <div class="line" style="display:flex;justify-content:space-between;gap:8px"><span>{{ $newLine ? '(R) ' : '' }}{{ strtoupper($line['product_name'] ?? 'Item') }}{{ $increase ? ' (R +' . $qty($delta) . ')' : '' }}</span><span style="white-space:nowrap">{{ $qty($quantity) }} {{ $line['unit_code'] ?? '' }}</span></div>
+        <div class="line" style="display:flex;justify-content:space-between;gap:8px"><span>{{ $newLine ? '(R) ' : '' }}{{ strtoupper($line['product_name'] ?? 'Item') }}{{ $increase ? ' (R +' . $qty($delta) . ')' : '' }}</span><span style="white-space:nowrap">{{ $qty($quantity) }}{{ $unitSuffix($line['unit_code'] ?? null) }}</span></div>
         @foreach($lines->where('parent_line_id', $line['line_id'] ?? null) as $component)
             <div class="child">- {{ strtoupper($component['product_name'] ?? 'Item') }} x{{ $qty($component['quantity'] ?? 0) }}</div>
             @foreach($component['modifiers'] ?? [] as $modifier)<div class="modifier">&nbsp;&nbsp;+ {{ $modifier['name'] ?? '' }}</div>@endforeach

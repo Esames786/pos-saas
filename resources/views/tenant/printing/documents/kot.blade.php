@@ -46,6 +46,9 @@
 <div class="center bold">DUPLICATE {{ max($copyNo ?? 1, 1) }}</div>
 @endif
 <div class="center bold" style="font-size:{{ $fontSize + 2 }}px">** {{ strtoupper(str_replace('_', ' ', $salesOrder->order_type ?? 'SALE')) }} **</div>
+@if(!empty($kotCategory ?? null))
+<div class="center bold">[ {{ strtoupper($kotCategory) }} ]</div>
+@endif
 
 <hr>
 
@@ -138,7 +141,7 @@
 
 <hr>
 
-@if($layout?->show_bingoo_branding)
+@if($layout?->show_bingoo_branding ?? false)
 <div class="center">BingooPos</div>
 <div class="center">Bingoopos.com</div>
 @endif

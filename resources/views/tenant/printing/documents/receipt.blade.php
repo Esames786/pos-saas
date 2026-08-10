@@ -43,6 +43,10 @@
     </style>
 </head>
 <body>
+@php
+    // Piece units ("2 EA") are noise on a ticket — print the number alone; real measures still show.
+    $unitSuffix = fn ($code) => ($code && ! in_array(strtoupper(trim((string) $code)), ['EA','EACH','PC','PCS','PIECE','PIECES','NOS','NO','UNIT','UNITS','QTY'], true)) ? ' ' . $code : '';
+@endphp
 
 @if(!($layout?->show_logo === false) && $layout?->logo_path)
 <div class="center" style="margin-bottom:4px">
@@ -72,8 +76,9 @@
 
 <hr>
 
-<div class="bold center">RECEIPT</div>
+<div class="bold center">{{ ($isPreview ?? false) ? 'BILL PREVIEW' : 'RECEIPT' }}</div>
 <div class="bold center">** {{ strtoupper(str_replace('_', ' ', $salesOrder->order_type ?? 'SALE')) }} **</div>
+@if($isPreview ?? false)<div class="center" style="font-size:10px">NOT A TAX RECEIPT</div>@endif
 
 <hr>
 
@@ -87,8 +92,13 @@
 <div>Cashier: {{ $salesOrder->createdBy->name }}</div>
 @endif
 
-@if(!($layout?->show_customer_name === false) && $salesOrder->customer)
-<div>Customer: {{ $salesOrder->customer->name }}</div>
+@if(!($layout?->show_customer_name === false))
+    @php
+        $billCustomerName = $salesOrder->customer_name ?: $salesOrder->customer?->name;
+        $billCustomerPhone = $salesOrder->customer_phone ?: $salesOrder->customer?->phone;
+    @endphp
+    @if($billCustomerName)<div>Customer: {{ $billCustomerName }}</div>@endif
+    @if($billCustomerPhone)<div>Phone: {{ $billCustomerPhone }}</div>@endif
 @endif
 
 @if(!($layout?->show_table_info === false) && $salesOrder->restaurantTable)
@@ -152,10 +162,10 @@
                     <br><small>* {{ $line->kitchen_note }}</small>
                 @endif
                 @foreach($salesOrder->lines->where('parent_sales_order_line_id', $line->id) as $component)
-                    <br><small>- {{ rtrim(rtrim(number_format((float) $component->quantity, 3, '.', ''), '0'), '.') }}{{ $component->unit_code ? ' '.$component->unit_code : '' }} x {{ $component->product_name }}</small>
+                    <br><small>- {{ rtrim(rtrim(number_format((float) $component->quantity, 3, '.', ''), '0'), '.') }}{{ $unitSuffix($component->unit_code) }} x {{ $component->product_name }}</small>
                 @endforeach
             </td>
-            <td class="item-qty">{{ rtrim(rtrim(number_format((float) $line->quantity, 3, '.', ''), '0'), '.') }}{{ $line->unit_code ? ' '.$line->unit_code : '' }}</td>
+            <td class="item-qty">{{ rtrim(rtrim(number_format((float) $line->quantity, 3, '.', ''), '0'), '.') }}{{ $unitSuffix($line->unit_code) }}</td>
             <td class="item-price">{{ number_format($line->unit_price, 2) }}</td>
             <td class="item-total">{{ number_format($line->line_total, 2) }}</td>
         </tr>

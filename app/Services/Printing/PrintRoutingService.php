@@ -18,7 +18,7 @@ class PrintRoutingService
      */
     public function reminderRoutesForSale(SalesOrder $sale, array $effectiveQuantities = []): array
     {
-        $sale->loadMissing(['lines.product.category']);
+        $sale->loadMissing(['lines.product.category.parent']);
 
         $categoryIds = $sale->lines
             ->filter(function ($line) use ($effectiveQuantities) {
@@ -78,6 +78,22 @@ class PrintRoutingService
             ->all();
     }
 
+    /**
+     * Ticket label for a line's category. Child categories are qualified by their parent —
+     * "Non-Saada" alone is ambiguous when two parents each have one.
+     */
+    private function categoryLabel($line): ?string
+    {
+        $category = $line->product?->category;
+        if (! $category) {
+            return null;
+        }
+
+        return $category->parent
+            ? $category->parent->name . ' / ' . $category->name
+            : $category->name;
+    }
+
     public function receiptPrinter(SalesOrder $sale): ?Printer
     {
         if ($sale->terminal_id) {
@@ -127,7 +143,7 @@ class PrintRoutingService
      */
     public function kotRoutesForSale(SalesOrder $sale, array $onlyLineIds = [], bool $isReprint = false): array
     {
-        $sale->loadMissing(['lines.product.category']);
+        $sale->loadMissing(['lines.product.category.parent']);
 
         $lines = $sale->lines;
 
@@ -190,9 +206,15 @@ class PrintRoutingService
                 continue;
             }
 
+            // ONE KOT PER CATEGORY (client request 2026-08-11): the kitchen wants a separate
+            // ticket per category, not every category merged onto one slip per printer. The
+            // category is part of the group key AND of the job's logical key downstream, so two
+            // categories sharing a printer produce two tickets instead of deduping into one.
             foreach ($printers as $printer) {
-                $key = 'printer_' . $printer->id;
+                $key = 'printer_' . $printer->id . '_cat_' . ($categoryId ?: 0);
                 $routes[$key]['printer']                           = $printer;
+                $routes[$key]['category_id']                       = $categoryId ? (int) $categoryId : null;
+                $routes[$key]['category_name']                     = $this->categoryLabel($line);
                 $routes[$key]['line_ids'][]                        = $line->id;
                 $routes[$key]['line_quantities'][(string) $line->id] = $qtyToPrint;
             }
@@ -204,7 +226,7 @@ class PrintRoutingService
     /** Route explicit immutable quantities, used by cancellation KOT events. */
     public function kotRoutesForQuantities(SalesOrder $sale, array $lineQuantities): array
     {
-        $sale->loadMissing(['lines.product.category']);
+        $sale->loadMissing(['lines.product.category.parent']);
         $routes = [];
 
         foreach ($sale->lines->whereIn('id', array_map('intval', array_keys($lineQuantities))) as $line) {
@@ -242,15 +264,21 @@ class PrintRoutingService
             }
 
             if ($printers->isEmpty()) {
-                $routes['browser']['printer'] = null;
-                $routes['browser']['line_ids'][] = $line->id;
-                $routes['browser']['line_quantities'][(string) $line->id] = $quantity;
+                $key = 'browser_cat_' . ($categoryId ?: 0);
+                $routes[$key]['printer'] = null;
+                $routes[$key]['category_id'] = $categoryId ? (int) $categoryId : null;
+                $routes[$key]['category_name'] = $this->categoryLabel($line);
+                $routes[$key]['line_ids'][] = $line->id;
+                $routes[$key]['line_quantities'][(string) $line->id] = $quantity;
                 continue;
             }
 
+            // one cancellation ticket per category too — same grouping as a normal KOT.
             foreach ($printers as $printer) {
-                $key = 'printer_' . $printer->id;
+                $key = 'printer_' . $printer->id . '_cat_' . ($categoryId ?: 0);
                 $routes[$key]['printer'] = $printer;
+                $routes[$key]['category_id'] = $categoryId ? (int) $categoryId : null;
+                $routes[$key]['category_name'] = $this->categoryLabel($line);
                 $routes[$key]['line_ids'][] = $line->id;
                 $routes[$key]['line_quantities'][(string) $line->id] = $quantity;
             }
