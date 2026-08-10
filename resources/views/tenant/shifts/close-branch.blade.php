@@ -66,6 +66,7 @@
                                     <th class="text-end">Sales</th>
                                     <th class="text-end">Expected</th>
                                     <th class="text-end col-counted" style="min-width:180px">Counted</th>
+                                    <th class="text-end col-counted" style="min-width:150px">Difference</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -76,10 +77,13 @@
                                         <td class="text-end">{{ number_format((float) $shift->total_sales, 2) }}</td>
                                         <td class="text-end">{{ number_format((float) $shift->expected_cash, 2) }}</td>
                                         <td class="text-end col-counted">
-                                            <input type="number" min="0" step="0.01" class="form-control form-control-sm text-end"
+                                            <input type="number" min="0" step="0.01" class="form-control form-control-sm text-end cash-counted"
+                                                data-expected="{{ (float) $shift->expected_cash }}"
                                                 name="counted[{{ $shift->id }}]"
                                                 value="{{ old('counted.' . $shift->id, number_format((float) $shift->expected_cash, 2, '.', '')) }}">
                                         </td>
+                                        {{-- CASH-SHORTAGE-1: live difference so the cashier sees the shortage before closing --}}
+                                        <td class="text-end col-counted cash-diff small text-muted">—</td>
                                     </tr>
                                 @endforeach
                             </tbody>
@@ -90,15 +94,27 @@
                                     <td class="text-end">{{ number_format($sumSales, 2) }}</td>
                                     <td class="text-end">{{ number_format($sumExpected, 2) }}</td>
                                     <td class="text-end col-branch-total" style="display:none">
-                                        <input type="number" min="0" step="0.01" class="form-control form-control-sm text-end"
+                                        <input type="number" min="0" step="0.01" class="form-control form-control-sm text-end cash-counted"
+                                            data-expected="{{ (float) $sumExpected }}"
                                             name="branch_counted_cash" value="{{ old('branch_counted_cash', number_format($sumExpected, 2, '.', '')) }}">
                                     </td>
+                                    <td class="text-end col-branch-total cash-diff small" style="display:none">—</td>
                                     <td class="text-end col-counted"></td>
+                                    <td class="text-end col-counted cash-total-diff small">—</td>
                                 </tr>
                             </tfoot>
                         </table>
                     </div>
-                    <p class="form-text mb-0">“One total for the branch” closes each terminal at its expected amount and records the branch total + variance on a Daily Closing.</p>
+                    <p class="form-text mb-1">“One total for the branch” closes each terminal at its expected amount and records the branch total + variance on a Daily Closing.</p>
+                    {{-- CASH-SHORTAGE-1 --}}
+                    <div class="alert alert-warning py-2 mb-0 small" role="note">
+                        <i class="ti ti-alert-triangle me-1" aria-hidden="true"></i>
+                        <strong>If the counted cash is less than expected</strong>, the shift still closes and the shortage is recorded.
+                        A <strong>draft expense voucher</strong> is created automatically under the
+                        <strong>“{{ \App\Services\Finance\CashShortageExpenseService::CATEGORY_NAME }}”</strong> category
+                        (Finance → Expenses) so the finance team can review and settle it later. Nothing is posted to the
+                        accounts until they post that voucher.
+                    </div>
                 </div>
             </div>
 
@@ -126,9 +142,47 @@
                 var bt = document.querySelector('input[name="branch_counted_cash"]');
                 if (bt) bt.disabled = !total;
             }
-            document.getElementById('mode-per').addEventListener('change', function () { setMode(false); });
-            document.getElementById('mode-total').addEventListener('change', function () { setMode(true); });
+            document.getElementById('mode-per').addEventListener('change', function () { setMode(false); refreshDiffs(); });
+            document.getElementById('mode-total').addEventListener('change', function () { setMode(true); refreshDiffs(); });
             setMode(document.getElementById('mode-total').checked);
+
+            /* CASH-SHORTAGE-1: live difference (short / over) per row + a per-terminal grand total. */
+            function money(v) { return Number(v).toFixed(2); }
+            function paint(cell, diff) {
+                if (!cell) { return; }
+                if (Math.abs(diff) < 0.005) {
+                    cell.textContent = 'Exact';
+                    cell.className = cell.className.replace(/\btext-(danger|success|muted)\b/g, '') + ' text-muted';
+                } else if (diff < 0) {
+                    cell.textContent = 'Short by ' + money(-diff);
+                    cell.className = cell.className.replace(/\btext-(danger|success|muted)\b/g, '') + ' text-danger fw-semibold';
+                } else {
+                    cell.textContent = 'Over by ' + money(diff);
+                    cell.className = cell.className.replace(/\btext-(danger|success|muted)\b/g, '') + ' text-success fw-semibold';
+                }
+            }
+            function refreshDiffs() {
+                var perTerminalTotal = 0;
+                document.querySelectorAll('tbody input.cash-counted').forEach(function (input) {
+                    var expected = parseFloat(input.dataset.expected || '0') || 0;
+                    var counted = parseFloat(input.value || '0') || 0;
+                    var diff = counted - expected;
+                    perTerminalTotal += diff;
+                    var row = input.closest('tr');
+                    paint(row ? row.querySelector('.cash-diff') : null, diff);
+                });
+                paint(document.querySelector('.cash-total-diff'), perTerminalTotal);
+
+                var bt = document.querySelector('input[name="branch_counted_cash"]');
+                if (bt) {
+                    var expectedTotal = parseFloat(bt.dataset.expected || '0') || 0;
+                    paint(document.querySelector('.col-branch-total.cash-diff'), (parseFloat(bt.value || '0') || 0) - expectedTotal);
+                }
+            }
+            document.querySelectorAll('input.cash-counted').forEach(function (input) {
+                input.addEventListener('input', refreshDiffs);
+            });
+            refreshDiffs();
         })();
         </script>
         @endpush

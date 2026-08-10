@@ -250,3 +250,17 @@ Driven by first-real-sales-day feedback (screenshots + printed slips):
 - **TENANT-RESET-1** (`74d9415`): `tenant:reset-transactions {code} --yes --confirm={code}` —
   wipes transactions, keeps ALL master data; triple-guarded + integrity-verified.
   **NOT yet run on Khatri** — planned after the client demo (backup first).
+
+### CASH-SHORTAGE-1 (2026-08-10)
+
+Closing a drawer **short** now shows the difference live on both close screens ("Short by X" /
+"Over by X" per terminal + branch total) and automatically raises a **DRAFT expense voucher**:
+
+- New CoA account **6930 Cash Short / Over** (synced to every tenant by deploy.sh).
+- Auto-created system expense category **"Daily Closing — Short Cash"** (`DAILY-CLOSING-SHORT`),
+  created on the first shortage only.
+- One draft per source (`EXP-SHORT-<date>-S<shiftId>` / `-D<dailyClosingId>`) — idempotent, so a
+  repeated close never duplicates it. Branch-total mode raises ONE branch voucher; per-terminal
+  mode raises one per short drawer.
+- **Draft only**: nothing posts to the GL or the cash-bank ledger until finance posts the voucher
+  in Finance → Expenses. Over/exact counts raise nothing.

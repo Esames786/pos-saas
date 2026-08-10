@@ -90,6 +90,8 @@ class DefaultChartOfAccountsSeeder
             ['6900', 'Scrap / Waste Expense',     'expense', '6000', null, 360],
             ['6910', 'Rework Expense',            'expense', '6000', null, 370],
             ['6920', 'Inventory Adjustment Expense', 'expense', '6000', null, 380],
+            // CASH-SHORTAGE-1: drawer differences found at shift/branch closing.
+            ['6930', 'Cash Short / Over',         'expense', '6000', null, 390],
         ];
     }
 

@@ -185,12 +185,29 @@ class ShiftController extends Controller
             if ($countedCash === null) {
                 $countedCash = (float) ($data['counted_cash'] ?? 0);
             }
-            $shiftService->closeShift($shift, (int) auth('tenant')->id(), $countedCash, $data['closing_notes'] ?? null);
+            $closed = $shiftService->closeShift($shift, (int) auth('tenant')->id(), $countedCash, $data['closing_notes'] ?? null);
         } catch (ShiftException $e) {
             return back()->withErrors(['shift' => $e->getMessage()])->withInput();
         }
 
-        return redirect('/shifts/' . $shift->id)->with('status', 'Shift closed successfully.');
+        // CASH-SHORTAGE-1: a short drawer raises a DRAFT expense for finance to settle later.
+        $message = 'Shift closed successfully.';
+        $short = -(float) $closed->cash_variance;
+        if ($short > 0.009) {
+            $voucher = app(\App\Services\Finance\CashShortageExpenseService::class)->recordShortage(
+                \App\Models\Tenant\Branch::findOrFail($closed->branch_id),
+                $closed->business_date?->toDateString() ?? now()->toDateString(),
+                $short,
+                'shift',
+                (int) $closed->id,
+                (int) auth('tenant')->id(),
+                'Shift #' . $closed->id . ' on terminal ' . ($closed->terminal?->name ?? $closed->terminal_id) . '.'
+            );
+            $message .= ' Cash short by ' . number_format($short, 2)
+                . ($voucher ? ' — draft expense ' . $voucher->voucher_no . ' created for finance to settle.' : '.');
+        }
+
+        return redirect('/shifts/' . $shift->id)->with('status', $message);
     }
 
     /**
@@ -309,6 +326,50 @@ class ShiftController extends Controller
         if ($result['daily']) {
             $msg .= ' — branch variance ' . number_format((float) $result['daily']->cash_variance, 2)
                 . ' recorded on Daily Closing';
+        }
+
+        // CASH-SHORTAGE-1: raise ONE draft expense per short source — the branch total when the
+        // branch was counted as a whole, otherwise each short terminal drawer separately.
+        $shortages = app(\App\Services\Finance\CashShortageExpenseService::class);
+        $vouchers = [];
+        if ($result['daily']) {
+            $short = -(float) $result['daily']->cash_variance;
+            if ($short > 0.009) {
+                $voucher = $shortages->recordShortage(
+                    $branch,
+                    (string) $result['daily']->closing_date,
+                    $short,
+                    'daily_closing',
+                    (int) $result['daily']->id,
+                    (int) auth('tenant')->id(),
+                    'Branch total close for ' . $branch->name . '.'
+                );
+                if ($voucher) {
+                    $vouchers[] = $voucher->voucher_no;
+                }
+            }
+        } else {
+            foreach ($result['closed'] as $closedShift) {
+                $short = -(float) $closedShift->cash_variance;
+                if ($short <= 0.009) {
+                    continue;
+                }
+                $voucher = $shortages->recordShortage(
+                    $branch,
+                    $closedShift->business_date?->toDateString() ?? now()->toDateString(),
+                    $short,
+                    'shift',
+                    (int) $closedShift->id,
+                    (int) auth('tenant')->id(),
+                    'Terminal ' . ($closedShift->terminal?->name ?? $closedShift->terminal_id) . ' drawer count.'
+                );
+                if ($voucher) {
+                    $vouchers[] = $voucher->voucher_no;
+                }
+            }
+        }
+        if ($vouchers) {
+            $msg .= ' — short cash raised as draft expense ' . implode(', ', $vouchers) . ' for finance to settle';
         }
 
         return redirect('/shifts')->with('status', $msg . '.');
