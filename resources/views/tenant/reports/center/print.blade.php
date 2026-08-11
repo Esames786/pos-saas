@@ -13,11 +13,11 @@
     // figure but stacks each row as name + a "sold − returned = net" line, while A4 keeps the
     // wide table. Same numbers, layout chosen for the paper.
     $isThermal = $mode === 'thermal';
-    $sub = fn ($a, $b, $c, $f) => $f($a) . ' − ' . $f($b) . ' = ' . $f($c);
+    $sub = fn ($a, $b, $c, $f) => $f($a) . ' - ' . $f($b) . ' = ' . $f($c);
 @endphp
 <style>
     body { font-family: 'Courier New', monospace; color: #000; margin: 0 auto; padding: 8px; }
-    /* PRINT-PARITY: thermal carries the SAME columns as A4 — only width/font differ. */
+    /* PRINT-PARITY: thermal carries the same figures as A4 in a paper-appropriate layout. */
     @if($mode === 'thermal')
     body { width: {{ $paper === '58mm' ? '52mm' : '72mm' }}; font-size: 10px; }
     h1 { font-size: 13px; text-align: center; margin: 4px 0; }
@@ -82,6 +82,15 @@
 
 @if($has('order_types') && $orderTypes !== null)
 <h2>ORDER TYPES</h2>
+@if($isThermal)
+<table>
+    @foreach($orderTypes as $r)
+        <tr><td colspan="2">{{ $r['label'] }}</td></tr>
+        <tr><td>Orders {{ $r['orders'] }}</td><td class="amt">{{ $sub($r['grand_total'], $r['returns_amount'], $r['net_sales'], $fmt) }}</td></tr>
+    @endforeach
+    <tr class="total"><td>TOTAL Orders {{ collect($orderTypes)->sum('orders') }}</td><td class="amt">{{ $sub(collect($orderTypes)->sum('grand_total'), collect($orderTypes)->sum('returns_amount'), collect($orderTypes)->sum('net_sales'), $fmt) }}</td></tr>
+</table>
+@else
 <table>
     <tr><th>Type</th><th class="amt">Orders</th><th class="amt">Billed</th><th class="amt">Returns</th><th class="amt">Net</th></tr>
     @foreach($orderTypes as $r)
@@ -89,6 +98,7 @@
     @endforeach
     <tr class="total"><td>TOTAL</td><td class="amt">{{ collect($orderTypes)->sum('orders') }}</td><td class="amt">{{ $fmt(collect($orderTypes)->sum('grand_total')) }}</td><td class="amt">{{ $fmt(collect($orderTypes)->sum('returns_amount')) }}</td><td class="amt">{{ $fmt(collect($orderTypes)->sum('net_sales')) }}</td></tr>
 </table>
+@endif
 @endif
 
 @if($has('categories') && $categories !== null)
@@ -144,6 +154,15 @@
 
 @if($has('waiters') && $waiters !== null)
 <h2>WAITERS</h2>
+@if($isThermal)
+<table>
+    @foreach($waiters as $r)
+        <tr><td colspan="2">{{ $r['label'] }}</td></tr>
+        <tr><td>Orders {{ $r['orders'] }}</td><td class="amt">{{ $sub($r['grand_total'], $r['returns_amount'], $r['net_sales'], $fmt) }}</td></tr>
+    @endforeach
+    <tr class="total"><td>TOTAL Orders {{ collect($waiters)->sum('orders') }}</td><td class="amt">{{ $sub(collect($waiters)->sum('grand_total'), collect($waiters)->sum('returns_amount'), collect($waiters)->sum('net_sales'), $fmt) }}</td></tr>
+</table>
+@else
 <table>
     <tr><th>Waiter</th><th class="amt">Orders</th><th class="amt">Billed</th><th class="amt">Returns</th><th class="amt">Net</th></tr>
     @foreach($waiters as $r)
@@ -151,6 +170,7 @@
     @endforeach
     <tr class="total"><td>TOTAL</td><td class="amt">{{ collect($waiters)->sum('orders') }}</td><td class="amt">{{ $fmt(collect($waiters)->sum('grand_total')) }}</td><td class="amt">{{ $fmt(collect($waiters)->sum('returns_amount')) }}</td><td class="amt">{{ $fmt(collect($waiters)->sum('net_sales')) }}</td></tr>
 </table>
+@endif
 @endif
 
 @if($has('order_type_combos') && $combos !== null)
@@ -169,7 +189,11 @@
             <tr><td>{{ $r['label'] }}</td><td class="amt">{{ $qty($r['sold_qty']) }}</td><td class="amt">{{ $qty($r['returned_qty']) }}</td><td class="amt">{{ $qty($r['net_qty']) }}</td><td class="amt">{{ $fmt($r['net']) }}</td><td class="amt">{{ $fmt($r['returns_amount']) }}</td><td class="amt">{{ $fmt($r['net_value']) }}</td></tr>
         @endforeach
         @endif
-        <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty(collect($rows)->sum('sold_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('returned_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('net_qty')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('returns_amount')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net_value')) }}</td></tr>
+        @if($isThermal)
+            <tr class="total"><td>TOTAL Qty {{ $sub(collect($rows)->sum('sold_qty'), collect($rows)->sum('returned_qty'), collect($rows)->sum('net_qty'), $qty) }}</td><td class="amt">{{ $sub(collect($rows)->sum('net'), collect($rows)->sum('returns_amount'), collect($rows)->sum('net_value'), $fmt) }}</td></tr>
+        @else
+            <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty(collect($rows)->sum('sold_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('returned_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('net_qty')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('returns_amount')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net_value')) }}</td></tr>
+        @endif
     </table>
 @endforeach
 @foreach($combos['items'] as $orderType => $rows)
@@ -186,11 +210,24 @@
             <tr><td>{{ $r['label'] }}</td><td class="amt">{{ $qty($r['sold_qty']) }}</td><td class="amt">{{ $qty($r['returned_qty']) }}</td><td class="amt">{{ $qty($r['net_qty']) }}</td><td class="amt">{{ $fmt($r['net']) }}</td><td class="amt">{{ $fmt($r['returns_amount']) }}</td><td class="amt">{{ $fmt($r['net_value']) }}</td></tr>
         @endforeach
         @endif
-        <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty(collect($rows)->sum('sold_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('returned_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('net_qty')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('returns_amount')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net_value')) }}</td></tr>
+        @if($isThermal)
+            <tr class="total"><td>TOTAL Qty {{ $sub(collect($rows)->sum('sold_qty'), collect($rows)->sum('returned_qty'), collect($rows)->sum('net_qty'), $qty) }}</td><td class="amt">{{ $sub(collect($rows)->sum('net'), collect($rows)->sum('returns_amount'), collect($rows)->sum('net_value'), $fmt) }}</td></tr>
+        @else
+            <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty(collect($rows)->sum('sold_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('returned_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('net_qty')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('returns_amount')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net_value')) }}</td></tr>
+        @endif
     </table>
 @endforeach
 @foreach($combos['waiters'] as $orderType => $rows)
     <h3>{{ strtoupper($orderType) }} — WAITERS</h3>
+    @if($isThermal)
+    <table>
+        @foreach($rows as $r)
+            <tr><td colspan="2">{{ $r['label'] }}</td></tr>
+            <tr><td>Orders {{ $r['orders'] }}</td><td class="amt">{{ $sub($r['grand_total'], $r['returns_amount'], $r['net_sales'], $fmt) }}</td></tr>
+        @endforeach
+        <tr class="total"><td>TOTAL Orders {{ collect($rows)->sum('orders') }}</td><td class="amt">{{ $sub(collect($rows)->sum('grand_total'), collect($rows)->sum('returns_amount'), collect($rows)->sum('net_sales'), $fmt) }}</td></tr>
+    </table>
+    @else
     <table>
         <tr><th>Waiter</th><th class="amt">Orders</th><th class="amt">Billed</th><th class="amt">Returns</th><th class="amt">Net</th></tr>
         @foreach($rows as $r)
@@ -198,11 +235,24 @@
         @endforeach
         <tr class="total"><td>TOTAL</td><td class="amt">{{ collect($rows)->sum('orders') }}</td><td class="amt">{{ $fmt(collect($rows)->sum('grand_total')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('returns_amount')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net_sales')) }}</td></tr>
     </table>
+    @endif
 @endforeach
 @endif
 
 @if($has('cancellations') && $cancellations !== null)
 <h2>CANCELLATIONS (voided / decreased after KOT)</h2>
+@if($isThermal)
+<table>
+    @forelse($cancellations['rows'] as $r)
+        <tr><td colspan="2">{{ $r['item'] }}</td></tr>
+        <tr><td colspan="2">{{ $r['order_type'] }} / {{ $r['reason'] }}</td></tr>
+        <tr><td>Events {{ $r['events'] }}</td><td class="amt">Qty -{{ $qty($r['qty']) }}</td></tr>
+    @empty
+        <tr><td colspan="2">No cancellations in this period.</td></tr>
+    @endforelse
+    <tr class="total"><td>TOTAL Events {{ $cancellations['total_events'] }}</td><td class="amt">Qty -{{ $qty($cancellations['total_qty']) }}</td></tr>
+</table>
+@else
 <table>
     <tr><th>Item</th><th>Type</th><th>Reason</th><th class="amt">Events</th><th class="amt">-Qty</th></tr>
     @forelse($cancellations['rows'] as $r)
@@ -212,6 +262,7 @@
     @endforelse
     <tr class="total"><td>TOTAL</td><td></td><td></td><td class="amt">{{ $cancellations['total_events'] }}</td><td class="amt">-{{ $qty($cancellations['total_qty']) }}</td></tr>
 </table>
+@endif
 @endif
 
 @if($has('overview') && $overview && !empty($overview['payments']))
