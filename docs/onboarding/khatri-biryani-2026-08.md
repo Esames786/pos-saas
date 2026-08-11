@@ -312,3 +312,24 @@ Only the Delivery terminal is bound to a printer today (receipt + default KOT â†
   drifted from the receipt. It now POSTs the cart to `/api/pos/bill-preview`, which builds a
   TRANSIENT (never saved) sale and renders the SAME receipt template with the SAME saved layout,
   headed "BILL PREVIEW / NOT A TAX RECEIPT".
+
+### Thermal printer profile and report polish (2026-08-11, `7138700`)
+
+- Production deployed commit `7138700` on `feat/14d-2-plan-upgrade-requests`.
+- Live printer profiles now identify the installed hardware:
+  - `PRINTER-1` / id `5`: **BlackCopper BC97AC - Delivery Receipt + KOT**, `80mm`, 42 characters,
+    `192.168.100.206:9100`, default role `both`.
+  - `PRINTER-2` / id `6`: **XPrinter - Beverages / Desserts / Extras KOT**, `80mm`, 42 characters,
+    `192.168.100.69:9100`, role `kot`.
+- The live metadata update changed only the two printer names. IDs, onsite IPs, ports, routing
+  roles, defaults, active flags, paper settings, and transaction tables were preserved.
+- Print Agent `KHATRI BIRYANI DELIVERY COUNTER-2` was online at verification time with a current
+  heartbeat, no error, zero queued jobs, and zero failed jobs.
+- Thermal Sales Report cancellations now use a matching four-column Item/Reason/Events/-Qty
+  layout instead of the unrelated Sold/Return/Net heading.
+- Daily Closings is explicitly labelled as a frozen drawer snapshot: a later return belongs to
+  Sales Report Centre on its return date and does not rewrite the historical counted drawer.
+- Verification: fast suite `161` tests / `31,463` assertions; MySQL Sales Report suite `5` tests /
+  `66` assertions; Blade cache and both tenant `/up` + `/login` checks passed.
+- Safety: no Khatri onboarding command, tenant reset, transaction reset, or sales/payment/return/
+  stock/journal mutation was run. The normal deploy reported no migrations to apply.
