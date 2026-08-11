@@ -7,13 +7,27 @@
         @endforeach
     </select>
 </div>
+@php
+    // These bands must match EscPosPayloadService::scaleFor(). The value drove only the browser
+    // preview before — the thermal printer ignored it entirely, so raising it appeared to do
+    // nothing on paper. It now selects the printer's character size as well.
+    $scaleHelp = '8–14 normal · 15–17 tall · 18–20 tall &amp; wide (21 chars per line) · 21+ largest (14 chars)';
+@endphp
 <div class="col-md-4">
-    <label class="form-label">Font Size (px)</label>
-    <input type="number" name="font_size" value="{{ old('font_size', $l?->font_size ?? 12) }}" class="form-control" min="8" max="24">
+    <label class="form-label" for="font_size">Font Size (px)</label>
+    <input id="font_size" type="number" name="font_size" value="{{ old('font_size', $l?->font_size ?? 12) }}" class="form-control" min="8" max="24">
+    <div class="form-text">Receipt &amp; Reminder. {!! $scaleHelp !!}</div>
 </div>
 <div class="col-md-4">
-    <label class="form-label">KOT Font Size (px)</label>
-    <input type="number" name="kot_font_size" value="{{ old('kot_font_size', $l?->kot_font_size ?? 14) }}" class="form-control" min="8" max="24">
+    <label class="form-label" for="kot_font_size">KOT Font Size (px)</label>
+    <input id="kot_font_size" type="number" name="kot_font_size" value="{{ old('kot_font_size', $l?->kot_font_size ?? 14) }}" class="form-control" min="8" max="24">
+    <div class="form-text">Kitchen ticket. {!! $scaleHelp !!}</div>
+</div>
+<div class="col-12">
+    <div class="alert alert-info py-2 mb-0 small">
+        Bigger text means fewer characters per line — the printer does not wrap for you, so we wrap
+        long item names onto extra lines. Above 17px a ticket roughly doubles in length.
+    </div>
 </div>
 <div class="col-12">
     <label class="form-label">Logo (image, max 1MB)</label>

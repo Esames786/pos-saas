@@ -17,6 +17,78 @@ class EscPosPayloadService
      */
     private const CUT = "\x1D\x56\x42\x00";
 
+    /** ESC E n — emphasised (bold) on/off. */
+    private const BOLD_ON  = "\x1B\x45\x01";
+    private const BOLD_OFF = "\x1B\x45\x00";
+
+    /**
+     * GS ! n — character size. The low nibble is height-1, the high nibble is width-1, so
+     * 0x00 is normal, 0x11 is double both, 0x22 is triple both.
+     */
+    private const SIZE_NORMAL = "\x1D\x21\x00";
+
+    /** Characters a line holds at normal width. Halves at double width, thirds at triple. */
+    private const COLS_80MM = 42;
+
+    /**
+     * THE LAYOUT SCREEN'S FONT SIZE NOW REACHES THE PRINTER.
+     *
+     * font_size / kot_font_size were CSS pixels for the browser preview and nothing else — the
+     * ESC/POS payload emitted no size or emphasis bytes at all, so every ticket printed at Font A
+     * single size no matter what the setting said. Khatri's kitchen could not read the tickets and
+     * changing the setting appeared to do nothing, because for the thermal printer it did.
+     *
+     * The px value now selects a printer scale. The bands start scaling ABOVE the seeded defaults
+     * (receipt 12, KOT 14), so no existing tenant's output changes until someone raises the value.
+     */
+    private function scaleFor(?int $px): array
+    {
+        return match (true) {
+            $px === null || $px <= 14 => ['w' => 1, 'h' => 1],
+            $px <= 17                 => ['w' => 1, 'h' => 2],   // twice as tall, full 42 columns
+            $px <= 20                 => ['w' => 2, 'h' => 2],   // twice as tall AND wide, 21 columns
+            default                   => ['w' => 3, 'h' => 3],   // 14 columns
+        };
+    }
+
+    /** GS ! byte for a width/height multiplier pair (1-8 each). */
+    private function sizeCommand(int $w, int $h): string
+    {
+        $n = ((max(1, min(8, $w)) - 1) << 4) | (max(1, min(8, $h)) - 1);
+
+        return "\x1D\x21" . chr($n);
+    }
+
+    /**
+     * Emit text at a scale, wrapping to the width that scale actually leaves.
+     *
+     * Wrapping is the whole point: at double width the printer only fits 21 characters, and it
+     * does NOT wrap for you — it prints the overflow on the next line mid-word, or drops it,
+     * depending on the model. A ticket that reads "BEEF CHANGEZI PULAO S" with the rest missing
+     * is worse than a small one.
+     */
+    private function scaled(string $text, array $scale, bool $bold = false, bool $center = false, int $baseWidth = self::COLS_80MM): string
+    {
+        $width = max((int) floor($baseWidth / max(1, $scale['w'])), 8);
+        $lines = [];
+
+        foreach (preg_split('/\R/', $text) as $paragraph) {
+            $wrapped = wordwrap(trim($paragraph), $width, "\n", true);
+            foreach (explode("\n", $wrapped) as $line) {
+                $lines[] = $center ? $this->center($line, $width) : $line;
+            }
+        }
+
+        $body = implode("\n", $lines) . "\n";
+
+        // Always return to normal + bold off, so one scaled block can never leak into the next.
+        return $this->sizeCommand($scale['w'], $scale['h'])
+            . ($bold ? self::BOLD_ON : '')
+            . $body
+            . ($bold ? self::BOLD_OFF : '')
+            . self::SIZE_NORMAL;
+    }
+
     /**
      * Unit suffix for a printed quantity. Piece units ("2 EA") are noise on a ticket — the number
      * alone is the count. Real measures (KG, LTR, GM…) still print so staff can weigh correctly.
@@ -132,8 +204,13 @@ class EscPosPayloadService
         } else {
             $out = '';
         }
+        // Same scale rule as the KOT — the reminder is read in the kitchen, not at the till.
+        // Taken from the payload snapshot so a reprint months later still renders as it did.
+        $big = $this->scaleFor(isset($layout['font_size']) ? (int) $layout['font_size'] : null);
+        $rule = str_repeat('-', max((int) floor(self::COLS_80MM / max(1, $big['w'])), 8));
+
         $out .= $this->center('*** REMINDER ***') . "\n";
-        $out .= $this->center((string) ($payload['heading'] ?? 'REMINDER')) . "\n";
+        $out .= $this->scaled((string) ($payload['heading'] ?? 'REMINDER'), $big, true, true);
         if (!in_array($eventType, ['cancelled_order', 'cancelled_updated_order'], true)) {
             $out .= $this->center('REVISION ' . $revision) . "\n";
         }
@@ -141,16 +218,16 @@ class EscPosPayloadService
             $out .= $this->center('DUPLICATE ' . $copyNo) . "\n";
         }
         // PRINT-FORMAT-PARITY-1: order type leads the ticket (kitchen reads it first).
-        $out .= $this->center('** ' . strtoupper(str_replace('_', ' ', (string) ($payload['order_type'] ?? 'SALE'))) . ' **') . "\n";
+        $out .= $this->scaled('** ' . strtoupper(str_replace('_', ' ', (string) ($payload['order_type'] ?? 'SALE'))) . ' **', $big, true, true);
         if ($layout['show_order_no'] ?? true) {
             $out .= $this->center((string) ($payload['sale_no'] ?? '')) . "\n";
         }
-        $out .= str_repeat('-', 42) . "\n";
+        $out .= $rule . "\n";
         if (($layout['show_table_info'] ?? true) && !empty($payload['table'])) {
-            $out .= 'TABLE: ' . $payload['table'] . "\n";
+            $out .= $this->scaled('TABLE: ' . $payload['table'], $big, true);
         }
         if (($layout['show_table_info'] ?? true) && !empty($payload['waiter'])) {
-            $out .= 'WAITER: ' . $payload['waiter'] . "\n";
+            $out .= $this->scaled('WAITER: ' . strtoupper((string) $payload['waiter']), $big, true);
         }
         if (($layout['show_cashier_name'] ?? true) && !empty($payload['cashier'])) {
             $out .= 'CASHIER: ' . $payload['cashier'] . "\n";
@@ -172,36 +249,40 @@ class EscPosPayloadService
         }
         $out .= str_repeat('-', 42) . "\n";
 
+        // Sub-detail is one step below the item: taller than normal so it reads, never double
+        // width, so a modifier can never wrap into an unreadable stub.
+        $sub = ['w' => 1, 'h' => $big['h']];
+
         if (!empty($payload['cancelled_lines'])) {
-            $out .= "CANCELLED:\n";
+            $out .= $this->scaled('CANCELLED:', $big, true);
             foreach ($payload['cancelled_lines'] as $line) {
-                $out .= $this->reminderLine($line, false) . "\n";
+                $out .= $this->reminderLine($line, false, $big);
             }
-            $out .= str_repeat('-', 42) . "\n";
-            $out .= "REMAINING ORDER:\n";
+            $out .= $rule . "\n";
+            $out .= $this->scaled('REMAINING ORDER:', $big, true);
         }
 
         $lines = collect($payload['lines'] ?? []);
         $topLevel = $lines->filter(fn ($line) => empty($line['parent_line_id']));
         if ($topLevel->isEmpty()) {
-            $out .= "NO REMAINING ITEMS\n";
+            $out .= $this->scaled('NO REMAINING ITEMS', $big, true);
         }
         foreach ($topLevel as $line) {
-            $out .= $this->reminderLine($line, $revision > 1) . "\n";
+            $out .= $this->reminderLine($line, $revision > 1, $big);
             foreach ($lines->where('parent_line_id', $line['line_id'] ?? null) as $component) {
-                $out .= '  - ' . $this->reminderLine($component, $revision > 1) . "\n";
+                $out .= $this->reminderLine($component, $revision > 1, $sub, '  - ');
                 foreach (($component['modifiers'] ?? []) as $modifier) {
-                    if (!empty($modifier['name'])) { $out .= '    + ' . $modifier['name'] . "\n"; }
+                    if (!empty($modifier['name'])) { $out .= $this->scaled('    + ' . $modifier['name'], $sub); }
                 }
-                if (!empty($component['kitchen_note'])) { $out .= '    NOTE: ' . $component['kitchen_note'] . "\n"; }
+                if (!empty($component['kitchen_note'])) { $out .= $this->scaled('    NOTE: ' . $component['kitchen_note'], $sub, true); }
             }
             foreach (($line['modifiers'] ?? []) as $modifier) {
                 if (!empty($modifier['name'])) {
-                    $out .= '  + ' . $modifier['name'] . "\n";
+                    $out .= $this->scaled('  + ' . $modifier['name'], $sub);
                 }
             }
             if (!empty($line['kitchen_note'])) {
-                $out .= '  NOTE: ' . $line['kitchen_note'] . "\n";
+                $out .= $this->scaled('  NOTE: ' . $line['kitchen_note'], $sub, true);
             }
         }
 
@@ -420,6 +501,11 @@ class EscPosPayloadService
         $show = fn (string $field, bool $default = true) => $layout === null ? $default : (bool) $layout->{$field};
         $out = '';
 
+        // What the kitchen READS gets the configured scale; order numbers and the printed-at
+        // stamp stay small, because they are reference data nobody cooks from.
+        $big = $this->scaleFor($layout?->kot_font_size);
+        $rule = str_repeat('-', max((int) floor(self::COLS_80MM / max(1, $big['w'])), 8));
+
         $headerText = trim((string) ($layout?->header_text ?? ''));
         if ($headerText !== '') {
             $out .= $this->center($headerText) . "\n";
@@ -435,32 +521,41 @@ class EscPosPayloadService
         if ($eventType === 'duplicate') {
             $out .= $this->center('DUPLICATE ' . max($copyNo, 1)) . "\n";
         }
-        $out .= $this->center('** ' . strtoupper(str_replace('_', ' ', $sale->order_type ?? 'SALE')) . ' **') . "\n";
+        $out .= $this->scaled('** ' . strtoupper(str_replace('_', ' ', $sale->order_type ?? 'SALE')) . ' **', $big, true, true);
         // One ticket per category — name the category so the station knows the slip is theirs.
         if (! empty($payload['kot_category'])) {
-            $out .= $this->center('[ ' . strtoupper((string) $payload['kot_category']) . ' ]') . "\n";
+            // The [ ] decoration costs four characters. At double width that is a fifth of the
+            // line, and a category that nearly fits wraps its closing bracket onto a line of its
+            // own. Keep the brackets only while they earn their space.
+            $category = strtoupper((string) $payload['kot_category']);
+            $bracketed = '[ ' . $category . ' ]';
+            $catWidth = (int) floor(self::COLS_80MM / max(1, $big['w']));
+            $out .= $this->scaled(mb_strlen($bracketed) <= $catWidth ? $bracketed : $category, $big, true, true);
         }
         if ($show('show_order_no')) {
             $out .= $this->center($sale->sale_no ?? '') . "\n";
         }
-        $out .= str_repeat('-', 42) . "\n";
+        $out .= $rule . "\n";
 
         if ($show('show_table_info')) {
             if ($sale->restaurantTable) {
-                $out .= 'TABLE: ' . $sale->restaurantTable->table_no . "\n";
+                $out .= $this->scaled('TABLE: ' . $sale->restaurantTable->table_no, $big, true);
             }
             if ($sale->restaurantWaiter) {
-                $out .= 'WAITER: ' . $sale->restaurantWaiter->name . "\n";
+                $out .= $this->scaled('WAITER: ' . strtoupper($sale->restaurantWaiter->name), $big, true);
             }
         }
         if ($show('show_cashier_name') && $sale->createdBy) {
             $out .= 'CASHIER: ' . $sale->createdBy->name . "\n";
         }
         if ($sale->vehicle_number) {
-            $out .= 'VEHICLE: ' . $sale->vehicle_number . "\n";
+            $out .= $this->scaled('VEHICLE: ' . $sale->vehicle_number, $big, true);
         }
-        $out .= 'TIME: ' . now()->timezone($this->printTz($sale))->format('Y-m-d H:i') . "\n";
-        $out .= str_repeat('-', 42) . "\n";
+        // The old ticket led with a big wall-clock time; the date is reference and stays small.
+        $now = now()->timezone($this->printTz($sale));
+        $out .= $this->scaled('TIME: ' . $now->format('h:i A'), $big, true);
+        $out .= $now->format('D d-M-Y') . "\n";
+        $out .= $rule . "\n";
 
         foreach ($lines as $line) {
             if (($line->line_kind ?? 'standard') === 'combo_header') {
@@ -477,27 +572,40 @@ class EscPosPayloadService
                 continue;
             }
 
-            // Single line, qty right-aligned: "BEEF CHANGEZI PULAO (1 KG)            2"
             $runningPrefix = $eventType === 'addition' ? '(R) ' : '';
-            $kotQty = $this->quantity($qtyToPrint);
-            $kotQty .= $this->unitSuffix($line->unit_code);
-            $name = mb_substr($runningPrefix . strtoupper($line->product_name ?? ''), 0, 41 - mb_strlen($kotQty));
-            $out .= $this->columns($name, $kotQty, 42) . "\n";
+            $kotQty = $this->quantity($qtyToPrint) . $this->unitSuffix($line->unit_code);
+            $name = $runningPrefix . strtoupper($line->product_name ?? '');
 
+            if ($big['w'] > 1) {
+                // At double width the line holds 21 characters, so a right-aligned quantity column
+                // no longer fits beside the name. Lead with the count instead — the kitchen reads
+                // "how many" first anyway, which is what the old ticket's Qty column gave them.
+                $out .= $this->scaled($kotQty . ' x ' . $name, $big, true);
+            } else {
+                $out .= $this->scaled(
+                    $this->columns(mb_substr($name, 0, 41 - mb_strlen($kotQty)), $kotQty, self::COLS_80MM),
+                    $big,
+                    true
+                );
+            }
+
+            // Variant, modifiers and the cook's note stay one step below the item: always taller
+            // than normal so they are readable, never double width, so they never wrap.
+            $sub = ['w' => 1, 'h' => $big['h']];
             if ($line->variant_name) {
-                $out .= "  Variant: {$line->variant_name}\n";
+                $out .= $this->scaled('  ' . $line->variant_name, $sub);
             }
             foreach ($this->lineModifiers($line) as $modifier) {
-                $out .= '  + ' . $modifier['name'] . "\n";
+                $out .= $this->scaled('  + ' . $modifier['name'], $sub);
             }
             if ($line->kitchen_note) {
-                $out .= "  NOTE: {$line->kitchen_note}\n";
+                $out .= $this->scaled('  NOTE: ' . $line->kitchen_note, $sub, true);
             }
         }
 
         if ($sale->notes) {
-            $out .= str_repeat('-', 42) . "\n";
-            $out .= "ORDER NOTE:\n{$sale->notes}\n";
+            $out .= $rule . "\n";
+            $out .= $this->scaled('ORDER NOTE: ' . $sale->notes, ['w' => 1, 'h' => $big['h']], true);
         }
 
         $footerText = trim((string) ($layout?->footer_text ?? ''));
@@ -553,10 +661,15 @@ class EscPosPayloadService
             ->all();
     }
 
-    private function reminderLine(array $line, bool $showRunning): string
+    /**
+     * One reminder item, already scaled and terminated with a newline.
+     *
+     * At normal width the quantity keeps its right-aligned column ("ITEM …… 2"). At double width
+     * only 21 characters fit, so the count leads instead — the same trade the KOT makes.
+     */
+    private function reminderLine(array $line, bool $showRunning, ?array $scale = null, string $indent = ''): string
     {
-        // PRINT-FORMAT-PARITY-1: single line, qty in a right-aligned column ("ITEM …… 2")
-        // instead of the confusing inline "x2 EA".
+        $scale ??= ['w' => 1, 'h' => 1];
         $quantity = (float) ($line['quantity'] ?? 0);
         $delta = (float) ($line['round_delta'] ?? 0);
         $prefix = $showRunning && $delta > 0 && abs($delta - $quantity) < 0.000001 ? '(R) ' : '';
@@ -565,10 +678,14 @@ class EscPosPayloadService
             : '';
         $unit = $this->unitSuffix($line['unit_code'] ?? null);
 
-        $right = $this->quantity($quantity) . $unit;
-        $left = mb_substr($prefix . strtoupper((string) ($line['product_name'] ?? 'ITEM')) . $suffix, 0, 41 - mb_strlen($right));
+        $qty = $this->quantity($quantity) . $unit;
+        $name = $prefix . strtoupper((string) ($line['product_name'] ?? 'ITEM')) . $suffix;
 
-        return $this->columns($left, $right, 42);
+        $text = $scale['w'] > 1
+            ? $indent . $qty . ' x ' . $name
+            : $this->columns($indent . mb_substr($name, 0, 41 - mb_strlen($qty) - mb_strlen($indent)), $qty, self::COLS_80MM);
+
+        return $this->scaled($text, $scale, true);
     }
 
     private function quantity(float $quantity): string

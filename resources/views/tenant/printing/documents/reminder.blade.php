@@ -23,8 +23,16 @@
         .ticket { width: {{ $width }}; max-width: 100%; margin: 0 auto; background: #fff; padding: 10px; }
         .center { text-align: center; }
         .rule { border-top: 1px dashed #000; margin: 7px 0; }
+        /* Same character budget as the printer — see EscPosPayloadService::scaleFor(). Deriving the
+           preview size from the px value directly would show a line the paper cannot hold. */
+        @php
+            $rFont  = (int) ($layout->font_size ?? 12);
+            $rScaleW = match (true) { $rFont <= 17 => 1, $rFont <= 20 => 2, default => 3 };
+            $rCols   = max((int) floor(42 / $rScaleW), 8);
+        @endphp
         .heading { font-size: 1.25em; font-weight: 800; }
-        .line { margin: 6px 0; font-weight: 700; overflow-wrap: anywhere; }
+        .line { margin: 6px 0; font-weight: 700; overflow-wrap: anywhere;
+                font-size: calc({{ $width }} / {{ $rCols * 0.6 }}); line-height: 1.2; }
         .child, .modifier, .note { margin-left: 12px; font-weight: 400; }
         .print-btn { display: block; margin: 12px auto; padding: 8px 16px; }
         @media print { body { background: #fff; padding: 0; } .ticket { width: {{ $width }}; padding: 0; } .print-btn { display: none; } }

@@ -8,6 +8,17 @@
             $fontSize  = $layout?->kot_font_size ?? 14;
             $paperSize = $layout?->paper_size ?? '80mm';
             $width     = match($paperSize) { '58mm' => '52mm', '80mm' => '72mm', default => '180mm' };
+
+            // PREVIEW MUST WRAP WHERE THE PAPER WRAPS.
+            // These bands mirror EscPosPayloadService::scaleFor(). The printer fits 42 characters
+            // at normal width and halves that for each width step, so the preview derives its font
+            // size from that character budget instead of using the px value directly — otherwise
+            // the screen shows a line the printer would chop in half.
+            $scaleW = match (true) { $fontSize <= 17 => 1, $fontSize <= 20 => 2, default => 3 };
+            $scaleH = match (true) { $fontSize <= 14 => 1, $fontSize <= 17 => 2, $fontSize <= 20 => 2, default => 3 };
+            $cols   = max((int) floor(42 / $scaleW), 8);
+            // Courier advances 0.6em per character, so this many chars exactly fill the paper.
+            $bigFont = 'calc(' . $width . ' / ' . ($cols * 0.6) . ')';
         @endphp
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -20,6 +31,12 @@
         }
         .center  { text-align: center; }
         .bold    { font-weight: bold; }
+        /* What the kitchen reads, at the printer's real character budget. */
+        .big     { font-size: {{ $bigFont }}; font-weight: bold; line-height: 1.15; overflow-wrap: break-word; }
+        @if($scaleH > $scaleW)
+        /* Taller but not wider: the glyphs stretch vertically, the line still holds 42 characters. */
+        .big     { display: block; transform: scaleY({{ $scaleH }}); transform-origin: left top; margin-bottom: {{ ($scaleH - 1) * 1.2 }}em; }
+        @endif
         hr       { border: none; border-top: 1px dashed #000; margin: 4px 0; }
         table    { width: 100%; border-collapse: collapse; }
         td       { vertical-align: top; padding: 2px 0; }
@@ -45,9 +62,16 @@
 @if(($eventType ?? '') === 'duplicate')
 <div class="center bold">DUPLICATE {{ max($copyNo ?? 1, 1) }}</div>
 @endif
-<div class="center bold" style="font-size:{{ $fontSize + 2 }}px">** {{ strtoupper(str_replace('_', ' ', $salesOrder->order_type ?? 'SALE')) }} **</div>
+<div class="center big">** {{ strtoupper(str_replace('_', ' ', $salesOrder->order_type ?? 'SALE')) }} **</div>
 @if(!empty($kotCategory ?? null))
-<div class="center bold">[ {{ strtoupper($kotCategory) }} ]</div>
+@php
+    // Brackets are dropped when they would no longer fit, exactly as the ESC/POS builder does —
+    // otherwise a nearly-full category name wraps its closing bracket onto a line of its own.
+    $catText = mb_strlen('[ ' . strtoupper($kotCategory) . ' ]') <= $cols
+        ? '[ ' . strtoupper($kotCategory) . ' ]'
+        : strtoupper($kotCategory);
+@endphp
+<div class="center big">{{ $catText }}</div>
 @endif
 
 <hr>
@@ -66,7 +90,7 @@
 <div>Time: {{ now()->format('d/m/Y H:i') }}</div>
 
 @if(!($layout?->show_table_info === false) && $salesOrder->restaurantTable)
-<div class="bold" style="font-size:{{ $fontSize + 2 }}px">
+<div class="big">
     Table: {{ $salesOrder->restaurantTable->table_no }}
     @if($salesOrder->restaurantTable->floor)
         / {{ $salesOrder->restaurantTable->floor->name }}
@@ -111,7 +135,7 @@
             }
         @endphp
         <tr>
-            <td class="item-qty bold" style="font-size:{{ $fontSize + 2 }}px">
+            <td class="item-qty big">
                 @if($isAddition)
                     <span style="font-size:{{ $fontSize - 1 }}px">ADD</span><br>
                 @endif
@@ -121,7 +145,7 @@
                 @endif
             </td>
             <td class="item-name">
-                <span class="bold">{{ ($eventType ?? null) === 'addition' ? '(R) ' : '' }}{{ $line->product_name }}</span>
+                <span class="big">{{ ($eventType ?? null) === 'addition' ? '(R) ' : '' }}{{ $line->product_name }}</span>
                 @if($line->variant_name)
                     <br><small>{{ $line->variant_name }}</small>
                 @endif
