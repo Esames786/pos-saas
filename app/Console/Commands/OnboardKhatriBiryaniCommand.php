@@ -368,21 +368,22 @@ class OnboardKhatriBiryaniCommand extends Command
         }
         $this->info('menu seeded: ' . count(self::MENU) . " parents + {$childCount} child categories, {$productCount} service-based products (small→large ordering).");
 
-        // ── GO-LIVE printers (2026-08-10 final decision): TWO Xprinter units ──────────────────
+        // GO-LIVE printers: BlackCopper BC97AC at delivery plus an XPrinter at the side station.
         // P1 "Delivery Printer" sits at the delivery counter: reachable over the LAN (our agent
         // prints raw ESC/POS to ip:9100) AND by USB for the POS "print here" preview button. It is
         // the DEFAULT printer and prints the receipt/bill plus the KOT for every category.
         // P2 is network-only and takes the drinks/sweets side: Beverages, Desserts, Extras.
         // IPs are placeholders — set the real ones on site (Printing → Printers).
         $printers = [
-            'PRINTER-1' => ['Delivery Printer (Receipt + KOT)', '192.168.1.50', 'both', 1],
-            'PRINTER-2' => ['Beverages / Desserts Printer', '192.168.1.51', 'kot', 0],
+            'PRINTER-1' => ['BlackCopper BC97AC - Delivery Receipt + KOT', '192.168.1.50', 'both', 1],
+            'PRINTER-2' => ['XPrinter - Beverages / Desserts / Extras KOT', '192.168.1.51', 'kot', 0],
         ];
         $printerIds = [];
         foreach ($printers as $code => [$name, $ip, $role, $isDefault]) {
             $existing = DB::connection('tenant')->table('printers')->where('code', $code)->first();
             $attributes = ['branch_id' => $branchId, 'name' => $name, 'printer_type' => 'network',
                 'print_role' => $role, 'supports_reminder' => 0, 'port' => $existing->port ?? 9100,
+                'paper_size' => '80mm', 'characters_per_line' => 42,
                 'is_default' => $isDefault, 'is_active' => 1, 'updated_at' => now()];
             // NEVER overwrite an IP the shop has already set on site — the seeded address is only
             // a placeholder for the first run (re-running this command must stay safe on a live till).

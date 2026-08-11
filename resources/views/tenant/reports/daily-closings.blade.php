@@ -4,7 +4,12 @@
 
 @section('content')
         <div class="page-header">
-            <div class="page-title"><h4>Daily Closings</h4><h6>Daily closing reconciliation</h6></div>
+            <div class="page-title"><h4>Daily Closings</h4><h6>Frozen drawer snapshots captured at closing</h6></div>
+        </div>
+
+        <div class="alert alert-info py-2" role="note">
+            These figures are saved when the drawer closes. A refund posted later remains visible in
+            the Sales Report Centre by return date; it does not rewrite this historical cash count.
         </div>
 
         @include('tenant.reports.partials.filters', ['showTerminal' => true, 'showOrderType' => false, 'showCsvExport' => false])
@@ -22,11 +27,11 @@
                 <div class="fw-bold fs-5">{{ number_format($t->total_sales, 2) }}</div>
             </div></div></div>
             <div class="col-md-2 col-sm-4"><div class="card border-0 shadow-sm text-center"><div class="card-body py-2">
-                <div class="text-muted small">Refunds</div>
+                <div class="text-muted small">Closing Refunds</div>
                 <div class="fw-bold fs-5 @if($t->total_refunds > 0) text-danger @endif">{{ number_format($t->total_refunds, 2) }}</div>
             </div></div></div>
             <div class="col-md-2 col-sm-4"><div class="card border-0 shadow-sm text-center"><div class="card-body py-2">
-                <div class="text-muted small">Net Sales</div>
+                <div class="text-muted small">Closing Net</div>
                 <div class="fw-bold fs-5">{{ number_format($t->total_sales - $t->total_refunds, 2) }}</div>
             </div></div></div>
             <div class="col-md-2 col-sm-4"><div class="card border-0 shadow-sm text-center"><div class="card-body py-2">
@@ -59,8 +64,8 @@
                                 <th scope="col">Terminal</th>
                                 <th scope="col">Closed By</th>
                                 <th scope="col" class="text-end">Billed</th>
-                                <th scope="col" class="text-end">Refunds</th>
-                                <th scope="col" class="text-end">Net Sales</th>
+                                <th scope="col" class="text-end">Refunds at Close</th>
+                                <th scope="col" class="text-end">Net at Close</th>
                                 <th scope="col" class="text-end">Expected</th>
                                 <th scope="col" class="text-end">Counted</th>
                                 <th scope="col" class="text-end">Variance</th>

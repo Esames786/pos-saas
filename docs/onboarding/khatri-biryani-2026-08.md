@@ -267,10 +267,12 @@ Closing a drawer **short** now shows the difference live on both close screens (
 
 ## GO-LIVE configuration (2026-08-10 final client decision)
 
-**Printers — two Xprinter units** (auto-cut works: the cut command is inside the ESC/POS payload):
-- `PRINTER-1` "Delivery Printer" — LAN (agent prints to `ip:9100`) + USB (POS "print here" preview).
+**Printers — BlackCopper BC97AC + XPrinter**, both using 80mm rolls / 72mm effective print width
+and the safe 42-character layout (auto-cut is carried by the ESC/POS payload):
+- `PRINTER-1` "BlackCopper BC97AC - Delivery Receipt + KOT" — LAN (agent prints to `ip:9100`) + USB (POS "print here" preview).
   Default printer; prints the **receipt/bill** and the **KOT for every category**.
-- `PRINTER-2` — network only; KOT for **Beverages, Desserts, Extras** (incl. their child categories).
+- `PRINTER-2` "XPrinter - Beverages / Desserts / Extras KOT" — network only; KOT for
+  **Beverages, Desserts, Extras** (including their child categories).
 - Seeded IPs are placeholders (`192.168.1.50` / `.51`) — set the real ones on site.
 - **No reminder printer** for this restaurant; earlier trial printers are retired (inactive, routes removed).
 

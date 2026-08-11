@@ -30,6 +30,7 @@
      * Widest realistic figures line is "Amt" plus three 10-character amounts ≈ 34 characters.
      */
     $tHead = fn () => '<tr><th></th><th class="amt">Sold</th><th class="amt">Ret</th><th class="amt">Net</th></tr>';
+    $tCancelHead = fn () => '<tr><th colspan="2">Item / reason</th><th class="amt">Events</th><th class="amt">-Qty</th></tr>';
 
     /** An entry carrying both quantities and money (categories, items). */
     $tEntry = function (string $name, $sQ, $rQ, $nQ, $sV, $rV, $nV, bool $bold = false, string $indent = '') use ($qty, $fmt) {
@@ -304,15 +305,22 @@
 <h2>CANCELLATIONS (voided / decreased after KOT)</h2>
 @if($isThermal)
 <table>
-    {!! $tHead() !!}
+    {!! $tCancelHead() !!}
     @forelse($cancellations['rows'] as $r)
-        <tr><td colspan="2">{{ $r['item'] }}</td></tr>
-        <tr><td colspan="2">{{ $r['order_type'] }} / {{ $r['reason'] }}</td></tr>
-        <tr><td>Events {{ $r['events'] }}</td><td class="amt">Qty -{{ $qty($r['qty']) }}</td></tr>
+        <tr><td colspan="4">{{ $r['item'] }}</td></tr>
+        <tr>
+            <td colspan="2">{{ $r['order_type'] }} / {{ $r['reason'] }}</td>
+            <td class="amt">{{ $r['events'] }}</td>
+            <td class="amt">-{{ $qty($r['qty']) }}</td>
+        </tr>
     @empty
-        <tr><td colspan="2">No cancellations in this period.</td></tr>
+        <tr><td colspan="4">No cancellations in this period.</td></tr>
     @endforelse
-    <tr class="total"><td>TOTAL Events {{ $cancellations['total_events'] }}</td><td class="amt">Qty -{{ $qty($cancellations['total_qty']) }}</td></tr>
+    <tr class="total">
+        <td colspan="2">TOTAL</td>
+        <td class="amt">{{ $cancellations['total_events'] }}</td>
+        <td class="amt">-{{ $qty($cancellations['total_qty']) }}</td>
+    </tr>
 </table>
 @else
 <table>

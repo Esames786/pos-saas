@@ -48,17 +48,27 @@ class ThermalSalesReportLayoutRegressionTest extends TestCase
         $this->assertStringContainsString('$tEntry = function', $view, 'qty+money entries need the column helper');
         $this->assertStringContainsString('$tOrders = function', $view, 'order-level entries need the column helper');
         $this->assertStringContainsString('$tHead = fn', $view, 'each thermal table needs a column header');
+        $this->assertStringContainsString('$tCancelHead = fn', $view, 'cancellations need their own semantic header');
 
         $this->assertGreaterThanOrEqual(
-            8,
+            7,
             substr_count($view, '$tHead()'),
-            'every thermal table must print the Sold/Ret/Net header once'
+            'every sales thermal table must print the Sold/Ret/Net header once'
         );
         $this->assertGreaterThanOrEqual(
             12,
             substr_count($view, '$tEntry(') + substr_count($view, '$tOrders('),
             'every thermal row and total must render through a column helper'
         );
+    }
+
+    public function test_cancellations_use_matching_four_column_thermal_markup(): void
+    {
+        $view = $this->printView();
+
+        $this->assertStringContainsString('{!! $tCancelHead() !!}', $view);
+        $this->assertStringContainsString('<td colspan="4">{{ $r[\'item\'] }}</td>', $view);
+        $this->assertStringContainsString('<td colspan="4">No cancellations in this period.</td>', $view);
     }
 
     public function test_the_one_line_expression_forms_are_gone(): void

@@ -60,11 +60,14 @@ class DashboardMatchesReportCentreRegressionTest extends TestCase
         $this->assertStringContainsString("\$today['billed']", $view);
     }
 
-    public function test_the_shift_report_separates_billed_refunds_and_net(): void
+    public function test_daily_closing_is_explicitly_a_frozen_snapshot(): void
     {
         $view = file_get_contents(resource_path('views/tenant/reports/daily-closings.blade.php'));
 
-        $this->assertStringContainsString('Net Sales', $view, 'a closing report without a net figure reads as the day\'s takings');
+        $this->assertStringContainsString('Frozen drawer snapshots captured at closing', $view);
+        $this->assertStringContainsString('does not rewrite this historical cash count', $view);
+        $this->assertStringContainsString('Closing Refunds', $view);
+        $this->assertStringContainsString('Closing Net', $view);
         $this->assertStringContainsString('total_sales - $c->total_refunds', $view, 'each row must show its own net');
         $this->assertStringContainsString('total_sales - $t->total_refunds', $view, 'the summary must show the net too');
     }
