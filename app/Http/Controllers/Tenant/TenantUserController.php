@@ -212,7 +212,7 @@ class TenantUserController extends Controller
     public function managerPinStore(Request $request, User $user)
     {
         $request->validate([
-            'pin'             => ['required', 'string', 'min:4', 'max:8', 'regex:/^\d+$/'],
+            'pin'             => ['required', 'string', 'min:4', 'max:64'],
             'pin_confirmation' => ['required', 'same:pin'],
         ]);
 

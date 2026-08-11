@@ -1331,6 +1331,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const categories = @json($categories);
     const heldSale   = @json($heldSaleJson);
     const branchCancellationModes = @json($branches->mapWithKeys(fn ($branch) => [(string) $branch->id => $branch->held_kot_cancellation_approval_mode ?? 'manager_required']));
+    const branchLineCancellationModes = @json($branches->mapWithKeys(fn ($branch) => [(string) $branch->id => $branch->held_kot_line_cancellation_approval_mode ?: ($branch->held_kot_cancellation_approval_mode ?? 'manager_required')]));
 
     function buttonIsBusy(button) {
         return !!(button && button.dataset.posBusy === '1');
@@ -2421,7 +2422,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 applyItemQuantity(index, newQuantity);
             };
 
-            if (currentCancellationMode() === 'auto_approve') {
+            if (currentCancellationMode('line') === 'auto_approve') {
                 finish(null);
                 return;
             }
@@ -3035,13 +3036,15 @@ document.addEventListener('DOMContentLoaded', function () {
     @php $voidReasons = \App\Models\Tenant\VoidReason::where('is_active', true)->get(['id','name','requires_manager_approval']); @endphp
     const voidReasons = @json($voidReasons->values());
 
-    function currentCancellationMode() {
+    function currentCancellationMode(scope) {
         const branchId = document.getElementById('branch_id')?.value || '';
-        return branchCancellationModes[String(branchId)] || 'manager_required';
+        const modes = scope === 'line' ? branchLineCancellationModes : branchCancellationModes;
+        return modes[String(branchId)] || 'manager_required';
     }
 
     function showVoidReasonModal(lineIndex, cancelQuantity, callback) {
         const line = cart[lineIndex];
+        const lineRequiresPin = currentCancellationMode('line') !== 'auto_approve';
         let html = '<div class="mb-3"><strong>' + (line.product_name || line.product?.name || 'Item') + '</strong><br><small class="text-muted">This item was already sent to kitchen (KOT). Please select a void reason.</small></div>';
         if (!voidReasons.length) {
             toast('error', 'Configure an active void reason before cancelling KOT items.');
@@ -3049,8 +3052,8 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         html += '<div class="list-group">';
         voidReasons.forEach(function (r) {
-            html += '<button type="button" class="list-group-item list-group-item-action void-reason-item" data-reason-id="' + r.id + '" data-requires-pin="' + (r.requires_manager_approval ? '1' : '0') + '">' +
-                r.name + (r.requires_manager_approval ? ' <span class="badge bg-warning text-dark ms-1">PIN Required</span>' : '') +
+            html += '<button type="button" class="list-group-item list-group-item-action void-reason-item" data-reason-id="' + r.id + '">' +
+                r.name + (lineRequiresPin ? ' <span class="badge bg-warning text-dark ms-1">Manager code required</span>' : '') +
                 '</button>';
         });
         html += '</div>';
@@ -3065,7 +3068,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 popup.querySelectorAll('.void-reason-item').forEach(function (btn) {
                     btn.addEventListener('click', function () {
                         const reasonId = btn.dataset.reasonId;
-                        const requiresPin = currentCancellationMode() !== 'auto_approve';
+                        const requiresPin = lineRequiresPin;
                         Swal.close();
                         if (requiresPin) {
                             showManagerPinModal('void_kot_item', {
@@ -3089,8 +3092,8 @@ document.addEventListener('DOMContentLoaded', function () {
     function showManagerPinModal(actionType, payload, onSuccess, onCancel) {
         Swal.fire({
             title: 'Manager Approval',
-            html: '<p class="text-muted small mb-3">Enter manager PIN to approve this action.</p>' +
-                  '<input type="password" id="swal-manager-pin" class="swal2-input" placeholder="PIN" inputmode="numeric" maxlength="8">',
+            html: '<p class="text-muted small mb-3">Enter the manager approval code for this action.</p>' +
+                  '<input type="password" id="swal-manager-pin" class="swal2-input" placeholder="Manager code" maxlength="64" autocomplete="one-time-code">',
             confirmButtonText: 'Verify',
             cancelButtonText: 'Cancel',
             showCancelButton: true,

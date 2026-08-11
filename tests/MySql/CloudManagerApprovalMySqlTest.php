@@ -33,7 +33,7 @@ class CloudManagerApprovalMySqlTest extends MySqlTenantTestCase
         $this->managerId = $this->makeUser(['default_branch_id' => $this->branchId]);
         $this->saleId = $this->makeSale($this->branchId, ['status' => 'held']);
         DB::connection('tenant')->table('manager_pins')->insert([
-            'user_id' => $this->managerId, 'pin_hash' => Hash::make('4321'), 'is_active' => 1, 'created_at' => now(), 'updated_at' => now(),
+            'user_id' => $this->managerId, 'pin_hash' => Hash::make('password@'), 'is_active' => 1, 'created_at' => now(), 'updated_at' => now(),
         ]);
     }
 
@@ -54,7 +54,7 @@ class CloudManagerApprovalMySqlTest extends MySqlTenantTestCase
 
         // correct PIN mints the approval with full identity + payload binding.
         $payload = ['sales_order_id' => $this->saleId, 'sales_order_line_id' => 7, 'quantity' => 2];
-        $approval = $this->svc()->verifyPin('4321', 'void_kot_item', $this->cashierId, $payload);
+        $approval = $this->svc()->verifyPin('password@', 'void_kot_item', $this->cashierId, $payload);
         $this->assertSame($this->managerId, (int) $approval->approved_by_user_id);
         $this->assertSame($this->cashierId, (int) $approval->requested_by_user_id);
         $this->assertSame('void_kot_item', $approval->action_type);
@@ -84,14 +84,14 @@ class CloudManagerApprovalMySqlTest extends MySqlTenantTestCase
         // a manager without access to the order's branch is refused.
         $foreignSale = $this->makeSale($this->makeBranch(), ['status' => 'held']);
         try {
-            $this->svc()->verifyPin('4321', 'void_kot_item', $this->cashierId, ['sales_order_id' => $foreignSale]);
+            $this->svc()->verifyPin('password@', 'void_kot_item', $this->cashierId, ['sales_order_id' => $foreignSale]);
             $this->fail('branch authorization must be enforced');
         } catch (\RuntimeException $e) {
             $this->assertStringContainsString('not authorized for the order branch', $e->getMessage());
         }
 
         // 10-minute expiry.
-        $approval = $this->svc()->verifyPin('4321', 'void_kot_item', $this->cashierId, ['sales_order_id' => $this->saleId]);
+        $approval = $this->svc()->verifyPin('password@', 'void_kot_item', $this->cashierId, ['sales_order_id' => $this->saleId]);
         ManagerApproval::where('id', $approval->id)->update(['approved_at' => now()->subMinutes(11)]);
         try {
             $this->svc()->consume($approval->fresh(), 'void_kot_item', $this->cashierId, ['sales_order_id' => $this->saleId]);

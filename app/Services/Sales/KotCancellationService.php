@@ -57,7 +57,7 @@ class KotCancellationService
                 if ($quantity <= 0) {
                     continue;
                 }
-                $this->record($sale, $line, $quantity, $reason, $approval, $queued['batch']?->id, $requestingUserId);
+                $this->record($sale, $line, $quantity, $reason, $approval, $queued['batch']?->id, $requestingUserId, 'order');
             }
 
             $reminderJobs = $this->queueCorrectionReminders($sale, $queued['batch'], true);
@@ -165,7 +165,8 @@ class KotCancellationService
                     $item['reason'],
                     $item['approval'],
                     $queued['batch']?->id,
-                    $requestingUserId
+                    $requestingUserId,
+                    'line'
                 );
             }
 
@@ -211,11 +212,14 @@ class KotCancellationService
      */
     private function requiresManager(Branch $branch, string $scope = 'order'): bool
     {
-        $mode = $scope === 'line'
+        return $this->cancellationMode($branch, $scope) !== Branch::KOT_CANCELLATION_AUTO_APPROVE;
+    }
+
+    private function cancellationMode(Branch $branch, string $scope = 'order'): string
+    {
+        return $scope === 'line'
             ? ($branch->held_kot_line_cancellation_approval_mode ?: $branch->held_kot_cancellation_approval_mode)
             : $branch->held_kot_cancellation_approval_mode;
-
-        return $mode !== Branch::KOT_CANCELLATION_AUTO_APPROVE;
     }
 
     private function assertCancellationPermission(int $userId): void
@@ -254,7 +258,10 @@ class KotCancellationService
         ?ManagerApproval $approval,
         ?int $batchId,
         int $requestingUserId,
+        string $scope,
     ): void {
+        $approvalMode = $this->cancellationMode($sale->branch, $scope);
+
         SalesOrderLineCancellation::create([
             'sales_order_id' => $sale->id,
             'sales_order_line_id' => $line->id,
@@ -269,13 +276,14 @@ class KotCancellationService
             'kot_batch_id' => $batchId,
             'requested_by_user_id' => $requestingUserId,
             'approved_by_user_id' => $approval?->approved_by_user_id,
-            'approval_mode' => $sale->branch->held_kot_cancellation_approval_mode,
+            'approval_mode' => $approvalMode,
             'product_name' => $line->product_name,
             'variant_name' => $line->variant_name,
             'quantity' => $quantity,
             'policy_snapshot' => [
                 'branch_id' => $sale->branch_id,
-                'approval_mode' => $sale->branch->held_kot_cancellation_approval_mode,
+                'scope' => $scope,
+                'approval_mode' => $approvalMode,
                 'branch_updated_at' => $sale->branch->updated_at?->toIso8601String(),
             ],
             'cancelled_at' => now(),

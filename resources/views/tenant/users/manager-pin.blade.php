@@ -26,16 +26,16 @@
                     @csrf
 
                     <div class="mb-3">
-                        <label class="form-label required" for="pin">New PIN <small class="text-muted">(4–8 digits)</small></label>
+                        <label class="form-label required" for="pin">New manager code <small class="text-muted">(4-64 characters)</small></label>
                         <input type="password" id="pin" name="pin" class="form-control @error('pin') is-invalid @enderror"
-                            inputmode="numeric" pattern="\d{4,8}" maxlength="8" autocomplete="new-password" required>
+                            maxlength="64" autocomplete="new-password" required>
                         @error('pin')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
 
                     <div class="mb-4">
-                        <label class="form-label required" for="pin_confirmation">Confirm PIN</label>
+                        <label class="form-label required" for="pin_confirmation">Confirm manager code</label>
                         <input type="password" id="pin_confirmation" name="pin_confirmation" class="form-control"
-                            inputmode="numeric" pattern="\d{4,8}" maxlength="8" autocomplete="new-password" required>
+                            maxlength="64" autocomplete="new-password" required>
                     </div>
 
                     <div class="d-flex gap-2">

@@ -250,7 +250,10 @@ class EdgeIdentityFlowMySqlTest extends MySqlTenantTestCase
         $p = $s['productId'];
         $userId = $s['userId'];
         // auto-approve mode so the cancellation needs no manager, + grant the void permission to the user.
-        DB::connection('tenant')->table('branches')->where('id', $b)->update(['held_kot_cancellation_approval_mode' => Branch::KOT_CANCELLATION_AUTO_APPROVE]);
+        DB::connection('tenant')->table('branches')->where('id', $b)->update([
+            'held_kot_cancellation_approval_mode' => Branch::KOT_CANCELLATION_MANAGER_REQUIRED,
+            'held_kot_line_cancellation_approval_mode' => Branch::KOT_CANCELLATION_AUTO_APPROVE,
+        ]);
         $c = DB::connection('tenant');
         $permId = $c->table('permissions')->where('name', 'tenant.pos.void-kot-item')->where('guard_name', 'tenant')->value('id')
             ?? $c->table('permissions')->insertGetId(['name' => 'tenant.pos.void-kot-item', 'guard_name' => 'tenant', 'created_at' => now(), 'updated_at' => now()]);
@@ -283,6 +286,8 @@ class EdgeIdentityFlowMySqlTest extends MySqlTenantTestCase
 
         $cancel = SalesOrderLineCancellation::on('tenant')->where('sales_order_id', $sale->id)->first();
         $this->assertNotNull($cancel, 'a durable cancellation record must be created');
+        $this->assertSame(Branch::KOT_CANCELLATION_AUTO_APPROVE, $cancel->approval_mode);
+        $this->assertSame('line', $cancel->policy_snapshot['scope'] ?? null);
         $this->assertTrue(Str::isUuid($cancel->event_uuid), 'cancellation has its canonical event_uuid');
         $this->assertSame($lineUuid, $cancel->source_line_uuid, 'cancellation snapshots the source line canonical identity');
         // referenced_kot_event_uuid is the canonical form of whatever kot_batch_id references (the cancel batch the
