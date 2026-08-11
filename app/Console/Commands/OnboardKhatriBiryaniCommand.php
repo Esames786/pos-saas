@@ -58,38 +58,48 @@ class OnboardKhatriBiryaniCommand extends Command
 
     /** Menu (Z-report prices authoritative — see the onboarding doc for ⚠ client-verification flags). */
     /**
-     * KHATRI-MENU-2 (client's handwritten note, 2026-08-10): child categories per parent
-     * ('Saada' = plain / no meat in Urdu — items named Saada/Saadi go there; meat versions
-     * are 'Non-Saada'; 'Matka' is its own child), every list ordered SMALL → LARGE, and the
-     * new items: Beef Changezi Pulao Special (1 kg) @1200, 750 ML Box @30, 1500 ML Box @50.
-     * '_children' marks a parent with child categories; product order = display order.
+     * KHATRI-MENU-3 (2026-08-11): mirrors the LIVE tenant after the client renamed the child
+     * categories and added items on site. 'Saada/Saadi' = plain / no meat in Urdu, so each meat
+     * parent carries a plain child beside it; 'Matka' is its own child. Every list runs
+     * SMALL → LARGE. '_children' marks a parent with child categories; product order = display order.
+     *
+     * Kept deliberately in step with production: the child names here are the client's own
+     * (Beef Khatri / Khatri Sadi / Beef Changezi / Changezi Saadi / Biryani Chicken / Biryani
+     * Saadi), NOT the original Non-Saada/Saada wording, so a rebuild reproduces what staff use.
+     * NOTE: adding a category here also needs KOT routing for it — a category with no mapping
+     * falls back to the default printer instead of its parent's station.
      */
     private const MENU = [
         'Beef Khatri Biryani' => ['_children' => [
-            'Non-Saada' => [
+            'Beef Khatri' => [
                 ['Beef Khatri Biryani (1/2 kg)', 450], ['Beef Khatri Biryani (1 kg)', 900],
                 ['Beef Khatri Biryani Special (1/2 kg)', 600], ['Beef Khatri Biryani Special (1 kg)', 1200],
             ],
-            'Saada' => [
+            'Khatri Sadi' => [
                 ['Saadi Biryani (1/2 kg)', 200], ['Saadi Khatri Biryani (1/2 kg)', 250], ['Saadi Khatri Biryani (1 kg)', 500],
             ],
             'Matka' => [
-                ['Matka Biryani Beef', 4000],
+                ['Matka Biryani Beef', 4000], ['Beef Biryani Matka (1.5 kg)', 4750],
             ],
         ]],
         'Beef Changezi Pulao' => ['_children' => [
-            'Non-Saada' => [
+            'Beef Changezi' => [
                 ['Beef Changezi Pulao (1/2 kg)', 450], ['Beef Changezi Pulao (1 kg)', 900],
                 ['Beef Changezi Pulao Special (1/2 kg)', 600], ['Beef Changezi Pulao Special (1 kg)', 1200],
             ],
-            'Saada' => [
-                ['Saada Beef Changezi Pulao (1/2 kg)', 250],
+            'Changezi Saadi' => [
+                ['Saada Beef Changezi Pulao (1/2 kg)', 250], ['Saada Beef Changezi Pulao (1 kg)', 500],
             ],
         ]],
-        'Chicken Biryani' => [
-            ['Chicken Biryani (1/2 kg)', 330], ['Chicken Biryani (1 kg)', 650],
-            ['Chicken Biryani Family Pack', 1600], ['Chicken Extra Piece', 150],
-        ],
+        'Chicken Biryani' => ['_children' => [
+            'Biryani Chicken' => [
+                ['Chicken Biryani (1/2 kg)', 330], ['Chicken Biryani (1 kg)', 650],
+                ['Chicken Biryani Family Pack', 1600], ['Chicken Extra Piece', 150],
+            ],
+            'Biryani Saadi' => [
+                ['Saadi Chicken Biryani (1/2 kg)', 200], ['Saadi Chicken Biryani (1 kg)', 400],
+            ],
+        ]],
         'Singaporean Rice' => [
             ['Singaporean Rice (Small)', 550], ['Singaporean Rice (Large)', 1000],
             ['Singaporean Rice Family Pack (Small)', 2500], ['Singaporean Rice Family Pack (Large)', 3500],

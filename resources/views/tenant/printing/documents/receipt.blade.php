@@ -15,6 +15,11 @@
             $printTz = $clock->normalize($salesOrder->shift?->timezone_name)
                 ?? $clock->normalize($salesOrder->branch?->timezone)
                 ?? \App\Support\TenantClock::DEFAULT_TIMEZONE;
+            // ONE visibility rule, identical to EscPosPayloadService: no layout row at all means
+            // show everything; once a row exists its stored value decides. Written as
+            // "!( ... === false)" this blade showed a NULL column that the thermal payload hid,
+            // so the on-screen preview and the paper could disagree.
+            $show = fn (string $field) => $layout === null ? true : (bool) ($layout->{$field} ?? false);
         @endphp
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -48,25 +53,25 @@
     $unitSuffix = fn ($code) => ($code && ! in_array(strtoupper(trim((string) $code)), ['EA','EACH','PC','PCS','PIECE','PIECES','NOS','NO','UNIT','UNITS','QTY'], true)) ? ' ' . $code : '';
 @endphp
 
-@if(!($layout?->show_logo === false) && $layout?->logo_path)
+@if($show('show_logo') && $layout?->logo_path)
 <div class="center" style="margin-bottom:4px">
     <img src="{{ asset('storage/' . $layout->logo_path) }}" style="max-width:80px;max-height:40px">
 </div>
 @endif
 
-@if(!($layout?->show_branch_name === false))
+@if($show('show_branch_name'))
 <div class="center bold">{{ $salesOrder->branch?->name }}</div>
 @endif
 
-@if(!($layout?->show_branch_address === false) && $salesOrder->branch?->address)
+@if($show('show_branch_address') && $salesOrder->branch?->address)
 <div class="center">{{ $salesOrder->branch->address }}</div>
 @endif
 
-@if(!($layout?->show_branch_phone === false) && $salesOrder->branch?->phone)
+@if($show('show_branch_phone') && $salesOrder->branch?->phone)
 <div class="center">Tel: {{ $salesOrder->branch->phone }}</div>
 @endif
 
-@if(!($layout?->show_tax_number === false) && $salesOrder->branch?->tax_number)
+@if($show('show_tax_number') && $salesOrder->branch?->tax_number)
 <div class="center">Tax No: {{ $salesOrder->branch->tax_number }}</div>
 @endif
 
@@ -77,24 +82,24 @@
 <hr>
 
 <div class="bold center">{{ ($isPreview ?? false) ? 'BILL PREVIEW' : 'RECEIPT' }}</div>
-@if(!($layout?->show_order_type === false))
+@if($show('show_order_type'))
 <div class="bold center">** {{ strtoupper(str_replace('_', ' ', $salesOrder->order_type ?? 'SALE')) }} **</div>
 @endif
 @if($isPreview ?? false)<div class="center" style="font-size:10px">NOT A TAX RECEIPT</div>@endif
 
 <hr>
 
-@if(!($layout?->show_order_no === false))
+@if($show('show_order_no'))
 <div>Order: <span class="bold">{{ $salesOrder->sale_no ?? $salesOrder->order_no }}</span></div>
 @endif
 
 <div>Date: {{ ($salesOrder->sale_date ?? $salesOrder->created_at)?->copy()->timezone($printTz)->format('d/m/Y H:i') }}</div>
 
-@if(!($layout?->show_cashier_name === false) && $salesOrder->createdBy)
+@if($show('show_cashier_name') && $salesOrder->createdBy)
 <div>Cashier: {{ $salesOrder->createdBy->name }}</div>
 @endif
 
-@if(!($layout?->show_customer_name === false))
+@if($show('show_customer_name'))
     @php
         $billCustomerName = $salesOrder->customer_name ?: $salesOrder->customer?->name;
         $billCustomerPhone = $salesOrder->customer_phone ?: $salesOrder->customer?->phone;
@@ -103,7 +108,7 @@
     @if($billCustomerPhone)<div>Phone: {{ $billCustomerPhone }}</div>@endif
 @endif
 
-@if(!($layout?->show_table_info === false) && $salesOrder->restaurantTable)
+@if($show('show_table_info') && $salesOrder->restaurantTable)
 <div>Table: {{ $salesOrder->restaurantTable->table_no }}
     @if($salesOrder->restaurantTable->floor)
         ({{ $salesOrder->restaurantTable->floor->name }})
@@ -114,12 +119,12 @@
 @endif
 @endif
 
-@if(!($layout?->show_delivery_details === false))
+@if($show('show_delivery_details'))
     @if($salesOrder->deliveryChannel)<div>Channel: {{ $salesOrder->deliveryChannel->name }}</div>@endif
     @if($salesOrder->deliveryRider)<div>Rider: {{ $salesOrder->deliveryRider->name }}{{ $salesOrder->deliveryRider->phone ? ' - ' . $salesOrder->deliveryRider->phone : '' }}</div>@endif
     @if($salesOrder->delivery_address)<div>Deliver to: {{ $salesOrder->delivery_address }}</div>@endif
 @endif
-@if(!($layout?->show_vehicle_number === false) && $salesOrder->vehicle_number)
+@if($show('show_vehicle_number') && $salesOrder->vehicle_number)
 <div>Vehicle: {{ $salesOrder->vehicle_number }}</div>
 @endif
 
@@ -139,7 +144,7 @@
         @if(($line->line_kind ?? 'standard') === 'component') @continue @endif
         <tr>
             <td class="item-name">
-                @if(!($layout?->show_item_codes === false) && $line->product?->barcode)
+                @if($show('show_item_codes') && $line->product?->barcode)
                     <small>{{ $line->product->barcode }}</small><br>
                 @endif
                 {{ $line->product_name }}
@@ -226,7 +231,7 @@
     @endif
 </table>
 
-@if(!($layout?->show_payment_breakdown === false) && $salesOrder->payments->isNotEmpty())
+@if($show('show_payment_breakdown') && $salesOrder->payments->isNotEmpty())
 <hr>
 <div class="bold">Payments:</div>
 @foreach($salesOrder->payments as $payment)
@@ -246,7 +251,7 @@
 @else
 <div class="center">Thank you for your visit!</div>
 @endif
-@if($layout?->show_bingoo_branding ?? true)
+@if($show('show_bingoo_branding'))
 <div class="center" style="margin-top:4px">BingooPos</div>
 <div class="center">Bingoopos.com</div>
 @endif
