@@ -193,4 +193,45 @@ class SalesReportEngineMySqlTest extends MySqlTenantTestCase
         $f = $this->engine->normalizeFilters($base + ['waiter_id' => $ids['w1']]);
         $this->assertSame(500.0, $this->engine->overview($f)['net_sales']);
     }
+
+    /**
+     * sales_return_lines.line_total is the FINAL refunded line value (subtotal − discount + tax)
+     * since 2026_08_11_000004 normalised it. The category rollup used to add tax on top of it,
+     * which silently double-counted tax on every taxed return. Pin the column's meaning here:
+     * a category's returns_amount must equal the money the customer actually got back.
+     */
+    public function test_category_returns_value_never_double_counts_tax(): void
+    {
+        $conn = DB::connection('tenant');
+        $categoryId = $this->makeCategory(['name' => 'Taxed', 'slug' => 'taxed']);
+        $productId = $this->makeProduct($categoryId, ['name' => 'Taxed Item', 'default_selling_price' => 100]);
+        $saleId = $this->makeSale($this->branchId, [
+            'order_type' => 'takeaway', 'status' => 'partially_returned',
+            'subtotal' => 200, 'discount_amount' => 20, 'tax_amount' => 18,
+            'grand_total' => 198, 'paid_amount' => 198,
+        ]);
+        $lineId = $this->makeSaleLine($saleId, $productId, [
+            'quantity' => 2, 'returned_quantity' => 1, 'unit_price' => 100,
+            'discount_amount' => 20, 'tax_amount' => 18, 'line_total' => 198,
+        ]);
+
+        // refund of one unit: 100 gross − 10 discount + 9 tax = 99 actually handed back.
+        $returnId = $conn->table('sales_returns')->insertGetId([
+            'return_no' => 'SR-TAX', 'sales_order_id' => $saleId, 'branch_id' => $this->branchId,
+            'return_date' => now(), 'subtotal' => 100, 'discount_amount' => 10, 'tax_amount' => 9,
+            'grand_total' => 99, 'refund_method' => 'cash', 'refund_amount' => 99, 'status' => 'posted',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $conn->table('sales_return_lines')->insert([
+            'sales_return_id' => $returnId, 'sales_order_line_id' => $lineId, 'product_id' => $productId,
+            'quantity' => 1, 'unit_price' => 100, 'discount_amount' => 10, 'tax_amount' => 9,
+            'line_total' => 99, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $f = $this->engine->normalizeFilters(['date_from' => now()->toDateString(), 'date_to' => now()->toDateString()]);
+        $category = collect($this->engine->byCategory($f))->firstWhere('name', 'Taxed');
+
+        $this->assertNotNull($category);
+        $this->assertSame(99.0, (float) $category['returns_amount'], 'category returns = the refunded money, tax counted once');
+    }
 }

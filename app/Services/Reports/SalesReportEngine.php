@@ -458,7 +458,10 @@ class SalesReportEngine
             ->whereRaw('DATE(r.return_date) <= ?', [$f['date_to']])
             ->when($f['branch_ids'], fn ($q) => $q->whereIn('r.branch_id', $f['branch_ids']))
             ->groupBy(DB::raw($column))
-            ->selectRaw("$column as dim, COALESCE(SUM(rl.line_total + rl.tax_amount),0) as amount")
+            // rl.line_total is the FINAL refunded line value (subtotal − discount + tax) since
+            // 2026_08_11_000004 normalised the column and backfilled history. Adding tax again
+            // here — as this did while line_total was ex-tax — double-counts it.
+            ->selectRaw("$column as dim, COALESCE(SUM(rl.line_total),0) as amount")
             ->get();
         $map = [];
         foreach ($rows as $r) {
