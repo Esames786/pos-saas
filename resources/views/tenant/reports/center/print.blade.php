@@ -13,7 +13,23 @@
     // figure but stacks each row as name + a "sold − returned = net" line, while A4 keeps the
     // wide table. Same numbers, layout chosen for the paper.
     $isThermal = $mode === 'thermal';
-    $sub = fn ($a, $b, $c, $f) => $f($a) . ' - ' . $f($b) . ' = ' . $f($c);
+
+    /**
+     * One thermal entry = TWO lines, because 72mm holds only ~45 monospace characters:
+     *   line 1  name .................................... NET   (the figure that matters)
+     *   line 2  Qty 29-5=24 ................ 11,180.00-1,590.00  (how it got there)
+     * Putting "sold - returned = net" for BOTH qty and money on one line reached 53 characters
+     * on a normal trading day and would have run off the paper by evening.
+     */
+    $tRow = function (string $name, $net, string $left, string $right, bool $bold = false, string $indent = '') use ($fmt) {
+        $cls = $bold ? ' class="total"' : '';
+
+        return '<tr' . $cls . '><td>' . $indent . e($name) . '</td><td class="amt">' . $fmt($net) . '</td></tr>'
+             . '<tr><td>' . $indent . e($left) . '</td><td class="amt">' . e($right) . '</td></tr>';
+    };
+    // "3-2=1" / "280.00-170.00" — compact halves for the two thermal lines.
+    $qtyExpr = fn ($s, $r, $n) => 'Qty ' . $qty($s) . '-' . $qty($r) . '=' . $qty($n);
+    $valExpr = fn ($s, $r) => $fmt($s) . '-' . $fmt($r);
 
     // Item/category nets cover MERCHANDISE only; the delivery charge belongs to the order, not to
     // any line. Printed alone those totals look like they contradict NET SALES, so every
@@ -101,10 +117,9 @@
 @if($isThermal)
 <table>
     @foreach($orderTypes as $r)
-        <tr><td colspan="2">{{ $r['label'] }}</td></tr>
-        <tr><td>Orders {{ $r['orders'] }}</td><td class="amt">{{ $sub($r['grand_total'], $r['returns_amount'], $r['net_sales'], $fmt) }}</td></tr>
+        {!! $tRow($r['label'], $r['net_sales'], 'Orders ' . $r['orders'], $valExpr($r['grand_total'], $r['returns_amount'])) !!}
     @endforeach
-    <tr class="total"><td>TOTAL Orders {{ collect($orderTypes)->sum('orders') }}</td><td class="amt">{{ $sub(collect($orderTypes)->sum('grand_total'), collect($orderTypes)->sum('returns_amount'), collect($orderTypes)->sum('net_sales'), $fmt) }}</td></tr>
+    {!! $tRow('TOTAL', collect($orderTypes)->sum('net_sales'), 'Orders ' . collect($orderTypes)->sum('orders'), $valExpr(collect($orderTypes)->sum('grand_total'), collect($orderTypes)->sum('returns_amount')), true) !!}
 </table>
 @else
 <table>
@@ -122,16 +137,14 @@
 @if($isThermal)
 <table>
     @foreach($categories as $root)
-        <tr class="total"><td colspan="2">{{ $root['name'] }}</td></tr>
-        <tr><td>Qty {{ $sub($root['sold_qty'], $root['returned_qty'], $root['net_qty'], $qty) }}</td><td class="amt">{{ $sub($root['net'], $root['returns_amount'], $root['net_value'], $fmt) }}</td></tr>
+        {!! $tRow($root['name'], $root['net_value'], $qtyExpr($root['sold_qty'], $root['returned_qty'], $root['net_qty']), $valExpr($root['net'], $root['returns_amount']), true) !!}
         @foreach($root['children'] as $c)
             @if($c['id'] !== $root['id'])
-                <tr><td colspan="2">&nbsp;&nbsp;{{ $c['name'] }}</td></tr>
-                <tr><td>&nbsp;&nbsp;Qty {{ $sub($c['sold_qty'], $c['returned_qty'], $c['net_qty'], $qty) }}</td><td class="amt">{{ $sub($c['net'], $c['returns_amount'], $c['net_value'], $fmt) }}</td></tr>
+                {!! $tRow($c['name'], $c['net_value'], $qtyExpr($c['sold_qty'], $c['returned_qty'], $c['net_qty']), $valExpr($c['net'], $c['returns_amount']), false, ' ') !!}
             @endif
         @endforeach
     @endforeach
-    <tr class="total"><td>TOTAL Qty {{ $sub(collect($categories)->sum('sold_qty'), collect($categories)->sum('returned_qty'), collect($categories)->sum('net_qty'), $qty) }}</td><td class="amt">{{ $sub(collect($categories)->sum('net'), collect($categories)->sum('returns_amount'), collect($categories)->sum('net_value'), $fmt) }}</td></tr>
+    {!! $tRow('TOTAL', collect($categories)->sum('net_value'), $qtyExpr(collect($categories)->sum('sold_qty'), collect($categories)->sum('returned_qty'), collect($categories)->sum('net_qty')), $valExpr(collect($categories)->sum('net'), collect($categories)->sum('returns_amount')), true) !!}
     {!! $bridgeRows((float) collect($categories)->sum('net_value'), 2) !!}
 </table>
 @else
@@ -154,10 +167,9 @@
 @if($isThermal)
 <table>
     @foreach($items as $r)
-        <tr><td colspan="2">{{ $r->item }}{{ $r->variant ? ' (' . $r->variant . ')' : '' }}</td></tr>
-        <tr><td>Qty {{ $sub($r->sold_qty, $r->returned_qty, $r->net_qty, $qty) }}</td><td class="amt">{{ $sub($r->net, $r->returns_amount, $r->net_value, $fmt) }}</td></tr>
+        {!! $tRow($r->item . ($r->variant ? ' (' . $r->variant . ')' : ''), $r->net_value, $qtyExpr($r->sold_qty, $r->returned_qty, $r->net_qty), $valExpr($r->net, $r->returns_amount)) !!}
     @endforeach
-    <tr class="total"><td>TOTAL Qty {{ $sub(collect($items)->sum('sold_qty'), collect($items)->sum('returned_qty'), collect($items)->sum('net_qty'), $qty) }}</td><td class="amt">{{ $sub(collect($items)->sum('net'), collect($items)->sum('returns_amount'), collect($items)->sum('net_value'), $fmt) }}</td></tr>
+    {!! $tRow('TOTAL', collect($items)->sum('net_value'), $qtyExpr(collect($items)->sum('sold_qty'), collect($items)->sum('returned_qty'), collect($items)->sum('net_qty')), $valExpr(collect($items)->sum('net'), collect($items)->sum('returns_amount')), true) !!}
     {!! $bridgeRows((float) collect($items)->sum('net_value'), 2) !!}
 </table>
 @else
@@ -177,10 +189,9 @@
 @if($isThermal)
 <table>
     @foreach($waiters as $r)
-        <tr><td colspan="2">{{ $r['label'] }}</td></tr>
-        <tr><td>Orders {{ $r['orders'] }}</td><td class="amt">{{ $sub($r['grand_total'], $r['returns_amount'], $r['net_sales'], $fmt) }}</td></tr>
+        {!! $tRow($r['label'], $r['net_sales'], 'Orders ' . $r['orders'], $valExpr($r['grand_total'], $r['returns_amount'])) !!}
     @endforeach
-    <tr class="total"><td>TOTAL Orders {{ collect($waiters)->sum('orders') }}</td><td class="amt">{{ $sub(collect($waiters)->sum('grand_total'), collect($waiters)->sum('returns_amount'), collect($waiters)->sum('net_sales'), $fmt) }}</td></tr>
+    {!! $tRow('TOTAL', collect($waiters)->sum('net_sales'), 'Orders ' . collect($waiters)->sum('orders'), $valExpr(collect($waiters)->sum('grand_total'), collect($waiters)->sum('returns_amount')), true) !!}
 </table>
 @else
 <table>
@@ -200,8 +211,7 @@
     <table>
         @if($isThermal)
             @foreach($rows as $r)
-                <tr><td colspan="2">{{ $r['label'] }}</td></tr>
-                <tr><td>Qty {{ $sub($r['sold_qty'], $r['returned_qty'], $r['net_qty'], $qty) }}</td><td class="amt">{{ $sub($r['net'], $r['returns_amount'], $r['net_value'], $fmt) }}</td></tr>
+                {!! $tRow($r['label'], $r['net_value'], $qtyExpr($r['sold_qty'], $r['returned_qty'], $r['net_qty']), $valExpr($r['net'], $r['returns_amount'])) !!}
             @endforeach
         @else
         <tr><th>Category</th><th class="amt">Sold Qty</th><th class="amt">Ret Qty</th><th class="amt">Net Qty</th><th class="amt">Sold</th><th class="amt">Returns</th><th class="amt">Net</th></tr>
@@ -210,7 +220,7 @@
         @endforeach
         @endif
         @if($isThermal)
-            <tr class="total"><td>TOTAL Qty {{ $sub(collect($rows)->sum('sold_qty'), collect($rows)->sum('returned_qty'), collect($rows)->sum('net_qty'), $qty) }}</td><td class="amt">{{ $sub(collect($rows)->sum('net'), collect($rows)->sum('returns_amount'), collect($rows)->sum('net_value'), $fmt) }}</td></tr>
+            {!! $tRow('TOTAL', collect($rows)->sum('net_value'), $qtyExpr(collect($rows)->sum('sold_qty'), collect($rows)->sum('returned_qty'), collect($rows)->sum('net_qty')), $valExpr(collect($rows)->sum('net'), collect($rows)->sum('returns_amount')), true) !!}
         @else
             <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty(collect($rows)->sum('sold_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('returned_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('net_qty')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('returns_amount')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net_value')) }}</td></tr>
         @endif
@@ -221,8 +231,7 @@
     <table>
         @if($isThermal)
             @foreach($rows as $r)
-                <tr><td colspan="2">{{ $r['label'] }}</td></tr>
-                <tr><td>Qty {{ $sub($r['sold_qty'], $r['returned_qty'], $r['net_qty'], $qty) }}</td><td class="amt">{{ $sub($r['net'], $r['returns_amount'], $r['net_value'], $fmt) }}</td></tr>
+                {!! $tRow($r['label'], $r['net_value'], $qtyExpr($r['sold_qty'], $r['returned_qty'], $r['net_qty']), $valExpr($r['net'], $r['returns_amount'])) !!}
             @endforeach
         @else
         <tr><th>Item</th><th class="amt">Sold Qty</th><th class="amt">Ret Qty</th><th class="amt">Net Qty</th><th class="amt">Sold</th><th class="amt">Returns</th><th class="amt">Net</th></tr>
@@ -231,7 +240,7 @@
         @endforeach
         @endif
         @if($isThermal)
-            <tr class="total"><td>TOTAL Qty {{ $sub(collect($rows)->sum('sold_qty'), collect($rows)->sum('returned_qty'), collect($rows)->sum('net_qty'), $qty) }}</td><td class="amt">{{ $sub(collect($rows)->sum('net'), collect($rows)->sum('returns_amount'), collect($rows)->sum('net_value'), $fmt) }}</td></tr>
+            {!! $tRow('TOTAL', collect($rows)->sum('net_value'), $qtyExpr(collect($rows)->sum('sold_qty'), collect($rows)->sum('returned_qty'), collect($rows)->sum('net_qty')), $valExpr(collect($rows)->sum('net'), collect($rows)->sum('returns_amount')), true) !!}
         @else
             <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty(collect($rows)->sum('sold_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('returned_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('net_qty')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('returns_amount')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net_value')) }}</td></tr>
         @endif
@@ -242,10 +251,9 @@
     @if($isThermal)
     <table>
         @foreach($rows as $r)
-            <tr><td colspan="2">{{ $r['label'] }}</td></tr>
-            <tr><td>Orders {{ $r['orders'] }}</td><td class="amt">{{ $sub($r['grand_total'], $r['returns_amount'], $r['net_sales'], $fmt) }}</td></tr>
+            {!! $tRow($r['label'], $r['net_sales'], 'Orders ' . $r['orders'], $valExpr($r['grand_total'], $r['returns_amount'])) !!}
         @endforeach
-        <tr class="total"><td>TOTAL Orders {{ collect($rows)->sum('orders') }}</td><td class="amt">{{ $sub(collect($rows)->sum('grand_total'), collect($rows)->sum('returns_amount'), collect($rows)->sum('net_sales'), $fmt) }}</td></tr>
+        {!! $tRow('TOTAL', collect($rows)->sum('net_sales'), 'Orders ' . collect($rows)->sum('orders'), $valExpr(collect($rows)->sum('grand_total'), collect($rows)->sum('returns_amount')), true) !!}
     </table>
     @else
     <table>
