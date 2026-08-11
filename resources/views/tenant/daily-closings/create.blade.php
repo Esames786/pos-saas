@@ -46,8 +46,8 @@
                     <input type="number" id="counted_cash" name="counted_cash"
                         value="{{ old('counted_cash') }}"
                         class="form-control" min="0" step="0.01"
-                        placeholder="0.00">
-                    <p class="form-help mt-1">Used only if no denomination entries are made below.</p>
+                        placeholder="Count the drawer">
+                    <p class="form-help mt-1">Enter the counted total here, or count denominations below — one of the two is required.</p>
                 </div>
 
                 <div class="col-12">

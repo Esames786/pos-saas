@@ -54,8 +54,10 @@
                         value="{{ old('counted_cash') }}"
                         data-expected="{{ (float) $shift->expected_cash }}"
                         class="form-control" min="0" step="0.01"
-                        placeholder="Leave empty if using denomination count">
-                    <p class="form-help mt-1">Used only if no denomination entries are made above.</p>
+                        placeholder="Count the drawer">
+                    {{-- A blank count no longer closes at 0 — a cashier once closed a 28,400 drawer
+                         that way. Either count denominations above or type the total (0 included). --}}
+                    <p class="form-help mt-1">Enter the counted total here, or count denominations above — one of the two is required.</p>
                     {{-- CASH-SHORTAGE-1: live difference vs expected --}}
                     <p id="counted-diff" class="mt-1 mb-0 small text-muted">Expected {{ number_format((float) $shift->expected_cash, 2) }}</p>
                 </div>
