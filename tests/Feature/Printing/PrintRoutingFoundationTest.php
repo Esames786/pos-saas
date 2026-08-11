@@ -167,6 +167,53 @@ class PrintRoutingFoundationTest extends TestCase
         $this->assertSame([[1], [2]], collect($routes)->pluck('line_ids')->sortBy(fn ($ids) => $ids[0])->values()->all());
     }
 
+    public function test_combo_header_is_not_a_kot_or_reminder_routing_line(): void
+    {
+        $headerCategory = new Category(['name' => 'Deals']);
+        $headerCategory->id = 99;
+        $headerCategory->setRelation('parent', null);
+        $componentCategory = new Category(['name' => 'Kitchen']);
+        $componentCategory->id = 20;
+        $componentCategory->setRelation('parent', null);
+
+        $headerProduct = new Product(['category_id' => 99]);
+        $headerProduct->id = 99;
+        $headerProduct->setRelation('category', $headerCategory);
+        $componentProduct = new Product(['category_id' => 20]);
+        $componentProduct->id = 20;
+        $componentProduct->setRelation('category', $componentCategory);
+
+        $header = new SalesOrderLine(['quantity' => 1, 'kot_sent_quantity' => 0, 'line_kind' => 'combo_header']);
+        $header->id = 1;
+        $header->setRelation('product', $headerProduct);
+        $component = new SalesOrderLine(['quantity' => 2, 'kot_sent_quantity' => 0, 'line_kind' => 'component']);
+        $component->id = 2;
+        $component->setRelation('product', $componentProduct);
+
+        $sale = new SalesOrder(['branch_id' => 10, 'order_type' => 'dine_in']);
+        $sale->setRelation('lines', new Collection([$header, $component]));
+
+        $kotRoutes = app(PrintRoutingService::class)->kotRoutesForSale($sale);
+        $this->assertCount(1, $kotRoutes);
+        $this->assertSame([2], $kotRoutes[0]['line_ids']);
+        $this->assertSame('Kitchen', $kotRoutes[0]['category_name']);
+
+        $headerPrinter = $this->printer('header-reminder');
+        $headerPrinter->update(['print_role' => 'reminder', 'supports_reminder' => true]);
+        $componentPrinter = $this->printer('component-reminder');
+        $componentPrinter->update(['print_role' => 'reminder', 'supports_reminder' => true]);
+        foreach ([[99, $headerPrinter], [20, $componentPrinter]] as [$categoryId, $printer]) {
+            CategoryPrinterMapping::create([
+                'branch_id' => 10, 'category_id' => $categoryId, 'printer_id' => $printer->id,
+                'print_role' => 'reminder', 'order_type' => 'dine_in',
+                'reminder_confirm_on_addition' => false, 'is_active' => true,
+            ]);
+        }
+
+        $reminderRoutes = app(PrintRoutingService::class)->reminderRoutesForSale($sale);
+        $this->assertSame([$componentPrinter->id], collect($reminderRoutes)->pluck('printer.id')->all());
+    }
+
     private function printer(string $suffix): Printer
     {
         return Printer::create([

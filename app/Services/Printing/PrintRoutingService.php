@@ -22,6 +22,10 @@ class PrintRoutingService
 
         $categoryIds = $sale->lines
             ->filter(function ($line) use ($effectiveQuantities) {
+                if (($line->line_kind ?? 'standard') === 'combo_header') {
+                    return false;
+                }
+
                 $quantity = array_key_exists((string) $line->id, $effectiveQuantities)
                     ? (float) $effectiveQuantities[(string) $line->id]
                     : (float) $line->quantity;
@@ -37,6 +41,10 @@ class PrintRoutingService
         // routes match the order's categories; an "All categories" (NULL) route fires on
         // any active order — even when no line carries a category.
         $hasActiveLine = $sale->lines->contains(function ($line) use ($effectiveQuantities) {
+            if (($line->line_kind ?? 'standard') === 'combo_header') {
+                return false;
+            }
+
             $quantity = array_key_exists((string) $line->id, $effectiveQuantities)
                 ? (float) $effectiveQuantities[(string) $line->id]
                 : (float) $line->quantity;
@@ -155,6 +163,13 @@ class PrintRoutingService
         $routes = [];
 
         foreach ($lines as $line) {
+            // A combo header is a display row — the kitchen makes its COMPONENTS, and both
+            // renderers skip it. Since tickets are now grouped per category it would otherwise
+            // become a route of its own and print a blank slip.
+            if (($line->line_kind ?? 'standard') === 'combo_header') {
+                continue;
+            }
+
             $qtyToPrint = $isReprint
                 ? (float) $line->quantity
                 : max((float) $line->quantity - (float) ($line->kot_sent_quantity ?? 0), 0);
@@ -232,6 +247,11 @@ class PrintRoutingService
         $routes = [];
 
         foreach ($sale->lines->whereIn('id', array_map('intval', array_keys($lineQuantities))) as $line) {
+            // same rule as a normal KOT: the header is a display row, never its own ticket
+            if (($line->line_kind ?? 'standard') === 'combo_header') {
+                continue;
+            }
+
             $quantity = (float) ($lineQuantities[(string) $line->id] ?? $lineQuantities[$line->id] ?? 0);
             if ($quantity <= 0) {
                 continue;

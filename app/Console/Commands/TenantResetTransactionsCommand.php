@@ -104,6 +104,15 @@ class TenantResetTransactionsCommand extends Command
 
         $tenancy->activate($tenant);
 
+        // COVERAGE AUDIT: every tenant table must be a deliberate decision — wiped, or knowingly
+        // kept. A table added later (a new document, a new setting) would otherwise drift out of
+        // this command silently and either survive a reset it should not, or be missed here.
+        $unclassified = $this->unclassifiedTables();
+        if ($unclassified !== []) {
+            $this->warn('Tables not classified as wipe/keep (verify before trusting this reset): '
+                . implode(', ', $unclassified));
+        }
+
         $before = [];
         foreach (self::KEEP_SENTINELS as $table) {
             if (Schema::connection('tenant')->hasTable($table)) {
@@ -157,5 +166,38 @@ class TenantResetTransactionsCommand extends Command
         $this->info('integrity: all master-data counts unchanged; all transaction tables empty.');
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Master/config tables that are deliberately KEPT but are not worth asserting a count on
+     * (the sentinels above are the ones we prove). Anything outside these three lists is
+     * reported so a newly added table can never silently escape this command's contract.
+     */
+    private const KNOWN_KEPT = [
+        'migrations', 'cache', 'cache_locks', 'sessions', 'password_reset_tokens', 'languages',
+        'currencies', 'currency_denominations', 'units', 'unit_conversions',
+        'product_variants', 'product_barcodes', 'product_branch_prices', 'product_translations',
+        'product_variant_translations', 'category_translations', 'products_translations',
+        'modifier_groups', 'modifiers', 'product_modifier_group', 'combos', 'combo_components',
+        'recipes', 'recipe_ingredients', 'promotions', 'promotion_targets',
+        'departments', 'department_category_maps', 'department_product_overrides',
+        'service_charge_settings', 'manufacturing_posting_settings',
+        'manufacturing_boms', 'manufacturing_bom_lines', 'manufacturing_customers',
+        'expense_categories', 'cash_bank_accounts', 'branch_user', 'terminal_user',
+        'model_has_roles', 'model_has_permissions', 'role_has_permissions',
+        'user_printer_settings', 'print_agents', 'customer_addresses', 'report_schedules',
+        'edge_local_meta', 'edge_local_user_credentials',
+    ];
+
+    /** Tenant tables this command has no opinion about — surfaced as a warning. */
+    private function unclassifiedTables(): array
+    {
+        $all = array_map(
+            fn ($row) => array_values((array) $row)[0],
+            DB::connection('tenant')->select('SHOW TABLES')
+        );
+        $classified = array_merge(self::WIPE_TABLES, self::KEEP_SENTINELS, self::KNOWN_KEPT);
+
+        return array_values(array_diff($all, $classified));
     }
 }

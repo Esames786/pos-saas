@@ -127,4 +127,14 @@ class PosFrontendRegressionTest extends TestCase
         $this->assertStringContainsString("'customer_phone', 'delivery_address'", $view);
         $this->assertStringContainsString("if (addrEl) addrEl.value = address || '';", $view);
     }
+
+    public function test_combo_headers_are_not_counted_as_pending_kitchen_work(): void
+    {
+        $view = file_get_contents(resource_path('views/tenant/pos/index.blade.php'));
+
+        preg_match('/function kotPending\(\).*?\n    }/s', $view, $matches);
+
+        $this->assertNotEmpty($matches, 'The KOT pending calculator could not be located.');
+        $this->assertStringContainsString("if (it.line_kind === 'combo_header') return;", $matches[0]);
+    }
 }

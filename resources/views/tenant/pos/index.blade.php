@@ -3282,6 +3282,9 @@ document.addEventListener('DOMContentLoaded', function () {
     function kotPending() {
         let sent = 0, pending = 0;
         cart.forEach(function (it) {
+            // Combo headers are receipt/display rows. Their component rows are the kitchen work;
+            // counting both would double the quantity and leave the header permanently pending.
+            if (it.line_kind === 'combo_header') return;
             const q = Number(it.quantity) || 0;
             const s = Number(it.kot_sent_quantity || 0);
             sent    += Math.min(s, q);
