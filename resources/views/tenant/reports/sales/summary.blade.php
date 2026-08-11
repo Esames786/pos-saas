@@ -64,6 +64,13 @@
                 <div class="card border-0 shadow-sm text-center bg-success bg-opacity-10"><div class="card-body py-2">
                     <div class="text-muted small">Net Sales</div>
                     <div class="fw-bold fs-5 text-success">{{ number_format($t->net_sales, 2) }}</div>
+                    {{-- Show the deduction: this figure used to be everything billed, with refunds
+                         invisible, so the counter was given the wrong cash target. --}}
+                    @if($t->returns_amount > 0)
+                        <div class="small text-muted">
+                            billed {{ number_format($t->billed, 2) }} − returns {{ number_format($t->returns_amount, 2) }}
+                        </div>
+                    @endif
                 </div></div>
             </div>
         </div>
@@ -87,6 +94,8 @@
                                 <th scope="col" class="text-end">Tax</th>
                                 <th scope="col" class="text-end">Svc Charge</th>
                                 <th scope="col" class="text-end">Tips</th>
+                                <th scope="col" class="text-end">Billed</th>
+                                <th scope="col" class="text-end">Returns</th>
                                 <th scope="col" class="text-end">Net Sales</th>
                             </tr>
                         </thead>
@@ -100,10 +109,12 @@
                                 <td class="text-end">{{ number_format($row->total_tax, 2) }}</td>
                                 <td class="text-end">{{ number_format($row->total_service_charge, 2) }}</td>
                                 <td class="text-end">{{ number_format($row->total_tips, 2) }}</td>
+                                <td class="text-end">{{ number_format($row->billed, 2) }}</td>
+                                <td class="text-end text-danger">{{ number_format($row->returns_amount, 2) }}</td>
                                 <td class="text-end fw-semibold">{{ number_format($row->net_sales, 2) }}</td>
                             </tr>
                             @empty
-                            <tr><td colspan="8" class="text-center text-muted py-4">No sales in selected range.</td></tr>
+                            <tr><td colspan="10" class="text-center text-muted py-4">No sales in selected range.</td></tr>
                             @endforelse
                         </tbody>
                         @if($data['daily']->isNotEmpty())
@@ -116,6 +127,8 @@
                                 <td class="text-end">{{ number_format($t->total_tax, 2) }}</td>
                                 <td class="text-end">{{ number_format($t->total_service_charge, 2) }}</td>
                                 <td class="text-end">{{ number_format($t->total_tips, 2) }}</td>
+                                <td class="text-end">{{ number_format($t->billed, 2) }}</td>
+                                <td class="text-end text-danger">{{ number_format($t->returns_amount, 2) }}</td>
                                 <td class="text-end text-success">{{ number_format($t->net_sales, 2) }}</td>
                             </tr>
                         </tfoot>

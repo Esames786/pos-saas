@@ -51,11 +51,44 @@ class SalesReportService
             ->orderBy('sale_day')
             ->get();
 
+        // Returns, allocated by RETURN date on the same business day as the engine does. Without
+        // this, "Net Sales" was simply everything billed — money handed back never came off.
+        $returnsByDay = $this->returnsByBusinessDay($filters);
+        $returnsTotal = array_sum($returnsByDay);
+
+        $totals->billed         = (float) $totals->net_sales;
+        $totals->returns_amount = $returnsTotal;
+        $totals->net_sales      = round((float) $totals->net_sales - $returnsTotal, 2);
+
+        foreach ($daily as $row) {
+            $dayReturns          = $returnsByDay[(string) $row->sale_day] ?? 0.0;
+            $row->billed         = (float) $row->net_sales;
+            $row->returns_amount = $dayReturns;
+            $row->net_sales      = round((float) $row->net_sales - $dayReturns, 2);
+        }
+
         return [
             'totals'        => $totals,
             'promo_discount' => (float) $promoDiscount,
             'daily'         => $daily,
         ];
+    }
+
+    /** Posted returns for the filtered period, keyed by the business day they were refunded on. */
+    private function returnsByBusinessDay(array $filters): array
+    {
+        $branchIds = $this->resolveBranchIds($filters);
+
+        return \App\Models\Tenant\SalesReturn::query()
+            ->where('status', 'posted')
+            ->when($branchIds, fn ($q) => $q->whereIn('branch_id', $branchIds))
+            ->when(!empty($filters['date_from']), fn ($q) => $q->whereDate('return_date', '>=', $filters['date_from']))
+            ->when(!empty($filters['date_to']),   fn ($q) => $q->whereDate('return_date', '<=', $filters['date_to']))
+            ->selectRaw('DATE(return_date) as day, COALESCE(SUM(grand_total), 0) as amount')
+            ->groupByRaw('DATE(return_date)')
+            ->pluck('amount', 'day')
+            ->map(fn ($v) => (float) $v)
+            ->all();
     }
 
     /**
@@ -270,13 +303,22 @@ class SalesReportService
             ->when(!empty($filters['delivery_rider_id']),   fn ($q) => $q->where('sales_orders.delivery_rider_id', $filters['delivery_rider_id']));
     }
 
+    /**
+     * The reporting population — MUST match SalesReportEngine.
+     *
+     * This filtered to status = 'paid' alone, so a returned order vanished from every figure it
+     * fed. At Khatri that hid 8 orders and, with them, the delivery charges the shop legitimately
+     * KEPT on three fully-returned orders: the counter was told to expect 22,500 when the drawer,
+     * the ledger and the shift all said 22,850. A returned order keeps its original sale visible;
+     * the refund is deducted separately.
+     */
     private function baseSalesQuery(array $filters)
     {
         $branchIds = $this->resolveBranchIds($filters);
         $day = $this->businessDayExpr();
 
         return SalesOrder::query()
-            ->where('status', 'paid')
+            ->whereIn('status', ['paid', 'partially_returned', 'returned'])
             ->when($branchIds, fn ($q) => $q->whereIn('branch_id', $branchIds))
             ->when(!empty($filters['date_from']),    fn ($q) => $q->whereRaw("$day >= ?", [$filters['date_from']]))
             ->when(!empty($filters['date_to']),      fn ($q) => $q->whereRaw("$day <= ?", [$filters['date_to']]))

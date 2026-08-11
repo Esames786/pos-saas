@@ -43,6 +43,40 @@ class DashboardMatchesReportCentreRegressionTest extends TestCase
         $this->assertStringContainsString("'billed'", $code, 'billed must be exposed so the tile can show its working');
     }
 
+    /**
+     * The Sales Summary report fed the counter its cash target and was wrong the same way: it
+     * filtered to status = 'paid', hiding 8 returned orders AND the delivery charges the shop
+     * legitimately kept on three of them. It told the cashier to expect 22,500 when the drawer,
+     * the ledger and the shift all said 22,850 — a 350 phantom shortage.
+     */
+    public function test_the_sales_summary_uses_the_same_population_and_deducts_returns(): void
+    {
+        $code = $this->service();
+
+        $this->assertMatchesRegularExpression(
+            "/whereIn\('status', \['paid', 'partially_returned', 'returned'\]\)/",
+            $code,
+            'baseSalesQuery feeds the Sales Summary — it must not drop returned orders'
+        );
+        $this->assertStringNotContainsString(
+            "->where('status', 'paid')\n            ->when(\$branchIds",
+            $code,
+            'the paid-only population is what hid the returned orders'
+        );
+        $this->assertStringContainsString('returnsByBusinessDay', $code, 'the summary must deduct refunds');
+        $this->assertStringContainsString('$totals->returns_amount', $code);
+        $this->assertStringContainsString('$totals->billed', $code, 'billed must be kept so the deduction can be shown');
+    }
+
+    public function test_the_summary_screen_shows_billed_and_returns(): void
+    {
+        $view = file_get_contents(resource_path('views/tenant/reports/sales/summary.blade.php'));
+
+        $this->assertStringContainsString('returns_amount', $view, 'refunds must be visible, not silently netted');
+        $this->assertStringContainsString('$t->billed', $view);
+        $this->assertStringContainsString('Returns', $view);
+    }
+
     public function test_returns_are_allocated_by_return_date(): void
     {
         $code = $this->service();
