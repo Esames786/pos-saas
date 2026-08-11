@@ -56,10 +56,13 @@ class SalesTotalsService
         // 2. Manual order-level discount
         $orderDiscount = 0;
         if ($discountType === 'fixed') {
-            $orderDiscount = (float) $discountValue;
+            $orderDiscount = max((float) $discountValue, 0);
         } elseif ($discountType === 'percent') {
-            $orderDiscount = ($subtotal * (float) $discountValue) / 100;
+            $orderDiscount = ($subtotal * min(max((float) $discountValue, 0), 100)) / 100;
         }
+        // A manual discount can reduce merchandise to zero, never below zero. Charges such as
+        // delivery remain explicit and cannot be erased by an oversized client value.
+        $orderDiscount = min($orderDiscount, max($subtotal - $lineDiscount, 0));
         $manualDiscountAmount = $lineDiscount + $orderDiscount;
 
         // 3. Promotion

@@ -22,7 +22,7 @@ use Tests\MySql\Support\TenantFixtures;
  *   → payment.amount        = 100  (amount APPLIED to the invoice)
  *   → payment.tendered      = 500  (physical cash handed over)
  *   → payment.change_amount = 400  (change returned from the drawer)
- *   → sale.paid_amount      = 100, sale.change_amount = 0
+ *   → sale.paid_amount      = 100, sale.change_amount = 400
  *   → shift total_sales/expected_cash/total_cash += 100 (the APPLIED amount — never the tendered 500)
  *   → the real close calculation uses expected_cash = 100 (counted 100 ⇒ variance 0).
  *
@@ -83,7 +83,7 @@ class SaleCashSemanticsMySqlTest extends MySqlTenantTestCase
         $this->assertSame(500.0, (float) $payment->tendered_amount, 'tendered_amount = physical cash handed over');
         $this->assertSame(400.0, (float) $payment->change_amount, 'payment change = tendered − applied');
         $this->assertSame(100.0, (float) $sale->paid_amount, 'sale.paid_amount = Σ applied amounts');
-        $this->assertSame(0.0, (float) $sale->change_amount, 'sale-level change 0 (applied == grand_total)');
+        $this->assertSame(400.0, (float) $sale->change_amount, 'sale-level change reflects physical cash returned');
         $this->assertSame(100.0, (float) $sale->grand_total);
 
         $shift->refresh();

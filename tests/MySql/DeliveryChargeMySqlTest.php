@@ -46,6 +46,20 @@ class DeliveryChargeMySqlTest extends MySqlTenantTestCase
         $this->assertSame(900.0, $without['grand_total']);
     }
 
+    public function test_manual_discount_is_capped_at_remaining_merchandise_value(): void
+    {
+        $svc = app(SalesTotalsService::class);
+        $lines = [['quantity' => 1, 'unit_price' => 100, 'discount_amount' => 10, 'tax_amount' => 0]];
+
+        $fixed = $svc->calculate($lines, 'fixed', 500, $this->branchId, 'quick_sale');
+        $percent = $svc->calculate($lines, 'percent', 500, $this->branchId, 'quick_sale');
+
+        $this->assertSame(100.0, $fixed['discount_amount']);
+        $this->assertSame(0.0, $fixed['grand_total']);
+        $this->assertSame(100.0, $percent['discount_amount']);
+        $this->assertSame(0.0, $percent['grand_total']);
+    }
+
     public function test_gl_posting_credits_delivery_income_and_balances(): void
     {
         $cashMethod = $this->makePaymentMethod(['method_type' => 'cash']);

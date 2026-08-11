@@ -100,4 +100,30 @@ class CloudManagerApprovalMySqlTest extends MySqlTenantTestCase
             $this->assertStringContainsString('expired', $e->getMessage());
         }
     }
+
+    public function test_new_sale_manual_discount_approval_is_bound_to_branch_and_exact_amount(): void
+    {
+        $payload = [
+            'sales_order_id' => 0,
+            'branch_id' => $this->branchId,
+            'client_uuid' => (string) Str::uuid(),
+            'discount_type' => 'fixed',
+            'discount_value' => 50,
+            'discount_amount' => 50,
+        ];
+
+        $approval = $this->svc()->verifyPin('password@', 'manual_discount', $this->cashierId, $payload);
+        $this->svc()->consume($approval, 'manual_discount', $this->cashierId, $payload);
+        $this->assertNotNull($approval->fresh()->consumed_at);
+
+        $foreignBranch = $this->makeBranch();
+        try {
+            $this->svc()->verifyPin('password@', 'manual_discount', $this->cashierId, array_merge($payload, [
+                'branch_id' => $foreignBranch,
+            ]));
+            $this->fail('a manager must not approve a discount for an unauthorized branch');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('not authorized for the order branch', $e->getMessage());
+        }
+    }
 }

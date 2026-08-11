@@ -47,13 +47,18 @@ class ManagerApprovalService
     public function createApprovalForAuthenticatedManager($manager, string $actionType, int $requestingUserId, ?array $payload = null): ManagerApproval
     {
         $saleId = (int) ($payload['sales_order_id'] ?? 0);
+        $branchId = (int) ($payload['branch_id'] ?? 0);
         if ($saleId > 0) {
             $sale = SalesOrder::find($saleId);
             if (!$sale) {
                 throw new RuntimeException('The order for this approval was not found.');
             }
-            $hasBranchAccess = (int) $manager->default_branch_id === (int) $sale->branch_id
-                || $manager->branches()->where('branches.id', $sale->branch_id)->wherePivot('is_active', true)->exists();
+            $branchId = (int) $sale->branch_id;
+        }
+
+        if ($branchId > 0) {
+            $hasBranchAccess = (int) $manager->default_branch_id === $branchId
+                || $manager->branches()->where('branches.id', $branchId)->wherePivot('is_active', true)->exists();
             if (!$hasBranchAccess) {
                 throw new RuntimeException('This manager is not authorized for the order branch.');
             }
@@ -89,7 +94,7 @@ class ManagerApprovalService
         $payload = $approval->payload ?? [];
         foreach ($expectedPayload as $key => $value) {
             if ($this->canonicalize($payload[$key] ?? null) !== $this->canonicalize($value)) {
-                throw new RuntimeException('Manager approval does not match this order cancellation.');
+                throw new RuntimeException('Manager approval does not match this action.');
             }
         }
 

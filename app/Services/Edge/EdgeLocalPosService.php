@@ -918,11 +918,21 @@ class EdgeLocalPosService
                     ]);
                 }
 
+                $changeTotal = array_sum(array_map(function ($payment) {
+                    $tendered = isset($payment['tendered_amount']) && $payment['tendered_amount'] !== null
+                        ? (float) $payment['tendered_amount']
+                        : null;
+
+                    return $tendered !== null
+                        ? max($tendered - (float) $payment['amount'], 0)
+                        : 0;
+                }, $payments));
+
                 $sale->update([
                     'client_uuid' => $clientUuid,
                     'client_payload_hash' => $payloadHash,
                     'paid_amount' => $paidAmount,
-                    'change_amount' => max($paidAmount - (float) $sale->grand_total, 0),
+                    'change_amount' => max($changeTotal, max($paidAmount - (float) $sale->grand_total, 0)),
                     'status' => 'paid',
                     'completed_at' => now(),
                 ]);

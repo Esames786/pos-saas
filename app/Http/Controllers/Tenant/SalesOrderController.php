@@ -16,6 +16,7 @@ use App\Models\Tenant\Terminal;
 use App\Services\Inventory\InventoryService;
 use App\Services\Sales\SalesService;
 use App\Services\Sales\SalesTotalsService;
+use App\Services\Sales\ManagerApprovalService;
 use App\Services\Sales\PromotionService;
 use App\Services\Sales\ShiftService;
 use App\Services\Printing\DirectPayPrintOrchestrator;
@@ -71,7 +72,7 @@ class SalesOrderController extends Controller
         ]);
     }
 
-    public function store(Request $request, SalesService $salesService, InventoryService $inventoryService, SalesTotalsService $totalsService, \App\Services\Sales\SaleIdempotencyService $idempotency, \App\Services\Sales\KotCancellationService $cancellationService, DirectPayPrintOrchestrator $printOrchestrator)
+    public function store(Request $request, SalesService $salesService, InventoryService $inventoryService, SalesTotalsService $totalsService, \App\Services\Sales\SaleIdempotencyService $idempotency, \App\Services\Sales\KotCancellationService $cancellationService, DirectPayPrintOrchestrator $printOrchestrator, ManagerApprovalService $approvalService)
     {
         $data = $this->validateSale($request);
         if ($request->routeIs('tenant.pos.store')
@@ -143,7 +144,7 @@ class SalesOrderController extends Controller
 
         try {
             $sale = DB::connection('tenant')->transaction(function () use (
-                $data, $lines, $payments, $salesService, $inventoryService, $totalsService, $idempotencyFields, $cancellationService, $directPayPrintState
+                $data, $lines, $payments, $salesService, $inventoryService, $totalsService, $idempotencyFields, $cancellationService, $directPayPrintState, $approvalService, $clientUuid
             ) {
                 $branch   = Branch::findOrFail($data['branch_id']);
                 $terminal = !empty($data['terminal_id']) ? Terminal::find($data['terminal_id']) : null;
@@ -214,6 +215,41 @@ class SalesOrderController extends Controller
                             : (float) ($data['delivery_charge_amount'] ?? 0))
                         : 0,
                 );
+
+                $manualDiscount = (float) $totals['manual_discount_amount'];
+                $discountApproval = null;
+                $discountNeedsManager = ($branch->manual_discount_approval_mode ?? Branch::MANUAL_DISCOUNT_MANAGER_REQUIRED)
+                    !== Branch::MANUAL_DISCOUNT_AUTO_APPROVE;
+                if ($manualDiscount > 0.009 && $discountNeedsManager) {
+                    if (empty($data['manager_approval_id'])) {
+                        throw ValidationException::withMessages([
+                            'manager_approval_id' => 'Manager approval is required for a manual discount.',
+                        ]);
+                    }
+                    $discountApproval = \App\Models\Tenant\ManagerApproval::find($data['manager_approval_id']);
+                    if (! $discountApproval) {
+                        throw ValidationException::withMessages(['manager_approval_id' => 'Manager approval was not found.']);
+                    }
+                    try {
+                        $approvalService->consume($discountApproval, 'manual_discount', auth('tenant')->id(), [
+                            'sales_order_id' => (int) ($data['held_sale_id'] ?? 0),
+                            'branch_id' => (int) $branch->id,
+                            'client_uuid' => (string) ($clientUuid ?? ''),
+                            'discount_type' => (string) $data['discount_type'],
+                            'discount_value' => round((float) ($data['discount_value'] ?? 0), 2),
+                            'discount_amount' => round($manualDiscount, 2),
+                        ]);
+                    } catch (RuntimeException $exception) {
+                        throw ValidationException::withMessages(['manager_approval_id' => $exception->getMessage()]);
+                    }
+                }
+
+                $submittedPaymentTotal = round((float) $payments->sum(fn ($payment) => (float) $payment['amount']), 2);
+                if (abs($submittedPaymentTotal - (float) $totals['grand_total']) > 0.01) {
+                    throw ValidationException::withMessages([
+                        'payments' => 'Applied payments must equal the final bill total.',
+                    ]);
+                }
 
                 $tableSession = null;
 
@@ -288,6 +324,7 @@ class SalesOrderController extends Controller
                     'discount_type'               => $data['discount_type'],
                     'discount_value'              => $data['discount_value'] ?? 0,
                     'discount_amount'             => $totals['discount_amount'],
+                    'manager_approval_id'         => $discountApproval?->id,
                     'tax_amount'                  => $totals['tax_amount'],
                     'service_charge_amount'       => $totals['service_charge_amount'],
                     'tip_amount'                  => $totals['tip_amount'],
@@ -445,6 +482,12 @@ class SalesOrderController extends Controller
                     $tendered = isset($payment['tendered_amount']) && $payment['tendered_amount'] !== null
                         ? (float) $payment['tendered_amount']
                         : null;
+
+                    if ($method->method_type === 'cash' && $tendered !== null && $tendered + 0.01 < $amount) {
+                        throw ValidationException::withMessages([
+                            'payments' => 'Cash tendered cannot be less than the amount applied. Collect the balance or apply an approved discount.',
+                        ]);
+                    }
 
                     $sale->payments()->create([
                         'payment_method_id' => $method->id,

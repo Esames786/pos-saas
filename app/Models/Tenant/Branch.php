@@ -24,6 +24,7 @@ class Branch extends Model
         'delivery_charge_locked',
         'held_kot_cancellation_approval_mode',
         'held_kot_line_cancellation_approval_mode',
+        'manual_discount_approval_mode',
         'receipt_footer',
         'status',
         'sales_operating_mode',
@@ -56,6 +57,8 @@ class Branch extends Model
 
     public const KOT_CANCELLATION_MANAGER_REQUIRED = 'manager_required';
     public const KOT_CANCELLATION_AUTO_APPROVE = 'auto_approve';
+    public const MANUAL_DISCOUNT_MANAGER_REQUIRED = 'manager_required';
+    public const MANUAL_DISCOUNT_AUTO_APPROVE = 'auto_approve';
 
     /** This branch runs all sales on a Branch Server (server is the live authority). */
     public function isLocalEdgeActive(): bool

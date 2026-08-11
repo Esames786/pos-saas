@@ -189,6 +189,21 @@
                     </div>
                 </div>
 
+                <div class="col-md-6">
+                    <label for="manual_discount_approval_mode" class="form-label required">Manual POS discounts</label>
+                    <select id="manual_discount_approval_mode" name="manual_discount_approval_mode" class="form-select" required>
+                        <option value="manager_required" @selected(old('manual_discount_approval_mode', $branch?->manual_discount_approval_mode ?? 'manager_required') === 'manager_required')>
+                            Manager PIN required
+                        </option>
+                        <option value="auto_approve" @selected(old('manual_discount_approval_mode', $branch?->manual_discount_approval_mode) === 'auto_approve')>
+                            Any POS cashier may apply
+                        </option>
+                    </select>
+                    <div class="form-text">
+                        Controls fixed, percentage and short-payment balance discounts. Every discount remains visible on the sale, receipt and reports.
+                    </div>
+                </div>
+
                 <div class="col-md-8">
                     <label for="receipt_footer" class="form-label">Receipt Footer Text</label>
                     <textarea id="receipt_footer" name="receipt_footer" class="form-control" rows="2"

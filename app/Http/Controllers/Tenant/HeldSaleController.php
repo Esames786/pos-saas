@@ -289,6 +289,12 @@ class HeldSaleController extends Controller
 
         $data = $this->validateDeliveryAttribution($data);
 
+        if (($data['discount_type'] ?? 'none') !== 'none' || (float) ($data['discount_value'] ?? 0) > 0) {
+            throw ValidationException::withMessages([
+                'discount_value' => 'Manual discounts are applied with manager approval when taking payment, not while holding an order.',
+            ]);
+        }
+
         if (!auth('tenant')->user()?->allowsOrderType($data['order_type'])) {
             abort(403, 'Your account is not allowed to use this order type.');
         }

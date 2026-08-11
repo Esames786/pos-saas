@@ -240,6 +240,7 @@ class OnboardKhatriBiryaniCommand extends Command
             'name' => 'Khatri Biryani',
             'held_kot_cancellation_approval_mode' => \App\Models\Tenant\Branch::KOT_CANCELLATION_MANAGER_REQUIRED,
             'held_kot_line_cancellation_approval_mode' => \App\Models\Tenant\Branch::KOT_CANCELLATION_AUTO_APPROVE,
+            'manual_discount_approval_mode' => \App\Models\Tenant\Branch::MANUAL_DISCOUNT_AUTO_APPROVE,
             'updated_at' => now(),
         ]);
 

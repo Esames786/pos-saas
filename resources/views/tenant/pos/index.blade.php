@@ -503,8 +503,8 @@
     <input type="hidden" name="restaurant_table_session_id" id="restaurant_table_session_id" value="{{ $tableSession?->id ?? $heldSale?->restaurant_table_session_id }}">
     <input type="hidden" name="restaurant_table_id"         id="restaurant_table_id"         value="{{ $heldSale?->restaurant_table_id }}">
     <input type="hidden" name="create_separate_order"       id="create_separate_order"       value="{{ request()->boolean('create_separate_order') ? '1' : '0' }}">
-    <input type="hidden" name="discount_type"                                           value="none">
-    <input type="hidden" name="discount_value"                                          value="0">
+    <input type="hidden" name="discount_type"  id="pos-discount-type"                  value="none">
+    <input type="hidden" name="discount_value" id="pos-discount-value"                 value="0">
     <input type="hidden" name="promo_code"          id="pos-promo-code"                 value="">
     <input type="hidden" name="tip_amount"          id="pos-tip-amount"                 value="0">
     <input type="hidden" name="manager_approval_id" id="pos-manager-approval-id"        value="">
@@ -808,6 +808,41 @@
                                         <button type="button" class="btn btn-sm btn-outline-secondary px-2 d-none" id="remove-promo-btn">✕</button>
                                     </div>
                                     <div id="promo-feedback" class="small mt-1"></div>
+                                </div>
+                                <div class="col-12">
+                                    <div class="border rounded p-2" id="manual-discount-panel">
+                                        <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+                                            <span class="fw-semibold small"><i class="ti ti-discount-2 me-1"></i>Manual Discount</span>
+                                            <button type="button" class="btn btn-sm btn-outline-danger d-none" id="remove-discount-btn">
+                                                <i class="ti ti-x me-1"></i>Remove
+                                            </button>
+                                        </div>
+                                        <div class="row g-2">
+                                            <div class="col-sm-4">
+                                                <select id="manual-discount-type" class="form-select form-select-sm" aria-label="Discount type">
+                                                    <option value="fixed">Fixed amount</option>
+                                                    <option value="percent">Percentage</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-sm-4">
+                                                <div class="input-group input-group-sm">
+                                                    <span class="input-group-text" id="manual-discount-prefix">Rs</span>
+                                                    <input id="manual-discount-value" type="number" min="0" step="0.01" class="form-control" placeholder="0.00">
+                                                    <span class="input-group-text d-none" id="manual-discount-suffix">%</span>
+                                                </div>
+                                            </div>
+                                            <div class="col-sm-4 d-grid">
+                                                <button type="button" class="btn btn-sm btn-outline-primary" id="apply-discount-btn">
+                                                    <i class="ti ti-check me-1"></i>Apply Discount
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div class="d-flex justify-content-between align-items-center gap-2 mt-2 d-none" id="short-tender-row">
+                                            <span class="small text-danger" id="short-tender-message"></span>
+                                            <button type="button" class="btn btn-sm btn-outline-warning" id="discount-shortfall-btn">Discount balance</button>
+                                        </div>
+                                        <div class="small mt-2" id="manual-discount-feedback"></div>
+                                    </div>
                                 </div>
                                 <div class="col-12">
                                     {{-- Tip Buttons --}}
@@ -1332,6 +1367,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const heldSale   = @json($heldSaleJson);
     const branchCancellationModes = @json($branches->mapWithKeys(fn ($branch) => [(string) $branch->id => $branch->held_kot_cancellation_approval_mode ?? 'manager_required']));
     const branchLineCancellationModes = @json($branches->mapWithKeys(fn ($branch) => [(string) $branch->id => $branch->held_kot_line_cancellation_approval_mode ?: ($branch->held_kot_cancellation_approval_mode ?? 'manager_required')]));
+    const branchManualDiscountModes = @json($branches->mapWithKeys(fn ($branch) => [(string) $branch->id => $branch->manual_discount_approval_mode ?? 'manager_required']));
 
     function buttonIsBusy(button) {
         return !!(button && button.dataset.posBusy === '1');
@@ -2623,6 +2659,9 @@ document.addEventListener('DOMContentLoaded', function () {
     let _promoDiscountAmount = 0;
     let _promoCode = '';
     let _promoName = '';
+    let _manualDiscountType = 'none';
+    let _manualDiscountValue = 0;
+    let _manualDiscountAmount = 0;
     let _tipAmount = 0;
     const deliveryChargeEl = document.getElementById('delivery_charge_amount');
     function deliveryChargeValue() {
@@ -2637,13 +2676,21 @@ document.addEventListener('DOMContentLoaded', function () {
             discount += Number(item.discount_amount || 0);
             tax      += Number(item.tax_amount || 0);
         });
+        const manualDiscount = _manualDiscountType === 'fixed'
+            ? Math.min(Math.max(_manualDiscountValue, 0), Math.max(subtotal - discount, 0))
+            : (_manualDiscountType === 'percent'
+                ? Math.min(Math.min(Math.max(_manualDiscountValue, 0), 100) * subtotal / 100, Math.max(subtotal - discount, 0))
+                : 0);
+        _manualDiscountAmount = manualDiscount;
         const promoDiscount = _promoDiscountAmount;
-        const totalDiscount = discount + promoDiscount;
+        const totalDiscount = discount + manualDiscount + promoDiscount;
         const deliveryCharge = deliveryChargeValue();
         const total = Math.max(subtotal - totalDiscount + tax + _serviceChargeAmount + _tipAmount, 0) + deliveryCharge;
         return {
             subtotal:       subtotal,
-            discount:       discount,
+            discount:       discount + manualDiscount,
+            lineDiscount:   discount,
+            manualDiscount: manualDiscount,
             promoDiscount:  promoDiscount,
             tax:            tax,
             serviceCharge:  _serviceChargeAmount,
@@ -2735,10 +2782,13 @@ document.addEventListener('DOMContentLoaded', function () {
         // Sync hidden inputs
         document.getElementById('pos-promo-code').value = _promoCode;
         document.getElementById('pos-tip-amount').value = _tipAmount.toFixed(2);
+        document.getElementById('pos-discount-type').value = _manualDiscountType;
+        document.getElementById('pos-discount-value').value = _manualDiscountValue.toFixed(2);
 
         if (!tenderedEl.dataset.manual) tenderedEl.value = money(t.total);
         document.getElementById('change-view').textContent =
             money(Math.max(Number(tenderedEl.value || 0) - t.total, 0));
+        updateShortTenderState(t);
         updateQuickCash(t.total);
 
         if (quoteServer) {
@@ -3031,6 +3081,108 @@ document.addEventListener('DOMContentLoaded', function () {
         deliveryChargeEl.addEventListener('input', function () { updateTotals(); });
     }
 
+    /* Manual discount: explicit, manager-approved, and bound to this exact sale total. */
+    const manualDiscountTypeEl = document.getElementById('manual-discount-type');
+    const manualDiscountValueEl = document.getElementById('manual-discount-value');
+    const manualDiscountFeedbackEl = document.getElementById('manual-discount-feedback');
+    const manualDiscountPrefixEl = document.getElementById('manual-discount-prefix');
+    const manualDiscountSuffixEl = document.getElementById('manual-discount-suffix');
+    const discountApprovalEl = document.getElementById('pos-manager-approval-id');
+
+    function isCashPayment() {
+        return paymentMethodEl?.selectedOptions?.[0]?.dataset?.type === 'cash';
+    }
+
+    function updateShortTenderState(currentTotals) {
+        const row = document.getElementById('short-tender-row');
+        const message = document.getElementById('short-tender-message');
+        if (!row || !message) return;
+        const shortfall = currentTotals.total - Number(tenderedEl?.value || 0);
+        if (isCashPayment() && cart.length && shortfall > 0.009) {
+            message.textContent = 'Short by ' + money(shortfall) + '. Apply a discount or collect the balance.';
+            row.classList.remove('d-none');
+        } else {
+            row.classList.add('d-none');
+        }
+    }
+
+    function proposedManualDiscount(type, value) {
+        const current = totals();
+        const remainingSubtotal = Math.max(current.subtotal - current.lineDiscount, 0);
+        if (type === 'percent') {
+            return Math.min(current.subtotal * Math.min(Math.max(value, 0), 100) / 100, remainingSubtotal);
+        }
+        return Math.min(Math.max(value, 0), remainingSubtotal);
+    }
+
+    function applyManualDiscount(type, value) {
+        value = Math.round(Number(value || 0) * 100) / 100;
+        if (!(value > 0) || (type === 'percent' && value > 100)) {
+            manualDiscountFeedbackEl.innerHTML = '<span class="text-danger">Enter a valid discount' + (type === 'percent' ? ' from 0.01% to 100%' : ' amount') + '.</span>';
+            return;
+        }
+
+        const amount = Math.round(proposedManualDiscount(type, value) * 100) / 100;
+        if (!(amount > 0)) {
+            manualDiscountFeedbackEl.innerHTML = '<span class="text-danger">This order has no remaining amount available to discount.</span>';
+            return;
+        }
+
+        const approvalPayload = {
+            sales_order_id: Number(_currentHeldSaleId || 0),
+            branch_id: Number(branchEl?.value || 0),
+            client_uuid: ensureSaleUuid(),
+            discount_type: type,
+            discount_value: value,
+            discount_amount: amount,
+        };
+        const commitDiscount = function (approvalId) {
+            _manualDiscountType = type;
+            _manualDiscountValue = value;
+            discountApprovalEl.value = approvalId || '';
+            document.getElementById('remove-discount-btn').classList.remove('d-none');
+            manualDiscountFeedbackEl.innerHTML = '<span class="text-success"><i class="ti ti-check me-1"></i>Discount applied: ' + money(amount) + '</span>';
+            updateTotals();
+        };
+        const mode = branchManualDiscountModes[String(branchEl?.value || '')] || 'manager_required';
+        if (mode === 'auto_approve') {
+            commitDiscount(null);
+        } else {
+            showManagerPinModal('manual_discount', approvalPayload, commitDiscount);
+        }
+    }
+
+    manualDiscountTypeEl?.addEventListener('change', function () {
+        const percent = manualDiscountTypeEl.value === 'percent';
+        manualDiscountPrefixEl.classList.toggle('d-none', percent);
+        manualDiscountSuffixEl.classList.toggle('d-none', !percent);
+        manualDiscountValueEl.max = percent ? '100' : '';
+    });
+    document.getElementById('apply-discount-btn')?.addEventListener('click', function () {
+        applyManualDiscount(manualDiscountTypeEl.value, manualDiscountValueEl.value);
+    });
+    document.getElementById('discount-shortfall-btn')?.addEventListener('click', function () {
+        const current = totals();
+        const shortfall = Math.max(current.total - Number(tenderedEl?.value || 0), 0);
+        if (!(shortfall > 0.009)) return;
+        manualDiscountTypeEl.value = 'fixed';
+        manualDiscountTypeEl.dispatchEvent(new Event('change'));
+        const fixedValue = Math.round((_manualDiscountAmount + shortfall) * 100) / 100;
+        manualDiscountValueEl.value = fixedValue.toFixed(2);
+        applyManualDiscount('fixed', fixedValue);
+    });
+    document.getElementById('remove-discount-btn')?.addEventListener('click', function () {
+        _manualDiscountType = 'none';
+        _manualDiscountValue = 0;
+        _manualDiscountAmount = 0;
+        discountApprovalEl.value = '';
+        manualDiscountValueEl.value = '';
+        manualDiscountFeedbackEl.innerHTML = '';
+        document.getElementById('remove-discount-btn').classList.add('d-none');
+        updateTotals();
+    });
+    paymentMethodEl?.addEventListener('change', function () { updateTotals(); });
+
     /* ── Void Reason Modal (for KOT-sent items) ─────────────────────── */
 
     @php $voidReasons = \App\Models\Tenant\VoidReason::where('is_active', true)->get(['id','name','requires_manager_approval']); @endphp
@@ -3162,11 +3314,24 @@ document.addEventListener('DOMContentLoaded', function () {
         _promoDiscountAmount = 0;
         _promoCode = '';
         _promoName = '';
+        _manualDiscountType = 'none';
+        _manualDiscountValue = 0;
+        _manualDiscountAmount = 0;
         _tipAmount = 0;
         document.getElementById('promo-code-input').value = '';
         document.getElementById('promo-feedback').innerHTML = '';
         document.getElementById('remove-promo-btn').classList.add('d-none');
         document.getElementById('apply-promo-btn').classList.remove('d-none');
+        document.getElementById('pos-discount-type').value = 'none';
+        document.getElementById('pos-discount-value').value = '0';
+        document.getElementById('pos-manager-approval-id').value = '';
+        document.getElementById('manual-discount-value').value = '';
+        document.getElementById('manual-discount-feedback').innerHTML = '';
+        document.getElementById('remove-discount-btn').classList.add('d-none');
+        if (tenderedEl) {
+            delete tenderedEl.dataset.manual;
+            tenderedEl.value = '0.00';
+        }
         document.querySelectorAll('.tip-btn').forEach(function (b) { b.classList.remove('active','btn-primary'); b.classList.add('btn-outline-secondary'); });
         const heldInput = document.querySelector('input[name="held_sale_id"]');
         if (heldInput) heldInput.value = '';
@@ -3636,6 +3801,24 @@ document.addEventListener('DOMContentLoaded', function () {
         ensureSaleUuid();  // SALE-IDEMPOTENCY-1: stamp the sale's uuid before submit
 
         refreshServerTotals().finally(function () {
+            const currentTotals = totals();
+            if (isCashPayment() && Number(tenderedEl.value || 0) + 0.009 < currentTotals.total) {
+                setButtonBusy(submitBtn, false);
+                _completeSaleFlowActive = false;
+                updateShortTenderState(currentTotals);
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'Payment is short',
+                        text: 'Collect the remaining ' + money(currentTotals.total - Number(tenderedEl.value || 0)) + ' or use Discount balance' +
+                            ((branchManualDiscountModes[String(branchEl?.value || '')] || 'manager_required') === 'auto_approve' ? '.' : ' with manager approval.'),
+                        confirmButtonColor: '#d4a72c',
+                    });
+                } else {
+                    toast('warning', 'Tendered amount is below the bill total.');
+                }
+                return;
+            }
             buildInputs(true);
 
             const terminalId = (document.getElementById('terminal_id') || {}).value || '';
@@ -3705,6 +3888,17 @@ document.addEventListener('DOMContentLoaded', function () {
         if (buttonIsBusy(holdBtn)) return;
         if (!cart.length) { toast('warning', 'Add at least one item'); return; }
         if (!requireDeliveryCustomer()) return;
+        if (_manualDiscountType !== 'none') {
+            _manualDiscountType = 'none';
+            _manualDiscountValue = 0;
+            _manualDiscountAmount = 0;
+            discountApprovalEl.value = '';
+            manualDiscountValueEl.value = '';
+            manualDiscountFeedbackEl.innerHTML = '';
+            document.getElementById('remove-discount-btn').classList.add('d-none');
+            updateTotals();
+            toast('info', 'Manual discount removed. Apply it when taking payment.');
+        }
         setButtonBusy(holdBtn, true, 'Saving order');
 
         refreshServerTotals().finally(function () {
@@ -4664,8 +4858,8 @@ document.addEventListener('DOMContentLoaded', function () {
             branch_id:              selectedBranchId(),
             terminal_id:            currentTerminalId() || null,
             order_type:             (orderTypeEl || {}).value,
-            discount_type:          'none',
-            discount_value:         0,
+            discount_type:          document.getElementById('pos-discount-type')?.value || 'none',
+            discount_value:         Number(document.getElementById('pos-discount-value')?.value || 0),
             promo_code:             (document.getElementById('pos-promo-code') || {}).value || null,
             tip_amount:             _tipAmount || 0,
             delivery_charge_amount: deliveryChargeValue(),

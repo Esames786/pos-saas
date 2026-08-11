@@ -43,6 +43,24 @@ class SalesChargeVisibilityRegressionTest extends TestCase
         $this->assertStringContainsString("private const OWNER_EMAIL = 'owner_kb@bingoopos.com';", $onboarding);
         $this->assertStringContainsString('owner password preserved', $onboarding);
         $this->assertStringContainsString("'users'", $reset);
+        $this->assertStringContainsString("'branches'", $reset);
         $this->assertStringNotContainsString('Khatiri123@', $onboarding, 'Owner passwords must never be committed as plaintext seeder data.');
+    }
+
+    public function test_pos_manual_discount_and_short_cash_are_explicit_and_server_enforced(): void
+    {
+        $view = file_get_contents(resource_path('views/tenant/pos/index.blade.php'));
+        $controller = file_get_contents(app_path('Http/Controllers/Tenant/SalesOrderController.php'));
+        $branchForm = file_get_contents(resource_path('views/tenant/branches/form.blade.php'));
+        $onboarding = file_get_contents(app_path('Console/Commands/OnboardKhatriBiryaniCommand.php'));
+
+        $this->assertStringContainsString('id="manual-discount-type"', $view);
+        $this->assertStringContainsString('id="discount-shortfall-btn"', $view);
+        $this->assertStringContainsString('branchManualDiscountModes', $view);
+        $this->assertStringContainsString('Cash tendered cannot be less than the amount applied', $controller);
+        $this->assertStringContainsString('Applied payments must equal the final bill total', $controller);
+        $this->assertStringContainsString("consume(\$discountApproval, 'manual_discount'", $controller);
+        $this->assertStringContainsString('name="manual_discount_approval_mode"', $branchForm);
+        $this->assertStringContainsString('MANUAL_DISCOUNT_AUTO_APPROVE', $onboarding);
     }
 }
