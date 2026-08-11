@@ -29,7 +29,7 @@ const http     = require('http');
 const https    = require('https');
 const { URL }  = require('url');
 
-const AGENT_VERSION = '2.3.0';
+const AGENT_VERSION = '2.3.1';
 
 /**
  * A sleeping printer does not answer a connect at all, so discovering that must be CHEAP: fail in
@@ -275,7 +275,13 @@ async function heartbeat() {
 
     // Learn the printers from the server so they can be kept awake from startup — not only after
     // a ticket has already been delayed waking one up.
-    syncKnownPrinters((res.json && res.json.printers) || []);
+    //
+    // Only when the server actually SENT a list. Coercing a missing key to [] would let one
+    // response without it silently empty the list, and keep-awake would then quietly do nothing
+    // for the rest of the day with no error anywhere.
+    if (res.json && Array.isArray(res.json.printers)) {
+        syncKnownPrinters(res.json.printers);
+    }
 }
 
 function rememberPrinter(ip, port) {
@@ -297,11 +303,22 @@ function syncKnownPrinters(printers) {
     for (const [key, printer] of current) knownPrinters.set(key, printer);
 }
 
+/**
+ * A poke must never make a ticket wait.
+ *
+ * A print tick now defers while keep-awake is running, so every millisecond spent poking is a
+ * millisecond a queued KOT sits still. The printer's own connect timeout is far too generous for
+ * this: on a LAN a printer that is going to answer answers in milliseconds, and one that does not
+ * answer within a second is asleep or absent — either way the connect attempt has already done the
+ * waking, so waiting out the full timeout buys nothing and costs the kitchen its ticket.
+ */
+const POKE_TIMEOUT_MS = 1200;
+
 /** Open and immediately close a connection, purely so the printer never idles into sleep. */
 function pokePrinter(ip, port) {
     return new Promise((resolve) => {
         const socket = new net.Socket();
-        socket.setTimeout(CONNECT_TIMEOUT_MS);
+        socket.setTimeout(POKE_TIMEOUT_MS);
         const done = () => { socket.destroy(); resolve(); };
         socket.connect(port, ip, () => { socket.end(); resolve(); });
         socket.on('error', done);
@@ -317,9 +334,12 @@ async function keepPrintersAwake() {
     }
     keepAwakeRunning = true;
     try {
-        for (const { ip, port } of knownPrinters.values()) {
-            await pokePrinter(ip, port);
-        }
+        // In PARALLEL, not one after another: poking serially made the block the SUM of every
+        // printer's timeout, so a second station that was switched off delayed the tickets of the
+        // one that was on.
+        await Promise.all(
+            [...knownPrinters.values()].map(({ ip, port }) => pokePrinter(ip, port))
+        );
     } finally {
         keepAwakeRunning = false;
     }

@@ -35,7 +35,14 @@
                 font-size: calc({{ $width }} / {{ $rCols * 0.6 }}); line-height: 1.2; }
         .child, .modifier, .note { margin-left: 12px; font-weight: 400; }
         .print-btn { display: block; margin: 12px auto; padding: 8px 16px; }
-        @media print { body { background: #fff; padding: 0; } .ticket { width: {{ $width }}; padding: 0; } .print-btn { display: none; } }
+        /* Without an @page rule the browser used its own page size and ~10mm margins, which on a
+           continuous roll prints a blank band above the ticket and wastes paper below it. */
+        @page { size: {{ $width }} auto; margin: 0; }
+        @media print {
+            body { background: #fff; margin: 0; padding: 0; }
+            .ticket { width: {{ $width }}; margin: 0; padding: 1mm 1.5mm 0; }
+            .print-btn { display: none; }
+        }
     </style>
 </head>
 <body>

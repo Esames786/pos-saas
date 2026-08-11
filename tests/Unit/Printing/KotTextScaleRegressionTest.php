@@ -84,6 +84,26 @@ class KotTextScaleRegressionTest extends TestCase
         $this->assertStringContainsString("\x1B\x45\x00", $out, 'Bold must be switched back off.');
     }
 
+    /**
+     * A receipt may grow taller but never wider.
+     *
+     * Every money row is a 42-column two-column layout — label left, amount right. At double width
+     * the line holds 21 characters and the amounts stop lining up under one another, which on a
+     * customer's bill is worse than small text.
+     */
+    public function test_a_receipt_money_row_keeps_its_columns_at_every_height(): void
+    {
+        $row = str_pad('Subtotal', 42 - 8, ' ') . '2,060.00';
+
+        foreach ([1, 2, 3] as $height) {
+            $out = $this->call('scaled', [$row, ['w' => 1, 'h' => $height], false, false, 42]);
+            $body = preg_replace(['/\x1D\x21./s', '/\x1B\x45./s'], '', $out);
+
+            $this->assertSame($row, trim($body, "\n"), "Height {$height} must not re-wrap a money row.");
+            $this->assertStringEndsWith('2,060.00', trim($body), 'The amount must stay right-aligned.');
+        }
+    }
+
     public function test_normal_scale_still_emits_plain_full_width_text(): void
     {
         $out = $this->call('scaled', ['CASHIER: Delivery Counter', ['w' => 1, 'h' => 1], false, false, 42]);

@@ -20,6 +20,9 @@
             // Courier advances 0.6em per character, so this many chars exactly fill the paper.
             $bigFont = 'calc(' . $width . ' / ' . ($cols * 0.6) . ')';
         @endphp
+        /* Without an @page rule the browser used its own page size and ~10mm margins, which on a
+           continuous roll prints a blank band above the ticket and wastes paper below it. */
+        @page { size: {{ $width }} auto; margin: 0; }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             font-family: 'Courier New', Courier, monospace;
@@ -43,7 +46,10 @@
         .item-qty  { width: 15%; text-align: right; padding-right: 4px; }
         .item-name { width: 85%; }
         .print-btn { display: block; margin: 12px auto; padding: 8px 24px; cursor: pointer; font-size: 14px; }
-        @media print { .print-btn, .no-print { display: none !important; } }
+        @media print {
+            .print-btn, .no-print { display: none !important; }
+            body { width: {{ $width }}; margin: 0; padding: 1mm 1.5mm 0; }
+        }
     </style>
 </head>
 <body>

@@ -319,6 +319,14 @@ class EscPosPayloadService
         $show = fn (string $field, bool $default = true) => $layout === null ? $default : (bool) $layout->{$field};
         $out = '';
 
+        // A RECEIPT SCALES IN HEIGHT ONLY.
+        //
+        // Every money row here is a 42-column two-column layout — label left, amount right. Double
+        // WIDTH halves that to 21 and the amounts would no longer line up under one another, which
+        // on a customer's bill is worse than small text. Taller characters cost nothing: the line
+        // still holds 42 characters, so Subtotal / Discount / Total stay in their column.
+        $tall = ['w' => 1, 'h' => $this->scaleFor($layout?->font_size)['h']];
+
         if ($show('show_branch_name')) {
             $out .= $this->center($sale->branch?->name ?? 'Receipt') . "\n";
         }
@@ -405,7 +413,7 @@ class EscPosPayloadService
                 $maxName = 41 - mb_strlen($total) - mb_strlen($qtyPrefix);
             }
             $left = $qtyPrefix . mb_substr($line->product_name ?? '', 0, max($maxName, 1)) . $priceSuffix;
-            $out .= $this->columns($left, $total, 42) . "\n";
+            $out .= $this->scaled($this->columns($left, $total, 42), $tall);
 
             if ($line->kitchen_note) {
                 $out .= "  * {$line->kitchen_note}\n";
@@ -428,27 +436,28 @@ class EscPosPayloadService
         }
 
         $out .= str_repeat('-', 42) . "\n";
-        $out .= $this->columns('Subtotal', number_format((float) $sale->subtotal, 2), 42) . "\n";
+        $out .= $this->scaled($this->columns('Subtotal', number_format((float) $sale->subtotal, 2), 42), $tall);
 
         if ((float) $sale->discount_amount > 0) {
-            $out .= $this->columns('Discount', '-' . number_format((float) $sale->discount_amount, 2), 42) . "\n";
+            $out .= $this->scaled($this->columns('Discount', '-' . number_format((float) $sale->discount_amount, 2), 42), $tall);
         }
         if ((float) $sale->tax_amount > 0) {
-            $out .= $this->columns('Tax', number_format((float) $sale->tax_amount, 2), 42) . "\n";
+            $out .= $this->scaled($this->columns('Tax', number_format((float) $sale->tax_amount, 2), 42), $tall);
         }
         if ((float) ($sale->service_charge_amount ?? 0) > 0) {
-            $out .= $this->columns('Service Charge', number_format((float) $sale->service_charge_amount, 2), 42) . "\n";
+            $out .= $this->scaled($this->columns('Service Charge', number_format((float) $sale->service_charge_amount, 2), 42), $tall);
         }
         if ((float) ($sale->delivery_charge_amount ?? 0) > 0) {
-            $out .= $this->columns('Delivery Charge', number_format((float) $sale->delivery_charge_amount, 2), 42) . "\n";
+            $out .= $this->scaled($this->columns('Delivery Charge', number_format((float) $sale->delivery_charge_amount, 2), 42), $tall);
         }
         if ((float) ($sale->tip_amount ?? 0) > 0) {
-            $out .= $this->columns('Tip', number_format((float) $sale->tip_amount, 2), 42) . "\n";
+            $out .= $this->scaled($this->columns('Tip', number_format((float) $sale->tip_amount, 2), 42), $tall);
         }
 
-        $out .= $this->columns('TOTAL', number_format((float) $sale->grand_total, 2), 42) . "\n";
-        $out .= $this->columns('Paid', number_format((float) $sale->paid_amount, 2), 42) . "\n";
-        $out .= $this->columns('Change', number_format((float) $sale->change_amount, 2), 42) . "\n";
+        // The amount the customer actually owes is the one line they look for — always bold.
+        $out .= $this->scaled($this->columns('TOTAL', number_format((float) $sale->grand_total, 2), 42), $tall, true);
+        $out .= $this->scaled($this->columns('Paid', number_format((float) $sale->paid_amount, 2), 42), $tall);
+        $out .= $this->scaled($this->columns('Change', number_format((float) $sale->change_amount, 2), 42), $tall);
 
         $out .= str_repeat('-', 42) . "\n";
 

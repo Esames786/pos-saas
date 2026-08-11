@@ -21,6 +21,12 @@
             // so the on-screen preview and the paper could disagree.
             $show = fn (string $field) => $layout === null ? true : (bool) ($layout->{$field} ?? false);
         @endphp
+        /* THE ROLL STARTED A FINGER'S WIDTH DOWN THE PAGE.
+           No @page rule was ever declared, so the browser applied its own default page size and
+           ~10mm margins on every side. On a continuous roll that prints as a blank band above the
+           receipt and wasted paper below it. "size: <width> auto" asks for a roll-height page
+           instead of a sheet, and margin 0 hands the whole width back to us. */
+        @page { size: {{ $width }} auto; margin: 0; }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             font-family: 'Courier New', Courier, monospace;
@@ -36,15 +42,23 @@
         hr       { border: none; border-top: 1px dashed #000; margin: 4px 0; }
         table    { width: 100%; border-collapse: collapse; }
         td       { vertical-align: top; }
-        .item-name  { width: 48%; }
-        .item-qty   { width: 10%; text-align: right; white-space: nowrap; }
-        .item-price { width: 21%; text-align: right; white-space: nowrap; }
-        .item-total { width: 21%; text-align: right; white-space: nowrap; }
+        /* The numeric cells sat flush against each other with no padding, so a four-figure price
+           ran straight into the total: "1 1,200.00 1,200.00" printed as "11,200.001,200.00".
+           The gap is now structural, not a hope that the numbers stay short. */
+        .item-name  { width: 40%; word-break: break-word; }
+        .item-qty   { width: 12%; text-align: right; white-space: nowrap; padding-left: 6px; }
+        .item-price { width: 24%; text-align: right; white-space: nowrap; padding-left: 6px; }
+        .item-total { width: 24%; text-align: right; white-space: nowrap; padding-left: 6px; }
         .totals td:first-child { width: 60%; text-align: right; padding-right: 4px; }
         .totals td:last-child  { width: 40%; text-align: right; white-space: nowrap; }
         .print-btn { display: block; margin: 12px auto; padding: 8px 24px; cursor: pointer; font-size: 14px; }
         @media screen { body { width: 320px; } }
-        @media print  { .print-btn, .no-print { display: none !important; } }
+        @media print  {
+            .print-btn, .no-print { display: none !important; }
+            /* Own the full roll width: the outer margin is gone, so only a hair of padding to keep
+               ink off the paper edge. */
+            body { width: {{ $width }}; margin: 0; padding: 1mm 1.5mm 0; }
+        }
     </style>
 </head>
 <body>
