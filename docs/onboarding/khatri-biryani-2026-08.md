@@ -333,3 +333,27 @@ Only the Delivery terminal is bound to a printer today (receipt + default KOT â†
   `66` assertions; Blade cache and both tenant `/up` + `/login` checks passed.
 - Safety: no Khatri onboarding command, tenant reset, transaction reset, or sales/payment/return/
   stock/journal mutation was run. The normal deploy reported no migrations to apply.
+
+### Printer layout and report-scope hardening (2026-08-11)
+
+- Claude's `847f4fa` connects the saved KOT/reminder font setting to raw ESC/POS output. The
+  configured size selects normal, tall, double, or triple text; long kitchen text wraps at the
+  corresponding 42/21/14-character budget and every scaled block resets to normal afterward.
+- The browser KOT/reminder previews use the same character budget. Normal seeded values (receipt
+  12, KOT 14) remain normal-size, so existing tenants do not change until a layout value is raised.
+- Both live Khatri printers remain `80mm` / 42 characters. This is conservative for the
+  BlackCopper BC97AC's 72mm effective print width and is also used by the XPrinter route.
+- Print Agent 2.3 hardens Claude's keep-awake work: heartbeat now replaces stale printer
+  destinations, and keep-awake probes cannot overlap each other or a real print poll. The rebuilt,
+  version-stamped installer is served uncached; installing it is an explicit onsite action.
+- Report Centre first load selects an assigned user's valid default branch and terminal. An
+  explicit All selection still means only that user's assigned scope, and hand-edited IDs cannot
+  widen it. Terminal options follow the selected/allowed branch set.
+- The legacy Sales Summary return deduction now follows the selected terminal, order type, and
+  cashier, matching the sale side of the same filter instead of subtracting unrelated returns.
+- Return posting locks the order and its lines before calculating refundable quantity, preventing
+  two simultaneous submissions from returning the same quantity. Order return status is based on
+  customer-facing lines, not internal component/modifier rows.
+- Verification: 29 focused unit tests / 100 assertions, 10 MySQL integration tests / 51
+  assertions, PHP syntax, Blade cache, KOT/addition/cancel/reminder payloads, printer configuration,
+  and installer version checks passed. No live Khatri transactions were read or changed.

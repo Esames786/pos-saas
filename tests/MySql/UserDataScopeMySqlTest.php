@@ -36,7 +36,8 @@ class UserDataScopeMySqlTest extends MySqlTenantTestCase
 
         $this->deliveryUser = User::on('tenant')->findOrFail($this->makeUser([
             'email' => 'delivery@example.test', 'employee_code' => 'DL' . Str::random(4),
-            'default_branch_id' => $this->branchId, 'allowed_order_types' => json_encode(['delivery']),
+            'default_branch_id' => $this->branchId, 'default_terminal_id' => $this->deliveryTerminalId,
+            'allowed_order_types' => json_encode(['delivery']),
         ]));
         $this->deliveryUser->terminals()->sync([$this->deliveryTerminalId]);
 
@@ -99,7 +100,12 @@ class UserDataScopeMySqlTest extends MySqlTenantTestCase
 
         // a hand-edited URL asking for the OTHER terminal and dine-in
         $forced = $scope->applyToReportFilters(
-            ['terminal_id' => $this->otherTerminalId, 'order_type' => 'dine_in'],
+            [
+                'terminal_id' => $this->otherTerminalId,
+                'order_type' => 'dine_in',
+                '_branch_filter_present' => true,
+                '_terminal_filter_present' => true,
+            ],
             $this->deliveryUser
         );
         $this->assertNull($forced['terminal_id']);
@@ -108,11 +114,27 @@ class UserDataScopeMySqlTest extends MySqlTenantTestCase
         $this->assertSame(['delivery'], $forced['allowed_order_types']);
 
         // "All" (no filter) is likewise narrowed to his own scope
-        $narrowed = $scope->applyToReportFilters(['terminal_id' => null, 'order_type' => null], $this->deliveryUser);
+        $narrowed = $scope->applyToReportFilters([
+            'terminal_id' => null,
+            'order_type' => null,
+            '_branch_filter_present' => true,
+            '_terminal_filter_present' => true,
+        ], $this->deliveryUser);
         $this->assertNull($narrowed['terminal_id']);
         $this->assertNull($narrowed['order_type']);
         $this->assertSame([$this->deliveryTerminalId], $narrowed['allowed_terminal_ids']);
         $this->assertSame(['delivery'], $narrowed['allowed_order_types']);
+
+        // On the first visit, the assigned defaults are selected instead of presenting a
+        // misleading global "All" filter.
+        $defaults = $scope->applyToReportFilters([
+            'terminal_id' => null,
+            'order_type' => null,
+            '_branch_filter_present' => false,
+            '_terminal_filter_present' => false,
+        ], $this->deliveryUser);
+        $this->assertSame([$this->branchId], $defaults['branch_ids']);
+        $this->assertSame($this->deliveryTerminalId, $defaults['terminal_id']);
 
         // the owner keeps whatever he asked for (including "All")
         $ownerFilters = $scope->applyToReportFilters(['terminal_id' => null, 'order_type' => null], $this->owner);

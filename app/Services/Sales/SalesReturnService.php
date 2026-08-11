@@ -37,7 +37,16 @@ class SalesReturnService
         $salesReturn = DB::connection('tenant')->transaction(function () use (
             $salesOrder, $lines, $reason, $refundMethod, $refundAmount, $userId
         ) {
-            $salesOrder->load(['branch', 'lines.product', 'lines.variant', 'lines.returnLines']);
+            $salesOrder = SalesOrder::query()
+                ->whereKey($salesOrder->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $salesOrder->load('branch');
+            $salesOrder->setRelation('lines', SalesOrderLine::query()
+                ->where('sales_order_id', $salesOrder->id)
+                ->with(['product', 'variant', 'returnLines'])
+                ->lockForUpdate()
+                ->get());
 
             $salesReturn = SalesReturn::create([
                 'return_no'          => $this->salesService->nextReturnNo(),
@@ -176,8 +185,11 @@ class SalesReturnService
             ]);
 
             $salesOrder->refresh()->load('lines');
-            $returnedQty = $salesOrder->lines->sum('returned_quantity');
-            $originalQty = $salesOrder->lines->sum('quantity');
+            $customerLines = $salesOrder->lines->reject(
+                fn ($line) => in_array($line->line_kind, ['component', 'modifier'], true)
+            );
+            $returnedQty = $customerLines->sum('returned_quantity');
+            $originalQty = $customerLines->sum('quantity');
             $newStatus   = $returnedQty >= $originalQty ? 'returned' : 'partially_returned';
             $salesOrder->update(['status' => $newStatus]);
 

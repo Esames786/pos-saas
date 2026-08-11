@@ -176,12 +176,25 @@ class UserDataScope
      */
     public function applyToReportFilters(array $filters, ?User $user): array
     {
-        if ($this->hasBranchAssignments($user)) {
-            $allowedBranches = $this->branchIds($user);
+        $branchFilterPresent = (bool) ($filters['_branch_filter_present'] ?? false);
+        $terminalFilterPresent = (bool) ($filters['_terminal_filter_present'] ?? false);
+        unset($filters['_branch_filter_present'], $filters['_terminal_filter_present']);
+
+        $allowedBranches = $this->hasBranchAssignments($user)
+            ? $this->branchIds($user)
+            : (($terminalIds = $this->terminalIds($user))
+                ? Terminal::whereIn('id', $terminalIds)->pluck('branch_id')->map(fn ($id) => (int) $id)->unique()->values()->all()
+                : []);
+
+        if ($allowedBranches !== []) {
             $requested = array_map('intval', $filters['branch_ids'] ?? []);
-            $filters['branch_ids'] = $requested === []
-                ? $allowedBranches
-                : array_values(array_intersect($requested, $allowedBranches));
+            if ($requested === [] && ! $branchFilterPresent && in_array((int) $user?->default_branch_id, $allowedBranches, true)) {
+                $filters['branch_ids'] = [(int) $user->default_branch_id];
+            } else {
+                $filters['branch_ids'] = $requested === []
+                    ? $allowedBranches
+                    : array_values(array_intersect($requested, $allowedBranches));
+            }
             if ($filters['branch_ids'] === []) {
                 // A user with assignments but no active assignment must see no branch data.
                 $filters['branch_ids'] = $allowedBranches ?: [-1];
@@ -189,7 +202,11 @@ class UserDataScope
         }
         if ($terminals = $this->terminalIds($user)) {
             $requested = (int) ($filters['terminal_id'] ?? 0);
-            $filters['terminal_id'] = in_array($requested, $terminals, true) ? $requested : null;
+            if (! $terminalFilterPresent && in_array((int) $user?->default_terminal_id, $terminals, true)) {
+                $filters['terminal_id'] = (int) $user->default_terminal_id;
+            } else {
+                $filters['terminal_id'] = in_array($requested, $terminals, true) ? $requested : null;
+            }
             $filters['allowed_terminal_ids'] = $terminals;
         }
         if ($types = $this->orderTypes($user)) {

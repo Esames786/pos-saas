@@ -83,7 +83,17 @@ class DashboardMatchesReportCentreRegressionTest extends TestCase
 
         // A refund handed back today reduces today, whichever day the original sale happened —
         // and a return carries no business_date, so the sales helper cannot be reused.
-        $this->assertStringContainsString("whereDate('return_date'", $code);
+        $this->assertStringContainsString("whereDate('sales_returns.return_date'", $code);
+    }
+
+    public function test_summary_return_filters_follow_the_original_sale_dimensions(): void
+    {
+        $code = $this->service();
+
+        $this->assertStringContainsString("join('sales_orders', 'sales_orders.id', '=', 'sales_returns.sales_order_id')", $code);
+        $this->assertStringContainsString("where('sales_orders.terminal_id'", $code);
+        $this->assertStringContainsString("where('sales_orders.order_type'", $code);
+        $this->assertStringContainsString("where('sales_orders.created_by_user_id'", $code);
     }
 
     public function test_the_tile_shows_its_working_when_there_were_returns(): void

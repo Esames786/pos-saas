@@ -57,6 +57,11 @@ class SalesReportCenterController extends Controller
             'cashier_id', 'waiter_id', 'order_type', 'category_id', 'product_id', 'payment_method_id',
         ]));
 
+        // An absent filter means "first visit" and may use the user's assigned default. A present
+        // but blank filter means the operator deliberately chose All (still capped to access).
+        $filters['_branch_filter_present'] = $request->exists('branch_id') || $request->exists('branch_ids');
+        $filters['_terminal_filter_present'] = $request->exists('terminal_id');
+
         // USER-DATA-SCOPE-1: a terminal/order-type restricted operator's reports (screen, print,
         // export, email) can only ever describe his own terminal and order types.
         return app(\App\Services\Security\UserDataScope::class)->applyToReportFilters($filters, auth('tenant')->user());
@@ -108,7 +113,7 @@ class SalesReportCenterController extends Controller
             'branches' => app(\App\Services\Security\UserDataScope::class)
                 ->branchesForPos(auth('tenant')->user()),
             'terminals' => app(\App\Services\Security\UserDataScope::class)
-                ->terminalsForPos(auth('tenant')->user()),
+                ->terminalsForPos(auth('tenant')->user(), $filters['branch_ids'] ?? []),
             'waiters' => DB::connection('tenant')->table('restaurant_waiters')->where('status', 'active')->orderBy('name')->get(['id', 'name']),
             'categories' => DB::connection('tenant')->table('categories')->where('is_active', 1)->orderBy('name')->get(['id', 'name', 'parent_id']),
             'paymentMethods' => DB::connection('tenant')->table('payment_methods')->where('is_active', 1)->orderBy('name')->get(['id', 'name']),

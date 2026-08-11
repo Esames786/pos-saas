@@ -80,12 +80,16 @@ class SalesReportService
         $branchIds = $this->resolveBranchIds($filters);
 
         return \App\Models\Tenant\SalesReturn::query()
-            ->where('status', 'posted')
-            ->when($branchIds, fn ($q) => $q->whereIn('branch_id', $branchIds))
-            ->when(!empty($filters['date_from']), fn ($q) => $q->whereDate('return_date', '>=', $filters['date_from']))
-            ->when(!empty($filters['date_to']),   fn ($q) => $q->whereDate('return_date', '<=', $filters['date_to']))
-            ->selectRaw('DATE(return_date) as day, COALESCE(SUM(grand_total), 0) as amount')
-            ->groupByRaw('DATE(return_date)')
+            ->join('sales_orders', 'sales_orders.id', '=', 'sales_returns.sales_order_id')
+            ->where('sales_returns.status', 'posted')
+            ->when($branchIds, fn ($q) => $q->whereIn('sales_returns.branch_id', $branchIds))
+            ->when(!empty($filters['date_from']), fn ($q) => $q->whereDate('sales_returns.return_date', '>=', $filters['date_from']))
+            ->when(!empty($filters['date_to']),   fn ($q) => $q->whereDate('sales_returns.return_date', '<=', $filters['date_to']))
+            ->when(!empty($filters['terminal_id']), fn ($q) => $q->where('sales_orders.terminal_id', $filters['terminal_id']))
+            ->when(!empty($filters['order_type']), fn ($q) => $q->where('sales_orders.order_type', $filters['order_type']))
+            ->when(!empty($filters['cashier_id']), fn ($q) => $q->where('sales_orders.created_by_user_id', $filters['cashier_id']))
+            ->selectRaw('DATE(sales_returns.return_date) as day, COALESCE(SUM(sales_returns.grand_total), 0) as amount')
+            ->groupByRaw('DATE(sales_returns.return_date)')
             ->pluck('amount', 'day')
             ->map(fn ($v) => (float) $v)
             ->all();

@@ -29,7 +29,7 @@ const http     = require('http');
 const https    = require('https');
 const { URL }  = require('url');
 
-const AGENT_VERSION = '2.2.0';
+const AGENT_VERSION = '2.3.0';
 
 /**
  * A sleeping printer does not answer a connect at all, so discovering that must be CHEAP: fail in
@@ -47,6 +47,7 @@ const TRANSFER_TIMEOUT_MS = 15000;
  */
 const KEEP_AWAKE_MS = 20000;
 const knownPrinters = new Map();   // "ip:port" -> { ip, port }
+let keepAwakeRunning = false;
 
 /* ── HTTP helper (http/https module — stable on every Node incl. the bundled
  *    runtime, unlike Node 18's experimental global fetch) ────────────────── */
@@ -274,11 +275,7 @@ async function heartbeat() {
 
     // Learn the printers from the server so they can be kept awake from startup — not only after
     // a ticket has already been delayed waking one up.
-    for (const p of (res.json && res.json.printers) || []) {
-        if (p && p.ip) {
-            rememberPrinter(p.ip, p.port);
-        }
-    }
+    syncKnownPrinters((res.json && res.json.printers) || []);
 }
 
 function rememberPrinter(ip, port) {
@@ -286,6 +283,18 @@ function rememberPrinter(ip, port) {
     if (!knownPrinters.has(key)) {
         knownPrinters.set(key, { ip, port: port || 9100 });
     }
+}
+
+function syncKnownPrinters(printers) {
+    const current = new Map();
+    for (const p of printers) {
+        if (!p || !p.ip) continue;
+        const port = Number(p.port || 9100);
+        current.set(`${p.ip}:${port}`, { ip: p.ip, port });
+    }
+
+    knownPrinters.clear();
+    for (const [key, printer] of current) knownPrinters.set(key, printer);
 }
 
 /** Open and immediately close a connection, purely so the printer never idles into sleep. */
@@ -303,11 +312,16 @@ function pokePrinter(ip, port) {
 
 async function keepPrintersAwake() {
     // Never while printing — a poke would take the single connection the ticket needs.
-    if (ticking || knownPrinters.size === 0) {
+    if (ticking || keepAwakeRunning || knownPrinters.size === 0) {
         return;
     }
-    for (const { ip, port } of knownPrinters.values()) {
-        await pokePrinter(ip, port);
+    keepAwakeRunning = true;
+    try {
+        for (const { ip, port } of knownPrinters.values()) {
+            await pokePrinter(ip, port);
+        }
+    } finally {
+        keepAwakeRunning = false;
     }
 }
 
@@ -450,7 +464,7 @@ let idleCounter = 0;
 let ticking = false;
 
 async function tick() {
-    if (ticking) {
+    if (ticking || keepAwakeRunning) {
         return;
     }
     ticking = true;

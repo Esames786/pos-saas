@@ -43,4 +43,53 @@ class SalesReportBusinessDateTest extends MySqlTenantTestCase
         $days = $aug5['daily']->pluck('sale_day')->all();
         $this->assertEquals(['2026-08-05'], $days);
     }
+
+    public function test_filtered_summary_only_subtracts_returns_from_matching_sales(): void
+    {
+        $this->cleanTenant(['sales_returns', 'sales_orders', 'terminals', 'branches', 'users']);
+        $branchId = $this->makeBranch();
+        $terminalA = $this->makeTerminal($branchId);
+        $terminalB = $this->makeTerminal($branchId);
+        $cashierA = $this->makeUser();
+        $cashierB = $this->makeUser();
+
+        $saleA = $this->makeSale($branchId, [
+            'terminal_id' => $terminalA, 'created_by_user_id' => $cashierA,
+            'order_type' => 'delivery', 'business_date' => '2026-08-11',
+            'sale_date' => '2026-08-11 10:00:00', 'status' => 'returned',
+            'grand_total' => 100,
+        ]);
+        $saleB = $this->makeSale($branchId, [
+            'terminal_id' => $terminalB, 'created_by_user_id' => $cashierB,
+            'order_type' => 'takeaway', 'business_date' => '2026-08-11',
+            'sale_date' => '2026-08-11 11:00:00', 'status' => 'returned',
+            'grand_total' => 200,
+        ]);
+
+        foreach ([[$saleA, 100], [$saleB, 200]] as [$saleId, $amount]) {
+            $this->tenant()->table('sales_returns')->insert([
+                'return_no' => 'SR-' . $saleId,
+                'sales_order_id' => $saleId,
+                'branch_id' => $branchId,
+                'return_date' => '2026-08-11 12:00:00',
+                'subtotal' => $amount,
+                'grand_total' => $amount,
+                'refund_method' => 'cash',
+                'refund_amount' => $amount,
+                'status' => 'posted',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        $result = app(SalesReportService::class)->summary([
+            'date_from' => '2026-08-11', 'date_to' => '2026-08-11',
+            'branch_ids' => [$branchId], 'terminal_id' => $terminalA,
+            'order_type' => 'delivery', 'cashier_id' => $cashierA,
+        ]);
+
+        $this->assertSame(100.0, (float) $result['totals']->billed);
+        $this->assertSame(100.0, (float) $result['totals']->returns_amount);
+        $this->assertSame(0.0, (float) $result['totals']->net_sales);
+    }
 }
