@@ -29,7 +29,24 @@ const http     = require('http');
 const https    = require('https');
 const { URL }  = require('url');
 
-const AGENT_VERSION = '2.1.0';
+const AGENT_VERSION = '2.2.0';
+
+/**
+ * A sleeping printer does not answer a connect at all, so discovering that must be CHEAP: fail in
+ * 4s and retry, rather than wait 15s. Once connected the printer is awake and a long ticket is
+ * allowed to spool.
+ */
+const CONNECT_TIMEOUT_MS  = 4000;
+const TRANSFER_TIMEOUT_MS = 15000;
+
+/**
+ * Hold every known printer awake. Thermal printers drop their network interface on idle, and the
+ * first ticket afterwards pays the wake-up — measured at Khatri as a 17s and a 34s KOT while a
+ * receipt to the same printer moments later took 3s. A cheap connect every 20s keeps them from
+ * ever going to sleep, so the kitchen slip is not the thing that wakes them.
+ */
+const KEEP_AWAKE_MS = 20000;
+const knownPrinters = new Map();   // "ip:port" -> { ip, port }
 
 /* ── HTTP helper (http/https module — stable on every Node incl. the bundled
  *    runtime, unlike Node 18's experimental global fetch) ────────────────── */
@@ -254,6 +271,44 @@ async function heartbeat() {
     if (!res.ok) {
         throw new Error(`Heartbeat failed: HTTP ${res.status} — ${(res.text || '').slice(0, 300)}`);
     }
+
+    // Learn the printers from the server so they can be kept awake from startup — not only after
+    // a ticket has already been delayed waking one up.
+    for (const p of (res.json && res.json.printers) || []) {
+        if (p && p.ip) {
+            rememberPrinter(p.ip, p.port);
+        }
+    }
+}
+
+function rememberPrinter(ip, port) {
+    const key = `${ip}:${port || 9100}`;
+    if (!knownPrinters.has(key)) {
+        knownPrinters.set(key, { ip, port: port || 9100 });
+    }
+}
+
+/** Open and immediately close a connection, purely so the printer never idles into sleep. */
+function pokePrinter(ip, port) {
+    return new Promise((resolve) => {
+        const socket = new net.Socket();
+        socket.setTimeout(CONNECT_TIMEOUT_MS);
+        const done = () => { socket.destroy(); resolve(); };
+        socket.connect(port, ip, () => { socket.end(); resolve(); });
+        socket.on('error', done);
+        socket.on('timeout', done);
+        socket.on('close', resolve);
+    });
+}
+
+async function keepPrintersAwake() {
+    // Never while printing — a poke would take the single connection the ticket needs.
+    if (ticking || knownPrinters.size === 0) {
+        return;
+    }
+    for (const { ip, port } of knownPrinters.values()) {
+        await pokePrinter(ip, port);
+    }
 }
 
 async function getPendingJobs() {
@@ -276,9 +331,15 @@ function sendToNetworkPrinter(ip, port, payload) {
         }
 
         const socket = new net.Socket();
-        // 8s was too tight for a busy shop's wifi — a printer that is simply slow to accept the
-        // connection was being written off as failed.
-        socket.setTimeout(15000);
+        // TWO timeouts, because they guard different things.
+        //
+        // CONNECT is short on purpose. A sleeping printer does not answer at all, and waiting 15s
+        // to discover that made every first ticket of a quiet period 15s late — the retry then
+        // connected in under a second. Failing fast and retrying is far quicker than waiting.
+        //
+        // TRANSFER is generous: once the printer has accepted the connection it is awake, and a
+        // long ticket genuinely takes time to spool.
+        socket.setTimeout(CONNECT_TIMEOUT_MS);
 
         // Whether the ticket already went down the wire. A failure BEFORE this is safe to retry;
         // after it the printer may well have printed, and retrying would hand the customer a
@@ -286,6 +347,8 @@ function sendToNetworkPrinter(ip, port, payload) {
         let payloadSent = false;
 
         socket.connect(port || 9100, ip, () => {
+            // Connected — the printer is awake, so allow the slower transfer budget.
+            socket.setTimeout(TRANSFER_TIMEOUT_MS);
             socket.write(payload || '');
             socket.write('\n\n\n');
             payloadSent = true;
@@ -341,7 +404,8 @@ async function processJob(job) {
         // kitchen simply never got it and nobody noticed until the dashboard banner. Retry a
         // couple of times, but ONLY when the payload provably never reached the printer.
         const MAX_ATTEMPTS = 3;
-        const BACKOFF_MS = [1000, 3000];
+        // Short waits: the retry after a wake-up connects in well under a second.
+        const BACKOFF_MS = [400, 1200];
         let lastError = null;
 
         for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -442,6 +506,8 @@ function run(config) {
     log(`Polling: every ${CONFIG.pollMs}ms`);
 
     setInterval(tick, CONFIG.pollMs);
+    // Hold the printers awake so a kitchen ticket is never the thing that wakes one.
+    setInterval(() => { keepPrintersAwake().catch(() => {}); }, KEEP_AWAKE_MS);
     tick();
 }
 

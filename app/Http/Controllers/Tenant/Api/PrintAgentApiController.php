@@ -81,6 +81,25 @@ class PrintAgentApiController extends Controller
         return response()->json([
             'ok'          => true,
             'server_time' => now()->toDateTimeString(),
+            // Thermal printers drop their network interface to sleep when idle. The FIRST job
+            // after a quiet spell then burns the whole connect timeout waking it — measured at
+            // Khatri as 17s and 34s for a KOT, while a receipt to the SAME printer moments later
+            // took 3s. KOTs always pay it because they are the first document of an order.
+            // Returning the printer list lets the agent hold them awake from startup, instead of
+            // only learning about a printer once a ticket has already been delayed by it.
+            'printers'    => \App\Models\Tenant\Printer::query()
+                ->where('is_active', true)
+                ->where('printer_type', 'network')
+                ->whereNotNull('ip_address')
+                ->when($agent->branch_id, fn ($q) => $q->where(fn ($w) => $w
+                    ->whereNull('branch_id')->orWhere('branch_id', $agent->branch_id)))
+                ->get(['id', 'name', 'ip_address', 'port'])
+                ->map(fn ($p) => [
+                    'id'   => (int) $p->id,
+                    'name' => $p->name,
+                    'ip'   => $p->ip_address,
+                    'port' => (int) ($p->port ?: 9100),
+                ])->values(),
         ]);
     }
 
