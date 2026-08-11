@@ -12,7 +12,7 @@
 - **Report Center**: live overview orders 4 / grand 2080 / delivery 100 / cash 2080; Cash&Bank opening 1000 separate (expected formula 3080)
 - **Backup**: /var/backups/khatri/khatri-biryani-post-onboarding-2026-08-09-20260809-093502.sql.gz (35,965 B, sha256 46683456e48bcbaa50b4644dd8e8e9bb3db28b62f0adcdd84cfd9e7cc01225c3) + master manifest (sha256 595b739f…) — **RESTORE-VERIFIED** into pos_test_restore_* (15/15 counts MATCH incl. 8/39/4-terminals/483 perms) then dropped
 - **Owner credential**: /root/khatri-owner-credential.txt (600) — never logged
-- **REPORT EMAIL = NOT CONFIGURED** (Email Now/Schedules give the controlled error until owner_email is set)
+- **Owner/default report email**: `owner_kb@bingoopos.com` (set by the idempotent Khatri onboarding command)
 - **Platform**: all 8 tenants tb=0/neg=0/dept=0; khatri menu isolated to its DB; demos unchanged; 0 new log errors; Edge dormant (APP_ROLE=cloud, Local Mode inactive, activation_ready=false)
 - **Test data note**: 4 clearly-labeled TEST sales (customer "DEPLOY TEST") + one closed shift (variance 0) remain in the fresh tenant as deployment evidence; smoke script created sales pre-paid so SHIFT counters intentionally skipped settlement (real POS controller path is suite-proven) — no dangling open shift.
 - **Client follow-ups**: confirm ⚠-flagged prices; provide owner email for report emails; native XLSX/PDF pending composer approval.

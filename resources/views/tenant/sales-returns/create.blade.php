@@ -62,8 +62,23 @@
         <div class="col-6 col-md-3"><div class="text-muted">Customer</div><div class="fw-semibold">{{ $salesOrder->customer?->name ?? $salesOrder->customer_name ?? 'Walk-in' }}{{ $salesOrder->customer_phone ? ' · ' . $salesOrder->customer_phone : '' }}</div></div>
         <div class="col-6 col-md-3"><div class="text-muted">Payments</div><div class="fw-semibold">{{ $paymentSummary ?: '—' }}</div></div>
         <div class="col-6 col-md-2"><div class="text-muted">Subtotal</div><div class="fw-semibold">{{ number_format($salesOrder->subtotal, 2) }}</div></div>
-        <div class="col-6 col-md-2"><div class="text-muted">Discount</div><div class="fw-semibold">{{ number_format($salesOrder->discount_amount, 2) }}</div></div>
+        <div class="col-6 col-md-2"><div class="text-muted">Discount</div><div class="fw-semibold">-{{ number_format($salesOrder->discount_amount, 2) }}</div></div>
+        <div class="col-6 col-md-2"><div class="text-muted">Tax</div><div class="fw-semibold">+{{ number_format($salesOrder->tax_amount, 2) }}</div></div>
+        @if((float) $salesOrder->service_charge_amount > 0)
+            <div class="col-6 col-md-2"><div class="text-muted">Service Charge</div><div class="fw-semibold">+{{ number_format($salesOrder->service_charge_amount, 2) }}</div></div>
+        @endif
+        @if((float) $salesOrder->delivery_charge_amount > 0)
+            <div class="col-6 col-md-2"><div class="text-muted">Delivery Charge</div><div class="fw-semibold">+{{ number_format($salesOrder->delivery_charge_amount, 2) }}</div></div>
+        @endif
+        @if((float) $salesOrder->tip_amount > 0)
+            <div class="col-6 col-md-2"><div class="text-muted">Tip</div><div class="fw-semibold">+{{ number_format($salesOrder->tip_amount, 2) }}</div></div>
+        @endif
         <div class="col-6 col-md-2"><div class="text-muted">Grand Total</div><div class="fw-bold">{{ number_format($salesOrder->grand_total, 2) }}</div></div>
+        @if((float) $salesOrder->service_charge_amount > 0 || (float) $salesOrder->delivery_charge_amount > 0 || (float) $salesOrder->tip_amount > 0)
+            <div class="col-12">
+                <div class="alert alert-info py-2 mb-0">Item refunds include proportional line discount and tax. Order-level service, delivery, and tip charges are shown for audit but are not automatically refunded.</div>
+            </div>
+        @endif
     </div>
 </div>
 
@@ -94,8 +109,16 @@
                 </thead>
                 <tbody>
                 @foreach($salesOrder->lines as $i => $line)
-                    @php $returnable = (float) $line->quantity - (float) $line->returned_quantity; @endphp
-                    <tr class="return-line" data-price="{{ (float) $line->unit_price }}">
+                    @php
+                        $returnable = (float) $line->quantity - (float) $line->returned_quantity;
+                        $allocation = $returnAllocations->get($line->id, ['discount' => 0, 'tax' => 0]);
+                        $remainingDiscount = max((float) $allocation['discount'] - (float) $line->returnLines->sum('discount_amount'), 0);
+                        $remainingTax = max((float) $allocation['tax'] - (float) $line->returnLines->sum('tax_amount'), 0);
+                    @endphp
+                    <tr class="return-line"
+                        data-price="{{ (float) $line->unit_price }}"
+                        data-discount-per-unit="{{ $returnable > 0 ? $remainingDiscount / $returnable : 0 }}"
+                        data-tax-per-unit="{{ $returnable > 0 ? $remainingTax / $returnable : 0 }}">
                         <td>
                             <input type="hidden" name="lines[{{ $i }}][sales_order_line_id]" value="{{ $line->id }}">
                             {{ $line->product_name }}
@@ -150,14 +173,12 @@
             </div>
 
             <div class="col-md-3">
-                <label for="refund_amount" class="form-label">Refund Amount</label>
-                <div class="input-group">
-                    <input id="refund_amount" type="number" step="0.01" min="0"
-                           name="refund_amount"
-                           class="form-control @error('refund_amount') is-invalid @enderror"
-                           value="{{ old('refund_amount', 0) }}">
-                    <button class="btn btn-outline-secondary" type="button" id="use-suggested" title="Use suggested refund">Use suggested</button>
-                </div>
+                <label for="refund_amount" class="form-label">Calculated Refund Amount</label>
+                <input id="refund_amount" type="number" step="0.01" min="0"
+                       name="refund_amount"
+                       class="form-control @error('refund_amount') is-invalid @enderror"
+                       value="{{ old('refund_amount', 0) }}" readonly>
+                <div class="form-text">Based on selected item quantities, proportional line discount, and line tax.</div>
                 @error('refund_amount') <div class="invalid-feedback">{{ $message }}</div> @enderror
             </div>
 
@@ -209,19 +230,22 @@
             var qty = parseFloat(qtyEl && qtyEl.value || 0);
             var max = parseFloat(qtyEl && qtyEl.max || 0);
             if (qtyEl) qtyEl.classList.toggle('is-invalid', qty > max);
-            var refund = qty * parseFloat(row.dataset.price || 0);
+            var gross = qty * parseFloat(row.dataset.price || 0);
+            var discount = qty * parseFloat(row.dataset.discountPerUnit || 0);
+            var tax = qty * parseFloat(row.dataset.taxPerUnit || 0);
+            var refund = gross - discount + tax;
             row.querySelector('.line-refund').textContent = refund.toFixed(2);
             total += refund;
         });
         document.getElementById('suggested-refund').textContent = total.toFixed(2);
+        var refundMethod = document.getElementById('refund_method').value;
+        document.getElementById('refund_amount').value = refundMethod ? total.toFixed(2) : '0.00';
         return total;
     }
     document.addEventListener('input', function (e) {
         if (e.target.classList && e.target.classList.contains('return-qty')) recalc();
     });
-    document.getElementById('use-suggested').addEventListener('click', function () {
-        document.getElementById('refund_amount').value = recalc().toFixed(2);
-    });
+    document.getElementById('refund_method').addEventListener('change', recalc);
 
     form.addEventListener('submit', function (e) {
         if (this.dataset.confirmed) return;
@@ -241,7 +265,13 @@
             return;
         }
         var f = this;
+        var suggested = recalc();
+        var refundMethod = document.getElementById('refund_method').value;
         var refund = parseFloat(document.getElementById('refund_amount').value || 0);
+        if (refundMethod && Math.abs(refund - suggested) > 0.01) {
+            Swal.fire({ icon: 'error', title: 'Refund amount mismatch', text: 'Use the calculated item refund of ' + suggested.toFixed(2) + '.' });
+            return;
+        }
         Swal.fire({
             title: 'Post this sales return?',
             html: 'Returned stock goes back into the branch.' + (refund > 0 ? '<br>Refund: <strong>' + refund.toFixed(2) + '</strong>' : '<br>No refund recorded.'),

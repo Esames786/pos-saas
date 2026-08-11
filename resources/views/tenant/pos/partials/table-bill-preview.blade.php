@@ -71,6 +71,22 @@
                     @endif
                 @endforeach
             @endforeach
+            <tr><td class="r" colspan="2">Subtotal</td><td class="r">{{ number_format((float) $sale->subtotal, 2) }}</td></tr>
+            @if((float) $sale->discount_amount > 0)
+                <tr><td class="r" colspan="2">Discount</td><td class="r">-{{ number_format((float) $sale->discount_amount, 2) }}</td></tr>
+            @endif
+            @if((float) $sale->tax_amount > 0)
+                <tr><td class="r" colspan="2">Tax</td><td class="r">{{ number_format((float) $sale->tax_amount, 2) }}</td></tr>
+            @endif
+            @if((float) $sale->service_charge_amount > 0)
+                <tr><td class="r" colspan="2">Service Charge</td><td class="r">{{ number_format((float) $sale->service_charge_amount, 2) }}</td></tr>
+            @endif
+            @if((float) $sale->delivery_charge_amount > 0)
+                <tr><td class="r" colspan="2">Delivery Charge</td><td class="r">{{ number_format((float) $sale->delivery_charge_amount, 2) }}</td></tr>
+            @endif
+            @if((float) $sale->tip_amount > 0)
+                <tr><td class="r" colspan="2">Tip</td><td class="r">{{ number_format((float) $sale->tip_amount, 2) }}</td></tr>
+            @endif
             <tr><td class="r bold" colspan="2">Order total</td><td class="r bold">{{ number_format((float) $sale->grand_total, 2) }}</td></tr>
         </table>
         <hr>

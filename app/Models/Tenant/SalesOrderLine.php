@@ -106,6 +106,11 @@ class SalesOrderLine extends Model
         return $this->hasMany(self::class, 'parent_sales_order_line_id');
     }
 
+    public function returnLines()
+    {
+        return $this->hasMany(SalesReturnLine::class, 'sales_order_line_id');
+    }
+
     public function combo()
     {
         return $this->belongsTo(Combo::class);

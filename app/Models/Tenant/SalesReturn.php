@@ -14,6 +14,7 @@ class SalesReturn extends Model
         'branch_id',
         'return_date',
         'subtotal',
+        'discount_amount',
         'tax_amount',
         'grand_total',
         'refund_method',
@@ -26,11 +27,12 @@ class SalesReturn extends Model
     protected function casts(): array
     {
         return [
-            'return_date'   => 'datetime',
-            'subtotal'      => 'decimal:2',
-            'tax_amount'    => 'decimal:2',
-            'grand_total'   => 'decimal:2',
-            'refund_amount' => 'decimal:2',
+            'return_date'     => 'datetime',
+            'subtotal'        => 'decimal:2',
+            'discount_amount' => 'decimal:2',
+            'tax_amount'      => 'decimal:2',
+            'grand_total'     => 'decimal:2',
+            'refund_amount'   => 'decimal:2',
         ];
     }
 

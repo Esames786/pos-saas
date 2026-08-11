@@ -38,9 +38,14 @@
             <dt class="col-sm-3">Subtotal</dt>
             <dd class="col-sm-9">{{ number_format($salesReturn->subtotal, 2) }}</dd>
 
+            @if($salesReturn->discount_amount > 0)
+                <dt class="col-sm-3">Discount Reversed</dt>
+                <dd class="col-sm-9">-{{ number_format($salesReturn->discount_amount, 2) }}</dd>
+            @endif
+
             @if($salesReturn->tax_amount > 0)
                 <dt class="col-sm-3">Tax</dt>
-                <dd class="col-sm-9">{{ number_format($salesReturn->tax_amount, 2) }}</dd>
+                <dd class="col-sm-9">+{{ number_format($salesReturn->tax_amount, 2) }}</dd>
             @endif
 
             <dt class="col-sm-3">Grand Total</dt>
@@ -72,6 +77,16 @@
     </div>
 </div>
 
+@if($salesReturn->order && ((float) $salesReturn->order->service_charge_amount > 0 || (float) $salesReturn->order->delivery_charge_amount > 0 || (float) $salesReturn->order->tip_amount > 0))
+<div class="alert alert-info">
+    <strong>Original order charges:</strong>
+    @if((float) $salesReturn->order->service_charge_amount > 0) Service {{ number_format($salesReturn->order->service_charge_amount, 2) }}. @endif
+    @if((float) $salesReturn->order->delivery_charge_amount > 0) Delivery {{ number_format($salesReturn->order->delivery_charge_amount, 2) }}. @endif
+    @if((float) $salesReturn->order->tip_amount > 0) Tip {{ number_format($salesReturn->order->tip_amount, 2) }}. @endif
+    <span class="d-block small mt-1">These order-level charges remain visible for audit and were not included in this item return.</span>
+</div>
+@endif
+
 <div class="card">
     <div class="card-header"><strong>Return Lines</strong></div>
     <div class="card-body table-responsive p-0">
@@ -83,8 +98,9 @@
                 <th scope="col">Variant</th>
                 <th scope="col">Return Qty</th>
                 <th scope="col">Unit Price</th>
+                <th scope="col">Discount</th>
                 <th scope="col">Tax</th>
-                <th scope="col">Line Total</th>
+                <th scope="col">Refund Total</th>
             </tr>
             </thead>
             <tbody>
@@ -94,6 +110,7 @@
                     <td>{{ $line->variant?->name ?? '—' }}</td>
                     <td>{{ number_format($line->quantity, 3) }}</td>
                     <td>{{ number_format($line->unit_price, 2) }}</td>
+                    <td>{{ number_format($line->discount_amount, 2) }}</td>
                     <td>{{ number_format($line->tax_amount, 2) }}</td>
                     <td><strong>{{ number_format($line->line_total, 2) }}</strong></td>
                 </tr>

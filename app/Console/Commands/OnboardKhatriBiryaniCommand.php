@@ -45,6 +45,7 @@ class OnboardKhatriBiryaniCommand extends Command
 
     private const PLAN_CODE = 'khatri_restaurant';
     private const TENANT_CODE = 'khatribiryani';
+    private const OWNER_EMAIL = 'owner_kb@bingoopos.com';
 
     /** restaurant_pro's module set = all standard modules minus manufacturing/offline_edge/erp_extensions. */
     private const PLAN_MODULES = [
@@ -151,9 +152,13 @@ class OnboardKhatriBiryaniCommand extends Command
         $this->info('plan khatri_restaurant ready (branch 1 / terminal 4 / user 10; no MFG/ERP/edge).');
 
         // ── 3. master: tenant + domain + subscription ──
+        $existingTenant = Tenant::where('tenant_code', self::TENANT_CODE)->first();
+        $previousOwnerEmail = $existingTenant?->owner_email ?: 'owner@' . self::TENANT_CODE . '.local';
+        $requestedOwnerEmail = $this->option('owner-email') ?: self::OWNER_EMAIL;
+
         $tenant = Tenant::updateOrCreate(['tenant_code' => self::TENANT_CODE], [
             'business_name' => 'Khatri Biryani', 'owner_name' => 'Khatri Biryani',
-            'owner_email' => $this->option('owner-email') ?: Tenant::where('tenant_code', self::TENANT_CODE)->value('owner_email'),
+            'owner_email' => $requestedOwnerEmail,
             'currency_code' => 'PKR', 'status' => 'pending',
         ]);
         TenantDomain::updateOrCreate(
@@ -177,11 +182,45 @@ class OnboardKhatriBiryaniCommand extends Command
         // provisionTenant's base seed updateOrCreate's the Owner WITH a password hash, so a
         // re-run without --owner-password would silently rotate the live credential. Capture
         // the existing hash first and restore it after, so re-runs never change the password.
-        $ownerEmail = $tenant->owner_email ?: 'owner@' . self::TENANT_CODE . '.local';
+        $ownerEmail = $tenant->owner_email ?: self::OWNER_EMAIL;
         $existingHash = null;
-        if ($alreadyProvisioned && ! $password) {
+        if ($alreadyProvisioned) {
             $tenancy->activate($tenant->fresh());
-            $existingHash = DB::connection('tenant')->table('users')->where('email', $ownerEmail)->value('password');
+            $ownerUsers = DB::connection('tenant')->table('users')
+                ->whereIn('email', array_values(array_unique([$previousOwnerEmail, $ownerEmail])))
+                ->get();
+            if ($ownerUsers->count() > 1) {
+                $this->error('Cannot migrate Owner email: both the old and new Owner emails already exist. Resolve the duplicate tenant users first.');
+
+                return self::FAILURE;
+            }
+            $ownerUser = $ownerUsers->first();
+
+            if ($ownerUser && $ownerUser->email !== $ownerEmail) {
+                $emailInUse = DB::connection('tenant')->table('users')
+                    ->where('email', $ownerEmail)
+                    ->where('id', '!=', $ownerUser->id)
+                    ->exists();
+                if ($emailInUse) {
+                    $this->error("Cannot migrate Owner email: {$ownerEmail} is already used by another tenant user.");
+
+                    return self::FAILURE;
+                }
+                DB::connection('tenant')->table('users')->where('id', $ownerUser->id)->update([
+                    'email' => $ownerEmail,
+                    'updated_at' => now(),
+                ]);
+                $this->info("owner email migrated: {$previousOwnerEmail} -> {$ownerEmail}");
+            }
+
+            if (! $password) {
+                if (! $ownerUser) {
+                    $this->error('Cannot preserve the Owner password because the existing Owner account was not found. Re-run with --owner-password.');
+
+                    return self::FAILURE;
+                }
+                $existingHash = $ownerUser?->password;
+            }
         }
         $provisioner->provisionTenant($tenant->fresh(), $password ?: Str::random(24));
         if ($existingHash !== null) {

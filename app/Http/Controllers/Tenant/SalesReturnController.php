@@ -22,7 +22,7 @@ class SalesReturnController extends Controller
         ]);
     }
 
-    public function create(Request $request)
+    public function create(Request $request, SalesReturnService $salesReturnService)
     {
         $salesOrder = null;
 
@@ -31,7 +31,11 @@ class SalesReturnController extends Controller
                 'branch', 'terminal', 'customer', 'createdBy',
                 'restaurantTable', 'restaurantWaiter',
                 'payments.method',
-                'lines.product', 'lines.variant',
+                'lines' => fn ($query) => $query->where(function ($lineQuery) {
+                    $lineQuery->whereNull('line_kind')
+                        ->orWhereNotIn('line_kind', ['component', 'modifier']);
+                }),
+                'lines.product', 'lines.variant', 'lines.returnLines',
             ])
                 ->whereIn('status', ['paid', 'partially_returned'])
                 ->find($request->sales_order_id);
@@ -44,7 +48,13 @@ class SalesReturnController extends Controller
             }
         }
 
-        return view('tenant.sales-returns.create', compact('salesOrder'));
+        $returnAllocations = $salesOrder
+            ? $salesOrder->lines->mapWithKeys(fn ($line) => [
+                $line->id => $salesReturnService->originalLineAllocation($salesOrder, $line),
+            ])
+            : collect();
+
+        return view('tenant.sales-returns.create', compact('salesOrder', 'returnAllocations'));
     }
 
     private function userCanAccessBranch(int $branchId): bool
@@ -100,7 +110,7 @@ class SalesReturnController extends Controller
 
     public function show(SalesReturn $salesReturn)
     {
-        $salesReturn->load(['order', 'branch', 'lines.product', 'lines.variant', 'createdBy']);
+        $salesReturn->load(['order', 'branch', 'lines.product', 'lines.variant', 'lines.orderLine', 'createdBy']);
 
         return view('tenant.sales-returns.show', compact('salesReturn'));
     }

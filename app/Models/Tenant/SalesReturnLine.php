@@ -15,6 +15,7 @@ class SalesReturnLine extends Model
         'product_variant_id',
         'quantity',
         'unit_price',
+        'discount_amount',
         'tax_amount',
         'line_total',
     ];
@@ -22,10 +23,11 @@ class SalesReturnLine extends Model
     protected function casts(): array
     {
         return [
-            'quantity'   => 'decimal:3',
-            'unit_price' => 'decimal:2',
-            'tax_amount' => 'decimal:2',
-            'line_total' => 'decimal:2',
+            'quantity'        => 'decimal:3',
+            'unit_price'      => 'decimal:2',
+            'discount_amount' => 'decimal:2',
+            'tax_amount'      => 'decimal:2',
+            'line_total'      => 'decimal:2',
         ];
     }
 

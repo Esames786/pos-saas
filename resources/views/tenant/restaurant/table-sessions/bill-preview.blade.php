@@ -108,6 +108,9 @@
                                     @if((float) $sale->service_charge_amount > 0)
                                         · Svc {{ number_format($sale->service_charge_amount, 2) }}
                                     @endif
+                                    @if((float) $sale->delivery_charge_amount > 0)
+                                        &middot; Delivery {{ number_format($sale->delivery_charge_amount, 2) }}
+                                    @endif
                                     @if((float) $sale->tip_amount > 0)
                                         · Tip {{ number_format($sale->tip_amount, 2) }}
                                     @endif

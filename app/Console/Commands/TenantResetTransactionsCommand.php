@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Schema;
  * piece of master data — the "demo today, start real business tomorrow" reset.
  *
  * KEEPS: products/categories/combos/modifiers/recipes, customers + address book, suppliers,
- * users/roles/permissions, branches/terminals/floors/tables/waiters, printers + routing +
+ * users/roles/permissions (including Owner email/password), branches/terminals/floors/tables/waiters, printers + routing +
  * layouts + paired agents, payment methods, delivery channels/riders, chart of accounts,
  * departments + mappings, promotions, report schedules, settings.
  *

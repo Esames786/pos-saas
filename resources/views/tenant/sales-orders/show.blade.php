@@ -138,7 +138,7 @@
                     @if($salesOrder->discount_amount > 0)
                         <dt class="col-sm-5">Discount</dt>
                         <dd class="col-sm-7">
-                            {{ number_format($salesOrder->discount_amount, 2) }}
+                            -{{ number_format($salesOrder->discount_amount, 2) }}
                             @if($salesOrder->discount_type !== 'none')
                                 <small class="text-muted">({{ $salesOrder->discount_type === 'percent' ? $salesOrder->discount_value . '%' : 'fixed' }})</small>
                             @endif
@@ -147,7 +147,22 @@
 
                     @if($salesOrder->tax_amount > 0)
                         <dt class="col-sm-5">Tax</dt>
-                        <dd class="col-sm-7">{{ number_format($salesOrder->tax_amount, 2) }}</dd>
+                        <dd class="col-sm-7">+{{ number_format($salesOrder->tax_amount, 2) }}</dd>
+                    @endif
+
+                    @if((float) $salesOrder->service_charge_amount > 0)
+                        <dt class="col-sm-5">Service Charge</dt>
+                        <dd class="col-sm-7">+{{ number_format($salesOrder->service_charge_amount, 2) }}</dd>
+                    @endif
+
+                    @if((float) $salesOrder->delivery_charge_amount > 0)
+                        <dt class="col-sm-5">Delivery Charge</dt>
+                        <dd class="col-sm-7">+{{ number_format($salesOrder->delivery_charge_amount, 2) }}</dd>
+                    @endif
+
+                    @if((float) $salesOrder->tip_amount > 0)
+                        <dt class="col-sm-5">Tip</dt>
+                        <dd class="col-sm-7">+{{ number_format($salesOrder->tip_amount, 2) }}</dd>
                     @endif
 
                     <dt class="col-sm-5 fw-bold">Grand Total</dt>

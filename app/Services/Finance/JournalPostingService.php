@@ -325,7 +325,8 @@ class JournalPostingService
 
     /**
      * Reverse a sale for a return/refund (FIN-7C):
-     *   Dr Sales Revenue (subtotal) + Dr Sales Tax Payable (tax)  / Cr cash-bank (grand_total)
+     *   Dr Sales Revenue (subtotal) + Dr Sales Tax Payable (tax)
+     *   / Cr Sales Discount (discount) + Cr cash-bank (grand_total)
      *   plus COGS reversal Dr Inventory / Cr COGS for the returned cost (restocked goods).
      */
     public function postSalesReturn(SalesReturn $return, ?int $userId = null): ?JournalEntry
@@ -337,6 +338,7 @@ class JournalPostingService
             }
 
             $subtotal = round((float) $return->subtotal, 4);
+            $discount = round((float) ($return->discount_amount ?? 0), 4);
             $tax      = round((float) $return->tax_amount, 4);
 
             $return->loadMissing(['order', 'lines.orderLine']);
@@ -384,6 +386,9 @@ class JournalPostingService
             }
             if ($tax > 0) {
                 $lines[] = ['account_code' => '2200', 'branch_id' => $return->branch_id, 'description' => 'Sales tax reversal', 'debit' => $tax, 'credit' => 0];
+            }
+            if ($discount > 0) {
+                $lines[] = ['account_code' => '4200', 'branch_id' => $return->branch_id, 'description' => 'Sales discount reversal', 'debit' => 0, 'credit' => $discount];
             }
             $lines[] = ['account_id' => $creditAccountId, 'branch_id' => $return->branch_id, 'description' => 'Refund ' . $return->return_no, 'debit' => 0, 'credit' => $grand];
 
