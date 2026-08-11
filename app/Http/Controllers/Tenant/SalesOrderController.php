@@ -116,6 +116,13 @@ class SalesOrderController extends Controller
             return $this->idempotentReplayOrThrow($request, $idempotency, $existing, $payloadHash, $printOrchestrator);
         }
 
+        // A line that NAMES a product but carries no quantity used to be dropped silently here, so
+        // an item punched with a blank quantity vanished off the bill with nothing said — the
+        // customer is charged for less than was rung up and the kitchen ticket disagrees with the
+        // till. Removing an item from a held order omits the line entirely, so that path is
+        // unaffected; this only catches "product chosen, quantity blank or zero".
+        $this->assertNoZeroQuantityLines($data['lines'] ?? []);
+
         $lines = collect($data['lines'])
             ->filter(fn ($line) => !empty($line['product_id']) && !empty($line['quantity']))
             ->values();
@@ -707,6 +714,29 @@ class SalesOrderController extends Controller
         $salesOrder->update(['status' => 'cancelled']);
 
         return back()->with('status', 'Sale cancelled successfully.');
+    }
+
+    /**
+     * Refuse a sale line that names a product with a zero / blank quantity.
+     *
+     * Validation already rejects an explicit 0 (min:0.001), but a BLANK quantity passed as
+     * "nullable" and the line was then quietly filtered away — the item disappeared from the bill
+     * and from the kitchen ticket with no error shown to the cashier. Fail loudly instead.
+     */
+    private function assertNoZeroQuantityLines(array $lines): void
+    {
+        foreach ($lines as $line) {
+            if (empty($line['product_id'])) {
+                continue;   // an empty spare row on the manual form — not a line at all
+            }
+            if ((float) ($line['quantity'] ?? 0) > 0) {
+                continue;
+            }
+
+            throw ValidationException::withMessages([
+                'lines' => 'Every item needs a quantity greater than zero. Remove the item instead of setting it to zero.',
+            ]);
+        }
     }
 
     private function validateSale(Request $request): array

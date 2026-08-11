@@ -321,6 +321,16 @@ class HeldSaleController extends Controller
         // 422 (never a rolled-back 500).
         $terminal = !empty($data['terminal_id']) ? Terminal::find($data['terminal_id']) : null;
 
+        // Same rule as a paid sale: a product chosen with a blank/zero quantity is an error, not a
+        // line to drop quietly. Removing an item from a held order omits the line entirely.
+        foreach ($data['lines'] ?? [] as $line) {
+            if (! empty($line['product_id']) && (float) ($line['quantity'] ?? 0) <= 0) {
+                throw ValidationException::withMessages([
+                    'lines' => 'Every item needs a quantity greater than zero. Remove the item instead of setting it to zero.',
+                ]);
+            }
+        }
+
         $lines = collect($data['lines'])->filter(fn ($l) => !empty($l['product_id']) && !empty($l['quantity']));
 
         if ($lines->isEmpty()) {
