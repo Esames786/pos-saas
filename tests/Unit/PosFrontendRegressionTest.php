@@ -137,4 +137,13 @@ class PosFrontendRegressionTest extends TestCase
         $this->assertNotEmpty($matches, 'The KOT pending calculator could not be located.');
         $this->assertStringContainsString("if (it.line_kind === 'combo_header') return;", $matches[0]);
     }
+
+    public function test_delivery_requires_an_attached_customer_before_hold_or_payment(): void
+    {
+        $view = file_get_contents(resource_path('views/tenant/pos/index.blade.php'));
+
+        $this->assertStringContainsString('function requireDeliveryCustomer()', $view);
+        $this->assertStringContainsString('Attach a customer before saving a delivery order.', $view);
+        $this->assertGreaterThanOrEqual(3, substr_count($view, 'if (!requireDeliveryCustomer()) return;'));
+    }
 }

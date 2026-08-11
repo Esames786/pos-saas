@@ -683,6 +683,12 @@ class HeldSaleController extends Controller
 
     private function validateDeliveryAttribution(array $data): array
     {
+        if (($data['order_type'] ?? null) === 'delivery' && empty($data['customer_id'])) {
+            throw ValidationException::withMessages([
+                'customer_id' => 'Attach a customer before saving a delivery order.',
+            ]);
+        }
+
         if (($data['order_type'] ?? null) !== 'delivery' || ! empty($data['restaurant_table_session_id']) || ! empty($data['restaurant_table_id'])) {
             $data['delivery_channel_id'] = null;
             $data['delivery_rider_id'] = null;

@@ -3472,6 +3472,32 @@ document.addEventListener('DOMContentLoaded', function () {
     var _completeSaleFlowActive = false;
     var _directPayReceiptIntent = null;
 
+    function requireDeliveryCustomer() {
+        const isDeliveryOrder = orderTypeEl && orderTypeEl.value === 'delivery';
+        const customerId = String((document.getElementById('customer_id') || {}).value || '').trim();
+        if (!isDeliveryOrder || customerId) return true;
+
+        const openCustomerModal = function () {
+            const modalEl = document.getElementById('customerModal');
+            if (modalEl && window.bootstrap) bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        };
+
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Customer required',
+                text: 'Attach a customer before saving a delivery order.',
+                confirmButtonText: 'Attach Customer',
+                confirmButtonColor: '#d4a72c',
+            }).then(openCustomerModal);
+        } else {
+            toast('error', 'Attach a customer before saving a delivery order.');
+            openCustomerModal();
+        }
+
+        return false;
+    }
+
     function resolveDirectPayKotIntent() {
         if (_directPayKotIntent !== null) return Promise.resolve(true);
         if (kotPending().pending <= 0) {
@@ -3556,6 +3582,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const submitBtn = document.getElementById('complete-sale-btn');
         if (!continuingFlow && (_completeSaleFlowActive || buttonIsBusy(submitBtn))) return;
         if (!cart.length) { toast('warning', 'Add at least one item'); return; }
+        if (!requireDeliveryCustomer()) return;
         _completeSaleFlowActive = true;
 
         if (_directPayKotIntent === null) {
@@ -3674,6 +3701,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const holdBtn = document.getElementById('hold-sale-btn');
         if (buttonIsBusy(holdBtn)) return;
         if (!cart.length) { toast('warning', 'Add at least one item'); return; }
+        if (!requireDeliveryCustomer()) return;
         setButtonBusy(holdBtn, true, 'Saving order');
 
         refreshServerTotals().finally(function () {
@@ -4928,6 +4956,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
                 return;
             }
+            if (!requireDeliveryCustomer()) return;
             _directPayKotIntent = null;
             _directPayReceiptIntent = null;
             bootstrap.Modal.getOrCreateInstance(paymentModalEl).show();
