@@ -123,30 +123,70 @@ class SalesReportService
             ->get();
     }
 
-    /** Dashboard quick stats for today. */
+    /**
+     * Dashboard quick stats for today — MUST agree with the Sales Report Center.
+     *
+     * This used to count only status = 'paid' and never subtract returns, so a returned order
+     * disappeared from the order count entirely while its money stayed in "Net Sales". The two
+     * errors partly cancelled, which made the tile look plausible while being wrong twice: on a
+     * live day it read 7 orders / 10,570 against the report's 11 orders / 10,820.
+     *
+     * Population and the returns deduction now match SalesReportEngine exactly: a returned order
+     * keeps its original sale visible, and returns come off as a separate figure.
+     */
     public function todayStats(int $branchId = null): array
     {
         $q = $this->currentBusinessDay(
-            SalesOrder::query()->where('status', 'paid')->when($branchId, fn ($q, $v) => $q->where('branch_id', $v)),
+            SalesOrder::query()
+                ->whereIn('status', ['paid', 'partially_returned', 'returned'])
+                ->when($branchId, fn ($q, $v) => $q->where('branch_id', $v)),
             $branchId
         );
 
         $count    = (clone $q)->count();
-        $net      = (clone $q)->sum('grand_total');
-        $gross    = (clone $q)->sum('subtotal');
-        $discount = (clone $q)->sum('discount_amount');
-        $tax      = (clone $q)->sum('tax_amount');
-        $sc       = (clone $q)->sum('service_charge_amount');
-        $tips     = (clone $q)->sum('tip_amount');
+        $billed   = (float) (clone $q)->sum('grand_total');
+        $gross    = (float) (clone $q)->sum('subtotal');
+        $discount = (float) (clone $q)->sum('discount_amount');
+        $tax      = (float) (clone $q)->sum('tax_amount');
+        $sc       = (float) (clone $q)->sum('service_charge_amount');
+        $tips     = (float) (clone $q)->sum('tip_amount');
+
+        // Returns are allocated by RETURN date, exactly as the engine does — a refund handed back
+        // today reduces today, whichever day the original sale happened. A return has no
+        // business_date/sale_date, so currentBusinessDay() cannot be reused here.
+        $clock = app(\App\Support\TenantClock::class);
+        $returnQuery = \App\Models\Tenant\SalesReturn::query()
+            ->where('status', 'posted')
+            ->when($branchId, fn ($q, $v) => $q->where('branch_id', $v));
+
+        if ($branchId) {
+            $returnQuery->whereDate('return_date', $clock->currentBusinessDate(\App\Models\Tenant\Branch::find($branchId)));
+        } else {
+            $map = $clock->currentBusinessDatesByBranch();
+            $returnQuery->where(function ($q) use ($map) {
+                foreach ($map as $bid => $date) {
+                    $q->orWhere(fn ($w) => $w->where('branch_id', $bid)->whereDate('return_date', $date));
+                }
+                if (empty($map)) {
+                    $q->whereRaw('1 = 0');
+                }
+            });
+        }
+
+        $returns = (float) $returnQuery->sum('grand_total');
+
+        $net = round($billed - $returns, 2);
 
         return [
             'order_count'           => $count,
-            'gross_sales'           => (float) $gross,
-            'total_discount'        => (float) $discount,
-            'total_tax'             => (float) $tax,
-            'total_service_charge'  => (float) $sc,
-            'total_tips'            => (float) $tips,
-            'net_sales'             => (float) $net,
+            'gross_sales'           => $gross,
+            'total_discount'        => $discount,
+            'total_tax'             => $tax,
+            'total_service_charge'  => $sc,
+            'total_tips'            => $tips,
+            'billed'                => $billed,
+            'returns_amount'        => $returns,
+            'net_sales'             => $net,
             'avg_order_value'       => $count > 0 ? round($net / $count, 2) : 0,
         ];
     }

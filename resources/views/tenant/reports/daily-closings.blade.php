@@ -15,9 +15,19 @@
                 <div class="text-muted small">Closings</div>
                 <div class="fw-bold fs-5">{{ number_format($t->closing_count) }}</div>
             </div></div></div>
+            {{-- "Total Sales" alone read as the day's takings while refunds were invisible, so it
+                 disagreed with the Report Center. Show billed, refunds and the net side by side. --}}
             <div class="col-md-2 col-sm-4"><div class="card border-0 shadow-sm text-center"><div class="card-body py-2">
-                <div class="text-muted small">Total Sales</div>
+                <div class="text-muted small">Billed</div>
                 <div class="fw-bold fs-5">{{ number_format($t->total_sales, 2) }}</div>
+            </div></div></div>
+            <div class="col-md-2 col-sm-4"><div class="card border-0 shadow-sm text-center"><div class="card-body py-2">
+                <div class="text-muted small">Refunds</div>
+                <div class="fw-bold fs-5 @if($t->total_refunds > 0) text-danger @endif">{{ number_format($t->total_refunds, 2) }}</div>
+            </div></div></div>
+            <div class="col-md-2 col-sm-4"><div class="card border-0 shadow-sm text-center"><div class="card-body py-2">
+                <div class="text-muted small">Net Sales</div>
+                <div class="fw-bold fs-5">{{ number_format($t->total_sales - $t->total_refunds, 2) }}</div>
             </div></div></div>
             <div class="col-md-2 col-sm-4"><div class="card border-0 shadow-sm text-center"><div class="card-body py-2">
                 <div class="text-muted small">Cash</div>
@@ -48,7 +58,9 @@
                                 <th scope="col">Branch</th>
                                 <th scope="col">Terminal</th>
                                 <th scope="col">Closed By</th>
-                                <th scope="col" class="text-end">Sales</th>
+                                <th scope="col" class="text-end">Billed</th>
+                                <th scope="col" class="text-end">Refunds</th>
+                                <th scope="col" class="text-end">Net Sales</th>
                                 <th scope="col" class="text-end">Expected</th>
                                 <th scope="col" class="text-end">Counted</th>
                                 <th scope="col" class="text-end">Variance</th>
@@ -63,6 +75,8 @@
                                 <td>{{ $c->terminal?->name ?? '—' }}</td>
                                 <td>{{ $c->closedBy?->name ?? '—' }}</td>
                                 <td class="text-end">{{ number_format($c->total_sales, 2) }}</td>
+                                <td class="text-end @if($c->total_refunds > 0) text-danger @endif">{{ number_format($c->total_refunds, 2) }}</td>
+                                <td class="text-end fw-semibold">{{ number_format($c->total_sales - $c->total_refunds, 2) }}</td>
                                 <td class="text-end">{{ number_format($c->expected_cash, 2) }}</td>
                                 <td class="text-end">{{ $c->counted_cash !== null ? number_format($c->counted_cash, 2) : '—' }}</td>
                                 <td class="text-end @if($c->cash_variance && abs($c->cash_variance) > 0.01) text-danger fw-semibold @endif">
@@ -71,7 +85,7 @@
                                 <td><span class="badge bg-{{ $c->status === 'approved' ? 'success' : 'secondary' }}">{{ ucfirst($c->status) }}</span></td>
                             </tr>
                             @empty
-                            <tr><td colspan="9" class="text-center text-muted py-4">No closings in range.</td></tr>
+                            <tr><td colspan="11" class="text-center text-muted py-4">No closings in range.</td></tr>
                             @endforelse
                         </tbody>
                     </table>

@@ -52,6 +52,14 @@
                             <span class="text-muted small">Net Sales Today</span>
                         </div>
                         <h4 class="mb-0 fw-bold">{{ number_format($today['net_sales'], 2) }}</h4>
+                        {{-- Show the deduction rather than a bare net, so this tile can be tied to
+                             the Report Center at a glance instead of looking like a third figure. --}}
+                        @if(($today['returns_amount'] ?? 0) > 0)
+                            <div class="small text-muted mt-1">
+                                billed {{ number_format($today['billed'], 2) }}
+                                − returns {{ number_format($today['returns_amount'], 2) }}
+                            </div>
+                        @endif
                     </div>
                 </div>
             </div>
