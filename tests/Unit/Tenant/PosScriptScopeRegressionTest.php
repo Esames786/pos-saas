@@ -89,6 +89,18 @@ class PosScriptScopeRegressionTest extends TestCase
         }
     }
 
+    public function test_successful_payment_reapplies_empty_cart_button_states_after_busy_release(): void
+    {
+        $source = file_get_contents(self::VIEW);
+        $this->assertNotFalse($source, 'POS view must be readable');
+
+        $this->assertMatchesRegularExpression(
+            '/clearCart\(\);.*?\.finally\(function \(\) \{\s*setButtonBusy\(submitBtn, false\);\s*.*?updateCartActionStates\(\);/s',
+            $source,
+            'Completing a sale must not restore the previously enabled Complete button after clearCart disables it.'
+        );
+    }
+
     /**
      * @return array{0:string,1:string,2:string} main block body, customer-modal block, top-level code
      */
@@ -98,23 +110,27 @@ class PosScriptScopeRegressionTest extends TestCase
         $scripts = $blocks[1];
         $this->assertGreaterThanOrEqual(2, count($scripts), 'POS view is expected to hold at least two script blocks');
 
-        // The main block is the one containing the DOMContentLoaded callback; the customer modal is
-        // the last block (an IIFE). Top level = whatever sits before the callback in the main block.
+        // Locate both blocks by their behavior. Assuming the customer IIFE is the final script would
+        // make this guard silently stop auditing the right block if another script is appended later.
         $mainIndex = null;
+        $customerIndex = null;
         foreach ($scripts as $i => $script) {
             if (str_contains($script, "document.addEventListener('DOMContentLoaded'")) {
                 $mainIndex = $i;
-                break;
+            }
+            if (str_contains($script, '/pos/customers/quick-store')) {
+                $customerIndex = $i;
             }
         }
         $this->assertNotNull($mainIndex, 'main POS script block not found');
+        $this->assertNotNull($customerIndex, 'customer-modal POS script block not found');
 
         $main = $scripts[$mainIndex];
         $split = strpos($main, "document.addEventListener('DOMContentLoaded'");
 
         return [
             substr($main, $split),          // inside the callback
-            end($scripts),                  // customer-modal IIFE
+            $scripts[$customerIndex],       // customer-modal IIFE
             substr($main, 0, $split),       // true top level
         ];
     }

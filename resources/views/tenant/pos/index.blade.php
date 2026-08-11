@@ -3883,6 +3883,9 @@ document.addEventListener('DOMContentLoaded', function () {
                     }
                 }).finally(function () {
                     setButtonBusy(submitBtn, false);
+                    // clearCart() recalculates these controls while Complete is still busy.
+                    // Re-apply the empty-cart state after restoring the button's original markup.
+                    updateCartActionStates();
                     _completeSaleFlowActive = false;
                 });
             })
