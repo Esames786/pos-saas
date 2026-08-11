@@ -1360,6 +1360,43 @@
 <script>
 document.body.classList.remove('mini-sidebar', 'expand-menu');
 document.body.classList.add('nosidebar');
+
+/*
+ * Double-submit guards live at SCRIPT TOP LEVEL, deliberately.
+ * The POS is split across two script blocks — this one (a DOMContentLoaded callback) and the
+ * customer-modal IIFE further down. Anything declared inside the callback below is invisible to
+ * that second block, and a handler whose FIRST line calls a missing helper dies on a
+ * ReferenceError with no visible symptom at all: the button simply does nothing. That is exactly
+ * how Add & Attach / Save address broke. Declared here, both blocks share one implementation.
+ * Keep them here; do not move them inside the callback.
+ */
+function buttonIsBusy(button) {
+    return !!(button && button.dataset.posBusy === '1');
+}
+
+function setButtonBusy(button, busy, label) {
+    if (!button) return;
+    if (busy) {
+        if (buttonIsBusy(button)) return;
+        button.dataset.posBusy = '1';
+        button.dataset.posOriginalHtml = button.innerHTML;
+        button.dataset.posWasDisabled = button.disabled ? '1' : '0';
+        button.disabled = true;
+        button.setAttribute('aria-busy', 'true');
+        button.innerHTML = '<span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>'
+            + '<span>' + (label || 'Please wait') + '</span>';
+        return;
+    }
+
+    if (!buttonIsBusy(button)) return;
+    button.innerHTML = button.dataset.posOriginalHtml || '';
+    button.disabled = button.dataset.posWasDisabled === '1';
+    button.removeAttribute('aria-busy');
+    delete button.dataset.posBusy;
+    delete button.dataset.posOriginalHtml;
+    delete button.dataset.posWasDisabled;
+}
+
 document.addEventListener('DOMContentLoaded', function () {
     const products   = @json($productsPayload);
     const combos     = @json($combosPayload);
@@ -1369,32 +1406,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const branchLineCancellationModes = @json($branches->mapWithKeys(fn ($branch) => [(string) $branch->id => $branch->held_kot_line_cancellation_approval_mode ?: ($branch->held_kot_cancellation_approval_mode ?? 'manager_required')]));
     const branchManualDiscountModes = @json($branches->mapWithKeys(fn ($branch) => [(string) $branch->id => $branch->manual_discount_approval_mode ?? 'manager_required']));
 
-    function buttonIsBusy(button) {
-        return !!(button && button.dataset.posBusy === '1');
-    }
-
-    function setButtonBusy(button, busy, label) {
-        if (!button) return;
-        if (busy) {
-            if (buttonIsBusy(button)) return;
-            button.dataset.posBusy = '1';
-            button.dataset.posOriginalHtml = button.innerHTML;
-            button.dataset.posWasDisabled = button.disabled ? '1' : '0';
-            button.disabled = true;
-            button.setAttribute('aria-busy', 'true');
-            button.innerHTML = '<span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>'
-                + '<span>' + (label || 'Please wait') + '</span>';
-            return;
-        }
-
-        if (!buttonIsBusy(button)) return;
-        button.innerHTML = button.dataset.posOriginalHtml || '';
-        button.disabled = button.dataset.posWasDisabled === '1';
-        button.removeAttribute('aria-busy');
-        delete button.dataset.posBusy;
-        delete button.dataset.posOriginalHtml;
-        delete button.dataset.posWasDisabled;
-    }
+    // buttonIsBusy / setButtonBusy are declared at script top level (above) so BOTH script
+    // blocks can reach them — see the note there before moving them.
 
     function buildPosUrl(params) {
         params = params || {};
