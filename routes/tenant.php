@@ -479,6 +479,7 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/sales-orders/create', [SalesOrderController::class, 'create'])->name('tenant.sales-orders.create');
                 Route::post('/sales-orders', [SalesOrderController::class, 'store'])->name('tenant.sales-orders.store');
                 Route::get('/sales-orders/{salesOrder}', [SalesOrderController::class, 'show'])->name('tenant.sales-orders.show');
+                Route::patch('/sales-orders/{salesOrder}/rider', [SalesOrderController::class, 'updateRider'])->name('tenant.sales-orders.rider.update');
                 Route::post('/sales-orders/{salesOrder}/cancel', [SalesOrderController::class, 'cancel'])->name('tenant.sales-orders.cancel');
 
                 // Sales Ledger

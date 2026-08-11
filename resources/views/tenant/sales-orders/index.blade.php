@@ -73,6 +73,7 @@
                 <th scope="col">Customer</th>
                 <th scope="col">Date</th>
                 <th scope="col">Type</th>
+                <th scope="col">Rider</th>
                 <th scope="col">Grand Total</th>
                 <th scope="col">Status</th>
                 <th scope="col" class="text-end">Action</th>
@@ -86,6 +87,7 @@
                     <td>{{ $order->customer?->name ?? $order->customer_name ?? '—' }}</td>
                     <td>{{ $order->sale_date?->format('Y-m-d H:i') }}</td>
                     <td>{{ str_replace('_', ' ', ucfirst($order->order_type)) }}</td>
+                    <td>{{ $order->order_type === 'delivery' ? ($order->deliveryRider?->name ?? 'Unassigned') : '—' }}</td>
                     <td><strong>{{ number_format($order->grand_total, 2) }}</strong></td>
                     <td>
                         <span class="badge bg-{{ match($order->status) {
@@ -107,7 +109,7 @@
                 </tr>
             @empty
                 <tr>
-                    <td colspan="8" class="text-center text-muted py-4">No sales orders found.</td>
+                    <td colspan="9" class="text-center text-muted py-4">No sales orders found.</td>
                 </tr>
             @endforelse
             </tbody>

@@ -181,6 +181,92 @@
     </div>
 </div>
 
+@if($salesOrder->order_type === 'delivery')
+<div class="card mt-3">
+    <div class="card-header d-flex align-items-center justify-content-between gap-2">
+        <strong>Delivery Assignment</strong>
+        <span class="badge bg-light text-dark">{{ $salesOrder->deliveryChannel?->name ?? 'Own Delivery' }}</span>
+    </div>
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <div class="small text-muted mb-1">Current Rider</div>
+                <div class="fw-semibold">
+                    <i class="ti ti-motorbike me-1" aria-hidden="true"></i>
+                    {{ $salesOrder->deliveryRider?->name ?? 'Unassigned' }}
+                    @if($salesOrder->deliveryRider?->phone)
+                        <small class="text-muted ms-1">{{ $salesOrder->deliveryRider->phone }}</small>
+                    @endif
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="small text-muted mb-1">Delivery Address</div>
+                <div>{{ $salesOrder->delivery_address ?: '—' }}</div>
+            </div>
+            @can('tenant.sales-orders.rider.update')
+                @if(!in_array($salesOrder->status, ['cancelled', 'returned'], true) && (!$salesOrder->deliveryChannel || $salesOrder->deliveryChannel->isOwn()))
+                    <div class="col-md-4">
+                        <form method="POST" action="{{ url('/sales-orders/' . $salesOrder->id . '/rider') }}" class="row g-2">
+                            @csrf
+                            @method('PATCH')
+                            <div class="col-12">
+                                <label for="delivery-rider-reassign" class="form-label small mb-1">Assign Rider</label>
+                                <select id="delivery-rider-reassign" name="delivery_rider_id" class="form-select" required>
+                                    <option value="">Select rider</option>
+                                    @foreach($deliveryRiders as $rider)
+                                        @php($isCurrentRider = (int) $salesOrder->delivery_rider_id === (int) $rider->id)
+                                        <option value="{{ $rider->id }}" @selected($isCurrentRider) @disabled($isCurrentRider)>
+                                            {{ $rider->name }}{{ $rider->phone ? ' - ' . $rider->phone : '' }}{{ $isCurrentRider ? ' (current)' : '' }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="col-8">
+                                <label for="rider-change-reason" class="visually-hidden">Reason</label>
+                                <input id="rider-change-reason" name="reason" class="form-control" maxlength="500" placeholder="Reason (optional)">
+                            </div>
+                            <div class="col-4 d-grid">
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="ti ti-switch-horizontal me-1" aria-hidden="true"></i>Assign
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                @endif
+            @endcan
+        </div>
+    </div>
+
+    @if($salesOrder->riderAssignments->isNotEmpty())
+        <div class="table-responsive border-top">
+            <table class="table table-sm table-nowrap align-middle mb-0">
+                <caption class="visually-hidden">Rider assignment history</caption>
+                <thead>
+                <tr>
+                    <th scope="col">Time</th>
+                    <th scope="col">Previous</th>
+                    <th scope="col">Assigned</th>
+                    <th scope="col">Changed By</th>
+                    <th scope="col">Reason</th>
+                </tr>
+                </thead>
+                <tbody>
+                @foreach($salesOrder->riderAssignments as $assignment)
+                    <tr>
+                        <td>{{ $assignment->created_at?->format('Y-m-d H:i') }}</td>
+                        <td>{{ $assignment->from_rider_name ?? 'Unassigned' }}</td>
+                        <td><strong>{{ $assignment->to_rider_name }}</strong></td>
+                        <td>{{ $assignment->changed_by_name ?? 'System' }}</td>
+                        <td>{{ $assignment->reason ?: '—' }}</td>
+                    </tr>
+                @endforeach
+                </tbody>
+            </table>
+        </div>
+    @endif
+</div>
+@endif
+
 {{-- Sale Lines --}}
 <div class="card mt-3">
     <div class="card-header"><strong>Sale Lines</strong></div>

@@ -202,4 +202,9 @@ class SalesOrder extends Model
     {
         return $this->belongsTo(DeliveryRider::class);
     }
+
+    public function riderAssignments()
+    {
+        return $this->hasMany(SalesOrderRiderAssignment::class)->orderByDesc('created_at')->orderByDesc('id');
+    }
 }

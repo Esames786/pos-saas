@@ -4776,12 +4776,18 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             const rows = sales.map(function (s) {
                 var printStatus = '';
+                var riderStatus = s.order_type === 'delivery'
+                    ? '<div class="small text-muted mt-1"><i class="ti ti-motorbike me-1"></i>' + escapeHtml(s.rider || 'Unassigned') + '</div>'
+                    : '';
+                var orderAction = s.order_type === 'delivery'
+                    ? '<a href="{{ url('/sales-orders') }}/' + Number(s.id) + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="View or change rider"><i class="ti ti-motorbike me-1"></i>Rider</a>'
+                    : '<a href="{{ url('/sales-orders') }}/' + Number(s.id) + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="View order"><i class="ti ti-eye"></i></a>';
                 if (s.printing && s.printing.resume_available) {
                     printStatus = '<div class="small text-warning mt-1"><i class="ti ti-alert-circle me-1"></i>Printing needs attention</div>';
                 }
                 return '<tr>' +
                     '<td><strong>' + escapeHtml(s.sale_no) + '</strong><div class="text-muted small">' + escapeHtml(s.time || s.ago || '') + '</div>' + printStatus + '</td>' +
-                    '<td>' + escapeHtml(s.customer || 'Walk-in') + '<div class="text-muted small text-capitalize">' + escapeHtml(String(s.order_type || '').replace(/_/g, ' ')) + '</div></td>' +
+                    '<td>' + escapeHtml(s.customer || 'Walk-in') + '<div class="text-muted small text-capitalize">' + escapeHtml(String(s.order_type || '').replace(/_/g, ' ')) + '</div>' + riderStatus + '</td>' +
                     '<td class="text-end fw-semibold">' + escapeHtml(s.total) + '</td>' +
                     '<td class="text-end text-nowrap">' +
                         '<button type="button" class="btn btn-sm btn-outline-primary me-1" data-reprint-receipt="' + Number(s.id) + '"><i class="ti ti-printer me-1"></i>Receipt</button>' +
@@ -4789,7 +4795,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         (s.printing && s.printing.resume_available
                             ? '<button type="button" class="btn btn-sm btn-warning me-1" data-resume-printing="' + Number(s.id) + '"><i class="ti ti-refresh me-1"></i>Resume</button>'
                             : '') +
-                        '<a href="{{ url('/sales-orders') }}/' + Number(s.id) + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="View"><i class="ti ti-eye"></i></a>' +
+                        orderAction +
                     '</td>' +
                 '</tr>';
             }).join('');

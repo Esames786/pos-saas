@@ -31,7 +31,7 @@ class SalesOrderController extends Controller
 {
     public function index(Request $request)
     {
-        $query = SalesOrder::with(['branch', 'terminal', 'customer', 'createdBy'])
+        $query = SalesOrder::with(['branch', 'terminal', 'customer', 'createdBy', 'deliveryRider'])
             ->orderByDesc('sale_date')
             ->orderByDesc('id');
 
@@ -610,9 +610,85 @@ class SalesOrderController extends Controller
             'lines.variant',
             'payments.method',
             'ledgerEntries',
+            'deliveryChannel',
+            'deliveryRider',
+            'riderAssignments',
         ]);
 
-        return view('tenant.sales-orders.show', compact('salesOrder'));
+        $deliveryRiders = collect();
+        if ($salesOrder->order_type === 'delivery') {
+            $deliveryRiders = DeliveryRider::where('status', 'active')
+                ->where(function ($query) use ($salesOrder) {
+                    $query->whereNull('branch_id')->orWhere('branch_id', $salesOrder->branch_id);
+                })
+                ->orderBy('name')
+                ->get();
+        }
+
+        return view('tenant.sales-orders.show', compact('salesOrder', 'deliveryRiders'));
+    }
+
+    public function updateRider(Request $request, SalesOrder $salesOrder)
+    {
+        abort_if(
+            app(\App\Services\Security\UserDataScope::class)->deniesSale(auth('tenant')->user(), $salesOrder),
+            403,
+            'This order belongs to another terminal or order type.'
+        );
+
+        app(\App\Services\Edge\BranchOperatingModeService::class)
+            ->assertSaleMutationAllowed(Branch::findOrFail($salesOrder->branch_id));
+
+        $data = $request->validate([
+            'delivery_rider_id' => ['required', 'integer', 'exists:delivery_riders,id'],
+            'reason' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $actor = auth('tenant')->user();
+
+        DB::connection('tenant')->transaction(function () use ($salesOrder, $data, $actor) {
+            $lockedSale = SalesOrder::whereKey($salesOrder->id)->lockForUpdate()->firstOrFail();
+
+            abort_if(
+                app(\App\Services\Security\UserDataScope::class)->deniesSale($actor, $lockedSale),
+                403,
+                'This order belongs to another terminal or order type.'
+            );
+            abort_unless($lockedSale->order_type === 'delivery', 422, 'Only delivery orders can have a rider.');
+            abort_if(in_array($lockedSale->status, ['cancelled', 'returned'], true), 422, 'A closed order cannot be reassigned.');
+
+            $channel = $lockedSale->deliveryChannel()->first();
+            abort_if($channel && ! $channel->isOwn(), 422, 'External delivery-channel orders cannot be assigned to an internal rider.');
+
+            $newRider = DeliveryRider::where('status', 'active')->find((int) $data['delivery_rider_id']);
+            abort_unless($newRider, 422, 'Selected rider is not active.');
+            abort_if(
+                $newRider->branch_id && (int) $newRider->branch_id !== (int) $lockedSale->branch_id,
+                422,
+                'Selected rider is not active for this order branch.'
+            );
+            abort_if((int) $lockedSale->delivery_rider_id === (int) $newRider->id, 422, 'This rider is already assigned.');
+
+            $oldRider = $lockedSale->deliveryRider()->first();
+            $lockedSale->riderAssignments()->create([
+                'branch_id' => $lockedSale->branch_id,
+                'from_delivery_rider_id' => $oldRider?->id,
+                'to_delivery_rider_id' => $newRider->id,
+                'from_rider_name' => $oldRider?->name,
+                'to_rider_name' => $newRider->name,
+                'changed_by_user_id' => $actor?->id,
+                'changed_by_name' => $actor?->name,
+                'reason' => trim((string) ($data['reason'] ?? '')) ?: null,
+                'created_at' => now(),
+            ]);
+            $lockedSale->update(['delivery_rider_id' => $newRider->id]);
+        });
+
+        if ($request->expectsJson()) {
+            return response()->json(['ok' => true, 'message' => 'Rider reassigned successfully.']);
+        }
+
+        return back()->with('status', 'Rider reassigned successfully.');
     }
 
     public function cancel(SalesOrder $salesOrder)
