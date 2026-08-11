@@ -67,10 +67,26 @@ class DailyClosingController extends Controller
             return back()->withErrors(['closing_date' => 'This branch/terminal/date is already closed.'])->withInput();
         }
 
+        // A closing with no count is not a closing. Blank used to default to 0, freezing a
+        // "whole drawer missing" variance into the day snapshot — the same silent-zero that let a
+        // cashier close a 28,400 shift at 0. An explicit typed 0 is still allowed: that is the
+        // operator's claim, not a default.
+        $hasDenominationCount = collect($data['denominations'] ?? [])->contains(fn ($q) => (int) $q > 0);
+        if (! $request->filled('counted_cash') && ! $hasDenominationCount) {
+            return back()->withErrors(['counted_cash' => 'Count the drawer first — enter the counted cash or a denomination count.'])->withInput();
+        }
+
         DB::transaction(function () use ($data) {
+            // The operational day is the shift's FROZEN business_date — the same rule every report
+            // uses. Grouping by DATE(closed_at) (a UTC wall-clock date) put a shift that stayed
+            // open past midnight, or was closed the next morning, on the wrong day's closing.
+            // Legacy shifts without a business_date fall back to the old behaviour.
             $shiftsQuery = Shift::where('branch_id', $data['branch_id'])
                 ->where('status', 'closed')
-                ->whereDate('closed_at', $data['closing_date']);
+                ->where(function ($q) use ($data) {
+                    $q->whereDate('business_date', $data['closing_date'])
+                      ->orWhere(fn ($q2) => $q2->whereNull('business_date')->whereDate('closed_at', $data['closing_date']));
+                });
 
             if (!empty($data['terminal_id'])) {
                 $shiftsQuery->where('terminal_id', $data['terminal_id']);

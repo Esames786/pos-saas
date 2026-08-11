@@ -190,8 +190,14 @@ class ShiftController extends Controller
             // closeShift operation (also used by the Edge local shift endpoint) — behavior unchanged; the
             // denomination-based counted-cash resolution stays a Cloud-controller concern.
             $countedCash = $this->calculateCashCount($data, 'shift', $shift->id);
+            if ($countedCash === null && $request->filled('counted_cash')) {
+                $countedCash = (float) $data['counted_cash'];
+            }
+            // No count entered at all used to silently close at 0 — recording the whole drawer as
+            // missing and raising a full-takings shortage voucher (it happened live: a 28,400
+            // shift closed at 0). Typing 0 explicitly is still allowed; defaulting to it is not.
             if ($countedCash === null) {
-                $countedCash = (float) ($data['counted_cash'] ?? 0);
+                return back()->withErrors(['counted_cash' => 'Count the drawer first — enter the counted cash (0 must be typed deliberately).'])->withInput();
             }
             $closed = $shiftService->closeShift($shift, (int) auth('tenant')->id(), $countedCash, $data['closing_notes'] ?? null);
         } catch (ShiftException $e) {
@@ -245,7 +251,9 @@ class ShiftController extends Controller
         $data = $request->validate([
             'branch_id'           => ['required', 'exists:branches,id'],
             'mode'                => ['required', 'in:per_terminal,branch_total'],
-            'branch_counted_cash' => ['nullable', 'numeric', 'min:0'],
+            // A blank branch count used to default to 0 and freeze a full-takings shortage into
+            // the Daily Closing. The count is the point of the exercise — typed 0 only.
+            'branch_counted_cash' => ['required_if:mode,branch_total', 'nullable', 'numeric', 'min:0'],
             'counted'             => ['nullable', 'array'],
             'counted.*'           => ['nullable', 'numeric', 'min:0'],
             'closing_notes'       => ['nullable', 'string'],
@@ -278,8 +286,18 @@ class ShiftController extends Controller
                     // per_terminal: the entered count for THIS terminal. branch_total: each terminal
                     // closes at its expected (per-terminal variance 0 — drawers weren't counted
                     // separately); the real figure is recorded at branch level on a Daily Closing.
+                    if ($data['mode'] === 'per_terminal'
+                        && (! isset($data['counted'][$locked->id]) || $data['counted'][$locked->id] === '' || $data['counted'][$locked->id] === null)) {
+                        // A drawer left blank used to close at 0 — the whole terminal's takings
+                        // recorded as missing. Every open drawer must be counted (0 typed counts).
+                        throw new ShiftException(
+                            'Enter the counted cash for terminal '
+                            . ($locked->terminal?->name ?? ('#' . $locked->terminal_id))
+                            . ' — every open drawer must be counted before the branch can close.'
+                        );
+                    }
                     $counted = $data['mode'] === 'per_terminal'
-                        ? (float) ($data['counted'][$locked->id] ?? 0)
+                        ? (float) $data['counted'][$locked->id]
                         : $expected;
 
                     $locked->update([
@@ -385,7 +403,11 @@ class ShiftController extends Controller
 
     private function calculateCashCount(array $data, string $sourceType, int $sourceId): ?float
     {
-        if (empty($data['denominations'])) {
+        // The close form submits the denominations array even when every field is blank. That
+        // used to come back as a "count" of 0.00, sailing past any blank-count guard — an
+        // untouched form is NO count, not a zero count.
+        $anyQuantity = collect($data['denominations'] ?? [])->contains(fn ($q) => (int) $q > 0);
+        if (empty($data['denominations']) || ! $anyQuantity) {
             return null;
         }
 
