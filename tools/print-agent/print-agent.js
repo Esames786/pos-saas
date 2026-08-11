@@ -29,7 +29,7 @@ const http     = require('http');
 const https    = require('https');
 const { URL }  = require('url');
 
-const AGENT_VERSION = '2.0.1';
+const AGENT_VERSION = '2.1.0';
 
 /* ── HTTP helper (http/https module — stable on every Node incl. the bundled
  *    runtime, unlike Node 18's experimental global fetch) ────────────────── */
@@ -276,19 +276,34 @@ function sendToNetworkPrinter(ip, port, payload) {
         }
 
         const socket = new net.Socket();
-        socket.setTimeout(8000);
+        // 8s was too tight for a busy shop's wifi — a printer that is simply slow to accept the
+        // connection was being written off as failed.
+        socket.setTimeout(15000);
+
+        // Whether the ticket already went down the wire. A failure BEFORE this is safe to retry;
+        // after it the printer may well have printed, and retrying would hand the customer a
+        // second copy of the same bill.
+        let payloadSent = false;
 
         socket.connect(port || 9100, ip, () => {
             socket.write(payload || '');
             socket.write('\n\n\n');
+            payloadSent = true;
             socket.end();
         });
 
         socket.on('close',   resolve);
-        socket.on('error',   reject);
+        socket.on('error',   (err) => {
+            err.safeToRetry = !payloadSent;
+            reject(err);
+        });
         socket.on('timeout', () => {
             socket.destroy();
-            reject(new Error('Printer connection timed out.'));
+            const err = new Error(payloadSent
+                ? 'Printer stopped responding after the ticket was sent.'
+                : 'Printer connection timed out.');
+            err.safeToRetry = !payloadSent;
+            reject(err);
         });
     });
 }
@@ -322,11 +337,35 @@ async function processJob(job) {
             throw new Error('No IP address configured for this printer.');
         }
 
-        await sendToNetworkPrinter(
-            printer.ip_address,
-            Number(printer.port || 9100),
-            job.raw_payload || ''
-        );
+        // A single wifi hiccup used to kill a ticket permanently (attempts=1, no retry) — the
+        // kitchen simply never got it and nobody noticed until the dashboard banner. Retry a
+        // couple of times, but ONLY when the payload provably never reached the printer.
+        const MAX_ATTEMPTS = 3;
+        const BACKOFF_MS = [1000, 3000];
+        let lastError = null;
+
+        for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            try {
+                await sendToNetworkPrinter(
+                    printer.ip_address,
+                    Number(printer.port || 9100),
+                    job.raw_payload || ''
+                );
+                lastError = null;
+                break;
+            } catch (err) {
+                lastError = err;
+                if (!err.safeToRetry || attempt === MAX_ATTEMPTS) {
+                    break;
+                }
+                log(`[RETRY] ${job.job_no}: ${err.message} — attempt ${attempt + 1}/${MAX_ATTEMPTS}`);
+                await new Promise((r) => setTimeout(r, BACKOFF_MS[attempt - 1] || 3000));
+            }
+        }
+
+        if (lastError) {
+            throw lastError;
+        }
 
         await markPrinted(job.id);
         log(`[OK]    ${job.job_no} → ${printer.name || printer.ip_address}`);

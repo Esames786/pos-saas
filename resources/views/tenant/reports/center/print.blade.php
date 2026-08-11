@@ -7,6 +7,13 @@
     $fmt = fn ($v) => number_format((float) $v, 2);
     $qty = fn ($v) => rtrim(rtrim(number_format((float) $v, 3, '.', ''), '0'), '.');
     $has = fn (string $s) => in_array($s, $sections, true);
+
+    // 72mm fits roughly 42 monospace characters. Seven columns do NOT fit: the name column gets
+    // squeezed to nothing and "Beverages" prints one letter per line. So thermal keeps every
+    // figure but stacks each row as name + a "sold − returned = net" line, while A4 keeps the
+    // wide table. Same numbers, layout chosen for the paper.
+    $isThermal = $mode === 'thermal';
+    $sub = fn ($a, $b, $c, $f) => $f($a) . ' − ' . $f($b) . ' = ' . $f($c);
 @endphp
 <style>
     body { font-family: 'Courier New', monospace; color: #000; margin: 0 auto; padding: 8px; }
@@ -86,6 +93,21 @@
 
 @if($has('categories') && $categories !== null)
 <h2>CATEGORIES</h2>
+@if($isThermal)
+<table>
+    @foreach($categories as $root)
+        <tr class="total"><td colspan="2">{{ $root['name'] }}</td></tr>
+        <tr><td>Qty {{ $sub($root['sold_qty'], $root['returned_qty'], $root['net_qty'], $qty) }}</td><td class="amt">{{ $sub($root['net'], $root['returns_amount'], $root['net_value'], $fmt) }}</td></tr>
+        @foreach($root['children'] as $c)
+            @if($c['id'] !== $root['id'])
+                <tr><td colspan="2">&nbsp;&nbsp;{{ $c['name'] }}</td></tr>
+                <tr><td>&nbsp;&nbsp;Qty {{ $sub($c['sold_qty'], $c['returned_qty'], $c['net_qty'], $qty) }}</td><td class="amt">{{ $sub($c['net'], $c['returns_amount'], $c['net_value'], $fmt) }}</td></tr>
+            @endif
+        @endforeach
+    @endforeach
+    <tr class="total"><td>TOTAL Qty {{ $sub(collect($categories)->sum('sold_qty'), collect($categories)->sum('returned_qty'), collect($categories)->sum('net_qty'), $qty) }}</td><td class="amt">{{ $sub(collect($categories)->sum('net'), collect($categories)->sum('returns_amount'), collect($categories)->sum('net_value'), $fmt) }}</td></tr>
+</table>
+@else
 <table>
     <tr><th>Category</th><th class="amt">Sold Qty</th><th class="amt">Ret Qty</th><th class="amt">Net Qty</th><th class="amt">Sold</th><th class="amt">Returns</th><th class="amt">Net</th></tr>
     @foreach($categories as $root)
@@ -97,9 +119,19 @@
     <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty(collect($categories)->sum('sold_qty')) }}</td><td class="amt">{{ $qty(collect($categories)->sum('returned_qty')) }}</td><td class="amt">{{ $qty(collect($categories)->sum('net_qty')) }}</td><td class="amt">{{ $fmt(collect($categories)->sum('net')) }}</td><td class="amt">{{ $fmt(collect($categories)->sum('returns_amount')) }}</td><td class="amt">{{ $fmt(collect($categories)->sum('net_value')) }}</td></tr>
 </table>
 @endif
+@endif
 
 @if($has('items') && $items !== null)
 <h2>ITEMS</h2>
+@if($isThermal)
+<table>
+    @foreach($items as $r)
+        <tr><td colspan="2">{{ $r->item }}{{ $r->variant ? ' (' . $r->variant . ')' : '' }}</td></tr>
+        <tr><td>Qty {{ $sub($r->sold_qty, $r->returned_qty, $r->net_qty, $qty) }}</td><td class="amt">{{ $sub($r->net, $r->returns_amount, $r->net_value, $fmt) }}</td></tr>
+    @endforeach
+    <tr class="total"><td>TOTAL Qty {{ $sub(collect($items)->sum('sold_qty'), collect($items)->sum('returned_qty'), collect($items)->sum('net_qty'), $qty) }}</td><td class="amt">{{ $sub(collect($items)->sum('net'), collect($items)->sum('returns_amount'), collect($items)->sum('net_value'), $fmt) }}</td></tr>
+</table>
+@else
 <table>
     <tr><th>Item</th><th class="amt">Sold Qty</th><th class="amt">Ret Qty</th><th class="amt">Net Qty</th><th class="amt">Sold</th><th class="amt">Returns</th><th class="amt">Net</th></tr>
     @foreach($items as $r)
@@ -107,6 +139,7 @@
     @endforeach
     <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty(collect($items)->sum('sold_qty')) }}</td><td class="amt">{{ $qty(collect($items)->sum('returned_qty')) }}</td><td class="amt">{{ $qty(collect($items)->sum('net_qty')) }}</td><td class="amt">{{ $fmt(collect($items)->sum('net')) }}</td><td class="amt">{{ $fmt(collect($items)->sum('returns_amount')) }}</td><td class="amt">{{ $fmt(collect($items)->sum('net_value')) }}</td></tr>
 </table>
+@endif
 @endif
 
 @if($has('waiters') && $waiters !== null)
@@ -125,20 +158,34 @@
 @foreach($combos['categories'] as $orderType => $rows)
     <h3>{{ strtoupper($orderType) }} — CATEGORIES</h3>
     <table>
+        @if($isThermal)
+            @foreach($rows as $r)
+                <tr><td colspan="2">{{ $r['label'] }}</td></tr>
+                <tr><td>Qty {{ $sub($r['sold_qty'], $r['returned_qty'], $r['net_qty'], $qty) }}</td><td class="amt">{{ $sub($r['net'], $r['returns_amount'], $r['net_value'], $fmt) }}</td></tr>
+            @endforeach
+        @else
         <tr><th>Category</th><th class="amt">Sold Qty</th><th class="amt">Ret Qty</th><th class="amt">Net Qty</th><th class="amt">Sold</th><th class="amt">Returns</th><th class="amt">Net</th></tr>
         @foreach($rows as $r)
             <tr><td>{{ $r['label'] }}</td><td class="amt">{{ $qty($r['sold_qty']) }}</td><td class="amt">{{ $qty($r['returned_qty']) }}</td><td class="amt">{{ $qty($r['net_qty']) }}</td><td class="amt">{{ $fmt($r['net']) }}</td><td class="amt">{{ $fmt($r['returns_amount']) }}</td><td class="amt">{{ $fmt($r['net_value']) }}</td></tr>
         @endforeach
+        @endif
         <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty(collect($rows)->sum('sold_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('returned_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('net_qty')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('returns_amount')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net_value')) }}</td></tr>
     </table>
 @endforeach
 @foreach($combos['items'] as $orderType => $rows)
     <h3>{{ strtoupper($orderType) }} — ITEMS</h3>
     <table>
+        @if($isThermal)
+            @foreach($rows as $r)
+                <tr><td colspan="2">{{ $r['label'] }}</td></tr>
+                <tr><td>Qty {{ $sub($r['sold_qty'], $r['returned_qty'], $r['net_qty'], $qty) }}</td><td class="amt">{{ $sub($r['net'], $r['returns_amount'], $r['net_value'], $fmt) }}</td></tr>
+            @endforeach
+        @else
         <tr><th>Item</th><th class="amt">Sold Qty</th><th class="amt">Ret Qty</th><th class="amt">Net Qty</th><th class="amt">Sold</th><th class="amt">Returns</th><th class="amt">Net</th></tr>
         @foreach($rows as $r)
             <tr><td>{{ $r['label'] }}</td><td class="amt">{{ $qty($r['sold_qty']) }}</td><td class="amt">{{ $qty($r['returned_qty']) }}</td><td class="amt">{{ $qty($r['net_qty']) }}</td><td class="amt">{{ $fmt($r['net']) }}</td><td class="amt">{{ $fmt($r['returns_amount']) }}</td><td class="amt">{{ $fmt($r['net_value']) }}</td></tr>
         @endforeach
+        @endif
         <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty(collect($rows)->sum('sold_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('returned_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('net_qty')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('returns_amount')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net_value')) }}</td></tr>
     </table>
 @endforeach
