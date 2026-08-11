@@ -186,14 +186,17 @@ class PrintAgentController extends Controller
             // from the browser cache — Khatri reinstalled and were still on 2.0.1, so a printing
             // fix that had shipped never actually reached the counter. The filename now carries the
             // version, so the saved file states which build it is and cannot be silently reused.
-            return response()
-                ->download($setupExe, 'BingooPrintAgent-Setup-' . $this->agentVersion() . '.exe')
-                ->setLastModified(new \DateTime('@' . filemtime($setupExe)))
-                ->withHeaders([
-                    'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
-                    'Pragma'        => 'no-cache',
-                    'X-Agent-Version' => $this->agentVersion(),
-                ]);
+            // download() returns a Symfony BinaryFileResponse, which has NO withHeaders() — set
+            // them on the header bag instead.
+            $response = response()->download(
+                $setupExe,
+                'BingooPrintAgent-Setup-' . $this->agentVersion() . '.exe'
+            );
+            $response->headers->set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+            $response->headers->set('Pragma', 'no-cache');
+            $response->headers->set('X-Agent-Version', $this->agentVersion());
+
+            return $response;
         }
 
         // Fallback: script bundle.

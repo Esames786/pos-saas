@@ -41,12 +41,30 @@ class AgentDownloadIsVersionedRegressionTest extends TestCase
         );
     }
 
-    public function test_the_response_forbids_caching(): void
+    /**
+     * BUILD THE REAL RESPONSE, do not grep for it.
+     *
+     * The first version of this test only read the source for "no-store" and passed — while the
+     * endpoint returned HTTP 500, because response()->download() yields a Symfony
+     * BinaryFileResponse which has no withHeaders(). A source-reading assertion cannot catch a
+     * method that does not exist. This one calls the controller and inspects what it produced.
+     */
+    public function test_the_download_response_is_actually_built_and_uncacheable(): void
     {
-        $code = $this->controller();
+        if (! is_file(base_path('tools/print-agent/dist/BingooPrintAgent-Setup.exe'))) {
+            $this->markTestSkipped('installer artefact not present in this checkout');
+        }
 
-        $this->assertStringContainsString('no-store', $code);
-        $this->assertStringContainsString('X-Agent-Version', $code);
+        $response = app(\App\Http\Controllers\Tenant\PrintAgentController::class)->downloadWindows();
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertStringContainsString(
+            'BingooPrintAgent-Setup-' . app(\App\Http\Controllers\Tenant\PrintAgentController::class)->agentVersion() . '.exe',
+            (string) $response->headers->get('Content-Disposition'),
+            'the saved file must carry its version'
+        );
+        $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+        $this->assertNotEmpty($response->headers->get('X-Agent-Version'));
     }
 
     public function test_the_page_shows_which_build_it_serves(): void
