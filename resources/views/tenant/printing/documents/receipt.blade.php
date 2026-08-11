@@ -42,13 +42,17 @@
         hr       { border: none; border-top: 1px dashed #000; margin: 4px 0; }
         table    { width: 100%; border-collapse: collapse; }
         td       { vertical-align: top; }
-        /* The numeric cells sat flush against each other with no padding, so a four-figure price
-           ran straight into the total: "1 1,200.00 1,200.00" printed as "11,200.001,200.00".
-           The gap is now structural, not a hope that the numbers stay short. */
-        .item-name  { width: 40%; word-break: break-word; }
-        .item-qty   { width: 12%; text-align: right; white-space: nowrap; padding-left: 6px; }
-        .item-price { width: 24%; text-align: right; white-space: nowrap; padding-left: 6px; }
-        .item-total { width: 24%; text-align: right; white-space: nowrap; padding-left: 6px; }
+        /* ONE LINE PER ITEM, LIKE THE PAPER.
+           This was a four-column table (Item/Qty/Price/Total) on a 72mm slip. There is not enough
+           room for four columns, so the name was squeezed into a third of the width and
+           "Chicken Biryani (1/2 kg)" wrapped over three lines — while the thermal receipt printed
+           the same item on a single tidy line. That is why the final bill looked right and the
+           preview did not. The description now carries the quantity, exactly as
+           EscPosPayloadService::receipt() composes it, leaving the whole remaining width to the
+           amount. Two columns also make the old number collision ("11,200.001,200.00")
+           impossible rather than merely padded apart. */
+        .item-name  { width: 68%; word-break: break-word; }
+        .item-total { width: 32%; text-align: right; white-space: nowrap; padding-left: 8px; }
         .totals td:first-child { width: 60%; text-align: right; padding-right: 4px; }
         .totals td:last-child  { width: 40%; text-align: right; white-space: nowrap; }
         .print-btn { display: block; margin: 12px auto; padding: 8px 24px; cursor: pointer; font-size: 14px; }
@@ -148,9 +152,7 @@
     <thead>
         <tr>
             <td class="item-name bold">Item</td>
-            <td class="item-qty bold">Qty</td>
-            <td class="item-price bold">Price</td>
-            <td class="item-total bold">Total</td>
+            <td class="item-total bold">Amount</td>
         </tr>
     </thead>
     <tbody>
@@ -161,9 +163,20 @@
                 @if($show('show_item_codes') && $line->product?->barcode)
                     <small>{{ $line->product->barcode }}</small><br>
                 @endif
-                {{ $line->product_name }}
+                @php
+                    // "2x" leads the description and the unit price is shown inline only when the
+                    // quantity is not 1 — identical to the composed thermal line, so the slip on
+                    // screen and the slip in the customer's hand read the same.
+                    $lineQty = rtrim(rtrim(number_format((float) $line->quantity, 3, '.', ''), '0'), '.');
+                @endphp
+                {{ $lineQty }}{{ $unitSuffix($line->unit_code) }}x {{ $line->product_name }}
                 @if($line->variant_name)
                     <small>({{ $line->variant_name }})</small>
+                @endif
+                @if((float) $line->quantity !== 1.0)
+                    {{-- The @ must live inside the expression: Blade reads a bare "@{{" as its own
+                         escape syntax and would print the literal expression instead. --}}
+                    <small>{{ '@' . number_format($line->unit_price, 2) }}</small>
                 @endif
                 @foreach(($line->modifiers ?? []) as $modifier)
                     @if(!empty($modifier['name']))
@@ -182,8 +195,6 @@
                     <br><small>- {{ rtrim(rtrim(number_format((float) $component->quantity, 3, '.', ''), '0'), '.') }}{{ $unitSuffix($component->unit_code) }} x {{ $component->product_name }}</small>
                 @endforeach
             </td>
-            <td class="item-qty">{{ rtrim(rtrim(number_format((float) $line->quantity, 3, '.', ''), '0'), '.') }}{{ $unitSuffix($line->unit_code) }}</td>
-            <td class="item-price">{{ number_format($line->unit_price, 2) }}</td>
             <td class="item-total">{{ number_format($line->line_total, 2) }}</td>
         </tr>
         @endforeach
