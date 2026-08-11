@@ -168,12 +168,20 @@ class SalesReportCenterController extends Controller
 
         $pick = fn (string $key, callable $loader) => in_array($key, $sections, true) ? $loader() : null;
 
+        // Category and item nets are MERCHANDISE only — the delivery charge rides on the order,
+        // not on any line — so those totals legitimately differ from NET SALES. Printed bare that
+        // reads as three unrelated numbers. Load the overview ONCE and hand every section the
+        // bridging figures so each total can show how it reaches NET SALES, whichever sections the
+        // user ticked.
+        $summary = $this->engine->overview($filters);
+
         return view('tenant.reports.center.print', [
             'mode' => $mode,
             'paper' => $paper,
             'filters' => $filters,
             'sections' => $sections,
-            'overview' => $pick('overview', fn () => $this->engine->overview($filters)),
+            'bridge' => $summary,
+            'overview' => in_array('overview', $sections, true) ? $summary : null,
             'orderTypes' => $pick('order_types', fn () => $this->engine->byOrderType($filters)),
             'categories' => $pick('categories', fn () => $this->engine->byCategory($filters)),
             'items' => $pick('items', fn () => $this->engine->byItem($filters)),

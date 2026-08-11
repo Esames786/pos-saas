@@ -14,6 +14,22 @@
     // wide table. Same numbers, layout chosen for the paper.
     $isThermal = $mode === 'thermal';
     $sub = fn ($a, $b, $c, $f) => $f($a) . ' - ' . $f($b) . ' = ' . $f($c);
+
+    // Item/category nets cover MERCHANDISE only; the delivery charge belongs to the order, not to
+    // any line. Printed alone those totals look like they contradict NET SALES, so every
+    // line-based section closes with the bridge that gets it there.
+    $bridgeDelivery = (float) ($bridge['delivery_charge'] ?? 0);
+    $bridgeNetSales = (float) ($bridge['net_sales'] ?? 0);
+    $bridgeRows = function (float $lineNet, int $span) use ($bridgeDelivery, $bridgeNetSales, $fmt) {
+        // Only claim a reconciliation when the arithmetic actually closes.
+        if (abs(($lineNet + $bridgeDelivery) - $bridgeNetSales) > 0.01) {
+            return '';
+        }
+        $label = fn ($t) => '<td' . ($span > 1 ? ' colspan="' . ($span - 1) . '"' : '') . '>' . $t . '</td>';
+
+        return '<tr>' . $label('Plus Delivery Charges') . '<td class="amt">' . $fmt($bridgeDelivery) . '</td></tr>'
+             . '<tr class="total">' . $label('= NET SALES') . '<td class="amt">' . $fmt($bridgeNetSales) . '</td></tr>';
+    };
 @endphp
 <style>
     body { font-family: 'Courier New', monospace; color: #000; margin: 0 auto; padding: 8px; }
@@ -116,6 +132,7 @@
         @endforeach
     @endforeach
     <tr class="total"><td>TOTAL Qty {{ $sub(collect($categories)->sum('sold_qty'), collect($categories)->sum('returned_qty'), collect($categories)->sum('net_qty'), $qty) }}</td><td class="amt">{{ $sub(collect($categories)->sum('net'), collect($categories)->sum('returns_amount'), collect($categories)->sum('net_value'), $fmt) }}</td></tr>
+    {!! $bridgeRows((float) collect($categories)->sum('net_value'), 2) !!}
 </table>
 @else
 <table>
@@ -127,6 +144,7 @@
         @endforeach
     @endforeach
     <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty(collect($categories)->sum('sold_qty')) }}</td><td class="amt">{{ $qty(collect($categories)->sum('returned_qty')) }}</td><td class="amt">{{ $qty(collect($categories)->sum('net_qty')) }}</td><td class="amt">{{ $fmt(collect($categories)->sum('net')) }}</td><td class="amt">{{ $fmt(collect($categories)->sum('returns_amount')) }}</td><td class="amt">{{ $fmt(collect($categories)->sum('net_value')) }}</td></tr>
+    {!! $bridgeRows((float) collect($categories)->sum('net_value'), 7) !!}
 </table>
 @endif
 @endif
@@ -140,6 +158,7 @@
         <tr><td>Qty {{ $sub($r->sold_qty, $r->returned_qty, $r->net_qty, $qty) }}</td><td class="amt">{{ $sub($r->net, $r->returns_amount, $r->net_value, $fmt) }}</td></tr>
     @endforeach
     <tr class="total"><td>TOTAL Qty {{ $sub(collect($items)->sum('sold_qty'), collect($items)->sum('returned_qty'), collect($items)->sum('net_qty'), $qty) }}</td><td class="amt">{{ $sub(collect($items)->sum('net'), collect($items)->sum('returns_amount'), collect($items)->sum('net_value'), $fmt) }}</td></tr>
+    {!! $bridgeRows((float) collect($items)->sum('net_value'), 2) !!}
 </table>
 @else
 <table>
@@ -148,6 +167,7 @@
         <tr><td>{{ $r->item }}{{ $r->variant ? ' (' . $r->variant . ')' : '' }}</td><td class="amt">{{ $qty($r->sold_qty) }}</td><td class="amt">{{ $qty($r->returned_qty) }}</td><td class="amt">{{ $qty($r->net_qty) }}</td><td class="amt">{{ $fmt($r->net) }}</td><td class="amt">{{ $fmt($r->returns_amount) }}</td><td class="amt">{{ $fmt($r->net_value) }}</td></tr>
     @endforeach
     <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty(collect($items)->sum('sold_qty')) }}</td><td class="amt">{{ $qty(collect($items)->sum('returned_qty')) }}</td><td class="amt">{{ $qty(collect($items)->sum('net_qty')) }}</td><td class="amt">{{ $fmt(collect($items)->sum('net')) }}</td><td class="amt">{{ $fmt(collect($items)->sum('returns_amount')) }}</td><td class="amt">{{ $fmt(collect($items)->sum('net_value')) }}</td></tr>
+    {!! $bridgeRows((float) collect($items)->sum('net_value'), 7) !!}
 </table>
 @endif
 @endif
@@ -266,11 +286,16 @@
 @endif
 
 @if($has('overview') && $overview && !empty($overview['payments']))
-<h2>PAYMENTS</h2>
+<h2>PAYMENTS COLLECTED</h2>
 <table>
     @foreach($overview['payments'] as $method => $amount)
         <tr><td style="text-transform: capitalize">{{ str_replace('_', ' ', $method) }}</td><td class="amt">{{ $fmt($amount) }}</td></tr>
     @endforeach
+    <tr class="total"><td>TOTAL COLLECTED</td><td class="amt">{{ $fmt(collect($overview['payments'])->sum()) }}</td></tr>
+    {{-- Printed alone this total contradicts NET SALES: it is money taken BEFORE refunds went
+         back out. Close the loop here so the page never ends on an unexplained figure. --}}
+    <tr><td>Less Refunds Paid</td><td class="amt">-{{ $fmt($overview['refunds_recorded']) }}</td></tr>
+    <tr class="total"><td>= NET RECEIVED</td><td class="amt">{{ $fmt(collect($overview['payments'])->sum() - (float) $overview['refunds_recorded']) }}</td></tr>
 </table>
 @endif
 
