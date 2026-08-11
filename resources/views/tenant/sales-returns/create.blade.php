@@ -160,10 +160,14 @@
         <div class="card-header"><strong>Refund Details</strong></div>
         <div class="card-body row g-3">
             <div class="col-md-4">
-                <label for="refund_method" class="form-label">Refund Method</label>
-                <select id="refund_method" name="refund_method"
+                <label for="refund_method" class="form-label required">Refund Method</label>
+                {{-- "— None —" used to be selectable AND the default: a return could be posted with
+                     no refund method, which credits Undeposited Funds and records NO cash movement,
+                     so money sat in suspense and the drawer never reconciled. Goods coming back
+                     always means money going back — the method must be stated. --}}
+                <select id="refund_method" name="refund_method" required
                         class="form-select @error('refund_method') is-invalid @enderror">
-                    <option value="">— None —</option>
+                    <option value="" disabled @selected(! old('refund_method'))>Select refund method</option>
                     <option value="cash"          @selected(old('refund_method') === 'cash')>Cash</option>
                     <option value="bank_transfer" @selected(old('refund_method') === 'bank_transfer')>Bank Transfer</option>
                     <option value="card"          @selected(old('refund_method') === 'card')>Card</option>

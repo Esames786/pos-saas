@@ -27,6 +27,13 @@ class SalesReturnService
         ?float $refundAmount,
         int $userId,
     ): SalesReturn {
+        // Defence in depth behind the request validation. A return with no refund method posts
+        // Dr revenue / Cr 1500 Undeposited Funds and writes NO cash-bank movement, so the money
+        // is never actually returned on the books and the drawer can never be reconciled.
+        if (! $refundMethod) {
+            throw new \RuntimeException('Select how the refund was paid — a return cannot be posted without a refund method.');
+        }
+
         $salesReturn = DB::connection('tenant')->transaction(function () use (
             $salesOrder, $lines, $reason, $refundMethod, $refundAmount, $userId
         ) {

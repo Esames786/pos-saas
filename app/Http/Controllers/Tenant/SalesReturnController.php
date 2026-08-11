@@ -73,7 +73,9 @@ class SalesReturnController extends Controller
         $data = $request->validate([
             'sales_order_id'              => ['required', 'exists:sales_orders,id'],
             'reason'                      => ['nullable', 'string'],
-            'refund_method'               => ['nullable', Rule::in(['cash', 'bank_transfer', 'card', 'other'])],
+            // REQUIRED, not nullable: without a method the GL credits 1500 Undeposited Funds and no
+            // cash movement is written, so the refund silently never happens on the books.
+            'refund_method'               => ['required', Rule::in(['cash', 'bank_transfer', 'card', 'other'])],
             'refund_amount'               => ['nullable', 'numeric', 'min:0'],
             'lines'                       => ['required', 'array', 'min:1'],
             'lines.*.sales_order_line_id' => ['required', 'exists:sales_order_lines,id'],
