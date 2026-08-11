@@ -48,11 +48,13 @@ class SalesReturnIntegrityMySqlTest extends MySqlTenantTestCase
             'line_total' => 198,
         ]);
 
+        // A refund method is now mandatory — a return with none posts into Undeposited Funds and
+        // never moves the cash, which is how a live day ended with money stuck in suspense.
         $return = app(SalesReturnService::class)->processReturn(
             SalesOrder::findOrFail($saleId),
             [['sales_order_line_id' => $lineId, 'quantity' => 1]],
             'Test return',
-            null,
+            'cash',
             null,
             $userId,
         );
@@ -87,10 +89,33 @@ class SalesReturnIntegrityMySqlTest extends MySqlTenantTestCase
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('cannot be returned separately');
 
+        // Pass a valid refund method so this proves the COMPONENT rule, not the refund-method rule.
         app(SalesReturnService::class)->processReturn(
             SalesOrder::findOrFail($saleId),
             [['sales_order_line_id' => $lineId, 'quantity' => 1]],
             null,
+            'cash',
+            null,
+            $userId,
+        );
+    }
+
+    /** Goods coming back always means money going back — the method is not optional. */
+    public function test_a_return_cannot_be_posted_without_a_refund_method(): void
+    {
+        $branchId = $this->makeBranch();
+        $productId = $this->makeProduct($this->makeCategory(), ['is_stock_tracked' => 0, 'inventory_consumption_method' => 'none']);
+        $userId = $this->makeUser();
+        $saleId = $this->makeSale($branchId, ['created_by_user_id' => $userId, 'subtotal' => 50, 'grand_total' => 50, 'paid_amount' => 50]);
+        $lineId = $this->makeSaleLine($saleId, $productId, ['quantity' => 1, 'unit_price' => 50, 'line_total' => 50]);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('cannot be posted without a refund method');
+
+        app(SalesReturnService::class)->processReturn(
+            SalesOrder::findOrFail($saleId),
+            [['sales_order_line_id' => $lineId, 'quantity' => 1]],
+            'No method chosen',
             null,
             null,
             $userId,
