@@ -71,10 +71,16 @@
     body { font-family: 'Courier New', monospace; color: #000; margin: 0 auto; padding: 8px; }
     /* PRINT-PARITY: thermal carries the same figures as A4 in a paper-appropriate layout. */
     @if($mode === 'thermal')
-    body { width: {{ $paper === '58mm' ? '52mm' : '72mm' }}; font-size: 10px; }
-    h1 { font-size: 13px; text-align: center; margin: 4px 0; }
-    h2 { font-size: 11px; border-top: 1px dashed #000; padding-top: 4px; margin: 8px 0 4px; }
-    h3 { font-size: 10px; margin: 6px 0 2px; }
+    /* Thermal heads print grey and thin — the counter could not read 10px normal weight. Bold at
+       12px is the legibility win; 58mm stays smaller because it has ~20% less width to give. */
+    body {
+        width: {{ $paper === '58mm' ? '52mm' : '72mm' }};
+        font-size: {{ $paper === '58mm' ? '11px' : '12px' }};
+        font-weight: 700;
+    }
+    h1 { font-size: {{ $paper === '58mm' ? '14px' : '15px' }}; text-align: center; margin: 4px 0; }
+    h2 { font-size: {{ $paper === '58mm' ? '12px' : '13px' }}; border-top: 1px dashed #000; padding-top: 4px; margin: 8px 0 4px; }
+    h3 { font-size: {{ $paper === '58mm' ? '11px' : '12px' }}; margin: 6px 0 2px; }
     table { width: 100%; border-collapse: collapse; }
     th, td { vertical-align: top; word-break: break-word; text-align: left; padding: 1px 2px; }
     th { border-bottom: 1px dashed #000; }

@@ -72,13 +72,28 @@ class ThermalSalesReportLayoutRegressionTest extends TestCase
 
     public function test_a_worst_case_thermal_figures_line_stays_within_the_paper(): void
     {
+        // Courier advances ~0.6em per character, so 72mm (272px) at 12px holds ~37 characters.
         // "Amt" plus three right-aligned amounts is the widest line the layout can produce.
+        $usableChars = (int) floor((72 / 25.4 * 96) / (12 * 0.6));
         $widest = 'Amt' . str_repeat(' 999,999.00', 3);
 
         $this->assertLessThanOrEqual(
-            45,
+            $usableChars,
             strlen($widest),
-            'the figures line must fit 72mm (~45 monospace characters)'
+            'the figures line must fit 72mm at the printed font size'
         );
+    }
+
+    public function test_thermal_is_printed_bold_and_large_enough_to_read(): void
+    {
+        $view = $this->printView();
+
+        // The counter could not read 10px normal weight off a thermal head.
+        $this->assertMatchesRegularExpression(
+            "/font-size:\s*\{\{ \\\$paper === '58mm' \? '11px' : '12px' \}\}/",
+            $view,
+            'thermal body must print at 12px on 80mm (11px on the narrower 58mm roll)'
+        );
+        $this->assertMatchesRegularExpression('/font-weight:\s*700/', $view, 'thermal must print bold');
     }
 }
