@@ -541,6 +541,11 @@ class EscPosPayloadService
             $catWidth = (int) floor(self::COLS_80MM / max(1, $big['w']));
             $out .= $this->scaled(mb_strlen($bracketed) <= $catWidth ? $bracketed : $category, $big, true, true);
         }
+        // The browser KOT always honoured show_branch_name; the paper never printed it at all, so
+        // the toggle changed the preview and not the ticket. Same gate on both now.
+        if ($show('show_branch_name') && $sale->branch?->name) {
+            $out .= $this->center($sale->branch->name) . "\n";
+        }
         if ($show('show_order_no')) {
             $out .= $this->center($sale->sale_no ?? '') . "\n";
         }
@@ -557,7 +562,7 @@ class EscPosPayloadService
         if ($show('show_cashier_name') && $sale->createdBy) {
             $out .= 'CASHIER: ' . $sale->createdBy->name . "\n";
         }
-        if ($sale->vehicle_number) {
+        if ($show('show_vehicle_number') && $sale->vehicle_number) {
             $out .= $this->scaled('VEHICLE: ' . $sale->vehicle_number, $big, true);
         }
         // The old ticket led with a big wall-clock time; the date is reference and stays small.

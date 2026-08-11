@@ -64,13 +64,7 @@ class ReceiptLayoutController extends Controller
             $logoPath = $request->file('logo')->store('printing/logos', 'public');
         }
 
-        $boolFields = [
-            'show_logo', 'show_branch_name', 'show_branch_address', 'show_branch_phone',
-            'show_tax_number', 'show_cashier_name', 'show_customer_name', 'show_table_info',
-            'show_order_no', 'show_order_time', 'show_updated_time', 'show_print_time',
-            'show_item_codes', 'show_payment_breakdown', 'show_bingoo_branding',
-            'show_delivery_details', 'show_vehicle_number', 'show_order_type', 'is_active',
-        ];
+        $boolFields = [...ReceiptLayoutSetting::TOGGLE_FIELDS, 'is_active'];
 
         foreach ($boolFields as $f) {
             $data[$f] = !empty($data[$f]);
@@ -94,13 +88,7 @@ class ReceiptLayoutController extends Controller
         $base = $receiptLayoutSetting->load('branch');
 
         // Allow live override from query params (real-time preview)
-        $boolFields = [
-            'show_logo', 'show_branch_name', 'show_branch_address', 'show_branch_phone',
-            'show_tax_number', 'show_cashier_name', 'show_customer_name', 'show_table_info',
-            'show_order_no', 'show_order_time', 'show_updated_time', 'show_print_time',
-            'show_item_codes', 'show_payment_breakdown', 'show_bingoo_branding',
-            'show_delivery_details', 'show_vehicle_number', 'show_order_type',
-        ];
+        $boolFields = ReceiptLayoutSetting::TOGGLE_FIELDS;
 
         // Build a live layout object from request params (or fall back to saved values)
         $layout = (object) [
@@ -126,11 +114,36 @@ class ReceiptLayoutController extends Controller
         $salesOrder = SalesOrder::with([
                 'lines', 'branch', 'payments.method',
                 'restaurantTable.floor', 'restaurantWaiter', 'createdBy',
+                'deliveryChannel', 'deliveryRider',
             ])
             ->where('branch_id', $base->branch_id)
             ->where('status', 'paid')
             ->latest('sale_date')
             ->first() ?? $this->fakeSalesOrder($base->branch);
+
+        // The Delivery Details toggle needs a sale that HAS delivery data, or switching it on
+        // shows nothing and the switch looks dead. When the latest sale is not a delivery,
+        // borrow the most recent one that is; the sample values are a last resort (in-memory
+        // only — nothing is saved).
+        if ($base->document_type === 'receipt' && $layout->show_delivery_details && empty($salesOrder->delivery_address)) {
+            $deliverySale = SalesOrder::with([
+                    'lines', 'branch', 'payments.method',
+                    'restaurantTable.floor', 'restaurantWaiter', 'createdBy',
+                    'deliveryChannel', 'deliveryRider',
+                ])
+                ->where('branch_id', $base->branch_id)
+                ->where('status', 'paid')
+                ->where('order_type', 'delivery')
+                ->whereNotNull('delivery_address')
+                ->latest('sale_date')
+                ->first();
+
+            if ($deliverySale) {
+                $salesOrder = $deliverySale;
+            } elseif ($salesOrder instanceof SalesOrder) {
+                $salesOrder->delivery_address = 'Sample: Flat BX-01, Block 13, Gulistan-e-Johar';
+            }
+        }
 
         $view = match ($base->document_type) {
             'kot' => 'tenant.printing.documents.kot',
@@ -233,11 +246,21 @@ class ReceiptLayoutController extends Controller
             'grand_total'           => $subtotal + $svcCharge,
             'paid_amount'           => $subtotal + $svcCharge,
             'change_amount'         => 0,
-            'customer_name'         => null,
+            'customer_name'         => 'Sample Customer',
+            'customer_phone'        => '0300-0000000',
+            'customer'              => null,
             'notes'                 => null,
             'restaurantTable'       => null,
             'restaurantTableSession'=> null,
             'restaurantWaiter'      => null,
+            // Delivery sample data, so the Delivery Details / Vehicle toggles have something to
+            // show the moment they are switched on — a toggle whose sample sale has nothing to
+            // display looks broken even when it works.
+            'delivery_address'      => 'Sample: Flat BX-01, Block 13, Gulistan-e-Johar',
+            'deliveryChannel'       => (object) ['name' => 'Own Delivery'],
+            'deliveryRider'         => (object) ['name' => 'Sample Rider', 'phone' => '0300-1111111'],
+            'vehicle_number'        => 'ABC-123',
+            'shift'                 => null,
             'created_by_user_id'    => null,
             'createdBy'             => (object)['name' => 'Demo Cashier'],
         ];

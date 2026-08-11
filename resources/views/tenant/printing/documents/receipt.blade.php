@@ -8,6 +8,20 @@
             $fontSize  = $layout?->font_size ?? 12;
             $paperSize = $layout?->paper_size ?? '80mm';
             $width     = match($paperSize) { '58mm' => '52mm', '80mm' => '72mm', default => '180mm' };
+
+            // THE LAYOUT SETTING'S SIZE NOW REACHES THIS PREVIEW TOO.
+            // The thermal receipt prints item lines and the totals block TALLER once font_size
+            // crosses the same bands EscPosPayloadService::scaleFor() uses (receipts scale in
+            // height only — the money columns need their width). This preview showed everything
+            // at one flat px size, so the client compared a double-height paper bill with a small
+            // uniform preview and rightly called them different. Item and totals rows now grow by
+            // the same bands. The header staying smaller than the items is faithful: that is
+            // exactly how the paper prints.
+            //
+            // A TABLE carries the growth safely — the amount column keeps its own cell, so unlike
+            // the ESC/POS 42-character composition, bigger type here cannot break the alignment;
+            // long names simply wrap inside their cell, as they already do.
+            $growBand = match (true) { $fontSize <= 14 => 1.0, $fontSize <= 20 => 1.45, default => 1.9 };
             // SHIFT-TIMEZONE-BUSINESS-DATE-HARDEN-1: print in the ORIGINAL operational timezone —
             // frozen shift tz first, then branch, then default — so changing the branch timezone
             // later never shifts a historical receipt/reprint's time.
@@ -55,8 +69,13 @@
         .item-total { width: 32%; text-align: right; white-space: nowrap; padding-left: 8px; }
         .totals td:first-child { width: 60%; text-align: right; padding-right: 4px; }
         .totals td:last-child  { width: 40%; text-align: right; white-space: nowrap; }
+        /* What the customer reads — items and money — at the paper's scale. em, so the header
+           font_size stays the base and the band multiplies it, print and screen alike. */
+        .grow td { font-size: {{ $growBand }}em; }
         .print-btn { display: block; margin: 12px auto; padding: 8px 24px; cursor: pointer; font-size: 14px; }
-        @media screen { body { width: 320px; } }
+        /* 320px left the slip swimming in the modal and every character smaller than it needed
+           to be. Screen-only: the printed page still sizes from the paper width via @page. */
+        @media screen { body { width: 400px; } }
         @media print  {
             .print-btn, .no-print { display: none !important; }
             /* Own the full roll width: the outer margin is gone, so only a hair of padding to keep
@@ -155,7 +174,7 @@
             <td class="item-total bold">Amount</td>
         </tr>
     </thead>
-    <tbody>
+    <tbody class="grow">
         @foreach($salesOrder->lines as $line)
         @if(($line->line_kind ?? 'standard') === 'component') @continue @endif
         <tr>
@@ -203,7 +222,7 @@
 
 <hr>
 
-<table class="totals">
+<table class="totals grow">
     <tr>
         <td>Subtotal:</td>
         <td>{{ number_format($salesOrder->subtotal, 2) }}</td>

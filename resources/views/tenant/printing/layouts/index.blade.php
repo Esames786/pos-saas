@@ -193,35 +193,30 @@
 
 {{-- Layout data for JS --}}
 @php
+// EVERY toggle comes from the model's one list — never a hardcoded copy. This blob used to name
+// 14 of the 18 switches by hand; the four missing ones (delivery details, vehicle number, order
+// type, branding) loaded as unchecked no matter what was saved, and saving ANY change posted
+// those false states back — silently wiping the stored values. The DOM side of this screen
+// learned the same lesson earlier (see layoutToggles()); this closes the data side.
 $layoutsForJs = [];
 foreach ($layouts as $l) {
-    $layoutsForJs[$l->id] = [
-        'id'                     => $l->id,
-        'branch_id'              => $l->branch_id,
-        'branch_name'            => $l->branch?->name,
-        'document_type'          => $l->document_type,
-        'paper_size'             => $l->paper_size,
-        'font_size'              => $l->font_size,
-        'kot_font_size'          => $l->kot_font_size,
-        'header_text'            => $l->header_text,
-        'footer_text'            => $l->footer_text,
-        'show_logo'              => (bool)$l->show_logo,
-        'show_branch_name'       => (bool)$l->show_branch_name,
-        'show_branch_address'    => (bool)$l->show_branch_address,
-        'show_branch_phone'      => (bool)$l->show_branch_phone,
-        'show_tax_number'        => (bool)$l->show_tax_number,
-        'show_cashier_name'      => (bool)$l->show_cashier_name,
-        'show_customer_name'     => (bool)$l->show_customer_name,
-        'show_table_info'        => (bool)$l->show_table_info,
-        'show_order_no'          => (bool)$l->show_order_no,
-        'show_order_time'        => (bool)$l->show_order_time,
-        'show_updated_time'      => (bool)$l->show_updated_time,
-        'show_print_time'        => (bool)$l->show_print_time,
-        'show_item_codes'        => (bool)$l->show_item_codes,
-        'show_payment_breakdown' => (bool)$l->show_payment_breakdown,
-        'is_active'              => (bool)$l->is_active,
-        'preview_url'            => url('/printing/layouts/' . $l->id . '/preview'),
+    $row = [
+        'id'            => $l->id,
+        'branch_id'     => $l->branch_id,
+        'branch_name'   => $l->branch?->name,
+        'document_type' => $l->document_type,
+        'paper_size'    => $l->paper_size,
+        'font_size'     => $l->font_size,
+        'kot_font_size' => $l->kot_font_size,
+        'header_text'   => $l->header_text,
+        'footer_text'   => $l->footer_text,
+        'is_active'     => (bool) $l->is_active,
+        'preview_url'   => url('/printing/layouts/' . $l->id . '/preview'),
     ];
+    foreach (\App\Models\Tenant\ReceiptLayoutSetting::TOGGLE_FIELDS as $field) {
+        $row[$field] = (bool) $l->{$field};
+    }
+    $layoutsForJs[$l->id] = $row;
 }
 @endphp
 <script>
@@ -277,12 +272,25 @@ function setFormValue(form, name, value) {
 }
 
 function syncLayoutOptions(form, docType) {
-    const reminderOnly = ['show_order_time', 'show_updated_time', 'show_print_time'];
-    const fiscal = ['show_tax_number', 'show_payment_breakdown'];
+    // Only the switches this document actually renders. The form used to show all 18 for every
+    // document, but each template consumes a subset — flipping "Delivery Details" on a KOT did
+    // nothing, ever, and the switches looked broken. A toggle that cannot change the paper does
+    // not belong on the form. These lists mirror what the blade templates + EscPosPayloadService
+    // consult for each document type; extend BOTH when adding a field to a document.
+    const supported = {
+        receipt: ['show_logo', 'show_branch_name', 'show_branch_address', 'show_branch_phone',
+                  'show_tax_number', 'show_cashier_name', 'show_customer_name', 'show_table_info',
+                  'show_order_no', 'show_item_codes', 'show_payment_breakdown',
+                  'show_bingoo_branding', 'show_delivery_details', 'show_vehicle_number',
+                  'show_order_type'],
+        kot:      ['show_branch_name', 'show_cashier_name', 'show_table_info', 'show_order_no',
+                  'show_bingoo_branding', 'show_vehicle_number'],
+        reminder: ['show_cashier_name', 'show_customer_name', 'show_table_info', 'show_order_no',
+                  'show_order_time', 'show_updated_time', 'show_print_time', 'show_bingoo_branding'],
+    };
+    const fields = supported[docType] || supported.receipt;
     form.querySelectorAll('[data-layout-field]').forEach(function (wrapper) {
-        const field = wrapper.dataset.layoutField;
-        wrapper.hidden = (reminderOnly.includes(field) && docType !== 'reminder')
-            || (fiscal.includes(field) && docType === 'reminder');
+        wrapper.hidden = !fields.includes(wrapper.dataset.layoutField);
     });
 }
 
