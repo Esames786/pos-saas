@@ -27,13 +27,15 @@ class CarriedForwardRaceTest extends MySqlTenantTestCase
     {
         $this->cleanTenant(['print_jobs', 'sales_orders', 'branches']);
         $branchId = $this->makeBranch();
-        $saleId = $this->makeSale($branchId, ['status' => 'paid']);
+        // A paid sale always carries completed_at — that is what makes the receipt the FINAL bill
+        // rather than a pre-payment proforma, and the final bill is the copy that must never double.
+        $saleId = $this->makeSale($branchId, ['status' => 'paid', 'completed_at' => now()]);
 
         $worker = base_path('tests/MySql/Support/print_receipt_worker.php');
         $out = $this->raceTwo([$worker, (string) $saleId], [$worker, (string) $saleId]);
 
         $this->assertNoErrors($out);
-        $logicalKey = 'receipt:auto:sale-' . $saleId;
+        $logicalKey = 'receipt:final:sale-' . $saleId;
         $this->assertSame(1, $this->tenant()->table('print_jobs')->where('logical_key', $logicalKey)->count(),
             'Exactly one automatic receipt job for the logical key: ' . implode(' | ', $out));
         $this->assertSame(1, (int) $this->tenant()->table('print_jobs')->where('logical_key', $logicalKey)->value('copy_no'),
@@ -55,7 +57,7 @@ class CarriedForwardRaceTest extends MySqlTenantTestCase
             'print_role' => 'kot', 'order_type' => 'all', 'is_active' => 1, 'created_at' => now(), 'updated_at' => now(),
         ]);
 
-        $saleId = $this->makeSale($branchId, ['status' => 'paid', 'terminal_id' => $terminalId]);
+        $saleId = $this->makeSale($branchId, ['status' => 'paid', 'terminal_id' => $terminalId, 'completed_at' => now()]);
         $this->makeSaleLine($saleId, $productId, ['quantity' => 2]);
         SalesOrder::on('tenant')->find($saleId)->update([
             'direct_pay_print_state' => DirectPayPrintOrchestrator::initialState('print', 'print'),
@@ -66,7 +68,7 @@ class CarriedForwardRaceTest extends MySqlTenantTestCase
 
         $this->assertNoErrors($out);
         // One automatic receipt (logical_key), one KOT batch (no new revision), copy_no stable.
-        $this->assertSame(1, $this->tenant()->table('print_jobs')->where('logical_key', 'receipt:auto:sale-' . $saleId)->count(),
+        $this->assertSame(1, $this->tenant()->table('print_jobs')->where('logical_key', 'receipt:final:sale-' . $saleId)->count(),
             'Resume must not create a duplicate receipt: ' . implode(' | ', $out));
         $this->assertSame(1, $this->tenant()->table('kot_batches')->where('sales_order_id', $saleId)->count(),
             'Resume must not create a new KOT revision/batch: ' . implode(' | ', $out));

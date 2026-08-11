@@ -107,11 +107,20 @@ class ShiftPosIntegrationTest extends MySqlTenantTestCase
         $this->openShift($otherBranchId, $foreignTerminal, $userId);
         $table = RestaurantTable::on('tenant')->find($this->makeTable($branchId));
 
-        $resp = app()->call([app(RestaurantTableSessionController::class), 'open'], [
-            'request' => $this->jsonRequest('POST', ['terminal_id' => $foreignTerminal, 'guest_count' => 2]),
-            'restaurantTable' => $table,
-        ]);
-        $this->assertSame(422, $resp->getStatusCode(), 'A terminal from another branch must be rejected.');
+        // The guarantee is "rejected with 422, and no session created". UserDataScope::assertPosSelection
+        // rejects by abort()ing (the HTTP kernel turns that into the same 422 the sibling paths return
+        // directly), so accept either shape rather than pinning one rejection mechanism.
+        $status = null;
+        try {
+            $resp = app()->call([app(RestaurantTableSessionController::class), 'open'], [
+                'request' => $this->jsonRequest('POST', ['terminal_id' => $foreignTerminal, 'guest_count' => 2]),
+                'restaurantTable' => $table,
+            ]);
+            $status = $resp->getStatusCode();
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
+            $status = $e->getStatusCode();
+        }
+        $this->assertSame(422, $status, 'A terminal from another branch must be rejected.');
         $this->assertSame(0, \App\Models\Tenant\RestaurantTableSession::on('tenant')->where('restaurant_table_id', $table->id)->count());
     }
 
