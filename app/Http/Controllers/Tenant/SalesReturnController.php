@@ -54,7 +54,15 @@ class SalesReturnController extends Controller
             ])
             : collect();
 
-        return view('tenant.sales-returns.create', compact('salesOrder', 'returnAllocations'));
+        // Delivery still refundable on this order — the charge less anything an earlier return
+        // already gave back. The screen adds it to the preview only when the whole order comes
+        // back, matching SalesReturnService, so the posted refund equals what the cashier saw.
+        $outstandingDelivery = $salesOrder
+            ? max(round((float) $salesOrder->delivery_charge_amount - (float) $salesOrder->returns()
+                ->where('status', 'posted')->sum('delivery_charge_amount'), 2), 0)
+            : 0.0;
+
+        return view('tenant.sales-returns.create', compact('salesOrder', 'returnAllocations', 'outstandingDelivery'));
     }
 
     private function userCanAccessBranch(int $branchId): bool

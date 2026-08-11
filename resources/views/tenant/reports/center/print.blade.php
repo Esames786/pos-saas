@@ -55,7 +55,11 @@
     // Item/category nets cover MERCHANDISE only; the delivery charge belongs to the order, not to
     // any line. Printed alone those totals look like they contradict NET SALES, so every
     // line-based section closes with the bridge that gets it there.
-    $bridgeDelivery = (float) ($bridge['delivery_charge'] ?? 0);
+    // NET delivery: what was charged, less what was handed back with a fully-returned order.
+    // Using the gross figure stopped the bridge reaching NET SALES the moment a delivery was
+    // refunded — and because the bridge only prints when the arithmetic closes, it would have
+    // quietly vanished rather than shown a wrong total.
+    $bridgeDelivery = (float) ($bridge['delivery_charge'] ?? 0) - (float) ($bridge['delivery_refunded'] ?? 0);
     $bridgeNetSales = (float) ($bridge['net_sales'] ?? 0);
     $bridgeRows = function (float $lineNet, int $span) use ($bridgeDelivery, $bridgeNetSales, $fmt) {
         // Only claim a reconciliation when the arithmetic actually closes.

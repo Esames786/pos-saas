@@ -76,7 +76,7 @@
         <div class="col-6 col-md-2"><div class="text-muted">Grand Total</div><div class="fw-bold">{{ number_format($salesOrder->grand_total, 2) }}</div></div>
         @if((float) $salesOrder->service_charge_amount > 0 || (float) $salesOrder->delivery_charge_amount > 0 || (float) $salesOrder->tip_amount > 0)
             <div class="col-12">
-                <div class="alert alert-info py-2 mb-0">Item refunds include proportional line discount and tax. Order-level service, delivery, and tip charges are shown for audit but are not automatically refunded.</div>
+                <div class="alert alert-info py-2 mb-0">Item refunds include proportional line discount and tax. The delivery charge is refunded only when the whole order comes back — a partial return keeps it, because the trip was still made. Service and tip charges are shown for audit but are not automatically refunded.</div>
             </div>
         @endif
     </div>
@@ -116,6 +116,8 @@
                         $remainingTax = max((float) $allocation['tax'] - (float) $line->returnLines->sum('tax_amount'), 0);
                     @endphp
                     <tr class="return-line"
+                        data-quantity="{{ (float) $line->quantity }}"
+                        data-returned-qty="{{ (float) $line->returned_quantity }}"
                         data-price="{{ (float) $line->unit_price }}"
                         data-discount-per-unit="{{ $returnable > 0 ? $remainingDiscount / $returnable : 0 }}"
                         data-tax-per-unit="{{ $returnable > 0 ? $remainingTax / $returnable : 0 }}">
@@ -147,6 +149,10 @@
                 @endforeach
                 </tbody>
                 <tfoot class="table-light fw-semibold">
+                    <tr id="delivery-refund-row" class="d-none">
+                        <td colspan="7" class="text-end">Plus Delivery Charge (whole order returned)</td>
+                        <td class="text-end amt">0.00</td>
+                    </tr>
                     <tr>
                         <td colspan="7" class="text-end">Suggested Refund</td>
                         <td class="text-end" id="suggested-refund">0.00</td>
@@ -227,6 +233,21 @@
     var form = document.getElementById('return-form');
     if (!form) return;
 
+    // Delivery still on the order after any earlier partial returns took their share.
+    var outstandingDelivery = {{ (float) $outstandingDelivery }};
+
+    /** Does every customer-facing line end up fully returned once this return posts? */
+    function orderCompletelyReturned() {
+        var complete = true;
+        document.querySelectorAll('tr.return-line').forEach(function (row) {
+            var qtyEl = row.querySelector('.return-qty');
+            var takingNow = parseFloat(qtyEl && qtyEl.value || 0);
+            var accountedFor = parseFloat(row.dataset.returnedQty || 0) + takingNow;
+            if (accountedFor + 0.000001 < parseFloat(row.dataset.quantity || 0)) complete = false;
+        });
+        return complete;
+    }
+
     function recalc() {
         var total = 0;
         document.querySelectorAll('tr.return-line').forEach(function (row) {
@@ -241,6 +262,17 @@
             row.querySelector('.line-refund').textContent = refund.toFixed(2);
             total += refund;
         });
+        // The delivery charge comes back only when nothing of the order is left — mirror the
+        // server rule exactly, or the posted refund would not match this preview and the sale
+        // would be rejected at submit.
+        var deliveryRow = document.getElementById('delivery-refund-row');
+        var delivery = orderCompletelyReturned() ? outstandingDelivery : 0;
+        if (deliveryRow) {
+            deliveryRow.classList.toggle('d-none', delivery <= 0);
+            deliveryRow.querySelector('.amt').textContent = delivery.toFixed(2);
+        }
+        total += delivery;
+
         document.getElementById('suggested-refund').textContent = total.toFixed(2);
         var refundMethod = document.getElementById('refund_method').value;
         document.getElementById('refund_amount').value = refundMethod ? total.toFixed(2) : '0.00';

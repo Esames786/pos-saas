@@ -121,4 +121,63 @@ class SalesReturnIntegrityMySqlTest extends MySqlTenantTestCase
             $userId,
         );
     }
+
+    /**
+     * A delivery order sent back in full refunds the delivery charge too — and only then.
+     *
+     * Live at Khatri three orders came back whole, the counter handed over the full amount, and
+     * the system booked 350 less than actually left the drawer because the charge could not be
+     * refunded at all.
+     */
+    public function test_a_fully_returned_delivery_order_refunds_the_delivery_charge(): void
+    {
+        $branchId = $this->makeBranch();
+        $productId = $this->makeProduct($this->makeCategory(), ['is_stock_tracked' => 0, 'inventory_consumption_method' => 'none']);
+        $userId = $this->makeUser();
+        $saleId = $this->makeSale($branchId, [
+            'created_by_user_id' => $userId,
+            'order_type' => 'delivery',
+            'subtotal' => 500,
+            'delivery_charge_amount' => 100,
+            'grand_total' => 600,
+            'paid_amount' => 600,
+        ]);
+        $lineId = $this->makeSaleLine($saleId, $productId, [
+            'quantity' => 2, 'unit_price' => 250, 'line_total' => 500,
+        ]);
+
+        // Half the order back: the rider still made the trip, so the charge stays.
+        $partial = app(SalesReturnService::class)->processReturn(
+            SalesOrder::findOrFail($saleId),
+            [['sales_order_line_id' => $lineId, 'quantity' => 1]],
+            'Partial', 'cash', null, $userId,
+        );
+        $this->assertSame(0.0, (float) $partial->delivery_charge_amount);
+        $this->assertSame(250.0, (float) $partial->grand_total);
+
+        // The rest back: nothing of the order remains, so the charge is given back with it.
+        $final = app(SalesReturnService::class)->processReturn(
+            SalesOrder::findOrFail($saleId),
+            [['sales_order_line_id' => $lineId, 'quantity' => 1]],
+            'Remainder', 'cash', null, $userId,
+        );
+        $this->assertSame(100.0, (float) $final->delivery_charge_amount);
+        $this->assertSame(350.0, (float) $final->grand_total);
+        $this->assertSame(350.0, (float) $final->refund_amount);
+
+        // The whole 600 the customer paid has now been given back, once.
+        $this->assertSame(600.0, round((float) DB::connection('tenant')->table('sales_returns')
+            ->where('sales_order_id', $saleId)->where('status', 'posted')->sum('grand_total'), 2));
+
+        $delivery = DB::connection('tenant')->table('journal_lines')
+            ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
+            ->join('accounts', 'accounts.id', '=', 'journal_lines.account_id')
+            ->where('journal_entries.source_type', 'sales_return')
+            ->where('journal_entries.source_id', $final->id)
+            ->where('accounts.code', '4150')
+            ->first(['journal_lines.debit']);
+
+        $this->assertNotNull($delivery, 'Delivery income must be reversed in the GL.');
+        $this->assertSame(100.0, (float) $delivery->debit);
+    }
 }

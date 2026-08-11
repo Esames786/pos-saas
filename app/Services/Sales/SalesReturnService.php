@@ -137,16 +137,40 @@ class SalesReturnService
             $subtotal = round($subtotal, 2);
             $discount = round($discount, 2);
             $tax = round($tax, 2);
-            $grandTotal = round($subtotal - $discount + $tax, 2);
+
+            // THE WHOLE ORDER COMING BACK MUST GIVE BACK THE WHOLE CHARGE.
+            //
+            // Returns used to stop at subtotal − discount + tax, so the delivery charge could
+            // never be refunded. When a customer sent an entire order back the counter handed over
+            // the full amount, but the system recorded less money leaving than actually did — at
+            // Khatri that stranded 350 as "delivery income" the shop had already given back, and
+            // the close screen expected 350 more cash than the drawer held.
+            //
+            // A PARTIAL return keeps the charge: the rider still made that trip for the items the
+            // customer kept. It is only refunded when nothing of the order remains.
+            $deliveryRefund = 0.0;
+            $alreadyRefundedDelivery = (float) $salesOrder->returns()
+                ->where('status', 'posted')->where('id', '!=', $salesReturn->id)
+                ->sum('delivery_charge_amount');
+
+            if ($this->returnCompletesOrder($salesOrder)) {
+                $deliveryRefund = max(
+                    round((float) $salesOrder->delivery_charge_amount - $alreadyRefundedDelivery, 2),
+                    0
+                );
+            }
+
+            $grandTotal = round($subtotal - $discount + $tax + $deliveryRefund, 2);
 
             if ($refundMethod && $refundAmount !== null && abs($refundAmount - $grandTotal) > 0.01) {
-                throw new \RuntimeException('Refund amount must match the calculated item refund of ' . number_format($grandTotal, 2) . '.');
+                throw new \RuntimeException('Refund amount must match the calculated refund of ' . number_format($grandTotal, 2) . '.');
             }
 
             $salesReturn->update([
                 'subtotal'    => $subtotal,
                 'discount_amount' => $discount,
                 'tax_amount'  => $tax,
+                'delivery_charge_amount' => $deliveryRefund,
                 'grand_total' => $grandTotal,
                 'refund_amount' => $refundMethod ? $grandTotal : 0,
             ]);
@@ -180,6 +204,32 @@ class SalesReturnService
         $this->journalPosting->postSalesReturnCashBankMovement($salesReturn, $userId);
 
         return $salesReturn;
+    }
+
+    /**
+     * Does this return leave nothing of the order behind?
+     *
+     * Compares what has ALREADY been returned plus what this return takes against the original
+     * quantities. Only then is the delivery charge given back — a partial return keeps it, because
+     * the rider still made the trip for the items the customer kept.
+     */
+    private function returnCompletesOrder(SalesOrder $salesOrder): bool
+    {
+        // Called AFTER the line loop, which has already incremented returned_quantity on each
+        // line it processed (increment() syncs the in-memory attribute as well as the row), so
+        // this return's own quantities are counted here — adding them again would make a half
+        // return look complete and refund the delivery charge early.
+        foreach ($salesOrder->lines as $line) {
+            if (in_array($line->line_kind, ['component', 'modifier'], true)) {
+                continue;   // not customer-facing; they follow their parent
+            }
+
+            if ((float) $line->returned_quantity + 0.000001 < (float) $line->quantity) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

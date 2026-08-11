@@ -197,6 +197,9 @@ class SalesReportEngine
             'tax' => (float) $s->tax,
             'service_charge' => (float) $s->service_charge,
             'delivery_charge' => (float) $s->delivery_charge,
+            // Delivery income given back with a fully-returned order. The category/item bridge
+            // must add NET delivery (charged − refunded), or it no longer reaches NET SALES.
+            'delivery_refunded' => (float) $this->returnsBase($f)->sum('r.delivery_charge_amount'),
             'tips' => (float) $s->tips,
             'grand_total' => (float) $s->grand_total,
             'returns_amount' => $returns,

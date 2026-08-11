@@ -52,6 +52,13 @@
                 <dd class="col-sm-9">+{{ number_format($salesReturn->tax_amount, 2) }}</dd>
             @endif
 
+            {{-- Refunded only when the whole order came back; a partial return keeps the charge,
+                 because the rider still made that trip for the items the customer kept. --}}
+            @if($salesReturn->delivery_charge_amount > 0)
+                <dt class="col-sm-3">Delivery Refunded</dt>
+                <dd class="col-sm-9">+{{ number_format($salesReturn->delivery_charge_amount, 2) }}</dd>
+            @endif
+
             <dt class="col-sm-3">Grand Total</dt>
             <dd class="col-sm-9"><strong>{{ number_format($salesReturn->grand_total, 2) }}</strong></dd>
 

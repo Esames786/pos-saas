@@ -390,6 +390,12 @@ class JournalPostingService
             if ($discount > 0) {
                 $lines[] = ['account_code' => '4200', 'branch_id' => $return->branch_id, 'description' => 'Sales discount reversal', 'debit' => 0, 'credit' => $discount];
             }
+            // Delivery income handed back with a fully-returned order. Without this the shop kept
+            // reporting delivery revenue it had already refunded, and cash never balanced.
+            $deliveryRefund = round((float) ($return->delivery_charge_amount ?? 0), 4);
+            if ($deliveryRefund > 0) {
+                $lines[] = ['account_code' => '4150', 'branch_id' => $return->branch_id, 'description' => 'Delivery charge refunded', 'debit' => $deliveryRefund, 'credit' => 0];
+            }
             $lines[] = ['account_id' => $creditAccountId, 'branch_id' => $return->branch_id, 'description' => 'Refund ' . $return->return_no, 'debit' => 0, 'credit' => $grand];
 
             // COGS reversal — returned goods go back into inventory (balanced pair).

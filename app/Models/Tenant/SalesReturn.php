@@ -16,6 +16,7 @@ class SalesReturn extends Model
         'subtotal',
         'discount_amount',
         'tax_amount',
+        'delivery_charge_amount',
         'grand_total',
         'refund_method',
         'refund_amount',
@@ -31,6 +32,7 @@ class SalesReturn extends Model
             'subtotal'        => 'decimal:2',
             'discount_amount' => 'decimal:2',
             'tax_amount'      => 'decimal:2',
+            'delivery_charge_amount' => 'decimal:2',
             'grand_total'     => 'decimal:2',
             'refund_amount'   => 'decimal:2',
         ];
