@@ -9,9 +9,17 @@
         <p class="text-muted mb-0">Local bridge apps installed inside the restaurant network for silent LAN printing.</p>
     </div>
     @can('tenant.print-agents.download-windows')
-    <a href="{{ url('/print/agents/download/windows') }}" class="btn btn-outline-primary">
-        <i class="ti ti-brand-windows me-1"></i>Download Windows Agent
-    </a>
+    <div class="text-end">
+        {{-- ?v= busts any cached copy: a shop that downloaded before was being handed the OLD
+             installer by its browser, so a shipped printing fix never reached the counter. --}}
+        <a href="{{ url('/print/agents/download/windows') . '?v=' . $agentVersion }}" class="btn btn-outline-primary">
+            <i class="ti ti-brand-windows me-1"></i>Download Windows Agent
+        </a>
+        <div class="small text-muted mt-1">
+            Version <strong>{{ $agentVersion }}</strong> — the agent prints this in its log on start;
+            if it shows anything older, the download was cached.
+        </div>
+    </div>
     @endcan
 </div>
 

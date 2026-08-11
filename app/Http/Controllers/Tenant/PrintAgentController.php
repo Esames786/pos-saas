@@ -21,9 +21,12 @@ class PrintAgentController extends Controller
     public function index()
     {
         return view('tenant.printing.agents.index', [
-            'agents'    => PrintAgent::with(['branch', 'terminal'])->latest()->paginate(20),
-            'branches'  => Branch::where('status', 'active')->orderBy('name')->get(),
-            'terminals' => Terminal::orderBy('name')->get(),
+            'agents'       => PrintAgent::with(['branch', 'terminal'])->latest()->paginate(20),
+            'branches'     => Branch::where('status', 'active')->orderBy('name')->get(),
+            'terminals'    => Terminal::orderBy('name')->get(),
+            // Shown next to the download button so a shop can see which build it is about to
+            // install, and compare it with the version its agent reports in the log.
+            'agentVersion' => $this->agentVersion(),
         ]);
     }
 
@@ -143,6 +146,26 @@ class PrintAgentController extends Controller
     }
 
     /**
+     * The version the shipped agent reports, read from the agent source so there is ONE place it
+     * is declared. Used to stamp the download filename and to show on screen what the shop is
+     * about to install.
+     */
+    public function agentVersion(): string
+    {
+        static $version = null;
+        if ($version !== null) {
+            return $version;
+        }
+
+        $source = base_path('tools/print-agent/print-agent.js');
+        if (is_file($source) && preg_match("/AGENT_VERSION\s*=\s*'([^']+)'/", file_get_contents($source), $m)) {
+            return $version = $m[1];
+        }
+
+        return $version = 'unknown';
+    }
+
+    /**
      * Download the Windows agent.
      *
      * Preferred: the one-click wizard `BingooPrintAgent-Setup.exe` (Node.js is
@@ -158,7 +181,19 @@ class PrintAgentController extends Controller
         $setupExe = $base . '/dist/BingooPrintAgent-Setup.exe';
 
         if (is_file($setupExe)) {
-            return response()->download($setupExe, 'BingooPrintAgent-Setup.exe');
+            // VERSION-STAMPED + UNCACHEABLE. Serving a fixed "BingooPrintAgent-Setup.exe" with no
+            // cache headers meant a shop that had downloaded before got the OLD installer straight
+            // from the browser cache — Khatri reinstalled and were still on 2.0.1, so a printing
+            // fix that had shipped never actually reached the counter. The filename now carries the
+            // version, so the saved file states which build it is and cannot be silently reused.
+            return response()
+                ->download($setupExe, 'BingooPrintAgent-Setup-' . $this->agentVersion() . '.exe')
+                ->setLastModified(new \DateTime('@' . filemtime($setupExe)))
+                ->withHeaders([
+                    'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+                    'Pragma'        => 'no-cache',
+                    'X-Agent-Version' => $this->agentVersion(),
+                ]);
         }
 
         // Fallback: script bundle.
