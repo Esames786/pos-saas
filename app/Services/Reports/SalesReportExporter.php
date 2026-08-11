@@ -43,11 +43,13 @@ class SalesReportExporter
         foreach (['categories' => ['Category', 'Orders'], 'items' => ['Item', null], 'waiters' => ['Waiter', 'Orders']] as $kind => [$labelCol, $ordersCol]) {
             foreach ($combos[$kind] as $orderType => $lines) {
                 $rows[] = [strtoupper($orderType) . ' — BY ' . strtoupper(rtrim($labelCol, 's'))];
-                $rows[] = array_values(array_filter([$labelCol, $ordersCol, $kind === 'waiters' ? 'Sales' : 'Net Qty', $kind === 'waiters' ? null : 'Net'], fn ($c) => $c !== null));
+                $rows[] = $kind === 'waiters'
+                    ? [$labelCol, 'Orders', 'Billed', 'Returns', 'Net']
+                    : array_values(array_filter([$labelCol, $ordersCol, 'Sold Qty', 'Returned Qty', 'Net Qty', 'Sold Value', 'Returns', 'Net Value'], fn ($c) => $c !== null));
                 foreach ($lines as $line) {
                     $rows[] = $kind === 'waiters'
-                        ? [$line['label'], $line['orders'], $line['grand_total']]
-                        : array_values(array_filter([$line['label'], $line['orders'] ?? null, $line['net_qty'], $line['net']], fn ($c) => $c !== null));
+                        ? [$line['label'], $line['orders'], $line['grand_total'], $line['returns_amount'], $line['net_sales']]
+                        : array_values(array_filter([$line['label'], $line['orders'] ?? null, $line['sold_qty'], $line['returned_qty'], $line['net_qty'], $line['net'], $line['returns_amount'], $line['net_value']], fn ($c) => $c !== null));
                 }
                 $rows[] = [];
             }
@@ -100,11 +102,11 @@ class SalesReportExporter
 
     private function categoriesCsv(array $f): string
     {
-        $rows = [['Category', 'Child', 'Orders', 'Sold Qty', 'Returned Qty', 'Net Qty', 'Gross', 'Discount', 'Tax', 'Returns', 'Net']];
+        $rows = [['Category', 'Child', 'Orders', 'Sold Qty', 'Returned Qty', 'Net Qty', 'Gross', 'Discount', 'Tax', 'Sold Value', 'Returns', 'Net Value']];
         foreach ($this->engine->byCategory($f) as $root) {
-            $rows[] = [$root['name'], '', $root['orders'], $root['sold_qty'], $root['returned_qty'], $root['net_qty'], $root['gross'], $root['discount'], $root['tax'], $root['returns_amount'], $root['net']];
+            $rows[] = [$root['name'], '', $root['orders'], $root['sold_qty'], $root['returned_qty'], $root['net_qty'], $root['gross'], $root['discount'], $root['tax'], $root['net'], $root['returns_amount'], $root['net_value']];
             foreach ($root['children'] as $c) {
-                $rows[] = ['', $c['name'], $c['orders'], $c['sold_qty'], $c['returned_qty'], $c['net_qty'], $c['gross'], $c['discount'], $c['tax'], $c['returns_amount'], $c['net']];
+                $rows[] = ['', $c['name'], $c['orders'], $c['sold_qty'], $c['returned_qty'], $c['net_qty'], $c['gross'], $c['discount'], $c['tax'], $c['net'], $c['returns_amount'], $c['net_value']];
             }
         }
 
@@ -113,9 +115,9 @@ class SalesReportExporter
 
     private function itemsCsv(array $f): string
     {
-        $rows = [['Item', 'Variant', 'Category', 'Sold Qty', 'Returned Qty', 'Net Qty', 'Gross', 'Discount', 'Tax', 'Net']];
+        $rows = [['Item', 'Variant', 'Category', 'Sold Qty', 'Returned Qty', 'Net Qty', 'Gross', 'Discount', 'Tax', 'Sold Value', 'Returns', 'Net Value']];
         foreach ($this->engine->byItem($f) as $r) {
-            $rows[] = [$r->item, $r->variant, $r->category, $r->sold_qty, $r->returned_qty, $r->net_qty, $r->gross, $r->discount, $r->tax, $r->net];
+            $rows[] = [$r->item, $r->variant, $r->category, $r->sold_qty, $r->returned_qty, $r->net_qty, $r->gross, $r->discount, $r->tax, $r->net, $r->returns_amount, $r->net_value];
         }
 
         return $this->csv($rows);

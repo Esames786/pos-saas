@@ -117,6 +117,18 @@ class SalesReportEngine
             ->when($f['shift_id'], fn ($q) => $q->where('o.shift_id', $f['shift_id']));
     }
 
+    /** Period return lines with the same sale-side filters as returnsBase(). */
+    private function returnLinesBase(array $f)
+    {
+        return $this->returnsBase($f)
+            ->join('sales_return_lines as rl', 'rl.sales_return_id', '=', 'r.id')
+            ->join('sales_order_lines as ol', 'ol.id', '=', 'rl.sales_order_line_id')
+            ->leftJoin('products as p', 'p.id', '=', 'rl.product_id')
+            ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+            ->when($f['category_id'], fn ($q) => $q->whereIn('p.category_id', $this->categoryWithDescendants((int) $f['category_id'])))
+            ->when($f['product_id'], fn ($q) => $q->where('rl.product_id', $f['product_id']));
+    }
+
     /** category id + all descendants (MySQL 8 recursive CTE — adjacency list authority). */
     public function categoryWithDescendants(int $categoryId): array
     {
@@ -163,10 +175,11 @@ class SalesReportEngine
              COALESCE(SUM(o.tip_amount),0) as tips,
              COALESCE(SUM(o.grand_total),0) as grand_total'
         )->first();
-        $q = $this->linesBase($f)->selectRaw(
-            'COALESCE(SUM(l.quantity),0) as sold_qty, COALESCE(SUM(l.returned_quantity),0) as returned_qty'
-        )->first();
+        $soldQty = (float) $this->linesBase($f)->sum('l.quantity');
+        $returnedQty = (float) $this->returnLinesBase($f)->sum('rl.quantity');
         $returns = (float) $this->returnsBase($f)->sum('r.grand_total');
+        $refundsRecorded = (float) $this->returnsBase($f)->sum('r.refund_amount');
+        $cashRefunds = (float) $this->returnsBase($f)->where('r.refund_method', 'cash')->sum('r.refund_amount');
         $payments = DB::connection('tenant')->table('sale_payments as sp')
             ->joinSub($this->salesBase($f)->select('o.*'), 'o', 'o.id', '=', 'sp.sales_order_id')
             ->join('payment_methods as pm', 'pm.id', '=', 'sp.payment_method_id')
@@ -176,9 +189,9 @@ class SalesReportEngine
 
         return [
             'orders' => (int) $s->orders,
-            'sold_qty' => (float) $q->sold_qty,
-            'returned_qty' => (float) $q->returned_qty,
-            'net_qty' => (float) $q->sold_qty - (float) $q->returned_qty,
+            'sold_qty' => $soldQty,
+            'returned_qty' => $returnedQty,
+            'net_qty' => $soldQty - $returnedQty,
             'gross_sales' => (float) $s->gross_sales,
             'discount' => (float) $s->discount,
             'tax' => (float) $s->tax,
@@ -187,8 +200,15 @@ class SalesReportEngine
             'tips' => (float) $s->tips,
             'grand_total' => (float) $s->grand_total,
             'returns_amount' => $returns,
+            'refunds_recorded' => $refundsRecorded,
+            'cash_refunds' => $cashRefunds,
+            // max(0, …) with two equal operands returns PHP's INT 0, so this key silently changed
+            // type whenever refunds exactly matched returns. Every other figure here is a float.
+            'returns_not_refunded' => max(0.0, $returns - $refundsRecorded),
             'net_sales' => (float) $s->grand_total - $returns,
             'payments' => $payments,
+            'cash_collected' => (float) ($payments['cash'] ?? 0),
+            'net_cash_from_sales' => (float) ($payments['cash'] ?? 0) - $cashRefunds,
         ];
     }
 
@@ -202,13 +222,12 @@ class SalesReportEngine
                  MAX(c.name) as category_name, MAX(c.parent_id) as parent_id,
                  COUNT(DISTINCT o.id) as orders,
                  COALESCE(SUM(l.quantity),0) as sold_qty,
-                 COALESCE(SUM(l.returned_quantity),0) as returned_qty,
                  COALESCE(SUM(l.quantity * l.unit_price),0) as gross,
                  COALESCE(SUM(l.discount_amount),0) as discount,
                  COALESCE(SUM(l.tax_amount),0) as tax,
                  COALESCE(SUM(l.line_total),0) as net'
             )->get();
-        $returnByCategory = $this->returnValueBy($f, 'p.category_id');
+        $returnByCategory = $this->returnStatsBy($f, 'p.category_id');
         $rootMap = $this->rootMap();
         $names = DB::connection('tenant')->table('categories')->pluck('name', 'id');
 
@@ -221,20 +240,38 @@ class SalesReportEngine
             $child = &$tree[$rootId]['children'][$catId];
             $child['id'] = $catId;
             $child['name'] = $catId === 0 ? 'Uncategorised' : ($names[$catId] ?? ('#' . $catId));
-            foreach (['orders', 'sold_qty', 'returned_qty', 'gross', 'discount', 'tax', 'net'] as $k) {
+            foreach (['orders', 'sold_qty', 'gross', 'discount', 'tax', 'net'] as $k) {
                 $child[$k] = (float) $row->{$k};
                 $tree[$rootId][$k] = ($tree[$rootId][$k] ?? 0) + (float) $row->{$k};
             }
-            $ret = (float) ($returnByCategory[$catId] ?? 0);
-            $child['returns_amount'] = $ret;
-            $tree[$rootId]['returns_amount'] = ($tree[$rootId]['returns_amount'] ?? 0) + $ret;
+            unset($child);
+        }
+        foreach ($returnByCategory as $catId => $return) {
+            $rootId = $catId !== 0 ? ($rootMap[$catId] ?? $catId) : 0;
+            $tree[$rootId]['id'] = $rootId;
+            $tree[$rootId]['name'] = $rootId === 0 ? 'Uncategorised' : ($names[$rootId] ?? ('#' . $rootId));
+            $child = &$tree[$rootId]['children'][$catId];
+            $child['id'] = $catId;
+            $child['name'] = $catId === 0 ? 'Uncategorised' : ($names[$catId] ?? ('#' . $catId));
+            $child['returned_qty'] = (float) $return['quantity'];
+            $child['returns_amount'] = (float) $return['amount'];
+            $tree[$rootId]['returned_qty'] = ($tree[$rootId]['returned_qty'] ?? 0) + (float) $return['quantity'];
+            $tree[$rootId]['returns_amount'] = ($tree[$rootId]['returns_amount'] ?? 0) + (float) $return['amount'];
             unset($child);
         }
         foreach ($tree as &$root) {
+            foreach (['orders', 'sold_qty', 'returned_qty', 'gross', 'discount', 'tax', 'net', 'returns_amount'] as $key) {
+                $root[$key] ??= 0;
+            }
             $root['net_qty'] = $root['sold_qty'] - $root['returned_qty'];
+            $root['net_value'] = $root['net'] - $root['returns_amount'];
             $root['children'] = array_values($root['children'] ?? []);
             foreach ($root['children'] as &$c) {
+                foreach (['orders', 'sold_qty', 'returned_qty', 'gross', 'discount', 'tax', 'net', 'returns_amount'] as $key) {
+                    $c[$key] ??= 0;
+                }
                 $c['net_qty'] = $c['sold_qty'] - $c['returned_qty'];
+                $c['net_value'] = $c['net'] - $c['returns_amount'];
             }
         }
 
@@ -251,22 +288,43 @@ class SalesReportEngine
                 'l.product_id, l.product_variant_id,
                  MAX(l.product_name) as item, MAX(v.name) as variant, MAX(c.name) as category,
                  COALESCE(SUM(l.quantity),0) as sold_qty,
-                 COALESCE(SUM(l.returned_quantity),0) as returned_qty,
                  COALESCE(SUM(l.quantity * l.unit_price),0) as gross,
                  COALESCE(SUM(l.discount_amount),0) as discount,
                  COALESCE(SUM(l.tax_amount),0) as tax,
                  COALESCE(SUM(l.line_total),0) as net'
-            )->get()->map(function ($r) {
-                $r->net_qty = (float) $r->sold_qty - (float) $r->returned_qty;
+            )->get()->keyBy(fn ($r) => $r->product_id . ':' . ($r->product_variant_id ?? ''));
+        $returnRows = $this->returnLinesBase($f)
+            ->leftJoin('product_variants as v', 'v.id', '=', 'rl.product_variant_id')
+            ->groupBy('rl.product_id', 'rl.product_variant_id')
+            ->selectRaw(
+                'rl.product_id, rl.product_variant_id,
+                 MAX(ol.product_name) as item, MAX(v.name) as variant, MAX(c.name) as category,
+                 COALESCE(SUM(rl.quantity),0) as returned_qty,
+                 COALESCE(SUM(rl.line_total),0) as returns_amount'
+            )->get()->keyBy(fn ($r) => $r->product_id . ':' . ($r->product_variant_id ?? ''));
 
-                return $r;
-            });
+        $rows = $rows->keys()->merge($returnRows->keys())->unique()->map(function ($key) use ($rows, $returnRows) {
+            $sold = $rows->get($key);
+            $returned = $returnRows->get($key);
+            $row = $sold ?: $returned;
+            $row->sold_qty = (float) ($sold->sold_qty ?? 0);
+            $row->returned_qty = (float) ($returned->returned_qty ?? 0);
+            $row->net_qty = $row->sold_qty - $row->returned_qty;
+            $row->gross = (float) ($sold->gross ?? 0);
+            $row->discount = (float) ($sold->discount ?? 0);
+            $row->tax = (float) ($sold->tax ?? 0);
+            $row->net = (float) ($sold->net ?? 0);
+            $row->returns_amount = (float) ($returned->returns_amount ?? 0);
+            $row->net_value = $row->net - $row->returns_amount;
+
+            return $row;
+        });
 
         return $rows->sortByDesc(fn ($r) => match ($sort) {
             'qty' => (float) $r->sold_qty,
             'returns' => (float) $r->returned_qty,
             'alpha' => null,
-            default => (float) $r->net,
+            default => (float) $r->net_value,
         })->when($sort === 'alpha', fn ($c) => $c->sortBy('item'))->values()->all();
     }
 
@@ -304,30 +362,37 @@ class SalesReportEngine
                  COALESCE(SUM(o.grand_total),0) as grand_total"
             )->get();
         $qty = $this->linesBase($f)->groupBy(DB::raw($column))
-            ->selectRaw("$column as dim, COALESCE(SUM(l.quantity),0) as sold_qty, COALESCE(SUM(l.returned_quantity),0) as returned_qty")
+            ->selectRaw("$column as dim, COALESCE(SUM(l.quantity),0) as sold_qty")
             ->get()->keyBy('dim');
         $returns = $this->returnsBase($f)->groupBy(DB::raw($column))
             ->selectRaw("$column as dim, COALESCE(SUM(r.grand_total),0) as amount")
-            ->pluck('amount', 'dim');
+            ->get()->keyBy('dim');
+        $returnQty = $this->returnLinesBase($f)->groupBy(DB::raw($column))
+            ->selectRaw("$column as dim, COALESCE(SUM(rl.quantity),0) as quantity")
+            ->get()->keyBy('dim');
 
-        return $rows->map(function ($r) use ($qty, $label, $returns) {
-            $q = $qty->get($r->dim);
-            $ret = (float) ($returns[$r->dim] ?? 0);
+        $rows = $rows->keyBy('dim');
+
+        return $rows->keys()->merge($returns->keys())->unique()->map(function ($dim) use ($rows, $qty, $label, $returns, $returnQty) {
+            $r = $rows->get($dim);
+            $q = $qty->get($dim);
+            $ret = (float) ($returns->get($dim)?->amount ?? 0);
+            $returnedQty = (float) ($returnQty->get($dim)?->quantity ?? 0);
 
             return [
-                'label' => $label($r->dim),
-                'orders' => (int) $r->orders,
+                'label' => $label($dim === '' ? null : $dim),
+                'orders' => (int) ($r->orders ?? 0),
                 'sold_qty' => (float) ($q->sold_qty ?? 0),
-                'returned_qty' => (float) ($q->returned_qty ?? 0),
-                'net_qty' => (float) ($q->sold_qty ?? 0) - (float) ($q->returned_qty ?? 0),
-                'gross' => (float) $r->gross,
-                'discount' => (float) $r->discount,
-                'tax' => (float) $r->tax,
-                'service_charge' => (float) $r->service_charge,
-                'delivery_charge' => (float) $r->delivery_charge,
-                'grand_total' => (float) $r->grand_total,
+                'returned_qty' => $returnedQty,
+                'net_qty' => (float) ($q->sold_qty ?? 0) - $returnedQty,
+                'gross' => (float) ($r->gross ?? 0),
+                'discount' => (float) ($r->discount ?? 0),
+                'tax' => (float) ($r->tax ?? 0),
+                'service_charge' => (float) ($r->service_charge ?? 0),
+                'delivery_charge' => (float) ($r->delivery_charge ?? 0),
+                'grand_total' => (float) ($r->grand_total ?? 0),
                 'returns_amount' => $ret,
-                'net_sales' => (float) $r->grand_total - $ret,
+                'net_sales' => (float) ($r->grand_total ?? 0) - $ret,
             ];
         })->values()->all();
     }
@@ -339,70 +404,35 @@ class SalesReportEngine
         $labels = \App\Models\Tenant\User::ORDER_TYPES;
         $ot = fn ($v) => $labels[$v] ?? (string) $v;
 
-        $rootMap = $this->rootMap();
-        $names = DB::connection('tenant')->table('categories')->pluck('name', 'id');
+        $types = $this->salesBase($f)->distinct()->pluck('o.order_type')
+            ->merge($this->returnsBase($f)->distinct()->pluck('o.order_type'))
+            ->filter()->unique()->values();
         $categories = [];
-        $catRows = $this->linesBase($f)->groupBy('o.order_type', 'p.category_id')
-            ->selectRaw(
-                'o.order_type, p.category_id,
-                 COUNT(DISTINCT o.id) as orders,
-                 COALESCE(SUM(l.quantity),0) as sold_qty,
-                 COALESCE(SUM(l.returned_quantity),0) as returned_qty,
-                 COALESCE(SUM(l.line_total),0) as net'
-            )->get();
-        foreach ($catRows as $r) {
-            $catId = $r->category_id !== null ? (int) $r->category_id : 0;
-            $rootId = $catId !== 0 ? ($rootMap[$catId] ?? $catId) : 0;
-            $bucket = &$categories[$ot($r->order_type)][$rootId];
-            $bucket['label'] = $rootId === 0 ? 'Uncategorised' : ($names[$rootId] ?? ('#' . $rootId));
-            foreach (['orders', 'sold_qty', 'returned_qty', 'net'] as $k) {
-                $bucket[$k] = ($bucket[$k] ?? 0) + (float) $r->{$k};
-            }
-            unset($bucket);
-        }
-        foreach ($categories as &$rows) {
-            foreach ($rows as &$b) {
-                $b['net_qty'] = $b['sold_qty'] - $b['returned_qty'];
-            }
-            unset($b);
-            $rows = array_values($rows);
-            usort($rows, fn ($a, $b2) => $b2['net'] <=> $a['net']);
-        }
-        unset($rows);
-
         $items = [];
-        $itemRows = $this->linesBase($f)->groupBy('o.order_type', 'l.product_id')
-            ->selectRaw(
-                'o.order_type, l.product_id, MAX(l.product_name) as item,
-                 COALESCE(SUM(l.quantity),0) as sold_qty,
-                 COALESCE(SUM(l.returned_quantity),0) as returned_qty,
-                 COALESCE(SUM(l.line_total),0) as net'
-            )->get();
-        foreach ($itemRows as $r) {
-            $items[$ot($r->order_type)][] = [
-                'label' => (string) $r->item,
-                'sold_qty' => (float) $r->sold_qty,
-                'returned_qty' => (float) $r->returned_qty,
-                'net_qty' => (float) $r->sold_qty - (float) $r->returned_qty,
-                'net' => (float) $r->net,
-            ];
-        }
-        foreach ($items as &$rows2) {
-            usort($rows2, fn ($a, $b2) => $b2['net'] <=> $a['net']);
-        }
-        unset($rows2);
-
-        $waiterNames = DB::connection('tenant')->table('restaurant_waiters')->pluck('name', 'id');
         $waiters = [];
-        $waiterRows = $this->salesBase($f)->groupBy('o.order_type', 'o.restaurant_waiter_id')
-            ->selectRaw('o.order_type, o.restaurant_waiter_id as wid, COUNT(*) as orders, COALESCE(SUM(o.grand_total),0) as grand_total')
-            ->get();
-        foreach ($waiterRows as $r) {
-            $waiters[$ot($r->order_type)][] = [
-                'label' => $r->wid === null ? 'Unassigned' : ($waiterNames[$r->wid] ?? ('#' . $r->wid)),
-                'orders' => (int) $r->orders,
-                'grand_total' => (float) $r->grand_total,
-            ];
+        foreach ($types as $type) {
+            $typed = array_merge($f, ['order_type' => $type, 'allowed_order_types' => []]);
+            $typeLabel = $ot($type);
+            $categories[$typeLabel] = collect($this->byCategory($typed))->map(fn ($r) => [
+                'label' => $r['name'],
+                'orders' => $r['orders'],
+                'sold_qty' => $r['sold_qty'],
+                'returned_qty' => $r['returned_qty'],
+                'net_qty' => $r['net_qty'],
+                'net' => $r['net'],
+                'returns_amount' => $r['returns_amount'],
+                'net_value' => $r['net_value'],
+            ])->values()->all();
+            $items[$typeLabel] = collect($this->byItem($typed))->map(fn ($r) => [
+                'label' => $r->item . ($r->variant ? ' (' . $r->variant . ')' : ''),
+                'sold_qty' => $r->sold_qty,
+                'returned_qty' => $r->returned_qty,
+                'net_qty' => $r->net_qty,
+                'net' => $r->net,
+                'returns_amount' => $r->returns_amount,
+                'net_value' => $r->net_value,
+            ])->values()->all();
+            $waiters[$typeLabel] = $this->byWaiter($typed);
         }
 
         return ['categories' => $categories, 'items' => $items, 'waiters' => $waiters];
@@ -446,26 +476,22 @@ class SalesReportEngine
         ];
     }
 
-    /** Return VALUE grouped by an arbitrary line-side column (category rollup helper). */
-    private function returnValueBy(array $f, string $column): array
+    /** Period return quantity and value grouped by an arbitrary return-line-side column. */
+    private function returnStatsBy(array $f, string $column): array
     {
-        $rows = DB::connection('tenant')->table('sales_return_lines as rl')
-            ->join('sales_returns as r', 'r.id', '=', 'rl.sales_return_id')
-            ->join('sales_orders as o', 'o.id', '=', 'r.sales_order_id')
-            ->leftJoin('products as p', 'p.id', '=', 'rl.product_id')
-            ->where('r.status', 'posted')
-            ->whereRaw('DATE(r.return_date) >= ?', [$f['date_from']])
-            ->whereRaw('DATE(r.return_date) <= ?', [$f['date_to']])
-            ->when($f['branch_ids'], fn ($q) => $q->whereIn('r.branch_id', $f['branch_ids']))
+        $rows = $this->returnLinesBase($f)
             ->groupBy(DB::raw($column))
             // rl.line_total is the FINAL refunded line value (subtotal − discount + tax) since
             // 2026_08_11_000004 normalised the column and backfilled history. Adding tax again
             // here — as this did while line_total was ex-tax — double-counts it.
-            ->selectRaw("$column as dim, COALESCE(SUM(rl.line_total),0) as amount")
+            ->selectRaw("$column as dim, COALESCE(SUM(rl.quantity),0) as quantity, COALESCE(SUM(rl.line_total),0) as amount")
             ->get();
         $map = [];
         foreach ($rows as $r) {
-            $map[$r->dim !== null ? (int) $r->dim : 0] = (float) $r->amount;
+            $map[$r->dim !== null ? (int) $r->dim : 0] = [
+                'quantity' => (float) $r->quantity,
+                'amount' => (float) $r->amount,
+            ];
         }
 
         return $map;

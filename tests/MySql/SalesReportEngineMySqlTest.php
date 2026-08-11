@@ -134,6 +134,10 @@ class SalesReportEngineMySqlTest extends MySqlTenantTestCase
         $this->assertSame(1130.0, $o['grand_total']);
         $this->assertSame(100.0, $o['returns_amount'], 'returns stay a SEPARATE column');
         $this->assertSame(1030.0, $o['net_sales'], 'net = grand − period returns');
+        $this->assertSame(100.0, $o['refunds_recorded']);
+        $this->assertSame(100.0, $o['cash_refunds']);
+        $this->assertSame(0.0, $o['returns_not_refunded']);
+        $this->assertSame(730.0, $o['net_cash_from_sales']);
         $this->assertSame(830.0, $o['payments']['cash']);
         $this->assertSame(300.0, $o['payments']['card']);
 
@@ -151,11 +155,13 @@ class SalesReportEngineMySqlTest extends MySqlTenantTestCase
         // ── line-dimension identity: Σcategory = Σitem = Σdetailed (grand = line net + delivery) ──
         $categories = collect($this->engine->byCategory($f));
         $this->assertSame(1100.0, $categories->sum('net'), 'Σcategory line-net');
+        $this->assertSame(1000.0, $categories->sum('net_value'), 'category sold value less period returns');
         $biryani = $categories->firstWhere('name', 'Biryani');
         $this->assertSame(800.0, $biryani['net'], 'parent rollup: P1 600 + child P2 200');
         $this->assertSame(200.0, collect($biryani['children'])->firstWhere('name', 'Special Biryani')['net'], 'child stays visible inside the rollup');
         $items = collect($this->engine->byItem($f));
         $this->assertSame(1100.0, $items->sum(fn ($r) => (float) $r->net), 'Σitem net');
+        $this->assertSame(1000.0, $items->sum(fn ($r) => (float) $r->net_value), 'item sold value less period returns');
         $detailed = $this->engine->detailedQuery($f)->get();
         $this->assertSame(1100.0, (float) $detailed->sum('line_total'), 'Σdetailed line net');
         $this->assertSame(1130.0, $o['grand_total'], 'grand = line net 1100 + delivery charge 30 (explicit bridge)');
@@ -233,5 +239,58 @@ class SalesReportEngineMySqlTest extends MySqlTenantTestCase
 
         $this->assertNotNull($category);
         $this->assertSame(99.0, (float) $category['returns_amount'], 'category returns = the refunded money, tax counted once');
+    }
+
+    public function test_a_return_today_for_an_older_sale_is_visible_in_every_return_dimension(): void
+    {
+        $conn = DB::connection('tenant');
+        $categoryId = $this->makeCategory(['name' => 'Historical', 'slug' => 'historical']);
+        $productId = $this->makeProduct($categoryId, ['name' => 'Historical Item', 'default_selling_price' => 100]);
+        $yesterday = now()->subDay();
+        $saleId = $this->makeSale($this->branchId, [
+            'order_type' => 'takeaway', 'status' => 'returned', 'sale_date' => $yesterday,
+            'business_date' => $yesterday->toDateString(), 'subtotal' => 100,
+            'grand_total' => 100, 'paid_amount' => 100,
+        ]);
+        $lineId = $this->makeSaleLine($saleId, $productId, [
+            'quantity' => 1, 'returned_quantity' => 1, 'unit_price' => 100, 'line_total' => 100,
+        ]);
+        $returnId = $conn->table('sales_returns')->insertGetId([
+            'return_no' => 'SR-HISTORICAL', 'sales_order_id' => $saleId, 'branch_id' => $this->branchId,
+            'return_date' => now(), 'subtotal' => 100, 'grand_total' => 100,
+            'refund_method' => null, 'refund_amount' => 0, 'status' => 'posted',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $conn->table('sales_return_lines')->insert([
+            'sales_return_id' => $returnId, 'sales_order_line_id' => $lineId, 'product_id' => $productId,
+            'quantity' => 1, 'unit_price' => 100, 'line_total' => 100,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $f = $this->engine->normalizeFilters(['date_from' => now()->toDateString(), 'date_to' => now()->toDateString()]);
+        $overview = $this->engine->overview($f);
+        $this->assertSame(0.0, $overview['sold_qty']);
+        $this->assertSame(1.0, $overview['returned_qty']);
+        $this->assertSame(-100.0, $overview['net_sales']);
+        $this->assertSame(100.0, $overview['returns_not_refunded']);
+
+        $category = collect($this->engine->byCategory($f))->firstWhere('name', 'Historical');
+        $this->assertSame(0.0, (float) $category['net']);
+        $this->assertSame(100.0, (float) $category['returns_amount']);
+        $this->assertSame(-100.0, (float) $category['net_value']);
+
+        $item = collect($this->engine->byItem($f))->first(fn ($row) => (int) $row->product_id === $productId);
+        $this->assertNotNull($item);
+        $this->assertSame(1.0, (float) $item->returned_qty);
+        $this->assertSame(-100.0, (float) $item->net_value);
+
+        $takeaway = collect($this->engine->byOrderType($f))->firstWhere('label', 'Takeaway');
+        $this->assertSame(100.0, (float) $takeaway['returns_amount']);
+        $this->assertSame(-100.0, (float) $takeaway['net_sales']);
+
+        $combos = $this->engine->orderTypeCombos($f);
+        $this->assertSame(-100.0, (float) collect($combos['categories']['Takeaway'])->sum('net_value'));
+        $this->assertSame(-100.0, (float) collect($combos['items']['Takeaway'])->sum('net_value'));
+        $this->assertSame(-100.0, (float) collect($combos['waiters']['Takeaway'])->sum('net_sales'));
     }
 }
