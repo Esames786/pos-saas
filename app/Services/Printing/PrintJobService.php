@@ -42,10 +42,18 @@ class PrintJobService
                 ->where('reference_id', $sale->id)
                 ->where('document_type', 'receipt')
                 ->whereIn('print_status', ['queued', 'printed'])
-                // legacy jobs carry the old 'receipt:auto:…' key; accepting them only when they
-                // were raised after payment keeps old paid sales from reprinting on a replay.
-                ->when($isFinal, fn ($q) => $q->where('created_at', '>=', $sale->completed_at))
-                ->when(! $isFinal, fn ($q) => $q->where('logical_key', $logicalKey))
+                ->where(function ($q) use ($isFinal, $logicalKey, $sale) {
+                    // The phase key decides — never a timestamp, because a preview printed in the
+                    // SAME SECOND as the payment would otherwise pass for the final bill.
+                    $q->where('logical_key', $logicalKey);
+                    if ($isFinal) {
+                        // legacy jobs carry the old 'receipt:auto:…' key; honour one only when it
+                        // was raised after payment, so old paid sales never surprise-reprint.
+                        $q->orWhere(fn ($legacy) => $legacy
+                            ->where('logical_key', 'like', 'receipt:auto:%')
+                            ->where('created_at', '>=', $sale->completed_at));
+                    }
+                })
                 ->latest('id')
                 ->first();
             if ($existing) {
