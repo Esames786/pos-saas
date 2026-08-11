@@ -5,19 +5,21 @@ namespace Tests\Unit\Tenant;
 use Tests\TestCase;
 
 /**
- * THERMAL SALES REPORT MUST FIT THE PAPER.
+ * THERMAL SALES REPORT — COLUMNS THAT FIT THE PAPER.
  *
- * 72mm at 10px monospace holds roughly 45 characters. The wide A4 tables do not fit: adding the
- * returns columns squeezed the name column to nothing and "Beverages" printed one letter per line.
- * Stacking name + "sold - returned = net" fixed that, but putting BOTH the qty and money
- * expressions on one line still reached 53 characters on a normal trading day — fine at lunchtime,
- * off the edge of the paper by evening.
+ * 72mm at 10px monospace holds roughly 45 characters, so the A4 seven-column table cannot fit:
+ * adding the returns columns squeezed the name column to nothing and "Beverages" printed one
+ * letter per line. An inline "sold - returned = net" form fitted but was hard to read.
  *
- * So every thermal entry is TWO lines through one helper:
- *     name ......................... NET
- *     Qty 29-5=24 .... 11,180.00-1,590.00
+ * The layout is therefore FOUR narrow columns — label + Sold / Ret / Net — with the name on its
+ * own full-width line and its figures beneath, under a header printed once per table:
  *
- * These assertions check the SHAPE that keeps it narrow, not one particular table's markup.
+ *              Sold     Ret     Net
+ *   Beverages
+ *   Qty           3       2       1
+ *   Amt      280.00  170.00  110.00
+ *
+ * These assertions pin the SHAPE that keeps it narrow and readable, not one table's markup.
  */
 class ThermalSalesReportLayoutRegressionTest extends TestCase
 {
@@ -30,52 +32,52 @@ class ThermalSalesReportLayoutRegressionTest extends TestCase
     {
         $view = $this->printView();
 
-        foreach (['$orderTypes', '$waiters', '$categories', '$items'] as $section) {
-            $this->assertMatchesRegularExpression(
-                '/@if\(\$isThermal\)/',
-                $view,
-                "a thermal branch is required before rendering {$section} wide"
-            );
-        }
-        // The A4 seven-column header must never be what thermal renders.
+        $this->assertGreaterThanOrEqual(
+            8,
+            substr_count($view, '@if($isThermal)'),
+            'order types, categories, items, waiters and each by-order-type sub-table need a thermal branch'
+        );
+        // The A4 seven-column header must live behind @else, never be what thermal renders.
         $this->assertMatchesRegularExpression('/@if\(\$isThermal\).*?@else.*?Sold Qty.*?Ret Qty/s', $view);
     }
 
-    public function test_thermal_rows_go_through_the_two_line_helper(): void
+    public function test_thermal_uses_the_four_column_helpers(): void
     {
         $view = $this->printView();
 
-        $this->assertStringContainsString('$tRow = function', $view, 'the two-line helper must exist');
+        $this->assertStringContainsString('$tEntry = function', $view, 'qty+money entries need the column helper');
+        $this->assertStringContainsString('$tOrders = function', $view, 'order-level entries need the column helper');
+        $this->assertStringContainsString('$tHead = fn', $view, 'each thermal table needs a column header');
+
+        $this->assertGreaterThanOrEqual(
+            8,
+            substr_count($view, '$tHead()'),
+            'every thermal table must print the Sold/Ret/Net header once'
+        );
         $this->assertGreaterThanOrEqual(
             12,
-            substr_count($view, '$tRow('),
-            'every thermal row and total must render through the helper, not a wide one-line row'
+            substr_count($view, '$tEntry(') + substr_count($view, '$tOrders('),
+            'every thermal row and total must render through a column helper'
         );
     }
 
-    public function test_the_wide_one_line_expression_is_gone(): void
+    public function test_the_one_line_expression_forms_are_gone(): void
     {
         $view = $this->printView();
 
-        // "a - b = c" for BOTH qty and money on a single thermal line is what overflowed 72mm.
-        $this->assertStringNotContainsString(
-            '$sub(',
-            $view,
-            'the single-line "sold - returned = net" form overflows thermal paper — use $tRow'
-        );
+        // Both earlier attempts overflowed or were unreadable on 72mm.
+        $this->assertStringNotContainsString('$sub(', $view, 'inline "a - b = c" overflowed the roll');
+        $this->assertStringNotContainsString('$tRow(', $view, 'the two-line stacked form was replaced by columns');
     }
 
-    public function test_a_worst_case_thermal_line_stays_within_the_paper(): void
+    public function test_a_worst_case_thermal_figures_line_stays_within_the_paper(): void
     {
-        // Widest realistic content: a long item name is on its OWN line, and the figures line is
-        // "Qty 999-99=900" + "999,999.00-99,999.00". Proven here so the layout cannot silently
-        // regress into something that runs off the roll.
-        $qtySide = 'Qty 999-99=900';
-        $moneySide = '999,999.00-99,999.00';
+        // "Amt" plus three right-aligned amounts is the widest line the layout can produce.
+        $widest = 'Amt' . str_repeat(' 999,999.00', 3);
 
         $this->assertLessThanOrEqual(
             45,
-            strlen($qtySide) + strlen($moneySide) + 2,
+            strlen($widest),
             'the figures line must fit 72mm (~45 monospace characters)'
         );
     }

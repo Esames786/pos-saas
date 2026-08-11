@@ -15,21 +15,41 @@
     $isThermal = $mode === 'thermal';
 
     /**
-     * One thermal entry = TWO lines, because 72mm holds only ~45 monospace characters:
-     *   line 1  name .................................... NET   (the figure that matters)
-     *   line 2  Qty 29-5=24 ................ 11,180.00-1,590.00  (how it got there)
-     * Putting "sold - returned = net" for BOTH qty and money on one line reached 53 characters
-     * on a normal trading day and would have run off the paper by evening.
+     * THERMAL = REAL COLUMNS, four narrow ones: label + Sold / Ret / Net.
+     *
+     * 72mm holds only ~45 monospace characters, so the A4 seven-column table cannot fit — the
+     * name column collapsed and printed one letter per line. Inline "sold - returned = net" did
+     * fit but was hard to read. So the NAME takes its own full-width line and its figures sit
+     * beneath in aligned columns, under a header printed once per table:
+     *
+     *              Sold     Ret     Net
+     *   Beverages
+     *   Qty           3       2       1
+     *   Amt      280.00  170.00  110.00
+     *
+     * Widest realistic figures line is "Amt" plus three 10-character amounts ≈ 34 characters.
      */
-    $tRow = function (string $name, $net, string $left, string $right, bool $bold = false, string $indent = '') use ($fmt) {
+    $tHead = fn () => '<tr><th></th><th class="amt">Sold</th><th class="amt">Ret</th><th class="amt">Net</th></tr>';
+
+    /** An entry carrying both quantities and money (categories, items). */
+    $tEntry = function (string $name, $sQ, $rQ, $nQ, $sV, $rV, $nV, bool $bold = false, string $indent = '') use ($qty, $fmt) {
         $cls = $bold ? ' class="total"' : '';
 
-        return '<tr' . $cls . '><td>' . $indent . e($name) . '</td><td class="amt">' . $fmt($net) . '</td></tr>'
-             . '<tr><td>' . $indent . e($left) . '</td><td class="amt">' . e($right) . '</td></tr>';
+        return '<tr' . $cls . '><td colspan="4">' . $indent . e($name) . '</td></tr>'
+             . '<tr><td>' . $indent . 'Qty</td>'
+             . '<td class="amt">' . $qty($sQ) . '</td><td class="amt">' . $qty($rQ) . '</td><td class="amt">' . $qty($nQ) . '</td></tr>'
+             . '<tr' . $cls . '><td>' . $indent . 'Amt</td>'
+             . '<td class="amt">' . $fmt($sV) . '</td><td class="amt">' . $fmt($rV) . '</td><td class="amt">' . $fmt($nV) . '</td></tr>';
     };
-    // "3-2=1" / "280.00-170.00" — compact halves for the two thermal lines.
-    $qtyExpr = fn ($s, $r, $n) => 'Qty ' . $qty($s) . '-' . $qty($r) . '=' . $qty($n);
-    $valExpr = fn ($s, $r) => $fmt($s) . '-' . $fmt($r);
+
+    /** An order-level entry — money only, no line quantities (order types, waiters). */
+    $tOrders = function (string $name, $orders, $billed, $ret, $net, bool $bold = false) use ($fmt) {
+        $cls = $bold ? ' class="total"' : '';
+
+        return '<tr' . $cls . '><td colspan="4">' . e($name) . '</td></tr>'
+             . '<tr' . $cls . '><td>' . (int) $orders . ' ord</td>'
+             . '<td class="amt">' . $fmt($billed) . '</td><td class="amt">' . $fmt($ret) . '</td><td class="amt">' . $fmt($net) . '</td></tr>';
+    };
 
     // Item/category nets cover MERCHANDISE only; the delivery charge belongs to the order, not to
     // any line. Printed alone those totals look like they contradict NET SALES, so every
@@ -116,10 +136,11 @@
 <h2>ORDER TYPES</h2>
 @if($isThermal)
 <table>
+    {!! $tHead() !!}
     @foreach($orderTypes as $r)
-        {!! $tRow($r['label'], $r['net_sales'], 'Orders ' . $r['orders'], $valExpr($r['grand_total'], $r['returns_amount'])) !!}
+        {!! $tOrders($r['label'], $r['orders'], $r['grand_total'], $r['returns_amount'], $r['net_sales']) !!}
     @endforeach
-    {!! $tRow('TOTAL', collect($orderTypes)->sum('net_sales'), 'Orders ' . collect($orderTypes)->sum('orders'), $valExpr(collect($orderTypes)->sum('grand_total'), collect($orderTypes)->sum('returns_amount')), true) !!}
+    {!! $tOrders('TOTAL', collect($orderTypes)->sum('orders'), collect($orderTypes)->sum('grand_total'), collect($orderTypes)->sum('returns_amount'), collect($orderTypes)->sum('net_sales'), true) !!}
 </table>
 @else
 <table>
@@ -136,16 +157,17 @@
 <h2>CATEGORIES</h2>
 @if($isThermal)
 <table>
+    {!! $tHead() !!}
     @foreach($categories as $root)
-        {!! $tRow($root['name'], $root['net_value'], $qtyExpr($root['sold_qty'], $root['returned_qty'], $root['net_qty']), $valExpr($root['net'], $root['returns_amount']), true) !!}
+        {!! $tEntry($root['name'], $root['sold_qty'], $root['returned_qty'], $root['net_qty'], $root['net'], $root['returns_amount'], $root['net_value'], true) !!}
         @foreach($root['children'] as $c)
             @if($c['id'] !== $root['id'])
-                {!! $tRow($c['name'], $c['net_value'], $qtyExpr($c['sold_qty'], $c['returned_qty'], $c['net_qty']), $valExpr($c['net'], $c['returns_amount']), false, ' ') !!}
+                {!! $tEntry($c['name'], $c['sold_qty'], $c['returned_qty'], $c['net_qty'], $c['net'], $c['returns_amount'], $c['net_value'], false, ' ') !!}
             @endif
         @endforeach
     @endforeach
-    {!! $tRow('TOTAL', collect($categories)->sum('net_value'), $qtyExpr(collect($categories)->sum('sold_qty'), collect($categories)->sum('returned_qty'), collect($categories)->sum('net_qty')), $valExpr(collect($categories)->sum('net'), collect($categories)->sum('returns_amount')), true) !!}
-    {!! $bridgeRows((float) collect($categories)->sum('net_value'), 2) !!}
+    {!! $tEntry('TOTAL', collect($categories)->sum('sold_qty'), collect($categories)->sum('returned_qty'), collect($categories)->sum('net_qty'), collect($categories)->sum('net'), collect($categories)->sum('returns_amount'), collect($categories)->sum('net_value'), true) !!}
+    {!! $bridgeRows((float) collect($categories)->sum('net_value'), 4) !!}
 </table>
 @else
 <table>
@@ -166,11 +188,12 @@
 <h2>ITEMS</h2>
 @if($isThermal)
 <table>
+    {!! $tHead() !!}
     @foreach($items as $r)
-        {!! $tRow($r->item . ($r->variant ? ' (' . $r->variant . ')' : ''), $r->net_value, $qtyExpr($r->sold_qty, $r->returned_qty, $r->net_qty), $valExpr($r->net, $r->returns_amount)) !!}
+        {!! $tEntry($r->item . ($r->variant ? ' (' . $r->variant . ')' : ''), $r->sold_qty, $r->returned_qty, $r->net_qty, $r->net, $r->returns_amount, $r->net_value) !!}
     @endforeach
-    {!! $tRow('TOTAL', collect($items)->sum('net_value'), $qtyExpr(collect($items)->sum('sold_qty'), collect($items)->sum('returned_qty'), collect($items)->sum('net_qty')), $valExpr(collect($items)->sum('net'), collect($items)->sum('returns_amount')), true) !!}
-    {!! $bridgeRows((float) collect($items)->sum('net_value'), 2) !!}
+    {!! $tEntry('TOTAL', collect($items)->sum('sold_qty'), collect($items)->sum('returned_qty'), collect($items)->sum('net_qty'), collect($items)->sum('net'), collect($items)->sum('returns_amount'), collect($items)->sum('net_value'), true) !!}
+    {!! $bridgeRows((float) collect($items)->sum('net_value'), 4) !!}
 </table>
 @else
 <table>
@@ -188,10 +211,11 @@
 <h2>WAITERS</h2>
 @if($isThermal)
 <table>
+    {!! $tHead() !!}
     @foreach($waiters as $r)
-        {!! $tRow($r['label'], $r['net_sales'], 'Orders ' . $r['orders'], $valExpr($r['grand_total'], $r['returns_amount'])) !!}
+        {!! $tOrders($r['label'], $r['orders'], $r['grand_total'], $r['returns_amount'], $r['net_sales']) !!}
     @endforeach
-    {!! $tRow('TOTAL', collect($waiters)->sum('net_sales'), 'Orders ' . collect($waiters)->sum('orders'), $valExpr(collect($waiters)->sum('grand_total'), collect($waiters)->sum('returns_amount')), true) !!}
+    {!! $tOrders('TOTAL', collect($waiters)->sum('orders'), collect($waiters)->sum('grand_total'), collect($waiters)->sum('returns_amount'), collect($waiters)->sum('net_sales'), true) !!}
 </table>
 @else
 <table>
@@ -210,8 +234,9 @@
     <h3>{{ strtoupper($orderType) }} — CATEGORIES</h3>
     <table>
         @if($isThermal)
+            {!! $tHead() !!}
             @foreach($rows as $r)
-                {!! $tRow($r['label'], $r['net_value'], $qtyExpr($r['sold_qty'], $r['returned_qty'], $r['net_qty']), $valExpr($r['net'], $r['returns_amount'])) !!}
+                {!! $tEntry($r['label'], $r['sold_qty'], $r['returned_qty'], $r['net_qty'], $r['net'], $r['returns_amount'], $r['net_value']) !!}
             @endforeach
         @else
         <tr><th>Category</th><th class="amt">Sold Qty</th><th class="amt">Ret Qty</th><th class="amt">Net Qty</th><th class="amt">Sold</th><th class="amt">Returns</th><th class="amt">Net</th></tr>
@@ -220,7 +245,7 @@
         @endforeach
         @endif
         @if($isThermal)
-            {!! $tRow('TOTAL', collect($rows)->sum('net_value'), $qtyExpr(collect($rows)->sum('sold_qty'), collect($rows)->sum('returned_qty'), collect($rows)->sum('net_qty')), $valExpr(collect($rows)->sum('net'), collect($rows)->sum('returns_amount')), true) !!}
+            {!! $tEntry('TOTAL', collect($rows)->sum('sold_qty'), collect($rows)->sum('returned_qty'), collect($rows)->sum('net_qty'), collect($rows)->sum('net'), collect($rows)->sum('returns_amount'), collect($rows)->sum('net_value'), true) !!}
         @else
             <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty(collect($rows)->sum('sold_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('returned_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('net_qty')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('returns_amount')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net_value')) }}</td></tr>
         @endif
@@ -230,8 +255,9 @@
     <h3>{{ strtoupper($orderType) }} — ITEMS</h3>
     <table>
         @if($isThermal)
+            {!! $tHead() !!}
             @foreach($rows as $r)
-                {!! $tRow($r['label'], $r['net_value'], $qtyExpr($r['sold_qty'], $r['returned_qty'], $r['net_qty']), $valExpr($r['net'], $r['returns_amount'])) !!}
+                {!! $tEntry($r['label'], $r['sold_qty'], $r['returned_qty'], $r['net_qty'], $r['net'], $r['returns_amount'], $r['net_value']) !!}
             @endforeach
         @else
         <tr><th>Item</th><th class="amt">Sold Qty</th><th class="amt">Ret Qty</th><th class="amt">Net Qty</th><th class="amt">Sold</th><th class="amt">Returns</th><th class="amt">Net</th></tr>
@@ -240,7 +266,7 @@
         @endforeach
         @endif
         @if($isThermal)
-            {!! $tRow('TOTAL', collect($rows)->sum('net_value'), $qtyExpr(collect($rows)->sum('sold_qty'), collect($rows)->sum('returned_qty'), collect($rows)->sum('net_qty')), $valExpr(collect($rows)->sum('net'), collect($rows)->sum('returns_amount')), true) !!}
+            {!! $tEntry('TOTAL', collect($rows)->sum('sold_qty'), collect($rows)->sum('returned_qty'), collect($rows)->sum('net_qty'), collect($rows)->sum('net'), collect($rows)->sum('returns_amount'), collect($rows)->sum('net_value'), true) !!}
         @else
             <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty(collect($rows)->sum('sold_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('returned_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('net_qty')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('returns_amount')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net_value')) }}</td></tr>
         @endif
@@ -250,10 +276,11 @@
     <h3>{{ strtoupper($orderType) }} — WAITERS</h3>
     @if($isThermal)
     <table>
+        {!! $tHead() !!}
         @foreach($rows as $r)
-            {!! $tRow($r['label'], $r['net_sales'], 'Orders ' . $r['orders'], $valExpr($r['grand_total'], $r['returns_amount'])) !!}
+            {!! $tOrders($r['label'], $r['orders'], $r['grand_total'], $r['returns_amount'], $r['net_sales']) !!}
         @endforeach
-        {!! $tRow('TOTAL', collect($rows)->sum('net_sales'), 'Orders ' . collect($rows)->sum('orders'), $valExpr(collect($rows)->sum('grand_total'), collect($rows)->sum('returns_amount')), true) !!}
+        {!! $tOrders('TOTAL', collect($rows)->sum('orders'), collect($rows)->sum('grand_total'), collect($rows)->sum('returns_amount'), collect($rows)->sum('net_sales'), true) !!}
     </table>
     @else
     <table>
@@ -271,6 +298,7 @@
 <h2>CANCELLATIONS (voided / decreased after KOT)</h2>
 @if($isThermal)
 <table>
+    {!! $tHead() !!}
     @forelse($cancellations['rows'] as $r)
         <tr><td colspan="2">{{ $r['item'] }}</td></tr>
         <tr><td colspan="2">{{ $r['order_type'] }} / {{ $r['reason'] }}</td></tr>
