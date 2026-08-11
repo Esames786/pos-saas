@@ -378,7 +378,18 @@ async function processJob(job) {
 
 let idleCounter = 0;
 
+// Only ONE tick may be in flight. setInterval fires every 3s while a print can take longer, so
+// ticks used to overlap and open a SECOND socket to the same printer — and port 9100 accepts one
+// connection at a time. The agent was therefore colliding with itself: the second connection could
+// not open, hit the timeout, and the ticket was abandoned. This is the collision the counter saw
+// as "sometimes it prints, sometimes it doesn't".
+let ticking = false;
+
 async function tick() {
+    if (ticking) {
+        return;
+    }
+    ticking = true;
     try {
         await heartbeat();
 
@@ -391,6 +402,9 @@ async function tick() {
             for (const job of jobs) {
                 await processJob(job);
             }
+            // A ticket the server just re-queued should not wait a full poll interval — a kitchen
+            // slip arriving seconds late is the whole complaint. Look again straight away.
+            setTimeout(() => { tick().catch(() => {}); }, 250);
             return;
         }
 
@@ -400,6 +414,10 @@ async function tick() {
         }
     } catch (err) {
         log(`[ERR]   ${err.message}`);
+    } finally {
+        // Release in finally, never on the happy path only — one thrown heartbeat would otherwise
+        // wedge the agent silently forever.
+        ticking = false;
     }
 }
 

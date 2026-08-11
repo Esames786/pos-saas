@@ -512,6 +512,20 @@ class PrintJobService
         ]);
     }
 
+    /**
+     * How many times the SERVER will put a transiently-failed job back in the queue before giving
+     * up. Port 9100 accepts one connection at a time, so a KOT and a receipt raised seconds apart
+     * routinely collide: the second connection cannot open, the agent abandons it, and the ticket
+     * is lost until someone notices. Khatri Biryani were re-printing 48.7% of bills by hand.
+     */
+    public const MAX_AUTO_REQUEUE = 3;
+
+    /**
+     * Failures we are confident happened BEFORE the payload reached the printer, so re-sending
+     * cannot produce a second copy of the same bill. A connect that never opened wrote nothing.
+     */
+    private const RETRYABLE = ['connection timed out', 'econnrefused', 'ehostunreach', 'enetunreach', 'etimedout', 'econnreset', 'socket hang up'];
+
     public function markFailed(PrintJob $job, string $message): void
     {
         // A COMPLETED print can never be demoted to failed (EDGE-LOCAL-PRINT-1 §19, protects Cloud
@@ -522,12 +536,42 @@ class PrintJobService
             return;
         }
 
+        $attempts = (int) $job->attempts + 1;
+
+        // AUTO-REQUEUE: hand it straight back to the queue so the agent retries on its next poll
+        // (~3s). The printer is almost always free again within seconds — the live evidence was a
+        // receipt that failed at 14:55:04 and printed at 14:55:10 on the very same printer.
+        if ($attempts < self::MAX_AUTO_REQUEUE && $this->isTransient($message)) {
+            $job->update([
+                'print_status'  => 'queued',
+                'attempts'      => $attempts,
+                'error_message' => $message,
+                'claimed_at'    => null,
+                'claimed_by_agent_id' => null,
+            ]);
+
+            return;
+        }
+
         $job->update([
             'print_status'  => 'failed',
             'failed_at'     => now(),
-            'attempts'      => (int) $job->attempts + 1,
+            'attempts'      => $attempts,
             'error_message' => $message,
         ]);
+    }
+
+    /** Only connect-phase failures are re-sent; anything else could mean the ticket already printed. */
+    private function isTransient(string $message): bool
+    {
+        $message = strtolower($message);
+        foreach (self::RETRYABLE as $needle) {
+            if (str_contains($message, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function createKotJob(
