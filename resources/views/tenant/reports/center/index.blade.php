@@ -312,7 +312,7 @@
             <thead><tr><th>Date</th><th>Sale</th><th>Type</th><th>Terminal</th><th>Cashier</th><th>Waiter</th><th>Item</th><th class="text-end">Qty</th><th class="text-end">Ret</th><th class="text-end">Rate</th><th class="text-end">Gross</th><th class="text-end">Disc</th><th class="text-end">Tax</th><th class="text-end">Net</th></tr></thead>
             <tbody>
             @foreach($data['detailed'] as $r)
-                <tr><td>{{ $r->sale_date }}</td><td>{{ $r->sale_no }}</td><td>{{ $r->order_type }}</td><td>{{ $r->terminal }}</td><td>{{ $r->cashier }}</td><td>{{ $r->waiter ?? '—' }}</td><td>{{ $r->item }}</td><td class="text-end">{{ $fmt($r->quantity) }}</td><td class="text-end">{{ $fmt($r->returned_quantity) }}</td><td class="text-end">{{ $fmt($r->unit_price) }}</td><td class="text-end">{{ $fmt($r->gross) }}</td><td class="text-end">{{ $fmt($r->discount_amount) }}</td><td class="text-end">{{ $fmt($r->tax_amount) }}</td><td class="text-end">{{ $fmt($r->line_total) }}</td></tr>
+                <tr><td>{{ app(\App\Support\TenantClock::class)->format($r->sale_date, 'Y-m-d H:i', $r->sale_timezone ?? null) }}</td><td>{{ $r->sale_no }}</td><td>{{ $r->order_type }}</td><td>{{ $r->terminal }}</td><td>{{ $r->cashier }}</td><td>{{ $r->waiter ?? '—' }}</td><td>{{ $r->item }}</td><td class="text-end">{{ $fmt($r->quantity) }}</td><td class="text-end">{{ $fmt($r->returned_quantity) }}</td><td class="text-end">{{ $fmt($r->unit_price) }}</td><td class="text-end">{{ $fmt($r->gross) }}</td><td class="text-end">{{ $fmt($r->discount_amount) }}</td><td class="text-end">{{ $fmt($r->tax_amount) }}</td><td class="text-end">{{ $fmt($r->line_total) }}</td></tr>
             @endforeach
             </tbody>
         </table>

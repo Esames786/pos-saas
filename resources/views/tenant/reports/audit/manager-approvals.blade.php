@@ -72,7 +72,7 @@
                     <td>{{ $a->approvedBy?->name ?? '—' }}</td>
                     <td class="text-end">{{ number_format($a->amount ?? 0, 2) }}</td>
                     <td class="text-muted small">{{ $a->reason ?? '—' }}</td>
-                    <td>{{ $a->approved_at?->format('d/m H:i') ?? '—' }}</td>
+                    <td>{{ $a->approved_at ? app(\App\Support\TenantClock::class)->format($a->approved_at, 'd/m H:i') : '—' }}</td>
                 </tr>
                 @empty
                 <tr><td colspan="7" class="text-center text-muted py-4">No approvals found.</td></tr>

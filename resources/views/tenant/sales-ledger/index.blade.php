@@ -62,7 +62,11 @@
             <tbody>
             @forelse($ledgers as $entry)
                 <tr>
-                    <td>{{ $entry->created_at->format('Y-m-d H:i') }}</td>
+                    <td>{{ app(\App\Support\TenantClock::class)->format(
+                        $entry->created_at,
+                        'Y-m-d H:i',
+                        app(\App\Support\TenantClock::class)->displayTimezone(null, $entry->branch)
+                    ) }}</td>
                     <td>{{ $entry->branch?->name }}</td>
                     <td>
                         @if($entry->order)

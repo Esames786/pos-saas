@@ -43,13 +43,13 @@
                     <dd class="col-sm-7">{{ $shift->openedBy?->name }}</dd>
 
                     <dt class="col-sm-5">Opened At</dt>
-                    <dd class="col-sm-7">{{ $shift->opened_at?->format('Y-m-d H:i') }}</dd>
+                    <dd class="col-sm-7">{{ app(\App\Support\TenantClock::class)->format($shift->opened_at, 'Y-m-d H:i', $shift->timezone_name) }}</dd>
 
                     <dt class="col-sm-5">Closed By</dt>
                     <dd class="col-sm-7">{{ $shift->closedBy?->name ?? '—' }}</dd>
 
                     <dt class="col-sm-5">Closed At</dt>
-                    <dd class="col-sm-7">{{ $shift->closed_at?->format('Y-m-d H:i') ?? '—' }}</dd>
+                    <dd class="col-sm-7">{{ $shift->closed_at ? app(\App\Support\TenantClock::class)->format($shift->closed_at, 'Y-m-d H:i', $shift->timezone_name) : '—' }}</dd>
 
                     <dt class="col-sm-5">Opening Notes</dt>
                     <dd class="col-sm-7">{{ $shift->opening_notes ?? '—' }}</dd>

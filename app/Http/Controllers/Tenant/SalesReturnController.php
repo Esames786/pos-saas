@@ -28,7 +28,7 @@ class SalesReturnController extends Controller
 
         if ($request->filled('sales_order_id')) {
             $salesOrder = SalesOrder::with([
-                'branch', 'terminal', 'customer', 'createdBy',
+                'branch', 'terminal', 'customer', 'createdBy', 'shift',
                 'restaurantTable', 'restaurantWaiter',
                 'payments.method',
                 'lines' => fn ($query) => $query->where(function ($lineQuery) {

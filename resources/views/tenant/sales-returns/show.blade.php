@@ -33,7 +33,11 @@
             <dd class="col-sm-9">{{ $salesReturn->branch?->name }}</dd>
 
             <dt class="col-sm-3">Return Date</dt>
-            <dd class="col-sm-9">{{ $salesReturn->return_date?->format('Y-m-d H:i') }}</dd>
+            <dd class="col-sm-9">{{ app(\App\Support\TenantClock::class)->format(
+                $salesReturn->return_date,
+                'Y-m-d H:i',
+                app(\App\Support\TenantClock::class)->displayTimezone(null, $salesReturn->branch)
+            ) }}</dd>
 
             <dt class="col-sm-3">Subtotal</dt>
             <dd class="col-sm-9">{{ number_format($salesReturn->subtotal, 2) }}</dd>

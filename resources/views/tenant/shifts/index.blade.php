@@ -105,8 +105,8 @@
                         <td class="text-muted">{{ $shift->id }}</td>
                         <td class="ps-4">{{ $shift->terminal?->name ?? ('Terminal #' . $shift->terminal_id) }}</td>
                         <td>{{ $shift->openedBy?->name }}</td>
-                        <td>{{ $shift->opened_at?->format('Y-m-d H:i') }}</td>
-                        <td>{{ $shift->closed_at?->format('Y-m-d H:i') ?? '—' }}</td>
+                        <td>{{ app(\App\Support\TenantClock::class)->format($shift->opened_at, 'Y-m-d H:i', $shift->timezone_name) }}</td>
+                        <td>{{ $shift->closed_at ? app(\App\Support\TenantClock::class)->format($shift->closed_at, 'Y-m-d H:i', $shift->timezone_name) : '—' }}</td>
                         <td>{{ number_format($shift->opening_cash, 2) }}</td>
                         <td>
                             @if($shift->status === 'open')

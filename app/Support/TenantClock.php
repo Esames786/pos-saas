@@ -92,6 +92,32 @@ class TenantClock
     }
 
     /**
+     * The timezone a SALE was operationally recorded in: its FROZEN shift timezone first, then its
+     * branch, then the default. Identical to the rule the printed receipt uses, so a screen and the
+     * paper in the customer's hand can never disagree — and re-pointing a branch's timezone later
+     * can never rewrite what an old order appears to have happened at.
+     *
+     * Timestamps are stored in UTC (app.timezone=UTC). Formatting one without this conversion
+     * prints UTC to a Karachi cashier — five hours adrift on a screen that sits next to a clock.
+     */
+    public function saleTimezone($sale): string
+    {
+        return $this->normalize($sale?->shift?->timezone_name)
+            ?? $this->normalize($sale?->branch?->timezone)
+            ?? self::DEFAULT_TIMEZONE;
+    }
+
+    /** Format a sale's timestamp in the timezone that sale was recorded in. */
+    public function formatSale($sale, string $format = 'Y-m-d H:i', $timestamp = null): string
+    {
+        return $this->format(
+            $timestamp ?? $sale?->sale_date ?? $sale?->created_at,
+            $format,
+            $this->saleTimezone($sale)
+        );
+    }
+
+    /**
      * The business (calendar) date at a moment, in a BUSINESS timezone — used to stamp a shift
      * when it OPENS. e.g. 2026-08-05 20:00 Karachi -> "2026-08-05"; 2026-08-06 00:01 Karachi ->
      * "2026-08-06". Frozen on the shift; never recomputed.

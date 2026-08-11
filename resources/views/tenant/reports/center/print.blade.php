@@ -42,7 +42,7 @@
 <div style="text-align:center">
     Sales Report ({{ $mode === 'thermal' ? 'Z / End of Day' : 'Standard' }})<br>
     {{ $filters['date_from'] }} → {{ $filters['date_to'] }}<br>
-    Generated {{ now()->format('d-M-Y H:i') }}
+    Generated {{ app(\App\Support\TenantClock::class)->now()->format('d-M-Y H:i') }}
 </div>
 
 @if($has('overview') && $overview)

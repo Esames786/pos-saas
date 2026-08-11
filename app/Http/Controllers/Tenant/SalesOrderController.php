@@ -31,7 +31,9 @@ class SalesOrderController extends Controller
 {
     public function index(Request $request)
     {
-        $query = SalesOrder::with(['branch', 'terminal', 'customer', 'createdBy', 'deliveryRider'])
+        // 'shift' rides along so each row's time can be shown in the timezone it was recorded in
+        // without an N+1 (see TenantClock::saleTimezone).
+        $query = SalesOrder::with(['branch', 'terminal', 'customer', 'createdBy', 'deliveryRider', 'shift'])
             ->orderByDesc('sale_date')
             ->orderByDesc('id');
 

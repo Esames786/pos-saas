@@ -49,7 +49,11 @@
                                     <td>{{ $sale->customer_name ?: ($sale->customer->name ?? 'Walk-in') }}</td>
                                     <td>{{ $sale->restaurantTable->table_no ?? '-' }}</td>
                                     <td>{{ number_format($sale->grand_total, 2) }}</td>
-                                    <td>{{ $sale->updated_at->format('d M H:i') }}</td>
+                                    <td>{{ app(\App\Support\TenantClock::class)->format(
+                                        $sale->updated_at,
+                                        'd M H:i',
+                                        app(\App\Support\TenantClock::class)->displayTimezone(null, $sale->branch)
+                                    ) }}</td>
                                     <td>
                                         @can('tenant.pos.index')
                                         <a href="{{ url('/pos?held_sale_id=' . $sale->id) }}"

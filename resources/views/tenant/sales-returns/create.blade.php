@@ -50,7 +50,7 @@
                 <span class="badge bg-success ms-1">Paid</span>
             @endif
         </span>
-        <span class="small text-muted">{{ $salesOrder->sale_date?->format('Y-m-d H:i') }}</span>
+        <span class="small text-muted">{{ app(\App\Support\TenantClock::class)->formatSale($salesOrder, 'Y-m-d H:i') }}</span>
     </div>
     <div class="card-body row g-3 small">
         <div class="col-6 col-md-2"><div class="text-muted">Branch</div><div class="fw-semibold">{{ $salesOrder->branch?->name }}</div></div>

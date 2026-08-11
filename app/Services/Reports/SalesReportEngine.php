@@ -479,8 +479,14 @@ class SalesReportEngine
             ->leftJoin('restaurant_waiters as w', 'w.id', '=', 'o.restaurant_waiter_id')
             ->leftJoin('users as u', 'u.id', '=', 'o.created_by_user_id')
             ->leftJoin('terminals as t', 't.id', '=', 'o.terminal_id')
+            // sale_date is stored UTC. Carry the timezone the sale was RECORDED in — frozen shift
+            // first, then its branch — so the printed row matches the receipt instead of showing
+            // UTC. Rows can span branches, so this has to travel per row, not once per report.
+            ->leftJoin('shifts as rsh', 'rsh.id', '=', 'o.shift_id')
+            ->leftJoin('branches as rbr', 'rbr.id', '=', 'o.branch_id')
             ->orderBy('o.sale_date')->orderBy('o.id')->orderBy('l.id')
             ->select([
+                DB::raw('COALESCE(rsh.timezone_name, rbr.timezone) as sale_timezone'),
                 'o.sale_date', 'o.sale_no', 'o.order_type', 'o.status as sale_status',
                 't.name as terminal', 'o.shift_id', 'u.name as cashier', 'w.name as waiter',
                 'l.product_name as item', 'v.name as variant', 'c.name as category',

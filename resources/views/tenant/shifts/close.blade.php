@@ -36,7 +36,7 @@
                 </div>
                 <div class="col-md-3 col-sm-6">
                     <p class="form-help mb-1">Opened At</p>
-                    <strong>{{ $shift->opened_at?->format('Y-m-d H:i') }}</strong>
+                    <strong>{{ app(\App\Support\TenantClock::class)->format($shift->opened_at, 'Y-m-d H:i', $shift->timezone_name) }}</strong>
                 </div>
             </div>
         </div>

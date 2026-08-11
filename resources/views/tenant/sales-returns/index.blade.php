@@ -49,7 +49,11 @@
                         @endcan
                     </td>
                     <td>{{ $return->branch?->name }}</td>
-                    <td>{{ $return->return_date?->format('Y-m-d H:i') }}</td>
+                    <td>{{ app(\App\Support\TenantClock::class)->format(
+                        $return->return_date,
+                        'Y-m-d H:i',
+                        app(\App\Support\TenantClock::class)->displayTimezone(null, $return->branch)
+                    ) }}</td>
                     <td>{{ number_format($return->grand_total, 2) }}</td>
                     <td>{{ $return->refund_method ? str_replace('_', ' ', ucfirst($return->refund_method)) : '—' }}</td>
                     <td>

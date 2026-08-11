@@ -680,7 +680,7 @@ class POSController extends Controller
         $allowedTypes = auth("tenant")->user()?->effectiveAllowedOrderTypes() ?? [];
         $filterType = (string) $request->input('order_type', '');
 
-        $sales = SalesOrder::with(['customer', 'deliveryRider'])
+        $sales = SalesOrder::with(['customer', 'deliveryRider', 'branch', 'shift'])
             ->where('status', '!=', 'held')
             ->whereNotNull('sale_no')
             ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
@@ -710,7 +710,7 @@ class POSController extends Controller
                 'customer'       => $s->customer_name ?: $s->customer?->name ?: 'Walk-in',
                 'rider'          => $s->order_type === 'delivery' ? ($s->deliveryRider?->name ?? 'Unassigned') : null,
                 'total'          => number_format((float) $s->grand_total, 2),
-                'time'           => optional($s->sale_date ?? $s->created_at)->format('d M, h:i A'),
+                'time'           => app(\App\Support\TenantClock::class)->formatSale($s, 'd M, h:i A'),
                 'ago'            => optional($s->sale_date ?? $s->created_at)->diffForHumans(),
                 'printing'       => $printState ? [
                     'kot' => $printState['kot_status'] ?? null,

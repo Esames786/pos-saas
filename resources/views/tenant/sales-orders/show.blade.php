@@ -85,7 +85,7 @@
                     @endif
 
                     <dt class="col-sm-4">Sale Date</dt>
-                    <dd class="col-sm-8">{{ $salesOrder->sale_date?->format('Y-m-d H:i') }}</dd>
+                    <dd class="col-sm-8">{{ app(\App\Support\TenantClock::class)->formatSale($salesOrder, 'Y-m-d H:i') }}</dd>
 
                     <dt class="col-sm-4">Order Type</dt>
                     <dd class="col-sm-8">{{ str_replace('_', ' ', ucfirst($salesOrder->order_type)) }}</dd>
@@ -253,7 +253,7 @@
                 <tbody>
                 @foreach($salesOrder->riderAssignments as $assignment)
                     <tr>
-                        <td>{{ $assignment->created_at?->format('Y-m-d H:i') }}</td>
+                        <td>{{ app(\App\Support\TenantClock::class)->formatSale($salesOrder, 'Y-m-d H:i', $assignment->created_at) }}</td>
                         <td>{{ $assignment->from_rider_name ?? 'Unassigned' }}</td>
                         <td><strong>{{ $assignment->to_rider_name }}</strong></td>
                         <td>{{ $assignment->changed_by_name ?? 'System' }}</td>

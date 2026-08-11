@@ -120,8 +120,9 @@
                                 <td>{{ $shift->branch?->name }}</td>
                                 <td>{{ $shift->terminal?->name ?? '—' }}</td>
                                 <td>{{ $shift->openedBy?->name ?? '—' }}</td>
-                                <td>{{ $shift->opened_at?->format('d/m/Y H:i') }}</td>
-                                <td>{{ $shift->closed_at?->format('d/m/Y H:i') ?? '—' }}</td>
+                                {{-- a shift carries its OWN frozen timezone; that is the truth for its times --}}
+                                <td>{{ app(\App\Support\TenantClock::class)->format($shift->opened_at, 'd/m/Y H:i', $shift->timezone_name) }}</td>
+                                <td>{{ $shift->closed_at ? app(\App\Support\TenantClock::class)->format($shift->closed_at, 'd/m/Y H:i', $shift->timezone_name) : '—' }}</td>
                                 <td class="text-end">{{ number_format($shift->total_sales, 2) }}</td>
                                 <td class="text-end">{{ number_format($shift->total_cash, 2) }}</td>
                                 <td class="text-end text-danger">{{ number_format($shift->total_refunds, 2) }}</td>

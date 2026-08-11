@@ -72,7 +72,7 @@
                 </div>
                 <div class="col-md-3">
                     <small class="text-muted d-block">Opened</small>
-                    <strong>{{ $session->opened_at?->format('d M H:i') }}</strong>
+                    <strong>{{ app(\App\Support\TenantClock::class)->format($session->opened_at, 'd M H:i') }}</strong>
                 </div>
             </div>
         </div>
@@ -202,7 +202,7 @@
                     @forelse($paidSales as $sale)
                         <tr>
                             <td><code>{{ $sale->sale_no }}</code></td>
-                            <td>{{ $sale->sale_date?->format('d M H:i') }}</td>
+                            <td>{{ app(\App\Support\TenantClock::class)->formatSale($sale, 'd M H:i') }}</td>
                             <td>{{ number_format($sale->grand_total, 2) }}</td>
                             <td>{{ number_format($sale->paid_amount, 2) }}</td>
                             <td class="text-end">

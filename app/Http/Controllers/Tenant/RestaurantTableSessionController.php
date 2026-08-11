@@ -235,6 +235,7 @@ class RestaurantTableSessionController extends Controller
         $this->assertDineInAllowed();
         $this->assertSessionAccess($restaurantTableSession);
         $restaurantTableSession->load([
+            'branch',
             'table.floor',
             'waiter',
             'openedBy',
@@ -254,7 +255,7 @@ class RestaurantTableSessionController extends Controller
             'waiter',
             'salesOrders' => function ($query) {
                 $query->whereIn('status', ['held', 'paid'])
-                    ->with(['lines.product', 'lines.variant', 'payments.method']);
+                    ->with(['lines.product', 'lines.variant', 'payments.method', 'branch', 'shift']);
             },
         ]);
 

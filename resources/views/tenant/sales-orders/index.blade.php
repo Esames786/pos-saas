@@ -85,7 +85,7 @@
                     <td><code>{{ $order->sale_no }}</code></td>
                     <td>{{ $order->branch?->name }}</td>
                     <td>{{ $order->customer?->name ?? $order->customer_name ?? '—' }}</td>
-                    <td>{{ $order->sale_date?->format('Y-m-d H:i') }}</td>
+                    <td>{{ app(\App\Support\TenantClock::class)->formatSale($order, 'Y-m-d H:i') }}</td>
                     <td>{{ str_replace('_', ' ', ucfirst($order->order_type)) }}</td>
                     <td>{{ $order->order_type === 'delivery' ? ($order->deliveryRider?->name ?? 'Unassigned') : '—' }}</td>
                     <td><strong>{{ number_format($order->grand_total, 2) }}</strong></td>

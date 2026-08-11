@@ -52,7 +52,7 @@
         <div>Check: {{ $session->session_no }}</div>
         <div>Waiter: {{ $session->waiter?->name ?? '-' }} &nbsp; Guests: {{ $session->guest_count }}</div>
     @endif
-    <div>{{ now()->format('d/m/Y H:i') }}</div>
+    <div>{{ app(\App\Support\TenantClock::class)->now()->format('d/m/Y H:i') }}</div>
     <hr>
 
     @forelse($heldSales as $sale)
@@ -109,7 +109,7 @@
             @foreach($paidSales as $sale)
                 <tr>
                     <td>{{ $sale->sale_no }}</td>
-                    <td class="r">{{ $sale->sale_date?->format('d/m H:i') }}</td>
+                    <td class="r">{{ app(\App\Support\TenantClock::class)->formatSale($sale, 'd/m H:i') }}</td>
                     <td class="r">{{ number_format((float) $sale->grand_total, 2) }}</td>
                 </tr>
             @endforeach

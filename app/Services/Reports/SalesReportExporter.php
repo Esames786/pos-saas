@@ -138,7 +138,11 @@ class SalesReportExporter
         fputcsv($fh, ['Date/Time', 'Sale No', 'Status', 'Order Type', 'Terminal', 'Shift', 'Cashier', 'Waiter', 'Item', 'Variant', 'Category', 'Qty', 'Returned', 'Rate', 'Gross', 'Discount', 'Tax', 'Line Net', 'Delivery Charge', 'Sale Grand Total']);
         // FULL filtered set, chunked — never the UI page, never one giant array.
         foreach ($this->engine->detailedQuery($f)->cursor() as $r) {
-            fputcsv($fh, [$r->sale_date, $r->sale_no, $r->sale_status, $r->order_type, $r->terminal, $r->shift_id, $r->cashier, $r->waiter, $r->item, $r->variant, $r->category, $r->quantity, $r->returned_quantity, $r->unit_price, $r->gross, $r->discount_amount, $r->tax_amount, $r->line_total, $r->delivery_charge_amount, $r->grand_total]);
+            // Same conversion as the on-screen table — an exported sheet that disagreed with the
+            // screen (or the receipt) by five hours would be worse than either alone.
+            $saleDate = app(\App\Support\TenantClock::class)
+                ->format($r->sale_date, 'Y-m-d H:i', $r->sale_timezone ?? null);
+            fputcsv($fh, [$saleDate, $r->sale_no, $r->sale_status, $r->order_type, $r->terminal, $r->shift_id, $r->cashier, $r->waiter, $r->item, $r->variant, $r->category, $r->quantity, $r->returned_quantity, $r->unit_price, $r->gross, $r->discount_amount, $r->tax_amount, $r->line_total, $r->delivery_charge_amount, $r->grand_total]);
         }
         rewind($fh);
 

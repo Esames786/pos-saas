@@ -27,9 +27,17 @@
                                 <tr><th>Guests</th><td>{{ $restaurantTableSession->guest_count }}</td></tr>
                                 <tr><th>Status</th><td><span class="badge bg-{{ $restaurantTableSession->status === 'open' ? 'success' : 'secondary' }}">{{ ucfirst($restaurantTableSession->status) }}</span></td></tr>
                                 <tr><th>Opened By</th><td>{{ $restaurantTableSession->openedBy->name ?? '-' }}</td></tr>
-                                <tr><th>Opened At</th><td>{{ $restaurantTableSession->opened_at?->format('d M Y H:i') }}</td></tr>
+                                <tr><th>Opened At</th><td>{{ app(\App\Support\TenantClock::class)->format(
+                                    $restaurantTableSession->opened_at,
+                                    'd M Y H:i',
+                                    app(\App\Support\TenantClock::class)->displayTimezone(null, $restaurantTableSession->branch)
+                                ) }}</td></tr>
                                 @if($restaurantTableSession->closed_at)
-                                <tr><th>Closed At</th><td>{{ $restaurantTableSession->closed_at->format('d M Y H:i') }}</td></tr>
+                                <tr><th>Closed At</th><td>{{ app(\App\Support\TenantClock::class)->format(
+                                    $restaurantTableSession->closed_at,
+                                    'd M Y H:i',
+                                    app(\App\Support\TenantClock::class)->displayTimezone(null, $restaurantTableSession->branch)
+                                ) }}</td></tr>
                                 @endif
                                 @if($restaurantTableSession->notes)
                                 <tr><th>Notes</th><td>{{ $restaurantTableSession->notes }}</td></tr>
