@@ -570,15 +570,19 @@ class OnboardKhatriBiryaniCommand extends Command
             $names[] = $key;
         }
 
-        $role = \Spatie\Permission\Models\Role::findOrCreate('Delivery', 'tenant');
-        $role->syncPermissions(array_values(array_unique($names)));
+        // Each counter gets its OWN role with the SAME permission set — a "Delivery" role for the
+        // delivery counter and a distinct "Dine In" role for the dine-in counter — so a role name
+        // never misdescribes the user wearing it. They differ only by name; the permissions,
+        // order-type scope and terminal binding are what actually separate the two operators.
+        $perms = array_values(array_unique($names));
+        $deliveryRole = \Spatie\Permission\Models\Role::findOrCreate('Delivery', 'tenant');
+        $deliveryRole->syncPermissions($perms);
+        $dineInRole = \Spatie\Permission\Models\Role::findOrCreate('Dine In', 'tenant');
+        $dineInRole->syncPermissions($perms);
 
-        // The delivery counter (delivery orders, Delivery terminal) and the dine-in counter
-        // (2026-08-12: dine_in orders, Dine In terminal) share this SAME role — identical
-        // permissions — and differ only in the order type + terminal each is scoped to.
         $dineInTerminalId = (int) DB::connection('tenant')->table('terminals')->where('code', 'T3')->value('id');
-        $this->seedCounterUser($branchId, $role, 'delivery_kb@bingoopos.com', 'Delivery Counter', 'delivery', $deliveryTerminalId, count($names));
-        $this->seedCounterUser($branchId, $role, 'dinein_kb@bingoopos.com', 'Dine In Counter', 'dine_in', $dineInTerminalId, count($names));
+        $this->seedCounterUser($branchId, $deliveryRole, 'delivery_kb@bingoopos.com', 'Delivery Counter', 'delivery', $deliveryTerminalId, count($perms));
+        $this->seedCounterUser($branchId, $dineInRole, 'dinein_kb@bingoopos.com', 'Dine In Counter', 'dine_in', $dineInTerminalId, count($perms));
 
         app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
     }
@@ -616,7 +620,7 @@ class OnboardKhatriBiryaniCommand extends Command
              'created_at' => now(), 'updated_at' => now()]
         );
 
-        $this->info("counter user {$email} ready: role Delivery = {$permCount} permissions, locked to its terminal + {$orderType} orders.");
+        $this->info("counter user {$email} ready: role {$role->name} = {$permCount} permissions, locked to its terminal + {$orderType} orders.");
         if ($password) {
             $this->warn(ucfirst($name) . ' password (store securely, shown once): ' . $password);
         }
