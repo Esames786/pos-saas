@@ -144,6 +144,22 @@ return [
     'cache' => [
         'expiration_time' => \DateInterval::createFromDateString('24 hours'),
         'key' => 'spatie.permission.cache',
-        'store' => 'default',
+
+        // PER-REQUEST store, NOT the shared database cache.
+        //
+        // The default 'database' store keeps ONE row under ONE static key, resolved against the
+        // current DB connection. In a warm PHP-FPM worker the store binds to the connection it
+        // first saw, so a worker that served a central (master) request then served a tenant
+        // request registered the WRONG guard's permission collection against the Gate: every
+        // tenant permission check returned false → live 403s across all tenant users (and the
+        // mirror image took the central admin dashboard down). getAllPermissions() read the DB
+        // link correctly the whole time; only the cached Gate registration was wrong.
+        //
+        // PHP-FPM rebuilds the application per request, so an 'array' store lives exactly one
+        // request: every request loads permissions from ITS OWN default connection (the tenant
+        // its host resolved to, or master for central) and registers the correct guard. One
+        // small indexed query per request buys complete cross-tenant isolation and kills the
+        // whole stale-permission 403 class. Overridable via env for an Octane/Redis future.
+        'store' => env('PERMISSION_CACHE_STORE', 'array'),
     ],
 ];
