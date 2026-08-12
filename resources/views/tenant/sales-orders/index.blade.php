@@ -54,8 +54,18 @@
                     <option value="delivery"   @selected(request('order_type') === 'delivery')>Delivery</option>
                 </select>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
+                <label for="date_from" class="form-label">From</label>
+                <input type="date" id="date_from" name="date_from" value="{{ $dateFrom ?? '' }}" class="form-control">
+            </div>
+            <div class="col-md-2">
+                <label for="date_to" class="form-label">To</label>
+                <input type="date" id="date_to" name="date_to" value="{{ $dateTo ?? '' }}" class="form-control">
+            </div>
+            <div class="col-md-12 d-flex flex-wrap gap-2">
                 <button class="btn btn-dark" type="submit">Filter</button>
+                <button class="btn btn-outline-secondary" type="submit" name="range" value="today">Today</button>
+                <button class="btn btn-outline-secondary" type="submit" name="range" value="yesterday">Yesterday</button>
                 <a href="{{ url('/sales-orders') }}" class="btn btn-light">Reset</a>
             </div>
         </form>

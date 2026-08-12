@@ -331,6 +331,7 @@ class EscPosPayloadService
             if (!empty($line['kitchen_note'])) {
                 $out .= $this->subRow('  NOTE: ' . $line['kitchen_note'], $sub, true);
             }
+            $out .= $rule . "\n";   // separator after each reminder item, matching the KOT
         }
 
         $audit = collect($payload['cancellation_audit'] ?? [])->first();
@@ -442,9 +443,20 @@ class EscPosPayloadService
         }
 
         $w = $this->scaledWidth($tall);   // 42 (receipts scale height-only)
+
+        // Measure the numeric columns against the WHOLE table first (short money — no forced .00),
+        // so whole-rupee prices shrink the numbers and hand the freed width to the item name.
+        $printable = $sale->lines->filter(fn ($l) => ($l->line_kind ?? 'standard') !== 'component');
+        $measure = $printable->map(fn ($l) => [
+            $this->quantity((float) $l->quantity),
+            $this->money((float) $l->unit_price),
+            $this->money((float) $l->line_total),
+        ])->all();
+        [$nameW, $qtyW, $rateW, $amountW] = $this->receiptColumnWidths($measure, $w);
+
         $out .= str_repeat('-', 42) . "\n";
         // COLUMN HEADER — Item | Qty | Rate | Amount, the layout the client's bill reads by.
-        $out .= $this->sized($this->itemColumns('Item', 'Qty', 'Rate', 'Amount', $w), $tall, true);
+        $out .= $this->sized($this->itemColumns('Item', 'Qty', 'Rate', 'Amount', $nameW, $qtyW, $rateW, $amountW), $tall, true);
         $out .= str_repeat('-', 42) . "\n";
 
         foreach ($sale->lines as $line) {
@@ -457,9 +469,9 @@ class EscPosPayloadService
             $out .= $this->sized($this->itemColumns(
                 (string) ($line->product_name ?? ''),
                 $this->quantity((float) $line->quantity),
-                number_format((float) $line->unit_price, 2),
-                number_format((float) $line->line_total, 2),
-                $w
+                $this->money((float) $line->unit_price),
+                $this->money((float) $line->line_total),
+                $nameW, $qtyW, $rateW, $amountW
             ), $tall);
 
             if ($line->variant_name) {
@@ -484,31 +496,33 @@ class EscPosPayloadService
                 $componentQty = $this->quantity((float) $component->quantity) . $this->unitSuffix($component->unit_code);
                 $out .= $this->sized('  - ' . $componentQty . ' x ' . ($component->product_name ?? '') . "\n", $tall);
             }
+
+            // A separator after each item (with its modifiers/components) so rows read as boxes.
+            $out .= str_repeat('-', 42) . "\n";
         }
 
-        $out .= str_repeat('-', 42) . "\n";
-        $out .= $this->scaled($this->columns('Subtotal', number_format((float) $sale->subtotal, 2), 42), $tall);
+        $out .= $this->scaled($this->columns('Subtotal', $this->money((float) $sale->subtotal), 42), $tall);
 
         if ((float) $sale->discount_amount > 0) {
-            $out .= $this->scaled($this->columns('Discount', '-' . number_format((float) $sale->discount_amount, 2), 42), $tall);
+            $out .= $this->scaled($this->columns('Discount', '-' . $this->money((float) $sale->discount_amount), 42), $tall);
         }
         if ((float) $sale->tax_amount > 0) {
-            $out .= $this->scaled($this->columns('Tax', number_format((float) $sale->tax_amount, 2), 42), $tall);
+            $out .= $this->scaled($this->columns('Tax', $this->money((float) $sale->tax_amount), 42), $tall);
         }
         if ((float) ($sale->service_charge_amount ?? 0) > 0) {
-            $out .= $this->scaled($this->columns('Service Charge', number_format((float) $sale->service_charge_amount, 2), 42), $tall);
+            $out .= $this->scaled($this->columns('Service Charge', $this->money((float) $sale->service_charge_amount), 42), $tall);
         }
         if ((float) ($sale->delivery_charge_amount ?? 0) > 0) {
-            $out .= $this->scaled($this->columns('Delivery Charge', number_format((float) $sale->delivery_charge_amount, 2), 42), $tall);
+            $out .= $this->scaled($this->columns('Delivery Charge', $this->money((float) $sale->delivery_charge_amount), 42), $tall);
         }
         if ((float) ($sale->tip_amount ?? 0) > 0) {
-            $out .= $this->scaled($this->columns('Tip', number_format((float) $sale->tip_amount, 2), 42), $tall);
+            $out .= $this->scaled($this->columns('Tip', $this->money((float) $sale->tip_amount), 42), $tall);
         }
 
         // The amount the customer actually owes is the one line they look for — always bold.
-        $out .= $this->scaled($this->columns('TOTAL', number_format((float) $sale->grand_total, 2), 42), $tall, true);
-        $out .= $this->scaled($this->columns('Paid', number_format((float) $sale->paid_amount, 2), 42), $tall);
-        $out .= $this->scaled($this->columns('Change', number_format((float) $sale->change_amount, 2), 42), $tall);
+        $out .= $this->scaled($this->columns('TOTAL', $this->money((float) $sale->grand_total), 42), $tall, true);
+        $out .= $this->scaled($this->columns('Paid', $this->money((float) $sale->paid_amount), 42), $tall);
+        $out .= $this->scaled($this->columns('Change', $this->money((float) $sale->change_amount), 42), $tall);
 
         $out .= str_repeat('-', 42) . "\n";
 
@@ -517,7 +531,7 @@ class EscPosPayloadService
                 $methodName = $payment->method?->name ?? ucfirst($payment->payment_method ?? 'Payment');
                 // Show the physical cash handed over (tendered) when captured — "Cash 5,000.00 /
                 // Change 1,400.00" tells the drawer story; applied-only amounts hide the change.
-                $out .= $this->columns($methodName, number_format((float) ($payment->tendered_amount ?? $payment->amount), 2), 42) . "\n";
+                $out .= $this->columns($methodName, $this->money((float) ($payment->tendered_amount ?? $payment->amount)), 42) . "\n";
             }
             $out .= str_repeat('-', 42) . "\n";
         }
@@ -660,11 +674,12 @@ class EscPosPayloadService
             if ($line->kitchen_note) {
                 $out .= $this->subRow('  NOTE: ' . $line->kitchen_note, $sub, true);
             }
+            $out .= $rule . "\n";   // separator after each KOT item, so rows read as boxes
         }
 
         if ($sale->notes) {
-            $out .= $rule . "\n";
             $out .= $this->scaled('ORDER NOTE: ' . $sale->notes, ['w' => 1, 'h' => $big['h']], true);
+            $out .= $rule . "\n";
         }
 
         $footerText = trim((string) ($layout?->footer_text ?? ''));
@@ -704,10 +719,6 @@ class EscPosPayloadService
      * numbers never collide and a long name never squeezes them. 42 Font-A columns; the caller
      * applies height scaling. Pass rate/amount empty for a header or a no-price sub-row.
      */
-    private const RECEIPT_QTY_W = 4;
-    private const RECEIPT_RATE_W = 9;
-    private const RECEIPT_AMOUNT_W = 9;
-
     /** Multibyte-safe str_pad (product names may carry non-ASCII); pads on display width. */
     private function mbStrPad(string $s, int $len, string $pad = ' ', int $type = STR_PAD_RIGHT): string
     {
@@ -720,24 +731,59 @@ class EscPosPayloadService
         return $type === STR_PAD_LEFT ? $fill . $s : $s . $fill;
     }
 
-    private function itemColumns(string $name, string $qty, string $rate, string $amount, int $width = self::COLS_80MM): string
+    /**
+     * Money for a receipt, WITHOUT a forced ".00" — a whole-rupee price prints "3,500", not
+     * "3,500.00", so the numeric columns shrink and the item name gets the freed width. Genuine
+     * paisa still print ("449.50"): nothing is rounded, only trailing zeros are dropped, so the
+     * bill still adds up exactly.
+     */
+    private function money(float $v): string
     {
-        $numeric = self::RECEIPT_QTY_W + self::RECEIPT_RATE_W + self::RECEIPT_AMOUNT_W + 3; // + one gap each
-        $nameW = max($width - $numeric, 10);
+        return rtrim(rtrim(number_format($v, 2), '0'), '.');
+    }
 
-        $lines = explode("\n", wordwrap(trim($name), $nameW, "\n", true));
+    /**
+     * One item row of the receipt column table, with the numeric column WIDTHS passed in — the
+     * caller measures the whole table's qty/rate/amount first and hands the widths here, so every
+     * row lines up and the name column claims all the width the (now shorter) numbers don't use.
+     */
+    private function itemColumns(string $name, string $qty, string $rate, string $amount, int $nameW, int $qtyW, int $rateW, int $amountW): string
+    {
+        $lines = explode("\n", wordwrap(trim($name), max($nameW, 6), "\n", true));
         $head = array_shift($lines);
 
         $row = $this->mbStrPad($head, $nameW) . ' '
-             . $this->mbStrPad($qty, self::RECEIPT_QTY_W, ' ', STR_PAD_LEFT) . ' '
-             . $this->mbStrPad($rate, self::RECEIPT_RATE_W, ' ', STR_PAD_LEFT) . ' '
-             . $this->mbStrPad($amount, self::RECEIPT_AMOUNT_W, ' ', STR_PAD_LEFT);
+             . $this->mbStrPad($qty, $qtyW, ' ', STR_PAD_LEFT) . ' '
+             . $this->mbStrPad($rate, $rateW, ' ', STR_PAD_LEFT) . ' '
+             . $this->mbStrPad($amount, $amountW, ' ', STR_PAD_LEFT);
         $out = rtrim($row) . "\n";
         foreach ($lines as $cont) {
             $out .= $cont . "\n";   // continuation: wrapped name only, numeric columns already set
         }
 
         return $out;
+    }
+
+    /**
+     * Measure the numeric column widths a receipt's item table needs: the widest qty / rate /
+     * amount across every row plus the header labels, so the columns are exactly as wide as the
+     * data (a whole-rupee shop gets narrow numbers and a wide name column). Returns
+     * [nameW, qtyW, rateW, amountW] summing (with 3 gaps) to $width.
+     */
+    private function receiptColumnWidths(array $rows, int $width): array
+    {
+        $qtyW = mb_strlen('Qty');
+        $rateW = mb_strlen('Rate');
+        $amountW = mb_strlen('Amount');
+        foreach ($rows as [$q, $r, $a]) {
+            $qtyW = max($qtyW, mb_strlen($q));
+            $rateW = max($rateW, mb_strlen($r));
+            $amountW = max($amountW, mb_strlen($a));
+        }
+        // Keep the name column readable even if a huge number appears; it wraps if it must.
+        $nameW = max($width - $qtyW - $rateW - $amountW - 3, 8);
+
+        return [$nameW, $qtyW, $rateW, $amountW];
     }
 
     /**

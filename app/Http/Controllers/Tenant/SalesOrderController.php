@@ -53,9 +53,27 @@ class SalesOrderController extends Controller
             $query->where('order_type', $request->order_type);
         }
 
+        // Date range on the sale date, in the branch's local day (Today / Yesterday / custom).
+        $clock = app(\App\Support\TenantClock::class);
+        $tz = $clock->displayTimezone(auth('tenant')->user(), null);
+        $today = $clock->now($tz)->toDateString();
+        [$from, $to] = match ($request->input('range')) {
+            'today'     => [$today, $today],
+            'yesterday' => [($y = \Illuminate\Support\Carbon::parse($today)->subDay()->toDateString()), $y],
+            default     => [$request->input('date_from') ?: null, $request->input('date_to') ?: null],
+        };
+        if ($from && $to) {
+            $query->whereBetween('sale_date', [
+                \Illuminate\Support\Carbon::parse($from . ' 00:00:00', $tz)->utc(),
+                \Illuminate\Support\Carbon::parse($to . ' 23:59:59', $tz)->utc(),
+            ]);
+        }
+
         return view('tenant.sales-orders.index', [
             'orders'   => $query->paginate(15)->withQueryString(),
             'branches' => Branch::where('status', 'active')->orderBy('name')->get(),
+            'dateFrom' => $from,
+            'dateTo'   => $to,
         ]);
     }
 

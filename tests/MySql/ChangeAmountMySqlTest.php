@@ -64,8 +64,8 @@ class ChangeAmountMySqlTest extends MySqlTenantTestCase
 
         $payload = app(EscPosPayloadService::class)->build(PrintJob::findOrFail($this->makePrintJob(null, ['document_type' => 'receipt', 'print_status' => 'queued', 'printed_at' => null, 'reference_type' => 'sales_order', 'reference_id' => $saleId, 'branch_id' => $this->branchId])));
         $this->assertStringContainsString('Change', $payload);
-        $this->assertStringContainsString('1,400.00', $payload, 'receipt prints the real change');
-        $this->assertStringContainsString('5,000.00', $payload, 'cash line shows the tendered amount (drawer story)');
+        $this->assertStringContainsString('1,400', $payload, 'receipt prints the real change (short money, no forced .00)');
+        $this->assertStringContainsString('5,000', $payload, 'cash line shows the tendered amount (drawer story)');
         $this->assertStringContainsString("\x1D\x56", $payload, 'ESC/POS auto-cut command is appended');
         $this->assertStringContainsString('BingooPos', $payload, 'receipt branding defaults ON');
 

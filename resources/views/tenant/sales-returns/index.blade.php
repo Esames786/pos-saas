@@ -19,6 +19,8 @@
     <div class="alert alert-success" role="alert" aria-live="polite">{{ session('status') }}</div>
 @endif
 
+@include('tenant.partials.date-range-filter', ['action' => url('/sales-returns'), 'dateFrom' => $dateFrom ?? null, 'dateTo' => $dateTo ?? null])
+
 <div class="card">
     <div class="card-body table-responsive">
         <table class="table table-nowrap align-middle">

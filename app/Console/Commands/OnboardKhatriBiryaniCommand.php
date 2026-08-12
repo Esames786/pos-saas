@@ -307,6 +307,8 @@ class OnboardKhatriBiryaniCommand extends Command
             ->update(['status' => 'inactive', 'updated_at' => now()]);
         $this->info('terminals: Delivery / Takeaway / Dine In active (plan allows 4 — one slot spare).');
 
+        $this->seedFloorsAndTables($branchId);
+
         $unitId = DB::connection('tenant')->table('units')->where('code', 'EA')->value('id')
             ?: DB::connection('tenant')->table('units')->insertGetId([
                 'code' => 'EA', 'name' => 'Each', 'unit_type' => 'quantity', 'base_factor' => 1,
@@ -585,6 +587,43 @@ class OnboardKhatriBiryaniCommand extends Command
         $this->seedCounterUser($branchId, $dineInRole, 'dinein_kb@bingoopos.com', 'Dine In Counter', 'dine_in', $dineInTerminalId, count($perms));
 
         app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
+    }
+
+    /**
+     * Dine-in tables (2026-08-12): Ground Floor TABLE 1 / 1-A / 2 / 2-A … 10 / 10-A (20) and
+     * First Floor TABLE 11 … 25 (15). Idempotent by (floor, table_no); table_no is the bare
+     * identifier because the POS board and KOT already prepend "Table"/"TABLE:".
+     */
+    private function seedFloorsAndTables(int $branchId): void
+    {
+        $floor = function (string $name, int $sort) use ($branchId): int {
+            return (int) (DB::connection('tenant')->table('restaurant_floors')
+                ->where('branch_id', $branchId)->where('name', $name)->value('id')
+                ?: DB::connection('tenant')->table('restaurant_floors')->insertGetId([
+                    'branch_id' => $branchId, 'name' => $name, 'status' => 'active', 'sort_order' => $sort,
+                    'created_at' => now(), 'updated_at' => now(),
+                ]));
+        };
+        $ground = $floor('Ground Floor', 1);
+        $first = $floor('First Floor', 2);
+
+        $seedTable = function (int $floorId, string $no, string $name, int $sort) use ($branchId): void {
+            DB::connection('tenant')->table('restaurant_tables')->updateOrInsert(
+                ['branch_id' => $branchId, 'restaurant_floor_id' => $floorId, 'table_no' => $no],
+                ['name' => $name, 'capacity' => 4, 'status' => 'available', 'sort_order' => $sort,
+                 'updated_at' => now(), 'created_at' => now()]
+            );
+        };
+        $sort = 0;
+        foreach (range(1, 10) as $i) {
+            $seedTable($ground, (string) $i, "TABLE $i", ++$sort);
+            $seedTable($ground, "$i-A", "TABLE $i-A", ++$sort);
+        }
+        $sort = 0;
+        foreach (range(11, 25) as $i) {
+            $seedTable($first, (string) $i, "TABLE $i", ++$sort);
+        }
+        $this->info('tables: Ground Floor 20 (TABLE 1..10 + -A pairs) / First Floor 15 (TABLE 11..25).');
     }
 
     /**

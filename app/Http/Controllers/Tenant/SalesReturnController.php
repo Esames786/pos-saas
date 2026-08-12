@@ -17,9 +17,47 @@ class SalesReturnController extends Controller
             ->orderByDesc('return_date')
             ->orderByDesc('id');
 
+        // Same terminal/order-type scope the Sales Orders list uses — a returns list was the one
+        // sales screen that showed EVERY terminal's rows to a terminal-scoped cashier. Applied to
+        // the underlying order so a hand-edited URL cannot widen it.
+        $scope = app(\App\Services\Security\UserDataScope::class);
+        $user = auth('tenant')->user();
+        if ($scope->isScoped($user)) {
+            $query->whereHas('order', fn ($q) => $scope->applyToSales($q, $user));
+        }
+
+        // Date range on the RETURN date, in the branch's local day (Today / Yesterday / custom).
+        [$from, $to] = $this->dateRange($request);
+        if ($from && $to) {
+            $tz = app(\App\Support\TenantClock::class)->displayTimezone($user, null);
+            $query->whereBetween('return_date', [
+                \Illuminate\Support\Carbon::parse($from . ' 00:00:00', $tz)->utc(),
+                \Illuminate\Support\Carbon::parse($to . ' 23:59:59', $tz)->utc(),
+            ]);
+        }
+
         return view('tenant.sales-returns.index', [
-            'returns' => $query->paginate(15)->withQueryString(),
+            'returns'   => $query->paginate(15)->withQueryString(),
+            'dateFrom'  => $from,
+            'dateTo'    => $to,
         ]);
+    }
+
+    /**
+     * Resolve the from/to date range from the request. The Today / Yesterday quick buttons post a
+     * `range` shortcut; an explicit from/to wins. Dates are the branch's LOCAL calendar days.
+     */
+    private function dateRange(Request $request): array
+    {
+        $today = app(\App\Support\TenantClock::class)
+            ->now(app(\App\Support\TenantClock::class)->displayTimezone(auth('tenant')->user(), null))
+            ->toDateString();
+
+        return match ($request->input('range')) {
+            'today'     => [$today, $today],
+            'yesterday' => [($y = \Illuminate\Support\Carbon::parse($today)->subDay()->toDateString()), $y],
+            default     => [$request->input('date_from') ?: null, $request->input('date_to') ?: null],
+        };
     }
 
     public function create(Request $request, SalesReturnService $salesReturnService)

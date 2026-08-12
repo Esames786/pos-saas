@@ -35,6 +35,8 @@
                 font-size: calc({{ $width }} / {{ $rCols * 0.6 }}); line-height: 1.2; }
         /* Narrow left Qty column so the item names line up beside it, like the KOT. */
         .rqty { flex: 0 0 2.5em; text-align: right; white-space: nowrap; }
+        /* A dashed rule under each top-level item, so rows read as boxes (matches the KOT). */
+        .item-box { border-bottom: 1px dashed #000; padding-bottom: 4px; margin-bottom: 4px; }
         .child, .modifier, .note { margin-left: 12px; font-weight: 400; }
         .print-btn { display: block; margin: 12px auto; padding: 8px 16px; }
         /* Without an @page rule the browser used its own page size and ~10mm margins, which on a
@@ -90,6 +92,7 @@
             $newLine = $revision > 1 && $delta > 0 && abs($delta - $quantity) < .000001;
             $increase = $revision > 1 && $delta > 0 && $delta < $quantity;
         @endphp
+        <div class="item-box">
         <div class="line" style="display:flex;gap:6px"><span class="rqty">{{ $qty($quantity) }}{{ $unitSuffix($line['unit_code'] ?? null) }}</span><span>{{ $newLine ? '(R) ' : '' }}{{ strtoupper($line['product_name'] ?? 'Item') }}{{ $increase ? ' (R +' . $qty($delta) . ')' : '' }}</span></div>
         @foreach($lines->where('parent_line_id', $line['line_id'] ?? null) as $component)
             <div class="child">- {{ strtoupper($component['product_name'] ?? 'Item') }} x{{ $qty($component['quantity'] ?? 0) }}</div>
@@ -98,6 +101,7 @@
         @endforeach
         @foreach($line['modifiers'] ?? [] as $modifier)<div class="modifier">+ {{ $modifier['name'] ?? '' }}</div>@endforeach
         @if(!empty($line['kitchen_note']))<div class="note">NOTE: {{ $line['kitchen_note'] }}</div>@endif
+        </div>
     @empty
         <div class="line">NO REMAINING ITEMS</div>
     @endforelse

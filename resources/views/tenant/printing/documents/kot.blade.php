@@ -45,6 +45,8 @@
         td       { vertical-align: top; padding: 2px 0; }
         .item-qty  { width: 15%; text-align: right; padding-right: 4px; }
         .item-name { width: 85%; }
+        /* Dashed rule under each KOT item, so rows read as boxes (matches the thermal ticket). */
+        tbody td { border-bottom: 1px dashed #000; padding: 3px 0; }
         .print-btn { display: block; margin: 12px auto; padding: 8px 24px; cursor: pointer; font-size: 14px; }
         @media print {
             .print-btn, .no-print { display: none !important; }

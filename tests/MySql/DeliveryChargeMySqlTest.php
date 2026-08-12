@@ -100,8 +100,9 @@ class DeliveryChargeMySqlTest extends MySqlTenantTestCase
         $jobId = $this->makePrintJob(null, ['document_type' => 'receipt', 'print_status' => 'queued', 'printed_at' => null, 'reference_type' => 'sales_order', 'reference_id' => $saleId, 'branch_id' => $this->branchId]);
 
         $payload = app(EscPosPayloadService::class)->build(\App\Models\Tenant\PrintJob::findOrFail($jobId));
-        $this->assertStringContainsString('Delivery Charge', $payload);
-        $this->assertStringContainsString('120.00', $payload);
+        // Short money: the delivery charge line prints "120", never "120.00".
+        $this->assertStringContainsString("Delivery Charge", $payload);
+        $this->assertStringNotContainsString("120.00", $payload);
 
         // and a non-delivery sale never shows the line.
         $plainId = $this->makeSale($this->branchId, ['status' => 'paid', 'subtotal' => 900, 'grand_total' => 900]);

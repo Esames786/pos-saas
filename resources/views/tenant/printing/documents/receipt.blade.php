@@ -68,10 +68,15 @@
         /* Item | Qty | Rate | Amount — the wide name column WRAPS (that was the real fix; an
            earlier 40% name column was what wrapped names into a mess), the numeric columns stay
            narrow and right-aligned so they never collide. Matches the thermal composition. */
-        .item-name  { width: 46%; word-break: break-word; }
-        .item-qty   { width: 12%; text-align: right; white-space: nowrap; padding-left: 4px; }
-        .item-rate  { width: 20%; text-align: right; white-space: nowrap; padding-left: 4px; }
-        .item-total { width: 22%; text-align: right; white-space: nowrap; padding-left: 4px; }
+        /* Whole-rupee prices print without a ".00" (see $money below), so the numeric columns are
+           narrow and the item name gets the width — matching the thermal bill. */
+        .item-name  { width: 58%; word-break: break-word; font-size: 0.85em; }
+        .item-qty   { width: 10%; text-align: right; white-space: nowrap; padding-left: 4px; }
+        .item-rate  { width: 15%; text-align: right; white-space: nowrap; padding-left: 4px; }
+        .item-total { width: 17%; text-align: right; white-space: nowrap; padding-left: 4px; }
+        /* A dashed rule under every item row, so each item reads as its own box — matches the
+           separator the thermal receipt now prints after each item. */
+        tbody.grow td { border-bottom: 1px dashed #999; padding: 3px 0; }
         .totals td:first-child { width: 60%; text-align: right; padding-right: 4px; }
         .totals td:last-child  { width: 40%; text-align: right; white-space: nowrap; }
         /* What the customer reads — items and money — at the paper's scale. em, so the header
@@ -93,6 +98,9 @@
 @php
     // Piece units ("2 EA") are noise on a ticket — print the number alone; real measures still show.
     $unitSuffix = fn ($code) => ($code && ! in_array(strtoupper(trim((string) $code)), ['EA','EACH','PC','PCS','PIECE','PIECES','NOS','NO','UNIT','UNITS','QTY'], true)) ? ' ' . $code : '';
+    // Money WITHOUT a forced ".00" — a whole-rupee price shows "3,500", genuine paisa still show
+    // ("449.50"). Nothing is rounded; only trailing zeros drop, freeing width for the item name.
+    $money = fn ($v) => rtrim(rtrim(number_format((float) $v, 2), '0'), '.');
 @endphp
 
 @if($show('show_logo') && $layout?->logo_path)
@@ -209,8 +217,8 @@
                 @endforeach
             </td>
             <td class="item-qty">{{ rtrim(rtrim(number_format((float) $line->quantity, 3, '.', ''), '0'), '.') }}{{ $unitSuffix($line->unit_code) }}</td>
-            <td class="item-rate">{{ number_format($line->unit_price, 2) }}</td>
-            <td class="item-total">{{ number_format($line->line_total, 2) }}</td>
+            <td class="item-rate">{{ $money($line->unit_price) }}</td>
+            <td class="item-total">{{ $money($line->line_total) }}</td>
         </tr>
         @endforeach
     </tbody>
@@ -221,52 +229,52 @@
 <table class="totals grow">
     <tr>
         <td>Subtotal:</td>
-        <td>{{ number_format($salesOrder->subtotal, 2) }}</td>
+        <td>{{ $money($salesOrder->subtotal) }}</td>
     </tr>
     @if($salesOrder->discount_amount > 0)
     <tr>
         <td>Discount:</td>
-        <td>-{{ number_format($salesOrder->discount_amount, 2) }}</td>
+        <td>-{{ $money($salesOrder->discount_amount) }}</td>
     </tr>
     @endif
     @if($salesOrder->tax_amount > 0)
     <tr>
         <td>Tax:</td>
-        <td>{{ number_format($salesOrder->tax_amount, 2) }}</td>
+        <td>{{ $money($salesOrder->tax_amount) }}</td>
     </tr>
     @endif
     @if((float) ($salesOrder->delivery_charge_amount ?? 0) > 0)
     <tr>
         <td>Delivery Charge:</td>
-        <td>{{ number_format($salesOrder->delivery_charge_amount, 2) }}</td>
+        <td>{{ $money($salesOrder->delivery_charge_amount) }}</td>
     </tr>
     @endif
     @if((float) ($salesOrder->service_charge_amount ?? 0) > 0)
     <tr>
         <td>Service Charge:</td>
-        <td>{{ number_format($salesOrder->service_charge_amount, 2) }}</td>
+        <td>{{ $money($salesOrder->service_charge_amount) }}</td>
     </tr>
     @endif
     @if((float) ($salesOrder->tip_amount ?? 0) > 0)
     <tr>
         <td>Tip:</td>
-        <td>{{ number_format($salesOrder->tip_amount, 2) }}</td>
+        <td>{{ $money($salesOrder->tip_amount) }}</td>
     </tr>
     @endif
     <tr>
         <td class="bold">Total:</td>
-        <td class="bold">{{ number_format($salesOrder->grand_total, 2) }}</td>
+        <td class="bold">{{ $money($salesOrder->grand_total) }}</td>
     </tr>
     @if($salesOrder->paid_amount > 0)
     <tr>
         <td>Paid:</td>
-        <td>{{ number_format($salesOrder->paid_amount, 2) }}</td>
+        <td>{{ $money($salesOrder->paid_amount) }}</td>
     </tr>
     @endif
     @if($salesOrder->change_amount > 0)
     <tr>
         <td>Change:</td>
-        <td>{{ number_format($salesOrder->change_amount, 2) }}</td>
+        <td>{{ $money($salesOrder->change_amount) }}</td>
     </tr>
     @endif
 </table>
@@ -278,7 +286,7 @@
 <table class="totals">
     <tr>
         <td>{{ $payment->method?->name ?? ucfirst($payment->payment_method) }}:</td>
-        <td>{{ number_format($payment->tendered_amount ?? $payment->amount, 2) }}</td>
+        <td>{{ $money($payment->tendered_amount ?? $payment->amount) }}</td>
     </tr>
 </table>
 @endforeach
