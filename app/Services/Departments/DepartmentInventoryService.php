@@ -9,6 +9,7 @@ use App\Models\Tenant\DepartmentStockTransfer;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\ProductVariant;
 use App\Models\Tenant\StockBalance;
+use App\Services\Edge\BranchOperatingModeService;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -26,6 +27,14 @@ use RuntimeException;
  */
 class DepartmentInventoryService
 {
+    public function __construct(
+        // EDGE-SPLITBRAIN-STOCK-1 (secondary/defense-in-depth): the department custody sub-ledger is a
+        // second per-branch stock authority. It provably never writes the official stock tables, but a
+        // Local-Mode branch's custody must not be mutated by the cloud, nor any custody by a Branch Server.
+        private readonly BranchOperatingModeService $operatingMode = new BranchOperatingModeService(),
+    ) {
+    }
+
     public function resolveVariant(Product $product, ?ProductVariant $variant = null): ?ProductVariant
     {
         return $variant ?? $product->defaultVariant()->first();
@@ -263,6 +272,11 @@ class DepartmentInventoryService
         ?string $notes,
         ?int $userId,
     ): DepartmentStockLedger {
+        // EDGE-SPLITBRAIN-STOCK-1 (secondary): the single custody sink. Fail closed FIRST — before any
+        // input validation — on a Branch Server, and on the cloud for a branch handed to its server.
+        // Cold path — one branch load per movement.
+        $this->operatingMode->assertOfficialStockMutationAllowedForBranchId($branchId);
+
         if ($quantity <= 0) {
             throw new RuntimeException('Quantity must be greater than zero.');
         }

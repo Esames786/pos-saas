@@ -68,3 +68,61 @@ so even they are bypassable by a direct `SaleOperationalSettlementService`/`Sale
 `EdgeOperationalStockService` (#16) is the Edge-side provisional stock and keeps its own authority —
 it must NOT be folded into the Cloud fence. The Cloud fence is about blocking the **Cloud** from
 mutating a branch that has handed authority to its Branch Server.
+
+---
+
+## Census verification — EDGE-SPLITBRAIN-STOCK-1 implementation (`014a6f2`, 2026-08-13)
+
+Re-ran the census as an independent proof (Phase 1.1), **not** trusting the "InventoryService is
+universal" phrasing. Method: grepped every runtime write to `stock_balances` / `stock_ledgers` /
+`inventory_batches` — raw table (`DB::table`, insert/update/increment/decrement/delete, raw SQL) and
+every Eloquent model write (`::create`/`::insert`/`updateOrCreate`/`firstOrCreate`/`new …`/`->save`/
+`->update`/relationship writes) across `app/` and `tests/`.
+
+**Result — the sole runtime writer to the three official tables is `InventoryService`:**
+
+| Table | Only writer | Line |
+|---|---|---|
+| `inventory_batches` | `InventoryService::findOrCreateBatch` (`InventoryBatch::firstOrCreate`) | 264 |
+| `stock_balances` | `InventoryService::postMovement` (`StockBalance::create` + `->update`) | 322 / 352 |
+| `stock_ledgers` | `InventoryService::postMovement` (`StockLedger::create`) | 357 |
+
+Non-runtime writers (out of scope, correctly): `TenantResetTransactionsCommand` (admin truncate),
+`EdgeLocalBootstrapImporter` (Edge-side fresh-DB seed). `EdgeOperationalStockService` (#16) writes
+its **own** provisional tables, never the official three.
+
+**Choke proven.** `findOrCreateBatch` has **no external callers** (only `postIn`/`transfer` reach it).
+Every external mutation enters via `postIn` / `postOutFefo` / `transfer`. Fencing those three closes
+controllers *and* direct-service calls. Matrix rows #1–#15 all route here.
+
+### Two corrections to the matrix above
+
+1. **Rows #11/#12 (department transfer/consumption) do NOT route through `InventoryService`.** They
+   use `DepartmentInventoryService`, a **separate** custody sub-ledger writing `department_stock_balances`
+   / `department_stock_ledgers` (single private sink `postMovement`, L250, keyed on `branch_id`). It
+   provably never writes the official three tables and is bounded by official on-hand, so it **cannot
+   corrupt official valuation/FEFO** — but it is a second per-branch authority with **no operating-mode
+   guard in either direction** today. Treated as a **secondary** fence (defense-in-depth), not the
+   primary official-stock split-brain risk.
+2. **The Branch-Server direction is already partially fenced.** `InventoryService::postIn/postOutFefo/
+   transfer` each already `throw new RuntimeException` when `EdgeRuntime::isBranchServer()`. This sprint
+   **replaces** those three bare throws with the structured `assertOfficialStockMutationAllowed(Branch)`
+   so both directions (Branch-Server AND Cloud-on-a-Local-Mode-branch) render one friendly 409, not a 500.
+
+### Fence design (implemented this sprint)
+
+`BranchOperatingModeService::assertOfficialStockMutationAllowed(Branch)` — **stricter** than the sale
+fence (`assertSaleMutationAllowed`): a Branch Server may settle *sales* on its bound branch, but it must
+**never** post official stock (even its own branch) — official FEFO/costing/valuation is Cloud authority,
+applied later by Cloud-side sync ingestion; the Branch Server tracks only provisional quantity.
+
+- **Branch Server instance** → always throw (`CODE_BRANCH_SERVER_OFFICIAL_STOCK`), regardless of binding.
+- **Cloud + branch handed to its server** (`local_edge` && status ∈ active/closing/suspended) → throw
+  (`CODE_ACTIVE`).
+- **Cloud + normal branch** (cloud/inactive/pending) → pass. **Zero behavior change for all of production
+  today.**
+
+Placement: `InventoryService::{postIn, postOutFefo, transfer}` (transfer asserts **both** branches);
+`DepartmentInventoryService::postMovement` keyed on its `$branchId` (secondary). No sync, no config
+refresh, no Local Mode activation in this sprint; the fence is dormant for every branch until a real
+Local Mode activation (`activation_ready=false` remains).

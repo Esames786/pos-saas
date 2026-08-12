@@ -52,16 +52,25 @@ class BranchOperatingModeService
     }
 
     /**
-     * Cloud sale mutation is blocked while the branch has committed to a Branch
-     * Server: active/closing (server is live) AND suspended (emergency hold — the
-     * server may hold un-synced sales, so the cloud must not create conflicting
-     * ones; the authorized path back is an explicit Return to Cloud). Only
-     * inactive (cloud) and pending (setup) keep cloud sales working.
+     * The branch has committed to its Branch Server: active/closing (server is
+     * live) OR suspended (emergency hold — the server may hold un-synced state, so
+     * the cloud must not create conflicting rows; the authorized path back is an
+     * explicit Return to Cloud). Only inactive (cloud) and pending (setup) are not
+     * committed. Neutral predicate — the same fact gates sales AND official stock.
      */
-    public function cloudSaleMutationBlocked(Branch $branch): bool
+    public function branchHandedToBranchServer(Branch $branch): bool
     {
         return $branch->sales_operating_mode === 'local_edge'
             && in_array($branch->local_edge_status, ['active', 'closing', 'suspended'], true);
+    }
+
+    /**
+     * Cloud sale mutation is blocked while the branch has committed to a Branch
+     * Server. (Kept as the sale-side name; delegates to the neutral predicate.)
+     */
+    public function cloudSaleMutationBlocked(Branch $branch): bool
+    {
+        return $this->branchHandedToBranchServer($branch);
     }
 
     /** Cloud instance should refuse to mutate this branch's sales. */
@@ -85,6 +94,54 @@ class BranchOperatingModeService
 
         if ($this->cloudSaleMutationBlocked($branch)) {
             throw new BranchLocalEdgeException($branch, BranchLocalEdgeException::CODE_ACTIVE);
+        }
+    }
+
+    /**
+     * EDGE-SPLITBRAIN-STOCK-1 — the one call every OFFICIAL stock mutator makes
+     * (InventoryService::postIn/postOutFefo/transfer, and the department sub-ledger
+     * as defense-in-depth). STRICTER than the sale fence:
+     *
+     *  - Branch Server: ALWAYS fail closed — even for its own bound branch. Official
+     *    stock / FEFO / costing / valuation is Cloud authority; a Branch Server tracks
+     *    provisional quantity only (EdgeOperationalStockService), and the official
+     *    movement is posted later by Cloud-side sync ingestion. Binding to the branch
+     *    does NOT grant official-stock authority. (assertSaleMutationAllowed, by
+     *    contrast, DOES let a server settle sales on its bound branch.)
+     *  - Cloud + branch handed to its server (local_edge active/closing/suspended):
+     *    fail closed — the cloud must not mutate a branch whose stock authority is live
+     *    on the server.
+     *  - Cloud + normal branch (cloud/inactive/pending): pass — zero behavior change
+     *    for every branch in production today.
+     */
+    public function assertOfficialStockMutationAllowed(Branch $branch): void
+    {
+        if ($this->isBranchServerInstance()) {
+            throw new BranchLocalEdgeException($branch, BranchLocalEdgeException::CODE_BRANCH_SERVER_OFFICIAL_STOCK);
+        }
+
+        if ($this->branchHandedToBranchServer($branch)) {
+            throw new BranchLocalEdgeException($branch, BranchLocalEdgeException::CODE_ACTIVE);
+        }
+    }
+
+    /**
+     * branch_id-keyed variant for mutators that hold an id rather than the Branch
+     * model (the department sub-ledger sink). Loads the branch once. Cold path only —
+     * the hot official path (InventoryService) always has the Branch in hand, so it
+     * uses assertOfficialStockMutationAllowed() with no extra query. A missing branch
+     * fails closed on a Branch Server (never posts official stock) and passes on the
+     * cloud (nothing to fence — the row cannot be in Local Mode if it doesn't exist).
+     */
+    public function assertOfficialStockMutationAllowedForBranchId(int $branchId): void
+    {
+        if ($this->isBranchServerInstance()) {
+            throw new BranchLocalEdgeException(null, BranchLocalEdgeException::CODE_BRANCH_SERVER_OFFICIAL_STOCK);
+        }
+
+        $branch = Branch::find($branchId);
+        if ($branch !== null) {
+            $this->assertOfficialStockMutationAllowed($branch);
         }
     }
 

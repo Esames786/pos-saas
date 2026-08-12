@@ -8,11 +8,20 @@ use App\Models\Tenant\Product;
 use App\Models\Tenant\ProductVariant;
 use App\Models\Tenant\StockBalance;
 use App\Models\Tenant\StockLedger;
+use App\Services\Edge\BranchOperatingModeService;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 class InventoryService
 {
+    public function __construct(
+        // EDGE-SPLITBRAIN-STOCK-1: single official-stock authority fence. Cloud is the only
+        // authority for FEFO/costing/valuation; a Branch Server never posts official stock, and
+        // the cloud never posts to a branch that has handed authority to its server.
+        private readonly BranchOperatingModeService $operatingMode = new BranchOperatingModeService(),
+    ) {
+    }
+
     public function postIn(
         Branch $branch,
         Product $product,
@@ -28,10 +37,9 @@ class InventoryService
         ?string $notes = null,
         ?int $userId = null,
     ): StockLedger {
-        // EDGE-LOCAL-POS-1 (H9/F) — official inventory-IN mutates cost layers/valuation; Cloud authority only.
-        if (\App\Support\EdgeRuntime::isBranchServer()) {
-            throw new RuntimeException('Official inventory posting must not run on a Branch Server.');
-        }
+        // EDGE-SPLITBRAIN-STOCK-1: official inventory-IN mutates cost layers/valuation — Cloud authority
+        // only. Fails closed on a Branch Server AND on the cloud for a branch handed to its server.
+        $this->operatingMode->assertOfficialStockMutationAllowed($branch);
         $this->ensureStockTracked($product);
 
         $batch = $this->findOrCreateBatch(
@@ -73,12 +81,11 @@ class InventoryService
         ?int $userId = null,
         bool $allowNegative = false,
     ): array {
-        // EDGE-LOCAL-POS-1 (H9/F) — FEFO out couples the operational decrement with COGS/FEFO valuation. On a
-        // Branch Server, stock is decremented ONLY by EdgeOperationalStockService (quantity-only); this
-        // authoritative path must fail CLOSED before any valuation/cost row is written offline.
-        if (\App\Support\EdgeRuntime::isBranchServer()) {
-            throw new RuntimeException('FEFO/valuation stock posting must not run on a Branch Server.');
-        }
+        // EDGE-SPLITBRAIN-STOCK-1: FEFO out couples the operational decrement with COGS/FEFO valuation.
+        // On a Branch Server, stock is decremented ONLY by EdgeOperationalStockService (quantity-only);
+        // this authoritative path fails CLOSED before any valuation/cost row is written — on a Branch
+        // Server, and on the cloud for a branch handed to its server.
+        $this->operatingMode->assertOfficialStockMutationAllowed($branch);
         $this->ensureStockTracked($product);
 
         // BUG-006 FIX: always use the tenant connection so inventory writes stay
@@ -184,10 +191,11 @@ class InventoryService
         ?string $notes = null,
         ?int $userId = null,
     ): void {
-        // EDGE-LOCAL-POS-1 (H9/F) — official stock transfer/valuation is Cloud authority; fail closed on Edge.
-        if (\App\Support\EdgeRuntime::isBranchServer()) {
-            throw new RuntimeException('Official inventory transfer must not run on a Branch Server.');
-        }
+        // EDGE-SPLITBRAIN-STOCK-1: official stock transfer/valuation is Cloud authority; fail closed on a
+        // Branch Server and on the cloud for a Local-Mode branch. Assert BOTH endpoints — a transfer that
+        // is legal for the source but lands official stock on a Local-Mode destination is still split-brain.
+        $this->operatingMode->assertOfficialStockMutationAllowed($fromBranch);
+        $this->operatingMode->assertOfficialStockMutationAllowed($toBranch);
         if ($fromBranch->id === $toBranch->id) {
             throw new RuntimeException('Transfer branches must be different.');
         }
