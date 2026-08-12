@@ -66,10 +66,11 @@ class DemoResetAllCommand extends Command
                 }
                 $this->line('  ✓ ' . $code);
             } catch (Throwable $e) {
+                // Keep going: one failed demo must not starve the rest of the chain (that is how
+                // three demos silently went stale for days behind one stuck tenant). The failed
+                // tenant is left in `pending`, which the next run may reset directly.
                 $this->error('  ✗ ' . $code . ' FAILED: ' . $e->getMessage());
-                $this->error('Stopping on first failure. Remaining demos were not reset.');
                 $failed = true;
-                break;
             }
         }
 

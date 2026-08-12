@@ -135,9 +135,15 @@ class DemoResetService
             throw new RuntimeException("Refusing to reset [{$tenantCode}] — tenant is not flagged is_demo.");
         }
 
-        if ($tenant->status !== 'active') {
+        // `pending` is what a demo is left in when a previous reset died mid-provision. For a
+        // tenant that is BOTH is_demo AND on the explicit reset list, a reset (= full fresh
+        // provision) is precisely the recovery — refusing it made every mid-reset failure
+        // permanent until someone ran demo:provision --fresh by hand, and the nightly chain
+        // starved behind it. Real tenants are still protected: the reset-list and is_demo guards
+        // above never admit them, and any other status (suspended, disabled) still refuses.
+        if (! in_array($tenant->status, ['active', 'pending'], true)) {
             throw new RuntimeException(
-                "Refusing to reset [{$tenantCode}] — status is [{$tenant->status}], expected active. "
+                "Refusing to reset [{$tenantCode}] — status is [{$tenant->status}], expected active/pending. "
                 . "Use: php artisan demo:provision {$this->industryForTenantCode($tenantCode)} --fresh"
             );
         }
