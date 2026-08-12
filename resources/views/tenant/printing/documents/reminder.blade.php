@@ -13,7 +13,7 @@
         $topLines = $lines->filter(fn ($line) => empty($line['parent_line_id']));
         $qty = fn ($value) => rtrim(rtrim(number_format((float) $value, 3, '.', ''), '0'), '.');
         $time = function ($value) {
-            try { return \Carbon\Carbon::parse($value)->format('Y-m-d H:i'); }
+            try { return \Carbon\Carbon::parse($value)->format('d/m/Y h:i A'); }
             catch (\Throwable) { return $value; }
         };
     @endphp
@@ -33,6 +33,8 @@
         .heading { font-size: 1.25em; font-weight: 800; }
         .line { margin: 6px 0; font-weight: 700; overflow-wrap: anywhere;
                 font-size: calc({{ $width }} / {{ $rCols * 0.6 }}); line-height: 1.2; }
+        /* Narrow left Qty column so the item names line up beside it, like the KOT. */
+        .rqty { flex: 0 0 2.5em; text-align: right; white-space: nowrap; }
         .child, .modifier, .note { margin-left: 12px; font-weight: 400; }
         .print-btn { display: block; margin: 12px auto; padding: 8px 16px; }
         /* Without an @page rule the browser used its own page size and ~10mm margins, which on a
@@ -69,10 +71,14 @@
     @if(($layout->show_print_time ?? true) && !empty($reminder['generated_at']))<div>PRINT: {{ $time($reminder['generated_at']) }}</div>@endif
     <div class="rule"></div>
 
+    {{-- Qty | Item column header, matching the KOT. A reminder carries no price. --}}
+    <div class="line" style="display:flex;gap:6px;font-weight:800"><span class="rqty">QTY</span><span>ITEM</span></div>
+    <div class="rule"></div>
+
     @if(!empty($reminder['cancelled_lines']))
         <strong>CANCELLED:</strong>
         @foreach($reminder['cancelled_lines'] as $line)
-            <div class="line" style="display:flex;justify-content:space-between;gap:8px"><span>{{ strtoupper($line['product_name'] ?? 'Item') }}</span><span style="white-space:nowrap">{{ $qty($line['quantity'] ?? 0) }}{{ $unitSuffix($line['unit_code'] ?? null) }}</span></div>
+            <div class="line" style="display:flex;gap:6px"><span class="rqty">{{ $qty($line['quantity'] ?? 0) }}{{ $unitSuffix($line['unit_code'] ?? null) }}</span><span>{{ strtoupper($line['product_name'] ?? 'Item') }}</span></div>
         @endforeach
         <div class="rule"></div><strong>REMAINING ORDER:</strong>
     @endif
@@ -84,7 +90,7 @@
             $newLine = $revision > 1 && $delta > 0 && abs($delta - $quantity) < .000001;
             $increase = $revision > 1 && $delta > 0 && $delta < $quantity;
         @endphp
-        <div class="line" style="display:flex;justify-content:space-between;gap:8px"><span>{{ $newLine ? '(R) ' : '' }}{{ strtoupper($line['product_name'] ?? 'Item') }}{{ $increase ? ' (R +' . $qty($delta) . ')' : '' }}</span><span style="white-space:nowrap">{{ $qty($quantity) }}{{ $unitSuffix($line['unit_code'] ?? null) }}</span></div>
+        <div class="line" style="display:flex;gap:6px"><span class="rqty">{{ $qty($quantity) }}{{ $unitSuffix($line['unit_code'] ?? null) }}</span><span>{{ $newLine ? '(R) ' : '' }}{{ strtoupper($line['product_name'] ?? 'Item') }}{{ $increase ? ' (R +' . $qty($delta) . ')' : '' }}</span></div>
         @foreach($lines->where('parent_line_id', $line['line_id'] ?? null) as $component)
             <div class="child">- {{ strtoupper($component['product_name'] ?? 'Item') }} x{{ $qty($component['quantity'] ?? 0) }}</div>
             @foreach($component['modifiers'] ?? [] as $modifier)<div class="modifier">&nbsp;&nbsp;+ {{ $modifier['name'] ?? '' }}</div>@endforeach

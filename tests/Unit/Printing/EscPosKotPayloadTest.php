@@ -54,9 +54,9 @@ class EscPosKotPayloadTest extends TestCase
         ]);
 
         $this->assertStringContainsString('*** CANCEL KOT #4 ***', $output);
-        // PRINT-FORMAT-PARITY-1: single line, name left + clean qty right-aligned.
+        // COLUMN approach: Qty leads its own column, then the item name.
         // Piece units (PCS/EA) are suppressed — the number alone is the count.
-        $this->assertMatchesRegularExpression('/BURGER PATTY +2$/m', $output);
+        $this->assertStringContainsString('2 BURGER PATTY', $output);
         $this->assertStringNotContainsString('PCS', $output);
         $this->assertStringContainsString('NOTE: Cancel from combo', $output);
     }

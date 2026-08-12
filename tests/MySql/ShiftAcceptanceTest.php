@@ -262,7 +262,8 @@ class ShiftAcceptanceTest extends MySqlTenantTestCase
         ]);
         $payload = app(EscPosPayloadService::class)->build(PrintJob::on('tenant')->find($jobId));
 
-        $this->assertStringContainsString('Date: 2026-08-06 00:00', $payload, 'Receipt shows the original Karachi-local time.');
-        $this->assertStringNotContainsString('2026-08-05 20:00', $payload, 'It must NOT shift to the branch\'s new London time.');
+        // Receipt Date now reads d/m/Y with an AM/PM clock (client request 2026-08-12).
+        $this->assertStringContainsString('Date: 06/08/2026 12:00 AM', $payload, 'Receipt shows the original Karachi-local time.');
+        $this->assertStringNotContainsString('05/08/2026 08:00 PM', $payload, 'It must NOT shift to the branch\'s new London time.');
     }
 }

@@ -4898,6 +4898,13 @@ document.addEventListener('DOMContentLoaded', function () {
                     unit_price:      Number(it.unit_price) || 0,
                     discount_amount: Number(it.discount_amount || 0),
                     tax_amount:      Number(it.tax_amount || 0),
+                    // Combo + modifier structure so the preview reads like the printed bill:
+                    // combo headers keep their price, components indent under them, modifiers show.
+                    client_line_key: it.client_line_key || it.key || null,
+                    parent_line_key: it.parent_client_line_key || it.parent_key || null,
+                    line_kind:       it.line_kind || 'standard',
+                    variant_name:    it.variant_name || null,
+                    modifiers:       normalizeModifiers(it.modifiers || []),
                 };
             }),
         };

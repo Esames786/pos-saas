@@ -93,7 +93,7 @@
 <div class="bold">Vehicle: {{ $salesOrder->vehicle_number }}</div>
 @endif
 
-<div>Time: {{ now()->format('d/m/Y H:i') }}</div>
+<div>Time: {{ now()->format('d/m/Y h:i A') }}</div>
 
 @if(!($layout?->show_table_info === false) && $salesOrder->restaurantTable)
 <div class="big">

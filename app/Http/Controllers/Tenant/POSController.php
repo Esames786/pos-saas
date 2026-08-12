@@ -484,6 +484,12 @@ class POSController extends Controller
             'lines.*.unit_price'      => ['nullable', 'numeric', 'min:0'],
             'lines.*.discount_amount' => ['nullable', 'numeric', 'min:0'],
             'lines.*.tax_amount'      => ['nullable', 'numeric', 'min:0'],
+            // Combo + modifier structure (display only) so the preview matches the printed bill.
+            'lines.*.client_line_key' => ['nullable', 'string', 'max:190'],
+            'lines.*.parent_line_key' => ['nullable', 'string', 'max:190'],
+            'lines.*.line_kind'       => ['nullable', 'string', 'max:30'],
+            'lines.*.variant_name'    => ['nullable', 'string', 'max:190'],
+            'lines.*.modifiers'       => ['nullable', 'array'],
         ]);
 
         abort_unless(auth('tenant')->user()?->allowsOrderType($data['order_type']), 403);
@@ -556,23 +562,42 @@ class POSController extends Controller
         $sale->setRelation('deliveryRider', null);
         $sale->setRelation('shift', null);
 
+        // Display lines are rebuilt from the ORIGINAL payload (not the simplified totals rows) so
+        // they carry combo linkage + modifiers — the preview then renders combos and modifiers
+        // exactly as the printed bill does. Component rows print name-only under their header.
+        $displayLines = collect($data['lines'])->filter(fn ($l) => (float) ($l['quantity'] ?? 0) > 0)->values();
         $products = \App\Models\Tenant\Product::with('unit')
-            ->whereIn('id', $resolvedLines->pluck('product_id')->filter()->all())->get()->keyBy('id');
-        $postedNames = collect($data['lines'])->pluck('product_name', 'product_id');
+            ->whereIn('id', $displayLines->pluck('product_id')->filter()->all())->get()->keyBy('id');
 
-        $sale->setRelation('lines', $resolvedLines->values()->map(function ($line, $index) use ($products, $postedNames) {
-            $product = $products->get($line['product_id']);
+        // client_line_key -> the id we assign this row, so a component can point at its header.
+        $keyToId = [];
+        foreach ($displayLines as $index => $l) {
+            if (! empty($l['client_line_key'])) {
+                $keyToId[$l['client_line_key']] = $index + 1;
+            }
+        }
+
+        $sale->setRelation('lines', $displayLines->map(function ($line, $index) use ($products, $keyToId) {
+            $product = $products->get($line['product_id'] ?? null);
+            $qty = (float) ($line['quantity'] ?? 0);
+            $price = (float) ($line['unit_price'] ?? 0);
             $saleLine = new \App\Models\Tenant\SalesOrderLine([
-                'product_id' => $line['product_id'] ?: null,
-                'product_name' => $product?->name ?: ($postedNames[$line['product_id']] ?? 'Item'),
+                'product_id' => ($line['product_id'] ?? null) ?: null,
+                'product_name' => $product?->name ?: ($line['product_name'] ?? 'Item'),
+                'variant_name' => $line['variant_name'] ?? null,
                 'unit_code' => $product?->unit?->code,
-                'quantity' => $line['quantity'],
-                'unit_price' => $line['unit_price'],
-                'discount_amount' => $line['discount_amount'],
-                'tax_amount' => $line['tax_amount'],
-                'line_total' => $line['quantity'] * $line['unit_price'] - $line['discount_amount'] + $line['tax_amount'],
+                'line_kind' => $line['line_kind'] ?? 'standard',
+                'quantity' => $qty,
+                'unit_price' => $price,
+                'discount_amount' => (float) ($line['discount_amount'] ?? 0),
+                'tax_amount' => (float) ($line['tax_amount'] ?? 0),
+                'line_total' => $qty * $price - (float) ($line['discount_amount'] ?? 0) + (float) ($line['tax_amount'] ?? 0),
             ]);
             $saleLine->id = $index + 1;                 // stable key for the component lookup
+            $saleLine->parent_sales_order_line_id = ! empty($line['parent_line_key'])
+                ? ($keyToId[$line['parent_line_key']] ?? null)
+                : null;
+            $saleLine->modifiers = $line['modifiers'] ?? [];
             $saleLine->setRelation('product', $product);
 
             return $saleLine;

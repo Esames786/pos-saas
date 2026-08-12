@@ -90,6 +90,49 @@ class EscPosPayloadService
     }
 
     /**
+     * Emit ALREADY-LAID-OUT text at a scale — size + bold bytes only, no wrap and no trim.
+     *
+     * The column builders (itemColumns / qtyItemColumns) have already wrapped to the exact width
+     * the scale leaves and set hanging indents. scaled() would trim those indents and re-wrap, so
+     * pre-formatted column blocks come through here instead. The width the caller wrapped to must
+     * be `floor(42 / scale['w'])`.
+     */
+    private function sized(string $text, array $scale, bool $bold = false): string
+    {
+        return $this->sizeCommand($scale['w'], $scale['h'])
+            . ($bold ? self::BOLD_ON : '')
+            . $text
+            . ($bold ? self::BOLD_OFF : '')
+            . self::SIZE_NORMAL;
+    }
+
+    /** Characters a line holds at the given scale (42 at normal width, 21 at double, 14 at triple). */
+    private function scaledWidth(array $scale): int
+    {
+        return max((int) floor(self::COLS_80MM / max(1, $scale['w'])), 8);
+    }
+
+    /**
+     * A sub-item line (variant / modifier / combo component / note) wrapped to the scale's width
+     * with its leading indent kept on every wrapped line — so "+ Extra cheese and jalapenos" reads
+     * as an indented continuation, not text that snapped back to the margin. Emitted, not returned
+     * raw, so the caller just concatenates.
+     */
+    private function subRow(string $text, array $scale, bool $bold = false): string
+    {
+        preg_match('/^(\s*)/', $text, $m);
+        $indent = $m[1];
+        $width = max($this->scaledWidth($scale) - mb_strlen($indent), 6);
+
+        $body = '';
+        foreach (explode("\n", wordwrap(ltrim($text), $width, "\n", true)) as $l) {
+            $body .= $indent . $l . "\n";
+        }
+
+        return $this->sized($body, $scale, $bold);
+    }
+
+    /**
      * Unit suffix for a printed quantity. Piece units ("2 EA") are noise on a ticket — the number
      * alone is the count. Real measures (KG, LTR, GM…) still print so staff can weigh correctly.
      */
@@ -253,6 +296,10 @@ class EscPosPayloadService
         // width, so a modifier can never wrap into an unreadable stub.
         $sub = ['w' => 1, 'h' => $big['h']];
 
+        // Qty | Item column header (matches the KOT), then the items.
+        $out .= $this->sized($this->qtyItemColumns('QTY', 'ITEM', $this->scaledWidth($big)), $big, true);
+        $out .= $rule . "\n";
+
         if (!empty($payload['cancelled_lines'])) {
             $out .= $this->scaled('CANCELLED:', $big, true);
             foreach ($payload['cancelled_lines'] as $line) {
@@ -272,17 +319,17 @@ class EscPosPayloadService
             foreach ($lines->where('parent_line_id', $line['line_id'] ?? null) as $component) {
                 $out .= $this->reminderLine($component, $revision > 1, $sub, '  - ');
                 foreach (($component['modifiers'] ?? []) as $modifier) {
-                    if (!empty($modifier['name'])) { $out .= $this->scaled('    + ' . $modifier['name'], $sub); }
+                    if (!empty($modifier['name'])) { $out .= $this->subRow('    + ' . $modifier['name'], $sub); }
                 }
-                if (!empty($component['kitchen_note'])) { $out .= $this->scaled('    NOTE: ' . $component['kitchen_note'], $sub, true); }
+                if (!empty($component['kitchen_note'])) { $out .= $this->subRow('    NOTE: ' . $component['kitchen_note'], $sub, true); }
             }
             foreach (($line['modifiers'] ?? []) as $modifier) {
                 if (!empty($modifier['name'])) {
-                    $out .= $this->scaled('  + ' . $modifier['name'], $sub);
+                    $out .= $this->subRow('  + ' . $modifier['name'], $sub);
                 }
             }
             if (!empty($line['kitchen_note'])) {
-                $out .= $this->scaled('  NOTE: ' . $line['kitchen_note'], $sub, true);
+                $out .= $this->subRow('  NOTE: ' . $line['kitchen_note'], $sub, true);
             }
         }
 
@@ -352,7 +399,7 @@ class EscPosPayloadService
             $out .= "Receipt: {$sale->sale_no}\n";
         }
         $tz = $this->printTz($sale);
-        $out .= 'Date: ' . ($sale->sale_date ? $sale->sale_date->copy()->timezone($tz)->format('Y-m-d H:i') : '') . "\n";
+        $out .= 'Date: ' . ($sale->sale_date ? $sale->sale_date->copy()->timezone($tz)->format('d/m/Y h:i A') : '') . "\n";
         if ($show('show_cashier_name')) {
             $out .= 'Cashier: ' . ($sale->createdBy?->name ?? '-') . "\n";
         }
@@ -394,6 +441,10 @@ class EscPosPayloadService
             $out .= self::BOLD_ON . 'Vehicle: ' . $sale->vehicle_number . self::BOLD_OFF . "\n";
         }
 
+        $w = $this->scaledWidth($tall);   // 42 (receipts scale height-only)
+        $out .= str_repeat('-', 42) . "\n";
+        // COLUMN HEADER — Item | Qty | Rate | Amount, the layout the client's bill reads by.
+        $out .= $this->sized($this->itemColumns('Item', 'Qty', 'Rate', 'Amount', $w), $tall, true);
         $out .= str_repeat('-', 42) . "\n";
 
         foreach ($sale->lines as $line) {
@@ -401,39 +452,37 @@ class EscPosPayloadService
                 continue;
             }
 
-            // Single line: "2x Beef Changezi Pulao @450.00      900.00" — qty leads,
-            // unit price shown inline only when qty ≠ 1, total right-aligned. When space
-            // runs out, the NAME is truncated — the price is dropped whole, never mangled
-            // ("@450.00" must never print as "@45").
-            $qty = $this->quantity((float) $line->quantity);
-            $total = number_format((float) $line->line_total, 2);
-            $qtyPrefix = $qty . 'x ';
-            $priceSuffix = (float) $line->quantity !== 1.0 ? ' @' . number_format((float) $line->unit_price, 2) : '';
-            $maxName = 41 - mb_strlen($total) - mb_strlen($qtyPrefix) - mb_strlen($priceSuffix);
-            if ($maxName < 8) {
-                $priceSuffix = '';
-                $maxName = 41 - mb_strlen($total) - mb_strlen($qtyPrefix);
-            }
-            $left = $qtyPrefix . mb_substr($line->product_name ?? '', 0, max($maxName, 1)) . $priceSuffix;
-            $out .= $this->scaled($this->columns($left, $total, 42), $tall);
+            // Item row in columns: description (wraps) | qty | unit rate | line amount. The numbers
+            // keep their own columns, so a long name never collides with them.
+            $out .= $this->sized($this->itemColumns(
+                (string) ($line->product_name ?? ''),
+                $this->quantity((float) $line->quantity),
+                number_format((float) $line->unit_price, 2),
+                number_format((float) $line->line_total, 2),
+                $w
+            ), $tall);
 
+            if ($line->variant_name) {
+                $out .= $this->sized('  (' . $line->variant_name . ')' . "\n", $tall);
+            }
             if ($line->kitchen_note) {
                 $out .= "  * {$line->kitchen_note}\n";
             }
 
+            // Modifiers and combo components sit UNDER the item as name-only sub-rows (no price
+            // columns — a modifier's delta rides in the parent's amount, a component has no price).
             foreach ($this->lineModifiers($line) as $modifier) {
                 $label = '  + ' . $modifier['name'];
                 $delta = (float) ($modifier['price_delta'] ?? 0);
                 if ($delta !== 0.0) {
                     $label .= ' (' . ($delta > 0 ? '+' : '') . number_format($delta, 2) . ')';
                 }
-                $out .= $label . "\n";
+                $out .= $this->sized($label . "\n", $tall);
             }
 
             foreach ($sale->lines->where('parent_sales_order_line_id', $line->id) as $component) {
-                $componentQty = number_format((float) $component->quantity, 3);
-                $componentQty .= $this->unitSuffix($component->unit_code);
-                $out .= '  - ' . $componentQty . ' x ' . ($component->product_name ?? '') . "\n";
+                $componentQty = $this->quantity((float) $component->quantity) . $this->unitSuffix($component->unit_code);
+                $out .= $this->sized('  - ' . $componentQty . ' x ' . ($component->product_name ?? '') . "\n", $tall);
             }
         }
 
@@ -572,6 +621,9 @@ class EscPosPayloadService
         $out .= $this->scaled('TIME: ' . $now->format('h:i A'), $big, true);
         $out .= $now->format('D d-M-Y') . "\n";
         $out .= $rule . "\n";
+        // Qty | Item column header (no price — a kitchen ticket carries none).
+        $out .= $this->sized($this->qtyItemColumns('QTY', 'ITEM', $this->scaledWidth($big)), $big, true);
+        $out .= $rule . "\n";
 
         foreach ($lines as $line) {
             if (($line->line_kind ?? 'standard') === 'combo_header') {
@@ -592,30 +644,21 @@ class EscPosPayloadService
             $kotQty = $this->quantity($qtyToPrint) . $this->unitSuffix($line->unit_code);
             $name = $runningPrefix . strtoupper($line->product_name ?? '');
 
-            if ($big['w'] > 1) {
-                // At double width the line holds 21 characters, so a right-aligned quantity column
-                // no longer fits beside the name. Lead with the count instead — the kitchen reads
-                // "how many" first anyway, which is what the old ticket's Qty column gave them.
-                $out .= $this->scaled($kotQty . ' x ' . $name, $big, true);
-            } else {
-                $out .= $this->scaled(
-                    $this->columns(mb_substr($name, 0, 41 - mb_strlen($kotQty)), $kotQty, self::COLS_80MM),
-                    $big,
-                    true
-                );
-            }
+            // COLUMN approach — Qty | Item — with the name wrapping under its column. No price:
+            // a kitchen ticket carries none.
+            $out .= $this->sized($this->qtyItemColumns($kotQty, $name, $this->scaledWidth($big)), $big, true);
 
             // Variant, modifiers and the cook's note stay one step below the item: always taller
             // than normal so they are readable, never double width, so they never wrap.
             $sub = ['w' => 1, 'h' => $big['h']];
             if ($line->variant_name) {
-                $out .= $this->scaled('  ' . $line->variant_name, $sub);
+                $out .= $this->subRow('  ' . $line->variant_name, $sub);
             }
             foreach ($this->lineModifiers($line) as $modifier) {
-                $out .= $this->scaled('  + ' . $modifier['name'], $sub);
+                $out .= $this->subRow('  + ' . $modifier['name'], $sub);
             }
             if ($line->kitchen_note) {
-                $out .= $this->scaled('  NOTE: ' . $line->kitchen_note, $sub, true);
+                $out .= $this->subRow('  NOTE: ' . $line->kitchen_note, $sub, true);
             }
         }
 
@@ -652,6 +695,70 @@ class EscPosPayloadService
     {
         $space = max($width - mb_strlen($left) - mb_strlen($right), 1);
         return $left . str_repeat(' ', $space) . $right;
+    }
+
+    /**
+     * A receipt item row laid out in COLUMNS — Item | Qty | Rate | Amount — the way the client's
+     * bill reads. The description column wraps within its width and the numeric columns stay
+     * right-aligned on the first line; continuation lines carry only the wrapped name, so the
+     * numbers never collide and a long name never squeezes them. 42 Font-A columns; the caller
+     * applies height scaling. Pass rate/amount empty for a header or a no-price sub-row.
+     */
+    private const RECEIPT_QTY_W = 4;
+    private const RECEIPT_RATE_W = 9;
+    private const RECEIPT_AMOUNT_W = 9;
+
+    /** Multibyte-safe str_pad (product names may carry non-ASCII); pads on display width. */
+    private function mbStrPad(string $s, int $len, string $pad = ' ', int $type = STR_PAD_RIGHT): string
+    {
+        $gap = $len - mb_strlen($s);
+        if ($gap <= 0) {
+            return $s;
+        }
+        $fill = str_repeat($pad, $gap);
+
+        return $type === STR_PAD_LEFT ? $fill . $s : $s . $fill;
+    }
+
+    private function itemColumns(string $name, string $qty, string $rate, string $amount, int $width = self::COLS_80MM): string
+    {
+        $numeric = self::RECEIPT_QTY_W + self::RECEIPT_RATE_W + self::RECEIPT_AMOUNT_W + 3; // + one gap each
+        $nameW = max($width - $numeric, 10);
+
+        $lines = explode("\n", wordwrap(trim($name), $nameW, "\n", true));
+        $head = array_shift($lines);
+
+        $row = $this->mbStrPad($head, $nameW) . ' '
+             . $this->mbStrPad($qty, self::RECEIPT_QTY_W, ' ', STR_PAD_LEFT) . ' '
+             . $this->mbStrPad($rate, self::RECEIPT_RATE_W, ' ', STR_PAD_LEFT) . ' '
+             . $this->mbStrPad($amount, self::RECEIPT_AMOUNT_W, ' ', STR_PAD_LEFT);
+        $out = rtrim($row) . "\n";
+        foreach ($lines as $cont) {
+            $out .= $cont . "\n";   // continuation: wrapped name only, numeric columns already set
+        }
+
+        return $out;
+    }
+
+    /**
+     * A KOT / Reminder item row in COLUMNS — Qty | Item — with NO price (kitchen tickets carry no
+     * money). Qty sits in a narrow left column; the name wraps with a hanging indent so it reads
+     * as a column even at double width.
+     */
+    private function qtyItemColumns(string $qty, string $name, int $width): string
+    {
+        $qtyW = min(3, max(1, $width - 6));
+        $nameW = max($width - $qtyW - 1, 6);
+
+        $lines = explode("\n", wordwrap(trim($name), $nameW, "\n", true));
+        $head = array_shift($lines);
+
+        $out = $this->mbStrPad($qty, $qtyW, ' ', STR_PAD_LEFT) . ' ' . $head . "\n";
+        foreach ($lines as $cont) {
+            $out .= str_repeat(' ', $qtyW + 1) . $cont . "\n";   // hanging indent under the name column
+        }
+
+        return $out;
     }
 
     private function lineModifiers($line): array
@@ -697,11 +804,13 @@ class EscPosPayloadService
         $qty = $this->quantity($quantity) . $unit;
         $name = $prefix . strtoupper((string) ($line['product_name'] ?? 'ITEM')) . $suffix;
 
-        $text = $scale['w'] > 1
-            ? $indent . $qty . ' x ' . $name
-            : $this->columns($indent . mb_substr($name, 0, 41 - mb_strlen($qty) - mb_strlen($indent)), $qty, self::COLS_80MM);
+        // Top-level items use the COLUMN approach — Qty | Item, matching the KOT (no price; a
+        // reminder is non-fiscal). Indented rows (combo components) render as name-only sub-rows.
+        if ($indent !== '') {
+            return $this->subRow($indent . $qty . ' x ' . $name, $scale, true);
+        }
 
-        return $this->scaled($text, $scale, true);
+        return $this->sized($this->qtyItemColumns($qty, $name, $this->scaledWidth($scale)), $scale, true);
     }
 
     private function quantity(float $quantity): string
@@ -716,7 +825,7 @@ class EscPosPayloadService
             if ($tz) {
                 $moment = $moment->timezone($tz);
             }
-            return $moment->format('Y-m-d H:i');
+            return $moment->format('d/m/Y h:i A');
         } catch (\Throwable) {
             return $timestamp;
         }

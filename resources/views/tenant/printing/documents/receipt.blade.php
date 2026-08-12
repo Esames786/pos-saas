@@ -65,8 +65,13 @@
            EscPosPayloadService::receipt() composes it, leaving the whole remaining width to the
            amount. Two columns also make the old number collision ("11,200.001,200.00")
            impossible rather than merely padded apart. */
-        .item-name  { width: 68%; word-break: break-word; }
-        .item-total { width: 32%; text-align: right; white-space: nowrap; padding-left: 8px; }
+        /* Item | Qty | Rate | Amount — the wide name column WRAPS (that was the real fix; an
+           earlier 40% name column was what wrapped names into a mess), the numeric columns stay
+           narrow and right-aligned so they never collide. Matches the thermal composition. */
+        .item-name  { width: 46%; word-break: break-word; }
+        .item-qty   { width: 12%; text-align: right; white-space: nowrap; padding-left: 4px; }
+        .item-rate  { width: 20%; text-align: right; white-space: nowrap; padding-left: 4px; }
+        .item-total { width: 22%; text-align: right; white-space: nowrap; padding-left: 4px; }
         .totals td:first-child { width: 60%; text-align: right; padding-right: 4px; }
         .totals td:last-child  { width: 40%; text-align: right; white-space: nowrap; }
         /* What the customer reads — items and money — at the paper's scale. em, so the header
@@ -122,7 +127,6 @@
 @if($show('show_order_type'))
 <div class="bold center">** {{ strtoupper(str_replace('_', ' ', $salesOrder->order_type ?? 'SALE')) }} **</div>
 @endif
-@if($isPreview ?? false)<div class="center" style="font-size:10px">NOT A TAX RECEIPT</div>@endif
 
 <hr>
 
@@ -130,7 +134,7 @@
 <div>Order: <span class="bold">{{ $salesOrder->sale_no ?? $salesOrder->order_no }}</span></div>
 @endif
 
-<div>Date: {{ ($salesOrder->sale_date ?? $salesOrder->created_at)?->copy()->timezone($printTz)->format('d/m/Y H:i') }}</div>
+<div>Date: {{ ($salesOrder->sale_date ?? $salesOrder->created_at)?->copy()->timezone($printTz)->format('d/m/Y h:i A') }}</div>
 
 @if($show('show_cashier_name') && $salesOrder->createdBy)
 <div>Cashier: {{ $salesOrder->createdBy->name }}</div>
@@ -173,6 +177,8 @@
     <thead>
         <tr>
             <td class="item-name bold">Item</td>
+            <td class="item-qty bold">Qty</td>
+            <td class="item-rate bold">Rate</td>
             <td class="item-total bold">Amount</td>
         </tr>
     </thead>
@@ -184,38 +190,26 @@
                 @if($show('show_item_codes') && $line->product?->barcode)
                     <small>{{ $line->product->barcode }}</small><br>
                 @endif
-                @php
-                    // "2x" leads the description and the unit price is shown inline only when the
-                    // quantity is not 1 — identical to the composed thermal line, so the slip on
-                    // screen and the slip in the customer's hand read the same.
-                    $lineQty = rtrim(rtrim(number_format((float) $line->quantity, 3, '.', ''), '0'), '.');
-                @endphp
-                {{ $lineQty }}{{ $unitSuffix($line->unit_code) }}x {{ $line->product_name }}
+                {{-- Item name in its own column; Qty / Rate / Amount keep theirs so the numbers
+                     never collide. Modifiers and combo components read as indented sub-rows. --}}
+                {{ $line->product_name }}
                 @if($line->variant_name)
                     <small>({{ $line->variant_name }})</small>
                 @endif
-                @if((float) $line->quantity !== 1.0)
-                    {{-- The @ must live inside the expression: Blade reads a bare "@{{" as its own
-                         escape syntax and would print the literal expression instead. --}}
-                    <small>{{ '@' . number_format($line->unit_price, 2) }}</small>
-                @endif
                 @foreach(($line->modifiers ?? []) as $modifier)
                     @if(!empty($modifier['name']))
-                        <br><small>
-                            + {{ $modifier['name'] }}
-                            @if((float) ($modifier['price_delta'] ?? 0) !== 0.0)
-                                ({{ (float) $modifier['price_delta'] > 0 ? '+' : '' }}{{ number_format((float) $modifier['price_delta'], 2) }})
-                            @endif
-                        </small>
+                        <br><small>&nbsp;+ {{ $modifier['name'] }}@if((float) ($modifier['price_delta'] ?? 0) !== 0.0) ({{ (float) $modifier['price_delta'] > 0 ? '+' : '' }}{{ number_format((float) $modifier['price_delta'], 2) }})@endif</small>
                     @endif
                 @endforeach
                 @if($line->kitchen_note)
-                    <br><small>* {{ $line->kitchen_note }}</small>
+                    <br><small>&nbsp;* {{ $line->kitchen_note }}</small>
                 @endif
                 @foreach($salesOrder->lines->where('parent_sales_order_line_id', $line->id) as $component)
-                    <br><small>- {{ rtrim(rtrim(number_format((float) $component->quantity, 3, '.', ''), '0'), '.') }}{{ $unitSuffix($component->unit_code) }} x {{ $component->product_name }}</small>
+                    <br><small>&nbsp;- {{ rtrim(rtrim(number_format((float) $component->quantity, 3, '.', ''), '0'), '.') }}{{ $unitSuffix($component->unit_code) }} x {{ $component->product_name }}</small>
                 @endforeach
             </td>
+            <td class="item-qty">{{ rtrim(rtrim(number_format((float) $line->quantity, 3, '.', ''), '0'), '.') }}{{ $unitSuffix($line->unit_code) }}</td>
+            <td class="item-rate">{{ number_format($line->unit_price, 2) }}</td>
             <td class="item-total">{{ number_format($line->line_total, 2) }}</td>
         </tr>
         @endforeach

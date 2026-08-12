@@ -32,11 +32,11 @@ class EscPosReminderPayloadTest extends TestCase
 
         $this->assertStringContainsString('UPDATED ORDER', $output);
         $this->assertStringContainsString('REVISION 2', $output);
-        // PRINT-FORMAT-PARITY-1: single line, name left + clean qty right-aligned.
-        // Piece units (PCS/EA) are suppressed — the number alone is the count.
-        $this->assertMatchesRegularExpression('/BURGER \(R \+2\) +3$/m', $output);
-        $this->assertMatchesRegularExpression('/DRINK +1$/m', $output);
-        $this->assertMatchesRegularExpression('/\(R\) FRIES +1$/m', $output);
+        // COLUMN approach: Qty leads its own column, then the item name (contiguous text; the
+        // ESC/POS size bytes sit outside it, so a plain substring match is the robust assertion).
+        $this->assertStringContainsString('3 BURGER (R +2)', $output);
+        $this->assertStringContainsString('1 DRINK', $output);
+        $this->assertStringContainsString('1 (R) FRIES', $output);
         $this->assertStringNotContainsString('PCS', $output);
         $this->assertStringNotContainsString('999', $output);
         $this->assertStringNotContainsString('1098', $output);
@@ -62,9 +62,9 @@ class EscPosReminderPayloadTest extends TestCase
         ]);
 
         $this->assertStringContainsString('DUPLICATE 2', $output);
-        $this->assertStringNotContainsString('ORDER: 2026-08-03 10:00', $output);
-        $this->assertStringContainsString('UPDATED: 2026-08-03 10:10', $output);
-        $this->assertStringNotContainsString('PRINT: 2026-08-03 10:11', $output);
+        $this->assertStringNotContainsString('ORDER: 03/08/2026 10:00 AM', $output);
+        $this->assertStringContainsString('UPDATED: 03/08/2026 10:10 AM', $output);
+        $this->assertStringNotContainsString('PRINT: 03/08/2026 10:11 AM', $output);
     }
 
     public function test_cancellation_reminder_has_cancelled_and_remaining_sections(): void
