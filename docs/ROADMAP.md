@@ -1,6 +1,7 @@
 # Bingoo POS — Roadmap & System Gap Register
 
 > Maintained working document. Update after every completed sprint.
+> **➡️ Current authoritative state: [`docs/status/platform-checkpoint-2026-08-13.md`](status/platform-checkpoint-2026-08-13.md)** — production HEAD `c4fc021` (`EDGE-SPLITBRAIN-STOCK-1`, dormant/Cloud); Edge & Catering now develop in separate worktrees; Edge NEXT = `EDGE-CONFIG-REFRESH-1`. The body below is older and is being refreshed sprint-by-sprint.
 > Last updated: **2026-08-07** (EDGE-RUNTIME-BOUNDARY-1 + HARDEN-1 + BUILD-RELEASE-CLOSURE-1 built; reproducible fail-closed artifacts + exact route census; branch-shift UX & grouped shifts + reminder-print demo fix shipped; MySQL 49/149 + fast 96/30890 green; prod on e68e2e4, cloud) · branch `feat/14d-2-plan-upgrade-requests`
 
 ---
