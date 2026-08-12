@@ -374,9 +374,13 @@ class OnboardKhatriBiryaniCommand extends Command
         // the DEFAULT printer and prints the receipt/bill plus the KOT for every category.
         // P2 is network-only and takes the drinks/sweets side: Beverages, Desserts, Extras.
         // IPs are placeholders — set the real ones on site (Printing → Printers).
+        // P3 "BlackCopper - Dine In Receipt + KOT" (2026-08-12): dine-in opened as its own terminal
+        // with its own receipt/KOT device. Dine-in MAIN food KOTs + receipts print here; dine-in
+        // Beverages/Desserts/Extras still share the one XPrinter (P2) with delivery.
         $printers = [
             'PRINTER-1' => ['BlackCopper BC97AC - Delivery Receipt + KOT', '192.168.1.50', 'both', 1],
             'PRINTER-2' => ['XPrinter - Beverages / Desserts / Extras KOT', '192.168.1.51', 'kot', 0],
+            'PRINTER-3' => ['BlackCopper - Dine In Receipt + KOT', '192.168.1.87', 'both', 0],
         ];
         $printerIds = [];
         foreach ($printers as $code => [$name, $ip, $role, $isDefault]) {
@@ -419,12 +423,17 @@ class OnboardKhatriBiryaniCommand extends Command
         };
         $mapped = 0;
         foreach (DB::connection('tenant')->table('categories')->whereNull('parent_id')->orderBy('sort_order')->get(['id', 'name']) as $parent) {
-            $printerId = in_array($parent->name, $p2Parents, true) ? $printerIds['PRINTER-2'] : $printerIds['PRINTER-1'];
+            $isBeverageSide = in_array($parent->name, $p2Parents, true);
+            $printerId = $isBeverageSide ? $printerIds['PRINTER-2'] : $printerIds['PRINTER-1'];
             $familyIds = DB::connection('tenant')->table('categories')
                 ->where('parent_id', $parent->id)->pluck('id')->prepend($parent->id);
             foreach ($familyIds as $categoryId) {
                 foreach (['dine_in', 'takeaway', 'delivery', 'quick_sale'] as $ot) {
-                    $mapRow($categoryId, $printerId, $ot);
+                    // dine_in MAIN food prints at the Dine In counter's own BlackCopper (P3); its
+                    // Beverages/Desserts/Extras stay on the shared XPrinter (P2), and every other
+                    // order type routes to the delivery devices exactly as before.
+                    $target = ($ot === 'dine_in' && ! $isBeverageSide) ? $printerIds['PRINTER-3'] : $printerId;
+                    $mapRow($categoryId, $target, $ot);
                     $mapped++;
                 }
             }
@@ -437,17 +446,31 @@ class OnboardKhatriBiryaniCommand extends Command
         // (Takeaway / Dine In keep auto-print on but no explicit binding yet — their KOTs still
         // route by category and receipts fall back to the default printer.)
         $deliveryTerminalId = (int) DB::connection('tenant')->table('terminals')->where('code', 'T1')->value('id');
+        $dineInTerminalId = (int) DB::connection('tenant')->table('terminals')->where('code', 'T3')->value('id');
         $terminalIds = DB::connection('tenant')->table('terminals')->where('status', 'active')->pluck('id');
         foreach ($terminalIds as $tid) {
-            $binding = (int) $tid === $deliveryTerminalId
-                ? ['receipt_printer_id' => $printerIds['PRINTER-1'], 'kot_printer_id' => $printerIds['PRINTER-1']]
-                : [];
+            // Delivery terminal → its BlackCopper (P1); Dine In terminal → its own BlackCopper (P3)
+            // for receipts + main KOTs. Takeaway keeps auto-print on with no explicit binding
+            // (KOTs route by category, receipt falls back to the default printer).
+            $binding = match ((int) $tid) {
+                $deliveryTerminalId => ['receipt_printer_id' => $printerIds['PRINTER-1'], 'kot_printer_id' => $printerIds['PRINTER-1']],
+                $dineInTerminalId   => ['receipt_printer_id' => $printerIds['PRINTER-3'], 'kot_printer_id' => $printerIds['PRINTER-3']],
+                default             => [],
+            };
             DB::connection('tenant')->table('terminal_printer_settings')->updateOrInsert(
                 ['terminal_id' => $tid],
                 array_merge(['auto_print_receipt' => 1, 'auto_print_kot' => 1, 'updated_at' => now(), 'created_at' => now()], $binding)
             );
         }
-        $this->info('auto-print: KOT + Receipt ON for ' . $terminalIds->count() . ' terminals; Delivery terminal bound to PRINTER-1.');
+        // Owner reaches every terminal (open/close any shift, unscoped reports) — must include the
+        // Dine In terminal + the spare, or the per-terminal shift guard would fence the Owner out.
+        $ownerUser = \App\Models\Tenant\User::where('email', self::OWNER_EMAIL)->first();
+        if ($ownerUser) {
+            $ownerUser->terminals()->sync(
+                DB::connection('tenant')->table('terminals')->pluck('id')->all()
+            );
+        }
+        $this->info('auto-print: KOT + Receipt ON for ' . $terminalIds->count() . ' terminals; Delivery→P1, Dine In→P3.');
 
         // Manager role: every synced permission belonging to an ENABLED plan module, minus admin/owner
         // concerns. Data-driven from the plan's module route keys — nothing Khatri-specific in code.
@@ -550,28 +573,42 @@ class OnboardKhatriBiryaniCommand extends Command
         $role = \Spatie\Permission\Models\Role::findOrCreate('Delivery', 'tenant');
         $role->syncPermissions(array_values(array_unique($names)));
 
-        $email = 'delivery_kb@bingoopos.com';
+        // The delivery counter (delivery orders, Delivery terminal) and the dine-in counter
+        // (2026-08-12: dine_in orders, Dine In terminal) share this SAME role — identical
+        // permissions — and differ only in the order type + terminal each is scoped to.
+        $dineInTerminalId = (int) DB::connection('tenant')->table('terminals')->where('code', 'T3')->value('id');
+        $this->seedCounterUser($branchId, $role, 'delivery_kb@bingoopos.com', 'Delivery Counter', 'delivery', $deliveryTerminalId, count($names));
+        $this->seedCounterUser($branchId, $role, 'dinein_kb@bingoopos.com', 'Dine In Counter', 'dine_in', $dineInTerminalId, count($names));
+
+        app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
+    }
+
+    /**
+     * A counter operator: the shared Delivery role, scoped to ONE order type + ONE terminal. The
+     * terminal binding is what UserDataScope anchors on — it locks POS, reports AND the per-terminal
+     * shift open/close guard to this operator's own terminal.
+     */
+    private function seedCounterUser(int $branchId, $role, string $email, string $name, string $orderType, int $terminalId, int $permCount): void
+    {
         $existing = \App\Models\Tenant\User::where('email', $email)->first();
         $password = $existing ? null : ($this->option('delivery-password') ?: Str::random(16));
 
         $user = \App\Models\Tenant\User::updateOrCreate(
             ['email' => $email],
             array_merge([
-                'name' => 'Delivery Counter',
+                'name' => $name,
                 'status' => 'active',
                 'locale' => 'en',
                 'default_branch_id' => $branchId,
-                // POS-side guard: this account can only run DELIVERY orders.
-                'allowed_order_types' => ['delivery'],
+                'allowed_order_types' => [$orderType],
             ], $password ? ['password' => \Illuminate\Support\Facades\Hash::make($password)] : [])
         );
         $user->syncRoles([$role]);
         $user->branches()->syncWithoutDetaching([$branchId]);
-        if ($deliveryTerminalId) {
-            $user->terminals()->sync([$deliveryTerminalId]);   // data scope anchors on this binding
+        if ($terminalId) {
+            $user->terminals()->sync([$terminalId]);
         }
-        // Manager PIN for the counter (client decision): whole-order cancellations prompt for a
-        // PIN, and this account is the one that answers it on site.
+        // Manager PIN so whole-order cancellations can be approved on site.
         $pin = $this->option('manager-pin') ?: 'password@';
         DB::connection('tenant')->table('manager_pins')->updateOrInsert(
             ['user_id' => $user->id],
@@ -579,13 +616,9 @@ class OnboardKhatriBiryaniCommand extends Command
              'created_at' => now(), 'updated_at' => now()]
         );
 
-        app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
-
-        $this->info('manager PIN set for ' . $email . ' (used to approve whole-order cancellations).');
-        $this->info('Delivery user ' . $email . ' ready: role Delivery = ' . count($names)
-            . ' permissions (0 delete, no admin/finance/stock), locked to the Delivery terminal + delivery orders.');
+        $this->info("counter user {$email} ready: role Delivery = {$permCount} permissions, locked to its terminal + {$orderType} orders.");
         if ($password) {
-            $this->warn('Delivery password (store securely, shown once): ' . $password);
+            $this->warn(ucfirst($name) . ' password (store securely, shown once): ' . $password);
         }
     }
 }

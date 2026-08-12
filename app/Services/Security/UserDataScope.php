@@ -112,6 +112,31 @@ class UserDataScope
         }
     }
 
+    /**
+     * May this user operate (open/close a shift on) the given terminal?
+     *
+     * Same rule the POS terminal check already uses: a user bound to specific terminals is limited
+     * to those; an unbound user (empty pivot — owner/manager set-up) may operate any. This is what
+     * keeps a terminal cashier from opening or closing another terminal's shift while leaving
+     * Owner/Manager (bound to every terminal, or unbound) with full reach.
+     */
+    public function canOperateTerminal(?User $user, int $terminalId): bool
+    {
+        $terminals = $this->terminalIds($user);
+
+        return $terminals === [] || in_array($terminalId, $terminals, true);
+    }
+
+    /** Abort 403 unless the user may operate this terminal. */
+    public function assertCanOperateTerminal(?User $user, int $terminalId): void
+    {
+        abort_unless(
+            $this->canOperateTerminal($user, $terminalId),
+            403,
+            'You can only open or close a shift on a terminal assigned to you.'
+        );
+    }
+
     /** Order types this user is restricted to; empty = no order-type restriction. */
     public function orderTypes(?User $user): array
     {

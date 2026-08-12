@@ -79,6 +79,13 @@ class ShiftController extends Controller
         // shifts on its Branch Server — cloud must not, or cash reconciliation forks.
         app(\App\Services\Edge\BranchOperatingModeService::class)->assertSaleMutationAllowed($branch);
 
+        // A terminal cashier may open a shift only on the terminal assigned to them; Owner/Manager
+        // (bound to every terminal, or unbound) open any. Draft-expense logic is untouched.
+        $scope = app(\App\Services\Security\UserDataScope::class);
+        foreach ($data['terminal_ids'] as $tid) {
+            $scope->assertCanOperateTerminal(auth('tenant')->user(), (int) $tid);
+        }
+
         $overrides = [];
         foreach ((array) ($data['terminal_opening_cash'] ?? []) as $tid => $value) {
             if ($value !== null && $value !== '') {
@@ -169,6 +176,11 @@ class ShiftController extends Controller
     public function close(Request $request, Shift $shift, ShiftService $shiftService)
     {
         abort_if($shift->status !== 'open', 404);
+
+        // A cashier closes only their own terminal's shift; Owner/Manager close any. This gates
+        // WHO may close WHICH shift — the shortage draft-expense flow below is unchanged.
+        app(\App\Services\Security\UserDataScope::class)
+            ->assertCanOperateTerminal(auth('tenant')->user(), (int) $shift->terminal_id);
 
         app(\App\Services\Edge\BranchOperatingModeService::class)
             ->assertSaleMutationAllowed(\App\Models\Tenant\Branch::findOrFail($shift->branch_id));
@@ -262,18 +274,25 @@ class ShiftController extends Controller
         $branch = Branch::findOrFail($data['branch_id']);
         app(\App\Services\Edge\BranchOperatingModeService::class)->assertSaleMutationAllowed($branch);
 
+        $scope = app(\App\Services\Security\UserDataScope::class);
+        $operator = auth('tenant')->user();
+
         try {
-            $result = DB::connection('tenant')->transaction(function () use ($branch, $data, $shiftService) {
+            $result = DB::connection('tenant')->transaction(function () use ($branch, $data, $shiftService, $scope, $operator) {
                 // Lock all the branch's open shifts up front (consistent order), then close each via
                 // the canonical guard (still blocks on held sales / open tables per terminal).
+                // A terminal cashier's Close Branch closes only the terminals they may operate, so a
+                // shared close never reaches another cashier's drawer; Owner/Manager close all.
                 $shifts = Shift::where('branch_id', $branch->id)
                     ->where('status', 'open')
                     ->orderBy('terminal_id')
                     ->lockForUpdate()
-                    ->get();
+                    ->get()
+                    ->filter(fn ($shift) => $scope->canOperateTerminal($operator, (int) $shift->terminal_id))
+                    ->values();
 
                 if ($shifts->isEmpty()) {
-                    throw new ShiftException('No open shifts on this branch.');
+                    throw new ShiftException('No open shifts you can close on this branch.');
                 }
 
                 $userId = (int) auth('tenant')->id();
