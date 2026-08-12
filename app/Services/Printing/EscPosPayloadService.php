@@ -358,14 +358,16 @@ class EscPosPayloadService
         }
         // Customer name AND contact number on the bill (default ON for receipts) — the delivery
         // rider and the counter both need the number; typed walk-in details count too.
+        // BOLD: everything the delivery rider reads off the bill at the door — who, which number,
+        // which address. The cashier's and system's own reference lines stay normal weight.
         if ($show('show_customer_name')) {
             $customerName = $sale->customer_name ?: $sale->customer?->name;
             $customerPhone = $sale->customer_phone ?: $sale->customer?->phone;
             if ($customerName) {
-                $out .= 'Customer: ' . $customerName . "\n";
+                $out .= self::BOLD_ON . 'Customer: ' . $customerName . self::BOLD_OFF . "\n";
             }
             if ($customerPhone) {
-                $out .= 'Phone: ' . $customerPhone . "\n";
+                $out .= self::BOLD_ON . 'Phone: ' . $customerPhone . self::BOLD_OFF . "\n";
             }
         }
 
@@ -382,14 +384,14 @@ class EscPosPayloadService
                 $out .= 'Channel: ' . $sale->deliveryChannel->name . "\n";
             }
             if ($sale->deliveryRider) {
-                $out .= 'Rider: ' . $sale->deliveryRider->name . "\n";
+                $out .= self::BOLD_ON . 'Rider: ' . $sale->deliveryRider->name . self::BOLD_OFF . "\n";
             }
             if ($sale->delivery_address) {
-                $out .= 'Deliver to: ' . $sale->delivery_address . "\n";
+                $out .= self::BOLD_ON . 'Deliver to: ' . $sale->delivery_address . self::BOLD_OFF . "\n";
             }
         }
         if ($show('show_vehicle_number') && $sale->vehicle_number) {
-            $out .= 'Vehicle: ' . $sale->vehicle_number . "\n";
+            $out .= self::BOLD_ON . 'Vehicle: ' . $sale->vehicle_number . self::BOLD_OFF . "\n";
         }
 
         $out .= str_repeat('-', 42) . "\n";

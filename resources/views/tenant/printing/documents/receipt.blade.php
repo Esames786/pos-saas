@@ -136,13 +136,15 @@
 <div>Cashier: {{ $salesOrder->createdBy->name }}</div>
 @endif
 
+{{-- BOLD: what the rider reads at the door — who, which number, which address. Matches the
+     thermal payload, which bolds the same lines. --}}
 @if($show('show_customer_name'))
     @php
         $billCustomerName = $salesOrder->customer_name ?: $salesOrder->customer?->name;
         $billCustomerPhone = $salesOrder->customer_phone ?: $salesOrder->customer?->phone;
     @endphp
-    @if($billCustomerName)<div>Customer: {{ $billCustomerName }}</div>@endif
-    @if($billCustomerPhone)<div>Phone: {{ $billCustomerPhone }}</div>@endif
+    @if($billCustomerName)<div class="bold">Customer: {{ $billCustomerName }}</div>@endif
+    @if($billCustomerPhone)<div class="bold">Phone: {{ $billCustomerPhone }}</div>@endif
 @endif
 
 @if($show('show_table_info') && $salesOrder->restaurantTable)
@@ -158,11 +160,11 @@
 
 @if($show('show_delivery_details'))
     @if($salesOrder->deliveryChannel)<div>Channel: {{ $salesOrder->deliveryChannel->name }}</div>@endif
-    @if($salesOrder->deliveryRider)<div>Rider: {{ $salesOrder->deliveryRider->name }}{{ $salesOrder->deliveryRider->phone ? ' - ' . $salesOrder->deliveryRider->phone : '' }}</div>@endif
-    @if($salesOrder->delivery_address)<div>Deliver to: {{ $salesOrder->delivery_address }}</div>@endif
+    @if($salesOrder->deliveryRider)<div class="bold">Rider: {{ $salesOrder->deliveryRider->name }}{{ $salesOrder->deliveryRider->phone ? ' - ' . $salesOrder->deliveryRider->phone : '' }}</div>@endif
+    @if($salesOrder->delivery_address)<div class="bold">Deliver to: {{ $salesOrder->delivery_address }}</div>@endif
 @endif
 @if($show('show_vehicle_number') && $salesOrder->vehicle_number)
-<div>Vehicle: {{ $salesOrder->vehicle_number }}</div>
+<div class="bold">Vehicle: {{ $salesOrder->vehicle_number }}</div>
 @endif
 
 <hr>
