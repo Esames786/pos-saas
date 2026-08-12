@@ -44,9 +44,27 @@ class DemoResetAllCommand extends Command
         foreach ($codes as $code) {
             $this->info("Resetting [{$code}] ...");
 
+            // ONE FRESH PROCESS PER TENANT. Resetting several tenants inside one PHP process
+            // resolves the previous tenant's leftovers through every memoized layer at once: the
+            // Spatie registrar's in-process collection (cleared at activate() since the /login
+            // fix) AND the database cache store, whose repository pins the Connection OBJECT it
+            // was constructed with — after the tenant switch it still reads the previous
+            // tenant's cache table. That is why the nightly reset died on tenant #2 every night
+            // ("There is no permission named tenant.users.index") while a single-tenant reset of
+            // the same demo succeeded. A subprocess starts pristine; no stale layer survives.
             try {
-                $tenant = $service->resetTenantCode($code);
-                $this->line('  ✓ ' . $code . ' → ' . ($tenant->subscription?->plan?->code ?? 'n/a'));
+                $exit = 0;
+                passthru(sprintf(
+                    '%s %s demo:reset %s --yes --no-interaction 2>&1',
+                    escapeshellarg(PHP_BINARY),
+                    escapeshellarg(base_path('artisan')),
+                    escapeshellarg($code)
+                ), $exit);
+
+                if ($exit !== 0) {
+                    throw new \RuntimeException("demo:reset {$code} exited with code {$exit}");
+                }
+                $this->line('  ✓ ' . $code);
             } catch (Throwable $e) {
                 $this->error('  ✗ ' . $code . ' FAILED: ' . $e->getMessage());
                 $this->error('Stopping on first failure. Remaining demos were not reset.');
