@@ -65,6 +65,14 @@
             </thead>
             <tbody>
                 @forelse($jobs as $j)
+                @php
+                    // SHIFT-TIMEZONE parity: operational timestamps render in the DISPLAY timezone
+                    // (user preference → the job's branch → default), same as every other portal
+                    // screen. Raw format() printed the UTC storage value — the morning's first
+                    // order showed 07:38 on a wall clock reading 12:38.
+                    $clock = app(\App\Support\TenantClock::class);
+                    $jobTz = $clock->displayTimezone(null, $j->branch);
+                @endphp
                 <tr>
                     <td><code>{{ $j->job_no }}</code></td>
                     <td>{{ ucfirst($j->document_type) }}</td>
@@ -79,7 +87,7 @@
                     <td>
                         {{ $j->claimedByAgent?->name ?? '—' }}
                         @if($j->claimed_at)
-                            <small class="d-block text-muted">{{ $j->claimed_at->format('H:i:s') }}</small>
+                            <small class="d-block text-muted">{{ $clock->format($j->claimed_at, 'H:i:s', $jobTz) }}</small>
                         @endif
                     </td>
                     <td>
@@ -96,7 +104,7 @@
                     </td>
                     <td>{{ $j->attempts }}</td>
                     <td>{{ $j->createdBy?->name ?? '—' }}</td>
-                    <td>{{ $j->created_at?->format('d M Y H:i') }}</td>
+                    <td>{{ $clock->format($j->created_at, 'd M Y H:i', $jobTz) }}</td>
                     <td class="text-end d-flex gap-1 justify-content-end">
                         <a href="{{ url('/printing/documents/' . $j->id . '/preview') }}"
                            target="_blank" class="btn btn-sm btn-light">View</a>

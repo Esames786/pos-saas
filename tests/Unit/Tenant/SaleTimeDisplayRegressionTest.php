@@ -95,6 +95,16 @@ class SaleTimeDisplayRegressionTest extends TestCase
             $this->assertStringContainsString('displayTimezone(null, $', $code);
             $this->assertDoesNotMatchRegularExpression('/return_date[^\n]*->format\(/', $code);
         }
+
+        // Print Jobs missed the original sweep: it rendered raw UTC created_at/claimed_at, so the
+        // morning's first order read 07:38 on a wall clock showing 12:38.
+        $code = file_get_contents(resource_path('views/tenant/printing/jobs/index.blade.php'));
+        $this->assertStringContainsString('displayTimezone(null, $', $code);
+        $this->assertDoesNotMatchRegularExpression(
+            '/(created_at|claimed_at)[^\n]*->format\(/',
+            $code,
+            'Print Jobs formats a raw UTC timestamp — route it through TenantClock like every other portal screen.'
+        );
     }
 
     /** The Report Center detail rows are raw query rows, so the timezone must travel per row. */
