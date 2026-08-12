@@ -27,17 +27,25 @@ return Application::configure(basePath: dirname(__DIR__))
             EnsureEdgeRuntimeRouteAllowed::class,
         ]);
 
-        // IdentifyTenant must run before Authenticate (auth:*) so the tenant
-        // DB connection is configured before the session guard tries to load
-        // the authenticated user. Without this, auth fires first (priority 6)
-        // while IdentifyTenant has no priority and sorts after it.
+        // IdentifyTenant runs FIRST — before the session ever starts, not merely before auth.
+        //
+        // It needs nothing but the request host, and everything session-related may need IT: the
+        // session guard loads the authenticated user from the TENANT users table, and StartSession
+        // saves the session (recording that user) even when an inner middleware threw — the
+        // routing pipeline converts inner exceptions to responses, so the save still runs.
+        //
+        // With IdentifyTenant sorted after StartSession, any exception thrown between the two
+        // (live case: an expired login page POSTing with a stale CSRF token → 419 from
+        // ValidateCsrfToken) reached the session save with the tenant connection never
+        // configured — "SQLSTATE[3D000] No database selected" 500s on /login, five times across
+        // 2026-08-10/11. Guarded by TenantMiddlewarePriorityRegressionTest.
         $middleware->priority([
             \Illuminate\Foundation\Http\Middleware\HandlePrecognitiveRequests::class,
+            IdentifyTenant::class,
             \Illuminate\Cookie\Middleware\EncryptCookies::class,
             \Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse::class,
             \Illuminate\Session\Middleware\StartSession::class,
             \Illuminate\View\Middleware\ShareErrorsFromSession::class,
-            IdentifyTenant::class,
             \Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests::class,
             \Illuminate\Routing\Middleware\ThrottleRequests::class,
             \Illuminate\Routing\Middleware\ThrottleRequestsWithRedis::class,
