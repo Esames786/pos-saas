@@ -20,6 +20,15 @@ class TenancyManager
 
         DB::setDefaultConnection('tenant');
 
+        // The Spatie registrar memoizes the permission collection IN-PROCESS. Within one HTTP
+        // request that is fine (one tenant per request), but any process that activates several
+        // tenants in sequence — demo:reset-all, system:* loops, future queue workers — would keep
+        // consulting the PREVIOUS tenant's permissions: findByName() then throws "There is no
+        // permission named X" for rows that plainly exist in the now-active DB (live failure:
+        // the nightly demo reset died on tenant #2 every night). Clearing only the in-process
+        // collection is a property write — each tenant's cache ROW survives untouched.
+        app(\Spatie\Permission\PermissionRegistrar::class)->clearPermissionsCollection();
+
         app()->instance('tenant', $tenant);
         app()->instance('tenantId', $tenant->id);
     }
