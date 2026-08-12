@@ -493,6 +493,45 @@ class PrintJobService
     }
 
     /**
+     * Abandon a print INTENT that is never going to be delivered — a genuine failure the operator
+     * no longer wants sent, or a job made obsolete by a later successful copy.
+     *
+     * This is the correct home for "clear it off the queue", NOT markPrinted(): markPrinted claims
+     * a PHYSICAL transport completed and carries real side effects (print counters, KOT sent
+     * bookkeeping, last-printed timestamps). A dismissed job printed NOTHING, so it must move to a
+     * terminal state WITHOUT any of those effects — the queue is clean and the history stays true.
+     *
+     * `cancelled` is the shared enum's long-idle terminal value, used here for its plain Cloud
+     * meaning (intent abandoned). It is deliberately NOT Edge transport metadata — the Branch
+     * Server keeps its own edge_local_print_deliveries state. A cancelled job may still be
+     * requeued through the existing Retry path (requeueFailed accepts failed|cancelled).
+     *
+     * Only a job that has NOT printed may be dismissed; a `printed` job throws, so this can never
+     * quietly erase a real print.
+     */
+    public function cancelObsolete(PrintJob $job, string $reason): void
+    {
+        DB::connection('tenant')->transaction(function () use ($job, $reason) {
+            $job->refresh();
+
+            if (! in_array($job->print_status, ['failed', 'queued'], true)) {
+                throw new \RuntimeException(
+                    "Only a failed or queued job can be dismissed — job #{$job->id} is [{$job->print_status}]."
+                );
+            }
+
+            $job->update([
+                'print_status'        => 'cancelled',
+                'error_message'       => $reason,
+                'claimed_by_agent_id' => null,
+                'claimed_at'          => null,
+                // printed_at stays NULL: nothing was printed. failed_at is left as the historical
+                // last-failure stamp when present.
+            ]);
+        });
+    }
+
+    /**
      * The ONE shared requeue of a failed/cancelled job (EDGE-LOCAL-PRINT-1 §5 closure): Cloud
      * PrintJobController::retry and the Edge local retry both delegate here so the field contract
      * can never drift. Only failed|cancelled jobs are eligible — anything else throws.

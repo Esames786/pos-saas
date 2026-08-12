@@ -259,6 +259,31 @@ class PrintJobController extends Controller
         return back()->with('status', 'Job re-queued.');
     }
 
+    /**
+     * Dismiss a failed/queued job that will never be delivered (obsolete, superseded, abandoned).
+     * NOT "Mark Printed": this claims no physical print and touches no counters.
+     */
+    public function dismiss(Request $request, PrintJob $printJob)
+    {
+        $this->assertPrintJobAccess($printJob);
+        $reason = trim((string) $request->input('reason')) ?: 'Dismissed by administrator';
+
+        try {
+            app(\App\Services\Printing\PrintJobService::class)->cancelObsolete($printJob, $reason);
+        } catch (\RuntimeException $e) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => $e->getMessage()], 422);
+            }
+            return back()->withErrors(['job' => $e->getMessage()]);
+        }
+
+        if ($request->expectsJson()) {
+            return response()->json(['status' => 'cancelled', 'job_no' => $printJob->job_no]);
+        }
+
+        return back()->with('status', 'Job dismissed.');
+    }
+
     private function assertSaleAccess(SalesOrder $sale): void
     {
         abort_if(

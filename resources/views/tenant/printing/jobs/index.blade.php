@@ -124,6 +124,17 @@
                                 </form>
                             @endcan
                         @endif
+                        {{-- Dismiss = abandon a job that will never be delivered (obsolete/superseded).
+                             Distinct from "Printed": it claims no physical print and touches no
+                             counters. Only offered on failed/queued jobs; the server refuses printed. --}}
+                        @if(in_array($j->print_status, ['failed', 'queued']))
+                            <form method="POST" action="{{ url('/printing/jobs/' . $j->id . '/dismiss') }}"
+                                  onsubmit="return confirm('Dismiss this job as obsolete? It will NOT be recorded as printed.');">
+                                @csrf
+                                <input type="hidden" name="reason" value="Dismissed as obsolete/superseded">
+                                <button class="btn btn-sm btn-outline-secondary">Dismiss</button>
+                            </form>
+                        @endif
                     </td>
                 </tr>
                 @empty

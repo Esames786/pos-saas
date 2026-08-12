@@ -615,6 +615,7 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::post('/printing/jobs/{printJob}/reminder-reprint', [PrintJobController::class, 'reprintReminder'])->name('tenant.printing.jobs.reprint-reminder');
                 Route::post('/printing/jobs/{printJob}/mark-printed', [PrintJobController::class, 'markPrinted'])->name('tenant.printing.jobs.mark-printed');
                 Route::post('/printing/jobs/{printJob}/retry', [PrintJobController::class, 'retry'])->name('tenant.printing.jobs.retry');
+                Route::post('/printing/jobs/{printJob}/dismiss', [PrintJobController::class, 'dismiss'])->name('tenant.printing.jobs.dismiss');
 
                 // Printing — Document preview (receipt / KOT browser print)
                 Route::get('/printing/documents/{printJob}/receipt', [PrintDocumentController::class, 'preview'])->name('tenant.printing.documents.receipt');
