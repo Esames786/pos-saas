@@ -54,7 +54,7 @@
         .right   { text-align: right; }
         .bold    { font-weight: bold; }
         hr       { border: none; border-top: 1px dashed #000; margin: 4px 0; }
-        table    { width: 100%; border-collapse: collapse; }
+        table    { width: 100%; border-collapse: collapse; table-layout: fixed; }
         td       { vertical-align: top; }
         /* ONE LINE PER ITEM, LIKE THE PAPER.
            This was a four-column table (Item/Qty/Price/Total) on a 72mm slip. There is not enough
@@ -65,15 +65,15 @@
            EscPosPayloadService::receipt() composes it, leaving the whole remaining width to the
            amount. Two columns also make the old number collision ("11,200.001,200.00")
            impossible rather than merely padded apart. */
-        /* Item | Qty | Rate | Amount — the wide name column WRAPS (that was the real fix; an
-           earlier 40% name column was what wrapped names into a mess), the numeric columns stay
-           narrow and right-aligned so they never collide. Matches the thermal composition. */
-        /* Whole-rupee prices print without a ".00" (see $money below), so the numeric columns are
-           narrow and the item name gets the width — matching the thermal bill. */
-        .item-name  { width: 58%; word-break: break-word; font-size: 0.85em; }
-        .item-qty   { width: 10%; text-align: right; white-space: nowrap; padding-left: 4px; }
-        .item-rate  { width: 15%; text-align: right; white-space: nowrap; padding-left: 4px; }
-        .item-total { width: 17%; text-align: right; white-space: nowrap; padding-left: 4px; }
+        /* Item | Qty | Rate | Amount. table-layout:fixed + these widths give the numeric columns
+           enough fixed room that Qty/Rate/Amount never overflow into each other, even for large
+           values (2 / 1,200 / 2,400 collided as "21,2002,400" under auto layout). The name column
+           WRAPS (word-break), so trimming its share costs extra lines, not readability. Font is
+           unchanged — only the horizontal share of each column moved. */
+        .item-name  { width: 46%; word-break: break-word; font-size: 0.85em; }
+        .item-qty   { width: 12%; text-align: right; white-space: nowrap; padding-left: 4px; }
+        .item-rate  { width: 20%; text-align: right; white-space: nowrap; padding-left: 4px; }
+        .item-total { width: 22%; text-align: right; white-space: nowrap; padding-left: 4px; }
         /* A dashed rule under every item row, so each item reads as its own box — matches the
            separator the thermal receipt now prints after each item. */
         tbody.grow td { border-bottom: 1px dashed #999; padding: 3px 0; }
