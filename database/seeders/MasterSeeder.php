@@ -166,6 +166,15 @@ class MasterSeeder extends Seeder
             'central.modules.update',
             'central.tenants.subscription.update',
 
+            // CLOUD-BILLING-1A — manual payment-method directory
+            'central.payment-methods.index',
+            'central.payment-methods.create',
+            'central.payment-methods.store',
+            'central.payment-methods.edit',
+            'central.payment-methods.update',
+            'central.payment-methods.toggle',
+            'central.payment-methods.destroy',
+
             'central.invoices.index',
             'central.tenants.invoices.create',
             'central.tenants.invoices.store',
@@ -192,6 +201,10 @@ class MasterSeeder extends Seeder
         $admin->syncRoles([$role]);
 
         $this->seedCommercialModules();
+
+        // CLOUD-BILLING-1A — seed the supported manual payment methods (account details stay
+        // blank + inactive until a central admin fills + activates them; firstOrCreate is safe).
+        $this->call(BillingPaymentMethodSeeder::class);
     }
 
     private function seedCommercialModules(): void

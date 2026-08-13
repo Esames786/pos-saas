@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Central\DashboardController;
 use App\Http\Controllers\Central\InvoiceController;
 use App\Http\Controllers\Central\ModuleController;
+use App\Http\Controllers\Central\PaymentMethodController;
 use App\Http\Controllers\Central\PlanController;
 use App\Http\Controllers\Central\RouteCatalogController;
 use App\Http\Controllers\Central\SubscriptionRequestController;
@@ -86,6 +87,15 @@ Route::domain(config('tenancy.central_domain'))
                 Route::get('/modules', [ModuleController::class, 'index'])->name('central.modules.index');
                 Route::get('/modules/{module}/edit', [ModuleController::class, 'edit'])->name('central.modules.edit');
                 Route::put('/modules/{module}', [ModuleController::class, 'update'])->name('central.modules.update');
+
+                // CLOUD-BILLING-1A — manual payment-method directory (where tenants send money)
+                Route::get('/payment-methods', [PaymentMethodController::class, 'index'])->name('central.payment-methods.index');
+                Route::get('/payment-methods/create', [PaymentMethodController::class, 'create'])->name('central.payment-methods.create');
+                Route::post('/payment-methods', [PaymentMethodController::class, 'store'])->name('central.payment-methods.store');
+                Route::get('/payment-methods/{paymentMethod}/edit', [PaymentMethodController::class, 'edit'])->name('central.payment-methods.edit');
+                Route::put('/payment-methods/{paymentMethod}', [PaymentMethodController::class, 'update'])->name('central.payment-methods.update');
+                Route::post('/payment-methods/{paymentMethod}/toggle', [PaymentMethodController::class, 'toggle'])->name('central.payment-methods.toggle');
+                Route::delete('/payment-methods/{paymentMethod}', [PaymentMethodController::class, 'destroy'])->name('central.payment-methods.destroy');
 
                 // Billing — subscription invoices + manual payments
                 Route::get('/invoices', [InvoiceController::class, 'index'])->name('central.invoices.index');

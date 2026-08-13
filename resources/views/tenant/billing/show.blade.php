@@ -80,7 +80,22 @@
         <div class="card">
             <div class="card-header"><h5 class="mb-0">Upload Payment Proof</h5></div>
             <div class="card-body">
-                <p class="small text-muted">Pay via bank transfer / JazzCash / EasyPaisa, then upload your proof here. The provider will verify it.</p>
+                {{-- CLOUD-BILLING-1A: where to send the money — active admin-configured methods only --}}
+                @if($paymentMethods->isEmpty())
+                    <p class="small text-muted">Payment instructions are being set up. Please contact support to complete your payment.</p>
+                @else
+                    <p class="small text-muted mb-2">Send your payment to one of the accounts below, then upload the proof. The provider will verify it.</p>
+                    <div class="list-group list-group-flush small mb-3">
+                        @foreach($paymentMethods as $pm)
+                            <div class="list-group-item px-0 py-2">
+                                <div class="fw-semibold">{{ $pm->display_name }}</div>
+                                @if($pm->account_title)<div>Title: {{ $pm->account_title }}</div>@endif
+                                <div>Account: <span class="fw-semibold">{{ $pm->account_number }}</span></div>
+                                @if($pm->instructions)<div class="text-muted">{{ $pm->instructions }}</div>@endif
+                            </div>
+                        @endforeach
+                    </div>
+                @endif
                 <form method="POST" action="{{ url('/billing/invoices/' . $invoice->id . '/payments') }}" enctype="multipart/form-data" class="row g-2">
                     @csrf
                     <div class="col-md-6">
@@ -94,9 +109,9 @@
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">Method</label>
-                        <select name="payment_method_code" class="form-select form-select-sm">
-                            @foreach(['bank' => 'Bank Transfer', 'jazzcash' => 'JazzCash', 'easypaisa' => 'EasyPaisa', 'cash' => 'Cash', 'manual' => 'Other'] as $code => $label)
-                                <option value="{{ $code }}" @selected(old('payment_method_code') === $code)>{{ $label }}</option>
+                        <select name="payment_method_code" class="form-select form-select-sm" required>
+                            @foreach($paymentMethods as $pm)
+                                <option value="{{ $pm->code }}" @selected(old('payment_method_code') === $pm->code)>{{ $pm->display_name }}</option>
                             @endforeach
                         </select>
                     </div>

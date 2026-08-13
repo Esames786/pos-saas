@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Tenant;
 
 use App\Http\Controllers\Controller;
+use App\Models\Master\BillingPaymentMethod;
 use App\Models\Master\SubscriptionInvoice;
 use App\Models\Master\SubscriptionPayment;
 use App\Services\Saas\SubscriptionBillingService;
@@ -36,8 +37,14 @@ class TenantBillingController extends Controller
 
         $invoice->load(['plan', 'payments.gateway']);
 
+        // CLOUD-BILLING-1A — only ACTIVE methods that actually have an account to send to.
+        $paymentMethods = BillingPaymentMethod::activeOrdered()
+            ->whereNotNull('account_number')
+            ->get();
+
         return view('tenant.billing.show', [
-            'invoice' => $invoice,
+            'invoice'        => $invoice,
+            'paymentMethods' => $paymentMethods,
         ]);
     }
 
@@ -65,6 +72,18 @@ class TenantBillingController extends Controller
             'proof.mimetypes' => 'The uploaded file content is not a valid image or PDF.',
             'proof.max'       => 'Proof file may not be larger than 5 MB.',
         ]);
+
+        // CLOUD-BILLING-1A: the method must be one of the ACTIVE, account-configured directory
+        // methods the tenant was actually shown (checked on the master connection via the model,
+        // never a cross-connection `exists` rule on the tenant DB).
+        $validMethod = BillingPaymentMethod::activeOrdered()
+            ->whereNotNull('account_number')
+            ->where('code', $data['payment_method_code'])
+            ->exists();
+
+        if (! $validMethod) {
+            return back()->withInput()->withErrors(['payment_method_code' => 'Please choose a valid payment method.']);
+        }
 
         try {
             $this->billing->recordTenantProofPayment(

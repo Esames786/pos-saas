@@ -126,6 +126,15 @@
                                     </a>
                                 </li>
                             @endcan
+                            @can('central.payment-methods.index')
+                                @php $a = $isIn('payment-methods*'); @endphp
+                                <li class="{{ $a ? 'active' : '' }}">
+                                    <a href="{{ url('/payment-methods') }}" class="{{ $a ? 'active' : '' }}">
+                                        <i class="ti ti-wallet fs-16 me-2"></i>
+                                        <span>Payment Methods</span>
+                                    </a>
+                                </li>
+                            @endcan
                             @can('central.routes.index')
                                 @php $a = $isIn('routes*'); @endphp
                                 <li class="{{ $a ? 'active' : '' }}">
