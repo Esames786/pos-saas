@@ -132,6 +132,59 @@ class CateringEntitlementMySqlTest extends MySqlTenantTestCase
         }
     }
 
+    /**
+     * CATERING-GO-LIVE-READINESS-1 (§3): deploying catering code must NOT broaden
+     * access. The real deploy surface (MasterSeeder + module migration) may
+     * REGISTER the module globally, but no plan — enterprise included — gains an
+     * enabled catering PlanModule, and an explicit admin grant survives reseeds.
+     */
+    public function test_deployment_reseed_never_broadens_catering_access(): void
+    {
+        // The real deploy path: deploy.sh runs MasterSeeder on every deploy —
+        // with master as the default connection (Spatie models follow it).
+        $runSeeder = function (): void {
+            DB::setDefaultConnection('master');
+            try {
+                (new \Database\Seeders\MasterSeeder)->run();
+            } finally {
+                DB::setDefaultConnection('tenant');
+            }
+        };
+        $runSeeder();
+
+        $cateringModuleId = Module::where('key', 'catering')->value('id');
+        $this->assertNotNull($cateringModuleId, 'module is globally REGISTERED');
+
+        $enabled = DB::connection('master')->table('plan_modules')
+            ->where('module_id', $cateringModuleId)->where('is_enabled', true)->count();
+        $this->assertSame(0, $enabled,
+            'no plan — enterprise included — may gain catering merely because code deployed');
+
+        $enterprise = Plan::where('code', 'enterprise')->firstOrFail();
+        $this->assertFalse($enterprise->hasEnabledModuleKey('catering'),
+            'the all-modules enterprise plan excludes rollout-gated verticals');
+
+        // The registration migration is also access-neutral.
+        (require base_path('database/migrations/2026_08_13_000001_register_catering_module.php'))->up();
+        $this->assertSame(0, DB::connection('master')->table('plan_modules')
+            ->where('module_id', $cateringModuleId)->where('is_enabled', true)->count());
+
+        // Explicit rollout for one client: an admin grant on a plan…
+        PlanModule::updateOrCreate(
+            ['plan_id' => $enterprise->id, 'module_id' => $cateringModuleId],
+            ['is_enabled' => true]
+        );
+
+        // …SURVIVES the next deploy's reseed (not disabled, not duplicated)…
+        $runSeeder();
+        $this->assertTrue($enterprise->fresh()->hasEnabledModuleKey('catering'),
+            'an explicit rollout grant must survive redeploys untouched');
+
+        // …and every OTHER plan is still catering-disabled.
+        $this->assertSame(1, DB::connection('master')->table('plan_modules')
+            ->where('module_id', $cateringModuleId)->where('is_enabled', true)->count());
+    }
+
     /** CATERING-V1-CLOSURE-1 (§9): the Permission Center shows friendly groups, not 36 raw routes. */
     public function test_permission_center_groups_catering_into_business_actions(): void
     {

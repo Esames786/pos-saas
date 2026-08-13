@@ -16,6 +16,17 @@ use Spatie\Permission\PermissionRegistrar;
 
 class MasterSeeder extends Seeder
 {
+    /**
+     * CATERING-GO-LIVE-READINESS-1 (§3): modules whose plan attachment is an
+     * EXPLICIT ROLLOUT DECISION, never a side effect of deploying code.
+     * They are globally REGISTERED (module row, entitlement mapping, admin UI)
+     * but this seeder neither enables nor disables them on any plan — not even
+     * the all-modules enterprise plan. Access is granted per client through
+     * plan-module administration (or a dedicated private plan), and an existing
+     * explicit grant survives every reseed/deploy untouched.
+     */
+    public const ROLLOUT_GATED_MODULE_KEYS = ['catering'];
+
     public function run(): void
     {
         app(PermissionRegistrar::class)->forgetCachedPermissions();
@@ -599,7 +610,11 @@ class MasterSeeder extends Seeder
                     'display_order' => 50,
                     'public_description' => 'Custom rollout for multi-branch, franchise, and enterprise operations.',
                 ],
-                'modules' => Module::where('is_active', true)->pluck('key')->all(),
+                // §3 rollout gate: "all modules" NEVER auto-includes rollout-gated
+                // verticals — deploying catering code must not broaden access.
+                'modules' => Module::where('is_active', true)
+                    ->whereNotIn('key', self::ROLLOUT_GATED_MODULE_KEYS)
+                    ->pluck('key')->all(),
                 'features' => [
                     'branch_limit' => null,
                     'terminal_limit' => null,
@@ -647,6 +662,12 @@ class MasterSeeder extends Seeder
 
     private function syncPlanModules(Plan $plan, array $moduleKeys): void
     {
+        // §3 rollout gate: gated modules are invisible to this sync in BOTH
+        // directions — the seeder neither lists them (no silent enable) nor
+        // disables an explicit administration grant on a reseed/redeploy.
+        $gatedIds = Module::whereIn('key', self::ROLLOUT_GATED_MODULE_KEYS)->pluck('id')->all();
+        $moduleKeys = array_values(array_diff($moduleKeys, self::ROLLOUT_GATED_MODULE_KEYS));
+
         $moduleIds = Module::whereIn('key', $moduleKeys)->pluck('id')->all();
 
         foreach ($moduleIds as $moduleId) {
@@ -657,7 +678,7 @@ class MasterSeeder extends Seeder
         }
 
         PlanModule::where('plan_id', $plan->id)
-            ->whereNotIn('module_id', $moduleIds)
+            ->whereNotIn('module_id', array_merge($moduleIds, $gatedIds))
             ->update(['is_enabled' => false]);
     }
 
