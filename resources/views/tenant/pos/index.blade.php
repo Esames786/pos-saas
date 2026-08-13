@@ -3311,6 +3311,23 @@ document.addEventListener('DOMContentLoaded', function () {
         } catch (e) { /* localStorage unavailable — in-memory still works this session */ }
     }
 
+    /* WRONG-BILL FIX — which SAVED sale the reprint / "send to network" buttons act on.
+       The current order is a recalled/held sale, OR (only when the cart is EMPTY) the last
+       completed sale (so "reprint the receipt I just made" still works after a refresh).
+       A NON-EMPTY cart with no held id is a NEW, UNSAVED order — these buttons must NOT
+       fall back to the sticky _lastSaleId (persisted in localStorage) and reprint the
+       PREVIOUS customer's bill. Return null so the caller refuses and asks to pay/hold first. */
+    function currentReprintSaleId() {
+        if (_currentHeldSaleId) return _currentHeldSaleId;
+        if (cart.length === 0) return _lastSaleId;
+        return null;
+    }
+    function warnNoReprintable(action) {
+        toast('warning', cart.length > 0
+            ? 'Hold or pay this order first — ' + (action || 'printing') + ' needs a saved order (this cart is not saved yet).'
+            : 'No saved order yet — pay or hold an order first.');
+    }
+
     /* ── Cart clear helper ────────────────────────────────────────────── */
 
     function clearCart(options) {
@@ -4941,9 +4958,11 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('send-network-receipt-btn')?.addEventListener('click', function () {
         const btn = this;
         if (buttonIsBusy(btn)) return;
-        const saleId = _currentHeldSaleId || _lastSaleId;
+        // WRONG-BILL FIX: never fall back to the sticky _lastSaleId while a new unsaved cart is
+        // on screen — that reprinted the previous customer's saved order (e.g. #63) instead.
+        const saleId = currentReprintSaleId();
         if (!saleId) {
-            toast('warning', 'Hold or pay this order first — sending to a network printer needs a saved order.');
+            warnNoReprintable('sending to a network printer');
             return;
         }
         const terminalId = (document.getElementById('terminal_id') || {}).value || '';
@@ -4988,9 +5007,11 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('reprint-all-kot-btn').addEventListener('click', function () {
         const btn = this;
         if (buttonIsBusy(btn)) return;
+        const saleId = currentReprintSaleId();
+        if (!saleId) { warnNoReprintable('reprinting KOT'); return; }
         setButtonBusy(btn, true, 'Reprinting KOT');
         const terminalId = (document.getElementById('terminal_id') || {}).value || '';
-        const base  = '{{ url('/printing/jobs/kot') }}/' + _lastSaleId;
+        const base  = '{{ url('/printing/jobs/kot') }}/' + saleId;
         const query = '?reprint=1' + (terminalId ? '&terminal_id=' + encodeURIComponent(terminalId) : '');
         fetch(base + query, { method: 'POST', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' } })
         .then(function (res) { return res.json(); })
@@ -5004,9 +5025,11 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     document.getElementById('reprint-receipt-btn').addEventListener('click', function () {
+        const saleId = currentReprintSaleId();
+        if (!saleId) { warnNoReprintable('reprinting the receipt'); return; }
         const terminalId = (document.getElementById('terminal_id') || {}).value || '';
         const q = '?reprint=1' + (terminalId ? '&terminal_id=' + encodeURIComponent(terminalId) : '');
-        fetch('{{ url('/printing/jobs/receipt') }}/' + _lastSaleId + q, { method: 'POST', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' } })
+        fetch('{{ url('/printing/jobs/receipt') }}/' + saleId + q, { method: 'POST', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' } })
         .then(function (res) { return res.json(); })
         .then(function (data) {
             openFallbackPreviews(data);
