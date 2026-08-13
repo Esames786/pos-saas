@@ -24,7 +24,6 @@ return new class extends Migration
 {
     private const PERMISSIONS = [
         'tenant.catering.material-issues.store',
-        'tenant.catering.material-issues.show',
     ];
 
     public function up(): void
