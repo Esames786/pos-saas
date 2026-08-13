@@ -132,6 +132,55 @@ class CateringEntitlementMySqlTest extends MySqlTenantTestCase
         }
     }
 
+    /** CATERING-V1-CLOSURE-1 (§9): the Permission Center shows friendly groups, not 36 raw routes. */
+    public function test_permission_center_groups_catering_into_business_actions(): void
+    {
+        $this->seedMasterSide(cateringEnabled: true);
+
+        $permissions = \Spatie\Permission\Models\Permission::query()
+            ->where('guard_name', 'tenant')->where('name', 'like', 'tenant.catering.%')->get();
+        $this->assertGreaterThanOrEqual(30, $permissions->count(), 'all catering route permissions seeded');
+
+        $catalog = app(\App\Services\Permissions\PermissionCatalogService::class)
+            ->build($permissions, ['catering']);
+
+        $cateringNode = collect($catalog['modules'])->firstWhere('key', 'catering');
+        $this->assertNotNull($cateringNode, 'catering module appears for an entitled plan');
+
+        $featureNames = array_keys($cateringNode['features']);
+        sort($featureNames);
+        $this->assertSame([
+            'Catering Products',
+            'Catering Settings',
+            'Confirm Booking',
+            'Create / Edit Estimate',
+            'Finalise Event',
+            'Manage Material Rates',
+            'Print / Reprint',
+            'Record Advance',
+            'Release Production',
+            'Send / Revise Quote',
+            'View Catering',
+        ], $featureNames, 'friendly business groups — never an unreadable flat route list');
+
+        // Sensitive lifecycle actions stay individually visible inside their group…
+        $allNames = collect($cateringNode['features'])
+            ->flatMap(fn ($feature) => collect($feature['actions'] ?? [])->pluck('name')
+                ->merge(collect($feature['groups'] ?? [])->flatten(1)->pluck('name')));
+        $this->assertTrue($allNames->contains('tenant.catering.estimates.send'));
+        $this->assertTrue($allNames->contains('tenant.catering.events.close'));
+
+        // …and enforcement is untouched: every managed key is still the raw route name.
+        foreach ($catalog['managed'] as $managedName) {
+            $this->assertStringStartsWith('tenant.', $managedName);
+        }
+
+        // Non-entitled plan: whole module hidden AND unmanaged.
+        $hidden = app(\App\Services\Permissions\PermissionCatalogService::class)->build($permissions, []);
+        $this->assertNull(collect($hidden['modules'])->firstWhere('key', 'catering'));
+        $this->assertSame([], $hidden['managed']);
+    }
+
     public function test_copy_from_pos_is_one_way_and_catering_mappings_stay_independent(): void
     {
         $branchId = $this->makeBranch();
