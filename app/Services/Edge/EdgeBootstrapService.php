@@ -447,7 +447,9 @@ class EdgeBootstrapService
 
     /* ── source watermark ────────────────────────────────────────────────── */
 
-    private function sourceRevision(Branch $branch): string
+    // Protected (not private) for the same reason as buildSections: the watermark behaviour is
+    // pinned by executable tests (EdgeConfigWatermarkMySqlTest) through a test-only subclass.
+    protected function sourceRevision(Branch $branch): string
     {
         $conn = DB::connection('tenant');
         $b = (int) $branch->id;

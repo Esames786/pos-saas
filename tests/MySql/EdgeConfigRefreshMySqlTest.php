@@ -25,7 +25,7 @@ use RuntimeException;
  */
 class EdgeConfigRefreshMySqlTest extends MySqlTenantTestCase
 {
-    private string $edgeDb = 'pos_test_edge_refresh';
+    private string $edgeDb;
     private static bool $edgeReady = false;
 
     private int $branchId;
@@ -36,6 +36,10 @@ class EdgeConfigRefreshMySqlTest extends MySqlTenantTestCase
     protected function setUp(): void
     {
         parent::setUp(); // provisions the cloud-source tenant DB on the `tenant` connection
+
+        // PLATFORM TEST-ISOLATION: env-driven per-worktree Edge-local DB with a class-own suffix so
+        // this suite never drops the import/auth suites' DB (and no other worktree's either).
+        $this->edgeDb = \Tests\MySql\Support\EdgeTestDatabases::local('refresh');
 
         config(['app.role' => 'branch_server']);
 
@@ -141,6 +145,11 @@ class EdgeConfigRefreshMySqlTest extends MySqlTenantTestCase
             ['role_id' => $i['role_mgr'], 'model_type' => \App\Models\Tenant\User::class, 'model_id' => $i['mgr']],
             ['role_id' => $i['role_csh'], 'model_type' => \App\Models\Tenant\User::class, 'model_id' => $i['csh']],
             ['role_id' => $i['role_csh'], 'model_type' => \App\Models\Tenant\User::class, 'model_id' => $i['gone']],
+        ]);
+        // User B (cashier) holds tenant.pos.approve DIRECTLY — independent of the Manager role — so
+        // revoking it from the ROLE must not remove B's grant, and the permission ROW must survive.
+        $conn->table('model_has_permissions')->insert([
+            'permission_id' => $i['perm_approve'], 'model_type' => \App\Models\Tenant\User::class, 'model_id' => $i['csh'],
         ]);
     }
 
@@ -350,11 +359,16 @@ class EdgeConfigRefreshMySqlTest extends MySqlTenantTestCase
         $this->assertSame(0, $conn->table('product_barcodes')->where('id', $i['barcode'])->count());
         $this->assertSame(0, $conn->table('roles')->where('id', $i['role_spare'])->count());
 
-        // Permission graph rebuilt: manager lost tenant.pos.approve; the orphaned permission pruned.
+        // Permission graph rebuilt: manager lost tenant.pos.approve. The permission ROW remains,
+        // because user B (cashier) still holds it DIRECTLY — revocation is per-user grant removal,
+        // never a row deletion another user still needs.
         $mgrPerms = $conn->table('model_has_permissions as mhp')->join('permissions as p', 'p.id', '=', 'mhp.permission_id')
             ->where('mhp.model_type', \App\Models\Tenant\User::class)->where('mhp.model_id', $i['mgr'])->pluck('p.name')->all();
         $this->assertSame(['tenant.pos.store'], $mgrPerms);
-        $this->assertSame(0, $conn->table('permissions')->where('name', 'tenant.pos.approve')->count());
+        $cshPerms = $conn->table('model_has_permissions as mhp')->join('permissions as p', 'p.id', '=', 'mhp.permission_id')
+            ->where('mhp.model_type', \App\Models\Tenant\User::class)->where('mhp.model_id', $i['csh'])->pluck('p.name')->all();
+        $this->assertContains('tenant.pos.approve', $cshPerms, 'user B keeps their direct grant');
+        $this->assertSame(1, $conn->table('permissions')->where('name', 'tenant.pos.approve')->count(), 'the permission row survives while any user still holds it');
 
         // OPERATIONAL SURVIVAL — nothing historical/open was destroyed or mutated.
         $this->assertSame('open', $conn->table('shifts')->where('id', $this->shiftId)->value('status'));
@@ -493,6 +507,112 @@ class EdgeConfigRefreshMySqlTest extends MySqlTenantTestCase
         DB::connection('tenant')->statement('SET SESSION innodb_lock_wait_timeout = 50');
         $this->importer()->import($v2);
         $this->assertSame(2, (int) $this->meta()->last_applied_config_revision);
+    }
+
+    /**
+     * EDGE-CONFIG-REFRESH-1 SECURITY CLOSURE — the ONE effective offline permission authority.
+     *
+     * Cloud revision N: Manager role holds tenant.pos.store + tenant.pos.approve; user B (cashier)
+     * ALSO holds tenant.pos.approve directly (so the permission row itself must remain). Revision
+     * N+1 revokes approve from the Manager role only. A stale local role_has_permissions row (from
+     * any historical writer) must NOT re-grant the Manager via Spatie's role->permission path:
+     * roles are identity/group metadata (model_has_roles, for hasRole()); the effective authority
+     * is the per-user denormalised model_has_permissions the Cloud exports.
+     */
+    public function test_stale_role_has_permissions_cannot_regrant_a_revoked_permission(): void
+    {
+        $i = $this->ids;
+        $conn = DB::connection('tenant');
+
+        // HAZARD SEED: a stale role->permission row on the appliance (whatever wrote it — an old
+        // build, manual ops, a future seeded migration). Never a second effective authority.
+        $permApprove = $conn->table('permissions')->where('name', 'tenant.pos.approve')->value('id');
+        $roleMgr = $conn->table('roles')->where('name', 'Manager')->value('id');
+        $conn->table('role_has_permissions')->insert(['permission_id' => $permApprove, 'role_id' => $roleMgr]);
+
+        $this->importer()->import($this->packageV2()); // N+1: Manager loses approve; B keeps it
+
+        // Assert under the APPLIANCE's connection semantics: on a real Branch Server the `tenant`
+        // connection IS the default (EdgeLocalDatabase::useAsTenantConnection), so Spatie resolves
+        // permissions/roles from the Edge-local DB exactly as the runtime does.
+        DB::setDefaultConnection('tenant');
+        try {
+            app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
+            $mgr = \App\Models\Tenant\User::on('tenant')->find($i['mgr']);
+            $csh = \App\Models\Tenant\User::on('tenant')->find($i['csh']);
+            $gone = \App\Models\Tenant\User::on('tenant')->find($i['gone']);
+
+            // THE regression — real Spatie can(): the revoked permission must be gone for the Manager.
+            $this->assertFalse($mgr->can('tenant.pos.approve'), 'a stale role_has_permissions row must never re-grant a revoked permission');
+            $this->assertTrue($csh->can('tenant.pos.approve'), 'user B keeps their direct grant');
+            $this->assertTrue($conn->table('permissions')->where('name', 'tenant.pos.approve')->exists(), 'the permission row remains — user B still needs it');
+
+            // Roles stay identity metadata: hasRole() intact; unrelated permissions survive.
+            $this->assertTrue($mgr->hasRole('Manager'));
+            $this->assertTrue($mgr->can('tenant.pos.store'));
+
+            // ONE authority: role_has_permissions is cleared on refresh (exactly as the initial import).
+            $this->assertSame(0, $conn->table('role_has_permissions')->count(), 'role_has_permissions must not survive a refresh as a second authority');
+
+            // A tombstoned user cannot authorize — the auth gate refuses inactive users before can().
+            $this->assertSame('inactive', $gone->status);
+            $this->assertFalse(\App\Support\EdgeUserAuthz::isActive($gone));
+
+            // No Cloud password/PIN is ever introduced by a refresh.
+            $this->assertSame(0, $conn->table('users')->whereNotNull('password')->count());
+        } finally {
+            DB::setDefaultConnection((string) config('database.default'));
+            app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
+        }
+    }
+
+    /**
+     * §5 — permission reconciliation stays INSIDE the one refresh transaction. The users section is
+     * the LAST plan section; a duplicate new-user id makes the SECOND insert PK-violate AFTER the
+     * permission graph was rebuilt and earlier rows were written. EVERYTHING must roll back — no
+     * partially changed authorization may survive, and the revision must not advance.
+     */
+    public function test_late_failure_after_permission_reconciliation_rolls_back_the_whole_refresh(): void
+    {
+        $conn = DB::connection('tenant');
+
+        // Stale-authority seed: rollback must restore even rows the refresh would have cleared.
+        $conn->table('role_has_permissions')->insert([
+            'permission_id' => $conn->table('permissions')->where('name', 'tenant.pos.approve')->value('id'),
+            'role_id' => $conn->table('roles')->where('name', 'Manager')->value('id'),
+        ]);
+
+        $snapshot = fn () => [
+            'users' => $conn->table('users')->orderBy('id')->get(['id', 'name', 'status'])->map(fn ($r) => (array) $r)->all(),
+            'roles' => $conn->table('roles')->orderBy('id')->pluck('name')->all(),
+            'mhr' => $conn->table('model_has_roles')->orderBy('model_id')->orderBy('role_id')->get(['model_id', 'role_id'])->map(fn ($r) => (array) $r)->all(),
+            'mhp' => $conn->table('model_has_permissions')->orderBy('model_id')->orderBy('permission_id')->get(['model_id', 'permission_id'])->map(fn ($r) => (array) $r)->all(),
+            'rhp' => $conn->table('role_has_permissions')->orderBy('role_id')->orderBy('permission_id')->get(['role_id', 'permission_id'])->map(fn ($r) => (array) $r)->all(),
+            'permissions' => $conn->table('permissions')->orderBy('id')->pluck('name')->all(),
+            'revision' => (int) $this->meta()->last_applied_config_revision,
+        ];
+        $before = $snapshot();
+
+        $v2 = $this->packageV2();
+        $newUser = ['id' => 777001, 'employee_code' => 'USR-N', 'name' => 'New N', 'default_branch_id' => $this->branchId,
+            'default_terminal_id' => null, 'status' => 'active', 'locale' => null,
+            'allowed_order_types' => ['quick_sale'], 'default_order_type' => 'quick_sale',
+            'roles' => ['Cashier'], 'permissions' => ['tenant.pos.store']];
+        $v2['sections']['users'][] = $newUser;
+        $v2['sections']['users'][] = $newUser; // same id twice -> PK duplicate on the SECOND insert
+        $v2 = $this->rehash($v2, 'users');
+
+        try {
+            $this->importer()->import($v2);
+            $this->fail('a duplicate user id must fail the refresh');
+        } catch (\Throwable $e) {
+            $this->assertTrue(true);
+        }
+
+        $this->assertSame($before, $snapshot(), 'a failed refresh must restore users/roles/graph/authority and not advance the revision');
+        $this->assertSame(1, $before['revision']);
+        $this->assertSame(0, $conn->table('users')->where('id', 777001)->count());
+        $this->assertSame('Burger', $conn->table('products')->where('id', $this->ids['burger'])->value('name'), 'earlier sections rolled back too');
     }
 
     /** Recompute a section's hash + the manifest hash after mutating that section's rows. */

@@ -109,7 +109,7 @@ class EdgeLocalConfigRefreshApplier
             throw new RuntimeException('CONFIG_REVISION_MISSING: a refresh package must carry a positive config_revision.');
         }
 
-        return DB::connection(self::CONN)->transaction(function () use ($manifest, $sections, $revision) {
+        $result = DB::connection(self::CONN)->transaction(function () use ($manifest, $sections, $revision) {
             // THE refresh authority: the singleton binding row. Locking it first serialises every
             // concurrent refresh attempt; all decisions below happen under this lock.
             $meta = EdgeLocalMeta::query()->where('singleton_guard', EdgeLocalMeta::SINGLETON)->lockForUpdate()->first();
@@ -172,6 +172,15 @@ class EdgeLocalConfigRefreshApplier
 
             return ['outcome' => self::OUTCOME_APPLIED, 'meta' => $meta->fresh()];
         });
+
+        // Post-commit: the permission catalog/grants may have changed — a running process must not
+        // keep authorizing from Spatie's cached pre-refresh permission set (revocation takes effect
+        // immediately). After the commit only, so a rolled-back refresh never flushes anything.
+        if ($result['outcome'] === self::OUTCOME_APPLIED) {
+            app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
+        }
+
+        return $result;
     }
 
     // ── section engines ─────────────────────────────────────────────────────
@@ -304,6 +313,12 @@ class EdgeLocalConfigRefreshApplier
      * refuses them), then REBUILD model_has_roles/model_has_permissions from the payload arrays. The
      * graph is fully derived config, referenced by nothing else, so rebuild ≠ the forbidden
      * DELETE+INSERT of referenced config.
+     *
+     * SECURITY CLOSURE (see docs/design/EDGE_OFFLINE_PERMISSION_AUTHORITY.md): the ONE effective
+     * offline authorization authority is the per-user model_has_permissions exported by the Cloud.
+     * Roles remain identity/group metadata (model_has_roles, for hasRole()); role_has_permissions is
+     * cleared on EVERY refresh exactly as the initial import clears it — a stale role->permission row
+     * must never re-grant, via Spatie's role->permission path, a permission the Cloud revoked.
      */
     private function upsertUsersAndPermissionGraph(array $rows): array
     {
@@ -314,7 +329,9 @@ class EdgeLocalConfigRefreshApplier
         $missing = array_values(array_diff(array_keys($existing), $payloadIds));
         [$tombstoned, ] = $this->tombstoneMissing('users', 'users', $missing);
 
-        // Derived graph: rebuild wholesale from the authoritative payload.
+        // Derived graph: rebuild wholesale from the authoritative payload. role_has_permissions must
+        // be EMPTY on the appliance — never a second, independently-stale authority.
+        $conn->table('role_has_permissions')->delete();
         $conn->table('model_has_permissions')->where('model_type', \App\Models\Tenant\User::class)->delete();
         $conn->table('model_has_roles')->where('model_type', \App\Models\Tenant\User::class)->delete();
 
