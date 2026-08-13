@@ -97,27 +97,89 @@
     </div>
 </div>
 
-@php $requirements = $release->requirements_snapshot['requirements'] ?? []; @endphp
+@php
+    $requirements = $release->requirements_snapshot['requirements'] ?? [];
+    $issue = $materialIssue ?? null;
+    $issuedByProduct = $issue
+        ? $issue->lines->keyBy('product_id')
+        : collect();
+@endphp
 @if(!empty($requirements))
 <div class="card">
-    <div class="card-header"><h5 class="mb-0">Consolidated Raw Material Requirements (planning, read-only)</h5></div>
-    <div class="card-body p-0">
-        <table class="table table-sm mb-0">
-            <thead><tr><th>Material</th><th class="text-end">Required</th><th>Unit</th><th class="text-end">On Hand (at release)</th><th class="text-end">Shortfall</th><th>Used By</th></tr></thead>
-            <tbody>
-                @foreach($requirements as $req)
-                <tr>
-                    <td>{{ $req['name'] }}</td>
-                    <td class="text-end fw-bold">{{ rtrim(rtrim(number_format($req['required_qty'], 3), '0'), '.') }}</td>
-                    <td>{{ $req['unit_code'] }}</td>
-                    <td class="text-end">{{ number_format($req['on_hand'] ?? 0, 3) }}</td>
-                    <td class="text-end {{ ($req['shortfall'] ?? 0) > 0 ? 'text-danger fw-bold' : 'text-success' }}">{{ number_format($req['shortfall'] ?? 0, 3) }}</td>
-                    <td class="text-muted">{{ implode(', ', $req['used_by'] ?? []) }}</td>
-                </tr>
-                @endforeach
-            </tbody>
-        </table>
+    <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <div>
+            <h5 class="mb-0">Raw Material Requirements
+                @if(! $issue)
+                    <span class="badge bg-secondary">Plan only — no stock has moved</span>
+                @else
+                    <span class="badge bg-success">Issued as {{ $issue->issue_no }}</span>
+                @endif
+            </h5>
+            <div class="text-muted fs-12">Printing this release never consumes inventory. Stock moves only through the authorized “Issue Materials” action (official FEFO).</div>
+        </div>
+        @if(! $issue && $release->status === 'released')
+            @can('tenant.catering.material-issues.store')
+                <form method="POST" action="{{ url('/catering/production-releases/' . $release->id . '/issue-materials') }}">
+                    @csrf
+                    <button class="btn btn-warning"
+                            onclick="return confirm('Issue the consolidated materials from official stock (FEFO)? This posts real inventory movements and COGS. One issue per release; retrying never doubles it.')">
+                        <i class="ti ti-transfer-out me-1"></i>Issue Materials
+                    </button>
+                </form>
+            @endcan
+        @endif
     </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm mb-0">
+                <thead>
+                    <tr>
+                        <th>Material</th>
+                        <th class="text-end">Planned Requirement</th>
+                        <th>Unit</th>
+                        <th class="text-end">On Hand (at release)</th>
+                        <th class="text-end">Shortfall</th>
+                        <th class="text-end">Issued</th>
+                        <th class="text-end">Remaining to Issue</th>
+                        <th class="text-end">FEFO Cost</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($requirements as $req)
+                    @php
+                        $issuedLine = $issuedByProduct[$req['product_id'] ?? 0] ?? null;
+                        $issuedQty = (float) ($issuedLine->issued_qty ?? 0);
+                        $remaining = max(((float) $req['required_qty']) - $issuedQty, 0);
+                    @endphp
+                    <tr>
+                        <td>{{ $req['name'] }}
+                            @if($issuedLine && $issuedLine->line_status === 'non_stock')
+                                <span class="badge bg-light text-dark">non-stock</span>
+                            @endif
+                        </td>
+                        <td class="text-end fw-bold">{{ rtrim(rtrim(number_format($req['required_qty'], 3), '0'), '.') }}</td>
+                        <td>{{ $req['unit_code'] }}</td>
+                        <td class="text-end">{{ number_format($req['on_hand'] ?? 0, 3) }}</td>
+                        <td class="text-end {{ ($req['shortfall'] ?? 0) > 0 ? 'text-danger fw-bold' : 'text-success' }}">{{ number_format($req['shortfall'] ?? 0, 3) }}</td>
+                        <td class="text-end {{ $issuedQty > 0 ? 'text-success fw-bold' : 'text-muted' }}">{{ $issuedQty > 0 ? rtrim(rtrim(number_format($issuedQty, 3), '0'), '.') : '—' }}</td>
+                        <td class="text-end {{ $remaining > 0 ? '' : 'text-muted' }}">{{ $issue ? rtrim(rtrim(number_format($remaining, 3), '0'), '.') : rtrim(rtrim(number_format($req['required_qty'], 3), '0'), '.') }}</td>
+                        <td class="text-end">{{ $issuedLine && $issuedLine->line_status === 'issued' ? number_format($issuedLine->fefo_cost_total, 2) : '—' }}</td>
+                    </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
+    </div>
+    @if($issue)
+        <div class="card-footer d-flex justify-content-between flex-wrap gap-2 fs-13">
+            <span>Issued {{ $issue->issued_at->format('d M Y g:i A') }} · branch #{{ $issue->branch_id }} · <i class="ti ti-lock"></i> immutable stock document</span>
+            <span>Official FEFO cost total: <strong>{{ number_format($issue->total_fefo_cost, 2) }}</strong>
+                @if($issue->cogs_journal_entry_id)
+                    · COGS journal #{{ $issue->cogs_journal_entry_id }} (Dr 5200 / Cr 1400)
+                @endif
+            </span>
+        </div>
+    @endif
 </div>
 @endif
 @endsection

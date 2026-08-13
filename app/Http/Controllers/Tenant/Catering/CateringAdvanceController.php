@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Tenant\Catering;
 
 use App\Http\Controllers\Controller;
 use App\Mail\Catering\CateringCustomerMail;
-use App\Models\Tenant\CateringAdvance;
 use App\Models\Tenant\CateringEvent;
 use App\Services\Catering\CateringMailService;
 use Illuminate\Http\Request;
@@ -32,12 +31,12 @@ class CateringAdvanceController extends Controller
         ]);
 
         try {
-            $advance = CateringAdvance::create($data + [
-                'catering_event_id' => $cateringEvent->id,
-                'recorded_by_user_id' => $request->user()?->id,
-            ]);
+            // GO-LIVE §5: ONE atomic operation — operational advance + cash/bank
+            // movement + GL posting (deposit before invoice, settlement after).
+            $advance = app(\App\Services\Catering\CateringAdvanceService::class)
+                ->record($cateringEvent, $data, $request->user()?->id);
         } catch (\RuntimeException $e) {
-            // §4: overpayment / unpriced-estimate refusal from the model guard.
+            // §4 overpayment / §5 posting refusal — nothing was recorded.
             return back()->withErrors(['advance' => $e->getMessage()])->withInput();
         }
 

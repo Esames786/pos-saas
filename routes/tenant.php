@@ -842,6 +842,7 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 Route::get('/catering/production-releases/{cateringProductionRelease}', [\App\Http\Controllers\Tenant\Catering\CateringProductionReleaseController::class, 'show'])->name('tenant.catering.production-releases.show');
                 Route::post('/catering/production-releases/{cateringProductionRelease}/print', [\App\Http\Controllers\Tenant\Catering\CateringProductionReleaseController::class, 'print'])->name('tenant.catering.production-releases.print');
                 Route::post('/catering/production-releases/{cateringProductionRelease}/reprint', [\App\Http\Controllers\Tenant\Catering\CateringProductionReleaseController::class, 'reprint'])->name('tenant.catering.production-releases.reprint');
+                Route::post('/catering/production-releases/{cateringProductionRelease}/issue-materials', [\App\Http\Controllers\Tenant\Catering\CateringMaterialIssueController::class, 'store'])->name('tenant.catering.material-issues.store');
 
                 Route::post('/catering/events/{cateringEvent}/final-invoice', [\App\Http\Controllers\Tenant\Catering\CateringFinalInvoiceController::class, 'store'])->name('tenant.catering.final-invoices.store');
                 Route::post('/catering/events/{cateringEvent}/close', [\App\Http\Controllers\Tenant\Catering\CateringFinalInvoiceController::class, 'close'])->name('tenant.catering.events.close');

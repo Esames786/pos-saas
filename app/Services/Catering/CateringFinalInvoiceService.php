@@ -28,6 +28,7 @@ class CateringFinalInvoiceService
     public function __construct(
         private readonly CateringNumberService $numbers,
         private readonly CateringMailService $mail,
+        private readonly \App\Services\Finance\JournalPostingService $journalPosting,
     ) {}
 
     public function issue(CateringEvent $event, ?int $userId = null): CateringFinalInvoice
@@ -52,7 +53,7 @@ class CateringFinalInvoiceService
             $advanceTotal = round((float) $advances->sum('amount'), 2);
             $balanceDue = round((float) $estimate->grand_total - $advanceTotal, 2);
 
-            return CateringFinalInvoice::create([
+            $invoice = CateringFinalInvoice::create([
                 'invoice_no' => $this->numbers->nextFinalInvoiceNo(),
                 'catering_event_id' => $event->id,
                 'catering_estimate_id' => $estimate->id,
@@ -96,6 +97,21 @@ class CateringFinalInvoiceService
                 'issued_at' => now(),
                 'issued_by_user_id' => $userId,
             ]);
+
+            // CATERING-GO-LIVE-READINESS-1 (§6): accounting posts INSIDE the issue
+            // transaction — an invoice exists iff its GL exists. Translators throw
+            // on failure/conflict, rolling the whole issue back.
+            $invoice->setRelation('event', $event);
+            $invoiceEntry = $this->journalPosting->postCateringFinalInvoice($invoice, $userId);
+            $applicationEntry = $this->journalPosting->applyCateringAdvance($invoice, $userId);
+
+            $invoice->forceFill([
+                'journal_entry_id' => $invoiceEntry->id,
+                'advance_application_journal_entry_id' => $applicationEntry?->id,
+                'gl_posted_at' => now(),
+            ])->save();
+
+            return $invoice;
         });
 
         // Event day is billed → the event is operationally complete.

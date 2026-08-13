@@ -35,14 +35,14 @@ class CateringEstimateLifecycleMySqlTest extends MySqlTenantTestCase
         DB::setDefaultConnection('tenant');
 
         $this->cleanTenant([
-            'catering_email_logs', 'catering_event_reminders', 'catering_production_release_lines',
+            'catering_email_logs', 'catering_event_reminders', 'catering_material_issue_lines', 'catering_material_issues', 'catering_production_release_lines',
             'catering_production_releases', 'catering_final_invoices', 'catering_advances', 'catering_cost_snapshots',
             'catering_estimate_lines', 'catering_estimates', 'catering_events',
             'catering_material_rates', 'catering_printer_mappings', 'catering_product_profiles',
             'catering_settings', 'customer_translations', 'supplier_translations',
             'recipe_ingredients', 'recipes', 'unit_conversions', 'units',
             'kot_batch_lines', 'kot_batches', 'print_jobs', 'stock_ledgers', 'stock_balances',
-            'journal_lines', 'journal_entries', 'sales_order_lines', 'sales_orders',
+            'journal_lines', 'journal_entries', 'accounts', 'cash_bank_account_transactions', 'cash_bank_accounts', 'sales_order_lines', 'sales_orders',
             'products', 'categories', 'customers', 'branches',
         ]);
 
@@ -206,22 +206,31 @@ class CateringEstimateLifecycleMySqlTest extends MySqlTenantTestCase
             ->where('id', $customerId)->value('name'), 'stable customers table never modified');
     }
 
-    public function test_advance_records_are_operational_only_no_finance_rows(): void
+    /**
+     * GO-LIVE §5: the advance flow is ATOMIC — when GL posting cannot succeed
+     * (here: no chart of accounts seeded), NOTHING is recorded: no advance row,
+     * no journal rows, no cash/bank rows. No partial state, ever.
+     */
+    public function test_advance_recording_is_atomic_with_its_posting(): void
     {
         $event = $this->service->createEvent($this->eventData());
         $this->service->saveDraftLines($event->currentEstimate, [
             ['item_name' => 'Buffet', 'quantity' => 100, 'rate' => 500], // grand 50,000
         ]);
 
-        \App\Models\Tenant\CateringAdvance::create([
-            'catering_event_id' => $event->id,
-            'amount' => 25000,
-            'received_date' => now()->toDateString(),
-        ]);
+        try {
+            app(\App\Services\Catering\CateringAdvanceService::class)->record($event, [
+                'amount' => 25000,
+                'received_date' => now()->toDateString(),
+            ]);
+            $this->fail('advance recording must fail when its GL posting cannot succeed');
+        } catch (\Throwable $e) {
+            $this->assertNotEmpty($e->getMessage());
+        }
 
-        foreach (['journal_entries', 'journal_lines', 'cash_bank_account_transactions', 'sale_payments', 'customer_payments'] as $table) {
+        foreach (['catering_advances', 'journal_entries', 'journal_lines', 'cash_bank_account_transactions', 'sale_payments', 'customer_payments'] as $table) {
             $this->assertSame(0, (int) $this->tenant()->table($table)->count(),
-                "V1 advances must write ZERO rows to {$table}");
+                "atomic failure must leave ZERO rows in {$table}");
         }
     }
 
@@ -275,6 +284,8 @@ class CateringEstimateLifecycleMySqlTest extends MySqlTenantTestCase
     public function test_final_invoice_and_closure_lifecycle(): void
     {
         Mail::fake();
+        // GO-LIVE: invoices/advances now post GL atomically — the chart must exist.
+        (new \Database\Seeders\Tenant\DefaultChartOfAccountsSeeder)->run();
         $categoryId = $this->makeCategory();
         $productId = $this->makeProduct($categoryId, ['default_purchase_price' => 400]);
         $this->tenant()->table('catering_material_rates')->insert([
@@ -291,8 +302,8 @@ class CateringEstimateLifecycleMySqlTest extends MySqlTenantTestCase
         $this->service->markAccepted($estimate->refresh());
         $this->service->confirmEvent($event->refresh());
 
-        \App\Models\Tenant\CateringAdvance::create([
-            'catering_event_id' => $event->id, 'amount' => 30000, 'received_date' => now()->toDateString(),
+        app(\App\Services\Catering\CateringAdvanceService::class)->record($event, [
+            'amount' => 30000, 'received_date' => now()->toDateString(),
         ]);
 
         $invoices = app(\App\Services\Catering\CateringFinalInvoiceService::class);
@@ -332,17 +343,24 @@ class CateringEstimateLifecycleMySqlTest extends MySqlTenantTestCase
         }
 
         // Settle the exact remainder via the §4 advance flow → closure succeeds.
-        \App\Models\Tenant\CateringAdvance::create([
-            'catering_event_id' => $event->id, 'amount' => 38500, 'received_date' => now()->toDateString(),
+        app(\App\Services\Catering\CateringAdvanceService::class)->record($event->refresh(), [
+            'amount' => 38500, 'received_date' => now()->toDateString(),
         ]);
         $invoices->close($event->refresh());
         $this->assertSame(CateringEvent::STATUS_CLOSED, $event->refresh()->status);
         $this->assertNotNull($event->closed_at);
 
-        // The whole billing/closure flow stayed off sales/stock/GL.
-        foreach (['sales_orders', 'stock_ledgers', 'journal_entries', 'journal_lines', 'cash_bank_account_transactions'] as $table) {
+        // GO-LIVE: billing now POSTS GL — but still never sales/stock/shift rows.
+        foreach (['sales_orders', 'stock_ledgers', 'stock_balances', 'sale_payments'] as $table) {
             $this->assertSame(0, (int) $this->tenant()->table($table)->count(),
-                "final invoice + closure must write ZERO rows to {$table} in V1");
+                "billing/closure must write ZERO rows to {$table}");
+        }
+        $invoice->refresh();
+        $this->assertNotNull($invoice->journal_entry_id, 'invoice GL linkage recorded');
+        $this->assertNotNull($invoice->gl_posted_at);
+        foreach ($this->tenant()->table('journal_entries')->get() as $entry) {
+            $this->assertEqualsWithDelta((float) $entry->total_debit, (float) $entry->total_credit, 0.001,
+                "journal {$entry->entry_no} balanced");
         }
 
         // Final-invoice email claimed idempotently.

@@ -36,7 +36,7 @@ class CateringProductionPrintMySqlTest extends MySqlTenantTestCase
         DB::setDefaultConnection('tenant');
 
         $this->cleanTenant([
-            'catering_email_logs', 'catering_event_reminders', 'catering_production_release_lines',
+            'catering_email_logs', 'catering_event_reminders', 'catering_material_issue_lines', 'catering_material_issues', 'catering_production_release_lines',
             'catering_production_releases', 'catering_final_invoices', 'catering_advances', 'catering_cost_snapshots',
             'catering_estimate_lines', 'catering_estimates', 'catering_events',
             'catering_material_rates', 'catering_printer_mappings', 'catering_product_profiles', 'catering_settings',

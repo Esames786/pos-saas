@@ -89,6 +89,8 @@ class PermissionCatalogService
         'tenant.catering.documents.estimate' => 'Print / Reprint',
         'tenant.catering.documents.kitchen-sheet' => 'Print / Reprint',
         'tenant.catering.documents.final-invoice' => 'Print / Reprint',
+        'tenant.catering.material-issues.store' => 'Issue Materials',
+        'tenant.catering.material-issues.show' => 'Issue Materials',
         'tenant.catering.final-invoices.store' => 'Finalise Event',
         'tenant.catering.events.close' => 'Finalise Event',
         'tenant.catering.profiles.index' => 'Catering Products',

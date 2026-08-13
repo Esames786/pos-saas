@@ -27,6 +27,11 @@ class CateringNumberService
         return $this->next('catering_final_invoices', 'invoice_no', 'CI-');
     }
 
+    public function nextMaterialIssueNo(): string
+    {
+        return $this->next('catering_material_issues', 'issue_no', 'MI-');
+    }
+
     /** Must be called inside a tenant transaction so the lock holds until commit. */
     private function next(string $table, string $column, string $prefix): string
     {

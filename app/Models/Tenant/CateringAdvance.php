@@ -53,6 +53,10 @@ class CateringAdvance extends Model
         });
     }
 
+    public const POSTING_ADVANCE = 'advance';       // pre-invoice deposit → Cr 2300
+
+    public const POSTING_SETTLEMENT = 'settlement'; // post-invoice AR payment → Cr 1300
+
     protected $fillable = [
         'catering_event_id',
         'amount',
@@ -61,6 +65,10 @@ class CateringAdvance extends Model
         'reference',
         'notes',
         'recorded_by_user_id',
+        'posting_type',
+        'cash_bank_account_id',
+        'journal_entry_id',
+        'gl_posted_at',
     ];
 
     protected function casts(): array
@@ -68,6 +76,7 @@ class CateringAdvance extends Model
         return [
             'amount' => 'decimal:2',
             'received_date' => 'date',
+            'gl_posted_at' => 'datetime',
         ];
     }
 

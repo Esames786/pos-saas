@@ -38,9 +38,16 @@ class CateringProductionReleaseController extends Controller
             ->orderByDesc('id')
             ->get();
 
+        // GO-LIVE §9: the issue state, so planned requirements never LOOK like
+        // stock that already moved.
+        $materialIssue = \App\Models\Tenant\CateringMaterialIssue::with('lines')
+            ->where('catering_production_release_id', $cateringProductionRelease->id)
+            ->first();
+
         return view('tenant.catering.releases.show', [
             'release' => $cateringProductionRelease,
             'printJobs' => $printJobs,
+            'materialIssue' => $materialIssue,
         ]);
     }
 

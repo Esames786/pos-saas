@@ -57,10 +57,29 @@ class CateringFinalInvoice extends Model
         ];
     }
 
+    /**
+     * CATERING-GO-LIVE-READINESS-1 (§6): the ONLY mutable columns — accounting
+     * linkage, write-once (NULL → value inside the issue transaction). Every
+     * commercial field stays frozen forever.
+     */
+    private const WRITE_ONCE_LINKAGE = [
+        'journal_entry_id',
+        'advance_application_journal_entry_id',
+        'gl_posted_at',
+    ];
+
     protected static function booted(): void
     {
-        static::updating(function () {
-            throw new RuntimeException('A catering final invoice is immutable once issued.');
+        static::updating(function (CateringFinalInvoice $invoice) {
+            foreach (array_keys($invoice->getDirty()) as $column) {
+                if ($column === 'updated_at') {
+                    continue;
+                }
+                $isLinkage = in_array($column, self::WRITE_ONCE_LINKAGE, true);
+                if (! $isLinkage || $invoice->getOriginal($column) !== null) {
+                    throw new RuntimeException('A catering final invoice is immutable once issued.');
+                }
+            }
         });
     }
 

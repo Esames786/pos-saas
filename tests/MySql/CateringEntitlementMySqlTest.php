@@ -140,6 +140,13 @@ class CateringEntitlementMySqlTest extends MySqlTenantTestCase
      */
     public function test_deployment_reseed_never_broadens_catering_access(): void
     {
+        // Clean slate for the deploy simulation: other tests in this class create
+        // deliberately catering-enabled scratch plans — remove every catering
+        // attachment so the assertion sees only what the SEEDER produces.
+        if ($moduleId = DB::connection('master')->table('modules')->where('key', 'catering')->value('id')) {
+            DB::connection('master')->table('plan_modules')->where('module_id', $moduleId)->delete();
+        }
+
         // The real deploy path: deploy.sh runs MasterSeeder on every deploy —
         // with master as the default connection (Spatie models follow it).
         $runSeeder = function (): void {
@@ -208,6 +215,7 @@ class CateringEntitlementMySqlTest extends MySqlTenantTestCase
             'Confirm Booking',
             'Create / Edit Estimate',
             'Finalise Event',
+            'Issue Materials',
             'Manage Material Rates',
             'Print / Reprint',
             'Record Advance',
