@@ -15,6 +15,15 @@ class EnsureRoutePermission
             return $next($request);
         }
 
+        // Cached routes (route:cache) get a framework-assigned name for every UNNAMED route,
+        // e.g. "generated::2Vj7CTuCvhWqDX6n" for the bare "/" redirect closure. That is not a real
+        // permission — an unnamed route requires none (it passes above when routes are uncached), so
+        // a cached one must behave identically. Without this, can("generated::…") is always false and
+        // every unnamed route (the root "/") returns 403 as soon as routes are cached.
+        if (str_starts_with($routeName, 'generated::')) {
+            return $next($request);
+        }
+
         $allowedPrefixes = [
             'central.login',
             'central.logout',
@@ -28,6 +37,9 @@ class EnsureRoutePermission
             'tenant.api.pos',
             'tenant.api.catalog',
             'tenant.api.kitchen-display',
+            // Read-only server clock the POS/report pages poll on every screen; behind auth:tenant,
+            // needs no distinct permission (was 403ing for non-Owner roles that lack it).
+            'tenant.api.server-time',
             'tenant.printing.documents',
             'tenant.printing.jobs',
             'tenant.printing.layouts.preview',
