@@ -1,5 +1,42 @@
 # Catering & Events V1 — Implementation Checkpoint (2026-08-13)
 
+> **CATERING-GO-LIVE-READINESS-1 addendum (2026-08-14).** Finance + inventory +
+> release integration closed on top of the frozen contract
+> (design: `docs/audits/catering-finance-design-2026-08-14.md`):
+>
+> - **Platform test isolation**: Edge commit `56c06fa` cherry-picked verbatim
+>   (`5e347df`); this worktree runs `EDGE_TEST_LOCAL_DB=pos_test_edge_local_cat`.
+>   Proven twice: the complete 340-test suite green WHILE a concurrent 29-test
+>   Edge-local trio ran on `_b` databases on the same server.
+> - **Hotfix history**: finance-statement fix (`8d87db9`≡`247adb6`) and POS
+>   reprint fix (`c6b519e`≡`cabc0a4`) are byte-equivalent by stable patch-id —
+>   one copy each in this lineage, nothing replayed.
+> - **Rollout gate (§3)**: `MasterSeeder::ROLLOUT_GATED_MODULE_KEYS=['catering']` —
+>   deploying code registers the module but enables it on NO plan (enterprise
+>   all-modules pull excludes gated keys; plan sync skips them both directions so
+>   explicit client grants survive redeploys). Regression-tested on the real
+>   deploy surface.
+> - **Finance (§4–§6)**: JournalPostingService translators (advance Cr 2300,
+>   settlement Cr 1300, invoice Dr 1300/Cr 4160+4130+2200 (+4200 contra),
+>   advance application Dr 2300/Cr 1300, COGS Dr 5200/Cr 1400) — account-code
+>   lookups only, balanced, replay-idempotent, conflicting-replay refusal,
+>   Branch-Server fenced. New 4160 Catering Revenue in the idempotent CoA
+>   seeder. Advances are ONE atomic operation (row + cash/bank + GL);
+>   invoices post inside the issue transaction with write-once GL linkage.
+> - **Stock (§7–§9)**: explicit separately-permissioned "Issue Materials" —
+>   immutable `catering_material_issues(+lines)`, one per release
+>   (retry-idempotent), movement ONLY via `InventoryService::postOutFefo`
+>   (recipe_consumption + catering_material_issue reference, branch
+>   allow-negative policy, split-brain fence inherited); COGS at ACTUAL FEFO
+>   layer cost — the Material Rate Book stays quoting-only. Release/print
+>   remain a pure plan; UX separates Planned/On-Hand/Shortfall/Issued/Remaining.
+> - **Demo acceptance**: EV-…-0003 walked the full loop — quote cost 67,200
+>   (rate book) vs FEFO COGS 57,975 (separation proven), 5 balanced journals,
+>   AR & Advances net zero, cash 78,400, stock 100→38.5 / 100→40 KG, event
+>   closed, zero sales_orders from Catering, ordinary POS sale still green.
+> - **Gates**: complete MySQL 340/2,074 OK (no exclusions, concurrent Edge trio
+>   green), fast 186 OK, caches compile, diff clean. NOT deployed.
+
 > **CATERING-V1-CLOSURE-1 addendum (same day).** Client-readiness closure on top
 > of the frozen V1 architecture — nothing below was redesigned:
 >

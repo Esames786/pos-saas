@@ -48,7 +48,9 @@ class CateringFinanceMySqlTest extends MySqlTenantTestCase
             'catering_advances', 'catering_cost_snapshots', 'catering_estimate_lines', 'catering_estimates',
             'catering_events', 'catering_material_rates', 'catering_product_profiles', 'catering_settings',
             'journal_lines', 'journal_entries', 'cash_bank_account_transactions', 'cash_bank_accounts',
-            'accounts', 'payment_methods', 'products', 'categories', 'customers', 'branches',
+            'accounts', 'payment_methods', 'sale_payments', 'sales_ledgers', 'sales_order_lines', 'sales_orders',
+            'shifts', 'stock_ledgers', 'stock_balances', 'inventory_batches',
+            'products', 'categories', 'customers', 'branches',
         ]);
 
         (new DefaultChartOfAccountsSeeder)->run();
