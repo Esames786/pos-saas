@@ -10,9 +10,9 @@ use App\Models\Master\PlanModule;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Spatie\Permission\PermissionRegistrar;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 
 class MasterSeeder extends Seeder
 {
@@ -31,12 +31,12 @@ class MasterSeeder extends Seeder
         );
 
         foreach ([
-                     ['code' => '2checkout', 'name' => '2Checkout / Verifone', 'type' => 'global'],
-                     ['code' => 'payfast', 'name' => 'PayFast Pakistan', 'type' => 'local'],
-                     ['code' => 'paypro', 'name' => 'PayPro Pakistan', 'type' => 'local'],
-                     ['code' => 'payoneer', 'name' => 'Payoneer', 'type' => 'global'],
-                     ['code' => 'manual_bank', 'name' => 'Manual Bank Transfer', 'type' => 'manual'],
-                 ] as $gateway) {
+            ['code' => '2checkout', 'name' => '2Checkout / Verifone', 'type' => 'global'],
+            ['code' => 'payfast', 'name' => 'PayFast Pakistan', 'type' => 'local'],
+            ['code' => 'paypro', 'name' => 'PayPro Pakistan', 'type' => 'local'],
+            ['code' => 'payoneer', 'name' => 'Payoneer', 'type' => 'global'],
+            ['code' => 'manual_bank', 'name' => 'Manual Bank Transfer', 'type' => 'manual'],
+        ] as $gateway) {
             DB::connection('master')->table('payment_gateways')->updateOrInsert(
                 ['code' => $gateway['code']],
                 [
@@ -86,10 +86,10 @@ class MasterSeeder extends Seeder
         );
 
         foreach ([
-                     'quick_sale',
-                     'payments',
-                     'basic_reports',
-                 ] as $feature) {
+            'quick_sale',
+            'payments',
+            'basic_reports',
+        ] as $feature) {
             PlanFeature::updateOrCreate(
                 ['plan_id' => $quickSale->id, 'feature_key' => $feature],
                 ['feature_value' => 'enabled']
@@ -97,14 +97,14 @@ class MasterSeeder extends Seeder
         }
 
         foreach ([
-                     'quick_sale',
-                     'inventory',
-                     'recipes',
-                     'restaurant_tables',
-                     'kot_printing',
-                     'supplier_accounting',
-                     'reports',
-                 ] as $feature) {
+            'quick_sale',
+            'inventory',
+            'recipes',
+            'restaurant_tables',
+            'kot_printing',
+            'supplier_accounting',
+            'reports',
+        ] as $feature) {
             PlanFeature::updateOrCreate(
                 ['plan_id' => $standard->id, 'feature_key' => $feature],
                 ['feature_value' => 'enabled']
@@ -333,6 +333,18 @@ class MasterSeeder extends Seeder
                 'is_core' => false,
             ],
             [
+                // BINGOO-CATERING-PREFLIGHT-1: separate Catering & Events vertical.
+                // Attached only to plans that list it explicitly (enterprise pulls all
+                // active modules); commercial plans opt in via plan administration.
+                'key' => 'catering',
+                'name' => 'Catering & Events',
+                'category' => 'Operations',
+                'description' => 'Catering events, estimates/quotations, material rate book, recipe costing, production releases, and event documents.',
+                'route_module_keys' => ['tenant.catering'],
+                'sort_order' => 145,
+                'is_core' => false,
+            ],
+            [
                 // OFFLINE-EDGE-ENTITLEMENT-1: sellable add-on. NOT attached to any plan
                 // here — grant it only through explicit plan-module administration once
                 // pricing/rollout is approved (see syncPlanModules: unlisted = disabled).
@@ -396,7 +408,7 @@ class MasterSeeder extends Seeder
         foreach ($planModuleMap as $planCode => $enabledKeys) {
             $plan = Plan::where('code', $planCode)->first();
 
-            if (!$plan) {
+            if (! $plan) {
                 continue;
             }
 
@@ -448,7 +460,7 @@ class MasterSeeder extends Seeder
         foreach ($limitFeatures as $planCode => $features) {
             $plan = Plan::where('code', $planCode)->first();
 
-            if (!$plan) {
+            if (! $plan) {
                 continue;
             }
 

@@ -1,114 +1,114 @@
 <?php
 
 use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\Tenant\Ajax\FinishedGoodReceiptLookupController;
+use App\Http\Controllers\Tenant\Ajax\ManufacturingCustomerLookupController;
+use App\Http\Controllers\Tenant\Ajax\MaterialRequisitionLookupController;
+use App\Http\Controllers\Tenant\Ajax\ProductionOrderLookupController;
+use App\Http\Controllers\Tenant\Ajax\ProductLookupController;
+use App\Http\Controllers\Tenant\Ajax\WipJobLookupController;
+use App\Http\Controllers\Tenant\Api\PrintAgentApiController;
 use App\Http\Controllers\Tenant\Auth\PasswordResetController;
-use App\Http\Controllers\Tenant\ComingSoonController;
 use App\Http\Controllers\Tenant\BranchController;
 use App\Http\Controllers\Tenant\CategoryController;
+use App\Http\Controllers\Tenant\CategoryPrinterMappingController;
 use App\Http\Controllers\Tenant\ComboController;
+use App\Http\Controllers\Tenant\ComingSoonController;
 use App\Http\Controllers\Tenant\CurrencyController;
 use App\Http\Controllers\Tenant\CustomerController;
+use App\Http\Controllers\Tenant\DailyClosingController;
+use App\Http\Controllers\Tenant\DashboardController;
+use App\Http\Controllers\Tenant\DeliveryChannelController;
+use App\Http\Controllers\Tenant\DeliveryRiderController;
+use App\Http\Controllers\Tenant\DepartmentController;
+use App\Http\Controllers\Tenant\DepartmentCountController;
+use App\Http\Controllers\Tenant\DepartmentHandoverController;
+use App\Http\Controllers\Tenant\DepartmentStockTransferController;
 use App\Http\Controllers\Tenant\Finance\AccountController;
+use App\Http\Controllers\Tenant\Finance\BalanceSheetController;
+use App\Http\Controllers\Tenant\Finance\BranchProfitLossController;
 use App\Http\Controllers\Tenant\Finance\CashBankAccountController;
 use App\Http\Controllers\Tenant\Finance\CustomerPaymentController;
 use App\Http\Controllers\Tenant\Finance\ExpenseCategoryController;
 use App\Http\Controllers\Tenant\Finance\ExpenseVoucherController;
-use App\Http\Controllers\Tenant\Finance\BalanceSheetController;
-use App\Http\Controllers\Tenant\Finance\BranchProfitLossController;
 use App\Http\Controllers\Tenant\Finance\FinancialExportController;
 use App\Http\Controllers\Tenant\Finance\GeneralLedgerController;
 use App\Http\Controllers\Tenant\Finance\JournalEntryController;
 use App\Http\Controllers\Tenant\Finance\OpeningBalanceController;
 use App\Http\Controllers\Tenant\Finance\ProfitLossController;
 use App\Http\Controllers\Tenant\Finance\TrialBalanceController;
-use App\Http\Controllers\Tenant\DailyClosingController;
-use App\Http\Controllers\Tenant\DashboardController;
-use App\Http\Controllers\Tenant\DeliveryChannelController;
-use App\Http\Controllers\Tenant\DeliveryRiderController;
 use App\Http\Controllers\Tenant\GoodsReceiptController;
+use App\Http\Controllers\Tenant\HeldSaleController;
 use App\Http\Controllers\Tenant\InventoryController;
+use App\Http\Controllers\Tenant\KitchenDisplayController;
+use App\Http\Controllers\Tenant\KitchenProductionController;
+use App\Http\Controllers\Tenant\KitchenWastageController;
+use App\Http\Controllers\Tenant\ManagerApprovalController;
+use App\Http\Controllers\Tenant\Manufacturing\BomController;
+use App\Http\Controllers\Tenant\Manufacturing\FinishedGoodReceiptController;
+use App\Http\Controllers\Tenant\Manufacturing\ManufacturingConsumptionController;
+use App\Http\Controllers\Tenant\Manufacturing\ManufacturingConsumptionPostingController;
+use App\Http\Controllers\Tenant\Manufacturing\ManufacturingCustomerController;
+use App\Http\Controllers\Tenant\Manufacturing\ManufacturingPostingSettingController;
+use App\Http\Controllers\Tenant\Manufacturing\ManufacturingRejectionController;
+use App\Http\Controllers\Tenant\Manufacturing\ManufacturingReportController;
+use App\Http\Controllers\Tenant\Manufacturing\ManufacturingScrapController;
+use App\Http\Controllers\Tenant\Manufacturing\MaterialRequisitionController;
+use App\Http\Controllers\Tenant\Manufacturing\ProductionOrderController;
+use App\Http\Controllers\Tenant\Manufacturing\WipJobController;
+use App\Http\Controllers\Tenant\ModifierGroupController;
+use App\Http\Controllers\Tenant\OfflineEdgeController;
 use App\Http\Controllers\Tenant\PaymentMethodController;
 use App\Http\Controllers\Tenant\POSController;
-use App\Http\Controllers\Tenant\ModifierGroupController;
+use App\Http\Controllers\Tenant\PrintAgentController;
+use App\Http\Controllers\Tenant\PrintDocumentController;
+use App\Http\Controllers\Tenant\PrinterController;
+use App\Http\Controllers\Tenant\PrintJobController;
 use App\Http\Controllers\Tenant\ProductBarcodeController;
-use App\Http\Controllers\Tenant\PurchaseBillController;
-use App\Http\Controllers\Tenant\PurchaseOrderController;
-use App\Http\Controllers\Tenant\SalesLedgerController;
-use App\Http\Controllers\Tenant\SalesOrderController;
-use App\Http\Controllers\Tenant\SalesReturnController;
-use App\Http\Controllers\Tenant\SupplierController;
-use App\Http\Controllers\Tenant\SupplierPaymentController;
 use App\Http\Controllers\Tenant\ProductBranchPriceController;
 use App\Http\Controllers\Tenant\ProductBulkImportController;
 use App\Http\Controllers\Tenant\ProductController;
 use App\Http\Controllers\Tenant\ProductVariantController;
+use App\Http\Controllers\Tenant\PromotionController;
+use App\Http\Controllers\Tenant\PurchaseBillController;
+use App\Http\Controllers\Tenant\PurchaseOrderController;
+use App\Http\Controllers\Tenant\ReceiptLayoutController;
+use App\Http\Controllers\Tenant\RecipeController;
+use App\Http\Controllers\Tenant\Reports\AuditReportController;
+use App\Http\Controllers\Tenant\Reports\DepartmentReportController;
+use App\Http\Controllers\Tenant\Reports\InventoryReportController;
+use App\Http\Controllers\Tenant\Reports\KitchenReportController;
+use App\Http\Controllers\Tenant\Reports\PrintReportController;
+use App\Http\Controllers\Tenant\Reports\PurchaseReportController;
+use App\Http\Controllers\Tenant\Reports\RestaurantReportController;
+use App\Http\Controllers\Tenant\Reports\SalesReportController;
+use App\Http\Controllers\Tenant\Reports\ShiftReportController;
+use App\Http\Controllers\Tenant\RestaurantFloorController;
+use App\Http\Controllers\Tenant\RestaurantTableController;
+use App\Http\Controllers\Tenant\RestaurantTableSessionController;
+use App\Http\Controllers\Tenant\RestaurantWaiterController;
 use App\Http\Controllers\Tenant\RoleController;
+use App\Http\Controllers\Tenant\SalesLedgerController;
+use App\Http\Controllers\Tenant\SalesOrderController;
+use App\Http\Controllers\Tenant\SalesReturnController;
+use App\Http\Controllers\Tenant\ServiceChargeSettingController;
 use App\Http\Controllers\Tenant\ShiftController;
-use App\Http\Controllers\Tenant\TenantUserController;
+use App\Http\Controllers\Tenant\SplitBillController;
 use App\Http\Controllers\Tenant\StockAdjustmentController;
 use App\Http\Controllers\Tenant\StockCountController;
 use App\Http\Controllers\Tenant\StockTransferController;
-use App\Http\Controllers\Tenant\TerminalController;
-use App\Http\Controllers\Tenant\UnitController;
-use App\Http\Controllers\Tenant\RestaurantFloorController;
-use App\Http\Controllers\Tenant\RestaurantTableController;
-use App\Http\Controllers\Tenant\RestaurantWaiterController;
-use App\Http\Controllers\Tenant\RestaurantTableSessionController;
-use App\Http\Controllers\Tenant\HeldSaleController;
-use App\Http\Controllers\Tenant\SplitBillController;
-use App\Http\Controllers\Tenant\UnitConversionController;
-use App\Http\Controllers\Tenant\RecipeController;
-use App\Http\Controllers\Tenant\KitchenDisplayController;
-use App\Http\Controllers\Tenant\KitchenProductionController;
+use App\Http\Controllers\Tenant\SupplierController;
+use App\Http\Controllers\Tenant\SupplierPaymentController;
 use App\Http\Controllers\Tenant\TenantBillingController;
 use App\Http\Controllers\Tenant\TenantUpgradeController;
-use App\Http\Controllers\Tenant\OfflineEdgeController;
-use App\Http\Controllers\Tenant\KitchenWastageController;
-use App\Http\Controllers\Tenant\PrinterController;
-use App\Http\Controllers\Tenant\CategoryPrinterMappingController;
-use App\Http\Controllers\Tenant\ReceiptLayoutController;
-use App\Http\Controllers\Tenant\PrintJobController;
-use App\Http\Controllers\Tenant\PrintDocumentController;
-use App\Http\Controllers\Tenant\PrintAgentController;
-use App\Http\Controllers\Tenant\Api\PrintAgentApiController;
-use App\Http\Controllers\Tenant\PromotionController;
-use App\Http\Controllers\Tenant\ServiceChargeSettingController;
+use App\Http\Controllers\Tenant\TenantUserController;
+use App\Http\Controllers\Tenant\TerminalController;
+use App\Http\Controllers\Tenant\UnitController;
+use App\Http\Controllers\Tenant\UnitConversionController;
 use App\Http\Controllers\Tenant\VoidReasonController;
-use App\Http\Controllers\Tenant\ManagerApprovalController;
-use App\Http\Controllers\Tenant\Reports\SalesReportController;
-use App\Http\Controllers\Tenant\Reports\ShiftReportController;
-use App\Http\Controllers\Tenant\Reports\InventoryReportController;
-use App\Http\Controllers\Tenant\Reports\PurchaseReportController;
-use App\Http\Controllers\Tenant\Reports\RestaurantReportController;
-use App\Http\Controllers\Tenant\Reports\KitchenReportController;
-use App\Http\Controllers\Tenant\Reports\AuditReportController;
-use App\Http\Controllers\Tenant\Reports\PrintReportController;
-use App\Http\Controllers\Tenant\Reports\DepartmentReportController;
-use App\Http\Controllers\Tenant\DepartmentController;
-use App\Http\Controllers\Tenant\DepartmentHandoverController;
-use App\Http\Controllers\Tenant\DepartmentStockTransferController;
-use App\Http\Controllers\Tenant\DepartmentCountController;
-use App\Http\Controllers\Tenant\Manufacturing\ManufacturingCustomerController;
-use App\Http\Controllers\Tenant\Manufacturing\ProductionOrderController;
-use App\Http\Controllers\Tenant\Manufacturing\BomController;
-use App\Http\Controllers\Tenant\Manufacturing\MaterialRequisitionController;
-use App\Http\Controllers\Tenant\Manufacturing\WipJobController;
-use App\Http\Controllers\Tenant\Manufacturing\FinishedGoodReceiptController;
-use App\Http\Controllers\Tenant\Manufacturing\ManufacturingScrapController;
-use App\Http\Controllers\Tenant\Manufacturing\ManufacturingRejectionController;
-use App\Http\Controllers\Tenant\Manufacturing\ManufacturingConsumptionController;
-use App\Http\Controllers\Tenant\Manufacturing\ManufacturingConsumptionPostingController;
-use App\Http\Controllers\Tenant\Manufacturing\ManufacturingReportController;
-use App\Http\Controllers\Tenant\Manufacturing\ManufacturingPostingSettingController;
-use App\Http\Controllers\Tenant\Ajax\ProductLookupController;
-use App\Http\Controllers\Tenant\Ajax\ManufacturingCustomerLookupController;
-use App\Http\Controllers\Tenant\Ajax\ProductionOrderLookupController;
-use App\Http\Controllers\Tenant\Ajax\MaterialRequisitionLookupController;
-use App\Http\Controllers\Tenant\Ajax\WipJobLookupController;
-use App\Http\Controllers\Tenant\Ajax\FinishedGoodReceiptLookupController;
 use Illuminate\Support\Facades\Route;
 
-Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
+Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
     ->middleware(['tenant.only'])
     ->group(function () {
 
@@ -366,12 +366,12 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
 
                 // Suppliers
                 Route::resource('suppliers', SupplierController::class)->names([
-                    'index'   => 'tenant.suppliers.index',
-                    'create'  => 'tenant.suppliers.create',
-                    'store'   => 'tenant.suppliers.store',
-                    'show'    => 'tenant.suppliers.show',
-                    'edit'    => 'tenant.suppliers.edit',
-                    'update'  => 'tenant.suppliers.update',
+                    'index' => 'tenant.suppliers.index',
+                    'create' => 'tenant.suppliers.create',
+                    'store' => 'tenant.suppliers.store',
+                    'show' => 'tenant.suppliers.show',
+                    'edit' => 'tenant.suppliers.edit',
+                    'update' => 'tenant.suppliers.update',
                     'destroy' => 'tenant.suppliers.destroy',
                 ]);
                 Route::get('/suppliers/{supplier}/ledger', [SupplierController::class, 'ledger'])
@@ -692,13 +692,13 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::delete('/reports/center/schedules/{schedule}', [\App\Http\Controllers\Tenant\Reports\SalesReportCenterController::class, 'destroySchedule'])->name('tenant.reports.center.schedules.destroy');
 
                 // Reports — Phase 1
-                Route::get('/reports/sales/summary',  [SalesReportController::class, 'summary'])->name('tenant.reports.sales.summary');
-                Route::get('/reports/sales/items',    [SalesReportController::class, 'items'])->name('tenant.reports.sales.items');
+                Route::get('/reports/sales/summary', [SalesReportController::class, 'summary'])->name('tenant.reports.sales.summary');
+                Route::get('/reports/sales/items', [SalesReportController::class, 'items'])->name('tenant.reports.sales.items');
                 Route::get('/reports/sales/payments', [SalesReportController::class, 'payments'])->name('tenant.reports.sales.payments');
                 Route::get('/reports/sales/receivables', [SalesReportController::class, 'receivables'])->name('tenant.reports.sales.receivables');
                 Route::get('/reports/sales/channels', [SalesReportController::class, 'channels'])->name('tenant.reports.sales.channels');
                 Route::get('/reports/sales/riders', [SalesReportController::class, 'riders'])->name('tenant.reports.sales.riders');
-                Route::get('/reports/shifts',         [ShiftReportController::class, 'index'])->name('tenant.reports.shifts');
+                Route::get('/reports/shifts', [ShiftReportController::class, 'index'])->name('tenant.reports.shifts');
                 Route::get('/reports/inventory/valuation', [InventoryReportController::class, 'valuation'])->name('tenant.reports.inventory.valuation');
 
                 // Reports — Phase 2
@@ -806,6 +806,51 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
 
                 Route::get('/quotations', [ComingSoonController::class, 'show'])
                     ->defaults('feature', 'quotations')->name('tenant.quotations.index');
+
+                // ── Catering & Events (CATERING-SLICE-1) — separate business vertical.
+                //    Estimates/events are catering documents, never sales_orders; zero
+                //    stock/GL/shift interaction from these routes. Module key: catering.
+                Route::get('/catering/events', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'index'])->name('tenant.catering.events.index');
+                Route::get('/catering/events/create', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'create'])->name('tenant.catering.events.create');
+                Route::post('/catering/events', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'store'])->name('tenant.catering.events.store');
+                Route::get('/catering/events/{cateringEvent}', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'show'])->name('tenant.catering.events.show');
+                Route::get('/catering/events/{cateringEvent}/edit', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'edit'])->name('tenant.catering.events.edit');
+                Route::put('/catering/events/{cateringEvent}', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'update'])->name('tenant.catering.events.update');
+                Route::post('/catering/events/{cateringEvent}/confirm', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'confirm'])->name('tenant.catering.events.confirm');
+                Route::post('/catering/events/{cateringEvent}/cancel', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'cancel'])->name('tenant.catering.events.cancel');
+
+                Route::put('/catering/estimates/{cateringEstimate}', [\App\Http\Controllers\Tenant\Catering\CateringEstimateController::class, 'update'])->name('tenant.catering.estimates.update');
+                Route::post('/catering/estimates/{cateringEstimate}/send', [\App\Http\Controllers\Tenant\Catering\CateringEstimateController::class, 'send'])->name('tenant.catering.estimates.send');
+                Route::post('/catering/estimates/{cateringEstimate}/accept', [\App\Http\Controllers\Tenant\Catering\CateringEstimateController::class, 'accept'])->name('tenant.catering.estimates.accept');
+                Route::post('/catering/estimates/{cateringEstimate}/revise', [\App\Http\Controllers\Tenant\Catering\CateringEstimateController::class, 'revise'])->name('tenant.catering.estimates.revise');
+
+                Route::post('/catering/estimates/{cateringEstimate}/reprice', [\App\Http\Controllers\Tenant\Catering\CateringEstimateController::class, 'reprice'])->name('tenant.catering.estimates.reprice');
+
+                Route::get('/catering/material-rates', [\App\Http\Controllers\Tenant\Catering\CateringMaterialRateController::class, 'index'])->name('tenant.catering.material-rates.index');
+                Route::post('/catering/material-rates', [\App\Http\Controllers\Tenant\Catering\CateringMaterialRateController::class, 'store'])->name('tenant.catering.material-rates.store');
+
+                Route::get('/catering/rate-impact', [\App\Http\Controllers\Tenant\Catering\CateringRateImpactController::class, 'index'])->name('tenant.catering.rate-impact.index');
+                Route::post('/catering/rate-impact/apply', [\App\Http\Controllers\Tenant\Catering\CateringRateImpactController::class, 'apply'])->name('tenant.catering.rate-impact.apply');
+
+                Route::get('/catering/profiles', [\App\Http\Controllers\Tenant\Catering\CateringProductProfileController::class, 'index'])->name('tenant.catering.profiles.index');
+                Route::post('/catering/profiles', [\App\Http\Controllers\Tenant\Catering\CateringProductProfileController::class, 'store'])->name('tenant.catering.profiles.store');
+                Route::put('/catering/profiles/{cateringProductProfile}', [\App\Http\Controllers\Tenant\Catering\CateringProductProfileController::class, 'update'])->name('tenant.catering.profiles.update');
+
+                Route::post('/catering/events/{cateringEvent}/advances', [\App\Http\Controllers\Tenant\Catering\CateringAdvanceController::class, 'store'])->name('tenant.catering.advances.store');
+
+                Route::post('/catering/events/{cateringEvent}/production-releases', [\App\Http\Controllers\Tenant\Catering\CateringProductionReleaseController::class, 'store'])->name('tenant.catering.production-releases.store');
+                Route::get('/catering/production-releases/{cateringProductionRelease}', [\App\Http\Controllers\Tenant\Catering\CateringProductionReleaseController::class, 'show'])->name('tenant.catering.production-releases.show');
+
+                Route::get('/catering/documents/estimate/{cateringEstimate}', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'estimate'])->name('tenant.catering.documents.estimate');
+                Route::get('/catering/documents/kitchen-sheet/{cateringProductionRelease}', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'kitchenSheet'])->name('tenant.catering.documents.kitchen-sheet');
+
+                Route::get('/catering/printer-mappings', [\App\Http\Controllers\Tenant\Catering\CateringPrinterMappingController::class, 'index'])->name('tenant.catering.printer-mappings.index');
+                Route::post('/catering/printer-mappings', [\App\Http\Controllers\Tenant\Catering\CateringPrinterMappingController::class, 'store'])->name('tenant.catering.printer-mappings.store');
+                Route::delete('/catering/printer-mappings/{cateringPrinterMapping}', [\App\Http\Controllers\Tenant\Catering\CateringPrinterMappingController::class, 'destroy'])->name('tenant.catering.printer-mappings.destroy');
+                Route::post('/catering/printer-mappings/copy-from-pos', [\App\Http\Controllers\Tenant\Catering\CateringPrinterMappingController::class, 'copyFromPos'])->name('tenant.catering.printer-mappings.copy-from-pos');
+
+                Route::get('/catering/settings', [\App\Http\Controllers\Tenant\Catering\CateringSettingController::class, 'index'])->name('tenant.catering.settings.index');
+                Route::put('/catering/settings', [\App\Http\Controllers\Tenant\Catering\CateringSettingController::class, 'update'])->name('tenant.catering.settings.update');
                 Route::get('/purchase-requisitions', [ComingSoonController::class, 'show'])
                     ->defaults('feature', 'purchase-requisitions')->name('tenant.purchase-requisitions.index');
 

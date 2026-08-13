@@ -122,6 +122,10 @@ class ModuleController extends Controller
                 'description' => 'BOM, production orders, WIP, finished goods, consumption, and reports.',
                 'sees' => 'BOM, production orders, WIP, receipts, requisitions, and manufacturing reports.',
             ],
+            'catering' => [
+                'description' => 'Catering events, estimates/quotations, material rate book, recipe costing, and production releases.',
+                'sees' => 'Catering events, estimates, material rates, rate impact, production sheets, and catering settings.',
+            ],
         ];
     }
 }

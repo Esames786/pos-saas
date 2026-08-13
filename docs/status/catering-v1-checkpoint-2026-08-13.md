@@ -1,0 +1,115 @@
+# Catering & Events V1 — Implementation Checkpoint (2026-08-13)
+
+Branch `feat/catering-events-v1` (BINGOO-CATERING-PREFLIGHT-1 + slices 1–3).
+Architecture record: `docs/audits/catering-preflight-2026-08-13.md`. NOT deployed.
+
+## What shipped
+
+**Entitlement.** New `catering` module (master migration `2026_08_13_000001` +
+`MasterSeeder` + central admin summary). Routes `tenant.catering.*` (31) live inside the
+`tenant.subscription.access` + `route.permission` + `prevent.demo.mutation` stack —
+non-entitled tenants fail closed (403 module-disabled), sidebar section gated by
+`$hasModule('catering')` + `@can`. Permissions seeded to the Owner role by tenant
+migration `2026_08_13_100003` (permission name == route name).
+
+**Domain (all ULID-carrying, never `sales_orders`).** `catering_events` →
+`catering_estimates` (versioned, `unique(event, version_no)`) → `catering_estimate_lines`
+(name/unit snapshots, en+ur). Status machines: event
+`inquiry→draft→quoted→confirmed→production_ready→released→completed/closed/cancelled`;
+estimate `draft→sent→accepted/superseded/cancelled`. Sent+ estimates are commercially
+immutable — model-layer guards throw on any commercial column/line mutation; repricing
+clones to version N+1 (`CateringEstimateService::revise`). Event/release numbers use the
+locked `lockForUpdate` date-sequence pattern (`EV-YYYYMMDD-0001`, `PR-YYYYMMDD-0001`).
+
+**Localization.** Reuses the platform translation-table architecture:
+`product_translations` (existing) + new `customer_translations`/`supplier_translations`.
+English is always the fallback; Urdu values optional and hand-entered.
+`SetLocale`/locale-switch whitelists gained `ur`; layouts treat `ur` as RTL.
+
+**Catering product profiles.** `catering_product_profiles` (1:1 with products —
+zero columns added to the shared Product): pricing mode, default rate, quote unit,
+production station, min qty, production labels (en/ur), instructions.
+
+**Costing (pure).** `CateringRecipeCostingService`: ingredient qty × (quote qty ÷ recipe
+yield) with `UnitConversionService`, priced from the effective-dated
+`catering_material_rates` Rate Book (fallback `default_purchase_price`). Missing
+conversions become warnings, never silent numbers. Zero inventory/GL interaction, ever.
+Snapshots (`catering_cost_snapshots`) freeze the basis per estimate version; drafts show
+estimated cost + margin (internal only — never printed).
+
+**Rate Impact Center.** On a material rate change: affected DRAFT quotations with
+old/new cost, Δ, and margin; actions new-only / update-selected / update-all / skip.
+Sent+ documents never appear and can never be repriced.
+
+**Production.** `CateringProductionRelease` (+lines): immutable snapshot document —
+NOT a POS KOT (no `kot_batches`, no `print_jobs`, no stock, no prices). Uses production
+labels/stations from profiles and embeds consolidated raw-material requirements
+(`CateringRequirementService` — shared Raw Chicken across recipes = one line, read-only
+compare vs `stock_balances`).
+
+**Documents (A4/browser).** Client estimate + kitchen/service sheet as standalone Blade
++ `window.print()` (the platform's A4 architecture), each in EN / UR / bilingual with
+`lang="ur" dir="rtl"` + Urdu font stack (Jameel Noori Nastaleeq / Urdu Typesetting /
+Noto Nastaliq Urdu). Kitchen sheet carries no commercial prices. Thermal Urdu is NOT
+claimed — the ESC/POS path has no codepage/raster support (future raster pipeline +
+physical printer proof required).
+
+**Email (V1 = email only).** `CateringCustomerMail` (quotation sent/revised, booking
+confirmed, advance received, event reminder) branded with the tenant business name;
+`CateringMailService` claim-before-send idempotency on `catering_email_logs`
+(report-schedule pattern). No hardcoded recipients; missing customer email skips
+gracefully.
+
+**Reminders.** `catering:dispatch-event-reminders` every 15 min (Cloud-safe gate,
+`withoutOverlapping`), per-tenant loop gated on entitlement + schema; D-7/D-3/D-1/
+same-day offsets configurable in `catering_settings`; idempotent claims in
+`catering_event_reminders`. Events dashboard buckets: Today / Tomorrow / Next-7 /
+Unconfirmed.
+
+**Printer routing.** `catering_printer_mappings` (branch/category/station → printer) as
+an independent authority + one-way “Copy From POS KOT Mappings”
+(`CateringPrinterRoutingService`); POS `category_printer_mappings` is never written.
+
+**Advances.** Operational records only (event balance display + email); HARD zero
+GL/cash-bank/shift in V1 — future posting goes through `JournalPostingService`.
+
+## Finance/inventory safety (verified by tests)
+
+Quote lifecycle, costing, repricing, advances, and production release write ZERO rows to
+`stock_ledgers`, `stock_balances`, `journal_entries`, `journal_lines`, `sales_orders`,
+`kot_batches`, `print_jobs`, `cash_bank_account_transactions`. No Catering code imports
+`InventoryService` mutators, `JournalService`, or the settlement services.
+
+## Tests
+
+`tests/MySql/Catering{EstimateLifecycle,Costing,Entitlement}MySqlTest.php` — 19 tests /
+117 assertions: entitlement fail-closed + pass, permissions exist, zero-mutation
+invariants, sent immutability (estimate + lines + snapshot), revision cloning, unit
+conversion + GM→KG pricing, rate-book effective dating, purchase-price fallback,
+missing-conversion warning, selective draft-only repricing, consolidation, advance
+finance-zero, release immutability, email + reminder idempotency, English fallback /
+Urdu optional. Fast suite: 186 tests green.
+
+## Local demo
+
+Tenant `cateringdemo` (DB `pos_tenant_cateringdemo`, enterprise plan,
+`cateringdemo.pos-saas.test`, owner `owner@cateringdemo.test` / `CateringDemo123!`).
+Walima demo: EV-20260813-0001, 300 PAX, Biryani 100 KG + Qorma 50 KG + naan counter;
+grand 68,500; material cost 40,800 @ chicken 720/KG → 44,000 @ 800/KG (Rate Impact
+shows +3,200 / margin change); advance 100,000; release PR-20260813-0001 with ONE
+consolidated Raw Chicken 40 KG line; quotation/confirmation/advance emails in
+`storage/logs/laravel.log` (log mailer).
+
+## Edge-ready classification (no offline implementation)
+
+CONFIG-REPLICATED: profiles, translations, material rates, printer mappings, settings.
+OFFLINE-TRANSACTIONAL (future generic Edge sync): events, estimates+lines, advances,
+production releases, final invoice. All carry ULIDs from day one.
+
+## Deferred (deliberate)
+
+Final invoice/closure + advance GL posting (translator methods on
+`JournalPostingService`), thermal/station printing of catering documents (needs the
+raster Urdu pipeline), WhatsApp/SMS, purchasing automation from requirements,
+amount-in-words on the estimate (no repo helper exists), public signed customer links
+(no platform precedent), Edge offline execution.

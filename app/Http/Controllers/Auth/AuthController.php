@@ -13,6 +13,7 @@ class AuthController extends Controller
 {
     /** PROD-READINESS-1: brute-force lockout — attempts per key before lockout. */
     private const LOGIN_MAX_ATTEMPTS = 5;
+
     /** Seconds an exhausted key stays locked. */
     private const LOGIN_DECAY_SECONDS = 120;
 
@@ -24,7 +25,7 @@ class AuthController extends Controller
     public function login(Request $request)
     {
         $data = $request->validate([
-            'email'    => ['required', 'email'],
+            'email' => ['required', 'email'],
             'password' => ['required', 'string'],
         ]);
 
@@ -34,7 +35,7 @@ class AuthController extends Controller
         // cannot lock the central panel). Applies BEFORE the attempt so
         // password guessing burns the limiter, and the message never reveals
         // whether the email exists.
-        $throttleKey = 'login|' . $guard . '|' . Str::lower($data['email']) . '|' . $request->ip();
+        $throttleKey = 'login|'.$guard.'|'.Str::lower($data['email']).'|'.$request->ip();
 
         if (RateLimiter::tooManyAttempts($throttleKey, self::LOGIN_MAX_ATTEMPTS)) {
             $seconds = RateLimiter::availableIn($throttleKey);
@@ -47,6 +48,7 @@ class AuthController extends Controller
         if (auth($guard)->attempt($data, $request->boolean('remember'))) {
             RateLimiter::clear($throttleKey);
             $request->session()->regenerate();
+
             return redirect('/dashboard');
         }
 
@@ -66,13 +68,13 @@ class AuthController extends Controller
     {
         $data = $request->validate([
             'old_password' => ['required', 'string'],
-            'password'     => ['required', 'string', 'min:8', 'confirmed'],
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
         ]);
 
         $guard = app()->bound('tenant') ? 'tenant' : 'central';
-        $user  = auth($guard)->user();
+        $user = auth($guard)->user();
 
-        if (!$user || !Hash::check($data['old_password'], $user->password)) {
+        if (! $user || ! Hash::check($data['old_password'], $user->password)) {
             return back()->withErrors([
                 'old_password' => __('auth.old_password_wrong'),
             ]);
@@ -96,7 +98,7 @@ class AuthController extends Controller
         ]);
 
         $guard = app()->bound('tenant') ? 'tenant' : 'central';
-        $user  = auth($guard)->user();
+        $user = auth($guard)->user();
 
         if ($user) {
             $user->update(['timezone' => $data['timezone'] ?: null]);
@@ -107,7 +109,7 @@ class AuthController extends Controller
 
     public function switchLocale(string $locale)
     {
-        if (!in_array($locale, ['en', 'ar'])) {
+        if (! in_array($locale, ['en', 'ar', 'ur'])) {
             $locale = 'en';
         }
 

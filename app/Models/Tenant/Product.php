@@ -10,22 +10,28 @@ class Product extends Model
 
     // PRODUCT-BOUNDARY-2: logical product roles. products.id stays the single inventory
     // identity; "saleable"/"purchasable" reuse the existing is_sellable / is_purchasable.
-    public const KIND_SALE_ITEM          = 'sale_item';
-    public const KIND_RAW_MATERIAL       = 'raw_material';
+    public const KIND_SALE_ITEM = 'sale_item';
+
+    public const KIND_RAW_MATERIAL = 'raw_material';
+
     public const KIND_PACKAGING_MATERIAL = 'packaging_material';
-    public const KIND_SEMI_FINISHED      = 'semi_finished';
-    public const KIND_FINISHED_GOOD      = 'finished_good';
-    public const KIND_SERVICE            = 'service';
-    public const KIND_COMBO_VIRTUAL      = 'combo_virtual';
+
+    public const KIND_SEMI_FINISHED = 'semi_finished';
+
+    public const KIND_FINISHED_GOOD = 'finished_good';
+
+    public const KIND_SERVICE = 'service';
+
+    public const KIND_COMBO_VIRTUAL = 'combo_virtual';
 
     public const KINDS = [
-        self::KIND_SALE_ITEM          => 'Sale Item',
-        self::KIND_RAW_MATERIAL       => 'Raw Material',
+        self::KIND_SALE_ITEM => 'Sale Item',
+        self::KIND_RAW_MATERIAL => 'Raw Material',
         self::KIND_PACKAGING_MATERIAL => 'Packaging',
-        self::KIND_SEMI_FINISHED      => 'Semi Finished',
-        self::KIND_FINISHED_GOOD      => 'Finished Good',
-        self::KIND_SERVICE            => 'Service',
-        self::KIND_COMBO_VIRTUAL      => 'Combo (Virtual)',
+        self::KIND_SEMI_FINISHED => 'Semi Finished',
+        self::KIND_FINISHED_GOOD => 'Finished Good',
+        self::KIND_SERVICE => 'Service',
+        self::KIND_COMBO_VIRTUAL => 'Combo (Virtual)',
     ];
 
     protected $fillable = [
@@ -44,24 +50,24 @@ class Product extends Model
     protected function casts(): array
     {
         return [
-            'is_perishable'              => 'boolean',
-            'shelf_life_days'            => 'integer',
-            'default_wastage_percent'    => 'decimal:2',
-            'is_sellable'                => 'boolean',
-            'is_purchasable'             => 'boolean',
-            'is_stock_tracked'           => 'boolean',
-            'has_variants'               => 'boolean',
-            'has_expiry'                 => 'boolean',
-            'requires_batch'             => 'boolean',
-            'default_purchase_price'     => 'decimal:2',
-            'default_selling_price'      => 'decimal:2',
-            'is_taxable'                 => 'boolean',
-            'tax_rate_percent'           => 'decimal:4',
-            'is_pos_visible'             => 'boolean',
-            'can_be_bom_component'       => 'boolean',
-            'can_be_bom_output'          => 'boolean',
+            'is_perishable' => 'boolean',
+            'shelf_life_days' => 'integer',
+            'default_wastage_percent' => 'decimal:2',
+            'is_sellable' => 'boolean',
+            'is_purchasable' => 'boolean',
+            'is_stock_tracked' => 'boolean',
+            'has_variants' => 'boolean',
+            'has_expiry' => 'boolean',
+            'requires_batch' => 'boolean',
+            'default_purchase_price' => 'decimal:2',
+            'default_selling_price' => 'decimal:2',
+            'is_taxable' => 'boolean',
+            'tax_rate_percent' => 'decimal:4',
+            'is_pos_visible' => 'boolean',
+            'can_be_bom_component' => 'boolean',
+            'can_be_bom_output' => 'boolean',
             'is_manufactured_finished_good' => 'boolean',
-            'purchase_pack_size'         => 'decimal:4',
+            'purchase_pack_size' => 'decimal:4',
         ];
     }
 
@@ -147,13 +153,13 @@ class Product extends Model
     public function productKindBadgeClass(): string
     {
         return match ($this->product_kind ?? self::KIND_SALE_ITEM) {
-            self::KIND_RAW_MATERIAL       => 'bg-warning text-dark',
+            self::KIND_RAW_MATERIAL => 'bg-warning text-dark',
             self::KIND_PACKAGING_MATERIAL => 'bg-secondary',
-            self::KIND_SEMI_FINISHED      => 'bg-info text-dark',
-            self::KIND_FINISHED_GOOD      => 'bg-primary',
-            self::KIND_SERVICE            => 'bg-light text-dark border',
-            self::KIND_COMBO_VIRTUAL      => 'bg-dark',
-            default                       => 'bg-success', // sale_item
+            self::KIND_SEMI_FINISHED => 'bg-info text-dark',
+            self::KIND_FINISHED_GOOD => 'bg-primary',
+            self::KIND_SERVICE => 'bg-light text-dark border',
+            self::KIND_COMBO_VIRTUAL => 'bg-dark',
+            default => 'bg-success', // sale_item
         };
     }
 
@@ -171,6 +177,12 @@ class Product extends Model
     public function purchaseUnit()
     {
         return $this->belongsTo(Unit::class, 'purchase_unit_id');
+    }
+
+    /** CATERING-SLICE-1: optional 1:1 catering profile; absent for non-catering products. */
+    public function cateringProfile()
+    {
+        return $this->hasOne(CateringProductProfile::class);
     }
 
     public function translations()
