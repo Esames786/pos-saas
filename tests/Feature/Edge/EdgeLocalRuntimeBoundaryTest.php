@@ -69,7 +69,9 @@ class EdgeLocalRuntimeBoundaryTest extends TestCase
         $this->asBranchServer();
         config([
             'database.connections.edge_local.host' => '127.0.0.1',
-            'database.connections.edge_local.database' => 'pos_test_edge_local',
+            // PLATFORM TEST-ISOLATION: the resolver is the one owner of the Edge-local test DB name;
+            // this also proves the env-resolved name passes the runtime safety rules end-to-end.
+            'database.connections.edge_local.database' => \Tests\MySql\Support\EdgeTestDatabases::local(),
         ]);
         $this->assertTrue(EdgeLocalDatabase::isSafeTarget(), 'The dedicated Edge test DB must be a valid target.');
     }

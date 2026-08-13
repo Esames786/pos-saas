@@ -59,6 +59,9 @@ class DefaultChartOfAccountsSeeder
             ['4130', 'Service Charges',     'income', '4100', null, 210],
             ['4140', 'Tips Income',         'income', '4100', null, 220],
             ['4150', 'Delivery Charges Income', 'income', '4100', null, 225],
+            // Catering vertical revenue (CATERING-GO-LIVE-READINESS-1 §4) — rolled out
+            // to existing tenants by re-running this idempotent seeder (MFG-FIN-A pattern).
+            ['4160', 'Catering Revenue',    'income', '4100', null, 227],
             // Contra-income: reduces revenue, so debit-normal under the Income tree.
             ['4200', 'Sales Discounts',     'income', '4000', 'debit', 230],
             // Third-party department handover (THIRD-PARTY-DEPARTMENT-HANDOVER-1): contra-income,
@@ -104,13 +107,13 @@ class DefaultChartOfAccountsSeeder
             $account = Account::updateOrCreate(
                 ['code' => $code],
                 [
-                    'name'           => $name,
-                    'type'           => $type,
+                    'name' => $name,
+                    'type' => $type,
                     'normal_balance' => $normalBalance ?: Account::normalBalanceForType($type),
-                    'parent_id'      => $parentCode ? ($idByCode[$parentCode] ?? null) : null,
-                    'is_system'      => true,
-                    'is_active'      => true,
-                    'sort_order'     => $sortOrder,
+                    'parent_id' => $parentCode ? ($idByCode[$parentCode] ?? null) : null,
+                    'is_system' => true,
+                    'is_active' => true,
+                    'sort_order' => $sortOrder,
                 ]
             );
 

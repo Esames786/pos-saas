@@ -23,13 +23,16 @@ use RuntimeException;
  */
 class EdgeLocalImportMySqlTest extends MySqlTenantTestCase
 {
-    private string $edgeDb = 'pos_test_edge_local';
+    private string $edgeDb;
     private array $package;
     private int $branchId;
 
     protected function setUp(): void
     {
         parent::setUp(); // provisions pos_test_tenant (cloud source) on the `tenant` connection
+
+        // PLATFORM TEST-ISOLATION: env-driven per-worktree Edge-local DB (never a shared literal).
+        $this->edgeDb = \Tests\MySql\Support\EdgeTestDatabases::local();
 
         config(['app.role' => 'branch_server']);
 
