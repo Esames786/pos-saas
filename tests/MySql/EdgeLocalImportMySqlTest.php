@@ -110,10 +110,12 @@ class EdgeLocalImportMySqlTest extends MySqlTenantTestCase
             'branch_id' => $this->branchId,
             'device_public_uuid' => 'device-A',
             'activation_epoch' => 1,
+            'config_revision' => 1,
+            'config_schema_version' => EdgeBootstrapService::CONFIG_SCHEMA_VERSION,
             'source_revision' => 'rev-1',
             'sections' => $summary,
         ];
-        $manifest['manifest_hash'] = $svc->computeManifestHash('edge-bootstrap-v4', 'snap-1', 42, $this->branchId, 'device-A', 1, $summary);
+        $manifest['manifest_hash'] = $svc->computeManifestHash(EdgeBootstrapService::SCHEMA_VERSION, 'snap-1', 42, $this->branchId, 'device-A', 1, 1, EdgeBootstrapService::CONFIG_SCHEMA_VERSION, $summary);
 
         return ['manifest' => $manifest, 'sections' => $sections];
     }
@@ -232,7 +234,7 @@ class EdgeLocalImportMySqlTest extends MySqlTenantTestCase
         $this->importer()->import($pkg);
     }
 
-    public function test_import_is_idempotent_then_immutable_and_refresh_not_implemented(): void
+    public function test_import_is_idempotent_then_immutable_and_same_revision_conflicts(): void
     {
         $this->importer()->import($this->package);
 
@@ -240,11 +242,12 @@ class EdgeLocalImportMySqlTest extends MySqlTenantTestCase
         $meta = $this->importer()->import($this->package);
         $this->assertSame(EdgeLocalMeta::STATE_BOOTSTRAPPED, $meta->runtime_state);
         $this->assertSame(1, EdgeLocalMeta::query()->count());
+        $this->assertSame(1, (int) $meta->last_applied_config_revision);
 
         // Different tenant/branch/device -> binding immutable.
         $other = $this->package;
         $other['manifest']['tenant_id'] = 99;
-        $other['manifest']['manifest_hash'] = app(EdgeBootstrapService::class)->computeManifestHash('edge-bootstrap-v4', 'snap-1', 99, $this->branchId, 'device-A', 1, $other['manifest']['sections']);
+        $other['manifest']['manifest_hash'] = app(EdgeBootstrapService::class)->computeManifestHash(EdgeBootstrapService::SCHEMA_VERSION, 'snap-1', 99, $this->branchId, 'device-A', 1, 1, EdgeBootstrapService::CONFIG_SCHEMA_VERSION, $other['manifest']['sections']);
         try {
             $this->importer()->import($other);
             $this->fail('rebinding must be rejected');
@@ -252,11 +255,12 @@ class EdgeLocalImportMySqlTest extends MySqlTenantTestCase
             $this->assertStringContainsString('BINDING_IMMUTABLE', $e->getMessage());
         }
 
-        // Same appliance, different snapshot/revision -> refresh not implemented (no blind delete+insert).
+        // EDGE-CONFIG-REFRESH-1: same appliance, SAME config revision but different content (a new
+        // snapshot uuid changes the manifest hash) -> a revision must have exactly one content.
         $refresh = $this->package;
         $refresh['manifest']['snapshot_uuid'] = 'snap-2';
-        $refresh['manifest']['manifest_hash'] = app(EdgeBootstrapService::class)->computeManifestHash('edge-bootstrap-v4', 'snap-2', 42, $this->branchId, 'device-A', 1, $refresh['manifest']['sections']);
-        $this->expectExceptionMessage('REFRESH_NOT_IMPLEMENTED');
+        $refresh['manifest']['manifest_hash'] = app(EdgeBootstrapService::class)->computeManifestHash(EdgeBootstrapService::SCHEMA_VERSION, 'snap-2', 42, $this->branchId, 'device-A', 1, 1, EdgeBootstrapService::CONFIG_SCHEMA_VERSION, $refresh['manifest']['sections']);
+        $this->expectExceptionMessage('REVISION_CONFLICT');
         $this->importer()->import($refresh);
     }
 
@@ -341,7 +345,7 @@ class EdgeLocalImportMySqlTest extends MySqlTenantTestCase
         $rows = $pkg['sections'][$section];
         $pkg['manifest']['sections'][$section] = ['hash' => hash('sha256', $svc->canonicalJson($rows)), 'count' => count($rows)];
         $m = $pkg['manifest'];
-        $pkg['manifest']['manifest_hash'] = $svc->computeManifestHash($m['schema_version'], $m['snapshot_uuid'], (int) $m['tenant_id'], (int) $m['branch_id'], $m['device_public_uuid'], (int) $m['activation_epoch'], $m['sections']);
+        $pkg['manifest']['manifest_hash'] = $svc->computeManifestHash($m['schema_version'], $m['snapshot_uuid'], (int) $m['tenant_id'], (int) $m['branch_id'], $m['device_public_uuid'], (int) $m['activation_epoch'], (int) $m['config_revision'], (string) $m['config_schema_version'], $m['sections']);
 
         return $pkg;
     }

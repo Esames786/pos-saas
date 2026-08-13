@@ -31,5 +31,8 @@ Route::domain(config('tenancy.central_domain'))
             Route::get('/bootstrap/snapshots/{uuid}/manifest', [EdgeBootstrapApiController::class, 'manifest'])->name('edge.api.bootstrap.manifest');
             Route::get('/bootstrap/snapshots/{uuid}/sections/{section}', [EdgeBootstrapApiController::class, 'section'])->name('edge.api.bootstrap.section');
             Route::post('/bootstrap/snapshots/{uuid}/acknowledge', [EdgeBootstrapApiController::class, 'acknowledge'])->name('edge.api.bootstrap.acknowledge');
+
+            // EDGE-COMPATIBILITY-CONTRACT-1 — version/capability exchange (no heartbeat/sync/activation).
+            Route::post('/compatibility/report', [\App\Http\Controllers\Edge\EdgeCompatibilityApiController::class, 'report'])->name('edge.api.compatibility.report');
         });
     });

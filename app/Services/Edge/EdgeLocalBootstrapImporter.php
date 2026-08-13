@@ -23,8 +23,9 @@ use RuntimeException;
  *  - DDL is done beforehand by edge:local:db-init — this runs ONLY the data import, in ONE InnoDB
  *    transaction, parents before children, preserving Cloud IDs, WITHOUT ever disabling
  *    FOREIGN_KEY_CHECKS; any late failure rolls the whole import back.
- *  - initial bootstrap only: same package retried => idempotent no-op; a different config revision
- *    after a successful bootstrap => controlled REFRESH_NOT_IMPLEMENTED (never DELETE+INSERT).
+ *  - same package retried => idempotent no-op; EDGE-CONFIG-REFRESH-1: a NEWER config revision after a
+ *    successful bootstrap is applied by EdgeLocalConfigRefreshApplier (upsert + tombstone — NEVER a
+ *    destructive re-import); an older revision or a same-revision content conflict is refused.
  */
 class EdgeLocalBootstrapImporter
 {
@@ -47,8 +48,9 @@ class EdgeLocalBootstrapImporter
      * Ordered import plan: [section, table, branchScoped]. Parents BEFORE children so real FKs are
      * satisfied without disabling FK checks. Sections not in this list (and not informational) are a
      * hard error — an unknown section must never be silently dropped.
+     * PUBLIC because the config-refresh applier walks the SAME plan (one section order, one contract).
      */
-    private const PLAN = [
+    public const PLAN = [
         ['branch', 'branches', false],               // the appliance's own branch row (id preserved)
         ['units', 'units', false],
         ['categories', 'categories', false],         // self-referential — topologically ordered on insert
@@ -80,8 +82,10 @@ class EdgeLocalBootstrapImporter
         ['users', 'users', false],                   // roles/permissions arrays handled specially
     ];
 
-    public function __construct(private readonly EdgeBootstrapService $bootstrap)
-    {
+    public function __construct(
+        private readonly EdgeBootstrapService $bootstrap,
+        private readonly EdgeLocalConfigRefreshApplier $refresh,
+    ) {
     }
 
     /**
@@ -98,6 +102,7 @@ class EdgeLocalBootstrapImporter
         $sections = $package['sections'] ?? [];
 
         $this->assertSchema($manifest);
+        $this->assertConfigContract($manifest);
         $this->assertNoForbiddenHistory($sections);
         $this->verifyIntegrity($manifest, $sections);
         $this->assertRequiredSections($sections);
@@ -122,8 +127,9 @@ class EdgeLocalBootstrapImporter
                 && (string) $existing->manifest_hash === $manifestHash) {
                 return $existing; // idempotent: same package already imported
             }
-            // Same appliance, different config — refresh is a later sprint (never blind DELETE+INSERT).
-            throw new RuntimeException('REFRESH_NOT_IMPLEMENTED: this appliance is already bootstrapped; config refresh is not implemented yet.');
+            // EDGE-CONFIG-REFRESH-1: same appliance, different config — apply it as a NON-DESTRUCTIVE
+            // config refresh (upsert + tombstone under the meta-row lock; revision-ordered; atomic).
+            return $this->refresh->apply($manifest, $sections)['meta'];
         }
 
         return DB::connection(self::CONN)->transaction(function () use (
@@ -199,10 +205,24 @@ class EdgeLocalBootstrapImporter
             (int) $manifest['branch_id'],
             $manifest['device_public_uuid'] ?? null,
             $manifest['activation_epoch'] !== null ? (int) $manifest['activation_epoch'] : null,
+            ($manifest['config_revision'] ?? null) !== null ? (int) $manifest['config_revision'] : null,
+            (string) ($manifest['config_schema_version'] ?? ''),
             $summary,
         );
         if (! hash_equals((string) ($manifest['manifest_hash'] ?? ''), $recomputed)) {
             throw new RuntimeException('HASH_MISMATCH: the manifest hash is not self-consistent.');
+        }
+    }
+
+    /** EDGE-CONFIG-REFRESH-1 (v5): the config revision + config contract version are mandatory. */
+    private function assertConfigContract(array $manifest): void
+    {
+        if ((int) ($manifest['config_revision'] ?? 0) < 1) {
+            throw new RuntimeException('CONFIG_REVISION_MISSING: a v5 package must carry a positive config_revision.');
+        }
+        $configSchema = (string) ($manifest['config_schema_version'] ?? '');
+        if ($configSchema !== EdgeBootstrapService::CONFIG_SCHEMA_VERSION) {
+            throw new RuntimeException("CONFIG_SCHEMA_UNSUPPORTED: package config schema [{$configSchema}] is not " . EdgeBootstrapService::CONFIG_SCHEMA_VERSION . '.');
         }
     }
 
@@ -281,6 +301,9 @@ class EdgeLocalBootstrapImporter
             'bootstrap_schema' => (string) $manifest['schema_version'],
             'source_revision' => $sourceRevision,
             'manifest_hash' => $manifestHash,
+            // EDGE-CONFIG-REFRESH-1: the initial import IS the first applied config revision.
+            'last_applied_config_revision' => (int) $manifest['config_revision'],
+            'config_schema_version' => (string) $manifest['config_schema_version'],
             'runtime_state' => EdgeLocalMeta::STATE_IMPORTING,
         ]);
     }

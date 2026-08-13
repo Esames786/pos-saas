@@ -998,7 +998,10 @@ class EdgeLocalPosService
                 throw new RuntimeException('This table still has open orders — settle or cancel them first.');
             }
             $session->update(['status' => $targetStatus, 'closed_by_user_id' => $user->id, 'closed_at' => now()]);
-            RestaurantTable::on('tenant')->where('id', $session->restaurant_table_id)->update(['status' => 'available']);
+            // EDGE-CONFIG-REFRESH-1: never resurrect a tombstoned table — if a config refresh removed
+            // this table while the session was open, closing must leave it 'inactive', not 'available'.
+            RestaurantTable::on('tenant')->where('id', $session->restaurant_table_id)
+                ->where('status', '!=', 'inactive')->update(['status' => 'available']);
 
             return $session->fresh();
         });

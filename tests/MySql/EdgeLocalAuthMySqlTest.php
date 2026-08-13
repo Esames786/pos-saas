@@ -118,9 +118,11 @@ class EdgeLocalAuthMySqlTest extends MySqlTenantTestCase
         $manifest = [
             'schema_version' => EdgeBootstrapService::SCHEMA_VERSION, 'snapshot_uuid' => 'snap-1',
             'tenant_code' => 'demo', 'tenant_id' => 42, 'branch_id' => $this->branchId,
-            'device_public_uuid' => 'device-A', 'activation_epoch' => 1, 'source_revision' => 'rev-1', 'sections' => $summary,
+            'device_public_uuid' => 'device-A', 'activation_epoch' => 1,
+            'config_revision' => 1, 'config_schema_version' => EdgeBootstrapService::CONFIG_SCHEMA_VERSION,
+            'source_revision' => 'rev-1', 'sections' => $summary,
         ];
-        $manifest['manifest_hash'] = $svc->computeManifestHash('edge-bootstrap-v4', 'snap-1', 42, $this->branchId, 'device-A', 1, $summary);
+        $manifest['manifest_hash'] = $svc->computeManifestHash(EdgeBootstrapService::SCHEMA_VERSION, 'snap-1', 42, $this->branchId, 'device-A', 1, 1, EdgeBootstrapService::CONFIG_SCHEMA_VERSION, $summary);
 
         return ['manifest' => $manifest, 'sections' => $sections];
     }

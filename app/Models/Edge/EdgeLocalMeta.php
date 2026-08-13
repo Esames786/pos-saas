@@ -32,6 +32,9 @@ class EdgeLocalMeta extends Model
         'branch_id' => 'integer',
         'activation_epoch' => 'integer',
         'imported_at' => 'datetime',
+        // EDGE-CONFIG-REFRESH-1 — current applied configuration (bootstrap_* stays the initial record).
+        'last_applied_config_revision' => 'integer',
+        'last_refreshed_at' => 'datetime',
     ];
 
     /** Identity fields that become IMMUTABLE once set (fix 5). */

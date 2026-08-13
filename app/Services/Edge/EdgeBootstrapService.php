@@ -27,12 +27,18 @@ use Illuminate\Support\Str;
  */
 class EdgeBootstrapService
 {
-    // EDGE-LOCAL-RUNTIME-1 (Section J): bumped v3 -> v4. The wire contract materially changed — the
-    // manifest now carries the Cloud-authoritative activation_epoch (stale-device fencing), and three
-    // new sections are emitted (recipes, recipe_ingredients, unit_conversions) so the config bootstrap
-    // can carry the future phase-1b recipe configuration. No real appliance consumes v3 yet
-    // (EDGE_FEATURE_ENABLED=false, none deployed), so this is a clean forward bump, not a compat break.
-    public const SCHEMA_VERSION = 'edge-bootstrap-v4';
+    // EDGE-CONFIG-REFRESH-1: bumped v4 -> v5. The wire contract materially changed — the manifest now
+    // carries the Cloud-authoritative MONOTONIC config_revision plus config_schema_version (both part
+    // of the manifest hash), so ONE package format serves the initial bootstrap AND every subsequent
+    // config refresh. No real appliance consumes v4 yet (EDGE_FEATURE_ENABLED=false, none deployed),
+    // so this is a clean forward bump, not a compat break.
+    public const SCHEMA_VERSION = 'edge-bootstrap-v5';
+
+    // EDGE-CONFIG-REFRESH-1: the CONFIG payload contract (which sections exist, their column sets, and
+    // the upsert/tombstone semantics the refresh applier applies). Versioned separately from the wire
+    // envelope so the future compatibility contract can classify "package readable but config contract
+    // newer than this build understands".
+    public const CONFIG_SCHEMA_VERSION = 'edge-config-v1';
     public const TTL_HOURS      = 72;
     private const BUILD_WAIT_MS = 120;
     private const BUILD_WAITS   = 25;
@@ -92,7 +98,14 @@ class EdgeBootstrapService
         if (! $branch) {
             throw EdgeBootstrapException::of(EdgeBootstrapException::NOT_ALLOWED);
         }
-        if ($branch->local_edge_status !== Branch::STATUS_PENDING) {
+        // EDGE-CONFIG-REFRESH-1: an INITIAL bootstrap (device pending_bootstrap) still requires the
+        // branch to be PENDING. A READY device is an already-bootstrapped appliance pulling a config
+        // REFRESH — allowed while the branch stays in the Local-POS lifecycle (pending/active/closing),
+        // never for a suspended/inactive branch.
+        $allowedBranchStatuses = $device->status === EdgeDevice::STATUS_READY
+            ? [Branch::STATUS_PENDING, Branch::STATUS_ACTIVE, Branch::STATUS_CLOSING]
+            : [Branch::STATUS_PENDING];
+        if (! in_array($branch->local_edge_status, $allowedBranchStatuses, true)) {
             throw EdgeBootstrapException::of(EdgeBootstrapException::BRANCH_NOT_PENDING);
         }
 
@@ -127,7 +140,13 @@ class EdgeBootstrapService
             // importer can store it and ack can fence a stale generation.
             $activationEpoch = app(EdgeActivationEpochService::class)->allocateForDevice($device);
 
-            $claim = DB::connection('master')->transaction(function () use ($device, $tenant, $branch, $claimRevision, $activationEpoch) {
+            // EDGE-CONFIG-REFRESH-1: allocate (idempotently) the monotonic config revision for THIS
+            // watermark before claiming — the snapshot/manifest carries it so the appliance can order
+            // refreshes. Same watermark => same revision (a rebuild never mints a new revision).
+            $configRevision = app(EdgeConfigRevisionService::class)
+                ->allocateForWatermark((int) $tenant->id, (int) $branch->id, $claimRevision);
+
+            $claim = DB::connection('master')->transaction(function () use ($device, $tenant, $branch, $claimRevision, $activationEpoch, $configRevision) {
                 $locked = EdgeDevice::whereKey($device->id)->lockForUpdate()->first();
                 $this->revalidateLocked($locked, $device);
 
@@ -136,6 +155,11 @@ class EdgeBootstrapService
                     // fix 6: only reuse a snapshot that belongs to the CURRENT activation generation —
                     // a snapshot minted under an older epoch must never be reused/served.
                     ->where('activation_epoch', $activationEpoch)
+                    // EDGE-CONFIG-REFRESH-1: and to the CURRENT config revision — if the watermark
+                    // reverted to an earlier value (edit then undo), the same content now carries a
+                    // NEWER revision, and a snapshot minted under the older revision number must not
+                    // be reused (the appliance would refuse it as stale).
+                    ->where('config_revision', $configRevision)
                     ->whereIn('status', [
                         EdgeBootstrapSnapshot::STATUS_READY, EdgeBootstrapSnapshot::STATUS_DOWNLOADED,
                         EdgeBootstrapSnapshot::STATUS_ACKNOWLEDGED, EdgeBootstrapSnapshot::STATUS_BUILDING,
@@ -149,7 +173,7 @@ class EdgeBootstrapService
                     'public_uuid' => (string) Str::uuid(), 'tenant_id' => $tenant->id, 'branch_id' => $branch->id,
                     'edge_device_id' => $device->id, 'schema_version' => self::SCHEMA_VERSION,
                     'status' => EdgeBootstrapSnapshot::STATUS_BUILDING, 'source_revision' => $claimRevision,
-                    'activation_epoch' => $activationEpoch,
+                    'activation_epoch' => $activationEpoch, 'config_revision' => $configRevision,
                 ]);
                 return ['snapshot' => $snapshot, 'build' => true];
             });
@@ -252,6 +276,8 @@ class EdgeBootstrapService
             'branch_id' => $snapshot->branch_id, 'status' => $snapshot->status,
             'device_public_uuid' => EdgeDevice::whereKey($snapshot->edge_device_id)->value('public_uuid'),
             'activation_epoch' => $snapshot->activation_epoch !== null ? (int) $snapshot->activation_epoch : null,
+            'config_revision' => $snapshot->config_revision !== null ? (int) $snapshot->config_revision : null,
+            'config_schema_version' => self::CONFIG_SCHEMA_VERSION,
             'source_revision' => $snapshot->source_revision,
             'manifest_hash' => $snapshot->manifest_hash, 'generated_at' => optional($snapshot->generated_at)->toIso8601String(),
             'expires_at' => optional($snapshot->expires_at)->toIso8601String(), 'sections' => $snapshot->section_summary ?? [],
@@ -690,6 +716,8 @@ class EdgeBootstrapService
             (int) $snapshot->branch_id,
             EdgeDevice::whereKey($snapshot->edge_device_id)->value('public_uuid'),
             $snapshot->activation_epoch !== null ? (int) $snapshot->activation_epoch : null,
+            $snapshot->config_revision !== null ? (int) $snapshot->config_revision : null,
+            self::CONFIG_SCHEMA_VERSION,
             $summary,
         );
     }
@@ -697,6 +725,8 @@ class EdgeBootstrapService
     /**
      * The ONE manifest-hash formula, used both when building a snapshot and by the local importer to
      * re-verify a package self-consistently. Any change here is a wire-contract change.
+     * EDGE-CONFIG-REFRESH-1 (v5): config_revision + config_schema_version are INSIDE the hash so a
+     * revision number can never be tampered with independently of the manifest.
      */
     public function computeManifestHash(
         string $schemaVersion,
@@ -705,6 +735,8 @@ class EdgeBootstrapService
         int $branchId,
         ?string $deviceUuid,
         ?int $activationEpoch,
+        ?int $configRevision,
+        string $configSchemaVersion,
         array $sectionSummary,
     ): string {
         return hash('sha256', $this->canonicalJson([
@@ -712,6 +744,8 @@ class EdgeBootstrapService
             'tenant_id' => $tenantId, 'branch_id' => $branchId,
             'device_public_uuid' => $deviceUuid,
             'activation_epoch' => $activationEpoch,
+            'config_revision' => $configRevision,
+            'config_schema_version' => $configSchemaVersion,
             'sections' => $sectionSummary,
         ]));
     }

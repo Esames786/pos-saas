@@ -32,6 +32,9 @@ class EdgeDevice extends Model
         'paired_at'             => 'datetime',
         'last_authenticated_at' => 'datetime',
         'revoked_at'            => 'datetime',
+        // EDGE-COMPATIBILITY-CONTRACT-1 — last reported compatibility manifest.
+        'compatibility_manifest'    => 'array',
+        'compatibility_reported_at' => 'datetime',
     ];
 
     protected $hidden = ['device_secret_hash'];

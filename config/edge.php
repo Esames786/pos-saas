@@ -23,9 +23,28 @@ return [
     'app_version'             => env('EDGE_APP_VERSION', '0.1.0-edge'),
     'git_commit'              => env('EDGE_GIT_COMMIT'), // stamped into a built artifact's manifest
     'artifact_format_version' => '1',
-    'bootstrap_schema'        => EdgeBootstrapService::SCHEMA_VERSION, // edge-bootstrap-v4
+    'bootstrap_schema'        => EdgeBootstrapService::SCHEMA_VERSION,        // edge-bootstrap-v5
+    'config_schema'           => EdgeBootstrapService::CONFIG_SCHEMA_VERSION, // edge-config-v1
     'sync_protocol'           => 'edge-sync-v0', // placeholder ONLY — offline sync is not built yet
     'min_php'                 => '8.2.0',
+
+    /*
+    | EDGE-COMPATIBILITY-CONTRACT-1 — the capabilities THIS BUILD actually implements offline.
+    | GROUNDED list: add a capability only when the feature genuinely works on a Branch Server.
+    | Consumed by EdgeCompatibilityService::manifest(); the Cloud classifies anything absent here as
+    | feature_unavailable_offline (explicitly — never silent partial behavior).
+    */
+    'capabilities' => [
+        'local_auth',                 // EDGE-LOCAL-AUTH-1 (Edge credentials, Argon2id, epoch-fenced)
+        'local_pos_cash_sales',       // EDGE-LOCAL-POS-1 (cash quick_sale/takeaway/dine-in runtime)
+        'held_sales',                 // held/settle/cancel + Add Round
+        'dine_in_tables',             // floors/tables/sessions
+        'kot',                        // KOT batches + per-category routing
+        'local_printing',             // EDGE-LOCAL-PRINT-1 (lease-safe local print worker)
+        'operational_stock_baseline', // EDGE operational stock (device-bound baseline; not official stock)
+        'local_manager_approval',     // offline manager re-auth (verifyManager)
+        'config_refresh',             // EDGE-CONFIG-REFRESH-1 (revisioned upsert/tombstone refresh)
+    ],
 
     /*
     | EDGE-LOCAL-AUTH-1 — Cloud-authorised one-time enrollment assertion (Ed25519). The CLOUD holds
