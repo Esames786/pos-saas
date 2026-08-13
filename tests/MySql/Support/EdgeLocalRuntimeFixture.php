@@ -39,7 +39,7 @@ trait EdgeLocalRuntimeFixture
     }
 
     /** Seed (or replace) the singleton edge_local_meta binding for the given branch/epoch, and clear any cache. */
-    protected function bindEdgeLocalMeta(int $branchId, int $activationEpoch = 1, int $tenantId = 42, string $deviceUuid = 'test-device-uuid'): void
+    protected function bindEdgeLocalMeta(int $branchId, int $activationEpoch = 1, int $tenantId = 42, string $deviceUuid = 'test-device-uuid', int $configRevision = 1): void
     {
         DB::connection('tenant')->table('edge_local_meta')->truncate();
         DB::connection('tenant')->table('edge_local_meta')->insert([
@@ -50,6 +50,9 @@ trait EdgeLocalRuntimeFixture
             'device_uuid' => $deviceUuid,
             'activation_epoch' => $activationEpoch,
             'source_revision' => 'test-rev-1',
+            // OFFLINE-SYNC-ENGINE-1B: the envelope builder freezes this per sale — a real binding always has it.
+            'last_applied_config_revision' => $configRevision,
+            'config_schema_version' => 'edge-config-v1',
             'runtime_state' => EdgeLocalMeta::STATE_BOOTSTRAPPED,
             'imported_at' => now(),
             'created_at' => now(),

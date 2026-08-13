@@ -75,7 +75,19 @@ class EdgeLocalPosService
         private readonly \App\Services\Printing\PrintJobService $printJobs,
         private readonly \App\Services\Sales\KotCancellationService $kotCancellations,
         private readonly \App\Services\Sales\SalesService $salesService, // closeRestaurantTableSession ONLY (everything else is fenced on branch_server)
+        private readonly EdgeSyncOutboxService $outbox,     // OFFLINE-SYNC-ENGINE-1B: same-txn envelope
     ) {
+    }
+
+    /**
+     * (1B test seam — same audit rationale as beforeSaleTransaction) Called INSIDE the finalizing
+     * transaction AFTER sale/lines/payments/operational-stock/settlement and BEFORE the outbox
+     * envelope insert. Production body is an unconditional no-op; only a test subclass can override
+     * it, so failure-atomicity tests can prove the WHOLE sale transaction (including the envelope)
+     * commits or rolls back as one.
+     */
+    protected function beforeOutboxInsert(): void
+    {
     }
 
     /**
@@ -253,6 +265,11 @@ class EdgeLocalPosService
                 // (G) SHARED operational settlement — the same sales-subledger + shift-counter rules Cloud
                 // finalizePaidSale uses, inside this same transaction (rolls back with the sale).
                 $this->settlement->settle($sale->fresh());
+
+                // OFFLINE-SYNC-ENGINE-1B: the immutable sync envelope is part of THIS transaction —
+                // a paid offline sale cannot commit without its outbox row (and vice versa).
+                $this->beforeOutboxInsert();
+                $this->outbox->createForPaidSale($sale->fresh());
 
                 return $sale->fresh();
             }, 3);
@@ -947,6 +964,11 @@ class EdgeLocalPosService
                 // Shared operational settlement + the shared "payment settles the table" custody rule.
                 $this->settlement->settle($sale->fresh());
                 $this->salesService->closeRestaurantTableSession($sale->fresh());
+
+                // OFFLINE-SYNC-ENGINE-1B: ONE outbox row for the FINAL settled sale (never for holds
+                // or Add Rounds) — inside this same transaction, after every operational effect.
+                $this->beforeOutboxInsert();
+                $this->outbox->createForPaidSale($sale->fresh());
 
                 return $sale->fresh();
             }, 3);

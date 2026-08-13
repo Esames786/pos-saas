@@ -454,6 +454,7 @@ class EdgeLocalPosMySqlTest extends MySqlTenantTestCase
             app(\App\Services\Printing\PrintJobService::class),
             app(\App\Services\Sales\KotCancellationService::class),
             app(\App\Services\Sales\SalesService::class),
+            app(\App\Services\Edge\EdgeSyncOutboxService::class), // OFFLINE-SYNC-ENGINE-1B
         ) extends EdgeLocalPosService {
             public $toctouHook;
 
