@@ -22,7 +22,23 @@ class CateringEstimateService
 {
     public function __construct(
         private readonly CateringNumberService $numbers,
+        private readonly CateringRecipeCostingService $costing,
     ) {}
+
+    /**
+     * CATERING-V1-CLOSURE-1 (§2): SEND/CONFIRM fail closed on an incomplete cost.
+     * Throws with the full blocker list so the operator knows exactly what to fix.
+     */
+    private function assertCostingReady(CateringEstimate $estimate, string $action): void
+    {
+        $readiness = $this->costing->readiness($estimate);
+        if (! $readiness['ready']) {
+            throw new RuntimeException(
+                "Cannot {$action} {$estimate->displayNo()} — the cost basis is incomplete: "
+                .implode(' | ', $readiness['blockers'])
+            );
+        }
+    }
 
     /** Create an event with an empty draft estimate (v1). */
     public function createEvent(array $eventData, ?int $userId = null): CateringEvent
@@ -111,6 +127,8 @@ class CateringEstimateService
             throw new RuntimeException('An estimate needs at least one line before it can be sent.');
         }
 
+        $this->assertCostingReady($estimate, 'send');
+
         $estimate->forceFill(['status' => CateringEstimate::STATUS_SENT, 'sent_at' => now()])->save();
 
         $event = $estimate->event;
@@ -137,6 +155,10 @@ class CateringEstimateService
     {
         if (! in_array($event->status, [CateringEvent::STATUS_QUOTED, CateringEvent::STATUS_DRAFT], true)) {
             throw new RuntimeException("Event {$event->event_no} cannot be confirmed from status {$event->status}.");
+        }
+
+        if ($current = $event->currentEstimate) {
+            $this->assertCostingReady($current, 'confirm');
         }
 
         $event->forceFill(['status' => CateringEvent::STATUS_CONFIRMED, 'confirmed_at' => now()])->save();

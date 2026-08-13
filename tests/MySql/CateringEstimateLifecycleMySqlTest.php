@@ -85,6 +85,11 @@ class CateringEstimateLifecycleMySqlTest extends MySqlTenantTestCase
     {
         $categoryId = $this->makeCategory();
         $productId = $this->makeProduct($categoryId, ['default_purchase_price' => 500]);
+        // §2 preferred contract: sending needs an effective Catering Material Rate.
+        $this->tenant()->table('catering_material_rates')->insert([
+            'product_id' => $productId, 'rate' => 500, 'effective_from' => now()->subDay()->toDateString(),
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
 
         $event = $this->service->createEvent($this->eventData());
         $estimate = $event->currentEstimate;
@@ -225,6 +230,10 @@ class CateringEstimateLifecycleMySqlTest extends MySqlTenantTestCase
             'product_id' => $productId, 'catering_enabled' => 1, 'pricing_mode' => 'per_pax',
             'production_station' => 'Rice', 'production_label' => 'Deg Biryani',
             'production_label_ur' => 'دیگ بریانی', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->tenant()->table('catering_material_rates')->insert([
+            'product_id' => $productId, 'rate' => 200, 'effective_from' => now()->subDay()->toDateString(),
+            'created_at' => now(), 'updated_at' => now(),
         ]);
 
         $event = $this->service->createEvent($this->eventData());

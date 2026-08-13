@@ -200,6 +200,11 @@ class CateringCostingMySqlTest extends MySqlTenantTestCase
             'product_id' => $this->chickenId, 'rate' => 720, 'unit_id' => $this->kgUnitId,
             'effective_from' => now()->subDays(30)->toDateString(),
         ]);
+        // §2 send gate: every ingredient needs a rate before markSent($sent) below.
+        CateringMaterialRate::create([
+            'product_id' => $this->riceId, 'rate' => 300, 'unit_id' => $this->kgUnitId,
+            'effective_from' => now()->subDays(30)->toDateString(),
+        ]);
 
         $draftA = $this->draftEstimateWithBiryani(100);
         $draftB = $this->draftEstimateWithBiryani(100);
@@ -281,6 +286,115 @@ class CateringCostingMySqlTest extends MySqlTenantTestCase
 
         // Read-only planning: no stock rows were created or modified.
         $this->assertSame(0, (int) $this->tenant()->table('stock_ledgers')->count());
+    }
+
+    // ── CATERING-V1-CLOSURE-1 (§2): costing readiness fails closed ────────────
+
+    public function test_send_is_blocked_while_an_ingredient_has_only_the_purchase_price_fallback(): void
+    {
+        // Chicken has a rate; rice deliberately does NOT (draft preview falls back).
+        CateringMaterialRate::create([
+            'product_id' => $this->chickenId, 'rate' => 720, 'unit_id' => $this->kgUnitId,
+            'effective_from' => now()->subDays(10)->toDateString(),
+        ]);
+        $estimate = $this->draftEstimateWithBiryani(100);
+
+        $readiness = $this->costing->readiness($estimate);
+        $this->assertFalse($readiness['ready']);
+        $this->assertStringContainsString('Basmati Rice', implode(' ', $readiness['blockers']));
+        $this->assertStringContainsString('FALLBACK', implode(' ', $readiness['blockers']),
+            'purchase price must be labelled as fallback, never presented as a market rate');
+
+        try {
+            $this->estimates->markSent($estimate);
+            $this->fail('send must be refused while a material has no effective Catering rate');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('cost basis is incomplete', $e->getMessage());
+        }
+
+        try {
+            $this->estimates->confirmEvent($estimate->event()->first());
+            $this->fail('confirm must also be refused while the cost basis is incomplete');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('cost basis is incomplete', $e->getMessage());
+        }
+
+        $this->assertSame(CateringEstimate::STATUS_DRAFT, $estimate->refresh()->status,
+            'blocked send leaves the estimate a draft');
+    }
+
+    public function test_send_is_blocked_by_a_missing_unit_conversion_but_draft_preview_only_warns(): void
+    {
+        CateringMaterialRate::create([
+            'product_id' => $this->chickenId, 'rate' => 720, 'unit_id' => $this->kgUnitId,
+            'effective_from' => now()->subDays(10)->toDateString(),
+        ]);
+        CateringMaterialRate::create([
+            'product_id' => $this->riceId, 'rate' => 300, 'unit_id' => $this->kgUnitId,
+            'effective_from' => now()->subDays(10)->toDateString(),
+        ]);
+
+        // Break conversion: chicken quoted in GM in the recipe, rate is per KG.
+        $this->tenant()->table('unit_conversions')->delete();
+
+        $estimate = $this->draftEstimateWithBiryani(100);
+
+        // Draft preview: warning surfaces, calculation does not explode.
+        $result = $this->costing->calculate($estimate);
+        $this->assertNotEmpty($result['warnings'], 'draft preview reports the missing conversion');
+
+        // Send: hard refusal.
+        try {
+            $this->estimates->markSent($estimate);
+            $this->fail('send must be refused on a missing unit conversion');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('No unit conversion', $e->getMessage());
+        }
+    }
+
+    public function test_send_succeeds_when_rates_and_conversions_are_complete(): void
+    {
+        CateringMaterialRate::create([
+            'product_id' => $this->chickenId, 'rate' => 720, 'unit_id' => $this->kgUnitId,
+            'effective_from' => now()->subDays(10)->toDateString(),
+        ]);
+        CateringMaterialRate::create([
+            'product_id' => $this->riceId, 'rate' => 300, 'unit_id' => $this->kgUnitId,
+            'effective_from' => now()->subDays(10)->toDateString(),
+        ]);
+
+        $estimate = $this->draftEstimateWithBiryani(100);
+        $readiness = $this->costing->readiness($estimate);
+        $this->assertTrue($readiness['ready']);
+        $this->assertSame([], $readiness['blockers']);
+
+        $this->estimates->markSent($estimate);
+        $this->assertSame(CateringEstimate::STATUS_SENT, $estimate->refresh()->status);
+    }
+
+    public function test_invalid_recipe_yield_blocks_send(): void
+    {
+        CateringMaterialRate::create([
+            'product_id' => $this->chickenId, 'rate' => 720, 'unit_id' => $this->kgUnitId,
+            'effective_from' => now()->subDays(10)->toDateString(),
+        ]);
+        CateringMaterialRate::create([
+            'product_id' => $this->riceId, 'rate' => 300, 'unit_id' => $this->kgUnitId,
+            'effective_from' => now()->subDays(10)->toDateString(),
+        ]);
+        $this->tenant()->table('recipes')->where('product_id', $this->biryaniId)->update(['yield_quantity' => 0]);
+
+        $estimate = $this->draftEstimateWithBiryani(100);
+        $readiness = $this->costing->readiness($estimate);
+        $this->assertFalse($readiness['ready']);
+        $this->assertStringContainsString('invalid yield', implode(' ', $readiness['blockers']));
+
+        try {
+            $this->estimates->markSent($estimate);
+            $this->fail('send must be refused on an invalid recipe yield');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('invalid yield', $e->getMessage());
+        }
     }
 
     /** Order-insensitive list comparison helper. */

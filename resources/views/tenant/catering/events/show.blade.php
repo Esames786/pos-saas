@@ -66,6 +66,35 @@
     <div class="alert alert-danger">{{ $errors->first() }}</div>
 @endif
 
+{{-- CATERING-V1-CLOSURE-1 (§2): costing readiness — send/confirm are refused
+     server-side while hard blockers exist; this panel explains why up front. --}}
+@if($costingReadiness !== null)
+    @if(! $costingReadiness['ready'])
+        <div class="alert alert-danger">
+            <div class="fw-bold mb-1"><i class="ti ti-lock-x me-1"></i>Quotation cannot be sent or confirmed — cost basis incomplete:</div>
+            <ul class="mb-0">
+                @foreach($costingReadiness['blockers'] as $blocker)
+                    <li>{{ $blocker }}</li>
+                @endforeach
+            </ul>
+        </div>
+    @elseif($isDraft)
+        <div class="alert alert-success py-2">
+            <i class="ti ti-shield-check me-1"></i>Costing basis complete — every material has an effective Catering Material Rate.
+        </div>
+    @endif
+    @if($costingReadiness['warnings'] !== [])
+        <div class="alert alert-warning py-2">
+            <div class="fw-bold">Costing notes (do not block sending):</div>
+            <ul class="mb-0">
+                @foreach($costingReadiness['warnings'] as $warning)
+                    <li>{{ $warning }}</li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
+@endif
+
 <div class="row g-3 mb-3">
     <div class="col-lg-6">
         <div class="card h-100">

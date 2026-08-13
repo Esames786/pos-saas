@@ -34,6 +34,66 @@ class CateringRecipeCostingService
         private readonly UnitConversionService $unitConversion,
     ) {}
 
+    /**
+     * CATERING-V1-CLOSURE-1 (§2): explicit costing-readiness verdict. A customer
+     * quotation must never leave the business on a silently incomplete cost, so
+     * SEND/CONFIRM fail closed on any HARD blocker:
+     *
+     *  - missing unit conversion (line- or ingredient-level)
+     *  - invalid recipe yield quantity
+     *  - an ingredient that cannot be priced at all
+     *  - PREFERRED CONTRACT: a recipe ingredient (or directly-quoted material)
+     *    with NO effective Catering Material Rate. default_purchase_price is a
+     *    DRAFT-ONLY fallback for preview display — it is never accepted as the
+     *    commercial rate at send time and is labelled as fallback everywhere.
+     *
+     * Free-text lines (no product) cannot be costed and are reported as soft
+     * warnings: they are a visible business choice on the draft, not a silent
+     * costing hole.
+     *
+     * @return array{ready: bool, blockers: string[], warnings: string[], result: array}
+     */
+    public function readiness(CateringEstimate $estimate, ?string $asOfDate = null): array
+    {
+        $result = $this->calculate($estimate, $asOfDate);
+        $blockers = [];
+        $warnings = [];
+
+        foreach ($result['lines'] as $line) {
+            if ($line['warning'] !== null) {
+                if ($line['method'] === 'none') {
+                    $warnings[] = $line['warning']; // free-text line — visible, not silent
+                } else {
+                    $blockers[] = $line['warning']; // conversion / yield problems on a costed line
+                }
+            }
+
+            foreach ($line['ingredients'] as $ingredient) {
+                if (! empty($ingredient['warning'])) {
+                    $blockers[] = $ingredient['warning'];
+
+                    continue;
+                }
+
+                if (($ingredient['rate_source'] ?? null) === 'purchase_price') {
+                    $blockers[] = "'{$ingredient['name']}' has no effective Catering Material Rate — "
+                        .'the draft preview shows the purchase-price FALLBACK ('
+                        .number_format((float) $ingredient['rate'], 2)
+                        .'), which is not accepted for a customer quotation. Record a rate in the Material Rate Book.';
+                } elseif ((float) ($ingredient['rate'] ?? 0) <= 0) {
+                    $blockers[] = "'{$ingredient['name']}' cannot be priced (zero/absent rate).";
+                }
+            }
+        }
+
+        return [
+            'ready' => $blockers === [],
+            'blockers' => array_values(array_unique($blockers)),
+            'warnings' => array_values(array_unique($warnings)),
+            'result' => $result,
+        ];
+    }
+
     /** Compute the full costing breakdown for an estimate. Pure — persists nothing. */
     public function calculate(CateringEstimate $estimate, ?string $asOfDate = null): array
     {
@@ -128,7 +188,13 @@ class CateringRecipeCostingService
 
         if ($recipe && $recipe->ingredients->isNotEmpty()) {
             // Quote qty → recipe yield unit if both are known and differ.
-            $yieldQty = (float) ($recipe->yield_quantity ?: 1);
+            $yieldQty = (float) $recipe->yield_quantity;
+            if ($yieldQty <= 0) {
+                // CATERING-V1-CLOSURE-1: invalid yield is a HARD readiness blocker —
+                // computed with 1 only so the draft preview shows something.
+                $base['warning'] = "Recipe '{$recipe->name}' has an invalid yield quantity ({$recipe->yield_quantity}); the cost basis is unreliable.";
+                $yieldQty = 1.0;
+            }
             $outputQty = $quantity;
             if ($line->unit && $recipe->yieldUnit && $line->unit->id !== $recipe->yieldUnit->id) {
                 try {

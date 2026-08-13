@@ -109,11 +109,20 @@ class CateringEventController extends Controller
                 'instructions' => $profile->instructions,
             ]]);
 
+        // CATERING-V1-CLOSURE-1 (§2): costing readiness for the current estimate —
+        // send/confirm fail closed server-side; the panel shows why beforehand.
+        $costingReadiness = null;
+        if ($cateringEvent->currentEstimate && $cateringEvent->currentEstimate->lines->isNotEmpty()) {
+            $costingReadiness = app(\App\Services\Catering\CateringRecipeCostingService::class)
+                ->readiness($cateringEvent->currentEstimate);
+        }
+
         return view('tenant.catering.events.show', [
             'event' => $cateringEvent,
             'units' => $units,
             'profileMap' => $profileMap,
             'paymentMethods' => $paymentMethods,
+            'costingReadiness' => $costingReadiness,
         ]);
     }
 
