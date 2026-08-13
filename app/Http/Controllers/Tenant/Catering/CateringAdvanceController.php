@@ -31,10 +31,15 @@ class CateringAdvanceController extends Controller
             'notes' => ['nullable', 'string', 'max:255'],
         ]);
 
-        $advance = CateringAdvance::create($data + [
-            'catering_event_id' => $cateringEvent->id,
-            'recorded_by_user_id' => $request->user()?->id,
-        ]);
+        try {
+            $advance = CateringAdvance::create($data + [
+                'catering_event_id' => $cateringEvent->id,
+                'recorded_by_user_id' => $request->user()?->id,
+            ]);
+        } catch (\RuntimeException $e) {
+            // §4: overpayment / unpriced-estimate refusal from the model guard.
+            return back()->withErrors(['advance' => $e->getMessage()])->withInput();
+        }
 
         $advanceTotal = (float) $cateringEvent->advances()->sum('amount');
 

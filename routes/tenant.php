@@ -840,9 +840,15 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
 
                 Route::post('/catering/events/{cateringEvent}/production-releases', [\App\Http\Controllers\Tenant\Catering\CateringProductionReleaseController::class, 'store'])->name('tenant.catering.production-releases.store');
                 Route::get('/catering/production-releases/{cateringProductionRelease}', [\App\Http\Controllers\Tenant\Catering\CateringProductionReleaseController::class, 'show'])->name('tenant.catering.production-releases.show');
+                Route::post('/catering/production-releases/{cateringProductionRelease}/print', [\App\Http\Controllers\Tenant\Catering\CateringProductionReleaseController::class, 'print'])->name('tenant.catering.production-releases.print');
+                Route::post('/catering/production-releases/{cateringProductionRelease}/reprint', [\App\Http\Controllers\Tenant\Catering\CateringProductionReleaseController::class, 'reprint'])->name('tenant.catering.production-releases.reprint');
+
+                Route::post('/catering/events/{cateringEvent}/final-invoice', [\App\Http\Controllers\Tenant\Catering\CateringFinalInvoiceController::class, 'store'])->name('tenant.catering.final-invoices.store');
+                Route::post('/catering/events/{cateringEvent}/close', [\App\Http\Controllers\Tenant\Catering\CateringFinalInvoiceController::class, 'close'])->name('tenant.catering.events.close');
 
                 Route::get('/catering/documents/estimate/{cateringEstimate}', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'estimate'])->name('tenant.catering.documents.estimate');
                 Route::get('/catering/documents/kitchen-sheet/{cateringProductionRelease}', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'kitchenSheet'])->name('tenant.catering.documents.kitchen-sheet');
+                Route::get('/catering/documents/final-invoice/{cateringFinalInvoice}', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'finalInvoice'])->name('tenant.catering.documents.final-invoice');
 
                 Route::get('/catering/printer-mappings', [\App\Http\Controllers\Tenant\Catering\CateringPrinterMappingController::class, 'index'])->name('tenant.catering.printer-mappings.index');
                 Route::post('/catering/printer-mappings', [\App\Http\Controllers\Tenant\Catering\CateringPrinterMappingController::class, 'store'])->name('tenant.catering.printer-mappings.store');

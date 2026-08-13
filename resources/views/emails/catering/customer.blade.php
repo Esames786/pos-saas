@@ -26,6 +26,9 @@
             @case('event_reminder')
                 <p>A friendly reminder about your upcoming event.</p>
                 @break
+            @case('final_invoice')
+                <p>Thank you for celebrating with us. Your final invoice <strong>{{ $context['invoice_no'] ?? '' }}</strong> is summarised below.</p>
+                @break
         @endswitch
 
         <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">

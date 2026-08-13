@@ -421,6 +421,67 @@
     </div>
 </div>
 
+{{-- ── Billing & closure (CATERING-V1-CLOSURE-1 §5) ─────────────────── --}}
+@php $invoice = $event->finalInvoice; $liveBalance = $invoice ? round($invoice->grand_total - $advanceTotal, 2) : null; @endphp
+<div class="card mb-3">
+    <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <h5 class="mb-0">Billing &amp; Closure</h5>
+        <div class="d-flex gap-2">
+            @if(! $invoice && $current && ! $current->isDraft() && in_array($event->status, ['confirmed', 'production_ready', 'released']))
+                @can('tenant.catering.final-invoices.store')
+                    <form method="POST" action="{{ url('/catering/events/' . $event->id . '/final-invoice') }}">
+                        @csrf
+                        <button class="btn btn-sm btn-primary"
+                                onclick="return confirm('Issue the final invoice for {{ $event->event_no }}? Totals and advances freeze into an immutable document.')">
+                            Issue Final Invoice
+                        </button>
+                    </form>
+                @endcan
+            @endif
+            @if($invoice)
+                @can('tenant.catering.documents.final-invoice')
+                    <div class="btn-group">
+                        <a target="_blank" href="{{ url('/catering/documents/final-invoice/' . $invoice->id . '?lang=en') }}" class="btn btn-sm btn-outline-secondary"><i class="ti ti-printer me-1"></i>A4 Invoice</a>
+                        <a target="_blank" href="{{ url('/catering/documents/final-invoice/' . $invoice->id . '?lang=ur') }}" class="btn btn-sm btn-outline-secondary">اردو</a>
+                        <a target="_blank" href="{{ url('/catering/documents/final-invoice/' . $invoice->id . '?lang=both') }}" class="btn btn-sm btn-outline-secondary">Both</a>
+                    </div>
+                @endcan
+                @if($event->status === 'completed')
+                    @can('tenant.catering.events.close')
+                        <form method="POST" action="{{ url('/catering/events/' . $event->id . '/close') }}">
+                            @csrf
+                            <button class="btn btn-sm btn-dark" {{ $liveBalance > 0 ? 'disabled title=Outstanding-balance-blocks-closure' : '' }}
+                                    onclick="return confirm('Close event {{ $event->event_no }}?')">
+                                Close Event
+                            </button>
+                        </form>
+                    @endcan
+                @endif
+            @endif
+        </div>
+    </div>
+    <div class="card-body">
+        @if($invoice)
+            <div class="row">
+                <dt class="col-3 text-muted">Invoice</dt><dd class="col-9">{{ $invoice->invoice_no }} · issued {{ $invoice->issued_at->format('d M Y g:i A') }} <i class="ti ti-lock" title="Immutable"></i></dd>
+                <dt class="col-3 text-muted">Net Total</dt><dd class="col-9">{{ number_format($invoice->grand_total, 2) }}</dd>
+                <dt class="col-3 text-muted">Advances</dt><dd class="col-9">{{ number_format($advanceTotal, 2) }}</dd>
+                <dt class="col-3 text-muted">Balance</dt>
+                <dd class="col-9 fw-bold {{ $liveBalance > 0 ? 'text-danger' : 'text-success' }}">
+                    {{ number_format(max($liveBalance, 0), 2) }}
+                    @if($liveBalance > 0)
+                        <span class="fs-12 fw-normal text-muted">— record the final payment as an advance to enable closure.</span>
+                    @else
+                        <span class="badge bg-success">Fully settled</span>
+                    @endif
+                </dd>
+            </div>
+        @else
+            <div class="text-muted">No final invoice yet. Available once the booking is confirmed (V1 posts no accounting entries — settlement is operational).</div>
+        @endif
+    </div>
+</div>
+
 @if(! $event->isCancelled())
 @can('tenant.catering.advances.store')
 <div class="modal fade" id="advanceModal" tabindex="-1">

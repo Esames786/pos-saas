@@ -45,6 +45,19 @@ class CateringDocumentController extends Controller
         ]);
     }
 
+    /** CATERING-V1-CLOSURE-1 (§5): A4 final invoice from the immutable snapshot. */
+    public function finalInvoice(Request $request, \App\Models\Tenant\CateringFinalInvoice $cateringFinalInvoice)
+    {
+        $cateringFinalInvoice->load('event');
+        $lang = $this->language($request);
+
+        return view('tenant.catering.documents.final-invoice', [
+            'invoice' => $cateringFinalInvoice,
+            'lang' => $lang,
+            'businessName' => $this->businessName(),
+        ]);
+    }
+
     private function language(Request $request): string
     {
         $lang = $request->input('lang');

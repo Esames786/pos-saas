@@ -43,7 +43,7 @@ class CateringCostingMySqlTest extends MySqlTenantTestCase
 
         $this->cleanTenant([
             'catering_email_logs', 'catering_event_reminders', 'catering_production_release_lines',
-            'catering_production_releases', 'catering_advances', 'catering_cost_snapshots',
+            'catering_production_releases', 'catering_final_invoices', 'catering_advances', 'catering_cost_snapshots',
             'catering_estimate_lines', 'catering_estimates', 'catering_events',
             'catering_material_rates', 'catering_product_profiles', 'catering_settings',
             'recipe_ingredients', 'recipes', 'unit_conversions', 'units',
@@ -286,6 +286,56 @@ class CateringCostingMySqlTest extends MySqlTenantTestCase
 
         // Read-only planning: no stock rows were created or modified.
         $this->assertSame(0, (int) $this->tenant()->table('stock_ledgers')->count());
+    }
+
+    // ── CATERING-V1-CLOSURE-1 (§3): agreed events stay visible, never mutated ──
+
+    public function test_rate_impact_lists_agreed_events_read_only_and_revision_reenters_drafts(): void
+    {
+        CateringMaterialRate::create([
+            'product_id' => $this->chickenId, 'rate' => 720, 'unit_id' => $this->kgUnitId,
+            'effective_from' => now()->subDays(30)->toDateString(),
+        ]);
+        CateringMaterialRate::create([
+            'product_id' => $this->riceId, 'rate' => 300, 'unit_id' => $this->kgUnitId,
+            'effective_from' => now()->subDays(30)->toDateString(),
+        ]);
+
+        $agreed = $this->draftEstimateWithBiryani(100);
+        $this->costing->snapshot($agreed);
+        $this->estimates->markSent($agreed->refresh());
+        $this->estimates->markAccepted($agreed->refresh());
+
+        CateringMaterialRate::create([
+            'product_id' => $this->chickenId, 'rate' => 800, 'unit_id' => $this->kgUnitId,
+            'effective_from' => now()->toDateString(),
+        ]);
+
+        $impact = app(CateringRateImpactService::class);
+
+        // Owner keeps visibility: the accepted estimate appears in the AGREED group…
+        $agreedRows = $impact->agreedImpactForProduct($this->chickenId);
+        $this->assertCount(1, $agreedRows);
+        $row = $agreedRows->first();
+        $this->assertSame($agreed->id, $row['estimate']->id);
+        $this->assertEqualsWithDelta(30000.0, $row['old_cost'], 0.01, 'cost basis at agreement time');
+        $this->assertEqualsWithDelta(32000.0, $row['new_cost'], 0.01, 'recomputed at the new rate');
+
+        // …but never in the actionable draft group, and bulk repricing skips it.
+        $this->assertCount(0, $impact->impactForProduct($this->chickenId));
+        $this->assertSame(0, $impact->applyToDrafts([$agreed->id]),
+            'agreed documents are never silently repriced');
+        $this->assertSame('30000.00', (string) $agreed->refresh()->estimated_material_cost);
+
+        // The sanctioned path: Create Revision → new DRAFT appears in the actionable group.
+        $revision = $this->estimates->revise($agreed->refresh());
+        $draftRows = $impact->impactForProduct($this->chickenId);
+        $this->assertCount(1, $draftRows);
+        $this->assertSame($revision->id, $draftRows->first()['estimate']->id);
+        $this->assertSame(1, $impact->applyToDrafts([$revision->id]));
+        $this->assertSame('32000.00', (string) $revision->refresh()->estimated_material_cost);
+        $this->assertSame('30000.00', (string) $agreed->refresh()->estimated_material_cost,
+            'superseded agreed version keeps its historical cost basis');
     }
 
     // ── CATERING-V1-CLOSURE-1 (§2): costing readiness fails closed ────────────

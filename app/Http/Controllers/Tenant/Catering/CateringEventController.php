@@ -90,6 +90,7 @@ class CateringEventController extends Controller
             'currentEstimate.lines.product.cateringProfile',
             'advances.paymentMethod',
             'productionReleases',
+            'finalInvoice',
         ]);
 
         $paymentMethods = \App\Models\Tenant\PaymentMethod::where('is_active', true)->orderBy('name')->get(['id', 'name']);

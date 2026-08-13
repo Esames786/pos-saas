@@ -109,12 +109,79 @@
         </div>
     </div>
 </form>
+
+{{-- ── CATERING-V1-CLOSURE-1 (§3): agreed/confirmed events — READ-ONLY ───────
+     Sent/accepted quotations are never auto-repriced. The owner keeps full
+     visibility of the margin impact and chooses: keep the agreed selling
+     price (no change of any kind) or create a revision (a new draft). --}}
+<div class="card mt-3">
+    <div class="card-header">
+        <h5 class="mb-0">Agreed / Confirmed Events — {{ $product->name }} <span class="badge bg-secondary">Read-only</span></h5>
+        <div class="text-muted fs-12">These quotations are locked. Choose “Keep Agreed Price” (nothing changes) or create a revised quote as a new draft version.</div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Estimate</th>
+                        <th>Customer</th>
+                        <th>Event Date</th>
+                        <th>Status</th>
+                        <th class="text-end">Agreed Total</th>
+                        <th class="text-end">Cost at Agreement</th>
+                        <th class="text-end">New Est. Cost</th>
+                        <th class="text-end">Margin Δ</th>
+                        <th class="text-end">New Margin</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse($agreedRows as $row)
+                    <tr id="agreed-row-{{ $row['estimate']->id }}">
+                        <td><a href="{{ url('/catering/events/' . $row['event']->id) }}">{{ $row['event']->event_no }} / Q{{ $row['estimate']->version_no }}</a></td>
+                        <td>{{ $row['event']->customer_name }}</td>
+                        <td>{{ $row['event']->event_date->format('d M Y') }}</td>
+                        <td><span class="badge bg-{{ $row['estimate']->status === 'accepted' ? 'success' : 'info' }}">{{ ucfirst($row['estimate']->status) }}</span></td>
+                        <td class="text-end">{{ number_format($row['revenue'], 2) }}</td>
+                        <td class="text-end">{{ $row['old_cost'] !== null ? number_format($row['old_cost'], 2) : '—' }}</td>
+                        <td class="text-end fw-bold">{{ number_format($row['new_cost'], 2) }}</td>
+                        <td class="text-end {{ ($row['old_margin'] !== null && $row['new_margin'] < $row['old_margin']) ? 'text-danger' : 'text-success' }}">
+                            {{ $row['old_margin'] !== null ? number_format($row['new_margin'] - $row['old_margin'], 2) : '—' }}
+                        </td>
+                        <td class="text-end {{ $row['new_margin'] < 0 ? 'text-danger fw-bold' : '' }}">{{ number_format($row['new_margin'], 2) }}</td>
+                        <td class="text-end text-nowrap">
+                            <button type="button" class="btn btn-sm btn-light keep-agreed" data-row="{{ $row['estimate']->id }}"
+                                    title="No change of any kind — the agreed quote stands.">Keep Agreed Price</button>
+                            @can('tenant.catering.estimates.revise')
+                                <form method="POST" action="{{ url('/catering/estimates/' . $row['estimate']->id . '/revise') }}" class="d-inline">
+                                    @csrf
+                                    <button class="btn btn-sm btn-outline-primary"
+                                            onclick="return confirm('Create revision Q{{ $row['estimate']->version_no + 1 }} as a new draft for {{ $row['event']->event_no }}? The agreed version stays untouched.')">
+                                        Create Revision
+                                    </button>
+                                </form>
+                            @endcan
+                        </td>
+                    </tr>
+                    @empty
+                    <tr><td colspan="10" class="text-center text-muted py-4">No agreed/confirmed future events consume this material.</td></tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
 @endif
 @endsection
 
 @push('scripts')
 <script>
 $(function () {
+    // "Keep Agreed Price" performs NO server mutation — it only tidies the review list.
+    $(document).on('click', '.keep-agreed', function () {
+        $('#agreed-row-' + $(this).data('row')).fadeOut(200);
+    });
     $('#impact-product').select2({
         width: '100%',
         placeholder: 'Search materials…',

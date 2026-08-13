@@ -36,7 +36,7 @@ class CateringEstimateLifecycleMySqlTest extends MySqlTenantTestCase
 
         $this->cleanTenant([
             'catering_email_logs', 'catering_event_reminders', 'catering_production_release_lines',
-            'catering_production_releases', 'catering_advances', 'catering_cost_snapshots',
+            'catering_production_releases', 'catering_final_invoices', 'catering_advances', 'catering_cost_snapshots',
             'catering_estimate_lines', 'catering_estimates', 'catering_events',
             'catering_material_rates', 'catering_printer_mappings', 'catering_product_profiles',
             'catering_settings', 'customer_translations', 'supplier_translations',
@@ -209,6 +209,9 @@ class CateringEstimateLifecycleMySqlTest extends MySqlTenantTestCase
     public function test_advance_records_are_operational_only_no_finance_rows(): void
     {
         $event = $this->service->createEvent($this->eventData());
+        $this->service->saveDraftLines($event->currentEstimate, [
+            ['item_name' => 'Buffet', 'quantity' => 100, 'rate' => 500], // grand 50,000
+        ]);
 
         \App\Models\Tenant\CateringAdvance::create([
             'catering_event_id' => $event->id,
@@ -219,6 +222,148 @@ class CateringEstimateLifecycleMySqlTest extends MySqlTenantTestCase
         foreach (['journal_entries', 'journal_lines', 'cash_bank_account_transactions', 'sale_payments', 'customer_payments'] as $table) {
             $this->assertSame(0, (int) $this->tenant()->table($table)->count(),
                 "V1 advances must write ZERO rows to {$table}");
+        }
+    }
+
+    /** CATERING-V1-CLOSURE-1 (§4): no customer-credit authority in V1 — overpayment refused. */
+    public function test_advances_can_reach_but_never_exceed_the_outstanding_balance(): void
+    {
+        $event = $this->service->createEvent($this->eventData());
+        $this->service->saveDraftLines($event->currentEstimate, [
+            ['item_name' => 'Buffet', 'quantity' => 100, 'rate' => 685], // grand 68,500
+        ]);
+
+        $advance = fn (float $amount) => \App\Models\Tenant\CateringAdvance::create([
+            'catering_event_id' => $event->id,
+            'amount' => $amount,
+            'received_date' => now()->toDateString(),
+        ]);
+
+        // advance > balance → refused outright.
+        try {
+            $advance(100000);
+            $this->fail('an advance above the outstanding balance must be refused');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('exceeds the outstanding balance', $e->getMessage());
+        }
+        $this->assertSame(0, (int) $this->tenant()->table('catering_advances')->count());
+
+        // advance < balance → allowed; then a second advance overpaying cumulatively → refused.
+        $advance(30000);
+        try {
+            $advance(40000); // 30,000 + 40,000 = 70,000 > 68,500
+            $this->fail('cumulative overpayment must be refused');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('exceeds the outstanding balance', $e->getMessage());
+            $this->assertStringContainsString('38,500', $e->getMessage(), 'refusal states the true outstanding amount');
+        }
+
+        // advance == remaining balance exactly → allowed; balance closes at zero.
+        $advance(38500);
+        $this->assertSame('68500.00', (string) $this->tenant()->table('catering_advances')->sum('amount'));
+
+        // and now even 1 more unit is refused.
+        try {
+            $advance(1);
+            $this->fail('any advance on a fully-paid event must be refused');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('exceeds the outstanding balance', $e->getMessage());
+        }
+    }
+
+    /** CATERING-V1-CLOSURE-1 (§5): final invoice freezes the bill; closure needs zero balance. */
+    public function test_final_invoice_and_closure_lifecycle(): void
+    {
+        Mail::fake();
+        $categoryId = $this->makeCategory();
+        $productId = $this->makeProduct($categoryId, ['default_purchase_price' => 400]);
+        $this->tenant()->table('catering_material_rates')->insert([
+            'product_id' => $productId, 'rate' => 400, 'effective_from' => now()->subDay()->toDateString(),
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $event = $this->service->createEvent($this->eventData());
+        $estimate = $event->currentEstimate;
+        $this->service->saveDraftLines($estimate, [
+            ['product_id' => $productId, 'item_name' => 'Chicken Biryani', 'item_name_ur' => 'چکن بریانی', 'quantity' => 100, 'rate' => 685],
+        ]); // grand 68,500
+        $this->service->markSent($estimate->refresh());
+        $this->service->markAccepted($estimate->refresh());
+        $this->service->confirmEvent($event->refresh());
+
+        \App\Models\Tenant\CateringAdvance::create([
+            'catering_event_id' => $event->id, 'amount' => 30000, 'received_date' => now()->toDateString(),
+        ]);
+
+        $invoices = app(\App\Services\Catering\CateringFinalInvoiceService::class);
+
+        $invoice = $invoices->issue($event->refresh());
+
+        $this->assertMatchesRegularExpression('/^CI-\d{8}-0001$/', $invoice->invoice_no);
+        $this->assertNotEmpty($invoice->invoice_uuid);
+        $this->assertSame('68500.00', (string) $invoice->grand_total);
+        $this->assertSame('30000.00', (string) $invoice->advance_total);
+        $this->assertSame('38500.00', (string) $invoice->balance_due);
+        $this->assertSame('چکن بریانی', $invoice->snapshot['lines'][0]['item_name_ur'], 'snapshot carries Urdu names');
+        $this->assertSame(CateringEvent::STATUS_COMPLETED, $event->refresh()->status);
+
+        // Immutable document.
+        try {
+            $invoice->update(['grand_total' => 1]);
+            $this->fail('a final invoice must be immutable');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('immutable', $e->getMessage());
+        }
+
+        // Second invoice refused.
+        try {
+            $invoices->issue($event->refresh());
+            $this->fail('an event cannot be invoiced twice');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('already has a final invoice', $e->getMessage());
+        }
+
+        // Outstanding balance blocks closure.
+        try {
+            $invoices->close($event->refresh());
+            $this->fail('closure must be refused while a balance is outstanding');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('outstanding balance of 38,500.00', $e->getMessage());
+        }
+
+        // Settle the exact remainder via the §4 advance flow → closure succeeds.
+        \App\Models\Tenant\CateringAdvance::create([
+            'catering_event_id' => $event->id, 'amount' => 38500, 'received_date' => now()->toDateString(),
+        ]);
+        $invoices->close($event->refresh());
+        $this->assertSame(CateringEvent::STATUS_CLOSED, $event->refresh()->status);
+        $this->assertNotNull($event->closed_at);
+
+        // The whole billing/closure flow stayed off sales/stock/GL.
+        foreach (['sales_orders', 'stock_ledgers', 'journal_entries', 'journal_lines', 'cash_bank_account_transactions'] as $table) {
+            $this->assertSame(0, (int) $this->tenant()->table($table)->count(),
+                "final invoice + closure must write ZERO rows to {$table} in V1");
+        }
+
+        // Final-invoice email claimed idempotently.
+        Mail::assertSent(\App\Mail\Catering\CateringCustomerMail::class, 1);
+        $this->assertSame(1, (int) $this->tenant()->table('catering_email_logs')->where('email_type', 'final_invoice')->count());
+    }
+
+    /** §4: an event with no priced estimate cannot take advances at all. */
+    public function test_advance_requires_a_priced_estimate(): void
+    {
+        $event = $this->service->createEvent($this->eventData());
+
+        try {
+            \App\Models\Tenant\CateringAdvance::create([
+                'catering_event_id' => $event->id,
+                'amount' => 1000,
+                'received_date' => now()->toDateString(),
+            ]);
+            $this->fail('advance against an unpriced estimate must be refused');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('priced estimate', $e->getMessage());
         }
     }
 

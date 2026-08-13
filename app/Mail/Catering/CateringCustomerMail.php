@@ -30,6 +30,8 @@ class CateringCustomerMail extends Mailable
 
     public const TYPE_EVENT_REMINDER = 'event_reminder';
 
+    public const TYPE_FINAL_INVOICE = 'final_invoice';
+
     public function __construct(
         public string $emailType,
         public string $businessName,
@@ -46,6 +48,7 @@ class CateringCustomerMail extends Mailable
             self::TYPE_QUOTATION_REVISED => "Revised Quotation — {$this->event->event_no}",
             self::TYPE_ADVANCE_RECEIVED => "Advance Received — {$this->event->event_no}",
             self::TYPE_EVENT_REMINDER => "Upcoming Event Reminder — {$this->event->event_no}",
+            self::TYPE_FINAL_INVOICE => 'Final Invoice '.($this->context['invoice_no'] ?? '')." — {$this->event->event_no}",
             default => "Catering Update — {$this->event->event_no}",
         };
 

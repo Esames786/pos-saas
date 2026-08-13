@@ -23,8 +23,10 @@ class CateringRateImpactController extends Controller
         $product = $productId ? Product::with('unit')->find($productId) : null;
         $currentRate = $product ? CateringMaterialRate::effectiveFor($product->id) : null;
         $rows = $product ? $this->impact->impactForProduct($product->id) : collect();
+        // §3: agreed/confirmed visibility — read-only, never auto-repriced.
+        $agreedRows = $product ? $this->impact->agreedImpactForProduct($product->id) : collect();
 
-        return view('tenant.catering.rate-impact.index', compact('product', 'currentRate', 'rows'));
+        return view('tenant.catering.rate-impact.index', compact('product', 'currentRate', 'rows', 'agreedRows'));
     }
 
     public function apply(Request $request)

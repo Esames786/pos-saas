@@ -119,6 +119,11 @@ class CateringEvent extends Model
         return $this->hasMany(CateringProductionRelease::class);
     }
 
+    public function finalInvoice()
+    {
+        return $this->hasOne(CateringFinalInvoice::class);
+    }
+
     public function isOpen(): bool
     {
         return in_array($this->status, self::OPEN_STATUSES, true);

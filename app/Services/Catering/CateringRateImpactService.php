@@ -28,6 +28,26 @@ class CateringRateImpactService
      */
     public function impactForProduct(int $productId): Collection
     {
+        return $this->impactRows($productId, [CateringEstimate::STATUS_DRAFT]);
+    }
+
+    /**
+     * CATERING-V1-CLOSURE-1 (§3): AGREED visibility — sent/accepted estimates of
+     * open future events that consume the material. STRICTLY READ-ONLY: the owner
+     * sees old cost vs new estimated cost and the margin delta, and may either
+     * keep the agreed selling price (no mutation of any kind) or create a
+     * revision (a NEW draft version via the normal revise flow). The agreed
+     * document itself is never repriced — applyToDrafts() filters to drafts and
+     * the model immutability guard backs that up.
+     */
+    public function agreedImpactForProduct(int $productId): Collection
+    {
+        return $this->impactRows($productId, [CateringEstimate::STATUS_SENT, CateringEstimate::STATUS_ACCEPTED]);
+    }
+
+    /** @param string[] $statuses */
+    private function impactRows(int $productId, array $statuses): Collection
+    {
         // Products whose ACTIVE recipe consumes this material.
         $consumingProductIds = Recipe::query()
             ->where('is_active', true)
@@ -36,7 +56,7 @@ class CateringRateImpactService
 
         $affected = CateringEstimate::query()
             ->with(['event', 'lines'])
-            ->where('status', CateringEstimate::STATUS_DRAFT)
+            ->whereIn('status', $statuses)
             ->whereHas('lines', fn ($q) => $q
                 ->whereIn('product_id', $consumingProductIds->push($productId)->unique()->all()))
             ->whereHas('event', fn ($q) => $q->whereNotIn('status', ['cancelled', 'closed', 'completed']))

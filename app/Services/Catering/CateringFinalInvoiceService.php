@@ -1,0 +1,141 @@
+<?php
+
+namespace App\Services\Catering;
+
+use App\Models\Tenant\CateringEvent;
+use App\Models\Tenant\CateringFinalInvoice;
+use Illuminate\Support\Facades\DB;
+use RuntimeException;
+
+/**
+ * CATERING-V1-CLOSURE-1 (§5): final invoice + event closure lifecycle.
+ *
+ * The final invoice freezes the agreed estimate's commercial figures plus the
+ * advance position into an immutable document. Settlement in V1 stays
+ * OPERATIONAL: the remaining balance is received through the §4 advance flow
+ * (capped at the outstanding amount), and the event can only CLOSE when the
+ * live balance reaches zero — no override exists until an authorized business
+ * rule says otherwise.
+ *
+ * FINANCE STOP (reported, not built): posting advances/final settlement to
+ * the GL needs a customer-advance liability account and a catering revenue
+ * mapping on the chart of accounts — a finance design that must land as
+ * JournalPostingService translator methods. No journal tables are written
+ * here and no homemade ledger exists.
+ */
+class CateringFinalInvoiceService
+{
+    public function __construct(
+        private readonly CateringNumberService $numbers,
+        private readonly CateringMailService $mail,
+    ) {}
+
+    public function issue(CateringEvent $event, ?int $userId = null): CateringFinalInvoice
+    {
+        $estimate = $event->currentEstimate;
+        if (! $estimate || $estimate->isDraft()) {
+            throw new RuntimeException('A final invoice needs a sent/accepted estimate — drafts cannot be invoiced.');
+        }
+        if ($event->finalInvoice()->exists()) {
+            throw new RuntimeException("Event {$event->event_no} already has a final invoice.");
+        }
+        if (! in_array($event->status, [
+            CateringEvent::STATUS_CONFIRMED,
+            CateringEvent::STATUS_PRODUCTION_READY,
+            CateringEvent::STATUS_RELEASED,
+        ], true)) {
+            throw new RuntimeException("Event {$event->event_no} ({$event->status}) cannot be invoiced — confirm the booking first.");
+        }
+
+        $invoice = DB::connection('tenant')->transaction(function () use ($event, $estimate, $userId) {
+            $advances = $event->advances()->orderBy('received_date')->get();
+            $advanceTotal = round((float) $advances->sum('amount'), 2);
+            $balanceDue = round((float) $estimate->grand_total - $advanceTotal, 2);
+
+            return CateringFinalInvoice::create([
+                'invoice_no' => $this->numbers->nextFinalInvoiceNo(),
+                'catering_event_id' => $event->id,
+                'catering_estimate_id' => $estimate->id,
+                'snapshot' => [
+                    'event_no' => $event->event_no,
+                    'estimate_version' => $estimate->version_no,
+                    'customer_name' => $event->customer_name,
+                    'customer_name_ur' => $event->customer_name_ur,
+                    'customer_phone' => $event->customer_phone,
+                    'customer_address' => $event->customer_address,
+                    'event_type' => $event->event_type,
+                    'event_date' => $event->event_date->toDateString(),
+                    'service_time' => $event->service_time,
+                    'venue' => $event->venue,
+                    'pax' => $event->pax,
+                    'lines' => $estimate->lines->map(fn ($line) => [
+                        'item_name' => $line->item_name,
+                        'item_name_ur' => $line->item_name_ur,
+                        'quantity' => (float) $line->quantity,
+                        'unit_code' => $line->unit_code,
+                        'rate' => (float) $line->rate,
+                        'amount' => (float) $line->amount,
+                        'instructions' => $line->instructions,
+                    ])->values()->all(),
+                    'advances' => $advances->map(fn ($advance) => [
+                        'received_date' => $advance->received_date->toDateString(),
+                        'amount' => (float) $advance->amount,
+                        'reference' => $advance->reference,
+                    ])->values()->all(),
+                ],
+                'subtotal' => $estimate->subtotal,
+                'service_charge_amount' => $estimate->service_charge_amount,
+                'other_charge_label' => $estimate->other_charge_label,
+                'other_charge_amount' => $estimate->other_charge_amount,
+                'discount_amount' => $estimate->discount_amount,
+                'tax_amount' => $estimate->tax_amount,
+                'grand_total' => $estimate->grand_total,
+                'advance_total' => $advanceTotal,
+                'balance_due' => max($balanceDue, 0),
+                'status' => CateringFinalInvoice::STATUS_ISSUED,
+                'issued_at' => now(),
+                'issued_by_user_id' => $userId,
+            ]);
+        });
+
+        // Event day is billed → the event is operationally complete.
+        $event->forceFill(['status' => CateringEvent::STATUS_COMPLETED])->save();
+
+        $this->mail->send(
+            \App\Mail\Catering\CateringCustomerMail::TYPE_FINAL_INVOICE,
+            $event->refresh(),
+            $estimate,
+            ['advance_total' => (float) $invoice->advance_total, 'invoice_no' => $invoice->invoice_no],
+            'invoice-'.$invoice->id,
+        );
+
+        return $invoice;
+    }
+
+    /**
+     * Close the event. HARD RULE: an unresolved final balance blocks closure —
+     * the remaining amount must first be received via the §4 advance flow.
+     */
+    public function close(CateringEvent $event): CateringEvent
+    {
+        $invoice = $event->finalInvoice()->first();
+        if (! $invoice) {
+            throw new RuntimeException("Event {$event->event_no} has no final invoice — issue it before closing.");
+        }
+        if ($event->status !== CateringEvent::STATUS_COMPLETED) {
+            throw new RuntimeException("Event {$event->event_no} ({$event->status}) is not in a closable state.");
+        }
+
+        $liveBalance = round((float) $invoice->grand_total - (float) $event->advances()->sum('amount'), 2);
+        if ($liveBalance > 0) {
+            throw new RuntimeException(
+                "Event {$event->event_no} still has an outstanding balance of ".number_format($liveBalance, 2)
+                .' — record the final payment before closing.'
+            );
+        }
+
+        $event->forceFill(['status' => CateringEvent::STATUS_CLOSED, 'closed_at' => now()])->save();
+
+        return $event;
+    }
+}
