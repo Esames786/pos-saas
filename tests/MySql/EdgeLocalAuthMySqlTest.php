@@ -30,7 +30,7 @@ use RuntimeException;
  */
 class EdgeLocalAuthMySqlTest extends MySqlTenantTestCase
 {
-    private string $edgeDb = 'pos_test_edge_local';
+    private string $edgeDb;
     private array $package;
     private int $branchId;
     private int $branchBId;
@@ -42,6 +42,8 @@ class EdgeLocalAuthMySqlTest extends MySqlTenantTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // PLATFORM TEST-ISOLATION: env-driven per-worktree Edge-local DB (never a shared literal).
+        $this->edgeDb = \Tests\MySql\Support\EdgeTestDatabases::local();
         config(['app.role' => 'branch_server']);
 
         $this->keys = EdgeEnrollmentCrypto::generateKeypair();
