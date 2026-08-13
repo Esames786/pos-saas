@@ -15,7 +15,14 @@ use PDO;
  */
 class EdgeLocalDbInitMySqlTest extends MySqlTenantTestCase
 {
-    private string $edgeDb = 'pos_test_edge_local';
+    private string $edgeDb;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // PLATFORM TEST-ISOLATION: env-driven per-worktree Edge-local DB (never a shared literal).
+        $this->edgeDb = \Tests\MySql\Support\EdgeTestDatabases::local();
+    }
 
     private function dropEdgeDb(): void
     {
