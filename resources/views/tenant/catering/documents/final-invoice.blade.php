@@ -154,7 +154,7 @@
 <div class="adv">
     <strong>{{ $t('Advance history', 'ایڈوانس کی تفصیل') }}:</strong>
     @foreach($s['advances'] as $advance)
-        {{ \Carbon\Carbon::parse($advance['received_date'])->format('d M') }} — {{ number_format($advance['amount'], 2) }}@if(!empty($advance['reference'])) ({{ $advance['reference'] }})@endif@if(!$loop->last), @endif
+        {{ \Carbon\Carbon::parse($advance['received_date'])->format('d M') }} — {{ number_format($advance['amount'], 2) }}@if(!empty($advance['reference'])) ({{ $advance['reference'] }}) @endif @if(!$loop->last), @endif
     @endforeach
 </div>
 @endif

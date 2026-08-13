@@ -1,5 +1,46 @@
 # Catering & Events V1 — Implementation Checkpoint (2026-08-13)
 
+> **CATERING-V1-CLOSURE-1 addendum (same day).** Client-readiness closure on top
+> of the frozen V1 architecture — nothing below was redesigned:
+>
+> - **Costing readiness fails closed (§2).** `CateringRecipeCostingService::readiness()`
+>   verdicts every estimate; SEND/CONFIRM refuse on missing conversions, invalid
+>   yields, unpriceable ingredients, or (preferred contract) any material without
+>   an effective Catering Material Rate. `default_purchase_price` is a labelled
+>   DRAFT-ONLY fallback, never the commercial rate. Free-text lines = visible
+>   soft warnings.
+> - **Agreed visibility (§3).** Rate Impact shows a read-only Agreed/Confirmed
+>   group (old cost vs new cost, margin delta, date, customer, version) with
+>   Keep-Agreed-Price (no mutation) or Create-Revision; automatic repricing
+>   stays draft-only.
+> - **Advance contract (§4).** No customer-credit authority in V1 ⇒ cumulative
+>   advances may reach but never exceed the outstanding balance; refused at the
+>   model layer; unpriced estimates take no advances.
+> - **Final invoice + closure (§5).** `catering_final_invoices` — immutable
+>   snapshot (unique per event, `CI-Ymd-####`), A4 EN/UR/bilingual document,
+>   idempotent email; event completes on issue and closes only at zero balance.
+>   **FINANCE STOP:** GL posting for advances/settlement needs a customer-advance
+>   liability + catering revenue account design via JournalPostingService
+>   translator methods — deliberately not built (no journal writes anywhere).
+> - **Production printing (§6/§7).** `CateringProductionPrintService` queues one
+>   idempotent job per mapped printer through the existing print_jobs/LAN-agent
+>   transport as document type `catering_production` (never a POS KOT); durable
+>   logical keys, controlled reprint copies, price-free frozen payloads; POS
+>   routing untouched byte-for-byte. English thermal only — Urdu thermal is NOT
+>   claimed (raster pipeline + physical certification pending); Urdu remains on
+>   A4.
+> - **Multi-tenant reminders (§8)** proven across two real tenant DBs
+>   (entitlement-gated, isolated, deactivate-in-finally, idempotent rerun).
+> - **Friendly permissions (§9).** `PermissionCatalogService::CATERING_FEATURES`
+>   groups the 36 route permissions into 11 business actions — presentation
+>   only; enforcement unchanged.
+> - **Platform non-regression (§10)** proven: with zero catering rows,
+>   Product/Customer/Supplier CRUD, inventory posting (FEFO + moving average),
+>   paid-sale GL posting, and POS KOT routing behave identically.
+> - Demo tenant closed the full loop: EV-20260813-0001 → CI-20260813-0001
+>   (68,500; advance 30,000; settlement 38,500; closed), 2 station print jobs
+>   queued idempotently, overpayment refused live.
+
 Branch `feat/catering-events-v1` (BINGOO-CATERING-PREFLIGHT-1 + slices 1–3).
 Architecture record: `docs/audits/catering-preflight-2026-08-13.md`. NOT deployed.
 
