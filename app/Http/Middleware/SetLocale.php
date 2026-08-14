@@ -11,7 +11,8 @@ class SetLocale
     {
         $locale = session('locale', 'en');
 
-        if (!in_array($locale, ['en', 'ar'])) {
+        // CATERING-SLICE-1: 'ur' added — config/saas.php has always declared en,ur.
+        if (! in_array($locale, ['en', 'ar', 'ur'])) {
             $locale = 'en';
         }
 

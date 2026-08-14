@@ -38,6 +38,37 @@ password for Laragon). Override per-environment with real env vars if your MySQL
 commit machine-specific credentials. The tenant DB name is `EDGE_TEST_TENANT_DB` (default
 `pos_test_tenant`).
 
+## Parallel-worktree isolation (PLATFORM TEST-ISOLATION)
+Several suites DROP + recreate a dedicated **Edge-LOCAL appliance DB** (import/auth/db-init/refresh).
+Its name is env-driven — **never a hard-coded literal** — resolved only through
+`Tests\MySql\Support\EdgeTestDatabases::local()`:
+
+- `EDGE_TEST_LOCAL_DB` — base name, default `pos_test_edge_local` (single-worktree dev).
+- Suites that need their own DB suffix it via the resolver (e.g. `…_refresh`), so no class drops
+  another class's DB either.
+- Subprocess race workers (`edge_enroll_worker.php` / `edge_login_worker.php`) receive the resolved
+  name via the `EDGE_TEST_LOCAL_DB` environment variable — they inherit exactly what the parent
+  resolved.
+
+Each concurrently-running worktree exports its own trio in its (untracked) `test-mysql.sh` wrapper:
+
+```bash
+# Edge worktree wrapper
+export DB_DATABASE=pos_test_master_edge
+export EDGE_TEST_TENANT_DB=pos_test_tenant_edge
+export EDGE_TEST_LOCAL_DB=pos_test_edge_local_edge
+
+# Catering worktree wrapper
+export DB_DATABASE=pos_test_master_cat
+export EDGE_TEST_TENANT_DB=pos_test_tenant_cat
+export EDGE_TEST_LOCAL_DB=pos_test_edge_local_cat
+```
+
+The resolver fails closed: the resolved name must contain both `edge` and `test` and satisfy the
+same `EdgeLocalDatabase` naming rules the runtime guard enforces (never a production-shaped name).
+Two suites sharing one MySQL server but different names can run **simultaneously** without either
+dropping the other's databases.
+
 ## What the suite proves today
 | Test | Proves |
 |---|---|

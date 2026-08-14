@@ -39,4 +39,9 @@ if (\App\Support\EdgeRuntime::isCloudSafe()) {
     // reporting period is claimed idempotently (unique schedule+period), so retries/overlaps can
     // never double-send. Cloud-only (Edge CLI boundary default-denies the command anyway).
     Schedule::command('reports:dispatch-scheduled')->everyFifteenMinutes()->withoutOverlapping();
+
+    // CATERING-SLICE-3 — upcoming-event reminders (D-7/D-3/D-1/same-day). Safe at any
+    // cadence: each (event, offset) is claimed idempotently before sending, so retries
+    // and overlaps never double-send. Only tenants entitled to the catering module run.
+    Schedule::command('catering:dispatch-event-reminders')->everyFifteenMinutes()->withoutOverlapping();
 }

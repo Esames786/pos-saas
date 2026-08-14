@@ -611,6 +611,69 @@
                 @endcanany
                 @endif
 
+                {{-- ── CATERING & EVENTS (CATERING-SLICE-1) ───────────────────── --}}
+                @if($hasModule('catering'))
+                @canany(['tenant.catering.events.index','tenant.catering.profiles.index','tenant.catering.material-rates.index','tenant.catering.rate-impact.index','tenant.catering.printer-mappings.index','tenant.catering.settings.index'])
+                <li class="submenu">
+                    <a href="javascript:void(0);">
+                        <i class="ti ti-chef-hat fs-16 me-2"></i>
+                        <span>Catering</span>
+                        <span class="menu-arrow"></span>
+                    </a>
+                    <ul style="display:none;">
+                        @can('tenant.catering.events.index')
+                            @php $a = $isIn('catering/events*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/catering/events') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-calendar-event fs-16 me-2"></i><span>Events &amp; Estimates</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.catering.profiles.index')
+                            @php $a = $isIn('catering/profiles*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/catering/profiles') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-tools-kitchen-2 fs-16 me-2"></i><span>Catering Products</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.catering.material-rates.index')
+                            @php $a = $isIn('catering/material-rates*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/catering/material-rates') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-report-money fs-16 me-2"></i><span>Material Rate Book</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.catering.rate-impact.index')
+                            @php $a = $isIn('catering/rate-impact*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/catering/rate-impact') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-trending-up fs-16 me-2"></i><span>Rate Impact</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.catering.printer-mappings.index')
+                            @php $a = $isIn('catering/printer-mappings*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/catering/printer-mappings') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-printer fs-16 me-2"></i><span>Catering Printers</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.catering.settings.index')
+                            @php $a = $isIn('catering/settings*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/catering/settings') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-settings fs-16 me-2"></i><span>Catering Settings</span>
+                                </a>
+                            </li>
+                        @endcan
+                    </ul>
+                </li>
+                @endcanany
+                @endif
+
                 {{-- ── FINANCE ─────────────────────────────────────────────────── --}}
                 @if($hasModule('finance'))
                 @canany(['tenant.finance.accounts.index','tenant.finance.cash-bank-accounts.index','tenant.finance.expense-categories.index','tenant.finance.expenses.index','tenant.finance.customer-payments.index','tenant.finance.opening-balances.index','tenant.finance.journal-entries.index','tenant.finance.manual-journals.index','tenant.finance.general-ledger.index','tenant.finance.trial-balance.index','tenant.finance.profit-loss.index','tenant.finance.branch-profit-loss.index','tenant.finance.balance-sheet.index','tenant.finance.export.index'])

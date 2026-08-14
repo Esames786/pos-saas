@@ -54,6 +54,12 @@
         <env name="TENANT_DB_PASSWORD" value=""/>
         <env name="EDGE_TEST_TENANT_DB" value="pos_test_tenant"/>
 
+        <!-- PLATFORM TEST-ISOLATION: Edge-LOCAL appliance DB the import/auth/db-init/refresh tests
+             DROP + recreate. Env-driven so parallel worktrees never destroy each other's DB —
+             each worktree's wrapper exports its own (e.g. pos_test_edge_local_edge /
+             pos_test_edge_local_cat). Resolved ONLY via Tests\MySql\Support\EdgeTestDatabases. -->
+        <env name="EDGE_TEST_LOCAL_DB" value="pos_test_edge_local"/>
+
         <env name="EDGE_FEATURE_ENABLED" value="false"/>
     </php>
 </phpunit>

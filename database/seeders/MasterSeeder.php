@@ -10,12 +10,23 @@ use App\Models\Master\PlanModule;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Spatie\Permission\PermissionRegistrar;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 
 class MasterSeeder extends Seeder
 {
+    /**
+     * CATERING-GO-LIVE-READINESS-1 (§3): modules whose plan attachment is an
+     * EXPLICIT ROLLOUT DECISION, never a side effect of deploying code.
+     * They are globally REGISTERED (module row, entitlement mapping, admin UI)
+     * but this seeder neither enables nor disables them on any plan — not even
+     * the all-modules enterprise plan. Access is granted per client through
+     * plan-module administration (or a dedicated private plan), and an existing
+     * explicit grant survives every reseed/deploy untouched.
+     */
+    public const ROLLOUT_GATED_MODULE_KEYS = ['catering'];
+
     public function run(): void
     {
         app(PermissionRegistrar::class)->forgetCachedPermissions();
@@ -31,12 +42,12 @@ class MasterSeeder extends Seeder
         );
 
         foreach ([
-                     ['code' => '2checkout', 'name' => '2Checkout / Verifone', 'type' => 'global'],
-                     ['code' => 'payfast', 'name' => 'PayFast Pakistan', 'type' => 'local'],
-                     ['code' => 'paypro', 'name' => 'PayPro Pakistan', 'type' => 'local'],
-                     ['code' => 'payoneer', 'name' => 'Payoneer', 'type' => 'global'],
-                     ['code' => 'manual_bank', 'name' => 'Manual Bank Transfer', 'type' => 'manual'],
-                 ] as $gateway) {
+            ['code' => '2checkout', 'name' => '2Checkout / Verifone', 'type' => 'global'],
+            ['code' => 'payfast', 'name' => 'PayFast Pakistan', 'type' => 'local'],
+            ['code' => 'paypro', 'name' => 'PayPro Pakistan', 'type' => 'local'],
+            ['code' => 'payoneer', 'name' => 'Payoneer', 'type' => 'global'],
+            ['code' => 'manual_bank', 'name' => 'Manual Bank Transfer', 'type' => 'manual'],
+        ] as $gateway) {
             DB::connection('master')->table('payment_gateways')->updateOrInsert(
                 ['code' => $gateway['code']],
                 [
@@ -86,10 +97,10 @@ class MasterSeeder extends Seeder
         );
 
         foreach ([
-                     'quick_sale',
-                     'payments',
-                     'basic_reports',
-                 ] as $feature) {
+            'quick_sale',
+            'payments',
+            'basic_reports',
+        ] as $feature) {
             PlanFeature::updateOrCreate(
                 ['plan_id' => $quickSale->id, 'feature_key' => $feature],
                 ['feature_value' => 'enabled']
@@ -97,14 +108,14 @@ class MasterSeeder extends Seeder
         }
 
         foreach ([
-                     'quick_sale',
-                     'inventory',
-                     'recipes',
-                     'restaurant_tables',
-                     'kot_printing',
-                     'supplier_accounting',
-                     'reports',
-                 ] as $feature) {
+            'quick_sale',
+            'inventory',
+            'recipes',
+            'restaurant_tables',
+            'kot_printing',
+            'supplier_accounting',
+            'reports',
+        ] as $feature) {
             PlanFeature::updateOrCreate(
                 ['plan_id' => $standard->id, 'feature_key' => $feature],
                 ['feature_value' => 'enabled']
@@ -333,6 +344,18 @@ class MasterSeeder extends Seeder
                 'is_core' => false,
             ],
             [
+                // BINGOO-CATERING-PREFLIGHT-1: separate Catering & Events vertical.
+                // Attached only to plans that list it explicitly (enterprise pulls all
+                // active modules); commercial plans opt in via plan administration.
+                'key' => 'catering',
+                'name' => 'Catering & Events',
+                'category' => 'Operations',
+                'description' => 'Catering events, estimates/quotations, material rate book, recipe costing, production releases, and event documents.',
+                'route_module_keys' => ['tenant.catering'],
+                'sort_order' => 145,
+                'is_core' => false,
+            ],
+            [
                 // OFFLINE-EDGE-ENTITLEMENT-1: sellable add-on. NOT attached to any plan
                 // here — grant it only through explicit plan-module administration once
                 // pricing/rollout is approved (see syncPlanModules: unlisted = disabled).
@@ -396,7 +419,7 @@ class MasterSeeder extends Seeder
         foreach ($planModuleMap as $planCode => $enabledKeys) {
             $plan = Plan::where('code', $planCode)->first();
 
-            if (!$plan) {
+            if (! $plan) {
                 continue;
             }
 
@@ -448,7 +471,7 @@ class MasterSeeder extends Seeder
         foreach ($limitFeatures as $planCode => $features) {
             $plan = Plan::where('code', $planCode)->first();
 
-            if (!$plan) {
+            if (! $plan) {
                 continue;
             }
 
@@ -587,7 +610,11 @@ class MasterSeeder extends Seeder
                     'display_order' => 50,
                     'public_description' => 'Custom rollout for multi-branch, franchise, and enterprise operations.',
                 ],
-                'modules' => Module::where('is_active', true)->pluck('key')->all(),
+                // §3 rollout gate: "all modules" NEVER auto-includes rollout-gated
+                // verticals — deploying catering code must not broaden access.
+                'modules' => Module::where('is_active', true)
+                    ->whereNotIn('key', self::ROLLOUT_GATED_MODULE_KEYS)
+                    ->pluck('key')->all(),
                 'features' => [
                     'branch_limit' => null,
                     'terminal_limit' => null,
@@ -635,6 +662,12 @@ class MasterSeeder extends Seeder
 
     private function syncPlanModules(Plan $plan, array $moduleKeys): void
     {
+        // §3 rollout gate: gated modules are invisible to this sync in BOTH
+        // directions — the seeder neither lists them (no silent enable) nor
+        // disables an explicit administration grant on a reseed/redeploy.
+        $gatedIds = Module::whereIn('key', self::ROLLOUT_GATED_MODULE_KEYS)->pluck('id')->all();
+        $moduleKeys = array_values(array_diff($moduleKeys, self::ROLLOUT_GATED_MODULE_KEYS));
+
         $moduleIds = Module::whereIn('key', $moduleKeys)->pluck('id')->all();
 
         foreach ($moduleIds as $moduleId) {
@@ -645,7 +678,7 @@ class MasterSeeder extends Seeder
         }
 
         PlanModule::where('plan_id', $plan->id)
-            ->whereNotIn('module_id', $moduleIds)
+            ->whereNotIn('module_id', array_merge($moduleIds, $gatedIds))
             ->update(['is_enabled' => false]);
     }
 
