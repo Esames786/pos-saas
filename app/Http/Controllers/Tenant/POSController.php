@@ -539,7 +539,7 @@ class POSController extends Controller
             'customer_name' => $data['customer_name'] ?? null,
             'customer_phone' => $data['customer_phone'] ?? null,
             'delivery_address' => $orderType === 'delivery' ? ($data['delivery_address'] ?? null) : null,
-            'vehicle_number' => $orderType === 'quick_sale' ? ($data['vehicle_number'] ?? null) : null,
+            'vehicle_number' => in_array($orderType, ['quick_sale', 'takeaway'], true) ? ($data['vehicle_number'] ?? null) : null,
             'subtotal' => $totals['subtotal'],
             'discount_amount' => $totals['discount_amount'],
             'tax_amount' => $totals['tax_amount'],
