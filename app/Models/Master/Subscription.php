@@ -13,6 +13,7 @@ class Subscription extends Model
         'tenant_id',
         'plan_id',
         'status',
+        'billing_period',
         'trial_ends_at',
         'current_period_ends_at',
         'gateway_code',

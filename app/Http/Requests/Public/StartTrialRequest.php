@@ -23,6 +23,10 @@ class StartTrialRequest extends FormRequest
                 ->replaceMatches('/\s+/', '-')
                 ->toString(),
             'owner_email' => Str::of((string) $this->input('owner_email'))->lower()->trim()->toString(),
+            // CLOUD-BILLING-2: normalise the billing period; anything but an explicit "yearly" is
+            // monthly. The backend NEVER trusts a client-supplied price — only this monthly|yearly
+            // choice, from which the invoice amount is recomputed server-side from the plan.
+            'billing_period' => strtolower(trim((string) $this->input('billing_period'))) === 'yearly' ? 'yearly' : 'monthly',
         ]);
     }
 
@@ -38,17 +42,17 @@ class StartTrialRequest extends FormRequest
                 Rule::notIn(config('saas.reserved_subdomains', [])),
                 Rule::unique('master.tenants', 'tenant_code'),
                 function ($attribute, $value, $fail) {
-                    $domain = $value . '.' . config('tenancy.tenant_base_domain');
+                    $domain = $value.'.'.config('tenancy.tenant_base_domain');
 
                     if (TenantDomain::where('domain', $domain)->exists()) {
                         $fail('This subdomain is already taken.');
                     }
                 },
             ],
-            'owner_name'  => ['required', 'string', 'max:255'],
+            'owner_name' => ['required', 'string', 'max:255'],
             'owner_email' => ['required', 'email', 'max:255'],
             'owner_phone' => ['nullable', 'string', 'max:50'],
-            'password'    => ['required', 'string', 'min:8', 'confirmed'],
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
             'plan_id' => [
                 'required',
                 'integer',
@@ -59,6 +63,7 @@ class StartTrialRequest extends FormRequest
                 }),
             ],
             'currency_code' => ['nullable', 'string', 'size:3'],
+            'billing_period' => ['required', 'in:monthly,yearly'],
             // Honeypot: real users never see/fill this; bots usually do.
             'website' => ['nullable', 'size:0'],
         ];
@@ -69,8 +74,8 @@ class StartTrialRequest extends FormRequest
         return [
             'tenant_code.not_in' => 'This subdomain is reserved. Please choose another.',
             'tenant_code.unique' => 'This subdomain is already taken.',
-            'plan_id.exists'     => 'Please choose an available self-service plan.',
-            'website.size'       => 'Signup could not be completed.',
+            'plan_id.exists' => 'Please choose an available self-service plan.',
+            'website.size' => 'Signup could not be completed.',
         ];
     }
 

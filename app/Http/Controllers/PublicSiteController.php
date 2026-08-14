@@ -23,29 +23,35 @@ class PublicSiteController extends Controller
 
     public function home()
     {
-        if ($this->comingSoonMode()) return $this->comingSoon();
+        if ($this->comingSoonMode()) {
+            return $this->comingSoon();
+        }
 
         return view('public.home', [
-            'plans'            => $this->publicPlans(),
+            'plans' => $this->publicPlans(),
             'selfServicePlans' => $this->selfServicePlans(),
-            'customPlans'      => $this->customPlans(),
+            'customPlans' => $this->customPlans(),
         ]);
     }
 
     public function pricing()
     {
-        if ($this->comingSoonMode()) return $this->comingSoon();
+        if ($this->comingSoonMode()) {
+            return $this->comingSoon();
+        }
 
         return view('public.pricing', [
-            'plans'            => $this->publicPlans(),
+            'plans' => $this->publicPlans(),
             'selfServicePlans' => $this->selfServicePlans(),
-            'customPlans'      => $this->customPlans(),
+            'customPlans' => $this->customPlans(),
         ]);
     }
 
     public function features()
     {
-        if ($this->comingSoonMode()) return $this->comingSoon();
+        if ($this->comingSoonMode()) {
+            return $this->comingSoon();
+        }
 
         return view('public.features', [
             'plans' => $this->publicPlans(),
@@ -54,7 +60,9 @@ class PublicSiteController extends Controller
 
     public function trialCreate(Request $request)
     {
-        if ($this->comingSoonMode()) return $this->comingSoon();
+        if ($this->comingSoonMode()) {
+            return $this->comingSoon();
+        }
 
         $plans = $this->selfServicePlans();
 
@@ -72,12 +80,19 @@ class PublicSiteController extends Controller
 
         $enterpriseRequested = $request->query('plan') === 'enterprise';
 
-        return view('public.start-trial', compact('plans', 'selectedPlan', 'enterpriseRequested'));
+        // CLOUD-BILLING-2: the billing cycle flows in via ?billing=yearly (from the pricing page or a
+        // direct no-JS URL). Normalised here; the form pre-selects it and the backend recomputes the
+        // price from the plan — the query value only chooses monthly vs yearly, never an amount.
+        $selectedBilling = strtolower((string) $request->query('billing')) === 'yearly' ? 'yearly' : 'monthly';
+
+        return view('public.start-trial', compact('plans', 'selectedPlan', 'enterpriseRequested', 'selectedBilling'));
     }
 
     public function contact()
     {
-        if ($this->comingSoonMode()) return $this->comingSoon();
+        if ($this->comingSoonMode()) {
+            return $this->comingSoon();
+        }
 
         return view('public.contact', [
             'customPlans' => $this->customPlans(),
@@ -108,7 +123,9 @@ class PublicSiteController extends Controller
 
     public function demos()
     {
-        if ($this->comingSoonMode()) return $this->comingSoon();
+        if ($this->comingSoonMode()) {
+            return $this->comingSoon();
+        }
 
         $cards = config('saas.demos.cards', []);
         $password = config('saas.demos.default_password', 'demo1234');
@@ -135,22 +152,24 @@ class PublicSiteController extends Controller
                 && optional($tenant->subscription)->status === 'active';
 
             $demos[] = array_merge($card, [
-                'key'       => $key,
+                'key' => $key,
                 'available' => $available,
                 'login_url' => $tenantCode ? "{$scheme}://{$tenantCode}.{$baseDomain}/login" : null,
-                'password'  => $password,
+                'password' => $password,
             ]);
         }
 
         return view('public.demos', [
-            'demos'       => $demos,
+            'demos' => $demos,
             'selfServicePlans' => $this->selfServicePlans(),
         ]);
     }
 
     public function trialSuccess()
     {
-        if ($this->comingSoonMode()) return $this->comingSoon();
+        if ($this->comingSoonMode()) {
+            return $this->comingSoon();
+        }
 
         if (! session('trial_login_url')) {
             return redirect(url('/pricing'));
@@ -161,7 +180,9 @@ class PublicSiteController extends Controller
 
     public function trialStore(StartTrialRequest $request, SelfSignupService $signup)
     {
-        if ($this->comingSoonMode()) return $this->comingSoon();
+        if ($this->comingSoonMode()) {
+            return $this->comingSoon();
+        }
 
         $data = $request->signupData();
 
@@ -179,7 +200,7 @@ class PublicSiteController extends Controller
 
         $domain = $tenant->domains->first()?->domain;
         $scheme = $request->secure() ? 'https' : 'http';
-        $loginUrl = $scheme . '://' . $domain . '/login';
+        $loginUrl = $scheme.'://'.$domain.'/login';
 
         // Workspace-ready email (PRD-5) — additive; never block signup if mail fails.
         try {
@@ -199,8 +220,8 @@ class PublicSiteController extends Controller
         }
 
         return redirect(url('/trial/success'))->with([
-            'trial_login_url'     => $loginUrl,
-            'trial_owner_email'   => $tenant->owner_email,
+            'trial_login_url' => $loginUrl,
+            'trial_owner_email' => $tenant->owner_email,
             'trial_business_name' => $tenant->business_name,
         ]);
     }

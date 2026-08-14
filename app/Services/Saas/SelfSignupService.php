@@ -70,6 +70,7 @@ class SelfSignupService
                     'tenant_id' => $tenant->id,
                     'plan_id' => $plan->id,
                     'status' => 'trial',
+                    'billing_period' => ($data['billing_period'] ?? 'monthly') === 'yearly' ? 'yearly' : 'monthly',
                     'trial_ends_at' => $trialEndsAt,
                     'current_period_ends_at' => null,
                 ]);

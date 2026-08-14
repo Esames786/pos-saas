@@ -122,7 +122,9 @@
                             <li class="mb-1"><i class="ti ti-stack-2 me-2 text-primary"></i>Modules: <strong>{{ $plan->enabledModules->count() }}</strong></li>
                         </ul>
 
-                        <a href="{{ url('/start-trial?plan=' . $plan->code) }}" class="btn {{ $popular ? 'btn-primary' : 'btn-outline-primary' }} mb-2">Start 30-Day Trial</a>
+                        {{-- CLOUD-BILLING-2: the CTA carries the currently-shown billing cycle so the choice
+                             flows into signup. Default monthly; the yearly toggle JS rewrites data-billing. --}}
+                        <a href="{{ url('/start-trial?plan=' . $plan->code . '&billing=monthly') }}" data-trial-cta data-plan="{{ $plan->code }}" class="btn {{ $popular ? 'btn-primary' : 'btn-outline-primary' }} mb-2">Start 30-Day Trial</a>
                         <a href="{{ url('/demos') . (isset($demoAnchors[$plan->code]) ? '#' . $demoAnchors[$plan->code] : '') }}" class="btn btn-link btn-sm text-decoration-none">Try Demo</a>
                     </div>
                 </div>
@@ -382,8 +384,16 @@ document.addEventListener('DOMContentLoaded', function () {
     var m = document.getElementById('btnMonthly');
     var y = document.getElementById('btnYearly');
     if (!grid || !m || !y) return;
-    m.addEventListener('click', function(){ grid.classList.remove('show-yearly'); m.classList.add('active'); y.classList.remove('active'); });
-    y.addEventListener('click', function(){ grid.classList.add('show-yearly'); y.classList.add('active'); m.classList.remove('active'); });
+    // CLOUD-BILLING-2: keep each Start-Trial CTA's billing param in sync with the toggle, so the
+    // chosen cycle flows to /start-trial. The start-trial page + backend still default to monthly
+    // and recompute the price, so a no-JS visitor is never charged a JS-derived amount.
+    function setCtaBilling(cycle) {
+        document.querySelectorAll('[data-trial-cta]').forEach(function (a) {
+            a.setAttribute('href', '{{ url('/start-trial') }}?plan=' + a.getAttribute('data-plan') + '&billing=' + cycle);
+        });
+    }
+    m.addEventListener('click', function(){ grid.classList.remove('show-yearly'); m.classList.add('active'); y.classList.remove('active'); setCtaBilling('monthly'); });
+    y.addEventListener('click', function(){ grid.classList.add('show-yearly'); y.classList.add('active'); m.classList.remove('active'); setCtaBilling('yearly'); });
 });
 </script>
 @endpush

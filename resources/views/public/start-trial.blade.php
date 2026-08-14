@@ -166,6 +166,26 @@
                             </div>
                             <p class="text-muted small mb-4"><i class="ti ti-eye-off me-1"></i>Your password is never shown on the success page.</p>
 
+                            {{-- Billing cycle (CLOUD-BILLING-2) — posts billing_period; server recomputes price.
+                                 Works with no JS: the radio is pre-selected from ?billing=, and the backend
+                                 only reads monthly|yearly, never a client price. Yearly = 10× the monthly price
+                                 (two months free) billed once for twelve calendar months. --}}
+                            @php $billingChoice = old('billing_period', $selectedBilling ?? 'monthly'); @endphp
+                            <h6 class="text-uppercase text-muted small mb-3" style="letter-spacing:1px;"><i class="ti ti-calendar me-1"></i>Billing cycle</h6>
+                            <div class="row g-3 mb-4" id="billingCycle">
+                                @foreach(['monthly' => ['Monthly', 'Billed every month'], 'yearly' => ['Yearly', '10 months\' price — 2 months free, billed for 12 months']] as $cycle => [$label, $sub])
+                                    <div class="col-md-6">
+                                        <label class="plan-card d-block p-3 h-100" style="cursor:pointer;">
+                                            <div class="form-check">
+                                                <input class="form-check-input billing-radio" type="radio" name="billing_period" value="{{ $cycle }}" {{ $billingChoice === $cycle ? 'checked' : '' }} required>
+                                                <span class="form-check-label fw-semibold">{{ $label }}</span>
+                                            </div>
+                                            <div class="text-muted small mt-1">{{ $sub }}</div>
+                                        </label>
+                                    </div>
+                                @endforeach
+                            </div>
+
                             {{-- Plan --}}
                             <h6 class="text-uppercase text-muted small mb-3" style="letter-spacing:1px;"><i class="ti ti-stack-2 me-1"></i>Choose your plan</h6>
                             <div class="row g-3 mb-3">
@@ -178,9 +198,19 @@
                                                 <span class="form-check-label fw-semibold">{{ $plan->name }}</span>
                                             </div>
                                             <div class="text-muted small mt-1">{{ $plan->public_description }}</div>
+                                            @php
+                                                $planMonthly = (float) ($plan->monthly_price ?? $plan->price);
+                                                $planYearly = (float) ($plan->yearly_price ?? $planMonthly * 10);
+                                            @endphp
                                             <div class="mt-2">
-                                                <span class="fw-bold">{{ $plan->currency_code }} {{ number_format((float)($plan->monthly_price ?? $plan->price),0) }}</span>
-                                                <small class="text-muted">/ month</small>
+                                                <span class="plan-price-monthly" @if($billingChoice !== 'monthly') style="display:none" @endif>
+                                                    <span class="fw-bold">{{ $plan->currency_code }} {{ number_format($planMonthly, 0) }}</span>
+                                                    <small class="text-muted">/ month</small>
+                                                </span>
+                                                <span class="plan-price-yearly" @if($billingChoice !== 'yearly') style="display:none" @endif>
+                                                    <span class="fw-bold">{{ $plan->currency_code }} {{ number_format($planYearly, 0) }}</span>
+                                                    <small class="text-muted">/ year</small>
+                                                </span>
                                                 @if($plan->trial_days)<small class="text-success ms-2">{{ $plan->trial_days }}-day trial</small>@endif
                                             </div>
                                             <div class="small text-muted mt-1">
@@ -215,6 +245,20 @@
         var code = (input.value || 'your-subdomain').toLowerCase().trim()
             .replace(/\s+/g, '-').replace(/[^a-z0-9_-]/g, '') || 'your-subdomain';
         preview.textContent = code + '.{{ $baseDomain }}/login';
+    });
+})();
+
+// CLOUD-BILLING-2: purely cosmetic price toggle. The server recomputes the real amount from the
+// plan + the posted billing_period, so this never affects what is charged — it only shows the
+// matching price. No-JS users still see the server-selected cycle (rendered by Blade above).
+(function () {
+    function applyCycle(cycle) {
+        var yearly = cycle === 'yearly';
+        document.querySelectorAll('.plan-price-monthly').forEach(function (el) { el.style.display = yearly ? 'none' : ''; });
+        document.querySelectorAll('.plan-price-yearly').forEach(function (el) { el.style.display = yearly ? '' : 'none'; });
+    }
+    document.querySelectorAll('.billing-radio').forEach(function (r) {
+        r.addEventListener('change', function () { if (r.checked) applyCycle(r.value); });
     });
 })();
 </script>
