@@ -4314,6 +4314,18 @@ document.addEventListener('DOMContentLoaded', function () {
         // DELIVERY-CHARGE recall: restore the charge to its input (updateDeliveryPanel above kept the
         // delivery panel visible) so a recalled delivery order's Bill/Preview shows the charge again.
         { const el = document.getElementById('delivery_charge_amount'); if (el) el.value = (Number(sale.delivery_charge_amount) > 0 ? sale.delivery_charge_amount : ''); }
+        // DISCOUNT recall: a manual discount is stored on the held sale header (type+value). Restore the
+        // module state so the recomputed total (renderCart → updateTotals below) re-applies it and the
+        // Bill/Preview + Review & Pay recompute WITH the discount, not without. Mirrors delivery charge.
+        if (sale.discount_type && sale.discount_type !== 'none' && Number(sale.discount_value) > 0) {
+            _manualDiscountType = sale.discount_type;
+            _manualDiscountValue = Number(sale.discount_value);
+            document.getElementById('remove-discount-btn')?.classList.remove('d-none');
+        } else {
+            _manualDiscountType = 'none';
+            _manualDiscountValue = 0;
+            document.getElementById('remove-discount-btn')?.classList.add('d-none');
+        }
         if (window.posRenderCustomerChip) window.posRenderCustomerChip();
 
         // Sync table session and table for dine-in
