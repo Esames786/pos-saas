@@ -23,8 +23,9 @@ Feature-specific work stays on its own branch. This file records the cherry-pick
 | 08-14 | Receipt preview: stop Qty/Rate/Amount colliding (column widths only, font untouched) | `73e6f7a` | `d37a1a7` | `653292c` | ✅ deployed |
 | 08-14 | Fix 403 on cached unnamed routes (root `/`) + exempt `tenant.api.server-time` poll | `0facf21` | `6a691ba` | `626fa82` | ✅ deployed |
 | 08-14 | POS: vehicle# on takeaway, delivery-charge restored on recall, cancel-KOT heading at category size (no other font/size touched) | `661cf0e` | `259c8cf` | `0a135ce` | ✅ deployed |
+| 08-14 | POS Hold: a held delivery order now saves its delivery charge (was dropped to 0) + takeaway vehicle#; recall list re-exposes both so a recalled order comes back whole (guard test) | `67efbc1` | `59de856` | `3eb2a1b` | ✅ deployed |
 
-> Note: a 4th feature worktree now exists — `pos-saas-cloud` @ `feat/cloud-billing-onboarding-v1` (CLOUD-BILLING sprint, Phase 1A pushed `464ab66`, not deployed). Platform fixes are cherry-picked there too (`661cf0e` → `9f88579`). Catering has moved to `release/catering-go-live-2`.
+> Note: a 4th feature worktree now exists — `pos-saas-cloud` @ `feat/cloud-billing-onboarding-v1` (CLOUD-BILLING sprint, Phase 1A pushed `464ab66`, not deployed). Platform fixes are cherry-picked there too (`661cf0e` → `9f88579`, `67efbc1` → `8cea1e1`). Catering has moved to `release/catering-go-live-2`.
 
 ## Docs shared (not code)
 
