@@ -591,7 +591,9 @@ class EscPosPayloadService
             'duplicate' => '*** DUPLICATE KOT #' . $sequenceNo . ' ***',
             default => '*** KOT #' . ($sequenceNo ?: 1) . ' ***',
         };
-        $out .= $this->center($heading) . "\n";
+        // The heading (KOT / CANCEL KOT / ADDITION KOT) reads at the same big scale as the order
+        // type and category below it — a cancel ticket the kitchen can read across the pass.
+        $out .= $this->scaled($heading, $big, true, true);
         if ($eventType === 'duplicate') {
             $out .= $this->center('DUPLICATE ' . max($copyNo, 1)) . "\n";
         }

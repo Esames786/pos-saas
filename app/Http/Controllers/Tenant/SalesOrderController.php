@@ -343,8 +343,8 @@ class SalesOrderController extends Controller
                     'delivery_rider_id'           => (! $tableSession && $orderType === 'delivery') ? ($data['delivery_rider_id'] ?? null) : null,
                     'delivery_address'            => (! $tableSession && $orderType === 'delivery') ? ($data['delivery_address'] ?? null) : null,
                     'delivery_charge_amount'      => $totals['delivery_charge_amount'] ?? 0,
-                    // Vehicle number is quick-sale (drive-through) attribution only — never stale on other types.
-                    'vehicle_number'              => (! $tableSession && $orderType === 'quick_sale') ? ($data['vehicle_number'] ?? null) : null,
+                    // Vehicle number is captured for quick-sale (drive-through) AND takeaway — never stale on other types.
+                    'vehicle_number'              => (! $tableSession && in_array($orderType, ['quick_sale', 'takeaway'], true)) ? ($data['vehicle_number'] ?? null) : null,
                     'sale_date'                   => now(),
                     'business_date'               => $businessDate,
                     'subtotal'                    => $totals['subtotal'],
