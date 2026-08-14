@@ -1573,14 +1573,16 @@ document.addEventListener('DOMContentLoaded', function () {
         deliveryPanelEl.style.display = isDelivery ? '' : 'none';
         if (deliveryChannelEl) deliveryChannelEl.required = isDelivery;
 
-        // VEHICLE-NUMBER-1: vehicle input is quick-sale only; never post a stale value on
-        // other order types. TDZ-safe scoped lookup (this runs before later script blocks).
+        // VEHICLE-NUMBER: quick-sale (drive-through) AND takeaway capture the vehicle; every
+        // other order type hides it and never posts a stale value. Same lifecycle as the
+        // delivery charge — shown on its order types, restored on recall (recallHeldSale),
+        // cleared here when switching to a type that has no vehicle. TDZ-safe scoped lookup.
         {
-            const isQuickSale = orderTypeEl.value === 'quick_sale';
+            const isVehicleType = orderTypeEl.value === 'quick_sale' || orderTypeEl.value === 'takeaway';
             const vWrap = document.getElementById('vehicle-wrap');
             const vEl = document.getElementById('vehicle_number');
-            if (vWrap) vWrap.style.display = isQuickSale ? 'inline-flex' : 'none';
-            if (!isQuickSale && vEl) vEl.value = '';
+            if (vWrap) vWrap.style.display = isVehicleType ? 'inline-flex' : 'none';
+            if (!isVehicleType && vEl) vEl.value = '';
         }
 
         // POS-UX-2: for delivery orders the phone stops being "optional" in spirit —
@@ -4309,6 +4311,9 @@ document.addEventListener('DOMContentLoaded', function () {
         { const el = document.getElementById('customer_phone'); if (el) el.value = sale.customer_phone || ''; }
         { const el = document.getElementById('delivery_address'); if (el) el.value = sale.delivery_address || ''; }
         { const el = document.getElementById('vehicle_number'); if (el && sale.vehicle_number) el.value = sale.vehicle_number; }
+        // DELIVERY-CHARGE recall: restore the charge to its input (updateDeliveryPanel above kept the
+        // delivery panel visible) so a recalled delivery order's Bill/Preview shows the charge again.
+        { const el = document.getElementById('delivery_charge_amount'); if (el) el.value = (Number(sale.delivery_charge_amount) > 0 ? sale.delivery_charge_amount : ''); }
         if (window.posRenderCustomerChip) window.posRenderCustomerChip();
 
         // Sync table session and table for dine-in
