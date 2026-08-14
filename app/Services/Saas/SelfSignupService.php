@@ -43,36 +43,42 @@ class SelfSignupService
                 ->trim('-')
                 ->toString();
 
-            $domain = $tenantCode . '.' . config('tenancy.tenant_base_domain');
+            $domain = $tenantCode.'.'.config('tenancy.tenant_base_domain');
 
-            $trialDays   = (int) ($plan->trial_days ?: config('saas.default_trial_days', 14));
+            $trialDays = (int) ($plan->trial_days ?: config('saas.default_trial_days', 14));
             $trialEndsAt = $trialDays > 0 ? now()->addDays($trialDays) : null;
 
             $tenant = DB::connection('master')->transaction(function () use ($data, $plan, $tenantCode, $domain, $trialEndsAt) {
                 $tenant = Tenant::create([
-                    'tenant_code'   => $tenantCode,
+                    'tenant_code' => $tenantCode,
                     'business_name' => $data['business_name'],
-                    'owner_name'    => $data['owner_name'],
-                    'owner_email'   => $data['owner_email'],
+                    'owner_name' => $data['owner_name'],
+                    'owner_email' => $data['owner_email'],
                     'currency_code' => $data['currency_code'] ?? 'PKR',
-                    'status'        => 'pending',
+                    'status' => 'pending',
                     'trial_ends_at' => $trialEndsAt,
                 ]);
 
                 TenantDomain::create([
-                    'tenant_id'  => $tenant->id,
-                    'domain'     => $domain,
+                    'tenant_id' => $tenant->id,
+                    'domain' => $domain,
                     'is_primary' => true,
-                    'status'     => 'pending',
+                    'status' => 'pending',
                 ]);
 
-                Subscription::create([
-                    'tenant_id'              => $tenant->id,
-                    'plan_id'                => $plan->id,
-                    'status'                 => 'trial',
-                    'trial_ends_at'          => $trialEndsAt,
+                $subscription = Subscription::create([
+                    'tenant_id' => $tenant->id,
+                    'plan_id' => $plan->id,
+                    'status' => 'trial',
+                    'trial_ends_at' => $trialEndsAt,
                     'current_period_ends_at' => null,
                 ]);
+
+                // CLOUD-BILLING-1B: the ONE first invoice is created atomically with the subscription
+                // (due at trial end, paid period starting at trial end). If provisioning later fails,
+                // cleanupFailedSignup deletes the tenant and this invoice cascades away — no orphan
+                // obligation. Idempotent on origin_key so it can never be duplicated.
+                app(SubscriptionBillingService::class)->ensureFirstInvoice($subscription);
 
                 return $tenant;
             });
@@ -93,7 +99,7 @@ class SelfSignupService
      */
     private function cleanupFailedSignup(?Tenant $tenant): void
     {
-        if (!$tenant || !$tenant->exists) {
+        if (! $tenant || ! $tenant->exists) {
             return;
         }
 
@@ -106,6 +112,9 @@ class SelfSignupService
 
             $tenant->database()->delete();
             $tenant->domains()->delete();
+            // CLOUD-BILLING-1B: explicitly remove the auto-created first invoice (and its payments)
+            // so a failed signup never leaves a billing obligation behind — do not rely on FK cascade.
+            $tenant->invoices()->delete();
             $tenant->subscription()->delete();
             $tenant->delete();
         } catch (Throwable $e) {
@@ -129,7 +138,7 @@ class SelfSignupService
             return;
         }
 
-        $dbName = 'pos_tenant_' . $safeCode;
+        $dbName = 'pos_tenant_'.$safeCode;
 
         DB::connection('master')->statement("DROP DATABASE IF EXISTS `{$dbName}`");
     }

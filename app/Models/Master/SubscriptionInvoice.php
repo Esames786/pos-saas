@@ -12,6 +12,7 @@ class SubscriptionInvoice extends Model
 
     protected $fillable = [
         'invoice_no',
+        'origin_key',
         'tenant_id',
         'subscription_id',
         'plan_id',
@@ -34,17 +35,17 @@ class SubscriptionInvoice extends Model
     ];
 
     protected $casts = [
-        'subtotal'        => 'decimal:2',
+        'subtotal' => 'decimal:2',
         'discount_amount' => 'decimal:2',
-        'tax_amount'      => 'decimal:2',
-        'total_amount'    => 'decimal:2',
-        'paid_amount'     => 'decimal:2',
-        'balance_amount'  => 'decimal:2',
-        'period_start'    => 'date',
-        'period_end'      => 'date',
-        'due_date'        => 'date',
-        'issued_at'       => 'datetime',
-        'paid_at'         => 'datetime',
+        'tax_amount' => 'decimal:2',
+        'total_amount' => 'decimal:2',
+        'paid_amount' => 'decimal:2',
+        'balance_amount' => 'decimal:2',
+        'period_start' => 'date',
+        'period_end' => 'date',
+        'due_date' => 'date',
+        'issued_at' => 'datetime',
+        'paid_at' => 'datetime',
     ];
 
     public function tenant(): BelongsTo

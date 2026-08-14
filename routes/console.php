@@ -18,6 +18,11 @@ if (\App\Support\EdgeRuntime::isCloudSafe()) {
     // Requires OS cron on the server: * * * * * php /path/to/artisan schedule:run
     Schedule::command('saas:subscriptions-expire')->dailyAt('00:10');
 
+    // CLOUD-BILLING-1B: activate trials whose window has closed and whose first invoice is paid.
+    // Idempotent (only touches status=trial), so overlap/retry can never double-activate. Runs
+    // before the expiry sweep so a just-activated period is not mistaken for expired.
+    Schedule::command('saas:process-trial-transitions')->dailyAt('00:05')->withoutOverlapping();
+
     // Nightly public-demo reset (15D-8): restore the five industry demos to clean sample data.
     // Registered only; it does nothing until OS cron runs `php artisan schedule:run`.
     if (config('saas.demos.enabled', true)) {
