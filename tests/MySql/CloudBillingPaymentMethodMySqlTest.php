@@ -52,15 +52,17 @@ class CloudBillingPaymentMethodMySqlTest extends MySqlTenantTestCase
 
     public function test_tenant_only_sees_active_methods_that_have_an_account(): void
     {
-        // active + configured -> shown
+        // active + fully configured (title AND number) -> shown
         BillingPaymentMethod::create(['code' => 'easypaisa', 'display_name' => 'EasyPaisa', 'is_active' => true, 'sort_order' => 1, 'account_title' => 'Test Acct', 'account_number' => '0000000000']);
-        // active but NO account -> hidden (incomplete)
+        // active but NO account at all -> hidden (incomplete)
         BillingPaymentMethod::create(['code' => 'jazzcash', 'display_name' => 'JazzCash', 'is_active' => true, 'sort_order' => 2]);
-        // configured but inactive -> hidden
-        BillingPaymentMethod::create(['code' => 'nayapay', 'display_name' => 'NayaPay', 'is_active' => false, 'sort_order' => 3, 'account_number' => '1111111111']);
+        // active with a number but NO account title -> hidden (1A-HARDEN requires BOTH fields)
+        BillingPaymentMethod::create(['code' => 'sadapay', 'display_name' => 'SadaPay', 'is_active' => true, 'sort_order' => 3, 'account_number' => '2222222222']);
+        // fully configured but inactive -> hidden
+        BillingPaymentMethod::create(['code' => 'nayapay', 'display_name' => 'NayaPay', 'is_active' => false, 'sort_order' => 4, 'account_title' => 'Holder', 'account_number' => '1111111111']);
 
-        // exact query the controller/view use
-        $shown = BillingPaymentMethod::activeOrdered()->whereNotNull('account_number')->pluck('code')->all();
+        // exact query the controller/view use (single source of truth = configured() scope)
+        $shown = BillingPaymentMethod::activeOrdered()->configured()->pluck('code')->all();
         $this->assertSame(['easypaisa'], $shown);
     }
 

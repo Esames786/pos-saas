@@ -26,7 +26,7 @@ class TenantBillingController extends Controller
             ->paginate(20);
 
         return view('tenant.billing.index', [
-            'tenant'   => $tenant,
+            'tenant' => $tenant,
             'invoices' => $invoices,
         ]);
     }
@@ -37,13 +37,15 @@ class TenantBillingController extends Controller
 
         $invoice->load(['plan', 'payments.gateway']);
 
-        // CLOUD-BILLING-1A — only ACTIVE methods that actually have an account to send to.
+        // CLOUD-BILLING-1A — only ACTIVE methods that carry the full customer-facing config
+        // (account title AND number). Single source of truth = the model's configured() scope,
+        // the same completeness the central activation guard enforces.
         $paymentMethods = BillingPaymentMethod::activeOrdered()
-            ->whereNotNull('account_number')
+            ->configured()
             ->get();
 
         return view('tenant.billing.show', [
-            'invoice'        => $invoice,
+            'invoice' => $invoice,
             'paymentMethods' => $paymentMethods,
         ]);
     }
@@ -53,31 +55,31 @@ class TenantBillingController extends Controller
         $this->ensureTenantInvoice($invoice);
 
         $data = $request->validate([
-            'amount'              => ['required', 'numeric', 'min:0.01'],
-            'currency_code'       => ['required', 'string', 'size:3'],
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'currency_code' => ['required', 'string', 'size:3'],
             'payment_method_code' => ['required', 'string', 'max:100'],
-            'payment_date'        => ['required', 'date'],
-            'reference_no'        => ['nullable', 'string', 'max:255'],
-            'notes'               => ['nullable', 'string'],
+            'payment_date' => ['required', 'date'],
+            'reference_no' => ['nullable', 'string', 'max:255'],
+            'notes' => ['nullable', 'string'],
             // PROD-READINESS-1: extension + real-mimetype double check (a renamed
             // .exe/.php passes a naive extension check but not mimetypes), 5MB cap.
-            'proof'               => [
+            'proof' => [
                 'required', 'file',
                 'mimes:jpg,jpeg,png,webp,pdf',
                 'mimetypes:image/jpeg,image/png,image/webp,application/pdf',
                 'max:5120',
             ],
         ], [
-            'proof.mimes'     => 'Proof must be a JPG, PNG, WEBP image or a PDF.',
+            'proof.mimes' => 'Proof must be a JPG, PNG, WEBP image or a PDF.',
             'proof.mimetypes' => 'The uploaded file content is not a valid image or PDF.',
-            'proof.max'       => 'Proof file may not be larger than 5 MB.',
+            'proof.max' => 'Proof file may not be larger than 5 MB.',
         ]);
 
         // CLOUD-BILLING-1A: the method must be one of the ACTIVE, account-configured directory
         // methods the tenant was actually shown (checked on the master connection via the model,
         // never a cross-connection `exists` rule on the tenant DB).
         $validMethod = BillingPaymentMethod::activeOrdered()
-            ->whereNotNull('account_number')
+            ->configured()
             ->where('code', $data['payment_method_code'])
             ->exists();
 
@@ -96,7 +98,7 @@ class TenantBillingController extends Controller
             return back()->withInput()->withErrors(['proof' => $e->getMessage()]);
         }
 
-        return redirect(url('/billing/invoices/' . $invoice->id))
+        return redirect(url('/billing/invoices/'.$invoice->id))
             ->with('status', 'Payment proof uploaded. It will be verified by the provider.');
     }
 

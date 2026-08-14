@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Master\BillingPaymentMethod;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 /**
  * CLOUD-BILLING-1A — central admin CRUD for the manual payment-method directory.
@@ -29,6 +30,7 @@ class PaymentMethodController extends Controller
     public function store(Request $request)
     {
         $data = $this->validated($request);
+        $this->assertActivatableIfActive($data);
 
         BillingPaymentMethod::create($data);
 
@@ -44,6 +46,7 @@ class PaymentMethodController extends Controller
     public function update(Request $request, BillingPaymentMethod $paymentMethod)
     {
         $data = $this->validated($request, $paymentMethod->id);
+        $this->assertActivatableIfActive($data);
 
         $paymentMethod->update($data);
 
@@ -53,6 +56,14 @@ class PaymentMethodController extends Controller
 
     public function toggle(BillingPaymentMethod $paymentMethod)
     {
+        // Activating requires complete customer-facing config (account title + number);
+        // deactivating is always allowed. A method must never be "active but unpayable".
+        if (! $paymentMethod->is_active && ! $paymentMethod->isConfigured()) {
+            return back()->withErrors([
+                'is_active' => 'Add the account title and account number before activating this method.',
+            ]);
+        }
+
         $paymentMethod->update(['is_active' => ! $paymentMethod->is_active]);
 
         return back()->with('status', 'Payment method '.($paymentMethod->is_active ? 'activated.' : 'deactivated.'));
@@ -60,10 +71,38 @@ class PaymentMethodController extends Controller
 
     public function destroy(BillingPaymentMethod $paymentMethod)
     {
+        // Never orphan historical payment records: subscription_payments.payment_method_code is a
+        // soft string reference (no FK), so once any payment has cited this code a hard delete
+        // would make that history uninterpretable. Deactivate instead — hard delete is allowed
+        // only for a method that was never referenced.
+        if ($paymentMethod->hasBeenReferenced()) {
+            $paymentMethod->update(['is_active' => false]);
+
+            return redirect()->route('central.payment-methods.index')
+                ->with('status', 'This method has payment history, so it was deactivated instead of deleted.');
+        }
+
         $paymentMethod->delete();
 
         return redirect()->route('central.payment-methods.index')
             ->with('status', 'Payment method deleted.');
+    }
+
+    /**
+     * A method may only be stored/updated in the ACTIVE state when it carries the customer-facing
+     * config a tenant needs to actually pay. This is the authoritative server-side guard — it does
+     * NOT rely on the tenant side merely hiding incomplete methods.
+     */
+    private function assertActivatableIfActive(array $data): void
+    {
+        $wantsActive = filter_var($data['is_active'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+        if ($wantsActive
+            && ! (filled($data['account_title'] ?? null) && filled($data['account_number'] ?? null))) {
+            throw ValidationException::withMessages([
+                'is_active' => 'Fill the account title and account number before activating this method.',
+            ]);
+        }
     }
 
     private function validated(Request $request, ?int $ignoreId = null): array
