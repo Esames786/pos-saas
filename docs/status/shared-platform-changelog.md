@@ -27,6 +27,26 @@ Feature-specific work stays on its own branch. This file records the cherry-pick
 
 > Note: a 4th feature worktree now exists — `pos-saas-cloud` @ `feat/cloud-billing-onboarding-v1` (CLOUD-BILLING sprint, Phase 1A pushed `464ab66`, not deployed). Platform fixes are cherry-picked there too (`661cf0e` → `9f88579`, `67efbc1` → `8cea1e1`). Catering has moved to `release/catering-go-live-2`.
 
+## CATERING-GO-LIVE-2 — canonical integration (2026-08-14)
+
+- **Certified candidate**: `release/catering-go-live-2` @ `acd313c` (gates: MySQL 340/2073, Catering
+  43/395, fast 186/31856, zero skips/exclusions). Platform then advanced with the two POS fixes above;
+  the candidate was reconciled to `3eb2a1b` (both cherry-picks patch-id-identical to `661cf0e`/`67efbc1`).
+- **Canonical integration merge**: `3eb2a1b` merged into `feat/14d-2-plan-upgrade-requests` → **`1e07356`**.
+  Tree integrity proven: Catering content byte-identical to the certified candidate (only this changelog
+  differs); the newer shared POS fixes are byte-identical to `adae153`'s (nothing reverted).
+- **Re-certified on the merge tree**: complete MySQL **344/2087 OK (zero skips/exclusions)**, Catering
+  **43/395 OK**, fast **186/31856 OK**, lint/Pint/`git diff --check`/route:cache/config:cache/view:cache
+  all clean.
+- **Entitlement contract**: Catering is globally REGISTERED but entitlement-gated —
+  `MasterSeeder::ROLLOUT_GATED_MODULE_KEYS` keeps every public/Enterprise plan catering-free on deploy;
+  proven on a fresh-provision tenant AND a real pre-Catering tenant snapshot upgrade (data intact,
+  fail-closed). First client: private plan `catering-client-1` grant procedure in
+  `docs/releases/catering-go-live-2.md` (rehearsed locally on cateringdemo).
+- **Thermal printing remains ENGLISH-ONLY** (no Urdu thermal certification claimed); Urdu/bilingual is
+  A4/browser only.
+- **Production deployment HEAD**: _pending — to be recorded at deploy time (deploy.sh, exact `1e07356`)._
+
 ## Docs shared (not code)
 
 - `docs/status/platform-checkpoint-2026-08-13.md` — authoritative state at the split.
