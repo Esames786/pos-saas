@@ -77,7 +77,10 @@ class HeldSaleController extends Controller
                 'delivery_channel_id'         => $s->delivery_channel_id,
                 'delivery_rider_id'           => $s->delivery_rider_id,
                 'delivery_address'            => $s->delivery_address,
+                'delivery_charge_amount'      => (float) $s->delivery_charge_amount,
                 'vehicle_number'              => $s->vehicle_number,
+                'discount_type'               => $s->discount_type,
+                'discount_value'              => (float) $s->discount_value,
                 'customer'                    => $s->customer_name ?: $s->customer?->name ?: 'Walk-in',
                 // CUSTOMER-UX-1: recall must restore the attached customer (chip + hidden fields).
                 'customer_id'                 => $s->customer_id,
@@ -255,6 +258,7 @@ class HeldSaleController extends Controller
             'delivery_channel_id'         => 'nullable|exists:delivery_channels,id',
             'delivery_rider_id'           => 'nullable|exists:delivery_riders,id',
             'delivery_address'            => 'nullable|string|max:500',
+            'delivery_charge_amount'      => 'nullable|numeric|min:0|max:99999',
             'vehicle_number'              => 'nullable|string|max:50',
             'restaurant_table_session_id' => 'nullable|exists:restaurant_table_sessions,id',
             'restaurant_table_id'         => 'nullable|exists:restaurant_tables,id',
@@ -354,7 +358,11 @@ class HeldSaleController extends Controller
             'tax_amount'      => 0,
         ])->values()->toArray();
 
-        // Tip is always 0 on held sales — only applied at payment time
+        // Tip is always 0 on held sales — only applied at payment time. Delivery charge mirrors the
+        // Review & Pay path (SalesOrderController): a locked branch uses its default, otherwise the
+        // entered value; anything but a non-table delivery order is 0. Held sales previously omitted
+        // this argument, so the charge silently dropped to 0 at hold time.
+        $chargeBranch = \App\Models\Tenant\Branch::find((int) $data['branch_id']);
         $totals = $totalsService->calculate(
             resolvedLines: $resolvedLines,
             discountType:  $data['discount_type'],
@@ -363,6 +371,11 @@ class HeldSaleController extends Controller
             orderType:     $data['order_type'],
             promoCode:     $data['promo_code'] ?? null,
             tipAmount:     0,
+            deliveryCharge: ($data['order_type'] === 'delivery' && empty($data['restaurant_table_session_id']))
+                ? ($chargeBranch && $chargeBranch->delivery_charge_locked
+                    ? (float) $chargeBranch->default_delivery_charge
+                    : (float) ($data['delivery_charge_amount'] ?? 0))
+                : 0,
         );
 
         try {
@@ -555,7 +568,8 @@ class HeldSaleController extends Controller
                 'delivery_channel_id'         => $data['order_type'] === 'delivery' ? ($data['delivery_channel_id'] ?? null) : null,
                 'delivery_rider_id'           => $data['order_type'] === 'delivery' ? ($data['delivery_rider_id'] ?? null) : null,
                 'delivery_address'            => $data['order_type'] === 'delivery' ? ($data['delivery_address'] ?? null) : null,
-                'vehicle_number'              => $data['order_type'] === 'quick_sale' ? ($data['vehicle_number'] ?? null) : null,
+                'delivery_charge_amount'      => $totals['delivery_charge_amount'] ?? 0,
+                'vehicle_number'              => in_array($data['order_type'], ['quick_sale', 'takeaway'], true) ? ($data['vehicle_number'] ?? null) : null,
                 'customer_id'                 => $data['customer_id'] ?? null,
                 'customer_name'               => $data['customer_name'] ?? null,
                 'customer_phone'              => $data['customer_phone'] ?? null,
@@ -587,7 +601,8 @@ class HeldSaleController extends Controller
                 'delivery_channel_id'         => $data['order_type'] === 'delivery' ? ($data['delivery_channel_id'] ?? null) : null,
                 'delivery_rider_id'           => $data['order_type'] === 'delivery' ? ($data['delivery_rider_id'] ?? null) : null,
                 'delivery_address'            => $data['order_type'] === 'delivery' ? ($data['delivery_address'] ?? null) : null,
-                'vehicle_number'              => $data['order_type'] === 'quick_sale' ? ($data['vehicle_number'] ?? null) : null,
+                'delivery_charge_amount'      => $totals['delivery_charge_amount'] ?? 0,
+                'vehicle_number'              => in_array($data['order_type'], ['quick_sale', 'takeaway'], true) ? ($data['vehicle_number'] ?? null) : null,
                 'customer_id'                 => $data['customer_id'] ?? null,
                 'customer_name'               => $data['customer_name'] ?? null,
                 'customer_phone'              => $data['customer_phone'] ?? null,
