@@ -353,7 +353,17 @@ class ProductController extends Controller
     private function applyContextFilter($query, string $context, Request $request): void
     {
         if ($context === 'manufacturing') {
-            $includeSharedMaterials = $request->boolean('include_shared_materials');
+            // KASHIF-CATERING-PRODUCT-UX-1 — a kitchen's materials are raw and
+            // packaging kinds, and it has no BOMs to flag them against. store()
+            // already forces can_be_bom_component on both kinds, so anything
+            // created through this app satisfies the filter below anyway; this
+            // only rescues rows written directly by a seeder or import, which is
+            // exactly how Kashif's 14 ingredients became invisible.
+            //
+            // Scoped to the catering path deliberately: the manufacturing list
+            // and its "include shared materials" checkbox behave as before.
+            $includeSharedMaterials = $request->boolean('include_shared_materials')
+                || $this->isCateringMaterials($request);
 
             $query->where(function ($outer) use ($includeSharedMaterials) {
                 $outer->where(function ($q) {

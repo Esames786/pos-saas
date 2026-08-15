@@ -165,6 +165,71 @@ class CateringViewRenderMySqlTest extends MySqlTenantTestCase
         $this->addToAssertionCount(1);
     }
 
+    /**
+     * KASHIF-CATERING-PRODUCT-UX-1 — a caterer buys mutton; they do not author a
+     * BOM, run WIP, or book a finished-goods receipt. The materials screen shares
+     * its data shape with manufacturing but must share none of its vocabulary.
+     *
+     * The second half is the point: the same views rendered for a manufacturing
+     * tenant must still carry that wording, so this cannot be "fixed" by simply
+     * deleting the words.
+     */
+    public function test_manufacturing_vocabulary_never_reaches_a_catering_screen(): void
+    {
+        // Whole visible strings, not bare words. Banning "BOM" alone would also
+        // trip on the sidebar and on inert JS the catering path never renders,
+        // which makes the test fail for reasons that are not the defect.
+        $banned = [
+            'Manufacturing Raw Material',
+            'Manufacturing Finished Good',
+            'Back to Manufacturing Products',
+            'Can be BOM Component',
+            'Can be BOM Output',
+            'Manufactured Finished Good',
+            'WIP/FG receipts',
+            'Recipe / BOM',
+            'items consumed in BOMs',
+        ];
+
+        $cateringPayload = [
+            'product' => null,
+            'title' => 'Create Material',
+            'categories' => \App\Models\Tenant\Category::all(),
+            'units' => \App\Models\Tenant\Unit::all(),
+            'context' => 'manufacturing',
+            'contextBase' => '/catering/materials',
+        ];
+
+        $catering = View::make('tenant.products.form', $cateringPayload)->render();
+
+        foreach ($banned as $word) {
+            $this->assertStringNotContainsStringIgnoringCase(
+                $word, $catering,
+                "the catering materials form must not say \"{$word}\" — a kitchen has no such concept"
+            );
+        }
+
+        // It must still say what it IS, or the words were merely deleted.
+        $this->assertStringContainsString('Ingredient', $catering);
+        $this->assertStringContainsString('Packaging Material', $catering);
+        $this->assertStringContainsString('Back to Materials', $catering);
+        $this->assertStringContainsString('Material Rate Book', $catering,
+            'the form must point at where the QUOTED rate lives, not just the purchase cost');
+
+        // Non-regression: a manufacturing tenant keeps its own vocabulary.
+        $manufacturing = View::make('tenant.products.form', array_merge($cateringPayload, [
+            'title' => 'Create Manufacturing Product',
+            'contextBase' => '/manufacturing/products',
+        ]))->render();
+
+        $this->assertStringContainsString('Back to Manufacturing Products', $manufacturing,
+            'manufacturing wording must survive untouched for manufacturing tenants');
+        $this->assertStringContainsString('Can be BOM Component', $manufacturing,
+            'the BOM role checkboxes must remain for manufacturing tenants');
+        $this->assertStringContainsString('Recipe / BOM', $manufacturing,
+            'the consumption-method wording must be unchanged outside catering');
+    }
+
     /** The estimate document must carry both languages when lang=both. */
     public function test_estimate_document_renders_english_and_urdu(): void
     {

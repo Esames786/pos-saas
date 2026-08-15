@@ -15,6 +15,12 @@
     $backUrl = url($base);
     $formUrl = $product ? url($base . '/' . $product->id) : url($base);
 
+    // KASHIF-CATERING-PRODUCT-UX-1 — a kitchen shares the consumed-product data
+    // shape with a factory but none of its vocabulary. A caterer buys mutton;
+    // they do not author a BOM, run WIP, or book a finished-goods receipt.
+    // Manufacturing tenants keep their own wording untouched.
+    $isCateringMaterials = $base === '/catering/materials';
+
     // Detect the current product's setup mode from its existing flags (edit screens).
     $detectMode = function ($p) use ($mfgAvailable, $kitchenAvailable) {
         if (! $p) return 'pos_sale';
@@ -39,10 +45,20 @@
         'raw_material' => ['Ingredient / Raw Material', 'ti-meat', 'Hidden from POS, used in recipes', ! $isManufacturing],
         'packaging'    => ['Packing Material', 'ti-package', 'Hidden from POS, packaging stock', ! $isManufacturing],
         'service'      => ['Service Item', 'ti-businessplan', 'Sold in POS, no stock', ! $isManufacturing],
-        'mfg_raw'      => ['Manufacturing Raw Material', 'ti-building-factory-2', 'BOM component', $isManufacturing && $mfgAvailable],
-        'mfg_fg'       => ['Manufacturing Finished Good', 'ti-box', 'Produced via BOM', $isManufacturing && $mfgAvailable],
-        'advanced'     => ['Advanced / Custom', 'ti-adjustments', 'Show every field', true],
+        'mfg_raw'      => ['Manufacturing Raw Material', 'ti-building-factory-2', 'BOM component', $isManufacturing && $mfgAvailable && ! $isCateringMaterials],
+        'mfg_fg'       => ['Manufacturing Finished Good', 'ti-box', 'Produced via BOM', $isManufacturing && $mfgAvailable && ! $isCateringMaterials],
+        'advanced'     => ['Advanced / Custom', 'ti-adjustments', 'Show every field', ! $isCateringMaterials],
     ];
+
+    // Catering offers exactly the two things a kitchen stocks, in its own words.
+    // The underlying archetypes are unchanged — only the label and the blurb.
+    if ($isCateringMaterials) {
+        $modeCards['raw_material'] = ['Ingredient', 'ti-meat', 'Purchased and consumed by your recipes', true];
+        $modeCards['packaging']    = ['Packaging Material', 'ti-package', 'Boxes, foil, disposable plates', true];
+        if (! in_array($currentMode, ['raw_material', 'packaging'], true)) {
+            $currentMode = 'raw_material';
+        }
+    }
     if (! ($modeCards[$currentMode][3] ?? false)) {
         $currentMode = 'advanced';
     }
@@ -51,7 +67,12 @@
 @section('content')
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
     <h1 class="mb-0">{{ $title }}</h1>
-    <a href="{{ $backUrl }}" class="btn btn-light">{{ $isManufacturing ? 'Back to Manufacturing Products' : 'Back to Catalog Products' }}</a>
+    <a href="{{ $backUrl }}" class="btn btn-light">
+        @if($isCateringMaterials) Back to Materials
+        @elseif($isManufacturing) Back to Manufacturing Products
+        @else Back to Catalog Products
+        @endif
+    </a>
 </div>
 
 <style>
@@ -77,7 +98,20 @@
                 <div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>
             @endif
 
-            @if($isManufacturing)
+            @if($isCateringMaterials)
+                <div class="alert alert-info d-flex align-items-start gap-2">
+                    <i class="ti ti-info-circle fs-18 mt-1"></i>
+                    <div>
+                        Ingredients and packaging your kitchen buys and consumes — mutton, rice, oil,
+                        masala, foil boxes. These are <strong>never sold to a customer directly</strong>;
+                        your dishes are, and each dish's recipe draws from these.
+                        <span class="d-block mt-1 text-muted">
+                            The cost you enter here is what you <strong>pay</strong>. The rate you
+                            <strong>quote</strong> a customer at lives in the Material Rate Book.
+                        </span>
+                    </div>
+                </div>
+            @elseif($isManufacturing)
                 <div class="alert alert-info d-flex align-items-start gap-2">
                     <i class="ti ti-info-circle fs-18 mt-1"></i>
                     <div>
@@ -392,20 +426,38 @@
                     <label for="product_kind" class="form-label">Product Kind</label>
                     <select id="product_kind" name="product_kind"
                             class="form-select @error('product_kind') is-invalid @enderror">
-                        @foreach(\App\Models\Tenant\Product::KINDS as $val => $label)
-                            <option value="{{ $val }}" @selected(old('product_kind', $product?->product_kind ?? 'sale_item') === $val)>{{ $label }}</option>
+                        @php
+                            // A kitchen stocks two kinds of thing. Offering it semi-finished
+                            // goods or combo-virtuals invites data that no catering screen
+                            // can then display or cost.
+                            $kindOptions = $isCateringMaterials
+                                ? array_intersect_key(\App\Models\Tenant\Product::KINDS, array_flip(['raw_material', 'packaging_material']))
+                                : \App\Models\Tenant\Product::KINDS;
+                        @endphp
+                        @foreach($kindOptions as $val => $label)
+                            <option value="{{ $val }}" @selected(old('product_kind', $product?->product_kind ?? ($isCateringMaterials ? 'raw_material' : 'sale_item')) === $val)>{{ $label }}</option>
                         @endforeach
                     </select>
                     @error('product_kind') <div class="invalid-feedback">{{ $message }}</div> @enderror
-                    <div class="form-help">Raw materials &amp; packaging are normally hidden from POS. Finished goods show in POS only when saleable.</div>
+                    <div class="form-help">
+                        @if($isCateringMaterials)
+                            Both are bought, stocked and consumed by recipes. Neither is ever
+                            sold to a customer directly.
+                        @else
+                            Raw materials &amp; packaging are normally hidden from POS. Finished goods show in POS only when saleable.
+                        @endif
+                    </div>
                 </div>
                 <div class="col-md-8">
                     <div class="d-flex flex-wrap gap-4 mt-2">
+                        @unless($isCateringMaterials)
                         <div class="form-check pf" data-pg="pos">
                             <input id="is_pos_visible" type="checkbox" name="is_pos_visible" value="1" class="form-check-input"
                                    @checked(old('is_pos_visible', $product?->is_pos_visible ?? true))>
                             <label for="is_pos_visible" class="form-check-label">POS Visible</label>
                         </div>
+                        @endunless
+                        @unless($isCateringMaterials)
                         <div class="form-check pf" data-pg="mfg">
                             <input id="can_be_bom_component" type="checkbox" name="can_be_bom_component" value="1" class="form-check-input"
                                    @checked(old('can_be_bom_component', $product?->can_be_bom_component ?? false))>
@@ -421,12 +473,24 @@
                                    @checked(old('is_manufactured_finished_good', $product?->is_manufactured_finished_good ?? false))>
                             <label for="is_manufactured_finished_good" class="form-check-label">Manufactured Finished Good</label>
                         </div>
+                        @endunless
                     </div>
+                    @if($isCateringMaterials)
+                        {{-- The BOM flags are not omitted from the save — the controller forces
+                             can_be_bom_component on any raw or packaging material regardless of
+                             what is posted. Hiding the checkboxes removes vocabulary a kitchen
+                             does not use; it does not change what is stored. --}}
+                        <div class="form-help mt-1">
+                            Not shown in POS and not sellable — enforced when saved, whatever this
+                            form sends.
+                        </div>
+                    @else
                     <div class="form-help mt-1 pf" data-pg="mfg">
                         <strong>BOM Component</strong> = used as input inside manufacturing.
                         <strong>BOM Output</strong> = product produced by manufacturing.
                         <strong>Manufactured FG</strong> affects future manufacturing COGS.
                     </div>
+                    @endif
                 </div>
             </div>
             </div>
@@ -487,12 +551,23 @@
                     <label for="inventory_consumption_method" class="form-label">Consumption Method</label>
                     <select id="inventory_consumption_method" name="inventory_consumption_method"
                             class="form-select @error('inventory_consumption_method') is-invalid @enderror">
-                        @foreach(['stock_item'=>'Stock Item (direct deduction)','recipe'=>'Recipe / BOM','none'=>'None (no stock)'] as $val => $label)
+                        @php
+                            // "Recipe / BOM" is the last visible manufacturing word on a
+                            // catering screen; a kitchen recognises only the recipe half.
+                            $consumptionLabels = $isCateringMaterials
+                                ? ['stock_item' => 'Stock Item (direct deduction)', 'recipe' => 'Recipe', 'none' => 'None (no stock)']
+                                : ['stock_item' => 'Stock Item (direct deduction)', 'recipe' => 'Recipe / BOM', 'none' => 'None (no stock)'];
+                        @endphp
+                        @foreach($consumptionLabels as $val => $label)
                             <option value="{{ $val }}" @selected(old('inventory_consumption_method', $product?->inventory_consumption_method ?? 'stock_item') === $val)>{{ $label }}</option>
                         @endforeach
                     </select>
                     @error('inventory_consumption_method') <div class="invalid-feedback">{{ $message }}</div> @enderror
-                    <div class="form-help">Recipe mode deducts ingredients at time of sale.</div>
+                    <div class="form-help">
+                        {{ $isCateringMaterials
+                            ? 'Ingredients are deducted when you issue materials for an event, not when a quote is made.'
+                            : 'Recipe mode deducts ingredients at time of sale.' }}
+                    </div>
                 </div>
 
                 <div class="col-md-4 pf" data-pg="kitchen">
