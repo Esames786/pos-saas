@@ -64,13 +64,10 @@
                 @endcan
             @endif
             @can('tenant.catering.events.cancel')
-                <form method="POST" action="{{ url('/catering/events/' . $event->id . '/cancel') }}" class="d-inline">
-                    @csrf
-                    <button class="btn btn-outline-danger"
-                            data-bs-toggle="tooltip"
-                            title="Closes the booking permanently. Any advance already received stays on the ledger and must be refunded separately."
-                            onclick="return confirm('Cancel event {{ $event->event_no }}? This cannot be undone.')">Cancel</button>
-                </form>
+                <button class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#cancelModal"
+                        title="Closes the booking permanently and records why. Any advance already received stays on the ledger.">
+                    Cancel Booking
+                </button>
             @endcan
         @endif
     </div>
@@ -141,6 +138,22 @@
                     <dt class="col-5 text-muted">PAX</dt><dd class="col-7">{{ number_format($event->pax) }}</dd>
                     <dt class="col-5 text-muted">Branch</dt><dd class="col-7">{{ $event->branch?->name ?? '—' }}</dd>
                     @if($event->notes)<dt class="col-5 text-muted">Notes</dt><dd class="col-7">{{ $event->notes }}</dd>@endif
+                    @if($event->isCancelled())
+                        {{-- Recorded at cancellation. Older cancellations predate this
+                             field and legitimately have none — an invented reason would
+                             be a fabricated record, so the absence is shown plainly. --}}
+                        <dt class="col-5 text-danger">Cancelled</dt>
+                        <dd class="col-7">
+                            @if($event->cancel_reason)
+                                {{ $event->cancel_reason }}
+                            @else
+                                <span class="text-muted fst-italic">No reason was recorded for this cancellation.</span>
+                            @endif
+                            @if($event->cancelled_at)
+                                <div class="fs-12 text-muted mt-1">{{ $event->cancelled_at->format('d M Y g:i A') }}</div>
+                            @endif
+                        </dd>
+                    @endif
                 </div>
             </div>
         </div>
@@ -525,6 +538,57 @@
 
 @if(! $event->isCancelled())
 @can('tenant.catering.advances.store')
+{{-- ── Cancel booking (item 9) ───────────────────────────────────────────
+     The reason becomes part of the record, and the advance situation is stated
+     here rather than discovered afterwards: money already received stays on the
+     ledger, because a cancel button must not rewrite the books. --}}
+@can('tenant.catering.events.cancel')
+@if($event->isOpen())
+<div class="modal fade" id="cancelModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form method="POST" action="{{ url('/catering/events/' . $event->id . '/cancel') }}" class="modal-content">
+            @csrf
+            <div class="modal-header">
+                <h5 class="modal-title">Cancel {{ $event->event_no }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                @if($advanceTotal > 0)
+                    <div class="alert alert-warning">
+                        <i class="ti ti-alert-triangle me-1"></i>
+                        <strong>{{ number_format($advanceTotal, 2) }}</strong> has already been received
+                        against this booking.
+                        <span class="d-block mt-1">
+                            Cancelling does <strong>not</strong> refund it. The payment stays on the
+                            ledger exactly as recorded, and returning the money is a separate action
+                            you take deliberately.
+                        </span>
+                    </div>
+                @else
+                    <div class="alert alert-light border">
+                        <i class="ti ti-info-circle me-1"></i>
+                        No advance has been received, so nothing financial changes.
+                    </div>
+                @endif
+
+                <label class="form-label" for="cancel_reason">
+                    Why is this being cancelled? <span class="text-danger">*</span>
+                </label>
+                <textarea id="cancel_reason" name="cancel_reason" class="form-control" rows="3" required
+                          minlength="3" maxlength="2000"
+                          placeholder="e.g. customer postponed the wedding to November"></textarea>
+                <div class="form-text">Kept on the booking permanently. This cannot be undone.</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Keep booking</button>
+                <button type="submit" class="btn btn-danger">Cancel this booking</button>
+            </div>
+        </form>
+    </div>
+</div>
+@endif
+@endcan
+
 <div class="modal fade" id="advanceModal" tabindex="-1">
     <div class="modal-dialog">
         <form method="POST" action="{{ url('/catering/events/' . $event->id . '/advances') }}" class="modal-content">

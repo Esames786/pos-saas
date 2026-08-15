@@ -166,13 +166,45 @@ class CateringEstimateService
         return $event;
     }
 
-    public function cancelEvent(CateringEvent $event): CateringEvent
+    /**
+     * KASHIF-CATERING-PRODUCT-UX-1 (item 9) — cancel a booking, on the record.
+     *
+     * A reason is required. A cancelled booking that carried a received advance
+     * used to leave no trace of what was agreed, which is exactly the case
+     * someone will need to reconstruct months later.
+     *
+     * What this deliberately does NOT do: touch the advance. Money that was
+     * received was really received, and its journal entry and cash/bank
+     * movement are history. Deleting the row, reversing the entry, or writing a
+     * refund here would be rewriting the books from a cancel button. If the
+     * customer is owed money back, that is a separate, deliberate financial
+     * action — the UI says so, and the outstanding amount stays visible.
+     *
+     * Idempotent: cancelling an already-cancelled event returns it untouched
+     * rather than overwriting the original reason or timestamp.
+     */
+    public function cancelEvent(CateringEvent $event, string $reason, ?int $userId = null): CateringEvent
     {
         if (in_array($event->status, [CateringEvent::STATUS_COMPLETED, CateringEvent::STATUS_CLOSED], true)) {
             throw new RuntimeException("Event {$event->event_no} is {$event->status} and cannot be cancelled.");
         }
 
-        $event->forceFill(['status' => CateringEvent::STATUS_CANCELLED])->save();
+        if ($event->isCancelled()) {
+            return $event;
+        }
+
+        $reason = trim($reason);
+
+        if ($reason === '') {
+            throw new RuntimeException('A cancellation reason is required.');
+        }
+
+        $event->forceFill([
+            'status' => CateringEvent::STATUS_CANCELLED,
+            'cancel_reason' => $reason,
+            'cancelled_at' => now(),
+            'cancelled_by_user_id' => $userId,
+        ])->save();
 
         return $event;
     }

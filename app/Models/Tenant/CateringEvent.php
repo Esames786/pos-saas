@@ -71,6 +71,9 @@ class CateringEvent extends Model
         'venue',
         'pax',
         'status',
+        'cancel_reason',
+        'cancelled_at',
+        'cancelled_by_user_id',
         'notes',
         'created_by_user_id',
     ];
@@ -83,6 +86,7 @@ class CateringEvent extends Model
             'pax' => 'integer',
             'confirmed_at' => 'datetime',
             'closed_at' => 'datetime',
+            'cancelled_at' => 'datetime',
         ];
     }
 

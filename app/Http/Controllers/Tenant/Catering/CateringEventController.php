@@ -216,15 +216,32 @@ class CateringEventController extends Controller
         return back()->with('status', $message);
     }
 
-    public function cancel(CateringEvent $cateringEvent)
+    public function cancel(Request $request, CateringEvent $cateringEvent)
     {
+        $data = $request->validate([
+            'cancel_reason' => ['required', 'string', 'min:3', 'max:2000'],
+        ], [
+            'cancel_reason.required' => 'Please say why this booking is being cancelled — it becomes part of the record.',
+            'cancel_reason.min' => 'Give a real reason, not a placeholder.',
+        ]);
+
         try {
-            $this->estimates->cancelEvent($cateringEvent);
+            $this->estimates->cancelEvent($cateringEvent, $data['cancel_reason'], $request->user()?->id);
         } catch (RuntimeException $e) {
             return back()->withErrors(['event' => $e->getMessage()]);
         }
 
-        return back()->with('status', "Event {$cateringEvent->event_no} cancelled.");
+        // An advance already received stays on the ledger. Say so here rather
+        // than let the operator assume cancelling undid the money as well.
+        $advanceTotal = (float) $cateringEvent->advances()->sum('amount');
+
+        $message = "Event {$cateringEvent->event_no} cancelled.";
+        if ($advanceTotal > 0) {
+            $message .= ' An advance of '.number_format($advanceTotal, 2).' was already received and remains'
+                .' on the ledger — refunding it is a separate action.';
+        }
+
+        return back()->with('status', $message);
     }
 
     private function validated(Request $request): array
