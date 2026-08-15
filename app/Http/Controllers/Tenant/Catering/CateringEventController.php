@@ -67,7 +67,37 @@ class CateringEventController extends Controller
     {
         $branches = Branch::where('status', 'active')->orderBy('name')->get();
 
-        return view('tenant.catering.events.form', ['event' => null, 'branches' => $branches]);
+        return view('tenant.catering.events.form', [
+            'event' => null,
+            'branches' => $branches,
+            'bookedDates' => $this->bookedDates(),
+        ]);
+    }
+
+    /**
+     * KASHIF-UAT-2 — dates this kitchen is already committed to.
+     *
+     * A caterer's first question when a customer names a date is "am I already
+     * booked that night?" A bare date field can never answer it, so the form
+     * shows the clash inline while they are still typing. Read-only, and
+     * cancelled bookings are excluded because they free the date up again.
+     *
+     * @return array<string, array<int, array{event_no: string, customer: string, pax: int}>>
+     */
+    private function bookedDates(): array
+    {
+        return CateringEvent::query()
+            ->whereNotIn('status', [CateringEvent::STATUS_CANCELLED, CateringEvent::STATUS_CLOSED])
+            ->whereDate('event_date', '>=', now()->subMonth()->toDateString())
+            ->orderBy('event_date')
+            ->get(['id', 'event_no', 'event_date', 'customer_name', 'pax'])
+            ->groupBy(fn ($e) => $e->event_date->toDateString())
+            ->map(fn ($group) => $group->map(fn ($e) => [
+                'event_no' => $e->event_no,
+                'customer' => $e->customer_name,
+                'pax' => (int) $e->pax,
+            ])->values()->all())
+            ->all();
     }
 
     public function store(Request $request)
@@ -131,7 +161,11 @@ class CateringEventController extends Controller
     {
         $branches = Branch::where('status', 'active')->orderBy('name')->get();
 
-        return view('tenant.catering.events.form', ['event' => $cateringEvent, 'branches' => $branches]);
+        return view('tenant.catering.events.form', [
+            'event' => $cateringEvent,
+            'branches' => $branches,
+            'bookedDates' => $this->bookedDates(),
+        ]);
     }
 
     public function update(Request $request, CateringEvent $cateringEvent)

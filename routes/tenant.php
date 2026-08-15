@@ -826,6 +826,19 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
 
                 Route::post('/catering/estimates/{cateringEstimate}/reprice', [\App\Http\Controllers\Tenant\Catering\CateringEstimateController::class, 'reprice'])->name('tenant.catering.estimates.reprice');
 
+                Route::get('/catering/guide', [\App\Http\Controllers\Tenant\Catering\CateringGuideController::class, 'index'])->name('tenant.catering.guide.index');
+
+                // A catering-only tenant owns raw materials (mutton, rice, oil) but has
+                // no Manufacturing module, and the Catalog list deliberately shows only
+                // sellable/recipe items — so its materials were reachable from NO screen
+                // at all. These reuse ProductController's proven manufacturing context
+                // under the catering module key; nothing about Manufacturing changes.
+                Route::get('/catering/materials', [ProductController::class, 'index'])->name('tenant.catering.materials.index');
+                Route::get('/catering/materials/create', [ProductController::class, 'create'])->name('tenant.catering.materials.create');
+                Route::post('/catering/materials', [ProductController::class, 'store'])->name('tenant.catering.materials.store');
+                Route::get('/catering/materials/{product}/edit', [ProductController::class, 'edit'])->name('tenant.catering.materials.edit');
+                Route::put('/catering/materials/{product}', [ProductController::class, 'update'])->name('tenant.catering.materials.update');
+
                 Route::get('/catering/material-rates', [\App\Http\Controllers\Tenant\Catering\CateringMaterialRateController::class, 'index'])->name('tenant.catering.material-rates.index');
                 Route::post('/catering/material-rates', [\App\Http\Controllers\Tenant\Catering\CateringMaterialRateController::class, 'store'])->name('tenant.catering.material-rates.store');
 

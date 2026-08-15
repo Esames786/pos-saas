@@ -680,6 +680,14 @@
                                 </a>
                             </li>
                         @endcan
+                        @can('tenant.catering.materials.index')
+                            @php $a = $isIn('catering/materials*') && ! $isIn('catering/material-rates*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/catering/materials') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-meat fs-16 me-2"></i><span>Materials</span>
+                                </a>
+                            </li>
+                        @endcan
                         @can('tenant.catering.material-rates.index')
                             @php $a = $isIn('catering/material-rates*'); @endphp
                             <li class="{{ $a ? 'active' : '' }}">
@@ -709,6 +717,14 @@
                             <li class="{{ $a ? 'active' : '' }}">
                                 <a href="{{ url('/catering/settings') }}" class="{{ $a ? 'active' : '' }}">
                                     <i class="ti ti-settings fs-16 me-2"></i><span>Catering Settings</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.catering.guide.index')
+                            @php $a = $isIn('catering/guide*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/catering/guide') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-help-circle fs-16 me-2"></i><span>Guide</span>
                                 </a>
                             </li>
                         @endcan

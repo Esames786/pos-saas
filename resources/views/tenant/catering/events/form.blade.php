@@ -84,18 +84,32 @@
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">Booking Date <span class="text-danger">*</span></label>
-                    <input type="date" name="booking_date" class="form-control" required
+                    <input type="date" name="booking_date" id="booking-date" class="form-control" required
                            value="{{ old('booking_date', $event?->booking_date?->format('Y-m-d') ?? now()->format('Y-m-d')) }}">
+                    <div class="form-text">The day the customer booked with you.</div>
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">Event Date <span class="text-danger">*</span></label>
-                    <input type="date" name="event_date" class="form-control" required
+                    <input type="date" name="event_date" id="event-date" class="form-control" required
                            value="{{ old('event_date', $event?->event_date?->format('Y-m-d')) }}">
+                    {{-- Filled by JS: weekday, days away, and any clashing booking. --}}
+                    <div class="form-text" id="event-date-hint"></div>
+                    <div class="d-flex flex-wrap gap-1 mt-2" id="date-chips">
+                        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 fs-12" data-days="0">Today</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 fs-12" data-days="1">Tomorrow</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 fs-12" data-weekend="1">This weekend</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 fs-12" data-days="30">In a month</button>
+                    </div>
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">Service Time</label>
-                    <input type="time" name="service_time" class="form-control"
+                    <input type="time" name="service_time" id="service-time" class="form-control"
                            value="{{ old('service_time', $event?->service_time ? \Carbon\Carbon::parse($event->service_time)->format('H:i') : '') }}">
+                    <div class="d-flex flex-wrap gap-1 mt-2">
+                        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 fs-12" data-time="13:00">Lunch 1 PM</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 fs-12" data-time="20:00">Dinner 8 PM</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 fs-12" data-time="21:00">9 PM</button>
+                    </div>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Venue</label>
@@ -150,5 +164,91 @@ $(function () {
         if (addr) $('[name=customer_address]').val(addr);
     });
 });
+
+/**
+ * KASHIF-UAT-2 — event date/time usability.
+ *
+ * Deliberately progressive enhancement over the native inputs rather than a
+ * date-picker library: these terminals run offline in the branch, so pulling in
+ * a CDN widget would break exactly where it is needed most. The native control
+ * stays the source of truth; this only adds the three things a bare date field
+ * cannot answer — which weekday it falls on, whether it is in the past, and
+ * whether the kitchen is already booked that night.
+ */
+(function () {
+    const eventDate   = document.getElementById('event-date');
+    const bookingDate = document.getElementById('booking-date');
+    const hint        = document.getElementById('event-date-hint');
+    if (! eventDate || ! hint) return;
+
+    const booked = @json($bookedDates ?? []);
+    const iso = d => d.getFullYear() + '-'
+        + String(d.getMonth() + 1).padStart(2, '0') + '-'
+        + String(d.getDate()).padStart(2, '0');
+
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+
+    // An event can never happen before it was booked.
+    const syncMin = () => { if (bookingDate) eventDate.min = bookingDate.value || ''; };
+
+    function render() {
+        const val = eventDate.value;
+        if (! val) { hint.innerHTML = ''; return; }
+
+        const d = new Date(val + 'T00:00:00');
+        if (isNaN(d)) { hint.innerHTML = ''; return; }
+
+        const weekday = d.toLocaleDateString(undefined, { weekday: 'long' });
+        const days = Math.round((d - today) / 86400000);
+        const away = days === 0 ? 'today'
+            : days === 1 ? 'tomorrow'
+            : days > 0 ? 'in ' + days + ' days'
+            : Math.abs(days) + ' days ago';
+
+        let html = '<span class="fw-semibold">' + weekday + '</span> · ' + away;
+
+        if (days < 0) {
+            html += ' <span class="text-danger">— this date has already passed</span>';
+        }
+
+        const clashes = booked[val] || [];
+        if (clashes.length) {
+            const list = clashes
+                .map(c => c.event_no + ' (' + c.customer + ', ' + c.pax + ' pax)')
+                .join(', ');
+            html += '<div class="text-warning mt-1"><i class="ti ti-alert-triangle"></i> '
+                + 'Already booked: ' + list + '</div>';
+        }
+
+        hint.innerHTML = html;
+    }
+
+    // Quick-pick chips — a caterer thinks "next Saturday", not "2026-08-22".
+    document.querySelectorAll('#date-chips [data-days], #date-chips [data-weekend]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const d = new Date(today);
+            if (btn.dataset.weekend) {
+                // Next Saturday; if today IS Saturday, keep today.
+                d.setDate(d.getDate() + ((6 - d.getDay()) + 7) % 7);
+            } else {
+                d.setDate(d.getDate() + parseInt(btn.dataset.days, 10));
+            }
+            eventDate.value = iso(d);
+            render();
+        });
+    });
+
+    document.querySelectorAll('[data-time]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const t = document.getElementById('service-time');
+            if (t) t.value = btn.dataset.time;
+        });
+    });
+
+    eventDate.addEventListener('change', render);
+    bookingDate?.addEventListener('change', syncMin);
+    syncMin();
+    render();
+})();
 </script>
 @endpush

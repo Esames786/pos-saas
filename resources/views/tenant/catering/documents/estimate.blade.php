@@ -13,11 +13,27 @@
 <style>
     @page { size: A4 portrait; margin: 14mm; }
     * { box-sizing: border-box; }
+    /* @page margin applies to PAPER only. On screen the sheet is drawn at real
+       A4 size on a grey desk so the preview matches what comes out of the
+       printer — otherwise the document sits flush against the browser edge and
+       looks nothing like the print. Undone inside @media print so the paper
+       uses @page alone and margins are never doubled. */
+    html { background: #e5e7eb; }
     body {
         font-family: {{ $isUr ? "'Jameel Noori Nastaleeq', 'Urdu Typesetting', 'Noto Nastaliq Urdu', serif" : "Arial, Helvetica, sans-serif" }};
-        color: #111827; margin: 0; font-size: 13px; line-height: 1.5;
+        color: #111827; font-size: 13px; line-height: 1.5;
+        width: 210mm; min-height: 297mm; margin: 12px auto; padding: 14mm;
+        background: #fff; box-shadow: 0 2px 14px rgba(0,0,0,.18);
     }
-    .ur { font-family: 'Jameel Noori Nastaleeq', 'Urdu Typesetting', 'Noto Nastaliq Urdu', serif; direction: rtl; }
+    @media screen and (max-width: 230mm) {
+        body { width: 100%; min-height: 0; margin: 0; padding: 10mm; box-shadow: none; }
+    }
+    @media print {
+        html { background: #fff; }
+        body { width: auto; min-height: 0; margin: 0; padding: 0; box-shadow: none; }
+    }
+    /* Nastaliq descenders clip at the body's Latin leading. */
+    .ur { font-family: 'Jameel Noori Nastaleeq', 'Urdu Typesetting', 'Noto Nastaliq Urdu', serif; direction: rtl; line-height: 2; }
     .doc-header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #111827; padding-bottom: 12px; }
     .brand { font-size: 26px; font-weight: bold; letter-spacing: 0.5px; }
     .brand-sub { color: #6b7280; font-size: 12px; }
@@ -42,8 +58,14 @@
     .terms { margin-top: 18px; font-size: 11px; color: #6b7280; white-space: pre-line; }
     .footer { margin-top: 26px; display: flex; justify-content: space-between; font-size: 12px; }
     .sig { border-top: 1px solid #9ca3af; padding-top: 4px; width: 200px; text-align: center; color: #6b7280; }
-    .print-bar { position: fixed; top: 10px; {{ $isUr ? 'left' : 'right' }}: 10px; }
+    /* Sits in the grey gutter beside the sheet. It used to overlap the document
+       header — in Urdu it flipped to the left and covered the estimate number. */
+    .print-bar { position: fixed; top: 10px; {{ $isUr ? 'left' : 'right' }}: 10px; z-index: 10; }
     @media print { .print-bar { display: none; } }
+    /* Keep rows, totals and signatures whole across a page break; repeat the
+       header row on every continuation page. A 15-line estimate spills to p2. */
+    table.items thead { display: table-header-group; }
+    table.items tr, .totals, .terms, .footer, .meta-box { break-inside: avoid; page-break-inside: avoid; }
 </style>
 </head>
 <body>

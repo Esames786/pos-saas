@@ -110,7 +110,15 @@ class CateringViewRenderMySqlTest extends MySqlTenantTestCase
                 'buckets' => ['today' => 0, 'tomorrow' => 0, 'week' => 1, 'unconfirmed' => 1],
                 'filter' => null, 'status' => null,
             ],
-            'tenant.catering.events.form' => ['event' => $event, 'branches' => \App\Models\Tenant\Branch::all()],
+            'tenant.catering.events.form' => [
+                'event' => $event, 'branches' => \App\Models\Tenant\Branch::all(),
+                'bookedDates' => [$event->event_date->toDateString() => [
+                    ['event_no' => $event->event_no, 'customer' => 'Render Test Customer', 'pax' => 250],
+                ]],
+            ],
+            // The guide must render for a tenant with NO data at all — it is the
+            // screen a brand-new operator opens first.
+            'tenant.catering.guide' => ['lang' => 'en'],
             'tenant.catering.events.show' => [
                 'event' => $event, 'units' => $units,
                 'profileMap' => collect([]), 'paymentMethods' => collect([]),
@@ -134,6 +142,14 @@ class CateringViewRenderMySqlTest extends MySqlTenantTestCase
             'tenant.catering.documents.estimate' => [
                 'estimate' => $estimate, 'event' => $event, 'lang' => 'both',
                 'advanceTotal' => 0.0, 'businessName' => 'Render Test',
+            ],
+            // Catering materials reuse the shared product list under its own base
+            // path — the regression guard for the contextBase indirection.
+            'tenant.products.index' => [
+                'products' => \App\Models\Tenant\Product::paginate(15),
+                'categories' => \App\Models\Tenant\Category::all(),
+                'context' => 'manufacturing',
+                'contextBase' => '/catering/materials',
             ],
         ];
 
@@ -219,6 +235,20 @@ class CateringViewRenderMySqlTest extends MySqlTenantTestCase
         // Catering routes denied for a POS-only tenant.
         $this->assertFalse($svc->check($pos, 'tenant.catering.events.index')['allowed'],
             'catering must stay denied without the catering module');
+
+        // KASHIF-UAT-2: a catering-only tenant owns raw materials but has no
+        // Manufacturing module, so its materials screen lives under catering and
+        // must NOT drag the manufacturing module along with it.
+        $this->assertTrue($svc->check($catering, 'tenant.catering.materials.index')['allowed'],
+            'a Catering tenant must be able to manage its own raw materials');
+        $this->assertTrue($svc->check($catering, 'tenant.catering.guide.index')['allowed'],
+            'the Catering guide must open on a catering plan');
+        $this->assertFalse($svc->check($pos, 'tenant.catering.guide.index')['allowed'],
+            'the Catering guide must stay denied without the catering module');
+        $this->assertFalse($svc->check($catering, 'tenant.manufacturing.products.index')['allowed'],
+            'the catering materials screen must not open Manufacturing');
+        $this->assertFalse($svc->check($pos, 'tenant.catering.materials.index')['allowed'],
+            'catering materials must stay denied without the catering module');
 
         // POS tenant keeps its own surfaces, INCLUDING POS KOT routing/layouts
         // (this is the regression guard for the printing split).

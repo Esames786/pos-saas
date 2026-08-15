@@ -3,6 +3,7 @@
 @section('title', 'Event ' . $event->event_no)
 
 @section('content')
+@include('tenant.catering.partials.tooltips')
 @php
     $current = $event->currentEstimate;
     $isDraft = $current && $current->isDraft();
@@ -45,14 +46,20 @@
                 @can('tenant.catering.events.confirm')
                     <form method="POST" action="{{ url('/catering/events/' . $event->id . '/confirm') }}" class="d-inline">
                         @csrf
-                        <button class="btn btn-success" onclick="return confirm('Confirm this booking?')">Confirm Booking</button>
+                        <button class="btn btn-success"
+                                data-bs-toggle="tooltip"
+                                title="Marks the booking as agreed so advances, production and the final invoice unlock. No money is posted and no stock moves yet."
+                                onclick="return confirm('Confirm this booking?')">Confirm Booking</button>
                     </form>
                 @endcan
             @endif
             @can('tenant.catering.events.cancel')
                 <form method="POST" action="{{ url('/catering/events/' . $event->id . '/cancel') }}" class="d-inline">
                     @csrf
-                    <button class="btn btn-outline-danger" onclick="return confirm('Cancel event {{ $event->event_no }}?')">Cancel</button>
+                    <button class="btn btn-outline-danger"
+                            data-bs-toggle="tooltip"
+                            title="Closes the booking permanently. Any advance already received stays on the ledger and must be refunded separately."
+                            onclick="return confirm('Cancel event {{ $event->event_no }}? This cannot be undone.')">Cancel</button>
                 </form>
             @endcan
         @endif
@@ -143,7 +150,8 @@
                 @can('tenant.catering.estimates.reprice')
                     <form method="POST" action="{{ url('/catering/estimates/' . $current->id . '/reprice') }}">
                         @csrf
-                        <button class="btn btn-sm btn-outline-secondary" title="Recompute material cost from recipes + rate book (no stock movement)">
+                        <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="tooltip"
+                                title="Recomputes the internal material cost from each dish's recipe and the Material Rate Book. Changes no customer price, moves no stock, posts nothing to finance.">
                             <i class="ti ti-calculator me-1"></i>Recalculate Cost
                         </button>
                     </form>
@@ -151,7 +159,8 @@
                 @can('tenant.catering.estimates.send')
                     <form method="POST" action="{{ url('/catering/estimates/' . $current->id . '/send') }}">
                         @csrf
-                        <button class="btn btn-sm btn-primary"
+                        <button class="btn btn-sm btn-primary" data-bs-toggle="tooltip"
+                                title="Freezes this quotation so the customer's copy can never change underneath them, and emails it if the customer has an address. To change the price afterwards you must create a revision."
                                 onclick="return confirm('Mark this estimate as sent? It becomes locked; further pricing changes need a revision.')">
                             Mark Sent / Lock
                         </button>
@@ -162,7 +171,8 @@
                 @can('tenant.catering.estimates.accept')
                     <form method="POST" action="{{ url('/catering/estimates/' . $current->id . '/accept') }}">
                         @csrf
-                        <button class="btn btn-sm btn-success">Customer Accepted</button>
+                        <button class="btn btn-sm btn-success" data-bs-toggle="tooltip"
+                                title="Records that the customer agreed to this quotation. Nothing is posted to finance — confirm the booking to unlock advances and production.">Customer Accepted</button>
                     </form>
                 @endcan
             @endif
@@ -170,7 +180,8 @@
                 @can('tenant.catering.estimates.revise')
                     <form method="POST" action="{{ url('/catering/estimates/' . $current->id . '/revise') }}">
                         @csrf
-                        <button class="btn btn-sm btn-outline-primary"
+                        <button class="btn btn-sm btn-outline-primary" data-bs-toggle="tooltip"
+                                title="Opens Q{{ $current->version_no + 1 }} as a fresh editable draft and marks Q{{ $current->version_no }} superseded. The old quotation is kept for your records, never deleted."
                                 onclick="return confirm('Create revision Q{{ $current->version_no + 1 }} as a new draft?')">
                             Create Revision
                         </button>
@@ -348,7 +359,8 @@
                 <h5 class="mb-0">Advances</h5>
                 @if(! $event->isCancelled())
                     @can('tenant.catering.advances.store')
-                        <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#advanceModal">Record Advance</button>
+                        <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#advanceModal"
+                                title="Posts the payment to the general ledger and increases the selected cash/bank balance.">Record Advance</button>
                     @endcan
                 @endif
             </div>
@@ -378,7 +390,11 @@
                     </tbody>
                 </table>
             </div>
-            <div class="card-footer text-muted fs-12">Operational records only in V1 — no accounting entries are posted.</div>
+            <div class="card-footer text-muted fs-12">
+                <i class="ti ti-alert-circle text-primary"></i>
+                Recording an advance <strong>posts to the general ledger</strong> and increases the
+                mapped cash/bank balance. It does not move stock.
+            </div>
         </div>
     </div>
     <div class="col-lg-6">
@@ -389,7 +405,8 @@
                     @can('tenant.catering.production-releases.store')
                         <form method="POST" action="{{ url('/catering/events/' . $event->id . '/production-releases') }}">
                             @csrf
-                            <button class="btn btn-sm btn-success"
+                            <button class="btn btn-sm btn-success" data-bs-toggle="tooltip"
+                                    title="Freezes the dish list into a kitchen sheet and queues it to the mapped kitchen printers. Still moves no stock — that happens when you issue materials."
                                     onclick="return confirm('Release production for {{ $event->event_no }}? This creates an immutable kitchen snapshot (no stock is moved).')">
                                 <i class="ti ti-chef-hat me-1"></i>Release Production
                             </button>
@@ -431,8 +448,9 @@
                 @can('tenant.catering.final-invoices.store')
                     <form method="POST" action="{{ url('/catering/events/' . $event->id . '/final-invoice') }}">
                         @csrf
-                        <button class="btn btn-sm btn-primary"
-                                onclick="return confirm('Issue the final invoice for {{ $event->event_no }}? Totals and advances freeze into an immutable document.')">
+                        <button class="btn btn-sm btn-primary" data-bs-toggle="tooltip"
+                                title="Posts revenue and receivables to the general ledger, applies advances already received, and freezes the document. This cannot be edited or deleted afterwards."
+                                onclick="return confirm('Issue the final invoice for {{ $event->event_no }}? This posts to the general ledger and freezes the document permanently.')">
                             Issue Final Invoice
                         </button>
                     </form>
@@ -477,7 +495,14 @@
                 </dd>
             </div>
         @else
-            <div class="text-muted">No final invoice yet. Available once the booking is confirmed (V1 posts no accounting entries — settlement is operational).</div>
+            <div class="text-muted">
+                No final invoice yet — available once the booking is confirmed.
+                <span class="d-block mt-1">
+                    <i class="ti ti-alert-circle text-primary"></i>
+                    Issuing it <strong>posts revenue and receivables to the general ledger</strong>,
+                    applies any advances against the invoice, and freezes the document permanently.
+                </span>
+            </div>
         @endif
     </div>
 </div>

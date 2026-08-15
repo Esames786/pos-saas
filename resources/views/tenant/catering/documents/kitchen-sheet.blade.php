@@ -16,11 +16,26 @@
 <style>
     @page { size: A4 portrait; margin: 12mm; }
     * { box-sizing: border-box; }
+    /* @page margin applies to PAPER only — on screen the sheet is drawn at real
+       A4 size on a grey desk so the preview matches the printed output. Undone
+       inside @media print so margins are never doubled. */
+    html { background: #e5e7eb; }
     body {
         font-family: {{ $isUr ? "'Jameel Noori Nastaleeq', 'Urdu Typesetting', 'Noto Nastaliq Urdu', serif" : "Arial, Helvetica, sans-serif" }};
-        color: #111827; margin: 0; font-size: 14px; line-height: 1.5;
+        color: #111827; font-size: 14px; line-height: 1.5;
+        width: 210mm; min-height: 297mm; margin: 12px auto; padding: 12mm;
+        background: #fff; box-shadow: 0 2px 14px rgba(0,0,0,.18);
     }
-    .ur { font-family: 'Jameel Noori Nastaleeq', 'Urdu Typesetting', 'Noto Nastaliq Urdu', serif; direction: rtl; }
+    @media screen and (max-width: 230mm) {
+        body { width: 100%; min-height: 0; margin: 0; padding: 8mm; box-shadow: none; }
+    }
+    @media print {
+        html { background: #fff; }
+        body { width: auto; min-height: 0; margin: 0; padding: 0; box-shadow: none; }
+    }
+    /* Nastaliq descenders clip at the body's Latin leading — and the kitchen
+       reads this sheet at arm's length, so give it extra room. */
+    .ur { font-family: 'Jameel Noori Nastaleeq', 'Urdu Typesetting', 'Noto Nastaliq Urdu', serif; direction: rtl; line-height: 2.1; }
     .head { border: 3px solid #111827; border-radius: 8px; padding: 12px 18px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
     .head .customer { font-size: 26px; font-weight: bold; }
     .head .big { font-size: 20px; font-weight: bold; }
@@ -42,8 +57,13 @@
     table.req-table th { text-align: {{ $isUr ? 'right' : 'left' }}; padding: 5px 8px; background: #f3f4f6; }
     table.req-table th.num, table.req-table td.num { text-align: {{ $isUr ? 'left' : 'right' }}; }
     table.req-table td { padding: 5px 8px; border-bottom: 1px solid #e5e7eb; }
-    .print-bar { position: fixed; top: 10px; {{ $isUr ? 'left' : 'right' }}: 10px; }
+    /* Sits in the grey gutter beside the sheet; it used to overlap the header. */
+    .print-bar { position: fixed; top: 10px; {{ $isUr ? 'left' : 'right' }}: 10px; z-index: 10; }
     @media print { .print-bar { display: none; } }
+    /* A station's rows must not split mid-dish across a page break. */
+    table.items thead, table.req-table thead { display: table-header-group; }
+    table.items tr, table.req-table tr, .head { break-inside: avoid; page-break-inside: avoid; }
+    h3.station { break-after: avoid; page-break-after: avoid; }
 </style>
 </head>
 <body>
