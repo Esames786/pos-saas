@@ -67,3 +67,27 @@ Feature-specific work stays on its own branch. This file records the cherry-pick
 
 Prod (`bingoopos.com`, Hostinger) is on `feat/14d-2` at `67efbc1` (Hold delivery-charge/vehicle recall fix). Prod stays
 **cloud**, Edge/Local Mode inactive, `activation_ready=false`.
+
+## PLATFORM-ENTITLEMENT-BOUNDARY-1 (2026-08-15)
+
+| Date | What | `feat/14d-2` | edge | catering | Prod? |
+|---|---|---|---|---|---|
+| 08-15 | Dashboard is always-allowed (was owned by the `reports` module, so restricted plans hit "Module Not Available" on login); sidebar module gates on Sales/Reports; Printing split so KOT Routing + Layouts require pos\|restaurant while Printers/Jobs/Agents stay shared; Customers + Payment Methods reachable from POS **or** Catering (route-enforced, not menu-only); compiled-Blade PHP lint gate | `1da0bc4` | _pending cherry-pick_ | _pending cherry-pick_ | ✅ deployed `51367cc` |
+
+**Why it matters beyond Catering:** `deploy.sh` grants the Owner every `tenant.*`
+permission regardless of plan, so `@can` alone was never an entitlement decision.
+Any sidebar section without a module gate leaked on *every* restricted plan.
+
+**New rule — `view:cache` is NOT proof.** It compiles Blade to PHP but never
+validates the PHP it emits; it reported success on two views that could not
+parse and 500'd in production. `tests/Unit/CompiledBladeSyntaxTest` now compiles
+all views and runs `php -l` on the generated PHP. Treat that gate — not
+`view:cache` — as the GREEN signal.
+
+**Deliberately NOT changed:** ERP Extensions keeps its plan-code allowlist.
+Gating it on the `erp_extensions` module would strip the menu from `standard`
+and `finance_erp` plans, which have no module row. It already fails closed for
+Catering-only tenants.
+
+**Follow-up (not in this sprint):** `PLATFORM-OWNER-ENTITLEMENT-PERMISSIONS-1` —
+make Owner permission sync entitlement-aware instead of granting all `tenant.*`.
