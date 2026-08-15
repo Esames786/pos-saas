@@ -54,11 +54,11 @@ class ProductArchetypeContractMySqlTest extends MySqlTenantTestCase
      */
     private function createVia(array $payload): Product
     {
-        $sku = 'LOCK-' . Str::upper(Str::random(6));
+        $sku = 'LOCK-'.Str::upper(Str::random(6));
 
         $request = Request::create('/products', 'POST', array_merge([
             'sku' => $sku,
-            'name' => 'Lock ' . $sku,
+            'name' => 'Lock '.$sku,
             'category_id' => $this->categoryId,
             'product_type' => 'simple',
             'default_selling_price' => 100,
@@ -87,7 +87,7 @@ class ProductArchetypeContractMySqlTest extends MySqlTenantTestCase
             $this->assertSame(
                 $want, $actual,
                 "[{$archetype}] {$field} changed — this is a behaviour change for every "
-                ."tenant creating this kind of product, not just catering"
+                .'tenant creating this kind of product, not just catering'
             );
         }
     }
@@ -284,16 +284,16 @@ class ProductArchetypeContractMySqlTest extends MySqlTenantTestCase
                 ->orWhere('inventory_consumption_method', 'recipe')
                 ->orWhere('product_type', 'service')
                 ->orWhere('product_kind', Product::KIND_SERVICE))
-              ->where(fn ($o) => $o
-                ->where(fn ($i) => $i
-                    ->where('can_be_bom_component', false)
-                    ->orWhere('is_pos_visible', true)
-                    ->orWhere('is_sellable', true))
-                ->where('can_be_bom_output', false)
-                ->where('is_manufactured_finished_good', false)
-                ->whereNotIn('product_kind', [
-                    Product::KIND_RAW_MATERIAL, Product::KIND_SEMI_FINISHED, Product::KIND_FINISHED_GOOD,
-                ]));
+                ->where(fn ($o) => $o
+                    ->where(fn ($i) => $i
+                        ->where('can_be_bom_component', false)
+                        ->orWhere('is_pos_visible', true)
+                        ->orWhere('is_sellable', true))
+                    ->where('can_be_bom_output', false)
+                    ->where('is_manufactured_finished_good', false)
+                    ->whereNotIn('product_kind', [
+                        Product::KIND_RAW_MATERIAL, Product::KIND_SEMI_FINISHED, Product::KIND_FINISHED_GOOD,
+                    ]));
         }
 
         return $q->pluck('id')->all();
