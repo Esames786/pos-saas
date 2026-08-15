@@ -219,6 +219,16 @@ class PublicSiteController extends Controller
             report($e);
         }
 
+        // CLOUD-BILLING-3A: "first invoice issued" email (best-effort, at-most-once, never blocks signup).
+        try {
+            $firstInvoice = \App\Models\Master\SubscriptionInvoice::where('origin_key', 'signup:'.$tenant->subscription?->id)->first();
+            if ($firstInvoice) {
+                app(\App\Services\Saas\BillingNotifier::class)->firstInvoiceIssued($firstInvoice);
+            }
+        } catch (Throwable $e) {
+            report($e);
+        }
+
         return redirect(url('/trial/success'))->with([
             'trial_login_url' => $loginUrl,
             'trial_owner_email' => $tenant->owner_email,

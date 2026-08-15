@@ -13,6 +13,9 @@ class ProcessTrialTransitions extends Command
 
     public function handle(SubscriptionTrialTransitionService $transitions): int
     {
+        $reminded = $transitions->notifyTrialsEndingWithin((int) config('saas.trial_ending_reminder_days', 3));
+        $this->line('Trial-ending reminders sent: '.$reminded);
+
         $result = $transitions->processDueTrialTransitions();
 
         $this->info('Trials activated: '.$result['activated']);

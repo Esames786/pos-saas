@@ -33,7 +33,7 @@ class InvoiceController extends Controller
 
         return view('central.invoices.index', [
             'invoices' => $query->paginate(20)->withQueryString(),
-            'tenants'  => Tenant::orderBy('business_name')->get(),
+            'tenants' => Tenant::orderBy('business_name')->get(),
         ]);
     }
 
@@ -43,29 +43,29 @@ class InvoiceController extends Controller
 
         return view('central.invoices.create', [
             'tenant' => $tenant,
-            'plans'  => Plan::where('is_active', true)->orderBy('name')->get(),
+            'plans' => Plan::where('is_active', true)->orderBy('name')->get(),
         ]);
     }
 
     public function store(Request $request, Tenant $tenant)
     {
         $data = $request->validate([
-            'plan_id'         => ['nullable', 'exists:plans,id'],
-            'invoice_type'    => ['required', Rule::in(['subscription', 'upgrade', 'addon', 'manual'])],
-            'currency_code'   => ['required', 'string', 'size:3'],
-            'subtotal'        => ['required', 'numeric', 'min:0'],
+            'plan_id' => ['nullable', 'exists:plans,id'],
+            'invoice_type' => ['required', Rule::in(['subscription', 'upgrade', 'addon', 'manual'])],
+            'currency_code' => ['required', 'string', 'size:3'],
+            'subtotal' => ['required', 'numeric', 'min:0'],
             'discount_amount' => ['nullable', 'numeric', 'min:0'],
-            'tax_amount'      => ['nullable', 'numeric', 'min:0'],
-            'period_start'    => ['nullable', 'date'],
-            'period_end'      => ['nullable', 'date', 'after_or_equal:period_start'],
-            'due_date'        => ['nullable', 'date'],
-            'notes'           => ['nullable', 'string'],
+            'tax_amount' => ['nullable', 'numeric', 'min:0'],
+            'period_start' => ['nullable', 'date'],
+            'period_end' => ['nullable', 'date', 'after_or_equal:period_start'],
+            'due_date' => ['nullable', 'date'],
+            'notes' => ['nullable', 'string'],
         ]);
 
         $invoice = $this->billing->createInvoice($tenant, $data);
 
-        return redirect(url('/invoices/' . $invoice->id))
-            ->with('status', 'Invoice ' . $invoice->invoice_no . ' created.');
+        return redirect(url('/invoices/'.$invoice->id))
+            ->with('status', 'Invoice '.$invoice->invoice_no.' created.');
     }
 
     public function show(SubscriptionInvoice $invoice)
@@ -79,7 +79,7 @@ class InvoiceController extends Controller
         ]);
 
         return view('central.invoices.show', [
-            'invoice'  => $invoice,
+            'invoice' => $invoice,
             'gateways' => PaymentGateway::where('is_active', true)->orderBy('name')->get(),
         ]);
     }
@@ -87,14 +87,14 @@ class InvoiceController extends Controller
     public function storePayment(Request $request, SubscriptionInvoice $invoice)
     {
         $data = $request->validate([
-            'payment_gateway_id'  => ['nullable', 'exists:payment_gateways,id'],
+            'payment_gateway_id' => ['nullable', 'exists:payment_gateways,id'],
             'payment_method_code' => ['nullable', 'string', 'max:100'],
-            'amount'              => ['required', 'numeric', 'min:0.01'],
-            'currency_code'       => ['required', 'string', 'size:3'],
-            'payment_date'        => ['required', 'date'],
-            'reference_no'        => ['nullable', 'string', 'max:255'],
-            'status'              => ['required', Rule::in(['pending', 'verified', 'rejected'])],
-            'notes'               => ['nullable', 'string'],
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'currency_code' => ['required', 'string', 'size:3'],
+            'payment_date' => ['required', 'date'],
+            'reference_no' => ['nullable', 'string', 'max:255'],
+            'status' => ['required', Rule::in(['pending', 'verified', 'rejected'])],
+            'notes' => ['nullable', 'string'],
         ]);
 
         try {
@@ -103,7 +103,7 @@ class InvoiceController extends Controller
             return back()->withInput()->withErrors(['payment' => $e->getMessage()]);
         }
 
-        return redirect(url('/invoices/' . $invoice->id))
+        return redirect(url('/invoices/'.$invoice->id))
             ->with('status', 'Payment recorded.');
     }
 
@@ -115,7 +115,7 @@ class InvoiceController extends Controller
             return back()->withErrors(['void' => $e->getMessage()]);
         }
 
-        return redirect(url('/invoices/' . $invoice->id))
+        return redirect(url('/invoices/'.$invoice->id))
             ->with('status', 'Invoice voided.');
     }
 
@@ -124,6 +124,16 @@ class InvoiceController extends Controller
         abort_unless((int) $payment->subscription_invoice_id === (int) $invoice->id, 404);
 
         $this->billing->verifyPayment($payment);
+
+        // CLOUD-BILLING-3A: emails are sent AFTER the billing state is committed (at-most-once, never
+        // rolls back). Verifying a payment can also activate the subscription (late payment after
+        // trial end) — notify both; the notifier de-dupes each event.
+        $notifier = app(\App\Services\Saas\BillingNotifier::class);
+        $notifier->paymentVerified($payment->fresh());
+        $subscription = $invoice->fresh()->subscription;
+        if ($subscription && $subscription->status === 'active') {
+            $notifier->subscriptionActivated($subscription);
+        }
 
         return back()->with('status', 'Payment verified.');
     }
@@ -137,6 +147,9 @@ class InvoiceController extends Controller
         ]);
 
         $this->billing->rejectPayment($payment, $data['notes'] ?? null);
+
+        // CLOUD-BILLING-3A: tell the tenant their proof was not accepted (best-effort, at-most-once).
+        app(\App\Services\Saas\BillingNotifier::class)->paymentRejected($payment->fresh(), $data['notes'] ?? null);
 
         return back()->with('status', 'Payment rejected.');
     }

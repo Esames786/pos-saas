@@ -88,7 +88,7 @@ class TenantBillingController extends Controller
         }
 
         try {
-            $this->billing->recordTenantProofPayment(
+            $payment = $this->billing->recordTenantProofPayment(
                 $invoice,
                 app('tenant'),
                 $data,
@@ -97,6 +97,9 @@ class TenantBillingController extends Controller
         } catch (RuntimeException $e) {
             return back()->withInput()->withErrors(['proof' => $e->getMessage()]);
         }
+
+        // CLOUD-BILLING-3A: tell the reviewer a proof is waiting (best-effort, at-most-once).
+        app(\App\Services\Saas\BillingNotifier::class)->paymentProofReceived($payment);
 
         return redirect(url('/billing/invoices/'.$invoice->id))
             ->with('status', 'Payment proof uploaded. It will be verified by the provider.');

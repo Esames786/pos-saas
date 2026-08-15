@@ -21,6 +21,8 @@ use Illuminate\Support\Facades\DB;
  */
 class SubscriptionTrialTransitionService
 {
+    public function __construct(private readonly BillingNotifier $notifier) {}
+
     /**
      * Activate every trial whose promised window has closed and whose first invoice is paid.
      *
@@ -57,6 +59,8 @@ class SubscriptionTrialTransitionService
             }
 
             $this->activateFromInvoice($subscription, $invoice);
+            // Notify AFTER the activation is committed — a mail failure never rolls it back.
+            $this->notifier->subscriptionActivated($subscription->fresh());
             $activated++;
         }
 
@@ -65,6 +69,36 @@ class SubscriptionTrialTransitionService
             'waiting_unpaid' => $waitingUnpaid,
             'demo_skipped' => $demoSkipped,
         ];
+    }
+
+    /**
+     * Send a one-time "your trial is ending" reminder for each non-demo trial whose window closes
+     * within $daysAhead days. Idempotent per subscription (the notifier claims once).
+     *
+     * @return int number of reminders sent this run
+     */
+    public function notifyTrialsEndingWithin(int $daysAhead = 3, ?Carbon $now = null): int
+    {
+        $now ??= now();
+
+        $ending = Subscription::query()
+            ->where('status', 'trial')
+            ->whereNotNull('trial_ends_at')
+            ->whereBetween('trial_ends_at', [$now, $now->copy()->addDays($daysAhead)])
+            ->with('tenant')
+            ->get();
+
+        $sent = 0;
+        foreach ($ending as $subscription) {
+            if ($subscription->tenant?->is_demo) {
+                continue;
+            }
+            if ($this->notifier->trialEnding($subscription)) {
+                $sent++;
+            }
+        }
+
+        return $sent;
     }
 
     /**

@@ -6,6 +6,8 @@ use App\Models\Master\Subscription;
 
 class SubscriptionLifecycleService
 {
+    public function __construct(private readonly BillingNotifier $notifier) {}
+
     /**
      * Flip active subscriptions whose billing period has ended to past_due.
      * Trials are NOT touched (runtime access check already denies expired trials);
@@ -25,14 +27,20 @@ class SubscriptionLifecycleService
             ->whereHas('tenant', fn ($q) => $q->where('is_demo', true))
             ->count();
 
-        $expired = $base
+        // Iterate (not a bulk update) so each newly past-due tenant gets a one-time notice.
+        $toExpire = (clone $base)
             ->whereHas('tenant', fn ($q) => $q->where('is_demo', false))
-            ->update([
-                'status' => 'past_due',
-            ]);
+            ->with('tenant')
+            ->get();
+
+        foreach ($toExpire as $subscription) {
+            $subscription->update(['status' => 'past_due']);
+            // Notify AFTER the state change is committed — a mail failure never rolls it back.
+            $this->notifier->subscriptionPastDue($subscription->fresh());
+        }
 
         return [
-            'expired'      => $expired,
+            'expired' => $toExpire->count(),
             'demo_skipped' => $demoSkipped,
         ];
     }
