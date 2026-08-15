@@ -1,5 +1,6 @@
 @extends('layouts.app')
 
+@include("tenant.catering.partials.screen-impact", ["manages" => "One booking end to end — quotation, advances, production and the final invoice.", "managesUr" => "ایک بکنگ مکمل — تخمینہ، پیشگی، پیداوار اور حتمی بل۔", "finance" => "Recording an advance and issuing the final invoice both post to the general ledger", "stock" => "Only when materials are issued against a production release", "prints" => "Estimate and final invoice as A4, kitchen sheet to the printers", "emails" => "The customer, when a quotation is sent and when an invoice is issued", "reversible" => "partly", "note" => "While the estimate is a draft nothing at all is posted. Cancelling after an advance has been received does NOT refund it — the advance stays on the ledger and must be settled separately.", "noteUr" => "ڈرافٹ کی حالت میں کچھ پوسٹ نہیں ہوتا۔ پیشگی رقم کے بعد منسوخی سے رقم واپس نہیں ہوتی۔"])
 @section('title', 'Event ' . $event->event_no)
 
 @section('content')

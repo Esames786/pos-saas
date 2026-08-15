@@ -12,6 +12,8 @@
     @endcan
 </div>
 
+@include('tenant.catering.partials.tooltips')
+@include('tenant.catering.partials.screen-impact', ['manages' => 'Which dishes can be quoted, and their serving size, kitchen station and instructions.', 'managesUr' => 'کون سی ڈشیں تخمینے میں آ سکتی ہیں، اور ان کی تفصیل۔', 'reversible' => 'safe', 'note' => 'Editing a profile does not reprice an estimate that is already sent.', 'noteUr' => 'یہاں تبدیلی سے بھیجا ہوا تخمینہ دوبارہ قیمت نہیں لگاتا۔'])
 @if(session('status'))
     <div class="alert alert-success">{{ session('status') }}</div>
 @endif

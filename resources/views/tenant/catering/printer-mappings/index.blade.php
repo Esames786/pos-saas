@@ -8,6 +8,8 @@
         <h1 class="mb-1">Catering Printer Routing</h1>
         <div class="text-muted">Independent of POS KOT routing — changes here never affect normal POS printing.</div>
     </div>
+@include('tenant.catering.partials.tooltips')
+@include('tenant.catering.partials.screen-impact', ['manages' => 'Which kitchen printer receives which station or dish category for catering.', 'managesUr' => 'کون سا کچن پرنٹر کس اسٹیشن کی پرچی چھاپے گا۔', 'prints' => 'Kitchen sheets, when a production release is issued', 'reversible' => 'safe', 'note' => 'POS KOT routing is a separate configuration and is never modified from this screen.', 'noteUr' => 'POS کی KOT ترتیب الگ ہے اور یہاں سے تبدیل نہیں ہوتی۔'])
     <div class="d-flex gap-2">
         {{-- Convenience only, and meaningful ONLY when the tenant actually has
              POS/restaurant KOT mappings to copy from. A Catering-only tenant has

@@ -12,6 +12,8 @@
     @endcan
 </div>
 
+@include('tenant.catering.partials.tooltips')
+@include('tenant.catering.partials.screen-impact', ['manages' => 'Every booking and the quotations attached to it.', 'managesUr' => 'تمام بکنگ اور ان کے تخمینے۔', 'reversible' => 'safe', 'note' => 'Viewing or filtering this list changes nothing. Money and stock only move from inside an individual event.', 'noteUr' => 'یہ فہرست دیکھنے سے کچھ تبدیل نہیں ہوتا۔'])
 @if(session('status'))
     <div class="alert alert-success">{{ session('status') }}</div>
 @endif

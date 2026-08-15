@@ -7,6 +7,8 @@
     <h1 class="mb-0">Catering Settings</h1>
 </div>
 
+@include('tenant.catering.partials.tooltips')
+@include('tenant.catering.partials.screen-impact', ['manages' => 'Reminder timing, document language and the default service charge.', 'managesUr' => 'یاد دہانی کا وقت، دستاویز کی زبان اور سروس چارج۔', 'emails' => 'Booking reminders, to the address configured here', 'reversible' => 'safe', 'note' => 'Reminder emails are recorded but are NOT delivered until an SMTP account is configured on the server.', 'noteUr' => 'ای میل ریکارڈ ہوتی ہے مگر SMTP ترتیب کے بغیر گاہک تک نہیں پہنچتی۔'])
 @if(session('status'))
     <div class="alert alert-success">{{ session('status') }}</div>
 @endif

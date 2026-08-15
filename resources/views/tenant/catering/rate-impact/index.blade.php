@@ -11,6 +11,8 @@
     <a href="{{ url('/catering/material-rates') }}" class="btn btn-light">Rate Book</a>
 </div>
 
+@include('tenant.catering.partials.tooltips')
+@include('tenant.catering.partials.screen-impact', ['manages' => 'Which open estimates a material rate change would affect, and by how much.', 'managesUr' => 'ریٹ کی تبدیلی سے کون سے کھلے تخمینے متاثر ہوں گے۔', 'reversible' => 'partly', 'note' => 'Applying reprices DRAFT estimates only. Sent and agreed quotations are shown read-only and are never touched.', 'noteUr' => 'صرف ڈرافٹ تخمینوں کی قیمت بدلتی ہے؛ بھیجے ہوئے محفوظ رہتے ہیں۔'])
 @if(session('status'))
     <div class="alert alert-success">{{ session('status') }}</div>
 @endif

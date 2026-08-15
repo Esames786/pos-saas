@@ -15,6 +15,8 @@
             · Immutable snapshot — no stock was moved.
         </div>
     </div>
+@include('tenant.catering.partials.tooltips')
+@include('tenant.catering.partials.screen-impact', ['manages' => 'The frozen kitchen sheet for one event — the dish list the kitchen actually cooks from.', 'managesUr' => 'ایک تقریب کی کچن شیٹ — جس سے کچن کھانا بناتا ہے۔', 'finance' => 'Issuing materials posts cost of goods sold at real batch cost', 'stock' => 'Issuing materials draws them out of store using FEFO', 'prints' => 'Kitchen sheet to every mapped printer', 'reversible' => 'irreversible', 'note' => 'Printing and reprinting are safe — a reprint is marked as a copy and posts nothing. Issuing materials is not: it moves real stock and posts cost, and cannot be undone from this screen.', 'noteUr' => 'دوبارہ پرنٹ محفوظ ہے۔ خام مال جاری کرنا اسٹاک کم کرتا ہے اور واپس نہیں ہوتا۔'])
     <div class="d-flex gap-2">
         <a href="{{ url('/catering/events/' . $release->catering_event_id) }}" class="btn btn-light">Back to Event</a>
         @if($release->status === 'released')

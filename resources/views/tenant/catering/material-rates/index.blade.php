@@ -15,6 +15,8 @@
     @endcan
 </div>
 
+@include('tenant.catering.partials.tooltips')
+@include('tenant.catering.partials.screen-impact', ['manages' => 'The rates you COST a material at when quoting — not what you paid for it, and not a POS price.', 'managesUr' => 'تخمینے میں مال کی لاگت کا ریٹ — خریداری کی قیمت نہیں۔', 'reversible' => 'safe', 'note' => 'Changing a rate never edits a quotation that has already been sent. Use Rate Impact to see which open drafts it would affect.', 'noteUr' => 'ریٹ بدلنے سے بھیجا ہوا تخمینہ تبدیل نہیں ہوتا۔'])
 @if(session('status'))
     <div class="alert alert-success">{{ session('status') }}</div>
 @endif

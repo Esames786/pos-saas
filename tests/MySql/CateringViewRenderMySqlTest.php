@@ -153,6 +153,20 @@ class CateringViewRenderMySqlTest extends MySqlTenantTestCase
             ],
         ];
 
+        // Screens that must tell the operator what a click costs before it is
+        // clicked. Documents and the guide are excluded: they are output, not
+        // action surfaces.
+        $mustExplainImpact = [
+            'tenant.catering.events.index',
+            'tenant.catering.events.form',
+            'tenant.catering.events.show',
+            'tenant.catering.profiles.index',
+            'tenant.catering.material-rates.index',
+            'tenant.catering.rate-impact.index',
+            'tenant.catering.printer-mappings.index',
+            'tenant.catering.settings.index',
+        ];
+
         foreach ($screens as $view => $data) {
             try {
                 $html = View::make($view, $data)->render();
@@ -160,9 +174,85 @@ class CateringViewRenderMySqlTest extends MySqlTenantTestCase
                 $this->fail("View [{$view}] failed to render: ".$e->getMessage());
             }
             $this->assertNotEmpty($html, "View [{$view}] rendered empty");
+
+            if (in_array($view, $mustExplainImpact, true)) {
+                // The finance and stock chips always render one way or the
+                // other, so their absence means the header is missing entirely.
+                $this->assertTrue(
+                    str_contains($html, 'Affects finance') || str_contains($html, 'No finance effect'),
+                    "[{$view}] must state whether it affects finance"
+                );
+                $this->assertTrue(
+                    str_contains($html, 'Moves stock') || str_contains($html, 'No stock movement'),
+                    "[{$view}] must state whether it moves stock"
+                );
+            }
         }
 
         $this->addToAssertionCount(1);
+    }
+
+    /**
+     * KASHIF-CATERING-PRODUCT-UX-1 (item 6) — the impact text must be TRUE.
+     *
+     * This module already shipped one screen that claimed no accounting entries
+     * were posted while CateringAdvanceService was posting a journal entry and
+     * moving a cash/bank balance. An operator trusting that label would have
+     * misread their own books, so the retired claim is asserted dead here and a
+     * regression restores a lie rather than merely a wording change.
+     */
+    public function test_impact_wording_does_not_overclaim(): void
+    {
+        $event = $this->event->fresh(['customer', 'branch', 'estimates.lines', 'currentEstimate.lines', 'advances', 'productionReleases', 'finalInvoice']);
+
+        $html = View::make('tenant.catering.events.show', [
+            'event' => $event,
+            'units' => \App\Models\Tenant\Unit::all(['id', 'code', 'name']),
+            'profileMap' => collect([]),
+            'paymentMethods' => collect([]),
+            'costingReadiness' => app(\App\Services\Catering\CateringRecipeCostingService::class)
+                ->readiness($this->estimate->fresh(['lines', 'event'])),
+        ])->render();
+
+        foreach ([
+            'no accounting entries are posted',
+            'V1 posts no accounting entries',
+            'Operational records only in V1',
+        ] as $retiredLie) {
+            $this->assertStringNotContainsString(
+                $retiredLie, $html,
+                "the event screen must never again claim \"{$retiredLie}\" — advances and final invoices DO post to the general ledger"
+            );
+        }
+
+        $this->assertStringContainsString('posts to the general ledger', $html,
+            'the screen must say plainly that recording an advance posts to the ledger');
+
+        // The case a binary reversible yes/no would have to lie about.
+        $this->assertStringContainsString('does NOT refund it', $html,
+            'cancelling after an advance must be described honestly, not as simply reversible');
+        $this->assertStringContainsString('Only partly reversible', $html,
+            'the event screen is neither safe-to-repeat nor wholly irreversible');
+    }
+
+    /**
+     * A screen that moves real stock must say so, and one that does not must
+     * not imply it does. The production release is the only catering surface
+     * that draws inventory.
+     */
+    public function test_only_the_material_issue_screen_claims_stock_movement(): void
+    {
+        $safe = View::make('tenant.catering.material-rates.index', [
+            'latestRates' => \App\Models\Tenant\CateringMaterialRate::with(['product.unit', 'unit', 'product.translations'])->paginate(25),
+            'history' => null,
+            'units' => \App\Models\Tenant\Unit::all(['id', 'code', 'name']),
+            'search' => '',
+        ])->render();
+
+        $this->assertStringContainsString('No stock movement', $safe,
+            'the rate book prices quotations and must not imply it touches inventory');
+        $this->assertStringContainsString('No finance effect', $safe,
+            'changing a quoting rate posts nothing');
     }
 
     /**
