@@ -3,20 +3,37 @@
 @php
     $context = $context ?? 'catalog';
     $isManufacturing = $context === 'manufacturing';
-    $indexUrl = $isManufacturing ? url('/manufacturing/products') : url('/products');
-    $createUrl = $isManufacturing ? url('/manufacturing/products/create') : url('/products/create');
+    // Catering reuses the manufacturing context but lives at its own path, so
+    // every link is built from the base the controller resolved. The fallback
+    // reproduces the previous hardcoded behaviour exactly.
+    $base = $contextBase ?? ($isManufacturing ? '/manufacturing/products' : '/products');
+    $isCateringMaterials = $base === '/catering/materials';
+    $indexUrl = url($base);
+    $createUrl = url($base . '/create');
+    $createPermission = $isCateringMaterials
+        ? 'tenant.catering.materials.create'
+        : ($isManufacturing ? 'tenant.manufacturing.products.create' : 'tenant.products.create');
+    $heading = $isCateringMaterials
+        ? 'Materials'
+        : ($isManufacturing ? 'Manufacturing Products' : 'Products');
 @endphp
 
-@section('title', $isManufacturing ? 'Manufacturing Products' : 'Products')
+@section('title', $heading)
 
 @section('content')
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
     <div>
-        <h1 class="mb-1">{{ $isManufacturing ? 'Manufacturing Products' : 'Products' }}</h1>
+        <h1 class="mb-1">{{ $heading }}</h1>
         <p class="fw-medium">
-            {{ $isManufacturing
-                ? 'Manage materials and finished goods used in manufacturing.'
-                : 'Manage products sold in POS, sales, restaurant, and kitchen workflows.' }}
+            @if($isCateringMaterials)
+                Raw materials consumed by catering recipes — mutton, rice, oil, masala.
+                Their <strong>purchase</strong> cost lives here; their <strong>quoting</strong>
+                rate lives in the Material Rate Book.
+            @elseif($isManufacturing)
+                Manage materials and finished goods used in manufacturing.
+            @else
+                Manage products sold in POS, sales, restaurant, and kitchen workflows.
+            @endif
         </p>
     </div>
     <div class="d-flex gap-2">
@@ -27,9 +44,9 @@
             </a>
         @endcan
         @endif
-        @can($isManufacturing ? 'tenant.manufacturing.products.create' : 'tenant.products.create')
+        @can($createPermission)
             <a href="{{ $createUrl }}" class="btn btn-primary">
-                <i class="ti ti-plus me-1"></i>{{ $isManufacturing ? 'Create Manufacturing Product' : 'Create Product' }}
+                <i class="ti ti-plus me-1"></i>{{ $isCateringMaterials ? 'Create Material' : ($isManufacturing ? 'Create Manufacturing Product' : 'Create Product') }}
             </a>
         @endcan
     </div>
@@ -38,10 +55,26 @@
 <div class="alert alert-info d-flex align-items-start gap-2">
     <i class="ti ti-info-circle fs-18 mt-1"></i>
     <div>
-        @if($isManufacturing)
+        @php
+            // Where this tenant's raw materials actually live. Pointing a
+            // catering-only tenant at Manufacturing was a dead end — that module
+            // is not on their plan, so the sentence named a screen they cannot open.
+            $sub = app()->bound('tenant') ? app('tenant')->subscription : null;
+            $keys = $sub?->plan?->loadMissing('enabledModules')->enabledModules->pluck('key')->all() ?? [];
+            $materialsHome = in_array('manufacturing', $keys, true)
+                ? 'Manufacturing &gt; Products'
+                : (in_array('catering', $keys, true) ? 'Catering &gt; Materials' : null);
+        @endphp
+        @if($isCateringMaterials)
+            Raw materials only. Dishes you quote and sell live under Catalog &gt; Products;
+            editing a rate here changes <strong>purchase</strong> cost, not the price you quote.
+        @elseif($isManufacturing)
             This list is for manufacturing raw materials, BOM components, BOM outputs, and manufactured finished goods. Shared kitchen or restaurant stock items stay hidden unless you include them.
         @else
-            This list is for items sold in POS, restaurant, sales, or kitchen recipes. Manufacturing-only materials are managed under Manufacturing &gt; Products.
+            This list is for items sold in POS, restaurant, sales, or kitchen recipes.
+            @if($materialsHome)
+                Raw materials are managed under {!! $materialsHome !!}.
+            @endif
         @endif
     </div>
 </div>
@@ -169,8 +202,8 @@
                             <a href="{{ url('/products/' . $product->id) }}" class="btn btn-sm btn-light">View</a>
                         @endcan
                         @endif
-                        @can($isManufacturing ? 'tenant.manufacturing.products.edit' : 'tenant.products.edit')
-                            <a href="{{ $isManufacturing ? url('/manufacturing/products/' . $product->id . '/edit') : url('/products/' . $product->id . '/edit') }}" class="btn btn-sm btn-primary">Edit</a>
+                        @can($isCateringMaterials ? 'tenant.catering.materials.edit' : ($isManufacturing ? 'tenant.manufacturing.products.edit' : 'tenant.products.edit'))
+                            <a href="{{ url($base . '/' . $product->id . '/edit') }}" class="btn btn-sm btn-primary">Edit</a>
                         @endcan
                         @if(! $isManufacturing)
                         @can('tenant.products.destroy')

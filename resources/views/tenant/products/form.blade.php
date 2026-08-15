@@ -9,10 +9,11 @@
     $isManufacturing = $context === 'manufacturing';
     $kitchenAvailable = (bool) ($u?->can('tenant.recipes.index') ?? false);
     $mfgAvailable     = (bool) (($u?->can('tenant.manufacturing.bom.index') ?? false) || ($u?->can('tenant.manufacturing.products.index') ?? false));
-    $backUrl = $isManufacturing ? url('/manufacturing/products') : url('/products');
-    $formUrl = $product
-        ? ($isManufacturing ? url('/manufacturing/products/' . $product->id) : url('/products/' . $product->id))
-        : ($isManufacturing ? url('/manufacturing/products') : url('/products'));
+    // Catering materials reuse the manufacturing context but post to their own
+    // path. The fallback reproduces the previous hardcoded behaviour exactly.
+    $base = $contextBase ?? ($isManufacturing ? '/manufacturing/products' : '/products');
+    $backUrl = url($base);
+    $formUrl = $product ? url($base . '/' . $product->id) : url($base);
 
     // Detect the current product's setup mode from its existing flags (edit screens).
     $detectMode = function ($p) use ($mfgAvailable, $kitchenAvailable) {

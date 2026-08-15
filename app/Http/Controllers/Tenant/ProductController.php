@@ -49,22 +49,27 @@ class ProductController extends Controller
         }
 
         return view('tenant.products.index', [
-            'products'   => $query->paginate(15)->withQueryString(),
-            'categories' => Category::where('is_active', true)->orderBy('name')->get(),
-            'context'    => $context,
+            'products'    => $query->paginate(15)->withQueryString(),
+            'categories'  => Category::where('is_active', true)->orderBy('name')->get(),
+            'context'     => $context,
+            'contextBase' => $this->contextBaseUrl($request, $context),
         ]);
     }
 
     public function create(Request $request)
     {
         $context = $this->productContext($request);
+        $isCateringMaterials = $this->isCateringMaterials($request);
 
         return view('tenant.products.form', [
-            'product'    => null,
-            'title'      => $context === 'manufacturing' ? 'Create Manufacturing Product' : 'Create Product',
-            'categories' => Category::where('is_active', true)->orderBy('name')->get(),
-            'units'      => Unit::where('is_active', true)->orderBy('name')->get(),
-            'context'    => $context,
+            'product'     => null,
+            'title'       => $isCateringMaterials
+                ? 'Create Material'
+                : ($context === 'manufacturing' ? 'Create Manufacturing Product' : 'Create Product'),
+            'categories'  => Category::where('is_active', true)->orderBy('name')->get(),
+            'units'       => Unit::where('is_active', true)->orderBy('name')->get(),
+            'context'     => $context,
+            'contextBase' => $this->contextBaseUrl($request, $context),
         ]);
     }
 
@@ -131,11 +136,14 @@ class ProductController extends Controller
         $context = $this->productContext($request);
 
         return view('tenant.products.form', [
-            'product'    => $product,
-            'title'      => $context === 'manufacturing' ? 'Edit Manufacturing Product' : 'Edit Product',
-            'categories' => Category::where('is_active', true)->orderBy('name')->get(),
-            'units'      => Unit::where('is_active', true)->orderBy('name')->get(),
-            'context'    => $context,
+            'product'     => $product,
+            'title'       => $this->isCateringMaterials($request)
+                ? 'Edit Material'
+                : ($context === 'manufacturing' ? 'Edit Manufacturing Product' : 'Edit Product'),
+            'categories'  => Category::where('is_active', true)->orderBy('name')->get(),
+            'units'       => Unit::where('is_active', true)->orderBy('name')->get(),
+            'context'     => $context,
+            'contextBase' => $this->contextBaseUrl($request, $context),
         ]);
     }
 
@@ -331,7 +339,11 @@ class ProductController extends Controller
     {
         $routeName = (string) $request->route()?->getName();
 
-        if (str_starts_with($routeName, 'tenant.manufacturing.products.')) {
+        // Catering materials ARE manufacturing materials — raw inputs consumed by
+        // recipes — so they reuse this context rather than duplicating the filter.
+        // Only the route name and the redirect target differ.
+        if (str_starts_with($routeName, 'tenant.manufacturing.products.')
+            || str_starts_with($routeName, 'tenant.catering.materials.')) {
             return 'manufacturing';
         }
 
@@ -392,8 +404,29 @@ class ProductController extends Controller
         });
     }
 
+    private function isCateringMaterials(Request $request): bool
+    {
+        return str_starts_with((string) $request->route()?->getName(), 'tenant.catering.materials.');
+    }
+
+    /** Base path the index/form views build their own links from. */
+    private function contextBaseUrl(Request $request, string $context): string
+    {
+        if ($this->isCateringMaterials($request)) {
+            return '/catering/materials';
+        }
+
+        return $context === 'manufacturing' ? '/manufacturing/products' : '/products';
+    }
+
     private function productRedirectUrl(Request $request, Product $product): string
     {
+        // Catering shares the manufacturing context but must land back on its own
+        // screen — /manufacturing/products is not reachable on a catering-only plan.
+        if ($this->isCateringMaterials($request)) {
+            return '/catering/materials';
+        }
+
         return $this->productContext($request) === 'manufacturing'
             ? '/manufacturing/products'
             : '/products/' . $product->id;
