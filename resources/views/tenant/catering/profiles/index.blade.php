@@ -48,7 +48,29 @@
                 </thead>
                 <tbody>
                     @forelse($profiles as $profile)
-                    @php $urName = optional($profile->product->translations->firstWhere('language_code', 'ur'))->name; @endphp
+                    @php
+                        $urName = optional($profile->product->translations->firstWhere('language_code', 'ur'))->name;
+                        // Build the payload in PHP, NOT inline inside @json(...):
+                        // Blade matches a directive argument with a RECURSIVE paren regex.
+                        // On a long multi-line payload that match hits PCRE limits and
+                        // SILENTLY TRUNCATES — it emitted only 3 of 12 array items and
+                        // an unbalanced bracket, i.e. invalid PHP, while `view:cache`
+                        // still reported success.
+                        $profilePayload = [
+                            'id' => $profile->id,
+                            'product_name' => $profile->product->name,
+                            'catering_enabled' => (bool) $profile->catering_enabled,
+                            'default_quote_unit_id' => $profile->default_quote_unit_id,
+                            'pricing_mode' => $profile->pricing_mode,
+                            'default_catering_rate' => $profile->default_catering_rate,
+                            'production_station' => $profile->production_station,
+                            'minimum_qty' => $profile->minimum_qty,
+                            'production_label' => $profile->production_label,
+                            'production_label_ur' => $profile->production_label_ur,
+                            'instructions' => $profile->instructions,
+                            'name_ur' => $urName,
+                        ];
+                    @endphp
                     <tr>
                         <td>
                             {{ $profile->product->name }}
@@ -63,20 +85,7 @@
                         <td class="text-end">
                             @can('tenant.catering.profiles.update')
                                 <button class="btn btn-sm btn-light edit-profile"
-                                        data-profile='@json([
-                                            "id" => $profile->id,
-                                            "product_name" => $profile->product->name,
-                                            "catering_enabled" => (bool) $profile->catering_enabled,
-                                            "default_quote_unit_id" => $profile->default_quote_unit_id,
-                                            "pricing_mode" => $profile->pricing_mode,
-                                            "default_catering_rate" => $profile->default_catering_rate,
-                                            "production_station" => $profile->production_station,
-                                            "minimum_qty" => $profile->minimum_qty,
-                                            "production_label" => $profile->production_label,
-                                            "production_label_ur" => $profile->production_label_ur,
-                                            "instructions" => $profile->instructions,
-                                            "name_ur" => $urName,
-                                        ])'>Edit</button>
+                                        data-profile='@json($profilePayload)'>Edit</button>
                             @endcan
                         </td>
                     </tr>

@@ -9,6 +9,16 @@
         <div class="text-muted">Independent of POS KOT routing — changes here never affect normal POS printing.</div>
     </div>
     <div class="d-flex gap-2">
+        {{-- Convenience only, and meaningful ONLY when the tenant actually has
+             POS/restaurant KOT mappings to copy from. A Catering-only tenant has
+             none, so hide it rather than offering a no-op button. --}}
+        @php
+            $planKeys = app()->bound('tenant')
+                ? (optional(app('tenant')->subscription?->plan)?->enabledModules?->pluck('key')?->all() ?? [])
+                : [];
+            $hasPosKotSource = (bool) array_intersect($planKeys, ['pos', 'restaurant']);
+        @endphp
+        @if($hasPosKotSource)
         @can('tenant.catering.printer-mappings.copy-from-pos')
             <form method="POST" action="{{ url('/catering/printer-mappings/copy-from-pos') }}">
                 @csrf
@@ -17,6 +27,7 @@
                 </button>
             </form>
         @endcan
+        @endif
         @can('tenant.catering.printer-mappings.store')
             <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addMappingModal">Add Mapping</button>
         @endcan

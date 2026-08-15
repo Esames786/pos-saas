@@ -557,11 +557,13 @@
 
 @push('scripts')
 @if($current && $isDraft && $event->isOpen())
-<script>
-$(function () {
-    const units = @json($units->map(fn ($u) => ['id' => $u->id, 'code' => $u->code, 'name' => $u->name]));
-    const profiles = @json($profileMap);
-    const existing = @json($current->lines->map(fn ($l) => [
+@php
+    // Build the JS payloads in PHP, NOT inline inside @json(...). Blade matches a directive
+    // argument with a RECURSIVE paren regex; on a long multi-line payload that
+    // match hits PCRE limits and SILENTLY TRUNCATES, emitting an unbalanced
+    // bracket — invalid PHP that `view:cache` still reports as "cached successfully".
+    $unitsPayload = $units->map(fn ($u) => ['id' => $u->id, 'code' => $u->code, 'name' => $u->name])->values();
+    $existingLines = $current->lines->map(fn ($l) => [
         'product_id' => $l->product_id,
         'product_text' => $l->item_name,
         'item_name' => $l->item_name,
@@ -570,7 +572,13 @@ $(function () {
         'unit_id' => $l->unit_id,
         'rate' => (float) $l->rate,
         'instructions' => $l->instructions,
-    ]));
+    ])->values();
+@endphp
+<script>
+$(function () {
+    const units = @json($unitsPayload);
+    const profiles = @json($profileMap);
+    const existing = @json($existingLines);
     const defaultPax = {{ (int) $event->pax }};
     let rowSeq = 0;
 
