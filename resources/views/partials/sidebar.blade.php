@@ -13,6 +13,20 @@
     }
     $hasModule = fn (string $key) => in_array($key, $planModuleKeys, true);
 
+    // PLATFORM-ENTITLEMENT-BOUNDARY-1 — visibility must combine PERMISSION *and*
+    // MODULE ENTITLEMENT. deploy.sh grants the Owner every tenant.* permission
+    // regardless of plan, so @can alone is NOT an entitlement decision: any
+    // section without a module gate leaked into restricted plans (Sales, Reports,
+    // Manufacturing, ERP Extensions were all visible to a Catering-only tenant).
+    $hasAnyModule = fn (string ...$keys) => collect($keys)->contains(fn ($k) => in_array($k, $planModuleKeys, true));
+
+    // Customers + Payment Methods are shared by POS and Catering (mirrors
+    // TenantSubscriptionAccessService::SHARED_RESOURCE_MODULES). A POS tenant
+    // reaches them through the Sales menu; a Catering-only tenant has no Sales
+    // menu, so Operations surfaces them instead — never both at once.
+    $sharedCustomerAccess = $hasAnyModule('pos', 'catering');
+    $sharedUnderOperations = $sharedCustomerAccess && ! $hasModule('pos');
+
     // ERP "Coming Soon" roadmap — shown only to enterprise/finance_erp/standard plans.
     $showErpComingSoon = in_array($planCode, ['enterprise', 'standard', 'finance_erp'], true);
 
@@ -192,6 +206,30 @@
                                 </a>
                             </li>
                         @endcan
+                        {{-- Shared resources for a NON-POS tenant (Catering-only):
+                             the Sales menu is hidden for them, but Catering needs
+                             Customers (events) and Payment Methods (advances).
+                             Same routes/controllers/permissions — navigation only.
+                             A POS tenant reaches these through Sales instead, so
+                             they never appear in both places. --}}
+                        @if($sharedUnderOperations)
+                            @can('tenant.customers.index')
+                                @php $a = $isIn('customers*'); @endphp
+                                <li class="{{ $a ? 'active' : '' }}">
+                                    <a href="{{ url('/customers') }}" class="{{ $a ? 'active' : '' }}">
+                                        <i class="ti ti-users fs-16 me-2"></i><span>Customers</span>
+                                    </a>
+                                </li>
+                            @endcan
+                            @can('tenant.payment-methods.index')
+                                @php $a = $isIn('payment-methods*'); @endphp
+                                <li class="{{ $a ? 'active' : '' }}">
+                                    <a href="{{ url('/payment-methods') }}" class="{{ $a ? 'active' : '' }}">
+                                        <i class="ti ti-credit-card fs-16 me-2"></i><span>Payment Methods</span>
+                                    </a>
+                                </li>
+                            @endcan
+                        @endif
                     </ul>
                 </li>
 
@@ -423,6 +461,10 @@
                 @endif
 
                 {{-- ── SALES ───────────────────────────────────────────────────── --}}
+                {{-- Owns POS, orders, returns, ledger, delivery AND (for POS tenants)
+                     Customers + Payment Methods. A non-POS tenant never sees this
+                     menu; Operations surfaces the two shared resources instead. --}}
+                @if($hasModule('pos'))
                 @canany(['tenant.pos.index','tenant.sales-orders.index','tenant.customers.index','tenant.payment-methods.index','tenant.delivery-channels.index','tenant.delivery-riders.index','tenant.sales-ledger.index','tenant.sales-returns.index'])
                 <li class="submenu">
                     <a href="javascript:void(0);">
@@ -498,6 +540,7 @@
                     </ul>
                 </li>
                 @endcanany
+                @endif
 
                 {{-- ── RESTAURANT ──────────────────────────────────────────────── --}}
                 @if($hasModule('restaurant') || $hasModule('kitchen_display'))
@@ -1001,6 +1044,7 @@
                 @endif
 
                 {{-- ── REPORTS ─────────────────────────────────────────────────── --}}
+                @if($hasModule('reports'))
                 @canany(['tenant.reports.center.index','tenant.reports.sales.summary','tenant.reports.sales.channels','tenant.reports.sales.riders','tenant.reports.sales.receivables','tenant.reports.shifts','tenant.reports.inventory.valuation','tenant.reports.inventory.negative-stock','tenant.reports.purchases.payables','tenant.reports.purchases.returns','tenant.reports.restaurant.tables','tenant.reports.kitchen.recipe-consumption','tenant.reports.departments.sales','tenant.reports.departments.consumption-exceptions','tenant.reports.audit.manager-approvals','tenant.reports.printing.jobs'])
                 <li class="submenu">
                     <a href="javascript:void(0);">
@@ -1137,6 +1181,7 @@
                     </ul>
                 </li>
                 @endcanany
+                @endif
 
                 {{-- ── SALES CONTROLS ──────────────────────────────────────────── --}}
                 @if($hasModule('sales_controls'))
@@ -1186,6 +1231,15 @@
                 @endif
 
                 {{-- ── PRINTING ─────────────────────────────────────────────────── --}}
+                {{-- Split by dependency (PLATFORM-ENTITLEMENT-BOUNDARY-1):
+                     Printers / Print Jobs / Print Agents are the SHARED physical
+                     transport — Catering production printing rides the same
+                     PrintJob pipeline, so a Catering-only tenant keeps them.
+                     KOT Routing and Layouts configure POS/restaurant receipts and
+                     KOTs, so they are gated by pos|restaurant. Catering has its
+                     own independent station→printer mapping under Catering. --}}
+                @php $posPrintConfig = $hasAnyModule('pos', 'restaurant'); @endphp
+                @if($hasModule('printing'))
                 @canany(['tenant.printing.printers.index','tenant.printing.category-mappings.index','tenant.printing.layouts.index','tenant.printing.jobs.index','tenant.print-agents.index'])
                 <li class="submenu">
                     <a href="javascript:void(0);">
@@ -1202,6 +1256,7 @@
                                 </a>
                             </li>
                         @endcan
+                        @if($posPrintConfig)
                         @can('tenant.printing.category-mappings.index')
                             @php $a = $isIn('printing/category-mappings*'); @endphp
                             <li class="{{ $a ? 'active' : '' }}">
@@ -1218,6 +1273,7 @@
                                 </a>
                             </li>
                         @endcan
+                        @endif
                         @can('tenant.printing.jobs.index')
                             @php $a = $isIn('printing/jobs*'); @endphp
                             <li class="{{ $a ? 'active' : '' }}">
@@ -1237,6 +1293,7 @@
                     </ul>
                 </li>
                 @endcanany
+                @endif
 
                 {{-- ── OFFLINE BRANCH EDGE — full setup entry hidden unless entitled + rolled out ── --}}
                 @if(config('app.edge_feature_enabled') && $hasModule('offline_edge'))

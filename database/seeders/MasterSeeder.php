@@ -294,7 +294,10 @@ class MasterSeeder extends Seeder
                 'name' => 'Reports',
                 'category' => 'Analytics',
                 'description' => 'Sales, inventory, purchasing, restaurant and kitchen reports.',
-                'route_module_keys' => ['tenant.reports', 'tenant.dashboard'],
+                // PLATFORM-ENTITLEMENT-BOUNDARY-1: `tenant.dashboard` removed —
+                // the authenticated landing page is never a reports entitlement.
+                // It now lives in ALWAYS_ALLOWED_MODULE_KEYS.
+                'route_module_keys' => ['tenant.reports'],
                 'sort_order' => 100,
                 'is_core' => false,
             ],
