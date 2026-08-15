@@ -74,6 +74,18 @@ class CateringPrintAuthzHttpMySqlTest extends MySqlTenantTestCase
             $m = DB::connection('master');
             $m->table('tenant_domains')->where('domain', $this->host)->delete();
             $m->table('tenant_databases')->where('db_database', $this->tenantDb)->delete();
+
+            // The plan must go too. A leftover catering-enabled plan in the
+            // shared master DB breaks CateringEntitlement, which asserts exactly
+            // one plan has catering enabled. This test only escaped that by
+            // alphabetical ordering — luck, not isolation.
+            $planId = $m->table('plans')->where('code', 'printauth-catering')->value('id');
+            if ($planId) {
+                $m->table('plan_modules')->where('plan_id', $planId)->delete();
+                $m->table('subscriptions')->where('plan_id', $planId)->delete();
+                $m->table('plans')->where('id', $planId)->delete();
+            }
+
             $m->table('tenants')->where('tenant_code', 'cateringprintauth')->delete();
         } catch (\Throwable) {
             // best effort; never mask the real outcome
@@ -212,24 +224,39 @@ class CateringPrintAuthzHttpMySqlTest extends MySqlTenantTestCase
             'name' => 'Print Authz Catering', 'price' => 0, 'is_active' => true,
         ]);
         PlanModule::where('plan_id', $plan->id)->delete();
+
+        // Modules are CREATED if absent, never silently skipped — a missing row
+        // would build a plan without catering and make every authorization
+        // assertion below vacuous, passing or failing on test ordering alone.
         foreach (['catering', 'printing'] as $key) {
-            if ($module = Module::where('key', $key)->first()) {
-                PlanModule::create(['plan_id' => $plan->id, 'module_id' => $module->id, 'is_enabled' => true]);
-            }
+            $module = Module::updateOrCreate(['key' => $key], [
+                'name' => ucfirst($key),
+                'category' => 'Operations',
+                'route_module_keys' => ['tenant.'.$key],
+                'is_core' => false,
+                'is_active' => true,
+            ]);
+            PlanModule::create(['plan_id' => $plan->id, 'module_id' => $module->id, 'is_enabled' => true]);
         }
+
         Subscription::updateOrCreate(['tenant_id' => $tenantId], [
             'plan_id' => $plan->id, 'status' => 'active', 'current_period_ends_at' => now()->addYear(),
         ]);
+
+        $this->assertContains('catering', $plan->fresh()->loadMissing('enabledModules')->enabledModules->pluck('key')->all(),
+            'the test plan must actually enable catering, or the authorization proof means nothing');
     }
 
     /** Owner holds the print permissions; the cashier deliberately does not. */
     private function seedTenant(): void
     {
+        // permissions/roles are NOT truncated: those rows come from a tenant
+        // MIGRATION, so wiping them removes data no later test can restore.
         $this->cleanTenant([
             'print_jobs', 'printers',
             'catering_estimate_lines', 'catering_estimates', 'catering_events',
             'journal_lines', 'journal_entries', 'stock_ledgers',
-            'model_has_permissions', 'model_has_roles', 'role_has_permissions', 'permissions', 'roles',
+            'model_has_roles',
             'units', 'products', 'categories', 'customers', 'users', 'branches',
         ]);
 
@@ -237,14 +264,31 @@ class CateringPrintAuthzHttpMySqlTest extends MySqlTenantTestCase
         app(PermissionRegistrar::class)->forgetCachedPermissions();
         $c = DB::connection('tenant');
 
-        $ownerRole = $c->table('roles')->insertGetId(['name' => 'Owner', 'guard_name' => 'tenant', 'created_at' => now(), 'updated_at' => now()]);
-        $cashierRole = $c->table('roles')->insertGetId(['name' => 'Cashier', 'guard_name' => 'tenant', 'created_at' => now(), 'updated_at' => now()]);
+        $role = function (string $name) use ($c) {
+            $id = $c->table('roles')->where('name', $name)->where('guard_name', 'tenant')->value('id');
 
-        foreach ([self::PERM_ESTIMATE, self::PERM_INVOICE] as $perm) {
-            $permId = $c->table('permissions')->insertGetId([
-                'name' => $perm, 'guard_name' => 'tenant', 'created_at' => now(), 'updated_at' => now(),
+            return $id ?: $c->table('roles')->insertGetId([
+                'name' => $name, 'guard_name' => 'tenant', 'created_at' => now(), 'updated_at' => now(),
             ]);
-            $c->table('role_has_permissions')->insert(['permission_id' => $permId, 'role_id' => $ownerRole]);
+        };
+
+        $ownerRole = $role('Owner');
+        $cashierRole = $role('Cashier');
+
+        // The cashier must hold NEITHER print permission — clear any grant a
+        // previous run left, or this test would silently stop proving anything.
+        foreach ([self::PERM_ESTIMATE, self::PERM_INVOICE] as $perm) {
+            $permId = $c->table('permissions')->where('name', $perm)->where('guard_name', 'tenant')->value('id');
+            if (! $permId) {
+                $permId = $c->table('permissions')->insertGetId([
+                    'name' => $perm, 'guard_name' => 'tenant', 'created_at' => now(), 'updated_at' => now(),
+                ]);
+            }
+            $c->table('role_has_permissions')->updateOrInsert(
+                ['permission_id' => $permId, 'role_id' => $ownerRole], []
+            );
+            $c->table('role_has_permissions')
+                ->where('permission_id', $permId)->where('role_id', $cashierRole)->delete();
         }
 
         $this->ownerId = $this->userWithRole($c, 'PAOWN', $ownerRole);

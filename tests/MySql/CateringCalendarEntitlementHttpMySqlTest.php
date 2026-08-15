@@ -57,9 +57,22 @@ class CateringCalendarEntitlementHttpMySqlTest extends MySqlTenantTestCase
             $m = DB::connection('master');
             $m->table('tenant_domains')->where('domain', $this->host)->delete();
             $m->table('tenant_databases')->where('db_database', $this->tenantDb)->delete();
+
+            // The plan MUST go too. The master DB is shared across the suite, and
+            // a leftover catering-enabled plan is not inert: CateringEntitlement
+            // asserts that exactly one plan has catering enabled, so leaving this
+            // one behind fails a test that has nothing to do with calendars.
+            $planId = $m->table('plans')->where('code', 'calentitle-plan')->value('id');
+            if ($planId) {
+                $m->table('plan_modules')->where('plan_id', $planId)->delete();
+                $m->table('subscriptions')->where('plan_id', $planId)->delete();
+                $m->table('plans')->where('id', $planId)->delete();
+            }
+
+            $m->table('subscriptions')->where('tenant_id', $this->tenantId)->delete();
             $m->table('tenants')->where('tenant_code', 'calentitle')->delete();
         } catch (\Throwable) {
-            // best effort
+            // best effort; never mask the real test outcome
         }
         parent::tearDown();
     }
@@ -108,6 +121,16 @@ class CateringCalendarEntitlementHttpMySqlTest extends MySqlTenantTestCase
             'a permission check here would be meaningless — every Owner holds every permission');
     }
 
+    /**
+     * Build the plan from the given module keys.
+     *
+     * The module rows are CREATED if absent rather than skipped. An earlier
+     * version did `if ($module = Module::where(...)->first())`, which silently
+     * produced a plan with no catering module whenever the row happened to be
+     * missing — so the test passed or failed according to which other test had
+     * run first, and proved nothing on its own. Every key is asserted enabled
+     * afterwards so a silent skip can never masquerade as a pass again.
+     */
     private function setPlanModules(array $keys): void
     {
         DB::setDefaultConnection(config('tenancy.master_connection', 'master'));
@@ -116,14 +139,29 @@ class CateringCalendarEntitlementHttpMySqlTest extends MySqlTenantTestCase
             'name' => 'Cal Entitle', 'price' => 0, 'is_active' => true,
         ]);
         PlanModule::where('plan_id', $plan->id)->delete();
+
         foreach ($keys as $key) {
-            if ($module = Module::where('key', $key)->first()) {
-                PlanModule::create(['plan_id' => $plan->id, 'module_id' => $module->id, 'is_enabled' => true]);
-            }
+            $module = Module::updateOrCreate(['key' => $key], [
+                'name' => ucfirst($key),
+                'category' => 'Operations',
+                'route_module_keys' => ['tenant.'.$key],
+                'is_core' => false,
+                'is_active' => true,
+            ]);
+            PlanModule::create(['plan_id' => $plan->id, 'module_id' => $module->id, 'is_enabled' => true]);
         }
+
         Subscription::updateOrCreate(['tenant_id' => $this->tenantId], [
             'plan_id' => $plan->id, 'status' => 'active', 'current_period_ends_at' => now()->addYear(),
         ]);
+
+        // The plan must genuinely carry what was asked for, or the entitlement
+        // assertions downstream are meaningless.
+        $enabled = $plan->fresh()->loadMissing('enabledModules')->enabledModules->pluck('key')->all();
+        foreach ($keys as $key) {
+            $this->assertContains($key, $enabled,
+                "the test plan must actually enable [{$key}] — a silently skipped module would make this test vacuous");
+        }
     }
 
     private function seedMaster(): void
@@ -161,25 +199,38 @@ class CateringCalendarEntitlementHttpMySqlTest extends MySqlTenantTestCase
     /** The Owner holds EVERY permission — exactly as deploy.sh leaves a real tenant. */
     private function seedTenant(): void
     {
+        // permissions/roles are NOT truncated. Those rows come from a tenant
+        // MIGRATION, so wiping them removes data no later test can restore — it
+        // broke CateringEntitlement's expectation of 36 catering permissions.
         $this->cleanTenant([
             'catering_estimate_lines', 'catering_estimates', 'catering_events',
-            'model_has_permissions', 'model_has_roles', 'role_has_permissions', 'permissions', 'roles',
-            'users', 'branches',
+            'model_has_roles', 'users', 'branches',
         ]);
 
         DB::setDefaultConnection('tenant');
         app(PermissionRegistrar::class)->forgetCachedPermissions();
         $c = DB::connection('tenant');
 
-        $ownerRole = $c->table('roles')->insertGetId([
-            'name' => 'Owner', 'guard_name' => 'tenant', 'created_at' => now(), 'updated_at' => now(),
-        ]);
-
-        foreach (['tenant.dashboard', 'tenant.dashboard.catering-calendar', 'tenant.catering.events.index'] as $perm) {
-            $permId = $c->table('permissions')->insertGetId([
-                'name' => $perm, 'guard_name' => 'tenant', 'created_at' => now(), 'updated_at' => now(),
+        // Reuse the role if a previous run left it; never a second "Owner".
+        $ownerRole = $c->table('roles')->where('name', 'Owner')->where('guard_name', 'tenant')->value('id');
+        if (! $ownerRole) {
+            $ownerRole = $c->table('roles')->insertGetId([
+                'name' => 'Owner', 'guard_name' => 'tenant', 'created_at' => now(), 'updated_at' => now(),
             ]);
-            $c->table('role_has_permissions')->insert(['permission_id' => $permId, 'role_id' => $ownerRole]);
+        }
+
+        // The permission may already exist from the migration — take it as it is
+        // rather than inserting a duplicate.
+        foreach (['tenant.dashboard', 'tenant.dashboard.catering-calendar', 'tenant.catering.events.index'] as $perm) {
+            $permId = $c->table('permissions')->where('name', $perm)->where('guard_name', 'tenant')->value('id');
+            if (! $permId) {
+                $permId = $c->table('permissions')->insertGetId([
+                    'name' => $perm, 'guard_name' => 'tenant', 'created_at' => now(), 'updated_at' => now(),
+                ]);
+            }
+            $c->table('role_has_permissions')->updateOrInsert(
+                ['permission_id' => $permId, 'role_id' => $ownerRole], []
+            );
         }
 
         $this->ownerId = $c->table('users')->insertGetId([
