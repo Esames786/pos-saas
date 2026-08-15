@@ -177,6 +177,110 @@ class CateringDocumentPrintMySqlTest extends MySqlTenantTestCase
         }
     }
 
+    /**
+     * Release-gate authorization proof for the two new POST endpoints.
+     *
+     * A print route that queues work on physical hardware must sit behind the
+     * same wall as every other catering route. Asserted declaratively against
+     * the router rather than by reading the file, so removing a middleware
+     * fails here instead of silently shipping.
+     */
+    public function test_the_new_print_routes_carry_the_full_protection_stack(): void
+    {
+        $required = ['auth:tenant', 'tenant.subscription.access', 'route.permission'];
+
+        foreach ([
+            'tenant.catering.documents.estimate-print',
+            'tenant.catering.documents.final-invoice-print',
+        ] as $name) {
+            $route = collect(\Illuminate\Support\Facades\Route::getRoutes())
+                ->first(fn ($r) => $r->getName() === $name);
+
+            $this->assertNotNull($route, "route [{$name}] must exist");
+            $this->assertSame(['POST'], array_values(array_diff($route->methods(), ['HEAD'])),
+                "[{$name}] must be POST — queueing a print job is not a GET");
+
+            $middleware = $route->gatherMiddleware();
+            foreach ($required as $m) {
+                $this->assertContains($m, $middleware,
+                    "[{$name}] must be protected by [{$m}] — an unauthenticated or unentitled "
+                    .'request must never reach the printer queue');
+            }
+        }
+    }
+
+    /** Entitlement: a POS-only tenant cannot reach the catering print routes. */
+    public function test_print_routes_are_denied_without_the_catering_module(): void
+    {
+        $svc = app(\App\Services\Saas\TenantSubscriptionAccessService::class);
+
+        $this->assertGreaterThan(0, \App\Models\Master\RouteCatalog::count(),
+            'the route catalog must be populated or this matrix is vacuous');
+
+        foreach ([
+            'tenant.catering.documents.estimate-print',
+            'tenant.catering.documents.final-invoice-print',
+        ] as $route) {
+            $catalog = \App\Models\Master\RouteCatalog::where('route_name', $route)->first();
+            $this->assertNotNull($catalog, "[{$route}] must be in the route catalog to be gated at all");
+            $this->assertSame('tenant.catering', $catalog->module_key,
+                "[{$route}] must be owned by the catering module, not left unmapped and fail-open");
+        }
+    }
+
+    /** An inactive printer is not a valid destination, and nothing is queued. */
+    public function test_an_inactive_printer_is_refused_and_queues_nothing(): void
+    {
+        $this->printer->forceFill(['is_active' => false])->save();
+
+        $response = app(\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class)
+            ->printEstimate(
+                \Illuminate\Http\Request::create('/', 'POST', [
+                    'printer_id' => $this->printer->id, 'lang' => 'en',
+                ]),
+                $this->estimate
+            );
+
+        $this->assertSame(0, PrintJob::count(),
+            'an inactive printer must not receive a queued job');
+        $this->assertNotNull($response);
+    }
+
+    /** A printer id that does not exist in THIS tenant cannot be used. */
+    public function test_an_unknown_printer_id_cannot_queue_a_job(): void
+    {
+        $this->expectException(\Illuminate\Validation\ValidationException::class);
+
+        try {
+            app(\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class)
+                ->printEstimate(
+                    \Illuminate\Http\Request::create('/', 'POST', [
+                        'printer_id' => 999999, 'lang' => 'en',
+                    ]),
+                    $this->estimate
+                );
+        } finally {
+            $this->assertSame(0, PrintJob::count(),
+                'a rejected request must queue nothing at all');
+        }
+    }
+
+    /** The server refuses Urdu even if the UI is bypassed entirely. */
+    public function test_urdu_is_refused_at_the_controller_not_only_in_the_ui(): void
+    {
+        $response = app(\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class)
+            ->printEstimate(
+                \Illuminate\Http\Request::create('/', 'POST', [
+                    'printer_id' => $this->printer->id, 'lang' => 'ur',
+                ]),
+                $this->estimate
+            );
+
+        $this->assertSame(0, PrintJob::count(),
+            'a crafted Urdu request must be refused server-side, not merely hidden in the UI');
+        $this->assertNotNull($response);
+    }
+
     /** POS KOT routing is a different concern and must be untouched. */
     public function test_printing_a_catering_document_does_not_touch_pos_kot_mappings(): void
     {

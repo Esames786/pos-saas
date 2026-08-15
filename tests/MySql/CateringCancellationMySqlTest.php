@@ -193,6 +193,46 @@ class CateringCancellationMySqlTest extends MySqlTenantTestCase
         }
     }
 
+    /**
+     * The reason must be required on the HTTP path too, not only when the
+     * service is called directly. A controller that forgot to validate would
+     * leave the service guard as the only defence, and its message is a 500
+     * rather than a form error.
+     */
+    public function test_the_controller_rejects_a_cancellation_with_no_reason(): void
+    {
+        $controller = app(\App\Http\Controllers\Tenant\Catering\CateringEventController::class);
+
+        foreach ([[], ['cancel_reason' => ''], ['cancel_reason' => 'x']] as $payload) {
+            try {
+                $controller->cancel(
+                    \Illuminate\Http\Request::create('/', 'POST', $payload),
+                    $this->event->fresh()
+                );
+                $this->fail('the controller must reject a cancellation without a real reason');
+            } catch (\Illuminate\Validation\ValidationException $e) {
+                $this->assertArrayHasKey('cancel_reason', $e->errors());
+            }
+        }
+
+        $this->assertNotSame(CateringEvent::STATUS_CANCELLED, $this->event->fresh()->status,
+            'a rejected request must leave the booking open');
+    }
+
+    /** The controller path records the reason and preserves the advance. */
+    public function test_the_controller_records_the_reason(): void
+    {
+        app(\App\Http\Controllers\Tenant\Catering\CateringEventController::class)->cancel(
+            \Illuminate\Http\Request::create('/', 'POST', ['cancel_reason' => 'Customer changed the date']),
+            $this->event->fresh()
+        );
+
+        $fresh = $this->event->fresh();
+        $this->assertSame(CateringEvent::STATUS_CANCELLED, $fresh->status);
+        $this->assertSame('Customer changed the date', $fresh->cancel_reason);
+        $this->assertNotNull($fresh->cancelled_at);
+    }
+
     /** Historical rows predate the column and must stay valid with no reason. */
     public function test_a_historical_cancellation_without_a_reason_remains_valid(): void
     {
