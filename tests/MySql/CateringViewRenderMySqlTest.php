@@ -233,6 +233,71 @@ class CateringViewRenderMySqlTest extends MySqlTenantTestCase
             'cancelling after an advance must be described honestly, not as simply reversible');
         $this->assertStringContainsString('Only partly reversible', $html,
             'the event screen is neither safe-to-repeat nor wholly irreversible');
+
+        // Email delivery is NOT part of this release: production runs
+        // MAIL_MAILER=log, so a message is recorded and reaches nobody.
+        // Advertising an "Emails customer" impact would promise delivery the
+        // environment cannot make.
+        $this->assertStringNotContainsString('when a quotation is sent and when an invoice is issued', $html,
+            'the event screen must not advertise customer email delivery in a release that cannot deliver');
+
+        // "Safe to repeat" asserts idempotency. Creating a booking twice
+        // creates two bookings, so no catering screen may claim it.
+        $this->assertStringNotContainsString('Safe to repeat', $html,
+            'no screen may claim idempotency it does not have');
+    }
+
+    /**
+     * KASHIF-CATERING-PRODUCT-UX-1 (item 6) — the Materials LIST is a catering
+     * action screen too, and it lives in a view shared with the generic catalog
+     * and manufacturing. The explanation must reach the catering path and only
+     * the catering path.
+     */
+    public function test_materials_list_explains_itself_without_leaking_into_other_contexts(): void
+    {
+        $payload = [
+            'products' => \App\Models\Tenant\Product::paginate(15),
+            'categories' => \App\Models\Tenant\Category::all(),
+        ];
+
+        $materials = View::make('tenant.products.index', $payload + [
+            'context' => 'manufacturing', 'contextBase' => '/catering/materials',
+        ])->render();
+
+        $this->assertStringContainsString('never sold to a customer directly', $materials);
+        $this->assertStringContainsString('issues no stock', $materials,
+            'the materials list must state that editing a material moves no stock');
+        $this->assertStringContainsString('Material Rate Book', $materials,
+            'it must point at where the QUOTED rate lives');
+        $this->assertStringContainsString('No finance effect', $materials);
+        $this->assertStringContainsString('No stock movement', $materials);
+
+        // The same view, other contexts — must NOT inherit any of it.
+        foreach ([
+            'catalog' => ['context' => 'catalog', 'contextBase' => '/products'],
+            'manufacturing' => ['context' => 'manufacturing', 'contextBase' => '/manufacturing/products'],
+        ] as $label => $ctx) {
+            $other = View::make('tenant.products.index', $payload + $ctx)->render();
+
+            foreach (['never sold to a customer directly', 'issues no stock', 'No finance effect'] as $cateringOnly) {
+                $this->assertStringNotContainsString(
+                    $cateringOnly, $other,
+                    "the {$label} product list must not inherit catering wording"
+                );
+            }
+        }
+    }
+
+    /** No catering screen may assert idempotency, on any surface. */
+    public function test_no_catering_screen_claims_to_be_safe_to_repeat(): void
+    {
+        $partial = file_get_contents(resource_path('views/tenant/catering/partials/screen-impact.blade.php'));
+
+        $this->assertStringNotContainsString('Safe to repeat', $partial,
+            'the impact partial must not assert idempotency for actions that are not idempotent');
+        $this->assertStringContainsString('Operational / reversible', $partial);
+        $this->assertStringContainsString('Contains irreversible action', $partial,
+            'a screen carrying both a safe reprint and an irreversible issue must say CONTAINS, not that everything is final');
     }
 
     /**

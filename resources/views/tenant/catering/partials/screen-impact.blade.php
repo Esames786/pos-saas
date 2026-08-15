@@ -60,10 +60,20 @@
         $chips[] = ['bg-info text-dark', 'ti-mail', $isUr ? 'ای میل' : 'Emails', $emails];
     }
 
+    // Wording is deliberately weaker than it could be.
+    //
+    // Claiming an action is repeatable would assert idempotency, which these
+    // screens do not have: creating a booking twice creates two bookings. What
+    // IS true is that the action is operational and can be corrected after.
+    //
+    // A blanket "cannot be undone" at screen level would also overstate — the
+    // production release screen carries a harmless reprint AND an irreversible
+    // material issue. The chip flags that the screen CONTAINS such an action;
+    // each button's own tooltip says which one it is.
     $chips[] = match ($reversible) {
-        'irreversible' => ['bg-danger', 'ti-lock', $isUr ? 'واپس نہیں ہو سکتا' : 'Cannot be undone', null],
+        'irreversible' => ['bg-danger', 'ti-lock', $isUr ? 'ناقابلِ واپسی کارروائی موجود' : 'Contains irreversible action', null],
         'partly'       => ['bg-warning text-dark', 'ti-alert-triangle', $isUr ? 'جزوی طور پر واپس' : 'Only partly reversible', null],
-        default        => ['bg-success', 'ti-check', $isUr ? 'محفوظ' : 'Safe to repeat', null],
+        default        => ['bg-success', 'ti-check', $isUr ? 'عملی / قابلِ اصلاح' : 'Operational / reversible', null],
     };
 @endphp
 

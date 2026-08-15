@@ -52,6 +52,20 @@
     </div>
 </div>
 
+@if($isCateringMaterials)
+    {{-- KASHIF-CATERING-PRODUCT-UX-1 (item 6) — the Materials LIST states its
+         impact like every other catering action screen. Gated on the catering
+         path, so the generic catalog and the manufacturing list are untouched. --}}
+    @include('tenant.catering.partials.tooltips')
+    @include('tenant.catering.partials.screen-impact', [
+        'manages' => 'The ingredients and packaging your kitchen buys and consumes — never sold to a customer directly.',
+        'managesUr' => 'خام مال اور پیکنگ جو کچن خریدتا اور استعمال کرتا ہے — گاہک کو براہِ راست نہیں بکتا۔',
+        'reversible' => 'safe',
+        'note' => 'Adding or editing a material posts nothing and issues no stock. Stock moves only when materials are issued against a production release. The rate you QUOTE a customer at lives in the Material Rate Book, not here.',
+        'noteUr' => 'یہاں تبدیلی سے نہ کھاتے میں اندراج ہوتا ہے نہ اسٹاک کم ہوتا ہے۔ گاہک کو دیا جانے والا ریٹ میٹیریل ریٹ بک میں ہے۔',
+    ])
+@endif
+
 <div class="alert alert-info d-flex align-items-start gap-2">
     <i class="ti ti-info-circle fs-18 mt-1"></i>
     <div>
