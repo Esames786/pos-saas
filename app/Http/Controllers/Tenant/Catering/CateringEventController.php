@@ -148,12 +148,21 @@ class CateringEventController extends Controller
                 ->readiness($cateringEvent->currentEstimate);
         }
 
+        // KASHIF-CATERING-PRODUCT-UX-1 (item 7) — destinations for sending a
+        // quotation or invoice straight to a printer. Any active printer, not
+        // the catering KOT mappings: those route kitchen sheets by station, and
+        // a customer document has no station.
+        $printers = \App\Models\Tenant\Printer::where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'name', 'paper_size']);
+
         return view('tenant.catering.events.show', [
             'event' => $cateringEvent,
             'units' => $units,
             'profileMap' => $profileMap,
             'paymentMethods' => $paymentMethods,
             'costingReadiness' => $costingReadiness,
+            'printers' => $printers,
         ]);
     }
 

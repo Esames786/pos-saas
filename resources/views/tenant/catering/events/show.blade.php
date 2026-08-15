@@ -33,10 +33,19 @@
         @if($current && $current->lines->isNotEmpty())
             @can('tenant.catering.documents.estimate')
                 <div class="btn-group">
-                    <a target="_blank" href="{{ url('/catering/documents/estimate/' . $current->id . '?lang=en') }}" class="btn btn-outline-secondary"><i class="ti ti-printer me-1"></i>A4 Estimate</a>
-                    <a target="_blank" href="{{ url('/catering/documents/estimate/' . $current->id . '?lang=ur') }}" class="btn btn-outline-secondary">اردو</a>
-                    <a target="_blank" href="{{ url('/catering/documents/estimate/' . $current->id . '?lang=both') }}" class="btn btn-outline-secondary">Both</a>
+                    <a target="_blank" href="{{ url('/catering/documents/estimate/' . $current->id . '?lang=en') }}" class="btn btn-outline-secondary"
+                       data-bs-toggle="tooltip" title="Opens the A4 quotation and lets you print it on any printer through the browser. Posts nothing."><i class="ti ti-printer me-1"></i>A4 Estimate</a>
+                    <a target="_blank" href="{{ url('/catering/documents/estimate/' . $current->id . '?lang=ur') }}" class="btn btn-outline-secondary"
+                       data-bs-toggle="tooltip" title="اردو — A4 only. Urdu cannot be rendered on a thermal printer.">اردو</a>
+                    <a target="_blank" href="{{ url('/catering/documents/estimate/' . $current->id . '?lang=both') }}" class="btn btn-outline-secondary"
+                       data-bs-toggle="tooltip" title="English and Urdu on one A4 sheet.">Both</a>
                 </div>
+                @include('tenant.catering.partials.document-print', [
+                    'action' => url('/catering/documents/estimate/' . $current->id . '/print'),
+                    'label' => 'Send quotation to printer',
+                    'printers' => $printers ?? collect(),
+                    'permission' => 'tenant.catering.documents.estimate-print',
+                ])
             @endcan
         @endif
         @if($event->isOpen())
@@ -464,6 +473,12 @@
                         <a target="_blank" href="{{ url('/catering/documents/final-invoice/' . $invoice->id . '?lang=ur') }}" class="btn btn-sm btn-outline-secondary">اردو</a>
                         <a target="_blank" href="{{ url('/catering/documents/final-invoice/' . $invoice->id . '?lang=both') }}" class="btn btn-sm btn-outline-secondary">Both</a>
                     </div>
+                    @include('tenant.catering.partials.document-print', [
+                        'action' => url('/catering/documents/final-invoice/' . $invoice->id . '/print'),
+                        'label' => 'Send invoice to printer',
+                        'printers' => $printers ?? collect(),
+                        'permission' => 'tenant.catering.documents.final-invoice-print',
+                    ])
                 @endcan
                 @if($event->status === 'completed')
                     @can('tenant.catering.events.close')

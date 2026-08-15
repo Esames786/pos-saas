@@ -864,6 +864,13 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 Route::get('/catering/documents/kitchen-sheet/{cateringProductionRelease}', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'kitchenSheet'])->name('tenant.catering.documents.kitchen-sheet');
                 Route::get('/catering/documents/final-invoice/{cateringFinalInvoice}', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'finalInvoice'])->name('tenant.catering.documents.final-invoice');
 
+                // KASHIF-CATERING-PRODUCT-UX-1 (item 7) — customer documents over the
+                // existing print_jobs transport. English only: the ESC/POS path has no
+                // codepage or raster support, so Urdu stays A4/browser and is refused
+                // here rather than printed as mojibake.
+                Route::post('/catering/documents/estimate/{cateringEstimate}/print', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'printEstimate'])->name('tenant.catering.documents.estimate-print');
+                Route::post('/catering/documents/final-invoice/{cateringFinalInvoice}/print', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'printFinalInvoice'])->name('tenant.catering.documents.final-invoice-print');
+
                 Route::get('/catering/printer-mappings', [\App\Http\Controllers\Tenant\Catering\CateringPrinterMappingController::class, 'index'])->name('tenant.catering.printer-mappings.index');
                 Route::post('/catering/printer-mappings', [\App\Http\Controllers\Tenant\Catering\CateringPrinterMappingController::class, 'store'])->name('tenant.catering.printer-mappings.store');
                 Route::delete('/catering/printer-mappings/{cateringPrinterMapping}', [\App\Http\Controllers\Tenant\Catering\CateringPrinterMappingController::class, 'destroy'])->name('tenant.catering.printer-mappings.destroy');

@@ -4,8 +4,11 @@ namespace App\Http\Controllers\Tenant\Catering;
 
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\CateringEstimate;
+use App\Models\Tenant\CateringFinalInvoice;
 use App\Models\Tenant\CateringProductionRelease;
 use App\Models\Tenant\CateringSetting;
+use App\Models\Tenant\Printer;
+use App\Services\Catering\CateringDocumentPrintService;
 use Illuminate\Http\Request;
 
 /**
@@ -56,6 +59,62 @@ class CateringDocumentController extends Controller
             'lang' => $lang,
             'businessName' => $this->businessName(),
         ]);
+    }
+
+    /**
+     * KASHIF-CATERING-PRODUCT-UX-1 (item 7) — queue a quotation to a printer.
+     *
+     * Creates one print_jobs row and nothing else. No journal entry, no stock
+     * movement, no change to the estimate itself: printing a document is not an
+     * accounting event, and a second press returns the job that already exists
+     * rather than queueing a second sheet.
+     */
+    public function printEstimate(Request $request, CateringEstimate $cateringEstimate)
+    {
+        return $this->queueDocument($request, fn (Printer $printer, string $lang, bool $reprint) => app(CateringDocumentPrintService::class)
+            ->queueEstimate($cateringEstimate, $printer, $lang, $request->user()?->id, $reprint));
+    }
+
+    public function printFinalInvoice(Request $request, CateringFinalInvoice $cateringFinalInvoice)
+    {
+        return $this->queueDocument($request, fn (Printer $printer, string $lang, bool $reprint) => app(CateringDocumentPrintService::class)
+            ->queueFinalInvoice($cateringFinalInvoice, $printer, $lang, $request->user()?->id, $reprint));
+    }
+
+    /** Shared validation, printer resolution and honest failure for both documents. */
+    private function queueDocument(Request $request, callable $queue)
+    {
+        $data = $request->validate([
+            'printer_id' => ['required', 'integer', 'exists:printers,id'],
+            'lang' => ['nullable', 'string'],
+            'reprint' => ['nullable', 'boolean'],
+        ]);
+
+        $printer = Printer::where('is_active', true)->find($data['printer_id']);
+
+        if (! $printer) {
+            return back()->withErrors(['print' => 'That printer is not active.']);
+        }
+
+        $lang = $data['lang'] ?? 'en';
+
+        // Refuse rather than emit bytes the printer cannot render. Saying no
+        // here is the honest outcome; a page of mojibake would look like the
+        // feature worked.
+        if (! app(CateringDocumentPrintService::class)->supportsThermal($lang)) {
+            return back()->withErrors([
+                'print' => 'Thermal printing is English only — this transport cannot render Urdu. '
+                    .'Use the A4 document for Urdu or bilingual output.',
+            ]);
+        }
+
+        try {
+            $job = $queue($printer, $lang, (bool) ($data['reprint'] ?? false));
+        } catch (\RuntimeException $e) {
+            return back()->withErrors(['print' => $e->getMessage()]);
+        }
+
+        return back()->with('status', "Queued to {$printer->name} (job {$job->job_no}). Nothing was posted to finance and no stock moved.");
     }
 
     private function language(Request $request): string
