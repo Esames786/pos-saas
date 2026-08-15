@@ -15,6 +15,46 @@ use Illuminate\Http\Request;
 
 class DashboardController extends Controller
 {
+    /**
+     * KASHIF-CATERING-CALENDAR-1 — is catering actually on this tenant's plan?
+     *
+     * Entitlement, never permission. The two disagree here by design: every
+     * Owner holds every tenant.* permission, so only the plan can answer this.
+     */
+    private function cateringEnabled(): bool
+    {
+        try {
+            $plan = app('tenant')->subscription?->loadMissing('plan.enabledModules')->plan;
+
+            return (bool) $plan?->hasEnabledModuleKey('catering');
+        } catch (\Throwable) {
+            // No bound tenant (console, tests without tenancy) — show nothing.
+            return false;
+        }
+    }
+
+    /**
+     * Older months, fetched only when the operator steps back past the default
+     * three-month window. Keeps the first dashboard paint small on a kitchen
+     * terminal with years of history behind it.
+     */
+    public function cateringCalendar(Request $request)
+    {
+        if (! $this->cateringEnabled()) {
+            abort(404);
+        }
+
+        $anchor = $request->filled('month')
+            ? \Carbon\CarbonImmutable::createFromFormat('Y-m', $request->string('month')->toString())->startOfMonth()
+            : null;
+
+        return view('tenant.partials.catering-calendar', [
+            'cateringCalendar' => app(\App\Services\Catering\CateringCalendarService::class)
+                ->window($anchor, $request->integer('branch_id') ?: null),
+            'fragment' => true,
+        ]);
+    }
+
     public function __invoke(Request $request, SalesReportService $salesService, InventoryReportService $inventoryService)
     {
         $branches       = Branch::where('status', 'active')->orderBy('name')->get();
@@ -106,10 +146,21 @@ class DashboardController extends Controller
             ->get()
             ->keyBy('day');
 
+        // KASHIF-CATERING-CALENDAR-1 — the booking diary, for catering tenants only.
+        //
+        // Gated on the plan's ENTITLEMENT, not on @can. deploy.sh grants the Owner
+        // every tenant.* permission regardless of plan, so a permission check here
+        // would put a catering widget on a restaurant's dashboard. Null means the
+        // widget is not rendered at all, not merely hidden.
+        $cateringCalendar = $this->cateringEnabled()
+            ? app(\App\Services\Catering\CateringCalendarService::class)->window(null, $selectedBranch)
+            : null;
+
         return view('tenant.dashboard', compact(
             'branches', 'selectedBranch', 'today',
             'cashToday', 'cardToday', 'openShifts', 'failedPrints',
-            'lowStockCount', 'expiryCount', 'topProducts', 'last7Days'
+            'lowStockCount', 'expiryCount', 'topProducts', 'last7Days',
+            'cateringCalendar'
         ));
     }
 }

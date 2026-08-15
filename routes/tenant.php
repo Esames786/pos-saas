@@ -171,6 +171,13 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 Route::get('/', fn () => redirect('/dashboard'));
                 Route::get('/dashboard', DashboardController::class)->name('tenant.dashboard');
 
+                // KASHIF-CATERING-CALENDAR-1 — older months for the booking
+                // calendar, loaded on demand. Named under tenant.dashboard so it
+                // inherits the always-allowed landing surface; the controller
+                // still refuses with 404 unless catering is on the plan.
+                Route::get('/dashboard/catering-calendar', [DashboardController::class, 'cateringCalendar'])
+                    ->name('tenant.dashboard.catering-calendar');
+
                 // Tenant Users
                 Route::get('/users', [TenantUserController::class, 'index'])->name('tenant.users.index');
                 Route::get('/users/create', [TenantUserController::class, 'create'])->name('tenant.users.create');
