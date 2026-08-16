@@ -33,18 +33,40 @@ class CateringNumberService
     }
 
     /** Must be called inside a tenant transaction so the lock holds until commit. */
+    /**
+     * KASHIF-CATERING-NUMBERING-1 — the counter runs for the YEAR, not the day.
+     *
+     * It used to reset every midnight, so the second booking of the year and the
+     * second booking of a Tuesday in August were both 0001. The date stays in the
+     * number because the operator reads it at a glance, but the sequence now
+     * counts bookings for the year and resets on 1 January:
+     *
+     *   16 Aug 2026  EV-20260816-0001
+     *   16 Aug 2026  EV-20260816-0002
+     *   17 Aug 2026  EV-20260817-0003   <- continues, was 0001
+     *    1 Jan 2027  EV-20270101-0001   <- resets
+     *
+     * The highest sequence is read across the whole year, so it does not matter
+     * which day the previous booking fell on. Numbers already issued are never
+     * rewritten; this rule applies from the day it goes live.
+     */
     private function next(string $table, string $column, string $prefix): string
     {
         $datePart = now()->format('Ymd');
+        $yearPrefix = $prefix.now()->format('Y');
         $fullPrefix = $prefix.$datePart.'-';
 
+        // Ordering on the numeric tail rather than the whole string, because
+        // '...-0010' sorts before '...-0009' once the day changes.
         $last = DB::connection('tenant')->table($table)
-            ->where($column, 'like', $fullPrefix.'%')
+            ->where($column, 'like', $yearPrefix.'%')
             ->lockForUpdate()
-            ->orderByDesc($column)
+            ->orderByRaw('CAST(SUBSTRING_INDEX('.$column.", '-', -1) AS UNSIGNED) DESC")
             ->value($column);
 
-        $sequence = $last ? ((int) substr($last, strlen($fullPrefix))) + 1 : 1;
+        $sequence = $last
+            ? ((int) substr($last, strrpos($last, '-') + 1)) + 1
+            : 1;
 
         return $fullPrefix.str_pad((string) $sequence, 4, '0', STR_PAD_LEFT);
     }

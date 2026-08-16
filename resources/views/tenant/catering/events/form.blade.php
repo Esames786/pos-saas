@@ -9,6 +9,7 @@
 </div>
 
 @include('tenant.catering.partials.tooltips')
+@include('tenant.catering.partials.submit-guard')
 @include('tenant.catering.partials.screen-impact', ['manages' => 'The booking itself — customer, date, venue and guest count.', 'managesUr' => 'بکنگ کی بنیادی تفصیل — گاہک، تاریخ، مقام، مہمان۔', 'reversible' => 'safe', 'note' => 'Creating a booking commits nothing. Pricing happens on the event screen afterwards.', 'noteUr' => 'بکنگ بنانے سے کوئی مالی اثر نہیں ہوتا۔'])
 @if($errors->any())
     <div class="alert alert-danger">{{ $errors->first() }}</div>

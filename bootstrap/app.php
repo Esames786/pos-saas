@@ -70,6 +70,10 @@ return Application::configure(basePath: dirname(__DIR__))
             'route.permission' => EnsureRoutePermission::class,
             'tenant.subscription.access' => EnsureTenantSubscriptionAccess::class,
             'prevent.demo.mutation' => PreventDemoMutation::class,
+            // KASHIF-CATERING-DOUBLE-SUBMIT-1: inert unless a form sends a
+            // _submit_token, so applying it to a route group changes nothing
+            // until that group's forms opt in.
+            'prevent.duplicate.submit' => \App\Http\Middleware\PreventDuplicateSubmission::class,
             'edge.device.auth' => \App\Http\Middleware\AuthenticateEdgeDevice::class,
             'edge.runtime.boundary' => EnsureEdgeRuntimeRouteAllowed::class,
             'edge.auth' => \App\Http\Middleware\EnsureEdgeAuthenticated::class,

@@ -817,6 +817,11 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 // ── Catering & Events (CATERING-SLICE-1) — separate business vertical.
                 //    Estimates/events are catering documents, never sales_orders; zero
                 //    stock/GL/shift interaction from these routes. Module key: catering.
+                //
+                // KASHIF-CATERING-DOUBLE-SUBMIT-1: every catering POST goes through the
+                // duplicate guard. It is inert unless the form sends a _submit_token, so
+                // this line changes nothing on its own — it only lets a form opt in.
+                Route::middleware('prevent.duplicate.submit')->group(function () {
                 Route::get('/catering/events', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'index'])->name('tenant.catering.events.index');
                 Route::get('/catering/events/create', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'create'])->name('tenant.catering.events.create');
                 Route::post('/catering/events', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'store'])->name('tenant.catering.events.store');
@@ -885,6 +890,8 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
 
                 Route::get('/catering/settings', [\App\Http\Controllers\Tenant\Catering\CateringSettingController::class, 'index'])->name('tenant.catering.settings.index');
                 Route::put('/catering/settings', [\App\Http\Controllers\Tenant\Catering\CateringSettingController::class, 'update'])->name('tenant.catering.settings.update');
+                }); // end prevent.duplicate.submit group
+
                 Route::get('/purchase-requisitions', [ComingSoonController::class, 'show'])
                     ->defaults('feature', 'purchase-requisitions')->name('tenant.purchase-requisitions.index');
 

@@ -4,6 +4,7 @@
 
 @section('content')
 @include('tenant.catering.partials.tooltips')
+@include('tenant.catering.partials.submit-guard')
 @php
     $current = $event->currentEstimate;
     $isDraft = $current && $current->isDraft();
