@@ -106,8 +106,15 @@ class CateringEventController extends Controller
 
         $event = $this->estimates->createEvent($data, $request->user()?->id);
 
+        // KASHIF-CATERING-REDIRECT-FIX-1 — url(), not route().
+        //
+        // Tenant routes live under Route::domain('{subdomain}.…'), so the FIRST
+        // parameter route() fills is the subdomain. Passing the model consumed
+        // it as the subdomain and left {cateringEvent} empty, throwing
+        // UrlGenerationException — after the event had already been created. The
+        // rest of the application uses url() paths for exactly this reason.
         return redirect()
-            ->route('tenant.catering.events.show', $event)
+            ->to('/catering/events/'.$event->id)
             ->with('status', "Event {$event->event_no} created.");
     }
 
@@ -188,7 +195,7 @@ class CateringEventController extends Controller
         }
 
         return redirect()
-            ->route('tenant.catering.events.show', $cateringEvent)
+            ->to('/catering/events/'.$cateringEvent->id)
             ->with('status', 'Event updated.');
     }
 

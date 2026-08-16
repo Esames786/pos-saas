@@ -50,6 +50,11 @@ class CateringAdvanceController extends Controller
             'advance-'.$advance->id,
         );
 
-        return back()->with('status', 'Advance of '.number_format((float) $advance->amount, 2).' recorded (no accounting entry in V1).');
+        // This message used to deny that any accounting entry was made, while
+        // this very action posts a journal entry AND moves the cash/bank
+        // balance. The screen text was corrected earlier; the flash message was
+        // missed, so the operator was told the opposite of what had happened.
+        return back()->with('status', 'Advance of '.number_format((float) $advance->amount, 2)
+            .' recorded — posted to the general ledger and added to the cash/bank balance.');
     }
 }

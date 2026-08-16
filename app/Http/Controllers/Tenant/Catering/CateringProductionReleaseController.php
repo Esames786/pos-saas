@@ -22,8 +22,11 @@ class CateringProductionReleaseController extends Controller
             return back()->withErrors(['release' => $e->getMessage()]);
         }
 
+        // url(), not route() — tenant routes carry a {subdomain} parameter that
+        // route() fills first, swallowing the model and leaving the real
+        // parameter empty. See CateringEventController::store.
         return redirect()
-            ->route('tenant.catering.production-releases.show', $release)
+            ->to('/catering/production-releases/'.$release->id)
             ->with('status', "Production release {$release->release_no} created.");
     }
 

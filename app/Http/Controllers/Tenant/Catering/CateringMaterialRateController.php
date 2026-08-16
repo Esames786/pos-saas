@@ -60,8 +60,9 @@ class CateringMaterialRateController extends Controller
 
         $rate = CateringMaterialRate::create($data);
 
+        // url(), not route() — see CateringEventController::store.
         return redirect()
-            ->route('tenant.catering.rate-impact.index', ['product_id' => $rate->product_id])
+            ->to('/catering/rate-impact?product_id='.$rate->product_id)
             ->with('status', "Rate recorded for {$rate->product->name} — review the impact below.");
     }
 }

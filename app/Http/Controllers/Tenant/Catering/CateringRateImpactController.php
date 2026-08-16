@@ -39,8 +39,9 @@ class CateringRateImpactController extends Controller
         ]);
 
         if ($data['action'] === 'skip') {
+            // url(), not route() — see CateringEventController::store.
             return redirect()
-                ->route('tenant.catering.material-rates.index')
+                ->to('/catering/material-rates')
                 ->with('status', 'Existing drafts left unchanged; new quotations will use the new rate automatically.');
         }
 
@@ -51,7 +52,7 @@ class CateringRateImpactController extends Controller
         $updated = $this->impact->applyToDrafts($ids, $request->user()?->id);
 
         return redirect()
-            ->route('tenant.catering.rate-impact.index', ['product_id' => $data['product_id']])
+            ->to('/catering/rate-impact?product_id='.$data['product_id'])
             ->with('status', "{$updated} draft estimate(s) repriced with the current rate book.");
     }
 }
