@@ -59,8 +59,8 @@ class PermissionCatalogService
 
     /**
      * CATERING-V1-CLOSURE-1 (§9): business-friendly grouping for the Catering
-     * module — the editor shows ten human actions instead of a flat list of
-     * raw routes. PRESENTATION ONLY: keys stay route names, buckets/sensitive
+     * module — the editor shows a short list of human actions instead of a flat
+     * list of raw routes. PRESENTATION ONLY: keys stay route names, buckets/sensitive
      * classification is unchanged, and route-level enforcement is untouched.
      */
     private const CATERING_FEATURES = [
@@ -82,6 +82,9 @@ class PermissionCatalogService
         'tenant.catering.rate-impact.index' => 'Manage Material Rates',
         'tenant.catering.rate-impact.apply' => 'Manage Material Rates',
         'tenant.catering.advances.store' => 'Record Advance',
+        // Money OUT is its own grant. Whoever may take a payment does not
+        // automatically get to hand one back.
+        'tenant.catering.refunds.store' => 'Refund Customer',
         'tenant.catering.production-releases.store' => 'Release Production',
         'tenant.catering.production-releases.show' => 'Release Production',
         'tenant.catering.production-releases.print' => 'Print / Reprint',

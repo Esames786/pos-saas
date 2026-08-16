@@ -822,80 +822,84 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 // duplicate guard. It is inert unless the form sends a _submit_token, so
                 // this line changes nothing on its own — it only lets a form opt in.
                 Route::middleware('prevent.duplicate.submit')->group(function () {
-                Route::get('/catering/events', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'index'])->name('tenant.catering.events.index');
-                Route::get('/catering/events/create', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'create'])->name('tenant.catering.events.create');
-                Route::post('/catering/events', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'store'])->name('tenant.catering.events.store');
-                Route::get('/catering/events/{cateringEvent}', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'show'])->name('tenant.catering.events.show');
-                Route::get('/catering/events/{cateringEvent}/edit', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'edit'])->name('tenant.catering.events.edit');
-                Route::put('/catering/events/{cateringEvent}', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'update'])->name('tenant.catering.events.update');
-                Route::post('/catering/events/{cateringEvent}/confirm', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'confirm'])->name('tenant.catering.events.confirm');
-                Route::post('/catering/events/{cateringEvent}/cancel', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'cancel'])->name('tenant.catering.events.cancel');
+                    Route::get('/catering/events', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'index'])->name('tenant.catering.events.index');
+                    Route::get('/catering/events/create', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'create'])->name('tenant.catering.events.create');
+                    Route::post('/catering/events', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'store'])->name('tenant.catering.events.store');
+                    Route::get('/catering/events/{cateringEvent}', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'show'])->name('tenant.catering.events.show');
+                    Route::get('/catering/events/{cateringEvent}/edit', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'edit'])->name('tenant.catering.events.edit');
+                    Route::put('/catering/events/{cateringEvent}', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'update'])->name('tenant.catering.events.update');
+                    Route::post('/catering/events/{cateringEvent}/confirm', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'confirm'])->name('tenant.catering.events.confirm');
+                    Route::post('/catering/events/{cateringEvent}/cancel', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'cancel'])->name('tenant.catering.events.cancel');
 
-                Route::put('/catering/estimates/{cateringEstimate}', [\App\Http\Controllers\Tenant\Catering\CateringEstimateController::class, 'update'])->name('tenant.catering.estimates.update');
-                Route::post('/catering/estimates/{cateringEstimate}/send', [\App\Http\Controllers\Tenant\Catering\CateringEstimateController::class, 'send'])->name('tenant.catering.estimates.send');
-                Route::post('/catering/estimates/{cateringEstimate}/accept', [\App\Http\Controllers\Tenant\Catering\CateringEstimateController::class, 'accept'])->name('tenant.catering.estimates.accept');
-                Route::post('/catering/estimates/{cateringEstimate}/revise', [\App\Http\Controllers\Tenant\Catering\CateringEstimateController::class, 'revise'])->name('tenant.catering.estimates.revise');
+                    Route::put('/catering/estimates/{cateringEstimate}', [\App\Http\Controllers\Tenant\Catering\CateringEstimateController::class, 'update'])->name('tenant.catering.estimates.update');
+                    Route::post('/catering/estimates/{cateringEstimate}/send', [\App\Http\Controllers\Tenant\Catering\CateringEstimateController::class, 'send'])->name('tenant.catering.estimates.send');
+                    Route::post('/catering/estimates/{cateringEstimate}/accept', [\App\Http\Controllers\Tenant\Catering\CateringEstimateController::class, 'accept'])->name('tenant.catering.estimates.accept');
+                    Route::post('/catering/estimates/{cateringEstimate}/revise', [\App\Http\Controllers\Tenant\Catering\CateringEstimateController::class, 'revise'])->name('tenant.catering.estimates.revise');
 
-                Route::post('/catering/estimates/{cateringEstimate}/reprice', [\App\Http\Controllers\Tenant\Catering\CateringEstimateController::class, 'reprice'])->name('tenant.catering.estimates.reprice');
+                    Route::post('/catering/estimates/{cateringEstimate}/reprice', [\App\Http\Controllers\Tenant\Catering\CateringEstimateController::class, 'reprice'])->name('tenant.catering.estimates.reprice');
 
-                Route::get('/catering/guide', [\App\Http\Controllers\Tenant\Catering\CateringGuideController::class, 'index'])->name('tenant.catering.guide.index');
+                    Route::get('/catering/guide', [\App\Http\Controllers\Tenant\Catering\CateringGuideController::class, 'index'])->name('tenant.catering.guide.index');
 
-                // A catering-only tenant owns raw materials (mutton, rice, oil) but has
-                // no Manufacturing module, and the Catalog list deliberately shows only
-                // sellable/recipe items — so its materials were reachable from NO screen
-                // at all. These reuse ProductController's proven manufacturing context
-                // under the catering module key; nothing about Manufacturing changes.
-                Route::get('/catering/materials', [ProductController::class, 'index'])->name('tenant.catering.materials.index');
-                Route::get('/catering/materials/create', [ProductController::class, 'create'])->name('tenant.catering.materials.create');
-                Route::post('/catering/materials', [ProductController::class, 'store'])->name('tenant.catering.materials.store');
-                Route::get('/catering/materials/{product}/edit', [ProductController::class, 'edit'])->name('tenant.catering.materials.edit');
-                Route::put('/catering/materials/{product}', [ProductController::class, 'update'])->name('tenant.catering.materials.update');
+                    // A catering-only tenant owns raw materials (mutton, rice, oil) but has
+                    // no Manufacturing module, and the Catalog list deliberately shows only
+                    // sellable/recipe items — so its materials were reachable from NO screen
+                    // at all. These reuse ProductController's proven manufacturing context
+                    // under the catering module key; nothing about Manufacturing changes.
+                    Route::get('/catering/materials', [ProductController::class, 'index'])->name('tenant.catering.materials.index');
+                    Route::get('/catering/materials/create', [ProductController::class, 'create'])->name('tenant.catering.materials.create');
+                    Route::post('/catering/materials', [ProductController::class, 'store'])->name('tenant.catering.materials.store');
+                    Route::get('/catering/materials/{product}/edit', [ProductController::class, 'edit'])->name('tenant.catering.materials.edit');
+                    Route::put('/catering/materials/{product}', [ProductController::class, 'update'])->name('tenant.catering.materials.update');
 
-                Route::get('/catering/material-rates', [\App\Http\Controllers\Tenant\Catering\CateringMaterialRateController::class, 'index'])->name('tenant.catering.material-rates.index');
-                Route::post('/catering/material-rates', [\App\Http\Controllers\Tenant\Catering\CateringMaterialRateController::class, 'store'])->name('tenant.catering.material-rates.store');
+                    Route::get('/catering/material-rates', [\App\Http\Controllers\Tenant\Catering\CateringMaterialRateController::class, 'index'])->name('tenant.catering.material-rates.index');
+                    Route::post('/catering/material-rates', [\App\Http\Controllers\Tenant\Catering\CateringMaterialRateController::class, 'store'])->name('tenant.catering.material-rates.store');
 
-                Route::get('/catering/rate-impact', [\App\Http\Controllers\Tenant\Catering\CateringRateImpactController::class, 'index'])->name('tenant.catering.rate-impact.index');
-                Route::post('/catering/rate-impact/apply', [\App\Http\Controllers\Tenant\Catering\CateringRateImpactController::class, 'apply'])->name('tenant.catering.rate-impact.apply');
+                    Route::get('/catering/rate-impact', [\App\Http\Controllers\Tenant\Catering\CateringRateImpactController::class, 'index'])->name('tenant.catering.rate-impact.index');
+                    Route::post('/catering/rate-impact/apply', [\App\Http\Controllers\Tenant\Catering\CateringRateImpactController::class, 'apply'])->name('tenant.catering.rate-impact.apply');
 
-                Route::get('/catering/profiles', [\App\Http\Controllers\Tenant\Catering\CateringProductProfileController::class, 'index'])->name('tenant.catering.profiles.index');
-                Route::post('/catering/profiles', [\App\Http\Controllers\Tenant\Catering\CateringProductProfileController::class, 'store'])->name('tenant.catering.profiles.store');
-                Route::put('/catering/profiles/{cateringProductProfile}', [\App\Http\Controllers\Tenant\Catering\CateringProductProfileController::class, 'update'])->name('tenant.catering.profiles.update');
+                    Route::get('/catering/profiles', [\App\Http\Controllers\Tenant\Catering\CateringProductProfileController::class, 'index'])->name('tenant.catering.profiles.index');
+                    Route::post('/catering/profiles', [\App\Http\Controllers\Tenant\Catering\CateringProductProfileController::class, 'store'])->name('tenant.catering.profiles.store');
+                    Route::put('/catering/profiles/{cateringProductProfile}', [\App\Http\Controllers\Tenant\Catering\CateringProductProfileController::class, 'update'])->name('tenant.catering.profiles.update');
 
-                Route::post('/catering/events/{cateringEvent}/advances', [\App\Http\Controllers\Tenant\Catering\CateringAdvanceController::class, 'store'])->name('tenant.catering.advances.store');
+                    Route::post('/catering/events/{cateringEvent}/advances', [\App\Http\Controllers\Tenant\Catering\CateringAdvanceController::class, 'store'])->name('tenant.catering.advances.store');
 
-                Route::post('/catering/events/{cateringEvent}/production-releases', [\App\Http\Controllers\Tenant\Catering\CateringProductionReleaseController::class, 'store'])->name('tenant.catering.production-releases.store');
-                Route::get('/catering/production-releases/{cateringProductionRelease}', [\App\Http\Controllers\Tenant\Catering\CateringProductionReleaseController::class, 'show'])->name('tenant.catering.production-releases.show');
-                Route::post('/catering/production-releases/{cateringProductionRelease}/print', [\App\Http\Controllers\Tenant\Catering\CateringProductionReleaseController::class, 'print'])->name('tenant.catering.production-releases.print');
-                Route::post('/catering/production-releases/{cateringProductionRelease}/reprint', [\App\Http\Controllers\Tenant\Catering\CateringProductionReleaseController::class, 'reprint'])->name('tenant.catering.production-releases.reprint');
-                Route::post('/catering/production-releases/{cateringProductionRelease}/issue-materials', [\App\Http\Controllers\Tenant\Catering\CateringMaterialIssueController::class, 'store'])->name('tenant.catering.material-issues.store');
+                    // KASHIF-CATERING-CUSTOMER-CREDIT-1: the one catering action that
+                    // pays money OUT, behind its own permission for that reason.
+                    Route::post('/catering/events/{cateringEvent}/refunds', [\App\Http\Controllers\Tenant\Catering\CateringRefundController::class, 'store'])->name('tenant.catering.refunds.store');
 
-                // KASHIF-CATERING-STORE-1 — the store counter, answering to nobody.
-                // Issue any quantity, covering any number of bookings or none;
-                // the booking reference is a note, never a requirement.
-                Route::get('/catering/store-issues', [\App\Http\Controllers\Tenant\Catering\CateringStoreIssueController::class, 'index'])->name('tenant.catering.store-issues.index');
-                Route::post('/catering/store-issues', [\App\Http\Controllers\Tenant\Catering\CateringStoreIssueController::class, 'store'])->name('tenant.catering.store-issues.store');
+                    Route::post('/catering/events/{cateringEvent}/production-releases', [\App\Http\Controllers\Tenant\Catering\CateringProductionReleaseController::class, 'store'])->name('tenant.catering.production-releases.store');
+                    Route::get('/catering/production-releases/{cateringProductionRelease}', [\App\Http\Controllers\Tenant\Catering\CateringProductionReleaseController::class, 'show'])->name('tenant.catering.production-releases.show');
+                    Route::post('/catering/production-releases/{cateringProductionRelease}/print', [\App\Http\Controllers\Tenant\Catering\CateringProductionReleaseController::class, 'print'])->name('tenant.catering.production-releases.print');
+                    Route::post('/catering/production-releases/{cateringProductionRelease}/reprint', [\App\Http\Controllers\Tenant\Catering\CateringProductionReleaseController::class, 'reprint'])->name('tenant.catering.production-releases.reprint');
+                    Route::post('/catering/production-releases/{cateringProductionRelease}/issue-materials', [\App\Http\Controllers\Tenant\Catering\CateringMaterialIssueController::class, 'store'])->name('tenant.catering.material-issues.store');
 
-                Route::post('/catering/events/{cateringEvent}/final-invoice', [\App\Http\Controllers\Tenant\Catering\CateringFinalInvoiceController::class, 'store'])->name('tenant.catering.final-invoices.store');
-                Route::post('/catering/events/{cateringEvent}/close', [\App\Http\Controllers\Tenant\Catering\CateringFinalInvoiceController::class, 'close'])->name('tenant.catering.events.close');
+                    // KASHIF-CATERING-STORE-1 — the store counter, answering to nobody.
+                    // Issue any quantity, covering any number of bookings or none;
+                    // the booking reference is a note, never a requirement.
+                    Route::get('/catering/store-issues', [\App\Http\Controllers\Tenant\Catering\CateringStoreIssueController::class, 'index'])->name('tenant.catering.store-issues.index');
+                    Route::post('/catering/store-issues', [\App\Http\Controllers\Tenant\Catering\CateringStoreIssueController::class, 'store'])->name('tenant.catering.store-issues.store');
 
-                Route::get('/catering/documents/estimate/{cateringEstimate}', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'estimate'])->name('tenant.catering.documents.estimate');
-                Route::get('/catering/documents/kitchen-sheet/{cateringProductionRelease}', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'kitchenSheet'])->name('tenant.catering.documents.kitchen-sheet');
-                Route::get('/catering/documents/final-invoice/{cateringFinalInvoice}', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'finalInvoice'])->name('tenant.catering.documents.final-invoice');
+                    Route::post('/catering/events/{cateringEvent}/final-invoice', [\App\Http\Controllers\Tenant\Catering\CateringFinalInvoiceController::class, 'store'])->name('tenant.catering.final-invoices.store');
+                    Route::post('/catering/events/{cateringEvent}/close', [\App\Http\Controllers\Tenant\Catering\CateringFinalInvoiceController::class, 'close'])->name('tenant.catering.events.close');
 
-                // KASHIF-CATERING-PRODUCT-UX-1 (item 7) — customer documents over the
-                // existing print_jobs transport. English only: the ESC/POS path has no
-                // codepage or raster support, so Urdu stays A4/browser and is refused
-                // here rather than printed as mojibake.
-                Route::post('/catering/documents/estimate/{cateringEstimate}/print', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'printEstimate'])->name('tenant.catering.documents.estimate-print');
-                Route::post('/catering/documents/final-invoice/{cateringFinalInvoice}/print', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'printFinalInvoice'])->name('tenant.catering.documents.final-invoice-print');
+                    Route::get('/catering/documents/estimate/{cateringEstimate}', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'estimate'])->name('tenant.catering.documents.estimate');
+                    Route::get('/catering/documents/kitchen-sheet/{cateringProductionRelease}', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'kitchenSheet'])->name('tenant.catering.documents.kitchen-sheet');
+                    Route::get('/catering/documents/final-invoice/{cateringFinalInvoice}', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'finalInvoice'])->name('tenant.catering.documents.final-invoice');
 
-                Route::get('/catering/printer-mappings', [\App\Http\Controllers\Tenant\Catering\CateringPrinterMappingController::class, 'index'])->name('tenant.catering.printer-mappings.index');
-                Route::post('/catering/printer-mappings', [\App\Http\Controllers\Tenant\Catering\CateringPrinterMappingController::class, 'store'])->name('tenant.catering.printer-mappings.store');
-                Route::delete('/catering/printer-mappings/{cateringPrinterMapping}', [\App\Http\Controllers\Tenant\Catering\CateringPrinterMappingController::class, 'destroy'])->name('tenant.catering.printer-mappings.destroy');
-                Route::post('/catering/printer-mappings/copy-from-pos', [\App\Http\Controllers\Tenant\Catering\CateringPrinterMappingController::class, 'copyFromPos'])->name('tenant.catering.printer-mappings.copy-from-pos');
+                    // KASHIF-CATERING-PRODUCT-UX-1 (item 7) — customer documents over the
+                    // existing print_jobs transport. English only: the ESC/POS path has no
+                    // codepage or raster support, so Urdu stays A4/browser and is refused
+                    // here rather than printed as mojibake.
+                    Route::post('/catering/documents/estimate/{cateringEstimate}/print', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'printEstimate'])->name('tenant.catering.documents.estimate-print');
+                    Route::post('/catering/documents/final-invoice/{cateringFinalInvoice}/print', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'printFinalInvoice'])->name('tenant.catering.documents.final-invoice-print');
 
-                Route::get('/catering/settings', [\App\Http\Controllers\Tenant\Catering\CateringSettingController::class, 'index'])->name('tenant.catering.settings.index');
-                Route::put('/catering/settings', [\App\Http\Controllers\Tenant\Catering\CateringSettingController::class, 'update'])->name('tenant.catering.settings.update');
+                    Route::get('/catering/printer-mappings', [\App\Http\Controllers\Tenant\Catering\CateringPrinterMappingController::class, 'index'])->name('tenant.catering.printer-mappings.index');
+                    Route::post('/catering/printer-mappings', [\App\Http\Controllers\Tenant\Catering\CateringPrinterMappingController::class, 'store'])->name('tenant.catering.printer-mappings.store');
+                    Route::delete('/catering/printer-mappings/{cateringPrinterMapping}', [\App\Http\Controllers\Tenant\Catering\CateringPrinterMappingController::class, 'destroy'])->name('tenant.catering.printer-mappings.destroy');
+                    Route::post('/catering/printer-mappings/copy-from-pos', [\App\Http\Controllers\Tenant\Catering\CateringPrinterMappingController::class, 'copyFromPos'])->name('tenant.catering.printer-mappings.copy-from-pos');
+
+                    Route::get('/catering/settings', [\App\Http\Controllers\Tenant\Catering\CateringSettingController::class, 'index'])->name('tenant.catering.settings.index');
+                    Route::put('/catering/settings', [\App\Http\Controllers\Tenant\Catering\CateringSettingController::class, 'update'])->name('tenant.catering.settings.update');
                 }); // end prevent.duplicate.submit group
 
                 Route::get('/purchase-requisitions', [ComingSoonController::class, 'show'])

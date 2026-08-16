@@ -27,6 +27,11 @@ class CateringNumberService
         return $this->next('catering_final_invoices', 'invoice_no', 'CI-');
     }
 
+    public function nextRefundNo(): string
+    {
+        return $this->next('catering_refunds', 'refund_no', 'CR-');
+    }
+
     public function nextMaterialIssueNo(): string
     {
         return $this->next('catering_material_issues', 'issue_no', 'MI-');

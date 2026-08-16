@@ -740,6 +740,51 @@ class JournalPostingService
     }
 
     /**
+     * A2. Refund of customer credit (KASHIF-CATERING-CUSTOMER-CREDIT-1):
+     * Dr 2300 Customer Advances / Cr the mapped cash or bank it left from
+     * (else Cr 1500 Undeposited Funds, mirroring how the receipt came in).
+     *
+     * Always 2300, because credit can only ever be sitting there. A receipt is
+     * refused once it would exceed the outstanding balance, so a booking can
+     * never be overpaid into Receivables; and an invoice applies at most its own
+     * value, so anything beyond it stays in the liability. Credit that reached
+     * 1300 would be a bug elsewhere, not a case to handle here.
+     *
+     * The receipt being settled is never touched. This entry stands beside it.
+     */
+    public function postCateringRefund(\App\Models\Tenant\CateringRefund $refund, ?int $userId = null): JournalEntry
+    {
+        $amount = round((float) $refund->amount, 2);
+        if ($existing = $this->assertReplayMatches('catering_refund', $refund->id, $amount)) {
+            return $existing;
+        }
+
+        $branchId = $refund->event?->branch_id;
+        $reference = 'Catering refund '.$refund->refund_no.' ('.($refund->event?->event_no ?? '').')';
+
+        $creditAccountId = $refund->cash_bank_account_id
+            ? $this->cashBankCoaId($refund->cash_bank_account_id)
+            : null;
+
+        $credit = $creditAccountId
+            ? ['account_id' => $creditAccountId, 'branch_id' => $branchId, 'description' => $reference, 'debit' => 0, 'credit' => $amount]
+            : ['account_code' => '1500', 'branch_id' => $branchId, 'description' => $reference.' (undeposited)', 'debit' => 0, 'credit' => $amount];
+
+        return $this->journal->post(
+            'catering_refund',
+            $refund->id,
+            $refund->refund_no,
+            $reference,
+            $refund->refund_date?->toDateString() ?? now()->toDateString(),
+            [
+                ['account_code' => '2300', 'branch_id' => $branchId, 'description' => 'Customer Advances refunded', 'debit' => $amount, 'credit' => 0],
+                $credit,
+            ],
+            $userId
+        );
+    }
+
+    /**
      * B. Final invoice: Dr 1300 AR grand_total (+ Dr 4200 discounts contra) /
      * Cr 4160 Catering Revenue (subtotal + other charges) + Cr 4130 service
      * charges + Cr 2200 tax. Balanced by construction.
