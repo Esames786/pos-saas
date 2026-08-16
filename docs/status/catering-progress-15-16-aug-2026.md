@@ -172,18 +172,193 @@ print on thermal · no refunds or negative-balance settlement.
 
 ---
 
-## What is left
+## What is left — in detail
 
-| # | Item | Size | Blocked by |
-|---|---|---|---|
-| 1 | Cost block screens + booking line + kitchen sheet | large | in progress |
-| 2 | Rate Impact moves **price**; making bulk adjust | medium | item 1 |
-| 3 | Negative balance, refunds, customer ledger | large | — |
-| 4 | Kitchen instruction list (55 Roman-Urdu entries) | small | export from old software |
-| 5 | SMTP | minutes | **client decision** |
+Roughly **35% of the agreed scope** is done by effort. Five items remain; two are
+large. Ordered by dependency, not by size.
 
-Roughly **35% of the agreed scope** is done by effort. The two large items are
-still ahead.
+---
+
+### 1 · Finish cost blocks — screens, booking line, kitchen sheet
+
+**Size:** large · **Status:** core done (12 tests green), interface not started
+
+The data model and calculation service exist and are proven. What is missing is
+every place a human touches them.
+
+**1a · Dish editing screen** — *Catering › Catering Products*
+
+Add a blocks panel to a dish. Each row: label, type (material or charge), the
+material it draws from, quantity per unit, rate, and basis (per unit or lump
+sum). Live total at the bottom so the operator sees `200 + 120 + 400 = 720/KG`
+as they type.
+
+Plus the **costing / recipe switch**. One per dish, never both. Switching a dish
+that already has a recipe must warn rather than silently ignore it.
+
+**1b · Booking line** — *event screen*
+
+When a dish in block mode is added, the line expands to show its blocks. Each
+material block gets a **"customer is supplying this"** tick, which removes it
+from the charge *and* from the kitchen sheet. The line total recalculates live.
+
+The estimate line must **store what it charged**, not recompute later — the same
+rule that already protects a sent quotation from a catalog price change.
+
+**1c · Kitchen sheet**
+
+Today it lists dishes. It must also list the **materials those dishes need**,
+derived from the ratios: `Biryani 10 KG → chicken 5 KG, rice 5 KG`. Blocks the
+customer supplied must not appear at all.
+
+For a recipe-mode dish this stays as it is. So the sheet becomes two things: a
+precise pick-list where recipes exist, a work order where they do not.
+
+**1d · Costing readiness**
+
+`CateringRecipeCostingService::readiness()` currently blocks sending a quotation
+when a recipe cannot be costed. Block-mode dishes need the same fail-closed check
+routed through `CateringCostBlockService::readiness()`, which already exists —
+it is the wiring that is missing.
+
+**Tests needed:** dish screen renders and saves blocks · booking line charges and
+requires the right amounts · a customer-supplied block vanishes from both · the
+kitchen sheet asks for ratio quantities · send is refused when a block has no
+rate · a recipe-mode dish is completely unaffected.
+
+**Risk:** the booking line is the most-used screen in the module. The estimate
+line must keep its own stored rate, or an old quotation could silently reprice.
+
+---
+
+### 2 · Rate Impact moves the price, and making adjusts in bulk
+
+**Size:** medium · **Blocked by:** item 1
+
+**2a · Impact shows price movement**
+
+Today `applyToDrafts()` calls `costing->snapshot()`, which recomputes **cost**
+only — that is why changing beef moved the margin and not the quotation. For
+block-mode dishes it must also recompute the **dish rate** and the affected
+estimate lines.
+
+The screen gains an old-rate → new-rate column. Right now **Current Cost** shows
+a dash because no snapshot exists yet, which is why the change felt invisible.
+
+Unchanged: nothing reprices on its own, the operator picks which drafts, and
+sent or agreed quotations are never touched.
+
+**2b · Global making adjustment** — new screen
+
+Select dishes, apply `+100` or `−100` to their making block, review the impact,
+apply to chosen drafts.
+
+> **The trap:** `+100` on a **per-unit** block raises a 10 KG line by **1,000**,
+> not 100. On a **lump-sum** block it raises it by 100 once. The screen must say
+> which it is doing *before* applying, or a bulk change moves ten times more than
+> intended.
+
+**Tests needed:** a material rate change moves a block-mode draft's price ·
+a recipe-mode draft still moves only its cost · sent quotations never move ·
+per-unit and lump-sum bulk adjustments each behave correctly · the preview
+matches what apply actually does.
+
+---
+
+### 3 · Negative balance, refunds, customer ledger
+
+**Size:** large · **Blocked by:** nothing — could start today
+
+This is the only item with a **live problem waiting on it**: `EV-20260816-0001`
+sits at **−34,250** with no way to settle it.
+
+**3a · Let the balance go negative**
+
+`CateringAdvance` refuses any payment exceeding the outstanding balance —
+*"V1 has no customer-credit authority"*. That guard also fires when the estimate
+is reduced *after* payment, which is exactly the real-world case. The balance
+must be allowed below zero and displayed as **owed to the customer**.
+
+**3b · Refunds — money out**
+
+There is no way to record money leaving. Needs a proper refund action in the
+finance layer: posts to the ledger, reduces the cash or bank account it came
+from, and can never exceed what was received.
+
+**3c · Customer ledger** — new screen
+
+A running statement per booking: every payment in, every refund out, a running
+balance. Today only a total exists.
+
+**3d · Credit carried forward**
+
+Overpayment held against another booking rather than refunded.
+
+**Tests needed:** balance goes negative when the estimate is reduced after
+payment · a refund posts correctly and cannot exceed receipts · the ledger
+balances to zero after any sequence · cancelling with an outstanding advance
+offers settlement instead of silently leaving it · no direct journal writes.
+
+**Risk — the highest in the remaining work.** This is real money leaving the
+business. It must be built once, carefully, and never reach a state where the
+books and the screen disagree.
+
+---
+
+### 4 · Kitchen instruction list
+
+**Size:** small · **Blocked by:** getting the list out of the old software
+
+The old system has ~55 fixed Roman-Urdu instructions — *Mirch Kam*,
+*Chawal Dana Dana*, *Gosht Gala Huwa Ho*, *Koyala*. Multi-select per line, so the
+kitchen never receives four spellings of the same thing.
+
+Ours is **free text** today.
+
+Needs: a managed list (English + Urdu), multi-select on a booking line, printed
+on the kitchen sheet.
+
+> That vocabulary is twenty years of a caterer's knowledge and exists only inside
+> a desktop program. **Export it rather than retype it** — retyping loses the
+> nuance.
+
+---
+
+### 5 · SMTP
+
+**Size:** minutes of work · **Blocked by:** the client
+
+Production runs `MAIL_MAILER=log`. Quotation, advance and invoice emails are
+recorded and reach nobody. Reminders depend on the same dead transport.
+
+Two decisions outstanding:
+
+- **Relay** (Brevo / Zoho / SES) — ~15 minutes, established deliverability, or
+  **self-hosted Postfix** — hours, plus PTR at Hostinger or Gmail rejects it
+- The domain is **`bingoopos.com`**, not `bingoo.com` as the original brief said
+
+Until this is answered, no amount of building makes email arrive. A manual
+"Email to Customer" button is deliberately **not** being built first — it would
+deliver nothing.
+
+---
+
+## Sequencing
+
+```
+NOW    1a → 1b → 1c → 1d      cost blocks, end to end
+THEN   2a → 2b                impact moves price, making bulk adjust
+THEN   3a → 3b → 3c → 3d      refunds and the customer ledger
+ANY    4                      instruction list, once exported
+ANY    5                      SMTP, once decided
+```
+
+Items **3, 4 and 5 are independent** of cost blocks and could be pulled forward.
+The argument for doing 3 first is that it has a live unresolved balance; the
+argument against is that cost blocks is what the rest of the design hangs on.
+
+Every tranche ships the same way: build → targeted tests → **full suite twice** →
+Pint and Blade lint → commit → verified backup → deploy → read-only Khatri check.
 
 ---
 
