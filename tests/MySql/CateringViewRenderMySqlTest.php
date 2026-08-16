@@ -123,7 +123,7 @@ class CateringViewRenderMySqlTest extends MySqlTenantTestCase
                 'event' => $event, 'units' => $units,
                 'profileMap' => collect([]), 'paymentMethods' => collect([]),
                 'costingReadiness' => app(\App\Services\Catering\CateringRecipeCostingService::class)->readiness($estimate),
-            ],
+            ] + $this->financePayload($event),
             'tenant.catering.profiles.index' => ['profiles' => $profiles, 'units' => $units, 'search' => ''],
             'tenant.catering.material-rates.index' => [
                 'latestRates' => \App\Models\Tenant\CateringMaterialRate::with(['product.unit', 'unit', 'product.translations'])->paginate(25),
@@ -212,12 +212,15 @@ class CateringViewRenderMySqlTest extends MySqlTenantTestCase
             'paymentMethods' => collect([]),
             'costingReadiness' => app(\App\Services\Catering\CateringRecipeCostingService::class)
                 ->readiness($this->estimate->fresh(['lines', 'event'])),
-        ])->render();
+        ] + $this->financePayload($event))->render();
 
         foreach ([
             'no accounting entries are posted',
             'V1 posts no accounting entries',
             'Operational records only in V1',
+            // The advance modal carried this one until KASHIF-CATERING-CUSTOMER-CREDIT-1,
+            // directly above a button that posts a journal entry and moves the drawer.
+            'no GL/cash-bank posting',
         ] as $retiredLie) {
             $this->assertStringNotContainsString(
                 $retiredLie, $html,
@@ -507,6 +510,24 @@ class CateringViewRenderMySqlTest extends MySqlTenantTestCase
         }
 
         DB::setDefaultConnection('tenant');
+    }
+
+    /**
+     * The financial position the controller hands the event screen. Taken from
+     * the real service rather than hand-built, so a change to its shape breaks
+     * the render here instead of on the customer's screen.
+     *
+     * @return array<string, mixed>
+     */
+    private function financePayload(\App\Models\Tenant\CateringEvent $event): array
+    {
+        $finance = app(\App\Services\Catering\CateringFinancialPositionService::class);
+
+        return [
+            'position' => $finance->position($event),
+            'headline' => $finance->headline($event),
+            'ledger' => $finance->ledger($event),
+        ];
     }
 
     private function planWith(string $code, array $moduleKeys): Plan

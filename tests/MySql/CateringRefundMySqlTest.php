@@ -446,6 +446,77 @@ class CateringRefundMySqlTest extends MySqlTenantTestCase
             'a zero-difference trial balance is the whole point of posting through one authority');
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // G. The statement.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * The whole point of a statement is that it agrees with the headline. If a
+     * customer can add up the rows and reach a different number from the one on
+     * the screen, one of them is lying and nobody can tell which.
+     */
+    public function test_the_ledger_closes_on_exactly_the_headline_position(): void
+    {
+        $event = $this->bookingInCredit();
+        $this->refund($event, 10000, 'Part settled in cash');
+
+        $ledger = $this->position->ledger($event->refresh());
+        $position = $this->position->position($event->refresh());
+
+        $last = end($ledger);
+        $this->assertSame(24250.0, $last['running'],
+            'the last running figure is the credit still owed');
+        $this->assertSame(round($position['customer_credit'] - $position['balance_due'], 2), $last['running'],
+            'and it is the same number the summary shows, by construction');
+    }
+
+    /** Every row on the statement stands for a record that exists. */
+    public function test_every_ledger_row_traces_to_a_real_document(): void
+    {
+        $event = $this->bookingInCredit();
+        $this->refund($event, 10000, 'Part settled in cash');
+
+        $types = array_column($this->position->ledger($event->refresh()), 'type');
+
+        $this->assertSame(2, count(array_filter($types, fn ($t) => $t === 'Advance received')),
+            'two receipts were taken, so two rows appear');
+        $this->assertSame(1, count(array_filter($types, fn ($t) => $t === 'Refund paid')));
+        $this->assertContains('Quotation Q2', $types, 'the revised quotation is what is being charged');
+    }
+
+    /** An invoiced booking shows the invoice and what it absorbed. */
+    public function test_the_ledger_shows_the_invoice_and_the_advance_it_absorbed(): void
+    {
+        $event = $this->bookingInCredit();
+        app(CateringFinalInvoiceService::class)->issue($event->refresh());
+
+        $ledger = $this->position->ledger($event->refresh());
+        $types = array_column($ledger, 'type');
+
+        $this->assertContains('Final invoice issued', $types);
+        $this->assertContains('Advance applied to invoice', $types);
+
+        $applied = collect($ledger)->firstWhere('type', 'Advance applied to invoice');
+        $this->assertTrue($applied['informational'],
+            'applying an advance moves no money — it records what money already held is now for');
+        $this->assertSame(0.0, $applied['money_in'] + $applied['money_out']);
+
+        $this->assertSame(34250.0, end($ledger)['running'],
+            'and the statement still ends on the credit the invoice could not absorb');
+    }
+
+    /** An ordinary underpaid booking reads as a balance due, not a credit. */
+    public function test_the_ledger_of_an_underpaid_booking_ends_negative(): void
+    {
+        $event = $this->bookingQuotedAt(100000);
+        $this->receive($event, 30000);
+
+        $ledger = $this->position->ledger($event->refresh());
+
+        $this->assertSame(-70000.0, end($ledger)['running'],
+            'the customer owes 70,000, and the statement says so in the other direction');
+    }
+
     private function lineFor($lines, string $code, string $column): float
     {
         $accountId = Account::where('code', $code)->value('id');

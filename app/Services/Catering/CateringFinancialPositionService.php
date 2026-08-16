@@ -94,6 +94,131 @@ class CateringFinancialPositionService
         ];
     }
 
+    /**
+     * The booking statement — every financial event, in order, with a running
+     * position that ends exactly where position() says the booking stands.
+     *
+     * Every row comes from a persisted record. Nothing here is arithmetic
+     * invented for the screen: if a row is on this statement, a document exists
+     * behind it, and if a document exists, it is on this statement.
+     *
+     * The running position is money held less money billed, so it reads the same
+     * way the headline does — positive is credit owed to the customer, negative
+     * is a balance due. "Advance applied" carries no money because nothing moves:
+     * it records that money already held stopped being a deposit and started
+     * being payment for a bill.
+     *
+     * @return array<int, array{
+     *   date: string, type: string, reference: ?string, note: ?string,
+     *   money_in: float, money_out: float, charged: float,
+     *   running: float, informational: bool
+     * }>
+     */
+    public function ledger(CateringEvent $event): array
+    {
+        $rows = [];
+
+        foreach ($event->advances()->with('paymentMethod')->get() as $advance) {
+            $rows[] = [
+                'sort_date' => $advance->received_date?->toDateString() ?? '',
+                'sort_at' => (string) $advance->created_at,
+                'date' => $advance->received_date?->format('d M Y') ?? '—',
+                'type' => $advance->posting_type === 'settlement' ? 'Payment received' : 'Advance received',
+                'reference' => $advance->reference,
+                'note' => $advance->paymentMethod?->name,
+                'money_in' => round((float) $advance->amount, 2),
+                'money_out' => 0.0,
+                'charged' => 0.0,
+                'informational' => false,
+            ];
+        }
+
+        foreach ($event->refunds()->with('paymentMethod')->get() as $refund) {
+            $rows[] = [
+                'sort_date' => $refund->refund_date?->toDateString() ?? '',
+                'sort_at' => (string) $refund->created_at,
+                'date' => $refund->refund_date?->format('d M Y') ?? '—',
+                'type' => 'Refund paid',
+                'reference' => $refund->refund_no,
+                'note' => $refund->reason,
+                'money_in' => 0.0,
+                'money_out' => round((float) $refund->amount, 2),
+                'charged' => 0.0,
+                'informational' => false,
+            ];
+        }
+
+        [$billed, $source] = $this->billed($event);
+
+        if ($source === self::SOURCE_INVOICE && $invoice = $event->finalInvoice()->first()) {
+            $rows[] = [
+                'sort_date' => $invoice->issued_at?->toDateString() ?? '',
+                'sort_at' => (string) $invoice->created_at,
+                'date' => $invoice->issued_at?->format('d M Y') ?? '—',
+                'type' => 'Final invoice issued',
+                'reference' => $invoice->invoice_no,
+                'note' => null,
+                'money_in' => 0.0,
+                'money_out' => 0.0,
+                'charged' => round((float) $invoice->grand_total, 2),
+                'informational' => false,
+            ];
+
+            $applied = round((float) ($invoice->advance_applied ?? $invoice->advance_total), 2);
+            if ($applied > 0) {
+                $rows[] = [
+                    'sort_date' => $invoice->issued_at?->toDateString() ?? '',
+                    'sort_at' => (string) $invoice->created_at.'~',
+                    'date' => $invoice->issued_at?->format('d M Y') ?? '—',
+                    'type' => 'Advance applied to invoice',
+                    'reference' => $invoice->invoice_no,
+                    'note' => 'Money already held, now covering the bill',
+                    'money_in' => 0.0,
+                    'money_out' => 0.0,
+                    'charged' => 0.0,
+                    'informational' => true,
+                ];
+            }
+        } elseif ($source === self::SOURCE_ESTIMATE && $estimate = $event->currentEstimate) {
+            $rows[] = [
+                'sort_date' => $estimate->updated_at?->toDateString() ?? '',
+                'sort_at' => (string) $estimate->updated_at,
+                'date' => $estimate->updated_at?->format('d M Y') ?? '—',
+                'type' => 'Quotation Q'.$estimate->version_no,
+                'reference' => null,
+                'note' => 'Not yet invoiced',
+                'money_in' => 0.0,
+                'money_out' => 0.0,
+                'charged' => round((float) $estimate->grand_total, 2),
+                'informational' => false,
+            ];
+        } elseif ($source === self::SOURCE_CANCELLED) {
+            $rows[] = [
+                'sort_date' => $event->cancelled_at?->toDateString() ?? $event->updated_at?->toDateString() ?? '',
+                'sort_at' => (string) ($event->cancelled_at ?? $event->updated_at),
+                'date' => ($event->cancelled_at ?? $event->updated_at)?->format('d M Y') ?? '—',
+                'type' => 'Booking cancelled',
+                'reference' => null,
+                'note' => 'Nothing will be billed, so everything held is the customer\'s',
+                'money_in' => 0.0,
+                'money_out' => 0.0,
+                'charged' => 0.0,
+                'informational' => false,
+            ];
+        }
+
+        usort($rows, fn ($a, $b) => [$a['sort_date'], $a['sort_at']] <=> [$b['sort_date'], $b['sort_at']]);
+
+        $running = 0.0;
+        foreach ($rows as $i => $row) {
+            $running = round($running + $row['money_in'] - $row['money_out'] - $row['charged'], 2);
+            $rows[$i]['running'] = $running;
+            unset($rows[$i]['sort_date'], $rows[$i]['sort_at']);
+        }
+
+        return $rows;
+    }
+
     /** @return array{0: float, 1: string} */
     private function billed(CateringEvent $event): array
     {

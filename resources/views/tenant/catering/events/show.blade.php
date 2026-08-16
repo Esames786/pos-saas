@@ -76,7 +76,7 @@
 {{-- The impact header belongs INSIDE the content section and BELOW the page
      header. Placed above @section it rendered outside the layout body and sat
      underneath the fixed top nav. --}}
-@include("tenant.catering.partials.screen-impact", ["manages" => "One booking end to end — quotation, advances, production and the final invoice.", "managesUr" => "ایک بکنگ مکمل — تخمینہ، پیشگی، پیداوار اور حتمی بل۔", "finance" => "Recording an advance and issuing the final invoice both post to the general ledger", "stock" => "Only when materials are issued against a production release", "prints" => "Estimate and final invoice as A4, kitchen sheet to the printers", "reversible" => "partly", "note" => "While the estimate is a draft nothing at all is posted. Cancelling after an advance has been received does NOT refund it — the advance stays on the ledger and must be settled separately.", "noteUr" => "ڈرافٹ کی حالت میں کچھ پوسٹ نہیں ہوتا۔ پیشگی رقم کے بعد منسوخی سے رقم واپس نہیں ہوتی۔"])
+@include("tenant.catering.partials.screen-impact", ["manages" => "One booking end to end — quotation, advances, production and the final invoice.", "managesUr" => "ایک بکنگ مکمل — تخمینہ، پیشگی، پیداوار اور حتمی بل۔", "finance" => "Recording an advance and issuing the final invoice both post to the general ledger", "stock" => "Only when materials are issued against a production release", "prints" => "Estimate and final invoice as A4, kitchen sheet to the printers", "reversible" => "partly", "note" => "While the estimate is a draft nothing at all is posted. Cancelling after an advance has been received does NOT refund it — the money stays on the ledger and becomes credit owed to the customer, settled by the separate Refund action.", "noteUr" => "ڈرافٹ کی حالت میں کچھ پوسٹ نہیں ہوتا۔ پیشگی رقم کے بعد منسوخی سے رقم خود بخود واپس نہیں ہوتی — وہ گاہک کا کریڈٹ بن جاتی ہے اور ریفنڈ کے ذریعے واپس کی جاتی ہے۔"])
 
 @if(session('status'))
     <div class="alert alert-success">{{ session('status') }}</div>
@@ -378,19 +378,33 @@
 </div>
 @endif
 
-{{-- ── Advances + Production (CATERING-SLICE-3) ─────────────────────── --}}
+{{-- ── Money + Production ────────────────────────────────────────────────
+     KASHIF-CATERING-CUSTOMER-CREDIT-1: this card used to show only receipts,
+     and only ever a balance clamped at zero. A booking holding more than it had
+     billed for read as 0.00 and offered nothing to do about it. Both directions
+     are now shown, and the position is named for whichever way it runs. --}}
 @php $advanceTotal = $event->advances->sum('amount'); @endphp
 <div class="row g-3 mb-3">
     <div class="col-lg-6">
         <div class="card h-100">
-            <div class="card-header d-flex align-items-center justify-content-between">
-                <h5 class="mb-0">Advances</h5>
-                @if(! $event->isCancelled())
-                    @can('tenant.catering.advances.store')
-                        <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#advanceModal"
-                                title="Posts the payment to the general ledger and increases the selected cash/bank balance.">Record Advance</button>
-                    @endcan
-                @endif
+            <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+                <h5 class="mb-0">Receipts &amp; Refunds</h5>
+                <div class="d-flex gap-2">
+                    @if(! $event->isCancelled() && $position['balance_due'] > 0)
+                        @can('tenant.catering.advances.store')
+                            <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#advanceModal"
+                                    title="Posts the payment to the general ledger and increases the selected cash/bank balance.">Record Advance</button>
+                        @endcan
+                    @endif
+                    @if($position['refundable'] > 0)
+                        @can('tenant.catering.refunds.store')
+                            <button class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#refundModal"
+                                    title="Pays the customer back what they are owed. Posts to the general ledger and reduces the selected cash/bank balance.">
+                                <i class="ti ti-arrow-back-up me-1"></i>Refund Customer
+                            </button>
+                        @endcan
+                    @endif
+                </div>
             </div>
             <div class="card-body p-0">
                 <table class="table table-sm mb-0">
@@ -405,23 +419,48 @@
                         @empty
                         <tr><td class="text-center text-muted py-3">No advances recorded.</td></tr>
                         @endforelse
-                        @if($event->advances->isNotEmpty() && $current)
+
+                        @foreach($event->refunds as $refund)
+                        <tr class="text-warning-emphasis">
+                            <td>{{ $refund->refund_date->format('d M Y') }}</td>
+                            <td>Refund · {{ $refund->paymentMethod?->name ?? '—' }}</td>
+                            <td class="text-muted">{{ $refund->refund_no }}</td>
+                            <td class="text-end">({{ number_format($refund->amount, 2) }})</td>
+                        </tr>
+                        @endforeach
+
+                        @if($event->advances->isNotEmpty())
                         <tr class="fw-bold">
-                            <td colspan="3">Advance Total</td>
-                            <td class="text-end">{{ number_format($advanceTotal, 2) }}</td>
+                            <td colspan="3">Received{{ $position['refunded'] > 0 ? ', less refunds' : '' }}</td>
+                            <td class="text-end">{{ number_format($position['net_received'], 2) }}</td>
                         </tr>
                         <tr class="fw-bold">
-                            <td colspan="3">Balance (vs Q{{ $current->version_no }})</td>
-                            <td class="text-end">{{ number_format(max($current->grand_total - $advanceTotal, 0), 2) }}</td>
+                            <td colspan="3">
+                                {{ $headline['label'] }}
+                                <span class="fw-normal text-muted fs-12">
+                                    @if($position['billed_source'] === 'invoice') vs invoice
+                                    @elseif($position['billed_source'] === 'cancelled') · nothing billed, booking cancelled
+                                    @elseif($current) vs Q{{ $current->version_no }}
+                                    @endif
+                                </span>
+                            </td>
+                            <td class="text-end text-{{ $headline['tone'] }}">{{ number_format($headline['amount'], 2) }}</td>
                         </tr>
                         @endif
                     </tbody>
                 </table>
             </div>
             <div class="card-footer text-muted fs-12">
-                <i class="ti ti-alert-circle text-primary"></i>
-                Recording an advance <strong>posts to the general ledger</strong> and increases the
-                mapped cash/bank balance. It does not move stock.
+                @if($position['customer_credit'] > 0)
+                    <i class="ti ti-alert-triangle text-warning"></i>
+                    This booking is holding <strong>{{ number_format($position['customer_credit'], 2) }}</strong>
+                    that belongs to the customer. No further payment can be taken until it is refunded,
+                    or the quotation is raised to cover it.
+                @else
+                    <i class="ti ti-alert-circle text-primary"></i>
+                    Recording an advance <strong>posts to the general ledger</strong> and increases the
+                    mapped cash/bank balance. It does not move stock.
+                @endif
             </div>
         </div>
     </div>
@@ -467,7 +506,7 @@
 </div>
 
 {{-- ── Billing & closure (CATERING-V1-CLOSURE-1 §5) ─────────────────── --}}
-@php $invoice = $event->finalInvoice; $liveBalance = $invoice ? round($invoice->grand_total - $advanceTotal, 2) : null; @endphp
+@php $invoice = $event->finalInvoice; $liveBalance = $position['balance_due']; @endphp
 <div class="card mb-3">
     <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
         <h5 class="mb-0">Billing &amp; Closure</h5>
@@ -502,7 +541,7 @@
                     @can('tenant.catering.events.close')
                         <form method="POST" action="{{ url('/catering/events/' . $event->id . '/close') }}">
                             @csrf
-                            <button class="btn btn-sm btn-dark" {{ $liveBalance > 0 ? 'disabled title=Outstanding-balance-blocks-closure' : '' }}
+                            <button class="btn btn-sm btn-dark" {{ ! $headline['settled'] ? 'disabled title=Unsettled-money-blocks-closure' : '' }}
                                     onclick="return confirm('Close event {{ $event->event_no }}?')">
                                 Close Event
                             </button>
@@ -517,12 +556,20 @@
             <div class="row">
                 <dt class="col-3 text-muted">Invoice</dt><dd class="col-9">{{ $invoice->invoice_no }} · issued {{ $invoice->issued_at->format('d M Y g:i A') }} <i class="ti ti-lock" title="Immutable"></i></dd>
                 <dt class="col-3 text-muted">Net Total</dt><dd class="col-9">{{ number_format($invoice->grand_total, 2) }}</dd>
-                <dt class="col-3 text-muted">Advances</dt><dd class="col-9">{{ number_format($advanceTotal, 2) }}</dd>
-                <dt class="col-3 text-muted">Balance</dt>
-                <dd class="col-9 fw-bold {{ $liveBalance > 0 ? 'text-danger' : 'text-success' }}">
-                    {{ number_format(max($liveBalance, 0), 2) }}
-                    @if($liveBalance > 0)
+                <dt class="col-3 text-muted">Received</dt>
+                <dd class="col-9">
+                    {{ number_format($position['net_received'], 2) }}
+                    @if($position['refunded'] > 0)
+                        <span class="fs-12 text-muted">— {{ number_format($position['gross_received'], 2) }} taken, {{ number_format($position['refunded'], 2) }} refunded</span>
+                    @endif
+                </dd>
+                <dt class="col-3 text-muted">{{ $headline['label'] }}</dt>
+                <dd class="col-9 fw-bold text-{{ $headline['tone'] }}">
+                    {{ number_format($headline['amount'], 2) }}
+                    @if($position['balance_due'] > 0)
                         <span class="fs-12 fw-normal text-muted">— record the final payment as an advance to enable closure.</span>
+                    @elseif($position['customer_credit'] > 0)
+                        <span class="fs-12 fw-normal text-muted">— the invoice could not absorb all of it. Refund the difference to close the booking.</span>
                     @else
                         <span class="badge bg-success">Fully settled</span>
                     @endif
@@ -561,12 +608,13 @@
                 @if($advanceTotal > 0)
                     <div class="alert alert-warning">
                         <i class="ti ti-alert-triangle me-1"></i>
-                        <strong>{{ number_format($advanceTotal, 2) }}</strong> has already been received
+                        <strong>{{ number_format($position['net_received'], 2) }}</strong> has already been received
                         against this booking.
                         <span class="d-block mt-1">
                             Cancelling does <strong>not</strong> refund it. The payment stays on the
-                            ledger exactly as recorded, and returning the money is a separate action
-                            you take deliberately.
+                            ledger exactly as recorded. A cancelled booking bills nothing, so this money
+                            becomes <strong>credit owed to the customer</strong>, and the Refund
+                            action on this page is how you hand it back — deliberately, and on its own record.
                         </span>
                     </div>
                 @else
@@ -630,7 +678,13 @@
                         <input type="text" name="notes" class="form-control">
                     </div>
                 </div>
-                <div class="text-muted fs-12 mt-2">V1 records the advance for the event balance only — no GL/cash-bank posting.</div>
+                {{-- This line used to claim the opposite of what the action does:
+                     it said no GL or cash-bank posting happened, while the very
+                     same submit posts a journal entry and moves the drawer. --}}
+                <div class="text-muted fs-12 mt-2">
+                    Posts to the general ledger and increases the selected cash/bank balance.
+                    Nothing may be taken beyond {{ number_format($position['balance_due'], 2) }}, the amount still due.
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
@@ -640,6 +694,133 @@
     </div>
 </div>
 @endcan
+@endif
+
+{{-- ── Refund the customer ───────────────────────────────────────────────
+     Deliberately OUTSIDE the "not cancelled" guard above. A cancelled booking
+     is precisely when someone needs their money back, so the one action that
+     settles it must still be reachable there. --}}
+@can('tenant.catering.refunds.store')
+@if($position['refundable'] > 0)
+<div class="modal fade" id="refundModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form method="POST" action="{{ url('/catering/events/' . $event->id . '/refunds') }}" class="modal-content">
+            @csrf
+            <div class="modal-header">
+                <h5 class="modal-title">Refund Customer — {{ $event->event_no }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning">
+                    <i class="ti ti-alert-triangle me-1"></i>
+                    This booking owes the customer <strong>{{ number_format($position['refundable'], 2) }}</strong>.
+                    <span class="d-block mt-1 fs-12">
+                        This pays real money out: it posts to the general ledger and reduces the selected
+                        cash/bank balance. The original receipts are never altered — this is recorded
+                        beside them, as its own numbered document.
+                    </span>
+                </div>
+                <div class="row g-3">
+                    <div class="col-6">
+                        <label class="form-label">Amount <span class="text-danger">*</span></label>
+                        <input type="number" step="0.01" min="0.01" max="{{ $position['refundable'] }}"
+                               name="amount" class="form-control" value="{{ $position['refundable'] }}" required>
+                        <div class="form-text">At most {{ number_format($position['refundable'], 2) }}. Part of it is fine.</div>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">Refund Date <span class="text-danger">*</span></label>
+                        <input type="date" name="refund_date" class="form-control" value="{{ now()->format('Y-m-d') }}" required>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">Paid From</label>
+                        <select name="payment_method_id" class="form-select">
+                            <option value="">—</option>
+                            @foreach($paymentMethods as $method)
+                                <option value="{{ $method->id }}">{{ $method->name }}</option>
+                            @endforeach
+                        </select>
+                        <div class="form-text">The cash or bank the money leaves from.</div>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">Reference</label>
+                        <input type="text" name="reference" class="form-control" placeholder="Cheque / transaction #">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Why is this being refunded? <span class="text-danger">*</span></label>
+                        <input type="text" name="reason" class="form-control" required maxlength="255"
+                               placeholder="e.g. booking cancelled by customer">
+                        <div class="form-text">Kept on the refund permanently.</div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                <button type="submit" class="btn btn-warning">Pay the customer back</button>
+            </div>
+        </form>
+    </div>
+</div>
+@endif
+@endcan
+
+{{-- ── Booking statement ─────────────────────────────────────────────────
+     Every financial event on this booking, in order, ending on exactly the
+     figure shown above. Both come from one service, so a customer adding up
+     the rows can never reach a different answer from the screen. --}}
+@if(count($ledger) > 0)
+<div class="card mb-3">
+    <div class="card-header d-flex align-items-center justify-content-between">
+        <h5 class="mb-0">Booking Statement</h5>
+        <span class="fs-12 text-muted">Every receipt, refund and bill on this booking</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm mb-0 align-middle">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>What happened</th>
+                        <th>Reference</th>
+                        <th class="text-end">Money in</th>
+                        <th class="text-end">Money out</th>
+                        <th class="text-end">Charged</th>
+                        <th class="text-end">Position</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($ledger as $row)
+                    <tr class="{{ $row['informational'] ? 'text-muted' : '' }}">
+                        <td class="text-nowrap">{{ $row['date'] }}</td>
+                        <td>
+                            {{ $row['type'] }}
+                            @if($row['note'])
+                                <div class="fs-12 text-muted">{{ $row['note'] }}</div>
+                            @endif
+                        </td>
+                        <td class="text-muted fs-12">{{ $row['reference'] ?? '—' }}</td>
+                        <td class="text-end">{{ $row['money_in'] > 0 ? number_format($row['money_in'], 2) : '' }}</td>
+                        <td class="text-end">{{ $row['money_out'] > 0 ? number_format($row['money_out'], 2) : '' }}</td>
+                        <td class="text-end">{{ $row['charged'] > 0 ? number_format($row['charged'], 2) : '' }}</td>
+                        <td class="text-end fw-semibold {{ $row['running'] > 0 ? 'text-warning' : ($row['running'] < 0 ? 'text-danger' : '') }}">
+                            {{ number_format(abs($row['running']), 2) }}
+                            @if($row['running'] > 0)
+                                <span class="fs-12 fw-normal">Cr</span>
+                            @elseif($row['running'] < 0)
+                                <span class="fs-12 fw-normal">Dr</span>
+                            @endif
+                        </td>
+                    </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="card-footer text-muted fs-12">
+        <strong>Cr</strong> is money the business is holding for the customer;
+        <strong>Dr</strong> is money the customer still owes. Applying an advance moves nothing —
+        it records that money already held is now covering the bill.
+    </div>
+</div>
 @endif
 
 @if($event->estimates->count() > 1)

@@ -168,7 +168,11 @@ today)** · **store issue** · yearly numbering · double-submit protection.
 8 printer mappings, Estimate #8353 intact at 1,485,800.
 
 **Not working yet:** email delivers nothing (`MAIL_MAILER=log`) · Urdu cannot
-print on thermal · no refunds or negative-balance settlement.
+print on thermal.
+
+**Built 17 August, not yet deployed:** customer credit, refunds and the booking
+statement. `EV-20260816-0001` still carries its 34,250 — production was read-only
+throughout, and it will be settled through the new flow, not by hand.
 
 ---
 
@@ -265,43 +269,57 @@ matches what apply actually does.
 
 ---
 
-### 3 · Negative balance, refunds, customer ledger
+### 3 · Customer credit, refunds, booking ledger — **BUILT, 17 August**
 
-**Size:** large · **Blocked by:** nothing — could start today
+**Size:** large · **Status:** built and green; awaiting finance release review
 
-This is the only item with a **live problem waiting on it**: `EV-20260816-0001`
-sits at **−34,250** with no way to settle it.
+Pulled ahead of the cost-block screens on the coordinator's decision: pricing
+was about to get considerably more powerful, and doing that while overpayment
+had no settlement path would only have manufactured more of them.
 
-**3a · Let the balance go negative**
+**3a · The balance may go below zero — done**
 
-`CateringAdvance` refuses any payment exceeding the outstanding balance —
-*"V1 has no customer-credit authority"*. That guard also fires when the estimate
-is reduced *after* payment, which is exactly the real-world case. The balance
-must be allowed below zero and displayed as **owed to the customer**.
+`CateringFinancialPositionService` is now the single calculation, and it does not
+clamp. Money held less money billed is either a **balance due** or a **credit
+owed to the customer**, each shown as its own positive number under its own name.
+Three screens had each worked this out separately, all three clamping at zero,
+which is why 34,250 of the customer's money displayed as `0.00`.
 
-**3b · Refunds — money out**
+The estimate revision that creates the credit is deliberately still **allowed** —
+every receipt was valid when it was taken, and the quotation moving underneath
+them afterwards is the truth about what was agreed. What is refused is taking
+*more* money while credit stands.
 
-There is no way to record money leaving. Needs a proper refund action in the
-finance layer: posts to the ledger, reduces the cash or bank account it came
-from, and can never exceed what was received.
+**3b · Refunds — done**
 
-**3c · Customer ledger** — new screen
+`catering_refunds` + `CateringRefundService`, posting Dr 2300 Customer Advances /
+Cr the cash or bank it left from, through `JournalPostingService` — no parallel
+accounting, asserted at source level. The receipt it settles is never edited,
+deleted or negated. Own permission (`Refund Customer`), own number series,
+required reason, immutable once recorded. Three identical submissions are proved
+over real HTTP to pay out **once**.
 
-A running statement per booking: every payment in, every refund out, a running
-balance. Today only a total exists.
+**3c · Booking statement — done**
 
-**3d · Credit carried forward**
+Every receipt, refund, invoice and application in order, with a running position
+that closes on exactly the headline figure — both from the same service, so they
+cannot disagree.
 
-Overpayment held against another booking rather than refunded.
+One defect found and fixed on the way: the final invoice used to clear the
+*entire* advance out of Customer Advances, including the part it did not account
+for. The liability vanished while the obligation remained. It now applies at most
+its own value; invoices issued before the change read back their own
+`advance_total`, so posted history reproduces exactly.
 
-**Tests needed:** balance goes negative when the estimate is reduced after
-payment · a refund posts correctly and cannot exceed receipts · the ledger
-balances to zero after any sequence · cancelling with an outstanding advance
-offers settlement instead of silently leaving it · no direct journal writes.
+**3d · Credit carried forward — deliberately NOT built**
 
-**Risk — the highest in the remaining work.** This is real money leaving the
-business. It must be built once, carefully, and never reach a state where the
-books and the screen disagree.
+Cross-booking transfer creates customer-level liability and allocation semantics
+beyond one booking. The model does not foreclose it; refund is the settlement
+authority for now.
+
+**Still open:** `EV-20260816-0001` has *not* been settled. Production stayed
+read-only throughout. Once this ships, that booking is the feature's first real
+acceptance case, settled through the supported flow rather than by hand.
 
 ---
 
@@ -346,16 +364,20 @@ deliver nothing.
 ## Sequencing
 
 ```
+DONE   3a → 3b → 3c           customer credit, refunds, booking statement
 NOW    1a → 1b → 1c → 1d      cost blocks, end to end
 THEN   2a → 2b                impact moves price, making bulk adjust
-THEN   3a → 3b → 3c → 3d      refunds and the customer ledger
+LATER  3d                     credit carried forward across bookings
 ANY    4                      instruction list, once exported
 ANY    5                      SMTP, once decided
 ```
 
-Items **3, 4 and 5 are independent** of cost blocks and could be pulled forward.
-The argument for doing 3 first is that it has a live unresolved balance; the
-argument against is that cost blocks is what the rest of the design hangs on.
+Item 3 was pulled ahead of cost blocks on 17 August. The reason was not that it
+had a live unresolved balance but that it was about to acquire more: pricing and
+estimate repricing are the next things to get more powerful, and doing that
+without a settlement path would have manufactured further overpayments faster
+than anyone could resolve them. The cost-block core is frozen and committed
+untouched, so nothing was thrown away by the reorder.
 
 Every tranche ships the same way: build → targeted tests → **full suite twice** →
 Pint and Blade lint → commit → verified backup → deploy → read-only Khatri check.

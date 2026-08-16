@@ -126,6 +126,7 @@ class CateringEventController extends Controller
             'estimates.lines',
             'currentEstimate.lines.product.cateringProfile',
             'advances.paymentMethod',
+            'refunds.paymentMethod',
             'productionReleases',
             'finalInvoice',
         ]);
@@ -163,6 +164,12 @@ class CateringEventController extends Controller
             ->orderBy('name')
             ->get(['id', 'name', 'paper_size']);
 
+        // KASHIF-CATERING-CUSTOMER-CREDIT-1: where this booking stands
+        // financially, and how it got there. Computed once, by the one service
+        // that owns the answer, so the summary and the statement cannot disagree
+        // and no screen works it out for itself again.
+        $finance = app(\App\Services\Catering\CateringFinancialPositionService::class);
+
         return view('tenant.catering.events.show', [
             'event' => $cateringEvent,
             'units' => $units,
@@ -170,6 +177,9 @@ class CateringEventController extends Controller
             'paymentMethods' => $paymentMethods,
             'costingReadiness' => $costingReadiness,
             'printers' => $printers,
+            'position' => $finance->position($cateringEvent),
+            'headline' => $finance->headline($cateringEvent),
+            'ledger' => $finance->ledger($cateringEvent),
         ]);
     }
 
