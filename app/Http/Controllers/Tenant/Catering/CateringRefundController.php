@@ -27,7 +27,11 @@ class CateringRefundController extends Controller
             'amount' => ['required', 'numeric', 'min:0.01'],
             'refund_date' => ['required', 'date'],
             'reason' => ['required', 'string', 'max:255'],
-            'payment_method_id' => ['nullable', 'exists:payment_methods,id'],
+            // Required, unlike on a receipt. Cash can honestly turn up without a
+            // named account; money leaving has to leave from somewhere. The
+            // service proves the method is active and actually linked to a live
+            // cash/bank account — this only stops the empty case early.
+            'payment_method_id' => ['required', 'exists:payment_methods,id'],
             'reference' => ['nullable', 'string', 'max:255'],
         ]);
 

@@ -34,9 +34,15 @@ use App\Models\Tenant\CateringEvent;
  *
  *   final invoice   its grand total — the issued, frozen document wins
  *   cancelled       nothing. A cancelled booking will never be billed, so every
- *                   rupee still held is credit. To keep a cancellation fee,
- *                   revise the quotation down to the fee and then cancel: the
- *                   fee stays billed and only the remainder becomes credit.
+ *                   rupee still held is credit, whatever the quotation said
+ *                   before it was cancelled.
+ *
+ *                   There is no cancellation fee. Keeping part of an advance
+ *                   would need a document saying what was kept and why, and no
+ *                   such authority exists anywhere in the system — so the whole
+ *                   amount is treated as the customer's. Not a limitation being
+ *                   worked around: inventing a retained amount with nothing
+ *                   behind it is how money goes quietly missing.
  *   otherwise       the current estimate's grand total
  *
  * Read-only by construction. It reads advances, refunds, the invoice and the

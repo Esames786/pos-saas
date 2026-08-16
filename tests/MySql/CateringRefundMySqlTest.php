@@ -447,6 +447,198 @@ class CateringRefundMySqlTest extends MySqlTenantTestCase
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Money out must name the account it leaves from.
+    //
+    // The cash/bank movement used to sit behind `if ($cashBankAccountId)` while
+    // the payment method was optional. A refund naming no method, or naming an
+    // active method nobody had linked to an account, produced a refund row and a
+    // ledger entry with the drawer untouched: the books said money left, the
+    // balance said it had not. Each refusal below is proved to cost nothing —
+    // no refund, no posting, no movement, and the balance exactly as it was.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /** @return array{0: int, 1: int, 2: int, 3: float} */
+    private function financialState(): array
+    {
+        return [
+            CateringRefund::count(),
+            (int) $this->tenant()->table('journal_entries')->where('source_type', 'catering_refund')->count(),
+            (int) $this->tenant()->table('cash_bank_account_transactions')->where('reference_type', 'catering_refund')->count(),
+            round((float) $this->tenant()->table('cash_bank_accounts')->where('id', $this->cashAccountId)->value('current_balance'), 2),
+        ];
+    }
+
+    /** Attempt a refund that must be refused, and prove nothing at all happened. */
+    private function assertRefusedAndInert(callable $attempt, string $expected): void
+    {
+        $before = $this->financialState();
+
+        try {
+            $attempt();
+            $this->fail('the refund must be refused: '.$expected);
+        } catch (RuntimeException $e) {
+            $this->assertMatchesRegularExpression($expected, $e->getMessage());
+        }
+
+        $this->assertSame($before, $this->financialState(),
+            'a refusal must leave no refund, no posting, no movement and the balance untouched');
+        $this->assertSame(492500.0, $before[3], 'and the drawer must still hold every rupee received');
+    }
+
+    /** A. No payment method at all. */
+    public function test_a_refund_without_a_payment_method_is_refused(): void
+    {
+        $event = $this->bookingInCredit();
+
+        $this->assertRefusedAndInert(
+            fn () => $this->refunds->record($event->refresh(), [
+                'amount' => 1000, 'refund_date' => now()->toDateString(), 'reason' => 'No method given',
+            ]),
+            '/where the money is leaving from/i'
+        );
+    }
+
+    /** B. A method that has been retired. */
+    public function test_a_refund_through_an_inactive_payment_method_is_refused(): void
+    {
+        $event = $this->bookingInCredit();
+        $retired = $this->makePaymentMethod([
+            'cash_bank_account_id' => $this->cashAccountId, 'is_active' => 0, 'name' => 'Retired Cash',
+        ]);
+
+        $this->assertRefusedAndInert(
+            fn () => $this->refunds->record($event->refresh(), [
+                'amount' => 1000, 'refund_date' => now()->toDateString(),
+                'reason' => 'Retired method', 'payment_method_id' => $retired,
+            ]),
+            '/no longer in use/i'
+        );
+    }
+
+    /** C. Active, but nobody ever linked it to an account. */
+    public function test_a_refund_through_an_unmapped_payment_method_is_refused(): void
+    {
+        $event = $this->bookingInCredit();
+        $unmapped = $this->makePaymentMethod(['cash_bank_account_id' => null, 'name' => 'Unmapped Wallet']);
+
+        $this->assertRefusedAndInert(
+            fn () => $this->refunds->record($event->refresh(), [
+                'amount' => 1000, 'refund_date' => now()->toDateString(),
+                'reason' => 'Unmapped method', 'payment_method_id' => $unmapped,
+            ]),
+            '/not linked to a cash or bank account/i'
+        );
+    }
+
+    /** D. Mapped, but the account behind it has been closed. */
+    public function test_a_refund_from_a_closed_cash_account_is_refused(): void
+    {
+        $event = $this->bookingInCredit();
+
+        $closedAccount = $this->tenant()->table('cash_bank_accounts')->insertGetId([
+            'code' => 'CB-'.uniqid(), 'name' => 'Closed Drawer', 'account_type' => 'cash',
+            'account_id' => Account::where('code', '1110')->value('id'),
+            'opening_balance' => 0, 'current_balance' => 0, 'is_active' => 0,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $method = $this->makePaymentMethod(['cash_bank_account_id' => $closedAccount, 'name' => 'Closed Drawer Cash']);
+
+        $this->assertRefusedAndInert(
+            fn () => $this->refunds->record($event->refresh(), [
+                'amount' => 1000, 'refund_date' => now()->toDateString(),
+                'reason' => 'Closed account', 'payment_method_id' => $method,
+            ]),
+            '/missing or closed/i'
+        );
+    }
+
+    /** D2. Mapped to a live account that has no chart-of-accounts link. */
+    public function test_a_refund_from_an_unposted_cash_account_is_refused(): void
+    {
+        $event = $this->bookingInCredit();
+
+        $unlinked = $this->tenant()->table('cash_bank_accounts')->insertGetId([
+            'code' => 'CB-'.uniqid(), 'name' => 'Petty Tin', 'account_type' => 'cash',
+            'account_id' => null,
+            'opening_balance' => 0, 'current_balance' => 0, 'is_active' => 1,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $method = $this->makePaymentMethod(['cash_bank_account_id' => $unlinked, 'name' => 'Petty Tin Cash']);
+
+        $this->assertRefusedAndInert(
+            fn () => $this->refunds->record($event->refresh(), [
+                'amount' => 1000, 'refund_date' => now()->toDateString(),
+                'reason' => 'Unposted account', 'payment_method_id' => $method,
+            ]),
+            '/not mapped to a general-ledger account/i'
+        );
+    }
+
+    /**
+     * Defence in depth: the posting authority refuses too, so the guard is not
+     * one caller deep. A refund reaching it unmapped must never quietly land in
+     * 1500 Undeposited Funds — a phrase that means nothing about money going out.
+     */
+    public function test_the_posting_authority_itself_refuses_an_unmapped_refund(): void
+    {
+        $event = $this->bookingInCredit();
+        $refund = $this->refund($event, 5000);
+
+        // A copy standing in for a refund that reached the ledger unmapped.
+        $orphan = new CateringRefund;
+        $orphan->forceFill($refund->only(['refund_no', 'catering_event_id', 'amount', 'refund_date', 'reason']));
+        $orphan->id = $refund->id + 9000;
+        $orphan->cash_bank_account_id = null;
+        $orphan->setRelation('event', $event);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/must name the account it left from/i');
+
+        app(\App\Services\Finance\JournalPostingService::class)->postCateringRefund($orphan);
+    }
+
+    /** E. The whole of a successful refund lands, or none of it does. */
+    public function test_a_valid_refund_lands_as_one_complete_money_out_transaction(): void
+    {
+        $event = $this->bookingInCredit();
+
+        $refund = $this->refund($event, 34250);
+
+        $this->assertSame(1, CateringRefund::count());
+        $this->assertSame(1, (int) $this->tenant()->table('journal_entries')
+            ->where('source_type', 'catering_refund')->count());
+
+        $movements = $this->tenant()->table('cash_bank_account_transactions')
+            ->where('reference_type', 'catering_refund')->get();
+        $this->assertCount(1, $movements);
+        $this->assertSame('out', $movements[0]->direction);
+        $this->assertSame($this->cashAccountId, (int) $movements[0]->cash_bank_account_id);
+        $this->assertSame(34250.0, round((float) $movements[0]->amount, 2));
+
+        $this->assertSame($this->cashAccountId, (int) $refund->cash_bank_account_id,
+            'the refund records the account it actually left from');
+        $this->assertSame(458250.0, round((float) $this->tenant()->table('cash_bank_accounts')
+            ->where('id', $this->cashAccountId)->value('current_balance'), 2),
+            '492,500 in less 34,250 out — the drawer agrees with the books to the rupee');
+    }
+
+    /** No refund may ever credit Undeposited Funds. */
+    public function test_no_refund_ever_credits_undeposited_funds(): void
+    {
+        $event = $this->bookingInCredit();
+        $this->refund($event, 34250);
+
+        $undepositedId = Account::where('code', '1500')->value('id');
+        $refundEntryIds = $this->tenant()->table('journal_entries')
+            ->where('source_type', 'catering_refund')->pluck('id');
+
+        $this->assertSame(0, (int) $this->tenant()->table('journal_lines')
+            ->whereIn('journal_entry_id', $refundEntryIds)
+            ->where('account_id', $undepositedId)->count(),
+            'money going out never leaves an account for money that has not been banked yet');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // G. The statement.
     // ─────────────────────────────────────────────────────────────────────────
 

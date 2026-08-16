@@ -173,6 +173,45 @@ class CateringRefundHttpMySqlTest extends MySqlTenantTestCase
         $this->assertSame(10000.0, $this->drawerBalance());
     }
 
+    /**
+     * A. Money out must name where it leaves from — refused at the boundary.
+     *
+     * The field used to be nullable, and the cash/bank movement was conditional
+     * on it, so a request omitting it produced a refund and a ledger entry with
+     * the drawer untouched.
+     */
+    public function test_a_refund_without_a_payment_method_is_refused_over_http(): void
+    {
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+        $payload = $this->payload('token-nomethod');
+        unset($payload['payment_method_id']);
+
+        $res = $this->actingAs(User::on('tenant')->find($this->ownerId), 'tenant')
+            ->post($this->refundUri, $payload);
+
+        $res->assertSessionHasErrors('payment_method_id');
+        $this->assertNoMoneyLeft();
+    }
+
+    /** An active method nobody linked to an account is refused just as firmly. */
+    public function test_a_refund_through_an_unmapped_method_is_refused_over_http(): void
+    {
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+        DB::setDefaultConnection('tenant');
+        $unmapped = $this->makePaymentMethod(['cash_bank_account_id' => null, 'name' => 'Unmapped Wallet']);
+
+        $payload = $this->payload('token-unmapped');
+        $payload['payment_method_id'] = $unmapped;
+
+        $res = $this->actingAs(User::on('tenant')->find($this->ownerId), 'tenant')
+            ->post($this->refundUri, $payload);
+
+        $res->assertSessionHasErrors('refund');
+        $this->assertNoMoneyLeft();
+    }
+
     /** Over the limit is refused by the model, and the drawer does not move. */
     public function test_an_over_limit_refund_is_refused_without_moving_money(): void
     {

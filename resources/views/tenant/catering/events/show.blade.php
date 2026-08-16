@@ -732,14 +732,20 @@
                         <input type="date" name="refund_date" class="form-control" value="{{ now()->format('Y-m-d') }}" required>
                     </div>
                     <div class="col-6">
-                        <label class="form-label">Paid From</label>
-                        <select name="payment_method_id" class="form-select">
-                            <option value="">—</option>
+                        <label class="form-label">Paid From <span class="text-danger">*</span></label>
+                        <select name="payment_method_id" class="form-select" required>
+                            <option value="" disabled selected>Choose an account…</option>
                             @foreach($paymentMethods as $method)
                                 <option value="{{ $method->id }}">{{ $method->name }}</option>
                             @endforeach
                         </select>
-                        <div class="form-text">The cash or bank the money leaves from.</div>
+                        {{-- Required here, unlike on a receipt. Cash can honestly
+                             turn up without a named account; money leaving has to
+                             leave from somewhere. --}}
+                        <div class="form-text">
+                            The cash or bank the money leaves from. It must be linked
+                            to a live account, or the refund is refused.
+                        </div>
                     </div>
                     <div class="col-6">
                         <label class="form-label">Reference</label>

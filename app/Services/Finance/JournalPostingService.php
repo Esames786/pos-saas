@@ -741,8 +741,17 @@ class JournalPostingService
 
     /**
      * A2. Refund of customer credit (KASHIF-CATERING-CUSTOMER-CREDIT-1):
-     * Dr 2300 Customer Advances / Cr the mapped cash or bank it left from
-     * (else Cr 1500 Undeposited Funds, mirroring how the receipt came in).
+     * Dr 2300 Customer Advances / Cr the mapped cash or bank it left from.
+     *
+     * NO 1500 Undeposited Funds fallback, deliberately, and unlike the receipt
+     * above. "Undeposited" describes money that has arrived and not yet been
+     * banked — a sentence that means nothing about money going out. A refund
+     * credited to 1500 would assert that cash left an account that holds cash
+     * nobody has deposited yet.
+     *
+     * This refuses rather than guesses even though CateringRefundService already
+     * proves the account first. Defence in depth: the guard that matters for
+     * money out should not be one caller deep.
      *
      * Always 2300, because credit can only ever be sitting there. A receipt is
      * refused once it would exceed the outstanding balance, so a booking can
@@ -766,9 +775,14 @@ class JournalPostingService
             ? $this->cashBankCoaId($refund->cash_bank_account_id)
             : null;
 
-        $credit = $creditAccountId
-            ? ['account_id' => $creditAccountId, 'branch_id' => $branchId, 'description' => $reference, 'debit' => 0, 'credit' => $amount]
-            : ['account_code' => '1500', 'branch_id' => $branchId, 'description' => $reference.' (undeposited)', 'debit' => 0, 'credit' => $amount];
+        if (! $creditAccountId) {
+            throw new \RuntimeException(
+                'Refusing to post catering refund '.($refund->refund_no ?? '#'.$refund->id)
+                .': no cash or bank account is mapped for it. Money out must name the account it left from.'
+            );
+        }
+
+        $credit = ['account_id' => $creditAccountId, 'branch_id' => $branchId, 'description' => $reference, 'debit' => 0, 'credit' => $amount];
 
         return $this->journal->post(
             'catering_refund',
