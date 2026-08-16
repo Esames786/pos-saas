@@ -254,7 +254,7 @@ class CateringPrintAuthzHttpMySqlTest extends MySqlTenantTestCase
         // MIGRATION, so wiping them removes data no later test can restore.
         $this->cleanTenant([
             'print_jobs', 'printers',
-            'catering_estimate_lines', 'catering_estimates', 'catering_events',
+            'catering_estimate_lines', 'catering_estimates', 'catering_refunds', 'catering_events',
             'journal_lines', 'journal_entries', 'stock_ledgers',
             'model_has_roles',
             'units', 'products', 'categories', 'customers', 'users', 'branches',

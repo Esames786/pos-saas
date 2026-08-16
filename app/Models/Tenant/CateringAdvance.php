@@ -3,20 +3,22 @@
 namespace App\Models\Tenant;
 
 use App\Models\Concerns\HasCanonicalIdentity;
+use App\Services\Catering\CateringFinancialPositionService;
 use Illuminate\Database\Eloquent\Model;
 use RuntimeException;
 
 /**
- * CATERING-SLICE-3: operational advance record for the event balance display.
- * V1 HARD RULE: no GL, no cash-bank, no shift mutation (spec §19). Future
- * finance posting will reuse JournalPostingService via a translator method.
+ * CATERING-SLICE-3: a receipt against a booking. Posts to the general ledger and
+ * moves the mapped cash/bank balance through CateringAdvanceService; no stock and
+ * no shift is ever touched.
  *
- * CATERING-V1-CLOSURE-1 (§4): V1 has NO customer-credit/deposit accounting
- * authority, so an advance may never exceed the outstanding balance of the
- * event's current estimate — cumulatively across all advances. Overpayment is
- * REFUSED at the model layer (every code path), not rendered as a "negative
- * balance". Customer credit/deposit is a separate future finance design on
- * the existing accounting authority.
+ * An advance may not exceed what the booking is short by, cumulatively — refused
+ * at the model layer so every code path meets the same rule. What changed in
+ * KASHIF-CATERING-CUSTOMER-CREDIT-1 is the reason for the refusal: it is no
+ * longer that customer credit is unrepresentable, because it now is, and a
+ * CateringRefund settles it. It is that a receipt is the wrong instrument for
+ * money the business has not billed for. If the customer is paying for more, the
+ * quotation says so first.
  */
 class CateringAdvance extends Model
 {
@@ -38,18 +40,34 @@ class CateringAdvance extends Model
                 );
             }
 
-            $alreadyAdvanced = (float) static::query()
-                ->where('catering_event_id', $advance->catering_event_id)
-                ->sum('amount');
-            $outstanding = round((float) $estimate->grand_total - $alreadyAdvanced, 2);
+            // One authority for what this booking owes, shared with every screen,
+            // and already net of anything refunded.
+            $position = app(CateringFinancialPositionService::class)->position($event);
+            $outstanding = round((float) $position['balance_due'], 2);
+            $amount = round((float) $advance->amount, 2);
 
-            if (round((float) $advance->amount, 2) > $outstanding) {
+            if ($amount <= $outstanding) {
+                return;
+            }
+
+            // Taking more while the business already owes money back would deepen
+            // a debt in the wrong direction, so it is refused with the settlement
+            // named rather than with a bare limit.
+            if ($position['customer_credit'] > 0) {
                 throw new RuntimeException(
-                    'Advance of '.number_format((float) $advance->amount, 2)
-                    .' exceeds the outstanding balance of '.number_format(max($outstanding, 0), 2)
-                    ." for {$event->event_no}. V1 has no customer-credit authority — overpayment is refused."
+                    "{$event->event_no} is already carrying "
+                    .number_format((float) $position['customer_credit'], 2)
+                    .' of credit owed to the customer, so no further payment can be taken. '
+                    .'Refund the credit first, or raise the quotation to cover it.'
                 );
             }
+
+            throw new RuntimeException(
+                'Advance of '.number_format($amount, 2)
+                .' exceeds the outstanding balance of '.number_format($outstanding, 2)
+                ." for {$event->event_no}. Taking more would leave the business holding money it has "
+                .'not billed for — raise the quotation first if the customer is paying for more.'
+            );
         });
     }
 

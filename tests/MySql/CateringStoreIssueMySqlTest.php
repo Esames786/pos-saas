@@ -42,7 +42,7 @@ class CateringStoreIssueMySqlTest extends MySqlTenantTestCase
         $this->cleanTenant([
             'catering_material_issue_lines', 'catering_material_issues',
             'catering_production_release_lines', 'catering_production_releases',
-            'catering_estimate_lines', 'catering_estimates', 'catering_events',
+            'catering_estimate_lines', 'catering_estimates', 'catering_refunds', 'catering_events',
             'journal_lines', 'journal_entries', 'accounts',
             'stock_ledgers', 'stock_balances', 'inventory_batches',
             'units', 'products', 'categories', 'customers', 'branches',

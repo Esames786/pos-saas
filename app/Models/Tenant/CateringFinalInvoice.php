@@ -35,6 +35,7 @@ class CateringFinalInvoice extends Model
         'tax_amount',
         'grand_total',
         'advance_total',
+        'advance_applied',
         'balance_due',
         'status',
         'issued_at',
@@ -52,6 +53,7 @@ class CateringFinalInvoice extends Model
             'tax_amount' => 'decimal:2',
             'grand_total' => 'decimal:2',
             'advance_total' => 'decimal:2',
+            'advance_applied' => 'decimal:2',
             'balance_due' => 'decimal:2',
             'issued_at' => 'datetime',
         ];

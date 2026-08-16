@@ -36,7 +36,7 @@ class CateringNumberingAndDuplicateMySqlTest extends MySqlTenantTestCase
         // but the failure was about isolation.
         $this->cleanTenant([
             'catering_material_issue_lines', 'catering_material_issues',
-            'catering_final_invoices',
+            'catering_refunds', 'catering_final_invoices',
             'catering_production_release_lines', 'catering_production_releases',
             'catering_estimate_lines', 'catering_estimates', 'catering_events',
             'customers', 'branches',

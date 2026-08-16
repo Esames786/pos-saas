@@ -118,6 +118,16 @@ class CateringEvent extends Model
         return $this->hasMany(CateringAdvance::class);
     }
 
+    /**
+     * Money handed back. Kept separate from advances rather than stored as
+     * negative receipts, so a receipt is always a receipt and the two directions
+     * can never be added up by accident.
+     */
+    public function refunds()
+    {
+        return $this->hasMany(CateringRefund::class);
+    }
+
     public function productionReleases()
     {
         return $this->hasMany(CateringProductionRelease::class);

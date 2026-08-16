@@ -28,7 +28,7 @@ class CateringDisabledPlatformNonRegressionMySqlTest extends MySqlTenantTestCase
     private const CATERING_TABLES = [
         'catering_events', 'catering_estimates', 'catering_estimate_lines',
         'catering_material_rates', 'catering_cost_snapshots', 'catering_advances',
-        'catering_production_releases', 'catering_final_invoices',
+        'catering_production_releases', 'catering_refunds', 'catering_final_invoices',
         'catering_printer_mappings', 'catering_product_profiles',
         'catering_event_reminders', 'catering_email_logs',
     ];

@@ -37,7 +37,7 @@ class CateringMultiTenantReminderMySqlTest extends MySqlTenantTestCase
 
         $this->cleanTenant([
             'catering_email_logs', 'catering_event_reminders',
-            'catering_estimate_lines', 'catering_estimates', 'catering_events', 'catering_settings',
+            'catering_estimate_lines', 'catering_estimates', 'catering_refunds', 'catering_events', 'catering_settings',
         ]);
         $this->cleanTenantB();
 

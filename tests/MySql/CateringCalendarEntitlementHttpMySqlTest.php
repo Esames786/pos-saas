@@ -203,7 +203,7 @@ class CateringCalendarEntitlementHttpMySqlTest extends MySqlTenantTestCase
         // MIGRATION, so wiping them removes data no later test can restore — it
         // broke CateringEntitlement's expectation of 36 catering permissions.
         $this->cleanTenant([
-            'catering_estimate_lines', 'catering_estimates', 'catering_events',
+            'catering_estimate_lines', 'catering_estimates', 'catering_refunds', 'catering_events',
             'model_has_roles', 'users', 'branches',
         ]);
 

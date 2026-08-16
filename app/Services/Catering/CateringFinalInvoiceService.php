@@ -50,8 +50,14 @@ class CateringFinalInvoiceService
 
         $invoice = DB::connection('tenant')->transaction(function () use ($event, $estimate, $userId) {
             $advances = $event->advances()->orderBy('received_date')->get();
-            $advanceTotal = round((float) $advances->sum('amount'), 2);
+            $advanceTotal = round((float) $advances->sum('amount') - (float) $event->refunds()->sum('amount'), 2);
             $balanceDue = round((float) $estimate->grand_total - $advanceTotal, 2);
+
+            // KASHIF-CATERING-CUSTOMER-CREDIT-1: an invoice can only absorb its
+            // own value. Clearing the whole advance would take money out of the
+            // customer-advance liability that this invoice does not account for,
+            // and the business would stop being able to see that it owes it.
+            $advanceApplied = round(min($advanceTotal, (float) $estimate->grand_total), 2);
 
             $invoice = CateringFinalInvoice::create([
                 'invoice_no' => $this->numbers->nextFinalInvoiceNo(),
@@ -92,6 +98,7 @@ class CateringFinalInvoiceService
                 'tax_amount' => $estimate->tax_amount,
                 'grand_total' => $estimate->grand_total,
                 'advance_total' => $advanceTotal,
+                'advance_applied' => $advanceApplied,
                 'balance_due' => max($balanceDue, 0),
                 'status' => CateringFinalInvoice::STATUS_ISSUED,
                 'issued_at' => now(),
@@ -142,11 +149,25 @@ class CateringFinalInvoiceService
             throw new RuntimeException("Event {$event->event_no} ({$event->status}) is not in a closable state.");
         }
 
-        $liveBalance = round((float) $invoice->grand_total - (float) $event->advances()->sum('amount'), 2);
-        if ($liveBalance > 0) {
+        $position = app(CateringFinancialPositionService::class)->position($event);
+
+        if ($position['balance_due'] > 0) {
             throw new RuntimeException(
-                "Event {$event->event_no} still has an outstanding balance of ".number_format($liveBalance, 2)
+                "Event {$event->event_no} still has an outstanding balance of "
+                .number_format((float) $position['balance_due'], 2)
                 .' — record the final payment before closing.'
+            );
+        }
+
+        // KASHIF-CATERING-CUSTOMER-CREDIT-1: a debt in the other direction blocks
+        // closure just as firmly. Closing here would stamp "settled" on a booking
+        // that is still holding the customer's money, and the liability would go
+        // quiet behind a closed record.
+        if ($position['customer_credit'] > 0) {
+            throw new RuntimeException(
+                "Event {$event->event_no} still owes the customer "
+                .number_format((float) $position['customer_credit'], 2)
+                .' — refund the credit before closing.'
             );
         }
 

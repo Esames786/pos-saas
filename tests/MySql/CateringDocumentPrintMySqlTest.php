@@ -38,7 +38,7 @@ class CateringDocumentPrintMySqlTest extends MySqlTenantTestCase
 
         $this->cleanTenant([
             'print_jobs', 'printers',
-            'catering_final_invoices', 'catering_advances',
+            'catering_refunds', 'catering_final_invoices', 'catering_advances',
             'catering_estimate_lines', 'catering_estimates', 'catering_events',
             'journal_lines', 'journal_entries', 'stock_ledgers',
             'units', 'products', 'categories', 'customers', 'branches',

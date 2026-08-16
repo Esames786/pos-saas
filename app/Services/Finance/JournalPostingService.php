@@ -785,10 +785,16 @@ class JournalPostingService
      * C. Apply pre-invoice advances against the invoice AR:
      * Dr 2300 Customer Advances / Cr 1300 Accounts Receivable.
      * No-op (null) when nothing was advanced before the invoice.
+     *
+     * KASHIF-CATERING-CUSTOMER-CREDIT-1: what clears is advance_applied, capped
+     * at the invoice's own value, not everything that was received. Any excess
+     * stays in 2300 as credit owed to the customer until it is refunded.
+     * Invoices issued before that column existed read back their advance_total,
+     * so their posted history is reproduced exactly as it stands.
      */
     public function applyCateringAdvance(\App\Models\Tenant\CateringFinalInvoice $invoice, ?int $userId = null): ?JournalEntry
     {
-        $applied = round((float) $invoice->advance_total, 2);
+        $applied = round((float) ($invoice->advance_applied ?? $invoice->advance_total), 2);
         if ($applied <= 0) {
             return null;
         }

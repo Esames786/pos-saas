@@ -37,7 +37,7 @@ class CateringRedirectContractMySqlTest extends MySqlTenantTestCase
         DB::setDefaultConnection('tenant');
 
         $this->cleanTenant([
-            'catering_estimate_lines', 'catering_estimates', 'catering_events',
+            'catering_estimate_lines', 'catering_estimates', 'catering_refunds', 'catering_events',
             'customers', 'branches',
         ]);
 

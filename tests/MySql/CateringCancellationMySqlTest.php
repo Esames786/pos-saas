@@ -32,7 +32,7 @@ class CateringCancellationMySqlTest extends MySqlTenantTestCase
 
         $this->cleanTenant([
             'cash_bank_account_transactions', 'cash_bank_accounts',
-            'catering_advances', 'recipe_ingredients', 'recipes', 'catering_estimate_lines', 'catering_estimates', 'catering_events',
+            'catering_refunds', 'catering_advances', 'recipe_ingredients', 'recipes', 'catering_estimate_lines', 'catering_estimates', 'catering_events',
             'journal_lines', 'journal_entries',
             'payment_methods', 'units', 'products', 'categories', 'customers', 'branches',
         ]);
