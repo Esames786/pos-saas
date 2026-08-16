@@ -869,6 +869,12 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 Route::post('/catering/production-releases/{cateringProductionRelease}/reprint', [\App\Http\Controllers\Tenant\Catering\CateringProductionReleaseController::class, 'reprint'])->name('tenant.catering.production-releases.reprint');
                 Route::post('/catering/production-releases/{cateringProductionRelease}/issue-materials', [\App\Http\Controllers\Tenant\Catering\CateringMaterialIssueController::class, 'store'])->name('tenant.catering.material-issues.store');
 
+                // KASHIF-CATERING-STORE-1 — the store counter, answering to nobody.
+                // Issue any quantity, covering any number of bookings or none;
+                // the booking reference is a note, never a requirement.
+                Route::get('/catering/store-issues', [\App\Http\Controllers\Tenant\Catering\CateringStoreIssueController::class, 'index'])->name('tenant.catering.store-issues.index');
+                Route::post('/catering/store-issues', [\App\Http\Controllers\Tenant\Catering\CateringStoreIssueController::class, 'store'])->name('tenant.catering.store-issues.store');
+
                 Route::post('/catering/events/{cateringEvent}/final-invoice', [\App\Http\Controllers\Tenant\Catering\CateringFinalInvoiceController::class, 'store'])->name('tenant.catering.final-invoices.store');
                 Route::post('/catering/events/{cateringEvent}/close', [\App\Http\Controllers\Tenant\Catering\CateringFinalInvoiceController::class, 'close'])->name('tenant.catering.events.close');
 

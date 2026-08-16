@@ -64,11 +64,25 @@
                 </li>
 
                 <li class="nav-item pos-nav">
-                    @can('tenant.pos.index')
-                        <a href="{{ url('/pos') }}" class="btn btn-dark btn-md d-inline-flex align-items-center">
-                            <i class="ti ti-device-laptop me-1"></i>POS
-                        </a>
-                    @endcan
+                    @php
+                        // PLATFORM-ENTITLEMENT-BOUNDARY-2 — the POS button must follow the
+                        // PLAN, not the permission. deploy.sh grants the Owner every
+                        // tenant.* permission regardless of plan, so @can alone is always
+                        // true and put a POS button on a catering-only tenant's navbar.
+                        // Same fault the sidebar had; this was the last place it survived.
+                        $posEntitled = false;
+                        if (app()->bound('tenant')) {
+                            $sub = app('tenant')->subscription;
+                            $posEntitled = (bool) $sub?->plan?->hasEnabledModuleKey('pos');
+                        }
+                    @endphp
+                    @if($posEntitled)
+                        @can('tenant.pos.index')
+                            <a href="{{ url('/pos') }}" class="btn btn-dark btn-md d-inline-flex align-items-center">
+                                <i class="ti ti-device-laptop me-1"></i>POS
+                            </a>
+                        @endcan
+                    @endif
                 </li>
             @endif
 

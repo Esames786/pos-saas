@@ -688,6 +688,14 @@
                                 </a>
                             </li>
                         @endcan
+                        @can('tenant.catering.store-issues.index')
+                            @php $a = $isIn('catering/store-issues*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/catering/store-issues') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-package-export fs-16 me-2"></i><span>Store Issue</span>
+                                </a>
+                            </li>
+                        @endcan
                         @can('tenant.catering.material-rates.index')
                             @php $a = $isIn('catering/material-rates*'); @endphp
                             <li class="{{ $a ? 'active' : '' }}">

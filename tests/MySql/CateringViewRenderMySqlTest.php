@@ -288,6 +288,27 @@ class CateringViewRenderMySqlTest extends MySqlTenantTestCase
         }
     }
 
+    /**
+     * PLATFORM-ENTITLEMENT-BOUNDARY-2 — the navbar POS button follows the plan.
+     *
+     * It was gated on @can('tenant.pos.index'), which every Owner holds
+     * regardless of plan, so a catering-only tenant saw a POS button for a
+     * module it does not have. Asserted at source because the header needs a
+     * full request context to render, and the gate is what matters.
+     */
+    public function test_the_navbar_pos_button_is_gated_on_the_plan_not_the_permission(): void
+    {
+        $header = file_get_contents(resource_path('views/partials/header.blade.php'));
+
+        $this->assertStringContainsString("hasEnabledModuleKey('pos')", $header,
+            'the POS button must check the plan — every Owner holds every permission');
+
+        // The permission check may remain as a second gate, but never alone.
+        $posBlock = substr($header, (int) strpos($header, 'pos-nav'), 900);
+        $this->assertStringContainsString('$posEntitled', $posBlock,
+            'the entitlement check must wrap the button, not sit somewhere unrelated');
+    }
+
     /** No catering screen may assert idempotency, on any surface. */
     public function test_no_catering_screen_claims_to_be_safe_to_repeat(): void
     {
