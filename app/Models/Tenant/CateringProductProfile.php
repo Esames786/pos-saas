@@ -35,6 +35,7 @@ class CateringProductProfile extends Model
         'production_label',
         'production_label_ur',
         'instructions',
+        'costing_mode',
     ];
 
     protected function casts(): array
