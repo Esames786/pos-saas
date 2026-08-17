@@ -34,7 +34,7 @@
 <div class="card mb-4">
     <div class="card-header"><h5 class="mb-0">Hand material over</h5></div>
     <div class="card-body">
-        @if($materials->isEmpty())
+        @if(! $hasMaterials)
             <div class="alert alert-warning mb-0">
                 <i class="ti ti-alert-triangle me-1"></i>
                 No stock-tracked materials exist yet. Add them under
@@ -71,6 +71,11 @@
                 </div>
             </div>
 
+            {{-- KASHIF-CATERING-STORE-2: a searchable picker, not a list.
+                 A plain select is fine at fifteen materials and unusable at two
+                 hundred — the storeman scrolls past the thing he wants. It reuses
+                 the repository's standard select2 + /ajax/products picker, asking
+                 for only what a store can physically hand over. --}}
             <div class="table-responsive">
                 <table class="table table-sm align-middle" id="issue-lines">
                     <thead>
@@ -80,15 +85,12 @@
                             <th style="width:20%"></th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody id="issue-lines-body">
                         @for($i = 0; $i < 3; $i++)
-                        <tr>
+                        <tr class="issue-line">
                             <td>
-                                <select name="lines[{{ $i }}][product_id]" class="form-select form-select-sm">
-                                    <option value="">— choose —</option>
-                                    @foreach($materials as $material)
-                                        <option value="{{ $material->id }}">{{ $material->name }} ({{ $material->sku }})</option>
-                                    @endforeach
+                                <select name="lines[{{ $i }}][product_id]" class="form-select form-select-sm material-picker">
+                                    <option value="">Search materials by name or code…</option>
                                 </select>
                             </td>
                             <td>
@@ -103,6 +105,10 @@
                     </tbody>
                 </table>
             </div>
+
+            <button type="button" class="btn btn-sm btn-outline-secondary mb-3" id="add-issue-line">
+                <i class="ti ti-plus me-1"></i>Add another material
+            </button>
 
             <button class="btn btn-warning" type="submit"
                     data-bs-toggle="tooltip"
@@ -158,3 +164,52 @@
     @endif
 </div>
 @endsection
+
+@push('scripts')
+<script>
+$(function () {
+    // The repository's standard searchable picker. `context` asks the shared
+    // lookup for stock-tracked raw and packaging materials only, so a sale item
+    // can never be offered to the store counter.
+    function pickerFor($select) {
+        $select.select2({
+            width: '100%',
+            placeholder: 'Search materials by name or code…',
+            allowClear: true,
+            ajax: {
+                url: '{{ url('/ajax/products') }}',
+                dataType: 'json',
+                delay: 200,
+                data: params => ({
+                    q: params.term,
+                    page: params.page || 1,
+                    context: 'catering_store_issue',
+                }),
+                processResults: data => ({
+                    results: data.results || [],
+                    pagination: data.pagination || {},
+                }),
+            },
+        });
+    }
+
+    $('.material-picker').each(function () { pickerFor($(this)); });
+
+    $('#add-issue-line').on('click', function () {
+        const index = $('#issue-lines-body .issue-line').length;
+        const $row = $(
+            '<tr class="issue-line">' +
+              '<td><select name="lines[' + index + '][product_id]" class="form-select form-select-sm material-picker">' +
+                '<option value="">Search materials by name or code…</option>' +
+              '</select></td>' +
+              '<td><input type="number" step="0.001" min="0" name="lines[' + index + '][quantity]" ' +
+                'class="form-control form-control-sm" placeholder="0"></td>' +
+              '<td></td>' +
+            '</tr>'
+        );
+        $('#issue-lines-body').append($row);
+        pickerFor($row.find('.material-picker'));
+    });
+});
+</script>
+@endpush

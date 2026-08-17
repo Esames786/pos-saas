@@ -21,18 +21,18 @@ class ProductLookupController extends Controller
 
     public function __invoke(Request $request): JsonResponse
     {
-        $q    = trim((string) $request->input('q', ''));
+        $q = trim((string) $request->input('q', ''));
         $page = max(1, (int) $request->input('page', 1));
 
         // PURCHASING-UX-1: the purchase/GRN pickers need richer data (unit cost, unit,
         // default variant, current branch stock) to fill each line + fix the stale-cost bug.
         // DEPT-2: department_stock context also returns custody figures (allocated,
         // available-to-issue, source-department on hand, destination mapping match).
-        $context  = (string) $request->input('context', '');
-        $rich     = $request->boolean('rich') || in_array($context, ['purchase', 'inventory', 'department_stock'], true);
+        $context = (string) $request->input('context', '');
+        $rich = $request->boolean('rich') || in_array($context, ['purchase', 'inventory', 'department_stock'], true);
         $branchId = (int) $request->input('branch_id', 0);
         $fromDeptId = (int) $request->input('from_department_id', 0);
-        $toDeptId   = (int) $request->input('to_department_id', 0);
+        $toDeptId = (int) $request->input('to_department_id', 0);
 
         $query = $rich
             ? Product::query()->with(['unit:id,code,unit_type', 'variants'])
@@ -76,7 +76,19 @@ class ProductLookupController extends Controller
             case 'department_stock': // DEPT-2: custody documents move stock-tracked products only.
                 $query->where('is_stock_tracked', true);
                 break;
-            // 'manufacturing_report' and '' → no extra restriction.
+                // KASHIF-CATERING-STORE-2: what the store counter can physically hand
+                // over. A dish is not issuable — you cannot take biryani out of the
+                // store, you take the rice and the chicken that make it. Mirrors the
+                // list CateringStoreIssueController already built in PHP, so the
+                // searchable picker offers exactly what the plain select did.
+            case 'catering_store_issue':
+                $query->where('is_stock_tracked', true)
+                    ->whereIn('product_kind', [
+                        \App\Models\Tenant\Product::KIND_RAW_MATERIAL,
+                        \App\Models\Tenant\Product::KIND_PACKAGING_MATERIAL,
+                    ]);
+                break;
+                // 'manufacturing_report' and '' → no extra restriction.
         }
 
         // PURCHASING-UX-1-LIVE-QA: fetch a single known product (used to refresh a line's
@@ -88,12 +100,12 @@ class ProductLookupController extends Controller
         if ($q !== '') {
             $query->where(function ($w) use ($q) {
                 $w->where('sku', 'like', "%{$q}%")
-                  ->orWhere('name', 'like', "%{$q}%")
-                  ->orWhereHas('barcodes', fn ($b) => $b->where('barcode', 'like', "%{$q}%"));
+                    ->orWhere('name', 'like', "%{$q}%")
+                    ->orWhereHas('barcodes', fn ($b) => $b->where('barcode', 'like', "%{$q}%"));
             });
         }
 
-        $total   = (clone $query)->count();
+        $total = (clone $query)->count();
         $records = $query->orderBy('name')->orderBy('sku')
             ->forPage($page, self::PER_PAGE)
             ->get();
@@ -108,8 +120,8 @@ class ProductLookupController extends Controller
 
         $results = $records->map(function (Product $p) use ($rich, $branchId, $context, $deptInventory, $destResolver, $fromDeptId, $toDeptId) {
             $base = [
-                'id'   => $p->id,
-                'text' => $p->sku ? ($p->sku . ' — ' . $p->name) : $p->name,
+                'id' => $p->id,
+                'text' => $p->sku ? ($p->sku.' — '.$p->name) : $p->name,
             ];
 
             if (! $rich) {
@@ -138,57 +150,57 @@ class ProductLookupController extends Controller
                     ->where('quantity_on_hand', '>', 0)
                     ->get()
                     ->map(fn ($b) => [
-                        'id'       => (int) $b->inventory_batch_id,
+                        'id' => (int) $b->inventory_batch_id,
                         'batch_no' => $b->batch?->batch_no,
-                        'expiry'   => $b->batch?->expiry_date?->format('Y-m-d'),
-                        'qty'      => (float) $b->quantity_on_hand,
+                        'expiry' => $b->batch?->expiry_date?->format('Y-m-d'),
+                        'qty' => (float) $b->quantity_on_hand,
                     ])->values()->all();
             }
             $stockLabel = $stock === null
                 ? null
-                : rtrim(rtrim(number_format($stock, 3), '0'), '.') . ($unitCode ? ' ' . $unitCode : '');
+                : rtrim(rtrim(number_format($stock, 3), '0'), '.').($unitCode ? ' '.$unitCode : '');
 
             return array_merge($base, [
-                'sku'             => $p->sku,
-                'name'            => $p->name,
-                'unit_code'       => $unitCode,
-                'unit_type'       => $p->unit?->unit_type ?? 'quantity',
-                'purchase_price'  => (float) ($p->default_purchase_price ?? 0),
-                'requires_batch'  => (bool) $p->requires_batch,
-                'has_expiry'      => (bool) $p->has_expiry,
-                'is_purchasable'  => (bool) $p->is_purchasable,
-                'is_stock_tracked'=> (bool) $p->is_stock_tracked,
-                'variant_id'      => $default?->id,
-                'variants'        => $p->variants->map(fn ($v) => [
-                    'id'             => (int) $v->id,
-                    'name'           => $v->name,
-                    'sku'            => $v->sku,
-                    'barcode'        => $v->barcode,
+                'sku' => $p->sku,
+                'name' => $p->name,
+                'unit_code' => $unitCode,
+                'unit_type' => $p->unit?->unit_type ?? 'quantity',
+                'purchase_price' => (float) ($p->default_purchase_price ?? 0),
+                'requires_batch' => (bool) $p->requires_batch,
+                'has_expiry' => (bool) $p->has_expiry,
+                'is_purchasable' => (bool) $p->is_purchasable,
+                'is_stock_tracked' => (bool) $p->is_stock_tracked,
+                'variant_id' => $default?->id,
+                'variants' => $p->variants->map(fn ($v) => [
+                    'id' => (int) $v->id,
+                    'name' => $v->name,
+                    'sku' => $v->sku,
+                    'barcode' => $v->barcode,
                     'purchase_price' => (string) ($v->purchase_price ?? 0),
-                    'is_default'     => (bool) $v->is_default,
-                    'is_active'      => (bool) $v->is_active,
+                    'is_default' => (bool) $v->is_default,
+                    'is_active' => (bool) $v->is_active,
                 ])->values(),
-                'current_stock'   => $stock,
-                'stock_label'     => $stockLabel,
-                'allow_decimal'   => ($p->unit?->unit_type ?? 'quantity') !== 'quantity',
-                'batches'         => $batches,
+                'current_stock' => $stock,
+                'stock_label' => $stockLabel,
+                'allow_decimal' => ($p->unit?->unit_type ?? 'quantity') !== 'quantity',
+                'batches' => $batches,
             ] + ($deptInventory && $branchId > 0 ? [
                 // DEPT-2 custody figures (variant-level; batch granularity not used here).
-                'branch_on_hand'          => $branchOnHand = $deptInventory->officialBranchOnHand($branchId, $p->id, $default?->id),
-                'department_allocated'    => $allocated = $deptInventory->allocatedDepartmentOnHand($branchId, $p->id, $default?->id),
-                'available_to_issue'      => $branchOnHand - $allocated,
+                'branch_on_hand' => $branchOnHand = $deptInventory->officialBranchOnHand($branchId, $p->id, $default?->id),
+                'department_allocated' => $allocated = $deptInventory->allocatedDepartmentOnHand($branchId, $p->id, $default?->id),
+                'available_to_issue' => $branchOnHand - $allocated,
                 'source_department_on_hand' => $fromDeptId > 0
                     ? $deptInventory->departmentOnHand($fromDeptId, $p->id, $default?->id)
                     : null,
                 'destination_department_match' => $destResolver
                     ? in_array($toDeptId, $destResolver->matchingDepartmentIds($p->id, $p->category_id), true)
                     : null,
-                'branch_average_cost'     => $deptInventory->officialAverageCost($branchId, $p->id, $default?->id),
+                'branch_average_cost' => $deptInventory->officialAverageCost($branchId, $p->id, $default?->id),
             ] : []));
         });
 
         return response()->json([
-            'results'    => $results,
+            'results' => $results,
             'pagination' => ['more' => ($page * self::PER_PAGE) < $total],
         ]);
     }

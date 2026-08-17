@@ -34,7 +34,10 @@ class CateringStoreIssueController extends Controller
 
         return view('tenant.catering.store-issues.index', [
             'issues' => $issues,
-            'materials' => $this->materials(),
+            // Only whether ANY material exists, not the list. The picker fetches
+            // matches as they are typed, so loading five hundred rows to draw a
+            // dropdown nobody scrolls is exactly what this screen stopped doing.
+            'hasMaterials' => $this->materialsQuery()->exists(),
             'branches' => Branch::where('status', 'active')->orderBy('name')->get(['id', 'name']),
             // Only open bookings are offered — referencing a closed or cancelled
             // event would be a note nobody can act on.
@@ -59,6 +62,21 @@ class CateringStoreIssueController extends Controller
             'lines.required' => 'Add at least one material before issuing.',
         ]);
 
+        // The picker offers only issuable materials; this makes that true rather
+        // than merely displayed. A request naming a dish would otherwise reach
+        // the service and be written as a non-stock line — a store issue for
+        // something no store has ever held.
+        $requested = collect($data['lines'])->pluck('product_id')->filter()->unique();
+        $eligible = $this->materialsQuery()->whereIn('id', $requested)->pluck('id');
+        if ($ineligible = $requested->diff($eligible)->first()) {
+            $name = Product::whereKey($ineligible)->value('name') ?? "#{$ineligible}";
+
+            return back()->withErrors([
+                'issue' => "'{$name}' is not something the store can hand over. "
+                    .'Only stock-tracked raw and packaging materials can be issued.',
+            ])->withInput();
+        }
+
         try {
             $issue = $issues->issueDirect(
                 lines: $data['lines'],
@@ -82,15 +100,17 @@ class CateringStoreIssueController extends Controller
      *
      * A dish is not issuable — you cannot take biryani out of the store, you
      * take the rice and the chicken that make it.
+     *
+     * The same restriction is applied by the shared product lookup under the
+     * 'catering_store_issue' context, so the searchable picker offers exactly
+     * this set. Kept here too, because the picker is a convenience and the
+     * server is the authority.
      */
-    private function materials()
+    private function materialsQuery()
     {
         return Product::query()
             ->where('status', 'active')
             ->where('is_stock_tracked', true)
-            ->whereIn('product_kind', [Product::KIND_RAW_MATERIAL, Product::KIND_PACKAGING_MATERIAL])
-            ->orderBy('name')
-            ->get(['id', 'name', 'sku', 'unit_id'])
-            ->load('unit:id,code');
+            ->whereIn('product_kind', [Product::KIND_RAW_MATERIAL, Product::KIND_PACKAGING_MATERIAL]);
     }
 }
