@@ -29,16 +29,18 @@ use Illuminate\Support\Collection;
  */
 class CateringCostBlockService
 {
-    public const MODE_BLOCKS = 'blocks';
+    // Aliases of the profile's own constants — the model owns the vocabulary, so
+    // there is one definition of what 'blocks' means, not two that can drift.
+    public const MODE_BLOCKS = CateringProductProfile::COSTING_BLOCKS;
 
-    public const MODE_RECIPE = 'recipe';
+    public const MODE_RECIPE = CateringProductProfile::COSTING_RECIPE;
 
     /** Is this dish priced from blocks rather than a recipe? */
     public function usesBlocks(Product $product): bool
     {
         $profile = CateringProductProfile::where('product_id', $product->id)->first();
 
-        return ($profile?->costing_mode ?? self::MODE_RECIPE) === self::MODE_BLOCKS;
+        return $profile?->usesBlocks() ?? false;
     }
 
     /** @return Collection<int, CateringProductCostBlock> */

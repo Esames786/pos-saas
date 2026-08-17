@@ -23,7 +23,14 @@ class CateringProductProfileController extends Controller
     {
         $search = trim((string) $request->input('q', ''));
 
-        $profiles = CateringProductProfile::with(['product.translations', 'product.unit', 'defaultQuoteUnit'])
+        // The two counts drive the switch warning: an operator changing the
+        // costing source needs to know the other side's configuration is still
+        // there (dormant, not deleted) before they decide.
+        $profiles = CateringProductProfile::with([
+            'product.translations', 'product.unit', 'defaultQuoteUnit',
+            'product.activeRecipe.ingredients',
+        ])
+            ->withCount(['costBlocks as active_block_count' => fn ($q) => $q->where('is_active', true)])
             ->when($search !== '', fn ($query) => $query->whereHas(
                 'product',
                 fn ($q) => $q->where('name', 'like', "%{$search}%")->orWhere('sku', 'like', "%{$search}%")
@@ -80,6 +87,10 @@ class CateringProductProfileController extends Controller
             'catering_enabled' => ['nullable', 'boolean'],
             'default_quote_unit_id' => ['nullable', 'exists:units,id'],
             'pricing_mode' => ['required', Rule::in(CateringProductProfile::PRICING_MODES)],
+            // KASHIF-CATERING-COSTING-SOURCE-1: which authority decides this
+            // dish's cost. Separate from pricing_mode above and never inferred
+            // from it — the operator chooses it deliberately, per product.
+            'costing_mode' => ['required', Rule::in(CateringProductProfile::COSTING_MODES)],
             'default_catering_rate' => ['nullable', 'numeric', 'min:0'],
             'production_station' => ['nullable', 'string', 'max:50'],
             'minimum_qty' => ['nullable', 'numeric', 'min:0'],

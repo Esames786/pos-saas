@@ -18,11 +18,51 @@ class CateringProductProfile extends Model
 
     protected string $canonicalIdentityColumn = 'profile_uuid';
 
+    /**
+     * PRICING METHOD — how the dish is quoted commercially.
+     *
+     * Not to be confused with the costing source below. They answer different
+     * questions and changing one never changes the other; the screen labels them
+     * "Pricing Method" and "Costing Source" so nobody has to remember which
+     * "mode" was meant.
+     */
     public const PRICING_PER_PAX = 'per_pax';
 
     public const PRICING_FIXED = 'fixed';
 
     public const PRICING_MODES = [self::PRICING_PER_PAX, self::PRICING_FIXED];
+
+    /**
+     * COSTING SOURCE — which authority decides what this dish costs.
+     *
+     * Exactly one is active. The other's configuration may still be stored, and
+     * is dormant rather than deleted: a client who supplies recipes next month
+     * must be able to switch back and find their recipe intact.
+     */
+    public const COSTING_RECIPE = 'recipe';
+
+    public const COSTING_BLOCKS = 'blocks';
+
+    public const COSTING_MODES = [self::COSTING_RECIPE, self::COSTING_BLOCKS];
+
+    /** Defaults to recipe, which is what every dish did before blocks existed. */
+    public function costingMode(): string
+    {
+        return in_array($this->costing_mode, self::COSTING_MODES, true)
+            ? $this->costing_mode
+            : self::COSTING_RECIPE;
+    }
+
+    public function usesBlocks(): bool
+    {
+        return $this->costingMode() === self::COSTING_BLOCKS;
+    }
+
+    /** The blocks stored against this product — active authority or not. */
+    public function costBlocks()
+    {
+        return $this->hasMany(CateringProductCostBlock::class, 'product_id', 'product_id');
+    }
 
     protected $fillable = [
         'product_id',

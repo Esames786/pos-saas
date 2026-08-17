@@ -40,7 +40,8 @@
                     <tr>
                         <th>Product</th>
                         <th>Urdu Name</th>
-                        <th>Pricing</th>
+                        <th>Pricing Method</th>
+                        <th>Costing Source</th>
                         <th class="text-end">Default Rate</th>
                         <th>Quote Unit</th>
                         <th>Station</th>
@@ -64,6 +65,12 @@
                             'catering_enabled' => (bool) $profile->catering_enabled,
                             'default_quote_unit_id' => $profile->default_quote_unit_id,
                             'pricing_mode' => $profile->pricing_mode,
+                            'costing_mode' => $profile->costingMode(),
+                            // What the OTHER source still holds. Switching never
+                            // deletes it, and the operator is told so rather than
+                            // left to wonder.
+                            'recipe_ingredients' => $profile->product->activeRecipe?->ingredients->count() ?? 0,
+                            'block_count' => (int) ($profile->active_block_count ?? 0),
                             'default_catering_rate' => $profile->default_catering_rate,
                             'production_station' => $profile->production_station,
                             'minimum_qty' => $profile->minimum_qty,
@@ -80,6 +87,25 @@
                         </td>
                         <td dir="rtl" lang="ur">{{ $urName }}</td>
                         <td>{{ $profile->pricing_mode === 'per_pax' ? 'Per PAX' : 'Fixed' }}</td>
+                        <td>
+                            @if($profile->usesBlocks())
+                                <span class="badge bg-info-subtle text-info-emphasis">Cost Blocks</span>
+                                <div class="fs-12 text-muted">
+                                    {{ $profilePayload['block_count'] }} block{{ $profilePayload['block_count'] === 1 ? '' : 's' }}
+                                    @if($profilePayload['recipe_ingredients'] > 0)
+                                        · recipe kept
+                                    @endif
+                                </div>
+                            @else
+                                <span class="badge bg-secondary-subtle text-secondary-emphasis">Recipe</span>
+                                <div class="fs-12 text-muted">
+                                    {{ $profilePayload['recipe_ingredients'] }} ingredient{{ $profilePayload['recipe_ingredients'] === 1 ? '' : 's' }}
+                                    @if($profilePayload['block_count'] > 0)
+                                        · blocks kept
+                                    @endif
+                                </div>
+                            @endif
+                        </td>
                         <td class="text-end">{{ $profile->default_catering_rate !== null ? number_format($profile->default_catering_rate, 2) : '—' }}</td>
                         <td>{{ $profile->defaultQuoteUnit?->code ?? $profile->product->unit?->code ?? '—' }}</td>
                         <td>{{ $profile->production_station ?? '—' }}</td>
@@ -92,7 +118,7 @@
                         </td>
                     </tr>
                     @empty
-                    <tr><td colspan="8" class="text-center text-muted py-4">No catering products configured yet.</td></tr>
+                    <tr><td colspan="9" class="text-center text-muted py-4">No catering products configured yet.</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -128,16 +154,35 @@
                         <input type="text" name="name_ur" dir="rtl" lang="ur" class="form-control">
                         <div class="form-text">Optional — stored as a product translation; English name stays the fallback.</div>
                     </div>
+                    {{-- Two different questions, deliberately labelled so. One is
+                         how the dish is quoted; the other is what decides its
+                         cost. Calling either of them "Mode" is how they get
+                         confused for each other. --}}
                     <div class="col-md-4">
-                        <label class="form-label">Pricing Mode</label>
+                        <label class="form-label">Pricing Method</label>
                         <select name="pricing_mode" class="form-select">
                             <option value="per_pax">Per PAX</option>
                             <option value="fixed">Fixed</option>
                         </select>
+                        <div class="form-text">How the customer is quoted.</div>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Costing Source</label>
+                        <select name="costing_mode" id="profile-costing-mode" class="form-select">
+                            <option value="recipe">Recipe</option>
+                            <option value="blocks">Cost Blocks</option>
+                        </select>
+                        <div class="form-text">What decides this dish's cost. Changing it leaves the other one stored.</div>
                     </div>
                     <div class="col-md-4">
                         <label class="form-label">Default Catering Rate</label>
                         <input type="number" step="0.01" min="0" name="default_catering_rate" class="form-control">
+                    </div>
+                    <div class="col-12 d-none" id="costing-switch-warning">
+                        <div class="alert alert-warning mb-0 py-2">
+                            <i class="ti ti-alert-triangle me-1"></i>
+                            <span id="costing-switch-text"></span>
+                        </div>
                     </div>
                     <div class="col-md-4">
                         <label class="form-label">Default Quote Unit</label>
@@ -211,7 +256,51 @@ $(function () {
         $('#product-select-wrap').removeClass('d-none');
         $('#product-name-wrap').addClass('d-none');
         $('#profile-product').val(null).trigger('change');
+        current = { costing_mode: 'recipe', recipe_ingredients: 0, block_count: 0 };
+        renderCostingWarning();
     });
+
+    // What the operator is about to move away from, and what stays behind.
+    // Switching never deletes either side; saying so is the difference between
+    // a considered change and one someone is afraid to make.
+    let current = { costing_mode: 'recipe', recipe_ingredients: 0, block_count: 0 };
+
+    function renderCostingWarning() {
+        const chosen = $('#profile-costing-mode').val();
+        const box = $('#costing-switch-warning');
+
+        if (chosen === current.costing_mode) {
+            box.addClass('d-none');
+            return;
+        }
+
+        let text;
+        if (chosen === 'blocks') {
+            text = 'This dish will be costed from its cost blocks instead of its recipe.';
+            if (current.recipe_ingredients > 0) {
+                text += ' Its recipe (' + current.recipe_ingredients + ' ingredient'
+                     + (current.recipe_ingredients === 1 ? '' : 's') + ') stays stored and is not deleted — '
+                     + 'it simply stops deciding the cost. You can switch back at any time.';
+            }
+            if (current.block_count === 0) {
+                text += ' No cost blocks are configured yet, so this dish cannot be quoted until you add them.';
+            }
+        } else {
+            text = 'This dish will be costed from its recipe instead of its cost blocks.';
+            if (current.block_count > 0) {
+                text += ' Its ' + current.block_count + ' cost block'
+                     + (current.block_count === 1 ? '' : 's') + ' stay stored and are not deleted.';
+            }
+            if (current.recipe_ingredients === 0) {
+                text += ' No recipe is configured yet, so this dish cannot be quoted until one exists.';
+            }
+        }
+
+        $('#costing-switch-text').text(text);
+        box.removeClass('d-none');
+    }
+
+    $('#profile-costing-mode').on('change', renderCostingWarning);
 
     $(document).on('click', '.edit-profile', function () {
         const p = $(this).data('profile');
@@ -225,6 +314,13 @@ $(function () {
         $('#profile-product-name').val(p.product_name);
         $('[name=name_ur]').val(p.name_ur || '');
         $('[name=pricing_mode]').val(p.pricing_mode);
+        $('[name=costing_mode]').val(p.costing_mode || 'recipe');
+        current = {
+            costing_mode: p.costing_mode || 'recipe',
+            recipe_ingredients: p.recipe_ingredients || 0,
+            block_count: p.block_count || 0,
+        };
+        renderCostingWarning();
         $('[name=default_catering_rate]').val(p.default_catering_rate ?? '');
         $('[name=default_quote_unit_id]').val(p.default_quote_unit_id ?? '');
         $('[name=production_station]').val(p.production_station || '');
