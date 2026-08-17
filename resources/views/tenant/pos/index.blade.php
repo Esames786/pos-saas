@@ -4923,6 +4923,9 @@ document.addEventListener('DOMContentLoaded', function () {
             customer_phone:         (document.getElementById('customer_phone') || {}).value || null,
             delivery_address:       (document.getElementById('delivery_address') || {}).value || null,
             vehicle_number:         (document.getElementById('vehicle_number') || {}).value || null,
+            // Dine-in table + session, so the preview shows the Table/Waiter line the receipt prints.
+            restaurant_table_id:         (document.getElementById('restaurant_table_id') || {}).value || null,
+            restaurant_table_session_id: (document.getElementById('restaurant_table_session_id') || {}).value || null,
             lines: cart.map(function (it) {
                 return {
                     product_id:      it.product_id || it.id || null,

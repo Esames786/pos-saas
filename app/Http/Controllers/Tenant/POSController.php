@@ -476,6 +476,10 @@ class POSController extends Controller
             'customer_phone'          => ['nullable', 'string', 'max:50'],
             'delivery_address'        => ['nullable', 'string', 'max:500'],
             'vehicle_number'          => ['nullable', 'string', 'max:50'],
+            // BILL-PREVIEW-PARITY: carry the selected dine-in table/session so the preview shows the
+            // Table/Waiter line the printed receipt already prints (show_table_info honoured in view).
+            'restaurant_table_id'         => ['nullable', 'integer'],
+            'restaurant_table_session_id' => ['nullable', 'integer'],
             'lines'                   => ['required', 'array', 'min:1'],
             'lines.*.product_id'      => ['nullable', 'integer'],
             'lines.*.product_name'    => ['nullable', 'string', 'max:190'],
@@ -556,8 +560,23 @@ class POSController extends Controller
         $sale->setRelation('customer', null);
         $sale->setRelation('createdBy', auth('tenant')->user());
         $sale->setRelation('payments', collect());
-        $sale->setRelation('restaurantTable', null);
-        $sale->setRelation('restaurantWaiter', null);
+
+        // Dine-in table + waiter, so the preview's Table/Waiter line matches the printed receipt.
+        // Display only (transient sale); scoped to this branch so a forged id shows nothing.
+        $previewTable = null;
+        $previewSession = null;
+        if ($orderType === 'dine_in' && ! empty($data['restaurant_table_id'])) {
+            $previewTable = \App\Models\Tenant\RestaurantTable::with('floor')
+                ->where('branch_id', $branch->id)
+                ->find((int) $data['restaurant_table_id']);
+            if (! empty($data['restaurant_table_session_id'])) {
+                $previewSession = \App\Models\Tenant\RestaurantTableSession::with('waiter')
+                    ->find((int) $data['restaurant_table_session_id']);
+            }
+        }
+        $sale->setRelation('restaurantTable', $previewTable);
+        $sale->setRelation('restaurantWaiter', $previewSession?->waiter);
+        $sale->setRelation('restaurantTableSession', $previewSession);
         $sale->setRelation('deliveryChannel', null);
         $sale->setRelation('deliveryRider', null);
         $sale->setRelation('shift', null);

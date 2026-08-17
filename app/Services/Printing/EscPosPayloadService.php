@@ -250,6 +250,9 @@ class EscPosPayloadService
         // Same scale rule as the KOT — the reminder is read in the kitchen, not at the till.
         // Taken from the payload snapshot so a reprint months later still renders as it did.
         $big = $this->scaleFor(isset($layout['font_size']) ? (int) $layout['font_size'] : null);
+        // Reminder item rows carry their own size + optional divider line, snapshotted with the job.
+        $rowBig   = $this->scaleFor(isset($layout['item_font_size']) ? (int) $layout['item_font_size'] : (isset($layout['font_size']) ? (int) $layout['font_size'] : null));
+        $dividers = (bool) ($layout['show_column_dividers'] ?? false);
         $rule = str_repeat('-', max((int) floor(self::COLS_80MM / max(1, $big['w'])), 8));
 
         $out .= $this->center('*** REMINDER ***') . "\n";
@@ -294,16 +297,16 @@ class EscPosPayloadService
 
         // Sub-detail is one step below the item: taller than normal so it reads, never double
         // width, so a modifier can never wrap into an unreadable stub.
-        $sub = ['w' => 1, 'h' => $big['h']];
+        $sub = ['w' => 1, 'h' => $rowBig['h']];
 
-        // Qty | Item column header (matches the KOT), then the items.
-        $out .= $this->sized($this->qtyItemColumns('QTY', 'ITEM', $this->scaledWidth($big)), $big, true);
+        // Qty | Item column header (matches the KOT), then the items, at the row scale + dividers.
+        $out .= $this->sized($this->qtyItemColumns('QTY', 'ITEM', $this->scaledWidth($rowBig), $dividers), $rowBig, true);
         $out .= $rule . "\n";
 
         if (!empty($payload['cancelled_lines'])) {
             $out .= $this->scaled('CANCELLED:', $big, true);
             foreach ($payload['cancelled_lines'] as $line) {
-                $out .= $this->reminderLine($line, false, $big);
+                $out .= $this->reminderLine($line, false, $rowBig, '', $dividers);
             }
             $out .= $rule . "\n";
             $out .= $this->scaled('REMAINING ORDER:', $big, true);
@@ -315,7 +318,7 @@ class EscPosPayloadService
             $out .= $this->scaled('NO REMAINING ITEMS', $big, true);
         }
         foreach ($topLevel as $line) {
-            $out .= $this->reminderLine($line, $revision > 1, $big);
+            $out .= $this->reminderLine($line, $revision > 1, $rowBig, '', $dividers);
             foreach ($lines->where('parent_line_id', $line['line_id'] ?? null) as $component) {
                 $out .= $this->reminderLine($component, $revision > 1, $sub, '  - ');
                 foreach (($component['modifiers'] ?? []) as $modifier) {
@@ -374,6 +377,11 @@ class EscPosPayloadService
         // on a customer's bill is worse than small text. Taller characters cost nothing: the line
         // still holds 42 characters, so Subtotal / Discount / Total stay in their column.
         $tall = ['w' => 1, 'h' => $this->scaleFor($layout?->font_size)['h']];
+        // The item rows carry their OWN size: item_font_size when set, otherwise the receipt font —
+        // so the client can shrink long-name rows without touching the totals block. Height-only,
+        // like the receipt, so the money columns keep their width.
+        $rowTall  = ['w' => 1, 'h' => $this->scaleFor($layout?->item_font_size ?? $layout?->font_size)['h']];
+        $dividers = $show('show_column_dividers', false);
 
         if ($show('show_branch_name')) {
             $out .= $this->center($sale->branch?->name ?? 'Receipt') . "\n";
@@ -452,11 +460,11 @@ class EscPosPayloadService
             $this->money((float) $l->unit_price),
             $this->money((float) $l->line_total),
         ])->all();
-        [$nameW, $qtyW, $rateW, $amountW] = $this->receiptColumnWidths($measure, $w);
+        [$nameW, $qtyW, $rateW, $amountW] = $this->receiptColumnWidths($measure, $w, $dividers);
 
         $out .= str_repeat('-', 42) . "\n";
         // COLUMN HEADER — Item | Qty | Rate | Amount, the layout the client's bill reads by.
-        $out .= $this->sized($this->itemColumns('Item', 'Qty', 'Rate', 'Amount', $nameW, $qtyW, $rateW, $amountW), $tall, true);
+        $out .= $this->sized($this->itemColumns('Item', 'Qty', 'Rate', 'Amount', $nameW, $qtyW, $rateW, $amountW, $dividers), $rowTall, true);
         $out .= str_repeat('-', 42) . "\n";
 
         foreach ($sale->lines as $line) {
@@ -471,11 +479,11 @@ class EscPosPayloadService
                 $this->quantity((float) $line->quantity),
                 $this->money((float) $line->unit_price),
                 $this->money((float) $line->line_total),
-                $nameW, $qtyW, $rateW, $amountW
-            ), $tall);
+                $nameW, $qtyW, $rateW, $amountW, $dividers
+            ), $rowTall);
 
             if ($line->variant_name) {
-                $out .= $this->sized('  (' . $line->variant_name . ')' . "\n", $tall);
+                $out .= $this->sized('  (' . $line->variant_name . ')' . "\n", $rowTall);
             }
             if ($line->kitchen_note) {
                 $out .= "  * {$line->kitchen_note}\n";
@@ -489,12 +497,12 @@ class EscPosPayloadService
                 if ($delta !== 0.0) {
                     $label .= ' (' . ($delta > 0 ? '+' : '') . number_format($delta, 2) . ')';
                 }
-                $out .= $this->sized($label . "\n", $tall);
+                $out .= $this->sized($label . "\n", $rowTall);
             }
 
             foreach ($sale->lines->where('parent_sales_order_line_id', $line->id) as $component) {
                 $componentQty = $this->quantity((float) $component->quantity) . $this->unitSuffix($component->unit_code);
-                $out .= $this->sized('  - ' . $componentQty . ' x ' . ($component->product_name ?? '') . "\n", $tall);
+                $out .= $this->sized('  - ' . $componentQty . ' x ' . ($component->product_name ?? '') . "\n", $rowTall);
             }
 
             // A separator after each item (with its modifiers/components) so rows read as boxes.
@@ -578,6 +586,12 @@ class EscPosPayloadService
         // What the kitchen READS gets the configured scale; order numbers and the printed-at
         // stamp stay small, because they are reference data nobody cooks from.
         $big = $this->scaleFor($layout?->kot_font_size);
+        // Item rows and the TIME line each carry their OWN size when set, so the kitchen can shrink
+        // the rows and drop the clock a band smaller than the food lines without shrinking the big
+        // heading. NULL falls back to the KOT font, so nothing changes until a value is set.
+        $rowBig   = $this->scaleFor($layout?->item_font_size ?? $layout?->kot_font_size);
+        $timeBig  = $this->scaleFor($layout?->time_font_size ?? $layout?->kot_font_size);
+        $dividers = $show('show_column_dividers', false);
         $rule = str_repeat('-', max((int) floor(self::COLS_80MM / max(1, $big['w'])), 8));
 
         $headerText = trim((string) ($layout?->header_text ?? ''));
@@ -599,7 +613,8 @@ class EscPosPayloadService
         }
         $out .= $this->scaled('** ' . strtoupper(str_replace('_', ' ', $sale->order_type ?? 'SALE')) . ' **', $big, true, true);
         // One ticket per category — name the category so the station knows the slip is theirs.
-        if (! empty($payload['kot_category'])) {
+        // The show_category_header toggle (default ON) lets a single-station kitchen drop this line.
+        if ($show('show_category_header', true) && ! empty($payload['kot_category'])) {
             // The [ ] decoration costs four characters. At double width that is a fifth of the
             // line, and a category that nearly fits wraps its closing bracket onto a line of its
             // own. Keep the brackets only while they earn their space.
@@ -633,12 +648,13 @@ class EscPosPayloadService
             $out .= $this->scaled('VEHICLE: ' . $sale->vehicle_number, $big, true);
         }
         // The old ticket led with a big wall-clock time; the date is reference and stays small.
+        // TIME honours time_font_size so the kitchen can shrink the clock below the food rows.
         $now = now()->timezone($this->printTz($sale));
-        $out .= $this->scaled('TIME: ' . $now->format('h:i A'), $big, true);
+        $out .= $this->scaled('TIME: ' . $now->format('h:i A'), $timeBig, true);
         $out .= $now->format('D d-M-Y') . "\n";
         $out .= $rule . "\n";
-        // Qty | Item column header (no price — a kitchen ticket carries none).
-        $out .= $this->sized($this->qtyItemColumns('QTY', 'ITEM', $this->scaledWidth($big)), $big, true);
+        // Qty | Item column header (no price — a kitchen ticket carries none), at the row scale.
+        $out .= $this->sized($this->qtyItemColumns('QTY', 'ITEM', $this->scaledWidth($rowBig), $dividers), $rowBig, true);
         $out .= $rule . "\n";
 
         foreach ($lines as $line) {
@@ -661,12 +677,12 @@ class EscPosPayloadService
             $name = $runningPrefix . strtoupper($line->product_name ?? '');
 
             // COLUMN approach — Qty | Item — with the name wrapping under its column. No price:
-            // a kitchen ticket carries none.
-            $out .= $this->sized($this->qtyItemColumns($kotQty, $name, $this->scaledWidth($big)), $big, true);
+            // a kitchen ticket carries none. Rows use the item scale + optional divider line.
+            $out .= $this->sized($this->qtyItemColumns($kotQty, $name, $this->scaledWidth($rowBig), $dividers), $rowBig, true);
 
             // Variant, modifiers and the cook's note stay one step below the item: always taller
             // than normal so they are readable, never double width, so they never wrap.
-            $sub = ['w' => 1, 'h' => $big['h']];
+            $sub = ['w' => 1, 'h' => $rowBig['h']];
             if ($line->variant_name) {
                 $out .= $this->subRow('  ' . $line->variant_name, $sub);
             }
@@ -749,14 +765,17 @@ class EscPosPayloadService
      * caller measures the whole table's qty/rate/amount first and hands the widths here, so every
      * row lines up and the name column claims all the width the (now shorter) numbers don't use.
      */
-    private function itemColumns(string $name, string $qty, string $rate, string $amount, int $nameW, int $qtyW, int $rateW, int $amountW): string
+    private function itemColumns(string $name, string $qty, string $rate, string $amount, int $nameW, int $qtyW, int $rateW, int $amountW, bool $dividers = false): string
     {
+        // A `|` between columns when the layout asks for divider lines, otherwise a single space —
+        // the widths were measured for the matching gap by receiptColumnWidths().
+        $sep = $dividers ? ' | ' : ' ';
         $lines = explode("\n", wordwrap(trim($name), max($nameW, 6), "\n", true));
         $head = array_shift($lines);
 
-        $row = $this->mbStrPad($head, $nameW) . ' '
-             . $this->mbStrPad($qty, $qtyW, ' ', STR_PAD_LEFT) . ' '
-             . $this->mbStrPad($rate, $rateW, ' ', STR_PAD_LEFT) . ' '
+        $row = $this->mbStrPad($head, $nameW) . $sep
+             . $this->mbStrPad($qty, $qtyW, ' ', STR_PAD_LEFT) . $sep
+             . $this->mbStrPad($rate, $rateW, ' ', STR_PAD_LEFT) . $sep
              . $this->mbStrPad($amount, $amountW, ' ', STR_PAD_LEFT);
         $out = rtrim($row) . "\n";
         foreach ($lines as $cont) {
@@ -772,7 +791,7 @@ class EscPosPayloadService
      * data (a whole-rupee shop gets narrow numbers and a wide name column). Returns
      * [nameW, qtyW, rateW, amountW] summing (with 3 gaps) to $width.
      */
-    private function receiptColumnWidths(array $rows, int $width): array
+    private function receiptColumnWidths(array $rows, int $width, bool $dividers = false): array
     {
         $qtyW = mb_strlen('Qty');
         $rateW = mb_strlen('Rate');
@@ -782,8 +801,11 @@ class EscPosPayloadService
             $rateW = max($rateW, mb_strlen($r));
             $amountW = max($amountW, mb_strlen($a));
         }
+        // Three inter-column gaps, each ' | ' (3 chars) with dividers or ' ' (1 char) without —
+        // reserve them here so the name column claims exactly the width that is left.
+        $gaps = 3 * ($dividers ? 3 : 1);
         // Keep the name column readable even if a huge number appears; it wraps if it must.
-        $nameW = max($width - $qtyW - $rateW - $amountW - 3, 8);
+        $nameW = max($width - $qtyW - $rateW - $amountW - $gaps, 8);
 
         return [$nameW, $qtyW, $rateW, $amountW];
     }
@@ -793,17 +815,19 @@ class EscPosPayloadService
      * money). Qty sits in a narrow left column; the name wraps with a hanging indent so it reads
      * as a column even at double width.
      */
-    private function qtyItemColumns(string $qty, string $name, int $width): string
+    private function qtyItemColumns(string $qty, string $name, int $width, bool $dividers = false): string
     {
+        $sep = $dividers ? ' | ' : ' ';
+        $sepLen = mb_strlen($sep);
         $qtyW = min(3, max(1, $width - 6));
-        $nameW = max($width - $qtyW - 1, 6);
+        $nameW = max($width - $qtyW - $sepLen, 6);
 
         $lines = explode("\n", wordwrap(trim($name), $nameW, "\n", true));
         $head = array_shift($lines);
 
-        $out = $this->mbStrPad($qty, $qtyW, ' ', STR_PAD_LEFT) . ' ' . $head . "\n";
+        $out = $this->mbStrPad($qty, $qtyW, ' ', STR_PAD_LEFT) . $sep . $head . "\n";
         foreach ($lines as $cont) {
-            $out .= str_repeat(' ', $qtyW + 1) . $cont . "\n";   // hanging indent under the name column
+            $out .= str_repeat(' ', $qtyW + $sepLen) . $cont . "\n";   // hanging indent under the name column
         }
 
         return $out;
@@ -838,7 +862,7 @@ class EscPosPayloadService
      * At normal width the quantity keeps its right-aligned column ("ITEM …… 2"). At double width
      * only 21 characters fit, so the count leads instead — the same trade the KOT makes.
      */
-    private function reminderLine(array $line, bool $showRunning, ?array $scale = null, string $indent = ''): string
+    private function reminderLine(array $line, bool $showRunning, ?array $scale = null, string $indent = '', bool $dividers = false): string
     {
         $scale ??= ['w' => 1, 'h' => 1];
         $quantity = (float) ($line['quantity'] ?? 0);
@@ -858,7 +882,7 @@ class EscPosPayloadService
             return $this->subRow($indent . $qty . ' x ' . $name, $scale, true);
         }
 
-        return $this->sized($this->qtyItemColumns($qty, $name, $this->scaledWidth($scale)), $scale, true);
+        return $this->sized($this->qtyItemColumns($qty, $name, $this->scaledWidth($scale), $dividers), $scale, true);
     }
 
     private function quantity(float $quantity): string

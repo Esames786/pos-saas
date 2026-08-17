@@ -29,12 +29,21 @@
             $rFont  = (int) ($layout->font_size ?? 12);
             $rScaleW = match (true) { $rFont <= 17 => 1, $rFont <= 20 => 2, default => 3 };
             $rCols   = max((int) floor(42 / $rScaleW), 8);
+            // Item rows carry their own size (item_font_size); null = the reminder font.
+            $rItemFont = (int) ($layout->item_font_size ?? $rFont);
+            $riScaleW = match (true) { $rItemFont <= 17 => 1, $rItemFont <= 20 => 2, default => 3 };
+            $riCols   = max((int) floor(42 / $riScaleW), 8);
+            $rDividers = (bool) ($layout->show_column_dividers ?? false);
         @endphp
         .heading { font-size: 1.25em; font-weight: 800; }
         .line { margin: 6px 0; font-weight: 700; overflow-wrap: anywhere;
-                font-size: calc({{ $width }} / {{ $rCols * 0.6 }}); line-height: 1.2; }
+                font-size: calc({{ $width }} / {{ $riCols * 0.6 }}); line-height: 1.2; }
         /* Narrow left Qty column so the item names line up beside it, like the KOT. */
         .rqty { flex: 0 0 2.5em; text-align: right; white-space: nowrap; }
+        @if($rDividers)
+        /* Column divider line between Qty | Item, matching the thermal `|`. */
+        .rqty { border-right: 1px solid #000; padding-right: 6px; }
+        @endif
         /* A dashed rule under each top-level item, so rows read as boxes (matches the KOT). */
         .item-box { border-bottom: 1px dashed #000; padding-bottom: 4px; margin-bottom: 4px; }
         .child, .modifier, .note { margin-left: 12px; font-weight: 400; }

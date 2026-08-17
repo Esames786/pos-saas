@@ -23,6 +23,16 @@
     <input id="kot_font_size" type="number" name="kot_font_size" value="{{ old('kot_font_size', $l?->kot_font_size ?? 14) }}" class="form-control" min="8" max="24">
     <div class="form-text">Kitchen ticket. {!! $scaleHelp !!}</div>
 </div>
+<div class="col-md-6">
+    <label class="form-label" for="item_font_size">Item Row Font (px)</label>
+    <input id="item_font_size" type="number" name="item_font_size" value="{{ old('item_font_size', $l?->item_font_size) }}" class="form-control" min="8" max="24" placeholder="Same as document font">
+    <div class="form-text">Just the item rows. Leave blank to match the document font above. {!! $scaleHelp !!}</div>
+</div>
+<div class="col-md-6">
+    <label class="form-label" for="time_font_size">Time Line Font (px)</label>
+    <input id="time_font_size" type="number" name="time_font_size" value="{{ old('time_font_size', $l?->time_font_size) }}" class="form-control" min="8" max="24" placeholder="Same as KOT font">
+    <div class="form-text">KOT / Reminder TIME line only. Leave blank to match the KOT font. {!! $scaleHelp !!}</div>
+</div>
 <div class="col-12">
     <div class="alert alert-info py-2 mb-0 small">
         Bigger text means fewer characters per line — the printer does not wrap for you, so we wrap
@@ -66,11 +76,18 @@
             'show_delivery_details'  => 'Delivery Details',
             'show_vehicle_number'    => 'Vehicle Number',
             'show_order_type'        => 'Order Type',
+            'show_column_dividers'   => 'Column Divider Lines',
+            'show_category_header'   => 'KOT Category Header',
         ] as $field => $label)
+        @php
+            // Most toggles default ON for a brand-new layout; dividers are the exception (today's
+            // tickets have none), so they default OFF until an operator turns them on.
+            $switchDefault = $field === 'show_column_dividers' ? false : true;
+        @endphp
         <div class="col-md-4 layout-option" data-layout-field="{{ $field }}">
             <div class="form-check form-switch">
                 <input class="form-check-input" type="checkbox" name="{{ $field }}" value="1"
-                       @checked(old($field, $l?->{$field} ?? true))>
+                       @checked(old($field, $l?->{$field} ?? $switchDefault))>
                 <label class="form-check-label">{{ $label }}</label>
             </div>
         </div>

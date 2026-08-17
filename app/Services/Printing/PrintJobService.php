@@ -887,6 +887,10 @@ class PrintJobService
             'layout' => [
                 'paper_size' => $layout?->paper_size ?? $printer->paper_size ?? '80mm',
                 'font_size' => (int) ($layout?->font_size ?? 12),
+                'item_font_size' => $layout?->item_font_size !== null ? (int) $layout->item_font_size : null,
+                'time_font_size' => $layout?->time_font_size !== null ? (int) $layout->time_font_size : null,
+                'show_column_dividers' => (bool) ($layout?->show_column_dividers ?? false),
+                'show_category_header' => (bool) ($layout?->show_category_header ?? true),
                 'header_text' => $layout?->header_text,
                 'footer_text' => $layout?->footer_text,
                 'show_order_time' => (bool) ($layout?->show_order_time ?? true),

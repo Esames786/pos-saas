@@ -22,6 +22,10 @@
             // the ESC/POS 42-character composition, bigger type here cannot break the alignment;
             // long names simply wrap inside their cell, as they already do.
             $growBand = match (true) { $fontSize <= 14 => 1.0, $fontSize <= 20 => 1.45, default => 1.9 };
+            // Item rows carry their own size (item_font_size) so a long-name row can shrink without
+            // touching the totals block — mirrors EscPosPayloadService's $rowTall. Null = document font.
+            $itemFont = $layout?->item_font_size ?? $fontSize;
+            $itemBand = match (true) { $itemFont <= 14 => 1.0, $itemFont <= 20 => 1.45, default => 1.9 };
             // SHIFT-TIMEZONE-BUSINESS-DATE-HARDEN-1: print in the ORIGINAL operational timezone —
             // frozen shift tz first, then branch, then default — so changing the branch timezone
             // later never shifts a historical receipt/reprint's time.
@@ -34,6 +38,8 @@
             // "!( ... === false)" this blade showed a NULL column that the thermal payload hid,
             // so the on-screen preview and the paper could disagree.
             $show = fn (string $field) => $layout === null ? true : (bool) ($layout->{$field} ?? false);
+            // Column divider lines between Item | Qty | Rate | Amount, matching the thermal `|`.
+            $dividers = $show('show_column_dividers');
         @endphp
         /* THE ROLL STARTED A FINGER'S WIDTH DOWN THE PAGE.
            No @page rule was ever declared, so the browser applied its own default page size and
@@ -82,6 +88,13 @@
         /* What the customer reads — items and money — at the paper's scale. em, so the header
            font_size stays the base and the band multiplies it, print and screen alike. */
         .grow td { font-size: {{ $growBand }}em; }
+        /* Item rows carry their own band (item_font_size); wins over .grow td as it is declared
+           later with equal specificity. */
+        tbody.items td { font-size: {{ $itemBand }}em; }
+        /* Column divider lines — vertical rules between Item | Qty | Rate | Amount, drawn through
+           the header and every row, matching the `|` the thermal ticket now prints. */
+        table.col-div td { border-left: 1px solid #000; }
+        table.col-div td:first-child { border-left: none; }
         .print-btn { display: block; margin: 12px auto; padding: 8px 24px; cursor: pointer; font-size: 14px; }
         /* 320px left the slip swimming in the modal and every character smaller than it needed
            to be. Screen-only: the printed page still sizes from the paper width via @page. */
@@ -181,7 +194,7 @@
 
 <hr>
 
-<table>
+<table class="{{ $dividers ? 'col-div' : '' }}">
     <thead>
         <tr>
             <td class="item-name bold">Item</td>
@@ -190,7 +203,7 @@
             <td class="item-total bold">Amount</td>
         </tr>
     </thead>
-    <tbody class="grow">
+    <tbody class="grow items">
         @foreach($salesOrder->lines as $line)
         @if(($line->line_kind ?? 'standard') === 'component') @continue @endif
         <tr>

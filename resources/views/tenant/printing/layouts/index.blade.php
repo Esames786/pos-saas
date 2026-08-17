@@ -208,6 +208,8 @@ foreach ($layouts as $l) {
         'paper_size'    => $l->paper_size,
         'font_size'     => $l->font_size,
         'kot_font_size' => $l->kot_font_size,
+        'item_font_size' => $l->item_font_size,
+        'time_font_size' => $l->time_font_size,
         'header_text'   => $l->header_text,
         'footer_text'   => $l->footer_text,
         'is_active'     => (bool) $l->is_active,
@@ -243,6 +245,8 @@ function openEditLayout(layoutId, branchName, docType) {
     setFormValue(form, 'paper_size',   data.paper_size);
     setFormValue(form, 'font_size',    data.font_size);
     setFormValue(form, 'kot_font_size', data.kot_font_size);
+    setFormValue(form, 'item_font_size', data.item_font_size ?? '');
+    setFormValue(form, 'time_font_size', data.time_font_size ?? '');
     setFormValue(form, 'header_text',  data.header_text || '');
     setFormValue(form, 'footer_text',  data.footer_text || '');
 
@@ -282,11 +286,13 @@ function syncLayoutOptions(form, docType) {
                   'show_tax_number', 'show_cashier_name', 'show_customer_name', 'show_table_info',
                   'show_order_no', 'show_item_codes', 'show_payment_breakdown',
                   'show_bingoo_branding', 'show_delivery_details', 'show_vehicle_number',
-                  'show_order_type'],
+                  'show_order_type', 'show_column_dividers'],
         kot:      ['show_branch_name', 'show_cashier_name', 'show_table_info', 'show_order_no',
-                  'show_bingoo_branding', 'show_vehicle_number'],
+                  'show_bingoo_branding', 'show_vehicle_number', 'show_column_dividers',
+                  'show_category_header'],
         reminder: ['show_cashier_name', 'show_customer_name', 'show_table_info', 'show_order_no',
-                  'show_order_time', 'show_updated_time', 'show_print_time', 'show_bingoo_branding'],
+                  'show_order_time', 'show_updated_time', 'show_print_time', 'show_bingoo_branding',
+                  'show_column_dividers'],
     };
     const fields = supported[docType] || supported.receipt;
     form.querySelectorAll('[data-layout-field]').forEach(function (wrapper) {
@@ -305,6 +311,11 @@ function buildPreviewUrl() {
     params.set('paper_size',   form.querySelector('[name="paper_size"]')?.value   || data.paper_size);
     params.set('font_size',    form.querySelector('[name="font_size"]')?.value    || data.font_size);
     params.set('kot_font_size',form.querySelector('[name="kot_font_size"]')?.value || data.kot_font_size);
+    // Only send the row/time overrides when actually set, so blank keeps "same as document font".
+    var itemFs = form.querySelector('[name="item_font_size"]')?.value;
+    var timeFs = form.querySelector('[name="time_font_size"]')?.value;
+    if (itemFs) params.set('item_font_size', itemFs);
+    if (timeFs) params.set('time_font_size', timeFs);
     params.set('header_text',  form.querySelector('[name="header_text"]')?.value  || '');
     params.set('footer_text',  form.querySelector('[name="footer_text"]')?.value  || '');
 
