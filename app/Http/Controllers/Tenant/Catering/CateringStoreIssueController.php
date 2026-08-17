@@ -28,7 +28,7 @@ class CateringStoreIssueController extends Controller
     public function index(Request $request)
     {
         $issues = CateringMaterialIssue::query()
-            ->with(['lines', 'event:id,event_no,customer_name', 'branch:id,name'])
+            ->with(['lines', 'events:id,event_no,customer_name,event_date', 'branch:id,name'])
             ->latest('issued_at')
             ->paginate(25);
 
@@ -41,8 +41,7 @@ class CateringStoreIssueController extends Controller
             'branches' => Branch::where('status', 'active')->orderBy('name')->get(['id', 'name']),
             // Only open bookings are offered — referencing a closed or cancelled
             // event would be a note nobody can act on.
-            'events' => CateringEvent::query()
-                ->whereIn('status', CateringEvent::OPEN_STATUSES)
+            'events' => $this->attachableEvents()
                 ->orderByDesc('event_date')
                 ->limit(50)
                 ->get(['id', 'event_no', 'customer_name', 'event_date']),
@@ -53,7 +52,10 @@ class CateringStoreIssueController extends Controller
     {
         $data = $request->validate([
             'branch_id' => ['required', 'integer', 'exists:branches,id'],
-            'catering_event_id' => ['nullable', 'integer', 'exists:catering_events,id'],
+            // KASHIF-CATERING-STORE-2: zero, one, or many. One morning trip to
+            // the store may cover twelve weddings.
+            'event_ids' => ['nullable', 'array'],
+            'event_ids.*' => ['integer', 'exists:catering_events,id'],
             'note' => ['nullable', 'string', 'max:500'],
             'lines' => ['required', 'array', 'min:1'],
             'lines.*.product_id' => ['required', 'integer', 'exists:products,id'],
@@ -77,11 +79,25 @@ class CateringStoreIssueController extends Controller
             ])->withInput();
         }
 
+        // A booking that is over or cancelled cannot explain stock leaving today,
+        // so it cannot be attached. The same rule the picker filters by.
+        $eventIds = collect($data['event_ids'] ?? [])->map(fn ($id) => (int) $id)->filter()->unique();
+        if ($eventIds->isNotEmpty()) {
+            $attachable = $this->attachableEvents()->whereIn('id', $eventIds)->pluck('id');
+            if ($rejected = $eventIds->diff($attachable)->first()) {
+                $eventNo = CateringEvent::whereKey($rejected)->value('event_no') ?? "#{$rejected}";
+
+                return back()->withErrors([
+                    'issue' => "Booking {$eventNo} is closed or cancelled, so material cannot be issued against it.",
+                ])->withInput();
+            }
+        }
+
         try {
             $issue = $issues->issueDirect(
                 lines: $data['lines'],
                 branchId: (int) $data['branch_id'],
-                eventId: $data['catering_event_id'] ?? null,
+                eventIds: $eventIds->all(),
                 releaseId: null,
                 userId: $request->user()?->id,
                 note: $data['note'] ?? null,
@@ -90,9 +106,13 @@ class CateringStoreIssueController extends Controller
             return back()->withErrors(['issue' => $e->getMessage()])->withInput();
         }
 
+        $against = $eventIds->isEmpty()
+            ? 'as a general issue'
+            : 'against '.$eventIds->count().' booking'.($eventIds->count() === 1 ? '' : 's');
+
         return redirect()
             ->to('/catering/store-issues')
-            ->with('status', "Issue {$issue->issue_no} recorded — stock reduced and cost posted at the real batch price.");
+            ->with('status', "Issue {$issue->issue_no} recorded {$against} — stock reduced and cost posted at the real batch price.");
     }
 
     /**
@@ -106,6 +126,19 @@ class CateringStoreIssueController extends Controller
      * this set. Kept here too, because the picker is a convenience and the
      * server is the authority.
      */
+    /**
+     * Bookings that material may still be issued against.
+     *
+     * Reuses the existing lifecycle contract rather than inventing a second
+     * status vocabulary: CateringEvent::OPEN_STATUSES already decides what is
+     * operationally alive. A cancelled or closed booking cannot explain stock
+     * leaving the store today.
+     */
+    private function attachableEvents()
+    {
+        return CateringEvent::query()->whereIn('status', CateringEvent::OPEN_STATUSES);
+    }
+
     private function materialsQuery()
     {
         return Product::query()

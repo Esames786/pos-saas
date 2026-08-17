@@ -70,6 +70,13 @@ class CateringMaterialIssueService
                 'issued_by_user_id' => $userId,
             ]);
 
+            // A release belongs to exactly one booking, but it still records that
+            // reference through the same relation as everything else — so "which
+            // bookings is this issue for" has one answer everywhere.
+            if ($release->catering_event_id) {
+                $issue->events()->sync([$release->catering_event_id]);
+            }
+
             $totalCost = 0.0;
             foreach ($requirements as $requirement) {
                 $product = ! empty($requirement['product_id']) ? Product::find($requirement['product_id']) : null;
@@ -146,20 +153,27 @@ class CateringMaterialIssueService
      * cover ten bookings, one, part of one, or tomorrow's prep with no booking at
      * all.
      *
-     * So this takes the quantities as given. A booking may be referenced, and
-     * that reference is a note — the stock movement is the fact, and it is real
-     * whether or not anyone wrote an order number next to it.
+     * So this takes the quantities as given. Bookings may be referenced, and
+     * those references are notes — the stock movement is the fact, and it is
+     * real whether or not anyone wrote an order number next to it.
+     *
+     * KASHIF-CATERING-STORE-2: MANY bookings, because one morning trip covers
+     * twelve weddings. The number of references has no effect whatsoever on what
+     * leaves the store: eighty kilos issued against twelve bookings is one
+     * document, one set of FEFO stock-outs, one COGS posting. Twelve references
+     * are twelve reasons, not twelve movements.
      *
      * Everything below the document header is shared with the release path: the
      * same InventoryService::postOutFefo, the same FEFO costing, the same COGS
      * posting. There is one stock mutator, and this does not become a second.
      *
      * @param  array<int, array{product_id: int, quantity: float}>  $lines
+     * @param  array<int, int>  $eventIds  bookings this issue was made for; may be empty
      */
     public function issueDirect(
         array $lines,
         int $branchId,
-        ?int $eventId = null,
+        array $eventIds = [],
         ?int $releaseId = null,
         ?int $userId = null,
         ?string $note = null,
@@ -181,17 +195,31 @@ class CateringMaterialIssueService
             throw new RuntimeException('Nothing to issue — add at least one material with a quantity above zero.');
         }
 
-        return DB::connection('tenant')->transaction(function () use ($clean, $branch, $eventId, $releaseId, $userId, $note) {
+        $eventIds = collect($eventIds)->map(fn ($id) => (int) $id)->filter()->unique()->values();
+
+        return DB::connection('tenant')->transaction(function () use ($clean, $branch, $eventIds, $releaseId, $userId, $note) {
             $issue = CateringMaterialIssue::create([
                 'issue_no' => $this->numbers->nextMaterialIssueNo(),
-                // Both optional. A blank reference is a normal, complete record.
+                // All optional. A blank reference is a normal, complete record —
+                // daily prep and staff food leave the store too.
                 'catering_production_release_id' => $releaseId,
-                'catering_event_id' => $eventId,
+                // Legacy mirror of the first booking. New code reads events();
+                // this keeps anything still reading the column, and a rollback of
+                // the pivot migration, pointing at a real booking.
+                'catering_event_id' => $eventIds->first(),
                 'branch_id' => $branch->id,
                 'status' => CateringMaterialIssue::STATUS_ISSUED,
                 'issued_at' => now(),
                 'issued_by_user_id' => $userId,
             ]);
+
+            // Attached before the stock moves and inside the same transaction, so
+            // a failed issue leaves no dangling references — and so the reasons
+            // are part of the posted document rather than something editable
+            // afterwards. This is an immutable stock record.
+            if ($eventIds->isNotEmpty()) {
+                $issue->events()->sync($eventIds->all());
+            }
 
             $totalCost = 0.0;
 

@@ -53,16 +53,20 @@
                     </select>
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label">Against booking <span class="text-muted fs-12">(optional)</span></label>
-                    <select name="catering_event_id" class="form-select">
-                        <option value="">— none, general issue —</option>
+                    <label class="form-label">Against bookings <span class="text-muted fs-12">(optional)</span></label>
+                    <select name="event_ids[]" class="form-select" multiple size="4" id="event-picker">
                         @foreach($events as $event)
                             <option value="{{ $event->id }}">
                                 {{ $event->event_no }} · {{ $event->customer_name }} · {{ $event->event_date->format('d M Y') }}
                             </option>
                         @endforeach
                     </select>
-                    <div class="form-text">Reference only. Leave blank for daily prep or staff food.</div>
+                    {{-- References, not allocations: this says the material went
+                         out for these bookings, never how much each one took. --}}
+                    <div class="form-text">
+                        Select as many as this trip covers, or none for daily prep and staff food.
+                        The quantities below are not split between them.
+                    </div>
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">Note</label>
@@ -139,10 +143,21 @@
                     <td>{{ $issue->issued_at?->format('d M Y g:i A') }}</td>
                     <td>{{ $issue->branch?->name ?? '—' }}</td>
                     <td>
-                        @if($issue->event)
-                            <a href="{{ url('/catering/events/' . $issue->event->id) }}">{{ $issue->event->event_no }}</a>
-                        @else
+                        @php $against = $issue->events; @endphp
+                        @if($against->isEmpty())
                             <span class="text-muted fst-italic">general issue</span>
+                        @else
+                            {{-- Two names and a count, not twelve names in one cell.
+                                 The full list is a click away rather than a wall. --}}
+                            @foreach($against->take(2) as $event)
+                                <a href="{{ url('/catering/events/' . $event->id) }}">{{ $event->event_no }}</a>@if(! $loop->last), @endif
+                            @endforeach
+                            @if($against->count() > 2)
+                                <button type="button" class="btn btn-link btn-sm p-0 align-baseline"
+                                        data-bs-toggle="modal" data-bs-target="#issueBookings{{ $issue->id }}">
+                                    +{{ $against->count() - 2 }} more
+                                </button>
+                            @endif
                         @endif
                     </td>
                     <td class="fs-13">
@@ -163,6 +178,41 @@
         <div class="card-footer">{{ $issues->withQueryString()->links() }}</div>
     @endif
 </div>
+
+{{-- The complete booking list for each issue that has more than fits in a cell. --}}
+@foreach($issues as $issue)
+    @if($issue->events->count() > 2)
+    <div class="modal fade" id="issueBookings{{ $issue->id }}" tabindex="-1">
+        <div class="modal-dialog modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">{{ $issue->issue_no }} — {{ $issue->events->count() }} bookings</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <table class="table table-sm mb-0">
+                        <tbody>
+                            @foreach($issue->events as $event)
+                            <tr>
+                                <td><a href="{{ url('/catering/events/' . $event->id) }}">{{ $event->event_no }}</a></td>
+                                <td>{{ $event->customer_name }}</td>
+                                <td class="text-muted">{{ $event->event_date?->format('d M Y') }}</td>
+                            </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+                <div class="modal-footer">
+                    <span class="text-muted fs-12 me-auto">
+                        These bookings are why the material left the store. The quantities were not split between them.
+                    </span>
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    @endif
+@endforeach
 @endsection
 
 @push('scripts')

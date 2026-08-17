@@ -142,11 +142,11 @@ class CateringStoreIssueMySqlTest extends MySqlTenantTestCase
 
         $first = $this->service()->issueDirect(
             lines: [['product_id' => $this->chicken->id, 'quantity' => 10]],
-            branchId: $this->branchId, eventId: $event->id,
+            branchId: $this->branchId, eventIds: [$event->id],
         );
         $second = $this->service()->issueDirect(
             lines: [['product_id' => $this->chicken->id, 'quantity' => 5]],
-            branchId: $this->branchId, eventId: $event->id,
+            branchId: $this->branchId, eventIds: [$event->id],
         );
 
         $this->assertNotSame($first->id, $second->id);
@@ -216,7 +216,7 @@ class CateringStoreIssueMySqlTest extends MySqlTenantTestCase
 
         $issue = $this->service()->issueDirect(
             lines: [['product_id' => $this->chicken->id, 'quantity' => 6]],
-            branchId: $this->branchId, eventId: $event->id,
+            branchId: $this->branchId, eventIds: [$event->id],
         );
 
         DB::connection('tenant')->table('catering_estimates')->where('catering_event_id', $event->id)->delete();
