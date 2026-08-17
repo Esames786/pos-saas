@@ -267,12 +267,105 @@ Address search, customer/booking search, and possibly a catering-wide search.
 
 ---
 
+## Part 3 — The estimate line (Phase B contract)
+
+Locked, not built. Recorded here so Phase B is written against an agreed shape
+rather than one invented at implementation time.
+
+### 1 · A line explains itself, on request
+
+An estimate can hold twenty dishes, so a line stays compact and opens on demand:
+
+```
+Agra Shahi        100 KG        510        51,000     [Cost Details] [Instructions]
+```
+
+**Cost Details** shows whichever source is *active* for that dish. Never both,
+never a permanently expanded block that turns a twenty-line quotation into a
+wall.
+
+### 2 · Block mode shows three different numbers, apart
+
+The whole reason this design exists. These are not three views of one figure:
+
+| | Means | Comes from |
+|---|---|---|
+| **Charged** | what the customer pays for that part, per unit of dish | the block's rate |
+| **Consumed** | how much material one unit of dish uses | the block's ratio |
+| **Actual cost** | what that material really costs | Material Rate Book × consumed |
+
+```
+Costing Source: Cost Blocks
+  Chicken    charged 310 / KG dish     consumes 0.50 KG / KG dish
+  Making     charged 200 / KG dish
+  ─────────────────────────────────────
+  Selling rate                510 / KG
+```
+
+> Collapsing charged and consumed into one number is the single mistake this
+> whole architecture exists to prevent. Actual cost never comes from the
+> commercial block — always from the rate book.
+
+### 3 · Recipe mode explains cost and margin
+
+Ingredient consumption, expected material cost, selling rate, estimated margin.
+A material rate moving changes **cost and margin**, never the selling price —
+that asymmetry is the point of [§9 above](#9--block-mode-moves-price-recipe-mode-moves-margin).
+
+### 4 · Customer-supplied material
+
+A per-line override, not a change to the dish:
+
+```
+Chicken block normally:  charged 310 · consumes 0.50 KG
+Customer supplies it:    charged   0 · consumes    0 · store issues nothing
+Making:                  still charged
+```
+
+One customer's arrangement never edits the dish everyone else is quoted from.
+
+### 5 · Manual rate override needs a model, not a silent win
+
+Today a typed rate can quietly contradict an active block calculation, and
+nothing records that it did. Phase B must distinguish **calculated rate** from
+**quoted rate**, and capture a reason where the two differ. Until then, a
+discount is indistinguishable from a mistake.
+
+### 6 · "Mark Sent / Lock" is the wrong words
+
+The freeze authority is right; the label describes the mechanism instead of the
+act. It should read as a business action — *Finalize Quotation* or *Send
+Quotation* — which internally validates costing, freezes the snapshot, and moves
+the document to sent.
+
+Two rules that outlive the wording:
+
+- **Previewing or printing must never finalize.** Looking at a document is not
+  agreeing to it.
+- A sent or accepted quotation stays immutable.
+
+### 7 · Instructions
+
+Item-level, as now. The target is a managed multi-select plus an optional free
+note — see [§A in the parity backlog](#a--item-wise-kitchen-instructions), still
+blocked on the client's vocabulary export.
+
+### 8 · Making is a charge, and adjusting it is its own flow
+
+Making moves no stock. Bulk adjustment (`500 → 600`) previews affected dishes and
+eligible drafts before anything is applied, and is Phase E — not part of the
+estimate line.
+
+---
+
 ## Sequence
 
 ```
 DONE     finance    customer credit, refunds, booking statement   (production 9b4ad86)
-NOW      Phase A    costing source UI, block configuration, per-line orchestrator
-THEN     Phase B    booking-line block snapshot + customer-supplied material
+DONE     Phase A    costing source UI, block configuration, per-line orchestrator (458a9ae)
+DONE     store ops  searchable materials, many-booking issue, booking modal (af45f37)
+NOW      UAT reset  clean Kashif, rebuild a requirement-aligned dataset
+THEN     Phase B    estimate-line cost details · customer-supplied material · rate override
 THEN     Phase C    kitchen requirement sheet wiring
 THEN     Phase D    Rate Impact — block price vs recipe margin
 THEN     Phase E    making bulk adjustment
