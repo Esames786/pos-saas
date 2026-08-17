@@ -146,9 +146,32 @@ class CateringCostBlockService
      */
     public function expectedMaterialCost(int $productId, float $quantity, array $zeroed = [], ?string $asOfDate = null): float
     {
+        return round(
+            collect($this->expectedMaterialBreakdown($productId, $quantity, $zeroed, $asOfDate))
+                ->sum('cost'),
+            4
+        );
+    }
+
+    /**
+     * The same calculation, itemised — what each material contributes to cost.
+     *
+     * The orchestrator needs the detail to record a snapshot an operator can
+     * read afterwards; expectedMaterialCost() is this, summed. One computation,
+     * so a total can never disagree with the lines it came from.
+     *
+     * A material with no rate is reported with `rate => null` and zero cost
+     * rather than guessed. It is excluded from the total for the same reason,
+     * and readiness() is what refuses the quotation over it.
+     *
+     * @param  array<int, int>  $zeroed
+     * @return array<int, array{product_id: int, name: string, required_qty: float, unit_code: ?string, rate: ?float, cost: float}>
+     */
+    public function expectedMaterialBreakdown(int $productId, float $quantity, array $zeroed = [], ?string $asOfDate = null): array
+    {
         $asOfDate = $asOfDate ?: now()->toDateString();
         $zeroed = array_map('intval', $zeroed);
-        $cost = 0.0;
+        $entries = [];
 
         foreach ($this->blocksFor($productId) as $block) {
             if (! $block->isMaterial() || in_array((int) $block->id, $zeroed, true)) {
@@ -167,17 +190,17 @@ class CateringCostBlockService
                 ->orderByDesc('id')
                 ->value('rate');
 
-            // No rate book entry means no honest cost. Skipping it silently
-            // would understate cost and overstate margin, so it is left out and
-            // reported by readiness() instead of being guessed.
-            if ($rate === null) {
-                continue;
-            }
-
-            $cost += $required * (float) $rate;
+            $entries[] = [
+                'product_id' => (int) $block->material_product_id,
+                'name' => $block->material?->name ?? $block->label,
+                'required_qty' => $required,
+                'unit_code' => $block->unit?->code,
+                'rate' => $rate === null ? null : round((float) $rate, 4),
+                'cost' => $rate === null ? 0.0 : round($required * (float) $rate, 4),
+            ];
         }
 
-        return round($cost, 4);
+        return $entries;
     }
 
     /**

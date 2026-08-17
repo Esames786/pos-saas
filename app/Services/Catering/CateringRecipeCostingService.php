@@ -60,30 +60,9 @@ class CateringRecipeCostingService
         $warnings = [];
 
         foreach ($result['lines'] as $line) {
-            if ($line['warning'] !== null) {
-                if ($line['method'] === 'none') {
-                    $warnings[] = $line['warning']; // free-text line — visible, not silent
-                } else {
-                    $blockers[] = $line['warning']; // conversion / yield problems on a costed line
-                }
-            }
-
-            foreach ($line['ingredients'] as $ingredient) {
-                if (! empty($ingredient['warning'])) {
-                    $blockers[] = $ingredient['warning'];
-
-                    continue;
-                }
-
-                if (($ingredient['rate_source'] ?? null) === 'purchase_price') {
-                    $blockers[] = "'{$ingredient['name']}' has no effective Catering Material Rate — "
-                        .'the draft preview shows the purchase-price FALLBACK ('
-                        .number_format((float) $ingredient['rate'], 2)
-                        .'), which is not accepted for a customer quotation. Record a rate in the Material Rate Book.';
-                } elseif ((float) ($ingredient['rate'] ?? 0) <= 0) {
-                    $blockers[] = "'{$ingredient['name']}' cannot be priced (zero/absent rate).";
-                }
-            }
+            $verdict = $this->verdictForLine($line);
+            $blockers = array_merge($blockers, $verdict['blockers']);
+            $warnings = array_merge($warnings, $verdict['warnings']);
         }
 
         return [
@@ -92,6 +71,60 @@ class CateringRecipeCostingService
             'warnings' => array_values(array_unique($warnings)),
             'result' => $result,
         ];
+    }
+
+    /**
+     * The readiness rules for ONE costed line, applied to a breakdown from
+     * calculate() or costLineFor().
+     *
+     * Extracted so the estimate-wide verdict above and the per-line dispatcher
+     * used by mixed-mode estimates apply the identical rules. Two copies of
+     * "what counts as a blocker" would agree on the day they were written and
+     * not for long after.
+     *
+     * @param  array<string, mixed>  $line
+     * @return array{blockers: string[], warnings: string[]}
+     */
+    public function verdictForLine(array $line): array
+    {
+        $blockers = [];
+        $warnings = [];
+
+        if ($line['warning'] !== null) {
+            if ($line['method'] === 'none') {
+                $warnings[] = $line['warning']; // free-text line — visible, not silent
+            } else {
+                $blockers[] = $line['warning']; // conversion / yield problems on a costed line
+            }
+        }
+
+        foreach ($line['ingredients'] as $ingredient) {
+            if (! empty($ingredient['warning'])) {
+                $blockers[] = $ingredient['warning'];
+
+                continue;
+            }
+
+            if (($ingredient['rate_source'] ?? null) === 'purchase_price') {
+                $blockers[] = "'{$ingredient['name']}' has no effective Catering Material Rate — "
+                    .'the draft preview shows the purchase-price FALLBACK ('
+                    .number_format((float) $ingredient['rate'], 2)
+                    .'), which is not accepted for a customer quotation. Record a rate in the Material Rate Book.';
+            } elseif ((float) ($ingredient['rate'] ?? 0) <= 0) {
+                $blockers[] = "'{$ingredient['name']}' cannot be priced (zero/absent rate).";
+            }
+        }
+
+        return ['blockers' => $blockers, 'warnings' => $warnings];
+    }
+
+    /**
+     * Cost ONE line, for a mixed-mode estimate where only some lines are the
+     * recipe engine's business. Same computation the estimate-wide path uses.
+     */
+    public function costLineFor(CateringEstimateLine $line, ?string $asOfDate = null): array
+    {
+        return $this->costLine($line, $asOfDate ?? now()->toDateString());
     }
 
     /** Compute the full costing breakdown for an estimate. Pure — persists nothing. */

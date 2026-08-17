@@ -22,7 +22,10 @@ class CateringEstimateService
 {
     public function __construct(
         private readonly CateringNumberService $numbers,
-        private readonly CateringRecipeCostingService $costing,
+        // KASHIF-CATERING-COSTING-SOURCE-1: the per-line dispatcher, not the
+        // recipe engine directly. An estimate may mix costing sources, and each
+        // line must be judged by its own.
+        private readonly CateringEstimateCostingService $costing,
     ) {}
 
     /**

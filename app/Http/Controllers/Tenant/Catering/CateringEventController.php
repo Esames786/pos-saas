@@ -150,9 +150,12 @@ class CateringEventController extends Controller
 
         // CATERING-V1-CLOSURE-1 (§2): costing readiness for the current estimate —
         // send/confirm fail closed server-side; the panel shows why beforehand.
+        // KASHIF-CATERING-COSTING-SOURCE-1: through the dispatcher, so the panel
+        // and the server-side send/confirm gate can never reach different
+        // verdicts about the same estimate.
         $costingReadiness = null;
         if ($cateringEvent->currentEstimate && $cateringEvent->currentEstimate->lines->isNotEmpty()) {
-            $costingReadiness = app(\App\Services\Catering\CateringRecipeCostingService::class)
+            $costingReadiness = app(\App\Services\Catering\CateringEstimateCostingService::class)
                 ->readiness($cateringEvent->currentEstimate);
         }
 

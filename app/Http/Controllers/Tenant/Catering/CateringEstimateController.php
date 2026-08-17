@@ -58,7 +58,12 @@ class CateringEstimateController extends Controller
     public function reprice(Request $request, CateringEstimate $cateringEstimate)
     {
         try {
-            $snapshot = app(\App\Services\Catering\CateringRecipeCostingService::class)
+            // KASHIF-CATERING-COSTING-SOURCE-1: the dispatcher, which refuses to
+            // record a cost it cannot stand behind. It used to be possible to
+            // persist a number derived from an incomplete rate book; the
+            // operator now gets the reason instead of a figure they would have
+            // had no way of doubting.
+            $snapshot = app(\App\Services\Catering\CateringEstimateCostingService::class)
                 ->snapshot($cateringEstimate, $request->user()?->id);
         } catch (RuntimeException $e) {
             return back()->withErrors(['estimate' => $e->getMessage()]);
