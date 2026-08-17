@@ -48,9 +48,14 @@ class ShiftController extends Controller
 
     public function create()
     {
+        // USER-DATA-SCOPE-1: a terminal-restricted cashier opens only HIS terminals — the same
+        // scope the POS terminal picker uses. An unbound Owner/Manager still sees every terminal.
+        $user  = auth('tenant')->user();
+        $scope = app(\App\Services\Security\UserDataScope::class);
+
         return view('tenant.shifts.open', [
-            'branches'  => Branch::where('status', 'active')->orderBy('name')->get(),
-            'terminals' => Terminal::where('status', 'active')->with('branch')->orderBy('name')->get(),
+            'branches'  => $scope->branchesForPos($user),
+            'terminals' => $scope->terminalsForPos($user),
         ]);
     }
 
@@ -243,7 +248,13 @@ class ShiftController extends Controller
      */
     public function closeBranchForm(Request $request)
     {
-        $branches = Branch::where('status', 'active')->orderBy('name')->get();
+        // USER-DATA-SCOPE-1: show only the open shifts this operator may actually close — the same
+        // canOperateTerminal rule the close action enforces — so the list and the "Close N shifts"
+        // count match what will happen. An unbound Owner/Manager still sees every open shift.
+        $user  = auth('tenant')->user();
+        $scope = app(\App\Services\Security\UserDataScope::class);
+
+        $branches = $scope->branchesForPos($user);
         $selectedBranchId = $request->input('branch_id');
         $openShifts = collect();
 
@@ -252,7 +263,9 @@ class ShiftController extends Controller
                 ->where('branch_id', $selectedBranchId)
                 ->where('status', 'open')
                 ->orderBy('terminal_id')
-                ->get();
+                ->get()
+                ->filter(fn ($shift) => $scope->canOperateTerminal($user, (int) $shift->terminal_id))
+                ->values();
         }
 
         return view('tenant.shifts.close-branch', compact('branches', 'selectedBranchId', 'openShifts'));

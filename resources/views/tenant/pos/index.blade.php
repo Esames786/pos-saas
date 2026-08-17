@@ -1578,7 +1578,7 @@ document.addEventListener('DOMContentLoaded', function () {
         // delivery charge — shown on its order types, restored on recall (recallHeldSale),
         // cleared here when switching to a type that has no vehicle. TDZ-safe scoped lookup.
         {
-            const isVehicleType = orderTypeEl.value === 'quick_sale' || orderTypeEl.value === 'takeaway';
+            const isVehicleType = orderTypeEl.value === 'quick_sale';
             const vWrap = document.getElementById('vehicle-wrap');
             const vEl = document.getElementById('vehicle_number');
             if (vWrap) vWrap.style.display = isVehicleType ? 'inline-flex' : 'none';

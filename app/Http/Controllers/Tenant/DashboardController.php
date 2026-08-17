@@ -60,8 +60,13 @@ class DashboardController extends Controller
         $branches       = Branch::where('status', 'active')->orderBy('name')->get();
         $selectedBranch = $request->integer('branch_id') ?: null;
 
+        // USER-DATA-SCOPE-1: the dashboard defaults to the operator's own terminals + order types.
+        // A user assigned all terminals and all order types is unrestricted and sees everything.
+        $scopeUser = auth('tenant')->user();
+        $scope     = app(\App\Services\Security\UserDataScope::class);
+
         // Today's sales stats
-        $today = $salesService->todayStats($selectedBranch);
+        $today = $salesService->todayStats($selectedBranch, $scopeUser);
 
         // SHIFT-POS-INTEGRATION-CLOSURE-1: operational "today" uses the BUSINESS calendar date in
         // each branch's business timezone (via TenantClock) — NEVER Laravel's UTC today(), which can
@@ -90,7 +95,8 @@ class DashboardController extends Controller
             ->join('sales_orders', 'sale_payments.sales_order_id', '=', 'sales_orders.id')
             ->join('payment_methods', 'sale_payments.payment_method_id', '=', 'payment_methods.id')
             ->where('sales_orders.status', 'paid')
-            ->when($selectedBranch, fn ($q) => $q->where('sales_orders.branch_id', $selectedBranch)))
+            ->when($selectedBranch, fn ($q) => $q->where('sales_orders.branch_id', $selectedBranch))
+            ->tap(fn ($q) => $scope->applyToSales($q, $scopeUser, 'sales_orders')))
             ->where('payment_methods.method_type', 'cash')
             ->sum('sale_payments.amount');
 
@@ -98,13 +104,15 @@ class DashboardController extends Controller
             ->join('sales_orders', 'sale_payments.sales_order_id', '=', 'sales_orders.id')
             ->join('payment_methods', 'sale_payments.payment_method_id', '=', 'payment_methods.id')
             ->where('sales_orders.status', 'paid')
-            ->when($selectedBranch, fn ($q) => $q->where('sales_orders.branch_id', $selectedBranch)))
+            ->when($selectedBranch, fn ($q) => $q->where('sales_orders.branch_id', $selectedBranch))
+            ->tap(fn ($q) => $scope->applyToSales($q, $scopeUser, 'sales_orders')))
             ->whereIn('payment_methods.method_type', ['card', 'bank_transfer'])
             ->sum('sale_payments.amount');
 
-        // Open shifts
+        // Open shifts (scoped to the operator's terminals, when he is terminal-restricted).
         $openShifts = Shift::where('status', 'open')
             ->when($selectedBranch, fn ($q) => $q->where('branch_id', $selectedBranch))
+            ->when($scope->terminalIds($scopeUser), fn ($q, $t) => $q->whereIn('terminal_id', $t))
             ->count();
 
         // Failed print jobs (last 24h)
@@ -124,7 +132,8 @@ class DashboardController extends Controller
         $topProducts = $applyToday(SalesOrderLine::query()
             ->join('sales_orders', 'sales_order_lines.sales_order_id', '=', 'sales_orders.id')
             ->where('sales_orders.status', 'paid')
-            ->when($selectedBranch, fn ($q) => $q->where('sales_orders.branch_id', $selectedBranch)))
+            ->when($selectedBranch, fn ($q) => $q->where('sales_orders.branch_id', $selectedBranch))
+            ->tap(fn ($q) => $scope->applyToSales($q, $scopeUser, 'sales_orders')))
             ->selectRaw('sales_order_lines.product_name, SUM(sales_order_lines.quantity) as qty_sold, SUM(sales_order_lines.line_total) as revenue')
             ->groupBy('sales_order_lines.product_name')
             ->orderByDesc('qty_sold')
@@ -139,6 +148,7 @@ class DashboardController extends Controller
         $last7Days = SalesOrder::query()
             ->where('status', 'paid')
             ->when($selectedBranch, fn ($q) => $q->where('branch_id', $selectedBranch))
+            ->tap(fn ($q) => $scope->applyToSales($q, $scopeUser))
             ->whereRaw("$businessDayNoPrefix >= ?", [$windowStart])
             ->selectRaw("$businessDayNoPrefix as day, COALESCE(SUM(grand_total), 0) as net_sales, COUNT(*) as orders")
             ->groupByRaw($businessDayNoPrefix)

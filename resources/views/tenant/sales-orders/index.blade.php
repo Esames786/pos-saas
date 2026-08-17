@@ -48,10 +48,9 @@
                 <label for="type-filter" class="form-label">Type</label>
                 <select id="type-filter" name="order_type" class="form-select">
                     <option value="">All Types</option>
-                    <option value="quick_sale" @selected(request('order_type') === 'quick_sale')>Quick Sale</option>
-                    <option value="takeaway"   @selected(request('order_type') === 'takeaway')>Takeaway</option>
-                    <option value="dine_in"    @selected(request('order_type') === 'dine_in')>Dine In</option>
-                    <option value="delivery"   @selected(request('order_type') === 'delivery')>Delivery</option>
+                    @foreach(($orderTypes ?? array_keys(\App\Models\Tenant\User::ORDER_TYPES)) as $ot)
+                        <option value="{{ $ot }}" @selected(request('order_type') === $ot)>{{ \App\Models\Tenant\User::ORDER_TYPES[$ot] ?? ucfirst(str_replace('_', ' ', $ot)) }}</option>
+                    @endforeach
                 </select>
             </div>
             <div class="col-md-2">
