@@ -45,6 +45,18 @@ class CateringCostBlockController extends Controller
             'units' => Unit::where('is_active', true)->orderBy('code')->get(['id', 'code', 'name']),
             // Things the store can actually hand over. A dish is not a material,
             // so sale items are deliberately absent from this list.
+            // KASHIF-CATERING-STORE-2 (help text): what each material actually
+            // costs today, so the preview can show the difference between what
+            // the customer is charged and what the kitchen pays. READ-ONLY — the
+            // Material Rate Book stays the only place a rate is edited.
+            'materialRates' => \App\Models\Tenant\CateringMaterialRate::query()
+                ->whereDate('effective_from', '<=', now()->toDateString())
+                ->orderBy('product_id')
+                ->orderBy('effective_from')
+                ->orderBy('id')
+                ->get(['product_id', 'rate'])
+                ->keyBy('product_id')
+                ->map(fn ($row) => (float) $row->rate),
             'materials' => Product::query()
                 ->whereIn('product_kind', [
                     Product::KIND_RAW_MATERIAL,
