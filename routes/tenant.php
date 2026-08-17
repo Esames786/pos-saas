@@ -883,6 +883,9 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                     // the booking reference is a note, never a requirement.
                     Route::get('/catering/store-issues', [\App\Http\Controllers\Tenant\Catering\CateringStoreIssueController::class, 'index'])->name('tenant.catering.store-issues.index');
                     Route::post('/catering/store-issues', [\App\Http\Controllers\Tenant\Catering\CateringStoreIssueController::class, 'store'])->name('tenant.catering.store-issues.store');
+                    // KASHIF-CATERING-STORE-2: read-only booking lookup for the
+                    // selection modal — "what is going out tonight".
+                    Route::get('/catering/store-issues/bookings', [\App\Http\Controllers\Tenant\Catering\CateringStoreIssueController::class, 'bookings'])->name('tenant.catering.store-issues.bookings');
 
                     Route::post('/catering/events/{cateringEvent}/final-invoice', [\App\Http\Controllers\Tenant\Catering\CateringFinalInvoiceController::class, 'store'])->name('tenant.catering.final-invoices.store');
                     Route::post('/catering/events/{cateringEvent}/close', [\App\Http\Controllers\Tenant\Catering\CateringFinalInvoiceController::class, 'close'])->name('tenant.catering.events.close');

@@ -93,6 +93,13 @@ class PermissionCatalogService
         'tenant.catering.documents.kitchen-sheet' => 'Print / Reprint',
         'tenant.catering.documents.final-invoice' => 'Print / Reprint',
         'tenant.catering.material-issues.store' => 'Issue Materials',
+        // The store counter, and the booking lookup its selection modal reads.
+        // Grouped together so the screen and the list it needs are granted as
+        // one thing — a granted screen whose lookup is denied shows an empty
+        // modal and looks broken.
+        'tenant.catering.store-issues.index' => 'Store Issue',
+        'tenant.catering.store-issues.store' => 'Store Issue',
+        'tenant.catering.store-issues.bookings' => 'Store Issue',
         'tenant.catering.final-invoices.store' => 'Finalise Event',
         'tenant.catering.events.close' => 'Finalise Event',
         'tenant.catering.profiles.index' => 'Catering Products',

@@ -127,6 +127,55 @@ class CateringStoreIssueController extends Controller
      * server is the authority.
      */
     /**
+     * KASHIF-CATERING-STORE-2 — which bookings are happening on a given day.
+     *
+     * The storeman's question is never "search all bookings"; it is "what is
+     * going out tonight". So the date leads and the search narrows within it,
+     * rather than the other way round.
+     *
+     * Read-only. Returns enough for someone at a counter to recognise a booking
+     * without opening it: who, when, where, and how many people.
+     */
+    public function bookings(Request $request)
+    {
+        $data = $request->validate([
+            'date' => ['nullable', 'date'],
+            'q' => ['nullable', 'string', 'max:120'],
+        ]);
+
+        $search = trim((string) ($data['q'] ?? ''));
+
+        $events = $this->attachableEvents()
+            ->when(! empty($data['date']), fn ($q) => $q->whereDate('event_date', $data['date']))
+            ->when($search !== '', fn ($q) => $q->where(function ($w) use ($search) {
+                $w->where('event_no', 'like', "%{$search}%")
+                    ->orWhere('customer_name', 'like', "%{$search}%")
+                    ->orWhere('customer_phone', 'like', "%{$search}%")
+                    ->orWhere('venue', 'like', "%{$search}%")
+                    ->orWhere('customer_address', 'like', "%{$search}%");
+            }))
+            ->orderBy('event_date')
+            ->orderBy('service_time')
+            ->limit(200)
+            ->get(['id', 'event_no', 'customer_name', 'customer_phone', 'event_date',
+                'service_time', 'venue', 'customer_address', 'pax', 'status']);
+
+        return response()->json([
+            'results' => $events->map(fn (CateringEvent $event) => [
+                'id' => $event->id,
+                'event_no' => $event->event_no,
+                'customer' => $event->customer_name,
+                'phone' => $event->customer_phone,
+                'date' => $event->event_date?->format('d M Y'),
+                'time' => $event->service_time,
+                'venue' => $event->venue ?: $event->customer_address,
+                'pax' => (int) $event->pax,
+                'status' => $event->status,
+            ])->values(),
+        ]);
+    }
+
+    /**
      * Bookings that material may still be issued against.
      *
      * Reuses the existing lifecycle contract rather than inventing a second

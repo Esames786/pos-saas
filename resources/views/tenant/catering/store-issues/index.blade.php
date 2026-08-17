@@ -52,19 +52,24 @@
                         @endforeach
                     </select>
                 </div>
+                {{-- The storeman's question is "what is going out tonight", never
+                     "search every booking". So the date leads, inside a modal,
+                     and the selection is summarised out here. --}}
                 <div class="col-md-4">
                     <label class="form-label">Against bookings <span class="text-muted fs-12">(optional)</span></label>
-                    <select name="event_ids[]" class="form-select" multiple size="4" id="event-picker">
-                        @foreach($events as $event)
-                            <option value="{{ $event->id }}">
-                                {{ $event->event_no }} · {{ $event->customer_name }} · {{ $event->event_date->format('d M Y') }}
-                            </option>
-                        @endforeach
-                    </select>
+                    <div id="selected-bookings-box" class="border rounded p-2">
+                        <div id="selected-summary" class="fst-italic text-muted">General issue — no bookings</div>
+                        <div id="selected-chips" class="fs-12 mt-1"></div>
+                        <button type="button" class="btn btn-sm btn-outline-primary mt-2"
+                                data-bs-toggle="modal" data-bs-target="#bookingModal" id="open-booking-modal">
+                            <i class="ti ti-calendar-search me-1"></i>Select bookings
+                        </button>
+                    </div>
+                    <div id="selected-inputs"></div>
                     {{-- References, not allocations: this says the material went
                          out for these bookings, never how much each one took. --}}
                     <div class="form-text">
-                        Select as many as this trip covers, or none for daily prep and staff food.
+                        As many as this trip covers, or none for daily prep and staff food.
                         The quantities below are not split between them.
                     </div>
                 </div>
@@ -179,6 +184,62 @@
     @endif
 </div>
 
+{{-- ── Booking selection ─────────────────────────────────────────────────
+     One trip to the store covers many bookings. The date leads because that is
+     how a storeman thinks about the day; search narrows within it. --}}
+<div class="modal fade" id="bookingModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Which bookings is this material for?</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-2 mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label fs-12 text-muted mb-1">Event date</label>
+                        <input type="date" id="booking-date" class="form-control form-control-sm"
+                               value="{{ now()->format('Y-m-d') }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fs-12 text-muted mb-1">Search</label>
+                        <input type="text" id="booking-search" class="form-control form-control-sm"
+                               placeholder="Booking no, customer, phone or venue…">
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button type="button" class="btn btn-sm btn-light w-100" id="booking-clear-date"
+                                title="Search across every date instead of one">Any date</button>
+                    </div>
+                </div>
+
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <div class="form-check mb-0">
+                        <input class="form-check-input" type="checkbox" id="booking-select-all">
+                        <label class="form-check-label fs-13" for="booking-select-all">
+                            Select all shown
+                        </label>
+                    </div>
+                    <span class="text-muted fs-12" id="booking-count"></span>
+                </div>
+
+                <div id="booking-results" class="list-group"></div>
+                <div id="booking-empty" class="text-center text-muted py-4 d-none">
+                    No bookings match. Try another date, or clear the search.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <span class="text-muted fs-12 me-auto">
+                    These are the reasons the material left the store — quantities are not split between them.
+                </span>
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="booking-attach" data-bs-dismiss="modal">
+                    Attach bookings
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {{-- The complete booking list for each issue that has more than fits in a cell. --}}
 @foreach($issues as $issue)
     @if($issue->events->count() > 2)
@@ -244,6 +305,117 @@ $(function () {
     }
 
     $('.material-picker').each(function () { pickerFor($(this)); });
+
+    // ── Booking selection ────────────────────────────────────────────────
+    // `chosen` survives closing and reopening the modal, and survives changing
+    // the date — a storeman covering two days should not lose yesterday's ticks
+    // by looking at today.
+    const chosen = new Map();
+    let shown = [];
+
+    const esc = s => $('<div>').text(s == null ? '' : s).html();
+
+    function renderSelection() {
+        const n = chosen.size;
+        $('#selected-inputs').html(
+            [...chosen.keys()].map(id =>
+                '<input type="hidden" name="event_ids[]" value="' + id + '">').join('')
+        );
+
+        if (n === 0) {
+            $('#selected-summary').addClass('fst-italic text-muted').text('General issue — no bookings');
+            $('#selected-chips').empty();
+            return;
+        }
+
+        $('#selected-summary').removeClass('fst-italic text-muted')
+            .text('Selected bookings: ' + n);
+
+        const labels = [...chosen.values()].slice(0, 3).map(b => esc(b.event_no));
+        $('#selected-chips').html(labels.join(' · ') + (n > 3 ? ' · +' + (n - 3) : ''));
+    }
+
+    function renderResults() {
+        if (shown.length === 0) {
+            $('#booking-results').empty();
+            $('#booking-empty').removeClass('d-none');
+            $('#booking-count').text('');
+            $('#booking-select-all').prop('checked', false);
+            return;
+        }
+
+        $('#booking-empty').addClass('d-none');
+        $('#booking-count').text(shown.length + ' booking' + (shown.length === 1 ? '' : 's') + ' shown');
+
+        $('#booking-results').html(shown.map(b =>
+            '<label class="list-group-item d-flex gap-2 align-items-start">' +
+              '<input class="form-check-input mt-1 booking-tick" type="checkbox" value="' + b.id + '"' +
+                (chosen.has(String(b.id)) ? ' checked' : '') + '>' +
+              '<span class="flex-grow-1">' +
+                '<span class="fw-semibold">' + esc(b.event_no) + '</span> · ' + esc(b.customer) +
+                (b.phone ? ' <span class="text-muted fs-12">' + esc(b.phone) + '</span>' : '') +
+                '<span class="d-block fs-12 text-muted">' +
+                  esc(b.date) + (b.time ? ' · ' + esc(b.time) : '') +
+                  (b.venue ? ' · ' + esc(b.venue) : '') +
+                  ' · ' + b.pax + ' guests' +
+                '</span>' +
+              '</span>' +
+              '<span class="badge bg-secondary-subtle text-secondary-emphasis">' + esc(b.status) + '</span>' +
+            '</label>'
+        ).join(''));
+
+        syncSelectAll();
+    }
+
+    function syncSelectAll() {
+        const allTicked = shown.length > 0 && shown.every(b => chosen.has(String(b.id)));
+        $('#booking-select-all').prop('checked', allTicked);
+    }
+
+    function loadBookings() {
+        $.getJSON('{{ url('/catering/store-issues/bookings') }}', {
+            date: $('#booking-date').val(),
+            q: $('#booking-search').val(),
+        }).done(function (data) {
+            shown = data.results || [];
+            renderResults();
+        }).fail(function () {
+            shown = [];
+            renderResults();
+        });
+    }
+
+    $('#open-booking-modal').on('click', loadBookings);
+    $('#booking-date, #booking-search').on('change', loadBookings);
+    $('#booking-search').on('keyup', function (e) { if (e.key === 'Enter') loadBookings(); });
+    $('#booking-clear-date').on('click', function () {
+        $('#booking-date').val('');
+        loadBookings();
+    });
+
+    $(document).on('change', '.booking-tick', function () {
+        const id = String(this.value);
+        if (this.checked) {
+            chosen.set(id, shown.find(b => String(b.id) === id));
+        } else {
+            chosen.delete(id);
+        }
+        syncSelectAll();
+        renderSelection();
+    });
+
+    // Only what is currently on screen. Ticking "select all" while a filter is
+    // active must never quietly attach bookings the operator cannot see.
+    $('#booking-select-all').on('change', function () {
+        const on = this.checked;
+        shown.forEach(b => on ? chosen.set(String(b.id), b) : chosen.delete(String(b.id)));
+        $('.booking-tick').prop('checked', on);
+        renderSelection();
+    });
+
+    $('#booking-attach').on('click', renderSelection);
+
+    renderSelection();
 
     $('#add-issue-line').on('click', function () {
         const index = $('#issue-lines-body .issue-line').length;
