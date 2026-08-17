@@ -7,6 +7,12 @@ then starting a genuine rebuild of how a dish is priced.
 **Deploys:** 3, all verified, zero rollbacks
 **Test suite:** 187 → **415 MySQL tests**, 2,477 assertions
 
+> **Later:** the finance tranche shipped on 17 August (production `9b4ad86`,
+> 475 MySQL tests). The decisions that came out of it, and the old-software
+> requirements that were still only in screenshots, are recorded separately in
+> [catering-costing-and-parity-contract.md](catering-costing-and-parity-contract.md).
+> Read that one for what is *settled*; this one is what *happened*.
+
 ---
 
 ## Day 1 — 15 August: closing the UAT defects
