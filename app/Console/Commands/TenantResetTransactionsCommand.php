@@ -22,6 +22,13 @@ use Illuminate\Support\Facades\Schema;
  * balances + counts + transfers + batches, kitchen/manufacturing transactions, department
  * stock/handovers, print jobs, schedule runs. Restaurant tables reset to 'available'.
  *
+ * KASHIF-CATERING-UAT-RESET-1 also wipes catering DOCUMENTS — bookings, estimates,
+ * advances, refunds, final invoices, production releases, material/store issues —
+ * and keeps catering CONFIGURATION: profiles, cost blocks, the Material Rate Book,
+ * printer mappings, settings. Until this was added the command was not merely
+ * incomplete for a catering tenant but unsafe: it truncated the journals and stock
+ * ledgers those documents referenced and left the documents behind.
+ *
  * Triple-guarded: --yes, --confirm=<tenant_code> must match, refuses on a Branch Server.
  * ALWAYS take a DB backup before running this on a real tenant.
  */
@@ -66,6 +73,24 @@ class TenantResetTransactionsCommand extends Command
         'production_orders',
         // report runs (schedule CONFIG is kept)
         'report_schedule_runs',
+        // KASHIF-CATERING-UAT-RESET-1: catering business documents.
+        //
+        // These were unclassified until now, which made this command UNSAFE for a
+        // catering tenant rather than merely incomplete: it truncates journals and
+        // stock ledgers, so a reset would have left every booking, advance, refund
+        // and material issue in place pointing at accounting and stock rows that
+        // no longer existed. The command warned about the unclassified tables and
+        // carried on.
+        //
+        // Ordered children-first like everything above. Catering CONFIG — profiles,
+        // cost blocks, printer mappings, settings, the Material Rate Book — is
+        // master data and is kept, exactly as recipes and products are.
+        'catering_email_logs', 'catering_event_reminders',
+        'catering_material_issue_events', 'catering_material_issue_lines', 'catering_material_issues',
+        'catering_production_release_lines', 'catering_production_releases',
+        'catering_refunds', 'catering_final_invoices', 'catering_advances',
+        'catering_cost_snapshots', 'catering_estimate_lines', 'catering_estimates',
+        'catering_events',
     ];
 
     /** Master-data sanity tables: their counts must be IDENTICAL before and after. */
@@ -110,7 +135,7 @@ class TenantResetTransactionsCommand extends Command
         $unclassified = $this->unclassifiedTables();
         if ($unclassified !== []) {
             $this->warn('Tables not classified as wipe/keep (verify before trusting this reset): '
-                . implode(', ', $unclassified));
+                .implode(', ', $unclassified));
         }
 
         $before = [];
@@ -154,12 +179,12 @@ class TenantResetTransactionsCommand extends Command
             }
         }
 
-        $this->info("reset '{$code}': " . count($wiped) . ' transactional tables wiped (' . array_sum($wiped) . ' rows): '
-            . collect($wiped)->map(fn ($n, $t) => "{$t}={$n}")->implode(', '));
-        $this->info('master data kept: ' . collect($before)->map(fn ($n, $t) => "{$t}={$n}")->implode(', '));
+        $this->info("reset '{$code}': ".count($wiped).' transactional tables wiped ('.array_sum($wiped).' rows): '
+            .collect($wiped)->map(fn ($n, $t) => "{$t}={$n}")->implode(', '));
+        $this->info('master data kept: '.collect($before)->map(fn ($n, $t) => "{$t}={$n}")->implode(', '));
 
         if ($failures) {
-            $this->error('INTEGRITY FAILURES: ' . implode(' | ', $failures));
+            $this->error('INTEGRITY FAILURES: '.implode(' | ', $failures));
 
             return self::FAILURE;
         }
@@ -187,6 +212,12 @@ class TenantResetTransactionsCommand extends Command
         'model_has_roles', 'model_has_permissions', 'role_has_permissions',
         'user_printer_settings', 'print_agents', 'customer_addresses', 'report_schedules',
         'edge_local_meta', 'edge_local_user_credentials',
+        // Catering CONFIGURATION, kept for the same reason recipes are: it
+        // describes how the business quotes and costs, not what it has sold.
+        // The Material Rate Book in particular is a caterer's price list — losing
+        // it to a transaction reset would be losing master data.
+        'catering_product_profiles', 'catering_product_cost_blocks',
+        'catering_material_rates', 'catering_printer_mappings', 'catering_settings',
     ];
 
     /** Tenant tables this command has no opinion about — surfaced as a warning. */
