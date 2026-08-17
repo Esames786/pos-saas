@@ -6,6 +6,7 @@ use App\Models\Tenant\CateringCostSnapshot;
 use App\Models\Tenant\CateringEstimate;
 use App\Models\Tenant\CateringEstimateLine;
 use App\Models\Tenant\CateringProductProfile;
+use App\Models\Tenant\Product;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -155,6 +156,35 @@ class CateringEstimateCostingService
                 'computed_by_user_id' => $userId,
             ]);
         });
+    }
+
+    /**
+     * Can this product be switched INTO the given costing source right now?
+     *
+     * Estimate readiness asks whether a quotation can be sent. This asks
+     * something earlier: whether a dish may be moved into an authority that
+     * cannot yet cost it. Without this, an operator could save "Cost Blocks" on
+     * a dish with no blocks, and only discover at send time that the dish had
+     * been unquotable since the moment they saved it.
+     *
+     * Dispatch lives here, with all the other dispatch, so the two engines still
+     * never learn about each other.
+     *
+     * @return array{ready: bool, blockers: string[], warnings: string[]}
+     */
+    public function productReadinessFor(Product $product, string $targetMode, ?string $asOfDate = null): array
+    {
+        if ($targetMode === CateringProductProfile::COSTING_BLOCKS) {
+            $readiness = $this->blocks->readiness($product->id, $asOfDate);
+
+            return [
+                'ready' => $readiness['ready'],
+                'blockers' => $readiness['blockers'],
+                'warnings' => $readiness['warnings'],
+            ];
+        }
+
+        return $this->recipes->productReadiness($product, $asOfDate);
     }
 
     /** Which authority costs this line. Absent or unrecognised means recipe. */

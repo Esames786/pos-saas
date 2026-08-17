@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Tenant\CateringProductProfile;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\Unit;
+use App\Services\Catering\CateringEstimateCostingService;
 use App\Services\Catering\CateringLocalizationService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -48,6 +49,12 @@ class CateringProductProfileController extends Controller
     {
         $data = $this->validated($request);
 
+        $existing = CateringProductProfile::where('product_id', $data['product_id'])->first();
+
+        if ($refusal = $this->refuseUnreadySwitch($data['product_id'], $data['costing_mode'], $existing?->costingMode())) {
+            return $refusal;
+        }
+
         $profile = CateringProductProfile::updateOrCreate(
             ['product_id' => $data['product_id']],
             collect($data)->except(['product_id', 'name_ur'])->all()
@@ -66,6 +73,14 @@ class CateringProductProfileController extends Controller
     {
         $data = $this->validated($request, $cateringProductProfile);
 
+        if ($refusal = $this->refuseUnreadySwitch(
+            $cateringProductProfile->product_id,
+            $data['costing_mode'],
+            $cateringProductProfile->costingMode()
+        )) {
+            return $refusal;
+        }
+
         $cateringProductProfile->update(collect($data)->except(['product_id', 'name_ur'])->all());
 
         $this->localization->setProductName(
@@ -75,6 +90,54 @@ class CateringProductProfileController extends Controller
         );
 
         return back()->with('status', 'Catering profile updated.');
+    }
+
+    /**
+     * KASHIF-CATERING-COSTING-SOURCE-1 — a dish may not be moved into a costing
+     * source that cannot yet cost it.
+     *
+     * Without this the operator could save "Cost Blocks" on a dish with no
+     * blocks. Nothing would break at that moment; the dish would simply become
+     * unquotable, and they would find out at send time, having forgotten what
+     * they changed. The refusal belongs where the decision is made.
+     *
+     * It fires ONLY when the source actually changes. Editing a station or a
+     * label on a dish whose recipe has always been incomplete must not suddenly
+     * fail — this guards the switch, not the history.
+     *
+     * Neither dataset is touched by a refusal. The blocks an operator was part
+     * way through configuring are still there when they come back to finish.
+     */
+    private function refuseUnreadySwitch(int $productId, string $requested, ?string $stored)
+    {
+        if ($stored !== null && $requested === $stored) {
+            return null;
+        }
+
+        // A brand-new profile defaulting to recipe is the state every dish is
+        // already in; nothing is being moved, so nothing is validated.
+        if ($stored === null && $requested === CateringProductProfile::COSTING_RECIPE) {
+            return null;
+        }
+
+        $product = Product::find($productId);
+        if (! $product) {
+            return null; // the validator's exists: rule already owns this case
+        }
+
+        $readiness = app(CateringEstimateCostingService::class)->productReadinessFor($product, $requested);
+
+        if ($readiness['ready']) {
+            return null;
+        }
+
+        $sourceName = $requested === CateringProductProfile::COSTING_BLOCKS ? 'Cost Blocks' : 'Recipe';
+
+        return back()->withErrors([
+            'costing_mode' => "{$product->name} cannot switch to {$sourceName} yet: "
+                .implode(' ', $readiness['blockers'])
+                .' Nothing has been changed, and the configuration you already have is untouched.',
+        ])->withInput();
     }
 
     private function validated(Request $request, ?CateringProductProfile $profile = null): array

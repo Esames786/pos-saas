@@ -127,6 +127,46 @@ class CateringRecipeCostingService
         return $this->costLine($line, $asOfDate ?? now()->toDateString());
     }
 
+    /**
+     * Could this product be costed from its recipe if it had to be, today?
+     *
+     * Asked before a dish is switched INTO recipe mode, so it cannot be moved
+     * into an authority that has nothing to say. Deliberately answered by
+     * costing a throwaway one-unit line through the ordinary path rather than by
+     * a second set of rules: a separate "is the recipe complete" checklist would
+     * agree with the real costing on the day it was written and drift afterwards.
+     *
+     * A product with no recipe is not automatically unready — the engine costs
+     * such a product directly from the Rate Book, which is how a caterer quotes
+     * a raw material. It is unready when that cannot be priced either.
+     *
+     * @return array{ready: bool, blockers: string[], warnings: string[]}
+     */
+    public function productReadiness(Product $product, ?string $asOfDate = null): array
+    {
+        $product->loadMissing(['activeRecipe.ingredients.product.unit', 'unit']);
+
+        // An unsaved probe. Never persisted, never counted — it exists only to
+        // run the real calculation over one unit of this dish.
+        $probe = new CateringEstimateLine;
+        $probe->forceFill([
+            'product_id' => $product->id,
+            'item_name' => $product->name,
+            'quantity' => 1,
+            'unit_id' => $product->unit_id,
+        ]);
+        $probe->setRelation('product', $product);
+        $probe->setRelation('unit', $product->unit);
+
+        $verdict = $this->verdictForLine($this->costLineFor($probe, $asOfDate));
+
+        return [
+            'ready' => $verdict['blockers'] === [],
+            'blockers' => array_values(array_unique($verdict['blockers'])),
+            'warnings' => array_values(array_unique($verdict['warnings'])),
+        ];
+    }
+
     /** Compute the full costing breakdown for an estimate. Pure — persists nothing. */
     public function calculate(CateringEstimate $estimate, ?string $asOfDate = null): array
     {
