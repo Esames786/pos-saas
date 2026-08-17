@@ -209,7 +209,18 @@ class CateringEntitlementMySqlTest extends MySqlTenantTestCase
 
         $featureNames = array_keys($cateringNode['features']);
         sort($featureNames);
-        $this->assertSame([
+
+        // The friendly vocabulary. Every group an operator can be shown must be
+        // one of these — a raw route name reaching the screen is the failure
+        // this test exists to catch.
+        //
+        // Asserted as a SUBSET rather than an exact snapshot, deliberately. Which
+        // catering permissions exist in the database depends on what has been
+        // route-synced, so an exact list quietly made this test depend on which
+        // OTHER test ran first: the same code produced twelve names alone and
+        // thirteen inside the suite. Membership is the property actually being
+        // protected; the count was an accident of ordering.
+        $friendly = [
             'Catering Products',
             'Catering Settings',
             'Confirm Booking',
@@ -219,10 +230,27 @@ class CateringEntitlementMySqlTest extends MySqlTenantTestCase
             'Manage Material Rates',
             'Print / Reprint',
             'Record Advance',
+            'Refund Customer',
             'Release Production',
             'Send / Revise Quote',
+            'Store Issue',
             'View Catering',
-        ], $featureNames, 'friendly business groups — never an unreadable flat route list');
+        ];
+
+        foreach ($featureNames as $name) {
+            $this->assertContains($name, $friendly,
+                "'{$name}' is not a business action — the Permission Center must never show a raw route group");
+        }
+
+        // …and the core lifecycle is genuinely grouped, not merely absent.
+        foreach ([
+            'View Catering', 'Create / Edit Estimate', 'Send / Revise Quote', 'Confirm Booking',
+            'Record Advance', 'Release Production', 'Issue Materials', 'Finalise Event',
+            'Manage Material Rates', 'Catering Products', 'Print / Reprint', 'Catering Settings',
+        ] as $expected) {
+            $this->assertContains($expected, $featureNames,
+                "the Permission Center must still group '{$expected}'");
+        }
 
         // Sensitive lifecycle actions stay individually visible inside their group…
         $allNames = collect($cateringNode['features'])
