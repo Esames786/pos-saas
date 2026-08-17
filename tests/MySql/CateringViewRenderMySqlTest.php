@@ -125,6 +125,19 @@ class CateringViewRenderMySqlTest extends MySqlTenantTestCase
                 'costingReadiness' => app(\App\Services\Catering\CateringRecipeCostingService::class)->readiness($estimate),
             ] + $this->financePayload($event),
             'tenant.catering.profiles.index' => ['profiles' => $profiles, 'units' => $units, 'search' => ''],
+            // The block editor must render for a dish with NO blocks configured —
+            // that is the state every dish is in the first time it is opened.
+            'tenant.catering.cost-blocks.edit' => [
+                'profile' => $profiles->first(),
+                'blocks' => app(\App\Services\Catering\CateringCostBlockService::class)
+                    ->blocksFor($profiles->first()->product_id),
+                'readiness' => app(\App\Services\Catering\CateringCostBlockService::class)
+                    ->readiness($profiles->first()->product_id),
+                'rate' => app(\App\Services\Catering\CateringCostBlockService::class)
+                    ->rateFor($profiles->first()->product_id),
+                'units' => $units,
+                'materials' => \App\Models\Tenant\Product::limit(5)->get(['id', 'name', 'sku', 'unit_id']),
+            ],
             'tenant.catering.material-rates.index' => [
                 'latestRates' => \App\Models\Tenant\CateringMaterialRate::with(['product.unit', 'unit', 'product.translations'])->paginate(25),
                 'history' => null, 'units' => $units, 'search' => '',
@@ -161,6 +174,7 @@ class CateringViewRenderMySqlTest extends MySqlTenantTestCase
             'tenant.catering.events.form',
             'tenant.catering.events.show',
             'tenant.catering.profiles.index',
+            'tenant.catering.cost-blocks.edit',
             'tenant.catering.material-rates.index',
             'tenant.catering.rate-impact.index',
             'tenant.catering.printer-mappings.index',

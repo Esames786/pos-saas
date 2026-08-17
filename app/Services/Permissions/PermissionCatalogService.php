@@ -98,6 +98,10 @@ class PermissionCatalogService
         'tenant.catering.profiles.index' => 'Catering Products',
         'tenant.catering.profiles.store' => 'Catering Products',
         'tenant.catering.profiles.update' => 'Catering Products',
+        // Same feature as the profile it hangs off: whoever may configure a
+        // catering product may say what it is made of.
+        'tenant.catering.cost-blocks.edit' => 'Catering Products',
+        'tenant.catering.cost-blocks.update' => 'Catering Products',
         'tenant.catering.printer-mappings.index' => 'Catering Settings',
         'tenant.catering.printer-mappings.store' => 'Catering Settings',
         'tenant.catering.printer-mappings.destroy' => 'Catering Settings',

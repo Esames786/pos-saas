@@ -111,6 +111,13 @@
                         <td>{{ $profile->production_station ?? '—' }}</td>
                         <td><span class="badge bg-{{ $profile->catering_enabled ? 'success' : 'secondary' }}">{{ $profile->catering_enabled ? 'Yes' : 'No' }}</span></td>
                         <td class="text-end">
+                            @can('tenant.catering.cost-blocks.edit')
+                                <a href="{{ url('/catering/profiles/' . $profile->id . '/blocks') }}"
+                                   class="btn btn-sm btn-light" data-bs-toggle="tooltip"
+                                   title="What this dish is made of, and what each part adds to its price.">
+                                    Cost Blocks
+                                </a>
+                            @endcan
                             @can('tenant.catering.profiles.update')
                                 <button class="btn btn-sm btn-light edit-profile"
                                         data-profile='@json($profilePayload)'>Edit</button>

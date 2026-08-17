@@ -861,6 +861,11 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                     Route::post('/catering/profiles', [\App\Http\Controllers\Tenant\Catering\CateringProductProfileController::class, 'store'])->name('tenant.catering.profiles.store');
                     Route::put('/catering/profiles/{cateringProductProfile}', [\App\Http\Controllers\Tenant\Catering\CateringProductProfileController::class, 'update'])->name('tenant.catering.profiles.update');
 
+                    // KASHIF-CATERING-COST-BLOCKS-1: what a dish is made of, and what
+                    // each part adds to its price. Configuration only — posts nothing.
+                    Route::get('/catering/profiles/{cateringProductProfile}/blocks', [\App\Http\Controllers\Tenant\Catering\CateringCostBlockController::class, 'edit'])->name('tenant.catering.cost-blocks.edit');
+                    Route::put('/catering/profiles/{cateringProductProfile}/blocks', [\App\Http\Controllers\Tenant\Catering\CateringCostBlockController::class, 'update'])->name('tenant.catering.cost-blocks.update');
+
                     Route::post('/catering/events/{cateringEvent}/advances', [\App\Http\Controllers\Tenant\Catering\CateringAdvanceController::class, 'store'])->name('tenant.catering.advances.store');
 
                     // KASHIF-CATERING-CUSTOMER-CREDIT-1: the one catering action that

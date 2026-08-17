@@ -233,6 +233,39 @@ class CateringCostBlockMySqlTest extends MySqlTenantTestCase
         $this->assertSame(7200.0, $this->service()->priceLine($this->biryani->id, 10)['total']);
     }
 
+    /**
+     * The number that matters most, stated on its own: what the customer is
+     * charged for a material and what that material costs are unrelated.
+     *
+     * A 10 KG biryani charges 200/KG of dish for chicken — 2,000 — while drawing
+     * 5 KG at the rate book's 320, which is 1,600. Snapshotting the charge as
+     * cost would report a margin that never existed.
+     */
+    public function test_the_charge_for_a_material_is_not_what_that_material_costs(): void
+    {
+        $blocks = $this->buildBiryani();
+        CateringMaterialRate::where('product_id', $this->chicken->id)->delete();
+        CateringMaterialRate::create([
+            'product_id' => $this->chicken->id, 'rate' => 320, 'unit_id' => $this->unitId,
+            'effective_from' => now()->subDay()->toDateString(),
+        ]);
+
+        $line = $this->service()->priceLine($this->biryani->id, 10);
+        $chicken = collect($line['blocks'])->firstWhere('label', 'chicken');
+
+        $this->assertSame(2000.0, $chicken['amount'], 'charged 10 x 200 for chicken');
+        $this->assertEqualsWithDelta(5.0, $chicken['required_qty'], 0.001, 'while drawing 5 KG');
+
+        // 5 KG chicken x 320 + 5 KG rice x 120 = 1,600 + 600
+        $this->assertEqualsWithDelta(2200.0, $this->service()->expectedMaterialCost($this->biryani->id, 10), 0.01);
+        $this->assertEqualsWithDelta(
+            1600.0,
+            $this->service()->expectedMaterialCost($this->biryani->id, 10, [$blocks['rice']->id]),
+            0.01,
+            'the chicken alone costs 1,600 — not the 2,000 it was charged at'
+        );
+    }
+
     /** Customer-supplied material costs nothing, because none of it is used. */
     public function test_customer_supplied_material_costs_nothing(): void
     {
