@@ -65,6 +65,54 @@
     </div>
 @endif
 
+{{-- ── What the two kinds of part mean ───────────────────────────────────
+     Written for whoever actually enters this, not for whoever built it. The
+     labels alone ("Charged per KG", "Material per KG") are accurate and still
+     read as two versions of the same number to someone seeing them first. --}}
+<div class="row g-3 mb-3">
+    <div class="col-md-6">
+        <div class="card h-100 border-info-subtle">
+            <div class="card-body">
+                <h6 class="mb-2"><i class="ti ti-meat text-info me-1"></i>Material</h6>
+                <p class="mb-2 fs-13">
+                    Something real the kitchen uses — chicken, beef, rice, oil. Adding one
+                    answers <strong>two separate questions</strong>:
+                </p>
+                <ol class="fs-13 mb-2 ps-3">
+                    <li>How much does it add to what the customer pays?</li>
+                    <li>How much of it does the kitchen actually use?</li>
+                </ol>
+                <div class="bg-body-secondary rounded p-2 fs-12">
+                    Chicken Karahi, charged <strong>200</strong> per {{ $unitCode }} and using
+                    <strong>0.5 {{ $unitCode }}</strong> of chicken per {{ $unitCode }}.<br>
+                    A 10 {{ $unitCode }} order bills <strong>2,000</strong> for chicken —
+                    and the store hands over <strong>5 {{ $unitCode }}</strong>.
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card h-100 border-secondary-subtle">
+            <div class="card-body">
+                <h6 class="mb-2"><i class="ti ti-cash text-secondary me-1"></i>Charge</h6>
+                <p class="mb-2 fs-13">
+                    Money for work, not for goods — making, labour, packing, a live counter.
+                    Nothing leaves the store for a charge.
+                </p>
+                <div class="bg-body-secondary rounded p-2 fs-12 mb-2">
+                    Making at <strong>500</strong> per {{ $unitCode }} does not mean 500 rupees
+                    of anything is taken out of the store. It is the kitchen's work.
+                </div>
+                <p class="mb-0 fs-13">
+                    <strong>Per {{ $unitCode }}</strong> multiplies by the order size.
+                    <strong>Lump sum</strong> is charged once — a 3,000 counter setup is 3,000
+                    whether the order is 10 {{ $unitCode }} or 100.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
 @if(! empty($readiness['warnings']))
     <div class="alert alert-warning">
         <ul class="mb-0">
@@ -207,20 +255,26 @@
     <div class="card-body">
         <div class="row g-3">
             <div class="col-md-7">
+                {{-- Three columns because these are three different numbers, and
+                     showing them side by side is the only way that becomes
+                     obvious. Charged is a price. Drawn is a quantity. Costs us
+                     is what that quantity is worth at today's rate book. --}}
                 <table class="table table-sm mb-0" id="preview-table">
                     <thead>
                         <tr>
                             <th>Part</th>
-                            <th class="text-end">Charged</th>
-                            <th class="text-end">Material drawn</th>
+                            <th class="text-end">Customer pays</th>
+                            <th class="text-end">Kitchen uses</th>
+                            <th class="text-end">Costs us</th>
                         </tr>
                     </thead>
                     <tbody id="preview-body"></tbody>
                     <tfoot>
                         <tr class="fw-bold border-top">
-                            <td>Customer pays</td>
+                            <td>Total</td>
                             <td class="text-end" id="preview-total">0.00</td>
                             <td></td>
+                            <td class="text-end" id="preview-cost">0.00</td>
                         </tr>
                     </tfoot>
                 </table>
@@ -233,12 +287,23 @@
 
                     <hr>
 
-                    <div class="text-muted fs-12">
-                        <i class="ti ti-alert-circle"></i>
-                        <strong>Charged is not cost.</strong> What the customer pays for a material and how much
-                        of it the kitchen draws are separate numbers. The material's real cost comes from the
-                        <a href="{{ url('/catering/material-rates') }}">Material Rate Book</a>, and the gap
-                        between the two is the margin.
+                    <div class="fs-12">
+                        <div class="fw-semibold mb-1">Three different numbers</div>
+                        <dl class="row mb-2 g-0">
+                            <dt class="col-5 fw-normal text-muted">Customer pays</dt>
+                            <dd class="col-7 mb-1">what this part adds to the bill</dd>
+                            <dt class="col-5 fw-normal text-muted">Kitchen uses</dt>
+                            <dd class="col-7 mb-1">how much material actually leaves the store</dd>
+                            <dt class="col-5 fw-normal text-muted">Costs us</dt>
+                            <dd class="col-7 mb-0">that quantity at today's material rate</dd>
+                        </dl>
+                        <div class="text-muted">
+                            They are meant to differ — the gap between what is charged and what it costs
+                            is the margin. Rates come from the
+                            <a href="{{ url('/catering/material-rates') }}">Material Rate Book</a>,
+                            which is the only place they are edited.
+                        </div>
+                        <div id="preview-missing-rate" class="text-warning-emphasis mt-2 d-none"></div>
                     </div>
                 </div>
             </div>
@@ -289,6 +354,9 @@ $(function () {
     @endphp
     const materialOptions = @json($materialOptions);
     const unitOptions = @json($unitOptions);
+    // Read-only, from the Material Rate Book. Shown so the operator can see what
+    // a part really costs beside what it charges; never editable from here.
+    const materialRates = @json($materialRates);
 
     function addRow(type) {
         const index = $('#blocks-body .block-row').length;
@@ -343,10 +411,13 @@ $(function () {
         });
     }
 
+    const money = n => n.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
     function preview() {
         const qty = parseFloat($('#preview-qty').val()) || 0;
-        let total = 0, perUnit = 0;
+        let total = 0, perUnit = 0, cost = 0;
         const rows = [];
+        const unrated = [];
 
         $('#blocks-body .block-row').each(function () {
             const $r = $(this);
@@ -354,6 +425,7 @@ $(function () {
             const rate = parseFloat($r.find('.f-rate').val()) || 0;
             const lump = $r.find('.f-basis').val() === 'lump_sum';
             const ratio = parseFloat($r.find('[name$="[quantity_per_unit]"]').val()) || 0;
+            const materialId = $r.find('[name$="[material_product_id]"]').val();
 
             // A lump sum ignores quantity entirely — that is the whole point of
             // it — and never enters the per-unit rate, where it would be wrong
@@ -362,24 +434,47 @@ $(function () {
             total += amount;
             if (!lump) perUnit += rate;
 
-            rows.push({
-                label: label,
-                amount: amount,
-                drawn: ratio > 0 ? (ratio * qty) : null,
-                lump: lump,
-            });
+            const drawn = ratio > 0 ? (ratio * qty) : null;
+
+            // What that quantity is worth at today's rate book — NOT the amount
+            // charged above. A material with no rate is left blank rather than
+            // counted as free, which would flatter the margin.
+            let lineCost = null;
+            if (drawn !== null && materialId) {
+                const bookRate = materialRates[materialId];
+                if (bookRate === undefined || bookRate === null) {
+                    unrated.push(label);
+                } else {
+                    lineCost = drawn * bookRate;
+                    cost += lineCost;
+                }
+            }
+
+            rows.push({label, amount, drawn, lump, lineCost});
         });
 
         $('#preview-body').html(rows.length ? rows.map(r =>
             '<tr><td>' + $('<div>').text(r.label).html() +
             (r.lump ? ' <span class="badge bg-light text-muted fs-12">once</span>' : '') +
-            '</td><td class="text-end">' + r.amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) +
+            '</td><td class="text-end">' + money(r.amount) +
             '</td><td class="text-end text-muted">' +
             (r.drawn === null ? '—' : r.drawn.toLocaleString(undefined, {maximumFractionDigits: 4})) +
-            '</td></tr>').join('') : '<tr><td colspan="3" class="text-center text-muted py-3">Nothing to preview yet.</td></tr>');
+            '</td><td class="text-end text-muted">' +
+            (r.lineCost === null ? '—' : money(r.lineCost)) +
+            '</td></tr>').join('') : '<tr><td colspan="4" class="text-center text-muted py-3">Nothing to preview yet.</td></tr>');
 
-        $('#preview-total').text(total.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}));
-        $('#preview-rate').text(perUnit.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}));
+        $('#preview-total').text(money(total));
+        $('#preview-cost').text(money(cost));
+        $('#preview-rate').text(money(perUnit));
+
+        if (unrated.length) {
+            $('#preview-missing-rate')
+                .text('No material rate yet for: ' + unrated.join(', ') +
+                      '. Their cost is left blank rather than counted as nothing.')
+                .removeClass('d-none');
+        } else {
+            $('#preview-missing-rate').addClass('d-none');
+        }
     }
 
     $(document).on('input change', '#blocks-body input, #blocks-body select, #preview-qty', preview);

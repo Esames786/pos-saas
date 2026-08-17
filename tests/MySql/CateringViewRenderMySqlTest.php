@@ -137,6 +137,7 @@ class CateringViewRenderMySqlTest extends MySqlTenantTestCase
                     ->rateFor($profiles->first()->product_id),
                 'units' => $units,
                 'materials' => \App\Models\Tenant\Product::limit(5)->get(['id', 'name', 'sku', 'unit_id']),
+                'materialRates' => collect(),
             ],
             'tenant.catering.material-rates.index' => [
                 'latestRates' => \App\Models\Tenant\CateringMaterialRate::with(['product.unit', 'unit', 'product.translations'])->paginate(25),
@@ -524,6 +525,86 @@ class CateringViewRenderMySqlTest extends MySqlTenantTestCase
         }
 
         DB::setDefaultConnection('tenant');
+    }
+
+    /**
+     * KASHIF-CATERING-STORE-2 — the Cost Blocks screen must explain itself.
+     *
+     * "Charged per KG" and "Material per KG" are both accurate and both read as
+     * versions of the same number to someone meeting them for the first time.
+     * Getting that wrong means quoting a dish at what its chicken costs, or
+     * asking the store for what the customer was billed.
+     */
+    public function test_the_cost_block_screen_explains_itself_in_operator_language(): void
+    {
+        $profile = \App\Models\Tenant\CateringProductProfile::with('product.unit')->first();
+
+        $html = View::make('tenant.catering.cost-blocks.edit', [
+            'profile' => $profile,
+            'blocks' => app(\App\Services\Catering\CateringCostBlockService::class)->blocksFor($profile->product_id),
+            'readiness' => app(\App\Services\Catering\CateringCostBlockService::class)->readiness($profile->product_id),
+            'rate' => 0.0,
+            'units' => \App\Models\Tenant\Unit::all(),
+            'materials' => \App\Models\Tenant\Product::limit(5)->get(['id', 'name', 'sku', 'unit_id']),
+            'materialRates' => collect(),
+        ])->render();
+
+        // The two kinds of part, told apart in words rather than by field name.
+        $this->assertStringContainsString('Something real the kitchen uses', $html,
+            'a material must be described as a physical thing');
+        $this->assertStringContainsString('Money for work, not for goods', $html,
+            'a charge must be described as work, not stock');
+        $this->assertStringContainsString('Nothing leaves the store for a charge', $html);
+
+        // Per-unit versus lump sum, in an example rather than a definition.
+        $this->assertStringContainsString('multiplies by the order size', $html);
+        $this->assertStringContainsString('charged once', $html);
+
+        // The three numbers, named as three things.
+        foreach (['Customer pays', 'Kitchen uses', 'Costs us'] as $column) {
+            $this->assertStringContainsString($column, $html,
+                "the preview must name '{$column}' as its own number");
+        }
+        $this->assertStringContainsString('They are meant to differ', $html);
+
+        // The rate book is named as the source of real cost, and as the ONLY
+        // place a rate is edited — two writable sources would be worse than one.
+        $this->assertStringContainsString('Material Rate Book', $html);
+        $this->assertStringContainsString('only place they are edited', $html);
+    }
+
+    /**
+     * The commercial contribution must never be presented as what the material
+     * costs. That conflation is the one this whole screen exists to prevent.
+     */
+    public function test_the_cost_block_screen_never_calls_the_charge_a_material_cost(): void
+    {
+        $profile = \App\Models\Tenant\CateringProductProfile::with('product.unit')->first();
+
+        $html = View::make('tenant.catering.cost-blocks.edit', [
+            'profile' => $profile,
+            'blocks' => app(\App\Services\Catering\CateringCostBlockService::class)->blocksFor($profile->product_id),
+            'readiness' => app(\App\Services\Catering\CateringCostBlockService::class)->readiness($profile->product_id),
+            'rate' => 0.0,
+            'units' => \App\Models\Tenant\Unit::all(),
+            'materials' => \App\Models\Tenant\Product::limit(5)->get(['id', 'name', 'sku', 'unit_id']),
+            'materialRates' => collect(),
+        ])->render();
+
+        foreach ([
+            'Material cost per',
+            'Cost per unit',
+            'material cost contribution',
+        ] as $conflation) {
+            $this->assertStringNotContainsString($conflation, $html,
+                "'{$conflation}' would present what the customer is charged as what the material costs");
+        }
+
+        // And developer vocabulary stays out of an operator screen.
+        foreach (['pricing authority', 'snapshot authority', 'commercial component'] as $jargon) {
+            $this->assertStringNotContainsString($jargon, $html,
+                "'{$jargon}' is code vocabulary, not something a storeman should have to parse");
+        }
     }
 
     /**
