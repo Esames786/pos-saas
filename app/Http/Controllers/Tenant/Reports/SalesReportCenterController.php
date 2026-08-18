@@ -121,6 +121,10 @@ class SalesReportCenterController extends Controller
                 ? array_intersect_key(\App\Models\Tenant\User::ORDER_TYPES, array_flip($types))
                 : \App\Models\Tenant\User::ORDER_TYPES,
             'schedules' => DB::connection('tenant')->table('report_schedules')->orderBy('id')->get(),
+            // Network printers the report can be streamed to via the agent (Send to network).
+            'networkPrinters' => \App\Models\Tenant\Printer::where('is_active', 1)
+                ->where('printer_type', 'network')->whereNotNull('ip_address')
+                ->orderBy('name')->get(['id', 'name']),
         ]);
     }
 
@@ -195,6 +199,67 @@ class SalesReportCenterController extends Controller
             'cancellations' => $pick('cancellations', fn () => $this->engine->cancellations($filters)),
             'cashBank' => $pick('cash_bank', fn () => $this->engine->cashBank($filters)),
         ]);
+    }
+
+    /**
+     * REPORT-SEND-TO-NETWORK-1 — queue the report to a network thermal printer via the print agent,
+     * exactly like a receipt: build the ESC/POS bytes and drop one `report` print_jobs row; the agent
+     * streams it. Scoped through the same filters() as the screen, so a restricted operator can only
+     * ever send a report of his own terminals/order types. (order_type_combos is A4/screen only.)
+     */
+    public function sendToNetwork(Request $request, \App\Services\Printing\EscPosPayloadService $esc)
+    {
+        $request->validate(['printer_id' => ['required', 'exists:printers,id']]);
+
+        $printer = \App\Models\Tenant\Printer::findOrFail($request->integer('printer_id'));
+        if ($printer->printer_type !== 'network' || ! $printer->ip_address) {
+            return response()->json(['ok' => false, 'message' => 'Choose a network printer that has an IP address.'], 422);
+        }
+
+        $filters = $this->filters($request);
+        $allowed = $this->allowedSections();
+        $requested = (array) $request->input('sections', []);
+        $sections = array_values(array_intersect($requested ?: $allowed, $allowed));
+        $pick = fn (string $key, callable $loader) => in_array($key, $sections, true) ? $loader() : null;
+        $summary = $this->engine->overview($filters);
+
+        $report = [
+            'sections' => $sections,
+            'bridge' => $summary,
+            'overview' => in_array('overview', $sections, true) ? $summary : null,
+            'orderTypes' => $pick('order_types', fn () => $this->engine->byOrderType($filters)),
+            'categories' => $pick('categories', fn () => $this->engine->byCategory($filters)),
+            'items' => $pick('items', fn () => $this->engine->byItem($filters)),
+            'waiters' => $pick('waiters', fn () => $this->engine->byWaiter($filters)),
+            'cancellations' => $pick('cancellations', fn () => $this->engine->cancellations($filters)),
+            'cashBank' => $pick('cash_bank', fn () => $this->engine->cashBank($filters)),
+            'meta' => [
+                'business_name' => app()->bound('tenant') ? (app('tenant')->business_name ?? 'Sales Report') : 'Sales Report',
+                'label' => 'Z / End of Day',
+                'date_from' => $filters['date_from'] ?? '',
+                'date_to' => $filters['date_to'] ?? '',
+                'generated' => app(\App\Support\TenantClock::class)->now()->format('d-M-Y H:i'),
+                'paper' => in_array($printer->paper_size, ['58mm', '80mm'], true) ? $printer->paper_size : '80mm',
+            ],
+        ];
+
+        $branchId = collect($filters['branch_ids'] ?? [])->first() ?? auth('tenant')->user()?->default_branch_id;
+
+        $job = \App\Models\Tenant\PrintJob::create([
+            'job_no' => 'RPT-' . now()->format('YmdHis') . '-' . random_int(100, 999),
+            'branch_id' => $branchId,
+            'terminal_id' => null,   // a report is not terminal-specific; any agent may print it
+            'printer_id' => $printer->id,
+            'document_type' => 'report',
+            'print_status' => 'queued',
+            'reference_type' => 'report',
+            'reference_no' => trim(($report['meta']['date_from'] ?: '') . ' - ' . ($report['meta']['date_to'] ?: ''), ' -'),
+            'payload' => ['sections' => $sections, 'date_from' => $report['meta']['date_from'], 'date_to' => $report['meta']['date_to']],
+            'raw_payload' => $esc->buildReport($report),
+            'created_by_user_id' => auth('tenant')->id(),
+        ]);
+
+        return response()->json(['ok' => true, 'job_id' => $job->id, 'printer' => $printer->name]);
     }
 
     /** Email Now — tenant default email; controlled error when unconfigured (spec Z). */

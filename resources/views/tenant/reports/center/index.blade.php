@@ -126,6 +126,15 @@
         <button type="button" class="btn btn-sm btn-outline-secondary" data-sec-print="thermal">Print Selected (Thermal)</button>
         <button type="button" class="btn btn-sm btn-outline-secondary" data-sec-print="a4">Print Selected (A4)</button>
         <button type="button" class="btn btn-sm btn-outline-primary" id="sec-export">Export Selected CSV</button>
+        @if(($networkPrinters ?? collect())->isNotEmpty())
+            <span class="vr d-none d-md-inline"></span>
+            <select id="report-network-printer" class="form-select form-select-sm d-inline-block" style="width:auto" aria-label="Network printer">
+                @foreach($networkPrinters as $np)
+                    <option value="{{ $np->id }}">{{ $np->name }}</option>
+                @endforeach
+            </select>
+            <button type="button" class="btn btn-sm btn-outline-warning" id="sec-send-network"><i class="ti ti-broadcast me-1"></i>Send to Network</button>
+        @endif
     </div>
 </div></div>
 <script>
@@ -152,6 +161,27 @@
         var sections = picked();
         if (!sections.length) { alert('Tick at least one section first.'); return; }
         window.location.href = withSections('{{ url('/reports/center/export') }}?{!! $qs() !!}', sections);
+    });
+    // Send to network: POST the current filters + chosen sections + printer; the agent streams it.
+    var sendNet = document.getElementById('sec-send-network');
+    if (sendNet) sendNet.addEventListener('click', function () {
+        var sections = picked();
+        if (!sections.length) { alert('Tick at least one section first.'); return; }
+        var printerId = (document.getElementById('report-network-printer') || {}).value;
+        if (!printerId) { alert('Choose a network printer.'); return; }
+        var body = new URLSearchParams('{!! $qs() !!}');   // $qs() is URL-encoded, safe in a JS string
+        body.set('printer_id', printerId);
+        sections.forEach(function (s) { body.append('sections[]', s); });
+        sendNet.disabled = true;
+        fetch('{{ url('/reports/center/send-to-network') }}', {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: body.toString(),
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (d) { alert(d.ok ? ('Report sent to ' + d.printer + '.') : (d.message || 'Could not send the report.')); })
+        .catch(function () { alert('Could not send the report.'); })
+        .finally(function () { sendNet.disabled = false; });
     });
 })();
 </script>

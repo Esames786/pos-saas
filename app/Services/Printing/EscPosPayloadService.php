@@ -361,6 +361,145 @@ class EscPosPayloadService
         return $out . str_repeat('-', 42) . "\n\n\n" . self::CUT;
     }
 
+    /**
+     * REPORT-SEND-TO-NETWORK-1 — render a Sales Report as ESC/POS bytes for the print agent. There
+     * is no sale here: the caller (SalesReportCenterController) hands over the SalesReportEngine
+     * output for the chosen sections plus meta, and this lays it out for 80/58mm paper. Money keeps
+     * two decimals (a financial summary, unlike a customer receipt); the three-figure tables print a
+     * NAME line then aligned Sold / Ret / Net rows, the only layout that fits ~42 columns.
+     *
+     * @param array{meta: array, sections: array<int,string>, overview?: array, orderTypes?: array,
+     *   categories?: array, items?: iterable, waiters?: array, cancellations?: array, cashBank?: array} $r
+     */
+    public function buildReport(array $r): string
+    {
+        $cols   = ($r['meta']['paper'] ?? '80mm') === '58mm' ? 32 : self::COLS_80MM;
+        $money  = fn ($v) => number_format((float) $v, 2);
+        $qty    = fn ($v) => rtrim(rtrim(number_format((float) $v, 3, '.', ''), '0'), '.');
+        $sections = $r['sections'] ?? [];
+        $has    = fn (string $s) => in_array($s, $sections, true);
+        $rule   = str_repeat('-', $cols);
+
+        // Column geometry for the three-figure (Sold/Ret/Net) tables.
+        $c = (int) max(8, floor(($cols - 6) / 3));
+        $lw = $cols - 3 * $c;
+        $three = fn (string $label, string $a, string $b, string $d) => $this->mbStrPad($label, $lw)
+            . $this->mbStrPad($a, $c, ' ', STR_PAD_LEFT) . $this->mbStrPad($b, $c, ' ', STR_PAD_LEFT) . $this->mbStrPad($d, $c, ' ', STR_PAD_LEFT) . "\n";
+        $head3 = fn () => $three('', 'Sold', 'Ret', 'Net') . $rule . "\n";
+        $entry = fn ($name, $sQ, $rQ, $nQ, $sV, $rV, $nV, $indent = '') => $indent . strtoupper((string) $name) . "\n"
+            . $three($indent . 'Qty', $qty($sQ), $qty($rQ), $qty($nQ))
+            . $three($indent . 'Amt', $money($sV), $money($rV), $money($nV));
+        $orderRow = fn ($name, $orders, $billed, $ret, $net) => strtoupper((string) $name) . "\n"
+            . $three((int) $orders . ' ord', $money($billed), $money($ret), $money($net));
+
+        $out = $this->center(strtoupper((string) ($r['meta']['business_name'] ?? 'SALES REPORT')), $cols) . "\n";
+        $out .= $this->center('Sales Report (' . ($r['meta']['label'] ?? 'Standard') . ')', $cols) . "\n";
+        $out .= $this->center(($r['meta']['date_from'] ?? '') . ' - ' . ($r['meta']['date_to'] ?? ''), $cols) . "\n";
+        $out .= $this->center('Generated ' . ($r['meta']['generated'] ?? ''), $cols) . "\n";
+
+        // OVERALL + CASH FROM SALES + PAYMENTS.
+        if ($has('overview') && ! empty($r['overview'])) {
+            $ov = $r['overview'];
+            $out .= $rule . "\n" . $this->center('OVERALL', $cols) . "\n" . $rule . "\n";
+            $out .= $this->columns('Orders', (string) ($ov['orders'] ?? 0), $cols) . "\n";
+            $out .= $this->columns('Sold Qty', $qty($ov['sold_qty'] ?? 0), $cols) . "\n";
+            $out .= $this->columns('Returned Qty', $qty($ov['returned_qty'] ?? 0), $cols) . "\n";
+            $out .= $this->columns('Net Qty', $qty($ov['net_qty'] ?? 0), $cols) . "\n";
+            $out .= $this->columns('Items Sold', $money($ov['gross_sales'] ?? 0), $cols) . "\n";
+            $out .= $this->columns('Less Discount', '-' . $money($ov['discount'] ?? 0), $cols) . "\n";
+            $out .= $this->columns('Plus Tax', $money($ov['tax'] ?? 0), $cols) . "\n";
+            if ((float) ($ov['service_charge'] ?? 0) != 0.0) {
+                $out .= $this->columns('Plus Service Charge', $money($ov['service_charge']), $cols) . "\n";
+            }
+            $out .= $this->columns('Plus Delivery Charge', $money($ov['delivery_charge'] ?? 0), $cols) . "\n";
+            if ((float) ($ov['tips'] ?? 0) != 0.0) {
+                $out .= $this->columns('Plus Tips', $money($ov['tips']), $cols) . "\n";
+            }
+            $out .= self::BOLD_ON . $this->columns('BILLED TO CUSTOMERS', $money($ov['grand_total'] ?? 0), $cols) . self::BOLD_OFF . "\n";
+            $out .= $this->columns('Less Posted Returns', '-' . $money($ov['returns_amount'] ?? 0), $cols) . "\n";
+            $out .= self::BOLD_ON . $this->columns('NET SALES', $money($ov['net_sales'] ?? 0), $cols) . self::BOLD_OFF . "\n";
+
+            $out .= $rule . "\n" . $this->center('CASH FROM SALES', $cols) . "\n";
+            $out .= $this->columns('Cash Collected', $money($ov['cash_collected'] ?? 0), $cols) . "\n";
+            $out .= $this->columns('Cash Refunds Paid', '-' . $money($ov['cash_refunds'] ?? 0), $cols) . "\n";
+            $out .= self::BOLD_ON . $this->columns('NET CASH FROM SALES', $money($ov['net_cash_from_sales'] ?? 0), $cols) . self::BOLD_OFF . "\n";
+
+            if (! empty($ov['payments'])) {
+                $out .= $rule . "\n" . $this->center('PAYMENTS COLLECTED', $cols) . "\n";
+                foreach ($ov['payments'] as $method => $amount) {
+                    $out .= $this->columns(ucwords(str_replace('_', ' ', (string) $method)), $money($amount), $cols) . "\n";
+                }
+                $out .= self::BOLD_ON . $this->columns('TOTAL COLLECTED', $money(collect($ov['payments'])->sum()), $cols) . self::BOLD_OFF . "\n";
+            }
+        }
+
+        // ORDER TYPES / WAITERS — order-level (money only).
+        foreach ([['order_types', 'ORDER TYPES', $r['orderTypes'] ?? null], ['waiters', 'WAITERS', $r['waiters'] ?? null]] as [$key, $title, $rows]) {
+            if ($has($key) && $rows !== null) {
+                $out .= $rule . "\n" . $this->center($title, $cols) . "\n" . $head3();
+                foreach ($rows as $row) {
+                    $out .= $orderRow($row['label'], $row['orders'], $row['grand_total'], $row['returns_amount'], $row['net_sales']);
+                }
+                $out .= self::BOLD_ON . $orderRow('TOTAL', collect($rows)->sum('orders'), collect($rows)->sum('grand_total'), collect($rows)->sum('returns_amount'), collect($rows)->sum('net_sales')) . self::BOLD_OFF;
+            }
+        }
+
+        // CATEGORIES (with children).
+        if ($has('categories') && ($r['categories'] ?? null) !== null) {
+            $out .= $rule . "\n" . $this->center('CATEGORIES', $cols) . "\n" . $head3();
+            foreach ($r['categories'] as $root) {
+                $out .= self::BOLD_ON . $entry($root['name'], $root['sold_qty'], $root['returned_qty'], $root['net_qty'], $root['net'], $root['returns_amount'], $root['net_value']) . self::BOLD_OFF;
+                foreach (($root['children'] ?? []) as $child) {
+                    if (($child['id'] ?? null) !== ($root['id'] ?? null)) {
+                        $out .= $entry($child['name'], $child['sold_qty'], $child['returned_qty'], $child['net_qty'], $child['net'], $child['returns_amount'], $child['net_value'], ' ');
+                    }
+                }
+            }
+            $out .= self::BOLD_ON . $entry('TOTAL', collect($r['categories'])->sum('sold_qty'), collect($r['categories'])->sum('returned_qty'), collect($r['categories'])->sum('net_qty'), collect($r['categories'])->sum('net'), collect($r['categories'])->sum('returns_amount'), collect($r['categories'])->sum('net_value')) . self::BOLD_OFF;
+        }
+
+        // ITEMS.
+        if ($has('items') && ($r['items'] ?? null) !== null) {
+            $items = collect($r['items']);
+            $out .= $rule . "\n" . $this->center('ITEMS', $cols) . "\n" . $head3();
+            foreach ($items as $row) {
+                $name = $row->item . ($row->variant ? ' (' . $row->variant . ')' : '');
+                $out .= $entry($name, $row->sold_qty, $row->returned_qty, $row->net_qty, $row->net, $row->returns_amount, $row->net_value);
+            }
+            $out .= self::BOLD_ON . $entry('TOTAL', $items->sum('sold_qty'), $items->sum('returned_qty'), $items->sum('net_qty'), $items->sum('net'), $items->sum('returns_amount'), $items->sum('net_value')) . self::BOLD_OFF;
+        }
+
+        // CANCELLATIONS.
+        if ($has('cancellations') && ($r['cancellations'] ?? null) !== null) {
+            $out .= $rule . "\n" . $this->center('CANCELLATIONS', $cols) . "\n";
+            $rows = $r['cancellations']['rows'] ?? [];
+            if (empty($rows)) {
+                $out .= 'No cancellations in this period.' . "\n";
+            }
+            foreach ($rows as $row) {
+                $out .= strtoupper((string) $row['item']) . "\n";
+                $out .= $this->columns('  ' . $row['order_type'] . ' / ' . $row['reason'], $row['events'] . ' x  -' . $qty($row['qty']), $cols) . "\n";
+            }
+            $out .= self::BOLD_ON . $this->columns('TOTAL', ($r['cancellations']['total_events'] ?? 0) . ' x  -' . $qty($r['cancellations']['total_qty'] ?? 0), $cols) . self::BOLD_OFF . "\n";
+        }
+
+        // CASH & BANK.
+        if ($has('cash_bank') && ($r['cashBank'] ?? null) !== null) {
+            $cb = $r['cashBank'];
+            $out .= $rule . "\n" . $this->center('CASH & BANK', $cols) . "\n";
+            $out .= $this->columns('Opening Cash (float)', $money($cb['shifts']['opening_cash'] ?? 0), $cols) . "\n";
+            $out .= $this->columns('Expected Cash', $money($cb['expected_cash_formula'] ?? 0), $cols) . "\n";
+            $out .= $this->columns('Counted Cash', $money($cb['shifts']['counted_cash'] ?? 0), $cols) . "\n";
+            $out .= $this->columns('Variance', $money($cb['shifts']['cash_variance'] ?? 0), $cols) . "\n";
+            foreach (($cb['movements'] ?? []) as $m) {
+                $out .= $this->columns($m['label'] . ' (' . $m['direction'] . ')', $money($m['amount']), $cols) . "\n";
+            }
+            $out .= self::BOLD_ON . $this->columns('Net Cash Movement', $money($cb['net_cash_movement'] ?? 0), $cols) . self::BOLD_OFF . "\n";
+        }
+
+        return $out . $rule . "\n\n\n" . self::CUT;
+    }
+
     private function receipt(SalesOrder $sale): string
     {
         // PRINT-FORMAT-PARITY-1: the physical slip honours the SAME saved layout as the

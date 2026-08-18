@@ -694,6 +694,7 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 Route::get('/reports/center', [\App\Http\Controllers\Tenant\Reports\SalesReportCenterController::class, 'index'])->name('tenant.reports.center.index');
                 Route::get('/reports/center/export', [\App\Http\Controllers\Tenant\Reports\SalesReportCenterController::class, 'export'])->name('tenant.reports.center.export');
                 Route::get('/reports/center/print', [\App\Http\Controllers\Tenant\Reports\SalesReportCenterController::class, 'print'])->name('tenant.reports.center.print');
+                Route::post('/reports/center/send-to-network', [\App\Http\Controllers\Tenant\Reports\SalesReportCenterController::class, 'sendToNetwork'])->name('tenant.reports.center.send-to-network');
                 Route::post('/reports/center/email', [\App\Http\Controllers\Tenant\Reports\SalesReportCenterController::class, 'emailNow'])->name('tenant.reports.center.email');
                 Route::post('/reports/center/schedules', [\App\Http\Controllers\Tenant\Reports\SalesReportCenterController::class, 'storeSchedule'])->name('tenant.reports.center.schedules.store');
                 Route::delete('/reports/center/schedules/{schedule}', [\App\Http\Controllers\Tenant\Reports\SalesReportCenterController::class, 'destroySchedule'])->name('tenant.reports.center.schedules.destroy');
