@@ -38,6 +38,7 @@
                 <select id="status-filter" name="status" class="form-select">
                     <option value="">All</option>
                     <option value="draft"              @selected(request('status') === 'draft')>Draft</option>
+                    <option value="held"               @selected(request('status') === 'held')>Held</option>
                     <option value="paid"               @selected(request('status') === 'paid')>Paid</option>
                     <option value="cancelled"          @selected(request('status') === 'cancelled')>Cancelled</option>
                     <option value="partially_returned" @selected(request('status') === 'partially_returned')>Partially Returned</option>

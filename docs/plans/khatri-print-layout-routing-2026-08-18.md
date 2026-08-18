@@ -18,9 +18,11 @@ Single source of truth. Five phases; each ships on its own.
 
 ---
 
-## PHASE 1 — Layout changes (Receipt, Bill Preview, KOT, Reminder)
+## PHASE 1 — Layout changes (Receipt, Bill Preview, KOT, Reminder) — ✅ BUILT (commit 468b9ef, NOT deployed)
 
 Applies to all four documents unless noted. Scope = only what the owner marked on the screenshots.
+
+**Status:** code-complete + green (unit `LayoutColumnDividerTest`, MySQL `LayoutRowDividerMySqlTest` covering normal+variant+combo+modifier; print-related MySQL regressions pass). All four settings default to current behavior — no tenant output changes until a value is set in Edit Layout. **Pending before it's visible at Khatri:** full MySQL suite → deploy → set Khatri's kot/receipt layout values (dividers on, category off, item/time fonts) which the owner can now tune live.
 
 ### 1.1 Reduce item-row font size
 - Rows too big; long names wrap onto 2–3 lines ("Chicken Biryani (1/2 kg)" over 3 lines).
@@ -99,14 +101,39 @@ Field names confirmed in code: `sales_orders.vehicle_number` (string ≤50) and 
 - On **recall of a held order**, the **waiter must be re-attached to the order the same way `vehicle_number` and the customer are re-fetched today** — the POS form repopulates the waiter picker from the held sale's `restaurant_waiter_id` so the operator sees who was attached. (Recall path: `recallHeldSale` + `ajaxList`, then the JS that rebuilds the form.)
 - After **Review & Pay (finalize)** OR **Close Order**, the POS starts **fresh** — waiter, vehicle, customer and table selections all clear, so the next order begins clean.
 
+### 2.6 Scope EVERY sales surface to the operator's terminals + order types
+Audit result (2026-08-18) — most surfaces are ALREADY scoped via `UserDataScope` (terminals + order types):
+| Surface | Status |
+|---|---|
+| Sales Orders index (`SalesOrderController::index:43`) | ✅ scoped both |
+| Sales Returns LIST (`SalesReturnController::index:25`) | ✅ scoped both |
+| Dashboard (`DashboardController`) | ✅ scoped both |
+| POS Recent Orders (`POSController::recentSales:715`) | ✅ scoped both |
+| POS Held Orders (`HeldSaleController::ajaxList:46`) | ✅ scoped both |
+| **Sales Return CREATE search** (`Ajax\SaleLookupController:29`) | ❌ **branch-only — FIX** |
+
+**The one gap (image 3):** the "Find Sale" picker on `/sales-returns/create` hits `GET /ajax/sales` → `SaleLookupController`, which filters by `status in (paid, partially_returned)` + branch only — **no terminal, no order type**. A terminal/order-type-restricted operator therefore sees every paid sale in his branch. Fix = apply the same guard the list uses: `if ($scope->isScoped($user)) $scope->applyToSales($query, $user);` (no table alias → empty prefix). One-line-class change + a scope test.
+
+### 2.7 Sales Orders "Held" status filter (image 2)
+`held` is already a valid `sales_orders.status` value and the index query already passes `status` through + already scopes rows. The filter dropdown (`sales-orders/index.blade.php:38-45`) just lacks the option. Add `<option value="held">Held</option>`. No controller change.
+
+### 2.8 Sales Return "Create" UX fixes
+- **Refund method defaults to the original pay method (image — "cash to return type default cash").** Today `refund_method` (`create.blade.php:174`) loads blank ("Select refund method"); the sale's original payment is loaded for display only. Map the sale's original payment `method_type` → the refund enum (cash→cash, card→card, bank_transfer→bank_transfer, else other) and pre-select it (`old('refund_method', $default)`). Cashier can still override.
+- **The "qty 0.1" error.** The form posts **every** line row, and each is rendered `value="0"`; the server rule is `lines.*.quantity → min:0.001` (`SalesReturnController:128`), so the items you leave at 0 are rejected ("must be at least 0.001"). The SERVICE already skips zero/over lines (`SalesReturnService:87-92`) — only the request validation is too strict. Fix: (a) drop rows with qty ≤ 0 client-side before submit, AND (b) relax the rule to `min:0` with a guard that at least one line is > 0 (so an all-zero submit still errors cleanly). Optionally add a `max` rule per line (today over-return is silently clamped, not rejected).
+- **Return one item, come back for another — ALREADY CORRECT.** `sales_order_lines.returned_quantity` is tracked; on the next return the line shows **"Already Returned" + "Returnable = 0"**, the input is **disabled ("Fully returned")**, and the service hard-caps over-returns under a row lock. So a returned item cannot be returned again. *Open decision:* leave fully-returned lines **visible-but-disabled** (current) or **hide** them entirely?
+
 ### Phase-2 files
 - `resources/views/tenant/pos/index.blade.php` — vehicle input (remove takeaway, require quick_sale), new Quick-Sale waiter picker, Hold/Review&Pay validation, held/recent list rendering, **recall re-hydration of waiter (mirroring vehicle/customer), and full form reset on finalize/close**.
+- `app/Http/Controllers/Tenant/Ajax/SaleLookupController.php` — apply `UserDataScope` (terminals + order types) to the return-create sale search (§2.6).
+- `resources/views/tenant/sales-orders/index.blade.php` — add the `Held` status option (§2.7).
+- `resources/views/tenant/sales-returns/create.blade.php` + `app/Http/Controllers/Tenant/SalesReturnController.php` — refund-method default from original payment, drop zero lines client-side, relax `min:0.001` → `min:0` + "at least one line" guard (§2.8).
+- `app/Services/Sales/SalesReturnService.php` — already skips zero/over lines; no change expected (verify).
 - `app/Http/Controllers/Tenant/HeldSaleController.php` — validation + persistence (vehicle quick_sale-only + required; waiter required for quick_sale).
 - `app/Http/Controllers/Tenant/POSController.php` — billPreview validation/persistence.
 - `app/Http/Controllers/Tenant/SalesOrderController.php` — finalize validation/persistence.
 - `app/Services/Printing/EscPosPayloadService.php` — vehicle line order-type guard (takeaway off).
 - Edge parity: `EdgeLocalPosService` / `EdgeLocalPosController`.
-- Tests: quick_sale blocked on Hold + finalize when vehicle OR waiter missing; takeaway never captures/prints vehicle; held/recent lists show the fields.
+- Tests: quick_sale blocked on Hold + finalize when vehicle OR waiter missing; takeaway never captures/prints vehicle; held/recent lists show the fields; **return-create sale search scoped to terminals+order types; return submit with untouched (0-qty) lines succeeds and returns only the filled line; refund method defaults to the original pay method; a fully-returned line cannot be returned again.**
 
 ---
 

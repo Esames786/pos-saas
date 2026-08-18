@@ -171,13 +171,14 @@
                      no refund method, which credits Undeposited Funds and records NO cash movement,
                      so money sat in suspense and the drawer never reconciled. Goods coming back
                      always means money going back — the method must be stated. --}}
+                @php $refundDefault = old('refund_method', $defaultRefundMethod ?? null); @endphp
                 <select id="refund_method" name="refund_method" required
                         class="form-select @error('refund_method') is-invalid @enderror">
-                    <option value="" disabled @selected(! old('refund_method'))>Select refund method</option>
-                    <option value="cash"          @selected(old('refund_method') === 'cash')>Cash</option>
-                    <option value="bank_transfer" @selected(old('refund_method') === 'bank_transfer')>Bank Transfer</option>
-                    <option value="card"          @selected(old('refund_method') === 'card')>Card</option>
-                    <option value="other"         @selected(old('refund_method') === 'other')>Other</option>
+                    <option value="" disabled @selected(! $refundDefault)>Select refund method</option>
+                    <option value="cash"          @selected($refundDefault === 'cash')>Cash</option>
+                    <option value="bank_transfer" @selected($refundDefault === 'bank_transfer')>Bank Transfer</option>
+                    <option value="card"          @selected($refundDefault === 'card')>Card</option>
+                    <option value="other"         @selected($refundDefault === 'other')>Other</option>
                 </select>
                 @error('refund_method') <div class="invalid-feedback">{{ $message }}</div> @enderror
             </div>
