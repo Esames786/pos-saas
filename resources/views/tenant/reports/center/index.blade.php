@@ -4,7 +4,21 @@
 
 @php
     $fmt = fn ($v) => number_format((float) $v, 2);
-    $qs = fn (array $extra = []) => http_build_query(array_filter(array_merge(request()->except('page'), $extra), fn ($v) => $v !== null && $v !== ''));
+    // REPORT-PRINT-SCOPE FIX: keep the branch/terminal filter-presence markers even when blank ("All").
+    // The report scope reads their ABSENCE as "first visit → default to my ONE terminal", which
+    // silently narrowed every Print / Z / Export / Email to a single terminal (an owner viewing all
+    // dine-in on Terminal 3 got a report of only his default Delivery terminal). Other blanks (dates)
+    // are still dropped so they default to today.
+    $qs = function (array $extra = []) {
+        $params = array_merge(request()->except('page'), $extra);
+        $params = array_filter(
+            $params,
+            fn ($v, $k) => in_array($k, ['branch_id', 'terminal_id'], true) ? $v !== null : ($v !== null && $v !== ''),
+            ARRAY_FILTER_USE_BOTH,
+        );
+
+        return http_build_query($params);
+    };
 @endphp
 
 @section('content')
@@ -126,14 +140,18 @@
         btn.addEventListener('click', function () {
             var sections = picked();
             if (!sections.length) { alert('Tick at least one section first.'); return; }
-            window.open(withSections('{{ url('/reports/center/print') }}?{{ $qs() }}&mode=' + btn.dataset.secPrint, sections), '_blank');
+            {{-- {!! !!}: the query string must reach window.open() with raw & separators. {{ }} would
+                 HTML-escape them to &amp;, and JS (unlike an <a href>) does NOT decode entities, so
+                 every filter param would arrive mangled as amp;date_from / amp;branch_id and be lost.
+                 Safe: $qs() is http_build_query output — all values are already URL-encoded. --}}
+            window.open(withSections('{{ url('/reports/center/print') }}?{!! $qs() !!}&mode=' + btn.dataset.secPrint, sections), '_blank');
         });
     });
     var exp = document.getElementById('sec-export');
     if (exp) exp.addEventListener('click', function () {
         var sections = picked();
         if (!sections.length) { alert('Tick at least one section first.'); return; }
-        window.location.href = withSections('{{ url('/reports/center/export') }}?{{ $qs() }}', sections);
+        window.location.href = withSections('{{ url('/reports/center/export') }}?{!! $qs() !!}', sections);
     });
 })();
 </script>
