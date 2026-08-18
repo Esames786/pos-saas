@@ -25,7 +25,7 @@
     .tbill-receipt hr      { border: none; border-top: 1px dashed #000; margin: 4px 0; }
     .tbill-receipt table   { width: 100%; border-collapse: collapse; }
     .tbill-receipt td      { vertical-align: top; padding: 1px 0; border: none !important; }
-    .tbill-receipt .r      { text-align: right; white-space: nowrap; }
+    .tbill-receipt .r      { text-align: right; white-space: nowrap; padding-left: 10px; }
     @media screen { .tbill-receipt { width: 320px; } }
 </style>
 
@@ -47,7 +47,7 @@
     @endif
 
     <hr>
-    <div class="center bold">TABLE BILL — NOT A TAX RECEIPT</div>
+    <div class="center bold">TABLE BILL</div>
     <hr>
 
     @if(!($layout?->show_table_info === false))

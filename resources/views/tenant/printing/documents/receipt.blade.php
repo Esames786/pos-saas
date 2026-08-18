@@ -173,11 +173,7 @@
 @endif
 
 @if($show('show_table_info') && $salesOrder->restaurantTable)
-<div>Table: {{ $salesOrder->restaurantTable->table_no }}
-    @if($salesOrder->restaurantTable->floor)
-        ({{ $salesOrder->restaurantTable->floor->name }})
-    @endif
-</div>
+<div>Table: {{ $salesOrder->restaurantTable->table_no }}</div>
 @if($salesOrder->restaurantTableSession?->waiter)
 <div>Waiter: {{ $salesOrder->restaurantTableSession->waiter->name }}</div>
 @endif
