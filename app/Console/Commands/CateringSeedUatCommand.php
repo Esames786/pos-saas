@@ -48,7 +48,15 @@ class CateringSeedUatCommand extends Command
 
     protected $description = 'Seed a guarded Cost-Block-first Catering UAT dataset into ONE named tenant. Test fixtures only.';
 
-    /** Never, under any circumstances, the live trading tenant. */
+    /**
+     * Fail closed. "Anything except Khatri" was the wrong boundary: it would have
+     * let this loose on any catering tenant that ever gets added, including a
+     * client's, on a mistyped argument. Only a tenant that is deliberately listed
+     * here can receive test fixtures.
+     */
+    private const ALLOWED_TENANTS = ['kashifkitchen'];
+
+    /** Named separately so the live trading tenant is refused by name, first. */
     private const FORBIDDEN_TENANTS = ['khatribiryani'];
 
     private const DEMO_CUSTOMER = 'UAT Owner Demo';
@@ -99,6 +107,16 @@ class CateringSeedUatCommand extends Command
 
         if (in_array($code, self::FORBIDDEN_TENANTS, true)) {
             $this->error("Refusing: '{$code}' is a live trading tenant. Test fixtures never go near real business data.");
+
+            return self::FAILURE;
+        }
+
+        if (! in_array($code, self::ALLOWED_TENANTS, true)) {
+            $this->error(
+                "Refusing: '{$code}' is not a listed UAT tenant. This command only seeds tenants named in "
+                .'ALLOWED_TENANTS ('.implode(', ', self::ALLOWED_TENANTS).'). '
+                .'Add it there deliberately if it is genuinely a test tenant.'
+            );
 
             return self::FAILURE;
         }
@@ -169,6 +187,22 @@ class CateringSeedUatCommand extends Command
         return self::SUCCESS;
     }
 
+    /**
+     * The tenant's own business date, offset by whole days.
+     *
+     * Through TenantClock, the one authority for what "today" means to this
+     * business — the server's clock is in UTC and rolls over hours before the
+     * kitchen does.
+     */
+    private function businessDate(int $offsetDays = 0): string
+    {
+        $today = app(\App\Support\TenantClock::class)->currentBusinessDate($this->branch);
+
+        return $offsetDays === 0
+            ? $today
+            : \Illuminate\Support\Carbon::parse($today)->addDays($offsetDays)->toDateString();
+    }
+
     /** Catering documents a reseed must not be stacked on top of. */
     private function existingDocumentCount(): int
     {
@@ -218,6 +252,9 @@ class CateringSeedUatCommand extends Command
             CateringMaterialRate::updateOrCreate(
                 [
                     'product_id' => $this->materialIds[$key],
+                    // Deliberately the server clock here, not the business date:
+                    // this only has to be safely in the past so the rate is
+                    // already effective, whichever way the timezones fall.
                     'effective_from' => now()->subDay()->toDateString(),
                 ],
                 ['rate' => $rate, 'unit_id' => $this->kgUnitId]
@@ -306,6 +343,7 @@ class CateringSeedUatCommand extends Command
         CateringProductCostBlock::where('product_id', $productId)->delete();
 
         $rate = 0.0;
+        $lumpSum = 0.0;
         foreach (array_values($blocks) as $index => $block) {
             $isMaterial = isset($block['material']);
             $basis = $block['basis'] ?? CateringProductCostBlock::BASIS_PER_UNIT;
@@ -326,13 +364,21 @@ class CateringSeedUatCommand extends Command
             ]);
 
             // A lump sum never enters the per-unit rate; it would be wrong at
-            // every order size except the one it was divided by.
+            // every order size except the one it was divided by. It is carried
+            // separately so the estimate can charge it once, at document level.
             if ($basis === CateringProductCostBlock::BASIS_PER_UNIT) {
                 $rate += (float) $block['rate'];
+            } else {
+                $lumpSum += (float) $block['rate'];
             }
         }
 
-        $this->dishes[$sku] = ['id' => $productId, 'name' => $name, 'rate' => round($rate, 2)];
+        $this->dishes[$sku] = [
+            'id' => $productId,
+            'name' => $name,
+            'rate' => round($rate, 2),
+            'lump_sum' => round($lumpSum, 2),
+        ];
     }
 
     private function product(string $sku, string $name, array $attrs): int
@@ -390,7 +436,11 @@ class CateringSeedUatCommand extends Command
      */
     private function buildBookings(CateringEstimateService $estimates): array
     {
-        $today = now()->toDateString();
+        // The tenant's business date, not the server's. A box running UTC rolls
+        // over five hours before a kitchen in Karachi does, and the whole point
+        // of these twelve bookings is that they appear under the Store Issue
+        // modal's DEFAULT date when the owner opens it.
+        $today = $this->businessDate();
         $skus = array_keys($this->dishes);
 
         $customers = [
@@ -426,9 +476,9 @@ class CateringSeedUatCommand extends Command
 
         $nearby = 0;
         foreach ([
-            ['Nadeem Butt', '0300-7778881', 'Cantt Officers Mess', '20:00', 220, now()->subDay()->toDateString()],
-            ['Owais Rehman', '0321-9990001', 'Garden Town Hall', '19:00', 380, now()->addDay()->toDateString()],
-            ['Pervaiz Iqbal', '0333-2224446', 'Askari Community Centre', '13:30', 140, now()->addDays(2)->toDateString()],
+            ['Nadeem Butt', '0300-7778881', 'Cantt Officers Mess', '20:00', 220, $this->businessDate(-1)],
+            ['Owais Rehman', '0321-9990001', 'Garden Town Hall', '19:00', 380, $this->businessDate(1)],
+            ['Pervaiz Iqbal', '0333-2224446', 'Askari Community Centre', '13:30', 140, $this->businessDate(2)],
         ] as [$name, $phone, $venue, $time, $pax, $date]) {
             $this->booking($estimates, $name, $phone, $venue, $time, $pax, $date, [$skus[0], $skus[3]]);
             $nearby++;
@@ -467,28 +517,48 @@ class CateringSeedUatCommand extends Command
             'customer_phone' => $phone,
             'venue' => $venue,
             'service_time' => $time,
-            'booking_date' => now()->toDateString(),
+            'booking_date' => $this->businessDate(),
             'event_date' => $date,
             'pax' => $pax,
             'notes' => 'UAT fixture — created by catering:seed-uat.',
         ]);
 
         $lines = [];
-        foreach (array_unique($dishSkus) as $position => $sku) {
+        $lumpSum = 0.0;
+        $lumpLabels = [];
+
+        foreach (array_values(array_unique($dishSkus)) as $position => $sku) {
             $dish = $this->dishes[$sku];
             $lines[] = [
                 'product_id' => $dish['id'],
                 'item_name' => $dish['name'],
-                // The rate a cost-block dish sells at is the sum of its per-unit
-                // blocks — the same number the screen calculates.
+                // A LINE is quantity x rate, so only the per-unit blocks belong
+                // here. Putting a lump sum in the rate would multiply it by the
+                // order size, which is the one thing a lump sum must never do.
                 'rate' => $dish['rate'],
                 'quantity' => [10, 20, 15, 25][$position % 4],
                 'unit_id' => $this->kgUnitId,
                 'unit_code' => 'KG',
             ];
+
+            if ($dish['lump_sum'] > 0) {
+                $lumpSum += $dish['lump_sum'];
+                $lumpLabels[] = $dish['name'];
+            }
         }
 
-        $estimates->saveDraftLines($event->currentEstimate, $lines);
+        // A lump sum is charged ONCE for the whole booking, so it goes where this
+        // domain already puts a one-off charge on a quotation: the estimate's
+        // other-charge field. Dropping it entirely would have taught an owner
+        // that a 3,000 counter setup is free.
+        $charges = $lumpSum > 0
+            ? [
+                'other_charge_label' => 'Setup / one-off charges — '.implode(', ', $lumpLabels),
+                'other_charge_amount' => round($lumpSum, 2),
+            ]
+            : [];
+
+        $estimates->saveDraftLines($event->currentEstimate, $lines, $charges);
 
         return $event->refresh();
     }
