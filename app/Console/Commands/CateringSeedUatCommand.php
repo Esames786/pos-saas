@@ -61,20 +61,26 @@ class CateringSeedUatCommand extends Command
 
     private const DEMO_CUSTOMER = 'UAT Owner Demo';
 
-    /** UAT material fixtures: key, name, SKU, rate-book rate per KG. */
+    /**
+     * UAT material fixtures: key, name, SKU, Material Rate Book rate per KG.
+     *
+     * These are what the materials COST — a separate question from what a dish
+     * charges for them. They are set a little under the commercial rates below
+     * so the demo dishes make sense as a business; all of it is illustrative.
+     */
     private const MATERIALS = [
-        ['chicken', 'Chicken', 'UAT-RM-CHICKEN', 600],
-        ['beef', 'Beef', 'UAT-RM-BEEF', 900],
-        ['mutton', 'Mutton', 'UAT-RM-MUTTON', 1400],
-        ['rice', 'Basmati Rice', 'UAT-RM-RICE', 200],
-        ['oil', 'Cooking Oil', 'UAT-RM-OIL', 550],
-        ['yogurt', 'Yogurt', 'UAT-RM-YOGURT', 220],
-        ['cream', 'Cream', 'UAT-RM-CREAM', 400],
-        ['masala', 'Mixed Masala', 'UAT-RM-MASALA', 800],
-        ['vegetables', 'Vegetables', 'UAT-RM-VEG', 120],
-        ['flour', 'Flour / Maida', 'UAT-RM-FLOUR', 130],
-        ['sugar', 'Sugar', 'UAT-RM-SUGAR', 150],
-        ['paneer', 'Paneer', 'UAT-RM-PANEER', 900],
+        ['chicken', 'Chicken', 'UAT-RM-CHICKEN', 80],
+        ['beef', 'Beef', 'UAT-RM-BEEF', 120],
+        ['mutton', 'Mutton', 'UAT-RM-MUTTON', 200],
+        ['rice', 'Basmati Rice', 'UAT-RM-RICE', 55],
+        ['oil', 'Cooking Oil', 'UAT-RM-OIL', 90],
+        ['yogurt', 'Yogurt', 'UAT-RM-YOGURT', 60],
+        ['cream', 'Cream', 'UAT-RM-CREAM', 110],
+        ['masala', 'Mixed Masala', 'UAT-RM-MASALA', 150],
+        ['vegetables', 'Vegetables', 'UAT-RM-VEG', 40],
+        ['flour', 'Flour / Maida', 'UAT-RM-FLOUR', 35],
+        ['sugar', 'Sugar', 'UAT-RM-SUGAR', 45],
+        ['paneer', 'Paneer', 'UAT-RM-PANEER', 180],
     ];
 
     /** What a storeman will hand over during UAT, and enough of it to keep testing. */
@@ -272,41 +278,51 @@ class CateringSeedUatCommand extends Command
      */
     private function buildCostBlockDishes(): void
     {
-        // A. The simplest shape there is. Chicken charged 200 while 0.5 KG at 600
-        //    actually costs 300 — the making carries the margin, which is itself
-        //    worth seeing on the first example an operator opens.
+        // Every material rate below is per KG OF THE MATERIAL — 100 means chicken
+        // is charged at 100 a kilo, and a 5 KG order needing 2.5 KG of it is
+        // charged 250. That is the arithmetic an operator can check in their head,
+        // which is the whole reason the dataset exists.
+
+        // A. The simplest shape. Chicken 100/KG with 0.5 KG per kilo of dish adds
+        //    50; making adds 250; the dish sells at 300.
         $this->dish('UAT-DISH-KARAHI', 'Chicken Karahi (UAT)', [
-            ['label' => 'Chicken', 'material' => 'chicken', 'rate' => 200, 'qty' => 0.5],
-            ['label' => 'Making', 'rate' => 500],
+            ['label' => 'Chicken', 'material' => 'chicken', 'rate' => 100, 'qty' => 0.50],
+            ['label' => 'Making', 'rate' => 250],
         ]);
 
-        // B. One dish, three physical materials, one making charge.
-        $this->dish('UAT-DISH-BIRYANI', 'Beef Biryani (UAT)', [
-            ['label' => 'Beef', 'material' => 'beef', 'rate' => 260, 'qty' => 0.35],
-            ['label' => 'Rice', 'material' => 'rice', 'rate' => 90, 'qty' => 0.45],
-            ['label' => 'Oil & Masala', 'material' => 'oil', 'rate' => 40, 'qty' => 0.05],
-            ['label' => 'Making', 'rate' => 210],
+        // B. The worked example, exactly as the business states it:
+        //      chicken 100/KG x 0.50 =  50
+        //      rice     80/KG x 0.40 =  32
+        //      making                = 300
+        //                              ---
+        //      rate                    382 / KG
+        //    A 5 KG order: 250 chicken + 160 rice + 1,500 making = 1,910.
+        $this->dish('UAT-DISH-BIRYANI', 'Chicken Biryani (UAT)', [
+            ['label' => 'Chicken', 'material' => 'chicken', 'rate' => 100, 'qty' => 0.50],
+            ['label' => 'Rice', 'material' => 'rice', 'rate' => 80, 'qty' => 0.40],
+            ['label' => 'Making', 'rate' => 300],
         ]);
 
         // C. Per-unit beside lump sum. A 10 KG order pays the setup once; a 100 KG
         //    order pays exactly the same setup.
         $this->dish('UAT-DISH-COUNTER', 'Live Counter BBQ (UAT)', [
-            ['label' => 'Chicken', 'material' => 'chicken', 'rate' => 250, 'qty' => 0.45],
-            ['label' => 'Making', 'rate' => 300],
+            ['label' => 'Chicken', 'material' => 'chicken', 'rate' => 120, 'qty' => 0.45],
+            ['label' => 'Making', 'rate' => 200],
             ['label' => 'Live counter setup', 'rate' => 3000, 'basis' => CateringProductCostBlock::BASIS_LUMP_SUM],
         ]);
 
-        // D. The teaching fixture. Charged 250, draws 0.40 KG, and 0.40 at 600 is
-        //    240 — three numbers, none of them equal to another.
+        // D. The teaching fixture: three numbers, none equal to another. A 10 KG
+        //    order charges 4 KG x 140 = 560 for chicken, draws 4 KG from the
+        //    store, and that chicken costs 4 x 80 = 320 from the rate book.
         $this->dish('UAT-DISH-HANDI', 'Chicken Handi (UAT)', [
-            ['label' => 'Chicken', 'material' => 'chicken', 'rate' => 250, 'qty' => 0.40],
-            ['label' => 'Making', 'rate' => 350],
+            ['label' => 'Chicken', 'material' => 'chicken', 'rate' => 140, 'qty' => 0.40],
+            ['label' => 'Making', 'rate' => 200],
         ]);
 
         // E. Mostly service. Proves a charge block is money for work and moves no
         //    stock at all, however large a share of the price it is.
         $this->dish('UAT-DISH-PLATTER', 'Wedding Service Platter (UAT)', [
-            ['label' => 'Yogurt & garnish', 'material' => 'yogurt', 'rate' => 40, 'qty' => 0.05],
+            ['label' => 'Yogurt & garnish', 'material' => 'yogurt', 'rate' => 200, 'qty' => 0.10],
             ['label' => 'Making & labour', 'rate' => 380],
             ['label' => 'Packing', 'rate' => 130],
         ]);
@@ -359,15 +375,25 @@ class CateringSeedUatCommand extends Command
                 'unit_id' => $isMaterial ? $this->kgUnitId : null,
                 'rate' => $block['rate'],
                 'charge_basis' => $basis,
+                // Authored the way the business thinks: rupees per kilo of the
+                // MATERIAL. The owner can then check the arithmetic in their
+                // head — 2.5 KG of chicken at 100 is 250.
+                'rate_basis' => $isMaterial
+                    ? CateringProductCostBlock::RATE_PER_MATERIAL_UNIT
+                    : CateringProductCostBlock::RATE_PER_DISH_UNIT,
                 'sort_order' => $index + 1,
                 'is_active' => true,
             ]);
 
             // A lump sum never enters the per-unit rate; it would be wrong at
             // every order size except the one it was divided by. It is carried
-            // separately so the estimate can charge it once, at document level.
+            // separately so the estimate can charge it once.
             if ($basis === CateringProductCostBlock::BASIS_PER_UNIT) {
-                $rate += (float) $block['rate'];
+                // A per-material rate contributes ratio x rate to the DISH rate:
+                // chicken at 100/KG with 0.5 KG per kilo adds 50, not 100.
+                $rate += $isMaterial
+                    ? (float) $block['qty'] * (float) $block['rate']
+                    : (float) $block['rate'];
             } else {
                 $lumpSum += (float) $block['rate'];
             }

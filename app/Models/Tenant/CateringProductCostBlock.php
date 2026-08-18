@@ -34,11 +34,29 @@ class CateringProductCostBlock extends Model
 
     public const TYPES = [self::TYPE_MATERIAL, self::TYPE_CHARGE];
 
+    /** HOW OFTEN a charge applies: every unit, or once for the order. */
     public const BASIS_PER_UNIT = 'per_unit';
 
     public const BASIS_LUMP_SUM = 'lump_sum';
 
     public const BASES = [self::BASIS_PER_UNIT, self::BASIS_LUMP_SUM];
+
+    /**
+     * WHAT A MATERIAL'S RATE IS A RATE OF — a different question from the one
+     * above, and the two are easy to confuse because both end in "basis".
+     *
+     *   per_dish_unit      rupees per unit of the FINISHED DISH  (legacy)
+     *   per_material_unit  rupees per unit of the MATERIAL       (how a caterer thinks)
+     *
+     * They differ by the consumption ratio, so the same stored number means two
+     * different prices. Existing rows say per_dish_unit because that is what
+     * they were authored as; nothing already quoted may move.
+     */
+    public const RATE_PER_DISH_UNIT = 'per_dish_unit';
+
+    public const RATE_PER_MATERIAL_UNIT = 'per_material_unit';
+
+    public const RATE_BASES = [self::RATE_PER_DISH_UNIT, self::RATE_PER_MATERIAL_UNIT];
 
     protected $fillable = [
         'product_id',
@@ -50,6 +68,7 @@ class CateringProductCostBlock extends Model
         'unit_id',
         'rate',
         'charge_basis',
+        'rate_basis',
         'is_active',
     ];
 
@@ -89,17 +108,65 @@ class CateringProductCostBlock extends Model
         return $this->charge_basis === self::BASIS_LUMP_SUM;
     }
 
+    /** Legacy rows, and every charge block, are read per unit of the dish. */
+    public function rateBasis(): string
+    {
+        return in_array($this->rate_basis, self::RATE_BASES, true)
+            ? $this->rate_basis
+            : self::RATE_PER_DISH_UNIT;
+    }
+
+    /** Is this material priced in its OWN unit rather than the dish's? */
+    public function isPerMaterialUnit(): bool
+    {
+        return $this->isMaterial() && $this->rateBasis() === self::RATE_PER_MATERIAL_UNIT;
+    }
+
     /**
-     * What this block adds to a line of the given quantity.
+     * What this block adds to a line of the given DISH quantity.
      *
      * A lump sum ignores quantity entirely — that is the whole point of it. A
      * live counter costs the same whether the order is 10 KG or 100.
+     *
+     * A per-material-unit rate is charged against the material actually needed,
+     * so 2.5 KG of chicken at 100 a kilo is 250 — regardless of how many kilos
+     * of biryani that chicken went into. $materialQuantity lets a booking line
+     * pass the quantity IT settled on, which may not be the ratio-derived one:
+     * an operator who says this event needs 3 KG must be charged for 3.
      */
-    public function amountFor(float $quantity): float
+    public function amountFor(float $quantity, ?float $materialQuantity = null): float
     {
-        return round($this->isLumpSum()
-            ? (float) $this->rate
-            : (float) $this->rate * $quantity, 2);
+        if ($this->isLumpSum()) {
+            return round((float) $this->rate, 2);
+        }
+
+        if ($this->isPerMaterialUnit()) {
+            $needed = $materialQuantity ?? $this->materialRequiredFor($quantity);
+
+            return round($needed * (float) $this->rate, 2);
+        }
+
+        return round((float) $this->rate * $quantity, 2);
+    }
+
+    /**
+     * What this block adds to ONE unit of the dish — the piece of the dish's
+     * selling rate it is responsible for.
+     *
+     * For a per-material rate that is the ratio times the rate: chicken at 100 a
+     * kilo with 0.5 KG per kilo of biryani adds 50 to the biryani's rate. Lump
+     * sums contribute nothing here; they do not scale, so they can never be part
+     * of a per-unit rate without being wrong at every size but one.
+     */
+    public function contributionPerDishUnit(): float
+    {
+        if ($this->isLumpSum()) {
+            return 0.0;
+        }
+
+        return round($this->isPerMaterialUnit()
+            ? (float) ($this->quantity_per_unit ?? 0) * (float) $this->rate
+            : (float) $this->rate, 4);
     }
 
     /**

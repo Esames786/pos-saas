@@ -152,14 +152,22 @@ class CateringCostBlockHttpMySqlTest extends MySqlTenantTestCase
     // Saving.
     // ─────────────────────────────────────────────────────────────────────────
 
-    /** Kashif's own example, entered through the screen: 200 + 500 = 700. */
-    public function test_saving_chicken_and_making_gives_the_dish_a_rate_of_seven_hundred(): void
+    /**
+     * Entered through the screen, which authors a material rate PER KILO OF
+     * MATERIAL: chicken at 200 a kilo, half a kilo per kilo of dish, so it adds
+     * 100 — plus 500 making, and the dish sells at 600.
+     */
+    public function test_saving_chicken_and_making_prices_the_dish_from_its_blocks(): void
     {
         $res = $this->save([$this->materialBlock(), $this->chargeBlock()]);
 
         $this->assertNotContains($res->getStatusCode(), [403, 404, 500]);
         $this->assertCount(2, $this->activeBlocks());
-        $this->assertSame(700.0, app(CateringCostBlockService::class)->rateFor($this->karahiId));
+
+        $this->assertSame('per_material_unit', $this->activeBlocks()->firstWhere('label', 'chicken')->rateBasis(),
+            'the editor authors new material blocks the way a caterer thinks');
+        $this->assertSame(600.0, app(CateringCostBlockService::class)->rateFor($this->karahiId),
+            '0.5 KG x 200 + 500 making');
     }
 
     /**
@@ -212,8 +220,8 @@ class CateringCostBlockHttpMySqlTest extends MySqlTenantTestCase
 
         $this->assertSame($originalIds, $this->activeBlocks()->pluck('id')->all(),
             'the same parts were edited, not torn down and rebuilt');
-        $this->assertSame(750.0, app(CateringCostBlockService::class)->rateFor($this->karahiId),
-            'chicken at 250 plus making at 500');
+        $this->assertSame(625.0, app(CateringCostBlockService::class)->rateFor($this->karahiId),
+            'chicken now 250 a kilo of material — 0.5 x 250 = 125, plus 500 making');
     }
 
     /**

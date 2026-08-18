@@ -252,16 +252,21 @@ class CateringSeedUatMySqlTest extends MySqlTenantTestCase
 
         // A — the simplest: one material plus making.
         $karahi = $dishes->firstWhere('sku', 'UAT-DISH-KARAHI');
-        $this->assertSame(700.0, $this->blocks()->rateFor($karahi->id), '200 chicken + 500 making');
+        $this->assertSame(300.0, $this->blocks()->rateFor($karahi->id), 'chicken 100/KG x 0.50 = 50, plus 250 making');
 
-        // B — one dish drawing three separate materials.
+        // B — several materials in one dish, and the business's own worked
+        //     example: chicken 100 x 0.50 = 50, rice 80 x 0.40 = 32, making 300.
         $biryani = $dishes->firstWhere('sku', 'UAT-DISH-BIRYANI');
-        $this->assertSame(3, CateringProductCostBlock::where('product_id', $biryani->id)
-            ->where('block_type', 'material')->count(), 'a dish may consume several physical materials');
+        $this->assertSame(2, CateringProductCostBlock::where('product_id', $biryani->id)
+            ->where('block_type', 'material')->count(), 'a dish may consume more than one material');
+        $this->assertSame(382.0, $this->blocks()->rateFor($biryani->id),
+            'the figure the business checks this dataset against');
+        $this->assertSame(1910.0, $this->blocks()->priceLine($biryani->id, 5)['total'],
+            '5 KG: 250 chicken + 160 rice + 1,500 making');
 
         // C — a lump sum that does not scale with the order.
         $counter = $dishes->firstWhere('sku', 'UAT-DISH-COUNTER');
-        $this->assertSame(550.0, $this->blocks()->rateFor($counter->id),
+        $this->assertSame(254.0, $this->blocks()->rateFor($counter->id),
             'the setup fee never enters the per-unit rate');
 
         // E — mostly service, proving a charge moves no stock at all.
@@ -294,9 +299,9 @@ class CateringSeedUatMySqlTest extends MySqlTenantTestCase
         $estimate = CateringEstimate::findOrFail($line->catering_estimate_id);
 
         // The LINE carries only the per-unit blocks.
-        $this->assertSame(550.0, round((float) $line->rate, 2));
+        $this->assertSame(254.0, round((float) $line->rate, 2));
         $this->assertSame(
-            round((float) $line->quantity * 550, 2),
+            round((float) $line->quantity * 254, 2),
             round((float) $line->amount, 2),
             'a line is quantity x rate, and the setup fee is not part of the rate'
         );
@@ -342,10 +347,10 @@ class CateringSeedUatMySqlTest extends MySqlTenantTestCase
         $line = $this->blocks()->priceLine($handi->id, 10);
         $chicken = collect($line['blocks'])->firstWhere('label', 'Chicken');
 
-        $this->assertSame(2500.0, $chicken['amount'], 'charged 10 x 250');
+        $this->assertSame(560.0, $chicken['amount'], 'charged for the 4 KG it needs, at 140 a kilo');
         $this->assertEqualsWithDelta(4.0, $chicken['required_qty'], 0.001, 'draws 4 KG');
-        $this->assertEqualsWithDelta(2400.0, $this->blocks()->expectedMaterialCost($handi->id, 10), 0.01,
-            '4 KG at the rate book 600 costs 2,400 — not the 2,500 it was charged');
+        $this->assertEqualsWithDelta(320.0, $this->blocks()->expectedMaterialCost($handi->id, 10), 0.01,
+            '4 KG at the rate book 80 costs 320 — not the 560 it was charged');
     }
 
     /** Every active UAT dish is costed from blocks. No recipe line anywhere. */
@@ -435,11 +440,11 @@ class CateringSeedUatMySqlTest extends MySqlTenantTestCase
         }
 
         $byName = $estimate->lines->keyBy('item_name');
-        $this->assertSame(700.0, round((float) $byName['Chicken Karahi (UAT)']->rate, 2));
+        $this->assertSame(300.0, round((float) $byName['Chicken Karahi (UAT)']->rate, 2));
 
         // The demo carries the lump-sum dish, so the setup fee is on the document
         // while the line itself stays per-kilo — the whole point of showing it.
-        $this->assertSame(550.0, round((float) $byName['Live Counter BBQ (UAT)']->rate, 2));
+        $this->assertSame(254.0, round((float) $byName['Live Counter BBQ (UAT)']->rate, 2));
         $this->assertSame(3000.0, round((float) $estimate->other_charge_amount, 2),
             'the owner must be able to see a one-off charge that does not scale');
 

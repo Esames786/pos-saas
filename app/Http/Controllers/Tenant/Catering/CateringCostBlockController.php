@@ -76,6 +76,9 @@ class CateringCostBlockController extends Controller
             'blocks.*.label' => ['required', 'string', 'max:120'],
             'blocks.*.block_type' => ['required', Rule::in(CateringProductCostBlock::TYPES)],
             'blocks.*.charge_basis' => ['required', Rule::in(CateringProductCostBlock::BASES)],
+            // What a material's rate is a rate OF. Absent on a charge block,
+            // and absent on an untouched legacy row, which keeps its own.
+            'blocks.*.rate_basis' => ['nullable', Rule::in(CateringProductCostBlock::RATE_BASES)],
             'blocks.*.rate' => ['required', 'numeric', 'min:0'],
             'blocks.*.material_product_id' => ['nullable', 'exists:products,id'],
             'blocks.*.quantity_per_unit' => ['nullable', 'numeric', 'min:0'],
@@ -116,6 +119,13 @@ class CateringCostBlockController extends Controller
                         ? $row['material_product_id'] : null,
                     'quantity_per_unit' => $row['block_type'] === CateringProductCostBlock::TYPE_MATERIAL
                         ? ($row['quantity_per_unit'] ?? null) : null,
+                    // A new material is authored the way a caterer thinks —
+                    // rupees per kilo of chicken. A legacy row keeps whatever it
+                    // was authored as unless the operator deliberately changes
+                    // it, because changing it changes the price.
+                    'rate_basis' => $row['block_type'] === CateringProductCostBlock::TYPE_MATERIAL
+                        ? ($row['rate_basis'] ?? CateringProductCostBlock::RATE_PER_MATERIAL_UNIT)
+                        : CateringProductCostBlock::RATE_PER_DISH_UNIT,
                     'unit_id' => $row['block_type'] === CateringProductCostBlock::TYPE_MATERIAL
                         ? ($row['unit_id'] ?? null) : null,
                 ];
