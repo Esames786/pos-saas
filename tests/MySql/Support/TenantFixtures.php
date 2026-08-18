@@ -58,6 +58,14 @@ trait TenantFixtures
         ], $attrs));
     }
 
+    protected function makeWaiter(?int $branchId = null, array $attrs = []): int
+    {
+        return $this->tenant()->table('restaurant_waiters')->insertGetId(array_merge([
+            'branch_id' => $branchId, 'name' => 'Waiter ' . uniqid(), 'status' => 'active',
+            'created_at' => now(), 'updated_at' => now(),
+        ], $attrs));
+    }
+
     protected function makeTerminal(int $branchId, array $attrs = []): int
     {
         $u = uniqid();

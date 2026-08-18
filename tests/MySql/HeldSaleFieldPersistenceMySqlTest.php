@@ -22,7 +22,8 @@ use Tests\MySql\Support\TenantFixtures;
  *
  *   • a delivery order's delivery charge is saved and folded into grand_total (was 0),
  *   • a LOCKED branch stores its own default charge, never the client's number,
- *   • a TAKEAWAY order keeps its vehicle number (the save gate was quick_sale-only),
+ *   • a TAKEAWAY order no longer captures a vehicle number (client dropped it; Quick Sale is now
+ *     the only vehicle-carrying type),
  *   • a DELIVERY order never stores a vehicle number,
  *   • the recall list (ajaxList) re-exposes delivery_charge_amount so recall restores it.
  *
@@ -132,7 +133,7 @@ class HeldSaleFieldPersistenceMySqlTest extends MySqlTenantTestCase
         $this->assertSame(650.0, (float) $sale->grand_total, '500 + 150 locked default');
     }
 
-    public function test_takeaway_keeps_vehicle_number_and_delivery_never_does(): void
+    public function test_takeaway_drops_vehicle_number_and_delivery_never_carries_one(): void
     {
         $branchId  = $this->makeBranch();
         $productId = $this->makeProduct($this->makeCategory(), ['default_selling_price' => 300]);
@@ -142,7 +143,7 @@ class HeldSaleFieldPersistenceMySqlTest extends MySqlTenantTestCase
             'vehicle_number' => 'LEA-4213',
             'lines'          => [['product_id' => $productId, 'quantity' => 1, 'unit_price' => 300]],
         ]);
-        $this->assertSame('LEA-4213', $takeaway->vehicle_number, 'takeaway must keep the vehicle number');
+        $this->assertNull($takeaway->vehicle_number, 'takeaway no longer captures a vehicle number (client confirmed; Quick Sale only)');
 
         $customer = \App\Models\Tenant\Customer::create(['name' => 'No Vehicle', 'phone' => '0300-0000003', 'status' => 'active']);
         $delivery = $this->hold($branchId, [
@@ -173,6 +174,10 @@ class HeldSaleFieldPersistenceMySqlTest extends MySqlTenantTestCase
             'branch_id'      => $branchId,
             'terminal_id'    => $terminalId,
             'order_type'     => 'quick_sale',
+            // Quick Sale now requires vehicle + waiter; supply them so validation passes and the
+            // request reaches the DISCOUNT refusal this test is actually asserting.
+            'vehicle_number' => 'LEA-0001',
+            'restaurant_waiter_id' => $this->makeWaiter($branchId),
             'discount_type'  => 'fixed',
             'discount_value' => 50,
             'lines'          => [['product_id' => $productId, 'quantity' => 1, 'unit_price' => 300]],

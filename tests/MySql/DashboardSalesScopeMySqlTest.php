@@ -94,10 +94,11 @@ class DashboardSalesScopeMySqlTest extends MySqlTenantTestCase
         $this->assertSame(['TK-1', 'TK-2'], $data['orders']->pluck('sale_no')->sort()->values()->all());
     }
 
-    public function test_pos_vehicle_input_is_quick_sale_only(): void
+    public function test_pos_vehicle_and_waiter_inputs_are_quick_sale_only(): void
     {
         $src = file_get_contents(resource_path('views/tenant/pos/index.blade.php'));
-        $this->assertStringContainsString("const isVehicleType = orderTypeEl.value === 'quick_sale';", $src);
+        // Vehicle + waiter now share one quick-sale gate; neither shows for takeaway.
+        $this->assertStringContainsString("const isQuickSale = orderTypeEl.value === 'quick_sale';", $src);
         $this->assertStringNotContainsString("orderTypeEl.value === 'quick_sale' || orderTypeEl.value === 'takeaway'", $src, 'takeaway must no longer show the vehicle field');
     }
 }

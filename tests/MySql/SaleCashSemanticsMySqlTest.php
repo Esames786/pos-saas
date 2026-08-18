@@ -63,10 +63,12 @@ class SaleCashSemanticsMySqlTest extends MySqlTenantTestCase
         $pmId = $this->makePaymentMethod(['method_type' => 'cash']);
         $shift = app(ShiftService::class)->open(Branch::on('tenant')->find($branchId), Terminal::on('tenant')->find($terminalId), $userId, 0.0);
 
-        // REAL Cloud Direct Pay: 1 × 100, customer hands over 500 cash.
+        // REAL Cloud Direct Pay: 1 × 100, customer hands over 500 cash. Quick Sale now requires a
+        // vehicle number + a waiter (drive-through attribution).
         $req = Request::create('/', 'POST', [
             'branch_id' => $branchId, 'terminal_id' => $terminalId, 'order_type' => 'quick_sale',
             'order_source' => 'pos', 'discount_type' => 'none',
+            'vehicle_number' => 'LEA-0001', 'restaurant_waiter_id' => $this->makeWaiter($branchId),
             'lines' => [['product_id' => $productId, 'quantity' => 1, 'unit_price' => 100]],
             'payments' => [['payment_method_id' => $pmId, 'amount' => 100, 'tendered_amount' => 500]],
         ]);

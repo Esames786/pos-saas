@@ -162,6 +162,7 @@ class ShiftPosIntegrationTest extends MySqlTenantTestCase
                 'request' => $this->jsonRequest('POST', [
                     'branch_id' => $branchId, 'terminal_id' => $terminalId, 'order_type' => 'quick_sale',
                     'order_source' => 'pos', 'discount_type' => 'none',
+                    'vehicle_number' => 'LEA-QS', 'restaurant_waiter_id' => $this->makeWaiter($branchId),
                     'lines' => [['product_id' => $productId, 'quantity' => 1, 'unit_price' => 100]],
                     'payments' => [['payment_method_id' => $pmId, 'amount' => 100]],
                 ]),
@@ -197,6 +198,7 @@ class ShiftPosIntegrationTest extends MySqlTenantTestCase
                 'request' => $this->jsonRequest('POST', [
                     'branch_id' => $branchId, 'terminal_id' => $terminalId, 'order_type' => 'quick_sale',
                     'discount_type' => 'none',
+                    'vehicle_number' => 'LEA-QS', 'restaurant_waiter_id' => $this->makeWaiter($branchId),
                     'lines' => [['product_id' => $productId, 'quantity' => 1, 'unit_price' => 50]],
                 ]),
             ]);
@@ -210,6 +212,7 @@ class ShiftPosIntegrationTest extends MySqlTenantTestCase
                 'request' => $this->jsonRequest('POST', [
                     'held_sale_id' => $heldId, 'branch_id' => $branchId, 'terminal_id' => $terminalId,
                     'order_type' => 'quick_sale', 'discount_type' => 'none',
+                    'vehicle_number' => 'LEA-QS', 'restaurant_waiter_id' => $this->makeWaiter($branchId),
                     'lines' => [['product_id' => $productId, 'quantity' => 2, 'unit_price' => 50]],
                 ]),
             ]);
@@ -238,6 +241,7 @@ class ShiftPosIntegrationTest extends MySqlTenantTestCase
             'request' => $this->jsonRequest('POST', [
                 'branch_id' => $branchId, 'terminal_id' => $terminalId, 'order_type' => 'quick_sale',
                 'discount_type' => 'none',
+                'vehicle_number' => 'LEA-QS', 'restaurant_waiter_id' => $this->makeWaiter($branchId),
                 'lines' => [
                     ['product_id' => $productId, 'quantity' => 1, 'unit_price' => 30, 'client_line_key' => 'a'],
                     ['product_id' => $productId, 'quantity' => 1, 'unit_price' => 70, 'client_line_key' => 'b'],
