@@ -48,6 +48,8 @@ class PrintRoutingFoundationTest extends TestCase
         Schema::connection('tenant')->create('category_printer_mappings', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('branch_id')->nullable();
+            // KOT-ROUTING-TERMINAL-1: mirror the real schema — the resolver reads terminal_id.
+            $table->unsignedBigInteger('terminal_id')->nullable();
             $table->unsignedBigInteger('category_id');
             $table->unsignedBigInteger('printer_id');
             $table->string('print_role')->default('kot');

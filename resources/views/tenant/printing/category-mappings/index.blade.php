@@ -39,6 +39,7 @@
             <thead>
                 <tr>
                     <th>Branch</th>
+                    <th>Terminal</th>
                     <th>Order Type</th>
                     <th>Category</th>
                     <th>Printer</th>
@@ -52,6 +53,7 @@
                 @forelse($mappings as $m)
                 <tr>
                     <td>{{ $m->branch?->name ?? 'All Branches' }}</td>
+                    <td>{{ $m->terminal?->name ?? 'All terminals' }}</td>
                     <td>{{ $m->order_type === 'all' ? 'All' : ucwords(str_replace('_', ' ', $m->order_type)) }}</td>
                     <td>{{ $m->category?->name ?? 'All categories' }}</td>
                     <td>{{ $m->printer?->name }}</td>
@@ -75,7 +77,7 @@
                     </td>
                 </tr>
                 @empty
-                <tr><td colspan="8" class="text-center text-muted py-4">No mappings configured.</td></tr>
+                <tr><td colspan="9" class="text-center text-muted py-4">No mappings configured.</td></tr>
                 @endforelse
             </tbody>
         </table>
@@ -100,6 +102,16 @@
                             <option value="{{ $b->id }}" @selected(old('branch_id') == $b->id)>{{ $b->name }}</option>
                         @endforeach
                     </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Terminal</label>
+                    <select name="terminal_id" class="form-select">
+                        <option value="0" @selected(! old('terminal_id'))>— All terminals —</option>
+                        @foreach($terminals as $tm)
+                            <option value="{{ $tm->id }}" @selected(old('terminal_id') == $tm->id)>{{ $tm->name }}@if($tm->branch) · {{ $tm->branch->name }}@endif</option>
+                        @endforeach
+                    </select>
+                    <div class="form-text">Pin this rule to one counter. A terminal rule <strong>wins</strong> over “All terminals”, so a counter routes its own KOTs regardless of order type.</div>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label required">Order Type</label>

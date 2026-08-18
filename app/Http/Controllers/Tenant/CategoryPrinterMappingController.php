@@ -7,6 +7,7 @@ use App\Models\Tenant\Branch;
 use App\Models\Tenant\Category;
 use App\Models\Tenant\CategoryPrinterMapping;
 use App\Models\Tenant\Printer;
+use App\Models\Tenant\Terminal;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -18,8 +19,9 @@ class CategoryPrinterMappingController extends Controller
     {
         $selectedBranchId = $request->input('branch_id');
 
-        $query = CategoryPrinterMapping::with(['branch', 'category', 'printer'])
+        $query = CategoryPrinterMapping::with(['branch', 'terminal', 'category', 'printer'])
             ->orderBy('branch_id')
+            ->orderBy('terminal_id')
             ->orderBy('order_type')
             ->orderBy('category_id');
 
@@ -29,22 +31,27 @@ class CategoryPrinterMappingController extends Controller
 
         $mappings  = $query->get();
         $branches  = Branch::where('status', 'active')->orderBy('name')->get();
+        $terminals = Terminal::where('status', 'active')->with('branch')->orderBy('name')->get();
         $categories = Category::where('is_active', true)->orderBy('name')->get();
         $printers  = Printer::where('is_active', true)->orderBy('name')->get();
 
         return view('tenant.printing.category-mappings.index',
-            compact('mappings', 'branches', 'categories', 'printers', 'selectedBranchId'));
+            compact('mappings', 'branches', 'terminals', 'categories', 'printers', 'selectedBranchId'));
     }
 
     public function store(Request $request)
     {
-        // "All categories" (wildcard) arrives as 0 / empty → store as NULL.
+        // "All categories" / "All terminals" (wildcards) arrive as 0 / empty → store as NULL.
         if (in_array($request->input('category_id'), ['0', '', null], true)) {
             $request->merge(['category_id' => null]);
+        }
+        if (in_array($request->input('terminal_id'), ['0', '', null], true)) {
+            $request->merge(['terminal_id' => null]);
         }
 
         $data = $request->validate([
             'branch_id'   => ['nullable', 'exists:branches,id'],
+            'terminal_id' => ['nullable', 'exists:terminals,id'],
             'category_id' => ['nullable', 'exists:categories,id'],
             'printer_id'  => ['required', 'exists:printers,id'],
             'print_role'  => ['required', Rule::in(['kot', 'receipt', 'reminder'])],
@@ -54,6 +61,7 @@ class CategoryPrinterMappingController extends Controller
         ]);
 
         $data['branch_id'] = $data['branch_id'] ?? null;
+        $data['terminal_id'] = $data['terminal_id'] ?? null;
         $data['order_type'] = trim((string) ($data['order_type'] ?? '')) ?: 'all';
         $data['is_active'] = !empty($data['is_active']);
         $data['reminder_confirm_on_addition'] = $data['print_role'] === 'reminder'
@@ -83,6 +91,11 @@ class CategoryPrinterMappingController extends Controller
                     $data['branch_id'] === null,
                     fn ($query) => $query->whereNull('branch_id'),
                     fn ($query) => $query->where('branch_id', $data['branch_id'])
+                )
+                ->when(
+                    $data['terminal_id'] === null,
+                    fn ($query) => $query->whereNull('terminal_id'),
+                    fn ($query) => $query->where('terminal_id', $data['terminal_id'])
                 )
                 ->when(
                     $data['category_id'] === null,
