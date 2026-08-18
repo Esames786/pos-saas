@@ -67,7 +67,9 @@ class CateringCostBlockService
         return round(
             $this->blocksFor($productId)
                 ->reject(fn (CateringProductCostBlock $b) => $b->isLumpSum())
-                ->sum(fn (CateringProductCostBlock $b) => (float) $b->rate),
+                // Not the raw rate: a per-material rate is per KG of CHICKEN,
+                // and what the dish's rate owes to it is that times the ratio.
+                ->sum(fn (CateringProductCostBlock $b) => $b->contributionPerDishUnit()),
             2
         );
     }
@@ -103,7 +105,7 @@ class CateringCostBlockService
 
             $total += $amount;
             if (! $isZeroed && ! $block->isLumpSum()) {
-                $perUnit += (float) $block->rate;
+                $perUnit += $block->contributionPerDishUnit();
             }
 
             $lines[] = [
@@ -111,6 +113,7 @@ class CateringCostBlockService
                 'label' => $block->label,
                 'type' => $block->block_type,
                 'basis' => $block->charge_basis,
+                'rate_basis' => $block->rateBasis(),
                 'rate' => (float) $block->rate,
                 'amount' => $amount,
                 'customer_supplied' => $isZeroed,
