@@ -413,6 +413,9 @@
                                                 @if($block->is_overridden)
                                                     <span class="badge bg-warning-subtle text-warning-emphasis fs-12">this event</span>
                                                 @endif
+                                                @if($block->isCustomerSupplied())
+                                                    <span class="badge bg-success-subtle text-success-emphasis fs-12">Customer provides</span>
+                                                @endif
                                             </td>
                                             <td class="text-end">
                                                 {{ number_format($block->rate, 2) }}
@@ -447,6 +450,30 @@
                                                     @else
                                                         {{ rtrim(rtrim(number_format($block->event_material_qty, 4), '0'), '.') }}
                                                         {{ $block->unit_code }}
+                                                    @endif
+
+                                                    {{-- Two facts at once: the kitchen still needs it, and
+                                                         our store hands over none of it. --}}
+                                                    @if($block->isCustomerSupplied())
+                                                        <div class="fs-12 text-success-emphasis">
+                                                            customer provides it · we issue 0
+                                                        </div>
+                                                    @endif
+
+                                                    @if($current->isDraft())
+                                                        @can('tenant.catering.estimates.update')
+                                                        <form method="POST" class="mt-1"
+                                                              action="{{ url('/catering/line-cost-blocks/' . $block->id . '/customer-supplied') }}">
+                                                            @csrf @method('PUT')
+                                                            <input type="hidden" name="is_customer_supplied"
+                                                                   value="{{ $block->isCustomerSupplied() ? 0 : 1 }}">
+                                                            <button class="btn btn-link btn-sm p-0 fs-12">
+                                                                {{ $block->isCustomerSupplied()
+                                                                    ? 'We will provide this instead'
+                                                                    : 'Customer will provide this' }}
+                                                            </button>
+                                                        </form>
+                                                        @endcan
                                                     @endif
 
                                                     @if($block->is_overridden)

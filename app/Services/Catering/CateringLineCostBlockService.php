@@ -95,12 +95,15 @@ class CateringLineCostBlockService
                     'event_material_qty' => $defaultQty,
                     'is_overridden' => false,
                     'material_rate_at_quote' => $rateBookRate,
-                    'material_cost' => $rateBookRate === null || $defaultQty === null
-                        ? null
-                        : round($defaultQty * $rateBookRate, 4),
+                    // A fresh line is supplied by the business until somebody
+                    // says otherwise.
+                    'is_customer_supplied' => false,
                     'sort_order' => $index + 1,
                 ]);
 
+                // Both through the model, so there is one cost rule and one
+                // charge rule rather than a second copy of each living here.
+                $snapshot->material_cost = $snapshot->computeMaterialCost();
                 $snapshot->amount = $snapshot->computeAmount($dishQty);
                 $snapshot->save();
             }
@@ -131,6 +134,32 @@ class CateringLineCostBlockService
             'event_material_qty' => $quantity,
             'is_overridden' => true,
         ])->save();
+
+        $this->refreshSnapshotAmount($snapshot);
+        $this->reprice($snapshot->line);
+    }
+
+    /**
+     * The customer is bringing this material themselves — or has stopped.
+     *
+     * Deliberately a FLAG, not a quantity edit. The kitchen still needs its five
+     * kilos of chicken; what changes is who hands them over and who pays for
+     * them. Writing the requirement down to zero would lose the fact the kitchen
+     * sheet depends on, and the making charge would go on being charged against
+     * a dish that appeared to need no ingredients.
+     */
+    public function setCustomerSupplied(CateringEstimateLineCostBlock $snapshot, bool $supplied): void
+    {
+        $this->assertEditable($snapshot);
+
+        if (! $snapshot->isMaterial()) {
+            throw new RuntimeException(
+                "'{$snapshot->label}' is a charge, not a material — there is nothing for a customer to bring. "
+                .'Making and packing are the work, and the work is still being done.'
+            );
+        }
+
+        $snapshot->forceFill(['is_customer_supplied' => $supplied])->save();
 
         $this->refreshSnapshotAmount($snapshot);
         $this->reprice($snapshot->line);
@@ -308,12 +337,8 @@ class CateringLineCostBlockService
     {
         $dishQty ??= (float) $snapshot->line->quantity;
 
-        $cost = $snapshot->material_rate_at_quote === null || $snapshot->event_material_qty === null
-            ? null
-            : round((float) $snapshot->event_material_qty * (float) $snapshot->material_rate_at_quote, 4);
-
         $snapshot->forceFill([
-            'material_cost' => $cost,
+            'material_cost' => $snapshot->computeMaterialCost(),
             'amount' => $snapshot->computeAmount($dishQty),
         ])->save();
     }
