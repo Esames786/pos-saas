@@ -22,6 +22,9 @@ class CateringEstimateController extends Controller
     {
         $data = $request->validate([
             'lines' => ['array'],
+            // Stable identity, so saving the form updates a line rather than
+            // replacing it and discarding the costing decisions on it.
+            'lines.*.line_uuid' => ['nullable', 'string', 'max:26'],
             'lines.*.product_id' => ['nullable', 'exists:products,id'],
             'lines.*.item_name' => ['required', 'string', 'max:255'],
             'lines.*.item_name_ur' => ['nullable', 'string', 'max:255'],

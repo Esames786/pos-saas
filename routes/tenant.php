@@ -845,6 +845,7 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                     Route::put('/catering/line-cost-blocks/{costBlock}', [\App\Http\Controllers\Tenant\Catering\CateringLineCostController::class, 'updateMaterial'])->name('tenant.catering.line-cost-blocks.update');
                     Route::post('/catering/line-cost-blocks/{costBlock}/reset', [\App\Http\Controllers\Tenant\Catering\CateringLineCostController::class, 'resetMaterial'])->name('tenant.catering.line-cost-blocks.reset');
                     Route::put('/catering/estimate-lines/{cateringEstimateLine}/quoted-rate', [\App\Http\Controllers\Tenant\Catering\CateringLineCostController::class, 'quoteRate'])->name('tenant.catering.estimate-lines.quoted-rate');
+                    Route::post('/catering/estimate-lines/{cateringEstimateLine}/use-calculated-rate', [\App\Http\Controllers\Tenant\Catering\CateringLineCostController::class, 'useCalculatedRate'])->name('tenant.catering.estimate-lines.use-calculated-rate');
 
                     Route::get('/catering/guide', [\App\Http\Controllers\Tenant\Catering\CateringGuideController::class, 'index'])->name('tenant.catering.guide.index');
 

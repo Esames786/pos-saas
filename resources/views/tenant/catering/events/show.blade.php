@@ -513,6 +513,16 @@
                                         <button class="btn btn-sm btn-outline-primary">Use this rate</button>
                                     </div>
                                 </form>
+
+                                @if($line->hasQuotedRateOverride())
+                                    <form method="POST" class="mt-2"
+                                          action="{{ url('/catering/estimate-lines/' . $line->id . '/use-calculated-rate') }}">
+                                        @csrf
+                                        <button class="btn btn-link btn-sm p-0 fs-12">
+                                            Use calculated rate ({{ number_format($line->calculated_rate, 2) }}) instead
+                                        </button>
+                                    </form>
+                                @endif
                                 @endcan
                             @endif
 
@@ -1042,6 +1052,10 @@
     // bracket — invalid PHP that `view:cache` still reports as "cached successfully".
     $unitsPayload = $units->map(fn ($u) => ['id' => $u->id, 'code' => $u->code, 'name' => $u->name])->values();
     $existingLines = $current->lines->map(fn ($l) => [
+        // Stable identity, so saving the builder UPDATES this line rather than
+        // replacing it — and the material quantities and agreed rate somebody
+        // set on it survive an ordinary edit.
+        'line_uuid' => $l->line_uuid,
         'product_id' => $l->product_id,
         'product_text' => $l->item_name,
         'item_name' => $l->item_name,
@@ -1076,6 +1090,7 @@ $(function () {
                 <td>
                     <select class="form-select form-select-sm product-select" name="lines[${i}][product_id]"></select>
                     <input type="hidden" name="lines[${i}][item_name]" class="line-name" value="${_.escape(line.item_name || '')}">
+                    <input type="hidden" name="lines[${i}][line_uuid]" value="${_.escape(line.line_uuid || '')}">
                 </td>
                 <td><input type="text" dir="rtl" lang="ur" class="form-control form-control-sm line-name-ur" name="lines[${i}][item_name_ur]" value="${_.escape(line.item_name_ur || '')}"></td>
                 <td><input type="number" step="0.001" min="0.001" class="form-control form-control-sm text-end line-qty" name="lines[${i}][quantity]" value="${line.quantity || defaultPax || 1}" required></td>

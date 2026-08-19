@@ -229,6 +229,8 @@ class CateringLineCostBlockService
             'lump_sum_amount' => round($lumpSum, 2),
             'amount' => round($quoted * $dishQty + $lumpSum, 2),
         ])->save();
+
+        $this->recalculateDocument($line);
     }
 
     /**
@@ -261,6 +263,38 @@ class CateringLineCostBlockService
             'rate_override_reason' => trim($reason),
             'amount' => round($quotedRate * (float) $line->quantity + (float) $line->lump_sum_amount, 2),
         ])->save();
+
+        $this->recalculateDocument($line);
+    }
+
+    /**
+     * Put a line back on the price its blocks calculate.
+     *
+     * Clearing the reason is what does it: the reason is the signal that says an
+     * operator chose this number, and without one the quoted rate simply tracks
+     * the calculation again.
+     */
+    public function useCalculatedRate(CateringEstimateLine $line): void
+    {
+        if (! $line->estimate?->isDraft()) {
+            throw new RuntimeException('A sent quotation cannot be repriced — revise it instead.');
+        }
+
+        $line->forceFill(['rate_override_reason' => null])->save();
+
+        $this->reprice($line->refresh());
+    }
+
+    /**
+     * A changed line changes the quotation. Without this the screen shows a line
+     * at 1,960 inside a document that still totals 1,910, and whichever figure
+     * the customer is given, one of them is wrong.
+     */
+    private function recalculateDocument(CateringEstimateLine $line): void
+    {
+        if ($estimate = $line->estimate) {
+            app(CateringEstimateService::class)->recalculateTotals($estimate);
+        }
     }
 
     /** @return \Illuminate\Support\Collection<int, CateringEstimateLineCostBlock> */

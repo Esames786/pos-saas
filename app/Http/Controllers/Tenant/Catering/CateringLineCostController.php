@@ -79,6 +79,18 @@ class CateringLineCostController extends Controller
         return $this->backToEvent($cateringEstimateLine, 'Quoted rate updated for this line.');
     }
 
+    /** Put the line back on the price its own blocks calculate. */
+    public function useCalculatedRate(CateringEstimateLine $cateringEstimateLine)
+    {
+        try {
+            $this->lineBlocks->useCalculatedRate($cateringEstimateLine);
+        } catch (RuntimeException $e) {
+            return back()->withErrors(['cost_block' => $e->getMessage()]);
+        }
+
+        return $this->backToEvent($cateringEstimateLine, 'Line is back on its calculated rate.');
+    }
+
     /**
      * Tenant routes carry a {subdomain} parameter, so route() would bind the
      * model to the subdomain and throw after the change had already been made.
