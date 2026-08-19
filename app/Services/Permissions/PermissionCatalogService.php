@@ -76,6 +76,7 @@ class PermissionCatalogService
         // not product configuration — it changes a quotation, never a dish.
         'tenant.catering.line-cost-blocks.update' => 'Create / Edit Estimate',
         'tenant.catering.line-cost-blocks.reset' => 'Create / Edit Estimate',
+        'tenant.catering.line-cost-blocks.customer-supplied' => 'Create / Edit Estimate',
         'tenant.catering.estimate-lines.quoted-rate' => 'Create / Edit Estimate',
         'tenant.catering.estimate-lines.use-calculated-rate' => 'Create / Edit Estimate',
         'tenant.catering.estimates.send' => 'Send / Revise Quote',

@@ -40,6 +40,31 @@ class CateringLineCostController extends Controller
         return $this->backToEvent($costBlock->line, "{$costBlock->label} updated for this booking only.");
     }
 
+    /**
+     * The customer is bringing this material, or has stopped.
+     *
+     * Refused on a charge block by the service: there is nothing for a customer
+     * to bring when the line is making or packing.
+     */
+    public function customerSupplied(Request $request, CateringEstimateLineCostBlock $costBlock)
+    {
+        $data = $request->validate([
+            'is_customer_supplied' => ['required', 'boolean'],
+        ]);
+
+        try {
+            $this->lineBlocks->setCustomerSupplied($costBlock, (bool) $data['is_customer_supplied']);
+        } catch (RuntimeException $e) {
+            return back()->withErrors(['cost_block' => $e->getMessage()]);
+        }
+
+        $status = $data['is_customer_supplied']
+            ? "{$costBlock->label} is being supplied by the customer — not charged, and not issued from our store."
+            : "{$costBlock->label} is back to being supplied by us.";
+
+        return $this->backToEvent($costBlock->line, $status);
+    }
+
     /** Put it back on the dish's own ratio. */
     public function resetMaterial(CateringEstimateLineCostBlock $costBlock)
     {

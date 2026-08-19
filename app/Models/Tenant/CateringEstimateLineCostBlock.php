@@ -41,6 +41,7 @@ class CateringEstimateLineCostBlock extends Model
         'default_material_qty',
         'event_material_qty',
         'is_overridden',
+        'is_customer_supplied',
         'material_rate_at_quote',
         'material_cost',
         'amount',
@@ -58,6 +59,7 @@ class CateringEstimateLineCostBlock extends Model
             'material_cost' => 'decimal:4',
             'amount' => 'decimal:2',
             'is_overridden' => 'boolean',
+            'is_customer_supplied' => 'boolean',
             'sort_order' => 'integer',
         ];
     }
@@ -88,13 +90,47 @@ class CateringEstimateLineCostBlock extends Model
             && $this->rate_basis === CateringProductCostBlock::RATE_PER_MATERIAL_UNIT;
     }
 
+    /** Is the customer bringing this material themselves? */
+    public function isCustomerSupplied(): bool
+    {
+        return $this->isMaterial() && (bool) $this->is_customer_supplied;
+    }
+
+    /**
+     * What the KITCHEN needs. Unchanged by who supplies it — the dish is the
+     * same dish and the cooking is the same cooking.
+     */
+    public function physicalRequirement(): float
+    {
+        return round((float) ($this->event_material_qty ?? 0), 4);
+    }
+
+    /**
+     * What OUR STORE has to hand over. Zero when the customer brings it.
+     *
+     * This is the number a kitchen requirement sheet must eventually ask for —
+     * never the physical requirement, or the business would issue material it
+     * agreed not to supply.
+     */
+    public function ourStockRequirement(): float
+    {
+        return $this->isCustomerSupplied() ? 0.0 : $this->physicalRequirement();
+    }
+
     /**
      * Recompute what the customer is charged for this part, from whatever the
      * event settled on. The stored amount is the authority afterwards; this is
      * how it gets there.
+     *
+     * A customer-supplied material is charged nothing: they brought it. Making
+     * and packing are untouched — the caterer still did the work.
      */
     public function computeAmount(float $dishQuantity): float
     {
+        if ($this->isCustomerSupplied()) {
+            return 0.0;
+        }
+
         if ($this->isLumpSum()) {
             return round((float) $this->rate, 2);
         }
@@ -104,5 +140,26 @@ class CateringEstimateLineCostBlock extends Model
         }
 
         return round((float) $this->rate * $dishQuantity, 2);
+    }
+
+    /**
+     * What this material costs the business on this line.
+     *
+     * Nothing, when the customer supplied it. The rate book still knows what the
+     * material is worth, and that stays visible as context — but the business
+     * did not buy it, and recording a cost it did not incur would understate the
+     * margin on exactly the arrangement designed to protect it.
+     */
+    public function computeMaterialCost(): ?float
+    {
+        if ($this->isCustomerSupplied()) {
+            return 0.0;
+        }
+
+        if ($this->material_rate_at_quote === null || $this->event_material_qty === null) {
+            return null;
+        }
+
+        return round((float) $this->event_material_qty * (float) $this->material_rate_at_quote, 4);
     }
 }
