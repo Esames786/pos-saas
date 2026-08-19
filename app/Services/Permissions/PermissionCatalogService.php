@@ -72,6 +72,11 @@ class PermissionCatalogService
         'tenant.catering.events.update' => 'Create / Edit Estimate',
         'tenant.catering.estimates.update' => 'Create / Edit Estimate',
         'tenant.catering.estimates.reprice' => 'Create / Edit Estimate',
+        // Adjusting one booking's materials or quoted price is estimate editing,
+        // not product configuration — it changes a quotation, never a dish.
+        'tenant.catering.line-cost-blocks.update' => 'Create / Edit Estimate',
+        'tenant.catering.line-cost-blocks.reset' => 'Create / Edit Estimate',
+        'tenant.catering.estimate-lines.quoted-rate' => 'Create / Edit Estimate',
         'tenant.catering.estimates.send' => 'Send / Revise Quote',
         'tenant.catering.estimates.accept' => 'Send / Revise Quote',
         'tenant.catering.estimates.revise' => 'Send / Revise Quote',

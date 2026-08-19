@@ -528,6 +528,35 @@ class CateringViewRenderMySqlTest extends MySqlTenantTestCase
     }
 
     /**
+     * KASHIF-CATERING-LINE-SNAPSHOT-1 — the estimate line explains its price.
+     *
+     * The breakdown is what makes a quotation arguable with a customer, and the
+     * three columns are the distinction the whole costing design rests on. If
+     * they ever collapse into one on screen, the model is undone regardless of
+     * how carefully the services keep them apart.
+     */
+    public function test_the_event_screen_can_break_a_cost_block_line_down(): void
+    {
+        $html = file_get_contents(base_path('resources/views/tenant/catering/events/show.blade.php'));
+
+        $this->assertStringContainsString('Cost Details', $html,
+            'a line must be able to explain what it was priced from');
+
+        foreach (['Customer charge', 'Kitchen uses', 'Costs us', 'Calculated rate'] as $column) {
+            $this->assertStringContainsString($column, $html,
+                "the breakdown must name '{$column}' as its own number");
+        }
+
+        // Compact by default — a twenty-dish quotation with every breakdown open
+        // is unreadable, which is why this is a collapse rather than a panel.
+        $this->assertStringContainsString('data-bs-toggle="collapse"', $html);
+
+        // And the boundary an operator most needs to trust before typing in it.
+        $this->assertStringContainsString('this booking only', $html,
+            'the screen must say that a quantity change here does not touch the dish');
+    }
+
+    /**
      * KASHIF-CATERING-STORE-2 — the Cost Blocks screen must explain itself.
      *
      * "Charged per KG" and "Material per KG" are both accurate and both read as

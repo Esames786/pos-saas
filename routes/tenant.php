@@ -839,6 +839,13 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
 
                     Route::post('/catering/estimates/{cateringEstimate}/reprice', [\App\Http\Controllers\Tenant\Catering\CateringEstimateController::class, 'reprice'])->name('tenant.catering.estimates.reprice');
 
+                    // KASHIF-CATERING-LINE-SNAPSHOT-1: decisions about ONE booking —
+                    // what tonight actually needs, and what is actually being quoted.
+                    // Neither touches the dish or any other quotation.
+                    Route::put('/catering/line-cost-blocks/{costBlock}', [\App\Http\Controllers\Tenant\Catering\CateringLineCostController::class, 'updateMaterial'])->name('tenant.catering.line-cost-blocks.update');
+                    Route::post('/catering/line-cost-blocks/{costBlock}/reset', [\App\Http\Controllers\Tenant\Catering\CateringLineCostController::class, 'resetMaterial'])->name('tenant.catering.line-cost-blocks.reset');
+                    Route::put('/catering/estimate-lines/{cateringEstimateLine}/quoted-rate', [\App\Http\Controllers\Tenant\Catering\CateringLineCostController::class, 'quoteRate'])->name('tenant.catering.estimate-lines.quoted-rate');
+
                     Route::get('/catering/guide', [\App\Http\Controllers\Tenant\Catering\CateringGuideController::class, 'index'])->name('tenant.catering.guide.index');
 
                     // A catering-only tenant owns raw materials (mutton, rice, oil) but has
