@@ -27,6 +27,7 @@ class CateringTenantResetMySqlTest extends MySqlTenantTestCase
     /** Documents: what the business did. Wiped by a transaction reset. */
     private const DOCUMENT_TABLES = [
         'catering_events', 'catering_estimates', 'catering_estimate_lines',
+        'catering_estimate_line_cost_blocks',
         'catering_advances', 'catering_refunds', 'catering_final_invoices',
         'catering_production_releases', 'catering_production_release_lines',
         'catering_material_issues', 'catering_material_issue_lines',
@@ -87,6 +88,7 @@ class CateringTenantResetMySqlTest extends MySqlTenantTestCase
         $position = fn (string $t) => array_search($t, $wipe, true);
 
         foreach ([
+            ['catering_estimate_line_cost_blocks', 'catering_estimate_lines'],
             ['catering_estimate_lines', 'catering_estimates'],
             ['catering_production_release_lines', 'catering_production_releases'],
             ['catering_material_issue_lines', 'catering_material_issues'],

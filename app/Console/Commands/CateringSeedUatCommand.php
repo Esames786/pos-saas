@@ -550,41 +550,25 @@ class CateringSeedUatCommand extends Command
         ]);
 
         $lines = [];
-        $lumpSum = 0.0;
-        $lumpLabels = [];
 
         foreach (array_values(array_unique($dishSkus)) as $position => $sku) {
             $dish = $this->dishes[$sku];
             $lines[] = [
                 'product_id' => $dish['id'],
                 'item_name' => $dish['name'],
-                // A LINE is quantity x rate, so only the per-unit blocks belong
-                // here. Putting a lump sum in the rate would multiply it by the
-                // order size, which is the one thing a lump sum must never do.
-                'rate' => $dish['rate'],
+                // Left at zero on purpose: the line snapshot prices itself from
+                // the dish's blocks, including any lump sum, which belongs to
+                // the line rather than to the document. A quotation can carry a
+                // live counter on one line and packing on another, and the
+                // document's single other-charge field cannot say which is which.
+                'rate' => 0,
                 'quantity' => [10, 20, 15, 25][$position % 4],
                 'unit_id' => $this->kgUnitId,
                 'unit_code' => 'KG',
             ];
-
-            if ($dish['lump_sum'] > 0) {
-                $lumpSum += $dish['lump_sum'];
-                $lumpLabels[] = $dish['name'];
-            }
         }
 
-        // A lump sum is charged ONCE for the whole booking, so it goes where this
-        // domain already puts a one-off charge on a quotation: the estimate's
-        // other-charge field. Dropping it entirely would have taught an owner
-        // that a 3,000 counter setup is free.
-        $charges = $lumpSum > 0
-            ? [
-                'other_charge_label' => 'Setup / one-off charges — '.implode(', ', $lumpLabels),
-                'other_charge_amount' => round($lumpSum, 2),
-            ]
-            : [];
-
-        $estimates->saveDraftLines($event->currentEstimate, $lines, $charges);
+        $estimates->saveDraftLines($event->currentEstimate, $lines);
 
         return $event->refresh();
     }
