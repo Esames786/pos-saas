@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\PrintAgent;
 use App\Models\Tenant\Printer;
-use App\Models\Tenant\PrintJob;
 use App\Models\Tenant\Terminal;
 use App\Services\Printing\PrintAgentPairingService;
 use Illuminate\Http\Request;
@@ -124,8 +123,7 @@ class PrintAgentController extends Controller
             . "connected and working.\n"
             . str_repeat('=', 42) . "\n\n\n";
 
-        PrintJob::create([
-            'job_no'             => 'PJ-TEST-' . now()->format('YmdHis') . '-' . random_int(100, 999),
+        app(\App\Services\Printing\PrintJobFactory::class)->create([
             'branch_id'          => $printAgent->branch_id,
             'terminal_id'        => $printAgent->terminal_id,
             'printer_id'         => $printer->id,
@@ -138,7 +136,7 @@ class PrintAgentController extends Controller
             'raw_payload'        => $payload,
             'attempts'           => 0,
             'created_by_user_id' => Auth::id(),
-        ]);
+        ], 'PJ-TEST');
 
         $this->pairing->audit('print_agent.test_print_sent', $printAgent, ['printer_id' => $printer->id]);
 

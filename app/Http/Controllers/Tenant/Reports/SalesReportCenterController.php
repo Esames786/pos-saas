@@ -245,8 +245,7 @@ class SalesReportCenterController extends Controller
 
         $branchId = collect($filters['branch_ids'] ?? [])->first() ?? auth('tenant')->user()?->default_branch_id;
 
-        $job = \App\Models\Tenant\PrintJob::create([
-            'job_no' => 'RPT-' . now()->format('YmdHis') . '-' . random_int(100, 999),
+        $job = app(\App\Services\Printing\PrintJobFactory::class)->create([
             'branch_id' => $branchId,
             'terminal_id' => null,   // a report is not terminal-specific; any agent may print it
             'printer_id' => $printer->id,
@@ -257,7 +256,7 @@ class SalesReportCenterController extends Controller
             'payload' => ['sections' => $sections, 'date_from' => $report['meta']['date_from'], 'date_to' => $report['meta']['date_to']],
             'raw_payload' => $esc->buildReport($report),
             'created_by_user_id' => auth('tenant')->id(),
-        ]);
+        ], 'RPT');
 
         return response()->json(['ok' => true, 'job_id' => $job->id, 'printer' => $printer->name]);
     }

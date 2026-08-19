@@ -6,6 +6,7 @@ use App\Models\Tenant\CateringEstimate;
 use App\Models\Tenant\CateringFinalInvoice;
 use App\Models\Tenant\Printer;
 use App\Models\Tenant\PrintJob;
+use App\Services\Printing\PrintJobFactory;
 use Illuminate\Database\QueryException;
 use RuntimeException;
 
@@ -197,7 +198,6 @@ class CateringDocumentPrintService
         ?int $userId,
     ): PrintJob {
         $attributes = [
-            'job_no' => 'PJ-'.now()->format('YmdHis').'-'.random_int(100, 999),
             'logical_key' => $logicalKey,
             'copy_no' => $copyNo,
             'branch_id' => $branchId,
@@ -213,7 +213,9 @@ class CateringDocumentPrintService
         ];
 
         try {
-            return PrintJob::create($attributes);
+            // job_no is allocated (with its bounded retry) by the one authority;
+            // a logical_key collision still surfaces here for idempotency.
+            return app(PrintJobFactory::class)->create($attributes);
         } catch (QueryException $exception) {
             // The unique logical_key is the idempotency guarantee: a repeated
             // request for the same document on the same printer returns the job
