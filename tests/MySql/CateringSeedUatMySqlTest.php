@@ -298,24 +298,23 @@ class CateringSeedUatMySqlTest extends MySqlTenantTestCase
         $line = CateringEstimateLine::where('product_id', $counter->id)->firstOrFail();
         $estimate = CateringEstimate::findOrFail($line->catering_estimate_id);
 
-        // The LINE carries only the per-unit blocks.
+        // The RATE carries only the per-unit blocks — a flat fee in a per-kilo
+        // rate would be wrong at every order size except one.
         $this->assertSame(254.0, round((float) $line->rate, 2));
+        $this->assertSame(254.0, round((float) $line->calculated_rate, 2));
+
+        // The 3,000 belongs to THIS LINE, once, and reaches the line's amount.
+        $this->assertSame(3000.0, round((float) $line->lump_sum_amount, 2),
+            'the setup fee is charged once for the booking, not per kilo');
         $this->assertSame(
-            round((float) $line->quantity * 254, 2),
+            round((float) $line->quantity * 254 + 3000, 2),
             round((float) $line->amount, 2),
-            'a line is quantity x rate, and the setup fee is not part of the rate'
+            'quantity x rate, plus the one-off charge'
         );
 
-        // The 3,000 sits on the DOCUMENT, once, where this domain already puts a
-        // one-off charge — and it genuinely reaches the total.
-        $this->assertSame(3000.0, round((float) $estimate->other_charge_amount, 2),
-            'the setup fee is charged once for the booking, not per kilo');
-        $this->assertNotNull($estimate->other_charge_label);
-        $this->assertSame(
-            round((float) $estimate->subtotal + 3000, 2),
-            round((float) $estimate->grand_total, 2),
-            'and it reaches the figure the customer would be quoted'
-        );
+        // And the document's own other-charge field stays a separate, manual
+        // concept — a line lump sum is never smuggled into it.
+        $this->assertSame(0.0, round((float) $estimate->other_charge_amount, 2));
     }
 
     /** A booking with no lump-sum dish must not acquire a phantom charge. */
@@ -442,11 +441,12 @@ class CateringSeedUatMySqlTest extends MySqlTenantTestCase
         $byName = $estimate->lines->keyBy('item_name');
         $this->assertSame(300.0, round((float) $byName['Chicken Karahi (UAT)']->rate, 2));
 
-        // The demo carries the lump-sum dish, so the setup fee is on the document
-        // while the line itself stays per-kilo — the whole point of showing it.
-        $this->assertSame(254.0, round((float) $byName['Live Counter BBQ (UAT)']->rate, 2));
-        $this->assertSame(3000.0, round((float) $estimate->other_charge_amount, 2),
-            'the owner must be able to see a one-off charge that does not scale');
+        // The demo carries the lump-sum dish, so the owner can see a one-off
+        // charge sitting beside a per-kilo rate without scaling with it.
+        $counterLine = $byName['Live Counter BBQ (UAT)'];
+        $this->assertSame(254.0, round((float) $counterLine->rate, 2));
+        $this->assertSame(3000.0, round((float) $counterLine->lump_sum_amount, 2),
+            'charged once on its own line, whatever the order size');
 
         $this->assertSame(0, CateringAdvance::where('catering_event_id', $demo->id)->count());
         $this->assertSame(0, CateringFinalInvoice::where('catering_event_id', $demo->id)->count());

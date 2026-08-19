@@ -26,6 +26,7 @@ class CateringEstimateService
         // recipe engine directly. An estimate may mix costing sources, and each
         // line must be judged by its own.
         private readonly CateringEstimateCostingService $costing,
+        private readonly CateringLineCostBlockService $lineBlocks,
     ) {}
 
     /**
@@ -96,7 +97,7 @@ class CateringEstimateService
                 $amount = round($quantity * $rate, 2);
                 $subtotal += $amount;
 
-                CateringEstimateLine::create([
+                $saved = CateringEstimateLine::create([
                     'catering_estimate_id' => $estimate->id,
                     'product_id' => $line['product_id'] ?? null,
                     'item_name' => $line['item_name'],
@@ -109,6 +110,14 @@ class CateringEstimateService
                     'instructions' => $line['instructions'] ?? null,
                     'sort_order' => $index,
                 ]);
+
+                // KASHIF-CATERING-LINE-SNAPSHOT-1: a cost-block dish copies its
+                // blocks onto the line, and the line's amount is then whatever
+                // that copy works out to — including any lump sums, which belong
+                // to the line rather than to the document.
+                if ($this->lineBlocks->snapshot($saved)) {
+                    $subtotal += (float) $saved->fresh()->amount - $amount;
+                }
             }
 
             $estimate->fill($this->totals($subtotal, $charges))->save();
