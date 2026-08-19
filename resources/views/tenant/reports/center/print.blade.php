@@ -81,21 +81,25 @@
     @if($mode === 'thermal')
     /* Thermal heads print grey and thin — the counter could not read 10px normal weight. Bold at
        12px is the legibility win; 58mm stays smaller because it has ~20% less width to give. */
+    /* Detail prints at NORMAL weight so bold means something: 'Courier New' only has
+       400 and 700, and when the whole body was 700 the "bold" rows were the same weight
+       as everything else. Detail is normal; the rows that matter are bold AND bigger. */
     body {
         width: {{ $paper === '58mm' ? '52mm' : '72mm' }};
         font-size: {{ $paper === '58mm' ? '11px' : '12px' }};
-        font-weight: 700;
+        font-weight: 400;
     }
-    h1 { font-size: {{ $paper === '58mm' ? '14px' : '15px' }}; text-align: center; margin: 4px 0; }
-    /* Section headers, block names and net/total rows print bigger so the eye finds them. */
-    h2 { font-size: {{ $paper === '58mm' ? '13px' : '15px' }}; font-weight: 900; border-top: 1px dashed #000; padding-top: 4px; margin: 8px 0 4px; }
-    h3 { font-size: {{ $paper === '58mm' ? '12px' : '13px' }}; font-weight: 900; margin: 6px 0 2px; }
+    h1 { font-size: {{ $paper === '58mm' ? '15px' : '17px' }}; font-weight: 700; text-align: center; margin: 4px 0; }
+    /* Section headers, block names and net/total rows print bold + bigger so the eye finds them. */
+    h2 { font-size: {{ $paper === '58mm' ? '15px' : '17px' }}; font-weight: 700; border-top: 1px dashed #000; padding-top: 4px; margin: 8px 0 4px; }
+    h3 { font-size: {{ $paper === '58mm' ? '13px' : '15px' }}; font-weight: 700; margin: 6px 0 2px; }
     table { width: 100%; border-collapse: collapse; }
     th, td { vertical-align: top; word-break: break-word; text-align: left; padding: 1px 2px; }
     th { border-bottom: 1px dashed #000; }
     th.amt, td.amt { text-align: right; white-space: nowrap; }
-    .name { font-weight: bold; font-size: {{ $paper === '58mm' ? '12px' : '14px' }}; }
-    .total { border-top: 1px dashed #000; font-weight: bold; font-size: {{ $paper === '58mm' ? '12px' : '14px' }}; }
+    .name { font-weight: 700; font-size: {{ $paper === '58mm' ? '13px' : '15px' }}; }
+    .total { border-top: 1px dashed #000; font-weight: 700; font-size: {{ $paper === '58mm' ? '13px' : '15px' }}; }
+    .name td, .total td { font-weight: 700; }
     @else
     body { width: 190mm; font-family: Arial, sans-serif; font-size: 12px; }
     h1 { font-size: 18px; margin: 4px 0; }
