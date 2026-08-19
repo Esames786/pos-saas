@@ -162,9 +162,26 @@ class SalesReportEngine
         return $map;
     }
 
+    /**
+     * A category or product filter narrows the report to specific LINES within a bill.
+     * The order-level sections (overview, waiters, order types) must then measure only
+     * those lines too — otherwise a bill that merely CONTAINS the category counts whole,
+     * and the headline dwarfs the very category the operator filtered to. With no such
+     * filter this is false and every total stays order-level, so an all-"All" report
+     * reconciles exactly as before.
+     */
+    private function isLineNarrowed(array $f): bool
+    {
+        return ! empty($f['category_id']) || ! empty($f['product_id']);
+    }
+
     // ── Q. Overview KPIs ─────────────────────────────────────────────────────────────────────────
     public function overview(array $f): array
     {
+        if ($this->isLineNarrowed($f)) {
+            return $this->overviewNarrowed($f);
+        }
+
         $s = $this->salesBase($f)->selectRaw(
             'COUNT(*) as orders,
              COALESCE(SUM(o.subtotal),0) as gross_sales,
@@ -212,6 +229,53 @@ class SalesReportEngine
             'payments' => $payments,
             'cash_collected' => (float) ($payments['cash'] ?? 0),
             'net_cash_from_sales' => (float) ($payments['cash'] ?? 0) - $cashRefunds,
+        ];
+    }
+
+    /**
+     * Overview restricted to the filtered lines — merchandise only. Order-level charges
+     * (delivery, service, tips) and the order-level discount/tax belong to the whole bill,
+     * not a category, so they are zero here; SUM(line_total) already carries any LINE
+     * discount/tax, so Items Sold − Discount + Tax still reconciles to BILLED. A bill's
+     * payment method cannot be split across its categories either, so the method breakdown
+     * is dropped and the cash section mirrors the slice's own net.
+     */
+    private function overviewNarrowed(array $f): array
+    {
+        $m = $this->linesBase($f)->selectRaw(
+            'COUNT(DISTINCT o.id) as orders,
+             COALESCE(SUM(l.quantity * l.unit_price),0) as gross_sales,
+             COALESCE(SUM(l.discount_amount),0) as discount,
+             COALESCE(SUM(l.tax_amount),0) as tax,
+             COALESCE(SUM(l.line_total),0) as net'
+        )->first();
+        $soldQty = (float) $this->linesBase($f)->sum('l.quantity');
+        $returnedQty = (float) $this->returnLinesBase($f)->sum('rl.quantity');
+        $returns = (float) $this->returnLinesBase($f)->sum('rl.line_total');
+        $billed = (float) $m->net;
+        $netSales = $billed - $returns;
+
+        return [
+            'orders' => (int) $m->orders,
+            'sold_qty' => $soldQty,
+            'returned_qty' => $returnedQty,
+            'net_qty' => $soldQty - $returnedQty,
+            'gross_sales' => (float) $m->gross_sales,
+            'discount' => (float) $m->discount,
+            'tax' => (float) $m->tax,
+            'service_charge' => 0.0,
+            'delivery_charge' => 0.0,
+            'delivery_refunded' => 0.0,
+            'tips' => 0.0,
+            'grand_total' => $billed,
+            'returns_amount' => $returns,
+            'refunds_recorded' => $returns,
+            'cash_refunds' => $returns,
+            'returns_not_refunded' => 0.0,
+            'net_sales' => $netSales,
+            'payments' => [],
+            'cash_collected' => $billed,
+            'net_cash_from_sales' => $netSales,
         ];
     }
 
@@ -353,6 +417,10 @@ class SalesReportEngine
     /** Shared per-sale-dimension aggregation (waiter / order type). */
     private function dimensionReport(array $f, string $column, callable $label): array
     {
+        if ($this->isLineNarrowed($f)) {
+            return $this->dimensionReportNarrowed($f, $column, $label);
+        }
+
         $rows = $this->salesBase($f)->groupBy(DB::raw($column))
             ->selectRaw(
                 "$column as dim,
@@ -396,6 +464,51 @@ class SalesReportEngine
                 'grand_total' => (float) ($r->grand_total ?? 0),
                 'returns_amount' => $ret,
                 'net_sales' => (float) ($r->grand_total ?? 0) - $ret,
+            ];
+        })->values()->all();
+    }
+
+    /**
+     * Per-dimension totals restricted to the filtered lines. Billed and Net are the
+     * category's own line value for that waiter / order type — not the whole bill — and
+     * no order-level charge is attributed, so the dimensions sum to the same narrowed
+     * NET SALES the categories and items sections show.
+     */
+    private function dimensionReportNarrowed(array $f, string $column, callable $label): array
+    {
+        $rows = $this->linesBase($f)->groupBy(DB::raw($column))
+            ->selectRaw(
+                "$column as dim,
+                 COUNT(DISTINCT o.id) as orders,
+                 COALESCE(SUM(l.quantity),0) as sold_qty,
+                 COALESCE(SUM(l.line_total),0) as net"
+            )->get()->keyBy('dim');
+        $returns = $this->returnLinesBase($f)->groupBy(DB::raw($column))
+            ->selectRaw("$column as dim, COALESCE(SUM(rl.line_total),0) as amount, COALESCE(SUM(rl.quantity),0) as quantity")
+            ->get()->keyBy('dim');
+
+        return $rows->keys()->merge($returns->keys())->unique()->map(function ($dim) use ($rows, $returns, $label) {
+            $r = $rows->get($dim);
+            $ret = $returns->get($dim);
+            $net = (float) ($r->net ?? 0);
+            $retAmt = (float) ($ret->amount ?? 0);
+            $sold = (float) ($r->sold_qty ?? 0);
+            $retQty = (float) ($ret->quantity ?? 0);
+
+            return [
+                'label' => $label($dim === '' || $dim === null ? null : $dim),
+                'orders' => (int) ($r->orders ?? 0),
+                'sold_qty' => $sold,
+                'returned_qty' => $retQty,
+                'net_qty' => $sold - $retQty,
+                'gross' => $net,
+                'discount' => 0.0,
+                'tax' => 0.0,
+                'service_charge' => 0.0,
+                'delivery_charge' => 0.0,
+                'grand_total' => $net,
+                'returns_amount' => $retAmt,
+                'net_sales' => $net - $retAmt,
             ];
         })->values()->all();
     }
