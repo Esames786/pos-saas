@@ -125,6 +125,9 @@ class CateringEventController extends Controller
             'branch',
             'estimates.lines',
             'currentEstimate.lines.product.cateringProfile',
+            // The line's own copy of the dish's blocks — what it was priced from,
+            // which the dish itself may no longer agree with.
+            'currentEstimate.lines.costBlocks',
             'advances.paymentMethod',
             'refunds.paymentMethod',
             'productionReleases',

@@ -338,15 +338,196 @@
                 </thead>
                 <tbody>
                     @foreach($current->lines as $line)
+                    @php $blocks = $line->costBlocks; @endphp
                     <tr>
-                        <td>{{ $line->item_name }}</td>
+                        <td>
+                            {{ $line->item_name }}
+                            @if($blocks->isNotEmpty())
+                                {{-- Compact by default: a twenty-dish quotation
+                                     with every breakdown open is a wall. --}}
+                                <button class="btn btn-link btn-sm p-0 align-baseline d-block fs-12"
+                                        type="button" data-bs-toggle="collapse"
+                                        data-bs-target="#cost-details-{{ $line->id }}">
+                                    Cost Details
+                                </button>
+                            @endif
+                        </td>
                         <td dir="rtl" lang="ur">{{ $line->item_name_ur }}</td>
                         <td class="text-end">{{ rtrim(rtrim(number_format($line->quantity, 3), '0'), '.') }}</td>
                         <td>{{ $line->unit_code }}</td>
-                        <td class="text-end">{{ number_format($line->rate, 2) }}</td>
-                        <td class="text-end">{{ number_format($line->amount, 2) }}</td>
+                        <td class="text-end">
+                            {{ number_format($line->rate, 2) }}
+                            @if($line->hasQuotedRateOverride())
+                                <div class="fs-12 text-muted">
+                                    calculated {{ number_format($line->calculated_rate, 2) }}
+                                </div>
+                            @endif
+                        </td>
+                        <td class="text-end">
+                            {{ number_format($line->amount, 2) }}
+                            @if($line->lump_sum_amount > 0)
+                                <div class="fs-12 text-muted">
+                                    includes {{ number_format($line->lump_sum_amount, 2) }} once
+                                </div>
+                            @endif
+                        </td>
                         <td>{{ $line->instructions }}</td>
                     </tr>
+
+                    @if($blocks->isNotEmpty())
+                    <tr class="collapse" id="cost-details-{{ $line->id }}">
+                        <td colspan="7" class="bg-body-secondary">
+                            @if($line->hasQuotedRateOverride() && $line->rate_override_reason)
+                                <div class="alert alert-warning py-2 mb-3 fs-13">
+                                    <i class="ti ti-alert-triangle me-1"></i>
+                                    Quoted at {{ number_format($line->rate, 2) }} instead of the calculated
+                                    {{ number_format($line->calculated_rate, 2) }} —
+                                    <em>{{ $line->rate_override_reason }}</em>
+                                </div>
+                            @endif
+
+                            <div class="table-responsive">
+                                <table class="table table-sm mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>Part</th>
+                                            <th class="text-end">Customer charge</th>
+                                            <th class="text-end">Kitchen uses</th>
+                                            <th class="text-end">Costs us</th>
+                                            <th class="text-end">Contribution</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach($blocks as $block)
+                                        <tr>
+                                            <td>
+                                                {{ $block->label }}
+                                                @if($block->isMaterial())
+                                                    <span class="badge bg-info-subtle text-info-emphasis fs-12">Material</span>
+                                                @else
+                                                    <span class="badge bg-secondary-subtle text-secondary-emphasis fs-12">Charge</span>
+                                                @endif
+                                                @if($block->isLumpSum())
+                                                    <span class="badge bg-light text-muted fs-12">once</span>
+                                                @endif
+                                                @if($block->is_overridden)
+                                                    <span class="badge bg-warning-subtle text-warning-emphasis fs-12">this event</span>
+                                                @endif
+                                            </td>
+                                            <td class="text-end">
+                                                {{ number_format($block->rate, 2) }}
+                                                <div class="fs-12 text-muted">
+                                                    @if($block->isLumpSum())
+                                                        charged once
+                                                    @elseif($block->isPerMaterialUnit())
+                                                        per {{ $block->unit_code ?? 'unit' }} {{ $block->material_name }}
+                                                    @else
+                                                        per {{ $line->unit_code ?? 'unit' }} dish
+                                                    @endif
+                                                </div>
+                                            </td>
+                                            <td class="text-end">
+                                                @if($block->isMaterial() && $block->event_material_qty !== null)
+                                                    @if($current->isDraft())
+                                                        {{-- Editable only while the quotation is a draft: a
+                                                             sent one's costing is history. --}}
+                                                        @can('tenant.catering.estimates.update')
+                                                        <form method="POST" class="d-inline-flex gap-1 align-items-center"
+                                                              action="{{ url('/catering/line-cost-blocks/' . $block->id) }}">
+                                                            @csrf @method('PUT')
+                                                            <input type="number" step="0.0001" min="0" name="event_material_qty"
+                                                                   value="{{ rtrim(rtrim(number_format($block->event_material_qty, 4, '.', ''), '0'), '.') }}"
+                                                                   class="form-control form-control-sm text-end" style="width:90px">
+                                                            <span class="fs-12 text-muted">{{ $block->unit_code }}</span>
+                                                            <button class="btn btn-sm btn-light" title="Use this quantity for this booking only">
+                                                                <i class="ti ti-check"></i>
+                                                            </button>
+                                                        </form>
+                                                        @endcan
+                                                    @else
+                                                        {{ rtrim(rtrim(number_format($block->event_material_qty, 4), '0'), '.') }}
+                                                        {{ $block->unit_code }}
+                                                    @endif
+
+                                                    @if($block->is_overridden)
+                                                        <div class="fs-12 text-muted">
+                                                            dish says {{ rtrim(rtrim(number_format($block->default_material_qty, 4), '0'), '.') }}
+                                                            @if($current->isDraft())
+                                                                @can('tenant.catering.estimates.update')
+                                                                <form method="POST" class="d-inline"
+                                                                      action="{{ url('/catering/line-cost-blocks/' . $block->id . '/reset') }}">
+                                                                    @csrf
+                                                                    <button class="btn btn-link btn-sm p-0 align-baseline fs-12">Reset</button>
+                                                                </form>
+                                                                @endcan
+                                                            @endif
+                                                        </div>
+                                                    @endif
+                                                @else
+                                                    <span class="text-muted">—</span>
+                                                @endif
+                                            </td>
+                                            <td class="text-end text-muted">
+                                                @if($block->material_cost !== null)
+                                                    {{ number_format($block->material_cost, 2) }}
+                                                @elseif($block->isMaterial())
+                                                    <span title="No rate in the Material Rate Book yet">not known</span>
+                                                @else
+                                                    —
+                                                @endif
+                                            </td>
+                                            <td class="text-end fw-semibold">{{ number_format($block->amount, 2) }}</td>
+                                        </tr>
+                                        @endforeach
+                                    </tbody>
+                                    <tfoot>
+                                        <tr class="border-top">
+                                            <td colspan="4" class="text-end fw-bold">Calculated rate</td>
+                                            <td class="text-end fw-bold">
+                                                {{ number_format($line->calculated_rate ?? 0, 2) }} / {{ $line->unit_code }}
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+
+                            @if($current->isDraft())
+                                @can('tenant.catering.estimates.update')
+                                <form method="POST" class="row g-2 align-items-end mt-2"
+                                      action="{{ url('/catering/estimate-lines/' . $line->id . '/quoted-rate') }}">
+                                    @csrf @method('PUT')
+                                    <div class="col-auto">
+                                        <label class="form-label fs-12 text-muted mb-1">Quote a different rate</label>
+                                        <input type="number" step="0.01" min="0" name="quoted_rate"
+                                               value="{{ number_format($line->rate, 2, '.', '') }}"
+                                               class="form-control form-control-sm" style="width:120px">
+                                    </div>
+                                    <div class="col-md-5">
+                                        <label class="form-label fs-12 text-muted mb-1">Why</label>
+                                        <input type="text" name="reason" maxlength="255"
+                                               value="{{ $line->rate_override_reason }}"
+                                               class="form-control form-control-sm"
+                                               placeholder="e.g. wedding package agreed rate">
+                                    </div>
+                                    <div class="col-auto">
+                                        <button class="btn btn-sm btn-outline-primary">Use this rate</button>
+                                    </div>
+                                </form>
+                                @endcan
+                            @endif
+
+                            <div class="text-muted fs-12 mt-2">
+                                <strong>Customer charge</strong> is what this part adds to the bill.
+                                <strong>Kitchen uses</strong> is what leaves the store.
+                                <strong>Costs us</strong> is that quantity at the
+                                <a href="{{ url('/catering/material-rates') }}">Material Rate Book</a> rate
+                                when this was quoted. They are meant to differ — the gap is the margin.
+                                Changing a quantity here affects <strong>this booking only</strong> — never the
+                                dish, and never another quotation.
+                            </div>
+                        </td>
+                    </tr>
+                    @endif
                     @endforeach
                 </tbody>
             </table>
