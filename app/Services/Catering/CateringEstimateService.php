@@ -88,38 +88,103 @@ class CateringEstimateService
         $this->assertDraft($estimate);
 
         return DB::connection('tenant')->transaction(function () use ($estimate, $lines, $charges) {
-            $estimate->lines()->delete();
+            // KASHIF-CATERING-LINE-SNAPSHOT-1: RECONCILE, never wipe and rebuild.
+            //
+            // This used to delete every line and recreate it. That was harmless
+            // when a line was three numbers; it is destructive now that a line
+            // carries decisions somebody made deliberately — a material quantity
+            // this event needs, an agreed rate and the reason for it. Saving the
+            // form after changing a venue would have thrown all of that away
+            // without a word.
+            $existing = $estimate->lines()->get()->keyBy('line_uuid');
+            $keptIds = [];
 
-            $subtotal = 0.0;
             foreach (array_values($lines) as $index => $line) {
                 $quantity = round((float) ($line['quantity'] ?? 0), 3);
                 $rate = round((float) ($line['rate'] ?? 0), 2);
-                $amount = round($quantity * $rate, 2);
-                $subtotal += $amount;
+                $productId = $line['product_id'] ?? null;
 
-                $saved = CateringEstimateLine::create([
+                $uuid = $line['line_uuid'] ?? null;
+                $match = $uuid ? $existing->get($uuid) : null;
+
+                // A row whose product changed is a different dish. Its old
+                // costing explains nothing about the new one, so it starts again
+                // — keeping a Chicken Biryani breakdown under Beef Biryani would
+                // be worse than having none.
+                $productChanged = $match && (int) $match->product_id !== (int) $productId;
+
+                $attributes = [
                     'catering_estimate_id' => $estimate->id,
-                    'product_id' => $line['product_id'] ?? null,
+                    'product_id' => $productId,
                     'item_name' => $line['item_name'],
                     'item_name_ur' => $line['item_name_ur'] ?? null,
                     'quantity' => $quantity,
                     'unit_id' => $line['unit_id'] ?? null,
                     'unit_code' => $line['unit_code'] ?? null,
-                    'rate' => $rate,
-                    'amount' => $amount,
                     'instructions' => $line['instructions'] ?? null,
                     'sort_order' => $index,
-                ]);
+                ];
 
-                // KASHIF-CATERING-LINE-SNAPSHOT-1: a cost-block dish copies its
-                // blocks onto the line, and the line's amount is then whatever
-                // that copy works out to — including any lump sums, which belong
-                // to the line rather than to the document.
-                if ($this->lineBlocks->snapshot($saved)) {
-                    $subtotal += (float) $saved->fresh()->amount - $amount;
+                if ($match && ! $productChanged) {
+                    $hasSnapshot = $match->costBlocks()->exists();
+
+                    // A block-costed line prices itself; the form's rate box is
+                    // not the authority for it, and honouring it here would undo
+                    // an agreed rate every time the form was saved.
+                    if (! $hasSnapshot) {
+                        $attributes['rate'] = $rate;
+                        $attributes['amount'] = round($quantity * $rate, 2);
+                    }
+
+                    $match->fill($attributes)->save();
+                    $keptIds[] = $match->id;
+
+                    if ($hasSnapshot) {
+                        // Quantities that follow the order follow it; a quantity
+                        // somebody typed for this event stays where they put it.
+                        $this->lineBlocks->recalculateForQuantity($match->refresh());
+                    }
+
+                    continue;
                 }
+
+                if ($productChanged) {
+                    $match->costBlocks()->delete();
+                    $match->fill($attributes + [
+                        'rate' => $rate,
+                        'amount' => round($quantity * $rate, 2),
+                        'calculated_rate' => null,
+                        'rate_override_reason' => null,
+                        'lump_sum_amount' => 0,
+                    ])->save();
+
+                    $keptIds[] = $match->id;
+                    $this->lineBlocks->snapshot($match->refresh());
+
+                    continue;
+                }
+
+                $created = CateringEstimateLine::create($attributes + [
+                    'rate' => $rate,
+                    'amount' => round($quantity * $rate, 2),
+                ]);
+                $keptIds[] = $created->id;
+
+                // A cost-block dish copies its blocks onto the line, and the
+                // line's amount becomes whatever that copy works out to.
+                $this->lineBlocks->snapshot($created);
             }
 
+            // Whatever the operator removed goes, and its snapshot with it.
+            $estimate->lines()->whereNotIn('id', $keptIds ?: [0])->delete();
+
+            // Refresh before the final write: repricing each line already wrote
+            // totals to the row, so this instance's idea of them is stale. Fill
+            // without it and Eloquent sees nothing dirty, skips the update, and
+            // leaves whatever the last mid-loop reprice happened to compute.
+            $estimate->refresh();
+
+            $subtotal = round((float) $estimate->lines()->sum('amount'), 2);
             $estimate->fill($this->totals($subtotal, $charges))->save();
 
             $event = $estimate->event;
@@ -286,6 +351,33 @@ class CateringEstimateService
     }
 
     /** Totals block from a computed subtotal + submitted charge inputs. */
+    /**
+     * KASHIF-CATERING-LINE-SNAPSHOT-1 — re-add the quotation from its lines.
+     *
+     * Anything that changes one line's amount must change the document, or the
+     * screen shows a line at 1,960 inside a quotation that still says 1,910 —
+     * and whichever the customer is shown, one of them is a lie.
+     *
+     * The document's own charges (service, other, tax, discount) are re-applied
+     * exactly as stored, through the same totals() every other path uses. There
+     * is one totals formula and this is not a second one.
+     */
+    public function recalculateTotals(CateringEstimate $estimate): CateringEstimate
+    {
+        $subtotal = round((float) $estimate->lines()->sum('amount'), 2);
+
+        $estimate->fill($this->totals($subtotal, [
+            'service_charge_amount' => $estimate->service_charge_amount,
+            'other_charge_label' => $estimate->other_charge_label,
+            'other_charge_amount' => $estimate->other_charge_amount,
+            'discount_type' => $estimate->discount_type,
+            'discount_value' => $estimate->discount_value,
+            'tax_amount' => $estimate->tax_amount,
+        ]))->save();
+
+        return $estimate->refresh();
+    }
+
     private function totals(float $subtotal, array $charges): array
     {
         $serviceCharge = round((float) ($charges['service_charge_amount'] ?? 0), 2);

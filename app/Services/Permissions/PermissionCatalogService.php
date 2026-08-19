@@ -77,6 +77,7 @@ class PermissionCatalogService
         'tenant.catering.line-cost-blocks.update' => 'Create / Edit Estimate',
         'tenant.catering.line-cost-blocks.reset' => 'Create / Edit Estimate',
         'tenant.catering.estimate-lines.quoted-rate' => 'Create / Edit Estimate',
+        'tenant.catering.estimate-lines.use-calculated-rate' => 'Create / Edit Estimate',
         'tenant.catering.estimates.send' => 'Send / Revise Quote',
         'tenant.catering.estimates.accept' => 'Send / Revise Quote',
         'tenant.catering.estimates.revise' => 'Send / Revise Quote',
