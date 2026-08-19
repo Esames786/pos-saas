@@ -83,6 +83,19 @@ class CateringSeedUatCommand extends Command
         ['paneer', 'Paneer', 'UAT-RM-PANEER', 180],
     ];
 
+    /**
+     * The house COMMERCIAL rate for each material the demo dishes charge for —
+     * matching the rates those dishes were authored at, so applied and
+     * recommended start in agreement.
+     */
+    private const COMMERCIAL_RATES = [
+        'chicken' => 100,
+        'beef' => 160,
+        'rice' => 80,
+        'yogurt' => 200,
+        'oil' => 130,
+    ];
+
     /** What a storeman will hand over during UAT, and enough of it to keep testing. */
     private const OPENING_STOCK = [
         'chicken' => 400, 'beef' => 300, 'mutton' => 150, 'rice' => 500,
@@ -174,6 +187,7 @@ class CateringSeedUatCommand extends Command
         $this->ensureFoundations();
         $this->ensureMaterials();
         $this->ensureMaterialRates();
+        $this->ensureCommercialRates();
         $this->buildCostBlockDishes();
         $this->openingStock($inventory);
         $summary = $this->buildBookings($estimates);
@@ -252,6 +266,25 @@ class CateringSeedUatCommand extends Command
      * The Material Rate Book is the ONE place a material's real cost lives. Cost
      * blocks read it; they never carry a second, writable copy of it.
      */
+    /**
+     * What the UAT materials are CHARGED at — the house price list, separate
+     * from what they cost. Set at the rates the demo dishes were authored with,
+     * so the dataset starts with applied and recommended in agreement and an
+     * operator can watch them diverge when they raise one.
+     */
+    private function ensureCommercialRates(): void
+    {
+        foreach (self::COMMERCIAL_RATES as $key => $rate) {
+            \App\Models\Tenant\CateringMaterialCommercialRate::updateOrCreate(
+                [
+                    'product_id' => $this->materialIds[$key],
+                    'effective_from' => now()->subDay()->toDateString(),
+                ],
+                ['rate' => $rate, 'unit_id' => $this->kgUnitId, 'note' => 'UAT fixture']
+            );
+        }
+    }
+
     private function ensureMaterialRates(): void
     {
         foreach (self::MATERIALS as [$key, $name, $sku, $rate]) {

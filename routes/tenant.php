@@ -866,6 +866,15 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                     Route::get('/catering/material-rates', [\App\Http\Controllers\Tenant\Catering\CateringMaterialRateController::class, 'index'])->name('tenant.catering.material-rates.index');
                     Route::post('/catering/material-rates', [\App\Http\Controllers\Tenant\Catering\CateringMaterialRateController::class, 'store'])->name('tenant.catering.material-rates.store');
 
+                    // KASHIF-CATERING-COMMERCIAL-RATE-1: what materials are CHARGED
+                    // at — a different book from what they cost — and what changing
+                    // a house rate would do before anything is changed.
+                    Route::get('/catering/commercial-rates', [\App\Http\Controllers\Tenant\Catering\CateringCommercialRateController::class, 'index'])->name('tenant.catering.commercial-rates.index');
+                    Route::post('/catering/commercial-rates', [\App\Http\Controllers\Tenant\Catering\CateringCommercialRateController::class, 'store'])->name('tenant.catering.commercial-rates.store');
+                    Route::get('/catering/commercial-rates/{product}/impact', [\App\Http\Controllers\Tenant\Catering\CateringCommercialRateController::class, 'impact'])->name('tenant.catering.commercial-rates.impact');
+                    Route::post('/catering/commercial-rates/{product}/apply-products', [\App\Http\Controllers\Tenant\Catering\CateringCommercialRateController::class, 'applyToProducts'])->name('tenant.catering.commercial-rates.apply-products');
+                    Route::post('/catering/commercial-rates/{product}/apply-drafts', [\App\Http\Controllers\Tenant\Catering\CateringCommercialRateController::class, 'applyToDrafts'])->name('tenant.catering.commercial-rates.apply-drafts');
+
                     Route::get('/catering/rate-impact', [\App\Http\Controllers\Tenant\Catering\CateringRateImpactController::class, 'index'])->name('tenant.catering.rate-impact.index');
                     Route::post('/catering/rate-impact/apply', [\App\Http\Controllers\Tenant\Catering\CateringRateImpactController::class, 'apply'])->name('tenant.catering.rate-impact.apply');
 
