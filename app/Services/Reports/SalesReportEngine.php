@@ -326,9 +326,26 @@ class SalesReportEngine
             $tree[$rootId]['returns_amount'] = ($tree[$rootId]['returns_amount'] ?? 0) + (float) $return['amount'];
             unset($child);
         }
-        foreach ($tree as &$root) {
+        // A parent's "orders" must be a DISTINCT count over its sub-tree; summing the
+        // children (above) double-counts an order that has lines in two of them (the
+        // qty/gross/net sums are right — only a head-count double-counts). One pass maps
+        // every leaf category to its root and counts distinct orders per root.
+        $distinctOrdersByRoot = [];
+        if ($rootMap !== []) {
+            $cases = collect($rootMap)->map(fn ($root, $cat) => 'WHEN ' . (int) $cat . ' THEN ' . (int) $root)->implode(' ');
+            $rootExpr = 'CASE p.category_id ' . $cases . ' ELSE 0 END';
+            $distinctOrdersByRoot = $this->linesBase($f)
+                ->selectRaw($rootExpr . ' as root_id, COUNT(DISTINCT o.id) as orders')
+                ->groupBy(DB::raw($rootExpr))
+                ->pluck('orders', 'root_id')->all();
+        }
+
+        foreach ($tree as $rootId => &$root) {
             foreach (['orders', 'sold_qty', 'returned_qty', 'gross', 'discount', 'tax', 'net', 'returns_amount'] as $key) {
                 $root[$key] ??= 0;
+            }
+            if (array_key_exists((int) $rootId, $distinctOrdersByRoot)) {
+                $root['orders'] = (int) $distinctOrdersByRoot[(int) $rootId];
             }
             $root['net_qty'] = $root['sold_qty'] - $root['returned_qty'];
             $root['net_value'] = $root['net'] - $root['returns_amount'];

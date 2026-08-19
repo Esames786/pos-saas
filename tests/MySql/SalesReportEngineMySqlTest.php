@@ -158,6 +158,7 @@ class SalesReportEngineMySqlTest extends MySqlTenantTestCase
         $this->assertSame(1000.0, $categories->sum('net_value'), 'category sold value less period returns');
         $biryani = $categories->firstWhere('name', 'Biryani');
         $this->assertSame(800.0, $biryani['net'], 'parent rollup: P1 600 + child P2 200');
+        $this->assertSame(2, $biryani['orders'], 'parent orders is a DISTINCT count over the subtree (A + C), not the child-sum 4');
         $this->assertSame(200.0, collect($biryani['children'])->firstWhere('name', 'Special Biryani')['net'], 'child stays visible inside the rollup');
         $items = collect($this->engine->byItem($f));
         $this->assertSame(1100.0, $items->sum(fn ($r) => (float) $r->net), 'Σitem net');
