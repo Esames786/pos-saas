@@ -324,7 +324,7 @@ class CateringEstimateService
             ]);
 
             foreach ($estimate->lines as $line) {
-                CateringEstimateLine::create([
+                $copy = CateringEstimateLine::create([
                     'catering_estimate_id' => $revision->id,
                     'product_id' => $line->product_id,
                     'item_name' => $line->item_name,
@@ -333,12 +333,28 @@ class CateringEstimateService
                     'unit_id' => $line->unit_id,
                     'unit_code' => $line->unit_code,
                     'rate' => $line->rate,
+                    // KASHIF-CATERING-LINE-SNAPSHOT-1: a revision is a copy of a
+                    // quotation, so it has to carry HOW that quotation was
+                    // priced. Without these the new version arrives with no
+                    // breakdown, no agreed rate and no reason for it — the
+                    // operator would have to reconstruct decisions from memory.
+                    'calculated_rate' => $line->calculated_rate,
+                    'rate_override_reason' => $line->rate_override_reason,
                     'amount' => $line->amount,
+                    'lump_sum_amount' => $line->lump_sum_amount,
                     'instructions' => $line->instructions,
                     'estimated_unit_cost' => $line->estimated_unit_cost,
                     'estimated_cost_total' => $line->estimated_cost_total,
                     'sort_order' => $line->sort_order,
                 ]);
+
+                // And the breakdown itself, block by block — including the
+                // quantity this event settled on and who was bringing it.
+                foreach ($line->costBlocks as $block) {
+                    $clone = $block->replicate(['catering_estimate_line_id']);
+                    $clone->catering_estimate_line_id = $copy->id;
+                    $clone->save();
+                }
             }
 
             $estimate->forceFill([

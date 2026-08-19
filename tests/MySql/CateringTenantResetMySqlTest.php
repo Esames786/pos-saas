@@ -38,7 +38,8 @@ class CateringTenantResetMySqlTest extends MySqlTenantTestCase
     /** Configuration: how the business quotes and costs. Kept, like recipes. */
     private const CONFIG_TABLES = [
         'catering_product_profiles', 'catering_product_cost_blocks',
-        'catering_material_rates', 'catering_printer_mappings', 'catering_settings',
+        'catering_material_rates', 'catering_material_commercial_rates',
+        'catering_printer_mappings', 'catering_settings',
     ];
 
     private function commandConstant(string $name): array

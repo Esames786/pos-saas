@@ -86,6 +86,14 @@ class PermissionCatalogService
         'tenant.catering.events.cancel' => 'Confirm Booking',
         'tenant.catering.material-rates.index' => 'Manage Material Rates',
         'tenant.catering.material-rates.store' => 'Manage Material Rates',
+        // What materials are CHARGED at, kept as its own grant: seeing the house
+        // price list is one thing, repricing dishes and live quotations from it
+        // is another, and they should be grantable apart.
+        'tenant.catering.commercial-rates.index' => 'Commercial Rates',
+        'tenant.catering.commercial-rates.impact' => 'Commercial Rates',
+        'tenant.catering.commercial-rates.store' => 'Apply Commercial Rates',
+        'tenant.catering.commercial-rates.apply-products' => 'Apply Commercial Rates',
+        'tenant.catering.commercial-rates.apply-drafts' => 'Apply Commercial Rates',
         'tenant.catering.rate-impact.index' => 'Manage Material Rates',
         'tenant.catering.rate-impact.apply' => 'Manage Material Rates',
         'tenant.catering.advances.store' => 'Record Advance',

@@ -219,6 +219,10 @@ class TenantResetTransactionsCommand extends Command
         // it to a transaction reset would be losing master data.
         'catering_product_profiles', 'catering_product_cost_blocks',
         'catering_material_rates', 'catering_printer_mappings', 'catering_settings',
+        // What materials are CHARGED at — a price list, like the cost book
+        // beside it. Losing it to a transaction reset would be losing master
+        // data, and every linked dish would forget what the house rate was.
+        'catering_material_commercial_rates',
     ];
 
     /** Tenant tables this command has no opinion about — surfaced as a warning. */

@@ -221,8 +221,10 @@ class CateringEntitlementMySqlTest extends MySqlTenantTestCase
         // thirteen inside the suite. Membership is the property actually being
         // protected; the count was an accident of ordering.
         $friendly = [
+            'Apply Commercial Rates',
             'Catering Products',
             'Catering Settings',
+            'Commercial Rates',
             'Confirm Booking',
             'Create / Edit Estimate',
             'Finalise Event',

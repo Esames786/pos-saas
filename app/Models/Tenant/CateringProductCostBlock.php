@@ -58,6 +58,26 @@ class CateringProductCostBlock extends Model
 
     public const RATE_BASES = [self::RATE_PER_DISH_UNIT, self::RATE_PER_MATERIAL_UNIT];
 
+    /**
+     * WHERE THE RATE CAME FROM — and therefore whether a house rate change
+     * should be offered to it.
+     *
+     *   manual           somebody chose this number for this dish. A premium
+     *                    counter charging 140 while the house rate is 120 is
+     *                    deliberate, and a global change must leave it alone.
+     *   commercial_book  this dish follows the house rate and should be OFFERED
+     *                    the new one — offered, never given.
+     *
+     * The rate stored on the block is the APPLIED rate in both cases. A linked
+     * block never reads today's book when a quotation opens; the gap between
+     * applied and recommended is exactly what Rate Impact exists to show.
+     */
+    public const SOURCE_MANUAL = 'manual';
+
+    public const SOURCE_COMMERCIAL_BOOK = 'commercial_book';
+
+    public const RATE_SOURCES = [self::SOURCE_MANUAL, self::SOURCE_COMMERCIAL_BOOK];
+
     protected $fillable = [
         'product_id',
         'label',
@@ -69,6 +89,7 @@ class CateringProductCostBlock extends Model
         'rate',
         'charge_basis',
         'rate_basis',
+        'commercial_rate_source',
         'is_active',
     ];
 
@@ -120,6 +141,28 @@ class CateringProductCostBlock extends Model
     public function isPerMaterialUnit(): bool
     {
         return $this->isMaterial() && $this->rateBasis() === self::RATE_PER_MATERIAL_UNIT;
+    }
+
+    public function rateSource(): string
+    {
+        return in_array($this->commercial_rate_source, self::RATE_SOURCES, true)
+            ? $this->commercial_rate_source
+            : self::SOURCE_MANUAL;
+    }
+
+    /**
+     * Does this block follow the house commercial rate?
+     *
+     * Only a per-material-unit material can. A legacy per-dish-unit rate is
+     * rupees per kilo of BIRYANI, and the house book quotes rupees per kilo of
+     * CHICKEN — offering one as the other would be an arithmetic category error,
+     * not merely a bad suggestion.
+     */
+    public function followsCommercialBook(): bool
+    {
+        return $this->isPerMaterialUnit()
+            && $this->rateSource() === self::SOURCE_COMMERCIAL_BOOK
+            && $this->material_product_id !== null;
     }
 
     /**

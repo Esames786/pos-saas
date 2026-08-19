@@ -84,6 +84,11 @@ class CateringLineCostBlockService
                     'block_type' => $block->block_type,
                     'charge_basis' => $block->charge_basis,
                     'rate_basis' => $block->rateBasis(),
+                    // Carried onto the line so a quotation remembers whether its
+                    // price followed the house rate or was chosen for this
+                    // customer — which decides whether a later house change is
+                    // even offered to it.
+                    'commercial_rate_source' => $block->rateSource(),
                     'rate' => $block->rate,
                     'material_product_id' => $block->material_product_id,
                     'material_name' => $block->material?->name,

@@ -33,6 +33,7 @@ class CateringEstimateLineCostBlock extends Model
         'block_type',
         'charge_basis',
         'rate_basis',
+        'commercial_rate_source',
         'rate',
         'material_product_id',
         'material_name',
@@ -88,6 +89,29 @@ class CateringEstimateLineCostBlock extends Model
     {
         return $this->isMaterial()
             && $this->rate_basis === CateringProductCostBlock::RATE_PER_MATERIAL_UNIT;
+    }
+
+    public function rateSource(): string
+    {
+        return in_array($this->commercial_rate_source, CateringProductCostBlock::RATE_SOURCES, true)
+            ? $this->commercial_rate_source
+            : CateringProductCostBlock::SOURCE_MANUAL;
+    }
+
+    /**
+     * Would a house commercial rate change be offered to this snapshot?
+     *
+     * Not if the customer is bringing the material: they are not being charged
+     * for it, so a change to what it is charged at moves nothing. Not if the
+     * rate was chosen by hand for this dish. And not on a legacy per-dish rate,
+     * which is measured in a different unit from the house book entirely.
+     */
+    public function followsCommercialBook(): bool
+    {
+        return $this->isPerMaterialUnit()
+            && ! $this->isCustomerSupplied()
+            && $this->rateSource() === CateringProductCostBlock::SOURCE_COMMERCIAL_BOOK
+            && $this->material_product_id !== null;
     }
 
     /** Is the customer bringing this material themselves? */
