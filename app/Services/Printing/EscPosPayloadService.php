@@ -386,11 +386,26 @@ class EscPosPayloadService
         $three = fn (string $label, string $a, string $b, string $d) => $this->mbStrPad($label, $lw)
             . $this->mbStrPad($a, $c, ' ', STR_PAD_LEFT) . $this->mbStrPad($b, $c, ' ', STR_PAD_LEFT) . $this->mbStrPad($d, $c, ' ', STR_PAD_LEFT) . "\n";
         $head3 = fn () => $three('', 'Sold', 'Ret', 'Net') . $rule . "\n";
-        $entry = fn ($name, $sQ, $rQ, $nQ, $sV, $rV, $nV, $indent = '') => $indent . strtoupper((string) $name) . "\n"
+
+        // A highlighted line: bold AND double-height (2x tall, width left at 1x so the
+        // 42-column alignment still holds). Self-contained — it turns both off again
+        // before the line ends, so the next line prints at the normal size.
+        $big = fn (string $s) => $this->sizeCommand(1, 2) . self::BOLD_ON . $s . self::BOLD_OFF . self::SIZE_NORMAL;
+        // A centred section header, printed big so the eye finds it.
+        $header = fn (string $title) => $rule . "\n" . $big($this->center($title, $cols)) . "\n";
+
+        // The name a reader scans for prints big; the Qty/Amt detail stays compact.
+        $entry = fn ($name, $sQ, $rQ, $nQ, $sV, $rV, $nV, $indent = '', $bigName = false) =>
+            ($bigName ? $big($indent . strtoupper((string) $name)) : $indent . strtoupper((string) $name)) . "\n"
             . $three($indent . 'Qty', $qty($sQ), $qty($rQ), $qty($nQ))
             . $three($indent . 'Amt', $money($sV), $money($rV), $money($nV));
-        $orderRow = fn ($name, $orders, $billed, $ret, $net) => strtoupper((string) $name) . "\n"
+        $orderRow = fn ($name, $orders, $billed, $ret, $net, $bigName = false) =>
+            ($bigName ? $big(strtoupper((string) $name)) : strtoupper((string) $name)) . "\n"
             . $three((int) $orders . ' ord', $money($billed), $money($ret), $money($net));
+        // A block's TOTAL: big name, and the Sold/Ret/Net figures kept bold beneath it.
+        $bigTotal = fn ($sQ, $rQ, $nQ, $sV, $rV, $nV) => $big('TOTAL') . "\n"
+            . self::BOLD_ON . $three('Qty', $qty($sQ), $qty($rQ), $qty($nQ))
+            . $three('Amt', $money($sV), $money($rV), $money($nV)) . self::BOLD_OFF;
 
         $out = $this->center(strtoupper((string) ($r['meta']['business_name'] ?? 'SALES REPORT')), $cols) . "\n";
         $out .= $this->center('Sales Report (' . ($r['meta']['label'] ?? 'Standard') . ')', $cols) . "\n";
@@ -400,11 +415,11 @@ class EscPosPayloadService
         // OVERALL + CASH FROM SALES + PAYMENTS.
         if ($has('overview') && ! empty($r['overview'])) {
             $ov = $r['overview'];
-            $out .= $rule . "\n" . $this->center('OVERALL', $cols) . "\n" . $rule . "\n";
+            $out .= $header('OVERALL') . $rule . "\n";
             $out .= $this->columns('Orders', (string) ($ov['orders'] ?? 0), $cols) . "\n";
             $out .= $this->columns('Sold Qty', $qty($ov['sold_qty'] ?? 0), $cols) . "\n";
             $out .= $this->columns('Returned Qty', $qty($ov['returned_qty'] ?? 0), $cols) . "\n";
-            $out .= $this->columns('Net Qty', $qty($ov['net_qty'] ?? 0), $cols) . "\n";
+            $out .= $big($this->columns('Net Qty', $qty($ov['net_qty'] ?? 0), $cols)) . "\n";
             $out .= $this->columns('Items Sold', $money($ov['gross_sales'] ?? 0), $cols) . "\n";
             $out .= $this->columns('Less Discount', '-' . $money($ov['discount'] ?? 0), $cols) . "\n";
             $out .= $this->columns('Plus Tax', $money($ov['tax'] ?? 0), $cols) . "\n";
@@ -415,63 +430,66 @@ class EscPosPayloadService
             if ((float) ($ov['tips'] ?? 0) != 0.0) {
                 $out .= $this->columns('Plus Tips', $money($ov['tips']), $cols) . "\n";
             }
-            $out .= self::BOLD_ON . $this->columns('BILLED TO CUSTOMERS', $money($ov['grand_total'] ?? 0), $cols) . self::BOLD_OFF . "\n";
+            $out .= $big($this->columns('BILLED TO CUSTOMERS', $money($ov['grand_total'] ?? 0), $cols)) . "\n";
             $out .= $this->columns('Less Posted Returns', '-' . $money($ov['returns_amount'] ?? 0), $cols) . "\n";
-            $out .= self::BOLD_ON . $this->columns('NET SALES', $money($ov['net_sales'] ?? 0), $cols) . self::BOLD_OFF . "\n";
+            $out .= $big($this->columns('NET SALES', $money($ov['net_sales'] ?? 0), $cols)) . "\n";
 
-            $out .= $rule . "\n" . $this->center('CASH FROM SALES', $cols) . "\n";
+            $out .= $header('CASH FROM SALES');
             $out .= $this->columns('Cash Collected', $money($ov['cash_collected'] ?? 0), $cols) . "\n";
             $out .= $this->columns('Cash Refunds Paid', '-' . $money($ov['cash_refunds'] ?? 0), $cols) . "\n";
-            $out .= self::BOLD_ON . $this->columns('NET CASH FROM SALES', $money($ov['net_cash_from_sales'] ?? 0), $cols) . self::BOLD_OFF . "\n";
+            $out .= $big($this->columns('NET CASH FROM SALES', $money($ov['net_cash_from_sales'] ?? 0), $cols)) . "\n";
 
             if (! empty($ov['payments'])) {
-                $out .= $rule . "\n" . $this->center('PAYMENTS COLLECTED', $cols) . "\n";
+                $out .= $header('PAYMENTS COLLECTED');
                 foreach ($ov['payments'] as $method => $amount) {
                     $out .= $this->columns(ucwords(str_replace('_', ' ', (string) $method)), $money($amount), $cols) . "\n";
                 }
-                $out .= self::BOLD_ON . $this->columns('TOTAL COLLECTED', $money(collect($ov['payments'])->sum()), $cols) . self::BOLD_OFF . "\n";
+                $out .= $big($this->columns('TOTAL COLLECTED', $money(collect($ov['payments'])->sum()), $cols)) . "\n";
             }
         }
 
         // ORDER TYPES / WAITERS — order-level (money only).
         foreach ([['order_types', 'ORDER TYPES', $r['orderTypes'] ?? null], ['waiters', 'WAITERS', $r['waiters'] ?? null]] as [$key, $title, $rows]) {
             if ($has($key) && $rows !== null) {
-                $out .= $rule . "\n" . $this->center($title, $cols) . "\n" . $head3();
+                $out .= $header($title) . $head3();
                 foreach ($rows as $row) {
-                    $out .= $orderRow($row['label'], $row['orders'], $row['grand_total'], $row['returns_amount'], $row['net_sales']);
+                    $out .= $orderRow($row['label'], $row['orders'], $row['grand_total'], $row['returns_amount'], $row['net_sales'], true);
                 }
-                $out .= self::BOLD_ON . $orderRow('TOTAL', collect($rows)->sum('orders'), collect($rows)->sum('grand_total'), collect($rows)->sum('returns_amount'), collect($rows)->sum('net_sales')) . self::BOLD_OFF;
+                $t = collect($rows);
+                $out .= $big('TOTAL') . "\n" . self::BOLD_ON
+                    . $three((int) $t->sum('orders') . ' ord', $money($t->sum('grand_total')), $money($t->sum('returns_amount')), $money($t->sum('net_sales'))) . self::BOLD_OFF;
             }
         }
 
         // CATEGORIES (with children).
         if ($has('categories') && ($r['categories'] ?? null) !== null) {
-            $out .= $rule . "\n" . $this->center('CATEGORIES', $cols) . "\n" . $head3();
+            $out .= $header('CATEGORIES') . $head3();
             foreach ($r['categories'] as $root) {
-                $out .= self::BOLD_ON . $entry($root['name'], $root['sold_qty'], $root['returned_qty'], $root['net_qty'], $root['net'], $root['returns_amount'], $root['net_value']) . self::BOLD_OFF;
+                $out .= $entry($root['name'], $root['sold_qty'], $root['returned_qty'], $root['net_qty'], $root['net'], $root['returns_amount'], $root['net_value'], '', true);
                 foreach (($root['children'] ?? []) as $child) {
                     if (($child['id'] ?? null) !== ($root['id'] ?? null)) {
-                        $out .= $entry($child['name'], $child['sold_qty'], $child['returned_qty'], $child['net_qty'], $child['net'], $child['returns_amount'], $child['net_value'], ' ');
+                        $out .= $entry($child['name'], $child['sold_qty'], $child['returned_qty'], $child['net_qty'], $child['net'], $child['returns_amount'], $child['net_value'], ' ', true);
                     }
                 }
             }
-            $out .= self::BOLD_ON . $entry('TOTAL', collect($r['categories'])->sum('sold_qty'), collect($r['categories'])->sum('returned_qty'), collect($r['categories'])->sum('net_qty'), collect($r['categories'])->sum('net'), collect($r['categories'])->sum('returns_amount'), collect($r['categories'])->sum('net_value')) . self::BOLD_OFF;
+            $cats = collect($r['categories']);
+            $out .= $bigTotal($cats->sum('sold_qty'), $cats->sum('returned_qty'), $cats->sum('net_qty'), $cats->sum('net'), $cats->sum('returns_amount'), $cats->sum('net_value'));
         }
 
         // ITEMS.
         if ($has('items') && ($r['items'] ?? null) !== null) {
             $items = collect($r['items']);
-            $out .= $rule . "\n" . $this->center('ITEMS', $cols) . "\n" . $head3();
+            $out .= $header('ITEMS') . $head3();
             foreach ($items as $row) {
                 $name = $row->item . ($row->variant ? ' (' . $row->variant . ')' : '');
                 $out .= $entry($name, $row->sold_qty, $row->returned_qty, $row->net_qty, $row->net, $row->returns_amount, $row->net_value);
             }
-            $out .= self::BOLD_ON . $entry('TOTAL', $items->sum('sold_qty'), $items->sum('returned_qty'), $items->sum('net_qty'), $items->sum('net'), $items->sum('returns_amount'), $items->sum('net_value')) . self::BOLD_OFF;
+            $out .= $bigTotal($items->sum('sold_qty'), $items->sum('returned_qty'), $items->sum('net_qty'), $items->sum('net'), $items->sum('returns_amount'), $items->sum('net_value'));
         }
 
         // CANCELLATIONS.
         if ($has('cancellations') && ($r['cancellations'] ?? null) !== null) {
-            $out .= $rule . "\n" . $this->center('CANCELLATIONS', $cols) . "\n";
+            $out .= $header('CANCELLATIONS');
             $rows = $r['cancellations']['rows'] ?? [];
             if (empty($rows)) {
                 $out .= 'No cancellations in this period.' . "\n";
@@ -480,13 +498,13 @@ class EscPosPayloadService
                 $out .= strtoupper((string) $row['item']) . "\n";
                 $out .= $this->columns('  ' . $row['order_type'] . ' / ' . $row['reason'], $row['events'] . ' x  -' . $qty($row['qty']), $cols) . "\n";
             }
-            $out .= self::BOLD_ON . $this->columns('TOTAL', ($r['cancellations']['total_events'] ?? 0) . ' x  -' . $qty($r['cancellations']['total_qty'] ?? 0), $cols) . self::BOLD_OFF . "\n";
+            $out .= $big($this->columns('TOTAL', ($r['cancellations']['total_events'] ?? 0) . ' x  -' . $qty($r['cancellations']['total_qty'] ?? 0), $cols)) . "\n";
         }
 
         // CASH & BANK.
         if ($has('cash_bank') && ($r['cashBank'] ?? null) !== null) {
             $cb = $r['cashBank'];
-            $out .= $rule . "\n" . $this->center('CASH & BANK', $cols) . "\n";
+            $out .= $header('CASH & BANK');
             $out .= $this->columns('Opening Cash (float)', $money($cb['shifts']['opening_cash'] ?? 0), $cols) . "\n";
             $out .= $this->columns('Expected Cash', $money($cb['expected_cash_formula'] ?? 0), $cols) . "\n";
             $out .= $this->columns('Counted Cash', $money($cb['shifts']['counted_cash'] ?? 0), $cols) . "\n";

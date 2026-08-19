@@ -35,8 +35,10 @@
     /** An entry carrying both quantities and money (categories, items). */
     $tEntry = function (string $name, $sQ, $rQ, $nQ, $sV, $rV, $nV, bool $bold = false, string $indent = '') use ($qty, $fmt) {
         $cls = $bold ? ' class="total"' : '';
+        // The name a reader scans for is always emphasised; a total's name carries both.
+        $nameCls = ' class="name' . ($bold ? ' total' : '') . '"';
 
-        return '<tr' . $cls . '><td colspan="4">' . $indent . e($name) . '</td></tr>'
+        return '<tr' . $nameCls . '><td colspan="4">' . $indent . e($name) . '</td></tr>'
              . '<tr><td>' . $indent . 'Qty</td>'
              . '<td class="amt">' . $qty($sQ) . '</td><td class="amt">' . $qty($rQ) . '</td><td class="amt">' . $qty($nQ) . '</td></tr>'
              . '<tr' . $cls . '><td>' . $indent . 'Amt</td>'
@@ -46,8 +48,9 @@
     /** An order-level entry — money only, no line quantities (order types, waiters). */
     $tOrders = function (string $name, $orders, $billed, $ret, $net, bool $bold = false) use ($fmt) {
         $cls = $bold ? ' class="total"' : '';
+        $nameCls = ' class="name' . ($bold ? ' total' : '') . '"';
 
-        return '<tr' . $cls . '><td colspan="4">' . e($name) . '</td></tr>'
+        return '<tr' . $nameCls . '><td colspan="4">' . e($name) . '</td></tr>'
              . '<tr' . $cls . '><td>' . (int) $orders . ' ord</td>'
              . '<td class="amt">' . $fmt($billed) . '</td><td class="amt">' . $fmt($ret) . '</td><td class="amt">' . $fmt($net) . '</td></tr>';
     };
@@ -84,13 +87,15 @@
         font-weight: 700;
     }
     h1 { font-size: {{ $paper === '58mm' ? '14px' : '15px' }}; text-align: center; margin: 4px 0; }
-    h2 { font-size: {{ $paper === '58mm' ? '12px' : '13px' }}; border-top: 1px dashed #000; padding-top: 4px; margin: 8px 0 4px; }
-    h3 { font-size: {{ $paper === '58mm' ? '11px' : '12px' }}; margin: 6px 0 2px; }
+    /* Section headers, block names and net/total rows print bigger so the eye finds them. */
+    h2 { font-size: {{ $paper === '58mm' ? '13px' : '15px' }}; font-weight: 900; border-top: 1px dashed #000; padding-top: 4px; margin: 8px 0 4px; }
+    h3 { font-size: {{ $paper === '58mm' ? '12px' : '13px' }}; font-weight: 900; margin: 6px 0 2px; }
     table { width: 100%; border-collapse: collapse; }
     th, td { vertical-align: top; word-break: break-word; text-align: left; padding: 1px 2px; }
     th { border-bottom: 1px dashed #000; }
     th.amt, td.amt { text-align: right; white-space: nowrap; }
-    .total { border-top: 1px dashed #000; font-weight: bold; }
+    .name { font-weight: bold; font-size: {{ $paper === '58mm' ? '12px' : '14px' }}; }
+    .total { border-top: 1px dashed #000; font-weight: bold; font-size: {{ $paper === '58mm' ? '12px' : '14px' }}; }
     @else
     body { width: 190mm; font-family: Arial, sans-serif; font-size: 12px; }
     h1 { font-size: 18px; margin: 4px 0; }
@@ -99,6 +104,7 @@
     table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
     th, td { border: 1px solid #bbb; padding: 3px 6px; text-align: left; }
     th.amt, td.amt { text-align: right; }
+    .name { font-weight: bold; }
     .total { font-weight: bold; background: #f2f2f2; }
     @endif
     .no-print { text-align: center; margin: 8px 0; }

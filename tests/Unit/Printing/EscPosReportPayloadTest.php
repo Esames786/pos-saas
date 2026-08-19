@@ -63,4 +63,32 @@ class EscPosReportPayloadTest extends TestCase
         $this->assertStringNotContainsString('ITEMS', $body, 'an unticked section is omitted');
         $this->assertStringNotContainsString('CATEGORIES', $body);
     }
+
+    /**
+     * The rows a reader scans for — section headers, the category/order-type names,
+     * and the net/total lines — print bold AND double-height (GS ! 0x01 + ESC E 1)
+     * so they stand out on the thermal roll. The Qty/Amt detail stays compact.
+     */
+    public function test_headers_names_and_net_rows_print_bold_and_double_height(): void
+    {
+        $raw = app(EscPosPayloadService::class)->buildReport($this->sample(['overview', 'order_types', 'categories', 'items']));
+
+        $bigOn = "\x1D\x21\x01\x1B\x45\x01"; // GS ! (double height) + ESC E (bold), on one line
+
+        foreach (['OVERALL', 'CATEGORIES', 'ORDER TYPES', 'ITEMS', 'BILLED TO CUSTOMERS',
+            'NET SALES', 'NET CASH FROM SALES', 'Net Qty', 'BIRYANI', 'DELIVERY'] as $label) {
+            $this->assertMatchesRegularExpression(
+                '/'.preg_quote($bigOn, '/').'[^\n]*'.preg_quote($label, '/').'/',
+                $raw,
+                "{$label} should print bold + double-height"
+            );
+        }
+
+        // A compact detail line is NOT enlarged.
+        $this->assertDoesNotMatchRegularExpression(
+            '/'.preg_quote($bigOn, '/').'[^\n]*Sold Qty/',
+            $raw,
+            'the Sold Qty detail line stays at the normal size'
+        );
+    }
 }
