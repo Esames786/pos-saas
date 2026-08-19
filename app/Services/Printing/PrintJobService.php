@@ -18,6 +18,7 @@ class PrintJobService
 {
     public function __construct(
         private readonly PrintRoutingService $routingService,
+        private readonly PrintJobFactory $jobFactory,
     ) {}
 
     public function queueReceipt(SalesOrder $sale, ?Printer $printer = null, ?string $terminalId = null, bool $ensureOnce = false): PrintJob
@@ -66,7 +67,6 @@ class PrintJobService
         $printer = $printer ?: $this->routingService->receiptPrinter($sale);
 
         $attributes = [
-            'job_no'             => $this->nextJobNo(),
             'logical_key'         => $logicalKey,
             'copy_no'            => 1,
             'branch_id'          => $sale->branch_id,
@@ -88,7 +88,7 @@ class PrintJobService
 
         return $ensureOnce
             ? $this->createLogicalJob($attributes)
-            : tap(PrintJob::create($attributes), function (PrintJob $job) {
+            : tap($this->jobFactory->create($attributes), function (PrintJob $job) {
                 $job->update(['raw_payload' => app(EscPosPayloadService::class)->build($job)]);
             });
     }
@@ -369,7 +369,6 @@ class PrintJobService
             $payload['is_reprint'] = true;
 
             return $this->createLogicalJob([
-                'job_no' => $this->nextJobNo(),
                 'logical_key' => $prefix . $copyNo,
                 'copy_no' => $copyNo,
                 'branch_id' => $source->branch_id,
@@ -432,7 +431,6 @@ class PrintJobService
         );
 
         return $this->createLogicalJob([
-            'job_no' => $this->nextJobNo(),
             'logical_key' => 'reminder:' . $batch->event_uuid . ':' . $printer->id,
             'copy_no' => 1,
             'branch_id' => $sale->branch_id,
@@ -667,7 +665,6 @@ class PrintJobService
             }
 
             $attributes = [
-                'job_no'             => $this->nextJobNo(),
                 'logical_key'         => $logicalKey,
                 'copy_no'            => $copyNo,
                 'branch_id'          => $sale->branch_id,
@@ -706,7 +703,10 @@ class PrintJobService
     private function createLogicalJob(array $attributes): PrintJob
     {
         try {
-            $job = PrintJob::create($attributes);
+            // The factory owns job_no allocation + its bounded retry; a
+            // logical_key collision is re-thrown here for the idempotency
+            // resolution below, exactly as a direct create used to surface it.
+            $job = $this->jobFactory->create($attributes);
             $job->update(['raw_payload' => app(EscPosPayloadService::class)->build($job)]);
 
             return $job;
@@ -1009,10 +1009,5 @@ class PrintJobService
                 'kot_sent'          => true,
                 'kot_sent_quantity' => $line->quantity,
             ]));
-    }
-
-    private function nextJobNo(): string
-    {
-        return 'PJ-' . now()->format('YmdHis') . '-' . random_int(100, 999);
     }
 }

@@ -6,6 +6,7 @@ use App\Models\Tenant\CateringPrinterMapping;
 use App\Models\Tenant\CateringProductionRelease;
 use App\Models\Tenant\Printer;
 use App\Models\Tenant\PrintJob;
+use App\Services\Printing\PrintJobFactory;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 
@@ -169,7 +170,6 @@ class CateringProductionPrintService
         ];
 
         $attributes = [
-            'job_no' => 'PJ-'.now()->format('YmdHis').'-'.random_int(100, 999),
             'logical_key' => $meta['logical_key'],
             'copy_no' => $meta['copy_no'],
             'branch_id' => $release->event?->branch_id,
@@ -185,7 +185,9 @@ class CateringProductionPrintService
         ];
 
         try {
-            return PrintJob::create($attributes);
+            // Single job_no authority (bounded-retries a collision); a
+            // logical_key collision still surfaces here for idempotency.
+            return app(PrintJobFactory::class)->create($attributes);
         } catch (QueryException $exception) {
             // Idempotency: the unique logical_key means this destination already
             // has its business job — return it, never a duplicate.
