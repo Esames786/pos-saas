@@ -32,17 +32,41 @@ use RuntimeException;
  * A lump sum is deliberately kept out of the calculated rate — a per-unit rate
  * containing a flat fee is wrong at every quantity except the one it was divided
  * by — and out of the quoted-rate override, which is a per-unit decision.
+ *
+ * KASHIF-CATERING-LIFECYCLE-LOCK-1 — TWO KINDS OF METHOD IN HERE.
+ *
+ * Everything that can change what a customer is quoted now comes in two halves,
+ * and the distinction is not cosmetic:
+ *
+ *   PUBLIC OPERATIONS       enter the transaction, take the document lock, re-read
+ *                           the target under it, prove the quotation may still be
+ *                           edited, then mutate.
+ *
+ *   *Locked() HELPERS       assume the caller is already inside that critical
+ *                           section. They do no checking of their own because
+ *                           any check they could make would be the stale one.
+ *
+ * The old design had a single set of methods that each asked
+ * `$snapshot->line?->estimate?->isDraft()` — a cached relation, loaded before
+ * anything was locked. An operator could open a booking, the answer would be
+ * "draft", the write would queue behind a row, Send would commit, the write
+ * would wake up and land on a sent quotation. The check was real; it was just
+ * answering a question about the past.
  */
 class CateringLineCostBlockService
 {
+    public function __construct(private readonly CateringDocumentLock $locks) {}
+
     /**
      * Copy the dish's blocks onto a freshly saved line and price it.
      *
      * Returns false when the product is not block-costed, so the caller can
      * leave a recipe or free-text line exactly as it always was.
      */
-    public function snapshot(CateringEstimateLine $line): bool
+    public function snapshotLocked(CateringEstimateLine $line): bool
     {
+        $this->locks->assertInsideCriticalSection('snapshotLocked');
+
         if (! $line->product_id) {
             return false;
         }
@@ -114,7 +138,7 @@ class CateringLineCostBlockService
             }
         });
 
-        $this->reprice($line->refresh());
+        $this->repriceLocked($line->refresh());
 
         return true;
     }
@@ -129,19 +153,23 @@ class CateringLineCostBlockService
      */
     public function overrideMaterialQuantity(CateringEstimateLineCostBlock $snapshot, float $quantity): void
     {
-        $this->assertEditable($snapshot);
-
         if ($quantity < 0) {
             throw new RuntimeException('A material quantity cannot be negative.');
         }
 
-        $snapshot->forceFill([
-            'event_material_qty' => $quantity,
-            'is_overridden' => true,
-        ])->save();
+        DB::connection('tenant')->transaction(function () use ($snapshot, $quantity) {
+            // The model handed in was loaded before any lock and proves nothing.
+            // These three are the current ones.
+            [, $line, $locked] = $this->locks->editableSnapshot($snapshot);
 
-        $this->refreshSnapshotAmount($snapshot);
-        $this->reprice($snapshot->line);
+            $locked->forceFill([
+                'event_material_qty' => $quantity,
+                'is_overridden' => true,
+            ])->save();
+
+            $this->refreshSnapshotAmount($locked);
+            $this->repriceLocked($line);
+        });
     }
 
     /**
@@ -155,33 +183,37 @@ class CateringLineCostBlockService
      */
     public function setCustomerSupplied(CateringEstimateLineCostBlock $snapshot, bool $supplied): void
     {
-        $this->assertEditable($snapshot);
+        DB::connection('tenant')->transaction(function () use ($snapshot, $supplied) {
+            [, $line, $locked] = $this->locks->editableSnapshot($snapshot);
 
-        if (! $snapshot->isMaterial()) {
-            throw new RuntimeException(
-                "'{$snapshot->label}' is a charge, not a material — there is nothing for a customer to bring. "
-                .'Making and packing are the work, and the work is still being done.'
-            );
-        }
+            if (! $locked->isMaterial()) {
+                throw new RuntimeException(
+                    "'{$locked->label}' is a charge, not a material — there is nothing for a customer to bring. "
+                    .'Making and packing are the work, and the work is still being done.'
+                );
+            }
 
-        $snapshot->forceFill(['is_customer_supplied' => $supplied])->save();
+            $locked->forceFill(['is_customer_supplied' => $supplied])->save();
 
-        $this->refreshSnapshotAmount($snapshot);
-        $this->reprice($snapshot->line);
+            $this->refreshSnapshotAmount($locked);
+            $this->repriceLocked($line);
+        });
     }
 
     /** Put a material back on the dish's own ratio for this line. */
     public function resetMaterialQuantity(CateringEstimateLineCostBlock $snapshot): void
     {
-        $this->assertEditable($snapshot);
+        DB::connection('tenant')->transaction(function () use ($snapshot) {
+            [, $line, $locked] = $this->locks->editableSnapshot($snapshot);
 
-        $snapshot->forceFill([
-            'event_material_qty' => $snapshot->default_material_qty,
-            'is_overridden' => false,
-        ])->save();
+            $locked->forceFill([
+                'event_material_qty' => $locked->default_material_qty,
+                'is_overridden' => false,
+            ])->save();
 
-        $this->refreshSnapshotAmount($snapshot);
-        $this->reprice($snapshot->line);
+            $this->refreshSnapshotAmount($locked);
+            $this->repriceLocked($line);
+        });
     }
 
     /**
@@ -192,8 +224,10 @@ class CateringLineCostBlockService
      * discard a decision somebody made on purpose. It stays, visibly overridden,
      * until they reset it.
      */
-    public function recalculateForQuantity(CateringEstimateLine $line): void
+    public function recalculateForQuantityLocked(CateringEstimateLine $line): void
     {
+        $this->locks->assertInsideCriticalSection('recalculateForQuantityLocked');
+
         $dishQty = (float) $line->quantity;
 
         foreach ($this->snapshotsFor($line) as $snapshot) {
@@ -211,7 +245,7 @@ class CateringLineCostBlockService
             $this->refreshSnapshotAmount($snapshot, $dishQty);
         }
 
-        $this->reprice($line->refresh());
+        $this->repriceLocked($line->refresh());
     }
 
     /**
@@ -222,8 +256,10 @@ class CateringLineCostBlockService
      * agreed price is theirs, and repricing the blocks underneath it must not
      * quietly change what the customer was told.
      */
-    public function reprice(CateringEstimateLine $line): void
+    public function repriceLocked(CateringEstimateLine $line): void
     {
+        $this->locks->assertInsideCriticalSection('repriceLocked');
+
         $snapshots = $this->snapshotsFor($line);
 
         if ($snapshots->isEmpty()) {
@@ -264,7 +300,7 @@ class CateringLineCostBlockService
             'amount' => round($quoted * $dishQty + $lumpSum, 2),
         ])->save();
 
-        $this->recalculateDocument($line);
+        $this->recalculateDocumentLocked($line);
     }
 
     /**
@@ -277,10 +313,6 @@ class CateringLineCostBlockService
      */
     public function overrideQuotedRate(CateringEstimateLine $line, float $quotedRate, string $reason): void
     {
-        if (! $line->estimate?->isDraft()) {
-            throw new RuntimeException('A sent quotation cannot be repriced — revise it instead.');
-        }
-
         if ($quotedRate < 0) {
             throw new RuntimeException('A quoted rate cannot be negative.');
         }
@@ -292,13 +324,17 @@ class CateringLineCostBlockService
             );
         }
 
-        $line->forceFill([
-            'rate' => round($quotedRate, 2),
-            'rate_override_reason' => trim($reason),
-            'amount' => round($quotedRate * (float) $line->quantity + (float) $line->lump_sum_amount, 2),
-        ])->save();
+        DB::connection('tenant')->transaction(function () use ($line, $quotedRate, $reason) {
+            [$estimate, $locked] = $this->locks->editableLine($line);
 
-        $this->recalculateDocument($line);
+            $locked->forceFill([
+                'rate' => round($quotedRate, 2),
+                'rate_override_reason' => trim($reason),
+                'amount' => round($quotedRate * (float) $locked->quantity + (float) $locked->lump_sum_amount, 2),
+            ])->save();
+
+            $this->recalculateDocumentLocked($estimate);
+        });
     }
 
     /**
@@ -310,13 +346,13 @@ class CateringLineCostBlockService
      */
     public function useCalculatedRate(CateringEstimateLine $line): void
     {
-        if (! $line->estimate?->isDraft()) {
-            throw new RuntimeException('A sent quotation cannot be repriced — revise it instead.');
-        }
+        DB::connection('tenant')->transaction(function () use ($line) {
+            [, $locked] = $this->locks->editableLine($line);
 
-        $line->forceFill(['rate_override_reason' => null])->save();
+            $locked->forceFill(['rate_override_reason' => null])->save();
 
-        $this->reprice($line->refresh());
+            $this->repriceLocked($locked);
+        });
     }
 
     /**
@@ -324,9 +360,13 @@ class CateringLineCostBlockService
      * at 1,960 inside a document that still totals 1,910, and whichever figure
      * the customer is given, one of them is wrong.
      */
-    private function recalculateDocument(CateringEstimateLine $line): void
+    private function recalculateDocumentLocked(mixed $lineOrEstimate): void
     {
-        if ($estimate = $line->estimate) {
+        $estimate = $lineOrEstimate instanceof CateringEstimateLine
+            ? $lineOrEstimate->estimate
+            : $lineOrEstimate;
+
+        if ($estimate) {
             app(CateringEstimateService::class)->recalculateTotals($estimate);
         }
     }

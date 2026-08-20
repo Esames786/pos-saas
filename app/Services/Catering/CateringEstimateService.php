@@ -88,9 +88,25 @@ class CateringEstimateService
      */
     public function saveDraftLines(CateringEstimate $estimate, array $lines, array $charges = []): CateringEstimate
     {
-        $this->assertDraft($estimate);
-
         return DB::connection('tenant')->transaction(function () use ($estimate, $lines, $charges) {
+            // KASHIF-CATERING-LIFECYCLE-LOCK-1: the editability check lives HERE,
+            // inside the transaction and under the document lock — not before it.
+            //
+            // Checking outside was the whole defect. The form save would confirm
+            // "still a draft", enter its transaction, block on a line row somebody
+            // else was holding, and by the time it woke up Send had committed. It
+            // then wrote the operator's quantity onto a quotation the customer had
+            // already received, and every guard agreed, because every guard was
+            // reading the model loaded before the wait.
+            $locked = $this->locks->editableEstimate($estimate);
+            $estimate->setRawAttributes($locked->getAttributes(), true);
+            $estimate->setRelations([]);
+            $estimate->setRelation('event', $locked->getRelation('event'));
+
+            // The children this reconcile may update or delete, locked in the
+            // established order before any of them is touched.
+            $this->locks->estimateGraph($estimate);
+
             // KASHIF-CATERING-LINE-SNAPSHOT-1: RECONCILE, never wipe and rebuild.
             //
             // This used to delete every line and recreate it. That was harmless
@@ -145,7 +161,7 @@ class CateringEstimateService
                     if ($hasSnapshot) {
                         // Quantities that follow the order follow it; a quantity
                         // somebody typed for this event stays where they put it.
-                        $this->lineBlocks->recalculateForQuantity($match->refresh());
+                        $this->lineBlocks->recalculateForQuantityLocked($match->refresh());
                     }
 
                     continue;
@@ -162,7 +178,7 @@ class CateringEstimateService
                     ])->save();
 
                     $keptIds[] = $match->id;
-                    $this->lineBlocks->snapshot($match->refresh());
+                    $this->lineBlocks->snapshotLocked($match->refresh());
 
                     continue;
                 }
@@ -175,7 +191,7 @@ class CateringEstimateService
 
                 // A cost-block dish copies its blocks onto the line, and the
                 // line's amount becomes whatever that copy works out to.
-                $this->lineBlocks->snapshot($created);
+                $this->lineBlocks->snapshotLocked($created);
             }
 
             // Whatever the operator removed goes, and its snapshot with it.
@@ -250,17 +266,26 @@ class CateringEstimateService
     /** Confirm the booking (event level). */
     public function confirmEvent(CateringEvent $event): CateringEvent
     {
-        if (! in_array($event->status, [CateringEvent::STATUS_QUOTED, CateringEvent::STATUS_DRAFT], true)) {
-            throw new RuntimeException("Event {$event->event_no} cannot be confirmed from status {$event->status}.");
-        }
+        return DB::connection('tenant')->transaction(function () use ($event) {
+            // Confirming does not freeze the quotation — a confirmed booking is
+            // still commercially open — but it DOES make a decision from the
+            // quotation's numbers. Taking the event lock means a draft writer
+            // cannot be halfway through changing those numbers while readiness is
+            // being judged on them.
+            $this->locks->refreshEvent($event);
 
-        if ($current = $event->currentEstimate) {
-            $this->assertCostingReady($current, 'confirm');
-        }
+            if (! in_array($event->status, [CateringEvent::STATUS_QUOTED, CateringEvent::STATUS_DRAFT], true)) {
+                throw new RuntimeException("Event {$event->event_no} cannot be confirmed from status {$event->status}.");
+            }
 
-        $event->forceFill(['status' => CateringEvent::STATUS_CONFIRMED, 'confirmed_at' => now()])->save();
+            if ($current = $event->currentEstimate) {
+                $this->assertCostingReady($current, 'confirm');
+            }
 
-        return $event;
+            $event->forceFill(['status' => CateringEvent::STATUS_CONFIRMED, 'confirmed_at' => now()])->save();
+
+            return $event;
+        });
     }
 
     /**

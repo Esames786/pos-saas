@@ -300,7 +300,7 @@ class CateringLineSnapshotMySqlTest extends MySqlTenantTestCase
         $line = $this->booking(5);
 
         $line->forceFill(['quantity' => 10])->save();
-        $this->lineBlocks->recalculateForQuantity($line->fresh());
+        DB::connection('tenant')->transaction(fn () => $this->lineBlocks->recalculateForQuantityLocked($line->fresh()));
 
         $chicken = $this->snapshot($line->fresh(), 'Chicken');
         $this->assertEqualsWithDelta(5.0, (float) $chicken->event_material_qty, 0.001, '10 KG dish needs 5 KG');
@@ -318,7 +318,7 @@ class CateringLineSnapshotMySqlTest extends MySqlTenantTestCase
         $this->lineBlocks->overrideMaterialQuantity($this->snapshot($line, 'Chicken'), 3.0);
 
         $line->forceFill(['quantity' => 10])->save();
-        $this->lineBlocks->recalculateForQuantity($line->fresh());
+        DB::connection('tenant')->transaction(fn () => $this->lineBlocks->recalculateForQuantityLocked($line->fresh()));
 
         $chicken = $this->snapshot($line->fresh(), 'Chicken');
         $this->assertEqualsWithDelta(3.0, (float) $chicken->event_material_qty, 0.001,
@@ -352,7 +352,7 @@ class CateringLineSnapshotMySqlTest extends MySqlTenantTestCase
         $line = $this->booking(5);
 
         $line->forceFill(['quantity' => 50])->save();
-        $this->lineBlocks->recalculateForQuantity($line->fresh());
+        DB::connection('tenant')->transaction(fn () => $this->lineBlocks->recalculateForQuantityLocked($line->fresh()));
 
         $line = $line->fresh();
         $this->assertSame(3000.0, round((float) $line->lump_sum_amount, 2), 'still once, at ten times the order');
@@ -497,7 +497,7 @@ class CateringLineSnapshotMySqlTest extends MySqlTenantTestCase
         $this->estimates->markSent($line->estimate->refresh());
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessageMatches('/sent quotation cannot be repriced/');
+        $this->expectExceptionMessageMatches('/has been sent/');
 
         $this->lineBlocks->overrideQuotedRate($line->fresh(), 500, 'too late');
     }

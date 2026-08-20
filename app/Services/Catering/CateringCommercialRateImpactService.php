@@ -411,22 +411,11 @@ class CateringCommercialRateImpactService
      */
     private function documentIsOpen(CateringEstimate $estimate): bool
     {
-        $event = $estimate->event;
-
-        if ($event === null || ! $event->isOpen()) {
-            return false;
-        }
-
-        // Prefer the invoice that was resolved UNDER the lock. Asking the
-        // relation afresh here would issue an ordinary read, and an ordinary
-        // read inside a transaction that has been waiting answers from the
-        // snapshot it had before the wait — so an apply queued behind an invoice
-        // would be told, correctly and uselessly, that there wasn't one.
-        $invoice = $event->relationLoaded('finalInvoice')
-            ? $event->getRelation('finalInvoice')
-            : $event->finalInvoice()->first();
-
-        return $invoice === null;
+        // One definition, shared with every ordinary draft writer. Rate Impact
+        // and the form save are siblings under the same authority; two copies of
+        // this rule would eventually disagree, and the disagreement would be
+        // exactly the gap somebody's price slips through.
+        return $this->locks->isCommerciallyOpen($estimate);
     }
 
     /**
@@ -569,6 +558,7 @@ class CateringCommercialRateImpactService
                 ->whereIn('catering_estimate_line_cost_blocks.id', $snapshotIds ?: [0])
                 ->get([
                     'catering_estimate_line_cost_blocks.id as snapshot_id',
+                    'l.id as line_id',
                     'l.catering_estimate_id as estimate_id',
                 ]);
 
@@ -586,17 +576,25 @@ class CateringCommercialRateImpactService
             // the race: the estimate a line carries is what its immutability
             // guard consults, and a relation loaded before the lock would still
             // be answering "draft" for a quotation that has since been sent.
-            $snapshots = CateringEstimateLineCostBlock::query()
-                ->with('line')
-                ->whereIn('id', $targets->pluck('snapshot_id')->all())
-                ->orderBy('id')
-                ->lockForUpdate()
-                ->get();
+            // Lines, then snapshots — the same rungs of the same ladder every
+            // other writer climbs. Skipping the line level would still have been
+            // deadlock-free, but "every path takes every level in one order" is a
+            // property worth being able to state without a caveat.
+            $lines = $this->locks->lines(
+                CateringEstimateLine::query()
+                    ->whereIn('id', $targets->pluck('line_id')->all())
+                    ->pluck('id')->all()
+            );
+
+            $snapshots = $this->locks->snapshots($targets->pluck('snapshot_id')->all());
 
             foreach ($snapshots as $snapshot) {
-                if ($line = $snapshot->line) {
-                    $line->setRelation('estimate', $estimates->get($line->catering_estimate_id));
+                $line = $lines->get($snapshot->catering_estimate_line_id);
+                if ($line === null) {
+                    continue;
                 }
+                $line->setRelation('estimate', $estimates->get($line->catering_estimate_id));
+                $snapshot->setRelation('line', $line);
             }
 
             // STEP 4 — every eligibility question is asked again, now against
@@ -749,7 +747,7 @@ class CateringCommercialRateImpactService
 
         // Reprice each touched line once, which also re-adds its quotation.
         foreach ($touchedLines as $line) {
-            $this->lineBlocks->reprice($line->refresh());
+            $this->lineBlocks->repriceLocked($line->refresh());
         }
 
         // Recorded only now, so "new calculated rate" is the figure the line

@@ -3,9 +3,13 @@
 namespace App\Services\Catering;
 
 use App\Models\Tenant\CateringEstimate;
+use App\Models\Tenant\CateringEstimateLine;
+use App\Models\Tenant\CateringEstimateLineCostBlock;
 use App\Models\Tenant\CateringEvent;
 use App\Models\Tenant\CateringFinalInvoice;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
 /**
  * KASHIF-CATERING-LIFECYCLE-LOCK-1 — one lock order for a booking's commercial
@@ -179,6 +183,232 @@ class CateringDocumentLock
         $event->setRelation('finalInvoice', $fresh->getRelation('finalInvoice'));
 
         return $event;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // THE COMMERCIAL MUTATION CONTRACT.
+    //
+    // Every operation that can change what a customer is quoted enters through
+    // one of these. The pattern is always the same and the order of the three
+    // steps is the whole point:
+    //
+    //      1. discover which document the target belongs to   (unlocked)
+    //      2. lock that document, parent first                (locking)
+    //      3. re-read the target and decide                   (locking)
+    //
+    // Step 1 is allowed to be unlocked because it only chooses what to lock. It
+    // is never allowed to authorize anything. The reason a first fix of this
+    // defect still failed is that authorization was being taken from step 1: a
+    // writer checked "is it a draft", queued behind a row, and by the time it
+    // woke up the answer had changed and nobody asked again.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Is this booking still open to commercial change at all — regardless of
+     * what the quotation's own status says?
+     *
+     * Event-level closure outranks it. A draft can outlive the booking that
+     * justified it: revise after invoicing and v2 is a draft on an invoiced
+     * event, where "it is a draft" would otherwise read as permission.
+     */
+    public function isCommerciallyOpen(CateringEstimate $estimate): bool
+    {
+        $event = $estimate->event;
+
+        if ($event === null || ! $event->isOpen()) {
+            return false;
+        }
+
+        // Prefer the invoice resolved UNDER the lock. Asking the relation afresh
+        // issues an ordinary read, and an ordinary read inside a transaction
+        // that has been waiting answers from the snapshot it had before the
+        // wait — so a writer queued behind an invoice would be told, correctly
+        // and uselessly, that there wasn't one.
+        $invoice = $event->relationLoaded('finalInvoice')
+            ? $event->getRelation('finalInvoice')
+            : $event->finalInvoice()->first();
+
+        return $invoice === null;
+    }
+
+    /** May this quotation's commercial state be changed right now? */
+    public function isCommerciallyEditable(CateringEstimate $estimate): bool
+    {
+        return $estimate->isDraft() && $this->isCommerciallyOpen($estimate);
+    }
+
+    public function assertEditable(CateringEstimate $estimate): void
+    {
+        if (! $estimate->isDraft()) {
+            throw new RuntimeException(
+                'This quotation has been sent — its costing is history. Revise it to change anything.'
+            );
+        }
+
+        if (! $this->isCommerciallyOpen($estimate)) {
+            throw new RuntimeException(
+                'This booking is closed to commercial change — it has been invoiced, completed or cancelled.'
+            );
+        }
+    }
+
+    /**
+     * Enter the critical section for one quotation and prove it may still be
+     * changed. The returned estimate is the locked one; the caller's own copy is
+     * evidence of nothing.
+     */
+    public function editableEstimate(CateringEstimate|int $estimate): CateringEstimate
+    {
+        $id = $estimate instanceof CateringEstimate ? (int) $estimate->getKey() : $estimate;
+        $locked = $this->estimates([$id])->get($id);
+
+        if ($locked === null) {
+            throw new RuntimeException('That quotation no longer exists.');
+        }
+
+        $this->assertEditable($locked);
+
+        return $locked;
+    }
+
+    /**
+     * The same, entered from a LINE: find its parent, lock the document, then
+     * lock and re-read the line itself.
+     *
+     * @return array{0: CateringEstimate, 1: CateringEstimateLine}
+     */
+    public function editableLine(CateringEstimateLine $line): array
+    {
+        // Unlocked, and used only to decide what to lock.
+        $estimateId = CateringEstimateLine::query()->whereKey($line->getKey())->value('catering_estimate_id');
+
+        if ($estimateId === null) {
+            throw new RuntimeException('That quotation line no longer exists.');
+        }
+
+        $estimate = $this->editableEstimate((int) $estimateId);
+        $locked = $this->lines([$line->getKey()])->get($line->getKey());
+
+        if ($locked === null || (int) $locked->catering_estimate_id !== (int) $estimate->getKey()) {
+            throw new RuntimeException('That quotation line no longer belongs to this quotation.');
+        }
+
+        $locked->setRelation('estimate', $estimate);
+
+        return [$estimate, $locked];
+    }
+
+    /**
+     * And from a SNAPSHOT: line first, then document, then back down.
+     *
+     * @return array{0: CateringEstimate, 1: CateringEstimateLine, 2: CateringEstimateLineCostBlock}
+     */
+    public function editableSnapshot(CateringEstimateLineCostBlock $snapshot): array
+    {
+        $lineId = CateringEstimateLineCostBlock::query()
+            ->whereKey($snapshot->getKey())->value('catering_estimate_line_id');
+
+        if ($lineId === null) {
+            throw new RuntimeException('That cost block no longer exists.');
+        }
+
+        $line = CateringEstimateLine::query()->whereKey($lineId)->first();
+        if ($line === null) {
+            throw new RuntimeException('That cost block no longer belongs to a quotation line.');
+        }
+
+        [$estimate, $lockedLine] = $this->editableLine($line);
+
+        $locked = $this->snapshots([$snapshot->getKey()])->get($snapshot->getKey());
+
+        if ($locked === null || (int) $locked->catering_estimate_line_id !== (int) $lockedLine->getKey()) {
+            throw new RuntimeException('That cost block no longer belongs to this quotation line.');
+        }
+
+        $locked->setRelation('line', $lockedLine);
+
+        return [$estimate, $lockedLine, $locked];
+    }
+
+    /**
+     * Lock estimate lines, ascending. Below the estimate in the order, so it is
+     * only ever safe to call once the document itself is held.
+     *
+     * @param  array<int, int>  $lineIds
+     * @return Collection<int, CateringEstimateLine>
+     */
+    public function lines(array $lineIds): Collection
+    {
+        $ids = $this->clean($lineIds);
+        if ($ids === []) {
+            return collect();
+        }
+
+        return CateringEstimateLine::query()
+            ->whereIn('id', $ids)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+    }
+
+    /**
+     * Lock cost-block snapshots, ascending — the bottom of the order.
+     *
+     * @param  array<int, int>  $snapshotIds
+     * @return Collection<int, CateringEstimateLineCostBlock>
+     */
+    public function snapshots(array $snapshotIds): Collection
+    {
+        $ids = $this->clean($snapshotIds);
+        if ($ids === []) {
+            return collect();
+        }
+
+        return CateringEstimateLineCostBlock::query()
+            ->whereIn('id', $ids)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+    }
+
+    /**
+     * Lock the whole child graph of one already-locked estimate: its lines, then
+     * their snapshots, each ascending.
+     *
+     * Used by the form save, which reconciles an arbitrary set of lines and can
+     * update or delete any of them.
+     */
+    public function estimateGraph(CateringEstimate $estimate): void
+    {
+        $lineIds = CateringEstimateLine::query()
+            ->where('catering_estimate_id', $estimate->getKey())
+            ->orderBy('id')->pluck('id')->all();
+
+        if ($lineIds === []) {
+            return;
+        }
+
+        $this->lines($lineIds);
+
+        $this->snapshots(
+            CateringEstimateLineCostBlock::query()
+                ->whereIn('catering_estimate_line_id', $lineIds)
+                ->orderBy('id')->pluck('id')->all()
+        );
+    }
+
+    /**
+     * A cheap structural guard for the internal, already-locked helpers.
+     *
+     * It cannot prove the right rows are held — only that the caller is inside a
+     * transaction, which is where the locks would be. That is enough to catch
+     * the mistake this is aimed at: a recalculation helper called casually from
+     * a controller, outside any critical section, as a way around the front
+     * door. Developer discipline alone is not a safety mechanism when the check
+     * costs one function call.
+     */
+    public function assertInsideCriticalSection(string $operation): void
+    {
+        if (DB::connection('tenant')->transactionLevel() < 1) {
+            throw new RuntimeException(
+                "[{$operation}] may only be called inside a commercial document transaction. "
+                .'Enter through the locked public operation instead.'
+            );
+        }
     }
 
     /**
