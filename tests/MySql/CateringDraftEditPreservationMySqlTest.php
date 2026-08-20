@@ -221,7 +221,7 @@ class CateringDraftEditPreservationMySqlTest extends MySqlTenantTestCase
         $line = $this->biryaniLine($estimate);
 
         $line->forceFill(['quantity' => 10])->save();
-        $this->lineBlocks->recalculateForQuantity($line->fresh());
+        DB::connection('tenant')->transaction(fn () => $this->lineBlocks->recalculateForQuantityLocked($line->fresh()));
 
         $this->assertSame(3820.0, round((float) $estimate->refresh()->subtotal, 2), '10 x 382');
     }
@@ -455,14 +455,18 @@ class CateringDraftEditPreservationMySqlTest extends MySqlTenantTestCase
             $this->lineBlocks->overrideQuotedRate($line->fresh(), 500, 'too late');
             $this->fail('a sent quotation must refuse a rate change');
         } catch (RuntimeException $e) {
-            $this->assertStringContainsString('sent quotation cannot be repriced', $e->getMessage());
+            // KASHIF-CATERING-LIFECYCLE-LOCK-1: one refusal, from the one authority that
+            // decides editability — the per-method wordings were consolidated.
+            $this->assertStringContainsString('has been sent', $e->getMessage());
         }
 
         try {
             $this->lineBlocks->useCalculatedRate($line->fresh());
             $this->fail('and must refuse being put back too');
         } catch (RuntimeException $e) {
-            $this->assertStringContainsString('sent quotation cannot be repriced', $e->getMessage());
+            // KASHIF-CATERING-LIFECYCLE-LOCK-1: one refusal, from the one authority that
+            // decides editability — the per-method wordings were consolidated.
+            $this->assertStringContainsString('has been sent', $e->getMessage());
         }
 
         $this->assertSame(1910.0, round((float) $estimate->refresh()->subtotal, 2), 'and nothing moved');

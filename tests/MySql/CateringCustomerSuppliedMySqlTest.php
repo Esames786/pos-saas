@@ -326,7 +326,7 @@ class CateringCustomerSuppliedMySqlTest extends MySqlTenantTestCase
 
         $line = $this->line($estimate);
         $line->forceFill(['quantity' => 10])->save();
-        $this->lineBlocks->recalculateForQuantity($line->fresh());
+        DB::connection('tenant')->transaction(fn () => $this->lineBlocks->recalculateForQuantityLocked($line->fresh()));
 
         $chicken = $this->snapshot($this->line($estimate), 'Chicken');
         $this->assertEqualsWithDelta(5.0, (float) $chicken->event_material_qty, 0.001,
