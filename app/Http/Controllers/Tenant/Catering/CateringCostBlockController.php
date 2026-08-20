@@ -125,9 +125,17 @@ class CateringCostBlockController extends Controller
             // is ever offered to it.
             'blocks.*.commercial_rate_source' => ['nullable', Rule::in(CateringProductCostBlock::RATE_SOURCES)],
             'blocks.*.rate' => ['required', 'numeric', 'min:0'],
-            'blocks.*.material_product_id' => ['nullable', 'exists:products,id'],
+            // The material select only offers things the store can hand over, but
+            // a select box is a convenience and the request is the contract. A
+            // block pointed at a finished dish would consume a dish from stock
+            // and follow a "material rate" for something that is not a material.
+            'blocks.*.material_product_id' => ['nullable', Rule::exists('products', 'id')->where(
+                fn ($q) => $q->whereIn('product_kind', CateringCommercialRateController::MATERIAL_KINDS)
+            )],
             'blocks.*.quantity_per_unit' => ['nullable', 'numeric', 'min:0'],
-            'blocks.*.unit_id' => ['nullable', 'exists:units,id'],
+            // A retired unit cannot be matched against the house rate book, so it
+            // must not become a block's unit in the first place.
+            'blocks.*.unit_id' => ['nullable', Rule::exists('units', 'id')->where('is_active', true)],
         ]);
 
         $submitted = collect($data['blocks'] ?? []);

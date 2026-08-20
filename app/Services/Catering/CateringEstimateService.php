@@ -27,6 +27,9 @@ class CateringEstimateService
         // line must be judged by its own.
         private readonly CateringEstimateCostingService $costing,
         private readonly CateringLineCostBlockService $lineBlocks,
+        // KASHIF-CATERING-LIFECYCLE-LOCK-1: one lock order, shared with Rate
+        // Impact and the final-invoice authority rather than re-stated here.
+        private readonly CateringDocumentLock $locks,
     ) {}
 
     /**
@@ -196,35 +199,52 @@ class CateringEstimateService
         });
     }
 
-    /** Mark the estimate sent — from this moment it is commercially immutable. */
+    /**
+     * Mark the estimate sent — from this moment it is commercially immutable.
+     *
+     * KASHIF-CATERING-LIFECYCLE-LOCK-1: the status is re-read UNDER the lock, not
+     * taken from the model the caller handed in. Sending is one half of a race
+     * with Rate Impact, and the half that establishes immutability has to
+     * serialize with the half that changes prices — otherwise both look at a
+     * draft, both act, and the customer receives a quotation that moves
+     * afterwards.
+     */
     public function markSent(CateringEstimate $estimate): CateringEstimate
     {
-        $this->assertDraft($estimate);
-        if ($estimate->lines()->count() === 0) {
-            throw new RuntimeException('An estimate needs at least one line before it can be sent.');
-        }
+        return DB::connection('tenant')->transaction(function () use ($estimate) {
+            $this->locks->refreshEstimate($estimate);
 
-        $this->assertCostingReady($estimate, 'send');
+            $this->assertDraft($estimate);
+            if ($estimate->lines()->count() === 0) {
+                throw new RuntimeException('An estimate needs at least one line before it can be sent.');
+            }
 
-        $estimate->forceFill(['status' => CateringEstimate::STATUS_SENT, 'sent_at' => now()])->save();
+            $this->assertCostingReady($estimate, 'send');
 
-        $event = $estimate->event;
-        if (in_array($event->status, [CateringEvent::STATUS_INQUIRY, CateringEvent::STATUS_DRAFT], true)) {
-            $event->update(['status' => CateringEvent::STATUS_QUOTED]);
-        }
+            $estimate->forceFill(['status' => CateringEstimate::STATUS_SENT, 'sent_at' => now()])->save();
 
-        return $estimate;
+            $event = $estimate->event;
+            if (in_array($event->status, [CateringEvent::STATUS_INQUIRY, CateringEvent::STATUS_DRAFT], true)) {
+                $event->update(['status' => CateringEvent::STATUS_QUOTED]);
+            }
+
+            return $estimate;
+        });
     }
 
     public function markAccepted(CateringEstimate $estimate): CateringEstimate
     {
-        if ($estimate->status !== CateringEstimate::STATUS_SENT) {
-            throw new RuntimeException('Only a sent estimate can be accepted.');
-        }
+        return DB::connection('tenant')->transaction(function () use ($estimate) {
+            $this->locks->refreshEstimate($estimate);
 
-        $estimate->forceFill(['status' => CateringEstimate::STATUS_ACCEPTED, 'accepted_at' => now()])->save();
+            if ($estimate->status !== CateringEstimate::STATUS_SENT) {
+                throw new RuntimeException('Only a sent estimate can be accepted.');
+            }
 
-        return $estimate;
+            $estimate->forceFill(['status' => CateringEstimate::STATUS_ACCEPTED, 'accepted_at' => now()])->save();
+
+            return $estimate;
+        });
     }
 
     /** Confirm the booking (event level). */
@@ -262,28 +282,34 @@ class CateringEstimateService
      */
     public function cancelEvent(CateringEvent $event, string $reason, ?int $userId = null): CateringEvent
     {
-        if (in_array($event->status, [CateringEvent::STATUS_COMPLETED, CateringEvent::STATUS_CLOSED], true)) {
-            throw new RuntimeException("Event {$event->event_no} is {$event->status} and cannot be cancelled.");
-        }
-
-        if ($event->isCancelled()) {
-            return $event;
-        }
-
         $reason = trim($reason);
 
         if ($reason === '') {
             throw new RuntimeException('A cancellation reason is required.');
         }
 
-        $event->forceFill([
-            'status' => CateringEvent::STATUS_CANCELLED,
-            'cancel_reason' => $reason,
-            'cancelled_at' => now(),
-            'cancelled_by_user_id' => $userId,
-        ])->save();
+        return DB::connection('tenant')->transaction(function () use ($event, $reason, $userId) {
+            // Cancelling ends commercial change for the whole booking, so it is
+            // one of the transitions Rate Impact must not be able to step across.
+            $this->locks->refreshEvent($event);
 
-        return $event;
+            if (in_array($event->status, [CateringEvent::STATUS_COMPLETED, CateringEvent::STATUS_CLOSED], true)) {
+                throw new RuntimeException("Event {$event->event_no} is {$event->status} and cannot be cancelled.");
+            }
+
+            if ($event->isCancelled()) {
+                return $event;
+            }
+
+            $event->forceFill([
+                'status' => CateringEvent::STATUS_CANCELLED,
+                'cancel_reason' => $reason,
+                'cancelled_at' => now(),
+                'cancelled_by_user_id' => $userId,
+            ])->save();
+
+            return $event;
+        });
     }
 
     /**
@@ -292,14 +318,19 @@ class CateringEstimateService
      */
     public function revise(CateringEstimate $estimate, ?int $userId = null): CateringEstimate
     {
-        if ($estimate->isDraft()) {
-            throw new RuntimeException('The estimate is still a draft — edit it directly instead of revising.');
-        }
-        if ($estimate->status === CateringEstimate::STATUS_SUPERSEDED) {
-            throw new RuntimeException('This version is already superseded; revise the current version.');
-        }
-
         return DB::connection('tenant')->transaction(function () use ($estimate, $userId) {
+            // Under the lock before the status is judged: two concurrent revisions
+            // of the same version would otherwise both pass this check and both
+            // supersede it, leaving two "current" quotations for one booking.
+            $this->locks->refreshEstimate($estimate);
+
+            if ($estimate->isDraft()) {
+                throw new RuntimeException('The estimate is still a draft — edit it directly instead of revising.');
+            }
+            if ($estimate->status === CateringEstimate::STATUS_SUPERSEDED) {
+                throw new RuntimeException('This version is already superseded; revise the current version.');
+            }
+
             $nextVersion = (int) CateringEstimate::query()
                 ->where('catering_event_id', $estimate->catering_event_id)
                 ->lockForUpdate()

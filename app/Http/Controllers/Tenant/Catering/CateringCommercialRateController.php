@@ -11,6 +11,7 @@ use App\Services\Catering\CateringCommercialRateBookService;
 use App\Services\Catering\CateringCommercialRateImpactService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use RuntimeException;
 
 /**
@@ -33,6 +34,13 @@ use RuntimeException;
  */
 class CateringCommercialRateController extends Controller
 {
+    /** What the store can actually hand over. A dish is not a material. */
+    public const MATERIAL_KINDS = [
+        Product::KIND_RAW_MATERIAL,
+        Product::KIND_PACKAGING_MATERIAL,
+        Product::KIND_SEMI_FINISHED,
+    ];
+
     public function __construct(
         private readonly CateringCommercialRateImpactService $impact,
         private readonly CateringCommercialRateBookService $book,
@@ -40,25 +48,36 @@ class CateringCommercialRateController extends Controller
 
     public function index(Request $request)
     {
-        $latest = CateringMaterialCommercialRate::query()
+        $today = now()->toDateString();
+
+        // CURRENT means in force TODAY, resolved exactly as the business
+        // decisions resolve it — latest effective_from that has arrived, then
+        // latest id. A rate dated next Monday is a decision already taken, but
+        // it is not what anybody is charged this morning, and listing it as the
+        // current rate would have an operator quoting from a price that is not
+        // yet in effect.
+        $current = CateringMaterialCommercialRate::query()
             ->with(['product:id,name,sku', 'unit:id,code'])
+            ->whereDate('effective_from', '<=', $today)
             ->orderByDesc('effective_from')->orderByDesc('id')
             ->get()
             ->unique('product_id')
             ->values();
 
         return view('tenant.catering.commercial-rates.index', [
-            'rates' => $latest,
+            'rates' => $current,
+            // Recorded, dated, and deliberately not in force yet.
+            'scheduled' => CateringMaterialCommercialRate::query()
+                ->with(['product:id,name,sku', 'unit:id,code'])
+                ->whereDate('effective_from', '>', $today)
+                ->orderBy('effective_from')->orderBy('id')
+                ->get(),
             'history' => CateringMaterialCommercialRate::query()
                 ->with(['product:id,name', 'unit:id,code'])
                 ->orderByDesc('effective_from')->orderByDesc('id')
                 ->limit(30)->get(),
             'materials' => Product::query()
-                ->whereIn('product_kind', [
-                    Product::KIND_RAW_MATERIAL,
-                    Product::KIND_PACKAGING_MATERIAL,
-                    Product::KIND_SEMI_FINISHED,
-                ])
+                ->whereIn('product_kind', self::MATERIAL_KINDS)
                 ->orderBy('name')
                 ->get(['id', 'name', 'sku', 'unit_id']),
             'units' => Unit::where('is_active', true)->orderBy('code')->get(['id', 'code']),
@@ -76,10 +95,18 @@ class CateringCommercialRateController extends Controller
      */
     public function store(Request $request)
     {
+        // Fail closed on the identity of the thing being priced, not just on its
+        // existence. A select box that only offers materials is a convenience;
+        // the request can name any product id, and a house "material rate"
+        // recorded against a finished dish would be a rate nothing can ever
+        // legitimately follow. Same for an inactive unit: a rate quoted per a
+        // unit the business has retired cannot be matched against any block.
         $data = $request->validate([
-            'product_id' => ['required', 'exists:products,id'],
+            'product_id' => ['required', Rule::exists('products', 'id')->where(
+                fn ($q) => $q->whereIn('product_kind', self::MATERIAL_KINDS)
+            )],
             'rate' => ['required', 'numeric', 'min:0'],
-            'unit_id' => ['required', 'exists:units,id'],
+            'unit_id' => ['required', Rule::exists('units', 'id')->where('is_active', true)],
             'effective_from' => ['required', 'date'],
             'note' => ['nullable', 'string', 'max:255'],
         ]);

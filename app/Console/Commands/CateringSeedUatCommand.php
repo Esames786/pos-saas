@@ -263,10 +263,6 @@ class CateringSeedUatCommand extends Command
     }
 
     /**
-     * The Material Rate Book is the ONE place a material's real cost lives. Cost
-     * blocks read it; they never carry a second, writable copy of it.
-     */
-    /**
      * What the UAT materials are CHARGED at — the house price list, separate
      * from what they cost. Set at the rates the demo dishes were authored with,
      * so the dataset starts with applied and recommended in agreement and an
@@ -285,6 +281,10 @@ class CateringSeedUatCommand extends Command
         }
     }
 
+    /**
+     * The Material Rate Book is the ONE place a material's real cost lives. Cost
+     * blocks read it; they never carry a second, writable copy of it.
+     */
     private function ensureMaterialRates(): void
     {
         foreach (self::MATERIALS as [$key, $name, $sku, $rate]) {

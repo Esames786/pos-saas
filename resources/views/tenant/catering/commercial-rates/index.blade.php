@@ -58,8 +58,47 @@
     </div>
 </div>
 
+{{-- Recorded, dated, and not yet in force. Shown apart from the current rates
+     rather than above them: a rate that starts next Monday listed as "current"
+     is how somebody quotes today at a price nobody is charged today. --}}
+@if($scheduled->isNotEmpty())
+<div class="card mb-3 border-warning-subtle">
+    <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <h5 class="mb-0"><i class="ti ti-clock text-warning me-1"></i>Scheduled — not in effect yet</h5>
+        <span class="text-muted fs-12">Nothing is charged at these rates until their date arrives</span>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm mb-0">
+            <thead>
+                <tr>
+                    <th>Material</th>
+                    <th class="text-end">Will be charged</th>
+                    <th>Unit</th>
+                    <th>Starts</th>
+                    <th>Note</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach($scheduled as $rate)
+                <tr>
+                    <td>{{ $rate->product?->name }}</td>
+                    <td class="text-end">{{ number_format($rate->rate, 2) }}</td>
+                    <td>{{ $rate->unit?->code ?? '—' }}</td>
+                    <td>{{ $rate->effective_from?->format('d M Y') }}</td>
+                    <td class="text-muted fs-13">{{ $rate->note }}</td>
+                </tr>
+            @endforeach
+            </tbody>
+        </table>
+    </div>
+</div>
+@endif
+
 <div class="card">
-    <div class="card-header"><h5 class="mb-0">Current house rates</h5></div>
+    <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <h5 class="mb-0">Current house rates</h5>
+        <span class="text-muted fs-12">In force today</span>
+    </div>
     <div class="table-responsive">
         <table class="table mb-0">
             <thead>

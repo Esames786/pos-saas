@@ -286,6 +286,54 @@ class CateringCommercialRateHardeningMySqlTest extends MySqlTenantTestCase
             'and yesterday still reads as yesterday');
     }
 
+    /**
+     * A rate that starts next Monday is a decision already taken and a price
+     * nobody is charged today. Treating it as current is how somebody quotes
+     * this morning at a rate that is not in effect this morning.
+     */
+    public function test_a_future_dated_rate_is_not_todays_rate(): void
+    {
+        $this->raiseChickenTo(120, now()->addWeek()->toDateString());
+
+        $this->assertEqualsWithDelta(100.0, (float) CateringMaterialCommercialRate::rateFor($this->chickenId), 0.01,
+            'today is still 100');
+        $this->assertEqualsWithDelta(120.0,
+            (float) CateringMaterialCommercialRate::rateFor($this->chickenId, now()->addWeek()->toDateString()), 0.01,
+            'and next week really is 120 — it was recorded, not ignored');
+    }
+
+    /** The business decision uses the same resolver the screen does. */
+    public function test_todays_impact_is_worked_out_at_todays_rate_not_next_weeks(): void
+    {
+        $estimate = $this->draft($this->biryaniId, 'Chicken Biryani', 20, 'Future Customer');
+        $this->raiseChickenTo(120, now()->addWeek()->toDateString());
+
+        $impact = $this->impact->productImpact($this->chickenId);
+        $this->assertEqualsWithDelta(100.0, $impact['recommended'], 0.01,
+            'the impact screen offers what the house charges now');
+
+        $row = $this->draftRow($estimate);
+        $this->assertEqualsWithDelta(0.0, $row['difference'], 0.01,
+            'nothing to move: the quotation is already at the current rate');
+
+        // Applying today applies TODAY's rate, not the scheduled one.
+        $this->impact->applyToDrafts($this->chickenId, [$row['snapshot_id']], $this->actorId);
+        $this->assertEqualsWithDelta(100.0, (float) $this->snapshot($estimate, 'Chicken')->rate, 0.01);
+    }
+
+    /** An explicit as-of preview is the only way to look forward. */
+    public function test_a_scheduled_rate_can_be_previewed_deliberately_by_date(): void
+    {
+        $this->raiseChickenTo(120, now()->addWeek()->toDateString());
+
+        $future = $this->impact->productImpact($this->chickenId, null, now()->addWeek()->toDateString());
+
+        $this->assertEqualsWithDelta(120.0, $future['recommended'], 0.01);
+        $biryani = collect($future['products'])->firstWhere('product_id', $this->biryaniId);
+        $this->assertEqualsWithDelta(392.0, $biryani['projected_calculated_rate'], 0.01,
+            'what the dish would become once next week arrives');
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // §4 — units. The guard against a plausible-looking factor of a thousand.
     // ─────────────────────────────────────────────────────────────────────────

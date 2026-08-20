@@ -74,6 +74,10 @@ class CateringCommercialRateImpactService
         private readonly CateringLineCostBlockService $lineBlocks,
         private readonly CateringCostBlockService $costBlocks,
         private readonly CateringEstimateService $estimates,
+        // KASHIF-CATERING-LIFECYCLE-LOCK-1: applying a rate and ending the right
+        // to apply one are two halves of the same race, so both go through one
+        // lock order rather than each guarding itself.
+        private readonly CateringDocumentLock $locks,
     ) {}
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -380,11 +384,49 @@ class CateringCommercialRateImpactService
             return self::STATE_UNIT_MISMATCH;
         }
 
+        // Event-level closure outranks the quotation's own status. A draft can
+        // outlive the booking that justified it — revise after invoicing and v2
+        // is a draft on an invoiced event — and "it is a draft" would otherwise
+        // be read as permission to reprice a booking that has already been
+        // billed and closed.
+        if (! $this->documentIsOpen($estimate)) {
+            return self::STATE_LOCKED;
+        }
+
         if ($estimate->isDraft()) {
             return self::STATE_APPLICABLE;
         }
 
         return $this->isRevisable($estimate) ? self::STATE_REVISION_REQUIRED : self::STATE_LOCKED;
+    }
+
+    /**
+     * Is this booking still open to commercial change at all?
+     *
+     * Uses the authorities that already exist rather than inventing a status
+     * rule: CateringEvent::isOpen() decides whether the event still accepts
+     * commercial change, and an issued final invoice is the document that ends
+     * the argument — immutable by its own model, and a price moving behind it
+     * would leave the customer holding a bill nothing agrees with.
+     */
+    private function documentIsOpen(CateringEstimate $estimate): bool
+    {
+        $event = $estimate->event;
+
+        if ($event === null || ! $event->isOpen()) {
+            return false;
+        }
+
+        // Prefer the invoice that was resolved UNDER the lock. Asking the
+        // relation afresh here would issue an ordinary read, and an ordinary
+        // read inside a transaction that has been waiting answers from the
+        // snapshot it had before the wait — so an apply queued behind an invoice
+        // would be told, correctly and uselessly, that there wasn't one.
+        $invoice = $event->relationLoaded('finalInvoice')
+            ? $event->getRelation('finalInvoice')
+            : $event->finalInvoice()->first();
+
+        return $invoice === null;
     }
 
     /**
@@ -403,12 +445,7 @@ class CateringCommercialRateImpactService
             return false;
         }
 
-        $event = $estimate->event;
-        if (! $event || ! $event->isOpen()) {
-            return false;
-        }
-
-        return ! $event->finalInvoice()->exists();
+        return $this->documentIsOpen($estimate);
     }
 
     private function stateLabel(string $state): string
@@ -520,12 +557,50 @@ class CateringCommercialRateImpactService
         $applied = 0;
 
         DB::connection('tenant')->transaction(function () use ($materialProductId, $snapshotIds, $bookRate, $userId, &$applied) {
+            // STEP 1 — find out WHICH documents are in play. Ids only. Nothing
+            // read here is trusted for a decision; it exists to decide what to
+            // lock, because you cannot lock rows you have not identified.
+            $targets = CateringEstimateLineCostBlock::query()
+                ->join(
+                    'catering_estimate_lines as l',
+                    'l.id', '=', 'catering_estimate_line_cost_blocks.catering_estimate_line_id'
+                )
+                ->where('catering_estimate_line_cost_blocks.material_product_id', $materialProductId)
+                ->whereIn('catering_estimate_line_cost_blocks.id', $snapshotIds ?: [0])
+                ->get([
+                    'catering_estimate_line_cost_blocks.id as snapshot_id',
+                    'l.catering_estimate_id as estimate_id',
+                ]);
+
+            if ($targets->isEmpty()) {
+                return;
+            }
+
+            // STEP 2 — take the locks, event then estimate, ascending. From here
+            // on a concurrent Send, Accept, Revise, Invoice or Cancel on any of
+            // these bookings queues behind us instead of interleaving with us.
+            $estimates = $this->locks->estimates($targets->pluck('estimate_id')->all());
+
+            // STEP 3 — re-read the snapshots UNDER the lock, and hand each line
+            // the freshly-locked estimate. This is the step that actually closes
+            // the race: the estimate a line carries is what its immutability
+            // guard consults, and a relation loaded before the lock would still
+            // be answering "draft" for a quotation that has since been sent.
             $snapshots = CateringEstimateLineCostBlock::query()
-                ->with(['line.estimate.event.finalInvoice'])
-                ->where('material_product_id', $materialProductId)
-                ->whereIn('id', $snapshotIds ?: [0])
+                ->with('line')
+                ->whereIn('id', $targets->pluck('snapshot_id')->all())
+                ->orderBy('id')
+                ->lockForUpdate()
                 ->get();
 
+            foreach ($snapshots as $snapshot) {
+                if ($line = $snapshot->line) {
+                    $line->setRelation('estimate', $estimates->get($line->catering_estimate_id));
+                }
+            }
+
+            // STEP 4 — every eligibility question is asked again, now against
+            // rows nothing else can move until we commit.
             $applied = $this->applySnapshots(
                 $snapshots,
                 $bookRate,
@@ -561,10 +636,18 @@ class CateringCommercialRateImpactService
         $bookRate = $this->requireRate($materialProductId, $asOfDate);
 
         return DB::connection('tenant')->transaction(function () use ($materialProductId, $estimateId, $bookRate, $userId) {
-            $estimate = CateringEstimate::query()
-                ->with(['event.finalInvoice', 'lines.costBlocks'])
-                ->lockForUpdate()
-                ->findOrFail($estimateId);
+            // Event first, then the estimate — the same order applyToDrafts uses,
+            // so the two can never each hold what the other needs next. The
+            // returned model is the locked one, carrying the locked event: a
+            // re-query here would be an ordinary read and could still describe
+            // the booking as it was before we waited.
+            $estimate = $this->locks->estimates([$estimateId])->get($estimateId);
+
+            if ($estimate === null) {
+                throw new RuntimeException('That quotation no longer exists.');
+            }
+
+            $estimate->load(['lines.costBlocks']);
 
             if (! $this->isRevisable($estimate)) {
                 throw new RuntimeException(
@@ -591,10 +674,18 @@ class CateringCommercialRateImpactService
             $revision = $this->estimates->revise($estimate, $userId);
 
             $snapshots = CateringEstimateLineCostBlock::query()
-                ->with(['line.estimate.event.finalInvoice'])
+                ->with('line')
                 ->whereIn('catering_estimate_line_id', $revision->lines()->pluck('id'))
                 ->where('material_product_id', $materialProductId)
                 ->get();
+
+            // The revision is a draft this transaction just created, but its
+            // EVENT is the one we locked — so hand the lines that model rather
+            // than letting each of them lazily read a possibly-stale copy.
+            $revision->setRelation('event', $estimate->getRelation('event'));
+            foreach ($snapshots as $snapshot) {
+                $snapshot->line?->setRelation('estimate', $revision);
+            }
 
             $this->applySnapshots(
                 $snapshots,
