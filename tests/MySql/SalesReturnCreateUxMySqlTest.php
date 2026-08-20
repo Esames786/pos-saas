@@ -32,7 +32,7 @@ class SalesReturnCreateUxMySqlTest extends MySqlTenantTestCase
             'sales_order_lines', 'sales_orders', 'stock_ledgers', 'stock_balances', 'inventory_batches',
             'products', 'categories', 'accounts', 'terminal_user', 'terminals', 'branches', 'users',
         ]);
-        (new \Database\Seeders\Tenant\DefaultChartOfAccountsSeeder())->run();
+        (new \Database\Seeders\Tenant\DefaultChartOfAccountsSeeder)->run();
     }
 
     public function test_sale_search_is_scoped_to_the_operators_terminal(): void
@@ -125,5 +125,59 @@ class SalesReturnCreateUxMySqlTest extends MySqlTenantTestCase
         $this->assertCount(1, $returns, 'one return created');
         $this->assertCount(1, $returns->first()->lines, 'only the one filled line was returned; the zero lines were skipped');
         $this->assertSame($lineIds[0], (int) $returns->first()->lines->first()->sales_order_line_id);
+    }
+
+    /**
+     * On a partially-returned order the already-fully-returned line must still post a
+     * quantity. A `disabled` input is never submitted, so lines[N][quantity] went missing
+     * while its hidden sales_order_line_id was still posted, and the backend rejected the
+     * whole return with "lines.N.quantity is required" — blocking every partial return's
+     * remaining items. The line is `readonly` (posts its 0), never `disabled`.
+     */
+    public function test_a_fully_returned_line_stays_submittable_so_the_rest_can_be_returned(): void
+    {
+        $branchId = $this->makeBranch();
+        $categoryId = $this->makeCategory();
+        $userId = $this->makeUser();
+        $saleId = $this->makeSale($branchId, [
+            'created_by_user_id' => $userId, 'status' => 'partially_returned',
+            'subtotal' => 520, 'grand_total' => 520, 'paid_amount' => 520,
+        ]);
+        $pA = $this->makeProduct($categoryId, ['is_stock_tracked' => 0, 'inventory_consumption_method' => 'none']);
+        $pB = $this->makeProduct($categoryId, ['is_stock_tracked' => 0, 'inventory_consumption_method' => 'none']);
+        // Line A is already fully returned; line B still has one returnable.
+        $lineA = $this->makeSaleLine($saleId, $pA, ['product_name' => 'Raita', 'quantity' => 1, 'returned_quantity' => 1, 'unit_price' => 70, 'line_total' => 70]);
+        $lineB = $this->makeSaleLine($saleId, $pB, ['product_name' => 'Beef', 'quantity' => 1, 'returned_quantity' => 0, 'unit_price' => 450, 'line_total' => 450]);
+
+        $this->actingAs(User::on('tenant')->find($userId), 'tenant');
+        Auth::shouldUse('tenant');
+
+        // Outside the HTTP middleware, share the empty errors bag the layout expects.
+        app('view')->share('errors', new \Illuminate\Support\ViewErrorBag);
+
+        $html = app(SalesReturnController::class)
+            ->create(Request::create('/sales-returns/create', 'GET', ['sales_order_id' => $saleId]), app(SalesReturnService::class))
+            ->render();
+
+        // No returnable-quantity input may be disabled (a disabled one is never submitted).
+        $this->assertDoesNotMatchRegularExpression('/return-qty[^>]*\sdisabled/', $html,
+            'a fully-returned line must not disable its quantity input — it would drop from the payload');
+        // The fully-returned line is readonly, so it still posts its 0.
+        $this->assertMatchesRegularExpression('/return-qty[^>]*\sreadonly/', $html,
+            'the fully-returned line posts a readonly 0 so the remaining line can be returned');
+
+        // End-to-end: the payload the fixed form now sends (fully-returned line at 0, the rest > 0) posts.
+        $request = Request::create('/sales-returns', 'POST', [
+            'sales_order_id' => $saleId,
+            'refund_method' => 'cash',
+            'lines' => [
+                ['sales_order_line_id' => $lineA, 'quantity' => 0],
+                ['sales_order_line_id' => $lineB, 'quantity' => 1],
+            ],
+        ]);
+        $response = app(SalesReturnController::class)->store($request, app(SalesReturnService::class));
+
+        $this->assertStringContainsString('/sales-returns/', $response->getTargetUrl(), 'the remaining item returns successfully');
+        $this->assertSame($lineB, (int) SalesReturn::query()->latest('id')->first()->lines->first()->sales_order_line_id);
     }
 }

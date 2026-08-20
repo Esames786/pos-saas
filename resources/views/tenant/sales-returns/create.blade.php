@@ -133,13 +133,18 @@
                             <span class="badge {{ $returnable > 0 ? 'bg-success-subtle text-success-emphasis' : 'bg-secondary-subtle text-secondary-emphasis' }}">{{ number_format($returnable, 3) }}</span>
                         </td>
                         <td>
+                            {{-- readonly (NOT disabled) for a fully-returned line: a disabled input is
+                                 not submitted, so its lines[i][quantity] went missing while the hidden
+                                 sales_order_line_id was still posted — the backend then rejected the
+                                 whole return with "lines.N.quantity is required", blocking every
+                                 partial-return's remaining items. readonly still posts the 0. --}}
                             <input type="number" step="0.001" min="0" max="{{ $returnable }}"
                                    name="lines[{{ $i }}][quantity]"
                                    class="form-control form-control-sm text-end return-qty"
                                    style="width:110px"
                                    aria-label="Return quantity for {{ $line->product_name }}"
                                    value="0"
-                                   {{ $returnable <= 0 ? 'disabled' : '' }}>
+                                   {{ $returnable <= 0 ? 'readonly' : '' }}>
                             @if($returnable <= 0)
                                 <small class="text-muted">Fully returned</small>
                             @endif
