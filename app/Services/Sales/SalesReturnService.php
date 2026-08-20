@@ -53,6 +53,10 @@ class SalesReturnService
                 'sales_order_id'     => $salesOrder->id,
                 'branch_id'          => $salesOrder->branch_id,
                 'return_date'        => now(),
+                // Anchor the return to the SAME business day as the order it reverses (and whose
+                // shift cash it adjusts below) — never the wall-clock date. So a refund punched
+                // after midnight on a still-open pre-midnight shift books to that shift's day.
+                'business_date'      => $salesOrder->business_date,
                 'subtotal'           => 0,
                 'discount_amount'    => 0,
                 'tax_amount'         => 0,

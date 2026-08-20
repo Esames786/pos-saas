@@ -287,6 +287,9 @@ class KotCancellationService
                 'branch_updated_at' => $sale->branch->updated_at?->toIso8601String(),
             ],
             'cancelled_at' => now(),
+            // Anchor the void to the order's business day, so a cancellation punched after midnight
+            // on a still-open shift reports on the same day the order (and its sale) belongs to.
+            'business_date' => $sale->business_date,
         ]);
     }
 }

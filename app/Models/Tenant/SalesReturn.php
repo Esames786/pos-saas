@@ -13,6 +13,7 @@ class SalesReturn extends Model
         'sales_order_id',
         'branch_id',
         'return_date',
+        'business_date',
         'subtotal',
         'discount_amount',
         'tax_amount',
@@ -29,6 +30,7 @@ class SalesReturn extends Model
     {
         return [
             'return_date'     => 'datetime',
+            'business_date'   => 'date',
             'subtotal'        => 'decimal:2',
             'discount_amount' => 'decimal:2',
             'tax_amount'      => 'decimal:2',
