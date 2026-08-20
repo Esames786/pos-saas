@@ -147,9 +147,19 @@
                             <th style="min-width:150px">Part</th>
                             <th style="min-width:190px">Material</th>
                             <th class="text-end" style="min-width:120px">
-                                Charged per {{ $unitCode }}
+                                Rate
                                 <i class="ti ti-help-circle text-muted" data-bs-toggle="tooltip"
-                                   title="What the customer pays for this part, for each unit of the finished dish."></i>
+                                   title="What the customer pays for this part. Read it together with 'Rate is per' — the same number means a different price per unit of the material and per unit of the dish."></i>
+                            </th>
+                            <th style="min-width:150px">
+                                Rate is per
+                                <i class="ti ti-help-circle text-muted" data-bs-toggle="tooltip"
+                                   title="200 per KG of CHICKEN, or 200 per KG of the finished dish? Changing this changes the price, so check the preview afterwards."></i>
+                            </th>
+                            <th style="min-width:170px">
+                                Charge source
+                                <i class="ti ti-help-circle text-muted" data-bs-toggle="tooltip"
+                                   title="Follow the house rate book and be offered every later change to it, or keep a rate chosen for this dish that a house change never touches."></i>
                             </th>
                             <th style="min-width:120px">Basis</th>
                             <th class="text-end" style="min-width:140px">
@@ -188,6 +198,38 @@
                             <td>
                                 <input type="number" step="0.0001" min="0" name="blocks[{{ $loop->index }}][rate]"
                                        value="{{ (float) $block->rate }}" class="form-control form-control-sm text-end f-rate" required>
+                            </td>
+                            <td>
+                                @if($block->isMaterial())
+                                    <select name="blocks[{{ $loop->index }}][rate_basis]" class="form-select form-select-sm f-rate-basis">
+                                        <option value="per_material_unit" @selected($block->rateBasis() === 'per_material_unit')>Unit of the material</option>
+                                        <option value="per_dish_unit" @selected($block->rateBasis() === 'per_dish_unit')>Unit of the dish</option>
+                                    </select>
+                                @else
+                                    <span class="text-muted fs-12">Per {{ $unitCode }} of dish</span>
+                                @endif
+                            </td>
+                            <td>
+                                @if($block->isMaterial())
+                                    @php $bookRate = $commercialRates[$block->material_product_id] ?? null; @endphp
+                                    <select name="blocks[{{ $loop->index }}][commercial_rate_source]" class="form-select form-select-sm f-source">
+                                        <option value="manual" @selected($block->rateSource() === 'manual')>Manual rate</option>
+                                        <option value="commercial_book" @selected($block->rateSource() === 'commercial_book')>House rate book</option>
+                                    </select>
+                                    <div class="fs-12 mt-1 f-book-note">
+                                        @if($bookRate)
+                                            <span class="text-muted">House: <strong>{{ number_format($bookRate['rate'], 2) }}</strong>
+                                                per {{ $bookRate['unit_code'] ?? '—' }}</span>
+                                            @if($block->rateSource() === 'commercial_book' && $bookRate['unit_id'] !== ($block->unit_id ? (int) $block->unit_id : null))
+                                                <div class="text-danger-emphasis">Unit mismatch — cannot apply</div>
+                                            @endif
+                                        @else
+                                            <span class="text-muted">No house rate yet</span>
+                                        @endif
+                                    </div>
+                                @else
+                                    <span class="text-muted fs-12">Not a material</span>
+                                @endif
                             </td>
                             <td>
                                 <select name="blocks[{{ $loop->index }}][charge_basis]" class="form-select form-select-sm f-basis">
@@ -324,6 +366,8 @@
         <td>
             <input type="number" step="0.0001" min="0" name="__i__[rate]" value="0" class="form-control form-control-sm text-end f-rate" required>
         </td>
+        <td class="cell-rate-basis"></td>
+        <td class="cell-source"></td>
         <td>
             <select name="__i__[charge_basis]" class="form-select form-select-sm f-basis">
                 <option value="per_unit">Per {{ $unitCode }}</option>
@@ -357,6 +401,10 @@ $(function () {
     // Read-only, from the Material Rate Book. Shown so the operator can see what
     // a part really costs beside what it charges; never editable from here.
     const materialRates = @json($materialRates);
+    // What the house CHARGES, by material — shown beside the source control so an
+    // operator linking a block can see the rate they are adopting, and whether it
+    // is even quoted in the same unit as the block consumes.
+    const commercialRates = @json($commercialRates);
 
     function addRow(type) {
         const index = $('#blocks-body .block-row').length;
@@ -381,14 +429,29 @@ $(function () {
                 '<input type="number" step="0.0001" min="0" name="' + prefix + '[quantity_per_unit]" class="form-control form-control-sm text-end" placeholder="e.g. 0.5">');
             $row.find('.cell-unit').html(
                 '<select name="' + prefix + '[unit_id]" class="form-select form-select-sm">' + unitOptions + '</select>');
+            // A NEW material is authored the way a caterer thinks — rupees per
+            // kilo of the material. Legacy rows keep their own basis; only this
+            // default is opinionated.
+            $row.find('.cell-rate-basis').html(
+                '<select name="' + prefix + '[rate_basis]" class="form-select form-select-sm f-rate-basis">' +
+                '<option value="per_material_unit">Unit of the material</option>' +
+                '<option value="per_dish_unit">Unit of the dish</option></select>');
+            $row.find('.cell-source').html(
+                '<select name="' + prefix + '[commercial_rate_source]" class="form-select form-select-sm f-source">' +
+                '<option value="manual">Manual rate</option>' +
+                '<option value="commercial_book">House rate book</option></select>' +
+                '<div class="fs-12 mt-1 f-book-note"></div>');
         } else {
             $row.find('.cell-material').html('<span class="text-muted fs-12">Not a material — money only</span>');
             $row.find('.cell-qty').html('<span class="text-muted fs-12">—</span>');
             $row.find('.cell-unit').html('<span class="text-muted fs-12">—</span>');
+            $row.find('.cell-rate-basis').html('<span class="text-muted fs-12">Per ' + @json($unitCode) + ' of dish</span>');
+            $row.find('.cell-source').html('<span class="text-muted fs-12">Not a material</span>');
         }
 
         $('#blocks-body').append($row);
         $('#no-blocks').addClass('d-none');
+        syncBook($row);
         preview();
     }
 
@@ -427,14 +490,21 @@ $(function () {
             const ratio = parseFloat($r.find('[name$="[quantity_per_unit]"]').val()) || 0;
             const materialId = $r.find('[name$="[material_product_id]"]').val();
 
+            // WHAT THE RATE IS A RATE OF decides the arithmetic, and getting this
+            // wrong is invisible: chicken at 100 with 0.5 KG per KG of dish adds
+            // 50 to the dish, not 100. Reading every rate as per-dish overstated
+            // exactly the blocks a caterer authors most.
+            const perMaterial = $r.find('.f-rate-basis').val() === 'per_material_unit';
+            const drawn = ratio > 0 ? (ratio * qty) : null;
+
             // A lump sum ignores quantity entirely — that is the whole point of
             // it — and never enters the per-unit rate, where it would be wrong
             // at every size except the one it was divided by.
-            const amount = lump ? rate : rate * qty;
+            const amount = lump
+                ? rate
+                : (perMaterial ? (drawn || 0) * rate : rate * qty);
             total += amount;
-            if (!lump) perUnit += rate;
-
-            const drawn = ratio > 0 ? (ratio * qty) : null;
+            if (!lump) perUnit += perMaterial ? ratio * rate : rate;
 
             // What that quantity is worth at today's rate book — NOT the amount
             // charged above. A material with no rate is left blank rather than
@@ -477,7 +547,58 @@ $(function () {
         }
     }
 
+    // ── The house rate a block would follow ───────────────────────────────
+    // Shown beside the source control rather than left to the save to discover.
+    // A unit mismatch is named here in the same words the server refuses it with,
+    // so nobody fills in a form the save was always going to reject.
+    function syncBook($row) {
+        const $source = $row.find('.f-source');
+        if (!$source.length) return;
+
+        const materialId = $row.find('[name$="[material_product_id]"]').val();
+        const unitId = $row.find('[name$="[unit_id]"]').val();
+        const book = materialId ? commercialRates[materialId] : null;
+        const $note = $row.find('.f-book-note');
+
+        if (!book) {
+            $note.html('<span class="text-muted">No house rate yet</span>');
+            return;
+        }
+
+        let html = '<span class="text-muted">House: <strong>' + money(book.rate) +
+                   '</strong> per ' + (book.unit_code || '—') + '</span>';
+        if ($source.val() === 'commercial_book' && !sameUnit($row)) {
+            html += '<div class="text-danger-emphasis">Unit mismatch — cannot apply</div>';
+        }
+        $note.html(html);
+    }
+
+    function sameUnit($row) {
+        const materialId = $row.find('[name$="[material_product_id]"]').val();
+        const book = materialId ? commercialRates[materialId] : null;
+        const unitId = $row.find('[name$="[unit_id]"]').val();
+
+        return !!(book && unitId && String(book.unit_id) === String(unitId));
+    }
+
+    // Linking ADOPTS the current house rate, here as well as on the server, so the
+    // preview underneath shows the price that will actually be saved.
+    $(document).on('change', '.f-source', function () {
+        const $row = $(this).closest('tr');
+        if ($(this).val() === 'commercial_book' && sameUnit($row)) {
+            const materialId = $row.find('[name$="[material_product_id]"]').val();
+            $row.find('.f-rate').val(commercialRates[materialId].rate);
+        }
+        syncBook($row);
+        preview();
+    });
+
+    $(document).on('change', '#blocks-body select', function () {
+        syncBook($(this).closest('tr'));
+    });
+
     $(document).on('input change', '#blocks-body input, #blocks-body select, #preview-qty', preview);
+    $('#blocks-body .block-row').each(function () { syncBook($(this)); });
     preview();
 });
 </script>
