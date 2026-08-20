@@ -319,7 +319,7 @@ class CateringSeedUatCommand extends Command
         // A. The simplest shape. Chicken 100/KG with 0.5 KG per kilo of dish adds
         //    50; making adds 250; the dish sells at 300.
         $this->dish('UAT-DISH-KARAHI', 'Chicken Karahi (UAT)', [
-            ['label' => 'Chicken', 'material' => 'chicken', 'rate' => 100, 'qty' => 0.50],
+            ['label' => 'Chicken', 'material' => 'chicken', 'rate' => 100, 'qty' => 0.50, 'book' => true],
             ['label' => 'Making', 'rate' => 250],
         ]);
 
@@ -331,8 +331,8 @@ class CateringSeedUatCommand extends Command
         //      rate                    382 / KG
         //    A 5 KG order: 250 chicken + 160 rice + 1,500 making = 1,910.
         $this->dish('UAT-DISH-BIRYANI', 'Chicken Biryani (UAT)', [
-            ['label' => 'Chicken', 'material' => 'chicken', 'rate' => 100, 'qty' => 0.50],
-            ['label' => 'Rice', 'material' => 'rice', 'rate' => 80, 'qty' => 0.40],
+            ['label' => 'Chicken', 'material' => 'chicken', 'rate' => 100, 'qty' => 0.50, 'book' => true],
+            ['label' => 'Rice', 'material' => 'rice', 'rate' => 80, 'qty' => 0.40, 'book' => true],
             ['label' => 'Making', 'rate' => 300],
         ]);
 
@@ -355,14 +355,14 @@ class CateringSeedUatCommand extends Command
         // E. Mostly service. Proves a charge block is money for work and moves no
         //    stock at all, however large a share of the price it is.
         $this->dish('UAT-DISH-PLATTER', 'Wedding Service Platter (UAT)', [
-            ['label' => 'Yogurt & garnish', 'material' => 'yogurt', 'rate' => 200, 'qty' => 0.10],
+            ['label' => 'Yogurt & garnish', 'material' => 'yogurt', 'rate' => 200, 'qty' => 0.10, 'book' => true],
             ['label' => 'Making & labour', 'rate' => 380],
             ['label' => 'Packing', 'rate' => 130],
         ]);
     }
 
     /**
-     * @param  array<int, array{label: string, rate: float, material?: string, qty?: float, basis?: string}>  $blocks
+     * @param  array<int, array{label: string, rate: float, material?: string, qty?: float, basis?: string, book?: bool}>  $blocks
      */
     private function dish(string $sku, string $name, array $blocks): void
     {
@@ -414,6 +414,14 @@ class CateringSeedUatCommand extends Command
                 'rate_basis' => $isMaterial
                     ? CateringProductCostBlock::RATE_PER_MATERIAL_UNIT
                     : CateringProductCostBlock::RATE_PER_DISH_UNIT,
+                // Some UAT dishes deliberately FOLLOW the house rate book and some
+                // deliberately do not, because the contrast is the thing being
+                // tested: raise chicken and the karahi and the biryani are offered
+                // the change while the premium handi at 140 and the live counter at
+                // 120 are left exactly where somebody put them.
+                'commercial_rate_source' => $isMaterial && ($block['book'] ?? false)
+                    ? CateringProductCostBlock::SOURCE_COMMERCIAL_BOOK
+                    : CateringProductCostBlock::SOURCE_MANUAL,
                 'sort_order' => $index + 1,
                 'is_active' => true,
             ]);

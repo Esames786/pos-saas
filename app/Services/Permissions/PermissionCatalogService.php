@@ -94,6 +94,7 @@ class PermissionCatalogService
         'tenant.catering.commercial-rates.store' => 'Apply Commercial Rates',
         'tenant.catering.commercial-rates.apply-products' => 'Apply Commercial Rates',
         'tenant.catering.commercial-rates.apply-drafts' => 'Apply Commercial Rates',
+        'tenant.catering.commercial-rates.revise-and-apply' => 'Apply Commercial Rates',
         'tenant.catering.rate-impact.index' => 'Manage Material Rates',
         'tenant.catering.rate-impact.apply' => 'Manage Material Rates',
         'tenant.catering.advances.store' => 'Record Advance',

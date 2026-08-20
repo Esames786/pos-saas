@@ -466,6 +466,88 @@ class CateringSeedUatMySqlTest extends MySqlTenantTestCase
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // KASHIF-CATERING-COMMERCIAL-RATE-1 — the house rate book, seeded usable.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * A house rate book with nothing linked to it is a screen that does nothing.
+     * The UAT dataset has to arrive with dishes that actually FOLLOW the book, or
+     * the first thing an owner tries — raise chicken, see what moves — shows an
+     * empty list and reads as broken.
+     */
+    public function test_it_seeds_a_house_rate_book_with_dishes_actually_following_it(): void
+    {
+        $this->assertSame(0, $this->runSeeder());
+        DB::setDefaultConnection('tenant');
+
+        $chicken = Product::where('sku', 'UAT-RM-CHICKEN')->firstOrFail();
+
+        $this->assertEqualsWithDelta(100.0,
+            (float) \App\Models\Tenant\CateringMaterialCommercialRate::rateFor($chicken->id), 0.01,
+            'chicken is CHARGED at 100 — a different book from what it costs');
+        $this->assertNotNull(
+            \App\Models\Tenant\CateringMaterialCommercialRate::effectiveFor($chicken->id)->unit_id,
+            'and the rate says 100 per what, or nothing downstream can check it'
+        );
+
+        $following = CateringProductCostBlock::where('material_product_id', $chicken->id)
+            ->where('is_active', true)->get()
+            ->filter(fn ($b) => $b->followsCommercialBook());
+
+        $this->assertGreaterThanOrEqual(2, $following->count(),
+            'raising chicken must visibly move more than one dish');
+    }
+
+    /**
+     * And some deliberately do NOT follow it. The contrast is the teaching: a
+     * premium dish priced by hand stays where somebody put it, however the house
+     * rate moves.
+     */
+    public function test_it_seeds_hand_priced_dishes_that_the_house_rate_leaves_alone(): void
+    {
+        $this->assertSame(0, $this->runSeeder());
+        DB::setDefaultConnection('tenant');
+
+        $handi = Product::where('sku', 'UAT-DISH-HANDI')->firstOrFail();
+        $block = CateringProductCostBlock::where('product_id', $handi->id)
+            ->where('label', 'Chicken')->firstOrFail();
+
+        $this->assertSame(CateringProductCostBlock::SOURCE_MANUAL, $block->rateSource());
+        $this->assertFalse($block->followsCommercialBook(),
+            'a dish charging 140 while the house says 100 is deliberate, not stale');
+    }
+
+    /**
+     * The book is append-only, which makes a careless seeder a way to fill it
+     * with noise. This one finds its own fixture row instead of writing a new
+     * one per run.
+     */
+    public function test_reseeding_does_not_pile_up_house_rate_history(): void
+    {
+        $this->assertSame(0, $this->runSeeder());
+        DB::setDefaultConnection('tenant');
+
+        $chicken = Product::where('sku', 'UAT-RM-CHICKEN')->firstOrFail();
+        $first = \App\Models\Tenant\CateringMaterialCommercialRate::where('product_id', $chicken->id)->count();
+
+        // A reseed is refused while catering documents exist. Clearing exactly
+        // the three tables the seeder's own guard counts puts the tenant in the
+        // state a reset would leave it in, without paying for a full
+        // hundred-table sweep on every run of this suite.
+        $this->cleanTenant([
+            'catering_material_issue_lines', 'catering_material_issues',
+            'catering_estimate_line_cost_blocks', 'catering_estimate_lines',
+            'catering_estimates', 'catering_events',
+        ]);
+        $this->assertSame(0, $this->runSeeder());
+        DB::setDefaultConnection('tenant');
+
+        $this->assertSame($first,
+            \App\Models\Tenant\CateringMaterialCommercialRate::where('product_id', $chicken->id)->count(),
+            'a rerun updates its own fixture rather than recording a new commercial decision');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Stock and integrity.
     // ─────────────────────────────────────────────────────────────────────────
 
