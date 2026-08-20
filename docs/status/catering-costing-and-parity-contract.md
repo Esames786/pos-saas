@@ -203,6 +203,66 @@ where an operator reviews and chooses what to apply to eligible drafts.
 Making is **not** a material rate. It is a charge block, adjusted through its own
 bulk flow.
 
+### 11 · The Commercial Rate Book is a second book, and it says what we CHARGE
+
+`catering_material_rates` says chicken **costs** 80 a kilo. That is a purchasing
+fact. `catering_material_commercial_rates` says chicken is **charged** at 120 a
+kilo. That is a commercial decision, and the two move for entirely different
+reasons. Neither figure can be derived from the other, so they get separate
+books rather than two columns on one.
+
+Four rules make it safe to change a house rate on a live tenant:
+
+1. **A rate change reprices nothing.** The book records what the house now
+   charges. Every dish keeps its **applied** rate until somebody deliberately
+   applies the **recommended** one. The gap between them is the whole content of
+   the Rate Impact screen.
+2. **Following the book is opt-in, per block.**
+   `catering_product_cost_blocks.commercial_rate_source` is `manual` for every
+   row that existed before this feature, and only an operator can change it on
+   the Cost Blocks screen. A material *having* a house rate is not consent to
+   follow it — a premium counter at 140 while the book says 120 is the case this
+   protects. Linking adopts the current book rate as the applied rate; from then
+   on the two drift apart again by design.
+3. **Units are compared before numbers.** A book rate carries a required
+   `unit_id`, and a block may follow it only when the units match **exactly**.
+   There is no conversion engine, deliberately: 500 GM × 120/KG produces a
+   plausible-looking number that is wrong by a factor of a thousand, and a wrong
+   conversion is more dangerous than a refusal. Mismatches read as *Unit mismatch
+   — cannot apply*, never as an impact figure.
+4. **History is append-only, including within a day.** Chicken at 100 in the
+   morning and 120 in the afternoon are two decisions; a quotation applied
+   against the first has to stay explicable after the second.
+
+Four things are never offered an impact, each for its own reason — a hand-set
+rate (chosen on purpose), a legacy `per_dish_unit` rate (a different
+measurement), a customer-supplied material (nobody is charged for it), and a unit
+mismatch. **None of them is shown a number**: an excluded row carrying "+200"
+reads as a change the system is refusing to make, when 200 is not its impact at
+all. Customer-supplied is the single exception — its impact genuinely *is* zero,
+and saying zero is more useful than a dash.
+
+A **sent** quotation is never repriced in place. It takes a new house rate only
+by becoming the next version: `revise()` clones it whole — lines, agreed rates
+and their reasons, lump sums, and the full breakdown including each event's own
+material quantity and who is supplying it — then the rate is applied to the new
+draft. The old version stays superseded and untouched. The whole operation is one
+transaction: a revision that superseded v1 and then failed to reprice v2 would
+leave the business with no current quotation at all.
+
+An **issued final invoice** or a **closed event** ends it. `CateringEvent::isOpen()`
+and the existence of a final invoice are the authorities; no status rule is
+invented here.
+
+**Audit.** Every recorded rate, every link and unlink, and every application to a
+dish, a draft or a revision writes one row to
+`catering_commercial_rate_applications` — actor, material, target, both commercial
+rates and both calculated rates — inside the same transaction as the change, so a
+rollback can never leave a record claiming success. On `tenant:reset-transactions`
+that table is **WIPED**, because it points at estimates the reset destroys; the
+rate book itself is **KEPT**, because it is master data. What the house charges
+survives a reset; the log of what was done to individual quotations does not.
+
 ---
 
 ## Part 2 — Operator parity backlog
@@ -364,10 +424,11 @@ estimate line.
 DONE     finance    customer credit, refunds, booking statement   (production 9b4ad86)
 DONE     Phase A    costing source UI, block configuration, per-line orchestrator (458a9ae)
 DONE     store ops  searchable materials, many-booking issue, booking modal (af45f37)
-NOW      UAT reset  clean Kashif, rebuild a requirement-aligned dataset
-THEN     Phase B    estimate-line cost details · customer-supplied material · rate override
+DONE     UAT seed   guarded cost-block-first dataset, reset taught about catering
+DONE     Phase B    estimate-line cost details · customer-supplied material · rate override
+DONE     Phase D    Commercial Rate Book · impact preview · selective apply · revision apply
+NOW      UAT reset  clean Kashif, reseed — the live dishes predate per_material_unit
 THEN     Phase C    kitchen requirement sheet wiring
-THEN     Phase D    Rate Impact — block price vs recipe margin
 THEN     Phase E    making bulk adjustment
 LATER    parity     calendar modal · instructions · bulk print · address print · search · dashboard
 ```

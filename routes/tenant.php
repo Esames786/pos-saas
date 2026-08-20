@@ -874,6 +874,9 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                     Route::get('/catering/commercial-rates/{product}/impact', [\App\Http\Controllers\Tenant\Catering\CateringCommercialRateController::class, 'impact'])->name('tenant.catering.commercial-rates.impact');
                     Route::post('/catering/commercial-rates/{product}/apply-products', [\App\Http\Controllers\Tenant\Catering\CateringCommercialRateController::class, 'applyToProducts'])->name('tenant.catering.commercial-rates.apply-products');
                     Route::post('/catering/commercial-rates/{product}/apply-drafts', [\App\Http\Controllers\Tenant\Catering\CateringCommercialRateController::class, 'applyToDrafts'])->name('tenant.catering.commercial-rates.apply-drafts');
+                    // A sent quotation is never repriced in place: this creates the
+                    // next version and applies the house rate to that one.
+                    Route::post('/catering/commercial-rates/{product}/revise-and-apply', [\App\Http\Controllers\Tenant\Catering\CateringCommercialRateController::class, 'reviseAndApply'])->name('tenant.catering.commercial-rates.revise-and-apply');
 
                     Route::get('/catering/rate-impact', [\App\Http\Controllers\Tenant\Catering\CateringRateImpactController::class, 'index'])->name('tenant.catering.rate-impact.index');
                     Route::post('/catering/rate-impact/apply', [\App\Http\Controllers\Tenant\Catering\CateringRateImpactController::class, 'apply'])->name('tenant.catering.rate-impact.apply');
