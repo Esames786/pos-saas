@@ -25,6 +25,23 @@ use Illuminate\Support\Facades\Schema;
  * new row rather than overwriting the 100 that quotations were priced at. A
  * quotation from last month must stay explicable.
  *
+ * HISTORY IS APPEND-ONLY, INCLUDING WITHIN A DAY. An earlier design put a unique
+ * key on (product_id, effective_from), which quietly made the book lossy at the
+ * one moment it matters most: chicken raised to 100 at nine in the morning and
+ * to 120 at two in the afternoon would have left no trace that 100 was ever the
+ * house rate — and a quotation applied against it at eleven would have become
+ * unexplainable. Two rows on one date are not an ambiguity to be designed away;
+ * they are two commercial decisions, and the later one is simply the current
+ * one. "Current" resolves by effective_from, then by id, so insertion order
+ * settles a same-day tie.
+ *
+ * The unit is REQUIRED. A rate of 120 means nothing until it says 120 per what,
+ * and every downstream decision — whether a cost block may follow this rate,
+ * whether a quotation may be repriced from it — is a comparison of units before
+ * it is a comparison of numbers. Nullable here would push that check to the
+ * point of arithmetic, which is exactly where dimensional nonsense (500 GM x 120
+ * per KG) stops being catchable.
+ *
  * This is MASTER data — a caterer's price list — so a transaction reset keeps
  * it, exactly as it keeps recipes and the cost book.
  */
@@ -47,7 +64,9 @@ return new class extends Migration
 
             $table->decimal('rate', 14, 4);
 
-            $table->unsignedBigInteger('unit_id')->nullable();
+            // Not nullable: a charge rate without a unit cannot be safely
+            // compared with the unit a cost block consumes the material in.
+            $table->unsignedBigInteger('unit_id');
             $table->date('effective_from');
 
             $table->unsignedBigInteger('created_by_user_id')->nullable();
@@ -55,9 +74,9 @@ return new class extends Migration
 
             $table->timestamps();
 
-            // One commercial rate per material per day. Two rates effective the
-            // same morning would leave "the current rate" ambiguous.
-            $table->unique(['product_id', 'effective_from'], 'cmcr_product_date_unique');
+            // Deliberately NOT unique — see the note above. The book records
+            // every commercial decision, including two on the same day.
+            $table->index(['product_id', 'effective_from'], 'cmcr_product_date_idx');
             $table->index('effective_from', 'cmcr_effective_idx');
         });
     }

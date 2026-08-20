@@ -100,6 +100,44 @@
     </div>
 </div>
 
+{{-- Every commercial decision, in the order they were made. Two rates on one day
+     are not an inconsistency to be tidied away — they are two decisions, and a
+     quotation applied against the morning's one has to stay explicable. --}}
+@if($history->isNotEmpty())
+<div class="card mt-4">
+    <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <h5 class="mb-0">Rate history</h5>
+        <span class="text-muted fs-12">Nothing here is ever overwritten</span>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm mb-0">
+            <thead>
+                <tr>
+                    <th>Material</th>
+                    <th class="text-end">Charged per unit</th>
+                    <th>Unit</th>
+                    <th>In effect from</th>
+                    <th>Recorded</th>
+                    <th>Note</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach($history as $row)
+                <tr>
+                    <td>{{ $row->product?->name }}</td>
+                    <td class="text-end">{{ number_format($row->rate, 2) }}</td>
+                    <td>{{ $row->unit?->code ?? '—' }}</td>
+                    <td>{{ $row->effective_from?->format('d M Y') }}</td>
+                    <td class="text-muted fs-13">{{ $row->created_at?->format('d M Y H:i') }}</td>
+                    <td class="text-muted fs-13">{{ $row->note }}</td>
+                </tr>
+            @endforeach
+            </tbody>
+        </table>
+    </div>
+</div>
+@endif
+
 @can('tenant.catering.commercial-rates.store')
 <div class="modal fade" id="rateModal" tabindex="-1">
     <div class="modal-dialog">
@@ -131,13 +169,17 @@
                         <div class="form-text">Per unit of the material, e.g. per KG of chicken.</div>
                     </div>
                     <div class="col-6">
-                        <label class="form-label">Unit</label>
-                        <select name="unit_id" class="form-select">
-                            <option value="">—</option>
+                        <label class="form-label">Unit <span class="text-danger">*</span></label>
+                        <select name="unit_id" class="form-select" required>
+                            <option value="">Choose a unit…</option>
                             @foreach($units as $unit)
                                 <option value="{{ $unit->id }}">{{ $unit->code }}</option>
                             @endforeach
                         </select>
+                        <div class="form-text">
+                            A rate of 120 means nothing until it says 120 per what. A dish can only
+                            follow this rate if it measures the material in the same unit.
+                        </div>
                     </div>
                     <div class="col-6">
                         <label class="form-label">In effect from <span class="text-danger">*</span></label>
@@ -148,6 +190,10 @@
                         <label class="form-label">Note</label>
                         <input type="text" name="note" class="form-control" maxlength="255"
                                placeholder="e.g. market rose">
+                        <div class="form-text">
+                            Every rate you record is kept, including a second one on the same day.
+                            The most recent one is the current one.
+                        </div>
                     </div>
                 </div>
             </div>

@@ -138,6 +138,7 @@ class CateringViewRenderMySqlTest extends MySqlTenantTestCase
                 'units' => $units,
                 'materials' => \App\Models\Tenant\Product::limit(5)->get(['id', 'name', 'sku', 'unit_id']),
                 'materialRates' => collect(),
+                'commercialRates' => [],
             ],
             'tenant.catering.material-rates.index' => [
                 'latestRates' => \App\Models\Tenant\CateringMaterialRate::with(['product.unit', 'unit', 'product.translations'])->paginate(25),
@@ -576,6 +577,7 @@ class CateringViewRenderMySqlTest extends MySqlTenantTestCase
             'units' => \App\Models\Tenant\Unit::all(),
             'materials' => \App\Models\Tenant\Product::limit(5)->get(['id', 'name', 'sku', 'unit_id']),
             'materialRates' => collect(),
+            'commercialRates' => [],
         ])->render();
 
         // The two kinds of part, told apart in words rather than by field name.
@@ -618,6 +620,7 @@ class CateringViewRenderMySqlTest extends MySqlTenantTestCase
             'units' => \App\Models\Tenant\Unit::all(),
             'materials' => \App\Models\Tenant\Product::limit(5)->get(['id', 'name', 'sku', 'unit_id']),
             'materialRates' => collect(),
+            'commercialRates' => [],
         ])->render();
 
         foreach ([
