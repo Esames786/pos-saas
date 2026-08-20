@@ -29,26 +29,39 @@ class CateringFinalInvoiceService
         private readonly CateringNumberService $numbers,
         private readonly CateringMailService $mail,
         private readonly \App\Services\Finance\JournalPostingService $journalPosting,
+        private readonly CateringDocumentLock $locks,
     ) {}
 
     public function issue(CateringEvent $event, ?int $userId = null): CateringFinalInvoice
     {
-        $estimate = $event->currentEstimate;
-        if (! $estimate || $estimate->isDraft()) {
-            throw new RuntimeException('A final invoice needs a sent/accepted estimate — drafts cannot be invoiced.');
-        }
-        if ($event->finalInvoice()->exists()) {
-            throw new RuntimeException("Event {$event->event_no} already has a final invoice.");
-        }
-        if (! in_array($event->status, [
-            CateringEvent::STATUS_CONFIRMED,
-            CateringEvent::STATUS_PRODUCTION_READY,
-            CateringEvent::STATUS_RELEASED,
-        ], true)) {
-            throw new RuntimeException("Event {$event->event_no} ({$event->status}) cannot be invoiced — confirm the booking first.");
-        }
+        // KASHIF-CATERING-LIFECYCLE-LOCK-1: the invoice is the hardest boundary in
+        // the whole booking — after it, nothing commercial may move. So it is
+        // established under the same lock order Rate Impact waits on, and every
+        // condition below is judged on rows re-read while holding it. Two
+        // concurrent issues would otherwise both find no invoice and both write
+        // one, against a unique invoice_no.
+        $estimate = null;
 
-        $invoice = DB::connection('tenant')->transaction(function () use ($event, $estimate, $userId) {
+        $invoice = DB::connection('tenant')->transaction(function () use ($event, $userId, &$estimate) {
+            // Taken INSIDE the transaction, because a lock held outside one is
+            // released the instant the statement ends and protects nothing.
+            $this->locks->refreshEvent($event);
+
+            $estimate = $event->currentEstimate;
+            if (! $estimate || $estimate->isDraft()) {
+                throw new RuntimeException('A final invoice needs a sent/accepted estimate — drafts cannot be invoiced.');
+            }
+            if ($event->finalInvoice()->exists()) {
+                throw new RuntimeException("Event {$event->event_no} already has a final invoice.");
+            }
+            if (! in_array($event->status, [
+                CateringEvent::STATUS_CONFIRMED,
+                CateringEvent::STATUS_PRODUCTION_READY,
+                CateringEvent::STATUS_RELEASED,
+            ], true)) {
+                throw new RuntimeException("Event {$event->event_no} ({$event->status}) cannot be invoiced — confirm the booking first.");
+            }
+
             $advances = $event->advances()->orderBy('received_date')->get();
             $advanceTotal = round((float) $advances->sum('amount') - (float) $event->refunds()->sum('amount'), 2);
             $balanceDue = round((float) $estimate->grand_total - $advanceTotal, 2);
@@ -118,11 +131,14 @@ class CateringFinalInvoiceService
                 'gl_posted_at' => now(),
             ])->save();
 
+            // Event day is billed → the event is operationally complete. Inside
+            // the transaction with the invoice: an invoice that exists on an
+            // event still open for commercial change is precisely the state this
+            // whole lock order exists to make unreachable.
+            $event->forceFill(['status' => CateringEvent::STATUS_COMPLETED])->save();
+
             return $invoice;
         });
-
-        // Event day is billed → the event is operationally complete.
-        $event->forceFill(['status' => CateringEvent::STATUS_COMPLETED])->save();
 
         $this->mail->send(
             \App\Mail\Catering\CateringCustomerMail::TYPE_FINAL_INVOICE,
@@ -141,6 +157,13 @@ class CateringFinalInvoiceService
      */
     public function close(CateringEvent $event): CateringEvent
     {
+        return DB::connection('tenant')->transaction(fn () => $this->closeLocked($event));
+    }
+
+    private function closeLocked(CateringEvent $event): CateringEvent
+    {
+        $this->locks->refreshEvent($event);
+
         $invoice = $event->finalInvoice()->first();
         if (! $invoice) {
             throw new RuntimeException("Event {$event->event_no} has no final invoice — issue it before closing.");

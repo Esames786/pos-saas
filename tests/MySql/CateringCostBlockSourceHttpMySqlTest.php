@@ -416,6 +416,102 @@ class CateringCostBlockSourceHttpMySqlTest extends MySqlTenantTestCase
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Server-side eligibility. A select box is a convenience, not a boundary.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * The material picker only offers things the store can hand over. The
+     * request can name anything, and a block pointed at a finished dish would
+     * draw a dish out of stock and follow a "material rate" for something that
+     * is not a material.
+     */
+    public function test_a_cost_block_cannot_be_pointed_at_a_product_that_is_not_a_material(): void
+    {
+        $res = $this->save([$this->materialBlock(['material_product_id' => $this->karahiId])]);
+
+        $res->assertSessionHasErrors('blocks.0.material_product_id');
+        $this->assertCount(0, $this->blocks());
+    }
+
+    /** A retired unit cannot be matched against the house rate book, so it cannot be a block's unit. */
+    public function test_a_cost_block_cannot_be_measured_in_a_retired_unit(): void
+    {
+        DB::setDefaultConnection('tenant');
+        $retired = DB::connection('tenant')->table('units')->insertGetId([
+            'code' => 'OLD', 'name' => 'Retired', 'unit_type' => 'weight', 'is_active' => 0,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $res = $this->save([$this->materialBlock(['unit_id' => $retired])]);
+
+        $res->assertSessionHasErrors('blocks.0.unit_id');
+        $this->assertCount(0, $this->blocks());
+    }
+
+    public function test_a_house_rate_cannot_be_recorded_against_a_finished_dish(): void
+    {
+        $res = $this->actingAs(User::on('tenant')->find($this->ownerId), 'tenant')
+            ->post('http://'.$this->host.'/catering/commercial-rates', [
+                'product_id' => $this->karahiId,
+                'rate' => 120,
+                'unit_id' => $this->kgUnitId,
+                'effective_from' => now()->toDateString(),
+            ]);
+
+        $res->assertSessionHasErrors('product_id');
+        DB::setDefaultConnection('tenant');
+        $this->assertSame(0, CateringMaterialCommercialRate::count());
+    }
+
+    public function test_a_house_rate_cannot_be_quoted_in_a_retired_unit(): void
+    {
+        DB::setDefaultConnection('tenant');
+        $retired = DB::connection('tenant')->table('units')->insertGetId([
+            'code' => 'OLD', 'name' => 'Retired', 'unit_type' => 'weight', 'is_active' => 0,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $res = $this->actingAs(User::on('tenant')->find($this->ownerId), 'tenant')
+            ->post('http://'.$this->host.'/catering/commercial-rates', [
+                'product_id' => $this->chickenId,
+                'rate' => 120,
+                'unit_id' => $retired,
+                'effective_from' => now()->toDateString(),
+            ]);
+
+        $res->assertSessionHasErrors('unit_id');
+        DB::setDefaultConnection('tenant');
+        $this->assertSame(0, CateringMaterialCommercialRate::count());
+    }
+
+    /** A rate that has not come into effect must not read as the current one. */
+    public function test_the_rate_screen_separates_a_scheduled_rate_from_todays(): void
+    {
+        $this->houseRate(100, $this->kgUnitId, now()->subDay()->toDateString());
+        $this->houseRate(180, $this->kgUnitId, now()->addWeek()->toDateString());
+
+        $res = $this->actingAs(User::on('tenant')->find($this->ownerId), 'tenant')
+            ->get('http://'.$this->host.'/catering/commercial-rates');
+
+        $res->assertOk();
+        $res->assertSee('Scheduled — not in effect yet', false);
+        $res->assertSee('In force today', false);
+
+        // Just the "current" card — Rate history sits below it and is SUPPOSED to
+        // list every decision, scheduled ones included.
+        $html = $res->getContent();
+        $from = strpos($html, 'Current house rates');
+        $to = strpos($html, 'Rate history');
+        $this->assertNotFalse($from);
+        $this->assertNotFalse($to);
+        $current = substr($html, $from, $to - $from);
+
+        $this->assertStringContainsString('100.00', $current, 'today is charged at 100');
+        $this->assertStringNotContainsString('180.00', $current,
+            'a rate that starts next week must never be listed as the current one');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Fixtures.
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -505,7 +601,12 @@ class CateringCostBlockSourceHttpMySqlTest extends MySqlTenantTestCase
                 'name' => 'Owner', 'guard_name' => 'tenant', 'created_at' => now(), 'updated_at' => now(),
             ]);
 
-        foreach (['tenant.catering.cost-blocks.edit', 'tenant.catering.cost-blocks.update'] as $perm) {
+        foreach ([
+            'tenant.catering.cost-blocks.edit',
+            'tenant.catering.cost-blocks.update',
+            'tenant.catering.commercial-rates.index',
+            'tenant.catering.commercial-rates.store',
+        ] as $perm) {
             $permId = $c->table('permissions')->where('name', $perm)->where('guard_name', 'tenant')->value('id');
             if (! $permId) {
                 $permId = $c->table('permissions')->insertGetId([
