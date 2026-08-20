@@ -51,7 +51,34 @@ class CateringEstimateCostingService
     public function __construct(
         private readonly CateringRecipeCostingService $recipes,
         private readonly CateringCostBlockService $blocks,
+        private readonly CateringDocumentLock $locks,
     ) {}
+
+    /**
+     * May this estimate's recorded costing basis still be written?
+     *
+     * Deliberately the SAME two questions the commercial writers ask, in the same
+     * order, from the same authority — a cost basis recorded against a booking
+     * that has been invoiced or cancelled is as wrong as a price change would be,
+     * and having two definitions of "still open" is how they drift apart.
+     *
+     * Only ever called with an estimate that was re-read under the document lock.
+     */
+    private function assertCostingBasisEditable(CateringEstimate $estimate): void
+    {
+        if (! $estimate->isDraft()) {
+            throw new RuntimeException(
+                "Estimate {$estimate->displayNo()} is {$estimate->status}; its costing basis is frozen. Revise it instead."
+            );
+        }
+
+        if (! $this->locks->isCommerciallyOpen($estimate)) {
+            throw new RuntimeException(
+                "Estimate {$estimate->displayNo()} belongs to a booking that has been invoiced, completed or "
+                .'cancelled; its costing basis is frozen.'
+            );
+        }
+    }
 
     /**
      * Whether every line can be costed under its own active authority.
@@ -119,24 +146,32 @@ class CateringEstimateCostingService
      */
     public function snapshot(CateringEstimate $estimate, ?int $userId = null, ?string $asOfDate = null): CateringCostSnapshot
     {
-        if (! $estimate->isDraft()) {
-            throw new RuntimeException(
-                "Estimate {$estimate->displayNo()} is {$estimate->status}; its costing basis is frozen. Revise it instead."
-            );
-        }
+        // CAT-RATE-011 / KASHIF-CATERING-LIFECYCLE-LOCK-1.
+        //
+        // "Its costing basis is frozen" was checked here on the model handed in,
+        // outside the transaction that persists — the same shape every commercial
+        // writer was moved off. It failed exactly as they did: the write waited
+        // for the document lock, woke up after Send had committed, and recorded a
+        // costing basis against a quotation that was by then SENT.
+        //
+        // The check now happens under the lock, on a re-read, and the readiness
+        // calculation runs inside it too so the lines it reads cannot move while
+        // it is reading them.
+        return DB::connection('tenant')->transaction(function () use ($estimate, $userId, $asOfDate) {
+            $this->locks->refreshEstimate($estimate);
+            $this->assertCostingBasisEditable($estimate);
 
-        $readiness = $this->readiness($estimate, $asOfDate);
+            $readiness = $this->readiness($estimate, $asOfDate);
 
-        if (! $readiness['ready']) {
-            throw new RuntimeException(
-                'The cost of this estimate cannot be worked out yet, so it will not be recorded: '
-                .implode(' ', $readiness['blockers'])
-            );
-        }
+            if (! $readiness['ready']) {
+                throw new RuntimeException(
+                    'The cost of this estimate cannot be worked out yet, so it will not be recorded: '
+                    .implode(' ', $readiness['blockers'])
+                );
+            }
 
-        $result = $readiness['result'];
+            $result = $readiness['result'];
 
-        return DB::connection('tenant')->transaction(function () use ($estimate, $result, $userId) {
             foreach ($result['lines'] as $breakdown) {
                 if ($breakdown['line_id']) {
                     CateringEstimateLine::whereKey($breakdown['line_id'])->update([

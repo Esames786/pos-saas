@@ -729,6 +729,37 @@ class CateringCommercialRateHardeningMySqlTest extends MySqlTenantTestCase
         $this->assertSame(1, CateringEstimate::where('catering_event_id', $sent->catering_event_id)->count());
     }
 
+    /**
+     * §12 in its hardest form: the revision and the reprice are ONE transaction.
+     *
+     * A rollback forced from outside can only leave a superseded v1 or an orphan
+     * v2 behind if some part of the operation committed early on its own.
+     */
+    public function test_a_rolled_back_revision_apply_leaves_the_sent_version_alive(): void
+    {
+        $sent = $this->sentBiryani();
+        $this->raiseChickenTo(120);
+
+        try {
+            DB::connection('tenant')->transaction(function () use ($sent) {
+                $this->impact->applyThroughRevision($this->chickenId, $sent->id, $this->actorId);
+
+                throw new RuntimeException('something later in the operation failed');
+            });
+        } catch (RuntimeException) {
+            // expected
+        }
+
+        $this->assertSame(CateringEstimate::STATUS_SENT, $sent->refresh()->status,
+            'v1 must not be left superseded by a revision that was rolled back');
+        $this->assertSame(1, CateringEstimate::where('catering_event_id', $sent->catering_event_id)->count(),
+            'and no orphan revision may survive');
+        $this->assertEqualsWithDelta(100.0, (float) $this->snapshot($sent, 'Chicken')->rate, 0.01);
+        $this->assertSame(0, CateringCommercialRateApplication::where('action',
+            CateringCommercialRateApplication::ACTION_REVISION_APPLIED)->count(),
+            'and the audit does not claim an application that was undone');
+    }
+
     public function test_a_draft_is_edited_rather_than_revised(): void
     {
         $draft = $this->draft($this->biryaniId, 'Chicken Biryani', 20, 'Draft Customer');

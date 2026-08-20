@@ -238,7 +238,7 @@ class CateringDraftWriterRaceMySqlTest extends MySqlTenantTestCase
     private function sendInFlight(CateringEstimate $estimate): PDO
     {
         $pdo = $this->independentTenantPdo();
-        $pdo->exec('SET SESSION innodb_lock_wait_timeout = 20');
+        $pdo->exec('SET SESSION innodb_lock_wait_timeout = 60');
         $pdo->beginTransaction();
         $pdo->prepare('SELECT id FROM catering_events WHERE id = ? FOR UPDATE')
             ->execute([$estimate->catering_event_id]);
@@ -259,7 +259,7 @@ class CateringDraftWriterRaceMySqlTest extends MySqlTenantTestCase
         $this->assertContains($table, ['catering_estimate_lines', 'catering_estimate_line_cost_blocks']);
 
         $pdo = $this->independentTenantPdo();
-        $pdo->exec('SET SESSION innodb_lock_wait_timeout = 20');
+        $pdo->exec('SET SESSION innodb_lock_wait_timeout = 60');
         $pdo->beginTransaction();
         $pdo->prepare("SELECT id FROM {$table} WHERE id = ? FOR UPDATE")->execute([$id]);
 
@@ -584,6 +584,93 @@ class CateringDraftWriterRaceMySqlTest extends MySqlTenantTestCase
         $this->assertSame(0, DB::connection('tenant')->table('journal_entries')->count());
         $this->assertSame(0, DB::connection('tenant')->table('journal_lines')->count());
         $this->assertSame(0, DB::connection('tenant')->table('stock_ledgers')->count());
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // F · the recorded costing basis — CAT-RATE-011
+    //
+    // Found by the release audit AFTER the five commercial writers were fixed.
+    // Both costing services announce "its costing basis is frozen" once an
+    // estimate leaves draft, and both decided that on the model handed in,
+    // outside the transaction that persists. So it failed the same way: waited
+    // for the document lock, woke after Send committed, and recorded anyway.
+    //
+    // Internal cost only — estimated_unit_cost, estimated_cost_total,
+    // estimated_material_cost, and a catering_cost_snapshots row. Nothing a
+    // customer is charged. But a sent quotation whose recorded cost, and
+    // therefore its margin, moves afterwards is the thing the message promises
+    // cannot happen.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function test_send_wins_against_a_cost_snapshot(): void
+    {
+        $estimate = $this->draft('Cost snapshot race');
+        $lineId = $this->line($estimate)->id;
+        $costBefore = $this->line($estimate)->estimated_cost_total;
+        $send = $this->sendInFlight($estimate);
+
+        $worker = $this->worker(['cost-snapshot', $estimate->id]);
+        $this->letItReachTheLock();
+
+        $this->assertTrue($this->stillRunning($worker),
+            'the cost snapshot must WAIT for the document rather than reading around a send in flight');
+
+        $send->commit();
+        $out = $this->finish($worker);
+
+        $this->assertStringStartsWith('ERR:', $out,
+            "a sent quotation must refuse a cost snapshot, got: $out");
+        $this->assertStringContainsString('costing basis is frozen', $out);
+
+        $this->assertSame(0, DB::connection('tenant')->table('catering_cost_snapshots')
+            ->where('catering_estimate_id', $estimate->id)->count(),
+            'no cost-snapshot row may be recorded against a sent estimate');
+
+        $line = CateringEstimateLine::find($lineId);
+        $this->assertSame($costBefore, $line->estimated_cost_total,
+            'and no estimated_* value may move after the freeze');
+        $this->assertNull($estimate->refresh()->estimated_material_cost);
+    }
+
+    /** And the other direction: Send waits for a costing run that owns the document. */
+    public function test_send_waits_while_a_cost_snapshot_holds_the_document(): void
+    {
+        $estimate = $this->draft('Cost snapshot wins race');
+        $line = $this->line($estimate);
+
+        $child = $this->holdChildRow('catering_estimate_lines', $line->id);
+        $cost = $this->worker(['cost-snapshot', $estimate->id]);
+        $this->letItReachTheLock();
+
+        $send = $this->worker(['send', $estimate->id]);
+        $this->letItReachTheLock();
+
+        $this->assertTrue($this->stillRunning($send),
+            'Send must queue behind a costing run that owns the document');
+
+        $child->commit();
+
+        $this->assertStringStartsWith('OK:cost-snapshot:', $this->finish($cost));
+        $this->assertSame('OK:send:sent', $this->finish($send));
+
+        $this->assertSame(1, DB::connection('tenant')->table('catering_cost_snapshots')
+            ->where('catering_estimate_id', $estimate->id)->count());
+        $this->assertNotNull(CateringEstimateLine::find($line->id)->estimated_cost_total,
+            'the costing basis completed in full');
+        $this->assertNotNull($estimate->refresh()->estimated_material_cost);
+        $this->assertSame(CateringEstimate::STATUS_SENT, $estimate->status,
+            'and Send froze THAT costing basis, not a half-written one');
+    }
+
+    /** The sequential case must still refuse, exactly as it always did. */
+    public function test_a_sent_estimate_refuses_a_cost_snapshot_outright(): void
+    {
+        $estimate = $this->draft('Sequential freeze');
+        $this->estimates->markSent($estimate->refresh());
+
+        $this->expectExceptionMessageMatches('/costing basis is frozen/');
+        app(\App\Services\Catering\CateringEstimateCostingService::class)
+            ->snapshot($estimate->refresh(), null);
     }
 
     /**
