@@ -92,6 +92,13 @@ class TenantResetTransactionsCommand extends Command
         'catering_cost_snapshots', 'catering_estimate_line_cost_blocks',
         'catering_estimate_lines', 'catering_estimates',
         'catering_events',
+        // The record of house rates being APPLIED to documents. Wiped with the
+        // documents it points at: after a reset those estimate ids no longer
+        // exist, and a surviving log would read as a history of quotations
+        // nobody can open. The commercial decisions themselves are not lost —
+        // catering_material_commercial_rates is master data and is KEPT below,
+        // so what the house charges, and every dated change to it, survives.
+        'catering_commercial_rate_applications',
     ];
 
     /** Master-data sanity tables: their counts must be IDENTICAL before and after. */
