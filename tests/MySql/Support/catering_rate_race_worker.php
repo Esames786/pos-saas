@@ -30,9 +30,12 @@ $app = require $root.'/bootstrap/app.php';
 $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 
 use App\Models\Tenant\CateringEstimate;
+use App\Models\Tenant\CateringEstimateLine;
+use App\Models\Tenant\CateringEstimateLineCostBlock;
 use App\Models\Tenant\CateringEvent;
 use App\Services\Catering\CateringCommercialRateImpactService;
 use App\Services\Catering\CateringEstimateService;
+use App\Services\Catering\CateringLineCostBlockService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 
@@ -101,6 +104,50 @@ try {
             $event = CateringEvent::findOrFail((int) $argv[2]);
             echo 'OK:cancel:'.app(CateringEstimateService::class)
                 ->cancelEvent($event, 'Race test cancellation')->status;
+            break;
+
+        case 'save-lines':
+            $estimate = CateringEstimate::with('lines')->findOrFail((int) $argv[2]);
+            $line = $estimate->lines->firstOrFail();
+            app(CateringEstimateService::class)->saveDraftLines($estimate, [[
+                'line_uuid' => $line->line_uuid,
+                'product_id' => $line->product_id,
+                'item_name' => $line->item_name,
+                'item_name_ur' => $line->item_name_ur,
+                'quantity' => (float) $argv[3],
+                'unit_id' => $line->unit_id,
+                'unit_code' => $line->unit_code,
+                'rate' => (float) $line->rate,
+                'instructions' => $line->instructions,
+            ]]);
+            echo 'OK:save-lines';
+            break;
+
+        case 'material-override':
+            $snapshot = CateringEstimateLineCostBlock::findOrFail((int) $argv[2]);
+            app(CateringLineCostBlockService::class)
+                ->overrideMaterialQuantity($snapshot, (float) $argv[3]);
+            echo 'OK:material-override';
+            break;
+
+        case 'customer-supplied':
+            $snapshot = CateringEstimateLineCostBlock::findOrFail((int) $argv[2]);
+            app(CateringLineCostBlockService::class)
+                ->setCustomerSupplied($snapshot, (bool) ((int) $argv[3]));
+            echo 'OK:customer-supplied';
+            break;
+
+        case 'quoted-rate':
+            $line = CateringEstimateLine::findOrFail((int) $argv[2]);
+            app(CateringLineCostBlockService::class)
+                ->overrideQuotedRate($line, (float) $argv[3], 'Concurrent quote test');
+            echo 'OK:quoted-rate';
+            break;
+
+        case 'use-calculated':
+            $line = CateringEstimateLine::findOrFail((int) $argv[2]);
+            app(CateringLineCostBlockService::class)->useCalculatedRate($line);
+            echo 'OK:use-calculated';
             break;
 
         default:

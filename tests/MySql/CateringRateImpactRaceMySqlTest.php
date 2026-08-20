@@ -257,10 +257,120 @@ class CateringRateImpactRaceMySqlTest extends MySqlTenantTestCase
         return $pdo;
     }
 
+    /** Hold one child row so a writer passes its draft check and blocks on write. */
+    private function holdChildRow(string $table, int $id): PDO
+    {
+        $allowed = ['catering_estimate_lines', 'catering_estimate_line_cost_blocks'];
+        $this->assertContains($table, $allowed);
+
+        $pdo = $this->independentTenantPdo();
+        $pdo->exec('SET SESSION innodb_lock_wait_timeout = 20');
+        $pdo->beginTransaction();
+        $statement = $pdo->prepare("SELECT id FROM {$table} WHERE id = ? FOR UPDATE");
+        $statement->execute([$id]);
+
+        return $pdo;
+    }
+
+    private function sendWhileChildWriterWaits(array $worker, PDO $childLock, CateringEstimate $estimate): string
+    {
+        try {
+            $this->letItReachTheLock();
+            $this->assertTrue($this->stillRunning($worker), 'draft writer must be waiting on the child-row lock');
+            $this->assertSame(CateringEstimate::STATUS_SENT, $this->estimates->markSent($estimate->fresh())->status);
+        } finally {
+            if ($childLock->inTransaction()) {
+                $childLock->commit();
+            }
+        }
+
+        return $this->finish($worker);
+    }
+
     /** Give the worker enough time to reach — and block on — the lock. */
     private function letItReachTheLock(): void
     {
         usleep(2_500_000);
+    }
+
+    // Independent certification red-team: normal draft writers must serialize
+    // with Send just like Rate Impact does. These tests intentionally use the
+    // real services in a second OS process and expect Send to make the document
+    // immutable before the blocked child write can resume.
+
+    public function test_send_wins_against_normal_save_draft_lines(): void
+    {
+        $estimate = $this->draft('Save race');
+        $line = $this->line($estimate);
+        $lock = $this->holdChildRow('catering_estimate_lines', $line->id);
+        $worker = $this->worker(['save-lines', $estimate->id, 25]);
+
+        $result = $this->sendWhileChildWriterWaits($worker, $lock, $estimate);
+
+        $this->assertSame(20.0, (float) $line->fresh()->quantity,
+            'a normal form save must not mutate line quantity after Send commits');
+        $this->assertStringStartsWith('ERR:', $result, $result);
+    }
+
+    public function test_send_wins_against_material_quantity_override(): void
+    {
+        $estimate = $this->draft('Material race');
+        $snapshot = $this->snapshot($estimate);
+        $before = $snapshot->event_material_qty;
+        $lock = $this->holdChildRow('catering_estimate_line_cost_blocks', $snapshot->id);
+        $worker = $this->worker(['material-override', $snapshot->id, 12]);
+
+        $result = $this->sendWhileChildWriterWaits($worker, $lock, $estimate);
+
+        $this->assertSame($before, $snapshot->fresh()->event_material_qty,
+            'material quantity must not mutate after Send commits');
+        $this->assertStringStartsWith('ERR:', $result, $result);
+    }
+
+    public function test_send_wins_against_customer_supplied_toggle(): void
+    {
+        $estimate = $this->draft('Customer supplied race');
+        $snapshot = $this->snapshot($estimate);
+        $lock = $this->holdChildRow('catering_estimate_line_cost_blocks', $snapshot->id);
+        $worker = $this->worker(['customer-supplied', $snapshot->id, 1]);
+
+        $result = $this->sendWhileChildWriterWaits($worker, $lock, $estimate);
+
+        $this->assertFalse((bool) $snapshot->fresh()->is_customer_supplied,
+            'customer-supplied state must not mutate after Send commits');
+        $this->assertStringStartsWith('ERR:', $result, $result);
+    }
+
+    public function test_send_wins_against_quoted_rate_override(): void
+    {
+        $estimate = $this->draft('Quote race');
+        $line = $this->line($estimate);
+        $beforeRate = (float) $line->rate;
+        $lock = $this->holdChildRow('catering_estimate_lines', $line->id);
+        $worker = $this->worker(['quoted-rate', $line->id, 500]);
+
+        $result = $this->sendWhileChildWriterWaits($worker, $lock, $estimate);
+
+        $this->assertSame($beforeRate, (float) $line->fresh()->rate,
+            'quoted rate must not mutate after Send commits');
+        $this->assertNull($line->fresh()->rate_override_reason);
+        $this->assertStringStartsWith('ERR:', $result, $result);
+    }
+
+    public function test_send_wins_against_use_calculated_rate(): void
+    {
+        $estimate = $this->draft('Calculated race');
+        $line = $this->line($estimate);
+        $this->lineBlocks->overrideQuotedRate($line, 500, 'Before concurrent send');
+        $lock = $this->holdChildRow('catering_estimate_lines', $line->id);
+        $worker = $this->worker(['use-calculated', $line->id]);
+
+        $result = $this->sendWhileChildWriterWaits($worker, $lock, $estimate);
+
+        $this->assertSame('Before concurrent send', $line->fresh()->rate_override_reason,
+            'use-calculated must not clear an agreed rate after Send commits');
+        $this->assertSame(500.0, (float) $line->fresh()->rate);
+        $this->assertStringStartsWith('ERR:', $result, $result);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
