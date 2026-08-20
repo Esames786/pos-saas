@@ -50,6 +50,9 @@ class DefaultChartOfAccountsSeeder
             ['3000', 'Equity',              'equity', null,   null, 140],
             ['3100', 'Owner Capital',       'equity', '3000', null, 150],
             ['3200', 'Retained Earnings',   'equity', '3000', null, 160],
+            // Offsets opening balances (e.g. a supplier's opening payable) so the
+            // subsidiary ledger reconciles with its GL control account without touching P&L.
+            ['3300', 'Opening Balance Equity', 'equity', '3000', null, 165],
 
             // ── Income ──
             ['4000', 'Income',              'income', null,   null, 170],

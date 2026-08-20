@@ -53,6 +53,12 @@ class SupplierController extends Controller
                 'reference_no'     => 'OPENING',
                 'created_by_user_id' => auth('tenant')->id(),
             ]);
+
+            // Mirror the opening payable into the GL (Dr Opening Balance Equity / Cr Accounts
+            // Payable) so the supplier ledger reconciles with its control account and the
+            // Trial Balance is right. Idempotent + safe (never breaks supplier creation).
+            app(\App\Services\Finance\JournalPostingService::class)
+                ->postSupplierOpeningBalance($supplier, auth('tenant')->id());
         }
 
         return redirect(url('/suppliers'))->with('status', 'Supplier created.');

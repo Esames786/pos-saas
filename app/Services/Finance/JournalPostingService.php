@@ -10,6 +10,7 @@ use App\Models\Tenant\JournalEntry;
 use App\Models\Tenant\PurchaseBill;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\SalesReturn;
+use App\Models\Tenant\Supplier;
 use App\Models\Tenant\SupplierPayment;
 use Illuminate\Support\Facades\DB;
 use Throwable;
@@ -103,6 +104,41 @@ class JournalPostingService
                 $payment->payment_no,
                 'Supplier payment '.$payment->payment_no,
                 $payment->payment_date?->toDateString() ?? now()->toDateString(),
+                $lines,
+                $userId
+            );
+        } catch (Throwable $e) {
+            report($e);
+
+            return null;
+        }
+    }
+
+    /**
+     * Dr Opening Balance Equity / Cr Accounts Payable — puts a supplier's OPENING payable
+     * into the GL so the subsidiary supplier ledger reconciles with the Accounts Payable
+     * control account. The offset is equity, not an expense: an opening balance predates the
+     * accounting period, so it must NEVER touch the current P&L. Idempotent via the source key.
+     */
+    public function postSupplierOpeningBalance(Supplier $supplier, ?int $userId = null): ?JournalEntry
+    {
+        try {
+            $opening = round((float) $supplier->opening_balance, 2);
+            if ($opening <= 0) {
+                return null;
+            }
+
+            $lines = [
+                ['account_code' => '3300', 'description' => 'Opening balance - '.$supplier->name, 'debit' => $opening, 'credit' => 0],
+                ['account_code' => '2100', 'description' => 'Supplier opening - '.$supplier->name, 'debit' => 0, 'credit' => $opening],
+            ];
+
+            return $this->journal->post(
+                'supplier_opening_balance',
+                $supplier->id,
+                'SUP-OPEN-'.$supplier->code,
+                'Supplier opening balance - '.$supplier->name,
+                $supplier->created_at?->toDateString() ?? now()->toDateString(),
                 $lines,
                 $userId
             );
