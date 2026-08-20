@@ -53,9 +53,20 @@ DB::setDefaultConnection('tenant');
 // would time out and read as a lock failure.
 Mail::fake();
 
-// Wait measurably rather than for the default fifty seconds: a test that hangs
-// on a lock it was never going to get should fail, not stall the suite.
-DB::connection('tenant')->statement('SET SESSION innodb_lock_wait_timeout = 20');
+// Bounded, so a test waiting for a lock it will never get fails instead of
+// stalling the suite — but generously bounded.
+//
+// This was 20s and it produced a false failure under load. The mutation-wins
+// tests deliberately hold a child row across TWO Laravel process boots and two
+// 2.5s barriers before releasing; that is ~8s on a quiet machine and can be
+// several times that on a busy one. The worker then reported 1205 and the test
+// read as "Send did not wait", which was the opposite of the truth.
+//
+// 60s cannot mask a real deadlock: InnoDB detects genuine lock CYCLES
+// immediately and raises 1213, whatever this is set to. All this bounds is how
+// long a non-cyclic wait is tolerated, and every such wait in these tests is
+// released deliberately within seconds.
+DB::connection('tenant')->statement('SET SESSION innodb_lock_wait_timeout = 60');
 
 // Spin-barrier: workers block here until the test creates START_FILE, then go
 // at genuinely the same moment.
@@ -159,6 +170,13 @@ try {
             $line = CateringEstimateLine::findOrFail((int) $argv[2]);
             app(CateringLineCostBlockService::class)->useCalculatedRate($line);
             echo 'OK:use-calculated';
+            break;
+
+        case 'cost-snapshot':
+            $estimate = CateringEstimate::findOrFail((int) $argv[2]);
+            $snapshot = app(\App\Services\Catering\CateringEstimateCostingService::class)
+                ->snapshot($estimate, null);
+            echo 'OK:cost-snapshot:'.$snapshot->id;
             break;
 
         default:

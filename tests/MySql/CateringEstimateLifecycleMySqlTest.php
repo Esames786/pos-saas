@@ -280,6 +280,95 @@ class CateringEstimateLifecycleMySqlTest extends MySqlTenantTestCase
         }
     }
 
+    /**
+     * KASHIF-CATERING-LIFECYCLE-LOCK-1 — issue() is ONE transaction, end to end.
+     *
+     * The lock rework moved the event's COMPLETED status inside the invoice
+     * transaction; before, it was written after the commit, so an event could
+     * briefly carry an issued invoice while still reading as open to commercial
+     * change. This forces a rollback around the whole operation and proves
+     * nothing survives it — not the invoice, not its GL, not the status.
+     *
+     * A rollback from outside is the strongest available shape here: it fails
+     * only if some part of issue() committed early on its own.
+     */
+    public function test_a_rolled_back_issue_leaves_no_invoice_no_gl_and_an_open_event(): void
+    {
+        [$event, $invoices] = $this->invoiceableEvent();
+
+        $journalsBefore = $this->tenant()->table('journal_entries')->count();
+
+        try {
+            $this->tenant()->transaction(function () use ($event, $invoices) {
+                $invoices->issue($event->refresh());
+
+                throw new RuntimeException('something later in the operation failed');
+            });
+        } catch (RuntimeException) {
+            // expected
+        }
+
+        $this->assertSame(0, $this->tenant()->table('catering_final_invoices')->count(),
+            'no invoice may survive a rolled-back issue');
+        $this->assertSame($journalsBefore, $this->tenant()->table('journal_entries')->count(),
+            'and no GL entry either — an invoice exists iff its GL exists');
+        $this->assertSame(CateringEvent::STATUS_CONFIRMED, $event->refresh()->status,
+            'the event is not left COMPLETED by an invoice that never happened');
+    }
+
+    /** And the same for closure, which now also runs inside its own transaction. */
+    public function test_a_rolled_back_close_leaves_the_event_completed(): void
+    {
+        [$event, $invoices] = $this->invoiceableEvent();
+        $invoices->issue($event->refresh());
+
+        app(\App\Services\Catering\CateringAdvanceService::class)->record($event->refresh(), [
+            'amount' => 38500, 'received_date' => now()->toDateString(),
+        ]);
+
+        try {
+            $this->tenant()->transaction(function () use ($event, $invoices) {
+                $invoices->close($event->refresh());
+
+                throw new RuntimeException('something later in the operation failed');
+            });
+        } catch (RuntimeException) {
+            // expected
+        }
+
+        $this->assertSame(CateringEvent::STATUS_COMPLETED, $event->refresh()->status,
+            'a rolled-back closure leaves the booking exactly where it was');
+        $this->assertNull($event->refresh()->closed_at);
+    }
+
+    /** @return array{0: CateringEvent, 1: \App\Services\Catering\CateringFinalInvoiceService} */
+    private function invoiceableEvent(): array
+    {
+        Mail::fake();
+        (new \Database\Seeders\Tenant\DefaultChartOfAccountsSeeder)->run();
+        $categoryId = $this->makeCategory();
+        $productId = $this->makeProduct($categoryId, ['default_purchase_price' => 400]);
+        $this->tenant()->table('catering_material_rates')->insert([
+            'product_id' => $productId, 'rate' => 400, 'effective_from' => now()->subDay()->toDateString(),
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $event = $this->service->createEvent($this->eventData());
+        $estimate = $event->currentEstimate;
+        $this->service->saveDraftLines($estimate, [
+            ['product_id' => $productId, 'item_name' => 'Chicken Biryani', 'quantity' => 100, 'rate' => 685],
+        ]);
+        $this->service->markSent($estimate->refresh());
+        $this->service->markAccepted($estimate->refresh());
+        $this->service->confirmEvent($event->refresh());
+
+        app(\App\Services\Catering\CateringAdvanceService::class)->record($event, [
+            'amount' => 30000, 'received_date' => now()->toDateString(),
+        ]);
+
+        return [$event, app(\App\Services\Catering\CateringFinalInvoiceService::class)];
+    }
+
     /** CATERING-V1-CLOSURE-1 (§5): final invoice freezes the bill; closure needs zero balance. */
     public function test_final_invoice_and_closure_lifecycle(): void
     {

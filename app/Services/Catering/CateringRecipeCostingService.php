@@ -32,6 +32,7 @@ class CateringRecipeCostingService
 {
     public function __construct(
         private readonly UnitConversionService $unitConversion,
+        private readonly CateringDocumentLock $locks,
     ) {}
 
     /**
@@ -203,15 +204,27 @@ class CateringRecipeCostingService
      */
     public function snapshot(CateringEstimate $estimate, ?int $userId = null, ?string $asOfDate = null): CateringCostSnapshot
     {
-        if (! $estimate->isDraft()) {
-            throw new RuntimeException(
-                "Estimate {$estimate->displayNo()} is {$estimate->status}; its costing basis is frozen. Revise it instead."
-            );
-        }
+        // CAT-RATE-011 — see CateringEstimateCostingService::snapshot(). The
+        // freeze is decided under the document lock on a re-read, not on the
+        // model the caller was holding before it waited.
+        return DB::connection('tenant')->transaction(function () use ($estimate, $userId, $asOfDate) {
+            $this->locks->refreshEstimate($estimate);
 
-        $result = $this->calculate($estimate, $asOfDate);
+            if (! $estimate->isDraft()) {
+                throw new RuntimeException(
+                    "Estimate {$estimate->displayNo()} is {$estimate->status}; its costing basis is frozen. Revise it instead."
+                );
+            }
 
-        return DB::connection('tenant')->transaction(function () use ($estimate, $result, $userId) {
+            if (! $this->locks->isCommerciallyOpen($estimate)) {
+                throw new RuntimeException(
+                    "Estimate {$estimate->displayNo()} belongs to a booking that has been invoiced, completed or "
+                    .'cancelled; its costing basis is frozen.'
+                );
+            }
+
+            $result = $this->calculate($estimate, $asOfDate);
+
             foreach ($result['lines'] as $lineBreakdown) {
                 if ($lineBreakdown['line_id']) {
                     CateringEstimateLine::whereKey($lineBreakdown['line_id'])->update([

@@ -246,7 +246,7 @@ class CateringRateImpactRaceMySqlTest extends MySqlTenantTestCase
     private function holdLock(int $eventId, ?int $estimateId = null): PDO
     {
         $pdo = $this->independentTenantPdo();
-        $pdo->exec('SET SESSION innodb_lock_wait_timeout = 20');
+        $pdo->exec('SET SESSION innodb_lock_wait_timeout = 60');
         $pdo->beginTransaction();
 
         $pdo->prepare('SELECT id FROM catering_events WHERE id = ? FOR UPDATE')->execute([$eventId]);
