@@ -40,7 +40,7 @@
                     <tr>
                         <th>Product</th>
                         <th>Urdu Name</th>
-                        <th>Pricing Method</th>
+                        <th>How it is priced</th>
                         <th>Costing Source</th>
                         <th class="text-end">Default Rate</th>
                         <th>Quote Unit</th>
@@ -86,7 +86,7 @@
                             <div class="text-muted fs-12">{{ $profile->product->sku }}</div>
                         </td>
                         <td dir="rtl" lang="ur">{{ $urName }}</td>
-                        <td>{{ $profile->pricing_mode === 'per_pax' ? 'Per PAX' : 'Fixed' }}</td>
+                        <td><span class="text-muted fs-13">Quantity &times; rate</span></td>
                         <td>
                             @if($profile->usesBlocks())
                                 <span class="badge bg-info-subtle text-info-emphasis">Cost Blocks</span>
@@ -165,13 +165,28 @@
                          how the dish is quoted; the other is what decides its
                          cost. Calling either of them "Mode" is how they get
                          confused for each other. --}}
+                    {{-- CAT-PRICE-001 — REMOVED FOR V1, not hidden and not faked.
+                         "Per PAX" and "Fixed" were offered, stored and displayed,
+                         and no calculation anywhere ever read them. An operator
+                         choosing Per PAX got exactly the same quotation as one
+                         choosing Fixed, which is worse than having no setting:
+                         they believed a decision had been recorded.
+                         What actually decides the price is the quantity typed on
+                         the line and the Cost Blocks behind it, so that is what
+                         the screen now says. The column stays, defaulted, so no
+                         existing profile changes meaning; making the mode real is
+                         a pricing tranche of its own, not a dropdown. --}}
+                    <input type="hidden" name="pricing_mode" value="fixed">
                     <div class="col-md-4">
-                        <label class="form-label">Pricing Method</label>
-                        <select name="pricing_mode" class="form-select">
-                            <option value="per_pax">Per PAX</option>
-                            <option value="fixed">Fixed</option>
-                        </select>
-                        <div class="form-text">How the customer is quoted.</div>
+                        <label class="form-label">How it is priced</label>
+                        <div class="form-control-plaintext">
+                            <span class="badge bg-light text-dark border">Quantity &times; rate</span>
+                        </div>
+                        <div class="form-text">
+                            The quantity on the quotation line decides the amount — kilos, plates,
+                            waiters, boxes. For a charge that does not scale, use a
+                            <strong>lump sum</strong> cost block.
+                        </div>
                     </div>
                     <div class="col-md-4">
                         <label class="form-label">Costing Source</label>
@@ -320,7 +335,7 @@ $(function () {
         $('#product-name-wrap').removeClass('d-none');
         $('#profile-product-name').val(p.product_name);
         $('[name=name_ur]').val(p.name_ur || '');
-        $('[name=pricing_mode]').val(p.pricing_mode);
+        
         $('[name=costing_mode]').val(p.costing_mode || 'recipe');
         current = {
             costing_mode: p.costing_mode || 'recipe',

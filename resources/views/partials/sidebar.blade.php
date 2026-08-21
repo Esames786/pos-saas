@@ -656,7 +656,10 @@
 
                 {{-- ── CATERING & EVENTS (CATERING-SLICE-1) ───────────────────── --}}
                 @if($hasModule('catering'))
-                @canany(['tenant.catering.events.index','tenant.catering.profiles.index','tenant.catering.material-rates.index','tenant.catering.rate-impact.index','tenant.catering.printer-mappings.index','tenant.catering.settings.index'])
+                {{-- A role granted only Store Issue or only Commercial Rates used
+                     to see no Catering menu at all — the parent gate never listed
+                     them, so the screens existed and were unreachable. --}}
+                @canany(['tenant.catering.events.index','tenant.catering.profiles.index','tenant.catering.material-rates.index','tenant.catering.commercial-rates.index','tenant.catering.rate-impact.index','tenant.catering.store-issues.index','tenant.catering.printer-mappings.index','tenant.catering.settings.index'])
                 <li class="submenu">
                     <a href="javascript:void(0);">
                         <i class="ti ti-chef-hat fs-16 me-2"></i>
@@ -696,11 +699,25 @@
                                 </a>
                             </li>
                         @endcan
+                        {{-- CAT-RATE-UX-001 — the two books belong side by side.
+                             Only the cost one was reachable from here, while the
+                             screen that decides what the CUSTOMER is charged had
+                             no entry at all and the cost screen called itself by
+                             the missing one's name. An owner could only find one
+                             door, and it was labelled with the other room. --}}
                         @can('tenant.catering.material-rates.index')
                             @php $a = $isIn('catering/material-rates*'); @endphp
                             <li class="{{ $a ? 'active' : '' }}">
                                 <a href="{{ url('/catering/material-rates') }}" class="{{ $a ? 'active' : '' }}">
-                                    <i class="ti ti-report-money fs-16 me-2"></i><span>Material Rate Book</span>
+                                    <i class="ti ti-report-money fs-16 me-2"></i><span>Material Cost Rates</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.catering.commercial-rates.index')
+                            @php $a = $isIn('catering/commercial-rates*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/catering/commercial-rates') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-receipt-2 fs-16 me-2"></i><span>Commercial Charge Rates</span>
                                 </a>
                             </li>
                         @endcan
@@ -708,7 +725,15 @@
                             @php $a = $isIn('catering/rate-impact*'); @endphp
                             <li class="{{ $a ? 'active' : '' }}">
                                 <a href="{{ url('/catering/rate-impact') }}" class="{{ $a ? 'active' : '' }}">
-                                    <i class="ti ti-trending-up fs-16 me-2"></i><span>Rate Impact</span>
+                                    <i class="ti ti-trending-up fs-16 me-2"></i><span>Cost Rate Impact</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.catering.store-issues.index')
+                            @php $a = $isIn('catering/store-issues*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/catering/store-issues') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-package-export fs-16 me-2"></i><span>Store Issue</span>
                                 </a>
                             </li>
                         @endcan

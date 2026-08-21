@@ -39,6 +39,18 @@
     .brand-sub { color: #6b7280; font-size: 12px; }
     .doc-title { text-align: {{ $isUr ? 'left' : 'right' }}; }
     .doc-title h2 { margin: 0; font-size: 20px; }
+    .doc-state { margin-top: 4px; font-weight: bold; font-size: 11px; letter-spacing: .06em; }
+    .doc-state.superseded { color: #9a3412; }
+    /* CAT-DOC-001: loud on screen, and it survives print — browsers strip
+       backgrounds by default, so the border and the weight carry it. */
+    .draft-banner {
+        border: 2px dashed #b45309; background: #fffbeb; color: #7c2d12;
+        padding: 8px 12px; margin: 0 0 14px; border-radius: 4px; font-size: 12px;
+    }
+    .draft-banner strong { display: block; font-size: 14px; letter-spacing: .06em; margin-bottom: 2px; }
+    @media print {
+        .draft-banner { border: 2px dashed #000; color: #000; background: transparent; }
+    }
     .meta-grid { display: flex; gap: 24px; margin: 14px 0; }
     .meta-box { flex: 1; border: 1px solid #d1d5db; border-radius: 6px; padding: 10px 14px; }
     .meta-box h4 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; color: #6b7280; letter-spacing: 1px; }
@@ -79,11 +91,30 @@
         <div class="brand-sub">{{ $t('Catering & Events', 'کیٹرنگ اینڈ ایونٹس') }}</div>
     </div>
     <div class="doc-title">
-        <h2>{{ $t('ESTIMATE', 'تخمینہ') }}</h2>
+        <h2>{{ $estimate->isDraft() ? $t('DRAFT ESTIMATE', 'مسودہ تخمینہ') : $t('ESTIMATE', 'تخمینہ') }}</h2>
         <div><strong>{{ $event->event_no }} / Q{{ $estimate->version_no }}</strong></div>
         <div style="color:#6b7280;">{{ $t('Date', 'تاریخ') }}: {{ ($estimate->sent_at ?? $estimate->updated_at)->format('d M Y') }}</div>
+        @if($estimate->status === \App\Models\Tenant\CateringEstimate::STATUS_SUPERSEDED)
+            <div class="doc-state superseded">{{ $t('SUPERSEDED', 'منسوخ شدہ') }}</div>
+        @endif
     </div>
 </div>
+
+{{-- CAT-DOC-001 — a draft must never be mistaken for the quotation.
+     A draft can be printed, handed over and signed while its numbers are still
+     moving underneath it: any edit, any rate change, any material override. The
+     document said nothing about that, so the only way to know was to look at the
+     database. Now the customer's copy says so in its title, in a band across the
+     page, and on every printed sheet. --}}
+@if($estimate->isDraft())
+    <div class="draft-banner">
+        <strong>{{ $t('DRAFT — NOT YET ISSUED', 'مسودہ — ابھی جاری نہیں کیا گیا') }}</strong>
+        <span>{{ $t(
+            'These figures are still being prepared and may change. This is not a confirmed quotation.',
+            'یہ اعداد و شمار ابھی تیار ہو رہے ہیں اور تبدیل ہو سکتے ہیں۔ یہ حتمی تخمینہ نہیں ہے۔'
+        ) }}</span>
+    </div>
+@endif
 
 <div class="meta-grid">
     <div class="meta-box">
@@ -162,9 +193,21 @@
         <tr><td class="k">{{ $t('Tax', 'ٹیکس') }}</td><td class="num">{{ number_format($estimate->tax_amount, 2) }}</td></tr>
     @endif
     <tr class="grand"><td>{{ $t('Net Total', 'کل واجب الادا') }}</td><td class="num">{{ number_format($estimate->grand_total, 2) }}</td></tr>
-    @if($advanceTotal > 0)
-        <tr><td class="k">{{ $t('Advance Received', 'ایڈوانس وصول شدہ') }}</td><td class="num">{{ number_format($advanceTotal, 2) }}</td></tr>
-        <tr><td style="font-weight:bold;">{{ $t('Balance', 'بقایا') }}</td><td class="num" style="font-weight:bold;">{{ number_format(max($estimate->grand_total - $advanceTotal, 0), 2) }}</td></tr>
+    {{-- CAT-DOC-001: every figure below comes from the one settlement authority.
+         The refund line is printed whenever money has gone back, because an
+         "Advance Received" of 30,000 beside a balance that assumes 20,000 is how
+         a customer and a caterer end up holding two different arithmetics. --}}
+    @if($position['gross_received'] > 0)
+        <tr><td class="k">{{ $t('Advance Received', 'ایڈوانس وصول شدہ') }}</td><td class="num">{{ number_format($position['gross_received'], 2) }}</td></tr>
+        @if($position['refunded'] > 0)
+            <tr><td class="k">{{ $t('Refunded', 'واپس کیا گیا') }}</td><td class="num">-{{ number_format($position['refunded'], 2) }}</td></tr>
+            <tr><td class="k">{{ $t('Net Received', 'خالص وصول شدہ') }}</td><td class="num">{{ number_format($position['net_received'], 2) }}</td></tr>
+        @endif
+        @if($position['customer_credit'] > 0)
+            <tr><td style="font-weight:bold;">{{ $t('Refundable to Customer', 'گاہک کو واپس کرنا ہے') }}</td><td class="num" style="font-weight:bold;">{{ number_format($position['customer_credit'], 2) }}</td></tr>
+        @else
+            <tr><td style="font-weight:bold;">{{ $t('Balance', 'بقایا') }}</td><td class="num" style="font-weight:bold;">{{ number_format($position['balance_due'], 2) }}</td></tr>
+        @endif
     @endif
 </table>
 

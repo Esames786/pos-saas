@@ -5,8 +5,15 @@
 @section('content')
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
     <div>
-        <h1 class="mb-1">Commercial Material Rates</h1>
-        <p class="fw-medium mb-0">What the customer is charged for a material — not what it costs us.</p>
+        <h1 class="mb-1">Commercial Charge Rates</h1>
+        <p class="fw-medium mb-0">
+            The recommended <strong>customer charge</strong> for a material — not what it costs us.
+            Changing a rate here never reprices an existing quotation on its own.
+        </p>
+        <div class="fs-13 mt-1">
+            Looking for what a material <strong>costs the business</strong>?
+            <a href="{{ url('/catering/material-rates') }}">Material Cost Rates &rsaquo;</a>
+        </div>
     </div>
     @can('tenant.catering.commercial-rates.store')
         <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#rateModal">
