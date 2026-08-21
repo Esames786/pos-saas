@@ -472,7 +472,10 @@ class CateringCustomerSuppliedMySqlTest extends MySqlTenantTestCase
     /** The screen has to show both facts, or the model is undone at the glass. */
     public function test_the_cost_details_screen_shows_both_facts(): void
     {
-        $html = file_get_contents(base_path('resources/views/tenant/catering/events/show.blade.php'));
+        // KASHIF-CATERING-OPERATOR-UI-1: the breakdown markup lives in the
+        // shared line-cost-details partial both branches include.
+        $html = file_get_contents(base_path('resources/views/tenant/catering/events/show.blade.php'))
+            .file_get_contents(base_path('resources/views/tenant/catering/events/partials/line-cost-details.blade.php'));
 
         $this->assertStringContainsString('Customer will provide this', $html);
         $this->assertStringContainsString('Customer provides', $html);

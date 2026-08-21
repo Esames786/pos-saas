@@ -538,7 +538,11 @@ class CateringViewRenderMySqlTest extends MySqlTenantTestCase
      */
     public function test_the_event_screen_can_break_a_cost_block_line_down(): void
     {
-        $html = file_get_contents(base_path('resources/views/tenant/catering/events/show.blade.php'));
+        // KASHIF-CATERING-OPERATOR-UI-1: the breakdown lives in ONE shared
+        // partial included by both the draft builder and the immutable view, so
+        // the scan reads the screen and the partial together.
+        $html = file_get_contents(base_path('resources/views/tenant/catering/events/show.blade.php'))
+            .file_get_contents(base_path('resources/views/tenant/catering/events/partials/line-cost-details.blade.php'));
 
         $this->assertStringContainsString('Cost Details', $html,
             'a line must be able to explain what it was priced from');

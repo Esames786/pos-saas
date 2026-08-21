@@ -364,9 +364,12 @@ class CateringCostingMySqlTest extends MySqlTenantTestCase
 
         try {
             $this->estimates->confirmEvent($estimate->event()->first());
-            $this->fail('confirm must also be refused while the cost basis is incomplete');
+            $this->fail('confirm must also be refused for this booking');
         } catch (RuntimeException $e) {
-            $this->assertStringContainsString('cost basis is incomplete', $e->getMessage());
+            // KASHIF-CATERING-OPERATOR-UI-1: confirm now refuses a DRAFT
+            // quotation outright — finalize first — which fires before the
+            // costing-readiness check this scenario also fails.
+            $this->assertStringContainsString('still a draft', $e->getMessage());
         }
 
         $this->assertSame(CateringEstimate::STATUS_DRAFT, $estimate->refresh()->status,

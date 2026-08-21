@@ -28,6 +28,7 @@ class CateringTenantResetMySqlTest extends MySqlTenantTestCase
     private const DOCUMENT_TABLES = [
         'catering_events', 'catering_estimates', 'catering_estimate_lines',
         'catering_estimate_line_cost_blocks',
+        'catering_estimate_line_instruction',
         'catering_advances', 'catering_refunds', 'catering_final_invoices',
         'catering_production_releases', 'catering_production_release_lines',
         'catering_material_issues', 'catering_material_issue_lines',
@@ -40,6 +41,7 @@ class CateringTenantResetMySqlTest extends MySqlTenantTestCase
         'catering_product_profiles', 'catering_product_cost_blocks',
         'catering_material_rates', 'catering_material_commercial_rates',
         'catering_printer_mappings', 'catering_settings',
+        'catering_instructions',
     ];
 
     private function commandConstant(string $name): array
