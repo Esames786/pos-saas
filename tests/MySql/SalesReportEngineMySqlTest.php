@@ -248,6 +248,28 @@ class SalesReportEngineMySqlTest extends MySqlTenantTestCase
     }
 
     /**
+     * BY ORDER TYPE prints MERCHANDISE nets, but a delivery type's cash/NET SALES also carries its
+     * delivery charge. orderTypeCombos exposes a per-type bridge (merch_net + net_charges = net_sales)
+     * so the print can close the gap — otherwise the delivery total looks like it contradicts the cash.
+     */
+    public function test_order_type_combos_carry_a_charge_bridge_to_net_sales(): void
+    {
+        $this->seedPopulation();
+        $base = ['date_from' => now()->toDateString(), 'date_to' => now()->toDateString()];
+        $combos = $this->engine->orderTypeCombos($this->engine->normalizeFilters($base));
+
+        // Delivery (sale C): 300 merchandise + 30 delivery charge = 330 net sales.
+        $d = $combos['totals']['Delivery'];
+        $this->assertSame(300.0, (float) $d['merch_net'], 'delivery merchandise net = its Biryani lines');
+        $this->assertSame(30.0, (float) $d['net_charges'], 'the 30 delivery charge is the bridge');
+        $this->assertSame(330.0, (float) $d['net_sales'], 'merchandise + charge = net sales');
+        $this->assertEqualsWithDelta((float) $d['merch_net'] + (float) $d['net_charges'], (float) $d['net_sales'], 0.001);
+
+        // Takeaway (sale B): no order-level charge — merchandise net already equals net sales, no bridge.
+        $this->assertSame(0.0, (float) $combos['totals']['Takeaway']['net_charges'], 'takeaway has no delivery charge to bridge');
+    }
+
+    /**
      * sales_return_lines.line_total is the FINAL refunded line value (subtotal − discount + tax)
      * since 2026_08_11_000004 normalised it. The category rollup used to add tax on top of it,
      * which silently double-counted tax on every taxed return. Pin the column's meaning here:

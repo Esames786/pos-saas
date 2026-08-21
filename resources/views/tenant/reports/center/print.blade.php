@@ -74,6 +74,21 @@
         return '<tr>' . $label('Plus Delivery Charges') . '<td class="amt">' . $fmt($bridgeDelivery) . '</td></tr>'
              . '<tr class="total">' . $label('= NET SALES') . '<td class="amt">' . $fmt($bridgeNetSales) . '</td></tr>';
     };
+
+    // Per-order-type bridge: the BY ORDER TYPE categories/items are MERCHANDISE only, but this
+    // type's NET SALES includes its order-level charges (delivery etc.). Close the gap so a
+    // delivery total no longer looks like it contradicts the cash. Uses the engine's per-type
+    // totals; prints only when there is a charge to explain.
+    $otBridge = function (string $typeLabel, int $span) use ($combos, $fmt) {
+        $t = $combos['totals'][$typeLabel] ?? null;
+        if (! $t || abs((float) $t['net_charges']) <= 0.01) {
+            return '';
+        }
+        $label = fn ($x) => '<td' . ($span > 1 ? ' colspan="' . ($span - 1) . '"' : '') . '>' . $x . '</td>';
+
+        return '<tr>' . $label('Plus Delivery &amp; Other Charges (net)') . '<td class="amt">' . $fmt($t['net_charges']) . '</td></tr>'
+             . '<tr class="total">' . $label('= NET SALES') . '<td class="amt">' . $fmt($t['net_sales']) . '</td></tr>';
+    };
 @endphp
 <style>
     body { font-family: 'Courier New', monospace; color: #000; margin: 0 auto; padding: 8px; }
@@ -267,8 +282,10 @@
         @endif
         @if($isThermal)
             {!! $tEntry('TOTAL', collect($rows)->sum('sold_qty'), collect($rows)->sum('returned_qty'), collect($rows)->sum('net_qty'), collect($rows)->sum('net'), collect($rows)->sum('returns_amount'), collect($rows)->sum('net_value'), true) !!}
+            {!! $otBridge($orderType, 4) !!}
         @else
             <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty(collect($rows)->sum('sold_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('returned_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('net_qty')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('returns_amount')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net_value')) }}</td></tr>
+            {!! $otBridge($orderType, 7) !!}
         @endif
     </table>
 @endforeach
@@ -288,8 +305,10 @@
         @endif
         @if($isThermal)
             {!! $tEntry('TOTAL', collect($rows)->sum('sold_qty'), collect($rows)->sum('returned_qty'), collect($rows)->sum('net_qty'), collect($rows)->sum('net'), collect($rows)->sum('returns_amount'), collect($rows)->sum('net_value'), true) !!}
+            {!! $otBridge($orderType, 4) !!}
         @else
             <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty(collect($rows)->sum('sold_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('returned_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('net_qty')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('returns_amount')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net_value')) }}</td></tr>
+            {!! $otBridge($orderType, 7) !!}
         @endif
     </table>
 @endforeach

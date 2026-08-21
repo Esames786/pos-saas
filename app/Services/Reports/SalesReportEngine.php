@@ -544,6 +544,7 @@ class SalesReportEngine
         $categories = [];
         $items = [];
         $waiters = [];
+        $totals = [];
         foreach ($types as $type) {
             $typed = array_merge($f, ['order_type' => $type, 'allowed_order_types' => []]);
             $typeLabel = $ot($type);
@@ -567,9 +568,22 @@ class SalesReportEngine
                 'net_value' => $r->net_value,
             ])->values()->all();
             $waiters[$typeLabel] = $this->byWaiter($typed);
+
+            // Per-type reconciliation bridge: the category/item nets are MERCHANDISE only, but this
+            // order type's cash/NET SALES includes the order-level charges (delivery etc.). Carry the
+            // net charge so the print can close "merchandise + charges = NET SALES", like the global
+            // sections already do — otherwise a delivery total looks like it contradicts the cash.
+            $merchNet = (float) collect($categories[$typeLabel])->sum('net_value');
+            $grandTotal = (float) $this->salesBase($typed)->sum('o.grand_total');
+            $netSales = round($grandTotal - (float) $this->returnsBase($typed)->sum('r.grand_total'), 2);
+            $totals[$typeLabel] = [
+                'merch_net' => round($merchNet, 2),
+                'net_sales' => $netSales,
+                'net_charges' => round($netSales - $merchNet, 2),
+            ];
         }
 
-        return ['categories' => $categories, 'items' => $items, 'waiters' => $waiters];
+        return ['categories' => $categories, 'items' => $items, 'waiters' => $waiters, 'totals' => $totals];
     }
 
     // ── W. Cancellations: items voided / decreased AFTER the KOT went to the kitchen. Anchored on
