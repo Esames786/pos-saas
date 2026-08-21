@@ -1,0 +1,943 @@
+source_file,source_code,description_raw,sequence_raw,suggested_group,normalized_name,probable_item_shape,duplicate_group,data_problem,owner_unit_required,owner_customer_charge_required,owner_material_structure_required,owner_confirmation_required,recommended_action,notes
+9.34.59,943,SMILE JUICE,1,starters_drinks_soups,Smile Juice,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.34.59,139,WELCOME DRINK,2,starters_drinks_soups,Welcome Drink,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.34.59,290,CHICKEN YAKHNI SOUP,3,starters_drinks_soups,Chicken Yakhni Soup,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.34.59,84,HOT & SOUR SOUP,4,starters_drinks_soups,Hot & Sour Soup,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.34.59,72,CHICKEN CORN SOUP,5,starters_drinks_soups,Chicken Corn Soup,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.34.59,433,FRESH LIME,6,starters_drinks_soups,Fresh Lime,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.34.59,954,WONG TONG STARTER,7,starters_drinks_soups,Wonton Starter,dish,,SPELLING_UNCERTAIN,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,WONG TONG likely Wonton — confirm
+9.34.59,955,CHICKEN POCKET STARTER,8,starters_drinks_soups,Chicken Pocket Starter,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.34.59,796,MINT ROLL STATER,9,starters_drinks_soups,Mint Roll Starter,dish,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,STATER -> STARTER
+9.34.59,953,DHAKA CHICKEN STARTER,10,starters_drinks_soups,Dhaka Chicken Starter,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.34.59,950,ARBIUN PUFF STARTER,11,starters_drinks_soups,Arabian Puff Starter,dish,,SPELLING_UNCERTAIN,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,ARBIUN likely Arabian — confirm
+9.34.59,951,CHICKEN CHEESE CONE STATER,12,starters_drinks_soups,Chicken Cheese Cone Starter,dish,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,STATER -> STARTER
+9.34.59,952,PERI BITES STARTER,13,starters_drinks_soups,Peri Bites Starter,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.34.59,956,CHIKY MICKY STARTER,14,starters_drinks_soups,Chiky Micky Starter,dish,,SPELLING_UNCERTAIN,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,brand-like name — confirm intended spelling
+9.34.59,452,CHICKEN THAI SOUP,103,starters_drinks_soups,Chicken Thai Soup,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.34.59,453,CHICKEN VEG. SOUP,104,starters_drinks_soups,Chicken Vegetable Soup,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.34.59,279,JUICE BAR,108,starters_drinks_soups,Juice Bar,lump_sum_service,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,likely a live counter — per-head or lump sum? confirm
+9.34.59,307,LEMON SQUASH,109,starters_drinks_soups,Lemon Squash,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.34.59,281,MAAZA JUICE,110,starters_drinks_soups,Maaza Juice,material_backed_item,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,branded drink — likely bought-in 1:1
+9.34.59,296,CHICKEN MUSHROOM SOUP,111,starters_drinks_soups,Chicken Mushroom Soup,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.34.59,527,CANDY FLOSS,112,starters_drinks_soups,Candy Floss,lump_sum_service,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,likely live counter
+9.34.59,528,POP CORN,113,starters_drinks_soups,Pop Corn,lump_sum_service,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,likely live counter
+9.34.59,339,PANIPURI,114,starters_drinks_soups,Pani Puri,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.34.59,544,MEETHI PURI,115,starters_drinks_soups,Meethi Puri,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.34.59,624,DATES,116,starters_drinks_soups,Dates,material_backed_item,SEQ_116_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,sequence 116 also used by CHANA CHAT
+9.34.59,335,CHANA CHAT,116,starters_drinks_soups,Chana Chaat,dish,SEQ_116_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,sequence 116 also used by DATES
+9.34.59,336,BUN KABAB,117,starters_drinks_soups,Bun Kabab,dish,SEQ_117_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,sequence 117 shared with SAMOSA QEEMA BEEF and ROOH AFZA
+9.34.59,143,SAMOSA QEEMA BEEF,117,starters_drinks_soups,Samosa Qeema Beef,dish,SEQ_117_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.34.59,151,ROOH AFZA,117,starters_drinks_soups,Rooh Afza,material_backed_item,SEQ_117_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,branded syrup — likely bought-in
+9.34.59,145,PAKORA MIX,118,starters_drinks_soups,Pakora Mix,dish,OVERLAP_9.35.28,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,last row of this screenshot and first of the next
+9.35.28,145,PAKORA MIX,118,starters_drinks_soups,Pakora Mix,dish,OVERLAP_9.34.59,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,repeat of previous screenshot's last row
+9.35.28,144,SAMOSA AALOO,119,starters_drinks_soups,Samosa Aloo,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.35.28,209,FRUIT CHAT,120,starters_drinks_soups,Fruit Chaat,dish,SEQ_120_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,sequence 120 shared with SHAWARMA
+9.35.28,533,SHAWARMA,120,starters_drinks_soups,Shawarma,dish,SEQ_120_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.35.28,334,GOLA GANDA,150,starters_drinks_soups,Gola Ganda,lump_sum_service,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,likely live counter
+9.35.28,593,SOYA BEAN STICK,151,starters_drinks_soups,Soya Bean Stick,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.35.28,693,OMLET,152,starters_drinks_soups,Omelette,dish,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,OMLET -> Omelette
+9.35.28,694,BREAD SLICE,153,starters_drinks_soups,Bread Slice,material_backed_item,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.35.28,695,CRACKER,154,starters_drinks_soups,Cracker,material_backed_item,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.35.28,704,BREAD STICK,155,starters_drinks_soups,Bread Stick,material_backed_item,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.35.28,709,BHAIL PURI,156,starters_drinks_soups,Bhel Puri,dish,,SPELLING_UNCERTAIN,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,BHAIL -> Bhel
+9.35.28,711,LIMKA DRINK,157,starters_drinks_soups,Limca Drink,material_backed_item,,SPELLING_UNCERTAIN,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,branded drink — bought-in
+9.35.28,721,PERI BITE,158,starters_drinks_soups,Peri Bite,dish,SIMILAR_TO_952,POSSIBLE_DUPLICATE_NAME,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,code 952 PERI BITES STARTER is near-identical
+9.35.28,724,ASSORTED CANOPES,159,starters_drinks_soups,Assorted Canapes,dish,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,CANOPES -> Canapes
+9.35.28,725,ONION RINGS,160,starters_drinks_soups,Onion Rings,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.35.28,726,CHICKEN CROISSANT,161,starters_drinks_soups,Chicken Croissant,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.35.28,727,CHICKEN CREAM SOUP,162,starters_drinks_soups,Chicken Cream Soup,dish,,LEADING_SPACE_IN_SOURCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,source description begins with a space
+9.35.28,737,BABY DONUT,163,starters_drinks_soups,Baby Donut,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.35.28,739,CAP,164,starters_drinks_soups,Cap,unknown,,AMBIGUOUS_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,three-letter name — is this a food item or staff cap? confirm
+9.35.28,740,TEASHART,165,starters_drinks_soups,T-Shirt,unknown,,SPELLING_ERROR_AND_AMBIGUOUS,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,likely staff T-shirt not food — filed under starters band
+9.35.28,741,SHART,166,starters_drinks_soups,Shirt,unknown,,SPELLING_ERROR_AND_AMBIGUOUS,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,likely staff shirt not food
+9.35.28,752,DYNAMITE CHICKEN,167,starters_drinks_soups,Dynamite Chicken,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.35.28,787,KACHORI MEHMOOD,168,starters_drinks_soups,Kachori Mehmood,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.35.28,822,EXTRA BUN,169,starters_drinks_soups,Extra Bun,material_backed_item,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.35.28,831,"CHICKEN SHOT,",170,starters_drinks_soups,Chicken Shot,dish,,TRAILING_COMMA_IN_SOURCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.35.28,844,WELCOME PLT FRIED 360,171,starters_drinks_soups,Welcome Platter Fried 360,dish,,ABBREVIATION_IN_SOURCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,PLT -> Platter; 360 meaning unclear
+9.35.28,859,KOREAN BITE,172,starters_drinks_soups,Korean Bite,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.35.28,883,DYNAMITE PRAWNS,173,starters_drinks_soups,Dynamite Prawns,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.35.28,932,FRUIT SHOT,174,starters_drinks_soups,Fruit Shot,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.35.28,949,SPRING ROLL STARTER,175,starters_drinks_soups,Spring Roll Starter,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.14,375,BIRYANI MASALA BEEF BONELESS,201,rice_biryani,Biryani Masala Beef Boneless,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.14,136,BIRYANI MASALA AALOO,202,rice_biryani,Biryani Masala Aloo,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.14,361,BIRYANI MASALA BEEF,203,rice_biryani,Biryani Masala Beef,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.14,247,BIRYANI MASALA QEEMA,204,rice_biryani,Biryani Masala Qeema,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.14,79,BIRYANI MASALA AALOO CHANA,205,rice_biryani,Biryani Masala Aloo Chana,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.14,312,PULAOW AALOO CHANA,206,rice_biryani,Pulao Aloo Chana,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,PULAOW and PULAOW and PULAO variants recur throughout source
+9.37.14,275,PULAOW AFGHANI MUTTON,207,rice_biryani,Pulao Afghani Mutton,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.14,469,FRIED RICE BEEF,209,rice_biryani,Fried Rice Beef,dish,,SEQUENCE_GAP_208,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,sequence 208 not present in source
+9.37.14,260,BIRYANI MASALA CHANA,210,rice_biryani,Biryani Masala Chana,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.14,1,BIRYANI MASALA CHICKEN,211,rice_biryani,Biryani Masala Chicken,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.14,318,BIRYANI MASALA FISH,212,rice_biryani,Biryani Masala Fish,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.14,481,BIRYANI MASALA KOFTA BEEF,213,rice_biryani,Biryani Masala Kofta Beef,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.14,480,BIRYANI MASALA KOFTA CHICKEN,214,rice_biryani,Biryani Masala Kofta Chicken,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.14,2,BIRYANI MASALA MUTTON,215,rice_biryani,Biryani Masala Mutton,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.14,475,BIRYANI MASALA PRAWN,216,rice_biryani,Biryani Masala Prawn,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.14,512,BIRYANI ZAFRAN,217,rice_biryani,Biryani Zafran,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.14,252,PULAOW CHANA,218,rice_biryani,Pulao Chana,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.14,8,EGG FRIED RICE CHICKEN,219,rice_biryani,Egg Fried Rice Chicken,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.14,7,FRIED RICE CHICKEN,220,rice_biryani,Fried Rice Chicken,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.14,236,VEGETABLE RICE CHICKEN,221,rice_biryani,Vegetable Rice Chicken,dish,,LEADING_SPACE_IN_SOURCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,source description begins with a space
+9.37.14,179,FRIED RICE,222,rice_biryani,Fried Rice,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.14,472,FRIED RICE MUTTON,223,rice_biryani,Fried Rice Mutton,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.14,474,FRIED RICE PRAWN,224,rice_biryani,Fried Rice Prawn,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.14,177,BIRYANI SADI MUTTON,225,rice_biryani,Biryani Sada Mutton,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,SADI likely Sada meaning plain
+9.37.14,182,BIRYANI SADI MUTTON ZAFRAN,226,rice_biryani,Biryani Sada Mutton Zafran,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.14,483,PULAOW KOFTA BEEF,227,rice_biryani,Pulao Kofta Beef,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.14,322,BIRYANI MALKA MASOOR,228,rice_biryani,Biryani Malka Masoor,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.14,164,PULAOW MASOOR,229,rice_biryani,Pulao Masoor,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.14,102,PEAS PULAOW,230,rice_biryani,Peas Pulao,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.44,505,PACKING  LARGE BOXES,231,rice_biryani,Packing Large Boxes,packing_disposable,PACKING_SCATTERED,MISFILED_IN_RICE_BAND;DOUBLE_SPACE_IN_SOURCE,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,packing filed inside the rice band; packing also appears at 1509 and 1609 and 2021 and 2022
+9.37.44,356,PULAOW FISH,232,rice_biryani,Pulao Fish,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.44,304,PULAOW KOFTA CHICKEN,233,rice_biryani,Pulao Kofta Chicken,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.44,476,PULAOW PRAWN,234,rice_biryani,Pulao Prawn,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.44,288,RICE,235,rice_biryani,Rice,dish,,AMBIGUOUS_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,plain rice dish or the raw material itself - confirm
+9.37.44,130,SINGAPORIAN RICE,236,rice_biryani,Singaporean Rice,dish,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.44,477,STEAM RICE (WHITE),237,rice_biryani,Steamed Rice White,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.44,461,BIRYANI TIKKA CHICKEN,238,rice_biryani,Biryani Tikka Chicken,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.44,478,VEGETABLE RICE,239,rice_biryani,Vegetable Rice,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.44,155,BIRYANI VEGETABLE,240,rice_biryani,Biryani Vegetable,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.44,9,FRIED RICE VEGETABLE,241,rice_biryani,Fried Rice Vegetable,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.44,265,PULAOW VEGETABLE,242,rice_biryani,Pulao Vegetable,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.44,518,YAKHNI PULAOW BEEF,243,rice_biryani,Yakhni Pulao Beef,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.44,484,YAKHNI PULAOW BEEF BONELESS,244,rice_biryani,Yakhni Pulao Beef Boneless,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.44,4,PULAOW CHICKEN,245,rice_biryani,Pulao Chicken,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.44,5,YAKHNI PULAOW MUTTON,246,rice_biryani,Yakhni Pulao Mutton,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.44,96,ZEERA PULAOW,247,rice_biryani,Zeera Pulao,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.44,520,BIRYANI SADI BEEF ZAFRAN,248,rice_biryani,Biryani Sada Beef Zafran,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.44,522,BIRYANI MASALA CHICKEN AALOO,249,rice_biryani,Biryani Masala Chicken Aloo,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.44,523,BIRYANI SADI CHICKEN ZAFRAN,250,rice_biryani,Biryani Sada Chicken Zafran,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.44,525,RICE 11-21  MUGLAI,251,rice_biryani,Rice 11-21 Mughlai,dish,,UNEXPLAINED_CODE_IN_NAME;DOUBLE_SPACE,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,meaning of 11-21 unknown - confirm
+9.37.44,534,BIRYANI SADI BEEF,252,rice_biryani,Biryani Sada Beef,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.44,530,BIRYANI SADI CHICKEN,253,rice_biryani,Biryani Sada Chicken,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.44,535,VEGETABLE FRIED RICE,254,rice_biryani,Vegetable Fried Rice,dish,VEG_FRIED_RICE,POSSIBLE_DUPLICATE_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,code 665 carries the same name at sequence 275
+9.37.44,542,BIRYANI MASALA BEEF AALOO,255,rice_biryani,Biryani Masala Beef Aloo,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.44,551,DANDA BIRYANI ZAFRAN,256,rice_biryani,Danda Biryani Zafran,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.44,557,BIRYANI MASALA CHICKEN (SINGLE) BOX,257,rice_biryani,Biryani Masala Chicken Single Box,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,boxed portion - confirm whether packing is inside the charge
+9.37.44,561,BIRYANI CHICKEN BOX,258,rice_biryani,Biryani Chicken Box,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.37.44,566,SINGAPORIAN RICE COUNTER,259,rice_biryani,Singaporean Rice Counter,lump_sum_service,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,live counter - per head or lump sum
+9.38.12,567,BIRYANI MASALA MUTTON AALOO,260,rice_biryani,Biryani Masala Mutton Aloo,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.12,575,CHICKEN BIRYANI BOX SMALL,261,rice_biryani,Chicken Biryani Box Small,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.12,579,BIRYANI MASALA LAMB,262,rice_biryani,Biryani Masala Lamb,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.12,587,PULAOW CHICKEN AALOO,263,rice_biryani,Pulao Chicken Aloo,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.12,591,SINGAPORIAN RICE BOX SMALL,264,rice_biryani,Singaporean Rice Box Small,dish,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.12,596,PULAOW CHICKEN BOX SMALL,265,rice_biryani,Pulao Chicken Box Small,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.12,599,BEEF QEEMA AALOO TEHRI,266,rice_biryani,Beef Qeema Aloo Tehri,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.12,600,RICE BAIG,267,rice_biryani,Rice Baig,dish,,AMBIGUOUS_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,BAIG unclear - possibly a bag or a proper name
+9.38.12,602,BIRYANI BUCKET LARGE,268,rice_biryani,Biryani Bucket Large,dish,BUCKET_PAIR,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,pairs with BIRYANI BUCKET SMALL at 2025 in the non-food band
+9.38.12,610,AFGHANI CHICKEN PULLAOW,269,rice_biryani,Afghani Chicken Pulao,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,PULLAOW third spelling variant
+9.38.12,611,SINGAPORIAN RICE KOFTI,270,rice_biryani,Singaporean Rice Kofta,dish,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.12,625,BIRYANI BOX LARGE,271,rice_biryani,Biryani Box Large,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.12,629,ZEERA RICE-DAAL CHANA,272,rice_biryani,Zeera Rice Daal Chana,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.12,659,BEEF QEEMA WITH MUTTON CHOPS,273,rice_biryani,Beef Qeema with Mutton Chops,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.12,664,BIRYANI MASALLAH WHITE BEEF,274,rice_biryani,Biryani Masala White Beef,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,MASALLAH variant of MASALA
+9.38.12,665,VEGETABLE FRIED RICE,275,rice_biryani,Vegetable Fried Rice,dish,VEG_FRIED_RICE,POSSIBLE_DUPLICATE_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,code 535 carries the same name at sequence 254
+9.38.12,668,BIRYANI WHITE MUTTON,276,rice_biryani,Biryani White Mutton,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.12,672,BIRYANI WHITE MASALA BEEF,277,rice_biryani,Biryani White Masala Beef,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.12,673,BIRYANI WHITE MASALA CHICKEN,278,rice_biryani,Biryani White Masala Chicken,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.12,674,BIRYANI WHITE MASALA MUTTON,279,rice_biryani,Biryani White Masala Mutton,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.12,683,AALOO TEHRI,280,rice_biryani,Aloo Tehri,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.12,701,DUCK PULLAOW,281,rice_biryani,Duck Pulao,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.12,705,CHICKEN BIRYANI BONELESS,282,rice_biryani,Chicken Biryani Boneless,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.12,742,BEEF BONG BIRYANI,283,rice_biryani,Beef Bong Biryani,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.12,429,BALTI GOSHT MUTTON,301,main_dishes,Balti Gosht Mutton,dish,,SEQUENCE_GAP_284_300,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,sequences 284-300 absent - band boundary
+9.38.12,14,QORMA MUTTON,302,main_dishes,Qorma Mutton,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.12,400,BALTI GOSHT CHICKEN,303,main_dishes,Balti Gosht Chicken,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.12,342,KARAHI GREEN CHICKEN,304,main_dishes,Karahi Green Chicken,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.12,163,AALOO GOSHT BEEF,305,main_dishes,Aloo Gosht Beef,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.12,192,AALOO QEEMA BEEF,306,main_dishes,Aloo Qeema Beef,dish,OVERLAP_9.38.38,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,last row here and first of the next screenshot
+9.38.38,192,AALOO QEEMA BEEF,306,main_dishes,Aloo Qeema Beef,dish,OVERLAP_9.38.12,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,repeat of previous screenshot last row
+9.38.38,162,ACHAAR GOSHT BEEF,307,main_dishes,Achar Gosht Beef,dish,ACHAR_BEEF,SPELLING_VARIANT;POSSIBLE_DUPLICATE_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,codes 162 and 382 are near-identical items with different spellings
+9.38.38,382,ACHAR HANDI BEEF,308,main_dishes,Achar Handi Beef,dish,ACHAR_BEEF,POSSIBLE_DUPLICATE_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.38.38,583,BEEF CHILLI DRY,309,main_dishes,Beef Chilli Dry,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.38,761,KARAHI CHICKEN PESHAWRI,310,main_dishes,Karahi Chicken Peshawari,dish,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.38,764,KASHMIRI PULAOW CHICKEN,311,main_dishes,Kashmiri Pulao Chicken,dish,SEQ_311_SHARED,DUPLICATE_SEQUENCE;SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,sequence 311 shared with DAAL GOSHT BEEF
+9.38.38,112,DAAL GOSHT BEEF,311,main_dishes,Daal Gosht Beef,dish,SEQ_311_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.38,766,PULAOW BIRYANI CHICKEN,312,main_dishes,Pulao Biryani Chicken,dish,,SPELLING_VARIANT;AMBIGUOUS_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,pulao and biryani in one name - confirm which it is
+9.38.38,767,PULAO BIRYANI BEEF,313,main_dishes,Pulao Biryani Beef,dish,,AMBIGUOUS_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.38.38,784,VEGETABLE FRIED RICE-BEEF CHILLI,314,main_dishes,Vegetable Fried Rice with Beef Chilli,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,combination plate
+9.38.38,792,CURRENT PULLAOW BEEF,315,main_dishes,Current Pulao Beef,dish,SEQ_315_SHARED,DUPLICATE_SEQUENCE;AMBIGUOUS_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,CURRENT unclear - possibly Currant. sequence 315 shared
+9.38.38,379,HANDI BEEF BONELESS,315,main_dishes,Handi Beef Boneless,dish,SEQ_315_SHARED,DUPLICATE_SEQUENCE;LEADING_SPACE_IN_SOURCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.38,808,ZEERA RICE,316,main_dishes,Zeera Rice,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.38,813,AFGHANI PULAO BEEF,317,main_dishes,Afghani Pulao Beef,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.38,823,AFGHANI PULAO MUTTON,318,main_dishes,Afghani Pulao Mutton,dish,SEQ_318_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,sequence 318 shared with KARAHI BEEF
+9.38.38,17,KARAHI BEEF,318,main_dishes,Karahi Beef,dish,SEQ_318_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.38,824,AFGHANI RICE,319,main_dishes,Afghani Rice,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.38,829,CURRENT PULAOW CHICKEN,320,main_dishes,Current Pulao Chicken,dish,SEQ_320_SHARED,DUPLICATE_SEQUENCE;AMBIGUOUS_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.38.38,491,KARAHI BEEF BONELESS(LIVE),320,main_dishes,Karahi Beef Boneless Live,lump_sum_service,SEQ_320_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,LIVE suggests a live counter - dish or counter charge
+9.38.38,309,KARAHI GREEN BEEF,321,main_dishes,Karahi Green Beef,dish,SEQ_321_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,sequence 321 shared with BEEF CHILLI
+9.38.38,845,BEEF CHILLI,321,main_dishes,Beef Chilli,dish,SEQ_321_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.38,855,CHICKEN MADBI,322,main_dishes,Chicken Madbi,dish,SEQ_322_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,sequence 322 shared with KOFTA BEEF
+9.38.38,25,KOFTA BEEF,322,main_dishes,Kofta Beef,dish,SEQ_322_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.38,246,KUNNA BEEF,323,main_dishes,Kunna Beef,dish,SEQ_323_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,sequence 323 shared with CHICKEN MALAI SEEKH BIRYANI
+9.38.38,876,CHICKEN MALAI SEEKH BIRYANI,323,main_dishes,Chicken Malai Seekh Biryani,dish,SEQ_323_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.38,887,BIRYANI DUM WALI MUTTON,324,main_dishes,Biryani Dum Wali Mutton,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.38,893,BIRYANI BEEF BONELESS BOX,325,main_dishes,Biryani Beef Boneless Box,dish,SEQ_325_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,sequence 325 shared with NARGISI KOFTA BEEF
+9.38.38,26,NARGISI KOFTA BEEF,325,main_dishes,Nargisi Kofta Beef,dish,SEQ_325_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.38,908,BIRYANI MASALA SADI,326,main_dishes,Biryani Masala Sada,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.38.38,148,NIHARI BEEF,327,main_dishes,Nihari Beef,dish,OVERLAP_9.39.02,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.39.02,148,NIHARI BEEF,327,main_dishes,Nihari Beef,dish,OVERLAP_9.38.38,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,repeat of previous screenshot last row
+9.39.02,67,PAAYA BEEF,328,main_dishes,Paya Beef,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.39.02,289,PALAK GOSHT BEEF,329,main_dishes,Palak Gosht Beef,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.39.02,156,PALAK PANIR BEEF,330,main_dishes,Palak Paneer Beef,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,PANIR and PANEER both used in source
+9.39.02,287,PASINDAY BEEF,331,main_dishes,Pasanday Beef,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.39.02,27,QEEMA BEEF,332,main_dishes,Qeema Beef,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.39.02,488,STEW QEEMA BEEF,333,main_dishes,Stew Qeema Beef,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.39.02,500,QORMA BEEF,334,main_dishes,Qorma Beef,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.39.02,499,QORMA BEEF BONELESS,335,main_dishes,Qorma Beef Boneless,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.39.02,262,SHASHLIK BEEF,338,main_dishes,Shashlik Beef,dish,,SEQUENCE_GAP_336_337,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,sequences 336 and 337 absent
+9.39.02,386,SHIMLA MIRCH QEEMA BEEF,339,main_dishes,Shimla Mirch Qeema Beef,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.39.02,1005,CHICKEN MAKHNI HANDI,340,main_dishes,Chicken Makhni Handi,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.39.02,285,STEW BEEF,341,main_dishes,Stew Beef,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.39.02,227,WHITE KARAHI BEEF,343,main_dishes,White Karahi Beef,dish,,SEQUENCE_GAP_342,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,sequence 342 absent
+9.39.02,302,WHITE QORMA BEEF,344,main_dishes,White Qorma Beef,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.39.02,323,BRAIN MASALAH,345,main_dishes,Brain Masala,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.39.02,234,AALOO GOSHT CHICKEN,346,main_dishes,Aloo Gosht Chicken,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.39.02,399,AALOO QORMA CHICKEN,347,main_dishes,Aloo Qorma Chicken,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.39.02,111,ACHAR GOSHT CHICKEN,348,main_dishes,Achar Gosht Chicken,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.39.02,287,CHICKEN BUTTER,350,main_dishes,Chicken Butter,dish,CODE_287_REUSED,DUPLICATE_SOURCE_CODE;SEQUENCE_GAP_349,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,code 287 also used by PASINDAY BEEF at sequence 331 - genuine code collision in source
+9.39.02,189,CHAWMIN CHICKEN,351,main_dishes,Chow Mein Chicken,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,CHAWMIN and CHOWMING both used in source
+9.39.02,11,CHILLI CHICKEN,352,main_dishes,Chilli Chicken,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.39.02,391,CHILLIES VEGETABLE CHICKEN,353,main_dishes,Chillies Vegetable Chicken,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.39.02,300,CHOLEY CHICKEN,354,main_dishes,Choley Chicken,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.39.02,124,GINGER CHICKEN,357,main_dishes,Ginger Chicken,dish,,SEQUENCE_GAP_355_356,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,sequences 355 and 356 absent
+9.39.02,228,GREEN KARAHI CHICKEN,360,main_dishes,Green Karahi Chicken,dish,,SEQUENCE_GAP_358_359,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,sequences 358 and 359 absent
+9.39.02,259,HALEEM CHICKEN,361,main_dishes,Haleem Chicken,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.39.02,519,HANDI CHICKEN,362,main_dishes,Handi Chicken,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.39.02,76,HANDI CHICKEN  BONELESS SPECIAL,363,main_dishes,Handi Chicken Boneless Special,dish,,DOUBLE_SPACE_IN_SOURCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.39.02,121,JALFREZI CHICKEN,364,main_dishes,Jalfrezi Chicken,dish,OVERLAP_9.40.04,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.04,TRUNCATED,JALFREZI CHICKEN,364,main_dishes,Jalfrezi Chicken,dish,OVERLAP_9.39.02,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,code 121 recoverable from screenshot 9.39.02
+9.40.04,TRUNCATED,KARAHI CHICKEN,365,main_dishes,Karahi Chicken,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,screenshot scrolled - Code column cut off
+9.40.04,TRUNCATED,KARAHI CHICKEN BONELESS,366,main_dishes,Karahi Chicken Boneless,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.04,TRUNCATED,KARAHI CHICKEN LIVE,367,main_dishes,Karahi Chicken Live,lump_sum_service,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,LIVE suggests live counter
+9.40.04,TRUNCATED,KOFTA CHICKEN,368,main_dishes,Kofta Chicken,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.04,TRUNCATED,MAKHNI CHICKEN,369,main_dishes,Makhni Chicken,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.04,TRUNCATED,MALAI KOFTA CHICKEN,370,main_dishes,Malai Kofta Chicken,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.04,TRUNCATED,MANCHORIAN CHICKEN,371,main_dishes,Manchurian Chicken,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.04,TRUNCATED,NARGASI KOFTAY CHICKEN,372,main_dishes,Nargisi Kofta Chicken,dish,SEQ_372_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE;SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,sequence 372 shared with GARLIC RICE
+9.40.04,TRUNCATED,GARLIC RICE,372,main_dishes,Garlic Rice,dish,SEQ_372_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.04,TRUNCATED,FAMOUS TAHRI HYD MUTTON,373,main_dishes,Famous Tehri Hyderabadi Mutton,dish,SEQ_373_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE;ABBREVIATION_IN_SOURCE,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,HYD likely Hyderabadi
+9.40.04,TRUNCATED,NIHARI CHICKEN,373,main_dishes,Nihari Chicken,dish,SEQ_373_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.04,TRUNCATED,PALAK PANEER CHICKEN,374,main_dishes,Palak Paneer Chicken,dish,SEQ_374_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,sequence 374 shared with BEEF BIRYANI SINDHI ALOO
+9.40.04,TRUNCATED,BEEF BIRYANI SINDHI ALOO,374,rice_biryani,Beef Biryani Sindhi Aloo,dish,SEQ_374_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE;MISFILED_BAND,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,a biryani sitting inside the main-dish band
+9.40.04,TRUNCATED,CHICKEN MANDI,375,main_dishes,Chicken Mandi,dish,SEQ_375_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,sequence 375 shared with STEW QEEMA CHICKEN
+9.40.04,TRUNCATED,STEW QEEMA CHICKEN,375,main_dishes,Stew Qeema Chicken,dish,SEQ_375_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.04,TRUNCATED,QORMA BADAMI CHICKEN,376,main_dishes,Qorma Badami Chicken,dish,SEQ_376_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,sequence 376 shared with MASALA RICE BOWILD
+9.40.04,TRUNCATED,MASALA RICE BOWILD,376,main_dishes,Masala Rice Boiled,dish,SEQ_376_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE;SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,BOWILD likely Boiled
+9.40.04,TRUNCATED,MASALA PULAO ALOO,377,main_dishes,Masala Pulao Aloo,dish,SEQ_377_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,sequence 377 shared with STEW CHICKEN
+9.40.04,TRUNCATED,STEW CHICKEN,377,main_dishes,Stew Chicken,dish,SEQ_377_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.04,TRUNCATED,AFGHANI CHICKEN BIRYANI,378,rice_biryani,Afghani Chicken Biryani,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.04,TRUNCATED,KHATRI BIRYANI BEEF,379,rice_biryani,Khatri Biryani Beef,dish,SEQ_379_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,KHATRI is another tenant name - confirm this is a menu item not a cross-reference
+9.40.04,TRUNCATED,KARAHI WHITE CHICKEN,379,main_dishes,Karahi White Chicken,dish,SEQ_379_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.04,TRUNCATED,QORMA WHITE CHICKEN,380,main_dishes,Qorma White Chicken,dish,SEQ_380_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,sequence 380 shared with CHICKEN KHATRI BIRYANI
+9.40.04,TRUNCATED,CHICKEN KHATRI BIRYANI,380,rice_biryani,Chicken Khatri Biryani,dish,SEQ_380_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.40.04,TRUNCATED,BEEF KHATRI BIRYANI BOX SMALL,381,rice_biryani,Beef Khatri Biryani Box Small,dish,SEQ_381_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.40.04,TRUNCATED,VEGETABLE CHOWMING,381,main_dishes,Vegetable Chow Mein,dish,SEQ_381_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE;SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.04,TRUNCATED,DAAL CHANA,382,main_dishes,Daal Chana,dish,SEQ_382_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,sequence 382 shared with CHICKEN KHATRI BIRYANI BOX SMALL
+9.40.04,TRUNCATED,CHICKEN KHATRI BIRYANI BOX SMALL,382,rice_biryani,Chicken Khatri Biryani Box Small,dish,SEQ_382_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.40.04,TRUNCATED,SINGAPURIAN BOX LARG,383,rice_biryani,Singaporean Box Large,dish,OVERLAP_9.40.25,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,code 1037 recoverable from screenshot 9.40.25
+9.40.25,1037,SINGAPURIAN BOX LARG,383,rice_biryani,Singaporean Box Large,dish,OVERLAP_9.40.04,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,recovers the code truncated in screenshot 9.40.04
+9.40.25,171,DAAL LOCKY BEEF,383,main_dishes,Daal Lauki Beef,dish,SEQ_383_SHARED,DUPLICATE_SEQUENCE;SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,LOCKY likely Lauki
+9.40.25,1046,MUTTON KHATRI BIRYANI,384,rice_biryani,Mutton Khatri Biryani,dish,,,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.40.25,1047,BIRYANI CH MALAI BOTI,385,rice_biryani,Biryani Chicken Malai Boti,dish,,ABBREVIATION_IN_SOURCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,CH likely Chicken
+9.40.25,1048,BEEF KHATRI MATKA BIRYANI,386,rice_biryani,Beef Khatri Matka Biryani,dish,SEQ_386_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,sequence 386 shared with HANDI FISH
+9.40.25,442,HANDI FISH,386,main_dishes,Handi Fish,dish,SEQ_386_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.25,447,GREN MASALA FISH,387,main_dishes,Green Masala Fish,dish,SEQ_387_SHARED,DUPLICATE_SEQUENCE;SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,GREN likely Green
+9.40.25,1049,HYDARABADI BEEF PULAO,387,rice_biryani,Hyderabadi Beef Pulao,dish,SEQ_387_SHARED,DUPLICATE_SEQUENCE;SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.25,1050,HYDARABADI CHICKEN PULAOW,388,rice_biryani,Hyderabadi Chicken Pulao,dish,SEQ_388_SHARED,DUPLICATE_SEQUENCE;SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.25,314,KARAHI FISH,388,main_dishes,Karahi Fish,dish,SEQ_388_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.25,446,MASALA FISH,389,main_dishes,Masala Fish,dish,SEQ_389_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.25,1051,BEEF CHUNGAIZI PULAOW,389,rice_biryani,Beef Changezi Pulao,dish,SEQ_389_SHARED,DUPLICATE_SEQUENCE;SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.25,1052,CHICKEN CHUNGAIZI PULAOW,390,rice_biryani,Chicken Changezi Pulao,dish,SEQ_390_SHARED,DUPLICATE_SEQUENCE;SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.25,154,QORMA FISH,390,main_dishes,Qorma Fish,dish,SEQ_390_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.25,87,BEEF HALEEM,391,main_dishes,Beef Haleem,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.25,126,HARI MIRCH QEEMA FISH,392,main_dishes,Hari Mirch Qeema Fish,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.25,199,KACHRI QEEMA BEEF,393,main_dishes,Kachri Qeema Beef,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.25,286,KATAKAT MUTTON,394,main_dishes,Katakat Mutton,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.25,88,KHICHRA,395,main_dishes,Khichra,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.25,194,AALOO GOSHT MUTTON,396,main_dishes,Aloo Gosht Mutton,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.25,257,ACHAR GOSHT MUTTON,397,main_dishes,Achar Gosht Mutton,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.25,421,HANDI MUTTON,398,main_dishes,Handi Mutton,dish,HANDI_MUTTON,POSSIBLE_DUPLICATE_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,code 191 carries the same name at sequence 409
+9.40.25,590,QEEMA MUTTON,399,main_dishes,Qeema Mutton,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.25,578,KARAHI QEEMA MUTTON LIVE,400,main_dishes,Karahi Qeema Mutton Live,lump_sum_service,,,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,LIVE suggests live counter
+9.40.25,577,KARAHI CHICKEN WHITE LIVE,401,main_dishes,Karahi Chicken White Live,lump_sum_service,,,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.40.25,562,KOFTA MUTTON,402,main_dishes,Kofta Mutton,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.25,198,TIKKA KARAHI CHICKEN,403,main_dishes,Tikka Karahi Chicken,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.25,113,DAAL GOSHT MUTTON,404,main_dishes,Daal Gosht Mutton,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.25,274,GINGER MUTTON,405,main_dishes,Ginger Mutton,dish,OVERLAP_9.40.51,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.51,274,GINGER MUTTON,405,main_dishes,Ginger Mutton,dish,OVERLAP_9.40.25,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,repeat of previous screenshot last row
+9.40.51,255,GREEN KARAHI MUTTON,406,main_dishes,Green Karahi Mutton,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.51,119,GREEN MASALA MUTTON,407,main_dishes,Green Masala Mutton,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.51,299,KHICHRA MUTTON,408,main_dishes,Khichra Mutton,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.51,191,HANDI MUTTON,409,main_dishes,Handi Mutton,dish,HANDI_MUTTON,POSSIBLE_DUPLICATE_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,code 421 carries the same name at sequence 398
+9.40.51,422,JALFAREZI MUTTON,410,main_dishes,Jalfrezi Mutton,dish,SEQ_410_SHARED,DUPLICATE_SEQUENCE;SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,sequence 410 shared with HALEEM VEGETABLE
+9.40.51,594,HALEEM VEGETABLE,410,main_dishes,Haleem Vegetable,dish,SEQ_410_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.51,15,KARAHI MUTTON,411,main_dishes,Karahi Mutton,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.51,517,KARAHI MUTTON LIVE,412,main_dishes,Karahi Mutton Live,lump_sum_service,,,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,LIVE suggests live counter
+9.40.51,66,KUNNA MUTTON,415,main_dishes,Kunna Mutton,dish,,SEQUENCE_GAP_413_414,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,sequences 413 and 414 absent
+9.40.51,282,MUKHNI MUTTON,417,main_dishes,Makhni Mutton,dish,,SEQUENCE_GAP_416;SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,MUKHNI and MAKHNI both used in source
+9.40.51,193,NIHARI MUTTON,418,main_dishes,Nihari Mutton,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.51,120,PAAYA MUTTON,419,main_dishes,Paya Mutton,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.51,225,PAAYA KUNNA MUTTON,420,main_dishes,Paya Kunna Mutton,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.51,245,PALAK GOSHT MUTTON,421,main_dishes,Palak Gosht Mutton,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.51,190,QORMA MUTTON BADAMI,422,main_dishes,Qorma Mutton Badami,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.51,18,STEW MUTTON,423,main_dishes,Stew Mutton,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.51,258,TIKKA KARAHI MUTTON,424,main_dishes,Tikka Karahi Mutton,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.51,131,WHITE KARAHI MUTTON,425,main_dishes,White Karahi Mutton,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.51,283,WHITE QORMA MUTTON,426,main_dishes,White Qorma Mutton,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.51,295,PALAK KOFTA,427,main_dishes,Palak Kofta,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.51,181,PASANDEY BEEF,428,main_dishes,Pasanday Beef,dish,PASANDAY_BEEF,SPELLING_VARIANT;POSSIBLE_DUPLICATE_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,code 287 PASINDAY BEEF at sequence 331 is the same dish differently spelled
+9.40.51,219,HANDI PRAWN,429,main_dishes,Handi Prawn,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.51,413,VEGETABLE CHILLIES PRAWN,430,main_dishes,Vegetable Chillies Prawn,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.51,414,GINGER PRAWN,431,main_dishes,Ginger Prawn,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.51,328,GREEN MASALA PRAWN LIVE,433,main_dishes,Green Masala Prawn Live,lump_sum_service,,SEQUENCE_GAP_432,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,sequence 432 absent
+9.40.51,411,JALFREZI PRAWN,434,main_dishes,Jalfrezi Prawn,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.51,410,MASALA PRAWN,435,main_dishes,Masala Prawn,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.51,292,MASALA HANDI PRAWN,436,main_dishes,Masala Handi Prawn,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.40.51,514,QEEMA BEEF  LIVE,437,main_dishes,Qeema Beef Live,lump_sum_service,OVERLAP_9.41.13,ROW_REPEATED_ACROSS_SCREENSHOTS;DOUBLE_SPACE,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.41.13,TRUNCATED,QEEMA BEEF  LIVE,437,main_dishes,Qeema Beef Live,lump_sum_service,OVERLAP_9.40.51,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DOUBLE_SPACE,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,code 514 recoverable from screenshot 9.40.51
+9.41.13,TRUNCATED,QEEMA CHILLI,438,main_dishes,Qeema Chilli,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,screenshot scrolled - Code column cut off
+9.41.13,TRUNCATED,QEEMA FRY BEEF,439,main_dishes,Qeema Fry Beef,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.13,TRUNCATED,QORMA CHICKEN,440,main_dishes,Qorma Chicken,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.13,TRUNCATED,QORMA MUTTON,441,main_dishes,Qorma Mutton,dish,QORMA_MUTTON,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;POSSIBLE_DUPLICATE_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,code 14 carries the same name at sequence 302
+9.41.13,TRUNCATED,SWEET & SOUR CHICKEN,442,main_dishes,Sweet and Sour Chicken,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.13,TRUNCATED,VEGETABLE CHILLI,443,main_dishes,Vegetable Chilli,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.13,TRUNCATED,VEGETABLE MIX,444,main_dishes,Vegetable Mix,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.13,TRUNCATED,KARAHI QEEMA BEEF LIVE,445,main_dishes,Karahi Qeema Beef Live,lump_sum_service,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.41.13,TRUNCATED,TANDOORI MASALA CHICKEN,446,main_dishes,Tandoori Masala Chicken,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.13,TRUNCATED,TIKKA KARAHI CHICKEN LIVE,447,main_dishes,Tikka Karahi Chicken Live,lump_sum_service,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.41.13,TRUNCATED,KARAHI QEEMA BEEF,448,main_dishes,Karahi Qeema Beef,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.13,TRUNCATED,TIKKA KARAHI BEEF,449,main_dishes,Tikka Karahi Beef,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.13,TRUNCATED,PALAK PANIR,451,main_dishes,Palak Paneer,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;SEQUENCE_GAP_450;SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,sequence 450 absent
+9.41.13,TRUNCATED,MALAI KOFTA CHICKEN -,452,main_dishes,Malai Kofta Chicken,dish,MALAI_KOFTA_FAMILY,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;TRAILING_DASH_IN_SOURCE,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,four near-identical Malai Kofta Chicken variants at 452 453 455 456 - confirm they are distinct products
+9.41.13,TRUNCATED,MALAI KOFTA CHICKEN DOUBLE,453,main_dishes,Malai Kofta Chicken Double,dish,MALAI_KOFTA_FAMILY,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.41.13,TRUNCATED,KARAHI CHICKEN MAKHNI LIVE,454,main_dishes,Karahi Chicken Makhni Live,lump_sum_service,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.41.13,TRUNCATED,MALAI KOFTA CHICKEN SINGLE,455,main_dishes,Malai Kofta Chicken Single,dish,MALAI_KOFTA_FAMILY,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.41.13,TRUNCATED,MALAI KOFTA CHICKEN  GRABI,456,main_dishes,Malai Kofta Chicken Gravy,dish,MALAI_KOFTA_FAMILY,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;SPELLING_ERROR;DOUBLE_SPACE,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,GRABI likely Gravy
+9.41.13,TRUNCATED,NIHARI CHICKEN GRABI,457,main_dishes,Nihari Chicken Gravy,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.13,TRUNCATED,PALAK GOSHT CHICKEN,458,main_dishes,Palak Gosht Chicken,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.13,TRUNCATED,ANDA ALOO GARIBI,459,main_dishes,Anda Aloo Garibi,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.13,TRUNCATED,BOMBAY DAAL,460,main_dishes,Bombay Daal,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;LEADING_SPACE_IN_SOURCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.13,TRUNCATED,MURGH CHANA,461,main_dishes,Murgh Chana,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.13,TRUNCATED,CHICKEN LOKI,462,main_dishes,Chicken Lauki,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.13,TRUNCATED,DAL CHANA LOKI,463,main_dishes,Daal Chana Lauki,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.13,TRUNCATED,PAYA CEMAL,464,main_dishes,Paya Camel,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;SPELLING_UNCERTAIN,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,CEMAL likely Camel - confirm
+9.41.13,TRUNCATED,JANGLI KARAHI,465,main_dishes,Jangli Karahi,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.13,TRUNCATED,BRAIN MUTTON,466,main_dishes,Brain Mutton,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.13,TRUNCATED,BRAIN JAMSI,467,main_dishes,Brain Jamsi,dish,OVERLAP_9.41.33,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,code 670 recoverable from screenshot 9.41.33
+9.41.33,670,BRAIN JAMSI,467,main_dishes,Brain Jamsi,dish,OVERLAP_9.41.13,,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,recovers the code truncated in screenshot 9.41.13
+9.41.33,684,BRAIN BEEF,468,main_dishes,Brain Beef,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.33,685,HANDI CHICKEN LIVE,469,main_dishes,Handi Chicken Live,lump_sum_service,,,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.41.33,690,NALLI,470,main_dishes,Nalli,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.33,702,BEEF QORMA BADAMI,471,main_dishes,Beef Qorma Badami,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.33,706,CHICKEN KARAHI KOILA,472,main_dishes,Chicken Karahi Koila,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.33,710,SHAB DAIG,473,main_dishes,Shab Daig,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.33,712,KARAHI WHITE MUTTON LIVE,474,main_dishes,Karahi White Mutton Live,lump_sum_service,,,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.41.33,716,KALEJI MASALAH,475,main_dishes,Kaleji Masala,dish,,SPELLING_VARIANT;LEADING_SPACE_IN_SOURCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.33,722,KARAHI CHICKEN KALA HARA,476,main_dishes,Karahi Chicken Kala Hara,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.33,734,TERIYAKI BEEF,477,main_dishes,Teriyaki Beef,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.33,736,RESHMI PANEER HANDI CHICKEN,478,main_dishes,Reshmi Paneer Handi Chicken,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.33,748,KARAHI BEEF LIVE,479,main_dishes,Karahi Beef Live,lump_sum_service,,,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.41.33,749,LEMON KARAHI CHICKEN,480,main_dishes,Lemon Karahi Chicken,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.33,757,KALEJI KARAHI LIVE,481,main_dishes,Kaleji Karahi Live,lump_sum_service,,,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.41.33,758,"KADHI,PAKORA",482,main_dishes,Kadhi Pakora,dish,,COMMA_INSIDE_DESCRIPTION,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,source description contains a comma - CSV quoting required on import
+9.41.33,762,KARAHI MUTTON PESHAWRI,483,main_dishes,Karahi Mutton Peshawari,dish,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.33,765,CHICKEN TAWA,484,main_dishes,Chicken Tawa,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.33,772,DALL GOSHT CHICKEN,485,main_dishes,Daal Gosht Chicken,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,DALL and DAAL and DAL all used in source
+9.41.33,776,BEEF KARAHI SHANWARI,486,main_dishes,Beef Karahi Shinwari,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.33,779,GURDA MUTTON,487,main_dishes,Gurda Mutton,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.33,780,DILL MUTTON,488,main_dishes,Dil Mutton,dish,,SPELLING_UNCERTAIN,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,DILL likely Dil meaning heart - confirm
+9.41.33,781,PRAWNS KARAHI,489,main_dishes,Prawns Karahi,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.33,783,CHICKEN KARAHI SHANWARI,490,main_dishes,Chicken Karahi Shinwari,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.33,786,EXTRA CURRY,491,main_dishes,Extra Curry,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,likely an add-on
+9.41.33,798,QORMA PANEER,492,main_dishes,Qorma Paneer,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.33,832,BEEF KOILA KARAHI LIVE,493,main_dishes,Beef Koila Karahi Live,lump_sum_service,,,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.41.33,842,CHICKEN SZECHUAN,494,main_dishes,Chicken Szechuan,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.41.33,848,NAROTHAY,495,main_dishes,Narothay,dish,,SPELLING_UNCERTAIN,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,unrecognised name - confirm spelling and what it is
+9.41.33,849,HADDI GUDDI,496,main_dishes,Haddi Guddi,dish,OVERLAP_9.42.02,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.02,848,NAROTHAY,495,main_dishes,Narothay,dish,OVERLAP_9.41.33,SPELLING_UNCERTAIN,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,repeat of previous screenshot rows
+9.42.02,849,HADDI GUDDI,496,main_dishes,Haddi Guddi,dish,OVERLAP_9.41.33,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.02,864,CHICKEN CHILLI DRY,497,main_dishes,Chicken Chilli Dry,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.02,865,FISH KARAHI LIVE,498,main_dishes,Fish Karahi Live,lump_sum_service,,,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.42.02,867,"KTAKAT BEEF,",499,main_dishes,Katakat Beef,dish,,SPELLING_ERROR;TRAILING_COMMA_IN_SOURCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,KTAKAT likely Katakat
+9.42.02,868,DALL MAKHNI,500,main_dishes,Daal Makhni,dish,SEQ_500_SHARED,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.02,870,WHITE  KEEMA STEW KHADE MASALA,501,main_dishes,White Qeema Stew Khade Masala,dish,SEQ_501_SHARED,DUPLICATE_SEQUENCE;DOUBLE_SPACE;SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,KEEMA and QEEMA both used in source
+9.42.02,56,AALOO TARKARI,501,main_dishes,Aloo Tarkari,dish,SEQ_501_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.02,457,AFGHANI BOTI CHICKEN,502,kabab_bbq,Afghani Boti Chicken,dish,SEQ_502_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.02,871,KURKURI BHINDI,502,main_dishes,Kurkuri Bhindi,dish,SEQ_502_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.02,874,DAHI WALAY BAINGAN,503,main_dishes,Dahi Walay Baingan,dish,SEQ_503_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.02,586,MUTTON ISKANDARIA,503,main_dishes,Mutton Iskandaria,dish,SEQ_503_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.02,261,BIHARI  ROLL BEEF  111,504,kabab_bbq,Bihari Roll Beef,dish,SEQ_504_SHARED,DUPLICATE_SEQUENCE;UNEXPLAINED_CODE_IN_NAME;DOUBLE_SPACE,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,trailing 111 in the name is unexplained
+9.42.02,878,"LASOONI PALAK PANEER,DHABA",504,main_dishes,Lasooni Palak Paneer Dhaba,dish,SEQ_504_SHARED,DUPLICATE_SEQUENCE;COMMA_INSIDE_DESCRIPTION,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.02,885,QEEMA DHABE WALA,505,main_dishes,Qeema Dhabe Wala,dish,SEQ_505_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.02,294,BIHARI BOTI BEEF,505,kabab_bbq,Bihari Boti Beef,dish,SEQ_505_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.02,50,BIHARI KABAB BEEF,506,kabab_bbq,Bihari Kabab Beef,dish,SEQ_506_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.02,894,MUGHLAI CHICKEN BONELESS,506,main_dishes,Mughlai Chicken Boneless,dish,SEQ_506_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.02,911,MAKHNI HANDI SP BONELESS,507,main_dishes,Makhni Handi Special Boneless,dish,SEQ_507_SHARED,DUPLICATE_SEQUENCE;ABBREVIATION_IN_SOURCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,SP likely Special
+9.42.02,118,BOTI BEEF,507,kabab_bbq,Boti Beef,dish,SEQ_507_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.02,332,SHASHLIK BOTI BEEF,508,kabab_bbq,Shashlik Boti Beef,dish,SEQ_508_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.02,912,TAWA QEEMA BEEF,508,main_dishes,Tawa Qeema Beef,dish,SEQ_508_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.02,920,MANGOLIAN BEEF,509,main_dishes,Mongolian Beef,dish,SEQ_509_SHARED,DUPLICATE_SEQUENCE;SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.02,71,BIHARI CHICKEN DRUM,509,kabab_bbq,Bihari Chicken Drum,dish,SEQ_509_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.02,585,CHICKEN STICK KABAB GRILD,510,kabab_bbq,Chicken Stick Kabab Grilled,dish,SEQ_510_SHARED,DUPLICATE_SEQUENCE;SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,GRILD likely Grilled
+9.42.02,921,HYDERABADI APOLLO FISH FRY,510,main_dishes,Hyderabadi Apollo Fish Fry,dish,SEQ_510_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.02,923,ALOO KI KATLIYAN,511,main_dishes,Aloo Ki Katliyan,dish,SEQ_511_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.02,584,CHICKEN CHANP GRILL,511,kabab_bbq,Chicken Chanp Grill,dish,SEQ_511_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.02,495,CHANDAN KABAB,512,kabab_bbq,Chandan Kabab,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.28,106,BIRYANI CHAT MASALAH,513,rice_biryani,Biryani Chaat Masala,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.28,49,BIHARI CHICKEN BOTI BONELESS,514,kabab_bbq,Bihari Chicken Boti Boneless,dish,SEQ_514_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.28,929,KARACHI KE FRY KABAB,514,kabab_bbq,Karachi Ke Fry Kabab,dish,SEQ_514_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.28,930,FRY DAAL MASH STREET STYLE,515,main_dishes,Fry Daal Mash Street Style,dish,SEQ_515_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.28,203,GARLIC CHICKEN,515,main_dishes,Garlic Chicken,dish,SEQ_515_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.28,459,KASTURI KABAB CHICKEN,516,kabab_bbq,Kasturi Kabab Chicken,dish,SEQ_516_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.28,934,GHUTA KABAB,516,kabab_bbq,Ghuta Kabab,dish,SEQ_516_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.28,935,JAIPUR QORMA YELLOW MIRCH,517,main_dishes,Jaipur Qorma Yellow Mirch,dish,SEQ_517_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.28,221,MALAI BOTI CHICKEN,517,kabab_bbq,Malai Boti Chicken,dish,SEQ_517_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.28,460,MALAI TIKKA CHICKEN,518,kabab_bbq,Malai Tikka Chicken,dish,SEQ_518_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.28,936,PALAK MATAR KI SABZI,518,main_dishes,Palak Matar Ki Sabzi,dish,SEQ_518_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.28,938,HYDERABADI KHATTI DAL,519,main_dishes,Hyderabadi Khatti Daal,dish,SEQ_519_SHARED,DUPLICATE_SEQUENCE;SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.28,133,RESHMI KABAB CHICKEN,519,kabab_bbq,Reshmi Kabab Chicken,dish,SEQ_519_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.28,122,SHASHLIK CHICKEN,520,kabab_bbq,Shashlik Chicken,dish,SEQ_520_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.28,940,CHATKARA MASALA MUTTON,520,main_dishes,Chatkara Masala Mutton,dish,SEQ_520_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.28,941,MUTTON BOTI MASALA,521,main_dishes,Mutton Boti Masala,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.28,942,GOAN STYLE CHILLI ALOO,522,main_dishes,Goan Style Chilli Aloo,dish,SEQ_522_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.28,99,SALAM TANDOORI CHICKEN,522,kabab_bbq,Salam Tandoori Chicken,dish,SEQ_522_SHARED,DUPLICATE_SEQUENCE;SPELLING_UNCERTAIN,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,SALAM possibly Sultan or Salami - confirm
+9.42.28,123,CHICKEN TIKKA BOTI,523,kabab_bbq,Chicken Tikka Boti,dish,SEQ_523_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.28,962,TAWA BOTI KABAB BEEF,523,kabab_bbq,Tawa Boti Kabab Beef,dish,SEQ_523_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.28,963,MUTTON TAWA BHUNA MASALA,524,main_dishes,Mutton Tawa Bhuna Masala,dish,SEQ_524_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.28,369,TIKKA CHICKEN IN PCS,524,kabab_bbq,Tikka Chicken in Pieces,dish,SEQ_524_SHARED,DUPLICATE_SEQUENCE;ABBREVIATION_IN_SOURCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,PCS likely Pieces - unit is probably PCS not KG
+9.42.28,330,DHAGA KABAB BEEF,525,kabab_bbq,Dhaga Kabab Beef,dish,SEQ_525_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.28,964,ACHARI ALOO RECIPY,525,main_dishes,Achari Aloo,dish,SEQ_525_SHARED,DUPLICATE_SEQUENCE;SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,RECIPY appears to be a stray word not part of the dish name
+9.42.28,965,LUCKNOWI STYLE HARI MIRCH KEEMA,526,main_dishes,Lucknowi Style Hari Mirch Qeema,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.28,966,CHILLI GARLIC TAWA CHICKEN,527,main_dishes,Chilli Garlic Tawa Chicken,dish,SEQ_527_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.28,462,DHAGA KABAB CHICKEN,527,kabab_bbq,Dhaga Kabab Chicken,dish,SEQ_527_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.28,967,PRAWN GHEE ROST,528,main_dishes,Prawn Ghee Roast,dish,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.42.28,968,AKKHA KALI MASOOR,529,main_dishes,Akkha Kali Masoor,dish,OVERLAP_9.43.02,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.02,TRUNCATED,AKKHA KALI MASOOR,529,main_dishes,Akkha Kali Masoor,dish,OVERLAP_9.42.28,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,code 968 recoverable from screenshot 9.42.28
+9.43.02,TRUNCATED,GOLA KABAB,529,kabab_bbq,Gola Kabab,dish,SEQ_529_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,screenshot scrolled - Code column cut off
+9.43.02,TRUNCATED,BEETROOT VEG,530,main_dishes,Beetroot Vegetable,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.02,TRUNCATED,SMOKED TANDOORI TAWA KEEMA,531,main_dishes,Smoked Tandoori Tawa Qeema,dish,SEQ_531_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE;SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.02,TRUNCATED,RAJHISTANI TIKKA,531,kabab_bbq,Rajasthani Tikka,dish,SEQ_531_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE;SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.02,TRUNCATED,CHANP FRIED MUTTON,532,kabab_bbq,Chanp Fried Mutton,dish,SEQ_532_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.02,TRUNCATED,DRAGON CHICKEN B/L,532,main_dishes,Dragon Chicken Boneless,dish,SEQ_532_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE;ABBREVIATION_IN_SOURCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,B/L likely Boneless
+9.43.02,TRUNCATED,SRIRACHA CHICKEN B/L,533,main_dishes,Sriracha Chicken Boneless,dish,SEQ_533_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE;ABBREVIATION_IN_SOURCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.02,TRUNCATED,SAJJI MUTTON,533,kabab_bbq,Sajji Mutton,dish,SEQ_533_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.02,TRUNCATED,SEEKH KABAB MUTTON,534,kabab_bbq,Seekh Kabab Mutton,dish,SEQ_534_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.02,TRUNCATED,CHANA DAL MASALA DHABA STYLE,534,main_dishes,Chana Daal Masala Dhaba Style,dish,SEQ_534_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.02,TRUNCATED,PRAWNS TAWA MASALA,535,main_dishes,Prawns Tawa Masala,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.02,TRUNCATED,EASY TORI RECIPE,536,main_dishes,Tori,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;RECIPE_WORD_IN_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,EASY and RECIPE look like stray words not part of a menu name
+9.43.02,TRUNCATED,MUTTON MASALA RECIPY,537,main_dishes,Mutton Masala,dish,SEQ_537_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE;RECIPE_WORD_IN_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.43.02,TRUNCATED,PIYAAZ,537,main_dishes,Piyaaz,material_backed_item,SEQ_537_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE;AMBIGUOUS_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,onion - raw material or a dish
+9.43.02,TRUNCATED,HYDERABADI STYLE MASALEDAR BEEF,538,main_dishes,Hyderabadi Style Masaledar Beef,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.02,TRUNCATED,MASALEDAR HARI MIRCH ALOO,539,main_dishes,Masaledar Hari Mirch Aloo,dish,SEQ_539_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.02,TRUNCATED,SEEKH KABAB,539,kabab_bbq,Seekh Kabab,dish,SEQ_539_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.02,TRUNCATED,SHAHI TIKKA CHICKEN,540,kabab_bbq,Shahi Tikka Chicken,dish,SEQ_540_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.02,TRUNCATED,HARA BHARA BRAIN MASALA,540,main_dishes,Hara Bhara Brain Masala,dish,SEQ_540_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.02,TRUNCATED,SPECIAL DAAL WITH ACHARI MIRCH TADK,541,main_dishes,Special Daal with Achari Mirch Tadka,dish,SEQ_541_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE;NAME_TRUNCATED_IN_SOURCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,description appears cut off at TADK
+9.43.02,TRUNCATED,SHASHLIK STICK CHICKEN,541,kabab_bbq,Shashlik Stick Chicken,dish,SEQ_541_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.02,TRUNCATED,BIHARI CHICKEN TIKKA,542,kabab_bbq,Bihari Chicken Tikka,dish,SEQ_542_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.02,TRUNCATED,WORLD FAMOUS HYD KEEMA,542,main_dishes,World Famous Hyderabadi Qeema,dish,SEQ_542_SHARED,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;DUPLICATE_SEQUENCE;ABBREVIATION_IN_SOURCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.02,TRUNCATED,SUPER TASTY DUM KA GOSHT MUTTON,543,main_dishes,Dum Ka Gosht Mutton,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;MARKETING_WORDS_IN_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,SUPER TASTY looks like marketing copy not a product name
+9.43.02,TRUNCATED,HYD STYLE GREEN CH BONELESS,544,main_dishes,Hyderabadi Style Green Chicken Boneless,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;ABBREVIATION_IN_SOURCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.02,TRUNCATED,MASALA FISH FRY GRAVY,545,main_dishes,Masala Fish Fry Gravy,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.02,1000,LAHORI MUTTON,546,main_dishes,Lahori Mutton,dish,,SOURCE_CODE_PARTIAL_RECOVERED,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,code inferred from the 1000-series sequence around it - verify
+9.43.02,1001,LOKI KY KOFTY,547,main_dishes,Lauki Ke Kofte,dish,,SOURCE_CODE_PARTIAL_RECOVERED;SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.02,1002,MATAR PANEER,548,main_dishes,Matar Paneer,dish,OVERLAP_9.43.30,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,code confirmed by screenshot 9.43.30
+9.43.30,1002,MATAR PANEER,548,main_dishes,Matar Paneer,dish,OVERLAP_9.43.02,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,confirms the code truncated in screenshot 9.43.02
+9.43.30,1003,HANDI SEEKH KABAB,549,kabab_bbq,Handi Seekh Kabab,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.30,1004,PRAWN BHONA MASALA,550,main_dishes,Prawn Bhuna Masala,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.30,1009,SWEET&SOUR FISH,552,main_dishes,Sweet and Sour Fish,dish,,SEQUENCE_GAP_551,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,sequence 551 absent
+9.43.30,1011,MUTTON RARA RECIPE KEEMA WALA MUT,553,main_dishes,Mutton Rara Qeema Wala,dish,,NAME_TRUNCATED_IN_SOURCE;RECIPE_WORD_IN_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,description appears cut off at MUT
+9.43.30,1012,KERALA THATTUKADA STYLE BEEF,554,main_dishes,Kerala Thattukada Style Beef,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.30,1013,KASHMIRI CHICKEN MASALA,555,main_dishes,Kashmiri Chicken Masala,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.30,1015,CHICKEN BHONA MASALA,556,main_dishes,Chicken Bhuna Masala,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.30,1016,PANJABI STYLE BEEF QEEMA,557,main_dishes,Punjabi Style Beef Qeema,dish,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.30,1018,BEEF TIKKA MASALA,558,main_dishes,Beef Tikka Masala,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.30,1019,BHINDI DRY MASALA,559,main_dishes,Bhindi Dry Masala,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.30,1020,"ACHARI DALL,LAL MSOOR",560,main_dishes,Achari Daal Lal Masoor,dish,,COMMA_INSIDE_DESCRIPTION;SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,MSOOR likely Masoor
+9.43.30,1022,AFGHANI QEEMA KARAHI,561,main_dishes,Afghani Qeema Karahi,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.30,1031,HOT GARLIC CHICKEN,562,main_dishes,Hot Garlic Chicken,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.30,1032,NAMKEN GOSHT MUTTON,563,main_dishes,Namkeen Gosht Mutton,dish,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.30,1033,ACHARI ALOO TARKARI,564,main_dishes,Achari Aloo Tarkari,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.30,1038,ACHARI CHICKEN CURRY,565,main_dishes,Achari Chicken Curry,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.30,862,CHICKEN CHANP BBQ GOLDEN,566,kabab_bbq,Chicken Chanp BBQ Golden,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.30,58,FISH FINGER,575,fried_grilled,Fish Finger,dish,,SEQUENCE_GAP_567_574,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,sequences 567-574 absent - band boundary
+9.43.30,150,SHASHLIK VEGETABLE,597,fried_grilled,Shashlik Vegetable,dish,,SEQUENCE_GAP_576_596,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,large sequence gap
+9.43.30,415,PURI,599,breads,Puri,dish,,SEQUENCE_GAP_598;MISFILED_BAND,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,a bread sitting outside the 900 bread band
+9.43.30,47,PARATHA,600,breads,Paratha,dish,,MISFILED_BAND,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.43.30,159,BOHRA FRIED BATAIR,601,fried_grilled,Bohra Fried Batair,dish,SEQ_601_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.30,607,SEEKH KABAB CAMEL,601,kabab_bbq,Seekh Kabab Camel,dish,SEQ_601_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.30,638,CHICKEN BOTI GREEN MASALA,602,kabab_bbq,Chicken Boti Green Masala,dish,SEQ_602_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.30,270,CUTLUS BEEF,602,fried_grilled,Cutlets Beef,dish,SEQ_602_SHARED,DUPLICATE_SEQUENCE;SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,CUTLUS likely Cutlets
+9.43.30,28,SHAMI KABAB BEEF,603,kabab_bbq,Shami Kabab Beef,dish,SEQ_603_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.30,640,CHANP MUTTON BBQ,603,kabab_bbq,Chanp Mutton BBQ,dish,SEQ_603_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.43.30,641,LABNESE GRILL,604,kabab_bbq,Lebanese Grill,dish,SEQ_604_SHARED,DUPLICATE_SEQUENCE;SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,LABNESE likely Lebanese
+9.43.30,141,CHAPLI KABAB BEEF,604,kabab_bbq,Chapli Kabab Beef,dish,OVERLAP_9.44.05,DUPLICATE_SEQUENCE;ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.05,641,LABNESE GRILL,604,kabab_bbq,Lebanese Grill,dish,OVERLAP_9.43.30,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,repeat of previous screenshot rows
+9.44.05,141,CHAPLI KABAB BEEF,604,kabab_bbq,Chapli Kabab Beef,dish,OVERLAP_9.43.30,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.05,160,CHICKEN SAJJI,605,kabab_bbq,Chicken Sajji,dish,SEQ_605_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.05,516,BOHRA FRIED CHICKEN,605,fried_grilled,Bohra Fried Chicken,dish,SEQ_605_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.05,647,FISH GRILL,606,fried_grilled,Fish Grill,dish,SEQ_606_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.05,22,BROAST CHICKEN,606,fried_grilled,Broast Chicken,dish,SEQ_606_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.05,686,TURKISH KABAB,607,kabab_bbq,Turkish Kabab,dish,SEQ_607_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.05,494,CHARGHA CHICKEN,607,fried_grilled,Chargha Chicken,dish,SEQ_607_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.05,489,CHICKEN CHEESE TEMPURA,608,fried_grilled,Chicken Cheese Tempura,dish,SEQ_608_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.05,687,NORATAN KABAB,608,kabab_bbq,Navratan Kabab,dish,SEQ_608_SHARED,DUPLICATE_SEQUENCE;SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.05,700,FISH SEEKH KABAB,609,kabab_bbq,Fish Seekh Kabab,dish,SEQ_609_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.05,340,CORDON BLUE CHICKEN,609,fried_grilled,Cordon Bleu Chicken,dish,SEQ_609_SHARED,DUPLICATE_SEQUENCE;SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.05,714,KALEJI POTA CHICKEN,610,main_dishes,Kaleji Pota Chicken,dish,SEQ_610_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.05,731,CHICKEN CHEESE STRIPS,610,fried_grilled,Chicken Cheese Strips,dish,SEQ_610_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.05,715,SHAHI CHATAKH TIKKA,611,kabab_bbq,Shahi Chatakh Tikka,dish,SEQ_611_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.05,180,SHAMI KABAB CHICKEN,611,kabab_bbq,Shami Kabab Chicken,dish,SEQ_611_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.05,21,STEAM CHICKEN,612,fried_grilled,Steam Chicken,dish,SEQ_612_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.05,717,CHICKEN BALOCHI TIKKA,612,kabab_bbq,Chicken Balochi Tikka,dish,SEQ_612_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.05,719,SHAHI CHATAKH BOTI,613,kabab_bbq,Shahi Chatakh Boti,dish,SEQ_613_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.05,321,WINGS CHICKEN FRIED,613,fried_grilled,Chicken Wings Fried,dish,SEQ_613_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.05,338,DHAKA CHICKEN,614,fried_grilled,Dhaka Chicken,dish,SEQ_614_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.05,750,AMERICAN GRILL,614,fried_grilled,American Grill,dish,SEQ_614_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.05,751,CHEESE KABAB CHICKEN,615,kabab_bbq,Cheese Kabab Chicken,dish,SEQ_615_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.05,249,BISCUIT FISH,615,fried_grilled,Biscuit Fish,dish,SEQ_615_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.05,347,"SPRING ROLL CH CHESS,MINI",616,fried_grilled,Spring Roll Chicken Cheese Mini,dish,SEQ_616_SHARED,DUPLICATE_SEQUENCE;COMMA_INSIDE_DESCRIPTION;SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,CHESS likely Cheese
+9.44.05,782,LABENESE KABAB,616,kabab_bbq,Lebanese Kabab,dish,SEQ_616_SHARED,DUPLICATE_SEQUENCE;SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.05,785,BIHARI ROLL CHICKEN,617,kabab_bbq,Bihari Roll Chicken,dish,SEQ_617_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.05,449,DHAKA DESI FISH,617,fried_grilled,Dhaka Desi Fish,dish,SEQ_617_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.05,153,FRIED FISH LAHORI,618,fried_grilled,Fried Fish Lahori,dish,OVERLAP_9.44.33,DUPLICATE_SEQUENCE;ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.05,788,BALOOCHI BOTI BONELESS,618,kabab_bbq,Balochi Boti Boneless,dish,OVERLAP_9.44.33,DUPLICATE_SEQUENCE;SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.33,153,FRIED FISH LAHORI,618,fried_grilled,Fried Fish Lahori,dish,OVERLAP_9.44.05,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,repeat of previous screenshot rows
+9.44.33,788,BALOOCHI BOTI BONELESS,618,kabab_bbq,Balochi Boti Boneless,dish,OVERLAP_9.44.05,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.33,791,ANGARA KABAB,619,kabab_bbq,Angara Kabab,dish,SEQ_619_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.33,190,LAHORI FISH,619,fried_grilled,Lahori Fish,dish,SEQ_619_SHARED,DUPLICATE_SEQUENCE;CODE_190_REUSED,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,code 190 also used by QORMA MUTTON BADAMI (seq 422)
+9.44.33,175,PAMPLATE FRIED GOLD LAHORI,620,fried_grilled,Pomfret Fried Gold Lahori,dish,SEQ_620_SHARED,DUPLICATE_SEQUENCE;SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,PAMPLATE likely Pomfret
+9.44.33,793,CHICKEN SHINWARI TIKKA,620,kabab_bbq,Chicken Shinwari Tikka,dish,SEQ_620_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.33,797,HUNZAI KABAB,621,kabab_bbq,Hunza Kabab,dish,SEQ_621_SHARED,DUPLICATE_SEQUENCE;SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.33,728,FISH STUFF CHEESE,621,fried_grilled,Fish Stuffed Cheese,dish,SEQ_621_SHARED,DUPLICATE_SEQUENCE;SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.33,733,FISH CHEESE STUFFED,622,fried_grilled,Fish Cheese Stuffed,dish,SEQ_622_SHARED,DUPLICATE_SEQUENCE;POSSIBLE_DUPLICATE_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,code 728 at 621 is the same words in a different order
+9.44.33,804,MEXICAN TIKKA,622,kabab_bbq,Mexican Tikka,dish,SEQ_622_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.33,807,AFGHANI BOTI BEEF,623,kabab_bbq,Afghani Boti Beef,dish,SEQ_623_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.33,450,FISH TEMPURA,623,fried_grilled,Fish Tempura,dish,SEQ_623_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.33,315,BOHRA FRIED MUTTON,624,fried_grilled,Bohra Fried Mutton,dish,SEQ_624_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.33,809,DIL GURDA BBQ LIVE SEEKH,624,kabab_bbq,Dil Gurda BBQ Live Seekh,lump_sum_service,SEQ_624_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,LIVE suggests live counter
+9.44.33,811,MORACON KABAB,625,kabab_bbq,Moroccan Kabab,dish,SEQ_625_SHARED,DUPLICATE_SEQUENCE;SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,MORACON likely Moroccan
+9.44.33,297,CHAT PATI RAAN MUTTON,625,main_dishes,Chatpati Raan Mutton,dish,SEQ_625_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.33,210,STEAM MUTTON,626,fried_grilled,Steam Mutton,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.33,172,PRAWN TEMPURA,627,fried_grilled,Prawn Tempura,dish,,LEADING_SPACE_IN_SOURCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.33,756,CHAPLI KABAB FISH,628,kabab_bbq,Chapli Kabab Fish,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.33,732,WINGS CHICKEN LAHORI,629,fried_grilled,Chicken Wings Lahori,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.33,431,SALAM BAKRA,630,fried_grilled,Sabut Bakra,dish,,SPELLING_UNCERTAIN,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,SALAM unclear - possibly Sabut meaning whole goat
+9.44.33,931,TAWA FISH,631,fried_grilled,Tawa Fish,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.33,554,CRISPY FISH,632,fried_grilled,Crispy Fish,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.33,581,SPICY CHARGA CHICKEN,633,fried_grilled,Spicy Chargha Chicken,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.33,604,FOILED STEAM CHICKEN,634,fried_grilled,Foiled Steam Chicken,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.33,608,STEAM CHICKEN GREEN MASALA,635,fried_grilled,Steam Chicken Green Masala,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.33,615,CRISPY BROAST CHICKEN,636,fried_grilled,Crispy Broast Chicken,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.33,623,CHICKEN ALA KIEV,637,fried_grilled,Chicken a la Kiev,dish,OVERLAP_9.44.55,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.33,627,CHICKEN SPRING,638,fried_grilled,Chicken Spring,dish,OVERLAP_9.44.55,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.33,632,CHICKEN CHEESE BALL,639,fried_grilled,Chicken Cheese Ball,dish,OVERLAP_9.44.55,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.55,623,CHICKEN ALA KIEV,637,fried_grilled,Chicken a la Kiev,dish,OVERLAP_9.44.33,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,repeat of previous screenshot rows
+9.44.55,627,CHICKEN SPRING,638,fried_grilled,Chicken Spring,dish,OVERLAP_9.44.33,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.55,632,CHICKEN CHEESE BALL,639,fried_grilled,Chicken Cheese Ball,dish,OVERLAP_9.44.33,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.55,637,CHICKEN CUTLUS,640,fried_grilled,Chicken Cutlets,dish,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.55,643,CHICKEN FINGER,641,fried_grilled,Chicken Finger,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.55,651,CHICKEN DRUM STICK,642,fried_grilled,Chicken Drumstick,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.55,663,CHICKEN SAMOOSA,643,fried_grilled,Chicken Samosa,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,SAMOOSA and SAMOSA both used in source
+9.44.55,671,CHICKEN STRIP CRISPY,644,fried_grilled,Chicken Strip Crispy,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.55,675,FISH NUGGETS,645,fried_grilled,Fish Nuggets,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.55,703,FISH BISCUIT MUSHKA,646,fried_grilled,Fish Biscuit Mushka,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.55,718,PRAWNS CHILLI DRY,647,fried_grilled,Prawns Chilli Dry,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.55,720,FISH N CHIPS,648,fried_grilled,Fish and Chips,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.55,974,MUTTON ROASH,649,fried_grilled,Mutton Roast,dish,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.55,828,FOIL KABAB CHICKEN,650,kabab_bbq,Foil Kabab Chicken,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.55,902,GULF CHEESE KABAB GRILL,651,kabab_bbq,Gulf Cheese Kabab Grill,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.55,959,CHICKEN STICK,652,fried_grilled,Chicken Stick,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.55,814,CHICKEN BALOCHI TIKKA FRY,653,fried_grilled,Chicken Balochi Tikka Fry,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.55,1040,MANGOLIAN STRIPS,654,fried_grilled,Mongolian Strips,dish,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.55,1045,FISH SAJJI,655,fried_grilled,Fish Sajji,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.55,157,CRISPY CHICKEN POTATO CUTLETS,701,snacks_live_counter,Crispy Chicken Potato Cutlets,dish,,SEQUENCE_GAP_656_700,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,band boundary
+9.44.55,306,VEGETABLE ROLL CHICKEN,703,snacks_live_counter,Vegetable Roll Chicken,dish,,SEQUENCE_GAP_702,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.55,116,DAHI PHULKI,704,snacks_live_counter,Dahi Phulki,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.55,176,FRENCH FRIES,705,snacks_live_counter,French Fries,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.55,574,MINT ROLL,706,snacks_live_counter,Mint Roll,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.55,138,ONE BYTE SAMOSA BEEF,707,snacks_live_counter,One Bite Samosa Beef,dish,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,BYTE likely Bite
+9.44.55,536,MINI PIZZA,708,snacks_live_counter,Mini Pizza,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.55,202,SAMOSA ONE BITE CHICKEN,710,snacks_live_counter,Samosa One Bite Chicken,dish,,SEQUENCE_GAP_709,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.55,266,VEGETABLE CUTLUS,712,snacks_live_counter,Vegetable Cutlets,dish,,SEQUENCE_GAP_711;SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.55,263,WONG TONG (SAMOSA),713,snacks_live_counter,Wonton Samosa,dish,,SPELLING_UNCERTAIN,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.44.55,271,CHANA TARKARI,716,snacks_live_counter,Chana Tarkari,dish,OVERLAP_9.45.18,SEQUENCE_GAP_714_715;ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.18,271,CHANA TARKARI,716,snacks_live_counter,Chana Tarkari,dish,OVERLAP_9.44.55,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,repeat of previous screenshot last row
+9.45.18,57,CHANA TARKARI,717,snacks_live_counter,Chana Tarkari,dish,CHANA_TARKARI,POSSIBLE_DUPLICATE_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,codes 271 and 57 carry an identical name on consecutive sequences
+9.45.18,224,PARATHA RAWA MEDA (LIVE),718,breads,Paratha Rawa Maida Live,lump_sum_service,PARATHA_RAWA,MISFILED_BAND,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,LIVE counter bread sitting in the snacks band; code 78 is a near-identical name at 914
+9.45.18,101,KACHORI TARKARI,719,snacks_live_counter,Kachori Tarkari,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.18,537,MASALA DOSA VEGETABLE,720,snacks_live_counter,Masala Dosa Vegetable,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.18,564,CHICKEN NUGGETS,721,snacks_live_counter,Chicken Nuggets,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.18,565,VEGETABLE SAMOOSA,722,snacks_live_counter,Vegetable Samosa,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.18,592,MASALA DOSA CHICKEN,724,snacks_live_counter,Masala Dosa Chicken,dish,,SEQUENCE_GAP_723,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.18,595,PASTA CHICKEN,725,snacks_live_counter,Pasta Chicken,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.18,660,PALAK PANEER MAKAI ROTI,726,breads,Palak Paneer Makai Roti,dish,,MISFILED_BAND,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.45.18,681,FOOD STREET,727,snacks_live_counter,Food Street,lump_sum_service,,AMBIGUOUS_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,likely a multi-counter package - confirm what it includes
+9.45.18,708,ARABIAN PUFF,728,snacks_live_counter,Arabian Puff,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.18,735,TEMPURA VEGETABLE,730,snacks_live_counter,Tempura Vegetable,dish,,SEQUENCE_GAP_729,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.18,743,LASANIA,731,snacks_live_counter,Lasagna,dish,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.18,744,ARBI PARATHA,732,breads,Arbi Paratha,dish,,MISFILED_BAND,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.18,778,CHICKEN CHEESE CONE,733,snacks_live_counter,Chicken Cheese Cone,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.18,795,CHICKEN POCKET,734,snacks_live_counter,Chicken Pocket,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.18,821,CEREAL STATIONS,736,snacks_live_counter,Cereal Station,lump_sum_service,,SEQUENCE_GAP_735,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,station suggests a live counter charge
+9.45.18,816,DUMBA CHAKKI,736,snacks_live_counter,Dumba Chakki,dish,SEQ_736_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.18,817,CHEESE KABAB BEEF,737,kabab_bbq,Cheese Kabab Beef,dish,SEQ_737_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.18,838,POTATO CHEESE BALL,737,snacks_live_counter,Potato Cheese Ball,dish,SEQ_737_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.18,846,BREAD ROLL,738,snacks_live_counter,Bread Roll,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.18,851,SHAWARMA PLATER,739,snacks_live_counter,Shawarma Platter,dish,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.18,852,HUMUS,740,snacks_live_counter,Hummus,dish,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.18,853,BAKLAVA,741,desserts,Baklava,dish,,MISFILED_BAND,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,a dessert in the snacks band
+9.45.18,854,FALAFAL,742,snacks_live_counter,Falafel,dish,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.18,882,STEAMED MOMOS WITH SAUCE,743,snacks_live_counter,Steamed Momos with Sauce,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.18,895,BOX PATTIES,744,snacks_live_counter,Box Patties,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.18,896,BREAD PATTIES,745,snacks_live_counter,Bread Patties,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.18,914,BEEF SLIDERS,746,snacks_live_counter,Beef Sliders,dish,OVERLAP_9.45.38,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.38,914,BEEF SLIDERS,746,snacks_live_counter,Beef Sliders,dish,OVERLAP_9.45.18,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,repeat of previous screenshot last row
+9.45.38,916,FETTUCCINE PASTA,747,snacks_live_counter,Fettuccine Pasta,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.38,917,PIZZA FLAVOURS,748,snacks_live_counter,Pizza Flavours,dish,,AMBIGUOUS_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,plural suggests a group not a single product
+9.45.38,958,STIR FRIED BEEF,749,snacks_live_counter,Stir Fried Beef,dish,SEQ_749_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.38,1017,CHICKEN THREAD,749,snacks_live_counter,Chicken Thread,dish,SEQ_749_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.38,969,SARSON KA SAAG MAKAI ROTI,750,main_dishes,Sarson Ka Saag with Makai Roti,dish,,MISFILED_BAND,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.45.38,1054,DALL BHARA PARATHA,751,breads,Daal Bhara Paratha,dish,,MISFILED_BAND;SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.38,30,ZARDA KHOYA MOTIA GULAB JAMAN,801,desserts,Zarda Khoya Motia Gulab Jamun,dish,,SEQUENCE_GAP_752_800;SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,dessert band begins
+9.45.38,303,AMRATI,802,desserts,Amrati,dish,AMRATI_PAIR,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.38,235,AMRATI LIVE,803,desserts,Amrati Live,lump_sum_service,AMRATI_PAIR,,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,LIVE suggests a counter charge
+9.45.38,278,APPLE PIE,804,desserts,Apple Pie,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.38,352,CHEERY CREAM,805,desserts,Cherry Cream,dish,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.38,184,CHEESE CAKE,806,desserts,Cheese Cake,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.38,187,CREAM COCKTAIL,807,desserts,Cream Cocktail,dish,CREAM_COCKTAIL,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,also appears at 861 862 2004 as pack sizes
+9.45.38,39,CREAM KAREMAL,808,desserts,Cream Caramel,dish,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.38,350,DESSERT BAR,809,desserts,Dessert Bar,lump_sum_service,,,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,likely a counter package
+9.45.38,324,DOODH DULARI,810,desserts,Doodh Dulari,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.38,205,EXTRA MEWAJAT,811,desserts,Extra Mewajat,material_backed_item,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,likely an add-on of dry fruit
+9.45.38,34,FIRNI,812,desserts,Firni,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.38,467,FRUIT CUSTARD,813,desserts,Fruit Custard,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.38,31,FRUIT TRIFFAL,814,desserts,Fruit Trifle,dish,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.38,37,HALWA GAJAR,815,desserts,Halwa Gajar,dish,HALWA_GAJAR,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,code 507 is a desi ghee special variant at 822
+9.45.38,317,GAJAR KHEER,816,desserts,Gajar Kheer,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.38,36,GAJRELA,817,desserts,Gajrela,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.38,107,GARAM GULAB JAMAN,818,desserts,Garam Gulab Jamun,dish,GULAB_JAMUN,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.38,216,GULAB JAMAN (LIVE),819,desserts,Gulab Jamun Live,lump_sum_service,GULAB_JAMUN,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.45.38,29,GULATI ZARDA,820,desserts,Gulati Zarda,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.38,89,GULLATI,821,desserts,Gulati,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.38,507,HALWA GAJAR DESI GHEE SPECIAL,822,desserts,Halwa Gajar Desi Ghee Special,dish,HALWA_GAJAR,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.45.38,115,ICE CREAM MANGO,823,desserts,Ice Cream Mango,material_backed_item,OVERLAP_9.46.08,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.08,115,ICE CREAM MANGO,823,desserts,Ice Cream Mango,material_backed_item,OVERLAP_9.45.38,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,repeat of previous screenshot last row
+9.46.08,32,ICE TRIFFAL,824,desserts,Ice Trifle,dish,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.08,142,JALEBI STALL,825,desserts,Jalebi Stall,lump_sum_service,,,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,stall suggests a live counter charge
+9.46.08,33,KHEER,826,desserts,Kheer,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.08,503,KHEER QULFA,827,desserts,Kheer Qulfi,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.08,240,KHEER SAKOREE,828,desserts,Kheer Sakoray,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.08,41,KHUBANI KA MEETHA,829,desserts,Khubani Ka Meetha,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.08,127,LAB-E-KHAS,830,desserts,Lab-e-Khas,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.08,80,LAB-E-SHEEREEN,831,desserts,Lab-e-Shireen,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.08,38,LOKI HALWA DESI GHEE SPECIAL,832,desserts,Lauki Halwa Desi Ghee Special,dish,LAUKI_HALWA,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.08,35,HALWA LOKI,833,desserts,Halwa Lauki,dish,LAUKI_HALWA,SPELLING_VARIANT;LEADING_SPACE_IN_SOURCE;POSSIBLE_DUPLICATE_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,code 38 at 832 is the same item with SPECIAL added
+9.46.08,269,LOKI KHEER,834,desserts,Lauki Kheer,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.08,212,MAAL PURA,835,desserts,Malpua,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.08,331,PARSA ICE CREAM,836,desserts,Parsa Ice Cream,material_backed_item,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.08,83,PINEAPPLE KHEER,837,desserts,Pineapple Kheer,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.08,44,PINEAPPLE RUSGULLA,838,desserts,Pineapple Rasgulla,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.08,43,QULFI CRUNCH FALOODA,839,desserts,Qulfi Crunch Falooda,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.08,238,QULFI ZAFRANI,840,desserts,Qulfi Zafrani,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.08,125,RABRI KHEER,841,desserts,Rabri Kheer,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.08,45,RABRI PISTA,842,desserts,Rabri Pista,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.08,464,RABRI PLAIN,843,desserts,Rabri Plain,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.08,510,RAS GULLA,844,desserts,Rasgulla,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.08,466,RAS MALAI,845,desserts,Rasmalai,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.08,217,SHAHI TUKRAY,846,desserts,Shahi Tukray,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.08,511,SHAKAR KANDI KHEER,847,desserts,Shakarkandi Kheer,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.08,524,HALWA SUJI DESI GHEE,848,desserts,Halwa Suji Desi Ghee,dish,HALWA_SUJI,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,code 86 is plain Halwa Suji at 860
+9.46.08,TRUNCATED,ZAFRANI KHEER,849,desserts,Zafrani Kheer,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.08,TRUNCATED,ZARDA SADA PELA,850,desserts,Zarda Sada Peela,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.08,TRUNCATED,ZARDA KHOYA PELA GULAB JAMAN,851,desserts,Zarda Khoya Peela Gulab Jamun,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.08,524,ZARDA SADA MOTIA,852,desserts,Zarda Sada Motia,dish,OVERLAP_9.46.26,ROW_REPEATED_ACROSS_SCREENSHOTS;CODE_524_REUSED,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,code 524 also used by HALWA SUJI DESI GHEE at 848 - genuine code collision
+9.46.26,524,ZARDA SADA MOTIA,852,desserts,Zarda Sada Motia,dish,OVERLAP_9.46.08,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,repeat of previous screenshot last row
+9.46.26,539,PLAIN CAKE,853,desserts,Plain Cake,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.26,532,STICK QULFI,854,desserts,Stick Qulfi,material_backed_item,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.26,546,MATKA QULFI,855,desserts,Matka Qulfi,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.26,549,ZARDA SPECIAL (CUP),856,desserts,Zarda Special Cup,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,cup portion - confirm unit is PCS
+9.46.26,552,HALWA CHANA,857,desserts,Halwa Chana,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.26,559,CHOCLATE FOUNTAIN,858,desserts,Chocolate Fountain,lump_sum_service,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,fountain is almost certainly a lump-sum counter hire
+9.46.26,560,KHOYA,859,desserts,Khoya,material_backed_item,,AMBIGUOUS_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,raw material or a sold dessert
+9.46.26,86,HALWA SUJI,860,desserts,Halwa Suji,dish,HALWA_SUJI,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.26,614,CREAM COCKTAIL  HALF PACK,861,desserts,Cream Cocktail Half Pack,dish,CREAM_COCKTAIL,DOUBLE_SPACE_IN_SOURCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.26,621,CREAM COCKTAIL FULL PACK,862,desserts,Cream Cocktail Full Pack,dish,CREAM_COCKTAIL,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.26,628,KHEER CUP,863,desserts,Kheer Cup,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.26,639,KHEER INDIAN,864,desserts,Kheer Indian,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.26,666,EGG HALWA DESI GHEE,865,desserts,Egg Halwa Desi Ghee,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.26,678,ICE  CREAM CHESS CAKE,866,desserts,Ice Cream Cheesecake,dish,,DOUBLE_SPACE_IN_SOURCE;SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,CHESS likely Cheese
+9.46.26,680,KHEER DIET,867,desserts,Kheer Diet,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.26,682,CHEERY KRUNCH,868,desserts,Cherry Crunch,dish,CHERRY_CRUNCH,SPELLING_ERROR;POSSIBLE_DUPLICATE_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,code 688 at 869 is the same item spelled correctly
+9.46.26,688,CHERRY CRUNCH,869,desserts,Cherry Crunch,dish,CHERRY_CRUNCH,POSSIBLE_DUPLICATE_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.46.26,691,EGG PUDDING,870,desserts,Egg Pudding,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.26,696,ICE CREAM SICILIAN,871,desserts,Ice Cream Sicilian,material_backed_item,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.26,697,ICE CREAM ROASTED ALMOND,872,desserts,Ice Cream Roasted Almond,material_backed_item,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.26,698,ICE CREAM GATAEU,873,desserts,Ice Cream Gateau,material_backed_item,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.26,699,SHEER KHORMA,874,desserts,Sheer Khurma,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.26,745,ICE CREAM (LIVE COUNTER),875,desserts,Ice Cream Live Counter,lump_sum_service,,,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.46.26,754,PISTA COCKTAIL,876,desserts,Pista Cocktail,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.26,248,PISTA QULFI FALOODA,877,desserts,Pista Qulfi Falooda,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.26,763,HALWA MAKKHANA,878,desserts,Halwa Makhana,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.26,768,HALWA INJEER,879,desserts,Halwa Injeer,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.26,777,MANGO DELIGHT,880,desserts,Mango Delight,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.46.26,810,CHOCOLATE ECLAIRS,881,desserts,Chocolate Eclairs,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.47.05,DUPLICATE_FILE,IDENTICAL TO 9.46.26,NA,NA,NA,NA,EXACT_FILE_DUPLICATE,BYTE_IDENTICAL_SCREENSHOT,no,no,no,no,IGNORE_DUPLICATE_FILE,md5 identical to WhatsApp Image 2026-08-20 at 9.46.26 PM.jpeg - counted once only
+9.47.52,812,COCKTAIL DELIGHT,882,desserts,Cocktail Delight,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.47.52,825,CAKE ALASKA,883,desserts,Baked Alaska,dish,,SPELLING_UNCERTAIN,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,CAKE ALASKA likely Baked Alaska - confirm
+9.47.52,826,JALEBI,884,desserts,Jalebi,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.47.52,827,SUJI HALWA CUP,885,desserts,Suji Halwa Cup,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.47.52,837,SAFFRON DELIGHT,886,desserts,Saffron Delight,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.47.52,843,HALWA KAJO MALAI,887,desserts,Halwa Kaju Malai,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.47.52,856,KUNAFA,888,desserts,Kunafa,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.47.52,860,CREAMY BISCOFF,889,desserts,Creamy Biscoff,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.47.52,881,PEACH CREAM,890,desserts,Peach Cream,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.47.52,884,"ICE CREAM WAFFLES,LIVE",891,desserts,Ice Cream Waffles Live,lump_sum_service,,COMMA_INSIDE_DESCRIPTION,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.47.52,889,INJEER DELIGHT,892,desserts,Injeer Delight,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.47.52,892,PASTERIES IN PICS,893,desserts,Pastries in Pieces,dish,,SPELLING_ERROR;ABBREVIATION_IN_SOURCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,PICS likely PCS meaning pieces
+9.47.52,906,CRAMEL CRUNCH ICE CREAM,894,desserts,Caramel Crunch Ice Cream,material_backed_item,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.47.52,907,ICE CREAM COFFEE,895,desserts,Ice Cream Coffee,material_backed_item,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.47.52,913,HALWA AKHROT,896,desserts,Halwa Akhrot,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.47.52,918,LAVA CAKEICE WITH CREAM,897,desserts,Lava Cake with Ice Cream,dish,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,CAKEICE appears to be a missing space
+9.47.52,919,TARTS SWEET,898,desserts,Sweet Tarts,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.47.52,933,MALAI HALWA,899,desserts,Malai Halwa,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.47.52,944,PEACH CASATTA,900,desserts,Peach Cassata,dish,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.47.52,1027,BROWNIE,901,desserts,Brownie,dish,SEQ_901_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.47.52,316,AGRA SHAHI,901,desserts,Agra Shahi,dish,SEQ_901_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.47.52,337,ALOO PARATHA,902,breads,Aloo Paratha,dish,SEQ_902_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,bread band begins
+9.47.52,256,CHOCKBAR LIVE COUNTER,902,desserts,Chocobar Live Counter,lump_sum_service,SEQ_902_SHARED,DUPLICATE_SEQUENCE;SPELLING_ERROR,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.47.52,455,BAISANI PARATHA,903,breads,Besani Paratha,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.47.52,211,BASNI ROTI,904,breads,Besani Roti,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.47.52,94,M BREAD,905,breads,M Bread,dish,M_BREAD,AMBIGUOUS_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,M unclear; code 541 repeats the name at 924
+9.47.52,456,CHPATI,906,breads,Chapati,dish,CHAPATI_FAMILY,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.47.52,69,DISCO ROTI,907,breads,Disco Roti,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.47.52,362,FARMAISHI CHAPATI,908,breads,Farmaishi Chapati,dish,CHAPATI_FAMILY,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.47.52,362,NAN MILKY,909,breads,Naan Milky,dish,OVERLAP_9.48.42,ROW_REPEATED_ACROSS_SCREENSHOTS;CODE_362_REUSED,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,code 362 appears twice on adjacent rows - genuine collision
+9.48.42,362,NAN MILKY,909,breads,Naan Milky,dish,NAAN_MILKY,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,repeat of previous screenshot last row
+9.48.42,53,NAN MILKY -,910,breads,Naan Milky,dish,NAAN_MILKY,TRAILING_DASH_IN_SOURCE;POSSIBLE_DUPLICATE_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,codes 362 and 53 carry the same name on adjacent sequences - the trailing dash may mark a size or a branch
+9.48.42,267,NAN PLAIN,911,breads,Naan Plain,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.48.42,222,NAN SINGLE,912,breads,Naan Single,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.48.42,372,PARATHA (PCS),913,breads,Paratha Pieces,dish,,ABBREVIATION_IN_SOURCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,unit is almost certainly PCS
+9.48.42,78,PARATHA RAWA MEDA,914,breads,Paratha Rawa Maida,dish,PARATHA_RAWA,POSSIBLE_DUPLICATE_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,code 224 at 718 is the LIVE version of the same bread
+9.48.42,276,QEEMA PARATHA,915,breads,Qeema Paratha,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.48.42,137,QULCHA -,916,breads,Kulcha,dish,KULCHA,TRAILING_DASH_IN_SOURCE;POSSIBLE_DUPLICATE_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,codes 137 and 108 are the same bread on adjacent sequences
+9.48.42,108,QULCHA,917,breads,Kulcha,dish,KULCHA,POSSIBLE_DUPLICATE_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.48.42,52,SHEERMAL -,918,breads,Sheermal,dish,SHEERMAL,TRAILING_DASH_IN_SOURCE;POSSIBLE_DUPLICATE_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.48.42,359,SHEERMAL,919,breads,Sheermal,dish,SHEERMAL,POSSIBLE_DUPLICATE_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.48.42,51,TAFTAN -,920,breads,Taftan,dish,TAFTAN,TRAILING_DASH_IN_SOURCE;POSSIBLE_DUPLICATE_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.48.42,368,TAFTAN,921,breads,Taftan,dish,TAFTAN,POSSIBLE_DUPLICATE_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,the dash-suffixed pairs repeat across five breads - confirm what the dash means
+9.48.42,140,TANDOOR (LIVE),922,breads,Tandoor Live,lump_sum_service,,,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,live tandoor is almost certainly a counter hire plus bread
+9.48.42,529,CHAPATI SPECIAL,923,breads,Chapati Special,dish,CHAPATI_FAMILY,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.48.42,541,M BREAD -,924,breads,M Bread,dish,M_BREAD,TRAILING_DASH_IN_SOURCE;POSSIBLE_DUPLICATE_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,code 94 at 905 carries the same name
+9.48.42,580,FAMAISHI CHAPATI LIVE,925,breads,Farmaishi Chapati Live,lump_sum_service,CHAPATI_FAMILY,SPELLING_ERROR,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.48.42,582,SHEERMAL LIVE,926,breads,Sheermal Live,lump_sum_service,SHEERMAL_LIVE,POSSIBLE_DUPLICATE_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,codes 582 and 589 carry an identical name on adjacent sequences
+9.48.42,589,SHEERMAL LIVE,927,breads,Sheermal Live,lump_sum_service,SHEERMAL_LIVE,POSSIBLE_DUPLICATE_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.48.42,794,AGRA SHAHI SPAICIOL,928,breads,Agra Shahi Special,dish,,SPELLING_ERROR;MISFILED_BAND,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,SPAICIOL likely Special; AGRA SHAHI also appears as a dessert at 901
+9.48.42,872,MISSI ROTI TAWA,929,breads,Missi Roti Tawa,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.48.42,986,BEST EVER NAAN TANDOOR,930,breads,Naan Tandoor,dish,,MARKETING_WORDS_IN_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,BEST EVER looks like marketing copy not a product name
+9.48.42,55,RAITA,1001,raita,Raita,dish,,SEQUENCE_GAP_931_1000,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,raita band begins
+9.48.42,634,DAHI KONDA,1002,raita,Dahi Konda,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.48.42,888,RAITA ONION FRIED,1003,raita,Raita Onion Fried,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.48.42,905,BURANI RAITA TADKA,1004,raita,Burani Raita Tadka,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.48.42,987,TANDOORI MINT RAITA,1005,raita,Tandoori Mint Raita,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.48.42,988,DAHI FRY RECIPE,1006,raita,Dahi Fry,dish,,RECIPE_WORD_IN_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,RECIPE looks like a stray word
+9.48.42,64,SALAD BAR  COLD -12,1101,salads,Salad Bar Cold 12,lump_sum_service,,DOUBLE_SPACE;UNEXPLAINED_CODE_IN_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,the -12 likely means a 12-bowl configuration - confirm
+9.48.42,311,COLE SLAW,1102,salads,Coleslaw,dish,OVERLAP_9.49.01,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.49.01,713,ACHAR,1102,chutneys_sauces,Achar,material_backed_item,SEQ_1102_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,shares sequence 1102 with COLE SLAW
+9.49.01,54,SALAD GREEN,1103,salads,Salad Green,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.49.01,360,SALAD PLATER GREEN,1104,salads,Salad Platter Green,dish,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.49.01,85,KACHOOMER,1105,salads,Kachumber,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.49.01,92,MIRCHON KA SALAN,1106,main_dishes,Mirchon Ka Salan,dish,,MISFILED_BAND,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,a curry sitting in the salad band
+9.49.01,132,NOODLS + RUSIAN SALAD,1107,salads,Noodles and Russian Salad,dish,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.49.01,374,PIYYAZ CHATNI,1108,chutneys_sauces,Piyaaz Chutney,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.49.01,81,RUSSIAN SALAD TRAY,1109,salads,Russian Salad Tray,dish,RUSSIAN_SALAD,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.49.01,100,RUSSIAN SALAD PLATER,1110,salads,Russian Salad Platter,dish,RUSSIAN_SALAD,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.49.01,437,SALAD BAR CONTINATAL 16 BOWL,1111,salads,Salad Bar Continental 16 Bowl,lump_sum_service,SALAD_BAR_FAMILY,SPELLING_ERROR,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,four bowl-count variants at 1111-1114 - likely lump sum by configuration
+9.49.01,438,SALAD BAR CONTINATAL 18 BOWLS,1112,salads,Salad Bar Continental 18 Bowls,lump_sum_service,SALAD_BAR_FAMILY,SPELLING_ERROR,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.49.01,439,SALAD BAR CONTINATAL 24 BOWLS,1113,salads,Salad Bar Continental 24 Bowls,lump_sum_service,SALAD_BAR_FAMILY,SPELLING_ERROR,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.49.01,436,SALAD BAR CONTINATAL 9 BOWL,1114,salads,Salad Bar Continental 9 Bowl,lump_sum_service,SALAD_BAR_FAMILY,SPELLING_ERROR,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.49.01,91,BHAGARE BAGUN,1115,main_dishes,Bagharey Baingan,dish,,SPELLING_VARIANT;MISFILED_BAND,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.49.01,62,SALAD BAR (SHIP),1116,salads,Salad Bar Ship,lump_sum_service,SALAD_BAR_FAMILY,AMBIGUOUS_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,SHIP likely a display-stand shape - confirm
+9.49.01,310,SALAD BAR COLD - 9,1117,salads,Salad Bar Cold 9,lump_sum_service,SALAD_BAR_FAMILY,UNEXPLAINED_CODE_IN_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.49.01,563,SALAD TRAY GREEN,1118,salads,Salad Tray Green,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.49.01,753,SALAD TROLLY,1119,salads,Salad Trolley,rental_like_charge,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,trolley may be equipment hire rather than food
+9.49.01,820,FRUIT,1120,salads,Fruit,material_backed_item,,AMBIGUOUS_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,single generic word - confirm what is sold
+9.49.01,839,SALAD BBQ,1121,salads,Salad BBQ,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.49.01,857,CHICKEN PINAPPLE SALAD,1122,salads,Chicken Pineapple Salad,dish,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.49.01,861,ROYAL SALAD MIX,1123,salads,Royal Salad Mix,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.49.01,960,SALAD PLATE,1124,salads,Salad Plate,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.49.01,75,CHATNI AALOO BUKHARA,1201,chutneys_sauces,Chutney Aloo Bukhara,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,chutney band begins
+9.49.01,168,CHATNI,1202,chutneys_sauces,Chutney,dish,,AMBIGUOUS_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,generic - confirm which chutney
+9.49.01,166,CHATNI GREEN,1203,chutneys_sauces,Chutney Green,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.49.01,555,CHILLI GARLIC,1205,chutneys_sauces,Chilli Garlic Sauce,dish,,SEQUENCE_GAP_1204,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.49.01,556,TAUTAR SAUCE,1206,chutneys_sauces,Tartar Sauce,dish,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.49.01,618,MAYONNAISE,1207,chutneys_sauces,Mayonnaise,material_backed_item,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,likely bought-in 1:1
+9.49.01,879,GARLIC SAUCE,1208,chutneys_sauces,Garlic Sauce,dish,OVERLAP_9.49.18,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.49.18,879,GARLIC SAUCE,1208,chutneys_sauces,Garlic Sauce,dish,OVERLAP_9.49.01,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,repeat of previous screenshot last row
+9.49.18,880,CHILLI SAUCE CHATNI,1209,chutneys_sauces,Chilli Sauce Chutney,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.49.18,904,KHAJOOR IMLI CHATNI,1210,chutneys_sauces,Khajoor Imli Chutney,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.49.18,989,KHATTI METHI GUR WALI MIRCHI,1211,chutneys_sauces,Khatti Meethi Gur Wali Mirchi,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.49.18,70,ESPRESSO COFFEE,1302,tea_coffee,Espresso Coffee,dish,,SEQUENCE_GAP_1212_1301,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,tea and coffee band begins
+9.49.18,158,GREEN TEA,1303,tea_coffee,Green Tea,dish,GREEN_TEA,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.49.18,60,KASHMERI TEA,1304,tea_coffee,Kashmiri Tea,dish,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.49.18,169,TEA (PLAIN),1305,tea_coffee,Tea Plain,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.49.18,298,TEA BAG,1306,tea_coffee,Tea Bag,material_backed_item,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,likely bought-in 1:1
+9.49.18,61,TEA MILKY,1307,tea_coffee,Tea Milky,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.49.18,242,ZAFRANI TEA,1308,tea_coffee,Zafrani Tea,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.49.18,961,TEA & GREEN TEA,1309,tea_coffee,Tea and Green Tea,dish,GREEN_TEA,,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,combined item - confirm it is a separate product
+9.49.18,1008,TEA + GREEN TEA VIP STALL,1310,tea_coffee,Tea and Green Tea VIP Stall,lump_sum_service,GREEN_TEA,,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,stall suggests a live counter charge
+9.49.18,117,PAN STALL,1401,pan_stall,Pan Stall,lump_sum_service,,SEQUENCE_GAP_1311_1400,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,pan stall is almost certainly a lump-sum counter
+9.49.18,170,MINERAL WATER LARGE,1501,water_drinks_packing,Mineral Water Large,material_backed_item,WATER_FAMILY,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,bought-in 1:1 by bottle
+9.49.18,97,COLD DRINK,1502,water_drinks_packing,Cold Drink,material_backed_item,COLD_DRINK_FAMILY,AMBIGUOUS_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,generic - five size variants follow
+9.49.18,597,COLD DRINK 500ML,1503,water_drinks_packing,Cold Drink 500ml,material_backed_item,COLD_DRINK_FAMILY,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.49.18,603,COLD DRINK 1.5 LTR,1504,water_drinks_packing,Cold Drink 1.5 Litre,material_backed_item,COLD_DRINK_FAMILY,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.49.18,616,"COLD DRINK CAN,250,ML",1505,water_drinks_packing,Cold Drink Can 250ml,material_backed_item,COLD_DRINK_FAMILY,COMMA_INSIDE_DESCRIPTION,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.49.18,661,DISPENSOR,1506,water_drinks_packing,Water Dispenser,rental_like_charge,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,equipment - hire charge or purchase
+9.49.18,662,MINERAL CANE 19L,1507,water_drinks_packing,Mineral Water Can 19L,material_backed_item,WATER_FAMILY,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,CANE likely Can
+9.49.18,707,MINERAL WATER SMALL,1508,water_drinks_packing,Mineral Water Small,material_backed_item,WATER_FAMILY,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.49.18,1010,PACKING MATERIAL BOXES,1509,water_drinks_packing,Packing Material Boxes,packing_disposable,PACKING_SCATTERED,,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,packing appears in four different sequence bands
+9.49.18,233,AALOO CHANA CHAT,1601,misc_decoration,Aloo Chana Chaat,dish,,SEQUENCE_GAP_1510_1600,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.49.18,152,DAHI BARAY,1603,misc_decoration,Dahi Baray,dish,,SEQUENCE_GAP_1602,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.49.18,280,GARMA,1605,misc_decoration,Garma,material_backed_item,,SEQUENCE_GAP_1604;AMBIGUOUS_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,likely a melon - confirm
+9.49.18,305,GRAPES,1606,misc_decoration,Grapes,material_backed_item,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.49.18,206,KETCHUP,1607,misc_decoration,Ketchup,material_backed_item,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,bought-in 1:1
+9.49.18,185,MANGOES,1608,misc_decoration,Mangoes,material_backed_item,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.49.18,504,"PACKING, SMALL",1609,misc_decoration,Packing Small,packing_disposable,PACKING_SCATTERED,COMMA_INSIDE_DESCRIPTION,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.50.03,308,SARDA,1612,misc_decoration,Sarda Melon,material_backed_item,,SEQUENCE_GAP_1610_1611,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,likely a melon
+9.50.03,201,DECORATION,1613,misc_decoration,Decoration,lump_sum_service,DECORATION_FAMILY,,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,flowers and staging live here - almost certainly lump sum per event
+9.50.03,1030,TANG SHARBAT,1614,misc_decoration,Tang Sharbat,material_backed_item,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,branded powder - bought in
+9.50.03,320,ASSORTED SAMOSA,1701,platters_assorted,Assorted Samosa,dish,,SEQUENCE_GAP_1615_1700,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,platters band begins
+9.50.03,319,ASSORTED SANDWICH,1702,platters_assorted,Assorted Sandwich,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.03,376,BISCUIT,1703,platters_assorted,Biscuit,material_backed_item,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.03,341,CHICKEN LOLY POP,1705,platters_assorted,Chicken Lollipop,dish,,SEQUENCE_GAP_1704;SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.03,325,CHICKEN PATTIES,1706,platters_assorted,Chicken Patties,dish,SEQ_1706_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.03,723,FISH CHEESE BALL,1706,platters_assorted,Fish Cheese Ball,dish,SEQ_1706_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.03,729,PRAWNS BUTTER FLY,1708,platters_assorted,Prawns Butterfly,dish,SEQ_1708_SHARED,SEQUENCE_GAP_1707;DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.03,213,CHICKEN SANDWICH,1708,platters_assorted,Chicken Sandwich,dish,SEQ_1708_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.03,730,CHICKEN ROULADE,1709,platters_assorted,Chicken Roulade,dish,ROULADE,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.03,333,LASSI,1710,platters_assorted,Lassi,dish,SEQ_1710_SHARED,DUPLICATE_SEQUENCE;MISFILED_BAND,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,a drink in the platters band
+9.50.03,799,VEGETABLE ROLL ONE BITE,1710,platters_assorted,Vegetable Roll One Bite,dish,SEQ_1710_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.03,800,SAMOSA VAGETABLE ONE BITE,1711,platters_assorted,Samosa Vegetable One Bite,dish,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.03,538,SINGLE BITE SAMOSA CHEESE,1712,platters_assorted,Single Bite Samosa Cheese,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.03,622,CHIPS,1713,platters_assorted,Chips,material_backed_item,SEQ_1713_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.03,815,PURI SINGLE,1713,breads,Puri Single,dish,SEQ_1713_SHARED,DUPLICATE_SEQUENCE;MISFILED_BAND,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.03,818,PURI IN PEASE,1714,breads,Puri in Pieces,dish,SEQ_1714_SHARED,DUPLICATE_SEQUENCE;SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,PEASE likely Pieces
+9.50.03,689,MARBLECAKE,1714,desserts,Marble Cake,dish,SEQ_1714_SHARED,DUPLICATE_SEQUENCE;MISSING_SPACE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.03,790,CHICKEN CHOWMING,1715,main_dishes,Chicken Chow Mein,dish,,SPELLING_VARIANT;MISFILED_BAND,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.03,833,STEAM BEEF,1716,fried_grilled,Steam Beef,dish,,MISFILED_BAND,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.03,834,FISH BISCUIT KACHCHI,1717,fried_grilled,Fish Biscuit Kachchi,dish,,MISFILED_BAND,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.03,835,FISH MUSHKA FINGER KACHCHI,1718,fried_grilled,Fish Mushka Finger Kachchi,dish,,MISFILED_BAND,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.03,836,MUTTON ISKANDARIA,1719,main_dishes,Mutton Iskandaria,dish,ISKANDARIA,SEQ_1719_SHARED,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,code 586 carries the same name at sequence 503
+9.50.03,841,FRIED PRAWN BALL,1719,fried_grilled,Fried Prawn Ball,dish,SEQ_1719_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.03,840,RAJHISTANI TIKKA,1720,kabab_bbq,Rajasthani Tikka,dish,RAJASTHANI_TIKKA,SEQ_1720_SHARED;SPELLING_ERROR,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,another RAJHISTANI TIKKA appears at sequence 531
+9.50.03,869,PRAWN KOLIWADA FRY,1720,fried_grilled,Prawn Koliwada Fry,dish,SEQ_1720_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.03,873,AMRITSARI FISH FRY,1721,fried_grilled,Amritsari Fish Fry,dish,OVERLAP_9.50.37,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.03,850,CHICKEN ANGARA,1721,main_dishes,Chicken Angara,dish,OVERLAP_9.50.37,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.37,873,AMRITSARI FISH FRY,1721,fried_grilled,Amritsari Fish Fry,dish,OVERLAP_9.50.03,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,repeat of previous screenshot rows
+9.50.37,850,CHICKEN ANGARA,1721,main_dishes,Chicken Angara,dish,OVERLAP_9.50.03,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.37,886,BHINDI MASALA FRY,1722,main_dishes,Bhindi Masala Fry,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.37,897,FRIED CHICKEN LAHORI,1723,fried_grilled,Fried Chicken Lahori,dish,SEQ_1723_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.37,863,BBQ PLATTER LARGE,1723,platters_assorted,BBQ Platter Large,dish,SEQ_1723_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.37,866,MALAI BOTI FISH,1724,kabab_bbq,Malai Boti Fish,dish,SEQ_1724_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.37,898,SWEET THAI CHILLI PRAWN,1724,main_dishes,Sweet Thai Chilli Prawn,dish,SEQ_1724_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.37,890,LABNESE TIKKA,1725,kabab_bbq,Lebanese Tikka,dish,SEQ_1725_SHARED,DUPLICATE_SEQUENCE;SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.37,922,KACHHE KEEME KE KABAB,1725,kabab_bbq,Kachhe Qeeme Ke Kabab,dish,SEQ_1725_SHARED,DUPLICATE_SEQUENCE;SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.37,926,PARATHA TAWA EASY,1726,breads,Paratha Tawa,dish,SEQ_1726_SHARED,DUPLICATE_SEQUENCE;MARKETING_WORDS_IN_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,EASY looks like a stray word
+9.50.37,891,ADAN KABAB,1726,kabab_bbq,Adan Kabab,dish,SEQ_1726_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.37,899,PANEER TIKKA GRILLD,1727,kabab_bbq,Paneer Tikka Grilled,dish,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.37,900,CHICKEN PAHADI KABAB,1728,kabab_bbq,Chicken Pahadi Kabab,dish,SEQ_1728_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.37,937,MASALA CH FRY RED MASALA CH,1728,main_dishes,Masala Chicken Fry Red Masala,dish,SEQ_1728_SHARED,DUPLICATE_SEQUENCE;ABBREVIATION_IN_SOURCE,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,name appears garbled - confirm
+9.50.37,947,CHICKEN ROULETTE,1729,platters_assorted,Chicken Roulade,dish,ROULADE,SEQ_1729_SHARED;SPELLING_UNCERTAIN,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,ROULETTE likely Roulade - code 730 uses the correct spelling at 1709
+9.50.37,901,EASY SUMMER PRAWN,1729,main_dishes,Summer Prawn,dish,SEQ_1729_SHARED,DUPLICATE_SEQUENCE;MARKETING_WORDS_IN_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.50.37,903,BLOCHI FISH GRILLED,1731,fried_grilled,Balochi Fish Grilled,dish,,SEQUENCE_GAP_1730;SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.37,909,ANQARA BOTI,1732,kabab_bbq,Angara Boti,dish,SEQ_1732_SHARED,DUPLICATE_SEQUENCE;SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.37,987,SUKHY ALOO.DESI FRIES,1732,main_dishes,Sukhe Aloo Desi Fries,dish,SEQ_1732_SHARED,DUPLICATE_SEQUENCE;FULL_STOP_INSIDE_NAME;CODE_987_REUSED,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,code 987 also used by TANDOORI MINT RAITA at 1005
+9.50.37,984,AFGHANI CHICKEN TIKA,1733,kabab_bbq,Afghani Chicken Tikka,dish,SEQ_1733_SHARED,DUPLICATE_SEQUENCE;SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.37,993,PERFECT TANDOORI CHICKEN,1733,kabab_bbq,Tandoori Chicken,dish,SEQ_1733_SHARED,DUPLICATE_SEQUENCE;MARKETING_WORDS_IN_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,PERFECT looks like marketing copy
+9.50.37,1023,THREAD CHICKEN CHESS,1734,fried_grilled,Thread Chicken Cheese,dish,SEQ_1734_SHARED,DUPLICATE_SEQUENCE;SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.37,985,AFGHANI PANEER TIKKA,1734,kabab_bbq,Afghani Paneer Tikka,dish,SEQ_1734_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.37,1024,CHICKEN LEMON BITES,1735,fried_grilled,Chicken Lemon Bites,dish,SEQ_1735_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.37,990,GRILLED SHRIMP RECIPE,1735,fried_grilled,Grilled Shrimp,dish,SEQ_1735_SHARED,DUPLICATE_SEQUENCE;RECIPE_WORD_IN_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.50.37,991,MUTTON SHAHLIK BOTI,1736,kabab_bbq,Mutton Shashlik Boti,dish,SEQ_1736_SHARED,DUPLICATE_SEQUENCE;SPELLING_ERROR,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.37,1025,OKRA FRIED,1736,main_dishes,Okra Fried,dish,SEQ_1736_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.37,992,AFGHANI LAMB KABAB DUMBA,1737,kabab_bbq,Afghani Lamb Kabab Dumba,dish,SEQ_1737_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.37,1034,SHAHI PARCHA KABAB,1737,kabab_bbq,Shahi Parcha Kabab,dish,OVERLAP_9.51.04,DUPLICATE_SEQUENCE;ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.50.37,1007,CHASKA KABAB,1738,kabab_bbq,Chaska Kabab,dish,OVERLAP_9.51.04,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.51.04,1034,SHAHI PARCHA KABAB,1737,kabab_bbq,Shahi Parcha Kabab,dish,OVERLAP_9.50.37,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,repeat of previous screenshot rows
+9.51.04,1007,CHASKA KABAB,1738,kabab_bbq,Chaska Kabab,dish,OVERLAP_9.50.37,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.51.04,1026,CHICKEN GULNABI BOTI,1739,kabab_bbq,Chicken Gulnabi Boti,dish,SEQ_1739_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.51.04,1041,CHICKEN STEAK,1739,fried_grilled,Chicken Steak,dish,SEQ_1739_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.51.04,1044,CHAPLI KABAB CHICKEN,1740,kabab_bbq,Chapli Kabab Chicken,dish,SEQ_1740_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.51.04,1039,LUCKNOW GALAWATI BOTI KABAB,1740,kabab_bbq,Lucknowi Galawati Boti Kabab,dish,SEQ_1740_SHARED,DUPLICATE_SEQUENCE,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.51.04,1042,CHICKEN HARA MASALA,1741,main_dishes,Chicken Hara Masala,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.51.04,1043,CHULLO KABAB,1742,kabab_bbq,Chelo Kabab,dish,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.51.04,1053,HANDI KABAB,1743,kabab_bbq,Handi Kabab,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.51.04,531,"LADY WAITRESS,&,GENTS WAITERS",1750,non_food_service_material,Waiters and Waitresses,service_charge,WAITER_FAMILY,COMMA_INSIDE_DESCRIPTION;COMBINED_ITEMS_IN_ONE_ROW,yes,yes,no,yes,OWNER_CONFIRMATION_REQUIRED,LABOUR - charge block per unit where quantity is head count. Two roles in one row - confirm whether they should be separate products with separate rates
+9.51.04,553,DECORATION//ARRANGEMENT,2000,non_food_service_material,Decoration and Arrangement,lump_sum_service,DECORATION_FAMILY,DOUBLE_SLASH_IN_SOURCE,yes,yes,no,yes,OWNER_CONFIRMATION_REQUIRED,FLOWERS AND STAGING live here - lump-sum charge block per event
+9.51.04,568,SINGAPORIAN RICE (FAMILY PACK LARGE),2001,non_food_service_material,Singaporean Rice Family Pack Large,dish,,SPELLING_ERROR;MISFILED_BAND,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,a dish sitting in the non-food band
+9.51.04,569,SINGAPORIAN RICE (FAMILY PACK SMALL),2002,non_food_service_material,Singaporean Rice Family Pack Small,dish,,SPELLING_ERROR;MISFILED_BAND,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.51.04,570,BIRYANI CHICKEN (BUCKET SMALL),2003,non_food_service_material,Biryani Chicken Bucket Small,dish,BUCKET_PAIR,MISFILED_BAND,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,pairs with BIRYANI BUCKET LARGE at 268
+9.51.04,571,CREAM COCKTAIL CUP,2004,non_food_service_material,Cream Cocktail Cup,dish,CREAM_COCKTAIL,MISFILED_BAND,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.51.04,572,COLD DRINK JUMBO,2005,non_food_service_material,Cold Drink Jumbo,material_backed_item,COLD_DRINK_FAMILY,MISFILED_BAND,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.51.04,573,DELIVERY CHARGES,2006,non_food_service_material,Delivery Charge,service_charge,,,yes,yes,no,yes,OWNER_CONFIRMATION_REQUIRED,charge block - confirm per trip or per event
+9.51.04,576,COLD DRINK 300ML,2007,non_food_service_material,Cold Drink 300ml,material_backed_item,COLD_DRINK_FAMILY,MISFILED_BAND,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.51.04,588,MUTTON,2008,non_food_service_material,Mutton,raw_material_sale,RAW_MEAT_SALE,,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,RAW MATERIAL SOLD DIRECTLY - needs a sellable wrapper product with a 1:1 material block by KG
+9.51.04,598,DESI GHEE,2009,non_food_service_material,Desi Ghee,raw_material_sale,,,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,raw material sold directly - 1:1 material block
+9.51.04,601,SOLT,2010,non_food_service_material,Salt,raw_material_sale,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,SOLT likely Salt
+9.51.04,619,ZARDA RANG,2011,non_food_service_material,Zarda Colour,raw_material_sale,,,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,food colouring - raw material
+9.51.04,635,BONELESS,2012,non_food_service_material,Boneless,unknown,,AMBIGUOUS_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,single word - boneless what - confirm or reject
+9.51.04,636,BEEF,2013,non_food_service_material,Beef,raw_material_sale,RAW_MEAT_SALE,,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,raw material sold directly - 1:1 material block by KG
+9.51.04,642,VIP WAITERS,2014,non_food_service_material,VIP Waiters,service_charge,WAITER_FAMILY,,yes,yes,no,yes,OWNER_CONFIRMATION_REQUIRED,LABOUR - charge block per unit; confirm the rate difference from ordinary waiters
+9.51.04,644,ICE,2015,non_food_service_material,Ice,raw_material_sale,,,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.51.04,648,OIL KANASTAR,2016,non_food_service_material,Oil Canister,raw_material_sale,,SPELLING_VARIANT,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,KANASTAR is a tin/canister - confirm the unit
+9.51.04,650,MILK,2017,non_food_service_material,Milk,raw_material_sale,,,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.51.04,652,STROW,2018,non_food_service_material,Straws,packing_disposable,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,STROW likely Straws - disposable material block
+9.51.04,653,FOIL PAPER,2019,non_food_service_material,Foil Paper,packing_disposable,,,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,disposable material block
+9.51.30,650,MILK,2017,non_food_service_material,Milk,raw_material_sale,OVERLAP_9.51.04,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,repeat of previous screenshot rows
+9.51.30,652,STROW,2018,non_food_service_material,Straws,packing_disposable,OVERLAP_9.51.04,ROW_REPEATED_ACROSS_SCREENSHOTS;SPELLING_ERROR,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.51.30,653,FOIL PAPER,2019,non_food_service_material,Foil Paper,packing_disposable,OVERLAP_9.51.04,ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.51.30,654,DISPOSIBAL SPOON,2020,non_food_service_material,Disposable Spoon,packing_disposable,DISPOSABLE_FAMILY,SPELLING_ERROR,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,DISPOSIBAL misspelled on all four disposable rows
+9.51.30,655,PACKING MATERIAL F/P SMALL,2021,non_food_service_material,Packing Material Family Pack Small,packing_disposable,PACKING_SCATTERED,ABBREVIATION_IN_SOURCE,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,F/P likely Family Pack
+9.51.30,656,PACKING MATERIAL F/P LARGE,2022,non_food_service_material,Packing Material Family Pack Large,packing_disposable,PACKING_SCATTERED,ABBREVIATION_IN_SOURCE,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.51.30,657,PRINTED SHOPER,2023,non_food_service_material,Printed Shopper Bag,packing_disposable,,SPELLING_ERROR,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,SHOPER likely Shopper
+9.51.30,658,TISSUE PAPER,2024,non_food_service_material,Tissue Paper,packing_disposable,TISSUE_FAMILY,,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,TISSUE - material block 1:1; code 771 is the box version at 2051
+9.51.30,667,BIRYANI BUCKET SMALL,2025,non_food_service_material,Biryani Bucket Small,dish,BUCKET_PAIR,MISFILED_BAND,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.51.30,676,BEEF BONELESS,2026,non_food_service_material,Beef Boneless,raw_material_sale,RAW_MEAT_SALE,,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,raw material sold directly
+9.51.30,677,CHICKEN,2027,non_food_service_material,Chicken,raw_material_sale,RAW_MEAT_SALE,,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,raw material sold directly - 1:1 material block by KG
+9.51.30,679,BANANA,2028,non_food_service_material,Banana,raw_material_sale,,,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.51.30,692,KASHIF FOOD DAILY EXPENCES,2029,non_food_service_material,Kashif Food Daily Expenses,reject_candidate,,SPELLING_ERROR;NOT_A_PRODUCT,no,no,no,yes,REJECT_OR_REVIEW,THIS IS AN EXPENSE not a sellable item - it must not become a catalogue product. Route it through the expense module instead
+9.51.30,738,THIRMAPOL CUP,2030,non_food_service_material,Thermopore Cup,packing_disposable,DISPOSABLE_FAMILY,SPELLING_ERROR,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,THIRMAPOL likely Thermopore
+9.51.30,746,"SAFI,DUSTER",2031,non_food_service_material,Safi and Duster,packing_disposable,,COMMA_INSIDE_DESCRIPTION;COMBINED_ITEMS_IN_ONE_ROW,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,cleaning cloth - two items in one row
+9.51.30,747,CHEERY KRUNCH CUP,2032,non_food_service_material,Cherry Crunch Cup,dish,CHERRY_CRUNCH,SPELLING_ERROR;MISFILED_BAND,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.51.30,755,"SALT,(NAMAK)",2033,non_food_service_material,Salt,raw_material_sale,SALT_PAIR,COMMA_INSIDE_DESCRIPTION;POSSIBLE_DUPLICATE_NAME,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,code 601 SOLT at 2010 is the same material
+9.51.30,759,"SSGC CHARGESS,GARLIC FRY",2034,non_food_service_material,SSGC Gas Charges and Garlic Fry,reject_candidate,,COMMA_INSIDE_DESCRIPTION;TWO_UNRELATED_THINGS,no,no,no,yes,REJECT_OR_REVIEW,SSGC is the gas utility - this looks like a utility cost pasted together with a food item. Almost certainly not one sellable product
+9.51.30,760,EXTRA SAUCE,2035,non_food_service_material,Extra Sauce,dish,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,add-on
+9.51.30,769,FAIR FOR HALEEM,2036,non_food_service_material,Fare for Haleem,reject_candidate,,SPELLING_UNCERTAIN;NOT_A_PRODUCT,no,no,no,yes,REJECT_OR_REVIEW,FAIR likely Fare meaning transport cost - looks like an expense not a product
+9.51.30,770,JAM JELLY,2037,non_food_service_material,Jam Jelly,material_backed_item,,,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.51.30,771,CHICKEN ECLIAR,2038,non_food_service_material,Chicken Eclair,dish,,SPELLING_ERROR;MISFILED_BAND,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.51.30,773,"BUTTER,",2039,non_food_service_material,Butter,raw_material_sale,,TRAILING_COMMA_IN_SOURCE,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.51.30,774,DISPOSIBAL PLATE,2040,non_food_service_material,Disposable Plate,packing_disposable,DISPOSABLE_FAMILY,SPELLING_ERROR,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.51.30,775,DISPOSIBAL CUP,2041,non_food_service_material,Disposable Cup,packing_disposable,DISPOSABLE_FAMILY,SPELLING_ERROR,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.51.30,789,FANS,2042,non_food_service_material,Fans,rental_like_charge,,,yes,yes,no,yes,OWNER_CONFIRMATION_REQUIRED,EQUIPMENT - charge block per unit where quantity is fan count. No rental return semantics in V1
+9.51.30,801,HED CAP NET,2043,non_food_service_material,Head Cap Net,packing_disposable,DISPOSABLE_FAMILY,SPELLING_ERROR,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,staff hygiene item - confirm whether it is ever charged to a customer
+9.51.30,802,FACE MASK,2044,non_food_service_material,Face Mask,packing_disposable,DISPOSABLE_FAMILY,,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.51.30,803,AP[REN,2045,non_food_service_material,Apron,packing_disposable,DISPOSABLE_FAMILY,SPELLING_ERROR_WITH_BRACKET,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,AP[REN contains a stray bracket - likely Apron
+9.51.30,805,DILL BEEF,2046,non_food_service_material,Dil Beef,dish,,SPELLING_UNCERTAIN;MISFILED_BAND,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,DILL likely Dil meaning heart
+9.53.52,803,AP[REN,2045,non_food_service_material,Apron,packing_disposable,DISPOSABLE_FAMILY,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,repeat of previous screenshot rows - codes truncated in this capture
+9.53.52,805,DILL BEEF,2046,non_food_service_material,Dil Beef,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;ROW_REPEATED_ACROSS_SCREENSHOTS,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.53.52,806,GURDY BEEF,2047,non_food_service_material,Gurda Beef,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.53.52,819,DESI CHICKEN,2048,non_food_service_material,Desi Chicken,raw_material_sale,RAW_MEAT_SALE,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,raw material sold directly
+9.53.52,830,DISPOSIBAL FORK,2049,non_food_service_material,Disposable Fork,packing_disposable,DISPOSABLE_FAMILY,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;SPELLING_ERROR,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,
+9.53.52,847,PULLAOW WALI CHATNI,2050,non_food_service_material,Pulao Wali Chutney,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;SPELLING_VARIANT;MISFILED_BAND,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.53.52,771,TISSUE PAPER BOX,2051,non_food_service_material,Tissue Paper Box,packing_disposable,TISSUE_FAMILY,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;CODE_771_REUSED,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,TISSUE BOX - material block 1:1 in BOX. Code 771 also used by CHICKEN ECLIAR at 2038
+9.53.52,875,BAISAN WALI MIRCH,2052,non_food_service_material,Besan Wali Mirch,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;SPELLING_VARIANT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.53.52,877,ALOO BHUNA DHABA STYLE,2053,non_food_service_material,Aloo Bhuna Dhaba Style,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;MISFILED_BAND,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,
+9.53.52,910,"COCONUT WATTER,",2054,non_food_service_material,Coconut Water,raw_material_sale,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;SPELLING_ERROR;TRAILING_COMMA,yes,yes,yes,yes,OWNER_CONFIRMATION_REQUIRED,WATTER likely Water
+9.53.52,939,HUT,2055,non_food_service_material,Hut,rental_like_charge,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;AMBIGUOUS_NAME,yes,yes,no,yes,OWNER_CONFIRMATION_REQUIRED,EQUIPMENT/STRUCTURE hire - confirm what a Hut is and how it is charged
+9.53.52,945,THALL STEEL/PLASTIC,2056,non_food_service_material,Thaal Steel or Plastic,rental_like_charge,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;TWO_VARIANTS_IN_ONE_ROW,yes,yes,no,yes,OWNER_CONFIRMATION_REQUIRED,serving platters - hire or sale. Steel and plastic may need separate rates
+9.53.52,957,2.5/4 TABLE,2057,non_food_service_material,Table 2.5 by 4,rental_like_charge,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;SIZE_IN_NAME,yes,yes,no,yes,OWNER_CONFIRMATION_REQUIRED,EQUIPMENT hire - charge block per unit where quantity is table count
+9.53.52,972,DECORATION DARI&CHANDNI,2058,non_food_service_material,Decoration Dari and Chandni,lump_sum_service,DECORATION_FAMILY,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;AMPERSAND_IN_SOURCE,yes,yes,no,yes,OWNER_CONFIRMATION_REQUIRED,floor covering and canopy - lump sum or per unit
+9.53.52,973,DECORATION DASTARKHWAN,2059,non_food_service_material,Decoration Dastarkhwan,lump_sum_service,DECORATION_FAMILY,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT,yes,yes,no,yes,OWNER_CONFIRMATION_REQUIRED,
+9.53.52,1014,ALOO KA BHARTA,2060,non_food_service_material,Aloo Ka Bharta,dish,,SOURCE_CODE_TRUNCATED_IN_SCREENSHOT;MISFILED_BAND;LAST_ROW_OF_EXPORT,yes,yes,yes,yes,OWNER_INPUT_REQUIRED,final row visible in the client export - confirm nothing follows it
