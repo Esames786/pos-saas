@@ -136,8 +136,13 @@
             <table class="table table-sm mb-0">
                 <thead>
                     <tr>
+                        {{-- CAT-PROD-002: the kitchen's need and our store's
+                             obligation are different numbers, and only the second
+                             was ever shown. A customer-supplied material read as
+                             zero and looked like nothing to plan for. --}}
                         <th>Material</th>
-                        <th class="text-end">Planned Requirement</th>
+                        <th class="text-end">Kitchen Needs</th>
+                        <th class="text-end">From Our Store</th>
                         <th>Unit</th>
                         <th class="text-end">On Hand (at release)</th>
                         <th class="text-end">Shortfall</th>
@@ -152,14 +157,26 @@
                         $issuedLine = $issuedByProduct[$req['product_id'] ?? 0] ?? null;
                         $issuedQty = (float) ($issuedLine->issued_qty ?? 0);
                         $remaining = max(((float) $req['required_qty']) - $issuedQty, 0);
+                        // Releases frozen before this distinction existed carry
+                        // only one figure; for those the two answers were equal.
+                        $physicalQty = (float) ($req['physical_qty'] ?? $req['required_qty']);
+                        $suppliedQty = (float) ($req['customer_supplied_qty'] ?? max($physicalQty - (float) $req['required_qty'], 0));
                     @endphp
                     <tr>
                         <td>{{ $req['name'] }}
                             @if($issuedLine && $issuedLine->line_status === 'non_stock')
                                 <span class="badge bg-light text-dark">non-stock</span>
                             @endif
+                            @if($suppliedQty > 0)
+                                <span class="badge bg-success-subtle text-success-emphasis fs-12">Customer supplied</span>
+                                <div class="fs-12 text-muted">
+                                    {{ rtrim(rtrim(number_format($suppliedQty, 3), '0'), '.') }} {{ $req['unit_code'] }}
+                                    comes from the customer — our store issues none of it.
+                                </div>
+                            @endif
                         </td>
-                        <td class="text-end fw-bold">{{ rtrim(rtrim(number_format($req['required_qty'], 3), '0'), '.') }}</td>
+                        <td class="text-end fw-bold">{{ rtrim(rtrim(number_format($physicalQty, 3), '0'), '.') }}</td>
+                        <td class="text-end">{{ rtrim(rtrim(number_format($req['required_qty'], 3), '0'), '.') }}</td>
                         <td>{{ $req['unit_code'] }}</td>
                         <td class="text-end">{{ number_format($req['on_hand'] ?? 0, 3) }}</td>
                         <td class="text-end {{ ($req['shortfall'] ?? 0) > 0 ? 'text-danger fw-bold' : 'text-success' }}">{{ number_format($req['shortfall'] ?? 0, 3) }}</td>

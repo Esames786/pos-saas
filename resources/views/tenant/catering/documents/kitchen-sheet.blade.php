@@ -152,18 +152,46 @@
     <h3>{{ $t('Consolidated Raw Material Requirements (planning)', 'مجموعی خام مال کی ضروریات') }}</h3>
     <table class="req-table">
         <thead>
+            {{-- CAT-PROD-002 — the KITCHEN's number, not the store's.
+                 This printed only what our store issues, so a material the
+                 customer is bringing appeared as 0 and effectively vanished from
+                 the sheet. The kitchen still has to cook with it: the dish needs
+                 eight kilos of rice whoever carries it through the door. Both
+                 numbers are printed, and where they differ the sheet says why. --}}
             <tr>
                 <th>{{ $t('Material', 'خام مال') }}</th>
-                <th class="num">{{ $t('Required', 'درکار') }}</th>
+                <th class="num">{{ $t('Kitchen Needs', 'باورچی خانہ کو درکار') }}</th>
+                <th class="num">{{ $t('From Our Store', 'ہمارے اسٹور سے') }}</th>
                 <th>{{ $t('Unit', 'یونٹ') }}</th>
                 <th>{{ $t('Used By', 'استعمال') }}</th>
             </tr>
         </thead>
         <tbody>
             @foreach($requirements as $req)
+            @php
+                // Releases frozen before this distinction existed carry only the
+                // one figure; for those the two answers really were the same.
+                $physical = (float) ($req['physical_qty'] ?? $req['required_qty']);
+                $ours = (float) $req['required_qty'];
+                $supplied = (float) ($req['customer_supplied_qty'] ?? max($physical - $ours, 0));
+                $fmt = fn ($n) => rtrim(rtrim(number_format($n, 3), '0'), '.');
+            @endphp
             <tr>
-                <td>{{ $req['name'] }}</td>
-                <td class="num"><strong>{{ rtrim(rtrim(number_format($req['required_qty'], 3), '0'), '.') }}</strong></td>
+                <td>
+                    {{ $req['name'] }}
+                    @if($supplied > 0)
+                        <div style="font-size:10px; color:#7c2d12;">
+                            {{ $t('Customer supplied', 'گاہک فراہم کرے گا') }} — {{ $fmt($supplied) }} {{ $req['unit_code'] }}
+                        </div>
+                    @endif
+                </td>
+                <td class="num"><strong>{{ $fmt($physical) }}</strong></td>
+                <td class="num">
+                    {{ $fmt($ours) }}
+                    @if($ours <= 0 && $physical > 0)
+                        <div style="font-size:10px; color:#7c2d12;">{{ $t('none', 'کچھ نہیں') }}</div>
+                    @endif
+                </td>
                 <td>{{ $req['unit_code'] }}</td>
                 <td>{{ implode(', ', $req['used_by'] ?? []) }}</td>
             </tr>
