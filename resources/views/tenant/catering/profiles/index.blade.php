@@ -335,7 +335,7 @@ $(function () {
         $('#product-name-wrap').removeClass('d-none');
         $('#profile-product-name').val(p.product_name);
         $('[name=name_ur]').val(p.name_ur || '');
-        
+
         $('[name=costing_mode]').val(p.costing_mode || 'recipe');
         current = {
             costing_mode: p.costing_mode || 'recipe',
