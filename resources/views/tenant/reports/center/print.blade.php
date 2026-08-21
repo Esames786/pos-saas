@@ -55,23 +55,21 @@
              . '<td class="amt">' . $fmt($billed) . '</td><td class="amt">' . $fmt($ret) . '</td><td class="amt">' . $fmt($net) . '</td></tr>';
     };
 
-    // Item/category nets cover MERCHANDISE only; the delivery charge belongs to the order, not to
-    // any line. Printed alone those totals look like they contradict NET SALES, so every
-    // line-based section closes with the bridge that gets it there.
-    // NET delivery: what was charged, less what was handed back with a fully-returned order.
-    // Using the gross figure stopped the bridge reaching NET SALES the moment a delivery was
-    // refunded — and because the bridge only prints when the arithmetic closes, it would have
-    // quietly vanished rather than shown a wrong total.
-    $bridgeDelivery = (float) ($bridge['delivery_charge'] ?? 0) - (float) ($bridge['delivery_refunded'] ?? 0);
+    // Item/category nets cover MERCHANDISE only; the order-level charges (delivery, tax, service,
+    // tips, less discount) belong to the order, not to any line. Printed alone those totals look
+    // like they contradict NET SALES, so every line-based section closes with the bridge that gets
+    // it there. The gap is derived as (NET SALES − line net), so it ALWAYS closes — the old
+    // delivery-only figure silently vanished the moment a discount/tax existed (line net + delivery
+    // did not equal net sales), which is exactly why the global totals stopped reconciling.
     $bridgeNetSales = (float) ($bridge['net_sales'] ?? 0);
-    $bridgeRows = function (float $lineNet, int $span) use ($bridgeDelivery, $bridgeNetSales, $fmt) {
-        // Only claim a reconciliation when the arithmetic actually closes.
-        if (abs(($lineNet + $bridgeDelivery) - $bridgeNetSales) > 0.01) {
+    $bridgeRows = function (float $lineNet, int $span) use ($bridgeNetSales, $fmt) {
+        $netCharges = round($bridgeNetSales - $lineNet, 2);
+        if (abs($netCharges) <= 0.01) {
             return '';
         }
         $label = fn ($t) => '<td' . ($span > 1 ? ' colspan="' . ($span - 1) . '"' : '') . '>' . $t . '</td>';
 
-        return '<tr>' . $label('Plus Delivery Charges') . '<td class="amt">' . $fmt($bridgeDelivery) . '</td></tr>'
+        return '<tr>' . $label('Plus Delivery &amp; Other Charges (net)') . '<td class="amt">' . $fmt($netCharges) . '</td></tr>'
              . '<tr class="total">' . $label('= NET SALES') . '<td class="amt">' . $fmt($bridgeNetSales) . '</td></tr>';
     };
 

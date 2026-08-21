@@ -56,4 +56,34 @@ class ReportCenterChargeBridgeMySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('30.00', $html, 'a4: the net charge amount prints');
         $this->assertStringContainsString('330.00', $html, 'a4: net sales = merchandise 300 + charge 30');
     }
+
+    /**
+     * The GLOBAL categories/items totals must also reach NET SALES. The old bridge added only the
+     * delivery charge and printed only if it closed exactly — so a discount (or tax) broke the
+     * arithmetic and the bridge silently vanished, leaving the merchandise total looking like it
+     * contradicted the cash. The gap is now derived as (net sales − line net), so it always closes.
+     */
+    public function test_global_categories_bridge_closes_even_with_a_discount(): void
+    {
+        $categories = [[
+            'id' => 1, 'name' => 'Biryani', 'sold_qty' => 3, 'returned_qty' => 0, 'net_qty' => 3,
+            'net' => 300.0, 'returns_amount' => 0.0, 'net_value' => 300.0, 'children' => [],
+        ]];
+
+        // net sales 330, line net 300 — but delivery charge 36 with a 6 discount means the old
+        // "line net + delivery" (336) never equalled 330, so the bridge used to disappear.
+        $html = view('tenant.reports.center.print', [
+            'mode' => 'thermal', 'paper' => '80mm',
+            'filters' => ['date_from' => '2026-08-20', 'date_to' => '2026-08-20'],
+            'sections' => ['categories'],
+            'bridge' => ['net_sales' => 330.0, 'delivery_charge' => 36.0, 'delivery_refunded' => 0.0],
+            'overview' => null, 'orderTypes' => null, 'categories' => $categories, 'items' => null,
+            'waiters' => null, 'combos' => null, 'cancellations' => null, 'cashBank' => null,
+        ])->render();
+
+        $this->assertStringContainsString('Plus Delivery', $html, 'global categories bridge prints despite the discount');
+        $this->assertStringContainsString('= NET SALES', $html);
+        $this->assertStringContainsString('30.00', $html, 'net charge = net sales 330 - line net 300');
+        $this->assertStringContainsString('330.00', $html, 'the global total reaches NET SALES');
+    }
 }
