@@ -910,6 +910,10 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                     // KASHIF-CATERING-STORE-2: read-only booking lookup for the
                     // selection modal — "what is going out tonight".
                     Route::get('/catering/store-issues/bookings', [\App\Http\Controllers\Tenant\Catering\CateringStoreIssueController::class, 'bookings'])->name('tenant.catering.store-issues.bookings');
+                    // CAT-STORE-001: what the selected bookings still need from
+                    // us — required, customer-supplied, already issued, remaining.
+                    // Read-only; looking at it moves no stock.
+                    Route::get('/catering/store-issues/requirements', [\App\Http\Controllers\Tenant\Catering\CateringStoreIssueController::class, 'requirements'])->name('tenant.catering.store-issues.requirements');
 
                     Route::post('/catering/events/{cateringEvent}/final-invoice', [\App\Http\Controllers\Tenant\Catering\CateringFinalInvoiceController::class, 'store'])->name('tenant.catering.final-invoices.store');
                     Route::post('/catering/events/{cateringEvent}/close', [\App\Http\Controllers\Tenant\Catering\CateringFinalInvoiceController::class, 'close'])->name('tenant.catering.events.close');

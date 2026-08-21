@@ -116,6 +116,7 @@ class PermissionCatalogService
         'tenant.catering.store-issues.index' => 'Store Issue',
         'tenant.catering.store-issues.store' => 'Store Issue',
         'tenant.catering.store-issues.bookings' => 'Store Issue',
+        'tenant.catering.store-issues.requirements' => 'Store Issue',
         'tenant.catering.final-invoices.store' => 'Finalise Event',
         'tenant.catering.events.close' => 'Finalise Event',
         'tenant.catering.profiles.index' => 'Catering Products',

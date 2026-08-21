@@ -32,7 +32,76 @@ class CateringMaterialIssueService
         private readonly CateringNumberService $numbers,
         private readonly InventoryService $inventory,
         private readonly JournalPostingService $journalPosting,
+        private readonly CateringStoreRequirementService $storeRequirements,
     ) {}
+
+    /**
+     * CAT-STORE-001 — a second issue must be a top-up, not an accident.
+     *
+     * Required 10, issued 6, so 4 remain. Asking for 4 is a top-up and is
+     * normal. Asking for 10 again is almost always the same sheet being handed
+     * over twice, an hour apart, by two different people — and before this
+     * nothing on any screen would have looked wrong afterwards.
+     *
+     * Bounded ONLY where a requirement exists to bound it:
+     *
+     *   - no booking referenced        unbounded. Daily prep and staff food
+     *                                  leave the store against no booking, and
+     *                                  always could. A blank reference is a
+     *                                  complete, valid record.
+     *   - material not required        unbounded. The kitchen asked for
+     *                                  something nobody quoted; that is a real
+     *                                  event and refusing it would only teach
+     *                                  the storeman to leave the reference off.
+     *   - material required            bounded by what is left.
+     *
+     * Over-issuing stays possible, because sometimes a deg really does need
+     * more — but it becomes a deliberate act with a reason attached, not a
+     * silent double.
+     *
+     * @param  array<int, array{product_id: int, quantity: float}>  $lines
+     * @param  array<int, int>  $eventIds
+     */
+    private function assertWithinRemaining(array $lines, array $eventIds, int $branchId, bool $allowOverIssue): void
+    {
+        if ($eventIds === [] || $allowOverIssue) {
+            return;
+        }
+
+        $remaining = $this->storeRequirements->remainingByMaterial($eventIds, $branchId);
+        if ($remaining === []) {
+            return;
+        }
+
+        foreach ($lines as $line) {
+            $productId = (int) $line['product_id'];
+
+            if (! array_key_exists($productId, $remaining)) {
+                continue;
+            }
+
+            $left = round($remaining[$productId], 3);
+            $asked = round((float) $line['quantity'], 3);
+
+            if ($asked <= $left + 0.0005) {
+                continue;
+            }
+
+            $name = Product::whereKey($productId)->value('name') ?? "material #{$productId}";
+
+            throw new RuntimeException(
+                "These bookings still need {$this->trim($left)} of {$name}, but the issue is for "
+                ."{$this->trim($asked)}. If some has already gone out, issue only what is left; if this "
+                .'really is an extra handover, confirm it deliberately and say why.'
+            );
+        }
+    }
+
+    /** Quantities read to a storeman, not to a database. */
+    private function trim(float $quantity): string
+    {
+        return rtrim(rtrim(number_format($quantity, 3, '.', ''), '0'), '.') ?: '0';
+    }
 
     public function issue(CateringProductionRelease $release, ?int $branchId = null, ?int $userId = null): CateringMaterialIssue
     {
@@ -177,6 +246,7 @@ class CateringMaterialIssueService
         ?int $releaseId = null,
         ?int $userId = null,
         ?string $note = null,
+        bool $allowOverIssue = false,
     ): CateringMaterialIssue {
         $branch = Branch::find($branchId);
         if (! $branch || $branch->status !== 'active') {
@@ -196,6 +266,8 @@ class CateringMaterialIssueService
         }
 
         $eventIds = collect($eventIds)->map(fn ($id) => (int) $id)->filter()->unique()->values();
+
+        $this->assertWithinRemaining($clean, $eventIds->all(), $branch->id, $allowOverIssue);
 
         return DB::connection('tenant')->transaction(function () use ($clean, $branch, $eventIds, $releaseId, $userId, $note) {
             $issue = CateringMaterialIssue::create([

@@ -8,6 +8,7 @@ use App\Models\Tenant\CateringEvent;
 use App\Models\Tenant\CateringMaterialIssue;
 use App\Models\Tenant\Product;
 use App\Services\Catering\CateringMaterialIssueService;
+use App\Services\Catering\CateringStoreRequirementService;
 use Illuminate\Http\Request;
 use RuntimeException;
 
@@ -48,6 +49,34 @@ class CateringStoreIssueController extends Controller
         ]);
     }
 
+    /**
+     * CAT-STORE-001 — what the selected bookings still need from us.
+     *
+     * The storeman ticks the bookings he is covering and gets one consolidated
+     * answer: what the kitchen needs, what the customer is bringing, what we owe,
+     * what has already gone, and what is left. Read-only — no stock moves and
+     * nothing is reserved by looking.
+     */
+    public function requirements(Request $request, CateringStoreRequirementService $store)
+    {
+        $data = $request->validate([
+            'event_ids' => ['nullable', 'array'],
+            'event_ids.*' => ['integer'],
+            'event_date' => ['nullable', 'date'],
+            'branch_id' => ['nullable', 'integer'],
+        ]);
+
+        $branchId = isset($data['branch_id']) ? (int) $data['branch_id'] : null;
+
+        $result = ! empty($data['event_ids'])
+            ? $store->forEvents($data['event_ids'], $branchId)
+            : (! empty($data['event_date'])
+                ? $store->forDate($data['event_date'], $branchId)
+                : ['rows' => [], 'events' => [], 'warnings' => []]);
+
+        return response()->json($result);
+    }
+
     public function store(Request $request, CateringMaterialIssueService $issues)
     {
         $data = $request->validate([
@@ -60,9 +89,24 @@ class CateringStoreIssueController extends Controller
             'lines' => ['required', 'array', 'min:1'],
             'lines.*.product_id' => ['required', 'integer', 'exists:products,id'],
             'lines.*.quantity' => ['required', 'numeric', 'min:0'],
+            // CAT-STORE-001: issuing more than these bookings still need is a
+            // deliberate act with a reason, never a silent repeat of a sheet
+            // somebody already handed over.
+            'over_issue' => ['nullable', 'boolean'],
+            'over_issue_reason' => ['nullable', 'string', 'max:255'],
         ], [
             'lines.required' => 'Add at least one material before issuing.',
         ]);
+
+        $overIssue = (bool) ($data['over_issue'] ?? false);
+        $overIssueReason = trim((string) ($data['over_issue_reason'] ?? ''));
+
+        if ($overIssue && $overIssueReason === '') {
+            return back()->withErrors([
+                'issue' => 'Issuing more than the bookings still need has to say why — '
+                    .'without a reason nobody can tell an extra handover from a duplicate.',
+            ])->withInput();
+        }
 
         // The picker offers only issuable materials; this makes that true rather
         // than merely displayed. A request naming a dish would otherwise reach
@@ -100,7 +144,10 @@ class CateringStoreIssueController extends Controller
                 eventIds: $eventIds->all(),
                 releaseId: null,
                 userId: $request->user()?->id,
-                note: $data['note'] ?? null,
+                note: $overIssue
+                    ? trim(($data['note'] ?? '').' | Over-issue: '.$overIssueReason)
+                    : ($data['note'] ?? null),
+                allowOverIssue: $overIssue,
             );
         } catch (RuntimeException $e) {
             return back()->withErrors(['issue' => $e->getMessage()])->withInput();
