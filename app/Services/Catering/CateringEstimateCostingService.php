@@ -254,14 +254,43 @@ class CateringEstimateCostingService
      * the commercial blocks. What the customer is charged for chicken and what
      * that chicken costs are different numbers, and snapshotting the charge as
      * cost would report a margin that never existed.
+     *
+     * CAT-COST-001 — WHICH STRUCTURE, AND WHICH RATE, ARE DIFFERENT QUESTIONS.
+     *
+     * This read the PRODUCT MASTER for both, which made the internal cost of a
+     * quotation describe a dish rather than the quotation. It ignored the event's
+     * own material quantity, ignored Customer Supplied, and would refuse to cost
+     * a line for a material the master still lists but the quotation never used.
+     * The operator saw one breakdown in Cost Details and a different margin above
+     * it.
+     *
+     * The split now is deliberate:
+     *
+     *   STRUCTURE   — which materials, how much of each, who supplies them —
+     *                 comes from the line's frozen snapshot. Those were decisions
+     *                 made about this booking and the master cannot overrule them.
+     *   COST RATE   — what a material is worth — stays with the as-of Material
+     *                 Cost Rate Book, exactly as the costing policy already says.
+     *
+     * A line with no snapshot keeps the old master-derived behaviour, which is
+     * the only sensible answer for a dish that has not been priced from blocks
+     * yet.
      */
     private function costBlockLine(CateringEstimateLine $line, string $asOfDate): array
     {
         $quantity = (float) $line->quantity;
         $productId = (int) $line->product_id;
 
-        $readiness = $this->blocks->readiness($productId, $asOfDate);
-        $materials = $this->blocks->expectedMaterialBreakdown($productId, $quantity, [], $asOfDate);
+        $snapshots = $line->costBlocks()->get();
+
+        if ($snapshots->isNotEmpty()) {
+            $readiness = $this->blocks->readinessForSnapshots($snapshots, $asOfDate);
+            $materials = $this->blocks->snapshotMaterialBreakdown($snapshots, $asOfDate);
+        } else {
+            $readiness = $this->blocks->readiness($productId, $asOfDate);
+            $materials = $this->blocks->expectedMaterialBreakdown($productId, $quantity, [], $asOfDate);
+        }
+
         $lineCost = round(collect($materials)->sum('cost'), 2);
 
         $blockers = array_map(

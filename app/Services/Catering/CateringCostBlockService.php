@@ -214,6 +214,143 @@ class CateringCostBlockService
      *
      * @return array{ready: bool, blockers: array<int, string>, warnings: array<int, string>}
      */
+    /**
+     * CAT-COST-001 — the same breakdown, taken from a QUOTATION instead of a dish.
+     *
+     * Structure and quantity come from the frozen snapshot; the rate comes from
+     * the as-of Material Cost Rate Book, exactly as the master-derived version
+     * does. That split is the point: the dish may have been re-costed since, but
+     * what this booking agreed to consume is settled, while what a kilo of
+     * chicken is worth is a question with a current answer.
+     *
+     * A customer-supplied material contributes ZERO cost and is still listed —
+     * the business did not buy it, so recording a cost it never incurred would
+     * understate the margin on exactly the arrangement designed to protect it,
+     * but hiding the row would make the breakdown disagree with Cost Details.
+     *
+     * @param  iterable<int, \App\Models\Tenant\CateringEstimateLineCostBlock>  $snapshots
+     */
+    public function snapshotMaterialBreakdown(iterable $snapshots, ?string $asOfDate = null): array
+    {
+        $asOfDate = $asOfDate ?: now()->toDateString();
+        $entries = [];
+
+        foreach ($snapshots as $snapshot) {
+            if (! $snapshot->isMaterial() || ! $snapshot->material_product_id) {
+                continue;
+            }
+
+            // What the KITCHEN needs, which is what has to be bought — not what
+            // our store hands over. Those differ only when the customer supplies
+            // it, and that case is charged nothing just below.
+            $required = $snapshot->physicalRequirement();
+            if ($required <= 0) {
+                continue;
+            }
+
+            $rate = CateringMaterialRate::query()
+                ->where('product_id', $snapshot->material_product_id)
+                ->whereDate('effective_from', '<=', $asOfDate)
+                ->orderByDesc('effective_from')
+                ->orderByDesc('id')
+                ->value('rate');
+
+            $supplied = $snapshot->isCustomerSupplied();
+
+            $entries[] = [
+                'product_id' => (int) $snapshot->material_product_id,
+                'name' => $snapshot->material_name ?: $snapshot->label,
+                'required_qty' => $required,
+                'unit_code' => $snapshot->unit_code,
+                'rate' => $rate === null ? null : round((float) $rate, 4),
+                'cost' => ($supplied || $rate === null) ? 0.0 : round($required * (float) $rate, 4),
+                'is_customer_supplied' => $supplied,
+            ];
+        }
+
+        return $entries;
+    }
+
+    /**
+     * CAT-COST-001 — readiness for the QUOTATION being costed, not for the dish.
+     *
+     * Two failures this prevents, and they point in opposite directions:
+     *
+     *   it must not say READY because today's master happens to be valid while
+     *   the quotation snapshot is missing a rate;
+     *
+     *   and it must not say NOT READY because somebody edited the dish after
+     *   this quotation was agreed. The customer signed the old one.
+     *
+     * A customer-supplied material needs no cost rate to be costable — its cost
+     * to us is zero by contract, and blocking a send over a missing rate for
+     * something we are not buying would refuse a perfectly valid quotation.
+     *
+     * @param  iterable<int, \App\Models\Tenant\CateringEstimateLineCostBlock>  $snapshots
+     */
+    public function readinessForSnapshots(iterable $snapshots, ?string $asOfDate = null): array
+    {
+        $asOfDate = $asOfDate ?: now()->toDateString();
+        $blockers = [];
+        $warnings = [];
+        $seen = false;
+
+        foreach ($snapshots as $snapshot) {
+            $seen = true;
+
+            if ((float) $snapshot->rate <= 0 && ! $snapshot->isCustomerSupplied()) {
+                $warnings[] = "'{$snapshot->label}' has no rate, so it adds nothing to the price.";
+            }
+
+            if (! $snapshot->isMaterial()) {
+                continue;
+            }
+
+            if (! $snapshot->material_product_id) {
+                $blockers[] = "'{$snapshot->label}' is a material block but no material is selected.";
+
+                continue;
+            }
+
+            if ($snapshot->isCustomerSupplied()) {
+                $warnings[] = "'{$snapshot->label}' is supplied by the customer, so it costs the business nothing.";
+
+                continue;
+            }
+
+            if ($snapshot->physicalRequirement() <= 0) {
+                $warnings[] = "'{$snapshot->label}' has no quantity on this booking, so the kitchen sheet "
+                    .'will not ask the store for it.';
+
+                continue;
+            }
+
+            $hasRate = CateringMaterialRate::query()
+                ->where('product_id', $snapshot->material_product_id)
+                ->whereDate('effective_from', '<=', $asOfDate)
+                ->exists();
+
+            if (! $hasRate) {
+                $blockers[] = "'{$snapshot->label}' has no rate in the Material Rate Book, "
+                    .'so its cost cannot be worked out.';
+            }
+        }
+
+        if (! $seen) {
+            return [
+                'ready' => false,
+                'blockers' => ['This line is priced from cost blocks but its breakdown is empty.'],
+                'warnings' => [],
+            ];
+        }
+
+        return [
+            'ready' => $blockers === [],
+            'blockers' => $blockers,
+            'warnings' => $warnings,
+        ];
+    }
+
     public function readiness(int $productId, ?string $asOfDate = null): array
     {
         $asOfDate = $asOfDate ?: now()->toDateString();
