@@ -42,6 +42,8 @@ class CateringCalendarService
 
         $events = CateringEvent::query()
             ->with('currentEstimate:id,catering_event_id,grand_total,version_no,status')
+            ->with('finalInvoice:id,catering_event_id,balance_due,status')
+            ->withCount('productionReleases')
             ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
             ->whereBetween('event_date', [$from->toDateString(), $to->toDateString()])
             ->orderBy('event_date')
@@ -69,28 +71,146 @@ class CateringCalendarService
     private function present(CateringEvent $event, CarbonImmutable $today): array
     {
         $isPast = $event->event_date->lt($today);
+        $estimate = $event->currentEstimate;
 
         return [
             'id' => $event->id,
             'event_no' => $event->event_no,
             'customer' => $event->customer_name,
+            'phone' => $event->customer_phone,
             'venue' => $event->venue,
             'pax' => (int) $event->pax,
             'date' => $event->event_date->format('D, d M Y'),
             'time' => $event->service_time ? substr((string) $event->service_time, 0, 5) : null,
             'status' => $event->status,
             'status_label' => ucwords(str_replace('_', ' ', $event->status)),
-            'amount' => (float) ($event->currentEstimate?->grand_total ?? 0),
+            'quote_status' => $estimate?->status,
+            'quote_label' => $estimate ? ucfirst($estimate->status).' Q'.$estimate->version_no : '—',
+            'amount' => (float) ($estimate?->grand_total ?? 0),
             // An estimate row always exists from the moment a booking is created, so
             // its presence proves nothing. What the operator needs to know is whether
             // a PRICE has been put on it yet.
-            'quoted' => (float) ($event->currentEstimate?->grand_total ?? 0) > 0,
+            'quoted' => (float) ($estimate?->grand_total ?? 0) > 0,
             'is_past' => $isPast,
             // A date that has passed while the booking is still open is the one
             // an operator must act on — it is neither "upcoming" nor "done".
             'needs_attention' => $isPast && $event->isOpen(),
+            'next_action' => $this->nextAction($event),
             'tone' => $this->tone($event, $isPast),
             'url' => '/catering/events/'.$event->id,
+        ];
+    }
+
+    /**
+     * KASHIF-CATERING-OPERATOR-UI-1 — what the operator does next on this
+     * booking, read straight off lifecycle facts that already exist. This is a
+     * LABEL, not a state machine: nothing transitions because of it, and every
+     * branch below is a fact the workspace screen also shows.
+     */
+    public function nextAction(CateringEvent $event): string
+    {
+        if ($event->isCancelled()) {
+            return 'Cancelled';
+        }
+        if (in_array($event->status, [CateringEvent::STATUS_COMPLETED, CateringEvent::STATUS_CLOSED], true)) {
+            return 'Complete';
+        }
+
+        $estimate = $event->currentEstimate;
+
+        if ($estimate === null || $estimate->isDraft()) {
+            return 'Quotation Draft';
+        }
+        if ($estimate->status === \App\Models\Tenant\CateringEstimate::STATUS_SENT) {
+            return 'Awaiting Customer Acceptance';
+        }
+        if (! in_array($event->status, [
+            CateringEvent::STATUS_CONFIRMED,
+            CateringEvent::STATUS_PRODUCTION_READY,
+            CateringEvent::STATUS_RELEASED,
+        ], true)) {
+            return 'Booking Confirmation Pending';
+        }
+
+        $releases = $event->production_releases_count ?? $event->productionReleases()->count();
+        if ((int) $releases === 0) {
+            return 'Production Pending';
+        }
+
+        $invoice = $event->finalInvoice;
+        if ($invoice === null) {
+            return 'Store Issue Pending';
+        }
+
+        return (float) $invoice->balance_due > 0 ? 'Balance Due' : 'Complete';
+    }
+
+    /**
+     * The operator's "what is coming" list — today through +$days, presented the
+     * same way the calendar presents a day.
+     *
+     * @return array<int, array>
+     */
+    public function nextDays(int $days = 7, ?int $branchId = null): array
+    {
+        $today = CarbonImmutable::today();
+
+        return CateringEvent::query()
+            ->with('currentEstimate:id,catering_event_id,grand_total,version_no,status')
+            ->with('finalInvoice:id,catering_event_id,balance_due,status')
+            ->withCount('productionReleases')
+            ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
+            ->whereBetween('event_date', [$today->toDateString(), $today->addDays($days)->toDateString()])
+            ->where('status', '!=', CateringEvent::STATUS_CANCELLED)
+            ->orderBy('event_date')
+            ->orderBy('service_time')
+            ->get()
+            ->map(fn (CateringEvent $e) => $this->present($e, $today))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Owner KPI cards. Every figure is a count/sum of facts other screens
+     * already show — the balance uses the SAME refund-aware financial position
+     * authority as the booking workspace, never a parallel formula.
+     *
+     * @return array{today: int, next7: int, drafts: int, production_pending: int, outstanding_balance: float}
+     */
+    public function kpis(?int $branchId = null): array
+    {
+        $today = CarbonImmutable::today();
+
+        $open = CateringEvent::query()
+            ->with('currentEstimate:id,catering_event_id,grand_total,version_no,status')
+            ->withCount('productionReleases')
+            ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
+            ->whereNotIn('status', [
+                CateringEvent::STATUS_COMPLETED,
+                CateringEvent::STATUS_CLOSED,
+                CateringEvent::STATUS_CANCELLED,
+            ])
+            ->get();
+
+        $position = app(CateringFinancialPositionService::class);
+
+        return [
+            'today' => $open->filter(fn ($e) => $e->event_date->isSameDay($today))->count(),
+            'next7' => $open->filter(
+                fn ($e) => $e->event_date->gte($today) && $e->event_date->lte($today->addDays(7))
+            )->count(),
+            'drafts' => $open->filter(
+                fn ($e) => $e->currentEstimate === null || $e->currentEstimate->isDraft()
+            )->count(),
+            'production_pending' => $open->filter(
+                fn ($e) => in_array($e->status, [
+                    CateringEvent::STATUS_CONFIRMED,
+                    CateringEvent::STATUS_PRODUCTION_READY,
+                ], true) && (int) $e->production_releases_count === 0
+            )->count(),
+            'outstanding_balance' => (float) $open->sum(
+                fn ($e) => (float) ($position->position($e)['balance_due'] ?? 0)
+            ),
         ];
     }
 

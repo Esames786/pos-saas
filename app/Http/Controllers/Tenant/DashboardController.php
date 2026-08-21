@@ -162,15 +162,20 @@ class DashboardController extends Controller
         // every tenant.* permission regardless of plan, so a permission check here
         // would put a catering widget on a restaurant's dashboard. Null means the
         // widget is not rendered at all, not merely hidden.
-        $cateringCalendar = $this->cateringEnabled()
-            ? app(\App\Services\Catering\CateringCalendarService::class)->window(null, $selectedBranch)
+        $calendarService = $this->cateringEnabled()
+            ? app(\App\Services\Catering\CateringCalendarService::class)
             : null;
+        $cateringCalendar = $calendarService?->window(null, $selectedBranch);
+        // KASHIF-CATERING-OPERATOR-UI-1: the owner KPI cards and the next-7-days
+        // list, from the same presentation authority as the calendar itself.
+        $cateringKpis = $calendarService?->kpis($selectedBranch);
+        $cateringNextSeven = $calendarService ? $calendarService->nextDays(7, $selectedBranch) : [];
 
         return view('tenant.dashboard', compact(
             'branches', 'selectedBranch', 'today',
             'cashToday', 'cardToday', 'openShifts', 'failedPrints',
             'lowStockCount', 'expiryCount', 'topProducts', 'last7Days',
-            'cateringCalendar'
+            'cateringCalendar', 'cateringKpis', 'cateringNextSeven'
         ));
     }
 }

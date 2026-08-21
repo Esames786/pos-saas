@@ -36,8 +36,7 @@
         <div>
             <h5 class="mb-0"><i class="ti ti-calendar-event me-1"></i>Booking Calendar</h5>
             <div class="text-muted fs-12">
-                Showing the last {{ \App\Services\Catering\CateringCalendarService::WINDOW_MONTHS }} months.
-                Step back for older bookings.
+                A date shows how many bookings it holds — click it for the list.
             </div>
         </div>
         <div class="d-flex align-items-center gap-3 flex-wrap">
@@ -60,22 +59,27 @@
     <div class="card-body pt-2" id="catering-calendar-body">
 @endunless
 
-        {{-- ── month navigation ─────────────────────────────────────────── --}}
+        {{-- ── month navigation ─────────────────────────────────────────────
+             KASHIF-CATERING-OPERATOR-UI-1: one month at a time, with a Today
+             button — the diary question is "next month, previous month, back to
+             now", not "jump a quarter". --}}
         @php
-            $prev = $cal['anchor']->subMonths(\App\Services\Catering\CateringCalendarService::WINDOW_MONTHS)->format('Y-m');
-            $next = $cal['anchor']->addMonths(\App\Services\Catering\CateringCalendarService::WINDOW_MONTHS)->format('Y-m');
+            $prev = $cal['anchor']->subMonth()->format('Y-m');
+            $next = $cal['anchor']->addMonth()->format('Y-m');
         @endphp
         <div class="d-flex align-items-center justify-content-between mb-2">
             <button type="button" class="btn btn-sm btn-outline-secondary cal-nav" data-month="{{ $prev }}"
-                    title="Load the previous {{ \App\Services\Catering\CateringCalendarService::WINDOW_MONTHS }} months">
-                <i class="ti ti-chevron-left"></i> Older
+                    title="Previous month">
+                <i class="ti ti-chevron-left"></i> {{ $cal['anchor']->subMonth()->format('M Y') }}
             </button>
             <span class="fw-semibold">
                 {{ $cal['from']->format('M Y') }} &ndash; {{ $cal['anchor']->format('M Y') }}
+                <button type="button" class="btn btn-sm btn-link cal-nav p-0 ms-2 align-baseline" data-month=""
+                        title="Back to the current month">Today</button>
             </span>
             <button type="button" class="btn btn-sm btn-outline-secondary cal-nav" data-month="{{ $next }}"
-                    title="Move forward">
-                Newer <i class="ti ti-chevron-right"></i>
+                    title="Next month">
+                {{ $cal['anchor']->addMonth()->format('M Y') }} <i class="ti ti-chevron-right"></i>
             </button>
         </div>
 
@@ -112,18 +116,28 @@
                                                 style="height:2.5rem;{{ $day['is_today'] ? 'outline:2px solid var(--bs-primary);outline-offset:-2px' : '' }}">
                                                 <div class="fs-12 pt-1 {{ $day['is_today'] ? 'fw-bold' : 'text-muted' }}">{{ $day['day'] }}</div>
                                                 @if($day['events'])
-                                                    <div class="d-flex justify-content-center gap-1 flex-wrap px-1 pb-1">
-                                                        @foreach($day['events'] as $ev)
-                                                            @php $t = $tones[$ev['tone']] ?? $tones['draft']; @endphp
-                                                            <button type="button"
-                                                                    class="border-0 rounded-circle cal-dot p-0"
-                                                                    style="width:9px;height:9px;background:{{ $t['fg'] }}"
-                                                                    data-bs-toggle="modal"
-                                                                    data-bs-target="#calEventModal"
-                                                                    data-event='@json($ev, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)'
-                                                                    title="{{ $ev['event_no'] }} — {{ $ev['customer'] }}"
-                                                                    aria-label="{{ $ev['event_no'] }} {{ $ev['customer'] }}"></button>
-                                                        @endforeach
+                                                    {{-- One indicator with a count — a busy date must not
+                                                         fill its square with every booking. The strongest
+                                                         tone present colours it; the date modal tells the
+                                                         rest. --}}
+                                                    @php
+                                                        $dayTone = collect(['overdue', 'confirmed', 'quoted', 'draft', 'done', 'cancelled'])
+                                                            ->first(fn ($k) => collect($day['events'])->contains('tone', $k)) ?? 'draft';
+                                                        $t = $tones[$dayTone] ?? $tones['draft'];
+                                                        $dayLabel = \Carbon\CarbonImmutable::parse($day['date'])->format('D, d M Y');
+                                                    @endphp
+                                                    <div class="d-flex justify-content-center px-1 pb-1">
+                                                        <button type="button"
+                                                                class="border-0 rounded-pill cal-day-count fw-semibold"
+                                                                style="background:{{ $t['bg'] }};color:{{ $t['fg'] }};font-size:.68rem;line-height:1.1;padding:.05rem .4rem"
+                                                                data-bs-toggle="modal"
+                                                                data-bs-target="#calDayModal"
+                                                                data-date-label="{{ $dayLabel }}"
+                                                                data-events='@json($day['events'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)'
+                                                                title="{{ count($day['events']) }} {{ \Illuminate\Support\Str::plural('booking', count($day['events'])) }}"
+                                                                aria-label="{{ count($day['events']) }} bookings on {{ $dayLabel }}">
+                                                            &bull; {{ count($day['events']) }}
+                                                        </button>
                                                     </div>
                                                 @endif
                                             </td>
@@ -160,35 +174,39 @@
     </div>
 </div>
 
-{{-- ── event detail ─────────────────────────────────────────────────────── --}}
-<div class="modal fade" id="calEventModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
+{{-- ── one date's bookings ──────────────────────────────────────────────────
+     KASHIF-CATERING-OPERATOR-UI-1: clicking a date answers the diary question
+     in one look — who, when, where, how many, what state, what to do next. --}}
+<div class="modal fade" id="calDayModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="cal-ev-no">Booking</h5>
+                <h5 class="modal-title" id="cal-day-title">Bookings</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body">
-                <div class="d-flex justify-content-between align-items-start mb-3">
-                    <div>
-                        <div class="fs-5 fw-semibold" id="cal-ev-customer"></div>
-                        <div class="text-muted fs-13" id="cal-ev-when"></div>
-                    </div>
-                    <span class="badge" id="cal-ev-status"></span>
+            <div class="modal-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0 align-middle">
+                        <thead>
+                            <tr class="text-muted fs-12">
+                                <th class="ps-3">Booking</th>
+                                <th>Customer</th>
+                                <th>Phone</th>
+                                <th>Time</th>
+                                <th>Venue</th>
+                                <th class="text-end">PAX</th>
+                                <th>Quotation</th>
+                                <th>Booking</th>
+                                <th>Next Action</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="cal-day-rows"></tbody>
+                    </table>
                 </div>
-                <dl class="row mb-0 fs-14">
-                    <dt class="col-4 text-muted">Venue</dt><dd class="col-8" id="cal-ev-venue"></dd>
-                    <dt class="col-4 text-muted">Guests</dt><dd class="col-8" id="cal-ev-pax"></dd>
-                    <dt class="col-4 text-muted">Amount</dt>
-                    <dd class="col-8 fw-bold" id="cal-ev-amount"></dd>
-                </dl>
-                <div class="alert alert-light border mt-3 mb-0 fs-12" id="cal-ev-note" style="display:none"></div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
-                <a href="#" class="btn btn-primary" id="cal-ev-link">
-                    <i class="ti ti-external-link me-1"></i>Open booking
-                </a>
             </div>
         </div>
     </div>
@@ -200,47 +218,51 @@
     var card = document.getElementById('catering-calendar-card');
     if (!card) return;
 
-    // Fill the detail dialog from the dot that was clicked. All the data is
-    // already on the element, so opening a booking summary costs no request.
+    // Fill the day dialog from the count pill that was clicked. All the data is
+    // already on the element, so listing a date's bookings costs no request.
     document.addEventListener('show.bs.modal', function (e) {
-        if (!e.target || e.target.id !== 'calEventModal') return;
+        if (!e.target || e.target.id !== 'calDayModal') return;
         var btn = e.relatedTarget;
         if (!btn) return;
 
-        var ev;
-        try { ev = JSON.parse(btn.getAttribute('data-event')); } catch (err) { return; }
+        var events;
+        try { events = JSON.parse(btn.getAttribute('data-events')); } catch (err) { return; }
 
-        var set = function (id, text) { var n = document.getElementById(id); if (n) n.textContent = text; };
-
-        set('cal-ev-no', ev.event_no || 'Booking');
-        set('cal-ev-customer', ev.customer || '');
-        set('cal-ev-when', [ev.date, ev.time].filter(Boolean).join(' · '));
-        set('cal-ev-venue', ev.venue || '—');
-        set('cal-ev-pax', ev.pax ? Number(ev.pax).toLocaleString() : '—');
-        set('cal-ev-amount', ev.quoted
-            ? Number(ev.amount).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})
-            : 'Not priced yet');
-
-        var badge = document.getElementById('cal-ev-status');
-        if (badge) {
-            badge.textContent = ev.status_label || '';
-            badge.className = 'badge ' + (ev.tone === 'overdue' ? 'bg-danger'
-                : ev.tone === 'confirmed' ? 'bg-success'
-                : ev.tone === 'cancelled' ? 'bg-secondary' : 'bg-info text-dark');
+        var title = document.getElementById('cal-day-title');
+        if (title) {
+            title.textContent = (btn.getAttribute('data-date-label') || 'Bookings')
+                + ' — ' + events.length + ' booking' + (events.length === 1 ? '' : 's');
         }
 
-        var note = document.getElementById('cal-ev-note');
-        if (note) {
-            if (ev.needs_attention) {
-                note.textContent = 'This date has passed and the booking is still open. Complete it, close it, or cancel it.';
-                note.style.display = '';
-            } else {
-                note.style.display = 'none';
-            }
-        }
+        var esc = function (s) {
+            return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+                return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
+            });
+        };
+        var badge = function (tone, label) {
+            var cls = tone === 'overdue' ? 'bg-danger'
+                : tone === 'confirmed' ? 'bg-success'
+                : tone === 'cancelled' ? 'bg-secondary' : 'bg-info text-dark';
+            return '<span class="badge ' + cls + '">' + esc(label) + '</span>';
+        };
 
-        var link = document.getElementById('cal-ev-link');
-        if (link) link.setAttribute('href', ev.url);
+        var rows = document.getElementById('cal-day-rows');
+        if (!rows) return;
+        rows.innerHTML = events.map(function (ev) {
+            return '<tr>'
+                + '<td class="ps-3 fw-semibold">' + esc(ev.event_no) + '</td>'
+                + '<td>' + esc(ev.customer) + '</td>'
+                + '<td>' + esc(ev.phone || '—') + '</td>'
+                + '<td>' + esc(ev.time || '—') + '</td>'
+                + '<td>' + esc(ev.venue || '—') + '</td>'
+                + '<td class="text-end">' + (ev.pax ? Number(ev.pax).toLocaleString() : '—') + '</td>'
+                + '<td class="fs-12">' + esc(ev.quote_label || '—') + '</td>'
+                + '<td>' + badge(ev.tone, ev.status_label) + '</td>'
+                + '<td class="fs-12">' + esc(ev.next_action || '') + '</td>'
+                + '<td class="text-end pe-3"><a class="btn btn-sm btn-outline-primary" href="'
+                + esc(ev.url) + '">Open</a></td>'
+                + '</tr>';
+        }).join('');
     });
 
     // Older/newer months are fetched on demand — the first paint stays small
