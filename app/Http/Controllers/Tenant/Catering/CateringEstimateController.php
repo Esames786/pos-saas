@@ -32,6 +32,10 @@ class CateringEstimateController extends Controller
             'lines.*.unit_id' => ['nullable', 'exists:units,id'],
             'lines.*.rate' => ['required', 'numeric', 'min:0'],
             'lines.*.instructions' => ['nullable', 'string', 'max:2000'],
+            // KASHIF-CATERING-INSTRUCTIONS-1: managed vocabulary selections,
+            // saved beside the free note (which stays the additional note).
+            'lines.*.instruction_ids' => ['nullable', 'array'],
+            'lines.*.instruction_ids.*' => ['integer', 'exists:catering_instructions,id'],
             'service_charge_amount' => ['nullable', 'numeric', 'min:0'],
             'other_charge_label' => ['nullable', 'string', 'max:255'],
             'other_charge_amount' => ['nullable', 'numeric', 'min:0'],

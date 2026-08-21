@@ -157,6 +157,7 @@ class CateringEstimateService
 
                     $match->fill($attributes)->save();
                     $keptIds[] = $match->id;
+                    $this->syncManagedInstructions($match, $line);
 
                     if ($hasSnapshot) {
                         // Quantities that follow the order follow it; a quantity
@@ -178,6 +179,7 @@ class CateringEstimateService
                     ])->save();
 
                     $keptIds[] = $match->id;
+                    $this->syncManagedInstructions($match, $line);
                     $this->lineBlocks->snapshotLocked($match->refresh());
 
                     continue;
@@ -188,6 +190,7 @@ class CateringEstimateService
                     'amount' => round($quantity * $rate, 2),
                 ]);
                 $keptIds[] = $created->id;
+                $this->syncManagedInstructions($created, $line);
 
                 // A cost-block dish copies its blocks onto the line, and the
                 // line's amount becomes whatever that copy works out to.
@@ -213,6 +216,31 @@ class CateringEstimateService
 
             return $estimate->refresh();
         });
+    }
+
+    /**
+     * KASHIF-CATERING-INSTRUCTIONS-1 — reconcile a line's managed kitchen
+     * instructions with what the form sent. Only when the form actually sent
+     * the key: an API caller that never heard of managed instructions must not
+     * wipe a selection somebody made in the UI.
+     */
+    private function syncManagedInstructions(CateringEstimateLine $line, array $payload): void
+    {
+        if (! array_key_exists('instruction_ids', $payload)) {
+            return;
+        }
+
+        $ids = collect($payload['instruction_ids'] ?? [])
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->unique()
+            ->values();
+
+        // Validation upstream checks existence; the intersect keeps a racing
+        // vocabulary delete from becoming a foreign-key error here.
+        $ids = \App\Models\Tenant\CateringInstruction::whereIn('id', $ids)->pluck('id');
+
+        $line->managedInstructions()->sync($ids->all());
     }
 
     /**
@@ -279,6 +307,16 @@ class CateringEstimateService
             }
 
             if ($current = $event->currentEstimate) {
+                // KASHIF-CATERING-OPERATOR-UI-1: a booking is confirmed on a
+                // quotation the customer has seen — not on an editable draft
+                // whose numbers can still move after the confirmation was made.
+                // An event with no estimate at all stays confirmable, as before.
+                if ($current->isDraft()) {
+                    throw new RuntimeException(
+                        "Quotation Q{$current->version_no} is still a draft — finalize it before confirming the booking."
+                    );
+                }
+
                 $this->assertCostingReady($current, 'confirm');
             }
 
@@ -411,6 +449,12 @@ class CateringEstimateService
                     $clone->catering_estimate_line_id = $copy->id;
                     $clone->save();
                 }
+
+                // KASHIF-CATERING-INSTRUCTIONS-1: the kitchen selections are part
+                // of what was agreed, so the revision carries them too.
+                $copy->managedInstructions()->sync(
+                    $line->managedInstructions()->pluck('catering_instructions.id')->all()
+                );
             }
 
             $estimate->forceFill([

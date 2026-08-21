@@ -75,8 +75,12 @@ class CateringProductionReleaseService
                     'quantity' => $line->quantity,
                     'unit_code' => $line->unit_code,
                     'production_station' => $profile?->production_station,
+                    // KASHIF-CATERING-INSTRUCTIONS-1: the line's managed selections
+                    // and free note as one string, then the dish profile's standing
+                    // instruction. Snapshotted as TEXT — the kitchen sheet stays
+                    // readable even if the vocabulary is edited later.
                     'instructions' => trim(implode("\n", array_filter([
-                        $line->instructions,
+                        $line->instructionSummary(),
                         $profile?->instructions,
                     ]))) ?: null,
                     'sort_order' => $index,

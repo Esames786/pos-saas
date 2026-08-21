@@ -90,6 +90,9 @@ class TenantResetTransactionsCommand extends Command
         'catering_production_release_lines', 'catering_production_releases',
         'catering_refunds', 'catering_final_invoices', 'catering_advances',
         'catering_cost_snapshots', 'catering_estimate_line_cost_blocks',
+        // Which managed kitchen instructions a LINE selected — transactional,
+        // wiped with the lines. The vocabulary itself is master data, kept.
+        'catering_estimate_line_instruction',
         'catering_estimate_lines', 'catering_estimates',
         'catering_events',
         // The record of house rates being APPLIED to documents. Wiped with the
@@ -230,6 +233,9 @@ class TenantResetTransactionsCommand extends Command
         // beside it. Losing it to a transaction reset would be losing master
         // data, and every linked dish would forget what the house rate was.
         'catering_material_commercial_rates',
+        // The managed kitchen-instruction vocabulary — how the kitchen is told
+        // things, not what was sold. Master data, kept.
+        'catering_instructions',
     ];
 
     /** Tenant tables this command has no opinion about — surfaced as a warning. */

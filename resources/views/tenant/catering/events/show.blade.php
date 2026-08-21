@@ -8,6 +8,8 @@
 @php
     $current = $event->currentEstimate;
     $isDraft = $current && $current->isDraft();
+    // Render callers that predate the instruction vocabulary may not pass it.
+    $activeInstructions = $activeInstructions ?? collect();
     $statusBadge = match($event->status) {
         'confirmed', 'production_ready', 'released' => 'success',
         'quoted' => 'info',
@@ -42,7 +44,7 @@
                 </div>
                 @include('tenant.catering.partials.document-print', [
                     'action' => url('/catering/documents/estimate/' . $current->id . '/print'),
-                    'label' => 'Send quotation to printer',
+                    'label' => 'Print Quotation',
                     'printers' => $printers ?? collect(),
                     'permission' => 'tenant.catering.documents.estimate-print',
                 ])
@@ -53,15 +55,28 @@
                 <a href="{{ url('/catering/events/' . $event->id . '/edit') }}" class="btn btn-outline-primary">Edit Event</a>
             @endcan
             @if(in_array($event->status, ['draft', 'quoted']))
-                @can('tenant.catering.events.confirm')
-                    <form method="POST" action="{{ url('/catering/events/' . $event->id . '/confirm') }}" class="d-inline">
-                        @csrf
-                        <button class="btn btn-success"
-                                data-bs-toggle="tooltip"
-                                title="Marks the booking as agreed so advances, production and the final invoice unlock. No money is posted and no stock moves yet."
-                                onclick="return confirm('Confirm this booking?')">Confirm Booking</button>
-                    </form>
-                @endcan
+                {{-- KASHIF-CATERING-OPERATOR-UI-1: Confirm Booking is a decision
+                     made on a quotation the customer has seen and agreed to. While
+                     the quotation is still an editable draft the next action is
+                     Finalize Quotation, and showing a green Confirm here made the
+                     wrong step look like the obvious one. --}}
+                @if(! $current || $current->status === 'accepted')
+                    @can('tenant.catering.events.confirm')
+                        <form method="POST" action="{{ url('/catering/events/' . $event->id . '/confirm') }}" class="d-inline">
+                            @csrf
+                            <button class="btn btn-success"
+                                    data-bs-toggle="tooltip"
+                                    title="Marks the booking as agreed so advances, production and the final invoice unlock. No money is posted and no stock moves yet."
+                                    onclick="return confirm('Confirm this booking?')">Confirm Booking</button>
+                        </form>
+                    @endcan
+                @elseif($isDraft)
+                    <span class="text-muted fs-12 align-self-center"
+                          data-bs-toggle="tooltip"
+                          title="Finalize the quotation below first — a booking is confirmed on a quotation the customer has agreed to, not on an editable draft.">
+                        <i class="ti ti-info-circle me-1"></i>Finalize the quotation to confirm
+                    </span>
+                @endif
             @endif
             @can('tenant.catering.events.cancel')
                 <button class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#cancelModal"
@@ -188,9 +203,9 @@
                     <form method="POST" action="{{ url('/catering/estimates/' . $current->id . '/send') }}">
                         @csrf
                         <button class="btn btn-sm btn-primary" data-bs-toggle="tooltip"
-                                title="Freezes this quotation so the customer's copy can never change underneath them, and emails it if the customer has an address. To change the price afterwards you must create a revision."
-                                onclick="return confirm('Mark this estimate as sent? It becomes locked; further pricing changes need a revision.')">
-                            Mark Sent / Lock
+                                title="Validates the costing, freezes this quotation so the customer's copy can never change underneath them, and emails it if the customer has an address."
+                                onclick="return confirm('Finalize this quotation? Finalizing freezes it — changes afterwards require a new revision.')">
+                            Finalize Quotation
                         </button>
                     </form>
                 @endcan
@@ -230,16 +245,115 @@
                     <thead>
                         <tr>
                             <th style="min-width:220px;">Item</th>
-                            <th style="min-width:150px;">Urdu Name</th>
-                            <th style="width:110px;" class="text-end">Qty</th>
-                            <th style="width:120px;">Unit</th>
-                            <th style="width:130px;" class="text-end">Rate</th>
-                            <th style="width:130px;" class="text-end">Amount</th>
-                            <th style="min-width:160px;">Instructions</th>
+                            <th style="min-width:130px;">Urdu Name</th>
+                            <th style="width:100px;" class="text-end">Qty</th>
+                            <th style="width:100px;">Unit</th>
+                            <th style="width:110px;" class="text-end"
+                                data-bs-toggle="tooltip" title="What the dish's cost blocks work out to, per unit. Read-only — it moves when quantities or applied rates move.">Calculated</th>
+                            <th style="width:130px;" class="text-end"
+                                data-bs-toggle="tooltip" title="What the customer is actually quoted. For a block-costed dish it follows the calculated rate unless an agreed rate was set in Cost Details.">Quoted Rate</th>
+                            <th style="width:120px;" class="text-end">Amount</th>
+                            <th style="min-width:150px;">Instructions</th>
                             <th style="width:40px;"></th>
                         </tr>
                     </thead>
-                    <tbody id="lines-body"></tbody>
+                    <tbody id="lines-body">
+                        {{-- KASHIF-CATERING-OPERATOR-UI-1: existing lines render
+                             SERVER-SIDE so a block-costed line can show its
+                             calculated vs quoted rate apart and open its Cost
+                             Details without leaving the booking. The old
+                             builder rendered every line in JS with one
+                             ambiguous editable "Rate" — a number the server
+                             rightly ignored for block lines, which made the
+                             screen lie about what typing in it would do. --}}
+                        @foreach($current->lines as $i => $line)
+                        @php $lineBlocks = $line->costBlocks; $lineHasBlocks = $lineBlocks->isNotEmpty(); @endphp
+                        <tr data-row="s{{ $i }}" @if($lineHasBlocks) data-rate="{{ $line->rate }}" @endif>
+                            <td>
+                                <div class="fw-semibold">{{ $line->item_name }}</div>
+                                @if($lineHasBlocks)
+                                    <button class="btn btn-link btn-sm p-0 align-baseline d-block fs-12" type="button"
+                                            data-bs-toggle="collapse" data-bs-target="#cost-details-{{ $line->id }}">
+                                        Cost Details
+                                    </button>
+                                @endif
+                                <input type="hidden" name="lines[{{ $i }}][line_uuid]" value="{{ $line->line_uuid }}">
+                                <input type="hidden" name="lines[{{ $i }}][product_id]" value="{{ $line->product_id }}">
+                                <input type="hidden" name="lines[{{ $i }}][item_name]" value="{{ $line->item_name }}">
+                            </td>
+                            <td><input type="text" dir="rtl" lang="ur" class="form-control form-control-sm"
+                                       name="lines[{{ $i }}][item_name_ur]" value="{{ $line->item_name_ur }}"></td>
+                            <td><input type="number" step="0.001" min="0.001"
+                                       class="form-control form-control-sm text-end line-qty"
+                                       name="lines[{{ $i }}][quantity]"
+                                       value="{{ rtrim(rtrim(number_format($line->quantity, 3, '.', ''), '0'), '.') }}" required></td>
+                            <td>
+                                <select class="form-select form-select-sm" name="lines[{{ $i }}][unit_id]">
+                                    <option value="">—</option>
+                                    @foreach($units as $u)
+                                        <option value="{{ $u->id }}" @selected((string) $line->unit_id === (string) $u->id)>{{ $u->code }}</option>
+                                    @endforeach
+                                </select>
+                            </td>
+                            <td class="text-end align-middle">
+                                @if($lineHasBlocks)
+                                    {{ number_format($line->calculated_rate ?? 0, 2) }}
+                                @else
+                                    <span class="text-muted" title="This line is not priced from cost blocks">—</span>
+                                @endif
+                            </td>
+                            <td class="text-end align-middle">
+                                @if($lineHasBlocks)
+                                    <span class="fw-semibold">{{ number_format($line->rate, 2) }}</span>
+                                    @if($line->hasQuotedRateOverride())
+                                        <div class="fs-12 text-warning-emphasis">agreed rate</div>
+                                    @endif
+                                    <div class="fs-12 text-muted">change in Cost Details</div>
+                                    <input type="hidden" name="lines[{{ $i }}][rate]" value="{{ $line->rate }}">
+                                @else
+                                    <input type="number" step="0.01" min="0"
+                                           class="form-control form-control-sm text-end line-rate"
+                                           name="lines[{{ $i }}][rate]" value="{{ $line->rate }}" required>
+                                @endif
+                            </td>
+                            <td class="text-end align-middle line-amount">0.00</td>
+                            <td>
+                                {{-- KASHIF-CATERING-INSTRUCTIONS-1: managed selections
+                                     from the vocabulary + the free note beside them. --}}
+                                @if($activeInstructions->isNotEmpty() || $line->managedInstructions->isNotEmpty())
+                                    <select class="form-select form-select-sm instr-select" multiple
+                                            name="lines[{{ $i }}][instruction_ids][]"
+                                            data-placeholder="Kitchen instructions…">
+                                        @foreach($activeInstructions as $instr)
+                                            <option value="{{ $instr->id }}"
+                                                    @selected($line->managedInstructions->contains('id', $instr->id))>{{ $instr->label }}</option>
+                                        @endforeach
+                                        {{-- A selection whose entry was later deactivated must
+                                             survive the next save, so it stays selectable here. --}}
+                                        @foreach($line->managedInstructions->whereNotIn('id', $activeInstructions->pluck('id')) as $instr)
+                                            <option value="{{ $instr->id }}" selected>{{ $instr->label }}</option>
+                                        @endforeach
+                                    </select>
+                                @else
+                                    <input type="hidden" name="lines[{{ $i }}][instruction_ids]" value="">
+                                @endif
+                                <input type="text" class="form-control form-control-sm mt-1"
+                                       name="lines[{{ $i }}][instructions]" value="{{ $line->instructions }}"
+                                       placeholder="Additional note">
+                            </td>
+                            <td class="align-middle"><button type="button" class="btn btn-sm btn-link text-danger remove-line p-0"><i class="ti ti-x"></i></button></td>
+                        </tr>
+                        @if($lineHasBlocks)
+                        <tr class="collapse cost-details-row" id="cost-details-{{ $line->id }}">
+                            <td colspan="9" class="bg-body-secondary">
+                                @include('tenant.catering.events.partials.line-cost-details', [
+                                    'line' => $line, 'current' => $current, 'event' => $event,
+                                ])
+                            </td>
+                        </tr>
+                        @endif
+                        @endforeach
+                    </tbody>
                 </table>
             </div>
             <div class="p-3">
@@ -371,197 +485,15 @@
                                 </div>
                             @endif
                         </td>
-                        <td>{{ $line->instructions }}</td>
+                        <td>{{ $line->instructionSummary() }}</td>
                     </tr>
 
                     @if($blocks->isNotEmpty())
                     <tr class="collapse" id="cost-details-{{ $line->id }}">
                         <td colspan="7" class="bg-body-secondary">
-                            @if($line->hasQuotedRateOverride() && $line->rate_override_reason)
-                                <div class="alert alert-warning py-2 mb-3 fs-13">
-                                    <i class="ti ti-alert-triangle me-1"></i>
-                                    Quoted at {{ number_format($line->rate, 2) }} instead of the calculated
-                                    {{ number_format($line->calculated_rate, 2) }} —
-                                    <em>{{ $line->rate_override_reason }}</em>
-                                </div>
-                            @endif
-
-                            <div class="table-responsive">
-                                <table class="table table-sm mb-0">
-                                    <thead>
-                                        <tr>
-                                            <th>Part</th>
-                                            <th class="text-end">Customer charge</th>
-                                            <th class="text-end">Kitchen uses</th>
-                                            <th class="text-end">Costs us</th>
-                                            <th class="text-end">Contribution</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach($blocks as $block)
-                                        <tr>
-                                            <td>
-                                                {{ $block->label }}
-                                                @if($block->isMaterial())
-                                                    <span class="badge bg-info-subtle text-info-emphasis fs-12">Material</span>
-                                                @else
-                                                    <span class="badge bg-secondary-subtle text-secondary-emphasis fs-12">Charge</span>
-                                                @endif
-                                                @if($block->isLumpSum())
-                                                    <span class="badge bg-light text-muted fs-12">once</span>
-                                                @endif
-                                                @if($block->is_overridden)
-                                                    <span class="badge bg-warning-subtle text-warning-emphasis fs-12">this event</span>
-                                                @endif
-                                                @if($block->isCustomerSupplied())
-                                                    <span class="badge bg-success-subtle text-success-emphasis fs-12">Customer provides</span>
-                                                @endif
-                                            </td>
-                                            <td class="text-end">
-                                                {{ number_format($block->rate, 2) }}
-                                                <div class="fs-12 text-muted">
-                                                    @if($block->isLumpSum())
-                                                        charged once
-                                                    @elseif($block->isPerMaterialUnit())
-                                                        per {{ $block->unit_code ?? 'unit' }} {{ $block->material_name }}
-                                                    @else
-                                                        per {{ $line->unit_code ?? 'unit' }} dish
-                                                    @endif
-                                                </div>
-                                            </td>
-                                            <td class="text-end">
-                                                @if($block->isMaterial() && $block->event_material_qty !== null)
-                                                    @if($current->isDraft())
-                                                        {{-- Editable only while the quotation is a draft: a
-                                                             sent one's costing is history. --}}
-                                                        @can('tenant.catering.estimates.update')
-                                                        <form method="POST" class="d-inline-flex gap-1 align-items-center"
-                                                              action="{{ url('/catering/line-cost-blocks/' . $block->id) }}">
-                                                            @csrf @method('PUT')
-                                                            <input type="number" step="0.0001" min="0" name="event_material_qty"
-                                                                   value="{{ rtrim(rtrim(number_format($block->event_material_qty, 4, '.', ''), '0'), '.') }}"
-                                                                   class="form-control form-control-sm text-end" style="width:90px">
-                                                            <span class="fs-12 text-muted">{{ $block->unit_code }}</span>
-                                                            <button class="btn btn-sm btn-light" title="Use this quantity for this booking only">
-                                                                <i class="ti ti-check"></i>
-                                                            </button>
-                                                        </form>
-                                                        @endcan
-                                                    @else
-                                                        {{ rtrim(rtrim(number_format($block->event_material_qty, 4), '0'), '.') }}
-                                                        {{ $block->unit_code }}
-                                                    @endif
-
-                                                    {{-- Two facts at once: the kitchen still needs it, and
-                                                         our store hands over none of it. --}}
-                                                    @if($block->isCustomerSupplied())
-                                                        <div class="fs-12 text-success-emphasis">
-                                                            customer provides it · we issue 0
-                                                        </div>
-                                                    @endif
-
-                                                    @if($current->isDraft())
-                                                        @can('tenant.catering.estimates.update')
-                                                        <form method="POST" class="mt-1"
-                                                              action="{{ url('/catering/line-cost-blocks/' . $block->id . '/customer-supplied') }}">
-                                                            @csrf @method('PUT')
-                                                            <input type="hidden" name="is_customer_supplied"
-                                                                   value="{{ $block->isCustomerSupplied() ? 0 : 1 }}">
-                                                            <button class="btn btn-link btn-sm p-0 fs-12">
-                                                                {{ $block->isCustomerSupplied()
-                                                                    ? 'We will provide this instead'
-                                                                    : 'Customer will provide this' }}
-                                                            </button>
-                                                        </form>
-                                                        @endcan
-                                                    @endif
-
-                                                    @if($block->is_overridden)
-                                                        <div class="fs-12 text-muted">
-                                                            dish says {{ rtrim(rtrim(number_format($block->default_material_qty, 4), '0'), '.') }}
-                                                            @if($current->isDraft())
-                                                                @can('tenant.catering.estimates.update')
-                                                                <form method="POST" class="d-inline"
-                                                                      action="{{ url('/catering/line-cost-blocks/' . $block->id . '/reset') }}">
-                                                                    @csrf
-                                                                    <button class="btn btn-link btn-sm p-0 align-baseline fs-12">Reset</button>
-                                                                </form>
-                                                                @endcan
-                                                            @endif
-                                                        </div>
-                                                    @endif
-                                                @else
-                                                    <span class="text-muted">—</span>
-                                                @endif
-                                            </td>
-                                            <td class="text-end text-muted">
-                                                @if($block->material_cost !== null)
-                                                    {{ number_format($block->material_cost, 2) }}
-                                                @elseif($block->isMaterial())
-                                                    <span title="No rate in the Material Rate Book yet">not known</span>
-                                                @else
-                                                    —
-                                                @endif
-                                            </td>
-                                            <td class="text-end fw-semibold">{{ number_format($block->amount, 2) }}</td>
-                                        </tr>
-                                        @endforeach
-                                    </tbody>
-                                    <tfoot>
-                                        <tr class="border-top">
-                                            <td colspan="4" class="text-end fw-bold">Calculated rate</td>
-                                            <td class="text-end fw-bold">
-                                                {{ number_format($line->calculated_rate ?? 0, 2) }} / {{ $line->unit_code }}
-                                            </td>
-                                        </tr>
-                                    </tfoot>
-                                </table>
-                            </div>
-
-                            @if($current->isDraft())
-                                @can('tenant.catering.estimates.update')
-                                <form method="POST" class="row g-2 align-items-end mt-2"
-                                      action="{{ url('/catering/estimate-lines/' . $line->id . '/quoted-rate') }}">
-                                    @csrf @method('PUT')
-                                    <div class="col-auto">
-                                        <label class="form-label fs-12 text-muted mb-1">Quote a different rate</label>
-                                        <input type="number" step="0.01" min="0" name="quoted_rate"
-                                               value="{{ number_format($line->rate, 2, '.', '') }}"
-                                               class="form-control form-control-sm" style="width:120px">
-                                    </div>
-                                    <div class="col-md-5">
-                                        <label class="form-label fs-12 text-muted mb-1">Why</label>
-                                        <input type="text" name="reason" maxlength="255"
-                                               value="{{ $line->rate_override_reason }}"
-                                               class="form-control form-control-sm"
-                                               placeholder="e.g. wedding package agreed rate">
-                                    </div>
-                                    <div class="col-auto">
-                                        <button class="btn btn-sm btn-outline-primary">Use this rate</button>
-                                    </div>
-                                </form>
-
-                                @if($line->hasQuotedRateOverride())
-                                    <form method="POST" class="mt-2"
-                                          action="{{ url('/catering/estimate-lines/' . $line->id . '/use-calculated-rate') }}">
-                                        @csrf
-                                        <button class="btn btn-link btn-sm p-0 fs-12">
-                                            Use calculated rate ({{ number_format($line->calculated_rate, 2) }}) instead
-                                        </button>
-                                    </form>
-                                @endif
-                                @endcan
-                            @endif
-
-                            <div class="text-muted fs-12 mt-2">
-                                <strong>Customer charge</strong> is what this part adds to the bill.
-                                <strong>Kitchen uses</strong> is what leaves the store.
-                                <strong>Costs us</strong> is that quantity at the
-                                <a href="{{ url('/catering/material-rates') }}">Material Rate Book</a> rate
-                                when this was quoted. They are meant to differ — the gap is the margin.
-                                Changing a quantity here affects <strong>this booking only</strong> — never the
-                                dish, and never another quotation.
-                            </div>
+                            @include("tenant.catering.events.partials.line-cost-details", [
+                                "line" => $line, "current" => $current, "event" => $event,
+                            ])
                         </td>
                     </tr>
                     @endif
@@ -712,7 +644,7 @@
                         <tr><td class="text-center text-muted py-3">
                             Not released yet.
                             @if($current && $current->isDraft())
-                                <div class="fs-12">Send/lock the estimate first.</div>
+                                <div class="fs-12">Finalize the quotation first.</div>
                             @endif
                         </td></tr>
                         @endforelse
@@ -1077,29 +1009,31 @@
     // argument with a RECURSIVE paren regex; on a long multi-line payload that
     // match hits PCRE limits and SILENTLY TRUNCATES, emitting an unbalanced
     // bracket — invalid PHP that `view:cache` still reports as "cached successfully".
+    // KASHIF-CATERING-OPERATOR-UI-1: existing lines render server-side now (so a
+    // block-costed line can show calculated vs quoted apart, with Cost Details
+    // inline); this script only manages NEWLY ADDED rows and the running totals.
     $unitsPayload = $units->map(fn ($u) => ['id' => $u->id, 'code' => $u->code, 'name' => $u->name])->values();
-    $existingLines = $current->lines->map(fn ($l) => [
-        // Stable identity, so saving the builder UPDATES this line rather than
-        // replacing it — and the material quantities and agreed rate somebody
-        // set on it survive an ordinary edit.
-        'line_uuid' => $l->line_uuid,
-        'product_id' => $l->product_id,
-        'product_text' => $l->item_name,
-        'item_name' => $l->item_name,
-        'item_name_ur' => $l->item_name_ur,
-        'quantity' => (float) $l->quantity,
-        'unit_id' => $l->unit_id,
-        'rate' => (float) $l->rate,
-        'instructions' => $l->instructions,
-    ])->values();
+    $instructionsPayload = $activeInstructions->map(fn ($i) => ['id' => $i->id, 'label' => $i->label])->values();
 @endphp
 <script>
 $(function () {
     const units = @json($unitsPayload);
     const profiles = @json($profileMap);
-    const existing = @json($existingLines);
+    const instructions = @json($instructionsPayload);
     const defaultPax = {{ (int) $event->pax }};
-    let rowSeq = 0;
+    // Name indexes continue AFTER the server-rendered lines.
+    let rowSeq = {{ $current->lines->count() }};
+
+    function instructionOptions() {
+        return instructions.map(i => `<option value="${i.id}">${_.escape(i.label)}</option>`).join('');
+    }
+
+    function initInstrSelect(scope) {
+        $(scope || document).find('.instr-select').each(function () {
+            if ($(this).hasClass('select2-hidden-accessible')) return;
+            $(this).select2({ width: '100%', placeholder: $(this).data('placeholder') || 'Kitchen instructions…' });
+        });
+    }
 
     function unitOptions(selectedId) {
         let html = '<option value="">—</option>';
@@ -1122,12 +1056,17 @@ $(function () {
                 <td><input type="text" dir="rtl" lang="ur" class="form-control form-control-sm line-name-ur" name="lines[${i}][item_name_ur]" value="${_.escape(line.item_name_ur || '')}"></td>
                 <td><input type="number" step="0.001" min="0.001" class="form-control form-control-sm text-end line-qty" name="lines[${i}][quantity]" value="${line.quantity || defaultPax || 1}" required></td>
                 <td><select class="form-select form-select-sm line-unit" name="lines[${i}][unit_id]">${unitOptions(line.unit_id)}</select></td>
+                <td class="text-end align-middle text-muted" title="A block-costed dish shows its calculated rate after the estimate is saved">—</td>
                 <td><input type="number" step="0.01" min="0" class="form-control form-control-sm text-end line-rate" name="lines[${i}][rate]" value="${line.rate || 0}" required></td>
                 <td class="text-end align-middle line-amount">0.00</td>
-                <td><input type="text" class="form-control form-control-sm" name="lines[${i}][instructions]" value="${_.escape(line.instructions || '')}"></td>
+                <td>
+                    ${instructions.length ? `<select class="form-select form-select-sm instr-select" multiple name="lines[${i}][instruction_ids][]" data-placeholder="Kitchen instructions…">${instructionOptions()}</select>` : ''}
+                    <input type="text" class="form-control form-control-sm mt-1" name="lines[${i}][instructions]" value="${_.escape(line.instructions || '')}" placeholder="Additional note">
+                </td>
                 <td class="align-middle"><button type="button" class="btn btn-sm btn-link text-danger remove-line p-0"><i class="ti ti-x"></i></button></td>
             </tr>`);
         $('#lines-body').append(row);
+        initInstrSelect(row);
 
         const select = row.find('.product-select');
         select.select2({
@@ -1177,9 +1116,13 @@ $(function () {
 
     function recalc() {
         let subtotal = 0;
-        $('#lines-body tr').each(function () {
+        $('#lines-body tr').not('.cost-details-row').each(function () {
             const qty = parseFloat($(this).find('.line-qty').val()) || 0;
-            const rate = parseFloat($(this).find('.line-rate').val()) || 0;
+            // A block-costed line's quoted rate is not an input here — the row
+            // carries it as data-rate and it only changes through Cost Details.
+            const rate = $(this).find('.line-rate').length
+                ? (parseFloat($(this).find('.line-rate').val()) || 0)
+                : (parseFloat($(this).data('rate')) || 0);
             const amount = Math.round(qty * rate * 100) / 100;
             $(this).find('.line-amount').text(amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}));
             subtotal += amount;
@@ -1205,15 +1148,51 @@ $(function () {
     $('#add-line').on('click', () => addRow());
     $(document).on('input change', '.line-qty, .line-rate, .t-input', recalc);
     $(document).on('click', '.remove-line', function () {
-        $(this).closest('tr').remove();
+        const tr = $(this).closest('tr');
+        // A block-costed row travels with its Cost Details row.
+        tr.next('.cost-details-row').remove();
+        tr.remove();
         recalc();
     });
 
-    if (existing.length) {
-        existing.forEach(addRow);
-    } else {
+    // KASHIF-CATERING-OPERATOR-UI-1: Cost Details actions post through a form
+    // built on the fly. They cannot be real <form> tags — this whole table sits
+    // inside the estimate form, and HTML silently drops a nested form, which is
+    // why these controls could never live on the draft screen before.
+    $(document).on('click', '.js-act', function () {
+        const box = $(this).closest('[data-act]');
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = box.data('act');
+        const add = (name, value) => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = name;
+            input.value = value;
+            form.appendChild(input);
+        };
+        add('_token', '{{ csrf_token() }}');
+        const method = String(box.data('act-method') || 'POST').toUpperCase();
+        if (method !== 'POST') add('_method', method);
+        box.find('[data-field]').each(function () {
+            add($(this).data('field'), $(this).val());
+        });
+        document.body.appendChild(form);
+        form.submit();
+    });
+    // Enter inside a Cost Details control fires that control's action — not the
+    // surrounding Save Estimate form.
+    $(document).on('keydown', '[data-act] input', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            $(this).closest('[data-act]').find('.js-act').first().trigger('click');
+        }
+    });
+
+    if (rowSeq === 0) {
         addRow();
     }
+    initInstrSelect(document);
     recalc();
 });
 </script>

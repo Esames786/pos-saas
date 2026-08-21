@@ -923,6 +923,13 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                     Route::get('/catering/documents/kitchen-sheet/{cateringProductionRelease}', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'kitchenSheet'])->name('tenant.catering.documents.kitchen-sheet');
                     Route::get('/catering/documents/final-invoice/{cateringFinalInvoice}', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'finalInvoice'])->name('tenant.catering.documents.final-invoice');
 
+                    // KASHIF-CATERING-OPERATOR-UI-1: bulk documents for a selected set
+                    // of bookings. GET + read-only composition for the browser print
+                    // dialog — no stock, no postings, no lifecycle change, no queue.
+                    Route::get('/catering/documents/bulk/quotations', [\App\Http\Controllers\Tenant\Catering\CateringBulkDocumentController::class, 'quotations'])->name('tenant.catering.documents.bulk-quotations');
+                    Route::get('/catering/documents/bulk/kitchen-sheets', [\App\Http\Controllers\Tenant\Catering\CateringBulkDocumentController::class, 'kitchenSheets'])->name('tenant.catering.documents.bulk-kitchen-sheets');
+                    Route::get('/catering/documents/bulk/address-sheet', [\App\Http\Controllers\Tenant\Catering\CateringBulkDocumentController::class, 'addressSheet'])->name('tenant.catering.documents.bulk-address-sheet');
+
                     // KASHIF-CATERING-PRODUCT-UX-1 (item 7) — customer documents over the
                     // existing print_jobs transport. English only: the ESC/POS path has no
                     // codepage or raster support, so Urdu stays A4/browser and is refused
@@ -934,6 +941,12 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                     Route::post('/catering/printer-mappings', [\App\Http\Controllers\Tenant\Catering\CateringPrinterMappingController::class, 'store'])->name('tenant.catering.printer-mappings.store');
                     Route::delete('/catering/printer-mappings/{cateringPrinterMapping}', [\App\Http\Controllers\Tenant\Catering\CateringPrinterMappingController::class, 'destroy'])->name('tenant.catering.printer-mappings.destroy');
                     Route::post('/catering/printer-mappings/copy-from-pos', [\App\Http\Controllers\Tenant\Catering\CateringPrinterMappingController::class, 'copyFromPos'])->name('tenant.catering.printer-mappings.copy-from-pos');
+
+                    // KASHIF-CATERING-INSTRUCTIONS-1: the managed kitchen-instruction
+                    // vocabulary. Config only — no money, no stock.
+                    Route::get('/catering/instructions', [\App\Http\Controllers\Tenant\Catering\CateringInstructionController::class, 'index'])->name('tenant.catering.instructions.index');
+                    Route::post('/catering/instructions', [\App\Http\Controllers\Tenant\Catering\CateringInstructionController::class, 'store'])->name('tenant.catering.instructions.store');
+                    Route::put('/catering/instructions/{cateringInstruction}', [\App\Http\Controllers\Tenant\Catering\CateringInstructionController::class, 'update'])->name('tenant.catering.instructions.update');
 
                     Route::get('/catering/settings', [\App\Http\Controllers\Tenant\Catering\CateringSettingController::class, 'index'])->name('tenant.catering.settings.index');
                     Route::put('/catering/settings', [\App\Http\Controllers\Tenant\Catering\CateringSettingController::class, 'update'])->name('tenant.catering.settings.update');

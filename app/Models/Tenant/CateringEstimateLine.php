@@ -87,6 +87,41 @@ class CateringEstimateLine extends Model
             && round((float) $this->rate, 2) !== round((float) $this->calculated_rate, 2);
     }
 
+    /**
+     * KASHIF-CATERING-INSTRUCTIONS-1 — the managed kitchen instructions selected
+     * for this line. Named managedInstructions because `instructions` is already
+     * the free-text column, which survives beside these as the additional note.
+     */
+    public function managedInstructions()
+    {
+        return $this->belongsToMany(
+            CateringInstruction::class,
+            'catering_estimate_line_instruction',
+            'catering_estimate_line_id',
+            'catering_instruction_id'
+        );
+    }
+
+    /**
+     * Everything the kitchen should read for this line, as one string: the
+     * managed selections first, then the free note. Used wherever the line's
+     * instructions are DISPLAYED or SNAPSHOTTED as text; historical lines with
+     * only a free note come out unchanged.
+     */
+    public function instructionSummary(): ?string
+    {
+        $labels = $this->managedInstructions
+            ->sortBy([['sort_order', 'asc'], ['label', 'asc']])
+            ->pluck('label')
+            ->implode(', ');
+
+        $note = trim((string) $this->instructions);
+
+        $summary = trim($labels !== '' && $note !== '' ? "{$labels} — {$note}" : $labels.$note);
+
+        return $summary !== '' ? $summary : null;
+    }
+
     public function estimate()
     {
         return $this->belongsTo(CateringEstimate::class, 'catering_estimate_id');

@@ -108,6 +108,15 @@ class PermissionCatalogService
         'tenant.catering.documents.estimate' => 'Print / Reprint',
         'tenant.catering.documents.kitchen-sheet' => 'Print / Reprint',
         'tenant.catering.documents.final-invoice' => 'Print / Reprint',
+        // Bulk print runs compose the same documents for a selected set of
+        // bookings — same grant family as the single-document prints.
+        // The managed kitchen-instruction vocabulary — config, like the books.
+        'tenant.catering.instructions.index' => 'Kitchen Instructions',
+        'tenant.catering.instructions.store' => 'Kitchen Instructions',
+        'tenant.catering.instructions.update' => 'Kitchen Instructions',
+        'tenant.catering.documents.bulk-quotations' => 'Print / Reprint',
+        'tenant.catering.documents.bulk-kitchen-sheets' => 'Print / Reprint',
+        'tenant.catering.documents.bulk-address-sheet' => 'Print / Reprint',
         'tenant.catering.material-issues.store' => 'Issue Materials',
         // The store counter, and the booking lookup its selection modal reads.
         // Grouped together so the screen and the list it needs are granted as
