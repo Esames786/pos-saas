@@ -5,8 +5,20 @@
 @section('content')
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
     <div>
-        <h1 class="mb-1">Catering Material Rate Book</h1>
-        <div class="text-muted">Commercial quote rates only — inventory average cost, FEFO cost, and POS prices are never changed from here.</div>
+        {{-- CAT-RATE-UX-001 — this screen called itself "Commercial quote rates",
+             which is the name of the OTHER book. An owner reading it would put
+             what chicken costs them into the place that decides what the
+             customer is charged for it. The two books now say what they are, in
+             the same two words everywhere. --}}
+        <h1 class="mb-1">Material Cost Rates</h1>
+        <div class="text-muted">
+            What each material <strong>costs our business</strong> — internal only, never added to a
+            customer's quotation. Inventory average cost, FEFO cost and POS prices are never changed from here.
+        </div>
+        <div class="fs-13 mt-1">
+            Looking for what the <strong>customer</strong> is charged?
+            <a href="{{ url('/catering/commercial-rates') }}">Commercial Charge Rates &rsaquo;</a>
+        </div>
     </div>
     @can('tenant.catering.material-rates.store')
         <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#rateModal">

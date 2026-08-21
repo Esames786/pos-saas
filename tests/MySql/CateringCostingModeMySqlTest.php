@@ -283,10 +283,16 @@ class CateringCostingModeMySqlTest extends MySqlTenantTestCase
         $html = file_get_contents(base_path('resources/views/tenant/catering/profiles/index.blade.php'));
 
         $this->assertNotFalse($html);
-        $this->assertStringContainsString('Pricing Method', $html);
+        // CAT-PRICE-001: "Pricing Method" was removed rather than left lying —
+        // it offered Per PAX / Fixed and no calculation ever read either. What
+        // decides the amount is stated instead, and it must still read as a
+        // different question from Costing Source.
+        $this->assertStringContainsString('How it is priced', $html);
         $this->assertStringContainsString('Costing Source', $html);
         $this->assertStringNotContainsString('>Pricing Mode<', $html,
             'the bare word "Mode" is what made these two confusable in the first place');
+        $this->assertStringNotContainsString('<option value="per_pax">', $html,
+            'a pricing method the quote engine ignores must not be offered as a choice');
     }
 
     /** Both accepted values must be offered, or half the feature is unreachable. */

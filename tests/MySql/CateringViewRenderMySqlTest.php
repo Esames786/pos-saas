@@ -156,7 +156,7 @@ class CateringViewRenderMySqlTest extends MySqlTenantTestCase
             'tenant.catering.settings.index' => ['settings' => \App\Models\Tenant\CateringSetting::tenantDefault()],
             'tenant.catering.documents.estimate' => [
                 'estimate' => $estimate, 'event' => $event, 'lang' => 'both',
-                'advanceTotal' => 0.0, 'businessName' => 'Render Test',
+                'advanceTotal' => 0.0, 'position' => app(\App\Services\Catering\CateringFinancialPositionService::class)->position($event), 'businessName' => 'Render Test',
             ],
             // Catering materials reuse the shared product list under its own base
             // path — the regression guard for the contextBase indirection.
@@ -431,7 +431,7 @@ class CateringViewRenderMySqlTest extends MySqlTenantTestCase
         $html = View::make('tenant.catering.documents.estimate', [
             'estimate' => $this->estimate->fresh(['lines', 'event']),
             'event' => $this->event->fresh(),
-            'lang' => 'both', 'advanceTotal' => 0.0, 'businessName' => 'Render Test',
+            'lang' => 'both', 'advanceTotal' => 0.0, 'position' => app(\App\Services\Catering\CateringFinancialPositionService::class)->position($this->event->fresh()), 'businessName' => 'Render Test',
         ])->render();
 
         $this->assertStringContainsString('Chicken Biryani', $html);
@@ -440,7 +440,7 @@ class CateringViewRenderMySqlTest extends MySqlTenantTestCase
         $urdu = View::make('tenant.catering.documents.estimate', [
             'estimate' => $this->estimate->fresh(['lines', 'event']),
             'event' => $this->event->fresh(),
-            'lang' => 'ur', 'advanceTotal' => 0.0, 'businessName' => 'Render Test',
+            'lang' => 'ur', 'advanceTotal' => 0.0, 'position' => app(\App\Services\Catering\CateringFinancialPositionService::class)->position($this->event->fresh()), 'businessName' => 'Render Test',
         ])->render();
         $this->assertStringContainsString('dir="rtl"', $urdu, 'Urdu document must be RTL');
     }

@@ -9,6 +9,7 @@ use App\Models\Tenant\CateringProductionRelease;
 use App\Models\Tenant\CateringSetting;
 use App\Models\Tenant\Printer;
 use App\Services\Catering\CateringDocumentPrintService;
+use App\Services\Catering\CateringFinancialPositionService;
 use Illuminate\Http\Request;
 
 /**
@@ -24,13 +25,27 @@ class CateringDocumentController extends Controller
     {
         $cateringEstimate->load(['event.customer', 'lines']);
         $lang = $this->language($request);
-        $advanceTotal = (float) $cateringEstimate->event->advances()->sum('amount');
+
+        // CAT-DOC-001 — one authority for what the customer owes.
+        //
+        // This printed a balance computed from GROSS advances, so a booking that
+        // had been partly refunded printed as though the business still held all
+        // of the money. The customer's copy understated what was due, and the
+        // screen beside it — which has always subtracted refunds — disagreed with
+        // the paper the customer was handed.
+        //
+        // The document now asks the same service every other finance surface
+        // asks. There is one settlement formula and this is not a second one.
+        $position = app(CateringFinancialPositionService::class)->position($cateringEstimate->event);
 
         return view('tenant.catering.documents.estimate', [
             'estimate' => $cateringEstimate,
             'event' => $cateringEstimate->event,
             'lang' => $lang,
-            'advanceTotal' => $advanceTotal,
+            'position' => $position,
+            // Kept for anything still reading it, but it is now the NET figure —
+            // what the business actually holds.
+            'advanceTotal' => $position['net_received'],
             'businessName' => $this->businessName(),
         ]);
     }
