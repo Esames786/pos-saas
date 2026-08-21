@@ -42,7 +42,10 @@ class CateringEstimateLifecycleMySqlTest extends MySqlTenantTestCase
             'catering_settings', 'customer_translations', 'supplier_translations',
             'recipe_ingredients', 'recipes', 'unit_conversions', 'units',
             'kot_batch_lines', 'kot_batches', 'print_jobs', 'stock_ledgers', 'stock_balances',
-            'journal_lines', 'journal_entries', 'accounts', 'cash_bank_account_transactions', 'cash_bank_accounts', 'sales_order_lines', 'sales_orders',
+            // sale_payments is asserted ZERO below, so it must be cleaned here —
+            // relying on nobody else writing it made this suite fail whenever a
+            // concurrent POS run left rows in the shared test database.
+            'journal_lines', 'journal_entries', 'accounts', 'cash_bank_account_transactions', 'cash_bank_accounts', 'sale_payments', 'sales_order_lines', 'sales_orders',
             'products', 'categories', 'customers', 'branches',
         ]);
 

@@ -27,23 +27,23 @@ class CateringEventController extends Controller
         // KASHIF-CATERING-OPERATOR-UI-1: predictable search over the fields an
         // operator actually holds — booking number, customer, phone, venue or
         // address. Deliberately NOT a cross-module global search.
-        $q = trim((string) $request->input("q", ""));
+        $q = trim((string) $request->input('q', ''));
 
-        $query = CateringEvent::with(["currentEstimate", "finalInvoice:id,catering_event_id,balance_due,status"])
-            ->withCount("productionReleases")
-            ->withSum("advances as advances_sum", "amount")
-            ->withSum("refunds as refunds_sum", "amount")
-            ->when($q !== "", fn ($qq) => $qq->where(function ($w) use ($q) {
-                $like = "%".str_replace(["%", "_"], ["\%", "\_"], $q)."%";
-                $w->where("event_no", "like", $like)
-                    ->orWhere("customer_name", "like", $like)
-                    ->orWhere("customer_name_ur", "like", $like)
-                    ->orWhere("customer_phone", "like", $like)
-                    ->orWhere("venue", "like", $like)
-                    ->orWhere("customer_address", "like", $like);
+        $query = CateringEvent::with(['currentEstimate', 'finalInvoice:id,catering_event_id,balance_due,status'])
+            ->withCount('productionReleases')
+            ->withSum('advances as advances_sum', 'amount')
+            ->withSum('refunds as refunds_sum', 'amount')
+            ->when($q !== '', fn ($qq) => $qq->where(function ($w) use ($q) {
+                $like = '%'.str_replace(['%', '_'], ["\%", "\_"], $q).'%';
+                $w->where('event_no', 'like', $like)
+                    ->orWhere('customer_name', 'like', $like)
+                    ->orWhere('customer_name_ur', 'like', $like)
+                    ->orWhere('customer_phone', 'like', $like)
+                    ->orWhere('venue', 'like', $like)
+                    ->orWhere('customer_address', 'like', $like);
             }))
-            ->orderBy("event_date")
-            ->orderByDesc("id");
+            ->orderBy('event_date')
+            ->orderByDesc('id');
 
         match ($filter) {
             'today' => $query->whereDate('event_date', $today),
