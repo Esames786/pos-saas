@@ -7,6 +7,7 @@ use App\Models\Tenant\CateringMaterialIssueLine;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\StockBalance;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
  * CAT-STORE-001 — what the store still owes, across every booking in play.
@@ -182,60 +183,134 @@ class CateringStoreRequirementService
             return;
         }
 
-        // whereExists, deliberately NOT a join. One trip to the store covering
-        // nine weddings has nine pivot rows, and joining through them multiplies
-        // every issue line by nine — the first version of this reported 24 KG
-        // issued for a single 12 KG handover shared between two bookings, which
-        // would have made a legitimate top-up look like an over-issue.
-        $issued = CateringMaterialIssueLine::query()
-            ->whereExists(function ($query) use ($eventIds) {
-                $query->selectRaw('1')
-                    ->from('catering_material_issue_events as ie')
-                    ->whereColumn('ie.catering_material_issue_id', 'catering_material_issue_lines.catering_material_issue_id')
-                    ->whereIn('ie.catering_event_id', $eventIds);
-            })
-            ->groupBy('product_id')
-            ->selectRaw('product_id, SUM(issued_qty) as qty')
-            ->pluck('qty', 'product_id');
+        // CAT-STORE-002 — A BOOKING REFERENCE IS NOT AN ALLOCATION.
+        //
+        // A store issue may name several bookings. That is a reason, not a
+        // division: one 12 KG handover covering weddings A and B does NOT record
+        // that A took 7 and B took 5, and nothing in the system knows which.
+        //
+        // Reconciling [A, B] together is honest — the whole referenced set is in
+        // front of us, so 12 came out against their combined 20. Reconciling A
+        // ALONE is not: crediting A with all 12 would invent an allocation, and
+        // the storeman would be told A was fully issued while a real top-up was
+        // still owed. Splitting it 6/6 would be the same invention with better
+        // manners.
+        //
+        // So an issue is DEFINITE only when every booking it references sits
+        // inside the set being reconciled. Anything that merely overlaps is
+        // reported separately, by name, and never quietly subtracted from one
+        // booking's remainder.
+        [$definiteIssueIds, $sharedIssueIds] = $this->classifyIssues($eventIds);
+
+        $issued = $this->sumIssuedByProduct($definiteIssueIds);
+        $ambiguous = $this->sumIssuedByProduct($sharedIssueIds);
 
         // Material that went out against these bookings but is required by none
         // of them still belongs on the sheet. A cancelled wedding requires
         // nothing, but six kilos of chicken really did leave the store, and
         // somebody has to account for them.
-        foreach ($issued as $productId => $qty) {
-            if (isset($rows[(int) $productId]) || (float) $qty <= 0) {
-                continue;
-            }
+        foreach ([$issued, $ambiguous] as $set) {
+            foreach ($set as $productId => $qty) {
+                if (isset($rows[(int) $productId]) || (float) $qty <= 0) {
+                    continue;
+                }
 
-            $material = Product::with('unit')->find($productId);
-            if (! $material) {
-                continue;
-            }
+                $material = Product::with('unit')->find($productId);
+                if (! $material) {
+                    continue;
+                }
 
-            $rows[(int) $productId] = [
-                'product_id' => (int) $productId,
-                'name' => $material->name,
-                'unit_code' => $material->unit?->code,
-                'physical_qty' => 0.0,
-                'customer_supplied_qty' => 0.0,
-                'required_qty' => 0.0,
-                'issued_qty' => 0.0,
-                'remaining_qty' => 0.0,
-                'on_hand' => 0.0,
-                'by_event' => [],
-            ];
+                $rows[(int) $productId] = [
+                    'product_id' => (int) $productId,
+                    'name' => $material->name,
+                    'unit_code' => $material->unit?->code,
+                    'physical_qty' => 0.0,
+                    'customer_supplied_qty' => 0.0,
+                    'required_qty' => 0.0,
+                    'issued_qty' => 0.0,
+                    'remaining_qty' => 0.0,
+                    'on_hand' => 0.0,
+                    'by_event' => [],
+                ];
+            }
         }
 
         foreach ($rows as $productId => &$row) {
             $row['issued_qty'] = round((float) ($issued[$productId] ?? 0), 3);
+            $row['shared_unallocated_qty'] = round((float) ($ambiguous[$productId] ?? 0), 3);
             $row['physical_qty'] = round($row['physical_qty'], 3);
             $row['customer_supplied_qty'] = round($row['customer_supplied_qty'], 3);
             $row['required_qty'] = round($row['required_qty'], 3);
+
+            // Remaining is derived from the DEFINITE figure only. The shared
+            // quantity is shown beside it so the operator can see there is
+            // something the system cannot attribute, rather than being handed a
+            // confident number built on a guess.
             $row['remaining_qty'] = round(max($row['required_qty'] - $row['issued_qty'], 0), 3);
             $row['over_issued_qty'] = round(max($row['issued_qty'] - $row['required_qty'], 0), 3);
+            $row['remaining_is_certain'] = $row['shared_unallocated_qty'] <= 0;
             $row['by_event'] = array_values($row['by_event']);
         }
         unset($row);
+    }
+
+    /**
+     * Split the issues touching this set into the ones we can attribute and the
+     * ones we cannot.
+     *
+     * @param  array<int, int>  $eventIds
+     * @return array{0: array<int, int>, 1: array<int, int>}
+     */
+    private function classifyIssues(array $eventIds): array
+    {
+        $touching = DB::connection('tenant')->table('catering_material_issue_events')
+            ->whereIn('catering_event_id', $eventIds)
+            ->distinct()->pluck('catering_material_issue_id')->all();
+
+        if ($touching === []) {
+            return [[], []];
+        }
+
+        $references = DB::connection('tenant')->table('catering_material_issue_events')
+            ->whereIn('catering_material_issue_id', $touching)
+            ->get()
+            ->groupBy('catering_material_issue_id');
+
+        $definite = [];
+        $shared = [];
+
+        foreach ($touching as $issueId) {
+            $referenced = $references->get($issueId, collect())
+                ->pluck('catering_event_id')->map(fn ($id) => (int) $id)->all();
+
+            // Every booking this issue names is in front of us, so the whole
+            // quantity belongs to this reconciliation. Otherwise some of it was
+            // for a booking we are not looking at, and we do not know how much.
+            if (array_diff($referenced, $eventIds) === []) {
+                $definite[] = (int) $issueId;
+            } else {
+                $shared[] = (int) $issueId;
+            }
+        }
+
+        return [$definite, $shared];
+    }
+
+    /**
+     * @param  array<int, int>  $issueIds
+     * @return \Illuminate\Support\Collection<int, float>
+     */
+    private function sumIssuedByProduct(array $issueIds): Collection
+    {
+        if ($issueIds === []) {
+            return collect();
+        }
+
+        return CateringMaterialIssueLine::query()
+            ->whereIn('catering_material_issue_id', $issueIds)
+            ->groupBy('product_id')
+            ->selectRaw('product_id, SUM(issued_qty) as qty')
+            ->pluck('qty', 'product_id');
     }
 
     /** @param  array<int, array>  $rows */
@@ -282,6 +357,15 @@ class CateringStoreRequirementService
 
         foreach ($this->forEvents($eventIds, $branchId)['rows'] as $row) {
             if ((float) $row['physical_qty'] <= 0) {
+                continue;
+            }
+
+            // CAT-STORE-002: where an earlier issue cannot be attributed to this
+            // set, the remainder is genuinely unknown — so it must not become a
+            // ceiling. Blocking a real top-up because of a quantity we chose to
+            // guess at would be the invented allocation doing damage through the
+            // back door. The screen says the figure is uncertain instead.
+            if (! ($row['remaining_is_certain'] ?? true)) {
                 continue;
             }
 
