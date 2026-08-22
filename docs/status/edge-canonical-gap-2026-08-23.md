@@ -130,3 +130,35 @@ EDGE → CENTRAL (`edge-sale-envelope-v1`): add `restaurant_waiter_id` (quick-sa
 **Batch 2 (next):** #16 non-destructive appliance schema upgrade; #17 quick-sale hard-require decision + fixture alignment; Edge HTTP controller payloads for draft/waiter (`EdgeLocalPosController`) if the local UI needs them; re-run of the full authoritative MySQL suite after the canonical merge of the Edge-only commits.
 
 Not in any batch: Catering, Cloud reports / returns UI / finance / SaaS entitlement.
+
+## 9. Batch 1 outcome (2026-08-23)
+
+| Commit | Scope | Source canonical commits |
+|---|---|---|
+| `6f8a63f` EDGE: align printing routing, job numbering and layout rows with canonical | #1 #2 #3 + Edge export of the four layout columns | `9319a15`, `1d66ab0`, `468b9ef` |
+| `2646765` EDGE: carry business-date on returns and item voids | #4 (+ this register) | `dcd1ae4`, `fae23c6` |
+| `6493071` EDGE: carry draft and quick-sale attribution offline | #5 #6(capture) #18 #19 | `0d41617`, `0b5df5a` + Edge adaptation |
+| `71147ac` EDGE: lock product archetype contract | #7 #8 | `0a74301`, `5cf34af` |
+
+Conflict resolutions: Cloud-only report-center send-to-network kept at Edge's version; Catering print
+services not carried; the Cloud POS blade + Khatri plan doc taken at canonical content; the Cloud-only
+`DashboardSalesScopeMySqlTest` dropped (Edge never carried `d724c79`).
+
+Focused Edge tests added: `EdgeCanonicalAlignmentMySqlTest` (draft never queues a KOT, promotion
+sends it once, settle clears the flag + yields the envelope, offline item-void carries the order's
+business_date, service product never moves operational stock, quick-sale waiter captured + in the
+envelope and a foreign waiter refused, bootstrap export carries terminal_id + layout columns).
+Ported canonical proofs now in the Edge suite: PrintJobNumber, PrintRoutingTerminal,
+LayoutRowDivider, SalesReportBusinessDate (updated), PosDraft, QuickSaleFieldRules,
+ProductArchetypeContract.
+
+Gates: fast suite 194 tests green; PHP lint + `git diff --check` clean; full authoritative Edge
+MySQL suite (one process, `pos_test_*_edge` trio, disjoint from the concurrent Codex Catering
+certification on `pos_test_*_codex_final`): OK — 364 tests, 2101 assertions, zero skips, 19:03 in one process (up from 325 before Batch 1: +32 ported canonical proofs, +7 Edge alignment tests).
+
+Compatibility estimate (Edge-relevant behaviour, weighted by §3 rows that carry behaviour):
+~70% before Batch 1 → ~90% after. Remaining: #16 appliance schema-upgrade path, #17 quick-sale
+hard-require decision, 1C/1D sync slices (by design, not drift).
+
+Open after Batch 1 — P0: none. P1: #16 (needed before any appliance takes these migrations), #17.
+P2 blockers: none; Batch 2 can start.
