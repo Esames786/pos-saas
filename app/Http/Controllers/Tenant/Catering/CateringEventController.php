@@ -130,6 +130,17 @@ class CateringEventController extends Controller
         // it as the subdomain and left {cateringEvent} empty, throwing
         // UrlGenerationException — after the event had already been created. The
         // rest of the application uses url() paths for exactly this reason.
+        // KASHIF-CATERING-NO-RELOAD-2: the ajax form asks for JSON and gets the
+        // destination to navigate to — one clean GET, no POST page render.
+        // Validation failures never reach here (the framework answers 422 JSON).
+        if ($request->expectsJson()) {
+            return response()->json([
+                'redirect' => url('/catering/events/'.$event->id),
+                'event_id' => $event->id,
+                'message' => "Event {$event->event_no} created.",
+            ]);
+        }
+
         return redirect()
             ->to('/catering/events/'.$event->id)
             ->with('status', "Event {$event->event_no} created.");
@@ -156,6 +167,11 @@ class CateringEventController extends Controller
         $paymentMethods = \App\Models\Tenant\PaymentMethod::where('is_active', true)->orderBy('name')->get(['id', 'name']);
 
         $units = \App\Models\Tenant\Unit::where('is_active', true)->orderBy('name')->get(['id', 'code', 'name']);
+
+        // KASHIF-CATERING-NO-RELOAD-2: the Edit Event offcanvas shares the
+        // standalone form's fields, so it needs the same supporting data.
+        $branches = Branch::where('status', 'active')->orderBy('name')->get();
+        $bookedDates = $this->bookedDates();
 
         // KASHIF-CATERING-INSTRUCTIONS-1: the active vocabulary for the builder.
         $activeInstructions = \App\Models\Tenant\CateringInstruction::active()->ordered()->get(['id', 'label', 'label_ur', 'sort_order']);
@@ -201,6 +217,8 @@ class CateringEventController extends Controller
         return view('tenant.catering.events.show', [
             'event' => $cateringEvent,
             'units' => $units,
+            'branches' => $branches,
+            'bookedDates' => $bookedDates,
             'activeInstructions' => $activeInstructions,
             'profileMap' => $profileMap,
             'paymentMethods' => $paymentMethods,
@@ -230,7 +248,21 @@ class CateringEventController extends Controller
         try {
             $this->estimates->updateEvent($cateringEvent, $data);
         } catch (RuntimeException $e) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => $e->getMessage(), 'errors' => ['event' => [$e->getMessage()]]], 422);
+            }
+
             return back()->withErrors(['event' => $e->getMessage()])->withInput();
+        }
+
+        // KASHIF-CATERING-NO-RELOAD-2: the offcanvas closes and re-renders the
+        // workspace in place from this answer; nothing navigates.
+        if ($request->expectsJson()) {
+            return response()->json([
+                'redirect' => url('/catering/events/'.$cateringEvent->id),
+                'event_id' => $cateringEvent->id,
+                'message' => 'Event updated.',
+            ]);
         }
 
         return redirect()

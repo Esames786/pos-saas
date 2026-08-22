@@ -24,6 +24,11 @@
             });
         }
         if (window.initEstimateBuilder) window.initEstimateBuilder();
+        if (window.initCateringEventForm) {
+            document.querySelectorAll('[data-event-form-root]').forEach(function (el) {
+                window.initCateringEventForm(el);
+            });
+        }
     }
 
     function closeOverlays() {
@@ -39,7 +44,13 @@
                 if (inst) inst.hide();
             }
         });
-        document.querySelectorAll('.modal-backdrop').forEach(function (b) { b.remove(); });
+        document.querySelectorAll('.offcanvas.show').forEach(function (o) {
+            if (typeof bootstrap !== 'undefined' && bootstrap.Offcanvas) {
+                var oi = bootstrap.Offcanvas.getInstance(o);
+                if (oi) oi.hide();
+            }
+        });
+        document.querySelectorAll('.modal-backdrop, .offcanvas-backdrop').forEach(function (b) { b.remove(); });
         document.body.classList.remove('modal-open');
         document.body.style.removeProperty('overflow');
         document.body.style.removeProperty('padding-right');
@@ -56,6 +67,24 @@
         var note = document.getElementById(ROOT_ID).querySelector('.alert-success, .alert-danger');
         if (note) note.scrollIntoView({block: 'nearest', behavior: 'smooth'});
     }
+
+    // Re-render the workspace from a plain GET — used after actions that
+    // succeeded over JSON (the Edit offcanvas) rather than by redirect.
+    window.cateringWorkspaceRefresh = function (message) {
+        return fetch(window.location.href, {
+            credentials: 'same-origin',
+            headers: {'X-Requested-With': 'XMLHttpRequest'},
+        }).then(function (r) { return r.text(); }).then(function (html) {
+            swap(html);
+            if (message) {
+                var box = document.createElement('div');
+                box.className = 'alert alert-success';
+                box.textContent = message;
+                document.getElementById(ROOT_ID).prepend(box);
+                box.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+            }
+        });
+    };
 
     window.cateringAjaxSubmit = function (action, formData) {
         return fetch(action, {
