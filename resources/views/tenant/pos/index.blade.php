@@ -745,19 +745,17 @@
                         </button>
                     </div>
                     <div class="col-auto">
+                        {{-- POS-DRAFT-1: small button beside Hold — parks the order WITHOUT sending the KOT
+                             (recall/edit/preview/cancel identical; a later Hold prints the KOT + clears draft). --}}
+                        <button type="button" class="btn btn-outline-warning btn-lg px-3 fw-semibold text-dark" id="save-draft-btn"
+                                title="Save as Draft — parks the order without sending the KOT to the kitchen">
+                            <i class="ti ti-file-pencil me-1"></i>Draft
+                        </button>
+                    </div>
+                    <div class="col-auto">
                         <button type="button" class="btn btn-outline-secondary btn-lg px-3" id="held-orders-btn"
                                 title="Held Orders (Ctrl+L)">
                             <i class="ti ti-layout-list"></i>
-                        </button>
-                    </div>
-                </div>
-                <div class="row g-2">
-                    <div class="col">
-                        {{-- POS-DRAFT-1: park the order WITHOUT sending the KOT. Same as Hold otherwise
-                             (recall, edit, preview, cancel); a later Hold prints the KOT and clears draft. --}}
-                        <button type="button" class="btn btn-outline-warning btn-lg w-100 fw-semibold" id="save-draft-btn"
-                                title="Save as Draft — parks the order without sending the KOT to the kitchen">
-                            <i class="ti ti-file-pencil me-1"></i>Save as Draft
                         </button>
                     </div>
                 </div>
