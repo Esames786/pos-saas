@@ -110,6 +110,14 @@ class PermissionCatalogService
         'tenant.catering.documents.final-invoice' => 'Print / Reprint',
         // Bulk print runs compose the same documents for a selected set of
         // bookings — same grant family as the single-document prints.
+        // Making is money on every dish, so seeing the impact and applying it
+        // are separate grants — mirror of the commercial-rate split.
+        'tenant.catering.making-adjustment.index' => 'Making Adjustment',
+        'tenant.catering.making-adjustment.apply-products' => 'Apply Making Adjustment',
+        'tenant.catering.making-adjustment.apply-drafts' => 'Apply Making Adjustment',
+        // Manually emailing/resending customer documents.
+        'tenant.catering.estimates.email' => 'Email Customer Documents',
+        'tenant.catering.final-invoices.email' => 'Email Customer Documents',
         // The managed kitchen-instruction vocabulary — config, like the books.
         'tenant.catering.instructions.index' => 'Kitchen Instructions',
         'tenant.catering.instructions.store' => 'Kitchen Instructions',

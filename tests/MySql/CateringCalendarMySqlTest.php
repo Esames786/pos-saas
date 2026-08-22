@@ -127,7 +127,12 @@ class CateringCalendarMySqlTest extends MySqlTenantTestCase
         $done = $this->event($today->subDays(11)->toDateString(), CateringEvent::STATUS_CLOSED, 900);
         $upcoming = $this->event($today->addDays(10)->toDateString(), CateringEvent::STATUS_CONFIRMED, 900);
 
-        $byNo = collect($this->allEvents($this->service()->window()))->keyBy('event_no');
+        // Anchored at the UPCOMING month: within ten days of a month end the
+        // default window (which stops at the current month) has not reached the
+        // +10-day booking yet, and this test used to fail on exactly those days.
+        // The anchored window still reaches two months back, so the past
+        // bookings stay covered whatever today is.
+        $byNo = collect($this->allEvents($this->service()->window($today->addDays(10))))->keyBy('event_no');
 
         $this->assertSame('overdue', $byNo[$overdue->event_no]['tone']);
         $this->assertTrue($byNo[$overdue->event_no]['needs_attention']);
