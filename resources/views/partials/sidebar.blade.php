@@ -659,7 +659,7 @@
                 {{-- A role granted only Store Issue or only Commercial Rates used
                      to see no Catering menu at all — the parent gate never listed
                      them, so the screens existed and were unreachable. --}}
-                @canany(['tenant.catering.events.index','tenant.catering.profiles.index','tenant.catering.material-rates.index','tenant.catering.instructions.index','tenant.catering.commercial-rates.index','tenant.catering.rate-impact.index','tenant.catering.store-issues.index','tenant.catering.printer-mappings.index','tenant.catering.settings.index'])
+                @canany(['tenant.catering.events.index','tenant.catering.profiles.index','tenant.catering.material-rates.index','tenant.catering.instructions.index','tenant.catering.commercial-rates.index','tenant.catering.rate-impact.index','tenant.catering.making-adjustment.index','tenant.catering.store-issues.index','tenant.catering.printer-mappings.index','tenant.catering.settings.index'])
                 <li class="submenu">
                     <a href="javascript:void(0);">
                         <i class="ti ti-chef-hat fs-16 me-2"></i>
@@ -726,6 +726,14 @@
                             <li class="{{ $a ? 'active' : '' }}">
                                 <a href="{{ url('/catering/commercial-rates') }}" class="{{ $a ? 'active' : '' }}">
                                     <i class="ti ti-receipt-2 fs-16 me-2"></i><span>Commercial Charge Rates</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.catering.making-adjustment.index')
+                            @php $a = $isIn('catering/making-adjustment*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/catering/making-adjustment') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-tools-kitchen-2 fs-16 me-2"></i><span>Making Adjustment</span>
                                 </a>
                             </li>
                         @endcan
