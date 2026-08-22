@@ -155,6 +155,10 @@ class CateringSeedUatCommand extends Command
 
         $tenancy->activate($tenant);
 
+        // KASHIF-CATERING-INSTRUCTIONS-2: a fresh UAT database receives the
+        // client's authoritative kitchen vocabulary too (idempotent, additive).
+        (new \Database\Seeders\Tenant\CateringInstructionVocabularySeeder)->run();
+
         // Entitlement, never permission: every Owner holds every tenant.*
         // permission, so only the plan can answer whether Catering is on here.
         $plan = $tenant->subscription?->loadMissing('plan.enabledModules')->plan;
