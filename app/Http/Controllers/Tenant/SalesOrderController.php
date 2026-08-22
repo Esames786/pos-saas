@@ -52,7 +52,13 @@ class SalesOrderController extends Controller
         }
 
         if ($request->filled('status')) {
-            $query->where('status', $request->status);
+            // POS-DRAFT-1: a POS draft is a held order flagged is_draft, so the "Draft" filter
+            // surfaces both the pay-flow draft state and POS-parked drafts.
+            if ($request->status === 'draft') {
+                $query->where(fn ($q) => $q->where('status', 'draft')->orWhere('is_draft', true));
+            } else {
+                $query->where('status', $request->status);
+            }
         }
 
         if ($request->filled('order_type') && in_array($request->order_type, $allowedOrderTypes, true)) {

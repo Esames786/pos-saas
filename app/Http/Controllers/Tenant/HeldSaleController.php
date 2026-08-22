@@ -69,6 +69,7 @@ class HeldSaleController extends Controller
             'sales' => $sales->map(fn ($s) => [
                 'id'                          => $s->id,
                 'sale_no'                     => $s->sale_no,
+                'is_draft'                    => (bool) $s->is_draft,
                 'order_type'                  => $s->order_type,
                 'branch_id'                   => (int) $s->branch_id,
                 'terminal_id'                 => $s->terminal_id,
@@ -296,7 +297,14 @@ class HeldSaleController extends Controller
             'void_items.*.manager_approval_id' => 'nullable|exists:manager_approvals,id',
             'void_items.*.product_name'   => 'nullable|string',
             'create_separate_order'       => 'nullable|boolean',
+            // POS-DRAFT-1: park this held sale as a draft (the frontend then skips the KOT send).
+            // A normal Hold posts false and clears the flag, printing the KOT as before.
+            'save_as_draft'               => 'nullable|boolean',
         ]);
+
+        // The order stays a normal held sale; is_draft only marks it for display + the skip-KOT
+        // decision. Every save (draft OR hold) writes the current intent, so a Hold clears a draft.
+        $isDraft = (bool) ($data['save_as_draft'] ?? false);
 
         $data = $this->validateDeliveryAttribution($data);
 
@@ -393,6 +401,7 @@ class HeldSaleController extends Controller
             $totals,
             $cancellationService,
             $terminal,
+            $isDraft,
         ) {
 
         // HARDEN-1: lock the open shift FIRST (before table-session / held-order locks) so all POS
@@ -591,6 +600,7 @@ class HeldSaleController extends Controller
                 'service_charge_amount'       => $totals['service_charge_amount'],
                 'tip_amount'                  => 0,
                 'grand_total'                 => $totals['grand_total'],
+                'is_draft'                    => $isDraft,
                 'notes'                       => $data['notes'] ?? null,
                 'restaurant_table_session_id' => $tableSession?->id ?? $sale->restaurant_table_session_id,
                 'restaurant_table_id'         => $tableSession?->restaurant_table_id ?? $sale->restaurant_table_id,
@@ -629,6 +639,7 @@ class HeldSaleController extends Controller
                 'tip_amount'                  => 0,
                 'grand_total'                 => $totals['grand_total'],
                 'status'                      => 'held',
+                'is_draft'                    => $isDraft,
                 'inventory_posted'            => false,
                 'created_by_user_id'          => Auth::id(),
                 'notes'                       => $data['notes'] ?? null,
@@ -709,6 +720,7 @@ class HeldSaleController extends Controller
             return response()->json([
                 'sale_id'                     => $sale->id,
                 'sale_no'                     => $sale->sale_no,
+                'is_draft'                    => (bool) $sale->is_draft,
                 'restaurant_table_session_id' => $sale->restaurant_table_session_id,
                 'lines'                       => $savedLinePayload,
             ]);

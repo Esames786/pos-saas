@@ -108,7 +108,8 @@
                             'returned' => 'info',
                             default => 'secondary'
                         } }} {{ $order->status === 'partially_returned' ? 'text-dark' : '' }}">
-                            {{ str_replace('_', ' ', ucfirst($order->status)) }}
+                            {{-- POS-DRAFT-1: a held order parked as a draft reads as "Draft" (same secondary colour). --}}
+                            {{ ($order->is_draft && $order->status === 'held') ? 'Draft' : str_replace('_', ' ', ucfirst($order->status)) }}
                         </span>
                     </td>
                     <td class="text-end">

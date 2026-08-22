@@ -725,6 +725,7 @@
                  style="display:none;background:#fff3cd;border:1px solid #ffc107;">
                 <div class="small fw-semibold text-warning-emphasis">
                     <i class="ti ti-lock me-1"></i>Recalled: <span id="recalled-order-no">—</span>
+                    <span id="pos-draft-badge" class="badge bg-secondary ms-1" style="display:none;">DRAFT</span>
                 </div>
                 <div class="d-flex gap-1">
                     <button type="button" class="btn btn-sm btn-warning py-0 px-2" id="edit-order-btn"
@@ -747,6 +748,16 @@
                         <button type="button" class="btn btn-outline-secondary btn-lg px-3" id="held-orders-btn"
                                 title="Held Orders (Ctrl+L)">
                             <i class="ti ti-layout-list"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="row g-2">
+                    <div class="col">
+                        {{-- POS-DRAFT-1: park the order WITHOUT sending the KOT. Same as Hold otherwise
+                             (recall, edit, preview, cancel); a later Hold prints the KOT and clears draft. --}}
+                        <button type="button" class="btn btn-outline-warning btn-lg w-100 fw-semibold" id="save-draft-btn"
+                                title="Save as Draft — parks the order without sending the KOT to the kitchen">
+                            <i class="ti ti-file-pencil me-1"></i>Save as Draft
                         </button>
                     </div>
                 </div>
@@ -1445,6 +1456,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (separateInput)    separateInput.value    = '0';
         _currentHeldSaleId = null;
         _currentHeldSaleNo = null;
+        _currentHeldSaleIsDraft = false;
     }
 
     /* ── No-reload dine-in session state ──────────────────────────────────
@@ -3314,6 +3326,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     let _currentHeldSaleId = null;   // held sale ID currently loaded in cart
     let _currentHeldSaleNo = null;
+    let _currentHeldSaleIsDraft = false;   // POS-DRAFT-1: current order parked as a draft (KOT not sent)
     // Recent-print pointer persists across reloads so the Recent Prints / reprint
     // modal still works after the POS page is refreshed (the jobs themselves live
     // server-side; only the "which sale" pointer was being lost in memory).
@@ -3359,6 +3372,7 @@ document.addEventListener('DOMContentLoaded', function () {
         cart = [];
         _currentHeldSaleId = null;
         _currentHeldSaleNo = null;
+        _currentHeldSaleIsDraft = false;
         window._voidItems  = [];
         _promoDiscountAmount = 0;
         _promoCode = '';
@@ -3440,6 +3454,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const bar        = document.getElementById('recalled-order-bar');
         const noEl       = document.getElementById('recalled-order-no');
         const editBtn    = document.getElementById('edit-order-btn');
+        const draftBadge = document.getElementById('pos-draft-badge');
         if (!bar) return;
         if (_currentHeldSaleId) {
             if (noEl) noEl.textContent = _currentHeldSaleNo || ('#' + _currentHeldSaleId);
@@ -3449,6 +3464,8 @@ document.addEventListener('DOMContentLoaded', function () {
             bar.style.display = 'none';
             if (editBtn) editBtn.disabled = true;
         }
+        // POS-DRAFT-1: show the DRAFT badge whenever the loaded order is a draft (recalled or just saved).
+        if (draftBadge) draftBadge.style.display = (_currentHeldSaleId && _currentHeldSaleIsDraft) ? '' : 'none';
     }
 
     function lockOrderControls() {
@@ -3956,8 +3973,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     /* ── Hold sale ────────────────────────────────────────────────────── */
 
-    function submitHeldSale() {
-        const holdBtn = document.getElementById('hold-sale-btn');
+    function submitHeldSale(asDraft, srcBtn) {
+        asDraft = !!asDraft;   // POS-DRAFT-1: a draft saves identically but never sends the KOT
+        const holdBtn = srcBtn || document.getElementById('hold-sale-btn');
         if (buttonIsBusy(holdBtn)) return;
         if (!cart.length) { toast('warning', 'Add at least one item'); return; }
         if (!requireDeliveryCustomer()) return;
@@ -3984,10 +4002,12 @@ document.addEventListener('DOMContentLoaded', function () {
 
             const terminalId = (document.getElementById('terminal_id') || {}).value || '';
 
+            const heldFormData = new FormData(form);
+            heldFormData.set('save_as_draft', asDraft ? '1' : '0');   // POS-DRAFT-1
             fetch('{{ url('/held-sales') }}', {
                 method:  'POST',
                 headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
-                body:    new FormData(form),
+                body:    heldFormData,
             })
             .then(function (res) { return res.json().then(function (d) { return { ok: res.ok, data: d }; }); })
             .then(function (result) {
@@ -4009,6 +4029,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 _currentHeldSaleId = saleId;
                 _currentHeldSaleNo = saleNo;
+                _currentHeldSaleIsDraft = !!(result.data && result.data.is_draft);   // POS-DRAFT-1
                 rememberLastSale(saleId, saleNo);
                 if (heldInput) heldInput.value = saleId;
 
@@ -4032,9 +4053,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 updateSplitBillBtn();
                 updateRecalledBar();
                 lockOrderControls();
-                toast('success', 'Held: ' + saleNo);
-                // KOT — only the un-sent delta (re-holding without new items won't reprint)
-                if (kotPending().pending > 0) {
+                toast('success', (asDraft ? 'Draft saved: ' : 'Held: ') + saleNo);
+                // POS-DRAFT-1: a draft NEVER sends the KOT to the kitchen. A normal Hold prints the
+                // un-sent delta as before (re-holding without new items won't reprint).
+                if (!asDraft && kotPending().pending > 0) {
                     handleKotAfterSale(saleId, saleNo, terminalId);
                 }
             })
@@ -4325,6 +4347,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         _currentHeldSaleId = sale.id;
         _currentHeldSaleNo = sale.sale_no;
+        _currentHeldSaleIsDraft = !!sale.is_draft;   // POS-DRAFT-1: recalled draft keeps its badge
         rememberLastSale(sale.id, sale.sale_no);
         const heldInput = document.querySelector('input[name="held_sale_id"]');
         if (heldInput) heldInput.value = sale.id;
@@ -5303,7 +5326,10 @@ document.addEventListener('DOMContentLoaded', function () {
         var termSel = document.getElementById('terminal_id');
         if (termSel) { termSel.addEventListener('change', refreshPrintPanel); }
     }
-    document.getElementById('hold-sale-btn').addEventListener('click', submitHeldSale);
+    document.getElementById('hold-sale-btn').addEventListener('click', function () { submitHeldSale(false, this); });
+    // POS-DRAFT-1: Save as Draft runs the same save but flags the order a draft and skips the KOT.
+    var _saveDraftBtn = document.getElementById('save-draft-btn');
+    if (_saveDraftBtn) _saveDraftBtn.addEventListener('click', function () { submitHeldSale(true, this); });
     document.getElementById('clear-cart-btn').addEventListener('click', function () {
         if (typeof Swal !== 'undefined') {
             Swal.fire({
@@ -5642,6 +5668,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (heldSale && heldSale.lines) {
         _currentHeldSaleId = heldSale.id;
         _currentHeldSaleNo = heldSale.sale_no || '';
+        _currentHeldSaleIsDraft = !!heldSale.is_draft;   // POS-DRAFT-1
         var preloadedLineKeys = {};
 
         heldSale.lines.forEach(function (line) {
