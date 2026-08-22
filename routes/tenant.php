@@ -942,6 +942,17 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                     Route::delete('/catering/printer-mappings/{cateringPrinterMapping}', [\App\Http\Controllers\Tenant\Catering\CateringPrinterMappingController::class, 'destroy'])->name('tenant.catering.printer-mappings.destroy');
                     Route::post('/catering/printer-mappings/copy-from-pos', [\App\Http\Controllers\Tenant\Catering\CateringPrinterMappingController::class, 'copyFromPos'])->name('tenant.catering.printer-mappings.copy-from-pos');
 
+                    // KASHIF-CATERING-MAKING-1: bulk Making adjustment — preview first,
+                    // then selective apply. Only charge_role=making blocks participate.
+                    Route::get('/catering/making-adjustment', [\App\Http\Controllers\Tenant\Catering\CateringMakingAdjustmentController::class, 'index'])->name('tenant.catering.making-adjustment.index');
+                    Route::post('/catering/making-adjustment/apply-products', [\App\Http\Controllers\Tenant\Catering\CateringMakingAdjustmentController::class, 'applyToProducts'])->name('tenant.catering.making-adjustment.apply-products');
+                    Route::post('/catering/making-adjustment/apply-drafts', [\App\Http\Controllers\Tenant\Catering\CateringMakingAdjustmentController::class, 'applyToDrafts'])->name('tenant.catering.making-adjustment.apply-drafts');
+
+                    // KASHIF-CATERING-EMAIL-1: manual Email to Customer / Resend through
+                    // the ONE mail/email-log authority. No business-state mutation.
+                    Route::post('/catering/estimates/{cateringEstimate}/email', [\App\Http\Controllers\Tenant\Catering\CateringDocumentEmailController::class, 'emailEstimate'])->name('tenant.catering.estimates.email');
+                    Route::post('/catering/final-invoices/{cateringFinalInvoice}/email', [\App\Http\Controllers\Tenant\Catering\CateringDocumentEmailController::class, 'emailFinalInvoice'])->name('tenant.catering.final-invoices.email');
+
                     // KASHIF-CATERING-INSTRUCTIONS-1: the managed kitchen-instruction
                     // vocabulary. Config only — no money, no stock.
                     Route::get('/catering/instructions', [\App\Http\Controllers\Tenant\Catering\CateringInstructionController::class, 'index'])->name('tenant.catering.instructions.index');

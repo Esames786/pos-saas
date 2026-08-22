@@ -3,6 +3,11 @@
 @section('title', 'Event ' . $event->event_no)
 
 @section('content')
+{{-- KASHIF-CATERING-NO-RELOAD-1: every action on this page posts in place and
+     the workspace re-renders from the response — the operator never loses
+     scroll position or an open panel to a full page reload. --}}
+<div id="event-workspace">
+@include('tenant.catering.events.partials.workspace-ajax')
 @include('tenant.catering.partials.tooltips')
 @include('tenant.catering.partials.submit-guard')
 @php
@@ -219,6 +224,20 @@
                     </form>
                 @endcan
             @endif
+            @unless($isDraft)
+                @can('tenant.catering.estimates.email')
+                    {{-- KASHIF-CATERING-EMAIL-1: a deliberate (re)send of the frozen
+                         quotation. Mutates nothing; each attempt gets its own log row. --}}
+                    <form method="POST" action="{{ url('/catering/estimates/' . $current->id . '/email') }}" class="d-inline">
+                        @csrf
+                        <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="tooltip"
+                                title="{{ $event->customer_email ? 'Emails this quotation to '.$event->customer_email.'. Sending again is a deliberate new delivery.' : 'No customer email on file — add one on Edit Event first.' }}"
+                                onclick="return confirm('Email quotation Q{{ $current->version_no }} to the customer now?')">
+                            <i class="ti ti-mail-forward me-1"></i>Email to Customer
+                        </button>
+                    </form>
+                @endcan
+            @endunless
             @if(! $isDraft && $event->isOpen())
                 @can('tenant.catering.estimates.revise')
                     <form method="POST" action="{{ url('/catering/estimates/' . $current->id . '/revise') }}">
@@ -680,6 +699,19 @@
                         <a target="_blank" href="{{ url('/catering/documents/final-invoice/' . $invoice->id . '?lang=ur') }}" class="btn btn-sm btn-outline-secondary">اردو</a>
                         <a target="_blank" href="{{ url('/catering/documents/final-invoice/' . $invoice->id . '?lang=both') }}" class="btn btn-sm btn-outline-secondary">Both</a>
                     </div>
+                @endcan
+                @can('tenant.catering.final-invoices.email')
+                    {{-- KASHIF-CATERING-EMAIL-1: deliberate (re)send of the frozen invoice. --}}
+                    <form method="POST" action="{{ url('/catering/final-invoices/' . $invoice->id . '/email') }}" class="d-inline">
+                        @csrf
+                        <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="tooltip"
+                                title="{{ $event->customer_email ? 'Emails invoice '.$invoice->invoice_no.' to '.$event->customer_email.'.' : 'No customer email on file — add one on Edit Event first.' }}"
+                                onclick="return confirm('Email invoice {{ $invoice->invoice_no }} to the customer now?')">
+                            <i class="ti ti-mail-forward me-1"></i>Email Invoice
+                        </button>
+                    </form>
+                @endcan
+                @can('tenant.catering.documents.final-invoice')
                     @include('tenant.catering.partials.document-print', [
                         'action' => url('/catering/documents/final-invoice/' . $invoice->id . '/print'),
                         'label' => 'Send invoice to printer',
@@ -1000,6 +1032,7 @@
     </div>
 </div>
 @endif
+</div>{{-- /#event-workspace --}}
 @endsection
 
 @push('scripts')
@@ -1021,8 +1054,18 @@ $(function () {
     const profiles = @json($profileMap);
     const instructions = @json($instructionsPayload);
     const defaultPax = {{ (int) $event->pax }};
-    // Name indexes continue AFTER the server-rendered lines.
-    let rowSeq = {{ $current->lines->count() }};
+
+    // Name indexes continue after the HIGHEST index present in the DOM — read
+    // fresh every time, because the workspace re-renders in place after each
+    // action and a stale counter would collide with the new server rows.
+    function nextRowIndex() {
+        let max = -1;
+        $('#lines-body [name^="lines["]').each(function () {
+            const m = /^lines\[(\d+)\]/.exec($(this).attr('name') || '');
+            if (m) max = Math.max(max, parseInt(m[1], 10));
+        });
+        return max + 1;
+    }
 
     function instructionOptions() {
         return instructions.map(i => `<option value="${i.id}">${_.escape(i.label)}</option>`).join('');
@@ -1045,7 +1088,7 @@ $(function () {
 
     function addRow(line) {
         line = line || {};
-        const i = rowSeq++;
+        const i = nextRowIndex();
         const row = $(`
             <tr data-row="${i}">
                 <td>
@@ -1145,7 +1188,7 @@ $(function () {
     // Minimal escape helper (no lodash dependency in this template).
     const _ = { escape: s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])) };
 
-    $('#add-line').on('click', () => addRow());
+    $(document).on('click', '#add-line', () => addRow());
     $(document).on('input change', '.line-qty, .line-rate, .t-input', recalc);
     $(document).on('click', '.remove-line', function () {
         const tr = $(this).closest('tr');
@@ -1161,24 +1204,16 @@ $(function () {
     // why these controls could never live on the draft screen before.
     $(document).on('click', '.js-act', function () {
         const box = $(this).closest('[data-act]');
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.action = box.data('act');
-        const add = (name, value) => {
-            const input = document.createElement('input');
-            input.type = 'hidden';
-            input.name = name;
-            input.value = value;
-            form.appendChild(input);
-        };
-        add('_token', '{{ csrf_token() }}');
+        // KASHIF-CATERING-NO-RELOAD-1: post through the workspace pipeline —
+        // the page swaps in place instead of navigating.
+        const fd = new FormData();
+        fd.append('_token', '{{ csrf_token() }}');
         const method = String(box.data('act-method') || 'POST').toUpperCase();
-        if (method !== 'POST') add('_method', method);
+        if (method !== 'POST') fd.append('_method', method);
         box.find('[data-field]').each(function () {
-            add($(this).data('field'), $(this).val());
+            fd.append($(this).data('field'), $(this).val());
         });
-        document.body.appendChild(form);
-        form.submit();
+        window.cateringAjaxSubmit(box.data('act'), fd);
     });
     // Enter inside a Cost Details control fires that control's action — not the
     // surrounding Save Estimate form.
@@ -1189,11 +1224,16 @@ $(function () {
         }
     });
 
-    if (rowSeq === 0) {
-        addRow();
-    }
-    initInstrSelect(document);
-    recalc();
+    // Runs at load AND after every in-place swap: fresh selects need select2,
+    // an emptied estimate needs its first row, totals need recomputing.
+    window.initEstimateBuilder = function () {
+        initInstrSelect(document);
+        if ($('#lines-body tr').not('.cost-details-row').length === 0) {
+            addRow();
+        }
+        recalc();
+    };
+    window.initEstimateBuilder();
 });
 </script>
 @endif

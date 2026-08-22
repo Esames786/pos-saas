@@ -307,6 +307,20 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
         }
     }
 
+    public function test_the_workspace_posts_in_place_instead_of_reloading(): void
+    {
+        $html = $this->render($this->booking());
+
+        $this->assertStringContainsString('id="event-workspace"', $html,
+            'the swappable region every action re-renders into');
+        $this->assertStringContainsString('cateringAjaxSubmit', $html,
+            'the in-place submit pipeline is on the page');
+        $this->assertStringContainsString('window.cateringAjaxSubmit(box.data(', $html,
+            'Cost Details actions post through the pipeline, not by navigating');
+        $this->assertStringContainsString('window.initEstimateBuilder', $html,
+            'the builder re-initialises after each swap');
+    }
+
     public function test_previewing_the_document_finalizes_nothing(): void
     {
         $event = $this->booking();
