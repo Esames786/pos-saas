@@ -150,8 +150,11 @@ class KashifClientMenuSeeder extends Seeder
                 continue;
             }
             $row = array_combine($header, array_pad($r, count($header), null));
-            $k = self::sourceKey($row['source_code'], $row['description_raw']);
-            $meta[$k] ??= $row;
+            // Indexed by BOTH spellings: the owner sheet carries the corrected
+            // name, the staging row the raw one — an item must find its band
+            // either way, or a spelling fix would silently cost it its price.
+            $meta[self::sourceKey($row['source_code'], $row['description_raw'])] ??= $row;
+            $meta[self::sourceKey($row['source_code'], $row['normalized_name'])] ??= $row;
         }
         fclose($fh);
 
