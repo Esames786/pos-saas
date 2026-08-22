@@ -81,6 +81,11 @@ class CateringProductionReleaseService
                     // readable even if the vocabulary is edited later.
                     'instructions' => trim(implode("\n", array_filter([
                         $line->instructionSummary(),
+                        // The kitchen must know what arrives from the CUSTOMER —
+                        // it still gets cooked, but our store hands over none of it.
+                        ($cs = $line->costBlocks->filter->isCustomerSupplied()->pluck('material_name')->filter()->implode(', ')) !== ''
+                            ? 'CUSTOMER SUPPLIES: '.$cs
+                            : null,
                         $profile?->instructions,
                     ]))) ?: null,
                     'sort_order' => $index,

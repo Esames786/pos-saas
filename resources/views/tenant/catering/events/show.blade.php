@@ -326,11 +326,27 @@
                             </td>
                             <td class="text-end align-middle">
                                 @if($lineHasBlocks)
-                                    <span class="fw-semibold">{{ number_format($line->rate, 2) }}</span>
-                                    @if($line->hasQuotedRateOverride())
-                                        <div class="fs-12 text-warning-emphasis">agreed rate</div>
-                                    @endif
-                                    <div class="fs-12 text-muted">change in Cost Details</div>
+                                    {{-- KASHIF-CLIENT-MENU-5: the quoted rate is edited RIGHT HERE,
+                                         in real time, like the legacy screen — through the same
+                                         override/use-calculated authorities as Cost Details. A rate
+                                         that differs still needs its reason; equal puts the line
+                                         back on the calculation. --}}
+                                    <div class="quoted-live"
+                                         data-act-quote="{{ url('/catering/estimate-lines/' . $line->id . '/quoted-rate') }}"
+                                         data-act-calc="{{ url('/catering/estimate-lines/' . $line->id . '/use-calculated-rate') }}"
+                                         data-calc="{{ (float) $line->calculated_rate }}"
+                                         data-overridden="{{ $line->hasQuotedRateOverride() ? 1 : 0 }}">
+                                        <input type="number" step="0.01" min="0" data-field="quoted_rate"
+                                               value="{{ number_format($line->rate, 2, '.', '') }}"
+                                               class="form-control form-control-sm text-end live-rate" style="width:110px;margin-left:auto">
+                                        @if($line->hasQuotedRateOverride())
+                                            <div class="fs-12 text-warning-emphasis" title="{{ $line->rate_override_reason }}">agreed rate</div>
+                                        @endif
+                                        <input type="text" data-field="reason" maxlength="255"
+                                               value="{{ $line->rate_override_reason }}"
+                                               placeholder="why this rate?" class="form-control form-control-sm mt-1 live-reason d-none">
+                                        <button type="button" class="btn btn-sm btn-outline-primary mt-1 live-apply d-none">Apply rate</button>
+                                    </div>
                                     <input type="hidden" name="lines[{{ $i }}][rate]" value="{{ $line->rate }}">
                                 @else
                                     <input type="number" step="0.01" min="0"
@@ -402,7 +418,7 @@
                         <tr>
                             <td>
                                 <input type="text" class="form-control form-control-sm" name="other_charge_label"
-                                       placeholder="Other charge (label)" value="{{ $current->other_charge_label }}">
+                                       placeholder="Other charge (label)" value="{{ $current->other_charge_label ?? 'Fare' }}">
                             </td>
                             <td class="text-end">
                                 <input type="number" step="0.01" min="0" class="form-control form-control-sm text-end t-input"
@@ -1187,6 +1203,7 @@ $(function () {
                         // server-side — breakdown, Customer Supplied, quantity
                         // override and all. One authority, zero duplication.
                         setTimeout(function () {
+                            window.__openNewestPanel = true; // the fresh line arrives with its panel OPEN
                             var f = document.getElementById('estimate-form');
                             if (f) { if (f.requestSubmit) f.requestSubmit(); else $(f).trigger('submit'); }
                         }, 50);
@@ -1275,6 +1292,41 @@ $(function () {
         if (e.key === 'Enter') {
             e.preventDefault();
             $(this).closest('[data-act]').find('.js-act').first().trigger('click');
+        }
+    });
+
+    // KASHIF-CLIENT-MENU-5: real-time quoted rate on the row. Typing a rate
+    // that differs from the calculation reveals the reason + Apply (the same
+    // override authority Cost Details uses); typing it back equal offers
+    // 'Use calculated'. Nothing here invents a third pricing path.
+    $(document).on('input', '.quoted-live [data-field=quoted_rate]', function () {
+        const box = $(this).closest('.quoted-live');
+        const calc = parseFloat(box.attr('data-calc')) || 0;
+        const v = parseFloat(this.value) || 0;
+        const differs = Math.abs(v - calc) > 0.009;
+        const hadOverride = box.attr('data-overridden') === '1';
+        box.find('.live-reason').toggleClass('d-none', ! differs);
+        box.find('.live-apply')
+            .toggleClass('d-none', ! (differs || hadOverride))
+            .text(differs ? 'Apply rate' : 'Use calculated');
+    });
+    $(document).on('click', '.quoted-live .live-apply', function () {
+        const box = $(this).closest('.quoted-live');
+        const differs = ! box.find('.live-reason').hasClass('d-none');
+        const fd = new FormData();
+        fd.append('_token', '{{ csrf_token() }}');
+        if (differs) {
+            const reason = (box.find('[data-field=reason]').val() || '').trim();
+            if (! reason) {
+                box.find('[data-field=reason]').addClass('is-invalid').focus();
+                return; // a different rate still needs its why
+            }
+            fd.append('_method', 'PUT');
+            fd.append('quoted_rate', box.find('[data-field=quoted_rate]').val());
+            fd.append('reason', reason);
+            window.cateringAjaxSubmit(box.attr('data-act-quote'), fd);
+        } else {
+            window.cateringAjaxSubmit(box.attr('data-act-calc'), fd);
         }
     });
 

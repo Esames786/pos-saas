@@ -80,9 +80,32 @@
         var next = doc.getElementById(ROOT_ID);
         if (! next) { window.location.reload(); return; }
         var y = window.scrollY;
+        // Panels the operator had OPEN stay open across the swap — the open
+        // state lives only in the browser, and losing it collapsed the very
+        // Cost Details someone was working in (and, with its height gone, the
+        // restored scroll landed them somewhere else entirely).
+        var openPanels = Array.prototype.map.call(
+            document.getElementById(ROOT_ID).querySelectorAll('.collapse.show'),
+            function (el) { return el.id; }
+        ).filter(Boolean);
         closeOverlays();
         document.getElementById(ROOT_ID).innerHTML = next.innerHTML;
         reinit();
+        openPanels.forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el) el.classList.add('show');
+        });
+        // A dish just picked arrives with its panel OPEN — the one scroll the
+        // operator actually wants.
+        if (window.__openNewestPanel) {
+            window.__openNewestPanel = false;
+            var rows = document.getElementById(ROOT_ID).querySelectorAll('#lines-body .cost-details-row');
+            var last = rows.length ? rows[rows.length - 1] : null;
+            if (last) {
+                last.classList.add('show');
+                last.scrollIntoView({block: 'center', behavior: 'smooth'});
+            }
+        }
         // The operator stays exactly where they were working…
         window.scrollTo(0, y);
         // …and the outcome comes to THEM as a toast instead.

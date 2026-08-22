@@ -86,6 +86,10 @@
                     <span class="ur">{{ $line->item_name_ur }}</span>
                 @else
                     {{ $line->item_name }}
+            @php $suppliedMats = $line->costBlocks->filter->isCustomerSupplied()->pluck('material_name')->filter(); @endphp
+            @if($suppliedMats->isNotEmpty())
+                <div style="font-size:10px;color:#374151">({{ $t('Customer will supply', 'گاہک فراہم کرے گا') }}: {{ $suppliedMats->implode(', ') }})</div>
+            @endif
                     @if($isBoth && $line->item_name_ur)
                         <div class="item-ur ur">{{ $line->item_name_ur }}</div>
                     @endif

@@ -177,8 +177,12 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('Cost Details', $html);
         // chicken 0.5 x 100 + making 300 = 350/KG for the block line
         $this->assertStringContainsString('350.00', $html);
-        $this->assertStringContainsString('change in Cost Details', $html,
-            'a block line must say where its quoted rate is changed, not offer a dead input');
+        // KASHIF-CLIENT-MENU-5: the row edits the quoted rate LIVE, through the
+        // same override/use-calculated authorities — never a dead input.
+        $this->assertStringContainsString('quoted-live', $html);
+        $this->assertStringContainsString('data-act-quote=', $html);
+        $this->assertStringContainsString('live-reason', $html,
+            'a different rate still demands its reason, right on the row');
 
         $line = $this->blockLine($event);
         $this->assertStringContainsString(
