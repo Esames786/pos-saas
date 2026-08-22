@@ -57,7 +57,10 @@
         @endif
         @if($event->isOpen())
             @can('tenant.catering.events.edit')
-                <a href="{{ url('/catering/events/' . $event->id . '/edit') }}" class="btn btn-outline-primary">Edit Event</a>
+                {{-- KASHIF-CATERING-NO-RELOAD-2: editing happens beside the work,
+                     in an offcanvas — the operator never leaves the booking. --}}
+                <button type="button" class="btn btn-outline-primary" data-bs-toggle="offcanvas"
+                        data-bs-target="#editEventOffcanvas">Edit Event</button>
             @endcan
             @if(in_array($event->status, ['draft', 'quoted']))
                 {{-- KASHIF-CATERING-OPERATOR-UI-1: Confirm Booking is a decision
@@ -1032,6 +1035,30 @@
     </div>
 </div>
 @endif
+@can('tenant.catering.events.edit')
+@if($event->isOpen())
+{{-- KASHIF-CATERING-NO-RELOAD-2 — Edit Event beside the work. data-no-ajax
+     keeps the generic workspace engine away: this form has its OWN handler,
+     because a validation mistake must keep the panel open with every typed
+     value intact, and only a SUCCESS closes it and re-renders the details. --}}
+<div class="offcanvas offcanvas-end" tabindex="-1" id="editEventOffcanvas" style="width:min(720px,95vw)">
+    <div class="offcanvas-header border-bottom">
+        <h5 class="offcanvas-title">Edit Event {{ $event->event_no }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+    </div>
+    <div class="offcanvas-body">
+        <form method="POST" action="{{ url('/catering/events/' . $event->id) }}"
+              data-event-ajax="refresh" data-no-ajax>
+            @csrf
+            @method('PUT')
+            @include('tenant.catering.events.partials.event-form-fields', ['event' => $event])
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+        </form>
+    </div>
+</div>
+@endif
+@endcan
+@include('tenant.catering.events.partials.event-form-support')
 </div>{{-- /#event-workspace --}}
 @endsection
 

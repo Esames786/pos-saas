@@ -22,30 +22,33 @@
             'Customer, date, venue, PAX. This is the booking itself.',
             'none', 'none', 'no', 'no'],
         ['2', 'Build the Estimate', 'تخمینہ تیار کریں',
-            'Add dishes, quantities and rates. Edit as much as you like — it is a draft.',
+            'Add dishes and quantities. A block-costed dish shows its Calculated Rate and Quoted Rate apart, with the full breakdown under Cost Details — agreed rates, customer-supplied materials and per-event quantities are all set right there. Edit as much as you like — it is a draft, and nothing reloads.',
             'none', 'none', 'no', 'no'],
         ['3', 'Recalculate Cost', 'لاگت دوبارہ نکالیں',
             'Works out your internal material cost from each recipe and the Rate Book. Customer price is untouched.',
             'none', 'none', 'no', 'no'],
-        ['4', 'Mark Sent / Lock', 'بھیج کر مقفل کریں',
-            'Freezes the quotation so the customer copy can never change underneath them.',
+        ['4', 'Finalize Quotation', 'کوٹیشن حتمی کریں',
+            'Validates the costing and freezes the quotation so the customer copy can never change underneath them. Printing or previewing never finalizes — only this button does. Changes afterwards need a revision.',
             'none', 'none', 'yes', 'yes'],
-        ['5', 'Confirm Booking', 'بکنگ کی تصدیق',
-            'Customer agreed. Unlocks advances, production and the final invoice.',
+        ['5', 'Customer Accepted', 'گاہک نے قبول کیا',
+            'Records that the customer agreed to the finalized quotation. Nothing posts yet.',
+            'none', 'none', 'no', 'no'],
+        ['6', 'Confirm Booking', 'بکنگ کی تصدیق',
+            'The booking is on. Unlocks advances, production and the final invoice. Needs a finalized quotation first — a draft cannot be confirmed.',
             'none', 'none', 'no', 'yes'],
-        ['6', 'Record Advance', 'پیشگی رقم درج کریں',
+        ['7', 'Record Advance', 'پیشگی رقم درج کریں',
             'Money received before the event.',
             'posts', 'none', 'no', 'yes'],
-        ['7', 'Release Production', 'پیداوار جاری کریں',
-            'Freezes the dish list into a kitchen sheet and sends it to the kitchen printers.',
+        ['8', 'Release Production', 'پیداوار جاری کریں',
+            'Freezes the dish list into a kitchen sheet — with each line\x27s selected kitchen instructions — and sends it to the kitchen printers.',
             'none', 'none', 'network', 'no'],
-        ['8', 'Issue Materials', 'خام مال جاری کریں',
-            'Take the raw materials out of store for cooking.',
+        ['9', 'Issue Materials', 'خام مال جاری کریں',
+            'Take the raw materials out of store for cooking. Customer-supplied materials stay visible to the kitchen but draw nothing from your store.',
             'posts', 'moves', 'no', 'no'],
-        ['9', 'Final Invoice', 'حتمی بل',
+        ['10', 'Final Invoice', 'حتمی بل',
             'The real bill. Advances already received are applied against it.',
             'posts', 'none', 'yes', 'yes'],
-        ['10', 'Close Event', 'تقریب بند کریں',
+        ['11', 'Close Event', 'تقریب بند کریں',
             'Locks the booking. Blocked while any balance is outstanding.',
             'none', 'none', 'no', 'no'],
     ];
@@ -54,8 +57,13 @@
         ['A dish you sell (Chicken Karahi, Welcome Drink)', 'Catalog › Products', '/products'],
         ['A raw material you buy (mutton, rice, oil)', 'Catering › Materials', '/catering/materials'],
         ['What a dish is made of', 'Kitchen Inventory › Recipes', '/recipes'],
-        ['The rate you COST a material at when quoting', 'Catering › Material Rate Book', '/catering/material-rates'],
+        ['The rate you COST a material at when quoting', 'Catering › Material Cost Rates', '/catering/material-rates'],
+        ['The rate you CHARGE a material at (customer side)', 'Catering › Commercial Charge Rates', '/catering/commercial-rates'],
         ['Which open quotes a rate change affects', 'Catering › Rate Impact', '/catering/rate-impact'],
+        ['Bulk-change the Making charge across dishes and drafts', 'Catering › Making Adjustment', '/catering/making-adjustment'],
+        ['The kitchen instruction vocabulary (Mirch Kam, …)', 'Catering › Kitchen Instructions', '/catering/instructions'],
+        ['Issue materials for one or many bookings', 'Catering › Store Issue', '/catering/store-issues'],
+        ['Print several quotations / kitchen sheets / an address list at once', 'Catering › Events — tick bookings, then the print buttons', '/catering/events'],
         ['Serving size, station, kitchen instructions per dish', 'Catering › Catering Products', '/catering/profiles'],
         ['Which kitchen printer prints which category', 'Catering › Catering Printers', '/catering/printer-mappings'],
         ['Reminder timing and print language', 'Catering › Catering Settings', '/catering/settings'],
@@ -249,6 +257,14 @@
                             : 'The kitchen sheet goes straight to the mapped thermal printer — no dialog, no browser. Requires the LAN agent running on site.' }}
                     </dd>
                 </dl>
+                <dl class="fs-13">
+                    <dt>{{ $isUr ? 'گاہک کو ای میل / دوبارہ بھیجیں' : 'Email to Customer / Resend' }}</dt>
+                    <dd>
+                        {{ $isUr
+                            ? 'حتمی کوٹیشن اور حتمی بل پر ای میل کا بٹن موجود ہے۔ دوبارہ دبانا جان بوجھ کر دوبارہ بھیجنا ہے — ہر کوشش کا ریکارڈ بنتا ہے۔ ڈرافٹ ای میل نہیں ہوتا: پہلے حتمی کریں۔'
+                            : 'Finalized quotations and final invoices carry an email button. Pressing it again is a deliberate resend — every attempt is logged. A draft cannot be emailed: finalize first. Emailing never changes the booking.' }}
+                    </dd>
+                </dl>
                 <div class="alert alert-warning fs-13 mb-0">
                     <i class="ti ti-alert-triangle me-1"></i>
                     <strong>{{ $isUr ? 'حد:' : 'Limitation:' }}</strong>
@@ -298,12 +314,6 @@
     <div class="card-header"><h5 class="mb-0">{{ $isUr ? 'ابھی کیا کام نہیں کرتا' : 'What does not work yet' }}</h5></div>
     <div class="card-body">
         <ul class="fs-13 mb-0">
-            <li>
-                <strong>{{ $isUr ? 'ای میل' : 'Email' }}</strong> —
-                {{ $isUr
-                    ? 'ای میل کا ریکارڈ بنتا ہے مگر جب تک SMTP ترتیب نہ دیا جائے، گاہک تک کچھ نہیں پہنچتا۔'
-                    : 'Messages are recorded, but until an SMTP account is configured nothing actually reaches the customer.' }}
-            </li>
             <li>
                 <strong>{{ $isUr ? 'تھرمل اردو' : 'Urdu on thermal' }}</strong> —
                 {{ $isUr ? 'دستیاب نہیں۔ اردو کے لیے A4 استعمال کریں۔' : 'Not available. Use A4 for Urdu.' }}

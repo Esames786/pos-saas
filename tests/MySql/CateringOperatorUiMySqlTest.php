@@ -145,6 +145,8 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
         return View::make('tenant.catering.events.show', [
             'event' => $event,
             'units' => \App\Models\Tenant\Unit::where('is_active', true)->get(['id', 'code', 'name']),
+            'branches' => \App\Models\Tenant\Branch::query()->get(),
+            'bookedDates' => [],
             'activeInstructions' => \App\Models\Tenant\CateringInstruction::active()->ordered()->get(),
             'profileMap' => collect(),
             'paymentMethods' => collect(),
