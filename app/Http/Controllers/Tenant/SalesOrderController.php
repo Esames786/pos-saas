@@ -46,7 +46,13 @@ class SalesOrderController extends Controller
         }
 
         if ($request->filled('status')) {
-            $query->where('status', $request->status);
+            // POS-DRAFT-1: a POS draft is a held order flagged is_draft, so the "Draft" filter
+            // surfaces both the pay-flow draft state and POS-parked drafts.
+            if ($request->status === 'draft') {
+                $query->where(fn ($q) => $q->where('status', 'draft')->orWhere('is_draft', true));
+            } else {
+                $query->where('status', $request->status);
+            }
         }
 
         if ($request->filled('order_type')) {
@@ -331,7 +337,9 @@ class SalesOrderController extends Controller
                     'restaurant_floor_id'         => $tableSession?->table?->restaurant_floor_id,
                     'restaurant_table_id'         => $tableSession?->restaurant_table_id,
                     'restaurant_table_session_id' => $tableSession?->id,
-                    'restaurant_waiter_id'        => $tableSession?->restaurant_waiter_id,
+                    // Dine-in inherits the session waiter; a non-session Quick Sale carries its own.
+                    'restaurant_waiter_id'        => $tableSession?->restaurant_waiter_id
+                        ?? ((! $tableSession && $orderType === 'quick_sale') ? ($data['restaurant_waiter_id'] ?? null) : null),
                     'customer_name'               => $data['customer_name'] ?? null,
                     'customer_phone'              => $data['customer_phone'] ?? null,
                     'customer_email'              => $data['customer_email'] ?? null,
@@ -343,8 +351,9 @@ class SalesOrderController extends Controller
                     'delivery_rider_id'           => (! $tableSession && $orderType === 'delivery') ? ($data['delivery_rider_id'] ?? null) : null,
                     'delivery_address'            => (! $tableSession && $orderType === 'delivery') ? ($data['delivery_address'] ?? null) : null,
                     'delivery_charge_amount'      => $totals['delivery_charge_amount'] ?? 0,
-                    // Vehicle number is captured for quick-sale (drive-through) AND takeaway — never stale on other types.
-                    'vehicle_number'              => (! $tableSession && in_array($orderType, ['quick_sale', 'takeaway'], true)) ? ($data['vehicle_number'] ?? null) : null,
+                    // Vehicle number is captured for Quick Sale (drive-through) only — never for
+                    // takeaway (client confirmed) and never stale on other types.
+                    'vehicle_number'              => (! $tableSession && $orderType === 'quick_sale') ? ($data['vehicle_number'] ?? null) : null,
                     'sale_date'                   => now(),
                     'business_date'               => $businessDate,
                     'subtotal'                    => $totals['subtotal'],
@@ -778,7 +787,9 @@ class SalesOrderController extends Controller
             'delivery_rider_id'   => ['nullable', 'exists:delivery_riders,id'],
             'delivery_address'    => ['nullable', 'string', 'max:500'],
             'delivery_charge_amount' => ['nullable', 'numeric', 'min:0', 'max:99999'],
-            'vehicle_number'      => ['nullable', 'string', 'max:50'],
+            // Quick Sale requires a vehicle number AND a waiter; takeaway no longer captures a vehicle.
+            'vehicle_number'      => ['nullable', 'string', 'max:50', 'required_if:order_type,quick_sale'],
+            'restaurant_waiter_id' => ['nullable', 'integer', 'exists:restaurant_waiters,id', 'required_if:order_type,quick_sale'],
             'discount_type'       => ['required', Rule::in(['none', 'fixed', 'percent'])],
             'discount_value'      => ['nullable', 'numeric', 'min:0'],
             'promo_code'          => ['nullable', 'string', 'max:50'],

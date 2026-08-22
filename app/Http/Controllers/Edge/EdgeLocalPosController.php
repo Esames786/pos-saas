@@ -180,6 +180,8 @@ class EdgeLocalPosController extends Controller
             'payments.*.payment_method_id' => ['required', 'integer'],
             'payments.*.amount' => ['required', 'numeric', 'gt:0'],
             'payments.*.tendered_amount' => ['nullable', 'numeric'],
+            'vehicle_number' => ['nullable', 'string', 'max:50'],
+            'restaurant_waiter_id' => ['nullable', 'integer'], // PHASE 2b parity: quick-sale waiter attribution
         ]);
         $terminal = $this->selectedTerminal($request);
         if ($terminal instanceof JsonResponse) {
@@ -288,6 +290,10 @@ class EdgeLocalPosController extends Controller
             'order_type' => ['required', 'string'],
             'restaurant_table_session_id' => ['nullable', 'integer'],
             'notes' => ['nullable', 'string', 'max:1000'],
+            // POS-DRAFT-1 + PHASE 2b parity (offline): park as draft; quick-sale vehicle + waiter attribution.
+            'save_as_draft' => ['nullable', 'boolean'],
+            'vehicle_number' => ['nullable', 'string', 'max:50'],
+            'restaurant_waiter_id' => ['nullable', 'integer'],
             'lines' => ['required', 'array', 'min:1'],
             'lines.*.sales_order_line_id' => ['nullable', 'integer'],
             'lines.*.product_id' => ['required', 'integer'],
@@ -312,7 +318,7 @@ class EdgeLocalPosController extends Controller
 
         return response()->json([
             'sale_id' => $sale->id, 'sale_no' => $sale->sale_no, 'sale_uuid' => $sale->sale_uuid,
-            'status' => $sale->status, 'grand_total' => (float) $sale->grand_total,
+            'status' => $sale->status, 'is_draft' => (bool) $sale->is_draft, 'grand_total' => (float) $sale->grand_total,
             'restaurant_table_session_id' => $sale->restaurant_table_session_id,
             'lines' => $sale->lines()->get(['id', 'line_uuid', 'product_id', 'quantity', 'unit_price', 'kot_sent', 'kot_sent_quantity']),
         ], empty($data['held_sale_id']) ? 201 : 200);

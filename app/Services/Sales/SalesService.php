@@ -132,6 +132,9 @@ class SalesService
                 'paid_amount'       => $paidAmount,
                 'change_amount'     => $changeAmount,
                 'status'            => 'paid',
+                // A paid order is never a draft — clear the POS-DRAFT flag at the single
+                // finalization choke point so a drafted order that gets paid stops showing as one.
+                'is_draft'          => false,
                 'inventory_posted'  => true,
                 'completed_at'      => now(),
             ]);

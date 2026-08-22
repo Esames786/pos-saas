@@ -543,7 +543,7 @@ class POSController extends Controller
             'customer_name' => $data['customer_name'] ?? null,
             'customer_phone' => $data['customer_phone'] ?? null,
             'delivery_address' => $orderType === 'delivery' ? ($data['delivery_address'] ?? null) : null,
-            'vehicle_number' => in_array($orderType, ['quick_sale', 'takeaway'], true) ? ($data['vehicle_number'] ?? null) : null,
+            'vehicle_number' => $orderType === 'quick_sale' ? ($data['vehicle_number'] ?? null) : null,
             'subtotal' => $totals['subtotal'],
             'discount_amount' => $totals['discount_amount'],
             'tax_amount' => $totals['tax_amount'],
@@ -724,7 +724,7 @@ class POSController extends Controller
         $allowedTypes = auth("tenant")->user()?->effectiveAllowedOrderTypes() ?? [];
         $filterType = (string) $request->input('order_type', '');
 
-        $sales = SalesOrder::with(['customer', 'deliveryRider', 'branch', 'shift'])
+        $sales = SalesOrder::with(['customer', 'deliveryRider', 'branch', 'shift', 'restaurantWaiter', 'restaurantTable'])
             ->where('status', '!=', 'held')
             ->whereNotNull('sale_no')
             ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
@@ -753,6 +753,10 @@ class POSController extends Controller
                 'payment_status' => $s->payment_status,
                 'customer'       => $s->customer_name ?: $s->customer?->name ?: 'Walk-in',
                 'rider'          => $s->order_type === 'delivery' ? ($s->deliveryRider?->name ?? 'Unassigned') : null,
+                // Waiter (quick-sale + dine-in), vehicle (quick-sale), table (dine-in) for the list.
+                'waiter'         => $s->restaurantWaiter?->name,
+                'vehicle_number' => $s->vehicle_number,
+                'table'          => $s->restaurantTable?->table_no,
                 'total'          => number_format((float) $s->grand_total, 2),
                 'time'           => app(\App\Support\TenantClock::class)->formatSale($s, 'd M, h:i A'),
                 'ago'            => optional($s->sale_date ?? $s->created_at)->diffForHumans(),

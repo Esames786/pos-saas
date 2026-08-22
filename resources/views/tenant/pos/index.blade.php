@@ -531,12 +531,25 @@
                 <button type="button" class="btn btn-sm btn-outline-secondary py-0" data-bs-toggle="modal" data-bs-target="#posContextModal" title="Change branch or terminal">
                     <i class="ti ti-adjustments-horizontal me-1"></i>Change
                 </button>
-                {{-- VEHICLE-NUMBER-1: drive-through capture, quick-sale orders only (inline) --}}
+                {{-- VEHICLE-NUMBER-1: drive-through capture, QUICK SALE orders only (inline). Required
+                     for quick sale (guarded in JS + server); takeaway no longer captures a vehicle. --}}
                 <div id="vehicle-wrap" class="align-items-center gap-1" style="display:none">
-                    <label for="vehicle_number" class="form-label small mb-0">Vehicle</label>
+                    <label for="vehicle_number" class="form-label small mb-0">Vehicle <span class="text-danger">*</span></label>
                     <input id="vehicle_number" name="vehicle_number" class="form-control form-control-sm d-inline-block ms-1"
                            style="width:150px" maxlength="50" placeholder="e.g. LEA-1234" value="{{ $heldSale?->vehicle_number }}"
-                           title="Optional. Customer's vehicle number for quick-sale / drive-through orders — printed on KOT and receipt so staff can match the order to the car.">
+                           title="Required for quick-sale / drive-through orders — printed on KOT and receipt so staff can match the order to the car.">
+                </div>
+                {{-- QUICK-SALE-WAITER-1: a waiter is mandatory on quick sale (attribution). Reuses the
+                     branch waiter roster; posts restaurant_waiter_id on this (the sale) form. --}}
+                <div id="qs-waiter-wrap" class="align-items-center gap-1" style="display:none">
+                    <label for="qs-waiter-select" class="form-label small mb-0">Waiter <span class="text-danger">*</span></label>
+                    <select id="qs-waiter-select" name="restaurant_waiter_id"
+                            class="form-select form-select-sm d-inline-block ms-1" style="width:170px">
+                        <option value="">Select waiter…</option>
+                        @foreach($waiters as $w)
+                            <option value="{{ $w->id }}" @selected(($heldSale?->restaurant_waiter_id) == $w->id)>{{ $w->name }}</option>
+                        @endforeach
+                    </select>
                 </div>
             </div>
 
@@ -712,6 +725,7 @@
                  style="display:none;background:#fff3cd;border:1px solid #ffc107;">
                 <div class="small fw-semibold text-warning-emphasis">
                     <i class="ti ti-lock me-1"></i>Recalled: <span id="recalled-order-no">—</span>
+                    <span id="pos-draft-badge" class="badge bg-secondary ms-1" style="display:none;">DRAFT</span>
                 </div>
                 <div class="d-flex gap-1">
                     <button type="button" class="btn btn-sm btn-warning py-0 px-2" id="edit-order-btn"
@@ -734,6 +748,16 @@
                         <button type="button" class="btn btn-outline-secondary btn-lg px-3" id="held-orders-btn"
                                 title="Held Orders (Ctrl+L)">
                             <i class="ti ti-layout-list"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="row g-2">
+                    <div class="col">
+                        {{-- POS-DRAFT-1: park the order WITHOUT sending the KOT. Same as Hold otherwise
+                             (recall, edit, preview, cancel); a later Hold prints the KOT and clears draft. --}}
+                        <button type="button" class="btn btn-outline-warning btn-lg w-100 fw-semibold" id="save-draft-btn"
+                                title="Save as Draft — parks the order without sending the KOT to the kitchen">
+                            <i class="ti ti-file-pencil me-1"></i>Save as Draft
                         </button>
                     </div>
                 </div>
@@ -1432,6 +1456,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (separateInput)    separateInput.value    = '0';
         _currentHeldSaleId = null;
         _currentHeldSaleNo = null;
+        _currentHeldSaleIsDraft = false;
     }
 
     /* ── No-reload dine-in session state ──────────────────────────────────
@@ -1573,16 +1598,20 @@ document.addEventListener('DOMContentLoaded', function () {
         deliveryPanelEl.style.display = isDelivery ? '' : 'none';
         if (deliveryChannelEl) deliveryChannelEl.required = isDelivery;
 
-        // VEHICLE-NUMBER: quick-sale (drive-through) AND takeaway capture the vehicle; every
-        // other order type hides it and never posts a stale value. Same lifecycle as the
-        // delivery charge — shown on its order types, restored on recall (recallHeldSale),
-        // cleared here when switching to a type that has no vehicle. TDZ-safe scoped lookup.
+        // VEHICLE + WAITER: QUICK SALE only. Both fields show for quick-sale (and are required at
+        // submit), and hide + clear for every other type so no stale value posts. Takeaway no longer
+        // captures a vehicle. Restored on recall (recallHeldSale). TDZ-safe scoped lookup.
         {
-            const isVehicleType = orderTypeEl.value === 'quick_sale' || orderTypeEl.value === 'takeaway';
+            const isQuickSale = orderTypeEl.value === 'quick_sale';
             const vWrap = document.getElementById('vehicle-wrap');
             const vEl = document.getElementById('vehicle_number');
-            if (vWrap) vWrap.style.display = isVehicleType ? 'inline-flex' : 'none';
-            if (!isVehicleType && vEl) vEl.value = '';
+            if (vWrap) vWrap.style.display = isQuickSale ? 'inline-flex' : 'none';
+            if (!isQuickSale && vEl) vEl.value = '';
+
+            const wWrap = document.getElementById('qs-waiter-wrap');
+            const wEl = document.getElementById('qs-waiter-select');
+            if (wWrap) wWrap.style.display = isQuickSale ? 'inline-flex' : 'none';
+            if (!isQuickSale && wEl) wEl.value = '';
         }
 
         // POS-UX-2: for delivery orders the phone stops being "optional" in spirit —
@@ -3297,6 +3326,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     let _currentHeldSaleId = null;   // held sale ID currently loaded in cart
     let _currentHeldSaleNo = null;
+    let _currentHeldSaleIsDraft = false;   // POS-DRAFT-1: current order parked as a draft (KOT not sent)
     // Recent-print pointer persists across reloads so the Recent Prints / reprint
     // modal still works after the POS page is refreshed (the jobs themselves live
     // server-side; only the "which sale" pointer was being lost in memory).
@@ -3342,6 +3372,7 @@ document.addEventListener('DOMContentLoaded', function () {
         cart = [];
         _currentHeldSaleId = null;
         _currentHeldSaleNo = null;
+        _currentHeldSaleIsDraft = false;
         window._voidItems  = [];
         _promoDiscountAmount = 0;
         _promoCode = '';
@@ -3379,7 +3410,7 @@ document.addEventListener('DOMContentLoaded', function () {
         // the next one — Review & Pay, New Order, Cancel and mode switches all land here. Add Round
         // (preserveTable) is the one case that continues the same party's order, so it keeps them.
         if (!options.preserveTable) {
-            ['customer_id', 'customer_name', 'customer_phone', 'delivery_address', 'vehicle_number']
+            ['customer_id', 'customer_name', 'customer_phone', 'delivery_address', 'vehicle_number', 'qs-waiter-select']
                 .forEach(function (id) { const el = document.getElementById(id); if (el) el.value = ''; });
             const dch = document.getElementById('delivery_channel_id'); if (dch) dch.value = '';
             const drd = document.getElementById('delivery_rider_id');   if (drd) drd.value = '';
@@ -3423,6 +3454,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const bar        = document.getElementById('recalled-order-bar');
         const noEl       = document.getElementById('recalled-order-no');
         const editBtn    = document.getElementById('edit-order-btn');
+        const draftBadge = document.getElementById('pos-draft-badge');
         if (!bar) return;
         if (_currentHeldSaleId) {
             if (noEl) noEl.textContent = _currentHeldSaleNo || ('#' + _currentHeldSaleId);
@@ -3432,6 +3464,8 @@ document.addEventListener('DOMContentLoaded', function () {
             bar.style.display = 'none';
             if (editBtn) editBtn.disabled = true;
         }
+        // POS-DRAFT-1: show the DRAFT badge whenever the loaded order is a draft (recalled or just saved).
+        if (draftBadge) draftBadge.style.display = (_currentHeldSaleId && _currentHeldSaleIsDraft) ? '' : 'none';
     }
 
     function lockOrderControls() {
@@ -3698,6 +3732,26 @@ document.addEventListener('DOMContentLoaded', function () {
         return false;
     }
 
+    // QUICK-SALE-WAITER-1: a quick sale cannot be held or paid without BOTH a vehicle number and a
+    // waiter (the server enforces the same via required_if). Mirrors requireDeliveryCustomer.
+    function requireQuickSaleFields() {
+        if (!orderTypeEl || orderTypeEl.value !== 'quick_sale') return true;
+        const vehicle = String((document.getElementById('vehicle_number') || {}).value || '').trim();
+        const waiter  = String((document.getElementById('qs-waiter-select') || {}).value || '').trim();
+        if (vehicle && waiter) return true;
+
+        const msg = (!vehicle && !waiter) ? 'Enter the vehicle number and select a waiter for a quick sale.'
+            : (!vehicle ? 'Enter the vehicle number for a quick sale.' : 'Select a waiter for a quick sale.');
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({ icon: 'warning', title: 'Quick Sale details required', text: msg, confirmButtonColor: '#d4a72c' });
+        } else {
+            toast('error', msg);
+        }
+        const focusEl = document.getElementById(!vehicle ? 'vehicle_number' : 'qs-waiter-select');
+        if (focusEl) focusEl.focus();
+        return false;
+    }
+
     function resolveDirectPayKotIntent() {
         if (_directPayKotIntent !== null) return Promise.resolve(true);
         if (kotPending().pending <= 0) {
@@ -3783,6 +3837,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!continuingFlow && (_completeSaleFlowActive || buttonIsBusy(submitBtn))) return;
         if (!cart.length) { toast('warning', 'Add at least one item'); return; }
         if (!requireDeliveryCustomer()) return;
+        if (!requireQuickSaleFields()) return;
         _completeSaleFlowActive = true;
 
         if (_directPayKotIntent === null) {
@@ -3918,11 +3973,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
     /* ── Hold sale ────────────────────────────────────────────────────── */
 
-    function submitHeldSale() {
-        const holdBtn = document.getElementById('hold-sale-btn');
+    function submitHeldSale(asDraft, srcBtn) {
+        asDraft = !!asDraft;   // POS-DRAFT-1: a draft saves identically but never sends the KOT
+        const holdBtn = srcBtn || document.getElementById('hold-sale-btn');
         if (buttonIsBusy(holdBtn)) return;
         if (!cart.length) { toast('warning', 'Add at least one item'); return; }
         if (!requireDeliveryCustomer()) return;
+        if (!requireQuickSaleFields()) return;
         if (_manualDiscountType !== 'none') {
             _manualDiscountType = 'none';
             _manualDiscountValue = 0;
@@ -3945,10 +4002,12 @@ document.addEventListener('DOMContentLoaded', function () {
 
             const terminalId = (document.getElementById('terminal_id') || {}).value || '';
 
+            const heldFormData = new FormData(form);
+            heldFormData.set('save_as_draft', asDraft ? '1' : '0');   // POS-DRAFT-1
             fetch('{{ url('/held-sales') }}', {
                 method:  'POST',
                 headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
-                body:    new FormData(form),
+                body:    heldFormData,
             })
             .then(function (res) { return res.json().then(function (d) { return { ok: res.ok, data: d }; }); })
             .then(function (result) {
@@ -3970,6 +4029,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
                 _currentHeldSaleId = saleId;
                 _currentHeldSaleNo = saleNo;
+                _currentHeldSaleIsDraft = !!(result.data && result.data.is_draft);   // POS-DRAFT-1
                 rememberLastSale(saleId, saleNo);
                 if (heldInput) heldInput.value = saleId;
 
@@ -3993,9 +4053,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 updateSplitBillBtn();
                 updateRecalledBar();
                 lockOrderControls();
-                toast('success', 'Held: ' + saleNo);
-                // KOT — only the un-sent delta (re-holding without new items won't reprint)
-                if (kotPending().pending > 0) {
+                toast('success', (asDraft ? 'Draft saved: ' : 'Held: ') + saleNo);
+                // POS-DRAFT-1: a draft NEVER sends the KOT to the kitchen. A normal Hold prints the
+                // un-sent delta as before (re-holding without new items won't reprint).
+                if (!asDraft && kotPending().pending > 0) {
                     handleKotAfterSale(saleId, saleNo, terminalId);
                 }
             })
@@ -4156,6 +4217,15 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
+    // Compact sub-line for the Held/Recent lists: whichever of table / waiter / vehicle applies.
+    function posOrderMeta(s) {
+        var bits = [];
+        if (s.table) bits.push('<i class="ti ti-armchair-2 me-1"></i>Table ' + escapeHtml(s.table));
+        if (s.waiter) bits.push('<i class="ti ti-user me-1"></i>' + escapeHtml(s.waiter));
+        if (s.vehicle_number) bits.push('<i class="ti ti-car me-1"></i>' + escapeHtml(s.vehicle_number));
+        return bits.length ? '<div class="text-muted small">' + bits.join(' · ') + '</div>' : '';
+    }
+
     function loadHeldSales() {
         const body     = document.getElementById('held-sales-modal-body');
         const branchId = document.getElementById('branch_id').value;
@@ -4181,7 +4251,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 html += '<tr>' +
                     '<td><strong>' + escapeHtml(s.sale_no) + '</strong></td>' +
                     '<td><span class="badge bg-secondary text-capitalize">' + escapeHtml(String(s.order_type || '').replace('_', ' ')) + '</span></td>' +
-                    '<td>' + escapeHtml(s.customer || 'Walk-in') + '</td>' +
+                    '<td>' + escapeHtml(s.customer || 'Walk-in') + posOrderMeta(s) + '</td>' +
                     '<td class="text-end">' + escapeHtml(s.items) + '</td>' +
                     '<td class="text-end fw-bold">' + escapeHtml(s.total) + '</td>' +
                     '<td class="text-muted small">' + escapeHtml(s.time) + '</td>' +
@@ -4277,6 +4347,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         _currentHeldSaleId = sale.id;
         _currentHeldSaleNo = sale.sale_no;
+        _currentHeldSaleIsDraft = !!sale.is_draft;   // POS-DRAFT-1: recalled draft keeps its badge
         rememberLastSale(sale.id, sale.sale_no);
         const heldInput = document.querySelector('input[name="held_sale_id"]');
         if (heldInput) heldInput.value = sale.id;
@@ -4311,6 +4382,9 @@ document.addEventListener('DOMContentLoaded', function () {
         { const el = document.getElementById('customer_phone'); if (el) el.value = sale.customer_phone || ''; }
         { const el = document.getElementById('delivery_address'); if (el) el.value = sale.delivery_address || ''; }
         { const el = document.getElementById('vehicle_number'); if (el && sale.vehicle_number) el.value = sale.vehicle_number; }
+        // QUICK-SALE-WAITER-1: restore the attached waiter (updateDeliveryPanel above already showed
+        // the picker for a recalled quick sale).
+        { const el = document.getElementById('qs-waiter-select'); if (el) el.value = sale.restaurant_waiter_id || ''; }
         // DELIVERY-CHARGE recall: restore the charge to its input (updateDeliveryPanel above kept the
         // delivery panel visible) so a recalled delivery order's Bill/Preview shows the charge again.
         { const el = document.getElementById('delivery_charge_amount'); if (el) el.value = (Number(sale.delivery_charge_amount) > 0 ? sale.delivery_charge_amount : ''); }
@@ -4821,7 +4895,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
                 return '<tr>' +
                     '<td><strong>' + escapeHtml(s.sale_no) + '</strong><div class="text-muted small">' + escapeHtml(s.time || s.ago || '') + '</div>' + printStatus + '</td>' +
-                    '<td>' + escapeHtml(s.customer || 'Walk-in') + '<div class="text-muted small text-capitalize">' + escapeHtml(String(s.order_type || '').replace(/_/g, ' ')) + '</div>' + riderStatus + '</td>' +
+                    '<td>' + escapeHtml(s.customer || 'Walk-in') + '<div class="text-muted small text-capitalize">' + escapeHtml(String(s.order_type || '').replace(/_/g, ' ')) + '</div>' + posOrderMeta(s) + riderStatus + '</td>' +
                     '<td class="text-end fw-semibold">' + escapeHtml(s.total) + '</td>' +
                     '<td class="text-end text-nowrap">' +
                         '<button type="button" class="btn btn-sm btn-outline-primary me-1" data-reprint-receipt="' + Number(s.id) + '"><i class="ti ti-printer me-1"></i>Receipt</button>' +
@@ -4923,6 +4997,7 @@ document.addEventListener('DOMContentLoaded', function () {
             customer_phone:         (document.getElementById('customer_phone') || {}).value || null,
             delivery_address:       (document.getElementById('delivery_address') || {}).value || null,
             vehicle_number:         (document.getElementById('vehicle_number') || {}).value || null,
+            restaurant_waiter_id:   (document.getElementById('qs-waiter-select') || {}).value || null,
             // Dine-in table + session, so the preview shows the Table/Waiter line the receipt prints.
             restaurant_table_id:         (document.getElementById('restaurant_table_id') || {}).value || null,
             restaurant_table_session_id: (document.getElementById('restaurant_table_session_id') || {}).value || null,
@@ -5226,6 +5301,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 return;
             }
             if (!requireDeliveryCustomer()) return;
+        if (!requireQuickSaleFields()) return;
             _directPayKotIntent = null;
             _directPayReceiptIntent = null;
             bootstrap.Modal.getOrCreateInstance(paymentModalEl).show();
@@ -5250,7 +5326,10 @@ document.addEventListener('DOMContentLoaded', function () {
         var termSel = document.getElementById('terminal_id');
         if (termSel) { termSel.addEventListener('change', refreshPrintPanel); }
     }
-    document.getElementById('hold-sale-btn').addEventListener('click', submitHeldSale);
+    document.getElementById('hold-sale-btn').addEventListener('click', function () { submitHeldSale(false, this); });
+    // POS-DRAFT-1: Save as Draft runs the same save but flags the order a draft and skips the KOT.
+    var _saveDraftBtn = document.getElementById('save-draft-btn');
+    if (_saveDraftBtn) _saveDraftBtn.addEventListener('click', function () { submitHeldSale(true, this); });
     document.getElementById('clear-cart-btn').addEventListener('click', function () {
         if (typeof Swal !== 'undefined') {
             Swal.fire({
@@ -5370,6 +5449,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (deliveryAddressEl) deliveryAddressEl.value = '';
         { const dcEl = document.getElementById('delivery_charge_amount'); if (dcEl) dcEl.value = ''; }
         { const vEl = document.getElementById('vehicle_number'); if (vEl) vEl.value = ''; }
+        { const wEl = document.getElementById('qs-waiter-select'); if (wEl) wEl.value = ''; }
         if (transactionRefEl) transactionRefEl.value = '';
         if (tenderedEl) tenderedEl.value = '0.00';
 
@@ -5588,6 +5668,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (heldSale && heldSale.lines) {
         _currentHeldSaleId = heldSale.id;
         _currentHeldSaleNo = heldSale.sale_no || '';
+        _currentHeldSaleIsDraft = !!heldSale.is_draft;   // POS-DRAFT-1
         var preloadedLineKeys = {};
 
         heldSale.lines.forEach(function (line) {

@@ -205,6 +205,8 @@ class EdgeLocalPosService
                     'order_type' => $orderType,
                     // VEHICLE-NUMBER-1: quick-sale (drive-through) capture — offline parity with Cloud.
                     'vehicle_number' => $this->vehicleNumberFor($orderType, $data),
+                    // PHASE 2b parity: a quick sale may carry its own waiter (validated against the bound branch).
+                    'restaurant_waiter_id' => $this->waiterIdFor($orderType, $data, $branchId),
                     'sale_date' => now(),
                     'subtotal' => $totals['subtotal'],
                     'discount_type' => (string) ($data['discount_type'] ?? 'none'),
@@ -425,6 +427,26 @@ class EdgeLocalPosService
      * VEHICLE-NUMBER-1: quick-sale-only drive-through capture, trimmed and length-capped to the
      * column width. Other order types always persist NULL (never a stale carried-over value).
      */
+    /**
+     * OFFLINE quick-sale WAITER attribution (canonical PHASE 2b, 0d41617): a quick sale may carry its own
+     * waiter; dine-in inherits the session's. The waiter must be an ACTIVE waiter of the BOUND branch — a
+     * foreign or inactive id is refused, never silently dropped. Requiring it offline is a Batch-2 decision
+     * (docs/status/edge-canonical-gap-2026-08-23.md #17); the CAPTURE here is canonical-equivalent.
+     */
+    private function waiterIdFor(string $orderType, array $data, int $branchId): ?int
+    {
+        if ($orderType !== 'quick_sale' || empty($data['restaurant_waiter_id'])) {
+            return null;
+        }
+        $waiterId = (int) $data['restaurant_waiter_id'];
+        $ok = RestaurantWaiter::on('tenant')->where('id', $waiterId)->where('branch_id', $branchId)->where('status', 'active')->exists();
+        if (! $ok) {
+            throw ValidationException::withMessages(['restaurant_waiter_id' => 'The selected waiter is not an active waiter of this branch.']);
+        }
+
+        return $waiterId;
+    }
+
     private function vehicleNumberFor(string $orderType, array $data): ?string
     {
         if ($orderType !== 'quick_sale') {
@@ -558,13 +580,16 @@ class EdgeLocalPosService
             throw ValidationException::withMessages(['order_type' => "Order type [{$orderType}] is not allowed for this user."]);
         }
         $this->assertNoDiscountOrPromo($data);
+        // POS-DRAFT-1 offline parity (canonical 0b5df5a): every save writes the current intent — a normal
+        // Hold clears a draft; save_as_draft parks the held sale WITHOUT a kitchen ticket (server-enforced below).
+        $isDraft = (bool) ($data['save_as_draft'] ?? false);
         $lines = array_values(array_filter($data['lines'] ?? [], fn ($l) => (float) ($l['quantity'] ?? 0) > 0));
         if (! $lines) {
             throw ValidationException::withMessages(['lines' => 'A held order needs at least one line.']);
         }
         $this->assertNoComboSelling($lines);
 
-        return DB::connection('tenant')->transaction(function () use ($data, $user, $branch, $branchId, $terminal, $activationEpoch, $orderType, $lines) {
+        return DB::connection('tenant')->transaction(function () use ($data, $user, $branch, $branchId, $terminal, $activationEpoch, $orderType, $lines, $isDraft) {
             [$user, $terminal] = $this->revalidateInTxn($user, $branchId, $terminal->id);
             $shift = $this->shiftService->lockOpenShiftForTerminal($terminal);
 
@@ -616,11 +641,12 @@ class EdgeLocalPosService
                 'grand_total' => $totals['grand_total'],
                 'paid_amount' => 0, 'change_amount' => 0,
                 'status' => 'held',
+                'is_draft' => $isDraft,
                 'created_by_user_id' => $user->id,
                 'restaurant_table_session_id' => $session?->id,
                 'restaurant_table_id' => $session?->restaurant_table_id,
                 'restaurant_floor_id' => $session?->table?->restaurant_floor_id,
-                'restaurant_waiter_id' => $session?->restaurant_waiter_id,
+                'restaurant_waiter_id' => $session?->restaurant_waiter_id ?? $this->waiterIdFor($orderType, $data, $branchId),
                 'inventory_posted' => false,
                 'edge_sync_state' => 'pending',
                 'edge_activation_epoch' => $activationEpoch,
@@ -734,6 +760,10 @@ class EdgeLocalPosService
         $sale->lines()->delete();
         $sale->update([
             // shift_id + business_date are FROZEN at first hold; a revision never rolls them forward.
+            'is_draft' => (bool) ($data['save_as_draft'] ?? false),
+            // Dine-in keeps its session waiter; a quick sale may (re)attribute its own, else keep the stored one.
+            'restaurant_waiter_id' => $session?->restaurant_waiter_id
+                ?? (((string) $sale->order_type === 'quick_sale' && ! empty($data['restaurant_waiter_id'])) ? $this->waiterIdFor((string) $sale->order_type, $data, $branchId) : $sale->restaurant_waiter_id),
             'subtotal' => $totals['subtotal'],
             'discount_amount' => $totals['discount_amount'],
             'tax_amount' => $totals['tax_amount'],
@@ -788,6 +818,11 @@ class EdgeLocalPosService
             ->whereIn('status', ['held', 'paid'])->first();
         if (! $sale) {
             throw ValidationException::withMessages(['sale' => 'No held or paid sale found for KOT.']);
+        }
+        // POS-DRAFT-1 offline: Cloud skips the KOT in the browser; the Edge POS is API-driven, so the skip is
+        // enforced HERE — a draft is parked without a kitchen ticket until it is held normally.
+        if ((bool) $sale->is_draft) {
+            throw ValidationException::withMessages(['sale' => 'This order is saved as a DRAFT — hold it normally to send its KOT.']);
         }
 
         $jobs = $this->printJobs->queueKot($sale);
@@ -951,6 +986,8 @@ class EdgeLocalPosService
                     'paid_amount' => $paidAmount,
                     'change_amount' => max($changeTotal, max($paidAmount - (float) $sale->grand_total, 0)),
                     'status' => 'paid',
+                    // A paid order is never a draft — same finalization rule as Cloud SalesService::finalizePaidSale.
+                    'is_draft' => false,
                     'completed_at' => now(),
                 ]);
 

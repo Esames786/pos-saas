@@ -90,6 +90,8 @@ class EdgeSaleEnvelopeBuilder
             'terminal_code' => (string) ($sale->terminal?->code ?? ''),
             'user_id' => (int) $sale->created_by_user_id,
             'employee_code' => $user?->employee_code !== null ? (string) $user->employee_code : null,
+            // PHASE 2b parity: quick-sale waiter attribution (dine-in's waiter lives on the session snapshot).
+            'restaurant_waiter_id' => $sale->restaurant_waiter_id !== null ? (int) $sale->restaurant_waiter_id : null,
 
             // Parent snapshots by canonical identity.
             'shift' => [

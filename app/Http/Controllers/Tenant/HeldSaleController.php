@@ -54,7 +54,7 @@ class HeldSaleController extends Controller
         $allowedTypes = auth("tenant")->user()?->effectiveAllowedOrderTypes() ?? [];
         $filterType = (string) $request->input('order_type', '');
 
-        $sales = SalesOrder::with(['customer', 'lines'])
+        $sales = SalesOrder::with(['customer', 'lines', 'restaurantWaiter', 'restaurantTable'])
             ->where('status', 'held')
             ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
             ->when($allowedTypes, fn ($q) => $q->whereIn('order_type', $allowedTypes))
@@ -69,6 +69,7 @@ class HeldSaleController extends Controller
             'sales' => $sales->map(fn ($s) => [
                 'id'                          => $s->id,
                 'sale_no'                     => $s->sale_no,
+                'is_draft'                    => (bool) $s->is_draft,
                 'order_type'                  => $s->order_type,
                 'branch_id'                   => (int) $s->branch_id,
                 'terminal_id'                 => $s->terminal_id,
@@ -79,6 +80,10 @@ class HeldSaleController extends Controller
                 'delivery_address'            => $s->delivery_address,
                 'delivery_charge_amount'      => (float) $s->delivery_charge_amount,
                 'vehicle_number'              => $s->vehicle_number,
+                // Recall + list display: the attached waiter and dine-in table.
+                'restaurant_waiter_id'        => $s->restaurant_waiter_id,
+                'waiter'                      => $s->restaurantWaiter?->name,
+                'table'                       => $s->restaurantTable?->table_no,
                 'discount_type'               => $s->discount_type,
                 'discount_value'              => (float) $s->discount_value,
                 'customer'                    => $s->customer_name ?: $s->customer?->name ?: 'Walk-in',
@@ -259,7 +264,10 @@ class HeldSaleController extends Controller
             'delivery_rider_id'           => 'nullable|exists:delivery_riders,id',
             'delivery_address'            => 'nullable|string|max:500',
             'delivery_charge_amount'      => 'nullable|numeric|min:0|max:99999',
-            'vehicle_number'              => 'nullable|string|max:50',
+            // Quick Sale requires a vehicle number AND a waiter (drive-through attribution); takeaway
+            // no longer captures a vehicle at all. required_if fires only for quick_sale.
+            'vehicle_number'              => 'nullable|string|max:50|required_if:order_type,quick_sale',
+            'restaurant_waiter_id'        => 'nullable|integer|exists:restaurant_waiters,id|required_if:order_type,quick_sale',
             'restaurant_table_session_id' => 'nullable|exists:restaurant_table_sessions,id',
             'restaurant_table_id'         => 'nullable|exists:restaurant_tables,id',
             'customer_id'                 => 'nullable|exists:customers,id',
@@ -289,7 +297,14 @@ class HeldSaleController extends Controller
             'void_items.*.manager_approval_id' => 'nullable|exists:manager_approvals,id',
             'void_items.*.product_name'   => 'nullable|string',
             'create_separate_order'       => 'nullable|boolean',
+            // POS-DRAFT-1: park this held sale as a draft (the frontend then skips the KOT send).
+            // A normal Hold posts false and clears the flag, printing the KOT as before.
+            'save_as_draft'               => 'nullable|boolean',
         ]);
+
+        // The order stays a normal held sale; is_draft only marks it for display + the skip-KOT
+        // decision. Every save (draft OR hold) writes the current intent, so a Hold clears a draft.
+        $isDraft = (bool) ($data['save_as_draft'] ?? false);
 
         $data = $this->validateDeliveryAttribution($data);
 
@@ -386,6 +401,7 @@ class HeldSaleController extends Controller
             $totals,
             $cancellationService,
             $terminal,
+            $isDraft,
         ) {
 
         // HARDEN-1: lock the open shift FIRST (before table-session / held-order locks) so all POS
@@ -569,7 +585,7 @@ class HeldSaleController extends Controller
                 'delivery_rider_id'           => $data['order_type'] === 'delivery' ? ($data['delivery_rider_id'] ?? null) : null,
                 'delivery_address'            => $data['order_type'] === 'delivery' ? ($data['delivery_address'] ?? null) : null,
                 'delivery_charge_amount'      => $totals['delivery_charge_amount'] ?? 0,
-                'vehicle_number'              => in_array($data['order_type'], ['quick_sale', 'takeaway'], true) ? ($data['vehicle_number'] ?? null) : null,
+                'vehicle_number'              => $data['order_type'] === 'quick_sale' ? ($data['vehicle_number'] ?? null) : null,
                 'customer_id'                 => $data['customer_id'] ?? null,
                 'customer_name'               => $data['customer_name'] ?? null,
                 'customer_phone'              => $data['customer_phone'] ?? null,
@@ -584,9 +600,13 @@ class HeldSaleController extends Controller
                 'service_charge_amount'       => $totals['service_charge_amount'],
                 'tip_amount'                  => 0,
                 'grand_total'                 => $totals['grand_total'],
+                'is_draft'                    => $isDraft,
                 'notes'                       => $data['notes'] ?? null,
                 'restaurant_table_session_id' => $tableSession?->id ?? $sale->restaurant_table_session_id,
                 'restaurant_table_id'         => $tableSession?->restaurant_table_id ?? $sale->restaurant_table_id,
+                // Dine-in inherits the session's waiter; Quick Sale carries its own (posted) waiter.
+                'restaurant_waiter_id'        => $tableSession?->restaurant_waiter_id
+                    ?? ($data['order_type'] === 'quick_sale' ? ($data['restaurant_waiter_id'] ?? null) : $sale->restaurant_waiter_id),
             ]);
         } else {
             $saleNo = 'HS-' . now()->format('YmdHis') . '-' . random_int(100, 999);
@@ -602,7 +622,7 @@ class HeldSaleController extends Controller
                 'delivery_rider_id'           => $data['order_type'] === 'delivery' ? ($data['delivery_rider_id'] ?? null) : null,
                 'delivery_address'            => $data['order_type'] === 'delivery' ? ($data['delivery_address'] ?? null) : null,
                 'delivery_charge_amount'      => $totals['delivery_charge_amount'] ?? 0,
-                'vehicle_number'              => in_array($data['order_type'], ['quick_sale', 'takeaway'], true) ? ($data['vehicle_number'] ?? null) : null,
+                'vehicle_number'              => $data['order_type'] === 'quick_sale' ? ($data['vehicle_number'] ?? null) : null,
                 'customer_id'                 => $data['customer_id'] ?? null,
                 'customer_name'               => $data['customer_name'] ?? null,
                 'customer_phone'              => $data['customer_phone'] ?? null,
@@ -619,13 +639,16 @@ class HeldSaleController extends Controller
                 'tip_amount'                  => 0,
                 'grand_total'                 => $totals['grand_total'],
                 'status'                      => 'held',
+                'is_draft'                    => $isDraft,
                 'inventory_posted'            => false,
                 'created_by_user_id'          => Auth::id(),
                 'notes'                       => $data['notes'] ?? null,
                 'restaurant_table_session_id' => $tableSession?->id,
                 'restaurant_table_id'         => $tableSession?->restaurant_table_id,
                 'restaurant_floor_id'         => $tableSession?->table?->restaurant_floor_id,
-                'restaurant_waiter_id'        => $tableSession?->restaurant_waiter_id,
+                // Dine-in inherits the session's waiter; Quick Sale carries its own (posted) waiter.
+                'restaurant_waiter_id'        => $tableSession?->restaurant_waiter_id
+                    ?? ($data['order_type'] === 'quick_sale' ? ($data['restaurant_waiter_id'] ?? null) : null),
             ]);
         }
 
@@ -697,6 +720,7 @@ class HeldSaleController extends Controller
             return response()->json([
                 'sale_id'                     => $sale->id,
                 'sale_no'                     => $sale->sale_no,
+                'is_draft'                    => (bool) $sale->is_draft,
                 'restaurant_table_session_id' => $sale->restaurant_table_session_id,
                 'lines'                       => $savedLinePayload,
             ]);

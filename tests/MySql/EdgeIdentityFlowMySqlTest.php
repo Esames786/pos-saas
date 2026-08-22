@@ -104,6 +104,8 @@ class EdgeIdentityFlowMySqlTest extends MySqlTenantTestCase
         $payload = [
             'branch_id' => $b, 'terminal_id' => $t, 'order_type' => 'quick_sale', 'order_source' => 'pos',
             'discount_type' => 'none', 'client_uuid' => $clientUuid,
+            // Quick Sale requires vehicle + waiter; identical across the replay so idempotency holds.
+            'vehicle_number' => 'LEA-1', 'restaurant_waiter_id' => $this->makeWaiter($b),
             'lines' => [['product_id' => $p, 'quantity' => 1, 'unit_price' => 100]],
             'payments' => [['payment_method_id' => $pm, 'amount' => 100]],
         ];
@@ -137,9 +139,11 @@ class EdgeIdentityFlowMySqlTest extends MySqlTenantTestCase
     public function test_add_round_keeps_sale_identity_and_recreates_lines_with_new_identities(): void
     {
         ['branchId' => $b, 'terminalId' => $t, 'productId' => $p] = $this->scaffold();
+        $w = $this->makeWaiter($b);   // Quick Sale requires a waiter (+ vehicle)
 
         $resp1 = app()->call([app(HeldSaleController::class), 'store'], ['request' => $this->req([
             'branch_id' => $b, 'terminal_id' => $t, 'order_type' => 'quick_sale', 'discount_type' => 'none',
+            'vehicle_number' => 'LEA-1', 'restaurant_waiter_id' => $w,
             'lines' => [['product_id' => $p, 'quantity' => 1, 'unit_price' => 50, 'client_line_key' => 'a']],
         ])]);
         $heldId = json_decode($resp1->getContent(), true)['sale_id'];
@@ -150,6 +154,7 @@ class EdgeIdentityFlowMySqlTest extends MySqlTenantTestCase
         // Add Round through the REAL controller (re-sends existing + a new line).
         $resp2 = app()->call([app(HeldSaleController::class), 'store'], ['request' => $this->req([
             'held_sale_id' => $heldId, 'branch_id' => $b, 'terminal_id' => $t, 'order_type' => 'quick_sale', 'discount_type' => 'none',
+            'vehicle_number' => 'LEA-1', 'restaurant_waiter_id' => $w,
             'lines' => [
                 ['product_id' => $p, 'quantity' => 1, 'unit_price' => 50, 'client_line_key' => 'a'],
                 ['product_id' => $p, 'quantity' => 2, 'unit_price' => 50, 'client_line_key' => 'b'],
@@ -178,6 +183,7 @@ class EdgeIdentityFlowMySqlTest extends MySqlTenantTestCase
 
         $resp1 = app()->call([app(HeldSaleController::class), 'store'], ['request' => $this->req([
             'branch_id' => $b, 'terminal_id' => $t, 'order_type' => 'quick_sale', 'discount_type' => 'none',
+            'vehicle_number' => 'LEA-1', 'restaurant_waiter_id' => $this->makeWaiter($b),
             'lines' => [
                 ['product_id' => $p, 'quantity' => 2, 'unit_price' => 30, 'client_line_key' => 'a'],
                 ['product_id' => $p, 'quantity' => 1, 'unit_price' => 70, 'client_line_key' => 'b'],
@@ -211,6 +217,7 @@ class EdgeIdentityFlowMySqlTest extends MySqlTenantTestCase
         ['branchId' => $b, 'terminalId' => $t, 'productId' => $p] = $this->scaffold();
         $resp = app()->call([app(HeldSaleController::class), 'store'], ['request' => $this->req([
             'branch_id' => $b, 'terminal_id' => $t, 'order_type' => 'quick_sale', 'discount_type' => 'none',
+            'vehicle_number' => 'LEA-1', 'restaurant_waiter_id' => $this->makeWaiter($b),
             'lines' => [['product_id' => $p, 'quantity' => 2, 'unit_price' => 40, 'client_line_key' => 'a']],
         ])]);
         $sale = SalesOrder::on('tenant')->find(json_decode($resp->getContent(), true)['sale_id']);
@@ -264,6 +271,7 @@ class EdgeIdentityFlowMySqlTest extends MySqlTenantTestCase
         // Hold a sale, send its line to the kitchen (real KOT batch), mark it KOT-sent.
         $resp = app()->call([app(HeldSaleController::class), 'store'], ['request' => $this->req([
             'branch_id' => $b, 'terminal_id' => $t, 'order_type' => 'quick_sale', 'discount_type' => 'none',
+            'vehicle_number' => 'LEA-1', 'restaurant_waiter_id' => $this->makeWaiter($b),
             'lines' => [['product_id' => $p, 'quantity' => 2, 'unit_price' => 40, 'client_line_key' => 'a']],
         ])]);
         $sale = SalesOrder::on('tenant')->find(json_decode($resp->getContent(), true)['sale_id']);
@@ -311,6 +319,7 @@ class EdgeIdentityFlowMySqlTest extends MySqlTenantTestCase
         ['branchId' => $b, 'terminalId' => $t, 'productId' => $p] = $this->scaffold();
         $resp = app()->call([app(HeldSaleController::class), 'store'], ['request' => $this->req([
             'branch_id' => $b, 'terminal_id' => $t, 'order_type' => 'quick_sale', 'discount_type' => 'none',
+            'vehicle_number' => 'LEA-1', 'restaurant_waiter_id' => $this->makeWaiter($b),
             'lines' => [['product_id' => $p, 'quantity' => 2, 'unit_price' => 40, 'client_line_key' => 'a']],
         ])]);
         $sale = SalesOrder::on('tenant')->find(json_decode($resp->getContent(), true)['sale_id']);
