@@ -176,12 +176,25 @@ class CateringEventController extends Controller
         // KASHIF-CATERING-INSTRUCTIONS-1: the active vocabulary for the builder.
         $activeInstructions = \App\Models\Tenant\CateringInstruction::active()->ordered()->get(['id', 'label', 'label_ur', 'sort_order']);
 
+        // KASHIF-CLIENT-MENU-3: a block-costed dish must show its price the
+        // moment it is picked, not a dash until save. One bulk pass computes
+        // every enabled product's per-unit block rate (lump sums excluded, as
+        // rateFor() does) — 700+ products, zero per-product queries.
+        $blockRates = \App\Models\Tenant\CateringProductCostBlock::query()
+            ->where('is_active', true)
+            ->get()
+            ->groupBy('product_id')
+            ->map(fn ($blocks) => round($blocks->reject->isLumpSum()->sum->contributionPerDishUnit(), 2));
+
         // Catering profile defaults (rate/unit/Urdu label) keyed by product for the builder.
         $profileMap = \App\Models\Tenant\CateringProductProfile::with(['product.translations'])
             ->where('catering_enabled', true)
             ->get()
             ->mapWithKeys(fn ($profile) => [$profile->product_id => [
-                'rate' => (float) ($profile->default_catering_rate ?? 0),
+                'blocks' => $profile->costing_mode === 'blocks' && ($blockRates[$profile->product_id] ?? 0) > 0,
+                'rate' => $profile->costing_mode === 'blocks' && ($blockRates[$profile->product_id] ?? 0) > 0
+                    ? (float) $blockRates[$profile->product_id]
+                    : (float) ($profile->default_catering_rate ?? 0),
                 'unit_id' => $profile->default_quote_unit_id,
                 'minimum_qty' => (float) ($profile->minimum_qty ?? 0),
                 'pricing_mode' => $profile->pricing_mode,

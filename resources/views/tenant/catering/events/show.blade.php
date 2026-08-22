@@ -1126,7 +1126,7 @@ $(function () {
                 <td><input type="text" dir="rtl" lang="ur" class="form-control form-control-sm line-name-ur" name="lines[${i}][item_name_ur]" value="${_.escape(line.item_name_ur || '')}"></td>
                 <td><input type="number" step="0.001" min="0.001" class="form-control form-control-sm text-end line-qty" name="lines[${i}][quantity]" value="${line.quantity || defaultPax || 1}" required></td>
                 <td><select class="form-select form-select-sm line-unit" name="lines[${i}][unit_id]">${unitOptions(line.unit_id)}</select></td>
-                <td class="text-end align-middle text-muted" title="A block-costed dish shows its calculated rate after the estimate is saved">—</td>
+                <td class="text-end align-middle text-muted line-calc" title="A block-costed dish prices itself from its Cost Blocks">—</td>
                 <td><input type="number" step="0.01" min="0" class="form-control form-control-sm text-end line-rate" name="lines[${i}][rate]" value="${line.rate || 0}" required></td>
                 <td class="text-end align-middle line-amount">0.00</td>
                 <td>
@@ -1167,6 +1167,21 @@ $(function () {
                 const p = profiles[data.id];
                 if (p) {
                     if (p.rate > 0) row.find('.line-rate').val(p.rate);
+                    // KASHIF-CLIENT-MENU-3: a block-costed dish shows its price the
+                    // moment it is picked. The rate box locks — this number comes
+                    // from the dish's Cost Blocks; after Save the full breakdown
+                    // (Cost Details) appears on the line, where agreed-rate
+                    // overrides live. Typing here would be discarded on save
+                    // anyway, and a box that lies is how operators get lost.
+                    if (p.blocks) {
+                        row.find('.line-rate').val(p.rate).prop('readonly', true)
+                            .attr('title', 'Priced from Cost Blocks — save the estimate, then adjust in Cost Details');
+                        row.find('.line-calc').text(Number(p.rate).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}))
+                            .removeClass('text-muted');
+                    } else {
+                        row.find('.line-rate').prop('readonly', false).removeAttr('title');
+                        row.find('.line-calc').text('—').addClass('text-muted');
+                    }
                     if (p.unit_id) row.find('.line-unit').val(String(p.unit_id));
                     if (p.name_ur && !row.find('.line-name-ur').val()) row.find('.line-name-ur').val(p.name_ur);
                     if (p.minimum_qty > 0 && parseFloat(row.find('.line-qty').val() || 0) < p.minimum_qty) {
