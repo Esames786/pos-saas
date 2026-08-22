@@ -25,7 +25,9 @@
     <div class="doc-title">
         <h2>{{ $estimate->isDraft() ? $t('DRAFT ESTIMATE', 'مسودہ تخمینہ') : $t('ESTIMATE', 'تخمینہ') }}</h2>
         <div><strong>{{ $event->event_no }} / Q{{ $estimate->version_no }}</strong></div>
-        <div style="color:#6b7280;">{{ $t('Date', 'تاریخ') }}: {{ ($estimate->sent_at ?? $estimate->updated_at)->format('d M Y') }}</div>
+        {{-- Formatted through TenantClock: timestamps are stored UTC, and a Karachi
+     caterer's paper must carry Karachi's date, not one five hours adrift. --}}
+<div style="color:#6b7280;">{{ $t('Date', 'تاریخ') }}: {{ app(\App\Support\TenantClock::class)->format($estimate->sent_at ?? $estimate->updated_at, 'd M Y') }}</div>
         @if($estimate->status === \App\Models\Tenant\CateringEstimate::STATUS_SUPERSEDED)
             <div class="doc-state superseded">{{ $t('SUPERSEDED', 'منسوخ شدہ') }}</div>
         @endif

@@ -859,7 +859,7 @@
                     </div>
                     <div class="col-6">
                         <label class="form-label">Received Date <span class="text-danger">*</span></label>
-                        <input type="date" name="received_date" class="form-control" value="{{ now()->format('Y-m-d') }}" required>
+                        <input type="date" name="received_date" class="form-control" value="{{ app(\App\Support\TenantClock::class)->now()->format('Y-m-d') }}" required>
                     </div>
                     <div class="col-6">
                         <label class="form-label">Payment Method</label>
@@ -930,7 +930,7 @@
                     </div>
                     <div class="col-6">
                         <label class="form-label">Refund Date <span class="text-danger">*</span></label>
-                        <input type="date" name="refund_date" class="form-control" value="{{ now()->format('Y-m-d') }}" required>
+                        <input type="date" name="refund_date" class="form-control" value="{{ app(\App\Support\TenantClock::class)->now()->format('Y-m-d') }}" required>
                     </div>
                     <div class="col-6">
                         <label class="form-label">Paid From <span class="text-danger">*</span></label>

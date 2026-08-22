@@ -30,6 +30,47 @@
     'noteUr' => 'بلاک میں تبدیلی سے بھیجا ہوا تخمینہ دوبارہ قیمت نہیں لگاتا۔',
 ])
 
+{{-- KASHIF-LEGACY-ALIGN-4 — the client's old per-item screen, item-wise.
+     The same boxes their operators read for years (Order Rate / Making Chrg /
+     Meat Rate / Additional Rate / Unit / Category), computed LIVE from the
+     block rows below. Read-only by design: the rows stay the single place
+     these numbers are edited, the strip only shows their sum the old way.
+     The material box carries the material's own name — a dessert never grows
+     a "Meat Rate". --}}
+<div class="card mb-3">
+    <div class="card-body py-3">
+        <div class="d-flex flex-wrap gap-2 align-items-stretch">
+            <div class="border border-primary rounded px-3 py-2 bg-primary-subtle">
+                <div class="fs-12 text-uppercase fw-bold text-muted">Order Rate</div>
+                <div class="fs-4 fw-bold" id="strip-order">0.00</div>
+                <div class="fs-12 text-muted">per {{ $unitCode }}</div>
+            </div>
+            <div class="border rounded px-3 py-2">
+                <div class="fs-12 text-uppercase fw-bold text-muted">Making Chrg</div>
+                <div class="fs-4 fw-semibold" id="strip-making">0.00</div>
+            </div>
+            <div class="border rounded px-3 py-2">
+                <div class="fs-12 text-uppercase fw-bold text-muted"><span id="strip-primary-label">Material</span> Rate</div>
+                <div class="fs-4 fw-semibold" id="strip-primary">0.00</div>
+            </div>
+            <div class="border rounded px-3 py-2">
+                <div class="fs-12 text-uppercase fw-bold text-muted">Additional Rate</div>
+                <div class="fs-4 fw-semibold" id="strip-additional">0.00</div>
+            </div>
+            <div class="border rounded px-3 py-2">
+                <div class="fs-12 text-uppercase fw-bold text-muted">Unit</div>
+                <div class="fs-4 fw-semibold">{{ $unitCode }}</div>
+            </div>
+            @if($profile->product->category?->name)
+                <div class="border rounded px-3 py-2">
+                    <div class="fs-12 text-uppercase fw-bold text-muted">Category</div>
+                    <div class="fs-5 fw-semibold pt-1">{{ $profile->product->category->name }}</div>
+                </div>
+            @endif
+        </div>
+    </div>
+</div>
+
 @if(session('status'))
     <div class="alert alert-success">{{ session('status') }}</div>
 @endif
@@ -496,6 +537,11 @@ $(function () {
     function preview() {
         const qty = parseFloat($('#preview-qty').val()) || 0;
         let total = 0, perUnit = 0, cost = 0;
+        // KASHIF-LEGACY-ALIGN-4: the legacy strip's three splits of the same
+        // per-unit rate. The headline material is the physically biggest
+        // per-unit contributor, and it keeps its own name.
+        let makingPU = 0;
+        let primary = { label: null, pu: 0 };
         const rows = [];
         const unrated = [];
 
@@ -521,7 +567,15 @@ $(function () {
                 ? rate
                 : (perMaterial ? (drawn || 0) * rate : rate * qty);
             total += amount;
-            if (!lump) perUnit += perMaterial ? ratio * rate : rate;
+            const pu = perMaterial ? ratio * rate : rate;
+            if (!lump) {
+                perUnit += pu;
+                if ($r.find('[name$="[charge_role]"]').val() === 'making') makingPU += pu;
+                if ($r.attr('data-type') === 'material' && pu > primary.pu) {
+                    const matText = $r.find('[name$="[material_product_id]"] option:selected').text();
+                    primary = { label: (matText && matText !== 'Choose a material…') ? matText : label, pu };
+                }
+            }
 
             // What that quantity is worth at today's rate book — NOT the amount
             // charged above. A material with no rate is left blank rather than
@@ -553,6 +607,12 @@ $(function () {
         $('#preview-total').text(money(total));
         $('#preview-cost').text(money(cost));
         $('#preview-rate').text(money(perUnit));
+
+        $('#strip-order').text(money(perUnit));
+        $('#strip-making').text(money(makingPU));
+        $('#strip-primary-label').text(primary.label || 'Material');
+        $('#strip-primary').text(money(primary.pu));
+        $('#strip-additional').text(money(Math.max(0, perUnit - makingPU - primary.pu)));
 
         if (unrated.length) {
             $('#preview-missing-rate')

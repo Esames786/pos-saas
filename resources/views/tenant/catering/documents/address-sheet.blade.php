@@ -48,7 +48,7 @@
         </div>
         <div class="doc-title">
             <h2>ADDRESS SHEET</h2>
-            <div class="sub">{{ $events->count() }} {{ \Illuminate\Support\Str::plural('booking', $events->count()) }} · printed {{ now()->format('d M Y g:i A') }}</div>
+            <div class="sub">{{ $events->count() }} {{ \Illuminate\Support\Str::plural('booking', $events->count()) }} · printed {{ app(\App\Support\TenantClock::class)->now()->format('d M Y g:i A') }}</div>
         </div>
     </div>
     <table>

@@ -230,7 +230,7 @@
                     <div class="col-6">
                         <label class="form-label">In effect from <span class="text-danger">*</span></label>
                         <input type="date" name="effective_from" class="form-control"
-                               value="{{ now()->format('Y-m-d') }}" required>
+                               value="{{ app(\App\Support\TenantClock::class)->now()->format('Y-m-d') }}" required>
                     </div>
                     <div class="col-6">
                         <label class="form-label">Note</label>

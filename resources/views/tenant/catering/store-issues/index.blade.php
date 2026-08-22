@@ -256,7 +256,7 @@
                     <div class="col-md-4">
                         <label class="form-label fs-12 text-muted mb-1">Event date</label>
                         <input type="date" id="booking-date" class="form-control form-control-sm"
-                               value="{{ now()->format('Y-m-d') }}">
+                               value="{{ app(\App\Support\TenantClock::class)->now()->format('Y-m-d') }}">
                     </div>
                     <div class="col-md-6">
                         <label class="form-label fs-12 text-muted mb-1">Search</label>

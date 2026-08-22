@@ -103,7 +103,7 @@
                     <td class="text-end">{{ number_format($row->rate, 2) }}</td>
                     <td>{{ $row->unit?->code ?? '—' }}</td>
                     <td>{{ $row->note }}</td>
-                    <td>{{ $row->created_at->format('d M Y g:i A') }}</td>
+                    <td>{{ app(\App\Support\TenantClock::class)->format($row->created_at, 'd M Y g:i A') }}</td>
                 </tr>
                 @endforeach
             </tbody>
@@ -142,7 +142,7 @@
                     </div>
                     <div class="col-6">
                         <label class="form-label">Effective From <span class="text-danger">*</span></label>
-                        <input type="date" name="effective_from" class="form-control" value="{{ now()->format('Y-m-d') }}" required>
+                        <input type="date" name="effective_from" class="form-control" value="{{ app(\App\Support\TenantClock::class)->now()->format('Y-m-d') }}" required>
                     </div>
                     <div class="col-6">
                         <label class="form-label">Note</label>
