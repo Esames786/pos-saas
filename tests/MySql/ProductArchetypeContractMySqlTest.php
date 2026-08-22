@@ -266,6 +266,69 @@ class ProductArchetypeContractMySqlTest extends MySqlTenantTestCase
         );
     }
 
+    /**
+     * CATALOG-GUARD — an item whose stock is NOT tracked cannot directly deduct its OWN stock, so a
+     * contradictory 'stock_item' method is coerced to 'none' server-side. This is the ALU-EXTRA-PIECE
+     * case: a POS sale_item with Track Stock unchecked but the Consumption Method dropdown left on
+     * 'stock_item'. Harmless at sale time (SalesService needs BOTH), but the DB must not hold the
+     * contradiction.
+     */
+    public function test_untracked_stock_item_method_is_coerced_to_none_on_create(): void
+    {
+        $p = $this->createVia([
+            'product_kind' => 'sale_item',
+            'is_pos_visible' => 1, 'is_sellable' => 1,
+            'is_purchasable' => 1, 'is_stock_tracked' => 0,   // Track Stock OFF
+            'inventory_consumption_method' => 'stock_item',   // dropdown left on stock_item
+        ]);
+
+        $this->assertSame(0, (int) $p->is_stock_tracked);
+        $this->assertSame('none', $p->inventory_consumption_method,
+            'a non-stock-tracked item cannot be a stock_item consumer — coerced to none');
+    }
+
+    /** 'recipe' is a valid non-stock semantic (deducts INGREDIENTS, not own stock) — never coerced. */
+    public function test_untracked_recipe_method_survives_the_guard(): void
+    {
+        $p = $this->createVia([
+            'product_type' => 'recipe',
+            'product_kind' => 'sale_item',
+            'is_pos_visible' => 1, 'is_sellable' => 1,
+            'is_purchasable' => 0, 'is_stock_tracked' => 0,   // made-to-order, own stock not tracked
+            'inventory_consumption_method' => 'recipe',
+        ]);
+
+        $this->assertSame(0, (int) $p->is_stock_tracked);
+        $this->assertSame('recipe', $p->inventory_consumption_method,
+            'recipe deducts ingredients, not own stock — valid without stock tracking');
+    }
+
+    /** The exact ALU flow: create tracked, then EDIT off Track Stock leaving the method stale. */
+    public function test_update_also_coerces_an_untracked_stock_item_to_none(): void
+    {
+        $p = $this->createVia([
+            'product_kind' => 'sale_item', 'is_pos_visible' => 1, 'is_sellable' => 1,
+            'is_purchasable' => 1, 'is_stock_tracked' => 1,
+            'inventory_consumption_method' => 'stock_item',
+        ]);
+        $this->assertSame('stock_item', $p->inventory_consumption_method);
+
+        // Edit: Track Stock off (omitted = unchecked) but the dropdown still posts stock_item.
+        $request = Request::create('/products/'.$p->id, 'PUT', [
+            'sku' => $p->sku, 'name' => $p->name, 'category_id' => $this->categoryId,
+            'product_type' => 'simple', 'default_selling_price' => 100, 'status' => 'active',
+            'product_kind' => 'sale_item', 'is_pos_visible' => 1, 'is_sellable' => 1,
+            'is_purchasable' => 1,
+            'inventory_consumption_method' => 'stock_item',
+        ]);
+        app(ProductController::class)->update($request, $p->fresh());
+
+        $p->refresh();
+        $this->assertSame(0, (int) $p->is_stock_tracked);
+        $this->assertSame('none', $p->inventory_consumption_method,
+            'the edit-time Track-Stock-off + stock_item mismatch is coerced to none too');
+    }
+
     /** Mirrors ProductController::applyContextFilter so drift is caught here. */
     private function idsFor(string $list): array
     {

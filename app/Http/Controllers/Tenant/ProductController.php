@@ -300,6 +300,15 @@ class ProductController extends Controller
             $canOutput = true;   // a manufactured finished good must be a valid BOM output
         }
 
+        // CATALOG-GUARD: an item whose stock is NOT tracked cannot directly deduct its own stock,
+        // so a contradictory 'stock_item' method is coerced to 'none'. 'recipe' is a valid non-stock
+        // semantic (it deducts INGREDIENTS, not the product's own stock) and is left untouched.
+        $isStockTracked = !empty($data['is_stock_tracked']);
+        $consumptionMethod = $data['inventory_consumption_method'] ?? 'stock_item';
+        if (!$isStockTracked && $consumptionMethod === 'stock_item') {
+            $consumptionMethod = 'none';
+        }
+
         return [
             'category_id'            => $data['category_id'] ?? null,
             'unit_id'                => $data['unit_id'] ?? null,
@@ -314,7 +323,7 @@ class ProductController extends Controller
             'is_manufactured_finished_good' => $isMfgFg,
             'is_sellable'            => $isSellable,
             'is_purchasable'         => !empty($data['is_purchasable']),
-            'is_stock_tracked'       => !empty($data['is_stock_tracked']),
+            'is_stock_tracked'       => $isStockTracked,
             'has_variants'           => !empty($data['has_variants']),
             'has_expiry'             => !empty($data['has_expiry']),
             'requires_batch'         => !empty($data['requires_batch']),
@@ -327,7 +336,7 @@ class ProductController extends Controller
             'description'                  => $data['description'] ?? null,
             'status'                       => $data['status'],
             'item_kind'                    => $data['item_kind'] ?? 'finished_good',
-            'inventory_consumption_method' => $data['inventory_consumption_method'] ?? 'stock_item',
+            'inventory_consumption_method' => $consumptionMethod,
             'is_perishable'               => $request->boolean('is_perishable'),
             'storage_type'                => $data['storage_type'] ?? null,
             'shelf_life_days'             => isset($data['shelf_life_days']) ? (int) $data['shelf_life_days'] : null,
