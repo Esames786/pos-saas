@@ -168,16 +168,21 @@
 
                         @if($editable)
                             @can('tenant.catering.estimates.update')
-                            <div class="mt-1"
+                            {{-- KASHIF-LEGACY-ALIGN-6: a CHECKBOX, not a link —
+                                 the state is visible at a glance, ticking it
+                                 posts through the same [data-act] pipeline. The
+                                 hidden field always carries the OPPOSITE of the
+                                 rendered state: a click means "switch". --}}
+                            <div class="form-check mt-1 text-start d-inline-block"
                                  data-act="{{ url('/catering/line-cost-blocks/' . $block->id . '/customer-supplied') }}"
                                  data-act-method="PUT">
                                 <input type="hidden" data-field="is_customer_supplied"
                                        value="{{ $block->isCustomerSupplied() ? 0 : 1 }}">
-                                <button type="button" class="btn btn-link btn-sm p-0 fs-12 js-act">
-                                    {{ $block->isCustomerSupplied()
-                                        ? 'We will provide this instead'
-                                        : 'Customer will provide this' }}
-                                </button>
+                                <input type="checkbox" class="form-check-input js-act" id="cs-{{ $block->id }}"
+                                       @checked($block->isCustomerSupplied())>
+                                <label class="form-check-label fs-12" for="cs-{{ $block->id }}">
+                                    Customer will provide this · <span dir="rtl">گاہک دے گا</span>
+                                </label>
                             </div>
                             @endcan
                         @endif

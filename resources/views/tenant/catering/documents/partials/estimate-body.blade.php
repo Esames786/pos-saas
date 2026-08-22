@@ -10,11 +10,14 @@
      every consumer of this partial (single document, bulk composition, email
      PDF) prints it identically without touching their CSS shells. --}}
 <style>
-    .line-mats { margin-top: 4px; border-collapse: collapse; font-size: 10px; color: #374151; width: 100%; }
-    .line-mats td { border: 1px solid #d1d5db; padding: 2px 6px; }
+    .line-mats { margin: 2px 0 4px; border-collapse: collapse; font-size: 10px; color: #374151; width: auto; min-width: 62%; }
+    .line-mats td { border: 1px solid #d1d5db; padding: 2px 8px; }
     .line-mats .num { text-align: right; white-space: nowrap; }
     .line-mats .mats-head td { background: #f3f4f6; font-weight: bold; }
     .line-mats .provider { white-space: nowrap; }
+    /* The detail row belongs to the item above it: no divider between them. */
+    .items tr.mats-row td { border-top: 0; padding-top: 0; }
+    .compl-tag { font-size: 10px; color: #166534; font-weight: bold; }
 </style>
 
 <div class="doc-header">
@@ -76,24 +79,26 @@
     </div>
 </div>
 
+{{-- KASHIF-LEGACY-ALIGN-5 print order, as the client reads a bill: serial,
+     then the ITEM, its material detail directly beneath on its own full-width
+     row, and only then the figures. --}}
 <table class="items">
     <thead>
         <tr>
             <th style="width: 34px;">#</th>
-            <th class="num" style="width: 70px;">{{ $t('Qty', 'مقدار') }}</th>
-            <th style="width: 60px;">{{ $t('Unit', 'یونٹ') }}</th>
             <th>{{ $t('Item', 'آئٹم') }}</th>
-            <th style="width: 22%;">{{ $t('Instructions', 'ہدایات') }}</th>
+            <th class="num" style="width: 70px;">{{ $t('Qty', 'مقدار') }}</th>
+            <th style="width: 55px;">{{ $t('Unit', 'یونٹ') }}</th>
+            <th style="width: 20%;">{{ $t('Instructions', 'ہدایات') }}</th>
             <th class="num" style="width: 80px;">{{ $t('Rate', 'ریٹ') }}</th>
             <th class="num" style="width: 95px;">{{ $t('Amount', 'رقم') }}</th>
         </tr>
     </thead>
     <tbody>
         @foreach($estimate->lines as $line)
+        @php $matBlocks = $line->costBlocks->filter->isMaterial(); @endphp
         <tr>
             <td>{{ $loop->iteration }}</td>
-            <td class="num">{{ rtrim(rtrim(number_format($line->quantity, 3), '0'), '.') }}</td>
-            <td>{{ $line->unit_code }}</td>
             <td>
                 @if($isUr && $line->item_name_ur)
                     <span class="ur">{{ $line->item_name_ur }}</span>
@@ -103,43 +108,51 @@
                         <div class="item-ur ur">{{ $line->item_name_ur }}</div>
                     @endif
                 @endif
-
-                {{-- KASHIF-LEGACY-ALIGN-1 ("Is p gosht nh arha"): what material
-                     this line takes, how much, and WHO supplies it — from the
-                     LINE SNAPSHOT (the quoted truth), and always in both
-                     languages, whatever mode the document prints in. Quantities
-                     are the line's TOTAL kitchen draw — the same numbers the
-                     kitchen release sheet works from, so the customer's paper
-                     and the kitchen can never disagree. Internal cost figures
-                     (Costs us) never reach a customer's document. --}}
-                @php $matBlocks = $line->costBlocks->filter->isMaterial(); @endphp
-                @if($matBlocks->isNotEmpty())
-                    <table class="line-mats" dir="ltr">
-                        <tr class="mats-head">
-                            <td>Materials · <span class="ur">سامان</span></td>
-                            <td class="num">Qty · <span class="ur">مقدار</span></td>
-                            <td class="provider">Provided by · <span class="ur">کون دے گا</span></td>
-                        </tr>
-                        @foreach($matBlocks as $mb)
-                            <tr>
-                                <td>{{ $mb->material_name ?: $mb->label }}</td>
-                                <td class="num">{{ rtrim(rtrim(number_format((float) ($mb->event_material_qty ?? 0), 3), '0'), '.') }} {{ $mb->unit_code }}</td>
-                                <td class="provider">
-                                    @if($mb->isCustomerSupplied())
-                                        Customer provides · <span class="ur">گاہک دے گا</span>
-                                    @else
-                                        We provide · <span class="ur">ہم دیں گے</span>
-                                    @endif
-                                </td>
-                            </tr>
-                        @endforeach
-                    </table>
+                @if($line->hasQuotedRateOverride() && (float) $line->rate === 0.0)
+                    {{-- The legacy Complimentry flag, on the customer's copy. --}}
+                    <div class="compl-tag">Complimentary · <span class="ur">اعزازی</span></div>
                 @endif
             </td>
+            <td class="num">{{ rtrim(rtrim(number_format($line->quantity, 3), '0'), '.') }}</td>
+            <td>{{ $line->unit_code }}</td>
             <td>{{ $line->instructionSummary() }}</td>
             <td class="num">{{ number_format($line->rate, 2) }}</td>
             <td class="num">{{ number_format($line->amount, 2) }}</td>
         </tr>
+        {{-- KASHIF-LEGACY-ALIGN-1 ("Is p gosht nh arha"): what material this
+             line takes, how much, and WHO supplies it — from the LINE SNAPSHOT
+             (the quoted truth), always in both languages. Quantities are the
+             line's TOTAL kitchen draw — the same numbers the kitchen release
+             sheet works from, so the customer's paper and the kitchen can never
+             disagree. Internal cost figures (Costs us) never reach a customer's
+             document. --}}
+        @if($matBlocks->isNotEmpty())
+        <tr class="mats-row">
+            <td></td>
+            <td colspan="6">
+                <table class="line-mats" dir="ltr">
+                    <tr class="mats-head">
+                        <td>Materials · <span class="ur">سامان</span></td>
+                        <td class="num">Qty · <span class="ur">مقدار</span></td>
+                        <td class="provider">Provided by · <span class="ur">کون دے گا</span></td>
+                    </tr>
+                    @foreach($matBlocks as $mb)
+                        <tr>
+                            <td>{{ $mb->material_name ?: $mb->label }}</td>
+                            <td class="num">{{ rtrim(rtrim(number_format((float) ($mb->event_material_qty ?? 0), 3), '0'), '.') }} {{ $mb->unit_code }}</td>
+                            <td class="provider">
+                                @if($mb->isCustomerSupplied())
+                                    Customer provides · <span class="ur">گاہک دے گا</span>
+                                @else
+                                    We provide · <span class="ur">ہم دیں گے</span>
+                                @endif
+                            </td>
+                        </tr>
+                    @endforeach
+                </table>
+            </td>
+        </tr>
+        @endif
         @endforeach
     </tbody>
 </table>

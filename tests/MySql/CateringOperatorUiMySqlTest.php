@@ -217,10 +217,31 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('data-act=', $html);
         $this->assertStringContainsString('/customer-supplied', $html);
         $this->assertStringContainsString('Customer will provide this', $html);
+        // KASHIF-LEGACY-ALIGN-6: customer-supplied is a CHECKBOX now — state
+        // visible at a glance, posting through the same pipeline.
+        $this->assertStringContainsString('form-check-input js-act', $html);
+        // KASHIF-LEGACY-ALIGN-5: one click quotes a line complimentary through
+        // the same override authority.
+        $this->assertStringContainsString('Complimentary?', $html);
         $this->assertStringContainsString('Quote a different rate', $html);
         $this->assertStringContainsString('event_material_qty', $html);
         $this->assertStringNotContainsString('rate_basis</', $html,
             'schema words stay out of the operator screen');
+    }
+
+    public function test_a_complimentary_line_shows_its_badge_and_the_way_back(): void
+    {
+        $event = $this->booking();
+        $line = $this->blockLine($event);
+
+        // The legacy flag is nothing but a zero quote through the one override
+        // authority — reason recorded, margins still counting the real cost.
+        $this->lineBlocks->overrideQuotedRate($line, 0.0, 'Complimentary item');
+
+        $html = $this->render($event->refresh());
+
+        $this->assertStringContainsString('Complimentary · اعزازی', $html);
+        $this->assertStringContainsString('Charge it instead', $html);
     }
 
     public function test_a_quoted_override_shows_its_reason_and_the_way_back(): void

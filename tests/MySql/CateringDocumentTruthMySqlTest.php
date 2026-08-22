@@ -222,6 +222,27 @@ class CateringDocumentTruthMySqlTest extends MySqlTenantTestCase
         }
     }
 
+    /**
+     * KASHIF-LEGACY-ALIGN-5 — the legacy Complimentry flag on the customer's
+     * copy: a line quoted at ZERO against a real calculated rate prints its
+     * flag in both languages, and bills nothing.
+     */
+    public function test_a_complimentary_line_prints_its_flag_in_both_languages(): void
+    {
+        $estimate = $this->quotation();
+        $line = $estimate->lines->first();
+        $line->calculated_rate = 1000;
+        $line->rate = 0;
+        $line->amount = 0;
+        $line->rate_override_reason = 'Complimentary item';
+        $line->save();
+
+        $html = $this->render($estimate->refresh());
+
+        $this->assertStringContainsString('Complimentary', $html);
+        $this->assertStringContainsString('اعزازی', $html);
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // O · the printed balance must know about refunds
     // ─────────────────────────────────────────────────────────────────────────

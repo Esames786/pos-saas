@@ -8,6 +8,14 @@
      scroll position or an open panel to a full page reload. --}}
 <div id="event-workspace">
 @include('tenant.catering.events.partials.workspace-ajax')
+<style>
+    /* KASHIF-LEGACY-ALIGN-6: the working tables stay inside one screen — an
+       operator should not horizontal-scroll a bill. Tighter paddings, smaller
+       detail font; the hidden sidebar (POS-style) buys the rest. */
+    #lines-table th, #lines-table td { padding: .45rem .5rem; }
+    .cost-details-row .table { font-size: 13px; }
+    .cost-details-row .table th, .cost-details-row .table td { padding: .4rem .5rem; }
+</style>
 @include('tenant.catering.partials.tooltips')
 @include('tenant.catering.partials.submit-guard')
 @php
@@ -36,6 +44,12 @@
         </div>
     </div>
     <div class="d-flex gap-2 flex-wrap">
+        {{-- KASHIF-LEGACY-ALIGN-6: full-width working screen, like the POS —
+             the sidebar hides on entry, this button brings it back. --}}
+        <button type="button" class="btn btn-light" id="catering-sidebar-toggle"
+                title="Show navigation" aria-label="Show navigation">
+            <i class="ti ti-layout-sidebar-left-expand"></i>
+        </button>
         <a href="{{ url('/catering/events') }}" class="btn btn-light">Back</a>
         @if($current && $current->lines->isNotEmpty())
             @can('tenant.catering.documents.estimate')
@@ -266,17 +280,17 @@
                 <table class="table mb-0" id="lines-table">
                     <thead>
                         <tr>
-                            <th style="min-width:220px;">Item</th>
-                            <th style="min-width:130px;">Urdu Name</th>
-                            <th style="width:100px;" class="text-end">Qty</th>
-                            <th style="width:100px;">Unit</th>
-                            <th style="width:110px;" class="text-end"
+                            <th style="min-width:170px;">Item</th>
+                            <th style="min-width:110px;">Urdu Name</th>
+                            <th style="width:80px;" class="text-end">Qty</th>
+                            <th style="width:85px;">Unit</th>
+                            <th style="width:100px;" class="text-end"
                                 data-bs-toggle="tooltip" title="What the dish's cost blocks work out to, per unit. Read-only — it moves when quantities or applied rates move.">Calculated</th>
-                            <th style="width:130px;" class="text-end"
+                            <th style="width:115px;" class="text-end"
                                 data-bs-toggle="tooltip" title="What the customer is actually quoted. For a block-costed dish it follows the calculated rate unless an agreed rate was set in Cost Details.">Quoted Rate</th>
-                            <th style="width:120px;" class="text-end">Amount</th>
-                            <th style="min-width:150px;">Instructions</th>
-                            <th style="width:40px;"></th>
+                            <th style="width:100px;" class="text-end">Amount</th>
+                            <th style="min-width:140px;">Instructions</th>
+                            <th style="width:36px;"></th>
                         </tr>
                     </thead>
                     <tbody id="lines-body">
@@ -346,6 +360,29 @@
                                                value="{{ $line->rate_override_reason }}"
                                                placeholder="why this rate?" class="form-control form-control-sm mt-1 live-reason d-none">
                                         <button type="button" class="btn btn-sm btn-outline-primary mt-1 live-apply d-none">Apply rate</button>
+
+                                        {{-- KASHIF-LEGACY-ALIGN-5: the legacy "Complimentry Item",
+                                             honestly. One click quotes the line at ZERO through the
+                                             SAME override authority (reason and all) — the kitchen
+                                             draw and the cost of the freebie keep counting in the
+                                             margins, which the old software never showed. --}}
+                                        @if($line->hasQuotedRateOverride() && (float) $line->rate === 0.0)
+                                            <span class="badge bg-success-subtle text-success-emphasis fs-12 mt-1 d-inline-block">Complimentary · اعزازی</span>
+                                            <div class="mt-1"
+                                                 data-act="{{ url('/catering/estimate-lines/' . $line->id . '/use-calculated-rate') }}"
+                                                 data-act-method="POST">
+                                                <button type="button" class="btn btn-link btn-sm p-0 fs-12 js-act">Charge it instead</button>
+                                            </div>
+                                        @else
+                                            <div class="mt-1"
+                                                 data-act="{{ url('/catering/estimate-lines/' . $line->id . '/quoted-rate') }}"
+                                                 data-act-method="PUT">
+                                                <input type="hidden" data-field="quoted_rate" value="0">
+                                                <input type="hidden" data-field="reason" value="Complimentary item">
+                                                <button type="button" class="btn btn-link btn-sm p-0 fs-12 js-act"
+                                                        title="Charge nothing for this line — its material cost still counts in margins">Complimentary?</button>
+                                            </div>
+                                        @endif
                                     </div>
                                     <input type="hidden" name="lines[{{ $i }}][rate]" value="{{ $line->rate }}">
                                 @else
@@ -1079,6 +1116,18 @@
 @endsection
 
 @push('scripts')
+<script>
+// KASHIF-LEGACY-ALIGN-6: the event workspace works full-width, like the POS.
+// Delegated, because the header (and its toggle) lives inside the swapped
+// #event-workspace; the body class itself survives every swap.
+document.body.classList.remove('mini-sidebar', 'expand-menu');
+document.body.classList.add('nosidebar');
+$(document).on('click', '#catering-sidebar-toggle', function () {
+    const hidden = document.body.classList.toggle('nosidebar');
+    $(this).find('i').attr('class', hidden ? 'ti ti-layout-sidebar-left-expand' : 'ti ti-layout-sidebar-left-collapse');
+    $(this).attr('title', hidden ? 'Show navigation' : 'Hide navigation');
+});
+</script>
 @if($current && $isDraft && $event->isOpen())
 @php
     // Build the JS payloads in PHP, NOT inline inside @json(...). Blade matches a directive
