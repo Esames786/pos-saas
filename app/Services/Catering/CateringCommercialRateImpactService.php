@@ -246,8 +246,10 @@ class CateringCommercialRateImpactService
             $showsImpact = in_array($state, [self::STATE_APPLICABLE, self::STATE_REVISION_REQUIRED], true);
 
             // The quantity THIS event settled on, which may not be the ratio's:
-            // an operator who said twelve kilos is charged for twelve.
-            $quantity = $snapshot->physicalRequirement();
+            // an operator who said twelve kilos is charged for twelve. BILLABLE,
+            // not physical: a partially customer-supplied material is billed for
+            // the balance only, so a rate change moves only that balance.
+            $quantity = $snapshot->billableQty();
             $dishQty = (float) $line->quantity;
             $oldCalculated = (float) $line->calculated_rate;
             $quoted = (float) $line->rate;
@@ -353,7 +355,7 @@ class CateringCommercialRateImpactService
             }
 
             $amount = $snapshot->id === $target->id
-                ? round($snapshot->physicalRequirement() * $newRate, 2)
+                ? round($snapshot->billableQty() * $newRate, 2)
                 : (float) $snapshot->amount;
 
             $perUnit += $amount / $dishQty;

@@ -53,6 +53,8 @@
                 <div class="fs-4 fw-semibold">{{ number_format($stripPerUnit($stripPrimary), 2) }}</div>
                 @if($stripPrimary->isCustomerSupplied())
                     <div class="fs-12 text-success-emphasis">customer provides · <span dir="rtl">گاہک دے گا</span></div>
+                @elseif($stripPrimary->isPartiallyCustomerSupplied())
+                    <div class="fs-12 text-success-emphasis">split · <span dir="rtl">گاہک</span> {{ rtrim(rtrim(number_format($stripPrimary->suppliedQty(), 4), '0'), '.') }} {{ $stripPrimary->unit_code }}</div>
                 @endif
             </div>
         @endif
@@ -159,10 +161,17 @@
                         @endif
 
                         {{-- Two facts at once: the kitchen still needs it, and
-                             our store hands over none of it. --}}
+                             our store hands over none of it — or, on a split,
+                             only the billable balance. --}}
+                        @php $fmtQty = fn ($q) => rtrim(rtrim(number_format((float) $q, 4), '0'), '.'); @endphp
                         @if($block->isCustomerSupplied())
                             <div class="fs-12 text-success-emphasis">
                                 customer provides it · we issue 0
+                            </div>
+                        @elseif($block->isPartiallyCustomerSupplied())
+                            <div class="fs-12 text-success-emphasis">
+                                customer brings {{ $fmtQty($block->suppliedQty()) }} {{ $block->unit_code }}
+                                · we issue &amp; charge {{ $fmtQty($block->billableQty()) }} {{ $block->unit_code }}
                             </div>
                         @endif
 
@@ -184,6 +193,27 @@
                                     Customer will provide this · <span dir="rtl">گاہک دے گا</span>
                                 </label>
                             </div>
+
+                            {{-- KASHIF-PARTIAL-SUPPLY-1: the split. "Customer
+                                 brings 5 of the 10" — we bill and issue only the
+                                 balance. Posting 0 clears the split. --}}
+                            @if(! $block->isCustomerSupplied() && $block->event_material_qty !== null)
+                                <div class="d-inline-flex align-items-center gap-1 mt-1"
+                                     data-act="{{ url('/catering/line-cost-blocks/' . $block->id . '/customer-supplied') }}"
+                                     data-act-method="PUT">
+                                    <input type="hidden" data-field="is_customer_supplied" value="0">
+                                    <span class="fs-12 text-muted">customer brings</span>
+                                    <input type="number" step="0.0001" min="0" data-field="customer_supplied_qty"
+                                           value="{{ $block->isPartiallyCustomerSupplied() ? rtrim(rtrim(number_format($block->suppliedQty(), 4, '.', ''), '0'), '.') : '' }}"
+                                           class="form-control form-control-sm text-end" style="width:80px"
+                                           placeholder="0">
+                                    <span class="fs-12 text-muted">{{ $block->unit_code }} · <span dir="rtl">گاہک کا حصہ</span></span>
+                                    <button type="button" class="btn btn-sm btn-light js-act"
+                                            title="Split the supply — we bill only the balance">
+                                        <i class="ti ti-check"></i>
+                                    </button>
+                                </div>
+                            @endif
                             @endcan
                         @endif
 

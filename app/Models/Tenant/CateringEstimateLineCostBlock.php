@@ -44,6 +44,7 @@ class CateringEstimateLineCostBlock extends Model
         'event_material_qty',
         'is_overridden',
         'is_customer_supplied',
+        'customer_supplied_qty',
         'material_rate_at_quote',
         'material_cost',
         'amount',
@@ -57,6 +58,7 @@ class CateringEstimateLineCostBlock extends Model
             'quantity_per_unit' => 'decimal:4',
             'default_material_qty' => 'decimal:4',
             'event_material_qty' => 'decimal:4',
+            'customer_supplied_qty' => 'decimal:4',
             'material_rate_at_quote' => 'decimal:4',
             'material_cost' => 'decimal:4',
             'amount' => 'decimal:2',
@@ -137,7 +139,41 @@ class CateringEstimateLineCostBlock extends Model
     }
 
     /**
-     * What OUR STORE has to hand over. Zero when the customer brings it.
+     * KASHIF-PARTIAL-SUPPLY-1 — how much of this material the CUSTOMER brings.
+     *
+     * The full flag wins outright (the whole requirement). A partial figure is
+     * clamped to the physical requirement: a customer cannot bring more of a
+     * material than the dish needs, and an over-typed number must not turn the
+     * billable balance negative.
+     */
+    public function suppliedQty(): float
+    {
+        if ($this->isCustomerSupplied()) {
+            return $this->physicalRequirement();
+        }
+
+        if (! $this->isMaterial() || $this->customer_supplied_qty === null) {
+            return 0.0;
+        }
+
+        return round(min((float) $this->customer_supplied_qty, $this->physicalRequirement()), 4);
+    }
+
+    /** The part of the requirement the BUSINESS supplies — and bills, and buys. */
+    public function billableQty(): float
+    {
+        return round(max(0.0, $this->physicalRequirement() - $this->suppliedQty()), 4);
+    }
+
+    /** A split line: some of it the customer's, some of it ours. */
+    public function isPartiallyCustomerSupplied(): bool
+    {
+        return ! $this->isCustomerSupplied() && $this->suppliedQty() > 0;
+    }
+
+    /**
+     * What OUR STORE has to hand over. Zero when the customer brings it all,
+     * the billable balance when they bring part of it.
      *
      * This is the number a kitchen requirement sheet must eventually ask for —
      * never the physical requirement, or the business would issue material it
@@ -145,7 +181,7 @@ class CateringEstimateLineCostBlock extends Model
      */
     public function ourStockRequirement(): float
     {
-        return $this->isCustomerSupplied() ? 0.0 : $this->physicalRequirement();
+        return $this->billableQty();
     }
 
     /**
@@ -167,7 +203,17 @@ class CateringEstimateLineCostBlock extends Model
         }
 
         if ($this->isPerMaterialUnit()) {
-            return round((float) ($this->event_material_qty ?? 0) * (float) $this->rate, 2);
+            // KASHIF-PARTIAL-SUPPLY-1: the customer is billed only for the part
+            // WE supply. No supply split → billableQty == the full requirement,
+            // and this is exactly the old arithmetic.
+            return round($this->billableQty() * (float) $this->rate, 2);
+        }
+
+        // A per-dish-rated material with a partial split: the charge shrinks in
+        // the same proportion as the supply. Without a tracked quantity there is
+        // no honest proportion, so a split is refused upstream for those.
+        if ($this->isMaterial() && $this->suppliedQty() > 0 && $this->physicalRequirement() > 0) {
+            return round((float) $this->rate * $dishQuantity * ($this->billableQty() / $this->physicalRequirement()), 2);
         }
 
         return round((float) $this->rate * $dishQuantity, 2);
@@ -191,6 +237,7 @@ class CateringEstimateLineCostBlock extends Model
             return null;
         }
 
-        return round((float) $this->event_material_qty * (float) $this->material_rate_at_quote, 4);
+        // KASHIF-PARTIAL-SUPPLY-1: the business only buys what it supplies.
+        return round($this->billableQty() * (float) $this->material_rate_at_quote, 4);
     }
 }

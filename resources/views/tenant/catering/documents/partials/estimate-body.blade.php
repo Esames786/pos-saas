@@ -143,6 +143,11 @@
                             <td class="provider">
                                 @if($mb->isCustomerSupplied())
                                     Customer provides · <span class="ur">گاہک دے گا</span>
+                                @elseif($mb->isPartiallyCustomerSupplied())
+                                    @php $fmtQty = fn ($q) => rtrim(rtrim(number_format((float) $q, 3), '0'), '.'); @endphp
+                                    {{-- The split, spelled out: whose share is whose. --}}
+                                    Us {{ $fmtQty($mb->billableQty()) }} {{ $mb->unit_code }} · <span class="ur">ہم {{ $fmtQty($mb->billableQty()) }}</span>
+                                    — Customer {{ $fmtQty($mb->suppliedQty()) }} {{ $mb->unit_code }} · <span class="ur">گاہک {{ $fmtQty($mb->suppliedQty()) }}</span>
                                 @else
                                     We provide · <span class="ur">ہم دیں گے</span>
                                 @endif

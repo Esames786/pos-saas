@@ -223,6 +223,35 @@ class CateringDocumentTruthMySqlTest extends MySqlTenantTestCase
     }
 
     /**
+     * KASHIF-PARTIAL-SUPPLY-1 — a split material prints BOTH shares, spelled
+     * out in both languages: whose 80 KG, whose 40 KG.
+     */
+    public function test_a_partial_split_prints_both_shares(): void
+    {
+        $estimate = $this->quotation();
+        $line = $estimate->lines->first();
+
+        \App\Models\Tenant\CateringEstimateLineCostBlock::create([
+            'catering_estimate_line_id' => $line->id,
+            'label' => 'Beef', 'material_name' => 'Beef', 'unit_code' => 'KG',
+            'block_type' => \App\Models\Tenant\CateringProductCostBlock::TYPE_MATERIAL,
+            'charge_basis' => \App\Models\Tenant\CateringProductCostBlock::BASIS_PER_UNIT,
+            'rate_basis' => \App\Models\Tenant\CateringProductCostBlock::RATE_PER_MATERIAL_UNIT,
+            'rate' => 120, 'quantity_per_unit' => 1.2,
+            'default_material_qty' => 120, 'event_material_qty' => 120,
+            'is_customer_supplied' => false, 'customer_supplied_qty' => 40,
+            'amount' => 9600, 'sort_order' => 1,
+        ]);
+
+        $html = $this->render($estimate->refresh());
+
+        $this->assertStringContainsString('Us 80 KG', $html);
+        $this->assertStringContainsString('ہم 80', $html);
+        $this->assertStringContainsString('Customer 40 KG', $html);
+        $this->assertStringContainsString('گاہک 40', $html);
+    }
+
+    /**
      * KASHIF-LEGACY-ALIGN-5 — the legacy Complimentry flag on the customer's
      * copy: a line quoted at ZERO against a real calculated rate prints its
      * flag in both languages, and bills nothing.

@@ -185,9 +185,12 @@ class CateringLineCostBlockService
      * sheet depends on, and the making charge would go on being charged against
      * a dish that appeared to need no ingredients.
      */
-    public function setCustomerSupplied(CateringEstimateLineCostBlock $snapshot, bool $supplied): void
-    {
-        DB::connection('tenant')->transaction(function () use ($snapshot, $supplied) {
+    public function setCustomerSupplied(
+        CateringEstimateLineCostBlock $snapshot,
+        bool $supplied,
+        ?float $suppliedQty = null,
+    ): void {
+        DB::connection('tenant')->transaction(function () use ($snapshot, $supplied, $suppliedQty) {
             [, $line, $locked] = $this->locks->editableSnapshot($snapshot);
 
             if (! $locked->isMaterial()) {
@@ -197,7 +200,29 @@ class CateringLineCostBlockService
                 );
             }
 
-            $locked->forceFill(['is_customer_supplied' => $supplied])->save();
+            // KASHIF-PARTIAL-SUPPLY-1: three states, one authority.
+            //   full   — the flag, as always; a partial figure cannot coexist.
+            //   split  — a positive quantity, clamped to what the dish needs;
+            //            meaningless without a tracked material quantity.
+            //   ours   — neither.
+            if ($supplied) {
+                $suppliedQty = null;
+            } elseif ($suppliedQty !== null && $suppliedQty > 0) {
+                if ($locked->event_material_qty === null) {
+                    throw new RuntimeException(
+                        "'{$locked->label}' has no tracked quantity on this line, so a partial split has no honest proportion. "
+                        .'Set its quantity first, or mark the whole material customer-supplied.'
+                    );
+                }
+                $suppliedQty = round(min($suppliedQty, $locked->physicalRequirement()), 4);
+            } else {
+                $suppliedQty = null;
+            }
+
+            $locked->forceFill([
+                'is_customer_supplied' => $supplied,
+                'customer_supplied_qty' => $suppliedQty,
+            ])->save();
 
             $this->refreshSnapshotAmount($locked);
             $this->repriceLocked($line);

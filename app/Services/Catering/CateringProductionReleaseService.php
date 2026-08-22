@@ -82,8 +82,22 @@ class CateringProductionReleaseService
                     'instructions' => trim(implode("\n", array_filter([
                         $line->instructionSummary(),
                         // The kitchen must know what arrives from the CUSTOMER —
-                        // it still gets cooked, but our store hands over none of it.
-                        ($cs = $line->costBlocks->filter->isCustomerSupplied()->pluck('material_name')->filter()->implode(', ')) !== ''
+                        // it still gets cooked, but our store hands over none of
+                        // it (or, on a split, only the billable balance).
+                        ($cs = $line->costBlocks
+                            ->filter(fn ($b) => $b->isMaterial() && $b->suppliedQty() > 0)
+                            ->map(function ($b) {
+                                $name = $b->material_name ?: $b->label;
+                                if (! $b->isPartiallyCustomerSupplied()) {
+                                    return $name;
+                                }
+                                $fmt = fn (float $q) => rtrim(rtrim(number_format($q, 4), '0'), '.');
+
+                                return sprintf('%s %s %s (of %s %s)',
+                                    $name, $fmt($b->suppliedQty()), $b->unit_code,
+                                    $fmt($b->physicalRequirement()), $b->unit_code);
+                            })
+                            ->filter()->implode(', ')) !== ''
                             ? 'CUSTOMER SUPPLIES: '.$cs
                             : null,
                         $profile?->instructions,

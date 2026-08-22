@@ -50,17 +50,32 @@ class CateringLineCostController extends Controller
     {
         $data = $request->validate([
             'is_customer_supplied' => ['required', 'boolean'],
+            // KASHIF-PARTIAL-SUPPLY-1: the split case — "customer brings 5 KG
+            // of the 10". Clamped to the requirement by the service.
+            'customer_supplied_qty' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         try {
-            $this->lineBlocks->setCustomerSupplied($costBlock, (bool) $data['is_customer_supplied']);
+            $this->lineBlocks->setCustomerSupplied(
+                $costBlock,
+                (bool) $data['is_customer_supplied'],
+                isset($data['customer_supplied_qty']) ? (float) $data['customer_supplied_qty'] : null,
+            );
         } catch (RuntimeException $e) {
             return back()->withErrors(['cost_block' => $e->getMessage()]);
         }
 
-        $status = $data['is_customer_supplied']
-            ? "{$costBlock->label} is being supplied by the customer — not charged, and not issued from our store."
-            : "{$costBlock->label} is back to being supplied by us.";
+        $costBlock->refresh();
+        $status = match (true) {
+            (bool) $data['is_customer_supplied'] => "{$costBlock->label} is being supplied by the customer — not charged, and not issued from our store.",
+            $costBlock->isPartiallyCustomerSupplied() => sprintf(
+                '%s split: customer brings %s %s, we supply and charge for %s %s.',
+                $costBlock->label,
+                rtrim(rtrim(number_format($costBlock->suppliedQty(), 4), '0'), '.'), $costBlock->unit_code,
+                rtrim(rtrim(number_format($costBlock->billableQty(), 4), '0'), '.'), $costBlock->unit_code,
+            ),
+            default => "{$costBlock->label} is back to being supplied by us.",
+        };
 
         return $this->backToEvent($costBlock->line, $status);
     }

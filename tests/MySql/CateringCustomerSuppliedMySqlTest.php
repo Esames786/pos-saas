@@ -166,6 +166,90 @@ class CateringCustomerSuppliedMySqlTest extends MySqlTenantTestCase
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // KASHIF-PARTIAL-SUPPLY-1 — the split: "customer brings 1 KG of the 2.5".
+    // Worked example: dish 5 KG, chicken 100/KG x 0.5 (physical 2.5 KG,
+    // book 80), rice 80/KG x 0.4, making 300 → 382/KG whole-supply.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function test_a_partial_split_bills_issues_and_costs_only_the_balance(): void
+    {
+        $estimate = $this->draft(5);
+        $line = $this->line($estimate);
+
+        $this->lineBlocks->setCustomerSupplied($this->snapshot($line, 'Chicken'), false, 1.0);
+
+        $chicken = $this->snapshot($line->refresh(), 'Chicken');
+
+        // The kitchen still needs all 2.5 — the dish is the same dish.
+        $this->assertEqualsWithDelta(2.5, $chicken->physicalRequirement(), 0.001);
+        // The store issues only our balance…
+        $this->assertEqualsWithDelta(1.5, $chicken->ourStockRequirement(), 0.001);
+        // …the customer is billed only for it: (2.5 − 1) × 100
+        $this->assertSame(150.0, round((float) $chicken->amount, 2));
+        // …and it is all we bought: 1.5 × 80 book rate.
+        $this->assertSame(120.0, round((float) $chicken->material_cost, 2));
+
+        // Per-unit: chicken 30 + rice 32 + making 300 = 362 (was 382).
+        $this->assertSame(362.0, (float) $line->refresh()->calculated_rate);
+        $this->assertSame(1810.0, (float) $estimate->refresh()->subtotal, '362 × 5 KG');
+    }
+
+    public function test_a_split_larger_than_the_requirement_is_clamped_to_it(): void
+    {
+        $estimate = $this->draft(5);
+        $line = $this->line($estimate);
+
+        $this->lineBlocks->setCustomerSupplied($this->snapshot($line, 'Chicken'), false, 99.0);
+
+        $chicken = $this->snapshot($line->refresh(), 'Chicken');
+        $this->assertEqualsWithDelta(2.5, $chicken->suppliedQty(), 0.001, 'clamped — never more than the dish needs');
+        $this->assertSame(0.0, $chicken->ourStockRequirement());
+        $this->assertSame(0.0, round((float) $chicken->amount, 2), 'billable balance is zero, never negative');
+    }
+
+    public function test_clearing_the_split_restores_the_full_charge(): void
+    {
+        $estimate = $this->draft(5);
+        $line = $this->line($estimate);
+
+        $this->lineBlocks->setCustomerSupplied($this->snapshot($line, 'Chicken'), false, 1.0);
+        $this->lineBlocks->setCustomerSupplied($this->snapshot($line->refresh(), 'Chicken'), false, null);
+
+        $chicken = $this->snapshot($line->refresh(), 'Chicken');
+        $this->assertFalse($chicken->isPartiallyCustomerSupplied());
+        $this->assertSame(250.0, round((float) $chicken->amount, 2));
+        $this->assertEqualsWithDelta(2.5, $chicken->ourStockRequirement(), 0.001);
+        $this->assertSame(382.0, (float) $line->refresh()->calculated_rate, 'back to the worked example');
+    }
+
+    public function test_marking_it_fully_supplied_wipes_any_partial_figure(): void
+    {
+        $estimate = $this->draft(5);
+        $line = $this->line($estimate);
+
+        $this->lineBlocks->setCustomerSupplied($this->snapshot($line, 'Chicken'), false, 1.0);
+        $this->lineBlocks->setCustomerSupplied($this->snapshot($line->refresh(), 'Chicken'), true);
+
+        $chicken = $this->snapshot($line->refresh(), 'Chicken');
+        $this->assertTrue($chicken->isCustomerSupplied());
+        $this->assertNull($chicken->customer_supplied_qty, 'full flag and partial figure never coexist');
+        $this->assertSame(0.0, round((float) $chicken->amount, 2));
+    }
+
+    public function test_a_split_without_a_tracked_quantity_is_refused(): void
+    {
+        $estimate = $this->draft(5);
+        $line = $this->line($estimate);
+        $chicken = $this->snapshot($line, 'Chicken');
+        $chicken->forceFill(['event_material_qty' => null])->save();
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessageMatches('/no tracked quantity/');
+
+        $this->lineBlocks->setCustomerSupplied($chicken, false, 1.0);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // The two facts.
     // ─────────────────────────────────────────────────────────────────────────
 
