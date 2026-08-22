@@ -1175,9 +1175,21 @@ $(function () {
                     // anyway, and a box that lies is how operators get lost.
                     if (p.blocks) {
                         row.find('.line-rate').val(p.rate).prop('readonly', true)
-                            .attr('title', 'Priced from Cost Blocks — save the estimate, then adjust in Cost Details');
+                            .attr('title', 'Priced from Cost Blocks — adjust in Cost Details below');
                         row.find('.line-calc').text(Number(p.rate).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}))
                             .removeClass('text-muted');
+                        // KASHIF-CLIENT-MENU-4: the client wants the FULL Cost
+                        // Details panel the moment a dish is picked — exactly as
+                        // on a saved line. The panel lives on the line's saved
+                        // snapshot, so the honest way to show it instantly is to
+                        // SAVE instantly: submit through the same no-reload
+                        // pipeline, and the workspace re-renders with the row
+                        // server-side — breakdown, Customer Supplied, quantity
+                        // override and all. One authority, zero duplication.
+                        setTimeout(function () {
+                            var f = document.getElementById('estimate-form');
+                            if (f) { if (f.requestSubmit) f.requestSubmit(); else $(f).trigger('submit'); }
+                        }, 50);
                     } else {
                         row.find('.line-rate').prop('readonly', false).removeAttr('title');
                         row.find('.line-calc').text('—').addClass('text-muted');
