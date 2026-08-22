@@ -236,6 +236,17 @@
                                     <option value="per_unit" @selected($block->charge_basis === 'per_unit')>Per {{ $unitCode }}</option>
                                     <option value="lump_sum" @selected($block->charge_basis === 'lump_sum')>Lump sum</option>
                                 </select>
+                                @unless($block->isMaterial())
+                                    {{-- KASHIF-CATERING-MAKING-1: an explicit role, so a bulk
+                                         Making change knows exactly which money it may move.
+                                         One Making per dish; materials never carry a role. --}}
+                                    <select name="blocks[{{ $loop->index }}][charge_role]" class="form-select form-select-sm mt-1"
+                                            data-bs-toggle="tooltip"
+                                            title="Making is the labour charge the Making Adjustment screen can bulk-update. Everything else stays General.">
+                                        <option value="" @selected($block->charge_role === null)>General Charge</option>
+                                        <option value="making" @selected($block->charge_role === 'making')>Making</option>
+                                    </select>
+                                @endunless
                             </td>
                             <td>
                                 @if($block->isMaterial())
@@ -373,6 +384,10 @@
                 <option value="per_unit">Per {{ $unitCode }}</option>
                 <option value="lump_sum">Lump sum</option>
             </select>
+            <select name="__i__[charge_role]" class="form-select form-select-sm mt-1 f-role">
+                <option value="">General Charge</option>
+                <option value="making">Making</option>
+            </select>
         </td>
         <td class="cell-qty"></td>
         <td class="cell-unit"></td>
@@ -423,6 +438,8 @@ $(function () {
         $row.attr('data-type', type);
 
         if (isMaterial) {
+            // A material never carries a charge role.
+            $row.find('.f-role').remove();
             $row.find('.cell-material').html(
                 '<select name="' + prefix + '[material_product_id]" class="form-select form-select-sm" required>' + materialOptions + '</select>');
             $row.find('.cell-qty').html(

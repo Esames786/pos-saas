@@ -34,6 +34,7 @@ class CateringEstimateLineCostBlock extends Model
         'charge_basis',
         'rate_basis',
         'commercial_rate_source',
+        'charge_role',
         'rate',
         'material_product_id',
         'material_name',
@@ -78,6 +79,12 @@ class CateringEstimateLineCostBlock extends Model
     public function isMaterial(): bool
     {
         return $this->block_type === CateringProductCostBlock::TYPE_MATERIAL;
+    }
+
+    /** Was this charge the dish's MAKING charge when the line was priced? */
+    public function isMaking(): bool
+    {
+        return $this->block_type === 'charge' && $this->charge_role === \App\Models\Tenant\CateringProductCostBlock::ROLE_MAKING;
     }
 
     public function isLumpSum(): bool
