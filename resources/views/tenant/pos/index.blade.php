@@ -4248,7 +4248,8 @@ document.addEventListener('DOMContentLoaded', function () {
             data.sales.forEach(function (s) {
                 html += '<tr>' +
                     '<td><strong>' + escapeHtml(s.sale_no) + '</strong></td>' +
-                    '<td><span class="badge bg-secondary text-capitalize">' + escapeHtml(String(s.order_type || '').replace('_', ' ')) + '</span></td>' +
+                    '<td><span class="badge bg-secondary text-capitalize">' + escapeHtml(String(s.order_type || '').replace('_', ' ')) + '</span>' +
+                        (s.is_draft ? ' <span class="badge bg-warning text-dark">DRAFT</span>' : '') + '</td>' +
                     '<td>' + escapeHtml(s.customer || 'Walk-in') + posOrderMeta(s) + '</td>' +
                     '<td class="text-end">' + escapeHtml(s.items) + '</td>' +
                     '<td class="text-end fw-bold">' + escapeHtml(s.total) + '</td>' +
