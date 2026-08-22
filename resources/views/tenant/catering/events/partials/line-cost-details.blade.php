@@ -12,7 +12,73 @@
 @php
     $blocks = $line->costBlocks;
     $editable = $current->isDraft() && $event->isOpen();
+
+    // KASHIF-LEGACY-ALIGN-2 — the old software's one-glance strip, computed
+    // from the SAME snapshot numbers the table below shows. Read-only by
+    // design: a second editing surface would be a second set of rules.
+    $stripQty = (float) $line->quantity;
+    $stripPerUnit = fn ($b) => $stripQty > 0 ? round(((float) $b->amount) / $stripQty, 2) : 0.0;
+    $stripMaking = $blocks->first(fn ($b) => $b->isMaking());
+    // The headline material is the physically biggest one, judged by what it
+    // WOULD bill (qty × charged rate) — so a customer-supplied Beef, billed 0,
+    // still owns its box instead of quietly handing it to Rice.
+    $stripNotional = fn ($b) => $b->isPerMaterialUnit()
+        ? (float) ($b->event_material_qty ?? 0) * (float) $b->rate
+        : (float) $b->amount;
+    $stripPrimary = $blocks->filter->isMaterial()->sortByDesc($stripNotional)->first();
+    $stripLumps = $blocks->filter->isLumpSum();
+    $stripOthers = $blocks->reject(fn ($b) => $b->isLumpSum()
+        || ($stripMaking && $b->is($stripMaking))
+        || ($stripPrimary && $b->is($stripPrimary)));
+    $stripAdditional = round($stripOthers->sum(fn ($b) => $stripPerUnit($b)), 2);
 @endphp
+
+@if($blocks->isNotEmpty())
+    <div class="d-flex flex-wrap gap-2 mb-3">
+        <div class="border border-primary rounded px-3 py-2 bg-primary-subtle">
+            <div class="fs-12 text-uppercase fw-bold text-muted">Order Rate</div>
+            <div class="fs-4 fw-bold">{{ number_format((float) ($line->calculated_rate ?? 0), 2) }}</div>
+            <div class="fs-12 text-muted">per {{ $line->unit_code }}</div>
+        </div>
+        @if($stripMaking)
+            <div class="border rounded px-3 py-2">
+                <div class="fs-12 text-uppercase fw-bold text-muted">Making Chrg</div>
+                <div class="fs-4 fw-semibold">{{ number_format($stripMaking->isLumpSum() ? (float) $stripMaking->amount : $stripPerUnit($stripMaking), 2) }}</div>
+                @if($stripMaking->isLumpSum())<div class="fs-12 text-muted">charged once</div>@endif
+            </div>
+        @endif
+        @if($stripPrimary && ! $stripPrimary->isLumpSum())
+            <div class="border rounded px-3 py-2">
+                <div class="fs-12 text-uppercase fw-bold text-muted">{{ $stripPrimary->material_name ?: $stripPrimary->label }} Rate</div>
+                <div class="fs-4 fw-semibold">{{ number_format($stripPerUnit($stripPrimary), 2) }}</div>
+                @if($stripPrimary->isCustomerSupplied())
+                    <div class="fs-12 text-success-emphasis">customer provides · <span dir="rtl">گاہک دے گا</span></div>
+                @endif
+            </div>
+        @endif
+        @if($stripAdditional > 0)
+            <div class="border rounded px-3 py-2">
+                <div class="fs-12 text-uppercase fw-bold text-muted">Additional</div>
+                <div class="fs-4 fw-semibold">{{ number_format($stripAdditional, 2) }}</div>
+                <div class="fs-12 text-muted">other parts, per {{ $line->unit_code }}</div>
+            </div>
+        @endif
+        @if($stripLumps->isNotEmpty())
+            <div class="border rounded px-3 py-2">
+                <div class="fs-12 text-uppercase fw-bold text-muted">One-time</div>
+                <div class="fs-4 fw-semibold">{{ number_format((float) $stripLumps->sum('amount'), 2) }}</div>
+                <div class="fs-12 text-muted">never inside the per-{{ $line->unit_code }} rate</div>
+            </div>
+        @endif
+        @if($line->hasQuotedRateOverride())
+            <div class="border border-warning rounded px-3 py-2 bg-warning-subtle">
+                <div class="fs-12 text-uppercase fw-bold text-muted">Quoted</div>
+                <div class="fs-4 fw-bold">{{ number_format((float) $line->rate, 2) }}</div>
+                <div class="fs-12 text-muted">per {{ $line->unit_code }}</div>
+            </div>
+        @endif
+    </div>
+@endif
 
 @if($line->hasQuotedRateOverride() && $line->rate_override_reason)
     <div class="alert alert-warning py-2 mb-3 fs-13">

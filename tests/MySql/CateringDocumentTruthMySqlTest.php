@@ -166,6 +166,62 @@ class CateringDocumentTruthMySqlTest extends MySqlTenantTestCase
         }
     }
 
+    /**
+     * KASHIF-LEGACY-ALIGN-1 — "Is p gosht nh arha". The customer's copy names
+     * each material, the line's TOTAL kitchen quantity, and WHO supplies it —
+     * always in both languages. Internal cost still never leaks.
+     */
+    public function test_the_customer_copy_names_each_material_its_quantity_and_who_provides_it(): void
+    {
+        $estimate = $this->quotation();
+        $line = $estimate->lines->first();
+
+        \App\Models\Tenant\CateringEstimateLineCostBlock::create([
+            'catering_estimate_line_id' => $line->id,
+            'label' => 'Beef', 'material_name' => 'Beef', 'unit_code' => 'KG',
+            'block_type' => \App\Models\Tenant\CateringProductCostBlock::TYPE_MATERIAL,
+            'charge_basis' => \App\Models\Tenant\CateringProductCostBlock::BASIS_PER_UNIT,
+            'rate_basis' => \App\Models\Tenant\CateringProductCostBlock::RATE_PER_MATERIAL_UNIT,
+            'rate' => 120, 'quantity_per_unit' => 1.2,
+            'default_material_qty' => 120, 'event_material_qty' => 120,
+            'is_customer_supplied' => true, 'amount' => 0, 'sort_order' => 1,
+        ]);
+        \App\Models\Tenant\CateringEstimateLineCostBlock::create([
+            'catering_estimate_line_id' => $line->id,
+            'label' => 'Basmati Rice', 'material_name' => 'Basmati Rice', 'unit_code' => 'KG',
+            'block_type' => \App\Models\Tenant\CateringProductCostBlock::TYPE_MATERIAL,
+            'charge_basis' => \App\Models\Tenant\CateringProductCostBlock::BASIS_PER_UNIT,
+            'rate_basis' => \App\Models\Tenant\CateringProductCostBlock::RATE_PER_MATERIAL_UNIT,
+            'rate' => 55, 'quantity_per_unit' => 0.8,
+            'default_material_qty' => 80, 'event_material_qty' => 80,
+            'is_customer_supplied' => false, 'amount' => 4400, 'sort_order' => 2,
+        ]);
+
+        $html = $this->render($estimate->refresh());
+
+        // The box header, both languages.
+        $this->assertStringContainsString('Materials', $html);
+        $this->assertStringContainsString('سامان', $html);
+
+        // Each material with the line's TOTAL kitchen draw — the same number
+        // the kitchen release sheet works from.
+        $this->assertStringContainsString('Beef', $html);
+        $this->assertStringContainsString('120 KG', $html);
+        $this->assertStringContainsString('Basmati Rice', $html);
+        $this->assertStringContainsString('80 KG', $html);
+
+        // Who provides what — both languages, on every material.
+        $this->assertStringContainsString('Customer provides', $html);
+        $this->assertStringContainsString('گاہک دے گا', $html);
+        $this->assertStringContainsString('We provide', $html);
+        $this->assertStringContainsString('ہم دیں گے', $html);
+
+        // And the margin's ingredients still never reach the customer.
+        foreach (['Costs us', 'material_rate_at_quote', 'material_cost'] as $leak) {
+            $this->assertStringNotContainsString($leak, $html);
+        }
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // O · the printed balance must know about refunds
     // ─────────────────────────────────────────────────────────────────────────

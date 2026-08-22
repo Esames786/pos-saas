@@ -55,7 +55,68 @@ class KashifClientMenuSeeder extends Seeder
 
     private const ASSUMPTION = 'UAT assumption — owner to confirm';
 
-    /** suggested_group => operator-friendly category name. */
+    /**
+     * KASHIF-LEGACY-ALIGN-3 — the client's OWN 18 categories, exact legacy
+     * spellings (the same rule the 55 kitchen instructions followed). Codes are
+     * the legacy OrderCatagaryId list the owner photographed.
+     */
+    public const LEGACY_CATEGORIES = [
+        1 => 'STARTERS',
+        2 => 'RICE',
+        3 => 'CURRIES',
+        4 => 'BBQ',
+        5 => 'FRIED',
+        6 => 'SIDE LINES',
+        7 => 'DESSERTS',
+        8 => 'NAN-TANDOOR',
+        9 => 'RAITA',
+        10 => 'SALAD',
+        11 => 'CHATNIES',
+        12 => 'TEA/COFEE',
+        13 => 'PAN',
+        14 => 'C/D - M/W',
+        15 => 'AFTARI',
+        16 => 'HI-TEA',
+        17 => 'OTHERS',
+        18 => 'SOFT DRINKS',
+    ];
+
+    /**
+     * Legacy sequence hundreds-block => legacy category code.
+     *
+     * Evidence, not guesswork: the owner's product screenshot shows item 361
+     * (BIRYANI MASALA BEEF) with Sequence 203 filed under Category 2 RICE —
+     * the hundreds block IS the category. CURRIES holds 209 items so it spans
+     * TWO blocks (300s + 400s); every block after it therefore sits one step
+     * behind its code, and ten consecutive blocks (desserts → hi-tea) confirm
+     * that shift name-by-name. Blocks beyond the mapped range (18xx+, and the
+     * 20xx decoration/packing tail) go to OTHERS.
+     */
+    private const SEQ_BLOCK_TO_LEGACY = [
+        0 => 1, 1 => 1,      // STARTERS (low sequences predate the convention)
+        2 => 2,              // RICE — proven by the 203 screenshot
+        3 => 3, 4 => 3,      // CURRIES, double block
+        5 => 4,              // BBQ
+        6 => 5,              // FRIED
+        7 => 6,              // SIDE LINES
+        8 => 7,              // DESSERTS
+        9 => 8,              // NAN-TANDOOR
+        10 => 9,             // RAITA
+        11 => 10,            // SALAD
+        12 => 11,            // CHATNIES
+        13 => 12,            // TEA/COFEE
+        14 => 13,            // PAN
+        15 => 14,            // C/D - M/W
+        16 => 15,            // AFTARI
+        17 => 16,            // HI-TEA
+    ];
+
+    /**
+     * HISTORICAL — the pre-legacy guessed names, kept ONLY so reruns can find
+     * and retire the categories an earlier bootstrap created from them. Market
+     * bands still key on suggested_group directly (SeedsMarketEstimates); no
+     * product is filed by these names any more.
+     */
     private const GROUPS = [
         'starters_drinks_soups' => 'Drinks / Starters',
         'rice_biryani' => 'Rice & Biryani',
@@ -201,6 +262,12 @@ class KashifClientMenuSeeder extends Seeder
     {
         $categories = $this->ensureCategories();
 
+        // A product may only be re-filed while it stands in a category this
+        // seeder itself created (client-menu-*). The moment the owner moves an
+        // item somewhere of their own, reruns keep their hands off it.
+        $seederOwnedCategoryIds = Category::where('slug', 'like', 'client-menu-%')
+            ->pluck('id')->flip();
+
         foreach (self::catalogueRows() as $sku => $item) {
             $meta = $item['meta'];
             $categoryName = $this->categoryFor($meta);
@@ -210,7 +277,9 @@ class KashifClientMenuSeeder extends Seeder
 
             $product->name = $item['name'];
             $product->slug = Str::slug($item['name'].'-'.substr($sku, 3));
-            $product->category_id = $categories[$categoryName]->id;
+            if ($isNew || $product->category_id === null || $seederOwnedCategoryIds->has($product->category_id)) {
+                $product->category_id = $categories[$categoryName]->id;
+            }
             $product->product_kind = 'sale_item';
             if ($isNew) {
                 // Only on create: reruns must not undo an owner's later edits.
@@ -238,6 +307,8 @@ class KashifClientMenuSeeder extends Seeder
                 ])->save();
             }
         }
+
+        $this->retireGuessedCategories();
     }
 
     private function categoryFor(?array $meta): string
@@ -257,23 +328,67 @@ class KashifClientMenuSeeder extends Seeder
             return self::NEEDS_REVIEW;
         }
 
-        return self::GROUPS[$meta['suggested_group'] ?? ''] ?? self::NEEDS_REVIEW;
+        // The legacy sequence's hundreds block is the client's own filing —
+        // see SEQ_BLOCK_TO_LEGACY for the evidence trail.
+        $seq = (int) preg_replace('/\D/', '', (string) ($meta['sequence_raw'] ?? ''));
+        if ($seq > 0) {
+            $code = self::SEQ_BLOCK_TO_LEGACY[intdiv($seq, 100)] ?? 17; // unmapped tail => OTHERS
+
+            return self::LEGACY_CATEGORIES[$code];
+        }
+
+        return self::NEEDS_REVIEW;
     }
 
     /** @return array<string, Category> */
     private function ensureCategories(): array
     {
         $out = [];
-        $order = 0;
-        foreach (array_merge(array_values(array_unique(self::GROUPS)), [self::NEEDS_REVIEW]) as $name) {
-            $order++;
-            $out[$name] = Category::firstOrCreate(
-                ['slug' => Str::slug('client-menu-'.$name)],
-                ['name' => $name, 'sort_order' => 500 + $order, 'is_active' => true],
-            );
+        foreach (self::LEGACY_CATEGORIES as $code => $name) {
+            // firstOrNew + explicit fill (not firstOrCreate): three legacy names
+            // share a slug with a retired guessed name ("BBQ", "Desserts",
+            // "Raita"), and those existing rows must take the exact legacy
+            // spelling and the legacy sort order on rerun. This namespace
+            // (client-menu-*) is seeder-owned, so enforcing the name is safe.
+            $category = Category::firstOrNew(['slug' => Str::slug('client-menu-'.$name)]);
+            $category->name = $name;
+            $category->sort_order = 500 + $code;
+            if (! $category->exists) {
+                $category->is_active = true;
+            }
+            $category->save();
+            $out[$name] = $category;
         }
 
+        $out[self::NEEDS_REVIEW] = Category::firstOrCreate(
+            ['slug' => Str::slug('client-menu-'.self::NEEDS_REVIEW)],
+            ['name' => self::NEEDS_REVIEW, 'sort_order' => 500 + count(self::LEGACY_CATEGORIES) + 1, 'is_active' => true],
+        );
+
         return $out;
+    }
+
+    /**
+     * Deactivate (never delete) the emptied guessed-name categories an earlier
+     * bootstrap created. Only names from the historical GROUPS list qualify,
+     * and a slug the legacy set reuses (BBQ / Desserts / Raita) is excluded by
+     * construction — it is a live legacy category now.
+     */
+    private function retireGuessedCategories(): void
+    {
+        $legacySlugs = array_map(
+            fn (string $name) => Str::slug('client-menu-'.$name),
+            array_values(self::LEGACY_CATEGORIES),
+        );
+        $oldSlugs = array_diff(
+            array_map(fn (string $name) => Str::slug('client-menu-'.$name), array_values(array_unique(self::GROUPS))),
+            $legacySlugs,
+        );
+
+        Category::query()
+            ->whereIn('slug', $oldSlugs)
+            ->whereDoesntHave('products')
+            ->update(['is_active' => false]);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

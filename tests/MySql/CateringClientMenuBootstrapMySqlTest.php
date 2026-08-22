@@ -117,6 +117,56 @@ class CateringClientMenuBootstrapMySqlTest extends MySqlTenantTestCase
             'ambiguous/misfiled source rows go to Needs Review, not into a guessed band');
     }
 
+    public function test_products_stand_in_the_clients_own_legacy_categories(): void
+    {
+        // Upgrade path: an earlier bootstrap's guessed category, now emptied,
+        // must retire — unless something still stands in it.
+        Category::create(['name' => 'Rice & Biryani', 'slug' => 'client-menu-rice-biryani', 'sort_order' => 501, 'is_active' => true]);
+        $occupied = Category::create(['name' => 'Karahi / Qorma / Handi', 'slug' => 'client-menu-karahi-qorma-handi', 'sort_order' => 502, 'is_active' => true]);
+        $this->makeProduct($occupied->id, ['name' => 'Owner Keeps Me Here']);
+
+        $this->seeder->run();
+
+        $categoryNameOf = fn (string $product) => Category::find(
+            Product::where('sku', 'like', 'KM-%')->where('name', $product)->orderBy('id')->value('category_id')
+        )?->name;
+
+        // The owner's own screenshot proof: sequence 203 files under 2 RICE.
+        $this->assertSame('RICE', $categoryNameOf('Biryani Masala Beef'));
+
+        // The post-CURRIES shift, confirmed by name at both ends and the tail.
+        $this->assertSame('CURRIES', $categoryNameOf('Qorma Mutton'));
+        $this->assertSame('DESSERTS', $categoryNameOf('Cheese Cake'));
+        $this->assertSame('NAN-TANDOOR', $categoryNameOf('Aloo Paratha'));
+        $this->assertSame('HI-TEA', $categoryNameOf('Chicken Patties'));
+        $this->assertSame('OTHERS', $categoryNameOf('Decoration and Arrangement'));
+
+        // All 18 legacy categories exist, exact spelling, legacy order.
+        foreach (KashifClientMenuSeeder::LEGACY_CATEGORIES as $code => $name) {
+            $category = Category::where('name', $name)->first();
+            $this->assertNotNull($category, "legacy category {$name} must exist");
+            $this->assertSame(500 + $code, (int) $category->sort_order);
+        }
+
+        // An owner's own move is final: a rerun keeps its hands off it.
+        $ownerCategory = Category::create(['name' => 'Owner Specials', 'slug' => 'owner-specials', 'sort_order' => 1, 'is_active' => true]);
+        $moved = Product::where('sku', 'like', 'KM-%')->where('name', 'Cheese Cake')->orderBy('id')->firstOrFail();
+        $moved->category_id = $ownerCategory->id;
+        $moved->save();
+
+        $this->seeder->run();
+
+        $this->assertSame($ownerCategory->id, (int) $moved->fresh()->category_id,
+            'a product the owner filed by hand is never re-filed by a rerun');
+
+        // The emptied guessed category deactivates (never deletes)…
+        $this->assertFalse((bool) Category::where('slug', 'client-menu-rice-biryani')->value('is_active'));
+        // …an occupied one stays live, and a slug the legacy set reuses (BBQ)
+        // is a live legacy category now, not a retiree.
+        $this->assertTrue((bool) Category::where('slug', 'client-menu-karahi-qorma-handi')->value('is_active'));
+        $this->assertTrue((bool) Category::where('slug', 'client-menu-bbq')->value('is_active'));
+    }
+
     public function test_unknown_commercial_data_is_never_quote_enabled(): void
     {
         $this->seeder->run();

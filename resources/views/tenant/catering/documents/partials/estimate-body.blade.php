@@ -6,6 +6,17 @@
     <button onclick="window.print()" style="padding: 8px 18px; cursor: pointer;">Print</button>
 </div>
 
+{{-- KASHIF-LEGACY-ALIGN-1: the per-line materials box carries its own styles so
+     every consumer of this partial (single document, bulk composition, email
+     PDF) prints it identically without touching their CSS shells. --}}
+<style>
+    .line-mats { margin-top: 4px; border-collapse: collapse; font-size: 10px; color: #374151; width: 100%; }
+    .line-mats td { border: 1px solid #d1d5db; padding: 2px 6px; }
+    .line-mats .num { text-align: right; white-space: nowrap; }
+    .line-mats .mats-head td { background: #f3f4f6; font-weight: bold; }
+    .line-mats .provider { white-space: nowrap; }
+</style>
+
 <div class="doc-header">
     <div>
         <div class="brand">{{ $businessName }}</div>
@@ -86,13 +97,41 @@
                     <span class="ur">{{ $line->item_name_ur }}</span>
                 @else
                     {{ $line->item_name }}
-            @php $suppliedMats = $line->costBlocks->filter->isCustomerSupplied()->pluck('material_name')->filter(); @endphp
-            @if($suppliedMats->isNotEmpty())
-                <div style="font-size:10px;color:#374151">({{ $t('Customer will supply', 'گاہک فراہم کرے گا') }}: {{ $suppliedMats->implode(', ') }})</div>
-            @endif
                     @if($isBoth && $line->item_name_ur)
                         <div class="item-ur ur">{{ $line->item_name_ur }}</div>
                     @endif
+                @endif
+
+                {{-- KASHIF-LEGACY-ALIGN-1 ("Is p gosht nh arha"): what material
+                     this line takes, how much, and WHO supplies it — from the
+                     LINE SNAPSHOT (the quoted truth), and always in both
+                     languages, whatever mode the document prints in. Quantities
+                     are the line's TOTAL kitchen draw — the same numbers the
+                     kitchen release sheet works from, so the customer's paper
+                     and the kitchen can never disagree. Internal cost figures
+                     (Costs us) never reach a customer's document. --}}
+                @php $matBlocks = $line->costBlocks->filter->isMaterial(); @endphp
+                @if($matBlocks->isNotEmpty())
+                    <table class="line-mats" dir="ltr">
+                        <tr class="mats-head">
+                            <td>Materials · <span class="ur">سامان</span></td>
+                            <td class="num">Qty · <span class="ur">مقدار</span></td>
+                            <td class="provider">Provided by · <span class="ur">کون دے گا</span></td>
+                        </tr>
+                        @foreach($matBlocks as $mb)
+                            <tr>
+                                <td>{{ $mb->material_name ?: $mb->label }}</td>
+                                <td class="num">{{ rtrim(rtrim(number_format((float) ($mb->event_material_qty ?? 0), 3), '0'), '.') }} {{ $mb->unit_code }}</td>
+                                <td class="provider">
+                                    @if($mb->isCustomerSupplied())
+                                        Customer provides · <span class="ur">گاہک دے گا</span>
+                                    @else
+                                        We provide · <span class="ur">ہم دیں گے</span>
+                                    @endif
+                                </td>
+                            </tr>
+                        @endforeach
+                    </table>
                 @endif
             </td>
             <td>{{ $line->instructionSummary() }}</td>

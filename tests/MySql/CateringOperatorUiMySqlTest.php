@@ -104,6 +104,7 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
         CateringProductCostBlock::create([
             'product_id' => $this->biryaniId, 'label' => 'Making',
             'block_type' => CateringProductCostBlock::TYPE_CHARGE,
+            'charge_role' => CateringProductCostBlock::ROLE_MAKING,
             'rate' => 300, 'charge_basis' => CateringProductCostBlock::BASIS_PER_UNIT,
             'sort_order' => 2,
         ]);
@@ -183,6 +184,14 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('data-act-quote=', $html);
         $this->assertStringContainsString('live-reason', $html,
             'a different rate still demands its reason, right on the row');
+
+        // KASHIF-LEGACY-ALIGN-2: the old software's one-glance strip sits on
+        // every row's Cost Details — computed from the SAME snapshot the table
+        // below shows, read-only by design.
+        $this->assertStringContainsString('Order Rate', $html);
+        $this->assertStringContainsString('Making Chrg', $html);
+        $this->assertStringContainsString('Chicken Rate', $html,
+            'the headline material box carries the material\'s own name, never a fixed "Meat Rate"');
 
         $line = $this->blockLine($event);
         $this->assertStringContainsString(
