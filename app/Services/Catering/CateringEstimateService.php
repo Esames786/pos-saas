@@ -399,25 +399,87 @@ class CateringEstimateService
                 ->lockForUpdate()
                 ->max('version_no') + 1;
 
+            $revision = $this->cloneAsNewDraft($estimate, $nextVersion, $userId);
+
+            $estimate->forceFill([
+                'status' => CateringEstimate::STATUS_SUPERSEDED,
+                'superseded_at' => now(),
+            ])->save();
+
+            return $revision;
+        });
+    }
+
+    /**
+     * KASHIF-EVENT-HISTORY-2 — restore a superseded quotation version.
+     *
+     * Never a rewrite: the restored version stays exactly as it was; the
+     * CURRENT version is superseded and a NEW draft equal to the old one
+     * becomes current. The paper trail only ever moves forward — an operator
+     * sees "the event went back", an auditor sees every step it took.
+     */
+    public function restoreVersion(CateringEstimate $old, ?int $userId = null): CateringEstimate
+    {
+        return DB::connection('tenant')->transaction(function () use ($old, $userId) {
+            $this->locks->refreshEstimate($old);
+
+            if ($old->status !== CateringEstimate::STATUS_SUPERSEDED) {
+                throw new RuntimeException(
+                    'Only a superseded version can be restored — this one is already part of the current story.'
+                );
+            }
+
+            $current = CateringEstimate::query()
+                ->where('catering_event_id', $old->catering_event_id)
+                ->orderByDesc('version_no')
+                ->lockForUpdate()
+                ->first();
+
+            $revision = $this->cloneAsNewDraft($old, ((int) $current->version_no) + 1, $userId);
+            $revision->forceFill([
+                'notes' => trim(
+                    ($old->notes !== null && trim((string) $old->notes) !== '' ? $old->notes."\n" : '')
+                    ."Restored from Q{$old->version_no}."
+                ),
+            ])->save();
+
+            if ($current->status !== CateringEstimate::STATUS_SUPERSEDED) {
+                $current->forceFill([
+                    'status' => CateringEstimate::STATUS_SUPERSEDED,
+                    'superseded_at' => now(),
+                ])->save();
+            }
+
+            return $revision->refresh();
+        });
+    }
+
+    /**
+     * The ONE clone: a source version copied — totals, lines, block snapshots,
+     * kitchen instructions — as draft v{next}. revise() and restoreVersion()
+     * both come here, so a quotation can never be copied two different ways.
+     */
+    private function cloneAsNewDraft(CateringEstimate $source, int $nextVersion, ?int $userId): CateringEstimate
+    {
             $revision = CateringEstimate::create([
-                'catering_event_id' => $estimate->catering_event_id,
+                'catering_event_id' => $source->catering_event_id,
                 'version_no' => $nextVersion,
                 'status' => CateringEstimate::STATUS_DRAFT,
-                'subtotal' => $estimate->subtotal,
-                'service_charge_amount' => $estimate->service_charge_amount,
-                'other_charge_label' => $estimate->other_charge_label,
-                'other_charge_amount' => $estimate->other_charge_amount,
-                'discount_type' => $estimate->discount_type,
-                'discount_value' => $estimate->discount_value,
-                'discount_amount' => $estimate->discount_amount,
-                'tax_amount' => $estimate->tax_amount,
-                'grand_total' => $estimate->grand_total,
-                'terms' => $estimate->terms,
-                'notes' => $estimate->notes,
+                'subtotal' => $source->subtotal,
+                'service_charge_amount' => $source->service_charge_amount,
+                'other_charge_label' => $source->other_charge_label,
+                'other_charge_amount' => $source->other_charge_amount,
+                'discount_type' => $source->discount_type,
+                'discount_value' => $source->discount_value,
+                'discount_amount' => $source->discount_amount,
+                'tax_amount' => $source->tax_amount,
+                'grand_total' => $source->grand_total,
+                'terms' => $source->terms,
+                'notes' => $source->notes,
                 'created_by_user_id' => $userId,
             ]);
 
-            foreach ($estimate->lines as $line) {
+            foreach ($source->lines as $line) {
                 $copy = CateringEstimateLine::create([
                     'catering_estimate_id' => $revision->id,
                     'product_id' => $line->product_id,
@@ -457,13 +519,7 @@ class CateringEstimateService
                 );
             }
 
-            $estimate->forceFill([
-                'status' => CateringEstimate::STATUS_SUPERSEDED,
-                'superseded_at' => now(),
-            ])->save();
-
             return $revision;
-        });
     }
 
     /** Totals block from a computed subtotal + submitted charge inputs. */

@@ -50,6 +50,10 @@
                 title="Show navigation" aria-label="Show navigation">
             <i class="ti ti-layout-sidebar-left-expand"></i>
         </button>
+        {{-- KASHIF-EVENT-HISTORY-1: the booking's memory, one click away. --}}
+        <button type="button" class="btn btn-light" data-bs-toggle="offcanvas" data-bs-target="#eventHistoryOffcanvas">
+            <i class="ti ti-history me-1"></i>History
+        </button>
         <a href="{{ url('/catering/events') }}" class="btn btn-light">Back</a>
         @if($current && $current->lines->isNotEmpty())
             @can('tenant.catering.documents.estimate')
@@ -1072,15 +1076,34 @@
     <div class="card-header"><h5 class="mb-0">Version History</h5></div>
     <div class="card-body p-0">
         <table class="table table-sm mb-0">
-            <thead><tr><th>Version</th><th>Status</th><th class="text-end">Net Total</th><th>Sent</th><th>Superseded</th></tr></thead>
+            <thead><tr><th>Version</th><th>Status</th><th class="text-end">Net Total</th><th>Sent</th><th>Superseded</th><th></th></tr></thead>
             <tbody>
+                @php $clock = app(\App\Support\TenantClock::class); @endphp
                 @foreach($event->estimates as $version)
                 <tr class="{{ $version->id === $current?->id ? 'table-active' : '' }}">
                     <td>Q{{ $version->version_no }}</td>
                     <td><span class="badge bg-{{ $version->status === 'accepted' ? 'success' : ($version->status === 'draft' ? 'secondary' : 'info') }}">{{ ucfirst($version->status) }}</span></td>
                     <td class="text-end">{{ number_format($version->grand_total, 2) }}</td>
-                    <td>{{ $version->sent_at?->format('d M Y g:i A') ?? '—' }}</td>
-                    <td>{{ $version->superseded_at?->format('d M Y g:i A') ?? '—' }}</td>
+                    <td>{{ $version->sent_at ? $clock->format($version->sent_at, 'd M Y g:i A') : '—' }}</td>
+                    <td>{{ $version->superseded_at ? $clock->format($version->superseded_at, 'd M Y g:i A') : '—' }}</td>
+                    <td class="text-end">
+                        <a href="{{ url('/catering/documents/estimate/' . $version->id) }}" target="_blank"
+                           class="btn btn-link btn-sm p-0 fs-12 me-2">View</a>
+                        {{-- KASHIF-EVENT-HISTORY-2: bring this version back as
+                             the new current draft. Never a rewrite — the trail
+                             only moves forward. --}}
+                        @if($version->status === \App\Models\Tenant\CateringEstimate::STATUS_SUPERSEDED && $event->isOpen())
+                            @can('tenant.catering.estimates.restore-version')
+                            <span data-act="{{ url('/catering/estimates/' . $version->id . '/restore-version') }}"
+                                  data-act-method="POST">
+                                <button type="button" class="btn btn-outline-secondary btn-sm js-act"
+                                        data-confirm="Q{{ $version->version_no }} wapas le aayen? Current version supersede ho kar nayi draft Q banegi — paisa aur nikla saman nahi badlega.">
+                                    Restore
+                                </button>
+                            </span>
+                            @endcan
+                        @endif
+                    </td>
                 </tr>
                 @endforeach
             </tbody>
@@ -1111,6 +1134,61 @@
 </div>
 @endif
 @endcan
+{{-- KASHIF-EVENT-HISTORY-1 — the unified timeline: every remembered state of
+     the booking, each with its way back. Money and released production appear
+     nowhere here on purpose: they already happened, and no revert touches them. --}}
+@php
+    $revisions = $revisions ?? collect();
+    $historyClock = app(\App\Support\TenantClock::class);
+@endphp
+<div class="offcanvas offcanvas-end" tabindex="-1" id="eventHistoryOffcanvas" style="width:min(640px,95vw)">
+    <div class="offcanvas-header border-bottom">
+        <h5 class="offcanvas-title"><i class="ti ti-history me-1"></i>History — {{ $event->event_no }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+    </div>
+    <div class="offcanvas-body">
+        @if($revisions->isEmpty())
+            <div class="text-muted">
+                No remembered states yet — history starts with the next save on this booking.
+            </div>
+        @else
+            <div class="list-group list-group-flush">
+                @foreach($revisions as $i => $rev)
+                    <div class="list-group-item px-0">
+                        <div class="d-flex justify-content-between align-items-start gap-2">
+                            <strong class="fs-14">{{ \App\Services\Catering\CateringEventHistoryService::ACTIONS[$rev->action] ?? ucfirst(str_replace('_', ' ', $rev->action)) }}</strong>
+                            <span class="text-muted fs-12 text-nowrap">{{ $historyClock->format($rev->changed_at, 'd M Y g:i A') }}</span>
+                        </div>
+                        @if($rev->change_summary)
+                            <div class="fs-13 mt-1">{{ $rev->change_summary }}</div>
+                        @endif
+                        @if($rev->changedBy)
+                            <div class="fs-12 text-muted">by {{ $rev->changedBy->name }}</div>
+                        @endif
+                        @if($i > 0 && $event->isOpen())
+                            @can('tenant.catering.events.revisions.revert')
+                            <div class="mt-2"
+                                 data-act="{{ url('/catering/events/' . $event->id . '/revisions/' . $rev->id . '/revert') }}"
+                                 data-act-method="POST">
+                                <button type="button" class="btn btn-outline-secondary btn-sm js-act"
+                                        data-confirm="Event ko {{ $historyClock->format($rev->changed_at, 'd M Y g:i A') }} wali halat par wapas le jayen? Paisa (advance/refund) aur kitchen ko nikla saman nahi badlega — sirf booking ki details, items aur rates.">
+                                    <i class="ti ti-arrow-back-up me-1"></i>Is halat par wapas jao
+                                </button>
+                            </div>
+                            @endcan
+                        @elseif($i === 0)
+                            <div class="fs-12 text-muted mt-1">Current state</div>
+                        @endif
+                    </div>
+                @endforeach
+            </div>
+            <div class="text-muted fs-12 mt-3 border-top pt-2">
+                Wapsi kabhi history nahi mitati — har wapsi khud ek nayi entry banti hai.
+                Advances, refunds, invoices aur nikla hua saman kisi wapsi se nahi badalte.
+            </div>
+        @endif
+    </div>
+</div>
 @include('tenant.catering.events.partials.event-form-support')
 </div>{{-- /#event-workspace --}}
 @endsection
@@ -1126,6 +1204,53 @@ $(document).on('click', '#catering-sidebar-toggle', function () {
     const hidden = document.body.classList.toggle('nosidebar');
     $(this).find('i').attr('class', hidden ? 'ti ti-layout-sidebar-left-expand' : 'ti ti-layout-sidebar-left-collapse');
     $(this).attr('title', hidden ? 'Show navigation' : 'Hide navigation');
+});
+
+// KASHIF-CATERING-OPERATOR-UI-1 [data-act] actions — ALWAYS on, not only on
+// drafts: History revert and version Restore live on sent/confirmed events
+// too. Posts through the workspace pipeline; a destructive-feeling action
+// carries data-confirm and asks first.
+$(document).on('click', '.js-act', function () {
+    const confirmMsg = $(this).data('confirm');
+    if (confirmMsg && ! window.confirm(confirmMsg)) return;
+    const box = $(this).closest('[data-act]');
+    const fd = new FormData();
+    fd.append('_token', '{{ csrf_token() }}');
+    const method = String(box.data('act-method') || 'POST').toUpperCase();
+    if (method !== 'POST') fd.append('_method', method);
+    box.find('[data-field]').each(function () {
+        fd.append($(this).data('field'), $(this).val());
+    });
+    window.cateringAjaxSubmit(box.data('act'), fd);
+});
+// Enter inside a Cost Details control fires that control's action — not the
+// surrounding Save Estimate form.
+$(document).on('keydown', '[data-act] input', function (e) {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        $(this).closest('[data-act]').find('.js-act').first().trigger('click');
+    }
+});
+
+// KASHIF-COSTPANEL-SIMPLE-1: "Customer dega / Hum denge" are ONE number shown
+// twice — the sum is always the kitchen total, so editing either box fills
+// the other and the two shares can never contradict each other.
+function syncSplit(box, fromCustomer) {
+    const total = parseFloat(box.data('total')) || 0;
+    const src = fromCustomer ? box.find('.split-customer') : box.find('.split-ours');
+    let v = parseFloat(src.val());
+    if (isNaN(v) || v < 0) v = 0;
+    if (v > total) { v = total; src.val(+v.toFixed(4)); }
+    const other = +(total - v).toFixed(4);
+    (fromCustomer ? box.find('.split-ours') : box.find('.split-customer')).val(other);
+}
+$(document).on('input', '.supply-split .split-customer', function () { syncSplit($(this).closest('.supply-split'), true); });
+$(document).on('input', '.supply-split .split-ours', function () { syncSplit($(this).closest('.supply-split'), false); });
+
+// The part's system rate hides behind one small "change rate" click.
+$(document).on('click', '.js-rate-toggle', function () {
+    $(this).prev('.rate-edit').removeClass('d-none').find('input').trigger('focus');
+    $(this).addClass('d-none');
 });
 </script>
 @if($current && $isDraft && $event->isOpen())
@@ -1322,27 +1447,9 @@ $(function () {
     // built on the fly. They cannot be real <form> tags — this whole table sits
     // inside the estimate form, and HTML silently drops a nested form, which is
     // why these controls could never live on the draft screen before.
-    $(document).on('click', '.js-act', function () {
-        const box = $(this).closest('[data-act]');
-        // KASHIF-CATERING-NO-RELOAD-1: post through the workspace pipeline —
-        // the page swaps in place instead of navigating.
-        const fd = new FormData();
-        fd.append('_token', '{{ csrf_token() }}');
-        const method = String(box.data('act-method') || 'POST').toUpperCase();
-        if (method !== 'POST') fd.append('_method', method);
-        box.find('[data-field]').each(function () {
-            fd.append($(this).data('field'), $(this).val());
-        });
-        window.cateringAjaxSubmit(box.data('act'), fd);
-    });
-    // Enter inside a Cost Details control fires that control's action — not the
-    // surrounding Save Estimate form.
-    $(document).on('keydown', '[data-act] input', function (e) {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            $(this).closest('[data-act]').find('.js-act').first().trigger('click');
-        }
-    });
+    // [data-act]/.js-act handlers moved to the ALWAYS-ON script block above:
+    // History revert and version Restore live on sent/confirmed events too,
+    // where this draft-only block never renders.
 
     // KASHIF-CLIENT-MENU-5: real-time quoted rate on the row. Typing a rate
     // that differs from the calculation reveals the reason + Apply (the same

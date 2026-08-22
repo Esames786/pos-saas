@@ -94,6 +94,10 @@ class TenantResetTransactionsCommand extends Command
         // wiped with the lines. The vocabulary itself is master data, kept.
         'catering_estimate_line_instruction',
         'catering_estimate_lines', 'catering_estimates',
+        // KASHIF-EVENT-HISTORY-1: a booking's remembered states are DOCUMENT
+        // history — after a reset the events they snapshot no longer exist, so
+        // keeping them would be a museum of dangling ids.
+        'catering_event_revisions',
         'catering_events',
         // The record of house rates being APPLIED to documents. Wiped with the
         // documents it points at: after a reset those estimate ids no longer

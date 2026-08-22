@@ -58,7 +58,31 @@ class CateringEstimateController extends Controller
             return back()->withErrors(['estimate' => $e->getMessage()])->withInput();
         }
 
+        // KASHIF-EVENT-HISTORY-1: every meaningful save becomes a checkpoint
+        // the operator can come back to.
+        app(\App\Services\Catering\CateringEventHistoryService::class)
+            ->record($cateringEstimate->refresh()->event, 'lines_saved', $request->user()?->id);
+
         return back()->with('status', 'Estimate saved.');
+    }
+
+    /**
+     * KASHIF-EVENT-HISTORY-2 — bring a superseded quotation version back as
+     * the new current draft. History is never rewritten: the old version stays,
+     * the current one is superseded, the copy moves forward.
+     */
+    public function restoreVersion(Request $request, CateringEstimate $cateringEstimate)
+    {
+        try {
+            $revision = $this->estimates->restoreVersion($cateringEstimate, $request->user()?->id);
+        } catch (RuntimeException $e) {
+            return back()->withErrors(['estimate' => $e->getMessage()]);
+        }
+
+        app(\App\Services\Catering\CateringEventHistoryService::class)
+            ->record($revision->event, 'version_restored', $request->user()?->id);
+
+        return back()->with('status', "Q{$cateringEstimate->version_no} restored as new draft Q{$revision->version_no}.");
     }
 
     /** Recompute the draft's material costing from the current rate book (CATERING-SLICE-2). */
@@ -92,6 +116,9 @@ class CateringEstimateController extends Controller
         } catch (RuntimeException $e) {
             return back()->withErrors(['estimate' => $e->getMessage()]);
         }
+
+        app(\App\Services\Catering\CateringEventHistoryService::class)
+            ->record($cateringEstimate->event, 'finalized', request()->user()?->id);
 
         // CATERING-SLICE-3: email the quotation (idempotent per version; skipped
         // gracefully when the event has no customer email).

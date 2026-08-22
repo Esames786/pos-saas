@@ -836,6 +836,9 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                     Route::post('/catering/estimates/{cateringEstimate}/send', [\App\Http\Controllers\Tenant\Catering\CateringEstimateController::class, 'send'])->name('tenant.catering.estimates.send');
                     Route::post('/catering/estimates/{cateringEstimate}/accept', [\App\Http\Controllers\Tenant\Catering\CateringEstimateController::class, 'accept'])->name('tenant.catering.estimates.accept');
                     Route::post('/catering/estimates/{cateringEstimate}/revise', [\App\Http\Controllers\Tenant\Catering\CateringEstimateController::class, 'revise'])->name('tenant.catering.estimates.revise');
+                    // KASHIF-EVENT-HISTORY: restore an old quotation version / revert the event to a remembered state.
+                    Route::post('/catering/estimates/{cateringEstimate}/restore-version', [\App\Http\Controllers\Tenant\Catering\CateringEstimateController::class, 'restoreVersion'])->name('tenant.catering.estimates.restore-version');
+                    Route::post('/catering/events/{cateringEvent}/revisions/{revision}/revert', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'revertRevision'])->name('tenant.catering.events.revisions.revert');
 
                     Route::post('/catering/estimates/{cateringEstimate}/reprice', [\App\Http\Controllers\Tenant\Catering\CateringEstimateController::class, 'reprice'])->name('tenant.catering.estimates.reprice');
 
@@ -848,6 +851,7 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                     // The kitchen still needs it; our store issues none of it, and it
                     // is not charged for.
                     Route::put('/catering/line-cost-blocks/{costBlock}/customer-supplied', [\App\Http\Controllers\Tenant\Catering\CateringLineCostController::class, 'customerSupplied'])->name('tenant.catering.line-cost-blocks.customer-supplied');
+                    Route::put('/catering/line-cost-blocks/{costBlock}/rate', [\App\Http\Controllers\Tenant\Catering\CateringLineCostController::class, 'chargedRate'])->name('tenant.catering.line-cost-blocks.rate');
                     Route::put('/catering/estimate-lines/{cateringEstimateLine}/quoted-rate', [\App\Http\Controllers\Tenant\Catering\CateringLineCostController::class, 'quoteRate'])->name('tenant.catering.estimate-lines.quoted-rate');
                     Route::post('/catering/estimate-lines/{cateringEstimateLine}/use-calculated-rate', [\App\Http\Controllers\Tenant\Catering\CateringLineCostController::class, 'useCalculatedRate'])->name('tenant.catering.estimate-lines.use-calculated-rate');
 

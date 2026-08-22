@@ -123,6 +123,10 @@ class CateringEventController extends Controller
 
         $event = $this->estimates->createEvent($data, $request->user()?->id);
 
+        // KASHIF-EVENT-HISTORY-1: the booking's first remembered state.
+        app(\App\Services\Catering\CateringEventHistoryService::class)
+            ->record($event, 'created', $request->user()?->id);
+
         // KASHIF-CATERING-REDIRECT-FIX-1 — url(), not route().
         //
         // Tenant routes live under Route::domain('{subdomain}.…'), so the FIRST
@@ -240,7 +244,37 @@ class CateringEventController extends Controller
             'position' => $finance->position($cateringEvent),
             'headline' => $finance->headline($cateringEvent),
             'ledger' => $finance->ledger($cateringEvent),
+            // KASHIF-EVENT-HISTORY-1: the unified timeline + every quotation
+            // version, for the History panel.
+            'revisions' => \App\Models\Tenant\CateringEventRevision::where('catering_event_id', $cateringEvent->id)
+                ->with('changedBy:id,name')
+                ->orderByDesc('changed_at')->orderByDesc('id')
+                ->limit(100)->get(),
+            'versions' => $cateringEvent->estimates()->orderByDesc('version_no')
+                ->get(['id', 'version_no', 'status', 'grand_total', 'updated_at', 'sent_at']),
         ]);
+    }
+
+    /**
+     * KASHIF-EVENT-HISTORY-1 — "Is halat par wapas jao". The operator sees the
+     * event overwritten back to a remembered state; the record sees a new step.
+     * Money and released production are untouched by construction.
+     */
+    public function revertRevision(Request $request, CateringEvent $cateringEvent, \App\Models\Tenant\CateringEventRevision $revision)
+    {
+        if ((int) $revision->catering_event_id !== (int) $cateringEvent->id) {
+            abort(404);
+        }
+
+        try {
+            app(\App\Services\Catering\CateringEventHistoryService::class)
+                ->revertTo($revision, $request->user()?->id);
+        } catch (RuntimeException $e) {
+            return back()->withErrors(['event' => $e->getMessage()]);
+        }
+
+        return redirect()->to('/catering/events/'.$cateringEvent->id)
+            ->with('status', 'Event reverted to the '.app(\App\Support\TenantClock::class)->format($revision->changed_at, 'd M Y g:i A').' state.');
     }
 
     public function edit(CateringEvent $cateringEvent)
@@ -267,6 +301,9 @@ class CateringEventController extends Controller
 
             return back()->withErrors(['event' => $e->getMessage()])->withInput();
         }
+
+        app(\App\Services\Catering\CateringEventHistoryService::class)
+            ->record($cateringEvent->refresh(), 'updated', $request->user()?->id);
 
         // KASHIF-CATERING-NO-RELOAD-2: the offcanvas closes and re-renders the
         // workspace in place from this answer; nothing navigates.
