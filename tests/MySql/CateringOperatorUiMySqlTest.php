@@ -216,14 +216,21 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
         // exactly why this panel could never appear on the draft screen before.
         $this->assertStringContainsString('data-act=', $html);
         $this->assertStringContainsString('/customer-supplied', $html);
-        $this->assertStringContainsString('Customer will provide this', $html);
-        // KASHIF-LEGACY-ALIGN-6: customer-supplied is a CHECKBOX now — state
-        // visible at a glance, posting through the same pipeline.
-        $this->assertStringContainsString('form-check-input js-act', $html);
+        // KASHIF-COSTPANEL-SIMPLE-1: two plain questions per material — kitchen
+        // needs how much, and of that the customer brings how much. The two
+        // share boxes are LINKED; the panel carries NO duplicate rate control.
+        $this->assertStringContainsString('Kitchen needs', $html);
+        $this->assertStringContainsString('Customer dega', $html);
+        $this->assertStringContainsString('Hum denge', $html);
+        $this->assertStringContainsString('supply-split', $html);
+        $this->assertStringContainsString('change rate', $html, 'the part\'s system rate is changeable right beside it');
+        $this->assertStringContainsString('/rate', $html);
+        $this->assertStringContainsString('Recipe says', $html);
+        $this->assertStringNotContainsString('Quote a different rate', $html,
+            'ONE rate control — the row\'s Quoted Rate box; the panel never duplicates it');
         // KASHIF-LEGACY-ALIGN-5: one click quotes a line complimentary through
         // the same override authority.
         $this->assertStringContainsString('Complimentary?', $html);
-        $this->assertStringContainsString('Quote a different rate', $html);
         $this->assertStringContainsString('event_material_qty', $html);
         $this->assertStringNotContainsString('rate_basis</', $html,
             'schema words stay out of the operator screen');
@@ -255,7 +262,9 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
 
         $this->assertStringContainsString('wedding package agreed rate', $html);
         $this->assertStringContainsString('agreed rate', $html);
-        $this->assertStringContainsString('Use calculated rate', $html);
+        // The way back lives in the SAME row control: typing the calculated
+        // figure puts the line back on the calculation. The panel says so.
+        $this->assertStringContainsString('puts the line back on the calculation', $html);
         $this->assertStringContainsString('500.00', $html);
     }
 

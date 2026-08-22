@@ -80,6 +80,28 @@ class CateringLineCostController extends Controller
         return $this->backToEvent($costBlock->line, $status);
     }
 
+    /**
+     * KASHIF-COSTPANEL-SIMPLE-1 — this booking's rate for one part. The dish's
+     * own block never moves; a hand-set rate leaves the house rate book.
+     */
+    public function chargedRate(Request $request, CateringEstimateLineCostBlock $costBlock)
+    {
+        $data = $request->validate([
+            'rate' => ['required', 'numeric', 'min:0'],
+        ]);
+
+        try {
+            $this->lineBlocks->setChargedRate($costBlock, (float) $data['rate']);
+        } catch (RuntimeException $e) {
+            return back()->withErrors(['cost_block' => $e->getMessage()]);
+        }
+
+        return $this->backToEvent($costBlock->line, sprintf(
+            '%s now charges %s for this booking only — the dish itself is untouched.',
+            $costBlock->label, number_format((float) $data['rate'], 2),
+        ));
+    }
+
     /** Put it back on the dish's own ratio. */
     public function resetMaterial(CateringEstimateLineCostBlock $costBlock)
     {

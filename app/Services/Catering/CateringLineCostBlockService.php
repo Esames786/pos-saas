@@ -205,6 +205,9 @@ class CateringLineCostBlockService
             //   split  — a positive quantity, clamped to what the dish needs;
             //            meaningless without a tracked material quantity.
             //   ours   — neither.
+            // A split that reaches (or over-types past) the whole requirement
+            // IS the full case, and is normalized to the flag so every reader —
+            // rate impact, prints, the panel — sees one truth for it.
             if ($supplied) {
                 $suppliedQty = null;
             } elseif ($suppliedQty !== null && $suppliedQty > 0) {
@@ -214,7 +217,12 @@ class CateringLineCostBlockService
                         .'Set its quantity first, or mark the whole material customer-supplied.'
                     );
                 }
-                $suppliedQty = round(min($suppliedQty, $locked->physicalRequirement()), 4);
+                if ($suppliedQty >= $locked->physicalRequirement()) {
+                    $supplied = true;
+                    $suppliedQty = null;
+                } else {
+                    $suppliedQty = round($suppliedQty, 4);
+                }
             } else {
                 $suppliedQty = null;
             }
@@ -222,6 +230,31 @@ class CateringLineCostBlockService
             $locked->forceFill([
                 'is_customer_supplied' => $supplied,
                 'customer_supplied_qty' => $suppliedQty,
+            ])->save();
+
+            $this->refreshSnapshotAmount($locked);
+            $this->repriceLocked($line);
+        });
+    }
+
+    /**
+     * KASHIF-COSTPANEL-SIMPLE-1 — change what this part CHARGES, for this
+     * booking only. The dish's own block never moves, and a hand-set rate
+     * stops following the house rate book — otherwise tomorrow's book update
+     * would silently overwrite a number somebody chose on purpose tonight.
+     */
+    public function setChargedRate(CateringEstimateLineCostBlock $snapshot, float $rate): void
+    {
+        if ($rate < 0) {
+            throw new RuntimeException('A rate cannot be negative.');
+        }
+
+        DB::connection('tenant')->transaction(function () use ($snapshot, $rate) {
+            [, $line, $locked] = $this->locks->editableSnapshot($snapshot);
+
+            $locked->forceFill([
+                'rate' => round($rate, 4),
+                'commercial_rate_source' => \App\Models\Tenant\CateringProductCostBlock::SOURCE_MANUAL,
             ])->save();
 
             $this->refreshSnapshotAmount($locked);

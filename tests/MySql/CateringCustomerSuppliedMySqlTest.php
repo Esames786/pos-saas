@@ -194,17 +194,41 @@ class CateringCustomerSuppliedMySqlTest extends MySqlTenantTestCase
         $this->assertSame(1810.0, (float) $estimate->refresh()->subtotal, '362 × 5 KG');
     }
 
-    public function test_a_split_larger_than_the_requirement_is_clamped_to_it(): void
+    public function test_a_split_reaching_the_whole_requirement_normalizes_to_the_full_flag(): void
     {
         $estimate = $this->draft(5);
         $line = $this->line($estimate);
 
+        // Over-typed 99, requirement 2.5 — that IS "the customer brings all",
+        // and every reader (prints, rate impact, the panel) sees one truth.
         $this->lineBlocks->setCustomerSupplied($this->snapshot($line, 'Chicken'), false, 99.0);
 
         $chicken = $this->snapshot($line->refresh(), 'Chicken');
-        $this->assertEqualsWithDelta(2.5, $chicken->suppliedQty(), 0.001, 'clamped — never more than the dish needs');
+        $this->assertTrue($chicken->isCustomerSupplied(), 'normalized to the full flag');
+        $this->assertNull($chicken->customer_supplied_qty);
+        $this->assertEqualsWithDelta(2.5, $chicken->suppliedQty(), 0.001);
         $this->assertSame(0.0, $chicken->ourStockRequirement());
         $this->assertSame(0.0, round((float) $chicken->amount, 2), 'billable balance is zero, never negative');
+    }
+
+    public function test_a_booking_only_rate_change_moves_this_line_and_leaves_the_book(): void
+    {
+        $estimate = $this->draft(5);
+        $line = $this->line($estimate);
+
+        // KASHIF-COSTPANEL-SIMPLE-1: chicken charged at 120 for THIS booking.
+        $this->lineBlocks->setChargedRate($this->snapshot($line, 'Chicken'), 120.0);
+
+        $chicken = $this->snapshot($line->refresh(), 'Chicken');
+        $this->assertSame(120.0, (float) $chicken->rate);
+        $this->assertSame('manual', $chicken->rateSource(), 'a hand-set rate stops following the house book');
+        // 2.5 KG × 120 = 300 (was 250); per-unit 60 + rice 32 + making 300 = 392.
+        $this->assertSame(300.0, round((float) $chicken->amount, 2));
+        $this->assertSame(392.0, (float) $line->refresh()->calculated_rate);
+
+        // The dish's own master block never moved.
+        $this->assertSame(100.0, (float) CateringProductCostBlock::where('product_id', $this->biryaniId)
+            ->where('label', 'Chicken')->value('rate'));
     }
 
     public function test_clearing_the_split_restores_the_full_charge(): void
@@ -561,8 +585,11 @@ class CateringCustomerSuppliedMySqlTest extends MySqlTenantTestCase
         $html = file_get_contents(base_path('resources/views/tenant/catering/events/show.blade.php'))
             .file_get_contents(base_path('resources/views/tenant/catering/events/partials/line-cost-details.blade.php'));
 
-        $this->assertStringContainsString('Customer will provide this', $html);
-        $this->assertStringContainsString('Customer provides', $html);
+        // KASHIF-COSTPANEL-SIMPLE-1: the two shares are two LINKED boxes whose
+        // sum is always the kitchen total.
+        $this->assertStringContainsString('Customer dega', $html);
+        $this->assertStringContainsString('Hum denge', $html);
+        $this->assertStringContainsString('supply-split', $html);
         $this->assertStringContainsString('we issue 0', $html,
             'the screen must say the store hands over nothing while the kitchen still needs it');
     }

@@ -4,14 +4,20 @@
      view both include this. It reads the LINE SNAPSHOT, never the product
      master: the quotation explains itself from what was quoted.
 
+     KASHIF-COSTPANEL-SIMPLE-1: one rate, one place — the row's Quoted Rate box
+     is the ONLY place the item's final rate is set; this panel deliberately
+     carries no duplicate of it. Per part, the operator answers two plain
+     questions: kitchen ko kitna chahiye, aur us mein se customer kitna dega —
+     two LINKED boxes whose sum is always the kitchen total.
+
      Draft actions deliberately use [data-act] + .js-act (a page-level helper
      posts them from a dynamically built form) instead of inline <form> tags:
      inside the draft builder this markup lives within the estimate <form>,
-     and HTML silently drops nested forms — the old reason these controls
-     could never appear where drafts actually needed them. --}}
+     and HTML silently drops nested forms. --}}
 @php
     $blocks = $line->costBlocks;
     $editable = $current->isDraft() && $event->isOpen();
+    $fmtQty = fn ($q) => rtrim(rtrim(number_format((float) $q, 4, '.', ''), '0'), '.');
 
     // KASHIF-LEGACY-ALIGN-2 — the old software's one-glance strip, computed
     // from the SAME snapshot numbers the table below shows. Read-only by
@@ -19,9 +25,6 @@
     $stripQty = (float) $line->quantity;
     $stripPerUnit = fn ($b) => $stripQty > 0 ? round(((float) $b->amount) / $stripQty, 2) : 0.0;
     $stripMaking = $blocks->first(fn ($b) => $b->isMaking());
-    // The headline material is the physically biggest one, judged by what it
-    // WOULD bill (qty × charged rate) — so a customer-supplied Beef, billed 0,
-    // still owns its box instead of quietly handing it to Rice.
     $stripNotional = fn ($b) => $b->isPerMaterialUnit()
         ? (float) ($b->event_material_qty ?? 0) * (float) $b->rate
         : (float) $b->amount;
@@ -54,7 +57,7 @@
                 @if($stripPrimary->isCustomerSupplied())
                     <div class="fs-12 text-success-emphasis">customer provides · <span dir="rtl">گاہک دے گا</span></div>
                 @elseif($stripPrimary->isPartiallyCustomerSupplied())
-                    <div class="fs-12 text-success-emphasis">split · <span dir="rtl">گاہک</span> {{ rtrim(rtrim(number_format($stripPrimary->suppliedQty(), 4), '0'), '.') }} {{ $stripPrimary->unit_code }}</div>
+                    <div class="fs-12 text-success-emphasis">split · <span dir="rtl">گاہک</span> {{ $fmtQty($stripPrimary->suppliedQty()) }} {{ $stripPrimary->unit_code }}</div>
                 @endif
             </div>
         @endif
@@ -88,6 +91,7 @@
         Quoted at {{ number_format($line->rate, 2) }} instead of the calculated
         {{ number_format($line->calculated_rate, 2) }} —
         <em>{{ $line->rate_override_reason }}</em>
+        <span class="fs-12 d-block mt-1">Change it in the row's Quoted Rate box — typing the calculated figure puts the line back on the calculation.</span>
     </div>
 @endif
 
@@ -97,7 +101,7 @@
             <tr>
                 <th>Part</th>
                 <th class="text-end">Customer charge</th>
-                <th class="text-end">Kitchen uses</th>
+                <th class="text-end" style="min-width:330px">Kitchen uses &amp; supply</th>
                 <th class="text-end">Costs us</th>
                 <th class="text-end">Contribution</th>
             </tr>
@@ -118,12 +122,13 @@
                     @if($block->is_overridden)
                         <span class="badge bg-warning-subtle text-warning-emphasis fs-12">this event</span>
                     @endif
-                    @if($block->isCustomerSupplied())
-                        <span class="badge bg-success-subtle text-success-emphasis fs-12">Customer provides</span>
-                    @endif
                 </td>
                 <td class="text-end">
-                    {{ number_format($block->rate, 2) }}
+                    {{-- KASHIF-COSTPANEL-SIMPLE-1: the part's SYSTEM RATE, right
+                         beside it, changeable for THIS BOOKING ONLY. The dish's
+                         own block never moves; a hand-set rate stops following
+                         the house rate book. --}}
+                    <span class="fw-semibold">{{ number_format($block->rate, 2) }}</span>
                     <div class="fs-12 text-muted">
                         @if($block->isLumpSum())
                             charged once
@@ -133,102 +138,98 @@
                             per {{ $line->unit_code ?? 'unit' }} dish
                         @endif
                     </div>
+                    @if($editable)
+                        @can('tenant.catering.estimates.update')
+                        <div class="rate-edit d-none mt-1"
+                             data-act="{{ url('/catering/line-cost-blocks/' . $block->id . '/rate') }}"
+                             data-act-method="PUT">
+                            <div class="d-inline-flex gap-1 align-items-center">
+                                <input type="number" step="0.01" min="0" data-field="rate"
+                                       value="{{ rtrim(rtrim(number_format((float) $block->rate, 4, '.', ''), '0'), '.') }}"
+                                       class="form-control form-control-sm text-end" style="width:100px">
+                                <button type="button" class="btn btn-sm btn-light js-act" title="Use this rate for this booking only">
+                                    <i class="ti ti-check"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-link btn-sm p-0 fs-12 js-rate-toggle">change rate</button>
+                        @endcan
+                    @endif
                 </td>
                 <td class="text-end">
                     @if($block->isMaterial() && $block->event_material_qty !== null)
                         @if($editable)
-                            {{-- Editable only while the quotation is a draft: a
-                                 sent one's costing is history. --}}
                             @can('tenant.catering.estimates.update')
+                            {{-- Question 1: kitchen ko kitna chahiye? --}}
                             <div class="d-inline-flex gap-1 align-items-center"
                                  data-act="{{ url('/catering/line-cost-blocks/' . $block->id) }}"
                                  data-act-method="PUT">
+                                <span class="fs-12 text-muted">Kitchen needs</span>
                                 <input type="number" step="0.0001" min="0" data-field="event_material_qty"
-                                       value="{{ rtrim(rtrim(number_format($block->event_material_qty, 4, '.', ''), '0'), '.') }}"
-                                       class="form-control form-control-sm text-end" style="width:90px">
+                                       value="{{ $fmtQty($block->event_material_qty) }}"
+                                       class="form-control form-control-sm text-end" style="width:85px">
                                 <span class="fs-12 text-muted">{{ $block->unit_code }}</span>
                                 <button type="button" class="btn btn-sm btn-light js-act" title="Use this quantity for this booking only">
                                     <i class="ti ti-check"></i>
                                 </button>
                             </div>
+
+                            {{-- Question 2: us mein se kaun kitna dega? Two
+                                 LINKED boxes — the sum is ALWAYS the kitchen
+                                 total, so the two shares can never contradict.
+                                 Customer 0 = hum sab; customer = total = poora
+                                 customer ka (the service normalizes that to the
+                                 full flag). Only the customer share posts. --}}
+                            <div class="d-inline-flex gap-1 align-items-center mt-1 supply-split"
+                                 data-total="{{ $fmtQty($block->physicalRequirement()) }}"
+                                 data-act="{{ url('/catering/line-cost-blocks/' . $block->id . '/customer-supplied') }}"
+                                 data-act-method="PUT">
+                                <input type="hidden" data-field="is_customer_supplied" value="0">
+                                <span class="fs-12">Customer dega · <span dir="rtl">گاہک</span></span>
+                                <input type="number" step="0.0001" min="0" data-field="customer_supplied_qty"
+                                       value="{{ $block->suppliedQty() > 0 ? $fmtQty($block->suppliedQty()) : '0' }}"
+                                       class="form-control form-control-sm text-end split-customer" style="width:75px">
+                                <span class="fs-12">Hum denge · <span dir="rtl">ہم</span></span>
+                                <input type="number" step="0.0001" min="0"
+                                       value="{{ $fmtQty($block->billableQty()) }}"
+                                       class="form-control form-control-sm text-end split-ours" style="width:75px">
+                                <button type="button" class="btn btn-sm btn-light js-act" title="Save the split">
+                                    <i class="ti ti-check"></i>
+                                </button>
+                            </div>
+
+                            <div class="fs-12 text-muted mt-1">
+                                Recipe says: {{ $fmtQty($block->default_material_qty) }} {{ $block->unit_code }}
+                                @if($block->is_overridden)
+                                    · <span class="d-inline"
+                                          data-act="{{ url('/catering/line-cost-blocks/' . $block->id . '/reset') }}"
+                                          data-act-method="POST">
+                                        <button type="button" class="btn btn-link btn-sm p-0 align-baseline fs-12 js-act">back to the recipe</button>
+                                    </span>
+                                @endif
+                            </div>
                             @else
-                                {{ rtrim(rtrim(number_format($block->event_material_qty, 4), '0'), '.') }}
-                                {{ $block->unit_code }}
+                                {{ $fmtQty($block->event_material_qty) }} {{ $block->unit_code }}
                             @endcan
                         @else
-                            {{ rtrim(rtrim(number_format($block->event_material_qty, 4), '0'), '.') }}
-                            {{ $block->unit_code }}
+                            {{ $fmtQty($block->event_material_qty) }} {{ $block->unit_code }}
                         @endif
 
-                        {{-- Two facts at once: the kitchen still needs it, and
-                             our store hands over none of it — or, on a split,
-                             only the billable balance. --}}
-                        @php $fmtQty = fn ($q) => rtrim(rtrim(number_format((float) $q, 4), '0'), '.'); @endphp
+                        {{-- The state, in one plain sentence. --}}
                         @if($block->isCustomerSupplied())
                             <div class="fs-12 text-success-emphasis">
-                                customer provides it · we issue 0
+                                customer brings ALL {{ $fmtQty($block->physicalRequirement()) }} {{ $block->unit_code }} · we issue 0 · charge 0
                             </div>
                         @elseif($block->isPartiallyCustomerSupplied())
                             <div class="fs-12 text-success-emphasis">
-                                customer brings {{ $fmtQty($block->suppliedQty()) }} {{ $block->unit_code }}
-                                · we issue &amp; charge {{ $fmtQty($block->billableQty()) }} {{ $block->unit_code }}
+                                customer {{ $fmtQty($block->suppliedQty()) }} {{ $block->unit_code }} ·
+                                we issue &amp; charge {{ $fmtQty($block->billableQty()) }} {{ $block->unit_code }}
                             </div>
                         @endif
-
-                        @if($editable)
-                            @can('tenant.catering.estimates.update')
-                            {{-- KASHIF-LEGACY-ALIGN-6: a CHECKBOX, not a link —
-                                 the state is visible at a glance, ticking it
-                                 posts through the same [data-act] pipeline. The
-                                 hidden field always carries the OPPOSITE of the
-                                 rendered state: a click means "switch". --}}
-                            <div class="form-check mt-1 text-start d-inline-block"
-                                 data-act="{{ url('/catering/line-cost-blocks/' . $block->id . '/customer-supplied') }}"
-                                 data-act-method="PUT">
-                                <input type="hidden" data-field="is_customer_supplied"
-                                       value="{{ $block->isCustomerSupplied() ? 0 : 1 }}">
-                                <input type="checkbox" class="form-check-input js-act" id="cs-{{ $block->id }}"
-                                       @checked($block->isCustomerSupplied())>
-                                <label class="form-check-label fs-12" for="cs-{{ $block->id }}">
-                                    Customer will provide this · <span dir="rtl">گاہک دے گا</span>
-                                </label>
-                            </div>
-
-                            {{-- KASHIF-PARTIAL-SUPPLY-1: the split. "Customer
-                                 brings 5 of the 10" — we bill and issue only the
-                                 balance. Posting 0 clears the split. --}}
-                            @if(! $block->isCustomerSupplied() && $block->event_material_qty !== null)
-                                <div class="d-inline-flex align-items-center gap-1 mt-1"
-                                     data-act="{{ url('/catering/line-cost-blocks/' . $block->id . '/customer-supplied') }}"
-                                     data-act-method="PUT">
-                                    <input type="hidden" data-field="is_customer_supplied" value="0">
-                                    <span class="fs-12 text-muted">customer brings</span>
-                                    <input type="number" step="0.0001" min="0" data-field="customer_supplied_qty"
-                                           value="{{ $block->isPartiallyCustomerSupplied() ? rtrim(rtrim(number_format($block->suppliedQty(), 4, '.', ''), '0'), '.') : '' }}"
-                                           class="form-control form-control-sm text-end" style="width:80px"
-                                           placeholder="0">
-                                    <span class="fs-12 text-muted">{{ $block->unit_code }} · <span dir="rtl">گاہک کا حصہ</span></span>
-                                    <button type="button" class="btn btn-sm btn-light js-act"
-                                            title="Split the supply — we bill only the balance">
-                                        <i class="ti ti-check"></i>
-                                    </button>
-                                </div>
-                            @endif
-                            @endcan
-                        @endif
-
-                        @if($block->is_overridden)
+                        @if($block->isPerMaterialUnit() && ! $block->isCustomerSupplied())
                             <div class="fs-12 text-muted">
-                                dish says {{ rtrim(rtrim(number_format($block->default_material_qty, 4), '0'), '.') }}
-                                @if($editable)
-                                    @can('tenant.catering.estimates.update')
-                                    <span class="d-inline"
-                                          data-act="{{ url('/catering/line-cost-blocks/' . $block->id . '/reset') }}"
-                                          data-act-method="POST">
-                                        <button type="button" class="btn btn-link btn-sm p-0 align-baseline fs-12 js-act">Reset</button>
-                                    </span>
-                                    @endcan
-                                @endif
+                                charge: {{ $fmtQty($block->billableQty()) }} × {{ number_format($block->rate, 2) }}
+                                = {{ number_format((float) $block->amount, 2) }}
                             </div>
                         @endif
                     @else
@@ -259,47 +260,15 @@
     </table>
 </div>
 
-@if($editable)
-    @can('tenant.catering.estimates.update')
-    <div class="row g-2 align-items-end mt-2"
-         data-act="{{ url('/catering/estimate-lines/' . $line->id . '/quoted-rate') }}"
-         data-act-method="PUT">
-        <div class="col-auto">
-            <label class="form-label fs-12 text-muted mb-1">Quote a different rate</label>
-            <input type="number" step="0.01" min="0" data-field="quoted_rate"
-                   value="{{ number_format($line->rate, 2, '.', '') }}"
-                   class="form-control form-control-sm" style="width:120px">
-        </div>
-        <div class="col-md-5">
-            <label class="form-label fs-12 text-muted mb-1">Why</label>
-            <input type="text" data-field="reason" maxlength="255"
-                   value="{{ $line->rate_override_reason }}"
-                   class="form-control form-control-sm"
-                   placeholder="e.g. wedding package agreed rate">
-        </div>
-        <div class="col-auto">
-            <button type="button" class="btn btn-sm btn-outline-primary js-act">Use this rate</button>
-        </div>
-    </div>
-
-    @if($line->hasQuotedRateOverride())
-        <div class="mt-2"
-             data-act="{{ url('/catering/estimate-lines/' . $line->id . '/use-calculated-rate') }}"
-             data-act-method="POST">
-            <button type="button" class="btn btn-link btn-sm p-0 fs-12 js-act">
-                Use calculated rate ({{ number_format($line->calculated_rate, 2) }}) instead
-            </button>
-        </div>
-    @endif
-    @endcan
-@endif
+{{-- KASHIF-COSTPANEL-SIMPLE-1: the panel carries NO quoted-rate control any
+     more. One rate, one place — the row's Quoted Rate box above. --}}
 
 <div class="text-muted fs-12 mt-2">
     <strong>Customer charge</strong> is what this part adds to the bill.
-    <strong>Kitchen uses</strong> is what leaves the store.
-    <strong>Costs us</strong> is that quantity at the
+    <strong>Kitchen uses &amp; supply</strong> is what the kitchen needs and who brings it.
+    <strong>Costs us</strong> is our share at the
     <a href="{{ url('/catering/material-rates') }}">Material Rate Book</a> rate
     when this was quoted. They are meant to differ — the gap is the margin.
-    Changing a quantity here affects <strong>this booking only</strong> — never the
+    Everything here affects <strong>this booking only</strong> — never the
     dish, and never another quotation.
 </div>
