@@ -93,9 +93,17 @@
             credentials: 'same-origin',
             headers: {'X-Requested-With': 'XMLHttpRequest'},
         }).then(function (r) {
-            // An action that legitimately leads somewhere else still navigates.
+            // Only a FOLLOWED REDIRECT may navigate. An error served straight
+            // from the action URL (419 session expiry, 500) must never send
+            // the browser THERE — a GET on a POST/PUT action is exactly the
+            // 'Method Not Allowed' screen an operator once hit. A fresh reload
+            // of the booking page recovers the session and their place.
+            if (! r.redirected && ! r.ok) {
+                window.location.reload();
+                return null;
+            }
             var finalPath = new URL(r.url, window.location.origin).pathname;
-            if (finalPath !== window.location.pathname) {
+            if (r.redirected && finalPath !== window.location.pathname) {
                 window.location.assign(r.url);
                 return null;
             }
