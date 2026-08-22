@@ -253,12 +253,59 @@ class CateringClientMenuBootstrapMySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('SAFETY VIOLATION', $src, 'the command self-checks GL/stock after running');
     }
 
+    public function test_market_estimates_price_the_food_bands_and_only_them(): void
+    {
+        $this->seeder->run();
+        $this->seeder->runRepresentatives();
+        $stats = $this->seeder->runMarketEstimates();
+
+        $this->assertGreaterThan(300, $stats['priced'], 'the chicken/beef/mutton and staple bands all price');
+
+        $blocks = app(CateringCostBlockService::class);
+        $rate = fn (string $name) => $blocks->rateFor(Product::where('name', $name)->orderBy('id')->value('id'));
+
+        // Pakistan-market band figures, exact via the Making balance.
+        $this->assertSame(1400.0, $rate('Handi Chicken'), 'main-dish chicken band');
+        $this->assertSame(750.0, $rate('Biryani Masala Beef Boneless'), 'biryani beef band');
+        $this->assertSame(1700.0, $rate('Kunna Beef'), 'main-dish beef band');
+        $this->assertSame(500.0, $rate('Burani Raita Tadka'), 'raita band');
+
+        // Representatives keep their 8701 evidence — the market pass never
+        // touches an already-quotable dish.
+        $this->assertSame(1405.0, $rate('Karahi Chicken'));
+        $this->assertSame(3375.0, $rate('Biryani Masala Beef'));
+
+        // Every generated block confesses what it is, and Making is role-classified.
+        $handiId = Product::where('name', 'Handi Chicken')->value('id');
+        foreach (CateringProductCostBlock::where('product_id', $handiId)->get() as $b) {
+            $this->assertStringContainsString('market estimate — owner to confirm', $b->label);
+        }
+        $this->assertTrue(CateringProductCostBlock::where('product_id', $handiId)
+            ->where('charge_role', CateringProductCostBlock::ROLE_MAKING)->exists());
+
+        // What has no honest template stays needs-setup: fish (no material),
+        // platters (unknown composition), non-food service variants.
+        foreach (['Biryani Masala Fish', 'Vip Waiters'] as $name) {
+            $id = Product::where('name', $name)->value('id');
+            if ($id) {
+                $this->assertFalse((bool) \App\Models\Tenant\CateringProductProfile::where('product_id', $id)->value('catering_enabled'),
+                    $name.' must stay needs-setup');
+            }
+        }
+
+        // Rerun: same counts, nothing duplicated, evidence intact.
+        $this->seeder->runMarketEstimates();
+        $this->assertSame(1400.0, $rate('Handi Chicken'));
+        $this->assertSame(1405.0, $rate('Karahi Chicken'));
+    }
+
     public function test_the_whole_bootstrap_touches_neither_stock_nor_ledger(): void
     {
         $before = $this->ledgers();
 
         $this->seeder->run();
         $this->seeder->runRepresentatives();
+        $this->seeder->runMarketEstimates();
         $this->seeder->retireGenericUatProfiles();
         $this->seeder->runLegacyOrders();
 

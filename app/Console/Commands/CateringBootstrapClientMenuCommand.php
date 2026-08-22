@@ -62,6 +62,7 @@ class CateringBootstrapClientMenuCommand extends Command
         $seeder = new KashifClientMenuSeeder;
         $seeder->run();
         $seeder->runRepresentatives();
+        $marketStats = $seeder->runMarketEstimates();
         $seeder->retireGenericUatProfiles();
         $seeder->runLegacyOrders();
 
@@ -86,8 +87,9 @@ class CateringBootstrapClientMenuCommand extends Command
             ->count();
 
         $this->info(sprintf(
-            '[%s] client menu bootstrapped: %d catalogue items (KM-*), %d quotation-ready profiles, %d visible-but-needs-setup, events %d→%d (legacy 8701/8704 references idempotent). GL and stock untouched.',
+            '[%s] client menu bootstrapped: %d catalogue items (KM-*), %d quotation-ready profiles, %d visible-but-needs-setup, events %d→%d (legacy 8701/8704 references idempotent). Market estimates: %d priced, %d no-honest-template, %d owner-authored untouched. GL and stock untouched.',
             $code, $menuCount, $ready, $needsSetup, $before['events'], $db->table('catering_events')->count(),
+            $marketStats['priced'], $marketStats['skipped_no_template'], $marketStats['skipped_owner_authored'],
         ));
 
         return self::SUCCESS;

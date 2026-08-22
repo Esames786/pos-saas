@@ -45,6 +45,8 @@ use Illuminate\Support\Str;
  */
 class KashifClientMenuSeeder extends Seeder
 {
+    use Concerns\SeedsMarketEstimates;
+
     public const SKU_PREFIX = 'KM-';
 
     public const LEGACY_8701_MARK = 'Legacy Order 8701 reference — client UAT';
@@ -322,6 +324,10 @@ class KashifClientMenuSeeder extends Seeder
     {
         // Idempotent: this seeder owns these blocks; rebuild deterministically,
         // but ONLY when the set differs — an owner's later manual edit wins.
+        $suffix = ($def['evidence'] ?? null) === 'market'
+            ? 'market estimate — owner to confirm'
+            : self::ASSUMPTION;
+
         $wanted = [];
         $order = 0;
         $materialCharge = 0.0;
@@ -331,7 +337,7 @@ class KashifClientMenuSeeder extends Seeder
             $material = $this->material($label, $sku);
             $materialCharge += $ratio * $charged;
             $wanted[] = [
-                'label' => $label.' — '.self::ASSUMPTION,
+                'label' => $label.' — '.$suffix,
                 'block_type' => CateringProductCostBlock::TYPE_MATERIAL,
                 'material_product_id' => $material->id,
                 'quantity_per_unit' => $ratio,
@@ -351,7 +357,7 @@ class KashifClientMenuSeeder extends Seeder
             $making = round($def['rate'] - $materialCharge, 2);
             $evidence = ($def['evidence'] ?? '') === '8701'
                 ? 'total from legacy order 8701; split is a '.self::ASSUMPTION
-                : self::ASSUMPTION;
+                : $suffix;
             $wanted[] = [
                 'label' => 'Making — '.$evidence,
                 'block_type' => CateringProductCostBlock::TYPE_CHARGE,
@@ -369,7 +375,7 @@ class KashifClientMenuSeeder extends Seeder
         foreach ($def['charges'] ?? [] as [$label, $rate, $basis]) {
             $order++;
             $wanted[] = [
-                'label' => $label.' — '.self::ASSUMPTION,
+                'label' => $label.' — '.$suffix,
                 'block_type' => CateringProductCostBlock::TYPE_CHARGE,
                 'material_product_id' => null,
                 'quantity_per_unit' => null,
@@ -399,7 +405,7 @@ class KashifClientMenuSeeder extends Seeder
         if ($fingerprint($wanted) === $existingPrint) {
             return; // already exactly as seeded — nothing to touch
         }
-        if ($existing->isNotEmpty() && ! str_contains($existingPrint, self::ASSUMPTION)) {
+        if ($existing->isNotEmpty() && ! str_contains($existingPrint, 'owner to confirm')) {
             return; // an owner-authored setup exists — never overwrite a person
         }
 
