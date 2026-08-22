@@ -24,6 +24,7 @@ class ReceiptLayoutSetting extends Model
         'show_order_no', 'show_order_time', 'show_updated_time', 'show_print_time',
         'show_item_codes', 'show_payment_breakdown', 'show_bingoo_branding',
         'show_delivery_details', 'show_vehicle_number', 'show_order_type',
+        'show_column_dividers', 'show_category_header',
     ];
 
     public const SUPPORTED_DOCUMENT_TYPES = ['receipt', 'kot', 'reminder'];
@@ -38,7 +39,9 @@ class ReceiptLayoutSetting extends Model
         'show_order_time', 'show_updated_time', 'show_print_time',
         'show_item_codes', 'show_payment_breakdown', 'show_bingoo_branding',
         'show_delivery_details', 'show_vehicle_number', 'show_order_type',
-        'header_text', 'footer_text', 'font_size', 'kot_font_size', 'is_active',
+        'show_column_dividers', 'show_category_header',
+        'header_text', 'footer_text', 'font_size', 'kot_font_size',
+        'item_font_size', 'time_font_size', 'is_active',
     ];
 
     protected function casts(): array
@@ -62,9 +65,13 @@ class ReceiptLayoutSetting extends Model
             'show_delivery_details'   => 'boolean',
             'show_vehicle_number'     => 'boolean',
             'show_order_type'         => 'boolean',
+            'show_column_dividers'    => 'boolean',
+            'show_category_header'    => 'boolean',
             'is_active'               => 'boolean',
             'font_size'               => 'integer',
             'kot_font_size'           => 'integer',
+            'item_font_size'          => 'integer',
+            'time_font_size'          => 'integer',
         ];
     }
 

@@ -19,6 +19,15 @@
             $cols   = max((int) floor(42 / $scaleW), 8);
             // Courier advances 0.6em per character, so this many chars exactly fill the paper.
             $bigFont = 'calc(' . $width . ' / ' . ($cols * 0.6) . ')';
+
+            // Item rows carry their own size (item_font_size) so the kitchen can shrink them below
+            // the big heading — mirrors EscPosPayloadService's $rowBig. Null = the KOT font.
+            $itemFontSize = $layout?->item_font_size ?? $fontSize;
+            $iScaleW = match (true) { $itemFontSize <= 17 => 1, $itemFontSize <= 20 => 2, default => 3 };
+            $iScaleH = match (true) { $itemFontSize <= 14 => 1, $itemFontSize <= 17 => 2, $itemFontSize <= 20 => 2, default => 3 };
+            $iCols   = max((int) floor(42 / $iScaleW), 8);
+            $itemFont = 'calc(' . $width . ' / ' . ($iCols * 0.6) . ')';
+            $dividers = (bool) ($layout?->show_column_dividers ?? false);
         @endphp
         /* Without an @page rule the browser used its own page size and ~10mm margins, which on a
            continuous roll prints a blank band above the ticket and wastes paper below it. */
@@ -40,11 +49,19 @@
         /* Taller but not wider: the glyphs stretch vertically, the line still holds 42 characters. */
         .big     { display: block; transform: scaleY({{ $scaleH }}); transform-origin: left top; margin-bottom: {{ ($scaleH - 1) * 1.2 }}em; }
         @endif
+        /* Item-row scale, its own character budget from item_font_size. */
+        .ibig    { font-size: {{ $itemFont }}; font-weight: bold; line-height: 1.15; overflow-wrap: break-word; }
+        @if($iScaleH > $iScaleW)
+        .ibig    { display: block; transform: scaleY({{ $iScaleH }}); transform-origin: left top; margin-bottom: {{ ($iScaleH - 1) * 1.2 }}em; }
+        @endif
         hr       { border: none; border-top: 1px dashed #000; margin: 4px 0; }
         table    { width: 100%; border-collapse: collapse; }
         td       { vertical-align: top; padding: 2px 0; }
         .item-qty  { width: 15%; text-align: right; padding-right: 4px; }
         .item-name { width: 85%; }
+        /* Column divider line between Qty | Item, matching the thermal `|`. */
+        table.col-div td { border-left: 1px solid #000; }
+        table.col-div td:first-child { border-left: none; }
         /* Dashed rule under each KOT item, so rows read as boxes (matches the thermal ticket). */
         tbody td { border-bottom: 1px dashed #000; padding: 3px 0; }
         .print-btn { display: block; margin: 12px auto; padding: 8px 24px; cursor: pointer; font-size: 14px; }
@@ -71,7 +88,7 @@
 <div class="center bold">DUPLICATE {{ max($copyNo ?? 1, 1) }}</div>
 @endif
 <div class="center big">** {{ strtoupper(str_replace('_', ' ', $salesOrder->order_type ?? 'SALE')) }} **</div>
-@if(!empty($kotCategory ?? null))
+@if(!($layout?->show_category_header === false) && !empty($kotCategory ?? null))
 @php
     // Brackets are dropped when they would no longer fit, exactly as the ESC/POS builder does —
     // otherwise a nearly-full category name wraps its closing bracket onto a line of its own.
@@ -115,7 +132,7 @@
 
 <hr>
 
-<table>
+<table class="{{ $dividers ? 'col-div' : '' }}">
     <thead>
         <tr>
             <td class="item-qty bold">Qty</td>
@@ -143,7 +160,7 @@
             }
         @endphp
         <tr>
-            <td class="item-qty big">
+            <td class="item-qty ibig">
                 @if($isAddition)
                     <span style="font-size:{{ $fontSize - 1 }}px">ADD</span><br>
                 @endif
@@ -153,7 +170,7 @@
                 @endif
             </td>
             <td class="item-name">
-                <span class="big">{{ ($eventType ?? null) === 'addition' ? '(R) ' : '' }}{{ $line->product_name }}</span>
+                <span class="ibig">{{ ($eventType ?? null) === 'addition' ? '(R) ' : '' }}{{ $line->product_name }}</span>
                 @if($line->variant_name)
                     <br><small>{{ $line->variant_name }}</small>
                 @endif

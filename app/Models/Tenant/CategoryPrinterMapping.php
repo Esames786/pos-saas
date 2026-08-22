@@ -9,7 +9,7 @@ class CategoryPrinterMapping extends Model
     protected $connection = 'tenant';
 
     protected $fillable = [
-        'branch_id', 'category_id', 'printer_id', 'print_role', 'order_type',
+        'branch_id', 'terminal_id', 'category_id', 'printer_id', 'print_role', 'order_type',
         'reminder_confirm_on_addition', 'is_active',
     ];
 
@@ -24,6 +24,11 @@ class CategoryPrinterMapping extends Model
     public function branch()
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    public function terminal()
+    {
+        return $this->belongsTo(Terminal::class);
     }
 
     public function category()

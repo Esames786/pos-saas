@@ -619,9 +619,11 @@ class EdgeBootstrapService
                 ['id', 'branch_id', 'name', 'code', 'printer_type', 'print_role', 'supports_reminder', 'ip_address', 'port', 'paper_size', 'characters_per_line', 'is_default', 'is_active', 'agent_enabled']),
             'receipt_layout_settings' => $rows($conn->table('receipt_layout_settings')->where('branch_id', $b),
                 ['id', 'branch_id', 'document_type', 'paper_size', 'show_logo', 'show_branch_name', 'show_branch_address', 'show_branch_phone', 'show_tax_number',
-                 'show_cashier_name', 'show_customer_name', 'show_table_info', 'show_order_no', 'show_order_time', 'show_updated_time', 'show_print_time', 'show_item_codes', 'show_payment_breakdown', 'header_text', 'footer_text', 'font_size', 'kot_font_size', 'is_active']),
+                 'show_cashier_name', 'show_customer_name', 'show_table_info', 'show_order_no', 'show_order_time', 'show_updated_time', 'show_print_time', 'show_item_codes', 'show_payment_breakdown', 'header_text', 'footer_text', 'font_size', 'kot_font_size',
+                 // PRINT-LAYOUT-ROWS-1 (canonical 468b9ef) — the row/time sizes and divider/category toggles must replicate too.
+                 'item_font_size', 'time_font_size', 'show_column_dividers', 'show_category_header', 'is_active']),
             // same §16 parity rule: routing accepts branch-or-GLOBAL mappings.
-            'category_printer_mappings' => $rows($conn->table('category_printer_mappings')->where(fn ($q) => $q->where('branch_id', $b)->orWhereNull('branch_id')), ['id', 'branch_id', 'category_id', 'printer_id', 'print_role', 'order_type', 'reminder_confirm_on_addition', 'is_active']),
+            'category_printer_mappings' => $rows($conn->table('category_printer_mappings')->where(fn ($q) => $q->where('branch_id', $b)->orWhereNull('branch_id')), ['id', 'branch_id', 'terminal_id', 'category_id', 'printer_id', 'print_role', 'order_type', 'reminder_confirm_on_addition', 'is_active']),
             'terminal_printer_settings' => $rows($conn->table('terminal_printer_settings')->whereIn('terminal_id', $terminalIds ?: [0]), ['id', 'terminal_id', 'receipt_printer_id', 'kot_printer_id', 'auto_print_receipt', 'auto_print_kot']),
             'service_charge_settings' => $rows($conn->table('service_charge_settings')->where('branch_id', $b), ['id', 'branch_id', 'charge_type', 'charge_value', 'order_types', 'is_taxable', 'is_active']),
             'void_reasons' => $rows($conn->table('void_reasons')->where('is_active', 1), ['id', 'name', 'reason_type', 'requires_manager_approval', 'is_active']),

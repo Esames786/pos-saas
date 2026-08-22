@@ -52,10 +52,14 @@ class ReceiptLayoutController extends Controller
             'show_delivery_details'  => ['nullable', 'boolean'],
             'show_vehicle_number'    => ['nullable', 'boolean'],
             'show_order_type'        => ['nullable', 'boolean'],
+            'show_column_dividers'   => ['nullable', 'boolean'],
+            'show_category_header'   => ['nullable', 'boolean'],
             'header_text'            => ['nullable', 'string', 'max:500'],
             'footer_text'            => ['nullable', 'string', 'max:500'],
             'font_size'              => ['required', 'integer', 'min:8', 'max:24'],
             'kot_font_size'          => ['required', 'integer', 'min:8', 'max:24'],
+            'item_font_size'         => ['nullable', 'integer', 'min:8', 'max:24'],
+            'time_font_size'         => ['nullable', 'integer', 'min:8', 'max:24'],
             'is_active'              => ['nullable', 'boolean'],
         ]);
 
@@ -98,6 +102,8 @@ class ReceiptLayoutController extends Controller
             'paper_size'              => $request->input('paper_size',   $base->paper_size),
             'font_size'               => (int) $request->input('font_size',    $base->font_size ?? 12),
             'kot_font_size'           => (int) $request->input('kot_font_size', $base->kot_font_size ?? 14),
+            'item_font_size'          => $request->filled('item_font_size') ? (int) $request->input('item_font_size') : $base->item_font_size,
+            'time_font_size'          => $request->filled('time_font_size') ? (int) $request->input('time_font_size') : $base->time_font_size,
             'logo_path'               => $base->logo_path,
             'header_text'             => $request->input('header_text',  $base->header_text),
             'footer_text'             => $request->input('footer_text',  $base->footer_text),

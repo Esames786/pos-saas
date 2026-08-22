@@ -66,12 +66,20 @@ class PrintRoutingService
                     $query->orWhereIn('category_id', $categoryIds->all());
                 }
             })
+            ->where(function ($query) use ($sale) {
+                $query->whereNull('terminal_id');
+                if ($sale->terminal_id) {
+                    $query->orWhere('terminal_id', $sale->terminal_id);
+                }
+            })
             ->where('print_role', 'reminder')
             ->where(function ($query) use ($sale) {
                 $query->where('order_type', 'all')->orWhere('order_type', $sale->order_type);
             })
             ->where('is_active', true)
             ->get()
+            // Terminal precedence, same as the KOT path: a terminal-pinned reminder rule wins.
+            ->pipe(fn ($rows) => $this->applyTerminalPrecedence($rows, $sale->terminal_id ? (int) $sale->terminal_id : null))
             ->filter(fn ($mapping) => $mapping->printer?->is_active && $mapping->printer?->supports_reminder);
 
         return $mappings
@@ -145,9 +153,71 @@ class PrintRoutingService
     }
 
     /**
+     * KOT-ROUTING-TERMINAL-1: printer ids that route a line, keyed on branch + TERMINAL + order_type
+     * + category for the given roles. TERMINAL PRECEDENCE — a rule pinned to the sale's terminal wins
+     * over an "any terminal" (NULL) rule, so a terminal that carries several order types routes by the
+     * physical counter. When no rule sets a terminal (the default for every existing tenant), this
+     * resolves EXACTLY as before.
+     *
+     * @param  array<int,string>  $roles
+     * @return \Illuminate\Support\Collection<int,int>
+     */
+    private function mappedPrinterIds(SalesOrder $sale, ?int $categoryId, array $roles, bool $categoryWildcard = true): Collection
+    {
+        $rows = CategoryPrinterMapping::query()
+            ->where(function ($q) use ($sale) {
+                $q->whereNull('branch_id')->orWhere('branch_id', $sale->branch_id);
+            })
+            ->where(function ($q) use ($categoryId, $categoryWildcard) {
+                if ($categoryWildcard) {
+                    $q->whereNull('category_id');
+                    if ($categoryId) {
+                        $q->orWhere('category_id', $categoryId);
+                    }
+                } else {
+                    $q->where('category_id', $categoryId);
+                }
+            })
+            ->where(function ($q) use ($sale) {
+                $q->whereNull('terminal_id');
+                if ($sale->terminal_id) {
+                    $q->orWhere('terminal_id', $sale->terminal_id);
+                }
+            })
+            ->whereIn('print_role', $roles)
+            ->where(function ($q) use ($sale) {
+                $q->where('order_type', 'all')->orWhere('order_type', $sale->order_type);
+            })
+            ->where('is_active', true)
+            ->get(['printer_id', 'terminal_id']);
+
+        return $this->applyTerminalPrecedence($rows, $sale->terminal_id ? (int) $sale->terminal_id : null)
+            ->pluck('printer_id')
+            ->unique()
+            ->values();
+    }
+
+    /**
+     * Keep the terminal-pinned rules when the sale ran on a terminal that has ANY; otherwise keep the
+     * "any terminal" (NULL) rules. Never mixes the two, so a terminal-specific rule cannot double-print
+     * alongside a wildcard.
+     */
+    private function applyTerminalPrecedence(Collection $rows, ?int $terminalId): Collection
+    {
+        if ($terminalId) {
+            $pinned = $rows->filter(fn ($r) => (int) $r->terminal_id === $terminalId);
+            if ($pinned->isNotEmpty()) {
+                return $pinned;
+            }
+        }
+
+        return $rows->filter(fn ($r) => $r->terminal_id === null);
+    }
+
+    /**
      * Resolve KOT printer routes for a sale.
      * Returns array of [printer, line_ids, line_quantities] groups.
-     * Priority per line: category mapping → terminal KOT printer → branch default → browser fallback.
+     * Priority per line: category mapping (terminal-aware) → terminal KOT printer → branch default → browser fallback.
      */
     public function kotRoutesForSale(SalesOrder $sale, array $onlyLineIds = [], bool $isReprint = false): array
     {
@@ -181,23 +251,9 @@ class PrintRoutingService
             $printers  = collect();
             $categoryId = $line->product?->category_id;
 
-            // Match this line's category route OR an "All categories" (NULL) wildcard route.
-            $printerIds = CategoryPrinterMapping::where(function ($q) use ($sale) {
-                    $q->whereNull('branch_id')->orWhere('branch_id', $sale->branch_id);
-                })
-                ->where(function ($q) use ($categoryId) {
-                    $q->whereNull('category_id');
-                    if ($categoryId) {
-                        $q->orWhere('category_id', $categoryId);
-                    }
-                })
-                ->whereIn('print_role', ['kot', 'both'])
-                ->where(function ($query) use ($sale) {
-                    $query->where('order_type', 'all')->orWhere('order_type', $sale->order_type);
-                })
-                ->where('is_active', true)
-                ->pluck('printer_id')
-                ->unique();
+            // Match this line's category route OR an "All categories" (NULL) wildcard route, with
+            // terminal precedence (a rule pinned to this terminal wins over an "any terminal" rule).
+            $printerIds = $this->mappedPrinterIds($sale, $categoryId ? (int) $categoryId : null, ['kot', 'both']);
 
             if ($printerIds->isNotEmpty()) {
                 $printers = Printer::whereIn('id', $printerIds)
@@ -261,17 +317,9 @@ class PrintRoutingService
             $categoryId = $line->product?->category_id;
 
             if ($categoryId) {
-                $printerIds = CategoryPrinterMapping::where(function ($query) use ($sale) {
-                        $query->whereNull('branch_id')->orWhere('branch_id', $sale->branch_id);
-                    })
-                    ->where('category_id', $categoryId)
-                    ->whereIn('print_role', ['kot', 'both'])
-                    ->where(function ($query) use ($sale) {
-                        $query->where('order_type', 'all')->orWhere('order_type', $sale->order_type);
-                    })
-                    ->where('is_active', true)
-                    ->pluck('printer_id')
-                    ->unique();
+                // Category-specific (no wildcard here, matching the original cancellation rule) but
+                // terminal-aware, so a cancellation KOT lands on the same printer as its original.
+                $printerIds = $this->mappedPrinterIds($sale, (int) $categoryId, ['kot', 'both'], false);
 
                 if ($printerIds->isNotEmpty()) {
                     $printers = Printer::whereIn('id', $printerIds)
