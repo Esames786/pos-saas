@@ -113,6 +113,10 @@ class CateringLineCostBlockService
                     // customer — which decides whether a later house change is
                     // even offered to it.
                     'commercial_rate_source' => $block->rateSource(),
+                    // Whether this charge IS the Making charge, frozen with the
+                    // quote — a later reclassification of the dish must not
+                    // rewrite what an old document meant.
+                    'charge_role' => $block->charge_role,
                     'rate' => $block->rate,
                     'material_product_id' => $block->material_product_id,
                     'material_name' => $block->material?->name,

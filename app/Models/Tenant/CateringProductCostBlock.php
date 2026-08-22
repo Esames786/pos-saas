@@ -78,6 +78,15 @@ class CateringProductCostBlock extends Model
 
     public const RATE_SOURCES = [self::SOURCE_MANUAL, self::SOURCE_COMMERCIAL_BOOK];
 
+    /**
+     * KASHIF-CATERING-MAKING-1: the one charge role the domain names so far.
+     * NULL = ordinary/general charge. Only a CHARGE block may carry a role —
+     * a material can never be Making.
+     */
+    public const ROLE_MAKING = 'making';
+
+    public const CHARGE_ROLES = [self::ROLE_MAKING];
+
     protected $fillable = [
         'product_id',
         'label',
@@ -90,6 +99,7 @@ class CateringProductCostBlock extends Model
         'charge_basis',
         'rate_basis',
         'commercial_rate_source',
+        'charge_role',
         'is_active',
     ];
 
@@ -122,6 +132,11 @@ class CateringProductCostBlock extends Model
     public function isMaterial(): bool
     {
         return $this->block_type === self::TYPE_MATERIAL;
+    }
+
+    public function isMaking(): bool
+    {
+        return ! $this->isMaterial() && $this->charge_role === self::ROLE_MAKING;
     }
 
     public function isLumpSum(): bool

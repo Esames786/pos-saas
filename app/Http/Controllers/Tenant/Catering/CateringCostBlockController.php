@@ -124,6 +124,9 @@ class CateringCostBlockController extends Controller
             // Where the rate came from, and therefore whether a house rate change
             // is ever offered to it.
             'blocks.*.commercial_rate_source' => ['nullable', Rule::in(CateringProductCostBlock::RATE_SOURCES)],
+            // KASHIF-CATERING-MAKING-1: an explicit role, never inferred from the
+            // label. Charge blocks only; at most one active Making per dish.
+            'blocks.*.charge_role' => ['nullable', Rule::in(CateringProductCostBlock::CHARGE_ROLES)],
             'blocks.*.rate' => ['required', 'numeric', 'min:0'],
             // The material select only offers things the store can hand over, but
             // a select box is a convenience and the request is the contract. A
@@ -150,6 +153,18 @@ class CateringCostBlockController extends Controller
             return back()->withErrors([
                 'blocks' => "'{$orphan['label']}' is a material block, so it needs a material selected. "
                     .'Use a charge block for money with nothing behind it, like making or packing.',
+            ])->withInput();
+        }
+
+        // KASHIF-CATERING-MAKING-1: "the Making charge" is singular by meaning.
+        // Two blocks both claiming the role would make a bulk Making adjustment
+        // ambiguous about which money it moves — refused at the door.
+        $makingRows = $submitted->filter(fn ($b) => ($b['block_type'] ?? null) === CateringProductCostBlock::TYPE_CHARGE
+            && ($b['charge_role'] ?? null) === CateringProductCostBlock::ROLE_MAKING);
+        if ($makingRows->count() > 1) {
+            return back()->withErrors([
+                'blocks' => 'Only one charge can be the Making charge for a dish. '
+                    .'Leave the others as General Charge.',
             ])->withInput();
         }
 
@@ -262,6 +277,9 @@ class CateringCostBlockController extends Controller
                     'commercial_rate_source' => $isMaterial
                         ? $source
                         : CateringProductCostBlock::SOURCE_MANUAL,
+                    // A role names what a CHARGE is; a material can never carry
+                    // one, however the form was filled before a type change.
+                    'charge_role' => $isMaterial ? null : ($row['charge_role'] ?? null),
                     'unit_id' => $unitId,
                 ],
                 'existing' => $existing,

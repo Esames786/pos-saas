@@ -35,6 +35,13 @@ class CateringCommercialRateApplication extends Model
     /** A sent quotation was revised, and the new version took the house rate. */
     public const ACTION_REVISION_APPLIED = 'revision_applied';
 
+    // KASHIF-CATERING-MAKING-1: Making applications share this audit book —
+    // same actor/old/new/calculated shape — with material_product_id NULL,
+    // because Making has no material and an audit must not invent one.
+    public const ACTION_MAKING_PRODUCT_APPLIED = 'making_product_applied';
+
+    public const ACTION_MAKING_DRAFT_APPLIED = 'making_draft_applied';
+
     public const TARGET_COMMERCIAL_RATE = 'commercial_rate';
 
     public const TARGET_PRODUCT_BLOCK = 'product_block';
