@@ -56,16 +56,40 @@
         document.body.style.removeProperty('padding-right');
     }
 
+    // KASHIF-CATERING-NO-RELOAD-3: feedback comes to the operator as a toast;
+    // the operator is never scrolled to the feedback. Errors linger longer.
+    function showToast(message, isError) {
+        if (! message) return;
+        var t = document.createElement('div');
+        t.setAttribute('role', 'status');
+        t.style.cssText = 'position:fixed;right:1rem;bottom:1rem;z-index:2000;max-width:26rem;'
+            + 'padding:.65rem 1rem;border-radius:.5rem;color:#fff;font-size:.875rem;'
+            + 'box-shadow:0 4px 14px rgba(0,0,0,.25);opacity:0;transition:opacity .2s;'
+            + (isError ? 'background:#b02a37;' : 'background:#146c43;');
+        t.textContent = message;
+        document.body.appendChild(t);
+        requestAnimationFrame(function () { t.style.opacity = '1'; });
+        setTimeout(function () {
+            t.style.opacity = '0';
+            setTimeout(function () { t.remove(); }, 250);
+        }, isError ? 7000 : 3500);
+    }
+
     function swap(html) {
         var doc = new DOMParser().parseFromString(html, 'text/html');
         var next = doc.getElementById(ROOT_ID);
         if (! next) { window.location.reload(); return; }
+        var y = window.scrollY;
         closeOverlays();
         document.getElementById(ROOT_ID).innerHTML = next.innerHTML;
         reinit();
-        // Bring a fresh flash or validation message into view without jumping.
-        var note = document.getElementById(ROOT_ID).querySelector('.alert-success, .alert-danger');
-        if (note) note.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+        // The operator stays exactly where they were working…
+        window.scrollTo(0, y);
+        // …and the outcome comes to THEM as a toast instead.
+        var err = document.getElementById(ROOT_ID).querySelector('.alert-danger');
+        var okMsg = document.getElementById(ROOT_ID).querySelector('.alert-success');
+        if (err && err.textContent.trim()) showToast(err.textContent.trim(), true);
+        else if (okMsg && okMsg.textContent.trim()) showToast(okMsg.textContent.trim(), false);
     }
 
     // Re-render the workspace from a plain GET — used after actions that
@@ -76,13 +100,7 @@
             headers: {'X-Requested-With': 'XMLHttpRequest'},
         }).then(function (r) { return r.text(); }).then(function (html) {
             swap(html);
-            if (message) {
-                var box = document.createElement('div');
-                box.className = 'alert alert-success';
-                box.textContent = message;
-                document.getElementById(ROOT_ID).prepend(box);
-                box.scrollIntoView({block: 'nearest', behavior: 'smooth'});
-            }
+            if (message) showToast(message, false);
         });
     };
 
