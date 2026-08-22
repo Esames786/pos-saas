@@ -13,7 +13,7 @@ class SalesOrderLineCancellation extends Model
         'event_uuid', 'sales_order_id', 'sales_order_line_id', 'source_line_uuid', 'referenced_kot_event_uuid',
         'void_reason_id', 'manager_approval_id', 'kot_batch_id', 'requested_by_user_id',
         'approved_by_user_id', 'approval_mode', 'product_name', 'variant_name',
-        'quantity', 'policy_snapshot', 'cancelled_at',
+        'quantity', 'policy_snapshot', 'cancelled_at', 'business_date',
     ];
 
     protected static function booted(): void
@@ -37,6 +37,7 @@ class SalesOrderLineCancellation extends Model
             'quantity' => 'decimal:6',
             'policy_snapshot' => 'array',
             'cancelled_at' => 'datetime',
+            'business_date' => 'date',
         ];
     }
 

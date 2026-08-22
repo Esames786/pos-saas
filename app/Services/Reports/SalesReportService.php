@@ -83,13 +83,13 @@ class SalesReportService
             ->join('sales_orders', 'sales_orders.id', '=', 'sales_returns.sales_order_id')
             ->where('sales_returns.status', 'posted')
             ->when($branchIds, fn ($q) => $q->whereIn('sales_returns.branch_id', $branchIds))
-            ->when(!empty($filters['date_from']), fn ($q) => $q->whereDate('sales_returns.return_date', '>=', $filters['date_from']))
-            ->when(!empty($filters['date_to']),   fn ($q) => $q->whereDate('sales_returns.return_date', '<=', $filters['date_to']))
+            ->when(!empty($filters['date_from']), fn ($q) => $q->whereRaw('COALESCE(sales_returns.business_date, DATE(sales_returns.return_date)) >= ?', [$filters['date_from']]))
+            ->when(!empty($filters['date_to']),   fn ($q) => $q->whereRaw('COALESCE(sales_returns.business_date, DATE(sales_returns.return_date)) <= ?', [$filters['date_to']]))
             ->when(!empty($filters['terminal_id']), fn ($q) => $q->where('sales_orders.terminal_id', $filters['terminal_id']))
             ->when(!empty($filters['order_type']), fn ($q) => $q->where('sales_orders.order_type', $filters['order_type']))
             ->when(!empty($filters['cashier_id']), fn ($q) => $q->where('sales_orders.created_by_user_id', $filters['cashier_id']))
-            ->selectRaw('DATE(sales_returns.return_date) as day, COALESCE(SUM(sales_returns.grand_total), 0) as amount')
-            ->groupByRaw('DATE(sales_returns.return_date)')
+            ->selectRaw('COALESCE(sales_returns.business_date, DATE(sales_returns.return_date)) as day, COALESCE(SUM(sales_returns.grand_total), 0) as amount')
+            ->groupByRaw('COALESCE(sales_returns.business_date, DATE(sales_returns.return_date))')
             ->pluck('amount', 'day')
             ->map(fn ($v) => (float) $v)
             ->all();
@@ -188,21 +188,21 @@ class SalesReportService
         $sc       = (float) (clone $q)->sum('service_charge_amount');
         $tips     = (float) (clone $q)->sum('tip_amount');
 
-        // Returns are allocated by RETURN date, exactly as the engine does — a refund handed back
-        // today reduces today, whichever day the original sale happened. A return has no
-        // business_date/sale_date, so currentBusinessDay() cannot be reused here.
+        // Returns are allocated by BUSINESS day — the order's day the return reverses — exactly as
+        // the engine does, so a refund punched after midnight on a still-open shift stays on that
+        // shift's day. Calendar return_date is only the fallback for un-backfilled legacy rows.
         $clock = app(\App\Support\TenantClock::class);
         $returnQuery = \App\Models\Tenant\SalesReturn::query()
             ->where('status', 'posted')
             ->when($branchId, fn ($q, $v) => $q->where('branch_id', $v));
 
         if ($branchId) {
-            $returnQuery->whereDate('return_date', $clock->currentBusinessDate(\App\Models\Tenant\Branch::find($branchId)));
+            $returnQuery->whereRaw('COALESCE(business_date, DATE(return_date)) = ?', [$clock->currentBusinessDate(\App\Models\Tenant\Branch::find($branchId))]);
         } else {
             $map = $clock->currentBusinessDatesByBranch();
             $returnQuery->where(function ($q) use ($map) {
                 foreach ($map as $bid => $date) {
-                    $q->orWhere(fn ($w) => $w->where('branch_id', $bid)->whereDate('return_date', $date));
+                    $q->orWhere(fn ($w) => $w->where('branch_id', $bid)->whereRaw('COALESCE(business_date, DATE(return_date)) = ?', [$date]));
                 }
                 if (empty($map)) {
                     $q->whereRaw('1 = 0');

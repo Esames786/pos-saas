@@ -99,14 +99,15 @@ class SalesReportEngine
             ->when($f['product_id'], fn ($q) => $q->where('l.product_id', $f['product_id']));
     }
 
-    /** Period returns (allocated by return_date) constrained to the same branch scope. */
+    /** Period returns (allocated by BUSINESS day — the order's day it reverses, calendar
+     *  return_date only as a fallback for un-backfilled rows) constrained to the same branch scope. */
     private function returnsBase(array $f)
     {
         return DB::connection('tenant')->table('sales_returns as r')
             ->join('sales_orders as o', 'o.id', '=', 'r.sales_order_id')
             ->where('r.status', 'posted')
-            ->whereRaw('DATE(r.return_date) >= ?', [$f['date_from']])
-            ->whereRaw('DATE(r.return_date) <= ?', [$f['date_to']])
+            ->whereRaw('COALESCE(r.business_date, DATE(r.return_date)) >= ?', [$f['date_from']])
+            ->whereRaw('COALESCE(r.business_date, DATE(r.return_date)) <= ?', [$f['date_to']])
             ->when($f['branch_ids'], fn ($q) => $q->whereIn('r.branch_id', $f['branch_ids']))
             ->when($f['order_type'], fn ($q) => $q->where('o.order_type', $f['order_type']))
             ->when(! $f['order_type'] && $f['allowed_order_types'], fn ($q) => $q->whereIn('o.order_type', $f['allowed_order_types']))
@@ -442,15 +443,16 @@ class SalesReportEngine
     }
 
     // ── W. Cancellations: items voided / decreased AFTER the KOT went to the kitchen. Anchored on
-    //      cancelled_at (the day the cancellation happened) — the sale itself may even be unpaid. ──
+    //      the order's BUSINESS day (calendar cancelled_at only as a fallback for un-backfilled
+    //      rows) — so a void punched after midnight reports on the day its order belongs to. ──
     public function cancellations(array $f): array
     {
         $labels = \App\Models\Tenant\User::ORDER_TYPES;
         $rows = DB::connection('tenant')->table('sales_order_line_cancellations as x')
             ->join('sales_orders as o', 'o.id', '=', 'x.sales_order_id')
             ->leftJoin('void_reasons as vr', 'vr.id', '=', 'x.void_reason_id')
-            ->whereRaw('DATE(x.cancelled_at) >= ?', [$f['date_from']])
-            ->whereRaw('DATE(x.cancelled_at) <= ?', [$f['date_to']])
+            ->whereRaw('COALESCE(x.business_date, DATE(x.cancelled_at)) >= ?', [$f['date_from']])
+            ->whereRaw('COALESCE(x.business_date, DATE(x.cancelled_at)) <= ?', [$f['date_to']])
             ->when($f['branch_ids'], fn ($q) => $q->whereIn('o.branch_id', $f['branch_ids']))
             ->when($f['terminal_id'], fn ($q) => $q->where('o.terminal_id', $f['terminal_id']))
             ->when(! $f['terminal_id'] && $f['allowed_terminal_ids'], fn ($q) => $q->whereIn('o.terminal_id', $f['allowed_terminal_ids']))

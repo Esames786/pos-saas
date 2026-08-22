@@ -77,13 +77,14 @@ class DashboardMatchesReportCentreRegressionTest extends TestCase
         $this->assertStringContainsString('Returns', $view);
     }
 
-    public function test_returns_are_allocated_by_return_date(): void
+    public function test_returns_are_allocated_by_business_day(): void
     {
         $code = $this->service();
 
-        // A refund handed back today reduces today, whichever day the original sale happened —
-        // and a return carries no business_date, so the sales helper cannot be reused.
-        $this->assertStringContainsString("whereDate('sales_returns.return_date'", $code);
+        // A refund handed back today reduces today, whichever day the original sale happened.
+        // Since REPORT-BUSINESS-DATE-1 a return carries the business day of the shift it was
+        // taken on; calendar return_date is only the fallback for un-backfilled legacy rows.
+        $this->assertStringContainsString('COALESCE(sales_returns.business_date, DATE(sales_returns.return_date))', $code);
     }
 
     public function test_summary_return_filters_follow_the_original_sale_dimensions(): void
