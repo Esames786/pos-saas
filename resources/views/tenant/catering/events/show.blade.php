@@ -1265,6 +1265,19 @@ $(document).on('click', '#catering-sidebar-toggle', function () {
     $(this).attr('title', hidden ? 'Show navigation' : 'Hide navigation');
 });
 
+// A silent JS failure at the counter reads as "Enter did nothing". Any
+// uncaught error surfaces IN the punch bar, red, with file:line — so the
+// next screenshot carries the diagnosis instead of a mystery.
+['error', 'unhandledrejection'].forEach(function (kind) {
+    window.addEventListener(kind, function (e) {
+        var el = document.getElementById('punch-live');
+        if (!el) return;
+        var msg = e.message || (e.reason && (e.reason.message || String(e.reason))) || '?';
+        var where = e.filename ? (e.filename.split('/').pop() + ':' + e.lineno) : '';
+        el.innerHTML = '<b style="color:#B4423B">JS error: ' + msg + ' ' + where + '</b>';
+    });
+});
+
 // KASHIF-CATERING-OPERATOR-UI-1 [data-act] actions — ALWAYS on, not only on
 // drafts: History revert and version Restore live on sent/confirmed events
 // too. Posts through the workspace pipeline; a destructive-feeling action
