@@ -67,6 +67,8 @@ class CateringProductProfile extends Model
     protected $fillable = [
         'product_id',
         'catering_enabled',
+        'allow_party_supply',
+        'is_complimentary',
         'default_quote_unit_id',
         'pricing_mode',
         'default_catering_rate',
@@ -82,6 +84,8 @@ class CateringProductProfile extends Model
     {
         return [
             'catering_enabled' => 'boolean',
+            'allow_party_supply' => 'boolean',
+            'is_complimentary' => 'boolean',
             'default_catering_rate' => 'decimal:2',
             'minimum_qty' => 'decimal:3',
         ];
