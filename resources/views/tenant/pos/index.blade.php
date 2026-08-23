@@ -485,6 +485,18 @@
                 <span id="chip-cust-address" class="text-muted small ms-1 d-none"></span>
                 <button type="button" class="btn-close ms-2" id="chip-cust-clear" aria-label="Remove customer" style="font-size:.6rem"></button>
             </div>
+            @can('tenant.reports.center.index')
+                {{-- POS-REPORT-LINK: open the full Sales Report Center (today) in a new tab — same
+                     filters/sections/Send-to-Network/Print controls. Scoped server-side to the
+                     operator's terminal/order-types (Send-to-Network shows only their printer). --}}
+                @php $reportToday = app(\App\Support\TenantClock::class)->now()->toDateString(); @endphp
+                <a href="{{ url('/reports/center') }}?date_from={{ $reportToday }}&date_to={{ $reportToday }}"
+                   target="_blank" rel="noopener"
+                   class="btn btn-sm btn-outline-dark me-2" id="pos-report-btn"
+                   title="Open the Sales Report Center (today) in a new tab">
+                    <i class="ti ti-file-analytics me-1"></i>Report
+                </a>
+            @endcan
             <button type="button" class="btn btn-sm btn-outline-dark" id="pos-customer-btn"
                     data-bs-toggle="modal" data-bs-target="#customerModal">
                 <i class="ti ti-user-search me-1"></i>Add / Search Customer
