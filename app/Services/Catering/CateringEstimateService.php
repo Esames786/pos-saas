@@ -195,6 +195,17 @@ class CateringEstimateService
                 // A cost-block dish copies its blocks onto the line, and the
                 // line's amount becomes whatever that copy works out to.
                 $this->lineBlocks->snapshotLocked($created);
+
+                // KASHIF-ORDER-PUNCH §A: the item-level Complimentry flag. A NEW
+                // line of such an item is quoted at ZERO through the one
+                // override authority — reason recorded, margins still counting
+                // the real cost, "Charge it instead" the way back. Only on
+                // CREATE: reruns of the form never re-zero a line an operator
+                // deliberately charged.
+                if ($productId && $created->refresh()->costBlocks()->exists()
+                    && (bool) \App\Models\Tenant\CateringProductProfile::where('product_id', $productId)->value('is_complimentary')) {
+                    $this->lineBlocks->overrideQuotedRate($created, 0.0, 'Complimentary item');
+                }
             }
 
             // Whatever the operator removed goes, and its snapshot with it.

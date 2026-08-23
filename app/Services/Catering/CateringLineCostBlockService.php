@@ -200,6 +200,16 @@ class CateringLineCostBlockService
                 );
             }
 
+            // KASHIF-ORDER-PUNCH §A: the item-level switch (legacy "Allow Party
+            // Meat"). Gates NEW settings only — turning a flag off never
+            // rewrites a split an old booking already agreed to.
+            if (($supplied || ($suppliedQty !== null && $suppliedQty > 0))
+                && ! $this->partySupplyAllowed($line)) {
+                throw new RuntimeException(
+                    'Party supply is OFF for this item — turn on "Allow Party Meat" on its Catering Products screen first.'
+                );
+            }
+
             // KASHIF-PARTIAL-SUPPLY-1: three states, one authority.
             //   full   — the flag, as always; a partial figure cannot coexist.
             //   split  — a positive quantity, clamped to what the dish needs;
@@ -260,6 +270,19 @@ class CateringLineCostBlockService
             $this->refreshSnapshotAmount($locked);
             $this->repriceLocked($line);
         });
+    }
+
+    /** The item-level party switch; a free-text line has no item, so it stays allowed. */
+    private function partySupplyAllowed($line): bool
+    {
+        if (! $line->product_id) {
+            return true;
+        }
+
+        $allowed = \App\Models\Tenant\CateringProductProfile::where('product_id', $line->product_id)
+            ->value('allow_party_supply');
+
+        return $allowed === null || (bool) $allowed;
     }
 
     /** Put a material back on the dish's own ratio for this line. */

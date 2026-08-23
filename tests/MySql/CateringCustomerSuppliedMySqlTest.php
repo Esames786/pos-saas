@@ -274,6 +274,44 @@ class CateringCustomerSuppliedMySqlTest extends MySqlTenantTestCase
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // KASHIF-ORDER-PUNCH §A — the per-ITEM switches (legacy Allow Party Meat /
+    // Complimentry Item), set on the product, felt at the line.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function test_party_supply_off_refuses_new_splits_but_never_rewrites_old_ones(): void
+    {
+        $estimate = $this->draft(5);
+        $line = $this->line($estimate);
+
+        // A split agreed while the switch was ON…
+        $this->lineBlocks->setCustomerSupplied($this->snapshot($line, 'Chicken'), false, 1.0);
+
+        CateringProductProfile::where('product_id', $this->biryaniId)->update(['allow_party_supply' => false]);
+
+        // …stays exactly as agreed (grandfathered)…
+        $chicken = $this->snapshot($line->refresh(), 'Chicken');
+        $this->assertEqualsWithDelta(1.0, $chicken->suppliedQty(), 0.001);
+
+        // …but a NEW change is refused, in the owner's own words.
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessageMatches('/Allow Party Meat/');
+        $this->lineBlocks->setCustomerSupplied($chicken, false, 2.0);
+    }
+
+    public function test_a_complimentary_item_arrives_quoted_at_zero_through_the_override_authority(): void
+    {
+        CateringProductProfile::where('product_id', $this->biryaniId)->update(['is_complimentary' => true]);
+
+        $estimate = $this->draft(5);
+        $line = $this->line($estimate);
+
+        $this->assertSame(0.0, (float) $line->rate, 'a new line of a Complimentry item bills nothing');
+        $this->assertSame('Complimentary item', $line->rate_override_reason);
+        $this->assertSame(382.0, (float) $line->calculated_rate, 'the real rate stays visible — the margin knows the truth');
+        $this->assertSame(0.0, (float) $estimate->refresh()->subtotal);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // The two facts.
     // ─────────────────────────────────────────────────────────────────────────
 

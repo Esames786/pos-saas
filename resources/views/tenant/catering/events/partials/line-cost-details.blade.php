@@ -18,6 +18,10 @@
     $blocks = $line->costBlocks;
     $editable = $current->isDraft() && $event->isOpen();
     $fmtQty = fn ($q) => rtrim(rtrim(number_format((float) $q, 4, '.', ''), '0'), '.');
+    // KASHIF-ORDER-PUNCH §A: the item-level "Allow Party Meat" switch. OFF
+    // hides the split controls here AND the server refuses — existing splits
+    // on old bookings still display (grandfathered), they just cannot change.
+    $partyAllowed = $line->product?->cateringProfile?->allow_party_supply ?? true;
 
     // KASHIF-LEGACY-ALIGN-2 — the old software's one-glance strip, computed
     // from the SAME snapshot numbers the table below shows. Read-only by
@@ -180,6 +184,9 @@
                                  Customer 0 = hum sab; customer = total = poora
                                  customer ka (the service normalizes that to the
                                  full flag). Only the customer share posts. --}}
+                            @if(! $partyAllowed && $block->suppliedQty() <= 0)
+                                <div class="fs-12 text-muted mt-1">Party supply OFF for this item (Catering Products se on hota hai)</div>
+                            @else
                             <div class="d-inline-flex gap-1 align-items-center mt-1 supply-split"
                                  data-total="{{ $fmtQty($block->physicalRequirement()) }}"
                                  data-act="{{ url('/catering/line-cost-blocks/' . $block->id . '/customer-supplied') }}"
@@ -197,6 +204,7 @@
                                     <i class="ti ti-check"></i>
                                 </button>
                             </div>
+                            @endif
 
                             <div class="fs-12 text-muted mt-1">
                                 Recipe says: {{ $fmtQty($block->default_material_qty) }} {{ $block->unit_code }}

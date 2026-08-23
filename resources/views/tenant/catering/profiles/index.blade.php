@@ -63,6 +63,8 @@
                             'id' => $profile->id,
                             'product_name' => $profile->product->name,
                             'catering_enabled' => (bool) $profile->catering_enabled,
+                            'allow_party_supply' => (bool) ($profile->allow_party_supply ?? true),
+                            'is_complimentary' => (bool) ($profile->is_complimentary ?? false),
                             'default_quote_unit_id' => $profile->default_quote_unit_id,
                             'pricing_mode' => $profile->pricing_mode,
                             'costing_mode' => $profile->costingMode(),
@@ -230,6 +232,22 @@
                             <option value="0">No</option>
                         </select>
                     </div>
+                    {{-- KASHIF-ORDER-PUNCH §A — the legacy per-item switches,
+                         set HERE with the item, never at order punching. --}}
+                    <div class="col-md-4">
+                        <label class="form-label">Allow Party Meat <span dir="rtl" class="text-muted">گاہک کا سامان</span></label>
+                        <select name="allow_party_supply" class="form-select">
+                            <option value="1">Yes — customer apna saman de sakta hai</option>
+                            <option value="0">No — sirf hum</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Complimentry Item <span dir="rtl" class="text-muted">اعزازی</span></label>
+                        <select name="is_complimentary" class="form-select">
+                            <option value="0">No</option>
+                            <option value="1">Yes — naya line khud 0 par</option>
+                        </select>
+                    </div>
                     <div class="col-md-6">
                         <label class="form-label">Production Label (English)</label>
                         <input type="text" name="production_label" class="form-control">
@@ -348,6 +366,8 @@ $(function () {
         $('[name=production_station]').val(p.production_station || '');
         $('[name=minimum_qty]').val(p.minimum_qty ?? '');
         $('[name=catering_enabled]').val(p.catering_enabled ? '1' : '0');
+        $('[name=allow_party_supply]').val(p.allow_party_supply ? '1' : '0');
+        $('[name=is_complimentary]').val(p.is_complimentary ? '1' : '0');
         $('[name=production_label]').val(p.production_label || '');
         $('[name=production_label_ur]').val(p.production_label_ur || '');
         $('[name=instructions]').val(p.instructions || '');

@@ -506,7 +506,15 @@
                         </div>
                     @endif
                     <div class="text-end mt-3">
-                        <button type="submit" class="btn btn-primary">Save Estimate</button>
+                        <button type="submit" class="btn btn-primary">Save Estimate <span class="fs-12 opacity-75">(Ctrl+S)</span></button>
+                    </div>
+                    {{-- KASHIF-ORDER-PUNCH §B: the shortcuts, VISIBLE — the
+                         client asked for the old software's keyboard habit. --}}
+                    <div class="text-muted fs-12 mt-2" style="line-height:2">
+                        <kbd>/</kbd> item search &nbsp;·&nbsp; <kbd>Tab</kbd> agla khana &nbsp;·&nbsp;
+                        <kbd>Shift+Tab</kbd> peeche &nbsp;·&nbsp; <kbd>Enter</kbd> field action &nbsp;·&nbsp;
+                        <kbd>Ctrl+S</kbd> Save Estimate &nbsp;·&nbsp; <kbd>Ctrl+P</kbd> Print Bill &nbsp;·&nbsp;
+                        <kbd>Esc</kbd> panel band
                     </div>
                 </div>
             </div>
@@ -1251,6 +1259,26 @@ $(document).on('input', '.supply-split .split-ours', function () { syncSplit($(t
 $(document).on('click', '.js-rate-toggle', function () {
     $(this).prev('.rate-edit').removeClass('d-none').find('input').trigger('focus');
     $(this).addClass('d-none');
+});
+
+// KASHIF-ORDER-PUNCH §B: the old software's keyboard, on this screen.
+// '/' focuses the item picker; Ctrl+S saves the estimate (not the browser
+// page); Ctrl+P opens the customer bill preview (not the print dialog).
+document.addEventListener('keydown', function (e) {
+    if (e.key === '/' && !['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)) {
+        const s = document.querySelector('#lines-body .product-select');
+        if (s && window.jQuery) { e.preventDefault(); $(s).select2('open'); }
+        return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        const f = document.getElementById('estimate-form');
+        if (f) { e.preventDefault(); if (f.requestSubmit) f.requestSubmit(); else $(f).trigger('submit'); }
+        return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        window.open('{{ $current ? url('/catering/documents/estimate/' . $current->id) : url('/catering/events/' . $event->id) }}', '_blank');
+    }
 });
 </script>
 @if($current && $isDraft && $event->isOpen())

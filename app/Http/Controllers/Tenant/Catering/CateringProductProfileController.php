@@ -148,6 +148,9 @@ class CateringProductProfileController extends Controller
                 'exists:products,id',
             ],
             'catering_enabled' => ['nullable', 'boolean'],
+            // KASHIF-ORDER-PUNCH §A: the legacy per-item switches.
+            'allow_party_supply' => ['nullable', 'boolean'],
+            'is_complimentary' => ['nullable', 'boolean'],
             'default_quote_unit_id' => ['nullable', 'exists:units,id'],
             'pricing_mode' => ['required', Rule::in(CateringProductProfile::PRICING_MODES)],
             // KASHIF-CATERING-COSTING-SOURCE-1: which authority decides this
