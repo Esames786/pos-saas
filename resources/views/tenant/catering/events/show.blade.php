@@ -463,7 +463,10 @@
                     </tbody>
                 </table>
             </div>
-            <div class="p-3">
+            {{-- KASHIF-ORDER-PUNCH: the punch bar IS how items are added — one
+                 entry point, old-software style. Custom/free-text items go
+                 through the same bar (type any name → Enter). --}}
+            <div class="p-3 d-none" id="add-line-wrap">
                 <button type="button" class="btn btn-sm btn-outline-primary" id="add-line">
                     <i class="ti ti-plus me-1"></i>Add Item
                 </button>
@@ -1555,6 +1558,7 @@ $(function () {
         if (!el.hasClass('select2-hidden-accessible')) {
             el.select2({
                 width: '100%', placeholder: '361 ya biryani…',
+                tags: true, // free-text items punch through the same bar
                 ajax: {
                     url: '{{ url('/ajax/products') }}', dataType: 'json', delay: 150,
                     data: params => ({ q: params.term, sellable: 1, page: params.page || 1 }),
@@ -1698,7 +1702,8 @@ $(function () {
             + h('item_name', punch.name) + h('quantity', qty)
             + (punch.unitId ? h('unit_id', punch.unitId) : '') + h('rate', 0)
             + '</td></tr>');
-        window.__openNewestPanel = true;
+        // The punch already carries every setting — the row lands COMPACT,
+        // old-software style. Cost Details stays a click away, never auto-open.
         sessionStorage.setItem('punchFocus', '1');
         const f = document.getElementById('estimate-form');
         if (f.requestSubmit) f.requestSubmit(); else $(f).trigger('submit');
@@ -1740,11 +1745,20 @@ $(function () {
     // an emptied estimate needs its first row, totals need recomputing.
     window.initEstimateBuilder = function () {
         initInstrSelect(document);
-        // KASHIF-ORDER-PUNCH: with the punch bar present, the punch IS the way
-        // items are added — no auto-inserted empty picker row to climb down to.
-        // "+ Add Item" stays for free-text lines.
-        if (!$('#punch-bar').length && $('#lines-body tr').not('.cost-details-row').length === 0) {
-            addRow();
+        // KASHIF-ORDER-PUNCH: with the punch bar present, the punch IS the ONLY
+        // way items are added — no picker row below, no Add Item button, and
+        // any leftover empty picker row from an older render is swept away.
+        if ($('#punch-bar').length) {
+            $('#lines-body tr').not('.cost-details-row').filter(function () {
+                const name = $(this).find('.line-name').val();
+                const sel = $(this).find('.product-select').val();
+                return !name && !sel;
+            }).remove();
+        } else {
+            $('#add-line-wrap').removeClass('d-none');
+            if ($('#lines-body tr').not('.cost-details-row').length === 0) {
+                addRow();
+            }
         }
         recalc();
         initPunchBar();
