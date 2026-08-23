@@ -29,7 +29,7 @@ const http     = require('http');
 const https    = require('https');
 const { URL }  = require('url');
 
-const AGENT_VERSION = '2.3.1';
+const AGENT_VERSION = '2.4.0';
 
 /**
  * A sleeping printer does not answer a connect at all, so discovering that must be CHEAP: fail in
@@ -419,58 +419,163 @@ async function markFailed(jobId, message) {
     });
 }
 
+/**
+ * Print one job. The return value tells the caller's per-printer lane whether the FAILURE (if any)
+ * was the printer being unreachable — that, and only that, arms the circuit breaker. A skip
+ * (browser/manual) or a config error (no IP) is not a transport failure and must never break the
+ * lane for an otherwise-fine printer.
+ *
+ *   { printed: true,  connectionFailure: false }  — spooled to the printer
+ *   { printed: false, connectionFailure: true  }  — printer unreachable after retries
+ *   { printed: false, connectionFailure: false }  — skipped / misconfigured (no retry helps)
+ */
 async function processJob(job) {
     const printer = job.printer || {};
-    try {
-        if (!printer.id) {
-            log(`[SKIP]  ${job.job_no}: browser/manual fallback job`);
-            return;
-        }
-        if (printer.printer_type !== 'network') {
-            log(`[SKIP]  ${job.job_no}: non-network printer (${printer.printer_type})`);
-            return;
-        }
-        if (!printer.ip_address) {
-            throw new Error('No IP address configured for this printer.');
-        }
 
-        // A single wifi hiccup used to kill a ticket permanently (attempts=1, no retry) — the
-        // kitchen simply never got it and nobody noticed until the dashboard banner. Retry a
-        // couple of times, but ONLY when the payload provably never reached the printer.
-        const MAX_ATTEMPTS = 3;
-        // Short waits: the retry after a wake-up connects in well under a second.
-        const BACKOFF_MS = [400, 1200];
-        let lastError = null;
+    if (!printer.id) {
+        log(`[SKIP]  ${job.job_no}: browser/manual fallback job`);
+        return { printed: false, connectionFailure: false };
+    }
+    if (printer.printer_type !== 'network') {
+        log(`[SKIP]  ${job.job_no}: non-network printer (${printer.printer_type})`);
+        return { printed: false, connectionFailure: false };
+    }
+    if (!printer.ip_address) {
+        await markFailed(job.id, 'No IP address configured for this printer.');
+        log(`[FAIL]  ${job.job_no}: No IP address configured for this printer.`);
+        return { printed: false, connectionFailure: false };
+    }
 
-        for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-            try {
-                await sendToNetworkPrinter(
-                    printer.ip_address,
-                    Number(printer.port || 9100),
-                    job.raw_payload || ''
-                );
-                lastError = null;
+    // A single wifi hiccup used to kill a ticket permanently (attempts=1, no retry) — the
+    // kitchen simply never got it and nobody noticed until the dashboard banner. Retry a
+    // couple of times, but ONLY when the payload provably never reached the printer.
+    const MAX_ATTEMPTS = 3;
+    // Short waits: the retry after a wake-up connects in well under a second.
+    const BACKOFF_MS = [400, 1200];
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        try {
+            await sendToNetworkPrinter(
+                printer.ip_address,
+                Number(printer.port || 9100),
+                job.raw_payload || ''
+            );
+            lastError = null;
+            break;
+        } catch (err) {
+            lastError = err;
+            if (!err.safeToRetry || attempt === MAX_ATTEMPTS) {
                 break;
-            } catch (err) {
-                lastError = err;
-                if (!err.safeToRetry || attempt === MAX_ATTEMPTS) {
-                    break;
-                }
-                log(`[RETRY] ${job.job_no}: ${err.message} — attempt ${attempt + 1}/${MAX_ATTEMPTS}`);
-                await new Promise((r) => setTimeout(r, BACKOFF_MS[attempt - 1] || 3000));
             }
+            log(`[RETRY] ${job.job_no}: ${err.message} — attempt ${attempt + 1}/${MAX_ATTEMPTS}`);
+            await new Promise((r) => setTimeout(r, BACKOFF_MS[attempt - 1] || 3000));
         }
+    }
 
-        if (lastError) {
-            throw lastError;
+    if (lastError) {
+        await markFailed(job.id, lastError.message);
+        log(`[FAIL]  ${job.job_no}: ${lastError.message}`);
+        return { printed: false, connectionFailure: true };
+    }
+
+    await markPrinted(job.id);
+    log(`[OK]    ${job.job_no} → ${printer.name || printer.ip_address}`);
+    return { printed: true, connectionFailure: false };
+}
+
+/* ── Per-printer isolation + circuit breaker ──────────────────────────────
+ * Jobs used to run strictly one after another (`for job of jobs: await …`).
+ * Port 9100 accepts a SINGLE connection at a time, so serial-per-printer is
+ * required — but running serially across DIFFERENT printers meant one offline
+ * station held up every other station's tickets. A dead printer costs ~13s
+ * (three 4s connect timeouts + backoff), and the whole queue waited behind it.
+ * That is exactly the "one printer offline delayed all prints" complaint.
+ *
+ * Now every printer gets its OWN lane: lanes run in PARALLEL, jobs inside a
+ * lane stay serial. One offline printer only ever delays its own tickets —
+ * receipt, KOT and reminder for every other printer keep flowing.
+ *
+ * A circuit breaker keeps a persistently-dead printer from slowing the tick
+ * cadence for the healthy ones. After CB_FAILURE_THRESHOLD failing ticks the
+ * lane is skipped for CB_COOLDOWN_MS; its jobs are fast-failed (no ~13s wait
+ * each) so they leave the server queue instead of starving the 10-oldest fetch,
+ * then the printer is probed once when the cooldown lapses. The moment it
+ * answers again the lane closes and prints normally. */
+const CB_FAILURE_THRESHOLD = 2;
+const CB_COOLDOWN_MS       = 30000;
+const LOCAL_LANE           = '__local__';   // browser / non-network / unconfigured — never breaks
+const printerHealth = new Map();            // lane key -> { fails, cooldownUntil }
+
+/** The failure domain is the physical printer (ip:port), not the terminal/order-type. */
+function laneKeyOf(job) {
+    const p = job.printer || {};
+    if (p.id && p.printer_type === 'network' && p.ip_address) {
+        return `${p.ip_address}:${Number(p.port || 9100)}`;
+    }
+    return LOCAL_LANE;
+}
+
+function healthFor(key) {
+    let h = printerHealth.get(key);
+    if (!h) { h = { fails: 0, cooldownUntil: 0 }; printerHealth.set(key, h); }
+    return h;
+}
+
+async function failFast(job, message) {
+    try { await markFailed(job.id, message); } catch (_) { /* server hiccup — retried next poll */ }
+    log(`[FAIL]  ${job.job_no}: ${message}`);
+}
+
+/**
+ * Process every job for ONE printer, serially (port 9100 = one socket at a time), honouring the
+ * circuit breaker. Never throws — a lane failure must not sink the sibling lanes running alongside.
+ */
+async function processLane(key, jobs) {
+    const h = healthFor(key);
+
+    // Known-dead printer, still cooling: don't spend ~13s per ticket re-proving it. Fast-fail so
+    // the jobs clear the server queue (and stop starving other printers' newer jobs from the fetch).
+    if (key !== LOCAL_LANE && h.fails >= CB_FAILURE_THRESHOLD && Date.now() < h.cooldownUntil) {
+        for (const job of jobs) {
+            await failFast(job, 'Printer unreachable — cooling down after repeated failures. Will retry automatically.');
         }
+        log(`[COOL]  ${jobs.length} job(s) held — ${key} unreachable`);
+        return;
+    }
 
-        await markPrinted(job.id);
-        log(`[OK]    ${job.job_no} → ${printer.name || printer.ip_address}`);
+    let laneDown = false;
+    for (const job of jobs) {
+        if (laneDown) {
+            // The rest target the SAME dead printer — fail them fast rather than burn ~13s each.
+            await failFast(job, 'Printer unreachable. Will retry automatically.');
+            continue;
+        }
+        let result;
+        try {
+            result = await processJob(job);
+        } catch (err) {
+            // markPrinted/markFailed talking to the server threw — treat as non-fatal, move on.
+            log(`[ERR]   ${job.job_no}: ${err.message}`);
+            continue;
+        }
+        if (result.connectionFailure) {
+            laneDown = true;
+        }
+    }
 
-    } catch (err) {
-        await markFailed(job.id, err.message);
-        log(`[FAIL]  ${job.job_no}: ${err.message}`);
+    if (key === LOCAL_LANE) {
+        return;
+    }
+    if (laneDown) {
+        h.fails += 1;
+        if (h.fails >= CB_FAILURE_THRESHOLD) {
+            h.cooldownUntil = Date.now() + CB_COOLDOWN_MS;
+            log(`[COOL]  ${key} marked down — skipping for ${CB_COOLDOWN_MS / 1000}s`);
+        }
+    } else {
+        h.fails = 0;
+        h.cooldownUntil = 0;
     }
 }
 
@@ -497,9 +602,20 @@ async function tick() {
         if (jobs.length > 0) {
             idleCounter = 0;
             log(`[POLL]  ${jobs.length} job(s) to process`);
+
+            // Split the batch into one lane per printer, then run the lanes in PARALLEL. Jobs inside
+            // a lane stay serial (port 9100 = one socket), but an offline printer's lane can no
+            // longer hold up the receipt/KOT/reminder heading to every other printer.
+            const lanes = new Map();
             for (const job of jobs) {
-                await processJob(job);
+                const key = laneKeyOf(job);
+                if (!lanes.has(key)) lanes.set(key, []);
+                lanes.get(key).push(job);
             }
+            await Promise.all(
+                [...lanes.entries()].map(([key, laneJobs]) => processLane(key, laneJobs))
+            );
+
             // A ticket the server just re-queued should not wait a full poll interval — a kitchen
             // slip arriving seconds late is the whole complaint. Look again straight away.
             setTimeout(() => { tick().catch(() => {}); }, 250);
@@ -566,24 +682,43 @@ async function status(config) {
 
 /* ── Entrypoint ───────────────────────────────────────────────────────── */
 
-const command = (process.argv[2] || '').toLowerCase();
+// Only run the CLI when invoked directly (node print-agent.js / the packaged exe). When required by
+// a test harness this stays dormant so the tests can drive the pieces in isolation.
+if (require.main === module) {
+    const command = (process.argv[2] || '').toLowerCase();
 
-if (command === '--help' || command === 'help') {
-    console.log('Usage: print-agent [setup|run|status]');
-    console.log('  setup   Pair this PC with Bingoo POS using a pairing code');
-    console.log('  run     Start printing (default when already configured)');
-    console.log('  status  Show configuration and check the server connection');
-    process.exit(0);
-} else if (command === 'setup') {
-    setup();
-} else if (command === 'status') {
-    status(loadConfig());
-} else {
-    const config = loadConfig();
-    if (!config) {
-        console.log('No configuration found — starting first-time setup.\n');
+    if (command === '--help' || command === 'help') {
+        console.log('Usage: print-agent [setup|run|status]');
+        console.log('  setup   Pair this PC with Bingoo POS using a pairing code');
+        console.log('  run     Start printing (default when already configured)');
+        console.log('  status  Show configuration and check the server connection');
+        process.exit(0);
+    } else if (command === 'setup') {
         setup();
+    } else if (command === 'status') {
+        status(loadConfig());
     } else {
-        run(config);
+        const config = loadConfig();
+        if (!config) {
+            console.log('No configuration found — starting first-time setup.\n');
+            setup();
+        } else {
+            run(config);
+        }
     }
 }
+
+/* ── Test surface (no effect on the CLI/packaged exe) ──────────────────── */
+module.exports = {
+    AGENT_VERSION,
+    laneKeyOf,
+    processJob,
+    processLane,
+    tick,
+    getPendingJobs,
+    _printerHealth: printerHealth,
+    _setConfig: (cfg) => { CONFIG = cfg; },
+    _resetHealth: () => printerHealth.clear(),
+    CB_FAILURE_THRESHOLD,
+    CB_COOLDOWN_MS,
+};
