@@ -16,7 +16,6 @@
      Server validation, services, CSRF and the duplicate-submit guard are all
      untouched — this is transport. --}}
 @once
-@once
 @push('styles')
 <link rel="stylesheet" href="{{ asset('assets/plugins/flatpickr/flatpickr.min.css') }}">
 @endpush
@@ -30,109 +29,18 @@
     window.initCateringEventForm = function (root) {
         var $root = $(root);
 
-        // KASHIF-EVENT-FORM-2 — the POS's customer flow, on the booking form.
-        // One button, one big search box, pick-or-add, and a chip for who is
-        // attached. The booking's own customer fields are what actually save;
-        // this only fills them, so nothing about the save path changes.
-        (function () {
-            var $modalEl = $root.find('.cust-modal');
-            if (! $modalEl.length || $modalEl.data('cust-ready')) return;
-            $modalEl.data('cust-ready', true);
-
-            var f = function (name) { return $root.find('[name="' + name + '"]'); };
-            var chip = $root.find('.cust-chip');
-
-            function paintChip() {
-                var name = f('customer_name').val();
-                var phone = f('customer_phone').val();
-                if (! name) { chip.addClass('d-none'); return; }
-                chip.removeClass('d-none');
-                chip.find('.cust-chip-name').text(name);
-                chip.find('.cust-chip-phone').text(phone || '');
-            }
-            paintChip();
-
-            chip.find('.cust-chip-clear').on('click', function () {
-                ['customer_name', 'customer_phone', 'customer_email', 'customer_address', 'customer_name_ur']
-                    .forEach(function (n) { f(n).val(''); });
-                $root.find('.customer-select').empty().val('');
-                paintChip();
-            });
-
-            function attach(c) {
-                $root.find('.customer-select').empty()
-                    .append(new Option(c.text || c.name || '', c.id || '', true, true));
-                f('customer_name').val(c.name || c.text || '');
-                if (c.phone) f('customer_phone').val(c.phone);
-                if (c.email) f('customer_email').val(c.email);
-                if (c.address) f('customer_address').val(c.address);
-                paintChip();
-                bootstrap.Modal.getInstance($modalEl[0])?.hide();
-            }
-
-            var timer = null;
-            $modalEl.find('.cust-q').on('input', function () {
-                var q = $(this).val().trim();
-                clearTimeout(timer);
-                var $results = $modalEl.find('.cust-results');
-                var $new = $modalEl.find('.cust-new');
-                if (! q) { $results.empty(); $new.addClass('d-none'); return; }
-                timer = setTimeout(function () {
-                    fetch('{{ url('/ajax/customers') }}?q=' + encodeURIComponent(q), {
-                        headers: { 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin',
-                    }).then(r => r.json()).then(function (data) {
-                        var rows = data.results || [];
-                        $results.empty();
-                        rows.forEach(function (c) {
-                            $('<button type="button" class="list-group-item list-group-item-action"></button>')
-                                .text(c.text || c.name)
-                                .on('click', function () { attach(c); })
-                                .appendTo($results);
-                        });
-                        // Nothing matched → offer to add exactly what was typed.
-                        if (! rows.length) {
-                            $new.removeClass('d-none');
-                            var digits = /^[0-9+\-\s]+$/.test(q);
-                            $new.find('.cust-new-phone').val(digits ? q : '');
-                            $new.find('.cust-new-name').val(digits ? '' : q);
-                            $new.find(digits ? '.cust-new-name' : '.cust-new-phone').trigger('focus');
-                        } else {
-                            $new.addClass('d-none');
-                        }
-                    }).catch(function () { $results.empty(); });
-                }, 200);
-            });
-
-            $modalEl.find('.cust-new-use').on('click', function () {
-                var name = $modalEl.find('.cust-new-name').val().trim();
-                if (! name) { $modalEl.find('.cust-new-name').trigger('focus'); return; }
-                attach({
-                    id: '', name: name,
-                    phone: $modalEl.find('.cust-new-phone').val().trim(),
-                    address: $modalEl.find('.cust-new-address').val().trim(),
-                });
-            });
-            $modalEl.find('.cust-new input').on('keydown', function (e) {
-                if (e.key === 'Enter') { e.preventDefault(); $modalEl.find('.cust-new-use').trigger('click'); }
-            });
-
-            $root.find('.cust-open').on('click', function () {
-                var modal = bootstrap.Modal.getOrCreateInstance($modalEl[0]);
-                modal.show();
-                setTimeout(function () { $modalEl.find('.cust-q').val('').trigger('focus'); }, 200);
-                $modalEl.find('.cust-results').empty();
-                $modalEl.find('.cust-new').addClass('d-none');
-            });
-
-            $root.find('[name=customer_name], [name=customer_phone]').on('input', paintChip);
-        })();
 
         var $customer = $root.find('.customer-select');
         if ($customer.length && ! $customer.hasClass('select2-hidden-accessible')) {
             $customer.select2({
                 width: '100%',
                 allowClear: true,
-                placeholder: 'Search customers…',
+                // A name nobody has yet is typed right here and becomes the new
+                // customer — no modal, no second screen, no separate save.
+                tags: true,
+                minimumInputLength: 1,
+                placeholder: 'Phone ya naam…',
+                language: { inputTooShort: () => 'Phone ya naam likhein…', noResults: () => 'Koi match nahi — likha hua naam Enter karein' },
                 dropdownParent: $root.closest('.offcanvas').length ? $root.closest('.offcanvas') : $(document.body),
                 ajax: {
                     url: '{{ url('/ajax/customers') }}',
@@ -150,12 +58,30 @@
             });
 
             $customer.on('select2:select', function (e) {
-                const c = e.params.data.customer || {};
-                if (c.name && ! $root.find('[name=customer_name]').val()) $root.find('[name=customer_name]').val(c.name);
-                if (c.phone) $root.find('[name=customer_phone]').val(c.phone);
-                if (c.email) $root.find('[name=customer_email]').val(c.email);
+                const data = e.params.data;
+                const c = data.customer;
+                const set = (n, v) => { if (v !== undefined && v !== null) $root.find('[name=' + n + ']').val(v); };
+
+                if (! c) {
+                    // A typed name: it IS the customer. Only the name is known,
+                    // and the fields below are already open for the rest.
+                    const typed = (data.text || '').trim();
+                    set('customer_name', typed);
+                    ['customer_phone', 'customer_email', 'customer_address'].forEach(n => set(n, ''));
+                    $root.find('[name=customer_phone]').trigger('focus');
+
+                    return;
+                }
+
+                // A match: fill everything the customer already told us. The
+                // fields stay editable — a different address for THIS booking
+                // is typed right there and belongs to the booking, not the
+                // customer's record.
+                set('customer_name', c.name || '');
+                set('customer_phone', c.phone || '');
+                set('customer_email', c.email || '');
                 const addr = (c.addresses && c.addresses.length) ? c.addresses[0].address : c.legacy_address;
-                if (addr) $root.find('[name=customer_address]').val(addr);
+                set('customer_address', addr || '');
             });
         }
 
@@ -329,4 +255,3 @@
 })();
 </script>
 @endpush
-@endonce

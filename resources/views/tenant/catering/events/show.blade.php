@@ -1597,6 +1597,10 @@ $(function () {
     // post through the SAME block authorities and the workspace refreshes once.
     let punch = null;
     const punchFmt = n => (+(+n).toFixed(4)).toString();
+    // Block labels carry their provenance ("Beef — market estimate — owner to
+    // confirm"). That belongs in Cost Details, not in a punch row: the operator
+    // is looking for the word "Beef".
+    const punchShort = s => String(s || '').split(' — ')[0].trim();
 
     function initPunchBar() {
         const el = $('#punch-item');
@@ -1605,6 +1609,9 @@ $(function () {
             el.select2({
                 width: '100%', placeholder: '361 ya biryani…',
                 tags: true, // free-text items punch through the same bar
+                // Nothing until something is typed: a default list pushed the
+                // punched rows off the screen and answered a question nobody asked.
+                minimumInputLength: 1,
                 ajax: {
                     url: '{{ url('/ajax/products') }}', dataType: 'json', delay: 150,
                     data: params => ({ q: params.term, sellable: 1, page: params.page || 1 }),
@@ -1618,7 +1625,7 @@ $(function () {
         document.body.classList.add('punch-mode');
         if (sessionStorage.getItem('punchFocus')) {
             sessionStorage.removeItem('punchFocus');
-            setTimeout(() => el.select2('open'), 150);
+            setTimeout(() => el.select2('open'), 150); // opens with an empty term → minimumInputLength keeps the list closed
         }
     }
 
@@ -1696,6 +1703,13 @@ $(function () {
 
     function punchSetMode(m) {
         if (m === 'PARTY' && !punch.party) { punchNote('Is item par Party OFF hai (Catering Products se on hota hai)'); m = 'OWN'; }
+        // BUG FIX: coming back to OWN must ZERO the customer's shares, not just
+        // grey the boxes — a hidden number that still billed nothing is exactly
+        // how a quotation ends up wrong for a reason nobody can see.
+        if (m === 'OWN' && punch.mats && punch.mats.some(x => (x.cust || 0) > 0)) {
+            punch.mats.forEach(x => { x.cust = 0; });
+            setTimeout(function () { punchRenderMats(); punchLive(); }, 0);
+        }
         punch.mode = m;
         $('#punch-own').toggleClass('btn-primary', m === 'OWN').toggleClass('btn-outline-primary', m !== 'OWN')
             .find('.punch-tick').attr('class', 'ti me-1 punch-tick ' + (m === 'OWN' ? 'ti-square-check' : 'ti-square'));
@@ -1715,7 +1729,9 @@ $(function () {
             + (partyCol ? '<th class="text-end text-success">گاہک KG · 0 rate</th>' : '')
             + '</tr></thead><tbody>'
             + punch.mats.map((m, i) => '<tr>'
-                + '<td>' + _.escape(m.name) + ' <span class="fs-12 text-muted">recipe ' + m.ratio + ' ' + _.escape(m.unit) + '</span></td>'
+                + '<td title="' + _.escape(m.label || m.name) + '">' + _.escape(punchShort(m.name || m.label))
+                    + (punch.editRow ? '' : ' <span class="fs-12 text-muted">recipe ' + m.ratio + ' ' + _.escape(m.unit) + '</span>')
+                    + '</td>'
                 + '<td class="text-end"><input class="form-control form-control-sm text-end pm-rate" data-i="' + i + '" style="width:90px;display:inline-block" value="' + m.rate + '"></td>'
                 + '<td class="text-end"><input class="form-control form-control-sm text-end pm-kg" data-i="' + i + '" style="width:90px;display:inline-block" value="' + punchFmt(m.kgTouched ? m.kg : qty * m.ratio) + '"></td>'
                 + (partyCol
@@ -1846,11 +1862,36 @@ $(function () {
         });
 
         const supply = punch.mats.filter(m => (m.cust || 0) > 0)
-            .map(m => esc(m.name) + ' گاہک ' + punchFmt(m.cust)).join(', ');
+            .map(m => punchShort(m.name || m.label) + ' ' + punchFmt(m.cust)).join(', ');
+
+        // The breakdown an operator opens on demand — materials AND the making
+        // charge, which the punch itself keeps in the background.
+        const baseMats = punch.mats.reduce((s, m) => s + (m.ratio * m.origRate), 0);
+        const makingPU = Math.max(0, (punch.dishRate || 0) - baseMats);
+        const detail = '<table class="table table-sm mb-0 fs-12" style="max-width:640px">'
+            + '<thead><tr><th>Part</th><th class="text-end">Rate</th><th class="text-end">Kitchen</th>'
+            + '<th class="text-end">Customer</th><th class="text-end">We charge</th></tr></thead><tbody>'
+            + punch.mats.map(m => {
+                const kg = m.kgTouched ? m.kg : qty * m.ratio;
+                const cust = Math.min(m.cust || 0, kg);
+                const ours = Math.max(0, kg - cust);
+                return '<tr><td>' + esc(punchShort(m.name || m.label)) + '</td>'
+                    + '<td class="text-end">' + money(m.rate) + '</td>'
+                    + '<td class="text-end">' + punchFmt(kg) + '</td>'
+                    + '<td class="text-end text-success-emphasis">' + punchFmt(cust) + '</td>'
+                    + '<td class="text-end">' + money(ours * m.rate) + '</td></tr>';
+            }).join('')
+            + '<tr><td>Making <span class="text-muted">(background)</span></td><td class="text-end">'
+                + money(makingPU) + '</td><td class="text-end">—</td><td class="text-end">—</td>'
+                + '<td class="text-end">' + money(makingPU * qty) + '</td></tr>'
+            + '</tbody></table>';
 
         return '<tr data-row="p' + idx + '" data-rate="' + calc.rate + '" class="punch-row">'
-            + '<td>' + esc(punch.name)
-                + (supply ? '<div class="fs-12 text-success-emphasis">' + supply + '</div>' : '')
+            + '<td>'
+                + '<button type="button" class="btn btn-link btn-sm p-0 me-1 punch-expand" title="Cost details">'
+                + '<i class="ti ti-chevron-right"></i></button>'
+                + esc(punch.name)
+                + (supply ? '<span class="fs-12 text-success-emphasis ms-1">· customer: ' + esc(supply) + '</span>' : '')
                 + (punch.productId ? h('product_id', punch.productId) : '')
                 + h('item_name', punch.name) + h('rate', calc.rate)
                 + (punch.unitId ? h('unit_id', punch.unitId) : '')
@@ -1865,9 +1906,16 @@ $(function () {
             + '<td class="text-end">' + money(calc.rate) + '</td>'
             + '<td class="text-end">' + money(calc.rate) + '</td>'
             + '<td class="text-end line-amount">' + money(calc.amount) + '</td>'
-            + '<td class="fs-12">' + esc(instrLabels.concat(note ? [note] : []).join(' · ')) + '</td>'
+            + '<td class="fs-12">'
+                + (instrLabels.length || note
+                    ? '<span class="badge bg-secondary-subtle text-secondary-emphasis" data-bs-toggle="tooltip" title="'
+                        + esc(instrLabels.concat(note ? [note] : []).join(' · ')) + '">'
+                        + '<i class="ti ti-note me-1"></i>' + (instrLabels.length + (note ? 1 : 0)) + '</span>'
+                    : '')
+            + '</td>'
             + '<td class="text-end"><button type="button" class="btn btn-sm btn-link text-danger p-0 punch-remove" title="Remove">&times;</button></td>'
-            + '</tr>';
+            + '</tr>'
+            + '<tr class="punch-detail d-none" data-detail="p' + idx + '"><td colspan="9" class="bg-body-tertiary">' + detail + '</td></tr>';
     }
 
     // Row-click EDIT of an unsaved punch row: rebuild it in place.
@@ -1897,8 +1945,19 @@ $(function () {
     }
 
     $(document).on('click', '.punch-remove', function () {
-        $(this).closest('tr').remove();
+        const tr = $(this).closest('tr');
+        $('[data-detail="' + tr.attr('data-row') + '"]').remove();
+        tr.remove();
         recalc();
+    });
+
+    // Each row opens its own breakdown — making included, on demand only.
+    $(document).on('click', '.punch-expand', function (e) {
+        e.stopPropagation();
+        const tr = $(this).closest('tr');
+        const detail = $('[data-detail="' + tr.attr('data-row') + '"]');
+        detail.toggleClass('d-none');
+        $(this).find('i').attr('class', detail.hasClass('d-none') ? 'ti ti-chevron-right' : 'ti ti-chevron-down');
     });
     // Runs at load AND after every in-place swap: fresh selects need select2,
     // an emptied estimate needs its first row, totals need recomputing.
