@@ -1885,10 +1885,14 @@ $(function () {
         // way items are added — no picker row below, no Add Item button, and
         // any leftover empty picker row from an older render is swept away.
         if ($('#punch-bar').length) {
+            // Sweep ONLY genuine empty picker rows — the JS-added kind that
+            // carry a .product-select with nothing chosen. A server-rendered
+            // line has neither control, and sweeping IT deleted the operator's
+            // just-saved rows from the DOM — and, on the next save, from the
+            // database. Never again.
             $('#lines-body tr').not('.cost-details-row').filter(function () {
-                const name = $(this).find('.line-name').val();
-                const sel = $(this).find('.product-select').val();
-                return !name && !sel;
+                const sel = $(this).find('.product-select');
+                return sel.length > 0 && !sel.val() && !$(this).find('.line-name').val();
             }).remove();
         } else {
             $('#add-line-wrap').removeClass('d-none');
