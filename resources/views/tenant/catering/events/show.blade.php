@@ -280,6 +280,34 @@
     <form method="POST" action="{{ url('/catering/estimates/' . $current->id) }}" id="estimate-form">
         @csrf @method('PUT')
         <div class="card-body p-0">
+            {{-- KASHIF-ORDER-PUNCH §B2 — the guided punch (approved mockup, on
+                 the live pipeline): item → Qty → OWN/PARTY → linked materials
+                 auto-fill EK-EK karke (rate/KG editable, گاہک share on the same
+                 row) → final Enter saves the row and applies every adjustment
+                 through the SAME block authorities. Making stays background. --}}
+            <div class="p-3 border-bottom" id="punch-bar" style="background:var(--bs-tertiary-bg,#f8f9fa)">
+                <div class="d-flex gap-3 flex-wrap align-items-end">
+                    <div style="min-width:300px;flex:1;max-width:480px">
+                        <label class="form-label fs-12 text-muted mb-1">Item — code ya naam → <kbd>Enter</kbd></label>
+                        <select id="punch-item" class="form-select" data-placeholder="361 ya biryani…"></select>
+                    </div>
+                    <div class="d-none punch-step" id="punch-qty-wrap">
+                        <label class="form-label fs-12 text-muted mb-1">Qty <span id="punch-unit" class="text-uppercase"></span></label>
+                        <input id="punch-qty" type="number" step="0.001" min="0.001" class="form-control text-end" style="width:110px" value="10">
+                    </div>
+                    <div class="d-none punch-step" id="punch-seg-wrap">
+                        <span class="form-label fs-12 text-muted mb-1 d-block">Party ya Own? — <kbd>O</kbd>/<kbd>P</kbd> phir <kbd>Enter</kbd></span>
+                        <div class="btn-group" id="punch-seg">
+                            <button type="button" class="btn btn-primary" id="punch-own" tabindex="0">OWN · ہم</button>
+                            <button type="button" class="btn btn-outline-success" id="punch-party">PARTY · گاہک</button>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-warning fw-bold d-none punch-step" id="punch-commit">Row save</button>
+                    <button type="button" class="btn btn-link btn-sm text-muted d-none punch-step" id="punch-cancel">Esc — cancel</button>
+                </div>
+                <div id="punch-mats" class="mt-2 table-responsive"></div>
+                <div id="punch-live" class="fs-13 text-muted mt-2"></div>
+            </div>
             <div class="table-responsive">
                 <table class="table mb-0" id="lines-table">
                     <thead>
@@ -1514,6 +1542,191 @@ $(function () {
         }
     });
 
+    // ── KASHIF-ORDER-PUNCH §B2 — the guided punch ────────────────────────────
+    // item → Qty → OWN/PARTY → materials ek-ek (rate/KG/گاہک) → Enter = row.
+    // The row lands through the NORMAL form save; the material adjustments then
+    // post through the SAME block authorities and the workspace refreshes once.
+    let punch = null;
+    const punchFmt = n => (+(+n).toFixed(4)).toString();
+
+    function initPunchBar() {
+        const el = $('#punch-item');
+        if (!el.length || el.hasClass('select2-hidden-accessible')) return;
+        el.select2({
+            width: '100%', placeholder: '361 ya biryani…',
+            ajax: {
+                url: '{{ url('/ajax/products') }}', dataType: 'json', delay: 150,
+                data: params => ({ q: params.term, sellable: 1, page: params.page || 1 }),
+                processResults: data => ({ results: data.results || [], pagination: data.pagination || {} }),
+            },
+        });
+        el.on('select2:select', punchPick);
+    }
+
+    function punchPick(e) {
+        const id = e.params.data.id;
+        const name = (e.params.data.text || '').replace(/^[^—]*—\s*/, '');
+        const p = profiles[id] || {};
+        punch = {
+            productId: /^\d+$/.test(String(id)) ? id : null,
+            name, unitId: p.unit_id || null, mode: 'OWN',
+            party: p.party !== false,
+            mats: (p.mats || []).map(m => ({ ...m, kg: null, cust: 0, origRate: m.rate })),
+        };
+        $('#punch-unit').text('');
+        $('.punch-step').removeClass('d-none');
+        if (!punch.mats.length) { $('#punch-seg-wrap').addClass('d-none'); }
+        punchSetMode('OWN');
+        punchRenderMats();
+        $('#punch-qty').val(10).trigger('focus').trigger('select');
+        punchLive();
+    }
+
+    function punchSetMode(m) {
+        if (m === 'PARTY' && !punch.party) { punchNote('Is item par Party OFF hai (Catering Products se on hota hai)'); m = 'OWN'; }
+        punch.mode = m;
+        $('#punch-own').toggleClass('btn-primary', m === 'OWN').toggleClass('btn-outline-primary', m !== 'OWN');
+        $('#punch-party').toggleClass('btn-success', m === 'PARTY').toggleClass('btn-outline-success', m !== 'PARTY');
+        $('#punch-mats .pm-cust').prop('disabled', m !== 'PARTY');
+    }
+    function punchNote(t) { $('#punch-live').html('<span class="text-warning-emphasis">' + _.escape(t) + '</span>'); }
+
+    function punchRenderMats() {
+        if (!punch.mats.length) { $('#punch-mats').empty(); return; }
+        const qty = parseFloat($('#punch-qty').val()) || 0;
+        $('#punch-mats').html('<table class="table table-sm mb-0" style="max-width:760px"><thead><tr>'
+            + '<th>Linked material</th><th class="text-end">Rate (latest)</th>'
+            + '<th class="text-end">Kitchen KG</th><th class="text-end text-success">گاہک KG · 0 rate</th></tr></thead><tbody>'
+            + punch.mats.map((m, i) => '<tr>'
+                + '<td>' + _.escape(m.name) + ' <span class="fs-12 text-muted">recipe ' + m.ratio + ' ' + _.escape(m.unit) + '</span></td>'
+                + '<td class="text-end"><input class="form-control form-control-sm text-end pm-rate" data-i="' + i + '" style="width:90px;display:inline-block" value="' + m.rate + '"></td>'
+                + '<td class="text-end"><input class="form-control form-control-sm text-end pm-kg" data-i="' + i + '" style="width:90px;display:inline-block" value="' + punchFmt(qty * m.ratio) + '"></td>'
+                + '<td class="text-end"><input class="form-control form-control-sm text-end pm-cust" data-i="' + i + '" style="width:90px;display:inline-block;border-color:var(--bs-success)" value="0" ' + (punch.mode !== 'PARTY' ? 'disabled' : '') + '></td>'
+                + '</tr>').join('')
+            + '</tbody></table>');
+    }
+    $(document).on('input', '#punch-qty', function () {
+        if (!punch) return;
+        const qty = parseFloat(this.value) || 0;
+        $('#punch-mats .pm-kg').each(function () {
+            const i = +this.dataset.i;
+            if (!punch.mats[i].kgTouched) this.value = punchFmt(qty * punch.mats[i].ratio);
+        });
+        punchLive();
+    });
+    $(document).on('input', '#punch-mats input', function () {
+        const i = +this.dataset.i, m = punch.mats[i];
+        if (this.classList.contains('pm-kg')) { m.kgTouched = true; m.kg = parseFloat(this.value) || 0; }
+        if (this.classList.contains('pm-rate')) { m.rate = parseFloat(this.value) || 0; }
+        if (this.classList.contains('pm-cust')) { m.cust = parseFloat(this.value) || 0; }
+        punchLive();
+    });
+    function punchLive() {
+        if (!punch) return;
+        const qty = parseFloat($('#punch-qty').val()) || 0;
+        let txt = punch.mats.map((m, i) => {
+            const kg = m.kgTouched ? m.kg : qty * m.ratio;
+            const cust = Math.min(m.cust || 0, kg);
+            return _.escape(m.name) + ': kitchen <b>' + punchFmt(kg) + '</b>'
+                + (cust > 0 ? ' (گاہک <b>' + punchFmt(cust) + '</b> · ہم ' + punchFmt(kg - cust) + ')' : '');
+        }).join(' · ');
+        $('#punch-live').html(txt || (punch.name ? _.escape(punch.name) + ' — Enter se save' : ''));
+    }
+
+    // Enter ki qatar: qty → (O/P) → rate→kg→(گاہک) per material → commit.
+    function punchSeq() {
+        const seq = [document.getElementById('punch-qty')];
+        if (punch && punch.mats.length) seq.push(document.getElementById('punch-own'));
+        $('#punch-mats tbody tr').each(function () {
+            const r = $(this);
+            seq.push(r.find('.pm-rate')[0], r.find('.pm-kg')[0]);
+            if (punch.mode === 'PARTY') seq.push(r.find('.pm-cust')[0]);
+        });
+        return seq.filter(Boolean);
+    }
+    $(document).on('keydown', '#punch-bar', function (e) {
+        if (!punch) return;
+        if (e.key === 'Escape') { punchReset(); return; }
+        if (document.activeElement === document.getElementById('punch-own')
+            || document.activeElement === document.getElementById('punch-party')) {
+            if (e.key.toLowerCase() === 'o' || e.key === 'ArrowLeft') { punchSetMode('OWN'); e.preventDefault(); return; }
+            if (e.key.toLowerCase() === 'p' || e.key === 'ArrowRight') { punchSetMode('PARTY'); e.preventDefault(); return; }
+        }
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        const seq = punchSeq(), at = seq.indexOf(document.activeElement);
+        if (at > -1 && at < seq.length - 1) { seq[at + 1].focus(); seq[at + 1].select && seq[at + 1].select(); }
+        else { punchCommit(); }
+    });
+    $(document).on('click', '#punch-own', () => punchSetMode('OWN'));
+    $(document).on('click', '#punch-party', () => punchSetMode('PARTY'));
+    $(document).on('click', '#punch-cancel', punchReset);
+    $(document).on('click', '#punch-commit', punchCommit);
+    function punchReset() {
+        punch = null;
+        $('#punch-item').val(null).trigger('change');
+        $('.punch-step').addClass('d-none');
+        $('#punch-mats,#punch-live').empty();
+    }
+
+    function punchCommit() {
+        if (!punch) return;
+        const qty = parseFloat($('#punch-qty').val()) || 0;
+        if (qty <= 0) { $('#punch-qty').focus(); return; }
+
+        // Adjustments the row will need AFTER it lands (matched by block label).
+        const pending = punch.mats.map(m => ({
+            label: m.label,
+            kg: m.kgTouched ? m.kg : null,
+            rate: m.rate !== m.origRate ? m.rate : null,
+            cust: Math.min(m.cust || 0, m.kgTouched ? m.kg : qty * m.ratio),
+        })).filter(m => m.kg !== null || m.rate !== null || m.cust > 0);
+        if (pending.length) sessionStorage.setItem('punchPending', JSON.stringify({ name: punch.name, mats: pending }));
+
+        const i = $('#lines-body [name^="lines["][name$="[item_name]"]').length;
+        const h = (f, v) => '<input type="hidden" name="lines[' + i + '][' + f + ']" value="' + _.escape(String(v ?? '')) + '">';
+        $('#lines-body').append('<tr class="d-none punch-ghost"><td>'
+            + (punch.productId ? h('product_id', punch.productId) : '')
+            + h('item_name', punch.name) + h('quantity', qty)
+            + (punch.unitId ? h('unit_id', punch.unitId) : '') + h('rate', 0)
+            + '</td></tr>');
+        window.__openNewestPanel = true;
+        const f = document.getElementById('estimate-form');
+        if (f.requestSubmit) f.requestSubmit(); else $(f).trigger('submit');
+    }
+
+    // After the save re-renders the workspace, the pending adjustments post
+    // through the SAME authorities the panel's own controls use, then ONE
+    // refresh shows the finished row.
+    async function punchApplyPending() {
+        const raw = sessionStorage.getItem('punchPending');
+        if (!raw) return;
+        sessionStorage.removeItem('punchPending');
+        const pending = JSON.parse(raw);
+        const panel = $('.cost-details-row').last();
+        if (!panel.length) return;
+        const put = async (url, fields) => {
+            const fd = new FormData();
+            fd.append('_token', '{{ csrf_token() }}'); fd.append('_method', 'PUT');
+            Object.entries(fields).forEach(([k, v]) => fd.append(k, v));
+            await fetch(url, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+        };
+        for (const m of pending.mats) {
+            const tr = panel.find('tbody tr').filter(function () {
+                return $(this).find('td').first().text().trim().startsWith(m.label);
+            }).first();
+            if (!tr.length) continue;
+            const qtyAct = tr.find('[data-act*="/catering/line-cost-blocks/"]').first().attr('data-act') || '';
+            const idMatch = qtyAct.match(/line-cost-blocks\/(\d+)/);
+            if (!idMatch) continue;
+            const base = '{{ url('/catering/line-cost-blocks') }}/' + idMatch[1];
+            if (m.kg !== null) await put(base, { event_material_qty: m.kg });
+            if (m.rate !== null) await put(base + '/rate', { rate: m.rate });
+            if (m.cust > 0) await put(base + '/customer-supplied', { is_customer_supplied: 0, customer_supplied_qty: m.cust });
+        }
+        if (window.cateringWorkspaceRefresh) window.cateringWorkspaceRefresh();
+    }
+
     // Runs at load AND after every in-place swap: fresh selects need select2,
     // an emptied estimate needs its first row, totals need recomputing.
     window.initEstimateBuilder = function () {
@@ -1522,6 +1735,8 @@ $(function () {
             addRow();
         }
         recalc();
+        initPunchBar();
+        punchApplyPending();
     };
     window.initEstimateBuilder();
 });

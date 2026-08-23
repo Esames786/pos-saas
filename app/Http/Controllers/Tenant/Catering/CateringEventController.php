@@ -184,11 +184,25 @@ class CateringEventController extends Controller
         // moment it is picked, not a dash until save. One bulk pass computes
         // every enabled product's per-unit block rate (lump sums excluded, as
         // rateFor() does) — 700+ products, zero per-product queries.
-        $blockRates = \App\Models\Tenant\CateringProductCostBlock::query()
+        $allBlocks = \App\Models\Tenant\CateringProductCostBlock::query()
             ->where('is_active', true)
             ->get()
-            ->groupBy('product_id')
+            ->groupBy('product_id');
+        $blockRates = $allBlocks
             ->map(fn ($blocks) => round($blocks->reject->isLumpSum()->sum->contributionPerDishUnit(), 2));
+
+        // KASHIF-ORDER-PUNCH §B: the guided punch needs each dish's MATERIALS
+        // (never Making — it stays background) with recipe ratio + charged
+        // rate, so the stepper can auto-fill them one by one.
+        $blockMats = $allBlocks->map(fn ($blocks) => $blocks
+            ->filter(fn ($b) => $b->isMaterial() && ! $b->isLumpSum())
+            ->map(fn ($b) => [
+                'label' => $b->label,
+                'name' => $b->material?->name ?? $b->label,
+                'ratio' => (float) ($b->quantity_per_unit ?? 0),
+                'rate' => (float) $b->rate,
+                'unit' => $b->unit?->code ?? 'KG',
+            ])->values());
 
         // Catering profile defaults (rate/unit/Urdu label) keyed by product for the builder.
         $profileMap = \App\Models\Tenant\CateringProductProfile::with(['product.translations'])
@@ -199,6 +213,8 @@ class CateringEventController extends Controller
                 'rate' => $profile->costing_mode === 'blocks' && ($blockRates[$profile->product_id] ?? 0) > 0
                     ? (float) $blockRates[$profile->product_id]
                     : (float) ($profile->default_catering_rate ?? 0),
+                'mats' => $profile->costing_mode === 'blocks' ? ($blockMats[$profile->product_id] ?? collect())->all() : [],
+                'party' => (bool) ($profile->allow_party_supply ?? true),
                 'unit_id' => $profile->default_quote_unit_id,
                 'minimum_qty' => (float) ($profile->minimum_qty ?? 0),
                 'pricing_mode' => $profile->pricing_mode,

@@ -185,6 +185,12 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('live-reason', $html,
             'a different rate still demands its reason, right on the row');
 
+        // KASHIF-ORDER-PUNCH §B2: the guided punch bar on the draft builder —
+        // item, Qty, the Party-ya-Own question, and the material stepper mount.
+        $this->assertStringContainsString('punch-bar', $html);
+        $this->assertStringContainsString('punch-item', $html);
+        $this->assertStringContainsString('Party ya Own?', $html);
+
         // KASHIF-LEGACY-ALIGN-2: the old software's one-glance strip sits on
         // every row's Cost Details — computed from the SAME snapshot the table
         // below shows, read-only by design.
