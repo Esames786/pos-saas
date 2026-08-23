@@ -136,7 +136,9 @@ class CateringDocumentController extends Controller
     {
         $lang = $request->input('lang');
         if (! in_array($lang, CateringSetting::PRINT_PROFILES, true)) {
-            $lang = CateringSetting::tenantDefault()->print_language_profile;
+            // A tenant that has never opened Catering Settings has no stored
+            // profile yet — a document must still print, in English, not 500.
+            $lang = CateringSetting::tenantDefault()->print_language_profile ?? 'en';
         }
 
         return $lang;

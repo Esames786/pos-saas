@@ -1551,16 +1551,24 @@ $(function () {
 
     function initPunchBar() {
         const el = $('#punch-item');
-        if (!el.length || el.hasClass('select2-hidden-accessible')) return;
-        el.select2({
-            width: '100%', placeholder: '361 ya biryani…',
-            ajax: {
-                url: '{{ url('/ajax/products') }}', dataType: 'json', delay: 150,
-                data: params => ({ q: params.term, sellable: 1, page: params.page || 1 }),
-                processResults: data => ({ results: data.results || [], pagination: data.pagination || {} }),
-            },
-        });
-        el.on('select2:select', punchPick);
+        if (!el.length) return;
+        if (!el.hasClass('select2-hidden-accessible')) {
+            el.select2({
+                width: '100%', placeholder: '361 ya biryani…',
+                ajax: {
+                    url: '{{ url('/ajax/products') }}', dataType: 'json', delay: 150,
+                    data: params => ({ q: params.term, sellable: 1, page: params.page || 1 }),
+                    processResults: data => ({ results: data.results || [], pagination: data.pagination || {} }),
+                },
+            });
+            el.on('select2:select', punchPick);
+        }
+        // Old-software loop: the row just landed → the item box opens itself,
+        // ready for the NEXT code. No reaching down into the table.
+        if (sessionStorage.getItem('punchFocus')) {
+            sessionStorage.removeItem('punchFocus');
+            setTimeout(() => el.select2('open'), 150);
+        }
     }
 
     function punchPick(e) {
@@ -1691,6 +1699,7 @@ $(function () {
             + (punch.unitId ? h('unit_id', punch.unitId) : '') + h('rate', 0)
             + '</td></tr>');
         window.__openNewestPanel = true;
+        sessionStorage.setItem('punchFocus', '1');
         const f = document.getElementById('estimate-form');
         if (f.requestSubmit) f.requestSubmit(); else $(f).trigger('submit');
     }
@@ -1731,7 +1740,10 @@ $(function () {
     // an emptied estimate needs its first row, totals need recomputing.
     window.initEstimateBuilder = function () {
         initInstrSelect(document);
-        if ($('#lines-body tr').not('.cost-details-row').length === 0) {
+        // KASHIF-ORDER-PUNCH: with the punch bar present, the punch IS the way
+        // items are added — no auto-inserted empty picker row to climb down to.
+        // "+ Add Item" stays for free-text lines.
+        if (!$('#punch-bar').length && $('#lines-body tr').not('.cost-details-row').length === 0) {
             addRow();
         }
         recalc();
