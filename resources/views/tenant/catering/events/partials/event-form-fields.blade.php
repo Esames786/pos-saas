@@ -59,10 +59,14 @@
             <div class="row g-3">
                 <div class="col-md-3">
                     <label class="form-label">Branch</label>
+                    {{-- KASHIF-EVENT-FORM-1: a single-branch house should never
+                         have to choose. The first branch is preselected on a NEW
+                         booking; an existing one keeps whatever it was saved with. --}}
+                    @php $branchDefault = old('branch_id', $event?->branch_id ?? $branches->first()?->id); @endphp
                     <select name="branch_id" class="form-select">
                         <option value="">—</option>
                         @foreach($branches as $branch)
-                            <option value="{{ $branch->id }}" @selected(old('branch_id', $event?->branch_id) == $branch->id)>{{ $branch->name }}</option>
+                            <option value="{{ $branch->id }}" @selected($branchDefault == $branch->id)>{{ $branch->name }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -98,11 +102,22 @@
                     <label class="form-label">Service Time</label>
                     <input type="time" name="service_time" class="form-control"
                            value="{{ old('service_time', $event?->service_time ? \Carbon\Carbon::parse($event->service_time)->format('H:i') : '') }}">
-                    <div class="d-flex flex-wrap gap-1 mt-2">
-                        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 fs-12" data-time="13:00">Lunch 1 PM</button>
-                        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 fs-12" data-time="20:00">Dinner 8 PM</button>
-                        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 fs-12" data-time="21:00">9 PM</button>
-                    </div>
+                    {{-- KASHIF-EVENT-FORM-1: the house's OWN sittings, from the
+                         tenant's data — renameable, retimeable, retirable on the
+                         Catering Settings screen. --}}
+                    @php
+                        $timePresets = \App\Models\Tenant\CateringServiceTimePreset::active()->ordered()->get();
+                    @endphp
+                    @if($timePresets->isNotEmpty())
+                        <div class="d-flex flex-wrap gap-1 mt-2">
+                            @foreach($timePresets as $preset)
+                                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 fs-12"
+                                        data-time="{{ $preset->inputTime() }}"
+                                        title="{{ $preset->displayTime() }}">{{ $preset->label }}</button>
+                            @endforeach
+                            <a href="{{ url('/catering/settings') }}#service-times" class="btn btn-sm btn-link py-0 px-1 fs-12">edit list</a>
+                        </div>
+                    @endif
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Venue</label>

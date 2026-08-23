@@ -16,6 +16,14 @@
      Server validation, services, CSRF and the duplicate-submit guard are all
      untouched — this is transport. --}}
 @once
+@once
+@push('styles')
+<link rel="stylesheet" href="{{ asset('assets/plugins/flatpickr/flatpickr.min.css') }}">
+@endpush
+@push('scripts')
+<script src="{{ asset('assets/plugins/flatpickr/flatpickr.js') }}"></script>
+@endpush
+@endonce
 @push('scripts')
 <script>
 (function () {
@@ -110,9 +118,34 @@
         root.querySelectorAll('[data-time]').forEach(btn => {
             btn.addEventListener('click', () => {
                 const t = root.querySelector('[name=service_time]');
-                if (t) t.value = btn.dataset.time;
+                if (!t) return;
+                if (t._flatpickr) { t._flatpickr.setDate(btn.dataset.time, true); } else { t.value = btn.dataset.time; }
+                root.querySelectorAll('[data-time]').forEach(b => b.classList.remove('btn-secondary', 'text-white'));
+                btn.classList.add('btn-secondary', 'text-white');
             });
         });
+
+        // KASHIF-EVENT-FORM-1 — a modern picker on the dates and the sitting
+        // time: type it, pick it, or clear it. Native <input type=date> stays
+        // the underlying field, so a browser without the library still works
+        // and the value posted is unchanged.
+        if (window.flatpickr) {
+            root.querySelectorAll('input[type=date]').forEach(function (el) {
+                if (el._flatpickr) return;
+                window.flatpickr(el, {
+                    dateFormat: 'Y-m-d', altInput: true, altFormat: 'D, d M Y',
+                    allowInput: true, disableMobile: true,
+                });
+            });
+            root.querySelectorAll('input[type=time]').forEach(function (el) {
+                if (el._flatpickr) return;
+                window.flatpickr(el, {
+                    enableTime: true, noCalendar: true, dateFormat: 'H:i',
+                    altInput: true, altFormat: 'h:i K', time_24hr: false,
+                    allowInput: true, disableMobile: true, minuteIncrement: 15,
+                });
+            });
+        }
 
         eventDate.addEventListener('change', render);
         if (bookingDate) bookingDate.addEventListener('change', syncMin);

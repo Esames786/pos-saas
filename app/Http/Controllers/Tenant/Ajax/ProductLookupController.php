@@ -157,9 +157,14 @@ class ProductLookupController extends Controller
                     ->sortBy(fn ($b) => strlen((string) $b->barcode))
                     ->first()?->barcode;
             }
+            // "361 — Biryani Masala Beef" where a human code exists; the plain
+            // NAME where it does not. A hashed import SKU (KM-b03682ebfd) is
+            // machinery, and machinery has no business in an operator's list.
+            $isHashSku = $p->sku && preg_match('/^KM-[0-9a-f]{6,}$/i', (string) $p->sku);
+            $label = $codeLabel ?: ($isHashSku ? null : $p->sku);
             $base = [
                 'id' => $p->id,
-                'text' => ($codeLabel ?: $p->sku) ? (($codeLabel ?: $p->sku).' — '.$p->name) : $p->name,
+                'text' => $label ? ($label.' — '.$p->name) : $p->name,
             ];
 
             if (! $rich) {

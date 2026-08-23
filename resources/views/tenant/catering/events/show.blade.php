@@ -320,16 +320,29 @@
                     </div>
                     <div class="d-none punch-step" id="punch-seg-wrap">
                         <span class="form-label fs-12 text-muted mb-1 d-block">Party ya Own? — <kbd>O</kbd>/<kbd>P</kbd> phir <kbd>Enter</kbd></span>
+                        {{-- Checkbox-shaped, so the chosen state is obvious at a
+                             glance; Enter/Space on the focused one selects it. --}}
                         <div class="btn-group" id="punch-seg">
-                            <button type="button" class="btn btn-primary" id="punch-own" tabindex="0">OWN · ہم</button>
-                            <button type="button" class="btn btn-outline-success" id="punch-party">PARTY · گاہک</button>
+                            <button type="button" class="btn btn-primary" id="punch-own" tabindex="0">
+                                <i class="ti ti-square-check me-1 punch-tick"></i>OWN · ہم
+                            </button>
+                            <button type="button" class="btn btn-outline-success" id="punch-party" tabindex="0">
+                                <i class="ti ti-square me-1 punch-tick"></i>PARTY · گاہک
+                            </button>
                         </div>
                     </div>
-                    <div class="d-none punch-step" style="min-width:220px;flex:1;max-width:420px">
-                        <label class="form-label fs-12 text-muted mb-1" for="punch-instr">Instruction (optional)</label>
-                        <input id="punch-instr" type="text" class="form-control" placeholder="e.g. Zafran on top">
+                    <div class="d-none punch-step" style="min-width:240px;flex:1;max-width:420px">
+                        <label class="form-label fs-12 text-muted mb-1">Kitchen instructions</label>
+                        {{-- The managed vocabulary, right in the punch — the same
+                             list the line carries afterwards. --}}
+                        <select id="punch-instr-ids" class="form-select" multiple data-placeholder="Kitchen instructions…">
+                            @foreach($activeInstructions as $instr)
+                                <option value="{{ $instr->id }}">{{ $instr->label }}</option>
+                            @endforeach
+                        </select>
+                        <input id="punch-instr" type="text" class="form-control mt-1" placeholder="Additional note (optional)">
                     </div>
-                    <button type="button" class="btn btn-warning fw-bold d-none punch-step" id="punch-commit">Row save</button>
+                    <button type="button" class="btn btn-warning fw-bold d-none punch-step" id="punch-commit">Row save <span class="fs-12 opacity-75">(Ctrl+Enter)</span></button>
                     <button type="button" class="btn btn-link btn-sm text-muted d-none punch-step" id="punch-cancel">Esc — cancel</button>
                 </div>
                 <div id="punch-mats" class="mt-2 table-responsive"></div>
@@ -1612,43 +1625,46 @@ $(function () {
     // Row click → its punched data comes BACK UP into the bar for editing;
     // Enter updates the same row. The values are read from the row's own
     // snapshot panel (the quoted truth), block ids included.
-    $(document).on('click', '.punch-mode #lines-body tr[data-row]', function (e) {
-        if ($(e.target).closest('input,select,button,a,.select2,.quoted-live,[data-act]').length) return;
-        const tr = $(this);
-        const collapseBtn = tr.find('[data-bs-target^="#cost-details-"]');
-        if (!collapseBtn.length) return;
-        const lineId = (collapseBtn.attr('data-bs-target').match(/cost-details-(\d+)/) || [])[1];
-        const panel = $('#cost-details-' + lineId);
-        const name = tr.find('.fw-semibold').first().text().trim() || tr.find('.line-name').val();
-        const qty = parseFloat(tr.find('.line-qty').val() || tr.find('[name$="[quantity]"]').val()) || 0;
+    // Click an UNSAVED punch row → its data comes back up into the bar; Enter
+    // rebuilds that same row. A SAVED row keeps its own Cost Details panel —
+    // the two surfaces never pretend to be each other.
+    $(document).on('click', '.punch-mode #lines-body tr.punch-row', function (e) {
+        if ($(e.target).closest('input,select,button,a,.select2').length) return;
+        const row = $(this);
+        const idx = (row.find('[name^="lines["]').first().attr('name').match(/lines\[(\d+)\]/) || [])[1];
+        const val = f => row.find('[name="lines[' + idx + '][' + f + ']"]').val();
+        const qty = parseFloat(row.find('.line-qty').val()) || 0;
 
         const mats = [];
-        panel.find('table tbody tr').each(function () {
-            const r = $(this);
-            const kgInp = r.find('[data-field=event_material_qty]');
-            if (!kgInp.length) return; // charges stay background
-            const act = r.find('[data-act*="/catering/line-cost-blocks/"]').first().attr('data-act') || '';
-            const id = (act.match(/line-cost-blocks\/(\d+)/) || [])[1];
-            if (!id) return;
-            const rate = parseFloat(r.find('.rate-edit [data-field=rate]').val()) || 0;
-            const cust = parseFloat(r.find('.split-customer').val()) || 0;
+        row.find('[name*="[materials]["][name$="[label]"]').each(function () {
+            const j = (this.name.match(/\[materials\]\[(\d+)\]/) || [])[1];
+            const g = k => row.find('[name="lines[' + idx + '][materials][' + j + '][' + k + ']"]').val();
+            const kg = parseFloat(g('kg')) || 0;
             mats.push({
-                id, label: r.find('td').first().text().trim().split('\n')[0].trim(),
-                name: r.find('td').first().text().trim().split('  ')[0].trim(),
-                ratio: qty > 0 ? +(parseFloat(kgInp.val()) / qty).toFixed(4) : 0,
-                unit: 'KG', rate, origRate: rate,
-                kg: parseFloat(kgInp.val()) || 0, kgTouched: true,
-                cust, origCust: cust,
+                label: this.value, name: this.value, unit: 'KG',
+                ratio: qty > 0 ? kg / qty : 0,
+                rate: parseFloat(g('rate')) || 0, origRate: parseFloat(g('rate')) || 0,
+                kg, kgTouched: true, cust: parseFloat(g('cust')) || 0,
             });
         });
 
+        const productId = val('product_id');
+        const profile = productId ? (profiles[productId] || {}) : {};
         punch = {
-            productId: null, name, unitId: null, mode: mats.some(m => m.cust > 0) ? 'PARTY' : 'OWN',
-            party: true, mats, editLineId: lineId, editQty: qty,
+            productId: productId || null, name: val('item_name'),
+            unitId: val('unit_id') || null, unitCode: row.find('td').eq(3).text().trim() || 'KG',
+            dishRate: profile.rate || 0,
+            party: profile.party !== false,
+            mode: mats.some(m => m.cust > 0) ? 'PARTY' : 'OWN',
+            mats, editRow: row.attr('data-row'), editIdx: idx,
         };
-        $('#punch-item').empty().append(new Option('EDIT — ' + name, 'edit', true, true)).trigger('change');
+
+        $('#punch-item').empty().append(new Option('EDIT — ' + punch.name, 'edit', true, true)).trigger('change');
+        $('#punch-instr').val(val('instructions') || '');
+        const ids = row.find('[name="lines[' + idx + '][instruction_ids][]"]').map(function () { return this.value; }).get();
+        $('#punch-instr-ids').val(ids).trigger('change');
         $('.punch-step').removeClass('d-none');
-        if (!mats.length) $('#punch-seg-wrap').addClass('d-none');
+        if (!mats.length || !punch.party) $('#punch-seg-wrap').addClass('d-none');
         punchSetMode(punch.mode);
         punchRenderMats();
         $('#punch-qty').val(qty).trigger('focus').trigger('select');
@@ -1663,6 +1679,8 @@ $(function () {
             productId: /^\d+$/.test(String(id)) ? id : null,
             name, unitId: p.unit_id || null, mode: 'OWN',
             party: p.party !== false,
+            dishRate: p.rate || 0,
+            unitCode: (p.mats && p.mats[0] && p.mats[0].unit) || 'KG',
             mats: (p.mats || []).map(m => ({ ...m, kg: null, cust: 0, origRate: m.rate })),
         };
         $('#punch-unit').text('');
@@ -1679,8 +1697,10 @@ $(function () {
     function punchSetMode(m) {
         if (m === 'PARTY' && !punch.party) { punchNote('Is item par Party OFF hai (Catering Products se on hota hai)'); m = 'OWN'; }
         punch.mode = m;
-        $('#punch-own').toggleClass('btn-primary', m === 'OWN').toggleClass('btn-outline-primary', m !== 'OWN');
-        $('#punch-party').toggleClass('btn-success', m === 'PARTY').toggleClass('btn-outline-success', m !== 'PARTY');
+        $('#punch-own').toggleClass('btn-primary', m === 'OWN').toggleClass('btn-outline-primary', m !== 'OWN')
+            .find('.punch-tick').attr('class', 'ti me-1 punch-tick ' + (m === 'OWN' ? 'ti-square-check' : 'ti-square'));
+        $('#punch-party').toggleClass('btn-success', m === 'PARTY').toggleClass('btn-outline-success', m !== 'PARTY')
+            .find('.punch-tick').attr('class', 'ti me-1 punch-tick ' + (m === 'PARTY' ? 'ti-square-check' : 'ti-square'));
         $('#punch-mats .pm-cust').prop('disabled', m !== 'PARTY');
     }
     function punchNote(t) { $('#punch-live').html('<span class="text-warning-emphasis">' + _.escape(t) + '</span>'); }
@@ -1741,21 +1761,34 @@ $(function () {
             seq.push(r.find('.pm-rate')[0], r.find('.pm-kg')[0]);
             if (punch.mode === 'PARTY') seq.push(r.find('.pm-cust')[0]);
         });
+        // The note is the LAST field — only its Enter commits the row.
+        seq.push(document.getElementById('punch-instr'));
         return seq.filter(Boolean);
     }
     $(document).on('keydown', '#punch-bar', function (e) {
         if (!punch) return;
         if (e.key === 'Escape') { punchReset(); return; }
-        if (document.activeElement === document.getElementById('punch-own')
-            || document.activeElement === document.getElementById('punch-party')) {
-            if (e.key.toLowerCase() === 'o' || e.key === 'ArrowLeft') { punchSetMode('OWN'); e.preventDefault(); return; }
-            if (e.key.toLowerCase() === 'p' || e.key === 'ArrowRight') { punchSetMode('PARTY'); e.preventDefault(); return; }
+
+        // Ctrl+Enter ANYWHERE in the bar = add the row. Plain Enter only walks
+        // to the next field, so a stray Enter can never punch a half-typed line.
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); punchCommit(); return; }
+
+        const onOwn = document.activeElement === document.getElementById('punch-own');
+        const onParty = document.activeElement === document.getElementById('punch-party');
+        if (onOwn || onParty) {
+            // Enter/Space TICKS the one you are standing on — like a checkbox.
+            if (e.key === 'Enter' || e.key === ' ') { punchSetMode(onOwn ? 'OWN' : 'PARTY'); e.preventDefault(); return; }
+            if (e.key.toLowerCase() === 'o') { punchSetMode('OWN'); document.getElementById('punch-own').focus(); e.preventDefault(); return; }
+            if (e.key.toLowerCase() === 'p') { punchSetMode('PARTY'); document.getElementById('punch-party').focus(); e.preventDefault(); return; }
+            if (e.key === 'ArrowLeft') { document.getElementById('punch-own').focus(); e.preventDefault(); return; }
+            if (e.key === 'ArrowRight') { document.getElementById('punch-party').focus(); e.preventDefault(); return; }
+            if (e.key === 'Tab' && !e.shiftKey) { return; } // Tab moves on normally
         }
+
         if (e.key !== 'Enter') return;
         e.preventDefault();
         const seq = punchSeq(), at = seq.indexOf(document.activeElement);
         if (at > -1 && at < seq.length - 1) { seq[at + 1].focus(); seq[at + 1].select && seq[at + 1].select(); }
-        else { punchCommit(); }
     });
     $(document).on('click', '#punch-own', () => punchSetMode('OWN'));
     $(document).on('click', '#punch-party', () => punchSetMode('PARTY'));
@@ -1769,114 +1802,104 @@ $(function () {
         $('#punch-instr').val('');
     }
 
-    async function punchPut(url, fields) {
-        const fd = new FormData();
-        fd.append('_token', '{{ csrf_token() }}'); fd.append('_method', 'PUT');
-        Object.entries(fields).forEach(([k, v]) => fd.append(k, v));
-        await fetch(url, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+    // KASHIF-ORDER-PUNCH §B3 — NOTHING is saved until the operator saves.
+    //
+    // Enter builds a row ON SCREEN and nothing else: no request, no snapshot,
+    // no half-written quotation. Every setting the punch collected rides along
+    // as hidden inputs and reaches the server in ONE act when Save Estimate is
+    // pressed — where the controller applies each material through the same
+    // block authority the Cost Details panel uses. Refresh before saving and
+    // the booking is exactly as it was: that is what "not saved" must mean.
+
+    function punchLineCalc(qty) {
+        // making = the dish's own per-unit rate minus what its materials
+        // contribute at their ORIGINAL rates; it never appears in the punch,
+        // exactly as the old software kept it in the background.
+        const baseMats = punch.mats.reduce((s, m) => s + (m.ratio * m.origRate), 0);
+        const making = Math.max(0, (punch.dishRate || 0) - baseMats);
+        let amount = making * qty;
+        punch.mats.forEach(m => {
+            const kg = m.kgTouched ? m.kg : qty * m.ratio;
+            const ours = Math.max(0, kg - Math.min(m.cust || 0, kg));
+            amount += ours * m.rate;
+        });
+        amount = Math.round(Math.max(0, amount) * 100) / 100;
+        return { amount, rate: qty > 0 ? Math.round((amount / qty) * 100) / 100 : 0 };
     }
 
-    // Row-click EDIT: Enter updates the SAME row through the same authorities.
-    async function punchCommitEdit() {
+    function punchRowHtml(idx, qty, calc) {
+        const esc = s => _.escape(String(s == null ? '' : s));
+        const h = (f, v) => '<input type="hidden" name="lines[' + idx + '][' + f + ']" value="' + esc(v) + '">';
+        const money = n => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const instrIds = ($('#punch-instr-ids').val() || []);
+        const instrLabels = $('#punch-instr-ids option:selected').map(function () { return $(this).text(); }).get();
+        const note = $('#punch-instr').val();
+
+        let mats = '';
+        punch.mats.forEach((m, j) => {
+            const kg = m.kgTouched ? m.kg : qty * m.ratio;
+            const p = 'lines[' + idx + '][materials][' + j + ']';
+            mats += '<input type="hidden" name="' + p + '[label]" value="' + esc(m.label) + '">'
+                + '<input type="hidden" name="' + p + '[kg]" value="' + esc(kg) + '">'
+                + '<input type="hidden" name="' + p + '[rate]" value="' + esc(m.rate) + '">'
+                + '<input type="hidden" name="' + p + '[cust]" value="' + esc(Math.min(m.cust || 0, kg)) + '">';
+        });
+
+        const supply = punch.mats.filter(m => (m.cust || 0) > 0)
+            .map(m => esc(m.name) + ' گاہک ' + punchFmt(m.cust)).join(', ');
+
+        return '<tr data-row="p' + idx + '" data-rate="' + calc.rate + '" class="punch-row">'
+            + '<td>' + esc(punch.name)
+                + (supply ? '<div class="fs-12 text-success-emphasis">' + supply + '</div>' : '')
+                + (punch.productId ? h('product_id', punch.productId) : '')
+                + h('item_name', punch.name) + h('rate', calc.rate)
+                + (punch.unitId ? h('unit_id', punch.unitId) : '')
+                + (note ? h('instructions', note) : '')
+                + instrIds.map(id => '<input type="hidden" name="lines[' + idx + '][instruction_ids][]" value="' + esc(id) + '">').join('')
+                + mats
+                + '<div class="fs-12 text-muted">not saved yet — Save Estimate</div>'
+            + '</td>'
+            + '<td></td>'
+            + '<td><input type="number" step="0.001" min="0.001" class="form-control form-control-sm text-end line-qty" name="lines[' + idx + '][quantity]" value="' + qty + '" readonly></td>'
+            + '<td class="fs-13">' + esc(punch.unitCode || '') + '</td>'
+            + '<td class="text-end">' + money(calc.rate) + '</td>'
+            + '<td class="text-end">' + money(calc.rate) + '</td>'
+            + '<td class="text-end line-amount">' + money(calc.amount) + '</td>'
+            + '<td class="fs-12">' + esc(instrLabels.concat(note ? [note] : []).join(' · ')) + '</td>'
+            + '<td class="text-end"><button type="button" class="btn btn-sm btn-link text-danger p-0 punch-remove" title="Remove">&times;</button></td>'
+            + '</tr>';
+    }
+
+    // Row-click EDIT of an unsaved punch row: rebuild it in place.
+    function punchCommitEdit() {
         const qty = parseFloat($('#punch-qty').val()) || 0;
         if (qty <= 0) { $('#punch-qty').focus(); return; }
-        const lineId = punch.editLineId;
-        const qtyChanged = Math.abs(qty - punch.editQty) > 0.0005;
-
-        if (qtyChanged) {
-            const tr = $('#lines-body tr[data-row]').filter(function () {
-                return $(this).find('[data-bs-target="#cost-details-' + lineId + '"]').length > 0;
-            }).first();
-            tr.find('.line-qty, [name$="[quantity]"]').first().val(qty);
-            sessionStorage.setItem('punchPending', JSON.stringify({
-                lineId,
-                mats: punch.mats.map(m => ({
-                    label: m.label, kg: m.kg,
-                    rate: m.rate !== m.origRate ? m.rate : null,
-                    cust: m.cust !== m.origCust ? m.cust : null,
-                })),
-            }));
-            sessionStorage.setItem('punchFocus', '1');
-            punchReset();
-            const form = document.getElementById('estimate-form');
-            window.cateringAjaxSubmit(form.getAttribute('action'), new FormData(form));
-            return;
-        }
-
-        const base = '{{ url('/catering/line-cost-blocks') }}/';
-        for (const m of punch.mats) {
-            await punchPut(base + m.id, { event_material_qty: m.kg });
-            if (m.rate !== m.origRate) await punchPut(base + m.id + '/rate', { rate: m.rate });
-            if (m.cust !== m.origCust) await punchPut(base + m.id + '/customer-supplied', { is_customer_supplied: 0, customer_supplied_qty: m.cust });
-        }
-        sessionStorage.setItem('punchFocus', '1');
+        const row = $('#lines-body tr[data-row="' + punch.editRow + '"]');
+        const idx = punch.editIdx;
+        row.replaceWith(punchRowHtml(idx, qty, punchLineCalc(qty)));
         punchReset();
-        if (window.cateringWorkspaceRefresh) window.cateringWorkspaceRefresh();
+        recalc();
+        setTimeout(() => $('#punch-item').select2('open'), 100);
     }
 
     function punchCommit() {
         if (!punch) return;
-        if (punch.editLineId) { punchCommitEdit(); return; }
+        if (punch.editRow) { punchCommitEdit(); return; }
         const qty = parseFloat($('#punch-qty').val()) || 0;
         if (qty <= 0) { $('#punch-qty').focus(); return; }
 
-        // Adjustments the row will need AFTER it lands (matched by block label).
-        const pending = punch.mats.map(m => ({
-            label: m.label,
-            kg: m.kgTouched ? m.kg : null,
-            rate: m.rate !== m.origRate ? m.rate : null,
-            cust: Math.min(m.cust || 0, m.kgTouched ? m.kg : qty * m.ratio),
-        })).filter(m => m.kg !== null || m.rate !== null || m.cust > 0);
-        if (pending.length) sessionStorage.setItem('punchPending', JSON.stringify({ name: punch.name, mats: pending }));
-
-        // Post the WHOLE estimate form + the punched line as ONE FormData —
-        // never via requestSubmit: a single stray required field anywhere in
-        // the form would silently abort a native submit, which read as
-        // "Enter did nothing / page reloaded, row gone" at the counter.
-        const form = document.getElementById('estimate-form');
-        const fd = new FormData(form);
-        const i = $('#lines-body [name^="lines["][name$="[item_name]"]').length;
-        const put = (f, v) => fd.append('lines[' + i + '][' + f + ']', String(v ?? ''));
-        if (punch.productId) put('product_id', punch.productId);
-        put('item_name', punch.name); put('quantity', qty); put('rate', 0);
-        if (punch.unitId) put('unit_id', punch.unitId);
-        if ($('#punch-instr').val()) put('instructions', $('#punch-instr').val());
-        // The punch already carries every setting — the row lands COMPACT,
-        // old-software style. Cost Details stays a click away, never auto-open.
-        sessionStorage.setItem('punchFocus', '1');
+        const idx = nextRowIndex();
+        $('#lines-body').append(punchRowHtml(idx, qty, punchLineCalc(qty)));
         punchReset();
-        window.cateringAjaxSubmit(form.getAttribute('action'), fd);
+        recalc();
+        // The loop: the item box reopens itself for the next code.
+        setTimeout(() => $('#punch-item').select2('open'), 100);
     }
 
-    // After the save re-renders the workspace, the pending adjustments post
-    // through the SAME authorities the panel's own controls use, then ONE
-    // refresh shows the finished row.
-    async function punchApplyPending() {
-        const raw = sessionStorage.getItem('punchPending');
-        if (!raw) return;
-        sessionStorage.removeItem('punchPending');
-        const pending = JSON.parse(raw);
-        const panel = pending.lineId ? $('#cost-details-' + pending.lineId).closest('.cost-details-row') : $('.cost-details-row').last();
-        if (!panel.length) return;
-        const put = punchPut;
-        for (const m of pending.mats) {
-            const tr = panel.find('tbody tr').filter(function () {
-                return $(this).find('td').first().text().trim().startsWith(m.label);
-            }).first();
-            if (!tr.length) continue;
-            const qtyAct = tr.find('[data-act*="/catering/line-cost-blocks/"]').first().attr('data-act') || '';
-            const idMatch = qtyAct.match(/line-cost-blocks\/(\d+)/);
-            if (!idMatch) continue;
-            const base = '{{ url('/catering/line-cost-blocks') }}/' + idMatch[1];
-            if (m.kg !== null && m.kg !== undefined) await put(base, { event_material_qty: m.kg });
-            if (m.rate !== null && m.rate !== undefined) await put(base + '/rate', { rate: m.rate });
-            if (m.cust !== null && m.cust !== undefined && (m.cust > 0 || pending.lineId)) {
-                await put(base + '/customer-supplied', { is_customer_supplied: 0, customer_supplied_qty: m.cust });
-            }
-        }
-        if (window.cateringWorkspaceRefresh) window.cateringWorkspaceRefresh();
-    }
-
+    $(document).on('click', '.punch-remove', function () {
+        $(this).closest('tr').remove();
+        recalc();
+    });
     // Runs at load AND after every in-place swap: fresh selects need select2,
     // an emptied estimate needs its first row, totals need recomputing.
     window.initEstimateBuilder = function () {
@@ -1902,7 +1925,9 @@ $(function () {
         }
         recalc();
         initPunchBar();
-        punchApplyPending();
+        if ($('#punch-instr-ids').length && !$('#punch-instr-ids').hasClass('select2-hidden-accessible')) {
+            $('#punch-instr-ids').select2({ width: '100%', placeholder: 'Kitchen instructions…' });
+        }
     };
     window.initEstimateBuilder();
 });

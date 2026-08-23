@@ -965,6 +965,7 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
 
                     Route::get('/catering/settings', [\App\Http\Controllers\Tenant\Catering\CateringSettingController::class, 'index'])->name('tenant.catering.settings.index');
                     Route::put('/catering/settings', [\App\Http\Controllers\Tenant\Catering\CateringSettingController::class, 'update'])->name('tenant.catering.settings.update');
+                    Route::put('/catering/settings/service-times', [\App\Http\Controllers\Tenant\Catering\CateringSettingController::class, 'saveTimePresets'])->name('tenant.catering.settings.service-times');
                 }); // end prevent.duplicate.submit group
 
                 Route::get('/purchase-requisitions', [ComingSoonController::class, 'show'])

@@ -157,28 +157,23 @@ class CateringPunchFlowMySqlTest extends MySqlTenantTestCase
         ]);
 
         // ── PUNCH 1: 361-style — Biryani 10 KG, then the bar's three PUTs. ──
+        // KASHIF-ORDER-PUNCH §B3: the punch collects everything on screen and
+        // sends it in ONE save — quantity, booking rate and گاہک share ride
+        // along with the line, exactly as the bar's hidden inputs carry them.
         $this->punchSave($event, [[
             'product_id' => $this->biryaniId, 'item_name' => 'Chicken Biryani',
             'quantity' => 10, 'unit_id' => $this->unitId, 'rate' => 0,
             'instructions' => 'Zafran on top',
+            'materials' => [
+                ['label' => 'Chicken', 'kg' => 6, 'rate' => 120, 'cust' => 2],
+            ],
         ]]);
 
         $line = $event->refresh()->currentEstimate->lines()->firstOrFail();
         $this->assertSame('Chicken Biryani', $line->item_name);
-        $this->assertSame(350.0, (float) $line->calculated_rate, 'chicken 0.5×100 + making 300');
-        $this->assertSame(3500.0, (float) $line->amount);
         $this->assertSame('Zafran on top', $line->instructions);
 
-        $chicken = $this->block($event, 'Chicken Biryani', 'Chicken');
-        $lineCost = app(CateringLineCostController::class);
-        // kitchen KG 5 → 6 (the pm-kg box)
-        $lineCost->updateMaterial($this->req(['event_material_qty' => 6]), $chicken);
-        // booking-only rate 100 → 120 (the pm-rate box)
-        $lineCost->chargedRate($this->req(['rate' => 120]), $chicken->refresh());
-        // گاہک 2 KG (the pm-cust box)
-        $lineCost->customerSupplied($this->req(['is_customer_supplied' => 0, 'customer_supplied_qty' => 2]), $chicken->refresh());
-
-        $chicken->refresh();
+        $chicken = $this->block($event, 'Chicken Biryani', 'Chicken')->refresh();
         $line->refresh();
         $this->assertSame(6.0, (float) $chicken->event_material_qty, 'kitchen needs the punched 6');
         $this->assertSame(2.0, $chicken->suppliedQty());
@@ -192,6 +187,7 @@ class CateringPunchFlowMySqlTest extends MySqlTenantTestCase
                 'line_uuid' => $line->line_uuid, 'product_id' => $this->biryaniId,
                 'item_name' => 'Chicken Biryani', 'quantity' => 10, 'unit_id' => $this->unitId, 'rate' => 0,
                 'instructions' => 'Zafran on top',
+                'materials' => [['label' => 'Chicken', 'kg' => 6, 'rate' => 120, 'cust' => 2]],
             ],
             [
                 'product_id' => $this->raitaId, 'item_name' => 'Raita',

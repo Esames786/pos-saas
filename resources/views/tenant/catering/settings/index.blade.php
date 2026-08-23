@@ -58,4 +58,84 @@
         </div>
     </div>
 </form>
+
+{{-- KASHIF-EVENT-FORM-1 — the sittings the event screen offers as one-click
+     buttons. The house's own habits: rename, retime, reorder, retire. --}}
+@php
+    // Callers that predate the sittings list still render this page.
+    $timePresets = $timePresets ?? \App\Models\Tenant\CateringServiceTimePreset::ordered()->get();
+@endphp
+<form method="POST" action="{{ url('/catering/settings/service-times') }}" class="mt-4" id="service-times">
+    @csrf @method('PUT')
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">Service Times</h5>
+            <div class="text-muted fs-13">
+                These appear as one-click buttons on every booking's Service Time.
+                Clear a row's name to remove it.
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0" id="time-presets">
+                    <thead>
+                        <tr>
+                            <th style="width:44px">#</th>
+                            <th style="min-width:180px">Name</th>
+                            <th style="width:150px">Time</th>
+                            <th style="width:110px">Shown</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($timePresets as $i => $preset)
+                            <tr>
+                                <td class="text-muted">{{ $i + 1 }}</td>
+                                <td>
+                                    <input type="hidden" name="presets[{{ $i }}][id]" value="{{ $preset->id }}">
+                                    <input type="text" name="presets[{{ $i }}][label]" value="{{ $preset->label }}"
+                                           class="form-control form-control-sm" maxlength="60">
+                                </td>
+                                <td>
+                                    <input type="time" name="presets[{{ $i }}][service_time]"
+                                           value="{{ $preset->inputTime() }}" class="form-control form-control-sm">
+                                </td>
+                                <td>
+                                    <input type="hidden" name="presets[{{ $i }}][is_active]" value="0">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" value="1"
+                                               name="presets[{{ $i }}][is_active]" @checked($preset->is_active)>
+                                    </div>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="card-footer d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <button type="button" class="btn btn-sm btn-outline-primary" id="add-time-preset">
+                <i class="ti ti-plus me-1"></i>Add a sitting
+            </button>
+            <button type="submit" class="btn btn-primary">Save Service Times</button>
+        </div>
+    </div>
+</form>
+
+@push('scripts')
+<script>
+document.getElementById('add-time-preset')?.addEventListener('click', function () {
+    const tb = document.querySelector('#time-presets tbody');
+    const i = tb.querySelectorAll('tr').length;
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td class="text-muted">' + (i + 1) + '</td>'
+        + '<td><input type="hidden" name="presets[' + i + '][id]" value="">'
+        + '<input type="text" name="presets[' + i + '][label]" class="form-control form-control-sm" maxlength="60" placeholder="e.g. Nikah Lunch"></td>'
+        + '<td><input type="time" name="presets[' + i + '][service_time]" class="form-control form-control-sm"></td>'
+        + '<td><input type="hidden" name="presets[' + i + '][is_active]" value="0">'
+        + '<div class="form-check"><input class="form-check-input" type="checkbox" value="1" name="presets[' + i + '][is_active]" checked></div></td>';
+    tb.appendChild(tr);
+    tr.querySelector('input[type=text]').focus();
+});
+</script>
+@endpush
 @endsection

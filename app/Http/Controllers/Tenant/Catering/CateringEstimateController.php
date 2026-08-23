@@ -36,6 +36,15 @@ class CateringEstimateController extends Controller
             // saved beside the free note (which stays the additional note).
             'lines.*.instruction_ids' => ['nullable', 'array'],
             'lines.*.instruction_ids.*' => ['integer', 'exists:catering_instructions,id'],
+            // KASHIF-ORDER-PUNCH §B3: the punch bar's material settings travel
+            // WITH the save. Nothing the operator types is written until they
+            // save — and then it is written in one act, through the same block
+            // authorities the Cost Details panel uses.
+            'lines.*.materials' => ['nullable', 'array'],
+            'lines.*.materials.*.label' => ['required_with:lines.*.materials', 'string', 'max:120'],
+            'lines.*.materials.*.kg' => ['nullable', 'numeric', 'min:0'],
+            'lines.*.materials.*.rate' => ['nullable', 'numeric', 'min:0'],
+            'lines.*.materials.*.cust' => ['nullable', 'numeric', 'min:0'],
             'service_charge_amount' => ['nullable', 'numeric', 'min:0'],
             'other_charge_label' => ['nullable', 'string', 'max:255'],
             'other_charge_amount' => ['nullable', 'numeric', 'min:0'],
@@ -54,6 +63,7 @@ class CateringEstimateController extends Controller
 
         try {
             $this->estimates->saveDraftLines($cateringEstimate, $lines, $data);
+            $this->applyPunchedMaterials($cateringEstimate->refresh(), $lines);
         } catch (RuntimeException $e) {
             return back()->withErrors(['estimate' => $e->getMessage()])->withInput();
         }
@@ -64,6 +74,48 @@ class CateringEstimateController extends Controller
             ->record($cateringEstimate->refresh()->event, 'lines_saved', $request->user()?->id);
 
         return back()->with('status', 'Estimate saved.');
+    }
+
+    /**
+     * KASHIF-ORDER-PUNCH §B3 — apply the punch bar's per-material settings.
+     *
+     * The lines are already saved and snapshotted; each setting now goes
+     * through the SAME authority the panel's own control uses — quantity,
+     * booking-only rate, customer split — so locks, refusals (party OFF) and
+     * repricing behave identically whichever surface typed them. A payload
+     * line matches its saved line by sort_order, which saveDraftLines assigns
+     * from the same array index.
+     */
+    private function applyPunchedMaterials(CateringEstimate $estimate, array $lines): void
+    {
+        $blocks = app(\App\Services\Catering\CateringLineCostBlockService::class);
+        $saved = $estimate->lines()->get()->keyBy('sort_order');
+
+        foreach (array_values($lines) as $index => $line) {
+            $materials = $line['materials'] ?? [];
+            if ($materials === [] || ! ($savedLine = $saved->get($index))) {
+                continue;
+            }
+
+            $snapshots = $blocks->snapshotsFor($savedLine)->keyBy('label');
+            foreach ($materials as $material) {
+                $snapshot = $snapshots->get($material['label'] ?? '');
+                if (! $snapshot || ! $snapshot->isMaterial()) {
+                    continue;
+                }
+
+                if (isset($material['kg']) && round((float) $material['kg'], 4) !== round((float) $snapshot->event_material_qty, 4)) {
+                    $blocks->overrideMaterialQuantity($snapshot, (float) $material['kg']);
+                }
+                if (isset($material['rate']) && round((float) $material['rate'], 4) !== round((float) $snapshot->refresh()->rate, 4)) {
+                    $blocks->setChargedRate($snapshot, (float) $material['rate']);
+                }
+                $wantSupplied = round((float) ($material['cust'] ?? 0), 4);
+                if ($wantSupplied !== round($snapshot->refresh()->suppliedQty(), 4)) {
+                    $blocks->setCustomerSupplied($snapshot, false, $wantSupplied);
+                }
+            }
+        }
     }
 
     /**

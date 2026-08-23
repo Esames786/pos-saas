@@ -13,8 +13,48 @@ class CateringSettingController extends Controller
     public function index()
     {
         $settings = CateringSetting::tenantDefault();
+        // KASHIF-EVENT-FORM-1: the house's own sittings, managed right here.
+        $timePresets = \App\Models\Tenant\CateringServiceTimePreset::ordered()->get();
 
-        return view('tenant.catering.settings.index', compact('settings'));
+        return view('tenant.catering.settings.index', compact('settings', 'timePresets'));
+    }
+
+    /**
+     * KASHIF-EVENT-FORM-1 — save the sittings list in one act.
+     *
+     * Rows the owner blanked out are removed, the rest are stored with their
+     * order; nothing else on the settings page is touched.
+     */
+    public function saveTimePresets(Request $request)
+    {
+        $data = $request->validate([
+            'presets' => ['array'],
+            'presets.*.id' => ['nullable', 'integer'],
+            'presets.*.label' => ['nullable', 'string', 'max:60'],
+            'presets.*.service_time' => ['nullable', 'date_format:H:i'],
+            'presets.*.is_active' => ['nullable', 'boolean'],
+        ]);
+
+        $keep = [];
+        foreach (array_values($data['presets'] ?? []) as $index => $row) {
+            $label = trim((string) ($row['label'] ?? ''));
+            $time = $row['service_time'] ?? null;
+            if ($label === '' || ! $time) {
+                continue; // a blanked row is a removed row
+            }
+            $preset = \App\Models\Tenant\CateringServiceTimePreset::findOrNew((int) ($row['id'] ?? 0));
+            $preset->fill([
+                'label' => $label,
+                'service_time' => $time,
+                'sort_order' => ($index + 1) * 10,
+                'is_active' => (bool) ($row['is_active'] ?? false),
+            ])->save();
+            $keep[] = $preset->id;
+        }
+
+        \App\Models\Tenant\CateringServiceTimePreset::whereNotIn('id', $keep ?: [0])->delete();
+
+        return back()->with('status', 'Service times saved — the event screen offers them now.');
     }
 
     public function update(Request $request)
