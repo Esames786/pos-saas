@@ -121,10 +121,14 @@ class ProductLookupController extends Controller
                     'EXISTS(SELECT 1 FROM product_barcodes pb WHERE pb.product_id = products.id AND pb.barcode = ?) DESC',
                     [$q]
                 );
-                // So the dropdown reads "361 — Biryani Masala Beef", not a hash.
-                $query->with('barcodes:id,product_id,barcode');
             }
         }
+
+        // The dropdown shows a product's SHORT NUMERIC CODE (the legacy item
+        // id an operator actually knows — "361") wherever one exists, never a
+        // hashed SKU. Real scan barcodes (EAN-8/13) are longer than 5 digits
+        // and are deliberately NOT promoted to display codes.
+        $query->with('barcodes:id,product_id,barcode');
 
         $total = (clone $query)->count();
         $records = $query->orderBy('name')->orderBy('sku')
@@ -141,10 +145,17 @@ class ProductLookupController extends Controller
 
         $isCode = $isCode ?? false;
         $results = $records->map(function (Product $p) use ($rich, $branchId, $context, $deptInventory, $destResolver, $fromDeptId, $toDeptId, $isCode, $q) {
-            // A code search shows the CODE the operator typed by, not a hash.
+            // Display code: the barcode the query matched, else the product's
+            // shortest short-numeric code (the human item id), else the SKU.
             $codeLabel = null;
-            if ($isCode && $p->relationLoaded('barcodes')) {
-                $codeLabel = $p->barcodes->first(fn ($b) => str_starts_with($b->barcode, $q))?->barcode;
+            if ($p->relationLoaded('barcodes')) {
+                if ($isCode) {
+                    $codeLabel = $p->barcodes->first(fn ($b) => str_starts_with($b->barcode, $q))?->barcode;
+                }
+                $codeLabel ??= $p->barcodes
+                    ->filter(fn ($b) => ctype_digit((string) $b->barcode) && strlen((string) $b->barcode) <= 5)
+                    ->sortBy(fn ($b) => strlen((string) $b->barcode))
+                    ->first()?->barcode;
             }
             $base = [
                 'id' => $p->id,
