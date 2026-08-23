@@ -1251,13 +1251,16 @@
 
 @push('scripts')
 <script>
-// KASHIF-LEGACY-ALIGN-6: the event workspace works full-width, like the POS.
-// Delegated, because the header (and its toggle) lives inside the swapped
-// #event-workspace; the body class itself survives every swap.
-document.body.classList.remove('mini-sidebar', 'expand-menu');
-document.body.classList.add('nosidebar');
+// KASHIF-LEGACY-ALIGN-6 (revised): the event WORKSPACE goes full-width like
+// the POS — but the operator's own choice WINS and is remembered. Delegated,
+// because the header (and its toggle) lives inside the swapped workspace.
+if (localStorage.getItem('cateringSidebar') !== 'show') {
+    document.body.classList.remove('mini-sidebar', 'expand-menu');
+    document.body.classList.add('nosidebar');
+}
 $(document).on('click', '#catering-sidebar-toggle', function () {
     const hidden = document.body.classList.toggle('nosidebar');
+    localStorage.setItem('cateringSidebar', hidden ? 'hide' : 'show');
     $(this).find('i').attr('class', hidden ? 'ti ti-layout-sidebar-left-expand' : 'ti ti-layout-sidebar-left-collapse');
     $(this).attr('title', hidden ? 'Show navigation' : 'Hide navigation');
 });

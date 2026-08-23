@@ -37,9 +37,9 @@
 
 @push('scripts')
 <script>
-// KASHIF-LEGACY-ALIGN-6: the event entry screen works full-width, like the POS.
-document.body.classList.remove('mini-sidebar', 'expand-menu');
-document.body.classList.add('nosidebar');
+// KASHIF-LEGACY-ALIGN-6 (revised): the CREATE/EDIT form keeps the sidebar —
+// a vanished menu on a small form reads as breakage, not focus. The toggle
+// still offers full-width for whoever wants it.
 document.getElementById('catering-sidebar-toggle')?.addEventListener('click', function () {
     const hidden = document.body.classList.toggle('nosidebar');
     this.querySelector('i').className = hidden ? 'ti ti-layout-sidebar-left-expand' : 'ti ti-layout-sidebar-left-collapse';
