@@ -105,6 +105,34 @@ class SalesReportCenterController extends Controller
             };
         }
 
+        // Network printers the report can be streamed to (Send to network). A terminal-bound operator
+        // only sees THEIR terminal's attached printer(s) — receipt first so it is the default choice —
+        // so e.g. the Delivery counter cannot stream the report to another counter. An unbound
+        // owner/manager (no default terminal) still sees every network printer to pick from.
+        $networkPrinterQuery = \App\Models\Tenant\Printer::where('is_active', 1)
+            ->where('printer_type', 'network')->whereNotNull('ip_address');
+
+        $terminalPrinterIds = [];
+        if ($terminalId = auth('tenant')->user()?->default_terminal_id) {
+            $setting = \App\Models\Tenant\TerminalPrinterSetting::where('terminal_id', $terminalId)->first();
+            if ($setting) {
+                // Receipt first (default option), then a distinct KOT printer if the terminal has one.
+                $terminalPrinterIds = array_values(array_unique(array_filter([
+                    $setting->receipt_printer_id, $setting->kot_printer_id,
+                ])));
+            }
+        }
+        if (! empty($terminalPrinterIds)) {
+            $networkPrinterQuery->whereIn('id', $terminalPrinterIds);
+        }
+        $networkPrinters = $networkPrinterQuery->orderBy('name')->get(['id', 'name']);
+        if (! empty($terminalPrinterIds)) {
+            // Keep receipt-before-KOT order so the receipt printer is the first (default) option.
+            $networkPrinters = $networkPrinters
+                ->sortBy(fn ($p) => array_search($p->id, $terminalPrinterIds))
+                ->values();
+        }
+
         return view('tenant.reports.center.index', [
             'tab' => $tab,
             'allowedSections' => $allowed,
@@ -121,10 +149,8 @@ class SalesReportCenterController extends Controller
                 ? array_intersect_key(\App\Models\Tenant\User::ORDER_TYPES, array_flip($types))
                 : \App\Models\Tenant\User::ORDER_TYPES,
             'schedules' => DB::connection('tenant')->table('report_schedules')->orderBy('id')->get(),
-            // Network printers the report can be streamed to via the agent (Send to network).
-            'networkPrinters' => \App\Models\Tenant\Printer::where('is_active', 1)
-                ->where('printer_type', 'network')->whereNotNull('ip_address')
-                ->orderBy('name')->get(['id', 'name']),
+            // Network printers the report can be streamed to via the agent (scoped above).
+            'networkPrinters' => $networkPrinters,
         ]);
     }
 
