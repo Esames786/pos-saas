@@ -199,22 +199,11 @@ class CateringDocumentTruthMySqlTest extends MySqlTenantTestCase
 
         $html = $this->render($estimate->refresh());
 
-        // The box header, both languages.
-        $this->assertStringContainsString('Materials', $html);
-        $this->assertStringContainsString('سامان', $html);
-
-        // Each material with the line's TOTAL kitchen draw — the same number
-        // the kitchen release sheet works from.
-        $this->assertStringContainsString('Beef', $html);
-        $this->assertStringContainsString('120 KG', $html);
-        $this->assertStringContainsString('Basmati Rice', $html);
-        $this->assertStringContainsString('80 KG', $html);
-
-        // Who provides what — both languages, on every material.
-        $this->assertStringContainsString('Customer provides', $html);
-        $this->assertStringContainsString('گاہک دے گا', $html);
-        $this->assertStringContainsString('We provide', $html);
-        $this->assertStringContainsString('ہم دیں گے', $html);
+        // ONE quiet line under the item — smaller than it, never a box of its
+        // own, and in the DOCUMENT's language (this copy is English).
+        $this->assertStringContainsString('Beef 120 KG (customer)', $html);
+        $this->assertStringContainsString('Basmati Rice 80 KG (us)', $html);
+        $this->assertStringNotContainsString('سامان', $html, 'no Urdu is forced onto an English document');
 
         // And the margin's ingredients still never reach the customer.
         foreach (['Costs us', 'material_rate_at_quote', 'material_cost'] as $leak) {
@@ -245,10 +234,8 @@ class CateringDocumentTruthMySqlTest extends MySqlTenantTestCase
 
         $html = $this->render($estimate->refresh());
 
-        $this->assertStringContainsString('Us 80 KG', $html);
-        $this->assertStringContainsString('ہم 80', $html);
-        $this->assertStringContainsString('Customer 40 KG', $html);
-        $this->assertStringContainsString('گاہک 40', $html);
+        // The split, spelled out inline: whose share is whose.
+        $this->assertStringContainsString('Beef 120 KG (us 80, customer 40)', $html);
     }
 
     /**
@@ -268,8 +255,8 @@ class CateringDocumentTruthMySqlTest extends MySqlTenantTestCase
 
         $html = $this->render($estimate->refresh());
 
+        // The document's own language decides the wording — this copy is English.
         $this->assertStringContainsString('Complimentary', $html);
-        $this->assertStringContainsString('اعزازی', $html);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

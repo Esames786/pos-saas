@@ -38,6 +38,10 @@
         padding: 1px 6px; font-size: 12.5px; min-height: 26px;
     }
     .punch-mode #lines-table .quoted-live [data-field=quoted_rate] { width: 85px !important; }
+    /* The Urdu name is a document concern, not a punching one — the column goes
+       (its input still submits, hidden, so nothing typed is ever lost). */
+    .punch-mode #lines-table thead th:nth-child(2),
+    .punch-mode #lines-table tbody tr[data-row] > td:nth-child(2) { display: none; }
 </style>
 @include('tenant.catering.partials.tooltips')
 @include('tenant.catering.partials.submit-guard')
@@ -1632,9 +1636,70 @@ $(function () {
     // Row click → its punched data comes BACK UP into the bar for editing;
     // Enter updates the same row. The values are read from the row's own
     // snapshot panel (the quoted truth), block ids included.
+    // A SAVED row edits the same way a punched one does: click it and its
+    // settings come up into the bar. Enter writes them back as hidden inputs on
+    // that row — still nothing saved until Save Estimate, exactly like a new
+    // punch. Add and edit behave identically, which is the whole point.
+    $(document).on('click', '.punch-mode #lines-body tr[data-row]:not(.punch-row)', function (e) {
+        if ($(e.target).closest('input,select,button,a,.select2,.quoted-live,[data-act]').length) return;
+        const row = $(this);
+        const idx = (row.find('[name^="lines["]').first().attr('name').match(/lines\[(\d+)\]/) || [])[1];
+        if (idx === undefined) return;
+        const collapseBtn = row.find('[data-bs-target^="#cost-details-"]');
+        const lineId = collapseBtn.length ? (collapseBtn.attr('data-bs-target').match(/cost-details-(\d+)/) || [])[1] : null;
+        const panel = lineId ? $('#cost-details-' + lineId) : $();
+        const qty = parseFloat(row.find('.line-qty').val() || row.find('[name$="[quantity]"]').val()) || 0;
+
+        // Prefer edits already staged on this row; otherwise read the snapshot
+        // the panel is showing.
+        const mats = [];
+        const staged = row.find('[name*="[materials]["][name$="[label]"]');
+        if (staged.length) {
+            staged.each(function () {
+                const j = (this.name.match(/\[materials\]\[(\d+)\]/) || [])[1];
+                const g = k => row.find('[name="lines[' + idx + '][materials][' + j + '][' + k + ']"]').val();
+                const kg = parseFloat(g('kg')) || 0;
+                mats.push({ label: this.value, name: this.value, unit: 'KG', ratio: qty > 0 ? kg / qty : 0,
+                    rate: parseFloat(g('rate')) || 0, origRate: parseFloat(g('rate')) || 0,
+                    kg, kgTouched: true, cust: parseFloat(g('cust')) || 0 });
+            });
+        } else {
+            panel.find('table tbody tr').each(function () {
+                const r = $(this);
+                const kgInp = r.find('[data-field=event_material_qty]');
+                if (! kgInp.length) return; // charges stay in the background
+                const label = r.find('td').first().clone().children().remove().end().text().trim();
+                const rate = parseFloat(r.find('.rate-edit [data-field=rate]').val()) || 0;
+                const kg = parseFloat(kgInp.val()) || 0;
+                mats.push({ label, name: label, unit: 'KG', ratio: qty > 0 ? kg / qty : 0,
+                    rate, origRate: rate, kg, kgTouched: true,
+                    cust: parseFloat(r.find('.split-customer').val()) || 0 });
+            });
+        }
+
+        const productId = row.find('[name="lines[' + idx + '][product_id]"]').val();
+        const profile = productId ? (profiles[productId] || {}) : {};
+        punch = {
+            productId: productId || null,
+            name: row.find('.fw-semibold').first().text().trim() || row.find('.line-name').val() || '',
+            unitId: row.find('[name$="[unit_id]"]').val() || null,
+            unitCode: row.find('[name$="[unit_id]"] option:selected').text().trim() || 'KG',
+            dishRate: profile.rate || (parseFloat(row.data('rate')) || 0),
+            party: profile.party !== false,
+            mode: mats.some(m => m.cust > 0) ? 'PARTY' : 'OWN',
+            mats, editRow: row.attr('data-row'), editIdx: idx, editSaved: true,
+        };
+        $('#punch-item').empty().append(new Option('EDIT — ' + punch.name, 'edit', true, true)).trigger('change');
+        $('.punch-step').removeClass('d-none');
+        if (! mats.length || ! punch.party) $('#punch-seg-wrap').addClass('d-none');
+        punchSetMode(punch.mode);
+        punchRenderMats();
+        $('#punch-qty').val(qty).trigger('focus').trigger('select');
+        punchLive();
+    });
+
     // Click an UNSAVED punch row → its data comes back up into the bar; Enter
-    // rebuilds that same row. A SAVED row keeps its own Cost Details panel —
-    // the two surfaces never pretend to be each other.
+    // rebuilds that same row.
     $(document).on('click', '.punch-mode #lines-body tr.punch-row', function (e) {
         if ($(e.target).closest('input,select,button,a,.select2').length) return;
         const row = $(this);
@@ -1924,6 +1989,34 @@ $(function () {
         if (qty <= 0) { $('#punch-qty').focus(); return; }
         const row = $('#lines-body tr[data-row="' + punch.editRow + '"]');
         const idx = punch.editIdx;
+
+        // A SAVED row is not rebuilt — its settings are STAGED on it as hidden
+        // inputs and applied by the one save, exactly like a fresh punch.
+        if (punch.editSaved) {
+            row.find('[name*="[materials]["]').remove();
+            const esc = s => _.escape(String(s == null ? '' : s));
+            let html = '';
+            punch.mats.forEach((m, j) => {
+                const kg = m.kgTouched ? m.kg : qty * m.ratio;
+                const p = 'lines[' + idx + '][materials][' + j + ']';
+                html += '<input type="hidden" name="' + p + '[label]" value="' + esc(m.label) + '">'
+                    + '<input type="hidden" name="' + p + '[kg]" value="' + esc(kg) + '">'
+                    + '<input type="hidden" name="' + p + '[rate]" value="' + esc(m.rate) + '">'
+                    + '<input type="hidden" name="' + p + '[cust]" value="' + esc(Math.min(m.cust || 0, kg)) + '">';
+            });
+            row.find('td').first().append(html
+                + '<div class="fs-12 text-muted punch-staged">edited — Save Estimate</div>');
+            row.find('.line-qty, [name$="[quantity]"]').first().val(qty);
+            const calc = punchLineCalc(qty);
+            row.attr('data-rate', calc.rate);
+            row.find('.quoted-live [data-field=quoted_rate]').val(calc.rate.toFixed(2));
+            punchReset();
+            recalc();
+            setTimeout(() => $('#punch-item').select2('open'), 100);
+
+            return;
+        }
+
         row.replaceWith(punchRowHtml(idx, qty, punchLineCalc(qty)));
         punchReset();
         recalc();

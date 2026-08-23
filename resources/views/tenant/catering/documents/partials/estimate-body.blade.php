@@ -10,13 +10,8 @@
      every consumer of this partial (single document, bulk composition, email
      PDF) prints it identically without touching their CSS shells. --}}
 <style>
-    .line-mats { margin: 2px 0 4px; border-collapse: collapse; font-size: 10px; color: #374151; width: auto; min-width: 62%; }
-    .line-mats td { border: 1px solid #d1d5db; padding: 2px 8px; }
-    .line-mats .num { text-align: right; white-space: nowrap; }
-    .line-mats .mats-head td { background: #f3f4f6; font-weight: bold; }
-    .line-mats .provider { white-space: nowrap; }
-    /* The detail row belongs to the item above it: no divider between them. */
-    .items tr.mats-row td { border-top: 0; padding-top: 0; }
+    /* Under the item, smaller than it, and never a box of its own. */
+    .line-mats-inline { font-size: 10px; color: #4b5563; margin-top: 2px; line-height: 1.5; }
     .compl-tag { font-size: 10px; color: #166534; font-weight: bold; }
 </style>
 
@@ -110,7 +105,33 @@
                 @endif
                 @if($line->hasQuotedRateOverride() && (float) $line->rate === 0.0)
                     {{-- The legacy Complimentry flag, on the customer's copy. --}}
-                    <div class="compl-tag">Complimentary · <span class="ur">اعزازی</span></div>
+                    <div class="compl-tag">{{ $t('Complimentary', 'اعزازی') }}</div>
+                @endif
+
+                {{-- KASHIF-LEGACY-ALIGN-1 ("Is p gosht nh arha"): what this line
+                     takes and who brings it — one quiet line UNDER the item, not
+                     a box competing with it. Quantities are the line's TOTAL
+                     kitchen draw, the same numbers the release sheet works from.
+                     Internal cost never reaches a customer's document, and the
+                     document's own language is respected — no forced Urdu. --}}
+                @php
+                    $fmtQty = fn ($q) => rtrim(rtrim(number_format((float) $q, 3), '0'), '.');
+                    $matLine = $matBlocks->map(function ($mb) use ($fmtQty, $t) {
+                        $name = $mb->material_name ?: $mb->label;
+                        $qty = $fmtQty($mb->event_material_qty ?? 0).' '.$mb->unit_code;
+                        if ($mb->isCustomerSupplied()) {
+                            return $name.' '.$qty.' ('.$t('customer', 'گاہک').')';
+                        }
+                        if ($mb->isPartiallyCustomerSupplied()) {
+                            return $name.' '.$qty.' ('.$t('us', 'ہم').' '.$fmtQty($mb->billableQty())
+                                .', '.$t('customer', 'گاہک').' '.$fmtQty($mb->suppliedQty()).')';
+                        }
+
+                        return $name.' '.$qty.' ('.$t('us', 'ہم').')';
+                    })->implode(' · ');
+                @endphp
+                @if($matLine !== '')
+                    <div class="line-mats-inline">{{ $matLine }}</div>
                 @endif
             </td>
             <td class="num">{{ rtrim(rtrim(number_format($line->quantity, 3), '0'), '.') }}</td>
@@ -126,38 +147,6 @@
              sheet works from, so the customer's paper and the kitchen can never
              disagree. Internal cost figures (Costs us) never reach a customer's
              document. --}}
-        @if($matBlocks->isNotEmpty())
-        <tr class="mats-row">
-            <td></td>
-            <td colspan="6">
-                <table class="line-mats" dir="ltr">
-                    <tr class="mats-head">
-                        <td>Materials · <span class="ur">سامان</span></td>
-                        <td class="num">Qty · <span class="ur">مقدار</span></td>
-                        <td class="provider">Provided by · <span class="ur">کون دے گا</span></td>
-                    </tr>
-                    @foreach($matBlocks as $mb)
-                        <tr>
-                            <td>{{ $mb->material_name ?: $mb->label }}</td>
-                            <td class="num">{{ rtrim(rtrim(number_format((float) ($mb->event_material_qty ?? 0), 3), '0'), '.') }} {{ $mb->unit_code }}</td>
-                            <td class="provider">
-                                @if($mb->isCustomerSupplied())
-                                    Customer provides · <span class="ur">گاہک دے گا</span>
-                                @elseif($mb->isPartiallyCustomerSupplied())
-                                    @php $fmtQty = fn ($q) => rtrim(rtrim(number_format((float) $q, 3), '0'), '.'); @endphp
-                                    {{-- The split, spelled out: whose share is whose. --}}
-                                    Us {{ $fmtQty($mb->billableQty()) }} {{ $mb->unit_code }} · <span class="ur">ہم {{ $fmtQty($mb->billableQty()) }}</span>
-                                    — Customer {{ $fmtQty($mb->suppliedQty()) }} {{ $mb->unit_code }} · <span class="ur">گاہک {{ $fmtQty($mb->suppliedQty()) }}</span>
-                                @else
-                                    We provide · <span class="ur">ہم دیں گے</span>
-                                @endif
-                            </td>
-                        </tr>
-                    @endforeach
-                </table>
-            </td>
-        </tr>
-        @endif
         @endforeach
     </tbody>
 </table>

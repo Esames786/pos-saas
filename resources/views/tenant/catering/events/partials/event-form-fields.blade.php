@@ -22,7 +22,14 @@
                      below; a name nobody has yet simply becomes the new
                      customer's name. No modal, no second search, no extra step. --}}
                 <div class="col-12">
-                    <label class="form-label">Find or type the customer</label>
+                    <div class="d-flex align-items-center justify-content-between">
+                        <label class="form-label mb-1">Find or type the customer</label>
+                        {{-- Wrong customer picked by mistake? One click puts the
+                             whole section back to empty — search box and fields. --}}
+                        <button type="button" class="btn btn-link btn-sm p-0 fs-12 customer-reset">
+                            <i class="ti ti-eraser me-1"></i>Clear customer
+                        </button>
+                    </div>
                     <select name="customer_id" class="form-select form-select-lg customer-select">
                         @if(old('customer_id', $event?->customer_id))
                             <option value="{{ old('customer_id', $event?->customer_id) }}" selected>

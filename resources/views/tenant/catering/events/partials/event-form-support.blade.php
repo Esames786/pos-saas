@@ -83,6 +83,18 @@
                 const addr = (c.addresses && c.addresses.length) ? c.addresses[0].address : c.legacy_address;
                 set('customer_address', addr || '');
             });
+
+            // Clearing means CLEARING: the search box AND everything it filled.
+            // Leaving the fields behind is how a booking ends up carrying the
+            // wrong customer's phone under the right customer's name.
+            function clearCustomer() {
+                $customer.val(null).trigger('change');
+                ['customer_name', 'customer_name_ur', 'customer_phone', 'customer_email', 'customer_address']
+                    .forEach(n => $root.find('[name=' + n + ']').val(''));
+                $root.find('[name=customer_name]').trigger('focus');
+            }
+            $customer.on('select2:clear select2:unselect', clearCustomer);
+            $root.find('.customer-reset').on('click', clearCustomer);
         }
 
         // Date usability — progressive enhancement over the native inputs (no
@@ -100,7 +112,12 @@
             + String(d.getMonth() + 1).padStart(2, '0') + '-'
             + String(d.getDate()).padStart(2, '0');
         const today = new Date(); today.setHours(0, 0, 0, 0);
-        const syncMin = () => { if (bookingDate) eventDate.min = bookingDate.value || ''; };
+        const syncMin = () => {
+            if (! bookingDate) return;
+            const min = bookingDate.value || '';
+            if (eventDate._flatpickr) { eventDate._flatpickr.set('minDate', min || null); }
+            else { eventDate.min = min; }
+        };
 
         function render() {
             const val = eventDate.value;
@@ -134,7 +151,10 @@
                 } else {
                     d.setDate(d.getDate() + parseInt(btn.dataset.days, 10));
                 }
-                eventDate.value = iso(d);
+                // With a picker attached the visible box is flatpickr's own;
+                // writing .value alone changed a hidden field and nothing moved.
+                if (eventDate._flatpickr) { eventDate._flatpickr.setDate(iso(d), true); }
+                else { eventDate.value = iso(d); }
                 render();
             });
         });
@@ -158,6 +178,9 @@
                 window.flatpickr(el, {
                     dateFormat: 'Y-m-d', altInput: true, altFormat: 'D, d M Y',
                     allowInput: true, disableMobile: true,
+                    // The hint and the clash warning listen for 'change' — say it
+                    // out loud rather than trusting the library to.
+                    onChange: function () { el.dispatchEvent(new Event('change', { bubbles: true })); },
                 });
             });
             root.querySelectorAll('input[type=time]').forEach(function (el) {

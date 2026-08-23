@@ -215,9 +215,9 @@ class CateringPunchFlowMySqlTest extends MySqlTenantTestCase
         ])->render();
 
         $this->assertStringContainsString('Chicken Biryani', $html);
-        $this->assertStringContainsString('سامان', $html, 'the materials box prints');
-        $this->assertStringContainsString('6 KG', $html, 'the punched kitchen quantity, not the recipe default');
-        $this->assertStringContainsString('گاہک 2', $html, 'the customer share, spelled out');
+        // One quiet line under the item: the punched kitchen quantity (not the
+        // recipe default) and the split, in the document's own language.
+        $this->assertStringContainsString('Chicken 6 KG (us 4, customer 2)', $html);
         $this->assertStringContainsString('Zafran on top', $html, 'the punched instruction reaches the paper');
 
         // ── Kitchen: finalize → accept → confirm → release. ──
