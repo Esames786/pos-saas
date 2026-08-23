@@ -9,21 +9,34 @@
         {{ $errors->first() }}
     </div>
 
+    {{-- KASHIF-EVENT-FORM-2 — the POS's customer flow, here: ONE button opens
+         a big search; typing a phone or a name finds the customer or offers to
+         add them; the attached customer shows as a chip. The detail fields stay
+         underneath (the booking's own copy of the customer, as always) and fill
+         themselves from the choice. --}}
     <div class="card mb-3">
-        <div class="card-header"><h5 class="mb-0">Customer</h5></div>
+        <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <h5 class="mb-0">Customer</h5>
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <span class="cust-chip badge bg-primary-subtle text-primary-emphasis d-none fs-13 py-2 px-3">
+                    <i class="ti ti-user me-1"></i><span class="cust-chip-name"></span>
+                    <span class="cust-chip-phone opacity-75 ms-1"></span>
+                    <button type="button" class="btn-close ms-2 cust-chip-clear" style="font-size:.55rem" aria-label="Remove customer"></button>
+                </span>
+                <button type="button" class="btn btn-outline-dark btn-sm cust-open">
+                    <i class="ti ti-user-search me-1"></i>Search / Add Customer
+                </button>
+            </div>
+        </div>
         <div class="card-body">
             <div class="row g-3">
-                <div class="col-md-4">
-                    <label class="form-label">Existing Customer (optional)</label>
-                    <select name="customer_id" class="form-select customer-select">
-                        @if(old('customer_id', $event?->customer_id))
-                            <option value="{{ old('customer_id', $event?->customer_id) }}" selected>
-                                {{ $event?->customer?->name ?? 'Selected customer' }}
-                            </option>
-                        @endif
-                    </select>
-                    <div class="form-text">Search by name or phone; leave empty for a walk-in customer.</div>
-                </div>
+                <select name="customer_id" class="d-none customer-select">
+                    @if(old('customer_id', $event?->customer_id))
+                        <option value="{{ old('customer_id', $event?->customer_id) }}" selected>
+                            {{ $event?->customer?->name ?? 'Selected customer' }}
+                        </option>
+                    @endif
+                </select>
                 <div class="col-md-4">
                     <label class="form-label">Customer Name <span class="text-danger">*</span></label>
                     <input type="text" name="customer_name" class="form-control" required
@@ -48,6 +61,50 @@
                     <label class="form-label">Address</label>
                     <input type="text" name="customer_address" class="form-control"
                            value="{{ old('customer_address', $event?->customer_address) }}">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- The POS's own modal shape: one big box, results underneath, and a
+         "not found → add them" panel that appears only when nothing matches. --}}
+    <div class="modal fade cust-modal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h2 class="modal-title h6 mb-0">Customer</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="input-group input-group-lg mb-2">
+                        <span class="input-group-text"><i class="ti ti-search"></i></span>
+                        <input class="form-control cust-q" autocomplete="off"
+                               placeholder="Phone number or name…" aria-label="Search customer by phone or name">
+                    </div>
+                    <div class="cust-results list-group mb-2" style="max-height:260px;overflow-y:auto"></div>
+                    <div class="cust-new border rounded p-3 bg-light d-none">
+                        <div class="fw-semibold mb-2"><i class="ti ti-user-plus me-1"></i>New customer</div>
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-4">
+                                <label class="form-label small mb-1">Name</label>
+                                <input class="form-control form-control-sm cust-new-name" autocomplete="off">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small mb-1">Phone</label>
+                                <input class="form-control form-control-sm cust-new-phone" autocomplete="off">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small mb-1">Address</label>
+                                <input class="form-control form-control-sm cust-new-address" maxlength="500" autocomplete="off">
+                            </div>
+                            <div class="col-12">
+                                <button type="button" class="btn btn-primary btn-sm cust-new-use">
+                                    <i class="ti ti-check me-1"></i>Use this customer <span class="opacity-75 small">(Enter)</span>
+                                </button>
+                                <span class="text-muted small ms-2">Saved with the booking — no separate step.</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
