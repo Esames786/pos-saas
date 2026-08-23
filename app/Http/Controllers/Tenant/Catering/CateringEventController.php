@@ -42,7 +42,9 @@ class CateringEventController extends Controller
                     ->orWhere('venue', 'like', $like)
                     ->orWhere('customer_address', 'like', $like);
             }))
-            ->orderBy('event_date')
+            // The booking you just took is the one you are looking for. Newest
+            // first — the old ascending order buried today's work under an
+            // event book that now runs years deep.
             ->orderByDesc('id');
 
         match ($filter) {
