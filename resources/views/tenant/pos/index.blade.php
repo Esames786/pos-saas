@@ -1277,6 +1277,89 @@
 </script>
 @endcan
 
+{{-- POS-PRINT-HERE: local/USB fallback print in a SAME-SCREEN window (no redirect / new tab).
+     Reused by the failed-print Swal (auto-detect, Approach A) and the Recent Prints "Print Here"
+     button (Approach B), for KOT / receipt / reminder alike. --}}
+<div class="modal fade" id="printHereModal" tabindex="-1" aria-labelledby="printHereModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:430px">
+        <div class="modal-content" style="height:88vh">
+            <div class="modal-header py-2">
+                <h2 class="modal-title h6 mb-0" id="printHereModalLabel"><i class="ti ti-printer me-1"></i>Print Here</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0" style="flex:1 1 auto;overflow:hidden">
+                <iframe id="print-here-frame" title="Print document" style="width:100%;height:100%;border:0" src="about:blank"></iframe>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-primary" id="print-here-print-btn"><i class="ti ti-printer me-1"></i>Print</button>
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    var modalEl  = document.getElementById('printHereModal');
+    var frame    = document.getElementById('print-here-frame');
+    var printBtn = document.getElementById('print-here-print-btn');
+    if (!modalEl || !frame) return;
+    var _promptedFailedJobs = {};
+
+    function doPrint() {
+        try { frame.contentWindow.focus(); frame.contentWindow.print(); }
+        catch (e) { try { window.print(); } catch (e2) {} }
+    }
+
+    // Open the document in a same-screen window (NEVER a redirect / new tab) and auto-fire the print
+    // dialog for one-click printing; the Print button reprints. jobId → the generic preview route,
+    // which renders KOT / receipt / reminder by the job's own document_type.
+    window.openPrintHere = function (jobId) {
+        if (!jobId) return;
+        frame.src = '{{ url('/printing/documents') }}/' + Number(jobId) + '/preview';
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    };
+
+    if (printBtn) printBtn.addEventListener('click', doPrint);
+    frame.addEventListener('load', function () {
+        if (frame.src && frame.src.indexOf('about:blank') === -1) setTimeout(doPrint, 300);
+    });
+    modalEl.addEventListener('hidden.bs.modal', function () { frame.src = 'about:blank'; });
+
+    // Approach A: after a network print is fired, poll THIS sale's jobs across the agent's retry/
+    // timeout window; a freshly FAILED job pops a Swal offering Print Here (same-screen). Covers
+    // KOT, receipt and reminder. Each failed job is prompted once.
+    function promptPrintHere(job) {
+        var label = String(job.document_type || 'document').toUpperCase();
+        if (typeof Swal === 'undefined') { window.openPrintHere(job.id); return; }
+        Swal.fire({
+            title: 'Print failed',
+            html: label + ' could not print on <strong>' + (job.printer_name || 'the printer') + '</strong>.<br>Print it here instead?',
+            icon: 'error', showCancelButton: true, reverseButtons: true,
+            confirmButtonText: '<i class="ti ti-printer me-1"></i>Print Here', cancelButtonText: 'Dismiss',
+            confirmButtonColor: '#0d6efd',
+        }).then(function (r) { if (r.isConfirmed) window.openPrintHere(job.id); });
+    }
+    window.watchPrintFailure = function (saleId) {
+        if (!saleId) return;
+        [4000, 9000, 15000].forEach(function (delay) {
+            setTimeout(function () {
+                fetch('{{ url('/api/pos/print-jobs') }}/' + Number(saleId), { headers: { 'Accept': 'application/json' } })
+                    .then(function (r) { return r.ok ? r.json() : null; })
+                    .then(function (d) {
+                        if (!d || !d.jobs) return;
+                        d.jobs.forEach(function (j) {
+                            if (j.print_status === 'failed' && !_promptedFailedJobs[j.id]) {
+                                _promptedFailedJobs[j.id] = true;
+                                promptPrintHere(j);
+                            }
+                        });
+                    }).catch(function () {});
+            }, delay);
+        });
+    };
+})();
+</script>
+
 {{-- Quick Customer Modal --}}
 {{-- CUSTOMER-UX-1: single Add/Search Customer modal (search by name/phone, address book, quick create) --}}
 {{-- CUSTOMER-UX-2 (2026-08-11): ONE box. Type a phone (or name) — matches appear as you type;
@@ -3606,6 +3689,7 @@ document.addEventListener('DOMContentLoaded', function () {
             });
             renderCart();
             handleReminderPlan(saleId, data.reminder || {});
+            if (window.watchPrintFailure) window.watchPrintFailure(saleId);   // POS-PRINT-HERE
             return data;
         })
         .catch(function (error) {
@@ -3693,6 +3777,8 @@ document.addEventListener('DOMContentLoaded', function () {
             if (data && (data.fallback || data.printer_type === 'browser') && data.preview_url) {
                 toast('warning', 'No printer found — opening receipt for manual print');
                 openPreviewTab(data.preview_url);
+            } else if (window.watchPrintFailure) {
+                window.watchPrintFailure(saleId);   // POS-PRINT-HERE: async network failure → offer Print Here
             }
         })
         .catch(function () {});
@@ -4720,6 +4806,12 @@ document.addEventListener('DOMContentLoaded', function () {
                     ? '<button class="btn btn-sm btn-danger py-0 me-1" data-retry-job="' + Number(j.id) + '"><i class="ti ti-refresh me-1"></i>Retry</button>'
                     : '';
 
+                // POS-PRINT-HERE (Approach B): a FAILED job can be printed locally (browser/USB) in a
+                // same-screen window — the primary recovery when the network printer is offline.
+                const printHereBtn = j.print_status === 'failed'
+                    ? '<button class="btn btn-sm btn-primary py-0 me-1" data-print-here="' + Number(j.id) + '" title="Print here — local / USB printer"><i class="ti ti-printer me-1"></i>Print Here</button>'
+                    : '';
+
                 html += '<tr' + (j.print_status === 'failed' ? ' class="table-danger"' : '') + '>' +
                     '<td class="ps-3 fw-semibold small">' + escapeHtml(j.job_no) + '</td>' +
                     '<td>' + typeBadge(j.document_type) + '</td>' +
@@ -4728,6 +4820,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     '<td class="text-muted small">' + escapeHtml(itemsCell) + '</td>' +
                     '<td class="text-muted small">' + escapeHtml(j.created_at) + '</td>' +
                     '<td class="pe-3 text-end">' +
+                        printHereBtn +
                         viewBtn +
                         retryBtn +
                         '<button class="btn btn-sm btn-outline-secondary py-0" data-requeue-job="' + Number(j.id) + '" data-job-type="' + escapeHtml(j.document_type) + '" title="Reprint ' + escapeHtml(j.printer_name) + (j.document_type === 'reminder' ? ', revision ' + Number(j.revision || 1) : '') + '">' +
@@ -4752,6 +4845,13 @@ document.addEventListener('DOMContentLoaded', function () {
             body.querySelectorAll('[data-requeue-job]').forEach(function (btn) {
                 btn.addEventListener('click', function () {
                     requeueSingleJob(Number(btn.dataset.requeueJob), btn.dataset.jobType, btn);
+                });
+            });
+
+            // POS-PRINT-HERE (Approach B): wire per-row "Print Here" (same-screen local/USB print).
+            body.querySelectorAll('[data-print-here]').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    if (window.openPrintHere) window.openPrintHere(Number(btn.dataset.printHere));
                 });
             });
 
