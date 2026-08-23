@@ -234,9 +234,9 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('Recipe says', $html);
         $this->assertStringNotContainsString('Quote a different rate', $html,
             'ONE rate control — the row\'s Quoted Rate box; the panel never duplicates it');
-        // KASHIF-LEGACY-ALIGN-5: one click quotes a line complimentary through
-        // the same override authority.
-        $this->assertStringContainsString('Complimentary?', $html);
+        // KASHIF-ORDER-PUNCH §A: Complimentary is an ITEM flag now — the row
+        // carries NO trigger link; a flagged item lands at zero by itself.
+        $this->assertStringNotContainsString('Complimentary?', $html);
         $this->assertStringContainsString('event_material_qty', $html);
         $this->assertStringNotContainsString('rate_basis</', $html,
             'schema words stay out of the operator screen');
