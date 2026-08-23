@@ -61,7 +61,7 @@ fclose($f);
 // ── order items (the product master) ──
 $rows = rowsOf($zip, $targets, $shared, 'tbl_OrderItem');
 $f = fopen('docs/data/legacy-order-items.csv', 'w');
-fputcsv($f, ['order_item_id', 'name', 'category_id', 'unit', 'order_rate', 'meat_rate', 'service_rate', 'qty_in_no', 'cat_allow', 'kitchen_id', 'kitchen_allow']);
+fputcsv($f, ['order_item_id', 'name', 'category_id', 'unit', 'order_rate', 'meat_rate', 'service_rate', 'qty_in_no', 'cat_allow', 'kitchen_id', 'kitchen_allow', 'complimentary', 'sequence_no', 'meat_type', 'additional_rate']);
 $n = 0;
 foreach (array_slice($rows, 1) as $r) {
     if (($r[0] ?? '') === '' || $clean($r[1] ?? '') === '') { continue; }
@@ -72,6 +72,10 @@ foreach (array_slice($rows, 1) as $r) {
         strtoupper($clean($r[11] ?? '')) === 'Y' ? 'Y' : 'N',
         (int) ($r[12] ?? 0),
         strtoupper($clean($r[13] ?? '')) === 'Y' ? 'Y' : 'N',
+        strtoupper($clean($r[14] ?? '')) === 'Y' ? 'Y' : 'N',
+        (int) ($r[15] ?? 0),
+        strtoupper($clean($r[16] ?? '')),
+        (float) ($r[18] ?? 0),
     ]);
     $n++;
 }
@@ -149,3 +153,17 @@ foreach (array_slice($rows, 1) as $r) {
 }
 fclose($f);
 echo "order_lines=$n\n";
+
+// ── raw material master (tbl_Item): the real materials AND their rates ──
+$rows = rowsOf($zip, $targets, $shared, 'tbl_Item');
+$f = fopen('docs/data/legacy-materials.csv', 'w');
+fputcsv($f, ['item_id', 'name', 'unit', 'rate', 'category_id']);
+$n = 0;
+foreach (array_slice($rows, 1) as $r) {
+    if (($r[0] ?? '') === '' || $clean($r[1] ?? '') === '') { continue; }
+    fputcsv($f, [(int) $r[0], $clean($r[1]), $clean($r[5] ?? ''), (float) ($r[6] ?? 0), (int) ($r[7] ?? 0)]);
+    $n++;
+}
+fclose($f);
+echo "materials=$n
+";
