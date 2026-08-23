@@ -1782,8 +1782,8 @@ $(function () {
             }));
             sessionStorage.setItem('punchFocus', '1');
             punchReset();
-            const f = document.getElementById('estimate-form');
-            if (f.requestSubmit) f.requestSubmit(); else $(f).trigger('submit');
+            const form = document.getElementById('estimate-form');
+            window.cateringAjaxSubmit(form.getAttribute('action'), new FormData(form));
             return;
         }
 
@@ -1813,19 +1813,23 @@ $(function () {
         })).filter(m => m.kg !== null || m.rate !== null || m.cust > 0);
         if (pending.length) sessionStorage.setItem('punchPending', JSON.stringify({ name: punch.name, mats: pending }));
 
+        // Post the WHOLE estimate form + the punched line as ONE FormData —
+        // never via requestSubmit: a single stray required field anywhere in
+        // the form would silently abort a native submit, which read as
+        // "Enter did nothing / page reloaded, row gone" at the counter.
+        const form = document.getElementById('estimate-form');
+        const fd = new FormData(form);
         const i = $('#lines-body [name^="lines["][name$="[item_name]"]').length;
-        const h = (f, v) => '<input type="hidden" name="lines[' + i + '][' + f + ']" value="' + _.escape(String(v ?? '')) + '">';
-        $('#lines-body').append('<tr class="d-none punch-ghost"><td>'
-            + (punch.productId ? h('product_id', punch.productId) : '')
-            + h('item_name', punch.name) + h('quantity', qty)
-            + (punch.unitId ? h('unit_id', punch.unitId) : '') + h('rate', 0)
-            + ($('#punch-instr').val() ? h('instructions', $('#punch-instr').val()) : '')
-            + '</td></tr>');
+        const put = (f, v) => fd.append('lines[' + i + '][' + f + ']', String(v ?? ''));
+        if (punch.productId) put('product_id', punch.productId);
+        put('item_name', punch.name); put('quantity', qty); put('rate', 0);
+        if (punch.unitId) put('unit_id', punch.unitId);
+        if ($('#punch-instr').val()) put('instructions', $('#punch-instr').val());
         // The punch already carries every setting — the row lands COMPACT,
         // old-software style. Cost Details stays a click away, never auto-open.
         sessionStorage.setItem('punchFocus', '1');
-        const f = document.getElementById('estimate-form');
-        if (f.requestSubmit) f.requestSubmit(); else $(f).trigger('submit');
+        punchReset();
+        window.cateringAjaxSubmit(form.getAttribute('action'), fd);
     }
 
     // After the save re-renders the workspace, the pending adjustments post
