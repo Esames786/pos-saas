@@ -486,16 +486,16 @@
                 <button type="button" class="btn-close ms-2" id="chip-cust-clear" aria-label="Remove customer" style="font-size:.6rem"></button>
             </div>
             @can('tenant.reports.center.index')
-                {{-- POS-REPORT-LINK: open the full Sales Report Center (today) in a new tab — same
-                     filters/sections/Send-to-Network/Print controls. Scoped server-side to the
-                     operator's terminal/order-types (Send-to-Network shows only their printer). --}}
+                {{-- POS-REPORT-LINK: open the full Sales Report Center (today) in a WINDOW on the same
+                     screen (modal + lazy iframe) — same filters/sections/Send-to-Network/Print controls.
+                     Scoped server-side to the operator's terminal/order-types. --}}
                 @php $reportToday = app(\App\Support\TenantClock::class)->now()->toDateString(); @endphp
-                <a href="{{ url('/reports/center') }}?date_from={{ $reportToday }}&date_to={{ $reportToday }}"
-                   target="_blank" rel="noopener"
-                   class="btn btn-sm btn-outline-dark me-2" id="pos-report-btn"
-                   title="Open the Sales Report Center (today) in a new tab">
+                <button type="button" class="btn btn-sm btn-outline-dark me-2" id="pos-report-btn"
+                        data-bs-toggle="modal" data-bs-target="#posReportModal"
+                        data-report-url="{{ url('/reports/center') }}?date_from={{ $reportToday }}&date_to={{ $reportToday }}"
+                        title="Open the Sales Report Center (today)">
                     <i class="ti ti-file-analytics me-1"></i>Report
-                </a>
+                </button>
             @endcan
             <button type="button" class="btn btn-sm btn-outline-dark" id="pos-customer-btn"
                     data-bs-toggle="modal" data-bs-target="#customerModal">
@@ -1241,6 +1241,41 @@
         </div>
     </div>
 </div>
+
+{{-- POS-REPORT-LINK: Sales Report Center in a same-screen window (lazy iframe) --}}
+@can('tenant.reports.center.index')
+<div class="modal fade" id="posReportModal" tabindex="-1" aria-labelledby="posReportModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-fullscreen-lg-down">
+        <div class="modal-content" style="height:92vh">
+            <div class="modal-header py-2">
+                <h2 class="modal-title h6 mb-0" id="posReportModalLabel"><i class="ti ti-file-analytics me-1"></i>Sales Report Center</h2>
+                <a href="#" id="pos-report-newtab" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary ms-auto me-2" title="Open in a full tab"><i class="ti ti-external-link"></i></a>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0">
+                <iframe id="pos-report-frame" title="Sales Report Center" style="width:100%;height:100%;border:0" src="about:blank"></iframe>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    var modalEl = document.getElementById('posReportModal');
+    var btn     = document.getElementById('pos-report-btn');
+    var frame   = document.getElementById('pos-report-frame');
+    var newTab  = document.getElementById('pos-report-newtab');
+    if (!modalEl || !btn || !frame) return;
+    modalEl.addEventListener('show.bs.modal', function () {
+        var url = btn.getAttribute('data-report-url');
+        if (newTab) newTab.href = url;
+        if (frame.getAttribute('src') === 'about:blank') frame.src = url;   // lazy-load once per open
+    });
+    modalEl.addEventListener('hidden.bs.modal', function () {
+        frame.src = 'about:blank';   // free the report; refresh on next open
+    });
+})();
+</script>
+@endcan
 
 {{-- Quick Customer Modal --}}
 {{-- CUSTOMER-UX-1: single Add/Search Customer modal (search by name/phone, address book, quick create) --}}
