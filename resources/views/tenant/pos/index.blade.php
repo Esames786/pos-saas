@@ -1145,7 +1145,7 @@
 
 {{-- Recent Prints Modal --}}
 <div class="modal fade" id="lastPrintModal" tabindex="-1" aria-labelledby="lastPrintModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-dialog modal-xl modal-fullscreen-lg-down modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
                 <div>
