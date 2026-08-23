@@ -98,11 +98,32 @@ class ProductLookupController extends Controller
         }
 
         if ($q !== '') {
-            $query->where(function ($w) use ($q) {
-                $w->where('sku', 'like', "%{$q}%")
-                    ->orWhere('name', 'like', "%{$q}%")
-                    ->orWhereHas('barcodes', fn ($b) => $b->where('barcode', 'like', "%{$q}%"));
+            // KASHIF-ORDER-PUNCH: a fully NUMERIC query is a code — a legacy
+            // item id (361) or a scanned barcode — never a fragment to find in
+            // the middle of a hashed SKU (KM-4323012112 matching "112" buried
+            // Chips above the item actually coded 112). Numeric queries match
+            // codes by prefix and SKUs by prefix only, with the EXACT code
+            // match ranked first; text queries keep the broad behaviour.
+            $isCode = ctype_digit($q);
+            $query->where(function ($w) use ($q, $isCode) {
+                if ($isCode) {
+                    $w->where('sku', 'like', "{$q}%")
+                        ->orWhere('name', 'like', "%{$q}%")
+                        ->orWhereHas('barcodes', fn ($b) => $b->where('barcode', 'like', "{$q}%"));
+                } else {
+                    $w->where('sku', 'like', "%{$q}%")
+                        ->orWhere('name', 'like', "%{$q}%")
+                        ->orWhereHas('barcodes', fn ($b) => $b->where('barcode', 'like', "%{$q}%"));
+                }
             });
+            if ($isCode) {
+                $query->orderByRaw(
+                    'EXISTS(SELECT 1 FROM product_barcodes pb WHERE pb.product_id = products.id AND pb.barcode = ?) DESC',
+                    [$q]
+                );
+                // So the dropdown reads "361 — Biryani Masala Beef", not a hash.
+                $query->with('barcodes:id,product_id,barcode');
+            }
         }
 
         $total = (clone $query)->count();
@@ -118,10 +139,16 @@ class ProductLookupController extends Controller
             ? \App\Services\Departments\DepartmentMappingService::forBranch($branchId)
             : null;
 
-        $results = $records->map(function (Product $p) use ($rich, $branchId, $context, $deptInventory, $destResolver, $fromDeptId, $toDeptId) {
+        $isCode = $isCode ?? false;
+        $results = $records->map(function (Product $p) use ($rich, $branchId, $context, $deptInventory, $destResolver, $fromDeptId, $toDeptId, $isCode, $q) {
+            // A code search shows the CODE the operator typed by, not a hash.
+            $codeLabel = null;
+            if ($isCode && $p->relationLoaded('barcodes')) {
+                $codeLabel = $p->barcodes->first(fn ($b) => str_starts_with($b->barcode, $q))?->barcode;
+            }
             $base = [
                 'id' => $p->id,
-                'text' => $p->sku ? ($p->sku.' — '.$p->name) : $p->name,
+                'text' => ($codeLabel ?: $p->sku) ? (($codeLabel ?: $p->sku).' — '.$p->name) : $p->name,
             ];
 
             if (! $rich) {
