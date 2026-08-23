@@ -105,15 +105,27 @@ class SalesReportCenterController extends Controller
             };
         }
 
-        // Network printers the report can be streamed to (Send to network). A terminal-bound operator
-        // only sees THEIR terminal's attached printer(s) — receipt first so it is the default choice —
-        // so e.g. the Delivery counter cannot stream the report to another counter. An unbound
-        // owner/manager (no default terminal) still sees every network printer to pick from.
+        // Network printers the report can be streamed to (Send to network). When the report is scoped
+        // to ONE terminal — the resolved filter terminal_id (the POS counter passes its own, and a
+        // terminal-bound operator is auto-scoped to theirs) — only THAT terminal's attached printer(s)
+        // show, receipt first so it is the default choice. So the Delivery counter defaults to the
+        // Delivery printer and cannot stream to another counter. With no terminal in scope (an owner
+        // viewing "All") every network printer is offered.
         $networkPrinterQuery = \App\Models\Tenant\Printer::where('is_active', 1)
             ->where('printer_type', 'network')->whereNotNull('ip_address');
 
+        $terminalId = $filters['terminal_id'] ?? auth('tenant')->user()?->default_terminal_id;
+        if (! $terminalId) {
+            // A terminal-bound operator (e.g. a Delivery user with no default_terminal_id set) is
+            // still bound to exactly their counter via terminal_user — scope to that sole terminal.
+            $bound = DB::connection('tenant')->table('terminal_user')
+                ->where('user_id', auth('tenant')->id())->pluck('terminal_id');
+            if ($bound->count() === 1) {
+                $terminalId = (int) $bound->first();
+            }
+        }
         $terminalPrinterIds = [];
-        if ($terminalId = auth('tenant')->user()?->default_terminal_id) {
+        if ($terminalId) {
             $setting = \App\Models\Tenant\TerminalPrinterSetting::where('terminal_id', $terminalId)->first();
             if ($setting) {
                 // Receipt first (default option), then a distinct KOT printer if the terminal has one.

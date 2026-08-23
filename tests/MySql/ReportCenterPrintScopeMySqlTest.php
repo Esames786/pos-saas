@@ -85,7 +85,9 @@ class ReportCenterPrintScopeMySqlTest extends MySqlTenantTestCase
             'auto_print_receipt' => 0, 'auto_print_kot' => 0, 'created_at' => now(), 'updated_at' => now(),
         ]);
 
-        $opId = $this->makeUser(['default_branch_id' => $branchId, 'default_terminal_id' => $delivery]);
+        // Real delivery-user case: NO default_terminal_id set — bound to the counter ONLY via the
+        // terminal_user pivot. The scope must still resolve to their sole terminal's printer.
+        $opId = $this->makeUser(['default_branch_id' => $branchId]);
         DB::connection('tenant')->table('terminal_user')->insert(['user_id' => $opId, 'terminal_id' => $delivery]);
         $this->actingAs(User::on('tenant')->find($opId), 'tenant');
         Auth::shouldUse('tenant');
@@ -94,7 +96,7 @@ class ReportCenterPrintScopeMySqlTest extends MySqlTenantTestCase
         $ids = collect($data['networkPrinters'])->pluck('id')->all();
 
         $this->assertSame([$deliveryReceipt, $deliveryKot], $ids,
-            'a terminal-bound operator sees only their terminal printers, receipt first (default) — never another counter\'s');
+            'a terminal-bound operator (bound via pivot, no default_terminal_id) sees only their terminal printers, receipt first — never another counter\'s');
     }
 
     /** An unbound owner/manager (no default terminal) still sees every network printer to pick from. */
