@@ -4503,10 +4503,13 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         }
 
-        // Sync terminal if provided
-        if (sale.terminal_id !== undefined && terminalEl) {
-            terminalEl.value = sale.terminal_id || '';
-        }
+        // POS-RECALL-TERMINAL-1: DO NOT sync the terminal from the recalled order. The operator's
+        // active terminal must NEVER change on recall — a programmatic overwrite here does not fire
+        // the change listener, so it silently leaks into the operator's NEXT new order (clearCart
+        // never resets #terminal_id). The recalled order instead adopts the operator's OWN active
+        // terminal when they Hold (HeldSaleController::store) or Review & Pay (SalesOrderController::
+        // store) — both stamp the posted terminal — so KOT, receipt and the sale's attribution all
+        // follow the operator's station. See docs/plans/pos-multi-terminal-recall-terminal-2026-08-24.md.
 
         // CUSTOMER-UX-1: restore the attached customer + address + vehicle and show the chip.
         { const el = document.getElementById('customer_id'); if (el) el.value = sale.customer_id || ''; }
