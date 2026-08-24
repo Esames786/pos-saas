@@ -2098,6 +2098,9 @@ document.addEventListener('DOMContentLoaded', function () {
         const dealsOnly = selectedParentCategory === '__deals__';
 
         const filtered = dealsOnly ? [] : products.filter(function (product) {
+            // COMBO-COMPONENT-VISIBILITY: combo-only fillers ride in the payload (so a combo isn't
+            // falsely "out of stock") but must never render as a sellable grid tile.
+            if (product.pos_grid_visible === false) return false;
             // KHATRI-MENU-2: a parent pill matches its OWN products AND its children's products
             // (menu items now live in child categories like "Saada"/"Non-Saada").
             const matchParent = !selectedParentCategory
