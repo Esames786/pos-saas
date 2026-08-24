@@ -4,7 +4,12 @@
 <meta charset="utf-8">
 <title>Sales Report — {{ $filters['date_from'] }} → {{ $filters['date_to'] }}</title>
 @php
-    $fmt = fn ($v) => number_format((float) $v, 2);
+    // Thermal Z / End-of-Day prints ROUND figures — no ".00" tail — so the counter reads clean
+    // whole rupees; A4 keeps 2 decimals for the formal ledger. (Menu prices are whole rupees, so
+    // rounding is exact; the raw values still drive every sum, only the printed figure is rounded.)
+    $fmt = ($mode === 'thermal')
+        ? fn ($v) => number_format((float) $v, 0)
+        : fn ($v) => number_format((float) $v, 2);
     $qty = fn ($v) => rtrim(rtrim(number_format((float) $v, 3, '.', ''), '0'), '.');
     $has = fn (string $s) => in_array($s, $sections, true);
 
@@ -132,6 +137,11 @@
        nowrap amount columns claim the width the browser shatters the label one char per line
        ("Qt"/"y"). Keeping the 3-char label on one line costs no width and stops the shatter. */
     td.lbl { white-space: nowrap; }
+    /* The Qty/Amt figure rows print in 400 weight and came out FAINT on the roll while the bold
+       headings read fine. A hair of text-stroke thickens the figures + their Qty/Amt label so they
+       show clearly in print — a paint-only effect, so it never changes a column's width. Headings
+       (th, .name) are left as they are. Tune the 0.2px up/down for more/less darkness. */
+    td.amt, td.lbl { -webkit-text-stroke: 0.2px currentColor; }
     .name { font-weight: 700; }
     .total { border-top: 1px dashed #000; font-weight: 700; }
     .name td, .total td { font-weight: 700; }
