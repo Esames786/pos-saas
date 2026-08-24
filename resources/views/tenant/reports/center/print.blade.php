@@ -32,16 +32,34 @@
     $tHead = fn () => '<tr><th></th><th class="amt">Sold</th><th class="amt">Ret</th><th class="amt">Net</th></tr>';
     $tCancelHead = fn () => '<tr><th colspan="2">Item / reason</th><th class="amt">Events</th><th class="amt">-Qty</th></tr>';
 
+    // A long item name wraps over two/three lines on a narrow roll and pushes the layout around.
+    // Keep any trailing "(size)" — a shop reads the size — and truncate the head with an ellipsis
+    // so every name stays on ONE line. Short names (categories, most items) are returned untouched.
+    $nameMax = (($paper ?? '80mm') === '58mm') ? 28 : 34;
+    $shortName = function (string $name) use ($nameMax) {
+        if (mb_strlen($name) <= $nameMax) {
+            return $name;
+        }
+        if (preg_match('/^(.*\S)\s*(\([^)]*\))\s*$/u', $name, $m)) {
+            $tail = ' ' . $m[2];
+            $headMax = $nameMax - mb_strlen($tail) - 1;
+            if ($headMax >= 8) {
+                return rtrim(mb_substr($m[1], 0, $headMax)) . '…' . $tail;
+            }
+        }
+        return rtrim(mb_substr($name, 0, $nameMax - 1)) . '…';
+    };
+
     /** An entry carrying both quantities and money (categories, items). */
-    $tEntry = function (string $name, $sQ, $rQ, $nQ, $sV, $rV, $nV, bool $bold = false, string $indent = '') use ($qty, $fmt) {
+    $tEntry = function (string $name, $sQ, $rQ, $nQ, $sV, $rV, $nV, bool $bold = false, string $indent = '') use ($qty, $fmt, $shortName) {
         $cls = $bold ? ' class="total"' : '';
         // The name a reader scans for is always emphasised; a total's name carries both.
         $nameCls = ' class="name' . ($bold ? ' total' : '') . '"';
 
-        return '<tr' . $nameCls . '><td colspan="4">' . $indent . e($name) . '</td></tr>'
-             . '<tr><td>' . $indent . 'Qty</td>'
+        return '<tr' . $nameCls . '><td colspan="4">' . $indent . e($shortName($name)) . '</td></tr>'
+             . '<tr><td class="lbl">' . $indent . 'Qty</td>'
              . '<td class="amt">' . $qty($sQ) . '</td><td class="amt">' . $qty($rQ) . '</td><td class="amt">' . $qty($nQ) . '</td></tr>'
-             . '<tr' . $cls . '><td>' . $indent . 'Amt</td>'
+             . '<tr' . $cls . '><td class="lbl">' . $indent . 'Amt</td>'
              . '<td class="amt">' . $fmt($sV) . '</td><td class="amt">' . $fmt($rV) . '</td><td class="amt">' . $fmt($nV) . '</td></tr>';
     };
 
@@ -51,7 +69,7 @@
         $nameCls = ' class="name' . ($bold ? ' total' : '') . '"';
 
         return '<tr' . $nameCls . '><td colspan="4">' . e($name) . '</td></tr>'
-             . '<tr' . $cls . '><td>' . (int) $orders . ' ord</td>'
+             . '<tr' . $cls . '><td class="lbl">' . (int) $orders . ' ord</td>'
              . '<td class="amt">' . $fmt($billed) . '</td><td class="amt">' . $fmt($ret) . '</td><td class="amt">' . $fmt($net) . '</td></tr>';
     };
 
@@ -110,6 +128,10 @@
     th, td { vertical-align: top; word-break: break-word; text-align: left; padding: 1px 2px; }
     th { border-bottom: 1px dashed #000; }
     th.amt, td.amt { text-align: right; white-space: nowrap; }
+    /* The Qty/Amt/"N ord" row labels are the only breakable cell in a figures row, so when the
+       nowrap amount columns claim the width the browser shatters the label one char per line
+       ("Qt"/"y"). Keeping the 3-char label on one line costs no width and stops the shatter. */
+    td.lbl { white-space: nowrap; }
     .name { font-weight: 700; }
     .total { border-top: 1px dashed #000; font-weight: 700; }
     .name td, .total td { font-weight: 700; }
