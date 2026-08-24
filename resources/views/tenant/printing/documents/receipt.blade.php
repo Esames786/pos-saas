@@ -221,9 +221,13 @@
                 @if($line->kitchen_note)
                     <br><small>&nbsp;* {{ $line->kitchen_note }}</small>
                 @endif
-                @foreach($salesOrder->lines->where('parent_sales_order_line_id', $line->id) as $component)
-                    <br><small>&nbsp;- {{ rtrim(rtrim(number_format((float) $component->quantity, 3, '.', ''), '0'), '.') }}{{ $unitSuffix($component->unit_code) }} x {{ $component->product_name }}</small>
-                @endforeach
+                {{-- COMBO-RECEIPT-NAME-ONLY: a deal shows its NAME only on the receipt / bill preview;
+                     its components are not listed here (the KOT still carries every component). --}}
+                @if(($line->line_kind ?? 'standard') !== 'combo_header')
+                    @foreach($salesOrder->lines->where('parent_sales_order_line_id', $line->id) as $component)
+                        <br><small>&nbsp;- {{ rtrim(rtrim(number_format((float) $component->quantity, 3, '.', ''), '0'), '.') }}{{ $unitSuffix($component->unit_code) }} x {{ $component->product_name }}</small>
+                    @endforeach
+                @endif
             </td>
             <td class="item-qty">{{ rtrim(rtrim(number_format((float) $line->quantity, 3, '.', ''), '0'), '.') }}{{ $unitSuffix($line->unit_code) }}</td>
             <td class="item-rate">{{ $money($line->unit_price) }}</td>

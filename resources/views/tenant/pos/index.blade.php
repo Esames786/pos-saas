@@ -2695,14 +2695,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 var deltaText = delta === 0 ? '' : ' <span>(' + (delta > 0 ? '+' : '') + money(delta) + ')</span>';
                 return '<div class="small text-muted ps-2">+ ' + escapeHtml(modifier.name) + deltaText + '</div>';
             }).join('');
+            // COMBO-CART-NAME-ONLY: a deal shows its NAME only in the cart — the component
+            // breakdown is not listed here (it still drives the KOT). Keeps the cart clean.
             var componentHtml = '';
-            if (item.line_kind === 'combo_header') {
-                componentHtml = cart.filter(function (child) {
-                    return child.parent_key === item.key && child.line_kind === 'component';
-                }).map(function (child) {
-                    return '<div class="small text-muted ps-2">- ' + formatQty(child.quantity, child.product) + ' x ' + escapeHtml(child.name) + '</div>';
-                }).join('');
-            }
             var canEditModifiers = item.line_kind !== 'combo_header' && item.line_kind !== 'component'
                 && !item.kot_sent && item.product && hasModifierGroups(item.product);
             var editBtnHtml = canEditModifiers

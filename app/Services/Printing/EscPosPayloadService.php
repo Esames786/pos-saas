@@ -657,9 +657,13 @@ class EscPosPayloadService
                 $out .= $this->sized($label . "\n", $rowTall);
             }
 
-            foreach ($sale->lines->where('parent_sales_order_line_id', $line->id) as $component) {
-                $componentQty = $this->quantity((float) $component->quantity) . $this->unitSuffix($component->unit_code);
-                $out .= $this->sized('  - ' . $componentQty . ' x ' . ($component->product_name ?? '') . "\n", $rowTall);
+            // COMBO-RECEIPT-NAME-ONLY: a deal prints its NAME + price only — its component breakdown
+            // is NOT listed on the customer receipt/bill (the KOT still carries every component).
+            if (($line->line_kind ?? 'standard') !== 'combo_header') {
+                foreach ($sale->lines->where('parent_sales_order_line_id', $line->id) as $component) {
+                    $componentQty = $this->quantity((float) $component->quantity) . $this->unitSuffix($component->unit_code);
+                    $out .= $this->sized('  - ' . $componentQty . ' x ' . ($component->product_name ?? '') . "\n", $rowTall);
+                }
             }
 
             // A separator after each item (with its modifiers/components) so rows read as boxes.
