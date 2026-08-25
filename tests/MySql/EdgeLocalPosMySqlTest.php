@@ -33,6 +33,7 @@ class EdgeLocalPosMySqlTest extends MySqlTenantTestCase
     private int $productId;
     private int $cashMethodId;
     private int $baselineId;
+    private int $waiterId; // PHASE 2b: a quick sale requires a waiter (+ vehicle)
 
     protected function setUp(): void
     {
@@ -45,6 +46,7 @@ class EdgeLocalPosMySqlTest extends MySqlTenantTestCase
         $this->terminalId = $this->makeTerminal($this->branchId);
         $this->productId = $this->makeProduct($this->makeCategory(), ['inventory_consumption_method' => 'stock_item', 'is_stock_tracked' => 1, 'is_sellable' => 1, 'is_pos_visible' => 1, 'status' => 'active', 'default_selling_price' => 100]);
         $this->cashMethodId = $this->makePaymentMethod(['method_type' => 'cash']);
+        $this->waiterId = $this->makeWaiter($this->branchId);
         $this->bindEdgeLocalMeta($this->branchId, 1);
         $this->asBranchServerRuntime(); // EdgeBranchContext only binds on a branch_server
         // (H10/I) selling stock exists ONLY under an accepted Edge-only baseline — never official tables.
@@ -69,7 +71,7 @@ class EdgeLocalPosMySqlTest extends MySqlTenantTestCase
     private function complete(array $overrides = [], ?int $terminalId = null): SalesOrder
     {
         $data = array_merge([
-            'order_type' => 'quick_sale', 'client_uuid' => (string) Str::uuid(),
+            'order_type' => 'quick_sale', 'vehicle_number' => 'LEA-1', 'restaurant_waiter_id' => $this->waiterId, 'client_uuid' => (string) Str::uuid(),
             'lines' => [['product_id' => $this->productId, 'quantity' => 2]],
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 200]],
         ], $overrides);
@@ -242,7 +244,7 @@ class EdgeLocalPosMySqlTest extends MySqlTenantTestCase
         auth('tenant')->logout();
         try {
             app(EdgeLocalPosService::class)->completePaidSale([
-                'order_type' => 'quick_sale', 'client_uuid' => (string) Str::uuid(),
+                'order_type' => 'quick_sale', 'vehicle_number' => 'LEA-1', 'restaurant_waiter_id' => $this->waiterId, 'client_uuid' => (string) Str::uuid(),
                 'lines' => [['product_id' => $this->productId, 'quantity' => 2]],
                 'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 200]],
             ], User::on('tenant')->find($this->userId), $this->terminalId);
@@ -262,7 +264,7 @@ class EdgeLocalPosMySqlTest extends MySqlTenantTestCase
         // session belongs to A (setUp); supplying branch-authorized B must be refused.
         $this->expectException(ValidationException::class);
         app(EdgeLocalPosService::class)->completePaidSale([
-            'order_type' => 'quick_sale', 'client_uuid' => (string) Str::uuid(),
+            'order_type' => 'quick_sale', 'vehicle_number' => 'LEA-1', 'restaurant_waiter_id' => $this->waiterId, 'client_uuid' => (string) Str::uuid(),
             'lines' => [['product_id' => $this->productId, 'quantity' => 2]],
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 200]],
         ], User::on('tenant')->find($userB), $this->terminalId);
@@ -488,7 +490,7 @@ class EdgeLocalPosMySqlTest extends MySqlTenantTestCase
         });
         try {
             $svc->completePaidSale([
-                'order_type' => 'quick_sale', 'client_uuid' => (string) Str::uuid(),
+                'order_type' => 'quick_sale', 'vehicle_number' => 'LEA-1', 'restaurant_waiter_id' => $this->waiterId, 'client_uuid' => (string) Str::uuid(),
                 'lines' => [['product_id' => $this->productId, 'quantity' => 2]],
                 'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 200]],
             ], User::on('tenant')->find($this->userId), $this->terminalId);
@@ -507,7 +509,7 @@ class EdgeLocalPosMySqlTest extends MySqlTenantTestCase
         });
         try {
             $svc->completePaidSale([
-                'order_type' => 'quick_sale', 'client_uuid' => (string) Str::uuid(),
+                'order_type' => 'quick_sale', 'vehicle_number' => 'LEA-1', 'restaurant_waiter_id' => $this->waiterId, 'client_uuid' => (string) Str::uuid(),
                 'lines' => [['product_id' => $this->productId, 'quantity' => 2]],
                 'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 200]],
             ], User::on('tenant')->find($this->userId), $this->terminalId);

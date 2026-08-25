@@ -50,6 +50,7 @@ class EdgeSyncOutboxMySqlTest extends MySqlTenantTestCase
     private int $cardMethodId;
     private int $tableId;
     private int $baselineId;
+    private int $waiterId; // PHASE 2b: a quick sale requires a waiter (+ vehicle)
 
     protected function setUp(): void
     {
@@ -69,6 +70,7 @@ class EdgeSyncOutboxMySqlTest extends MySqlTenantTestCase
         $this->terminalId = $this->makeTerminal($this->branchId);
         $this->productId = $this->makeProduct($this->makeCategory(), ['inventory_consumption_method' => 'stock_item', 'is_stock_tracked' => 1, 'is_sellable' => 1, 'is_pos_visible' => 1, 'status' => 'active', 'default_selling_price' => 100]);
         $this->cashMethodId = $this->makePaymentMethod(['method_type' => 'cash']);
+        $this->waiterId = $this->makeWaiter($this->branchId);
         $this->cardMethodId = $this->makePaymentMethod(['method_type' => 'card', 'code' => 'CARD', 'name' => 'Card']);
         $this->tableId = $this->makeTable($this->branchId);
         $this->bindEdgeLocalMeta($this->branchId, 1, 42, 'test-device-uuid', 10);
@@ -101,7 +103,7 @@ class EdgeSyncOutboxMySqlTest extends MySqlTenantTestCase
     private function complete(array $overrides = []): SalesOrder
     {
         $data = array_merge([
-            'order_type' => 'quick_sale', 'client_uuid' => (string) Str::uuid(),
+            'order_type' => 'quick_sale', 'vehicle_number' => 'LEA-1', 'restaurant_waiter_id' => $this->waiterId, 'client_uuid' => (string) Str::uuid(),
             'lines' => [['product_id' => $this->productId, 'quantity' => 2]],
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 200]],
         ], $overrides);
@@ -333,7 +335,7 @@ class EdgeSyncOutboxMySqlTest extends MySqlTenantTestCase
 
         try {
             app(ThrowingOutboxPosService::class)->completePaidSale([
-                'order_type' => 'quick_sale', 'client_uuid' => $clientUuid,
+                'order_type' => 'quick_sale', 'vehicle_number' => 'LEA-1', 'restaurant_waiter_id' => $this->waiterId, 'client_uuid' => $clientUuid,
                 'lines' => [['product_id' => $this->productId, 'quantity' => 2]],
                 'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 200]],
             ], $this->user(), $this->terminalId);

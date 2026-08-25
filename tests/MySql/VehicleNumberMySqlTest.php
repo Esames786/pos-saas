@@ -82,6 +82,7 @@ class VehicleNumberMySqlTest extends MySqlTenantTestCase
         $this->bindEdgeLocalMeta($this->branchId, 1);
         $this->asBranchServerRuntime();
         $this->acceptTestBaseline([['product_id' => $productId, 'product_variant_id' => null, 'quantity' => 10]]);
+        $waiterId = $this->makeWaiter($this->branchId); // PHASE 2b: a quick sale requires a waiter
         $user = User::on('tenant')->find($userId);
         $this->actingAs($user, 'tenant');
         Auth::shouldUse('tenant');
@@ -90,6 +91,7 @@ class VehicleNumberMySqlTest extends MySqlTenantTestCase
         try {
             $complete = fn (array $overrides) => app(EdgeLocalPosService::class)->completePaidSale(array_merge([
                 'order_type' => 'quick_sale', 'client_uuid' => (string) Str::uuid(),
+                'vehicle_number' => 'LEA-DEFAULT', 'restaurant_waiter_id' => $waiterId,
                 'lines' => [['product_id' => $productId, 'quantity' => 1]],
                 'payments' => [['payment_method_id' => $cash, 'amount' => 100]],
             ], $overrides), $user, $terminalId);
@@ -97,11 +99,17 @@ class VehicleNumberMySqlTest extends MySqlTenantTestCase
             $quick = $complete(['vehicle_number' => '  LEA-1234  ']);
             $this->assertSame('LEA-1234', $quick->vehicle_number, 'offline quick sale stores the trimmed vehicle');
 
-            $takeaway = $complete(['order_type' => 'takeaway', 'vehicle_number' => 'LEA-1234']);
+            // takeaway carries neither vehicle nor waiter (PHASE 2b), so drop both overrides for it.
+            $takeaway = $complete(['order_type' => 'takeaway', 'vehicle_number' => null, 'restaurant_waiter_id' => null]);
             $this->assertNull($takeaway->vehicle_number, 'non-quick-sale types never carry a vehicle');
 
-            $blank = $complete(['vehicle_number' => '   ']);
-            $this->assertNull($blank->vehicle_number, 'whitespace-only input persists NULL');
+            // A quick sale with a whitespace-only vehicle is now REFUSED by the hard-require contract.
+            try {
+                $complete(['vehicle_number' => '   ']);
+                $this->fail('a quick sale needs a real vehicle number');
+            } catch (\Illuminate\Validation\ValidationException $e) {
+                $this->assertArrayHasKey('vehicle_number', $e->errors());
+            }
         } finally {
             $this->resetRuntimeRole();
         }

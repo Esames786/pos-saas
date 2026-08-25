@@ -28,6 +28,7 @@ class EdgeLocalPosHttpMySqlTest extends MySqlTenantTestCase
     private int $productId;
     private int $cashMethodId;
     private int $baselineId;
+    private int $waiterId; // PHASE 2b: a quick sale requires a waiter (+ vehicle)
 
     protected function setUp(): void
     {
@@ -57,6 +58,7 @@ class EdgeLocalPosHttpMySqlTest extends MySqlTenantTestCase
         $this->terminalId = $this->makeTerminal($this->branchId);
         $this->productId = $this->makeProduct($this->makeCategory(), ['inventory_consumption_method' => 'stock_item', 'is_stock_tracked' => 1, 'is_sellable' => 1, 'is_pos_visible' => 1, 'status' => 'active', 'default_selling_price' => 100]);
         $this->cashMethodId = $this->makePaymentMethod(['method_type' => 'cash']);
+        $this->waiterId = $this->makeWaiter($this->branchId);
         $this->bindEdgeLocalMeta($this->branchId, 1);
         $this->baselineId = (int) $this->acceptTestBaseline([['product_id' => $this->productId, 'product_variant_id' => null, 'quantity' => 10]])->id;
         // Slice 1.1: edge.auth now enforces session FRESHNESS — an actingAs session without a genuine
@@ -99,7 +101,7 @@ class EdgeLocalPosHttpMySqlTest extends MySqlTenantTestCase
         // 4. the REAL HTTP cash sale.
         $clientUuid = (string) Str::uuid();
         $payload = [
-            'order_type' => 'quick_sale', 'client_uuid' => $clientUuid,
+            'order_type' => 'quick_sale', 'vehicle_number' => 'LEA-1', 'restaurant_waiter_id' => $this->waiterId, 'client_uuid' => $clientUuid,
             'lines' => [['product_id' => $this->productId, 'quantity' => 2]],
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 200, 'tendered_amount' => 500]],
         ];
@@ -224,7 +226,7 @@ class EdgeLocalPosHttpMySqlTest extends MySqlTenantTestCase
 
         // one cash sale: APPLIED 100, tendered 500 → expected_cash grows by the APPLIED amount only.
         $this->postJson('/edge/local/pos/sales', [
-            'order_type' => 'quick_sale', 'client_uuid' => (string) Str::uuid(),
+            'order_type' => 'quick_sale', 'vehicle_number' => 'LEA-1', 'restaurant_waiter_id' => $this->waiterId, 'client_uuid' => (string) Str::uuid(),
             'lines' => [['product_id' => $this->productId, 'quantity' => 1]],
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 100, 'tendered_amount' => 500]],
         ])->assertStatus(201)->assertJsonPath('change_amount', 400);
@@ -246,7 +248,7 @@ class EdgeLocalPosHttpMySqlTest extends MySqlTenantTestCase
 
         // after close: no open shift → a new sale is refused (mandatory-open-shift), and re-close refused.
         $this->postJson('/edge/local/pos/sales', [
-            'order_type' => 'quick_sale', 'client_uuid' => (string) Str::uuid(),
+            'order_type' => 'quick_sale', 'vehicle_number' => 'LEA-1', 'restaurant_waiter_id' => $this->waiterId, 'client_uuid' => (string) Str::uuid(),
             'lines' => [['product_id' => $this->productId, 'quantity' => 1]],
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 100]],
         ])->assertStatus(422);
@@ -298,7 +300,7 @@ class EdgeLocalPosHttpMySqlTest extends MySqlTenantTestCase
         $this->postJson('/edge/local/pos/terminal/select', ['terminal_id' => $this->terminalId])->assertOk();
         $this->postJson('/edge/local/pos/shift/open', ['opening_cash' => 0])->assertStatus(201);
         $this->postJson('/edge/local/pos/sales', [
-            'order_type' => 'quick_sale', 'client_uuid' => (string) Str::uuid(),
+            'order_type' => 'quick_sale', 'vehicle_number' => 'LEA-1', 'restaurant_waiter_id' => $this->waiterId, 'client_uuid' => (string) Str::uuid(),
             'lines' => [['product_id' => $this->productId, 'quantity' => 2]],
             'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 200, 'tendered_amount' => 200]],
         ])->assertStatus(201)->assertJsonPath('status', 'paid');

@@ -131,6 +131,9 @@ class EdgeLocalPosService
         // (C) No unauthorized price reduction — discounts/promotions are BLOCKED offline this sprint (no proven
         // manual-discount permission/manager-approval wiring yet). A request that carries any is refused.
         $this->assertNoDiscountOrPromo($data);
+        // PHASE 2b parity (canonical 0d41617): a Quick Sale REQUIRES a vehicle number AND a waiter — the SAME
+        // server-side rule as the Cloud POS (required_if), so an offline quick sale carries identical attribution.
+        $this->assertQuickSaleAttribution($orderType, $data);
 
         $lines = array_values(array_filter($data['lines'] ?? [], fn ($l) => (float) ($l['quantity'] ?? 0) > 0));
         $payments = array_values(array_filter($data['payments'] ?? [], fn ($p) => (float) ($p['amount'] ?? 0) > 0));
@@ -433,6 +436,20 @@ class EdgeLocalPosService
      * foreign or inactive id is refused, never silently dropped. Requiring it offline is a Batch-2 decision
      * (docs/status/edge-canonical-gap-2026-08-23.md #17); the CAPTURE here is canonical-equivalent.
      */
+    /** Canonical PHASE 2b rule: quick_sale => vehicle_number + restaurant_waiter_id are REQUIRED (takeaway carries neither). */
+    private function assertQuickSaleAttribution(string $orderType, array $data): void
+    {
+        if ($orderType !== 'quick_sale') {
+            return;
+        }
+        if (trim((string) ($data['vehicle_number'] ?? '')) === '') {
+            throw ValidationException::withMessages(['vehicle_number' => 'A Quick Sale requires a vehicle number.']);
+        }
+        if (empty($data['restaurant_waiter_id'])) {
+            throw ValidationException::withMessages(['restaurant_waiter_id' => 'A Quick Sale requires a waiter.']);
+        }
+    }
+
     private function waiterIdFor(string $orderType, array $data, int $branchId): ?int
     {
         if ($orderType !== 'quick_sale' || empty($data['restaurant_waiter_id'])) {
@@ -580,6 +597,9 @@ class EdgeLocalPosService
             throw ValidationException::withMessages(['order_type' => "Order type [{$orderType}] is not allowed for this user."]);
         }
         $this->assertNoDiscountOrPromo($data);
+        // PHASE 2b parity (canonical 0d41617): a Quick Sale REQUIRES a vehicle number AND a waiter — the SAME
+        // server-side rule as the Cloud POS (required_if), so an offline quick sale carries identical attribution.
+        $this->assertQuickSaleAttribution($orderType, $data);
         // POS-DRAFT-1 offline parity (canonical 0b5df5a): every save writes the current intent — a normal
         // Hold clears a draft; save_as_draft parks the held sale WITHOUT a kitchen ticket (server-enforced below).
         $isDraft = (bool) ($data['save_as_draft'] ?? false);

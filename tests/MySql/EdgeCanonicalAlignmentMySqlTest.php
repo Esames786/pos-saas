@@ -58,7 +58,7 @@ class EdgeCanonicalAlignmentMySqlTest extends MySqlTenantTestCase
             'sales_ledgers', 'sale_payments', 'sales_order_lines', 'sales_orders',
             'restaurant_table_sessions', 'restaurant_tables', 'restaurant_floors', 'restaurant_waiters',
             'category_printer_mappings', 'receipt_layout_settings', 'printers', 'void_reasons',
-            'model_has_permissions', 'permissions',
+            'model_has_permissions', 'permissions', 'customers',
             'payment_methods', 'products', 'categories', 'shifts', 'terminals', 'branches', 'users',
         ]);
         $this->branchId = $this->makeBranch(['allow_negative_stock' => 0, 'timezone' => 'Asia/Karachi', 'held_kot_cancellation_approval_mode' => 'auto_approve', 'held_kot_line_cancellation_approval_mode' => 'auto_approve']);
@@ -259,5 +259,52 @@ class EdgeCanonicalAlignmentMySqlTest extends MySqlTenantTestCase
         $this->assertSame(16, (int) $layout['time_font_size']);
         $this->assertSame(1, (int) $layout['show_column_dividers']);
         $this->assertSame(0, (int) $layout['show_category_header']);
+    }
+    // ── CATALOG-GUARD-1 parity: the Edge runtime is fail-safe for a contradictory replicated row ──
+
+    public function test_an_untracked_stock_item_consumer_never_moves_operational_stock(): void
+    {
+        // The Cloud guard coerces stock_item -> none when Track Stock is off. A legacy replicated row can
+        // still carry the contradiction; the Edge runtime must treat it as non-stock (no decrement, sale ok).
+        $contradictory = $this->makeProduct($this->makeCategory(), ['inventory_consumption_method' => 'stock_item', 'is_stock_tracked' => 0, 'is_sellable' => 1, 'is_pos_visible' => 1, 'status' => 'active', 'default_selling_price' => 20]);
+        $this->openShift();
+        $sale = $this->pos()->completePaidSale([
+            'order_type' => 'takeaway', 'client_uuid' => (string) Str::uuid(),
+            'lines' => [['product_id' => $contradictory, 'quantity' => 2]],
+            'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 40]],
+        ], $this->user(), $this->terminalId);
+
+        $this->assertSame('paid', $sale->status);
+        $this->assertSame(0, DB::connection('tenant')->table('edge_operational_stock_movements')->where('sale_uuid', $sale->sale_uuid)->count(), 'an untracked item never decrements, whatever its stale method says');
+    }
+
+    // ── PHASE 2b parity: quick sale REQUIRES vehicle + waiter, on direct pay AND on hold ─────────
+
+    public function test_quick_sale_requires_vehicle_and_waiter_on_direct_pay_and_hold(): void
+    {
+        $this->openShift();
+        $base = ['order_type' => 'quick_sale', 'client_uuid' => (string) Str::uuid(),
+            'lines' => [['product_id' => $this->productId, 'quantity' => 1]],
+            'payments' => [['payment_method_id' => $this->cashMethodId, 'amount' => 100]]];
+
+        foreach ([['restaurant_waiter_id' => $this->waiterId], ['vehicle_number' => 'LEA-9']] as $partial) {
+            try {
+                $this->pos()->completePaidSale(array_merge($base, $partial), $this->user(), $this->terminalId);
+                $this->fail('a quick sale without vehicle+waiter must be refused (direct pay)');
+            } catch (ValidationException $e) {
+                $this->assertNotEmpty(array_intersect(array_keys($e->errors()), ['vehicle_number', 'restaurant_waiter_id']));
+            }
+            try {
+                $this->pos()->holdOrReviseSale(array_merge(['order_type' => 'quick_sale', 'lines' => $base['lines']], $partial), $this->user(), $this->terminalId);
+                $this->fail('a quick sale without vehicle+waiter must be refused (hold)');
+            } catch (ValidationException $e) {
+                $this->assertNotEmpty(array_intersect(array_keys($e->errors()), ['vehicle_number', 'restaurant_waiter_id']));
+            }
+        }
+        $this->assertSame(0, DB::connection('tenant')->table('sales_orders')->count(), 'nothing persisted by the refused attempts');
+
+        $held = $this->pos()->holdOrReviseSale(['order_type' => 'quick_sale', 'vehicle_number' => 'LEA-9', 'restaurant_waiter_id' => $this->waiterId, 'lines' => $base['lines']], $this->user(), $this->terminalId);
+        $this->assertSame($this->waiterId, (int) $held->restaurant_waiter_id);
+        $this->assertSame('LEA-9', $held->vehicle_number);
     }
 }

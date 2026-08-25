@@ -190,7 +190,7 @@ try {
     \Illuminate\Support\Facades\Auth::guard('tenant')->setUser($user);
     \Illuminate\Support\Facades\Auth::shouldUse('tenant');
     $sale = app(EdgeLocalPosService::class)->completePaidSale([
-        'order_type' => 'quick_sale',
+        'order_type' => 'takeaway', // PHASE 2b: quick_sale now requires vehicle + waiter; the race is about concurrency, not attribution
         'client_uuid' => (string) $clientUuid,
         'lines' => [['product_id' => (int) $productId, 'quantity' => (float) $qty]],
         'payments' => [['payment_method_id' => (int) $methodId, 'amount' => (float) $amount]],

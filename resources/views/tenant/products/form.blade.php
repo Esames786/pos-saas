@@ -462,6 +462,7 @@
                             set('is_pos_visible', true); set('is_sellable', true); set('is_purchasable', true);
                             set('can_be_bom_component', false); set('can_be_bom_output', false); set('is_manufactured_finished_good', false);
                     }
+                    if (window.posSyncConsumption) window.posSyncConsumption();
                     if (window.posUpdateChips) window.posUpdateChips();
                 });
             })();
@@ -652,6 +653,7 @@
 
         // Defaults BEFORE visibility so linked fields reflect the new checkbox states.
         if (withDefaults && MODES[mode] && MODES[mode].def) applyDefaults(MODES[mode].def);
+        syncConsumptionMethod();   // keep Consumption Method coherent with Track Stock (+ on load)
 
         renderVisibility(visibleGroups(mode));
 
@@ -697,10 +699,30 @@
     });
 
     // Linked control checkboxes re-evaluate dependent field visibility (+ chips).
+    // CATALOG-GUARD (frontend): a non-stock-tracked item cannot directly deduct its OWN stock, so
+    // unchecking Track Stock moves Consumption Method to 'none' and disables the 'stock_item' choice.
+    // Re-checking restores the operator-selectable choices WITHOUT inventing a stock mode (the operator
+    // picks). 'recipe' is a valid non-stock semantic (deducts ingredients) and is never forced away.
+    function syncConsumptionMethod() {
+        var track  = document.getElementById('is_stock_tracked');
+        var method = document.getElementById('inventory_consumption_method');
+        if (!track || !method) return;
+        var stockOpt = method.querySelector('option[value="stock_item"]');
+        if (!track.checked) {
+            if (method.value === 'stock_item') method.value = 'none';
+            if (stockOpt) stockOpt.disabled = true;
+        } else if (stockOpt) {
+            stockOpt.disabled = false;
+        }
+    }
+    window.posSyncConsumption = syncConsumptionMethod;
+
     ['is_taxable','is_purchasable','is_stock_tracked'].forEach(function (id) {
         var el = document.getElementById(id);
         if (el) el.addEventListener('change', refreshVisibility);
     });
+    var _trackForConsumption = document.getElementById('is_stock_tracked');
+    if (_trackForConsumption) _trackForConsumption.addEventListener('change', syncConsumptionMethod);
     // Entering a tax rate > 0 auto-enables Taxable.
     var taxRate = document.getElementById('tax_rate_percent');
     if (taxRate) taxRate.addEventListener('input', function () {
