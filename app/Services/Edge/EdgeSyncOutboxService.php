@@ -65,24 +65,40 @@ class EdgeSyncOutboxService
         $token = $owner . ':' . (string) Str::ulid();     // unique per claim → unambiguous readback
         $conn = DB::connection(self::CONN);
 
-        $claimed = $conn->update(
-            'UPDATE edge_sync_outbox
-                SET state = ?, lease_owner = ?, lease_expires_at = ?, attempts = attempts + 1,
-                    first_sent_at = COALESCE(first_sent_at, ?), updated_at = ?
-              WHERE (state = ? OR (state = ? AND lease_expires_at IS NOT NULL AND lease_expires_at <= ?))
-              ORDER BY id
-              LIMIT 1',
-            [
-                EdgeSyncOutbox::STATE_LEASED, $token, now()->addSeconds($leaseSeconds), now(), now(),
-                EdgeSyncOutbox::STATE_PENDING, EdgeSyncOutbox::STATE_LEASED, now(),
-            ]
-        );
+        // Deadlock-free claim under genuine concurrency (proven by the two-process races): SELECT the oldest
+        // eligible row FOR UPDATE **SKIP LOCKED** so each worker grabs a DISTINCT unlocked row (or none),
+        // then UPDATE it by primary key. A plain `UPDATE ... ORDER BY id LIMIT 1` gap-locks the scanned range
+        // and two simultaneous workers deadlock (InnoDB 1213); SKIP LOCKED is the canonical outbox pattern.
+        return $conn->transaction(function () use ($conn, $token, $leaseSeconds) {
+            $row = $conn->table('edge_sync_outbox')
+                ->where(function ($q) {
+                    $q->where('state', EdgeSyncOutbox::STATE_PENDING)
+                        ->orWhere(function ($q2) {
+                            $q2->where('state', EdgeSyncOutbox::STATE_LEASED)
+                                ->whereNotNull('lease_expires_at')
+                                ->where('lease_expires_at', '<=', now());
+                        });
+                })
+                ->orderBy('id')
+                ->lock('FOR UPDATE SKIP LOCKED')
+                ->first();
 
-        if ($claimed !== 1) {
-            return null;
-        }
+            if (! $row) {
+                return null;
+            }
 
-        return EdgeSyncOutbox::query()->where('lease_owner', $token)->where('state', EdgeSyncOutbox::STATE_LEASED)->firstOrFail();
+            $now = $conn->getDriverName() === 'sqlite' ? "datetime('now')" : 'NOW()';
+            $conn->table('edge_sync_outbox')->where('id', $row->id)->update([
+                'state' => EdgeSyncOutbox::STATE_LEASED,
+                'lease_owner' => $token,
+                'lease_expires_at' => now()->addSeconds($leaseSeconds),
+                'attempts' => DB::raw('attempts + 1'),
+                'first_sent_at' => DB::raw('COALESCE(first_sent_at, ' . $now . ')'),
+                'updated_at' => now(),
+            ]);
+
+            return EdgeSyncOutbox::query()->whereKey($row->id)->firstOrFail();
+        });
     }
 
     /** Retryable release: leased -> pending (the row becomes eligible again immediately). */
