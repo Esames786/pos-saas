@@ -35,6 +35,7 @@ class EdgeLocalMeta extends Model
         // EDGE-CONFIG-REFRESH-1 — current applied configuration (bootstrap_* stays the initial record).
         'last_applied_config_revision' => 'integer',
         'last_refreshed_at' => 'datetime',
+        'last_schema_upgrade_at' => 'datetime', // EDGE-SCHEMA-UPGRADE-1
     ];
 
     /** Identity fields that become IMMUTABLE once set (fix 5). */

@@ -107,6 +107,7 @@ return [
     'cli_allowlist' => [
         // Guarded Edge-local operator commands.
         'edge:local:db-init',
+        'edge:local:schema-upgrade', // EDGE-SCHEMA-UPGRADE-1: non-destructive upgrade of a live appliance
         'edge:local:bootstrap-import',
         'edge:local:status',
         'edge:local:enroll',

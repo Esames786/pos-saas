@@ -52,6 +52,15 @@ class EdgeLocalDbInitCommand extends Command
 
         $this->ensureDatabaseExists($database);
 
+        // EDGE-SCHEMA-UPGRADE-1: db-init provisions a FRESH appliance only. An already-bootstrapped appliance
+        // (local sales/shifts/held orders/print history/outbox) is NEVER rebuilt or re-migrated from here —
+        // not even with --fresh: a live box must not be one flag away from a wipe. Use edge:local:schema-upgrade.
+        if ($this->isBootstrappedAppliance()) {
+            $this->error('Refusing: this appliance is already bootstrapped. Use edge:local:schema-upgrade to apply new migrations without rebuilding the local database.');
+
+            return self::FAILURE;
+        }
+
         try {
             $this->runEdgeMigrations((bool) $this->option('fresh'));
         } catch (Throwable $e) {
@@ -90,6 +99,21 @@ class EdgeLocalDbInitCommand extends Command
             $migrator->run([database_path('migrations/tenant')]);
             $migrator->run([database_path('migrations/edge')]);
         });
+    }
+
+    /** True when edge_local_meta exists with a bootstrapped binding — i.e. this is a LIVE appliance. */
+    private function isBootstrappedAppliance(): bool
+    {
+        try {
+            if (! DB::connection('tenant')->getSchemaBuilder()->hasTable('edge_local_meta')) {
+                return false;
+            }
+
+            return DB::connection('tenant')->table('edge_local_meta')
+                ->where('singleton_guard', 1)->where('runtime_state', 'bootstrapped')->exists();
+        } catch (Throwable $e) {
+            return false; // an unreachable/uninitialised DB is not a live appliance
+        }
     }
 
     private function ensureDatabaseExists(?string $database): void

@@ -50,6 +50,8 @@ class EdgeCompatibilityService
         return [
             'edge_app_version' => $info['edge_app_version'],
             'edge_schema_version' => $info['edge_schema_version'],
+            // EDGE-SCHEMA-UPGRADE-1: what the appliance has actually APPLIED (null until the first upgrade run).
+            'applied_edge_schema_version' => $meta?->edge_schema_version,
             'bootstrap_schema_version' => $info['bootstrap_schema'],
             'config_schema_version' => (string) config('edge.config_schema'),
             'applied_config_schema_version' => $meta?->config_schema_version,
