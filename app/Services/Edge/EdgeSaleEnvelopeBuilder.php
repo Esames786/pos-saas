@@ -112,7 +112,9 @@ class EdgeSaleEnvelopeBuilder
                 ->orderBy('sequence_no')->get(['event_uuid', 'sequence_no', 'event_type'])
                 ->map(fn ($k) => ['event_uuid' => (string) $k->event_uuid, 'sequence_no' => (int) $k->sequence_no, 'event_type' => (string) $k->event_type])
                 ->all(),
-            'customer' => $sale->customer_id !== null ? ['customer_id' => (int) $sale->customer_id] : null,
+            // CROSS-SYSTEM customer identity (1B closure): never a local integer PK. Walk-in is explicit; an
+            // attached customer is carried by its canonical customer_uuid (+ the sale's own name/phone snapshot).
+            'customer' => $this->customerIdentity($sale),
 
             // Frozen commercial totals (envelope is the price authority at ingest — never repriced).
             'totals' => [
@@ -164,6 +166,7 @@ class EdgeSaleEnvelopeBuilder
                 'edge_sync_state' => (string) $sale->edge_sync_state,
                 'edge_activation_epoch' => (int) $sale->edge_activation_epoch,
                 'inventory_posted' => (bool) $sale->inventory_posted,
+                'is_draft' => (bool) $sale->is_draft,   // always false here: only a PAID sale becomes an envelope
             ],
         ];
 
@@ -180,6 +183,30 @@ class EdgeSaleEnvelopeBuilder
         return $this->canonical->canonicalJson($envelope);
     }
 
+    /**
+     * @return array{kind: string, customer_uuid?: string, name: ?string, phone: ?string}
+     */
+    private function customerIdentity(SalesOrder $sale): array
+    {
+        $name = $sale->customer_name !== null && $sale->customer_name !== '' ? (string) $sale->customer_name : null;
+        $phone = $sale->customer_phone !== null && $sale->customer_phone !== '' ? (string) $sale->customer_phone : null;
+
+        if ($sale->customer_id === null) {
+            return ['kind' => 'walk_in', 'name' => $name, 'phone' => $phone];
+        }
+
+        $customer = \App\Models\Tenant\Customer::on('tenant')->find((int) $sale->customer_id);
+        if (! $customer || ! EdgeIdentity::isValid((string) $customer->customer_uuid, EdgeIdentity::FORMAT_ULID)) {
+            throw new RuntimeException('ENVELOPE_UNSUPPORTED: the sale references a customer without a canonical customer_uuid — a local id is never a cross-system identity.');
+        }
+
+        return [
+            'kind' => 'customer',
+            'customer_uuid' => (string) $customer->customer_uuid,
+            'name' => $name ?? (string) $customer->name,
+            'phone' => $phone ?? ($customer->phone !== null ? (string) $customer->phone : null),
+        ];
+    }
     // ── fail-closed guards ───────────────────────────────────────────────────
 
     private function assertSupported(SalesOrder $sale, EdgeLocalMeta $meta): void
