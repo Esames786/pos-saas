@@ -80,7 +80,7 @@
                                 <button class="btn btn-sm btn-outline-secondary" data-printer-reset="{{ $p->id }}" title="Soft reset — clear a stuck buffer">Reset</button>
                             @endcan
                             @can('tenant.printing.printers.reboot')
-                                <button class="btn btn-sm btn-outline-warning" data-printer-reboot="{{ $p->id }}" title="Reboot the printer">Reboot</button>
+                                <button class="btn btn-sm btn-outline-warning" data-printer-reboot="{{ $p->id }}" title="Best-effort reboot via the printer's web module — works only on models that expose one. Verify on your printer before relying on it; if it can't, you'll be told.">Reboot<sup class="text-muted" style="font-size:.6rem">beta</sup></button>
                             @endcan
                         @endif
                         @can('tenant.printing.printers.update')
@@ -317,7 +317,7 @@
     document.querySelectorAll('[data-printer-test]').forEach((b) =>
         b.addEventListener('click', () => command(b.dataset.printerTest, 'ping', 'Test')));
     document.querySelectorAll('[data-printer-reboot]').forEach((b) =>
-        b.addEventListener('click', () => { if (confirm('Reboot this printer now? It will restart.')) command(b.dataset.printerReboot, 'reboot', 'Reboot'); }));
+        b.addEventListener('click', () => { if (confirm('Try to reboot this printer? This works only on models with a web reboot page — you will be told if it cannot.')) command(b.dataset.printerReboot, 'reboot', 'Reboot'); }));
     // Soft reset rides the print pipeline (ESC @) — fire and confirm; no command result to poll.
     document.querySelectorAll('[data-printer-reset]').forEach((b) =>
         b.addEventListener('click', async () => {
