@@ -121,6 +121,13 @@ class BranchOperatingModeService
         }
 
         if ($this->branchHandedToBranchServer($branch)) {
+            // OFFLINE-SYNC-ENGINE-1C: the ONE sanctioned exception — Cloud sync ingestion posts the official
+            // stock for an Edge-origin sale of this handed branch, but ONLY inside the in-code ingestion
+            // authority scope for THIS branch. Ordinary Cloud requests (no scope) stay fully fenced, and the
+            // SALE-mutation fence is never relaxed (ingestion does not go through POS controllers).
+            if (\App\Services\Edge\EdgeIngestionAuthority::isActiveFor((int) $branch->id)) {
+                return;
+            }
             throw new BranchLocalEdgeException($branch, BranchLocalEdgeException::CODE_ACTIVE);
         }
     }
