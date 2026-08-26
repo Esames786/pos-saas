@@ -356,8 +356,11 @@ async function keepPrintersAwake() {
         // one that was on. Each poke's result is recorded for the heartbeat's live status.
         await Promise.all(
             [...knownPrinters.values()].map(async ({ id, ip, port }) => {
-                const r = await pokePrinter(ip, port);
-                lastPokeStatus.set(`${ip}:${port}`, { id, reachable: r.reachable, latencyMs: r.latencyMs, at: Date.now() });
+                const key = `${ip}:${port}`;
+                // Under the per-printer lock so a poke never steals the socket from a live ticket or a
+                // remote command; different printers still poke in parallel.
+                const r = await withPrinterLock(key, () => pokePrinter(ip, port));
+                lastPokeStatus.set(key, { id, reachable: r.reachable, latencyMs: r.latencyMs, at: Date.now() });
             })
         );
     } finally {
@@ -494,8 +497,11 @@ async function processJob(job) {
     }
 
     if (lastError) {
-        await markFailed(job.id, lastError.message);
-        log(`[FAIL]  ${job.job_no}: ${lastError.message}`);
+        // Unreachable after every retry. Do NOT mark it failed — the lane PARKS (defers) it instead,
+        // so a ticket for a printer that is merely switched off is never permanently failed and
+        // reprints the moment the printer answers again. (A hard config error above is the only
+        // markFailed.) The retries already ran, so this is a genuinely-down printer, not a blip.
+        log(`[MISS]  ${job.job_no}: ${lastError.message}`);
         return { printed: false, connectionFailure: true };
     }
 
@@ -527,6 +533,24 @@ const CB_COOLDOWN_MS       = 30000;
 const LOCAL_LANE           = '__local__';   // browser / non-network / unconfigured — never breaks
 const printerHealth = new Map();            // lane key -> { fails, cooldownUntil }
 
+/* ── Per-printer lock ──────────────────────────────────────────────────────
+ * Port 9100 is a single socket, and a printer must never be touched by two
+ * things at once: a Test/Reboot command opening a second connection — or
+ * power-cycling the printer — WHILE a KOT is spooling would corrupt or lose the
+ * ticket. Printing, keep-awake pokes and remote commands all funnel through this
+ * lock, keyed on the physical printer (ip:port). Same printer → serial; DIFFERENT
+ * printers → still fully parallel, so the isolation the lanes give is preserved. */
+const printerLocks = new Map();   // key -> tail promise of that printer's queue
+
+function withPrinterLock(key, fn) {
+    const prev = printerLocks.get(key) || Promise.resolve();
+    const run  = prev.then(() => fn());        // wait our turn, then act
+    const tail = run.then(() => {}, () => {}); // errors must not poison the next in line
+    printerLocks.set(key, tail);
+    tail.then(() => { if (printerLocks.get(key) === tail) printerLocks.delete(key); });
+    return run;
+}
+
 /** The failure domain is the physical printer (ip:port), not the terminal/order-type. */
 function laneKeyOf(job) {
     const p = job.printer || {};
@@ -542,9 +566,23 @@ function healthFor(key) {
     return h;
 }
 
-async function failFast(job, message) {
-    try { await markFailed(job.id, message); } catch (_) { /* server hiccup — retried next poll */ }
-    log(`[FAIL]  ${job.job_no}: ${message}`);
+/**
+ * A ticket for a printer that is cooling in the circuit breaker is PARKED, not failed. The server
+ * re-queues it (deferred a short while) so it reprints the instant the printer answers again — a
+ * kitchen slip is never marked permanently failed just because a printer was off for a minute. The
+ * ~13s connect wait is skipped: we already know this printer is down this cycle.
+ */
+async function deferJob(job, message, cooldownSec) {
+    try {
+        await httpJson('POST', `${CONFIG.baseUrl}/api/print-agent/jobs/${job.id}/defer`, {
+            headers: headers(),
+            body:    { reason: message, cooldown_seconds: cooldownSec },
+        });
+    } catch (_) {
+        // Defer POST lost — the job stays claimed, but the server re-offers a claim after 2 minutes,
+        // so the ticket is never lost; it just waits a little longer.
+    }
+    log(`[DEFER] ${job.job_no}: ${message}`);
 }
 
 /**
@@ -558,7 +596,7 @@ async function processLane(key, jobs) {
     // the jobs clear the server queue (and stop starving other printers' newer jobs from the fetch).
     if (key !== LOCAL_LANE && h.fails >= CB_FAILURE_THRESHOLD && Date.now() < h.cooldownUntil) {
         for (const job of jobs) {
-            await failFast(job, 'Printer unreachable — cooling down after repeated failures. Will retry automatically.');
+            await deferJob(job, 'Printer unreachable — cooling down; will retry when it is back.', CB_COOLDOWN_MS / 1000);
         }
         log(`[COOL]  ${jobs.length} job(s) held — ${key} unreachable`);
         return;
@@ -567,19 +605,23 @@ async function processLane(key, jobs) {
     let laneDown = false;
     for (const job of jobs) {
         if (laneDown) {
-            // The rest target the SAME dead printer — fail them fast rather than burn ~13s each.
-            await failFast(job, 'Printer unreachable. Will retry automatically.');
+            // The rest target the SAME dead printer — park them rather than burn ~13s each; they
+            // reprint the moment the printer answers, and drop out of the fetch meanwhile.
+            await deferJob(job, 'Printer unreachable — will retry when it is back.', CB_COOLDOWN_MS / 1000);
             continue;
         }
         let result;
         try {
-            result = await processJob(job);
+            result = await withPrinterLock(key, () => processJob(job));
         } catch (err) {
-            // markPrinted/markFailed talking to the server threw — treat as non-fatal, move on.
+            // markPrinted/defer talking to the server threw — treat as non-fatal, move on.
             log(`[ERR]   ${job.job_no}: ${err.message}`);
             continue;
         }
         if (result.connectionFailure) {
+            // First unreachable ticket on this printer: park it too, and stop trying the rest this
+            // cycle — they target the same dead printer.
+            await deferJob(job, 'Printer unreachable — will retry when it is back.', CB_COOLDOWN_MS / 1000);
             laneDown = true;
         }
     }
@@ -680,10 +722,19 @@ async function getCommands() {
 }
 
 async function postCommandResult(id, payload) {
-    await httpJson('POST', `${CONFIG.baseUrl}/api/print-agent/commands/${id}/result`, {
-        headers: headers(),
-        body:    payload,
-    }).catch(() => { /* result lost — the screen falls back to the live poke status */ });
+    // Retry a few times — a lost result leaves the command stuck until the server's lease expires it,
+    // so it is worth insisting. After that the lease (90s) is the backstop.
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+            const res = await httpJson('POST', `${CONFIG.baseUrl}/api/print-agent/commands/${id}/result`, {
+                headers: headers(),
+                body:    payload,
+            });
+            if (res.ok) return;
+        } catch (_) { /* retry below */ }
+        await new Promise((r) => setTimeout(r, 500 * attempt));
+    }
+    log(`[WARN]  command ${id}: result not acknowledged after retries — server lease will expire it`);
 }
 
 /** TCP‑connect probe for the "Test" button — is the printer answering on its print port, how fast. */
@@ -707,34 +758,44 @@ function probePrinter(ip, port) {
 }
 
 /** Best‑effort network reboot via the printer's built‑in web module (the "Ethernet WebConfig" page).
- *  Tries POST then GET on /reboot; the exact path is confirmed on‑site per model. */
-function rebootPrinter(ip) {
+ *  Tries POST then GET on /reboot. Only an EXPLICIT 2xx counts as success — a 404 (no such endpoint
+ *  on this model) or any 4xx/5xx is a failure, never a false "reboot sent". The exact path/port is
+ *  model-specific and must be confirmed on-site before this is relied on for a given printer. */
+function rebootPrinter(ip, webPort = 80) {
     return new Promise((resolve) => {
         if (!ip) { resolve({ ok: false, detail: 'no IP configured' }); return; }
         const attempt = (method, done) => {
-            const req = http.request({ method, hostname: ip, port: 80, path: '/reboot', timeout: 4000 },
-                (res) => { res.resume(); done(res.statusCode >= 200 && res.statusCode < 500); });
+            const req = http.request({ method, hostname: ip, port: webPort, path: '/reboot', timeout: 4000 },
+                (res) => { res.resume(); done(res.statusCode >= 200 && res.statusCode < 300, res.statusCode); });
             req.on('error',   () => done(false));
             req.on('timeout', () => { req.destroy(); done(false); });
             req.end();
         };
-        attempt('POST', (ok) => ok ? resolve({ ok: true }) : attempt('GET', (ok2) => resolve({ ok: ok2 })));
+        attempt('POST', (ok, code) => ok
+            ? resolve({ ok: true, detail: `HTTP ${code}` })
+            : attempt('GET', (ok2, code2) => resolve(ok2
+                ? { ok: true, detail: `HTTP ${code2}` }
+                : { ok: false, detail: code2 ? `HTTP ${code2}` : 'no answer' })));
     });
 }
 
 async function runCommand(cmd) {
-    const p = cmd.printer || {};
+    const p   = cmd.printer || {};
+    const key = `${p.ip}:${Number(p.port || 9100)}`;   // same lock a print/poke for this printer uses
     try {
         if (cmd.type === 'ping') {
-            const r = await probePrinter(p.ip, Number(p.port || 9100));
+            // Under the lock: probing opens a connection to the print port, which must not collide
+            // with a KOT spooling to the same printer (and would misread as "unreachable").
+            const r = await withPrinterLock(key, () => probePrinter(p.ip, Number(p.port || 9100)));
             await postCommandResult(cmd.id, r.reachable
                 ? { status: 'done',   result: 'reachable', latency_ms: r.latencyMs }
                 : { status: 'failed', result: r.error || 'unreachable' });
         } else if (cmd.type === 'reboot') {
-            const r = await rebootPrinter(p.ip);
+            // Under the lock so the printer is NEVER power-cycled mid-ticket.
+            const r = await withPrinterLock(key, () => rebootPrinter(p.ip));
             await postCommandResult(cmd.id, r.ok
-                ? { status: 'done',   result: 'reboot sent' }
-                : { status: 'failed', result: 'no reboot endpoint answered — check the printer web page' });
+                ? { status: 'done',   result: `reboot sent (${r.detail})` }
+                : { status: 'failed', result: `no reboot endpoint answered (${r.detail}) — verify the printer's web page for this model` });
         } else {
             await postCommandResult(cmd.id, { status: 'failed', result: `unknown command '${cmd.type}'` });
         }
@@ -829,6 +890,8 @@ if (require.main === module) {
 module.exports = {
     AGENT_VERSION,
     laneKeyOf,
+    withPrinterLock,
+    deferJob,
     processJob,
     processLane,
     tick,

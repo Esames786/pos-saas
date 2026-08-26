@@ -10,12 +10,12 @@
  * change exists to guarantee:
  *
  *   1. CORRECTNESS — receipt, KOT and reminder all reach a healthy printer; a
- *      dead printer's jobs are marked failed.
+ *      dead printer's jobs are PARKED (deferred / re-queued), never lost.
  *   2. ISOLATION   — the healthy printer's tickets finish FAST even when a dead
  *      printer is in the same batch AHEAD of them. Under the old serial code
  *      they would have queued behind the dead printer's ~seconds-long stalls.
  *   3. BREAKER     — after repeated failures a dead printer is skipped (its jobs
- *      fast-failed with NO further connection attempts) until a cooldown lapses.
+ *      fast-deferred with NO further connection attempts) until a cooldown lapses.
  *
  * Run:  node test/isolation-test.js
  */
@@ -89,6 +89,13 @@ function startCloud() {
                 const j = jobs.get(m[1]); if (j) j.state = 'failed';
                 let msg = ''; try { msg = JSON.parse(body || '{}').error_message || ''; } catch (_) {}
                 events.push({ id: m[1], action: 'failed', message: msg, at: Date.now() });
+                return send({ ok: true });
+            }
+            if ((m = url.match(/\/api\/print-agent\/jobs\/(.+)\/defer$/))) {
+                // PRINTER-HEALTH-1: an unreachable printer's ticket is PARKED (re-queued), never failed.
+                const j = jobs.get(m[1]); if (j) j.state = 'deferred';
+                let reason = ''; try { reason = JSON.parse(body || '{}').reason || ''; } catch (_) {}
+                events.push({ id: m[1], action: 'deferred', message: reason, at: Date.now() });
                 return send({ ok: true });
             }
             res.writeHead(404); res.end('{}');
@@ -166,10 +173,10 @@ async function main() {
         `healthy tickets should land <1500ms (parallel lanes); took ${lastAliveArrival}ms — dead lane blocked them`);
     ok(`healthy tickets landed in ${lastAliveArrival}ms while the dead lane stalled (tick total ${tickMs}ms) — isolated`);
 
-    // Healthy jobs marked printed, dead jobs marked failed.
-    for (const id of ['a1', 'a2', 'a3']) assert.strictEqual(cloud.state(id), 'printed', `${id} should be printed`);
-    for (const id of ['d1', 'd2', 'd3']) assert.strictEqual(cloud.state(id), 'failed',  `${id} should be failed`);
-    ok('healthy jobs → printed, dead jobs → failed');
+    // Healthy jobs printed; dead jobs PARKED (deferred) so they reprint on recovery — never lost.
+    for (const id of ['a1', 'a2', 'a3']) assert.strictEqual(cloud.state(id), 'printed',  `${id} should be printed`);
+    for (const id of ['d1', 'd2', 'd3']) assert.strictEqual(cloud.state(id), 'deferred', `${id} should be deferred (re-queued), not lost`);
+    ok('healthy jobs → printed, dead jobs → deferred (re-queued, never permanently failed)');
 
     /* ═══ 3. Circuit breaker ═══════════════════════════════════════════════ */
     head('Scenario B — a persistently dead printer gets skipped (circuit breaker)');
@@ -194,8 +201,8 @@ async function main() {
     assert.ok(attemptMs > 800, `a real dead attempt should burn retries/backoff (>800ms); took ${attemptMs}ms`);
     assert.strictEqual(agent._printerHealth.get(deadKey).fails >= agent.CB_FAILURE_THRESHOLD, true,
         'breaker should be armed after the failure threshold');
-    assert.strictEqual(cloud.state('b1'), 'failed', 'b1 failed');
-    assert.strictEqual(cloud.state('b2'), 'failed', 'b2 failed');
+    assert.strictEqual(cloud.state('b1'), 'deferred', 'b1 parked (re-queued), not failed');
+    assert.strictEqual(cloud.state('b2'), 'deferred', 'b2 parked (re-queued), not failed');
     ok(`breaker armed after ${agent.CB_FAILURE_THRESHOLD} failing ticks (each real attempt ~${attemptMs}ms)`);
 
     // Third lane while cooling: fast-failed with NO connection attempt — proven
@@ -205,9 +212,9 @@ async function main() {
     await agent.processLane(deadKey, [job('b3', 'receipt', deadPrinter)]);
     const coolMs = Date.now() - t1;
 
-    assert.ok(coolMs < 300, `a cooling lane should fast-fail (<300ms, no connect); took ${coolMs}ms`);
-    assert.strictEqual(cloud.state('b3'), 'failed', 'the held ticket is still surfaced as failed so it is visible/re-queueable');
-    ok(`cooling printer skipped: job fast-failed in ${coolMs}ms (vs ~${attemptMs}ms for a real attempt) — no connect made`);
+    assert.ok(coolMs < 300, `a cooling lane should fast-defer (<300ms, no connect); took ${coolMs}ms`);
+    assert.strictEqual(cloud.state('b3'), 'deferred', 'the held ticket is parked (re-queued) so it reprints on recovery — never lost');
+    ok(`cooling printer skipped: job parked in ${coolMs}ms (vs ~${attemptMs}ms for a real attempt) — no connect made`);
 
     /* ── recovery: once the cooldown lapses the printer is probed again ───── */
     head('Scenario C — breaker recovers when the printer answers again');

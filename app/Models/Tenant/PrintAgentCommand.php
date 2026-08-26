@@ -31,4 +31,25 @@ class PrintAgentCommand extends Model
     {
         return $this->belongsTo(Printer::class);
     }
+
+    /** How long a claimed-but-unreported command may stay `running` before it is presumed dead. */
+    public const LEASE_SECONDS = 90;
+
+    /**
+     * Fail any command an agent claimed but never reported on — a crashed agent or a lost result POST
+     * must not leave a row stuck in `running` forever (the Printers screen would wait on it and the
+     * next Test/Reboot for that printer would look like it never ran). Idempotent; safe to call often.
+     */
+    public static function expireStale(int $leaseSeconds = self::LEASE_SECONDS): int
+    {
+        return static::query()
+            ->where('status', 'running')
+            ->whereNotNull('claimed_at')
+            ->where('claimed_at', '<', now()->subSeconds($leaseSeconds))
+            ->update([
+                'status'       => 'failed',
+                'result'       => 'Timed out — the print agent did not report a result.',
+                'completed_at' => now(),
+            ]);
+    }
 }

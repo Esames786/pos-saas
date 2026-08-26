@@ -124,6 +124,12 @@ class PrintAgentApiController extends Controller
         ]);
     }
 
+    /** A dead printer must not monopolise the poll — at most this many of its oldest jobs per fetch. */
+    private const PER_PRINTER_LIMIT = 5;
+
+    /** Ceiling on distinct printers served in one poll (a branch has a handful; guards a runaway loop). */
+    private const MAX_PRINTERS_PER_POLL = 25;
+
     public function pending(Request $request): JsonResponse
     {
         $agent = $this->authenticate($request);
@@ -131,7 +137,10 @@ class PrintAgentApiController extends Controller
         $agent->update(['last_seen_at' => now(), 'last_error' => null]);
 
         $jobs = DB::connection('tenant')->transaction(function () use ($agent) {
-            $query = PrintJob::with('printer')
+            // The eligibility filter, shared by the "which printers have work" probe and the per-printer
+            // claim below. `deferred_until` excludes tickets the agent parked while their printer was
+            // cooling — they come back the moment the defer window lapses, without ever being lost.
+            $eligible = fn () => PrintJob::query()
                 ->where('print_status', 'queued')
                 ->whereNotNull('printer_id')
                 ->whereHas('printer', function ($q) {
@@ -153,19 +162,42 @@ class PrintAgentApiController extends Controller
                     $q->whereNull('claimed_at')
                       ->orWhere('claimed_at', '<', now()->subMinutes(2));
                 })
-                ->orderBy('created_at')
-                ->limit(10)
-                ->lockForUpdate()
-                ->get();
+                ->where(function ($q) {
+                    $q->whereNull('deferred_until')
+                      ->orWhere('deferred_until', '<=', now());
+                });
 
-            foreach ($query as $job) {
-                $job->update([
-                    'claimed_by_agent_id' => $agent->id,
-                    'claimed_at'          => now(),
-                ]);
+            // FAIR FETCH: take the oldest few jobs PER printer rather than the 10 oldest globally.
+            // Before, ten queued tickets on one offline printer filled the whole batch and a healthy
+            // printer's newer ticket waited behind them — the per-printer lanes could not help a job
+            // that never reached the agent. Now every printer with work is represented each poll.
+            $printerIds = $eligible()
+                ->select('printer_id')->distinct()
+                ->orderBy('printer_id')
+                ->limit(self::MAX_PRINTERS_PER_POLL)
+                ->pluck('printer_id');
+
+            $claimed = collect();
+            foreach ($printerIds as $printerId) {
+                $rows = $eligible()
+                    ->with('printer')
+                    ->where('printer_id', $printerId)
+                    ->orderBy('created_at')
+                    ->limit(self::PER_PRINTER_LIMIT)
+                    ->lockForUpdate()
+                    ->get();
+
+                foreach ($rows as $job) {
+                    $job->update([
+                        'claimed_by_agent_id' => $agent->id,
+                        'claimed_at'          => now(),
+                    ]);
+                }
+
+                $claimed = $claimed->concat($rows);
             }
 
-            return $query;
+            return $claimed;
         });
 
         return response()->json([
@@ -225,12 +257,44 @@ class PrintAgentApiController extends Controller
     }
 
     /**
+     * PRINTER-HEALTH-1: the agent parks a ticket whose printer is cooling in the circuit breaker.
+     * Unlike `failed`, this NEVER bumps attempts and NEVER gives up — the ticket returns to the queue
+     * (deferred a short while) and reprints the moment the printer answers again. This is what makes
+     * "Will retry automatically" actually true instead of a message on a terminally-failed job.
+     */
+    public function defer(Request $request, PrintJob $printJob, PrintJobService $printJobService): JsonResponse
+    {
+        $agent = $this->authenticate($request);
+
+        if ($printJob->claimed_by_agent_id && (int) $printJob->claimed_by_agent_id !== (int) $agent->id) {
+            abort(403, 'Job claimed by another agent.');
+        }
+
+        $data = $request->validate([
+            'reason'           => ['nullable', 'string', 'max:255'],
+            'cooldown_seconds' => ['nullable', 'integer', 'min:1', 'max:3600'],
+        ]);
+
+        $printJobService->deferForRetry(
+            $printJob,
+            $data['reason'] ?? 'Printer temporarily unreachable — will retry automatically.',
+            $data['cooldown_seconds'] ?? 30
+        );
+
+        return response()->json(['ok' => true]);
+    }
+
+    /**
      * v2.5.0 REMOTE COMMANDS: the agent claims queued Test/Reboot commands for its branch, runs them
      * on the LAN printer, and posts the outcome to commandResult(). Claimed like print jobs.
      */
     public function commands(Request $request): JsonResponse
     {
         $agent = $this->authenticate($request);
+
+        // Reclaim commands whose agent claimed them but never reported (crash / lost result POST):
+        // without this they sit in `running` forever and the screen waits on a dead command.
+        PrintAgentCommand::expireStale();
 
         $commands = DB::connection('tenant')->transaction(function () use ($agent) {
             $rows = PrintAgentCommand::with('printer')

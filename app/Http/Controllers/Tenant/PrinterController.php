@@ -30,6 +30,10 @@ class PrinterController extends Controller
     /** Live reachability + the latest command outcome for a printer — polled by the screen. */
     public function status(Printer $printer)
     {
+        // Resolve any command the agent claimed but never reported, so the pill/toast stops waiting on
+        // a dead command even when no agent is polling /commands to trigger the sweep.
+        PrintAgentCommand::expireStale();
+
         $command = PrintAgentCommand::where('printer_id', $printer->id)->latest('id')->first();
 
         return response()->json([
