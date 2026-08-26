@@ -92,9 +92,11 @@ class EdgeInboundSaleIngestionService
         $existing = EdgeInboundSaleIngestion::query()->where('sale_uuid', $saleUuid)->first();
         if ($existing !== null) {
             if ($existing->isApplied()) {
-                return hash_equals((string) $existing->content_hash, $contentHash)
-                    ? $existing->ack_payload                                   // exact replay -> stored ACK, zero effects
-                    : $this->conflictAck($existing, $contentHash);            // same uuid, different content -> hard conflict
+                if (! hash_equals((string) $existing->content_hash, $contentHash)) {
+                    return $this->conflictAck($existing, $contentHash);        // same uuid, different content -> hard conflict
+                }
+                // Exact replay: the SAME durable truth, marked already_applied, with ZERO further effects.
+                return array_merge($existing->ack_payload ?? [], ['status' => 'already_applied']);
             }
             if ($existing->status === EdgeInboundSaleIngestion::STATUS_CONFLICT) {
                 return $existing->ack_payload;                                 // terminal conflict is never re-evaluated

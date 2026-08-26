@@ -34,5 +34,8 @@ Route::domain(config('tenancy.central_domain'))
 
             // EDGE-COMPATIBILITY-CONTRACT-1 — version/capability exchange (no heartbeat/sync/activation).
             Route::post('/compatibility/report', [\App\Http\Controllers\Edge\EdgeCompatibilityApiController::class, 'report'])->name('edge.api.compatibility.report');
+
+            // OFFLINE-SYNC-ENGINE-1D — device-authenticated sync ingestion (thin boundary around 1C).
+            Route::post('/sync/sales', [\App\Http\Controllers\Edge\EdgeSyncIngestionApiController::class, 'store'])->name('edge.api.sync.sales');
         });
     });

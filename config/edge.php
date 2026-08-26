@@ -34,6 +34,18 @@ return [
     | Consumed by EdgeCompatibilityService::manifest(); the Cloud classifies anything absent here as
     | feature_unavailable_offline (explicitly — never silent partial behavior).
     */
+    /*
+    | OFFLINE-SYNC-ENGINE-1D — Edge -> Cloud sync transport. No secrets in git: the appliance is
+    | provisioned with these at runtime (env). TLS verification is ON in the sender and is never disabled.
+    */
+    'sync' => [
+        'url'             => env('EDGE_SYNC_URL'),            // Cloud device-authed ingestion endpoint
+        'device_id'       => env('EDGE_SYNC_DEVICE_ID'),      // this appliance public_uuid
+        'device_secret'   => env('EDGE_SYNC_DEVICE_SECRET'),  // paired device bearer secret
+        'connect_timeout' => (int) env('EDGE_SYNC_CONNECT_TIMEOUT', 10),
+        'timeout'         => (int) env('EDGE_SYNC_TIMEOUT', 20),
+    ],
+
     'capabilities' => [
         'local_auth',                 // EDGE-LOCAL-AUTH-1 (Edge credentials, Argon2id, epoch-fenced)
         'local_pos_cash_sales',       // EDGE-LOCAL-POS-1 (cash quick_sale/takeaway/dine-in runtime)
@@ -114,6 +126,7 @@ return [
         // EDGE-LOCAL-PRINT-1 — the local lease-safe physical print worker (deliberately allowlisted).
         'edge:local:print-worker',
         'edge:local:print-status',
+        'edge:local:sync-send', // OFFLINE-SYNC-ENGINE-1D: drain the sale outbox to Cloud
         // Framework cache/runtime operations the appliance explicitly needs.
         'config:cache', 'config:clear',
         'route:cache', 'route:clear',

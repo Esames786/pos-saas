@@ -125,19 +125,32 @@ class EdgeSyncOutboxService
         if ($row->state !== EdgeSyncOutbox::STATE_LEASED) {
             throw new RuntimeException('OUTBOX_STATE: only a leased row can be acknowledged.');
         }
+        // ACK identity: only a verified terminal-success result for THIS exact envelope may acknowledge.
         if (($ackPayload['sale_uuid'] ?? null) !== $row->sale_uuid
             || ! hash_equals((string) $row->content_hash, (string) ($ackPayload['content_hash'] ?? ''))) {
             throw new RuntimeException('OUTBOX_ACK_MISMATCH: the ACK does not identify this envelope (sale_uuid/content_hash).');
         }
-        $row->update([
-            'state' => EdgeSyncOutbox::STATE_ACKNOWLEDGED,
-            'acknowledged_at' => now(),
-            'ack_ingestion_uuid' => $ackIngestionUuid,
-            'ack_payload' => $ackPayload,
-            'lease_owner' => null,
-            'lease_expires_at' => null,
-            'last_error' => null,
-        ]);
+        // §18 lease-owner guard: acknowledge ONLY if the DB row is still leased by THIS worker's token — a
+        // conditional atomic update. A stale worker whose row was reclaimed (lease expiry) finds its token no
+        // longer current and is refused, so it can never acknowledge a row another worker now owns.
+        $affected = DB::connection(self::CONN)->table('edge_sync_outbox')
+            ->where('id', $row->id)
+            ->where('state', EdgeSyncOutbox::STATE_LEASED)
+            ->where('lease_owner', $row->lease_owner)
+            ->update([
+                'state' => EdgeSyncOutbox::STATE_ACKNOWLEDGED,
+                'acknowledged_at' => now(),
+                'ack_ingestion_uuid' => $ackIngestionUuid,
+                'ack_payload' => json_encode($ackPayload),
+                'lease_owner' => null,
+                'lease_expires_at' => null,
+                'last_error' => null,
+                'updated_at' => now(),
+            ]);
+        if ($affected !== 1) {
+            throw new RuntimeException('OUTBOX_STALE_OWNER: this worker no longer owns the lease on this row; refusing to acknowledge.');
+        }
+        $row->refresh();
     }
 
     /** leased -> failed_permanent. 1C/1D-ONLY: explicit terminal Cloud verdict (e.g. hash conflict). */

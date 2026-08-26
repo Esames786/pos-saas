@@ -289,7 +289,7 @@ class EdgeInboundSaleIngestionMySqlTest extends MySqlTenantTestCase
 
         $ack2 = $this->ingest($env);
         // Same stored result (JSON round-trip may reorder keys — compare the identity fields that matter).
-        $this->assertSame('applied', $ack2['status']);
+        $this->assertSame('already_applied', $ack2['status'], 'a replay is reported as already_applied');
         foreach (['sale_uuid', 'ingestion_uuid', 'sales_order_id', 'official_sale_no'] as $k) {
             $this->assertSame($ack1[$k], $ack2[$k], "replay must return the same $k");
         }
