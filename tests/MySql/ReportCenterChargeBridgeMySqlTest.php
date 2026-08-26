@@ -43,8 +43,8 @@ class ReportCenterChargeBridgeMySqlTest extends MySqlTenantTestCase
 
         $this->assertStringContainsString('Plus Delivery', $html, 'thermal: the delivery-charge bridge line prints');
         $this->assertStringContainsString('= NET SALES', $html, 'thermal: the bridge closes on NET SALES');
-        $this->assertStringContainsString('30.00', $html, 'thermal: the net charge amount prints');
-        $this->assertStringContainsString('330.00', $html, 'thermal: net sales = merchandise 300 + charge 30');
+        $this->assertStringContainsString('class="amt">30</td>', $html, 'thermal: the net charge amount prints without a .00 tail');
+        $this->assertStringContainsString('class="amt">330</td>', $html, 'thermal: net sales = merchandise 300 + charge 30');
     }
 
     public function test_a4_by_order_type_shows_the_charge_bridge_to_net_sales(): void
@@ -83,7 +83,7 @@ class ReportCenterChargeBridgeMySqlTest extends MySqlTenantTestCase
 
         $this->assertStringContainsString('Plus Delivery', $html, 'global categories bridge prints despite the discount');
         $this->assertStringContainsString('= NET SALES', $html);
-        $this->assertStringContainsString('30.00', $html, 'net charge = net sales 330 - line net 300');
-        $this->assertStringContainsString('330.00', $html, 'the global total reaches NET SALES');
+        $this->assertStringContainsString('class="amt">30</td>', $html, 'net charge = net sales 330 - line net 300');
+        $this->assertStringContainsString('class="amt">330</td>', $html, 'the global total reaches NET SALES');
     }
 }

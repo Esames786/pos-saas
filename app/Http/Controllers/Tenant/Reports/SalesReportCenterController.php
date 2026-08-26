@@ -29,7 +29,7 @@ class SalesReportCenterController extends Controller
      */
     public static function sectionPermission(string $section): string
     {
-        return 'tenant.reports.center.sections.' . str_replace('_', '-', $section);
+        return 'tenant.reports.center.sections.'.str_replace('_', '-', $section);
     }
 
     /** Sections the current user may see, in canonical order. */
@@ -46,8 +46,7 @@ class SalesReportCenterController extends Controller
     public function __construct(
         private readonly SalesReportEngine $engine,
         private readonly SalesReportExporter $exporter,
-    ) {
-    }
+    ) {}
 
     private function filters(Request $request): array
     {
@@ -187,11 +186,11 @@ class SalesReportCenterController extends Controller
         $csvBySection = $this->exporter->sections($filters, $sections);
 
         return CsvStreamer::download(
-            'sales-report-' . $filters['date_from'] . '_' . $filters['date_to'] . '.csv',
-            CsvStreamer::financeHeader('Sales Report Center', ['Period' => $filters['date_from'] . ' → ' . $filters['date_to']]),
+            'sales-report-'.$filters['date_from'].'_'.$filters['date_to'].'.csv',
+            CsvStreamer::financeHeader('Sales Report Center', ['Period' => $filters['date_from'].' → '.$filters['date_to']]),
             function ($out) use ($csvBySection) {
                 foreach ($csvBySection as $section => $csv) {
-                    fputcsv($out, ['== ' . strtoupper(str_replace('_', ' ', $section)) . ' ==']);
+                    fputcsv($out, ['== '.strtoupper(str_replace('_', ' ', $section)).' ==']);
                     // strip the per-section BOM; rows are already CSV text.
                     fwrite($out, preg_replace('/^\xEF\xBB\xBF/', '', $csv));
                     fputcsv($out, []);
@@ -290,7 +289,7 @@ class SalesReportCenterController extends Controller
             'document_type' => 'report',
             'print_status' => 'queued',
             'reference_type' => 'report',
-            'reference_no' => trim(($report['meta']['date_from'] ?: '') . ' - ' . ($report['meta']['date_to'] ?: ''), ' -'),
+            'reference_no' => trim(($report['meta']['date_from'] ?: '').' - '.($report['meta']['date_to'] ?: ''), ' -'),
             'payload' => ['sections' => $sections, 'date_from' => $report['meta']['date_from'], 'date_to' => $report['meta']['date_to']],
             'raw_payload' => $esc->buildReport($report),
             'created_by_user_id' => auth('tenant')->id(),
@@ -312,11 +311,11 @@ class SalesReportCenterController extends Controller
         $csv = $this->exporter->sections($filters, $sections);
         Mail::to($recipient)->send(new SalesReportMail(
             (string) app('tenant')->business_name,
-            $filters['date_from'] . ' → ' . $filters['date_to'],
+            $filters['date_from'].' → '.$filters['date_to'],
             $csv
         ));
 
-        return back()->with('status', 'Report emailed to ' . $recipient . '.');
+        return back()->with('status', 'Report emailed to '.$recipient.'.');
     }
 
     public function storeSchedule(Request $request, ReportScheduleService $schedules)
@@ -324,18 +323,29 @@ class SalesReportCenterController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:120'],
             'sections' => ['required', 'array', 'min:1'],
-            'sections.*' => ['string', 'in:' . implode(',', self::SECTIONS)],
+            'sections.*' => ['string', 'in:'.implode(',', self::SECTIONS)],
             'frequency' => ['required', 'in:daily,weekly,monthly'],
             'weekday' => ['nullable', 'integer', 'min:1', 'max:7', 'required_if:frequency,weekly'],
             'day_of_month' => ['nullable', 'integer', 'min:1', 'max:31', 'required_if:frequency,monthly'],
             'send_time' => ['required', 'date_format:H:i'],
+            'recipient_emails' => ['nullable', 'string', 'max:1000'],
+            'delivery_format' => ['required', 'in:csv,a4_pdf'],
         ]);
-        if (! (app()->bound('tenant') ? app('tenant')?->owner_email : null)) {
+        $recipientInput = preg_split('/[\s,;]+/', trim((string) ($data['recipient_emails'] ?? '')), -1, PREG_SPLIT_NO_EMPTY);
+        $recipientEmails = array_values(array_unique(array_map('strtolower', $recipientInput ?: [])));
+        foreach ($recipientEmails as $email) {
+            if (filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+                return back()->withErrors(['recipient_emails' => 'Every report recipient must be a valid email address.'])->withInput();
+            }
+        }
+        if ($recipientEmails === [] && ! (app()->bound('tenant') ? app('tenant')?->owner_email : null)) {
             return back()->withErrors(['email' => 'Set the tenant default email (owner email) before scheduling reports.']);
         }
         DB::connection('tenant')->table('report_schedules')->insert([
             'name' => $data['name'],
             'sections' => json_encode(array_values($data['sections'])),
+            'recipient_emails' => $recipientEmails === [] ? null : json_encode($recipientEmails),
+            'delivery_format' => $data['delivery_format'],
             'frequency' => $data['frequency'],
             'weekday' => $data['weekday'] ?? null,
             'day_of_month' => $data['day_of_month'] ?? null,
@@ -345,7 +355,7 @@ class SalesReportCenterController extends Controller
             'created_at' => now(), 'updated_at' => now(),
         ]);
 
-        return back()->with('status', 'Schedule created (' . $data['frequency'] . ' at ' . $data['send_time'] . ', ' . $schedules->timezone() . ').');
+        return back()->with('status', 'Schedule created ('.$data['frequency'].' at '.$data['send_time'].', '.$schedules->timezone().').');
     }
 
     public function destroySchedule(int $schedule)

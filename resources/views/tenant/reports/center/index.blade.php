@@ -439,15 +439,17 @@
 
 {{-- ── schedules ── --}}
 <div class="card mb-4"><div class="card-body">
-    <h6>Scheduled owner reports (email to the tenant default email)</h6>
+    <h6>Scheduled sales reports</h6>
     <div class="table-responsive">
         <table class="table table-sm align-middle">
-            <thead><tr><th>Name</th><th>Sections</th><th>Frequency</th><th>Time</th><th>Last run</th><th>Last failure</th><th></th></tr></thead>
+            <thead><tr><th>Name</th><th>Sections</th><th>Recipients</th><th>Format</th><th>Frequency</th><th>Time</th><th>Last run</th><th>Last failure</th><th></th></tr></thead>
             <tbody>
             @forelse($schedules as $s)
                 <tr>
                     <td>{{ $s->name }}</td>
                     <td class="small">{{ implode(', ', (array) json_decode($s->sections, true)) }}</td>
+                    <td class="small">{{ implode(', ', (array) json_decode($s->recipient_emails ?? '[]', true)) ?: (app('tenant')->owner_email ?? 'owner email') }}</td>
+                    <td>{{ ($s->delivery_format ?? 'csv') === 'a4_pdf' ? 'A4 PDF' : 'CSV' }}</td>
                     <td>{{ $s->frequency }}@if($s->weekday) (day {{ $s->weekday }})@endif @if($s->day_of_month) (dom {{ $s->day_of_month }})@endif</td>
                     <td>{{ $s->send_time }}</td>
                     <td class="small">{{ $s->last_success_at ?? '—' }}</td>
@@ -460,7 +462,7 @@
                     </td>
                 </tr>
             @empty
-                <tr><td colspan="7" class="text-muted">No schedules yet.</td></tr>
+                <tr><td colspan="9" class="text-muted">No schedules yet.</td></tr>
             @endforelse
             </tbody>
         </table>
@@ -477,6 +479,8 @@
         <div class="col-6 col-md-1"><label class="form-label small mb-0">Weekday</label><input name="weekday" type="number" min="1" max="7" class="form-control form-control-sm" placeholder="1-7"></div>
         <div class="col-6 col-md-1"><label class="form-label small mb-0">Day</label><input name="day_of_month" type="number" min="1" max="31" class="form-control form-control-sm" placeholder="1-31"></div>
         <div class="col-6 col-md-1"><label class="form-label small mb-0">Time</label><input name="send_time" type="time" class="form-control form-control-sm" value="08:00" required></div>
+        <div class="col-12 col-md-3"><label class="form-label small mb-0">Recipients</label><input name="recipient_emails" type="text" class="form-control form-control-sm" placeholder="owner@example.com, accounts@example.com"><div class="form-text">Comma-separated; blank uses tenant owner email.</div></div>
+        <div class="col-6 col-md-1"><label class="form-label small mb-0">Format</label><select name="delivery_format" class="form-select form-select-sm"><option value="a4_pdf">A4 PDF</option><option value="csv">CSV files</option></select></div>
         <div class="col-12 col-md-3">
             <label class="form-label small mb-0">Sections</label>
             <div class="d-flex flex-wrap gap-2">

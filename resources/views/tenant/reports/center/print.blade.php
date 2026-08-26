@@ -161,7 +161,9 @@
 </style>
 </head>
 <body>
+@unless($embedded ?? false)
 <div class="no-print"><button onclick="window.print()">Print</button></div>
+@endunless
 
 <h1>{{ app()->bound('tenant') ? app('tenant')->business_name : 'Bingoo POS' }}</h1>
 <div style="text-align:center">
