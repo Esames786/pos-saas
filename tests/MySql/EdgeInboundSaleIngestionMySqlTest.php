@@ -23,6 +23,31 @@ class FailAfterStockIngestionService extends EdgeInboundSaleIngestionService
 }
 
 /**
+ * §7 sanctioned test double: a JournalPostingService that posts GL normally (real parent) but SILENTLY omits
+ * a required mapped cash-bank movement — simulating the shared report-and-swallow contract. The production
+ * verifier must detect the MISSING durable evidence; it does not depend on this double throwing.
+ */
+class OmitCashBankJournalPostingService extends \App\Services\Finance\JournalPostingService
+{
+    public static bool $omitAll = false;
+    public static bool $omitLast = false;
+
+    public function postSalesCashBankMovement(\App\Models\Tenant\SalesOrder $sale, ?int $userId = null): void
+    {
+        if (self::$omitAll) {
+            return; // simulate the whole cash-bank step swallowing an internal error
+        }
+        parent::postSalesCashBankMovement($sale, $userId);
+        if (self::$omitLast) {
+            // simulate the LAST mapped payment's movement failing to durably land (a partial finance state)
+            $lastPaymentId = $sale->payments()->orderByDesc('id')->value('id');
+            DB::connection('tenant')->table('cash_bank_account_transactions')
+                ->where('reference_type', 'sale_payment')->where('reference_id', $lastPaymentId)->delete();
+        }
+    }
+}
+
+/**
  * OFFLINE-SYNC-ENGINE-1C — Cloud-authoritative ingestion of ONE immutable Edge paid-sale envelope, proven
  * against the REAL Cloud authorities (InventoryService FEFO, JournalPostingService GL + cash-bank,
  * RecipeConsumptionService) with a real master EdgeDevice + activation epoch and a branch handed to its
@@ -384,6 +409,95 @@ class EdgeInboundSaleIngestionMySqlTest extends MySqlTenantTestCase
         $ack2 = $this->ingest($env);
         $this->assertSame('applied', $ack2['status']);
         $this->assertSame(1, SalesOrder::on('tenant')->count());
+    }
+
+    // ── finance atomicity closure (§6/§7): APPLIED means financially complete ─────
+
+    public function test_a_swallowed_gl_posting_failure_fails_the_ingestion_closed_and_rolls_everything_back(): void
+    {
+        // Remove the revenue account the takeaway paid-sale journal requires (4120). postPaidSale resolves it
+        // via accountId(), which throws INSIDE postPaidSale's try/catch — the REAL swallow path — so no journal
+        // is posted. The ingestion's finance verifier must then detect the missing GL and fail closed.
+        DB::connection('tenant')->table('accounts')->where('code', '4120')->delete();
+
+        $env = $this->envelope();
+        $ack = $this->ingest($env);
+
+        $this->assertSame('exception', $ack['status']);
+        $this->assertSame('FINANCE_GL_MISSING', $ack['failure_code']);
+        // FULL rollback: no sale, no official stock, no payments, no GL, no cash — registry NOT applied.
+        $this->assertSame(0, SalesOrder::on('tenant')->count(), 'sale rolled back');
+        $this->assertSame(0, DB::connection('tenant')->table('stock_ledgers')->count(), 'FEFO rolled back');
+        $this->assertSame(50.0, (float) DB::connection('tenant')->table('stock_balances')->where('product_id', $this->productId)->sum('quantity_on_hand'));
+        $this->assertSame(0, DB::connection('tenant')->table('sale_payments')->count(), 'payments rolled back');
+        $this->assertSame(0, DB::connection('tenant')->table('cash_bank_account_transactions')->count(), 'cash rolled back');
+        $this->assertNotSame('applied', EdgeInboundSaleIngestion::query()->where('sale_uuid', $env['sale_uuid'])->value('status'));
+
+        // Repair the chart of accounts and retry the SAME envelope: exactly one full official posting set.
+        (new DefaultChartOfAccountsSeeder())->run();
+        $ack2 = $this->ingest($env);
+        $this->assertSame('applied', $ack2['status']);
+        $this->assertSame(1, SalesOrder::on('tenant')->count());
+        $this->assertSame(1, DB::connection('tenant')->table('journal_entries')->where('source_type', 'sales_order_paid')->count());
+        $this->assertSame(1, DB::connection('tenant')->table('cash_bank_account_transactions')->count());
+    }
+
+    public function test_a_swallowed_cash_bank_failure_fails_the_ingestion_closed_and_rolls_everything_back(): void
+    {
+        // The mapped cash method's movement is silently omitted (shared report-and-swallow, via the double).
+        // The verifier must detect the missing durable cash-bank evidence and fail the ingestion closed.
+        OmitCashBankJournalPostingService::$omitAll = true;
+        $this->app->bind(\App\Services\Finance\JournalPostingService::class, OmitCashBankJournalPostingService::class);
+
+        $env = $this->envelope();
+        $ack = $this->ingest($env);
+
+        $this->assertSame('exception', $ack['status']);
+        $this->assertSame('FINANCE_CASHBANK_MISSING', $ack['failure_code']);
+        $this->assertSame(0, SalesOrder::on('tenant')->count(), 'sale rolled back');
+        $this->assertSame(0, DB::connection('tenant')->table('stock_ledgers')->count(), 'FEFO rolled back');
+        $this->assertSame(0, DB::connection('tenant')->table('journal_entries')->where('source_type', 'sales_order_paid')->count(), 'GL rolled back too');
+        $this->assertSame(0, DB::connection('tenant')->table('cash_bank_account_transactions')->count());
+
+        // Restore the real finance authority and retry the SAME envelope: applied exactly once, cash present.
+        OmitCashBankJournalPostingService::$omitAll = false;
+        $this->app->forgetInstance(\App\Services\Finance\JournalPostingService::class);
+        $this->app->bind(\App\Services\Finance\JournalPostingService::class, \App\Services\Finance\JournalPostingService::class);
+        $ack2 = $this->ingest($env);
+        $this->assertSame('applied', $ack2['status']);
+        $this->assertSame(1, SalesOrder::on('tenant')->count());
+        $this->assertSame(1, DB::connection('tenant')->table('cash_bank_account_transactions')->where('transaction_type', 'sales_payment')->count());
+    }
+
+    public function test_two_mapped_payments_with_the_second_movement_missing_rolls_the_entire_ingestion_back(): void
+    {
+        // Two mapped cash payments; the FIRST movement posts, the SECOND is silently omitted (the double drops
+        // the last mapped payment's movement) — a PARTIAL finance state. The verifier must roll back the ENTIRE
+        // ingestion, including the first (already-posted) cash movement and its balance effect.
+        $cbId = DB::connection('tenant')->table('payment_methods')->where('id', $this->cashMethodId)->value('cash_bank_account_id');
+        $method2 = $this->makePaymentMethod(['method_type' => 'cash', 'code' => 'CASH2', 'name' => 'Cash2', 'cash_bank_account_id' => $cbId]);
+        OmitCashBankJournalPostingService::$omitLast = true;
+        $this->app->bind(\App\Services\Finance\JournalPostingService::class, OmitCashBankJournalPostingService::class);
+
+        $env = $this->envelope(['order_type' => 'takeaway'], null, [
+            ['payment_uuid' => (string) Str::ulid(), 'payment_method_id' => $this->cashMethodId, 'method_type' => 'cash', 'amount' => 120.0, 'tendered_amount' => 120.0, 'change_amount' => 0.0, 'transaction_ref' => null, 'paid_at' => now()->toIso8601String()],
+            ['payment_uuid' => (string) Str::ulid(), 'payment_method_id' => $method2, 'method_type' => 'cash', 'amount' => 80.0, 'tendered_amount' => 80.0, 'change_amount' => 0.0, 'transaction_ref' => null, 'paid_at' => now()->toIso8601String()],
+        ]);
+        $ack = $this->ingest($env);
+
+        $this->assertSame('exception', $ack['status']);
+        $this->assertSame('FINANCE_CASHBANK_MISSING', $ack['failure_code']);
+        $this->assertSame(0, SalesOrder::on('tenant')->count(), 'the whole sale rolled back');
+        $this->assertSame(0, DB::connection('tenant')->table('cash_bank_account_transactions')->count(), 'the first (partial) cash movement rolled back too');
+        $this->assertSame(0.0, (float) DB::connection('tenant')->table('cash_bank_accounts')->sum('current_balance'), 'the first cash balance effect rolled back');
+
+        // Restore the real authority and retry SAME envelope -> applied once, both movements present.
+        OmitCashBankJournalPostingService::$omitLast = false;
+        $this->app->forgetInstance(\App\Services\Finance\JournalPostingService::class);
+        $this->app->bind(\App\Services\Finance\JournalPostingService::class, \App\Services\Finance\JournalPostingService::class);
+        $ack2 = $this->ingest($env);
+        $this->assertSame('applied', $ack2['status']);
+        $this->assertSame(2, DB::connection('tenant')->table('cash_bank_account_transactions')->where('transaction_type', 'sales_payment')->count(), 'both mapped payments posted exactly once');
     }
 
     // ── §Q two-process concurrency ───────────────────────────────────────────────

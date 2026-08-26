@@ -57,6 +57,7 @@ class EdgeInboundSaleIngestionService
         private readonly JournalPostingService $journal,
         private readonly SalesService $sales,                      // nextSaleNo() authority only
         private readonly EdgeActivationEpochService $epochs,
+        private readonly EdgeFinancePostingVerifier $financeVerifier,
     ) {
     }
 
@@ -134,6 +135,12 @@ class EdgeInboundSaleIngestionService
                     // GL failure rolls the whole ingestion back (registry never claims success).
                     $this->journal->postPaidSale($sale, (int) $sale->created_by_user_id);
                     $this->journal->postSalesCashBankMovement($sale, (int) $sale->created_by_user_id);
+
+                    // FINANCE ATOMICITY (1C closure): the shared finance authorities report-and-swallow their
+                    // internal errors, so APPLIED must be gated on the required GL + cash-bank evidence actually
+                    // being durable. A missing/malformed effect throws here and rolls the WHOLE ingestion back —
+                    // official sale/stock/COGS/payments/registry included; the registry never claims success.
+                    $this->financeVerifier->verifyPaidSale($sale->fresh()->load(['payments.method', 'lines']));
 
                     $ack = $this->buildAck($saleUuid, $contentHash, $ingestionUuid, $sale, (int) $envelope['activation_epoch'], $envelope['config_revision'] ?? null, EdgeInboundSaleIngestion::STATUS_APPLIED);
                     $registry->update([
