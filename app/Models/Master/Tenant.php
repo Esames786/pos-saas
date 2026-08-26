@@ -44,6 +44,11 @@ class Tenant extends Model
         return $this->hasOne(TenantDatabase::class);
     }
 
+    public function backupSetting()
+    {
+        return $this->hasOne(TenantBackupSetting::class);
+    }
+
     public function subscription()
     {
         return $this->hasOne(Subscription::class);

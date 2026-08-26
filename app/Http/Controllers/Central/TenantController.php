@@ -10,6 +10,7 @@ use App\Models\Master\Plan;
 use App\Models\Master\Subscription;
 use App\Models\Master\Tenant;
 use App\Models\Master\TenantBackup;
+use App\Models\Master\TenantBackupSetting;
 use App\Models\Master\TenantDomain;
 use App\Services\Central\TenantBackupService;
 use App\Services\Central\TenantOpsService;
@@ -229,7 +230,48 @@ class TenantController extends Controller
             ->latest()
             ->paginate(20);
 
-        return view('central.tenants.backups', compact('tenant', 'backups'));
+        $setting = TenantBackupSetting::firstOrNew(['tenant_id' => $tenant->id]);
+
+        return view('central.tenants.backups', compact('tenant', 'backups', 'setting'));
+    }
+
+    /** TENANT-AUTO-BACKUP-1: save a tenant's automatic backup schedule (on/off, up to 3 PKT times). */
+    public function saveBackupSettings(Request $request, Tenant $tenant)
+    {
+        $data = $request->validate([
+            'is_enabled'     => ['nullable', 'boolean'],
+            'times'          => ['array', 'max:3'],
+            'times.*'        => ['nullable', 'date_format:H:i'],
+            'timezone'       => ['nullable', 'string', 'max:64', 'timezone'],
+            'retention_days' => ['required', 'integer', 'min:1', 'max:30'],
+        ]);
+
+        // Normalise: drop blanks, de-dupe, keep at most 3, sorted.
+        $times = collect($data['times'] ?? [])
+            ->map(fn ($t) => trim((string) $t))
+            ->filter(fn ($t) => preg_match('/^([01]\d|2[0-3]):([0-5]\d)$/', $t))
+            ->unique()->sort()->values()->take(3)->all();
+
+        $enabled = $request->boolean('is_enabled');
+
+        if ($enabled && empty($times)) {
+            return back()->withErrors(['ops' => 'Add at least one backup time before turning auto-backup on.']);
+        }
+
+        TenantBackupSetting::updateOrCreate(
+            ['tenant_id' => $tenant->id],
+            [
+                'is_enabled'     => $enabled,
+                'times'          => $times,
+                'timezone'       => $data['timezone'] ?? 'Asia/Karachi',
+                'retention_days' => (int) $data['retention_days'],
+            ]
+        );
+
+        return redirect('/tenants/' . $tenant->id . '/backups')
+            ->with('status', $enabled
+                ? 'Auto-backup ON — ' . implode(', ', $times) . ' (' . ($data['timezone'] ?? 'Asia/Karachi') . '), keeping ' . (int) $data['retention_days'] . ' days.'
+                : 'Auto-backup turned off.');
     }
 
     /** Stream a backup file to the (super-admin) browser. Never exposes the abs path. */

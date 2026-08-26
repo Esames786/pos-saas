@@ -128,6 +128,27 @@ class TenantBackupService
         $backup->delete();
     }
 
+    /**
+     * TENANT-AUTO-BACKUP-1 retention: delete this tenant's SCHEDULED backups older than
+     * $retentionDays (file + row). Deliberately scoped to backup_type='scheduled' — a human's
+     * manual / pre-restore / pre-reset copy is never auto-deleted. Returns how many were pruned.
+     */
+    public function pruneScheduled(Tenant $tenant, int $retentionDays): int
+    {
+        $cutoff = Carbon::now()->subDays(max(1, $retentionDays));
+
+        $old = TenantBackup::where('tenant_id', $tenant->id)
+            ->where('backup_type', 'scheduled')
+            ->where('created_at', '<', $cutoff)
+            ->get();
+
+        foreach ($old as $backup) {
+            $this->deleteBackup($backup);
+        }
+
+        return $old->count();
+    }
+
     /** Resolve tenant DB credentials (mirrors TenantsBackupCommand). */
     private function connectionFor(Tenant $tenant): array
     {

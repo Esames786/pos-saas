@@ -23,7 +23,12 @@ return [
 
     // PROD-READINESS-1: enables the nightly 02:00 `tenants:backup --prune`
     // schedule. Set true ONLY on the production server (read via config() so
-    // it stays config-cache safe).
+    // it stays config-cache safe). Also gates the per-tenant `tenants:auto-backup`.
     'schedule_enabled' => (bool) env('BACKUP_SCHEDULE_ENABLED', false),
+
+    // TENANT-AUTO-BACKUP-1: minutes after a configured slot within which the dispatcher may still
+    // fire that slot (so a skipped every-few-minutes run does not miss it). The unique slot claim
+    // keeps it once-per-day regardless.
+    'auto_grace_minutes' => (int) env('BACKUP_AUTO_GRACE_MINUTES', 15),
 
 ];

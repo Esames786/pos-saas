@@ -154,6 +154,7 @@ class MasterSeeder extends Seeder
             // MASTER-TENANT-OPS-1 — backup / restore / reset / sync
             'central.tenants.backup',
             'central.tenants.backups',
+            'central.tenants.backup-settings.save',   // TENANT-AUTO-BACKUP-1
             'central.tenants.sync',
             'central.tenants.reset',
             'central.tenants.sync-all',

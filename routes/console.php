@@ -33,6 +33,11 @@ if (\App\Support\EdgeRuntime::isCloudSafe()) {
     // local-only backups are NOT enough; sync them offsite.
     if (config('backup.schedule_enabled', false)) {
         Schedule::command('tenants:backup --prune')->dailyAt('02:00')->withoutOverlapping();
+
+        // TENANT-AUTO-BACKUP-1: per-tenant scheduled backups. Runs every few minutes and only acts
+        // when a tenant's configured HH:MM slot (in its own timezone) is due; the unique slot claim
+        // makes each fire once per day. Retention prune is per-tenant, scheduled-type only.
+        Schedule::command('tenants:auto-backup')->everyFiveMinutes()->withoutOverlapping();
     }
 
     // SALES REPORT CENTER — scheduled owner report emails. Safe at any cadence: each schedule's
