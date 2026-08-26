@@ -10,7 +10,7 @@
 
 [Setup]
 AppName=Bingoo Print Agent
-AppVersion=2.4.0
+AppVersion=2.5.0
 AppPublisher=Bingoo POS
 DefaultDirName={commonpf}\BingooPrintAgent
 DefaultGroupName=Bingoo Print Agent

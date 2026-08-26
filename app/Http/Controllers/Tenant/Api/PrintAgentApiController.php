@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Tenant\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\PrintAgent;
+use App\Models\Tenant\PrintAgentCommand;
 use App\Models\Tenant\PrintJob;
+use App\Models\Tenant\Printer;
 use App\Services\Printing\PrintAgentPairingService;
 use App\Services\Printing\PrintJobService;
 use Illuminate\Http\JsonResponse;
@@ -77,6 +79,25 @@ class PrintAgentApiController extends Controller
             'last_seen_at' => now(),
             'last_error'   => null,
         ]);
+
+        // v2.5.0 LIVE STATUS: the agent folds its keep-awake poke results onto each printer it reached,
+        // so the Printers screen shows Online/Offline + latency without anyone touching a PC. Scoped to
+        // the agent's branch so it can never write another branch's printer.
+        foreach ((array) $request->input('printers_status', []) as $s) {
+            if (! is_array($s) || empty($s['id'])) {
+                continue;
+            }
+            $reachable = (bool) ($s['reachable'] ?? false);
+            $update = ['last_ping_ok' => $reachable, 'last_ping_at' => now()];
+            if ($reachable) {
+                $update['last_ping_ms'] = isset($s['latency_ms']) ? (int) $s['latency_ms'] : null;
+                $update['last_seen_at'] = now();
+            }
+            Printer::where('id', (int) $s['id'])
+                ->when($agent->branch_id, fn ($q) => $q->where(fn ($w) => $w
+                    ->whereNull('branch_id')->orWhere('branch_id', $agent->branch_id)))
+                ->update($update);
+        }
 
         return response()->json([
             'ok'          => true,
@@ -199,6 +220,91 @@ class PrintAgentApiController extends Controller
 
         $printJob->printer?->update(['last_error' => $data['error_message']]);
         $agent->update(['last_error' => $data['error_message']]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    /**
+     * v2.5.0 REMOTE COMMANDS: the agent claims queued Test/Reboot commands for its branch, runs them
+     * on the LAN printer, and posts the outcome to commandResult(). Claimed like print jobs.
+     */
+    public function commands(Request $request): JsonResponse
+    {
+        $agent = $this->authenticate($request);
+
+        $commands = DB::connection('tenant')->transaction(function () use ($agent) {
+            $rows = PrintAgentCommand::with('printer')
+                ->where('status', 'queued')
+                ->whereHas('printer', function ($q) {
+                    $q->where('is_active', true)
+                      ->where('printer_type', 'network')
+                      ->whereNotNull('ip_address');
+                })
+                ->where(function ($q) use ($agent) {
+                    if ($agent->branch_id) {
+                        $q->whereNull('branch_id')->orWhere('branch_id', $agent->branch_id);
+                    }
+                })
+                ->orderBy('created_at')
+                ->limit(10)
+                ->lockForUpdate()
+                ->get();
+
+            foreach ($rows as $row) {
+                $row->update(['status' => 'running', 'claimed_by_agent_id' => $agent->id, 'claimed_at' => now()]);
+            }
+
+            return $rows;
+        });
+
+        return response()->json([
+            'ok'       => true,
+            'commands' => $commands->map(fn (PrintAgentCommand $cmd) => [
+                'id'      => $cmd->id,
+                'type'    => $cmd->type,
+                'printer' => [
+                    'id'   => $cmd->printer?->id,
+                    'name' => $cmd->printer?->name,
+                    'ip'   => $cmd->printer?->ip_address,
+                    'port' => (int) ($cmd->printer?->port ?: 9100),
+                ],
+            ])->values(),
+        ]);
+    }
+
+    public function commandResult(Request $request, PrintAgentCommand $printAgentCommand): JsonResponse
+    {
+        $agent = $this->authenticate($request);
+
+        if ($printAgentCommand->claimed_by_agent_id && (int) $printAgentCommand->claimed_by_agent_id !== (int) $agent->id) {
+            abort(403, 'Command claimed by another agent.');
+        }
+
+        $data = $request->validate([
+            'status'     => ['required', 'in:done,failed'],
+            'result'     => ['nullable', 'string', 'max:500'],
+            'latency_ms' => ['nullable', 'integer', 'min:0'],
+        ]);
+
+        $printAgentCommand->update([
+            'status'       => $data['status'],
+            'result'       => $data['result'] ?? null,
+            'latency_ms'   => $data['latency_ms'] ?? null,
+            'completed_at' => now(),
+        ]);
+
+        // A ping result IS a fresh reachability reading — reflect it on the printer so the pill updates
+        // the instant the operator presses Test, not only on the next 20s keep-awake sweep.
+        if ($printAgentCommand->type === 'ping' && $printAgentCommand->printer) {
+            $reachable = $data['status'] === 'done';
+            $printAgentCommand->printer->update([
+                'last_ping_ok' => $reachable,
+                'last_ping_ms' => $reachable ? ($data['latency_ms'] ?? null) : null,
+                'last_ping_at' => now(),
+                'last_seen_at' => $reachable ? now() : $printAgentCommand->printer->last_seen_at,
+                'last_error'   => $reachable ? null : ($data['result'] ?? 'unreachable'),
+            ]);
+        }
 
         return response()->json(['ok' => true]);
     }

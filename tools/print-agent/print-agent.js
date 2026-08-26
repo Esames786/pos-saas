@@ -29,7 +29,7 @@ const http     = require('http');
 const https    = require('https');
 const { URL }  = require('url');
 
-const AGENT_VERSION = '2.4.0';
+const AGENT_VERSION = '2.5.0';
 
 /**
  * A sleeping printer does not answer a connect at all, so discovering that must be CHEAP: fail in
@@ -266,6 +266,11 @@ async function heartbeat() {
             device_name: os.hostname(),
             device_os:   `${os.platform()} ${os.release()}`,
             local_ip:    localIp(),
+            // Live printer health from the keep-awake pokes, so the Printers screen can show each
+            // printer Online/Offline + latency. Only printers we have an id for.
+            printers_status: [...lastPokeStatus.values()]
+                .filter((s) => s.id)
+                .map((s) => ({ id: s.id, reachable: !!s.reachable, latency_ms: s.latencyMs })),
         },
     });
 
@@ -296,12 +301,17 @@ function syncKnownPrinters(printers) {
     for (const p of printers) {
         if (!p || !p.ip) continue;
         const port = Number(p.port || 9100);
-        current.set(`${p.ip}:${port}`, { ip: p.ip, port });
+        // Keep the printer id so keep-awake pokes can be reported back per printer (live status).
+        current.set(`${p.ip}:${port}`, { id: p.id ? Number(p.id) : null, ip: p.ip, port });
     }
 
     knownPrinters.clear();
     for (const [key, printer] of current) knownPrinters.set(key, printer);
 }
+
+// Last keep-awake poke result per printer — reported in the heartbeat so the Printers screen shows a
+// live Online/Offline + latency status without the operator touching a PC. Key = "ip:port".
+const lastPokeStatus = new Map();
 
 /**
  * A poke must never make a ticket wait.
@@ -314,16 +324,23 @@ function syncKnownPrinters(printers) {
  */
 const POKE_TIMEOUT_MS = 1200;
 
-/** Open and immediately close a connection, purely so the printer never idles into sleep. */
+/** Open and immediately close a connection, purely so the printer never idles into sleep. Also
+ *  returns whether the printer answered and how quickly, so keep-awake doubles as a health probe. */
 function pokePrinter(ip, port) {
     return new Promise((resolve) => {
         const socket = new net.Socket();
+        const started = Date.now();
         socket.setTimeout(POKE_TIMEOUT_MS);
-        const done = () => { socket.destroy(); resolve(); };
-        socket.connect(port, ip, () => { socket.end(); resolve(); });
-        socket.on('error', done);
-        socket.on('timeout', done);
-        socket.on('close', resolve);
+        let settled = false;
+        const finish = (reachable) => {
+            if (settled) return;
+            settled = true;
+            socket.destroy();
+            resolve({ reachable, latencyMs: reachable ? (Date.now() - started) : null });
+        };
+        socket.connect(port, ip, () => { socket.end(); finish(true); });
+        socket.on('error',   () => finish(false));
+        socket.on('timeout', () => finish(false));
     });
 }
 
@@ -336,9 +353,12 @@ async function keepPrintersAwake() {
     try {
         // In PARALLEL, not one after another: poking serially made the block the SUM of every
         // printer's timeout, so a second station that was switched off delayed the tickets of the
-        // one that was on.
+        // one that was on. Each poke's result is recorded for the heartbeat's live status.
         await Promise.all(
-            [...knownPrinters.values()].map(({ ip, port }) => pokePrinter(ip, port))
+            [...knownPrinters.values()].map(async ({ id, ip, port }) => {
+                const r = await pokePrinter(ip, port);
+                lastPokeStatus.set(`${ip}:${port}`, { id, reachable: r.reachable, latencyMs: r.latencyMs, at: Date.now() });
+            })
         );
     } finally {
         keepAwakeRunning = false;
@@ -646,6 +666,101 @@ function localIp() {
     return null;
 }
 
+/* ── Remote commands from the Printers screen (Test / Reboot) ──────────────
+ * The operator presses Test or Reboot in the browser; the server queues a command; the agent picks
+ * it up here and acts on the LAN printer it can reach — then reports the result back for the screen.
+ * (Soft reset is not here: it rides the normal print path as an ESC @ job.) */
+async function getCommands() {
+    const res = await httpJson('GET', `${CONFIG.baseUrl}/api/print-agent/commands`, { headers: headers() });
+    if (!res.ok) {
+        return [];
+    }
+
+    return (res.json && res.json.commands) || [];
+}
+
+async function postCommandResult(id, payload) {
+    await httpJson('POST', `${CONFIG.baseUrl}/api/print-agent/commands/${id}/result`, {
+        headers: headers(),
+        body:    payload,
+    }).catch(() => { /* result lost — the screen falls back to the live poke status */ });
+}
+
+/** TCP‑connect probe for the "Test" button — is the printer answering on its print port, how fast. */
+function probePrinter(ip, port) {
+    return new Promise((resolve) => {
+        if (!ip) { resolve({ reachable: false, latencyMs: null, error: 'no IP configured' }); return; }
+        const socket = new net.Socket();
+        const started = Date.now();
+        socket.setTimeout(CONNECT_TIMEOUT_MS);
+        let settled = false;
+        const finish = (reachable, err) => {
+            if (settled) return;
+            settled = true;
+            socket.destroy();
+            resolve({ reachable, latencyMs: reachable ? (Date.now() - started) : null, error: err || null });
+        };
+        socket.connect(port || 9100, ip, () => { socket.end(); finish(true); });
+        socket.on('error',   (e) => finish(false, e.message));
+        socket.on('timeout', () => finish(false, 'timed out'));
+    });
+}
+
+/** Best‑effort network reboot via the printer's built‑in web module (the "Ethernet WebConfig" page).
+ *  Tries POST then GET on /reboot; the exact path is confirmed on‑site per model. */
+function rebootPrinter(ip) {
+    return new Promise((resolve) => {
+        if (!ip) { resolve({ ok: false, detail: 'no IP configured' }); return; }
+        const attempt = (method, done) => {
+            const req = http.request({ method, hostname: ip, port: 80, path: '/reboot', timeout: 4000 },
+                (res) => { res.resume(); done(res.statusCode >= 200 && res.statusCode < 500); });
+            req.on('error',   () => done(false));
+            req.on('timeout', () => { req.destroy(); done(false); });
+            req.end();
+        };
+        attempt('POST', (ok) => ok ? resolve({ ok: true }) : attempt('GET', (ok2) => resolve({ ok: ok2 })));
+    });
+}
+
+async function runCommand(cmd) {
+    const p = cmd.printer || {};
+    try {
+        if (cmd.type === 'ping') {
+            const r = await probePrinter(p.ip, Number(p.port || 9100));
+            await postCommandResult(cmd.id, r.reachable
+                ? { status: 'done',   result: 'reachable', latency_ms: r.latencyMs }
+                : { status: 'failed', result: r.error || 'unreachable' });
+        } else if (cmd.type === 'reboot') {
+            const r = await rebootPrinter(p.ip);
+            await postCommandResult(cmd.id, r.ok
+                ? { status: 'done',   result: 'reboot sent' }
+                : { status: 'failed', result: 'no reboot endpoint answered — check the printer web page' });
+        } else {
+            await postCommandResult(cmd.id, { status: 'failed', result: `unknown command '${cmd.type}'` });
+        }
+    } catch (err) {
+        await postCommandResult(cmd.id, { status: 'failed', result: err.message });
+    }
+}
+
+let commandTicking = false;
+async function commandTick() {
+    if (commandTicking) {
+        return;
+    }
+    commandTicking = true;
+    try {
+        for (const cmd of await getCommands()) {
+            log(`[CMD]   ${cmd.type} → ${cmd.printer?.name || cmd.printer?.ip}`);
+            await runCommand(cmd);
+        }
+    } catch (err) {
+        log(`[ERR]   command poll: ${err.message}`);
+    } finally {
+        commandTicking = false;
+    }
+}
+
 function run(config) {
     CONFIG = config;
     log('Bingoo POS Local Print Agent started.');
@@ -658,6 +773,8 @@ function run(config) {
     setInterval(tick, CONFIG.pollMs);
     // Hold the printers awake so a kitchen ticket is never the thing that wakes one.
     setInterval(() => { keepPrintersAwake().catch(() => {}); }, KEEP_AWAKE_MS);
+    // Poll for Test/Reboot commands from the Printers screen (own cadence — never blocks a ticket).
+    setInterval(() => { commandTick().catch(() => {}); }, CONFIG.pollMs);
     tick();
 }
 
@@ -716,6 +833,17 @@ module.exports = {
     processLane,
     tick,
     getPendingJobs,
+    // v2.5.0 — health + remote commands
+    heartbeat,
+    keepPrintersAwake,
+    syncKnownPrinters,
+    probePrinter,
+    rebootPrinter,
+    runCommand,
+    commandTick,
+    getCommands,
+    _lastPokeStatus: lastPokeStatus,
+    _knownPrinters: knownPrinters,
     _printerHealth: printerHealth,
     _setConfig: (cfg) => { CONFIG = cfg; },
     _resetHealth: () => printerHealth.clear(),

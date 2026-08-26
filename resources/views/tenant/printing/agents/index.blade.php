@@ -12,13 +12,25 @@
     <div class="text-end">
         {{-- ?v= busts any cached copy: a shop that downloaded before was being handed the OLD
              installer by its browser, so a shipped printing fix never reached the counter. --}}
-        <a href="{{ url('/print/agents/download/windows') . '?v=' . $agentVersion }}" class="btn btn-outline-primary">
+        <a href="{{ url('/print/agents/download/windows') . '?version=' . $agentVersion . '&v=' . $agentVersion }}" class="btn btn-outline-primary">
             <i class="ti ti-brand-windows me-1"></i>Download Windows Agent
         </a>
         <div class="small text-muted mt-1">
-            Version <strong>{{ $agentVersion }}</strong> — the agent prints this in its log on start;
+            Latest version <strong>{{ $agentVersion }}</strong> — the agent prints this in its log on start;
             if it shows anything older, the download was cached.
         </div>
+        @if(!empty($agentBuilds) && count($agentBuilds) > 1)
+        {{-- Version history: keep the previous compatible builds available so a shop can roll back if
+             a new build misbehaves. The counter's current agent keeps running until it reinstalls. --}}
+        <div class="small text-muted mt-2">
+            <span class="me-1">Previous builds:</span>
+            @foreach($agentBuilds as $build)
+                @if($build['version'] !== $agentVersion)
+                    <a class="me-2" href="{{ url('/print/agents/download/windows') . '?version=' . $build['version'] }}">{{ $build['version'] }} <span class="text-muted">({{ $build['size_mb'] }} MB)</span></a>
+                @endif
+            @endforeach
+        </div>
+        @endif
     </div>
     @endcan
 </div>

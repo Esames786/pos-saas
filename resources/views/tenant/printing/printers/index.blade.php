@@ -33,6 +33,7 @@
                     <th>IP / Port</th>
                     <th>Default</th>
                     <th>Status</th>
+                    <th>Health</th>
                     <th></th>
                 </tr>
             </thead>
@@ -59,7 +60,29 @@
                             {{ $p->is_active ? 'Active' : 'Inactive' }}
                         </span>
                     </td>
+                    <td>
+                        @php
+                            $net  = $p->printer_type === 'network' && $p->ip_address;
+                            $ok   = $p->last_ping_ok;
+                            $hcls = $ok === null ? 'secondary' : ($ok ? 'success' : 'danger');
+                            $htxt = $ok === null ? 'Unknown' : ($ok ? 'Online' . ($p->last_ping_ms !== null ? ' · ' . $p->last_ping_ms . 'ms' : '') : 'Offline');
+                        @endphp
+                        <span class="printer-health badge bg-{{ $net ? $hcls : 'light text-muted' }}"
+                              data-printer-id="{{ $p->id }}" data-net="{{ $net ? 1 : 0 }}"
+                              @if($p->last_ping_at) title="checked {{ $p->last_ping_at->diffForHumans() }}" @endif>{{ $net ? $htxt : '—' }}</span>
+                    </td>
                     <td class="text-end">
+                        @if($p->printer_type === 'network' && $p->ip_address)
+                            @can('tenant.printing.printers.ping')
+                                <button class="btn btn-sm btn-outline-primary" data-printer-test="{{ $p->id }}" title="Test connection to this printer">Test</button>
+                            @endcan
+                            @can('tenant.printing.printers.reset')
+                                <button class="btn btn-sm btn-outline-secondary" data-printer-reset="{{ $p->id }}" title="Soft reset — clear a stuck buffer">Reset</button>
+                            @endcan
+                            @can('tenant.printing.printers.reboot')
+                                <button class="btn btn-sm btn-outline-warning" data-printer-reboot="{{ $p->id }}" title="Reboot the printer">Reboot</button>
+                            @endcan
+                        @endif
                         @can('tenant.printing.printers.update')
                             <button class="btn btn-sm btn-light"
                                     data-bs-toggle="modal"
@@ -75,7 +98,7 @@
                     </td>
                 </tr>
                 @empty
-                <tr><td colspan="11" class="text-center text-muted py-4">No printers configured.</td></tr>
+                <tr><td colspan="12" class="text-center text-muted py-4">No printers configured.</td></tr>
                 @endforelse
             </tbody>
         </table>
@@ -244,4 +267,69 @@
     </div>
 </div>
 @endcan
+
+{{-- PRINTER-HEALTH-1: live status + Test / Reset / Reboot (the agent executes on the LAN) --}}
+<script>
+(function () {
+    const csrf  = '{{ csrf_token() }}';
+    const base  = @json(url('/printing/printers'));
+    const toast = (msg) => window.Swal
+        ? Swal.fire({ toast: true, position: 'top-end', timer: 4500, showConfirmButton: false, title: msg })
+        : alert(msg);
+
+    function paint(el, ok, ms) {
+        el.className = 'printer-health badge bg-' + (ok === null ? 'secondary' : (ok ? 'success' : 'danger'));
+        el.textContent = ok === null ? 'Unknown' : (ok ? ('Online' + (ms != null ? ' · ' + ms + 'ms' : '')) : 'Offline');
+    }
+    async function refresh(id) {
+        const el = document.querySelector('.printer-health[data-printer-id="' + id + '"]');
+        if (!el || el.dataset.net !== '1') return null;
+        try {
+            const d = await fetch(base + '/' + id + '/status', { headers: { Accept: 'application/json' } }).then(r => r.json());
+            paint(el, d.last_ping_ok, d.last_ping_ms);
+            return d;
+        } catch (e) { return null; }
+    }
+    const refreshAll = () => document.querySelectorAll('.printer-health[data-net="1"]').forEach(el => refresh(el.dataset.printerId));
+
+    // Test / Reboot ride the command queue → poll the command result and toast it.
+    async function command(id, action, label) {
+        const el = document.querySelector('.printer-health[data-printer-id="' + id + '"]');
+        if (el) { el.className = 'printer-health badge bg-info'; el.textContent = label + '…'; }
+        const r = await fetch(base + '/' + id + '/' + action, {
+            method: 'POST', headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' },
+        }).catch(() => null);
+        if (!r || !r.ok) { toast(label + ' failed' + (r ? ' (' + r.status + ')' : '')); refresh(id); return; }
+        let tries = 0;
+        const iv = setInterval(async () => {
+            tries++;
+            const s = await refresh(id);
+            if (s && s.command && (s.command.status === 'done' || s.command.status === 'failed')) {
+                clearInterval(iv);
+                toast(label + ' — ' + s.command.status + (s.command.result ? ': ' + s.command.result : ''));
+            } else if (tries > 8) {
+                clearInterval(iv);
+                toast(label + ' sent — no reply yet. Is the print agent running?');
+            }
+        }, 1800);
+    }
+
+    document.querySelectorAll('[data-printer-test]').forEach((b) =>
+        b.addEventListener('click', () => command(b.dataset.printerTest, 'ping', 'Test')));
+    document.querySelectorAll('[data-printer-reboot]').forEach((b) =>
+        b.addEventListener('click', () => { if (confirm('Reboot this printer now? It will restart.')) command(b.dataset.printerReboot, 'reboot', 'Reboot'); }));
+    // Soft reset rides the print pipeline (ESC @) — fire and confirm; no command result to poll.
+    document.querySelectorAll('[data-printer-reset]').forEach((b) =>
+        b.addEventListener('click', async () => {
+            if (!confirm('Send a soft reset (clear the buffer) to this printer?')) return;
+            const r = await fetch(base + '/' + b.dataset.printerReset + '/reset', {
+                method: 'POST', headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' },
+            }).catch(() => null);
+            toast(r && r.ok ? 'Reset sent to the printer.' : 'Reset failed.');
+        }));
+
+    refreshAll();
+    setInterval(refreshAll, 8000);
+})();
+</script>
 @endsection

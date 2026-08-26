@@ -602,6 +602,11 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 Route::post('/printing/printers', [PrinterController::class, 'store'])->name('tenant.printing.printers.store');
                 Route::put('/printing/printers/{printer}', [PrinterController::class, 'update'])->name('tenant.printing.printers.update');
                 Route::delete('/printing/printers/{printer}', [PrinterController::class, 'destroy'])->name('tenant.printing.printers.destroy');
+                // PRINTER-HEALTH-1: live status + remote Test / Reset / Reboot (executed by the agent).
+                Route::get('/printing/printers/{printer}/status', [PrinterController::class, 'status'])->name('tenant.printing.printers.status');
+                Route::post('/printing/printers/{printer}/ping', [PrinterController::class, 'ping'])->name('tenant.printing.printers.ping');
+                Route::post('/printing/printers/{printer}/reset', [PrinterController::class, 'reset'])->name('tenant.printing.printers.reset');
+                Route::post('/printing/printers/{printer}/reboot', [PrinterController::class, 'reboot'])->name('tenant.printing.printers.reboot');
                 Route::post('/printing/terminal-settings', [PrinterController::class, 'saveTerminalSettings'])->name('tenant.printing.terminal-settings.save');
 
                 // Printing — Category Mappings
@@ -1078,5 +1083,8 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
             Route::get('/pending', [PrintAgentApiController::class, 'pending'])->name('tenant.api.print-agent.pending');
             Route::post('/jobs/{printJob}/printed', [PrintAgentApiController::class, 'printed'])->name('tenant.api.print-agent.jobs.printed');
             Route::post('/jobs/{printJob}/failed', [PrintAgentApiController::class, 'failed'])->name('tenant.api.print-agent.jobs.failed');
+            // v2.5.0 remote Test/Reboot commands.
+            Route::get('/commands', [PrintAgentApiController::class, 'commands'])->name('tenant.api.print-agent.commands');
+            Route::post('/commands/{printAgentCommand}/result', [PrintAgentApiController::class, 'commandResult'])->name('tenant.api.print-agent.commands.result');
         });
     });

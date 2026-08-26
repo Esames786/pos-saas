@@ -12,6 +12,7 @@ class Printer extends Model
         'branch_id', 'name', 'code', 'printer_type', 'print_role', 'supports_reminder',
         'ip_address', 'port', 'paper_size', 'characters_per_line',
         'is_default', 'is_active', 'agent_enabled', 'last_seen_at', 'last_error', 'notes',
+        'last_ping_ok', 'last_ping_ms', 'last_ping_at',
     ];
 
     protected function casts(): array
@@ -24,6 +25,9 @@ class Printer extends Model
             'last_seen_at'  => 'datetime',
             'port'          => 'integer',
             'characters_per_line' => 'integer',
+            'last_ping_ok'  => 'boolean',
+            'last_ping_ms'  => 'integer',
+            'last_ping_at'  => 'datetime',
         ];
     }
 
