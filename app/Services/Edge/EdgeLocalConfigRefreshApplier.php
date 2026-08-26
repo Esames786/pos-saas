@@ -102,6 +102,11 @@ class EdgeLocalConfigRefreshApplier
      * @param  array<string, array<int, array<string,mixed>>>  $sections
      * @return array{outcome: string, meta: EdgeLocalMeta}
      */
+    /** TEST-ONLY seam (see apply): a production no-op; a subclass may pause here to prove serialization. */
+    protected function beforeConfigCommit(): void
+    {
+    }
+
     public function apply(array $manifest, array $sections): array
     {
         $revision = (int) ($manifest['config_revision'] ?? 0);
@@ -169,6 +174,12 @@ class EdgeLocalConfigRefreshApplier
                 'revision' => $revision, 'from_revision' => $applied,
                 'snapshot' => $manifest['snapshot_uuid'] ?? null, 'stats' => $stats,
             ]);
+
+            // TEST-ONLY seam: fires INSIDE the transaction, holding the meta X-lock + every config-row
+            // X-lock, with the revision already bumped but UNCOMMITTED. Production body is an unconditional
+            // no-op; only a test subclass overrides it (to pause on a barrier and prove a concurrent sale
+            // genuinely serializes on these real locks). It cannot alter production behaviour.
+            $this->beforeConfigCommit();
 
             return ['outcome' => self::OUTCOME_APPLIED, 'meta' => $meta->fresh()];
         });

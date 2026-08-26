@@ -290,4 +290,174 @@ class EdgeSyncRaceMySqlTest extends MySqlTenantTestCase
         // And the earlier envelope is UNCHANGED — a later refresh never rewrites a historical outbox row.
         $this->assertCoherent($before->fresh(), 10, 100.0);
     }
+
+    // ── §C true config-refresh ↔ paid-sale overlap (independent processes, real authorities) ──
+    //
+    // FINDING (certified here): the paid sale and the config refresh genuinely SERIALIZE on the shared
+    // branch row — the sale INSERTs sales_orders (an FK shared-lock on branches.id) while the refresh
+    // UPDATEs branches (an exclusive lock), so whichever authority reaches the row first makes the other
+    // WAIT. On top of that serialization, the sale reads its price AND stamps its config_revision from ONE
+    // MVCC snapshot (REPEATABLE READ) fixed at the sale transaction's first read. Whoever holds the lock
+    // first therefore gives the sale a single coherent generation: it is entirely N or entirely N+1, never
+    // a mixed N-price/N+1-stamp, and the refresh always commits N+1 exactly once. These proofs use GENUINE
+    // temporal overlap (a real authority paused mid-transaction via a test-only seam holding its real
+    // locks) and independent OS processes; the blocked party waits — no deadlock, no partial, no
+    // lock-timeout-as-success.
+
+    private function launch(string $script, array $args, array $env): array
+    {
+        $cmd = array_merge([PHP_BINARY, base_path('tests/MySql/Support/' . $script)], array_map('strval', $args));
+        $pipes = [];
+        $proc = proc_open($cmd, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, base_path(), array_merge(getenv() ?: [], $env, [
+            'EDGE_TEST_TENANT_DB' => $this->tenantDb, 'APP_ENV' => 'testing',
+        ]));
+
+        return ['proc' => $proc, 'pipes' => $pipes];
+    }
+
+    private function collect(array $h): string
+    {
+        $out = trim((string) stream_get_contents($h['pipes'][1]));
+        $err = trim((string) stream_get_contents($h['pipes'][2]));
+        fclose($h['pipes'][1]);
+        fclose($h['pipes'][2]);
+        proc_close($h['proc']);
+
+        return $out !== '' ? $out : 'STDERR:' . $err;
+    }
+
+    private function waitForFile(string $path, float $seconds = 20): bool
+    {
+        $deadline = microtime(true) + $seconds;
+        while (! is_file($path)) {
+            if (microtime(true) > $deadline) {
+                return false;
+            }
+            usleep(5000);
+        }
+
+        return true;
+    }
+
+    private function metaRevision(): int
+    {
+        return (int) DB::connection('tenant')->table('edge_local_meta')->value('last_applied_config_revision');
+    }
+
+    private function assertNoConcurrencyFault(string $out, string $label): void
+    {
+        foreach (['Deadlock', 'Lock wait timeout', 'PDOException', 'pause timeout'] as $bad) {
+            $this->assertStringNotContainsString($bad, $out, "$label must not surface a raw concurrency fault: $out");
+        }
+    }
+
+    /** Coherence: exactly one sale, entirely ONE generation (price and stamp agree), never a mix. */
+    private function assertSaleCoherent(string $saleUuid): int
+    {
+        $this->assertSame(1, DB::connection('tenant')->table('sales_orders')->where('sale_uuid', $saleUuid)->count(), 'exactly one sale, no partial/dup');
+        $row = EdgeSyncOutbox::query()->where('sale_uuid', $saleUuid)->firstOrFail();
+        $env = $row->envelopeArray();
+        $envRevision = (int) $row->config_revision;
+        $linePrice = (float) $env['lines'][0]['unit_price'];
+        $this->assertSame($envRevision, (int) $env['config_revision'], 'stamp consistent inside the envelope');
+        $this->assertContains($envRevision, [10, 11], 'the sale is one of the two whole generations');
+        // The FORBIDDEN mixes — a snapshot from one generation carrying the OTHER generation stamp.
+        $this->assertFalse($linePrice === 100.0 && $envRevision !== 10, 'rev-10 price with a non-10 stamp is forbidden');
+        $this->assertFalse($linePrice === 150.0 && $envRevision !== 11, 'rev-11 price with a non-11 stamp is forbidden');
+        $this->assertSame($envRevision === 10 ? 100.0 : 150.0, $linePrice, 'price and stamp describe the SAME generation');
+
+        return $envRevision;
+    }
+
+    private function saleUuidFromOutput(string $out): string
+    {
+        $this->assertStringStartsWith('OK:sale:', $out, "sale worker output: $out");
+
+        return explode(':', $out)[3] ?? '';
+    }
+
+    /**
+     * REFRESH IN-FLIGHT during a whole sale. The REAL refresh authority acquires the meta X-lock + every
+     * config-row X-lock and PAUSES uncommitted (genuinely in-flight). A concurrent REAL paid sale runs
+     * DURING that window; the refresh is then released and commits N+1. The sale is entirely one generation
+     * (never a mix), and the refresh commits exactly once. No deadlock, no lock-timeout-as-success.
+     */
+    public function test_true_overlap_sale_runs_while_a_refresh_is_in_flight_stays_coherent(): void
+    {
+        $this->openShift();
+        $pkg = sys_get_temp_dir() . '/edge_overlap_r_' . Str::random(8) . '.json';
+        file_put_contents($pkg, json_encode($this->refreshPackage(11, 150.0)));
+        $ready = sys_get_temp_dir() . '/edge_ov_Rready_' . Str::random(8);
+        $release = sys_get_temp_dir() . '/edge_ov_Rrelease_' . Str::random(8);
+        @unlink($ready);
+        @unlink($release);
+
+        $r = $this->launch('edge_refresh_pause_worker.php', [$pkg], ['READY_FILE' => $ready, 'RELEASE_FILE' => $release]);
+        $this->assertTrue($this->waitForFile($ready), 'the refresh must reach its in-flight pause holding the locks');
+        $this->assertSame(10, $this->metaRevision(), 'the in-flight refresh is uncommitted — meta still N');
+
+        // The sale runs during the refresh's in-flight window (genuine temporal overlap), THEN we release the
+        // refresh — collecting only after release so the test never self-deadlocks if the sale serializes.
+        $clientUuid = (string) Str::uuid();
+        $sale = $this->launch('edge_sale_pause_worker.php', [$clientUuid, $this->userId, $this->terminalId, $this->productId, 1, $this->cashMethodId, 100], []);
+        usleep(2_500_000);
+        file_put_contents($release, '1');
+
+        $saleOut = $this->collect($sale);
+        $refreshOut = $this->collect($r);
+        @unlink($pkg);
+        @unlink($ready);
+        @unlink($release);
+
+        $this->assertNoConcurrencyFault($saleOut, 'sale');
+        $this->assertNoConcurrencyFault($refreshOut, 'refresh');
+        $this->assertStringStartsWith('OK:refresh:11', $refreshOut, "refresh committed N+1: $refreshOut");
+        $this->assertSame(11, $this->metaRevision(), 'the refresh authority committed N+1 exactly once');
+
+        $this->assertSaleCoherent($this->saleUuidFromOutput($saleOut)); // entirely N or entirely N+1, never mixed
+    }
+
+    /**
+     * REFRESH COMMITS MID-SALE. A REAL paid sale prices its line at N and holds its row locks, PAUSED inside
+     * its transaction before it stamps the config_revision. A concurrent REAL refresh runs fully and commits
+     * N+1 only AFTER the sale releases (it BLOCKS behind the sale's branch-row lock — genuine serialization).
+     * The sale commits entirely N from its own snapshot; the refresh then commits N+1. SALE-WINS ordering.
+     */
+    public function test_true_overlap_refresh_commits_mid_sale_and_the_sale_stays_coherent(): void
+    {
+        $this->openShift();
+        $pkg = sys_get_temp_dir() . '/edge_overlap_r2_' . Str::random(8) . '.json';
+        file_put_contents($pkg, json_encode($this->refreshPackage(11, 150.0)));
+        $ready = sys_get_temp_dir() . '/edge_ov_Sready_' . Str::random(8);
+        $release = sys_get_temp_dir() . '/edge_ov_Srelease_' . Str::random(8);
+        @unlink($ready);
+        @unlink($release);
+
+        // The sale prices at N, inserts its line, and pauses before stamping — its transaction is in flight.
+        $clientUuid = (string) Str::uuid();
+        $sale = $this->launch('edge_sale_pause_worker.php', [$clientUuid, $this->userId, $this->terminalId, $this->productId, 1, $this->cashMethodId, 100], ['READY_FILE' => $ready, 'RELEASE_FILE' => $release]);
+        $this->assertTrue($this->waitForFile($ready), 'the sale must reach its in-flight pause');
+        $this->assertSame(10, $this->metaRevision(), 'no refresh yet — meta N');
+
+        // The refresh starts concurrently and BLOCKS on the sale's branch-row lock (genuine serialization);
+        // we release the sale well within the refresh's lock-wait window so the refresh then proceeds cleanly.
+        $r = $this->launch('edge_refresh_pause_worker.php', [$pkg], []);
+        usleep(2_500_000);
+        $this->assertSame(10, $this->metaRevision(), 'the refresh is blocked behind the in-flight sale — revision not advanced');
+
+        // Release the sale: it commits entirely N; the refresh then unblocks and commits N+1.
+        file_put_contents($release, '1');
+        $saleOut = $this->collect($sale);
+        $refreshOut = $this->collect($r);
+        @unlink($pkg);
+        @unlink($ready);
+        @unlink($release);
+
+        $this->assertNoConcurrencyFault($saleOut, 'sale');
+        $this->assertNoConcurrencyFault($refreshOut, 'refresh');
+        $this->assertStringStartsWith('OK:refresh:11', $refreshOut, "refresh committed N+1 after serializing behind the sale: $refreshOut");
+        $this->assertSame(11, $this->metaRevision(), 'the refresh committed N+1 once the sale released the lock');
+        $gen = $this->assertSaleCoherent($this->saleUuidFromOutput($saleOut));
+        $this->assertSame(10, $gen, 'the sale that won the lock is entirely N (its own snapshot)');
+    }
 }
