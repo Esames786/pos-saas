@@ -1504,11 +1504,14 @@
         });
         return q.join('&');
     };
-    var maybeSave = function (p) {
-        if (!document.getElementById('qr-save').checked) return;
-        var fd = toForm(p);
-        fetch(base + '/save-settings', { method: 'POST', headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' }, body: fd }).catch(function () {});
+    var qrSaveToggle = document.getElementById('qr-save');
+    var saveNow = function () {
+        fetch(base + '/save-settings', { method: 'POST', headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' }, body: toForm(collect()) }).catch(function () {});
     };
+    var maybeSave = function () { if (qrSaveToggle.checked) saveNow(); };
+    // Checking "Save my selection" persists the current picks straight away — not only when an action
+    // (Email/Print/Network) is used — so a reload restores them.
+    qrSaveToggle.addEventListener('change', function () { if (qrSaveToggle.checked) saveNow(); });
 
     document.getElementById('qr-email').addEventListener('click', function () {
         var p = collect(); if (!p.sections.length) { toast('Tick at least one section.', false); return; }
@@ -1543,6 +1546,7 @@
             .then(function (r) { return r.json(); })
             .then(function (res) {
                 var s = res && res.settings; if (!s) return;
+                qrSaveToggle.checked = true;   // a saved selection exists → reflect the toggle as on
                 document.querySelectorAll('.qr-section').forEach(function (c) { c.checked = (s.sections || []).indexOf(c.value) !== -1; c.dispatchEvent(new Event('change')); });
                 document.querySelectorAll('.qr-category').forEach(function (c) { c.checked = (s.category_ids || []).map(String).indexOf(c.value) !== -1; });
                 document.querySelectorAll('.qr-waiter').forEach(function (c) { c.checked = (s.waiter_ids || []).map(String).indexOf(c.value) !== -1; });
@@ -1556,6 +1560,9 @@
                 renderChips();
             }).catch(function () {});
     });
+
+    // Persist any last changes when the modal closes (only while "Save my selection" is on).
+    modalEl.addEventListener('hidden.bs.modal', function () { if (qrSaveToggle.checked) saveNow(); });
 })();
 </script>
 @endcan
