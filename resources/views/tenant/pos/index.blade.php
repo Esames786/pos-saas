@@ -1292,7 +1292,7 @@
 @can('tenant.pos.quick-report-send')
 @php $quickReportDate = app(\App\Support\TenantClock::class)->currentBusinessDate(); @endphp
 <div class="modal fade" id="quickReportModal" tabindex="-1" aria-labelledby="quickReportModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header py-2">
                 <h2 class="modal-title h6 mb-0" id="quickReportModalLabel"><i class="ti ti-send me-1"></i>Quick Report</h2>
