@@ -180,11 +180,15 @@
                 btn.classList.add('btn-secondary', 'text-white');
             });
         });
+        root.querySelector('[data-open-service-time]')?.addEventListener('click', () => {
+            const input = root.querySelector('[name=service_time]');
+            if (input?._flatpickr) input._flatpickr.open();
+            else input?.showPicker?.();
+        });
 
-        // KASHIF-EVENT-FORM-1 — a modern picker on the dates and the sitting
-        // time: type it, pick it, or clear it. Native <input type=date> stays
-        // the underlying field, so a browser without the library still works
-        // and the value posted is unchanged.
+        // KASHIF-EVENT-FORM-1 — dates remain keyboard-friendly; service time
+        // is deliberately selection-only so arbitrary text cannot be entered.
+        // Native date/time fields remain the fallback when Flatpickr is absent.
         if (window.flatpickr) {
             root.querySelectorAll('input[type=date]').forEach(function (el) {
                 if (el._flatpickr) return;
@@ -201,27 +205,17 @@
                 window.flatpickr(el, {
                     enableTime: true, noCalendar: true, dateFormat: 'H:i',
                     altInput: true, altFormat: 'h:i K', time_24hr: false,
-                    allowInput: true, disableMobile: true, minuteIncrement: 15,
-                    // Accept both 21:30 and the operator-friendly 9:30 PM while
-                    // continuing to submit the server's canonical H:i value.
-                    parseDate: function (text) {
-                        const value = String(text || '').trim();
-                        let m = /^(\d{1,2})(?::(\d{1,2}))?\s*(AM|PM)$/i.exec(value);
-                        let hours, minutes;
-                        if (m) {
-                            hours = parseInt(m[1], 10) % 12;
-                            if (m[3].toUpperCase() === 'PM') hours += 12;
-                            minutes = parseInt(m[2] || '0', 10);
-                        } else {
-                            m = /^(\d{1,2})(?::(\d{1,2}))?$/.exec(value);
-                            if (! m) return undefined;
-                            hours = parseInt(m[1], 10);
-                            minutes = parseInt(m[2] || '0', 10);
-                        }
-                        if (hours > 23 || minutes > 59) return undefined;
-                        const parsed = new Date();
-                        parsed.setHours(hours, minutes, 0, 0);
-                        return parsed;
+                    // Selection-only: use the professional clock, AM/PM toggle,
+                    // or a house preset. Arbitrary letters cannot remain in the
+                    // visible field or reach the canonical H:i value.
+                    allowInput: false, disableMobile: true, minuteIncrement: 15,
+                    clickOpens: true,
+                    onReady: function (dates, value, instance) {
+                        if (! instance.altInput) return;
+                        instance.altInput.readOnly = true;
+                        instance.altInput.inputMode = 'none';
+                        instance.altInput.autocomplete = 'off';
+                        instance.altInput.setAttribute('aria-label', 'Select service time');
                     },
                     onChange: function (dates, value) {
                         root.querySelectorAll('[data-time]').forEach(function (button) {

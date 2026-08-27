@@ -1636,9 +1636,9 @@ $(function () {
             el.select2({
                 width: '100%', placeholder: '361 ya biryani…',
                 tags: true, // free-text items punch through the same bar
-                // Nothing until something is typed: a default list pushed the
-                // punched rows off the screen and answered a question nobody asked.
-                minimumInputLength: 1,
+                // Open the first page immediately while keeping code/name
+                // search available in the same focused control.
+                minimumInputLength: 0,
                 ajax: {
                     url: '{{ url('/ajax/products') }}', dataType: 'json', delay: 150,
                     data: params => ({ q: params.term, sellable: 1, page: params.page || 1 }),
@@ -1650,10 +1650,9 @@ $(function () {
         // Old-software loop: the row just landed → the item box opens itself,
         // ready for the NEXT code. No reaching down into the table.
         document.body.classList.add('punch-mode');
-        if (sessionStorage.getItem('punchFocus')) {
-            sessionStorage.removeItem('punchFocus');
-            setTimeout(() => el.select2('open'), 150); // opens with an empty term → minimumInputLength keeps the list closed
-        }
+        setTimeout(() => {
+            if (! punch && document.visibilityState !== 'hidden') el.select2('open');
+        }, 150);
     }
 
     // Row click → its punched data comes BACK UP into the bar for editing;

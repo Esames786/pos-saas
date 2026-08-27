@@ -20,8 +20,12 @@ class CateringClientFeedbackUiRegressionTest extends TestCase
         $this->assertIsString($source);
         $this->assertStringContainsString('templateResult', $source);
         $this->assertStringContainsString('templateSelection', $source);
-        $this->assertStringContainsString('parseDate: function (text)', $source);
-        $this->assertStringContainsString('(AM|PM)', $source);
+        $this->assertStringContainsString('allowInput: false', $source);
+        $this->assertStringContainsString('instance.altInput.readOnly = true', $source);
+        $this->assertStringContainsString('data-open-service-time', file_get_contents(
+            dirname(__DIR__, 2).'/resources/views/tenant/catering/events/partials/event-form-fields.blade.php'
+        ));
+        $this->assertStringNotContainsString('parseDate: function (text)', $source);
         $this->assertStringContainsString("dateFormat: 'H:i'", $source,
             'the friendly AM/PM input must still submit canonical 24-hour time');
     }
@@ -40,5 +44,7 @@ class CateringClientFeedbackUiRegressionTest extends TestCase
         $this->assertStringContainsString('loadPunchInstructions(row, idx)', $source);
         $this->assertStringContainsString("unitCode: p.unit_code || '—'", $source);
         $this->assertStringNotContainsString("unitCode: (p.mats", $source);
+        $this->assertStringContainsString('minimumInputLength: 0', $source);
+        $this->assertStringContainsString("el.select2('open')", $source);
     }
 }
