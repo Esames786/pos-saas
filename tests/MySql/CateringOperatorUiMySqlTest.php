@@ -173,8 +173,8 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
         $event = $this->booking();
         $html = $this->render($event);
 
-        $this->assertStringContainsString('Calculated', $html);
-        $this->assertStringContainsString('Quoted Rate', $html);
+        $this->assertStringContainsString('System Rate', $html);
+        $this->assertStringContainsString('Customer Rate', $html);
         $this->assertStringContainsString('Cost Details', $html);
         // chicken 0.5 x 100 + making 300 = 350/KG for the block line
         $this->assertStringContainsString('350.00', $html);
@@ -189,7 +189,17 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
         // item, Qty, the Party-ya-Own question, and the material stepper mount.
         $this->assertStringContainsString('punch-bar', $html);
         $this->assertStringContainsString('punch-item', $html);
-        $this->assertStringContainsString('Party ya Own?', $html);
+        $this->assertStringContainsString('Supply split', $html);
+        $this->assertStringContainsString('punch-live-rate', $html, 'price per selling unit is visible before row save');
+        $this->assertStringContainsString('punch-live-amount', $html, 'line amount is visible before row save');
+        $this->assertStringContainsString('Quotation Total', $html);
+        $this->assertStringContainsString('punch-edit', $html, 'saved rows expose an explicit edit action');
+        $this->assertStringContainsString('clearPunchInstructions', $html,
+            'new/cancelled punches clear managed instructions and the free note');
+        $this->assertStringContainsString('loadPunchInstructions', $html,
+            'editing a saved row loads that row\'s own instructions');
+        $this->assertStringContainsString("unitCode: p.unit_code || '—'", $html,
+            'the sold item unit comes from the profile, never its first material');
 
         // KASHIF-LEGACY-ALIGN-2: the old software's one-glance strip sits on
         // every row's Cost Details — computed from the SAME snapshot the table
@@ -225,8 +235,8 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
         // KASHIF-COSTPANEL-SIMPLE-1: two plain questions per material — kitchen
         // needs how much, and of that the customer brings how much. The two
         // share boxes are LINKED; the panel carries NO duplicate rate control.
-        $this->assertStringContainsString('Kitchen needs', $html);
-        $this->assertStringContainsString('Customer dega', $html);
+        $this->assertStringContainsString('Total kitchen', $html);
+        $this->assertStringContainsString('Party dega', $html);
         $this->assertStringContainsString('Hum denge', $html);
         $this->assertStringContainsString('supply-split', $html);
         $this->assertStringContainsString('change rate', $html, 'the part\'s system rate is changeable right beside it');
@@ -237,7 +247,7 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
         // KASHIF-ORDER-PUNCH §A: Complimentary is an ITEM flag now — the row
         // carries NO trigger link; a flagged item lands at zero by itself.
         $this->assertStringNotContainsString('Complimentary?', $html);
-        $this->assertStringContainsString('event_material_qty', $html);
+        $this->assertStringContainsString('our_supplied_qty', $html);
         $this->assertStringNotContainsString('rate_basis</', $html,
             'schema words stay out of the operator screen');
     }

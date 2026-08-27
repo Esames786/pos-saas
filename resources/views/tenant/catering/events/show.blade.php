@@ -330,7 +330,7 @@
                         <input id="punch-qty" type="number" step="0.001" min="0.001" class="form-control text-end" style="width:110px" value="10">
                     </div>
                     <div class="d-none punch-step" id="punch-seg-wrap">
-                        <span class="form-label fs-12 text-muted mb-1 d-block">Party ya Own? — <kbd>O</kbd>/<kbd>P</kbd> phir <kbd>Enter</kbd></span>
+                        <span class="form-label fs-12 text-muted mb-1 d-block">Supply split — <kbd>O</kbd>/<kbd>P</kbd> phir <kbd>Enter</kbd></span>
                         {{-- Checkbox-shaped, so the chosen state is obvious at a
                              glance; Enter/Space on the focused one selects it. --}}
                         <div class="btn-group" id="punch-seg">
@@ -353,6 +353,16 @@
                         </select>
                         <input id="punch-instr" type="text" class="form-control mt-1" placeholder="Additional note (optional)">
                     </div>
+                    <div class="d-none punch-step border rounded px-3 py-2 bg-body" id="punch-price" style="min-width:220px">
+                        <div class="d-flex justify-content-between gap-3 fs-12 text-muted">
+                            <span>Customer rate / <span id="punch-price-unit">unit</span></span>
+                            <strong class="text-body" id="punch-live-rate">0.00</strong>
+                        </div>
+                        <div class="d-flex justify-content-between gap-3 fw-bold">
+                            <span>Line amount</span>
+                            <span id="punch-live-amount">0.00</span>
+                        </div>
+                    </div>
                     <button type="button" class="btn btn-warning fw-bold d-none punch-step" id="punch-commit">Row save <span class="fs-12 opacity-75">(Ctrl+Enter)</span></button>
                     <button type="button" class="btn btn-link btn-sm text-muted d-none punch-step" id="punch-cancel">Esc — cancel</button>
                 </div>
@@ -368,9 +378,9 @@
                             <th style="width:80px;" class="text-end">Qty</th>
                             <th style="width:85px;">Unit</th>
                             <th style="width:100px;" class="text-end"
-                                data-bs-toggle="tooltip" title="What the dish's cost blocks work out to, per unit. Read-only — it moves when quantities or applied rates move.">Calculated</th>
+                                data-bs-toggle="tooltip" title="System Calculated Rate: what the configured materials and making charges work out to per selling unit.">System Rate</th>
                             <th style="width:115px;" class="text-end"
-                                data-bs-toggle="tooltip" title="What the customer is actually quoted. For a block-costed dish it follows the calculated rate unless an agreed rate was set in Cost Details.">Quoted Rate</th>
+                                data-bs-toggle="tooltip" title="Customer Quoted Rate: what the customer actually pays per selling unit. It follows the system rate unless an agreed override is recorded.">Customer Rate</th>
                             <th style="width:100px;" class="text-end">Amount</th>
                             <th style="min-width:140px;">Instructions</th>
                             <th style="width:36px;"></th>
@@ -489,7 +499,10 @@
                                        name="lines[{{ $i }}][instructions]" value="{{ $line->instructions }}"
                                        placeholder="Additional note">
                             </td>
-                            <td class="align-middle"><button type="button" class="btn btn-sm btn-link text-danger remove-line p-0"><i class="ti ti-x"></i></button></td>
+                            <td class="align-middle text-nowrap">
+                                <button type="button" class="btn btn-sm btn-link text-primary punch-edit p-0 me-1" title="Edit this item"><i class="ti ti-pencil"></i></button>
+                                <button type="button" class="btn btn-sm btn-link text-danger remove-line p-0" title="Remove this item"><i class="ti ti-x"></i></button>
+                            </td>
                         </tr>
                         @if($lineHasBlocks)
                         <tr class="collapse cost-details-row" id="cost-details-{{ $line->id }}">
@@ -515,8 +528,10 @@
         </div>
         <div class="card-body border-top">
             <div class="row justify-content-end">
-                <div class="col-lg-5">
-                    <table class="table table-sm mb-0">
+                <div class="col-xl-5 col-lg-6">
+                    <div class="border rounded shadow-sm overflow-hidden" id="estimate-totals-card">
+                    <div class="px-3 py-2 bg-body-secondary fw-semibold">Quotation Total</div>
+                    <table class="table table-sm mb-0 align-middle">
                         <tr>
                             <td class="text-muted">Subtotal</td>
                             <td class="text-end" id="t-subtotal">0.00</td>
@@ -559,11 +574,12 @@
                                        name="tax_amount" value="{{ $current->tax_amount }}">
                             </td>
                         </tr>
-                        <tr class="fw-bold fs-16">
-                            <td>Net Total</td>
+                        <tr class="fw-bold fs-18 table-warning">
+                            <td>NET TOTAL</td>
                             <td class="text-end" id="t-grand">0.00</td>
                         </tr>
                     </table>
+                    </div>
                     @if($current->estimated_material_cost !== null)
                         <div class="border rounded p-2 mt-2 bg-light">
                             <div class="d-flex justify-content-between">
@@ -1328,20 +1344,17 @@ $(document).on('keydown', '[data-act] input', function (e) {
     }
 });
 
-// KASHIF-COSTPANEL-SIMPLE-1: "Customer dega / Hum denge" are ONE number shown
-// twice — the sum is always the kitchen total, so editing either box fills
-// the other and the two shares can never contradict each other.
-function syncSplit(box, fromCustomer) {
-    const total = parseFloat(box.data('total')) || 0;
-    const src = fromCustomer ? box.find('.split-customer') : box.find('.split-ours');
-    let v = parseFloat(src.val());
-    if (isNaN(v) || v < 0) v = 0;
-    if (v > total) { v = total; src.val(+v.toFixed(4)); }
-    const other = +(total - v).toFixed(4);
-    (fromCustomer ? box.find('.split-ours') : box.find('.split-customer')).val(other);
+// Client entry contract: both fields are quantities somebody will physically
+// provide. They add up to the kitchen total; neither silently subtracts from
+// or clamps the other.
+function syncSplit(box) {
+    const ours = Math.max(0, parseFloat(box.find('.split-ours').val()) || 0);
+    const customer = Math.max(0, parseFloat(box.find('.split-customer').val()) || 0);
+    box.find('.split-total').val(+(ours + customer).toFixed(4));
 }
-$(document).on('input', '.supply-split .split-customer', function () { syncSplit($(this).closest('.supply-split'), true); });
-$(document).on('input', '.supply-split .split-ours', function () { syncSplit($(this).closest('.supply-split'), false); });
+$(document).on('input', '.supply-split .split-customer, .supply-split .split-ours', function () {
+    syncSplit($(this).closest('.supply-split'));
+});
 
 // The part's system rate hides behind one small "change rate" click.
 $(document).on('click', '.js-rate-toggle', function () {
@@ -1439,7 +1452,10 @@ $(function () {
                     ${instructions.length ? `<select class="form-select form-select-sm instr-select" multiple name="lines[${i}][instruction_ids][]" data-placeholder="Kitchen instructions…">${instructionOptions()}</select>` : ''}
                     <input type="text" class="form-control form-control-sm mt-1" name="lines[${i}][instructions]" value="${_.escape(line.instructions || '')}" placeholder="Additional note">
                 </td>
-                <td class="align-middle"><button type="button" class="btn btn-sm btn-link text-danger remove-line p-0"><i class="ti ti-x"></i></button></td>
+                <td class="align-middle text-nowrap">
+                    <button type="button" class="btn btn-sm btn-link text-primary punch-edit p-0 me-1" title="Edit this item"><i class="ti ti-pencil"></i></button>
+                    <button type="button" class="btn btn-sm btn-link text-danger remove-line p-0" title="Remove this item"><i class="ti ti-x"></i></button>
+                </td>
             </tr>`);
         $('#lines-body').append(row);
         initInstrSelect(row);
@@ -1647,9 +1663,10 @@ $(function () {
     // settings come up into the bar. Enter writes them back as hidden inputs on
     // that row — still nothing saved until Save Estimate, exactly like a new
     // punch. Add and edit behave identically, which is the whole point.
-    $(document).on('click', '.punch-mode #lines-body tr[data-row]:not(.punch-row)', function (e) {
-        if ($(e.target).closest('input,select,button,a,.select2,.quoted-live,[data-act]').length) return;
-        const row = $(this);
+    $(document).on('click', '.punch-mode #lines-body tr[data-row]:not(.punch-row) .punch-edit', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const row = $(this).closest('tr');
         const idx = (row.find('[name^="lines["]').first().attr('name').match(/lines\[(\d+)\]/) || [])[1];
         if (idx === undefined) return;
         const collapseBtn = row.find('[data-bs-target^="#cost-details-"]');
@@ -1671,6 +1688,7 @@ $(function () {
             mats, editRow: row.attr('data-row'), editIdx: idx, editSaved: true,
         };
         $('#punch-item').empty().append(new Option('EDIT — ' + punch.name, 'edit', true, true)).trigger('change');
+        loadPunchInstructions(row, idx);
         $('.punch-step').removeClass('d-none');
         if (! mats.length || ! punch.party) $('#punch-seg-wrap').addClass('d-none');
         punchSetMode(punch.mode);
@@ -1681,9 +1699,10 @@ $(function () {
 
     // Click an UNSAVED punch row → its data comes back up into the bar; Enter
     // rebuilds that same row.
-    $(document).on('click', '.punch-mode #lines-body tr.punch-row', function (e) {
-        if ($(e.target).closest('input,select,button,a,.select2').length) return;
-        const row = $(this);
+    $(document).on('click', '.punch-mode #lines-body tr.punch-row .punch-edit-unsaved', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const row = $(this).closest('tr');
         const idx = (row.find('[name^="lines["]').first().attr('name').match(/lines\[(\d+)\]/) || [])[1];
         const val = f => row.find('[name="lines[' + idx + '][' + f + ']"]').val();
         const qty = parseFloat(row.find('.line-qty').val()) || 0;
@@ -1692,12 +1711,13 @@ $(function () {
         row.find('[name*="[materials]["][name$="[label]"]').each(function () {
             const j = (this.name.match(/\[materials\]\[(\d+)\]/) || [])[1];
             const g = k => row.find('[name="lines[' + idx + '][materials][' + j + '][' + k + ']"]').val();
-            const kg = parseFloat(g('kg')) || 0;
+            const total = parseFloat(g('kg')) || 0;
+            const cust = Math.min(parseFloat(g('cust')) || 0, total);
             mats.push({
                 label: this.value, name: this.value, unit: 'KG',
-                ratio: qty > 0 ? kg / qty : 0,
+                ratio: qty > 0 ? total / qty : 0,
                 rate: parseFloat(g('rate')) || 0, origRate: parseFloat(g('rate')) || 0,
-                kg, kgTouched: true, cust: parseFloat(g('cust')) || 0,
+                own: Math.max(0, total - cust), ownTouched: true, cust,
             });
         });
 
@@ -1733,9 +1753,10 @@ $(function () {
             name, unitId: p.unit_id || null, mode: 'OWN',
             party: p.party !== false,
             dishRate: p.rate || 0,
-            unitCode: (p.mats && p.mats[0] && p.mats[0].unit) || 'KG',
-            mats: (p.mats || []).map(m => ({ ...m, kg: null, cust: 0, origRate: m.rate })),
+            unitCode: p.unit_code || '—',
+            mats: (p.mats || []).map(m => ({ ...m, own: null, cust: 0, ownTouched: false, origRate: m.rate })),
         };
+        clearPunchInstructions();
         $('#punch-unit').text('');
         $('.punch-step').removeClass('d-none');
         // Product-level rule: no party allowed (or no materials) → the
@@ -1771,47 +1792,64 @@ $(function () {
         const partyCol = punch.party;
         $('#punch-mats').html('<table class="table table-sm mb-0" style="max-width:760px"><thead><tr>'
             + '<th>Linked material</th><th class="text-end">Rate (latest)</th>'
-            + '<th class="text-end">Kitchen KG</th>'
-            + (partyCol ? '<th class="text-end text-success">گاہک KG · 0 rate</th>' : '')
+            + '<th class="text-end">Hum denge</th>'
+            + (partyCol ? '<th class="text-end text-success">Party dega</th>' : '')
+            + '<th class="text-end">Total kitchen</th>'
             + '</tr></thead><tbody>'
             + punch.mats.map((m, i) => '<tr>'
                 + '<td title="' + _.escape(m.label || m.name) + '">' + _.escape(punchShort(m.name || m.label))
                     + (punch.editRow ? '' : ' <span class="fs-12 text-muted">recipe ' + m.ratio + ' ' + _.escape(m.unit) + '</span>')
-                    + '</td>'
+                + '</td>'
                 + '<td class="text-end"><input class="form-control form-control-sm text-end pm-rate" data-i="' + i + '" style="width:90px;display:inline-block" value="' + m.rate + '"></td>'
-                + '<td class="text-end"><input class="form-control form-control-sm text-end pm-kg" data-i="' + i + '" style="width:90px;display:inline-block" value="' + punchFmt(m.kgTouched ? m.kg : qty * m.ratio) + '"></td>'
+                + '<td class="text-end"><input class="form-control form-control-sm text-end pm-own" data-i="' + i + '" style="width:90px;display:inline-block" value="' + punchFmt(m.ownTouched ? m.own : qty * m.ratio) + '"></td>'
                 + (partyCol
                     ? '<td class="text-end"><input class="form-control form-control-sm text-end pm-cust" data-i="' + i + '" style="width:90px;display:inline-block;border-color:var(--bs-success)" value="' + punchFmt(m.cust || 0) + '" ' + (punch.mode !== 'PARTY' ? 'disabled' : '') + '></td>'
                     : '')
+                + '<td class="text-end fw-semibold"><span class="pm-total" data-i="' + i + '">' + punchFmt((m.ownTouched ? m.own : qty * m.ratio) + (m.cust || 0)) + '</span> ' + _.escape(m.unit || '') + '</td>'
                 + '</tr>').join('')
             + '</tbody></table>');
     }
     $(document).on('input', '#punch-qty', function () {
         if (!punch) return;
         const qty = parseFloat(this.value) || 0;
-        $('#punch-mats .pm-kg').each(function () {
+        $('#punch-mats .pm-own').each(function () {
             const i = +this.dataset.i;
-            if (!punch.mats[i].kgTouched) this.value = punchFmt(qty * punch.mats[i].ratio);
+            if (!punch.mats[i].ownTouched) this.value = punchFmt(qty * punch.mats[i].ratio);
         });
+        punchRefreshTotals();
         punchLive();
     });
     $(document).on('input', '#punch-mats input', function () {
         const i = +this.dataset.i, m = punch.mats[i];
-        if (this.classList.contains('pm-kg')) { m.kgTouched = true; m.kg = parseFloat(this.value) || 0; }
+        if (this.classList.contains('pm-own')) { m.ownTouched = true; m.own = parseFloat(this.value) || 0; }
         if (this.classList.contains('pm-rate')) { m.rate = parseFloat(this.value) || 0; }
         if (this.classList.contains('pm-cust')) { m.cust = parseFloat(this.value) || 0; }
+        punchRefreshTotals();
         punchLive();
     });
+    function punchRefreshTotals() {
+        const qty = parseFloat($('#punch-qty').val()) || 0;
+        $('#punch-mats .pm-total').each(function () {
+            const m = punch.mats[+this.dataset.i];
+            const own = m.ownTouched ? m.own : qty * m.ratio;
+            this.textContent = punchFmt(Math.max(0, own || 0) + Math.max(0, m.cust || 0));
+        });
+    }
     function punchLive() {
         if (!punch) return;
         const qty = parseFloat($('#punch-qty').val()) || 0;
         let txt = punch.mats.map((m, i) => {
-            const kg = m.kgTouched ? m.kg : qty * m.ratio;
-            const cust = Math.min(m.cust || 0, kg);
-            return _.escape(m.name) + ': kitchen <b>' + punchFmt(kg) + '</b>'
-                + (cust > 0 ? ' (گاہک <b>' + punchFmt(cust) + '</b> · ہم ' + punchFmt(kg - cust) + ')' : '');
+            const own = Math.max(0, m.ownTouched ? m.own : qty * m.ratio);
+            const cust = Math.max(0, m.cust || 0);
+            return _.escape(m.name) + ': hum <b>' + punchFmt(own) + '</b>'
+                + (cust > 0 ? ' · party <b>' + punchFmt(cust) + '</b>' : '')
+                + ' · total <b>' + punchFmt(own + cust) + '</b> ' + _.escape(m.unit || '');
         }).join(' · ');
         $('#punch-live').html(txt || (punch.name ? _.escape(punch.name) + ' — Enter se save' : ''));
+        const calc = punchLineCalc(qty);
+        $('#punch-price-unit').text(punch.unitCode || 'unit');
+        $('#punch-live-rate').text(calc.rate.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}));
+        $('#punch-live-amount').text(calc.amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}));
     }
 
     // Enter ki qatar: qty → (O/P) → rate→kg→(گاہک) per material → commit.
@@ -1820,7 +1858,7 @@ $(function () {
         if (punch && punch.mats.length) seq.push(document.getElementById('punch-own'));
         $('#punch-mats tbody tr').each(function () {
             const r = $(this);
-            seq.push(r.find('.pm-rate')[0], r.find('.pm-kg')[0]);
+            seq.push(r.find('.pm-rate')[0], r.find('.pm-own')[0]);
             if (punch.mode === 'PARTY') seq.push(r.find('.pm-cust')[0]);
         });
         // The note is the LAST field — only its Enter commits the row.
@@ -1861,7 +1899,26 @@ $(function () {
         $('#punch-item').val(null).trigger('change');
         $('.punch-step').addClass('d-none');
         $('#punch-mats,#punch-live').empty();
+        clearPunchInstructions();
+    }
+
+    function clearPunchInstructions() {
         $('#punch-instr').val('');
+        $('#punch-instr-ids option.punch-temporary').remove();
+        $('#punch-instr-ids').val([]).trigger('change');
+    }
+
+    function loadPunchInstructions(row, idx) {
+        clearPunchInstructions();
+        const source = row.find('[name="lines[' + idx + '][instruction_ids][]"]');
+        source.each(function () {
+            const id = String(this.value);
+            if (! $('#punch-instr-ids option[value="' + id + '"]').length) {
+                $('#punch-instr-ids').append(new Option($(this).text() || id, id, false, false)).find('option:last').addClass('punch-temporary');
+            }
+        });
+        $('#punch-instr-ids').val(source.map(function () { return String(this.value); }).get()).trigger('change');
+        $('#punch-instr').val(row.find('[name="lines[' + idx + '][instructions]"]').val() || '');
     }
 
     // KASHIF-ORDER-PUNCH §B3 — NOTHING is saved until the operator saves.
@@ -1881,9 +1938,8 @@ $(function () {
         const making = Math.max(0, (punch.dishRate || 0) - baseMats);
         let amount = making * qty;
         punch.mats.forEach(m => {
-            const kg = m.kgTouched ? m.kg : qty * m.ratio;
-            const ours = Math.max(0, kg - Math.min(m.cust || 0, kg));
-            amount += ours * m.rate;
+            const own = Math.max(0, m.ownTouched ? m.own : qty * m.ratio);
+            amount += own * m.rate;
         });
         amount = Math.round(Math.max(0, amount) * 100) / 100;
         return { amount, rate: qty > 0 ? Math.round((amount / qty) * 100) / 100 : 0 };
@@ -1900,20 +1956,21 @@ $(function () {
 
         return '<table class="table table-sm mb-0 fs-12" style="max-width:680px">'
             + '<thead><tr><th>Part</th><th class="text-end">Rate</th><th class="text-end">Kitchen</th>'
-            + '<th class="text-end">Customer</th><th class="text-end">We charge</th></tr></thead><tbody>'
+            + '<th class="text-end">Hum denge</th><th class="text-end">Party dega</th><th class="text-end">We charge</th></tr></thead><tbody>'
             + mats.map(m => {
-                const kg = m.kgTouched ? m.kg : qty * m.ratio;
-                const cust = Math.min(m.cust || 0, kg);
-                const ours = Math.max(0, kg - cust);
+                const ours = Math.max(0, m.ownTouched ? m.own : qty * m.ratio);
+                const cust = Math.max(0, m.cust || 0);
+                const total = ours + cust;
                 return '<tr><td>' + esc(punchShort(m.name || m.label)) + '</td>'
                     + '<td class="text-end">' + money(m.rate) + '</td>'
-                    + '<td class="text-end">' + punchFmt(kg) + '</td>'
+                    + '<td class="text-end fw-semibold">' + punchFmt(total) + '</td>'
+                    + '<td class="text-end">' + punchFmt(ours) + '</td>'
                     + '<td class="text-end text-success-emphasis">' + punchFmt(cust) + '</td>'
                     + '<td class="text-end">' + money(ours * m.rate) + '</td></tr>';
             }).join('')
             + (makingPU > 0
                 ? '<tr><td>Making <span class="text-muted">(background)</span></td><td class="text-end">'
-                    + money(makingPU) + '</td><td class="text-end">—</td><td class="text-end">—</td>'
+                    + money(makingPU) + '</td><td class="text-end">—</td><td class="text-end">—</td><td class="text-end">—</td>'
                     + '<td class="text-end">' + money(makingPU * qty) + '</td></tr>'
                 : '')
             + '</tbody></table>';
@@ -1927,10 +1984,11 @@ $(function () {
             staged.each(function () {
                 const j = (this.name.match(/\[materials\]\[(\d+)\]/) || [])[1];
                 const g = k => row.find('[name="lines[' + idx + '][materials][' + j + '][' + k + ']"]').val();
-                const kg = parseFloat(g('kg')) || 0;
-                mats.push({ label: this.value, name: this.value, unit: 'KG', ratio: qty > 0 ? kg / qty : 0,
+                const total = parseFloat(g('kg')) || 0;
+                const cust = Math.min(parseFloat(g('cust')) || 0, total);
+                mats.push({ label: this.value, name: this.value, unit: 'KG', ratio: qty > 0 ? total / qty : 0,
                     rate: parseFloat(g('rate')) || 0, origRate: parseFloat(g('rate')) || 0,
-                    kg, kgTouched: true, cust: parseFloat(g('cust')) || 0 });
+                    own: Math.max(0, total - cust), ownTouched: true, cust });
             });
 
             return mats;
@@ -1941,14 +1999,14 @@ $(function () {
         if (! lineId) return mats;
         $('#cost-details-' + lineId).find('table tbody tr').each(function () {
             const r = $(this);
-            const kgInp = r.find('[data-field=event_material_qty]');
-            if (! kgInp.length) return; // charges stay in the background
+            const totalInp = r.find('.split-total');
+            if (! totalInp.length) return; // charges stay in the background
             const label = r.find('td').first().clone().children().remove().end().text().trim();
             const rate = parseFloat(r.find('.rate-edit [data-field=rate]').val()) || 0;
-            const kg = parseFloat(kgInp.val()) || 0;
-            mats.push({ label, name: label, unit: 'KG', ratio: qty > 0 ? kg / qty : 0,
-                rate, origRate: rate, kg, kgTouched: true,
-                cust: parseFloat(r.find('.split-customer').val()) || 0 });
+            const total = parseFloat(totalInp.val()) || 0;
+            const cust = Math.min(parseFloat(r.find('.split-customer').val()) || 0, total);
+            mats.push({ label, name: label, unit: 'KG', ratio: qty > 0 ? total / qty : 0,
+                rate, origRate: rate, own: Math.max(0, total - cust), ownTouched: true, cust });
         });
 
         return mats;
@@ -1964,12 +2022,14 @@ $(function () {
 
         let mats = '';
         punch.mats.forEach((m, j) => {
-            const kg = m.kgTouched ? m.kg : qty * m.ratio;
+            const own = Math.max(0, m.ownTouched ? m.own : qty * m.ratio);
+            const cust = Math.max(0, m.cust || 0);
+            const total = own + cust;
             const p = 'lines[' + idx + '][materials][' + j + ']';
             mats += '<input type="hidden" name="' + p + '[label]" value="' + esc(m.label) + '">'
-                + '<input type="hidden" name="' + p + '[kg]" value="' + esc(kg) + '">'
+                + '<input type="hidden" name="' + p + '[kg]" value="' + esc(total) + '">'
                 + '<input type="hidden" name="' + p + '[rate]" value="' + esc(m.rate) + '">'
-                + '<input type="hidden" name="' + p + '[cust]" value="' + esc(Math.min(m.cust || 0, kg)) + '">';
+                + '<input type="hidden" name="' + p + '[cust]" value="' + esc(cust) + '">';
         });
 
         const supply = punch.mats.filter(m => (m.cust || 0) > 0)
@@ -2004,7 +2064,10 @@ $(function () {
                         + '<i class="ti ti-note me-1"></i>' + (instrLabels.length + (note ? 1 : 0)) + '</span>'
                     : '')
             + '</td>'
-            + '<td class="text-end"><button type="button" class="btn btn-sm btn-link text-danger p-0 punch-remove" title="Remove">&times;</button></td>'
+            + '<td class="text-end text-nowrap">'
+                + '<button type="button" class="btn btn-sm btn-link text-primary p-0 me-1 punch-edit-unsaved" title="Edit this item"><i class="ti ti-pencil"></i></button>'
+                + '<button type="button" class="btn btn-sm btn-link text-danger p-0 punch-remove" title="Remove">&times;</button>'
+            + '</td>'
             + '</tr>'
             + '<tr class="punch-detail d-none" data-detail="p' + idx + '"><td colspan="9" class="bg-body-tertiary">' + detail + '</td></tr>';
     }
@@ -2023,16 +2086,29 @@ $(function () {
             const esc = s => _.escape(String(s == null ? '' : s));
             let html = '';
             punch.mats.forEach((m, j) => {
-                const kg = m.kgTouched ? m.kg : qty * m.ratio;
+                const own = Math.max(0, m.ownTouched ? m.own : qty * m.ratio);
+                const cust = Math.max(0, m.cust || 0);
+                const total = own + cust;
                 const p = 'lines[' + idx + '][materials][' + j + ']';
                 html += '<input type="hidden" name="' + p + '[label]" value="' + esc(m.label) + '">'
-                    + '<input type="hidden" name="' + p + '[kg]" value="' + esc(kg) + '">'
+                    + '<input type="hidden" name="' + p + '[kg]" value="' + esc(total) + '">'
                     + '<input type="hidden" name="' + p + '[rate]" value="' + esc(m.rate) + '">'
-                    + '<input type="hidden" name="' + p + '[cust]" value="' + esc(Math.min(m.cust || 0, kg)) + '">';
+                    + '<input type="hidden" name="' + p + '[cust]" value="' + esc(cust) + '">';
             });
             row.find('td').first().append(html
                 + '<div class="fs-12 text-muted punch-staged">edited — Save Estimate</div>');
             row.find('.line-qty, [name$="[quantity]"]').first().val(qty);
+            const instrIds = ($('#punch-instr-ids').val() || []).map(String);
+            const rowInstr = row.find('[name="lines[' + idx + '][instruction_ids][]"]');
+            if (rowInstr.is('select')) {
+                rowInstr.val(instrIds).trigger('change');
+            } else {
+                rowInstr.remove();
+                instrIds.forEach(id => row.find('td').first().append(
+                    '<input type="hidden" name="lines[' + idx + '][instruction_ids][]" value="' + esc(id) + '">'
+                ));
+            }
+            row.find('[name="lines[' + idx + '][instructions]"]').val($('#punch-instr').val() || '');
             const calc = punchLineCalc(qty);
             row.attr('data-rate', calc.rate);
             row.find('.quoted-live [data-field=quoted_rate]').val(calc.rate.toFixed(2));

@@ -15,6 +15,7 @@ class CustomerLookupController extends Controller
     public function __invoke(Request $request)
     {
         $q = trim((string) $request->query('q', ''));
+        $nameNeedle = mb_strtolower($q);
 
         $customers = Customer::with(['addresses' => fn ($query) => $query->orderByDesc('is_default')->orderBy('id')])
             ->where('status', 'active')
@@ -24,6 +25,14 @@ class CustomerLookupController extends Controller
                         ->orWhere('phone', 'like', "%{$q}%");
                 });
             })
+            // Exact customer/phone first, then prefix matches, then ordinary
+            // contains matches. On a large customer book alphabetical order
+            // made an exact "Tabish" appear below unrelated stale-looking
+            // results and operators could attach the wrong phone to a booking.
+            ->when($q !== '', fn ($query) => $query->orderByRaw(
+                'CASE WHEN LOWER(name) = ? THEN 0 WHEN phone = ? THEN 1 WHEN LOWER(name) LIKE ? THEN 2 WHEN phone LIKE ? THEN 3 ELSE 4 END',
+                [$nameNeedle, $q, $nameNeedle.'%', $q.'%']
+            ))
             ->orderBy('name')
             ->limit(20)
             ->get();

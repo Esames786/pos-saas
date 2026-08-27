@@ -45,6 +45,21 @@ class CustomerUxMySqlTest extends MySqlTenantTestCase
         $this->assertSame('Bilal Khan', $byPhone['customers'][0]['name']);
     }
 
+    public function test_lookup_ranks_exact_customer_before_prefix_and_contains_matches(): void
+    {
+        Customer::create(['name' => 'Mr Tabish', 'phone' => '0300-0000001', 'status' => 'active']);
+        Customer::create(['name' => 'Tabish Ahmed', 'phone' => '0300-0000002', 'status' => 'active']);
+        Customer::create(['name' => 'Tabish', 'phone' => '0300-0000003', 'status' => 'active']);
+
+        $result = app(CustomerLookupController::class)(
+            Request::create('/ajax/customers', 'GET', ['q' => 'Tabish'])
+        )->getData(true);
+
+        $this->assertSame('Tabish', $result['customers'][0]['name']);
+        $this->assertSame('Tabish Ahmed', $result['customers'][1]['name']);
+        $this->assertSame('Mr Tabish', $result['customers'][2]['name']);
+    }
+
     public function test_address_book_defaults_first_address_and_flips_on_explicit_default(): void
     {
         $customer = Customer::create(['name' => 'Address Tester', 'status' => 'active']);

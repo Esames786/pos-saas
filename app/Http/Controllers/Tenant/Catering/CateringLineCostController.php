@@ -53,21 +53,33 @@ class CateringLineCostController extends Controller
             // KASHIF-PARTIAL-SUPPLY-1: the split case — "customer brings 5 KG
             // of the 10". Clamped to the requirement by the service.
             'customer_supplied_qty' => ['nullable', 'numeric', 'min:0'],
+            // When present these are additive operator answers. Keeping them
+            // on the existing endpoint avoids a second permission/route and
+            // lets the service change total + split atomically.
+            'our_supplied_qty' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         try {
-            $this->lineBlocks->setCustomerSupplied(
-                $costBlock,
-                (bool) $data['is_customer_supplied'],
-                isset($data['customer_supplied_qty']) ? (float) $data['customer_supplied_qty'] : null,
-            );
+            if (array_key_exists('our_supplied_qty', $data)) {
+                $this->lineBlocks->setSupplySplit(
+                    $costBlock,
+                    (float) ($data['our_supplied_qty'] ?? 0),
+                    (float) ($data['customer_supplied_qty'] ?? 0),
+                );
+            } else {
+                $this->lineBlocks->setCustomerSupplied(
+                    $costBlock,
+                    (bool) $data['is_customer_supplied'],
+                    isset($data['customer_supplied_qty']) ? (float) $data['customer_supplied_qty'] : null,
+                );
+            }
         } catch (RuntimeException $e) {
             return back()->withErrors(['cost_block' => $e->getMessage()]);
         }
 
         $costBlock->refresh();
         $status = match (true) {
-            (bool) $data['is_customer_supplied'] => "{$costBlock->label} is being supplied by the customer — not charged, and not issued from our store.",
+            $costBlock->isCustomerSupplied() => "{$costBlock->label} is being supplied by the customer — not charged, and not issued from our store.",
             $costBlock->isPartiallyCustomerSupplied() => sprintf(
                 '%s split: customer brings %s %s, we supply and charge for %s %s.',
                 $costBlock->label,

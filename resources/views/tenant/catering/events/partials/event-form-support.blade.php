@@ -40,6 +40,19 @@
                 tags: true,
                 minimumInputLength: 1,
                 placeholder: 'Phone ya naam…',
+                cache: false,
+                templateResult: function (item) {
+                    if (! item.id || ! item.customer) return item.text;
+                    const name = $('<div>').text(item.customer.name || '').html();
+                    const phone = item.customer.phone
+                        ? '<div class="fs-12 text-muted">' + $('<div>').text(item.customer.phone).html() + '</div>'
+                        : '';
+                    return $('<div><strong>' + name + '</strong>' + phone + '</div>');
+                },
+                templateSelection: function (item) {
+                    if (! item.customer) return item.text || '';
+                    return item.customer.phone ? (item.customer.name + ' — ' + item.customer.phone) : item.customer.name;
+                },
                 language: { inputTooShort: () => 'Phone ya naam likhein…', noResults: () => 'Koi match nahi — likha hua naam Enter karein' },
                 dropdownParent: $root.closest('.offcanvas').length ? $root.closest('.offcanvas') : $(document.body),
                 ajax: {
@@ -189,6 +202,34 @@
                     enableTime: true, noCalendar: true, dateFormat: 'H:i',
                     altInput: true, altFormat: 'h:i K', time_24hr: false,
                     allowInput: true, disableMobile: true, minuteIncrement: 15,
+                    // Accept both 21:30 and the operator-friendly 9:30 PM while
+                    // continuing to submit the server's canonical H:i value.
+                    parseDate: function (text) {
+                        const value = String(text || '').trim();
+                        let m = /^(\d{1,2})(?::(\d{1,2}))?\s*(AM|PM)$/i.exec(value);
+                        let hours, minutes;
+                        if (m) {
+                            hours = parseInt(m[1], 10) % 12;
+                            if (m[3].toUpperCase() === 'PM') hours += 12;
+                            minutes = parseInt(m[2] || '0', 10);
+                        } else {
+                            m = /^(\d{1,2})(?::(\d{1,2}))?$/.exec(value);
+                            if (! m) return undefined;
+                            hours = parseInt(m[1], 10);
+                            minutes = parseInt(m[2] || '0', 10);
+                        }
+                        if (hours > 23 || minutes > 59) return undefined;
+                        const parsed = new Date();
+                        parsed.setHours(hours, minutes, 0, 0);
+                        return parsed;
+                    },
+                    onChange: function (dates, value) {
+                        root.querySelectorAll('[data-time]').forEach(function (button) {
+                            const selected = button.dataset.time === value;
+                            button.classList.toggle('btn-secondary', selected);
+                            button.classList.toggle('text-white', selected);
+                        });
+                    },
                 });
             });
         }
