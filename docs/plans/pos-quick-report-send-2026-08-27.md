@@ -108,16 +108,21 @@ All build filters as: `date_from = date_to = <date>`, branch = user's default br
 - **Send to network:** the exact `sendToNetwork()` shape — `PrintJobFactory` `report` job with
   `EscPosPayloadService::buildReport($report)` — but with the unscoped filters + multi-select.
 
-### 3.5 Multi-select — DISPLAY post-filter, engine SQL untouched (safety-driven)
-The engine's `category_id`/`product_id` filter NARROWS the whole report (order-level sections measure
-only those lines) — that would wrongly shrink the overview, which must stay the full day. So the
-multi-select is a **display post-filter**, not an engine WHERE: `SalesReportDocumentService::data()`
-gains an optional `$select` (`category_ids/product_ids/waiter_ids/order_types`) and, AFTER the engine
-computes the full sections, keeps only the picked rows — categories by root id, items by `product_id`,
-waiters/order-types by id — while overview/combos/cancellations/cash-bank stay whole. The ONLY engine
-change is additive: `dimensionReport` rows now carry their raw `id` (waiter_id / order_type) so the
-post-filter can match — no query/number change (Report Center + scheduled report pass no `$select`, so
-their output is byte-identical; regression-tested 20/20).
+### 3.5 Multi-select = engine-level WHOLE-report filter (revised per owner) — additive, cascading
+The owner wants the picks to **cascade**: choose a category (+ its sub-categories) and the ENTIRE
+report — items (even "All items" = all items *within* those categories), waiters, order types,
+overview, NET SALES, cash-bank — follows the selection, AND-composing across dimensions. That is
+exactly the Report Center's own `category_id` behaviour (`isLineNarrowed` → order-level sections
+measure only those lines), extended to multi-value.
+
+`normalizeFilters` gains **`category_ids/product_ids/waiter_ids/order_types`** (arrays, default `[]`),
+applied as `->when($f[…], whereIn/whereExists…)` in the four shared base queries (`salesBase`/
+`linesBase`/`returnsBase`/`returnLinesBase`), with a `categoriesWithDescendants()` union so a parent
+pulls in its children; `isLineNarrowed()` also fires on the arrays. **Purely additive & GUARANTEED safe
+for the Report Center — it passes single-value filters and NEVER these arrays, so every new
+`->when([])` is a no-op and its query/output is byte-identical; proven by the full report regression
+(SalesReportEngine / ReportCenter* / Schedule / SendToNetwork / BusinessDate all green).** No existing
+filter SQL was changed; no duplicate engine (which would drift out of sync).
 
 ### 3.6 Save user setting
 New tenant table **`pos_quick_report_settings`** (`user_id` unique, `payload` json, timestamps). Payload =

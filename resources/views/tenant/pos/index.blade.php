@@ -1334,15 +1334,21 @@
 
                         @if($key === 'categories')
                         <div class="qr-panel ms-4 mt-1" id="qr-panel-categories">
-                            <div class="small text-muted mb-1">Leave all unticked = every category.</div>
-                            <div class="d-flex flex-wrap gap-2">
-                                @foreach($categories as $cat)
+                            <div class="small text-muted mb-1">Leave all unticked = every category. Picking a category also includes its sub-categories &amp; items; the whole report (items, waiters, order types, totals) then follows what you pick.</div>
+                            @foreach($categories as $cat)
+                                <div class="d-flex flex-wrap gap-2 align-items-center mb-1">
                                     <div class="form-check form-check-inline me-0">
                                         <input class="form-check-input qr-category" type="checkbox" value="{{ $cat->id }}" id="qr-cat-{{ $cat->id }}">
-                                        <label class="form-check-label small" for="qr-cat-{{ $cat->id }}">{{ $cat->name }}</label>
+                                        <label class="form-check-label small fw-semibold" for="qr-cat-{{ $cat->id }}">{{ $cat->name }}</label>
                                     </div>
-                                @endforeach
-                            </div>
+                                    @foreach($cat->children as $child)
+                                        <div class="form-check form-check-inline me-0 ms-3">
+                                            <input class="form-check-input qr-category" type="checkbox" value="{{ $child->id }}" id="qr-cat-{{ $child->id }}">
+                                            <label class="form-check-label small text-muted" for="qr-cat-{{ $child->id }}">↳ {{ $child->name }}</label>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            @endforeach
                         </div>
                         @elseif($key === 'items')
                         <div class="qr-panel ms-4 mt-1" id="qr-panel-items">

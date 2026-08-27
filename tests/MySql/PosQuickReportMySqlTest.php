@@ -87,37 +87,52 @@ class PosQuickReportMySqlTest extends MySqlTenantTestCase
         return Request::create('/pos/quick-report', 'GET', array_merge(['date' => $this->date], $params));
     }
 
-    /* ── unscoped + per-section post-filter ─────────────────────────────────────────────────────── */
-    public function test_report_is_unscoped_and_multi_select_narrows_only_its_own_section(): void
+    /* ── unscoped + a filter narrows the WHOLE report (everything cascades) ─────────────────────── */
+    public function test_report_is_unscoped_and_a_filter_narrows_the_whole_report(): void
     {
         Auth::guard('tenant')->login($this->permittedUser());
 
-        // No selection → BOTH terminals' data (unscoped): 2 categories, 2 items, 2 waiters, 2 order types.
+        // No filter → BOTH terminals (unscoped): 2 of every dimension.
         $full = $this->controller()->print($this->req(['sections' => PosQuickReportController::SECTIONS]))->getData();
-        $this->assertCount(2, $full['categories'], 'unscoped: both terminals\' categories (Biryani + Drinks) appear');
-        $this->assertCount(2, $full['items'], 'both items appear');
-        $this->assertCount(2, $full['waiters'], 'both waiters appear');
-        $this->assertCount(2, $full['orderTypes'], 'both order types appear');
-        $this->assertNotNull($full['overview']);
+        $this->assertCount(2, $full['categories'], 'unscoped: both terminals\' categories appear');
+        $this->assertCount(2, $full['items']);
+        $this->assertCount(2, $full['waiters']);
+        $this->assertCount(2, $full['orderTypes']);
 
-        // Category multi-select → ONLY the picked category; overview stays full (2 items still exist).
-        $catOnly = $this->controller()->print($this->req(['sections' => ['overview', 'categories', 'items'], 'category_ids' => [$this->catA]]))->getData();
-        $this->assertCount(1, $catOnly['categories'], 'categories section narrowed to the one picked');
-        $this->assertSame($this->catA, (int) ($catOnly['categories'][0]['id'] ?? 0));
-        $this->assertNotNull($catOnly['overview'], 'overview is NOT narrowed by a category pick (headline stays whole-day)');
+        // category_ids=[catA] → the WHOLE report follows catA's only order (t1 / dine_in / w1 / pA):
+        // items, waiters AND order types all collapse to that one — not just the categories section.
+        $catA = $this->controller()->print($this->req(['sections' => PosQuickReportController::SECTIONS, 'category_ids' => [$this->catA]]))->getData();
+        $this->assertCount(1, $catA['categories'], 'only the picked category');
+        $this->assertCount(1, $catA['items'], 'items follow the category — only pA');
+        $this->assertSame($this->prodA, (int) ($catA['items'][0]->product_id ?? 0));
+        $this->assertCount(1, $catA['waiters'], 'waiters follow the category — only w1 (who sold catA)');
+        $this->assertCount(1, $catA['orderTypes'], 'order types follow the category — only dine_in');
 
-        // Item, waiter, order-type selections each narrow only their own section.
-        $itemOnly = $this->controller()->print($this->req(['sections' => ['items'], 'product_ids' => [$this->prodB], 'all_items' => 0]))->getData();
-        $this->assertCount(1, $itemOnly['items']);
-        $this->assertSame($this->prodB, (int) ($itemOnly['items'][0]->product_id ?? 0));
+        // order_types=[takeaway] AND-composes and narrows the whole report to sale2 (catB / pB / w2).
+        $tk = $this->controller()->print($this->req(['sections' => ['categories', 'items', 'waiters'], 'order_types' => ['takeaway']]))->getData();
+        $this->assertCount(1, $tk['items']);
+        $this->assertSame($this->prodB, (int) ($tk['items'][0]->product_id ?? 0));
+        $this->assertCount(1, $tk['categories']);
+    }
 
-        $wOnly = $this->controller()->print($this->req(['sections' => ['waiters'], 'waiter_ids' => [$this->w1]]))->getData();
-        $this->assertCount(1, $wOnly['waiters']);
-        $this->assertSame((string) $this->w1, (string) ($wOnly['waiters'][0]['id'] ?? ''));
+    /* ── a parent category pulls in its SUB-categories ──────────────────────────────────────────── */
+    public function test_selecting_a_parent_category_includes_its_child_categories(): void
+    {
+        $parent = $this->makeCategory(['name' => 'Rice', 'parent_id' => null]);
+        $child  = $this->makeCategory(['name' => 'Biryani Rice', 'parent_id' => $parent]);
+        $prod   = $this->makeProduct($child, ['name' => 'Chicken Biryani']);
+        $term   = $this->makeTerminal($this->branchId, ['name' => 'X']);
+        $s = $this->makeSale($this->branchId, ['terminal_id' => $term, 'order_type' => 'dine_in', 'business_date' => $this->date, 'subtotal' => 300, 'grand_total' => 300]);
+        $this->makeSaleLine($s, $prod, ['unit_price' => 300, 'line_total' => 300]);
 
-        $otOnly = $this->controller()->print($this->req(['sections' => ['order_types'], 'order_types' => ['dine_in']]))->getData();
-        $this->assertCount(1, $otOnly['orderTypes']);
-        $this->assertSame('dine_in', (string) ($otOnly['orderTypes'][0]['id'] ?? ''));
+        Auth::guard('tenant')->login($this->permittedUser());
+
+        // Pick the PARENT → the child sub-category's item is included (descendants), and the unrelated
+        // top-level categories are excluded.
+        $data = $this->controller()->print($this->req(['sections' => ['items'], 'category_ids' => [$parent]]))->getData();
+        $ids = array_map(fn ($r) => (int) $r->product_id, $data['items']);
+        $this->assertContains($prod, $ids, 'a parent category pulls in its sub-category items');
+        $this->assertNotContains($this->prodA, $ids, 'unrelated categories are excluded');
     }
 
     /* ── permission gate ─────────────────────────────────────────────────────────────────────────── */

@@ -53,7 +53,27 @@ class SalesReportEngine
             'category_id' => $raw['category_id'] ?? null,
             'product_id' => $raw['product_id'] ?? null,
             'payment_method_id' => $raw['payment_method_id'] ?? null,
+            // QUICK-REPORT-SEND-1: multi-value filters (Quick Report only). Additive — the Report
+            // Center passes single-value filters and never these arrays, so an empty array makes every
+            // ->when() below a no-op and its output is byte-identical. All AND-compose with each other.
+            'category_ids' => array_values(array_filter(array_map('intval', $raw['category_ids'] ?? []))),
+            'product_ids' => array_values(array_filter(array_map('intval', $raw['product_ids'] ?? []))),
+            'waiter_ids' => array_values(array_filter($raw['waiter_ids'] ?? [], fn ($v) => $v !== '' && $v !== null)),
+            'order_types' => array_values(array_filter($raw['order_types'] ?? [], fn ($v) => $v !== '' && $v !== null)),
         ];
+    }
+
+    /** Union of each category id + all its descendants (for the multi-category filter). */
+    public function categoriesWithDescendants(array $categoryIds): array
+    {
+        $all = [];
+        foreach (array_unique(array_map('intval', $categoryIds)) as $id) {
+            foreach ($this->categoryWithDescendants($id) as $descendant) {
+                $all[$descendant] = true;
+            }
+        }
+
+        return array_keys($all);
     }
 
     /** Base sales_orders query with EVERY shared filter applied. */
@@ -69,8 +89,10 @@ class SalesReportEngine
             ->when($f['shift_id'], fn ($q) => $q->where('o.shift_id', $f['shift_id']))
             ->when($f['cashier_id'], fn ($q) => $q->where('o.created_by_user_id', $f['cashier_id']))
             ->when($f['waiter_id'], fn ($q) => $q->where('o.restaurant_waiter_id', $f['waiter_id']))
+            ->when($f['waiter_ids'], fn ($q) => $q->whereIn('o.restaurant_waiter_id', $f['waiter_ids']))
             ->when($f['order_type'], fn ($q) => $q->where('o.order_type', $f['order_type']))
             ->when(! $f['order_type'] && $f['allowed_order_types'], fn ($q) => $q->whereIn('o.order_type', $f['allowed_order_types']))
+            ->when($f['order_types'], fn ($q) => $q->whereIn('o.order_type', $f['order_types']))
             ->when($f['payment_method_id'], fn ($q) => $q->whereExists(function ($s) use ($f) {
                 $s->selectRaw('1')->from('sale_payments as sp')
                     ->whereColumn('sp.sales_order_id', 'o.id')
@@ -82,9 +104,19 @@ class SalesReportEngine
                     ->whereColumn('fl.sales_order_id', 'o.id')
                     ->whereIn('fp.category_id', $this->categoryWithDescendants((int) $f['category_id']));
             }))
+            ->when($f['category_ids'], fn ($q) => $q->whereExists(function ($s) use ($f) {
+                $s->selectRaw('1')->from('sales_order_lines as fl')
+                    ->join('products as fp', 'fp.id', '=', 'fl.product_id')
+                    ->whereColumn('fl.sales_order_id', 'o.id')
+                    ->whereIn('fp.category_id', $this->categoriesWithDescendants($f['category_ids']));
+            }))
             ->when($f['product_id'], fn ($q) => $q->whereExists(function ($s) use ($f) {
                 $s->selectRaw('1')->from('sales_order_lines as fl')
                     ->whereColumn('fl.sales_order_id', 'o.id')->where('fl.product_id', $f['product_id']);
+            }))
+            ->when($f['product_ids'], fn ($q) => $q->whereExists(function ($s) use ($f) {
+                $s->selectRaw('1')->from('sales_order_lines as fl')
+                    ->whereColumn('fl.sales_order_id', 'o.id')->whereIn('fl.product_id', $f['product_ids']);
             }));
     }
 
@@ -96,7 +128,9 @@ class SalesReportEngine
             ->leftJoin('products as p', 'p.id', '=', 'l.product_id')
             ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
             ->when($f['category_id'], fn ($q) => $q->whereIn('p.category_id', $this->categoryWithDescendants((int) $f['category_id'])))
-            ->when($f['product_id'], fn ($q) => $q->where('l.product_id', $f['product_id']));
+            ->when($f['category_ids'], fn ($q) => $q->whereIn('p.category_id', $this->categoriesWithDescendants($f['category_ids'])))
+            ->when($f['product_id'], fn ($q) => $q->where('l.product_id', $f['product_id']))
+            ->when($f['product_ids'], fn ($q) => $q->whereIn('l.product_id', $f['product_ids']));
     }
 
     /** Period returns (allocated by BUSINESS day — the order's day it reverses, calendar
@@ -111,7 +145,9 @@ class SalesReportEngine
             ->when($f['branch_ids'], fn ($q) => $q->whereIn('r.branch_id', $f['branch_ids']))
             ->when($f['order_type'], fn ($q) => $q->where('o.order_type', $f['order_type']))
             ->when(! $f['order_type'] && $f['allowed_order_types'], fn ($q) => $q->whereIn('o.order_type', $f['allowed_order_types']))
+            ->when($f['order_types'], fn ($q) => $q->whereIn('o.order_type', $f['order_types']))
             ->when($f['waiter_id'], fn ($q) => $q->where('o.restaurant_waiter_id', $f['waiter_id']))
+            ->when($f['waiter_ids'], fn ($q) => $q->whereIn('o.restaurant_waiter_id', $f['waiter_ids']))
             ->when($f['terminal_id'], fn ($q) => $q->where('o.terminal_id', $f['terminal_id']))
             ->when(! $f['terminal_id'] && $f['allowed_terminal_ids'], fn ($q) => $q->whereIn('o.terminal_id', $f['allowed_terminal_ids']))
             ->when($f['cashier_id'], fn ($q) => $q->where('o.created_by_user_id', $f['cashier_id']))
@@ -127,7 +163,9 @@ class SalesReportEngine
             ->leftJoin('products as p', 'p.id', '=', 'rl.product_id')
             ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
             ->when($f['category_id'], fn ($q) => $q->whereIn('p.category_id', $this->categoryWithDescendants((int) $f['category_id'])))
-            ->when($f['product_id'], fn ($q) => $q->where('rl.product_id', $f['product_id']));
+            ->when($f['category_ids'], fn ($q) => $q->whereIn('p.category_id', $this->categoriesWithDescendants($f['category_ids'])))
+            ->when($f['product_id'], fn ($q) => $q->where('rl.product_id', $f['product_id']))
+            ->when($f['product_ids'], fn ($q) => $q->whereIn('rl.product_id', $f['product_ids']));
     }
 
     /** category id + all descendants (MySQL 8 recursive CTE — adjacency list authority). */
@@ -173,7 +211,8 @@ class SalesReportEngine
      */
     private function isLineNarrowed(array $f): bool
     {
-        return ! empty($f['category_id']) || ! empty($f['product_id']);
+        return ! empty($f['category_id']) || ! empty($f['product_id'])
+            || ! empty($f['category_ids']) || ! empty($f['product_ids']);
     }
 
     // ── Q. Overview KPIs ─────────────────────────────────────────────────────────────────────────
@@ -469,9 +508,6 @@ class SalesReportEngine
             $returnedQty = (float) ($returnQty->get($dim)?->quantity ?? 0);
 
             return [
-                // Raw dimension value (waiter_id / order_type). Additive: existing consumers key off
-                // 'label' + totals; the Quick Report modal uses this to post-filter to selected rows.
-                'id' => $dim === '' ? null : $dim,
                 'label' => $label($dim === '' ? null : $dim),
                 'orders' => (int) ($r->orders ?? 0),
                 'sold_qty' => (float) ($q->sold_qty ?? 0),
@@ -517,7 +553,6 @@ class SalesReportEngine
             $retQty = (float) ($ret->quantity ?? 0);
 
             return [
-                'id' => $dim === '' || $dim === null ? null : $dim,
                 'label' => $label($dim === '' || $dim === null ? null : $dim),
                 'orders' => (int) ($r->orders ?? 0),
                 'sold_qty' => $sold,

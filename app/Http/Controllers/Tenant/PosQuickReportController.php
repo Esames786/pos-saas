@@ -44,8 +44,11 @@ class PosQuickReportController extends Controller
     }
 
     /**
-     * Build the UNSCOPED filters (whole tenant, single date) + the requested sections + the per-section
-     * multi-select. Deliberately does NOT call UserDataScope — that is the whole point of the feature.
+     * Build the UNSCOPED filters (whole tenant, single date) + the requested sections. The
+     * category/item/waiter/order-type multi-selects are passed into the engine so they narrow the
+     * WHOLE report (every section + the NET SALES headline) and AND-compose — categories pull in their
+     * sub-categories, and "All items" then means all items WITHIN the selected categories. Deliberately
+     * does NOT call UserDataScope — an unscoped whole-tenant report is the whole point of the feature.
      */
     private function context(Request $request): array
     {
@@ -59,6 +62,11 @@ class PosQuickReportController extends Controller
             'date_to'    => (string) $date,
             // Whole tenant: every active branch. No terminal / order-type / cashier restriction.
             'branch_ids' => Branch::where('status', 'active')->pluck('id')->all(),
+            // Multi-value report filters (empty = all). Item selection is ignored when All-items is on.
+            'category_ids' => (array) $request->input('category_ids', []),
+            'product_ids'  => $request->boolean('all_items') ? [] : (array) $request->input('product_ids', []),
+            'waiter_ids'   => (array) $request->input('waiter_ids', []),
+            'order_types'  => (array) $request->input('order_types', []),
         ]);
 
         $allowed  = self::SECTIONS;
@@ -67,15 +75,7 @@ class PosQuickReportController extends Controller
             $sections = $allowed;
         }
 
-        // "All …" = empty selection. Item selection is ignored when the All-items toggle is on.
-        $select = [
-            'category_ids' => array_values(array_filter(array_map('intval', (array) $request->input('category_ids', [])))),
-            'product_ids'  => $request->boolean('all_items') ? [] : array_values(array_filter(array_map('intval', (array) $request->input('product_ids', [])))),
-            'waiter_ids'   => array_values(array_filter((array) $request->input('waiter_ids', []), fn ($v) => $v !== '' && $v !== null)),
-            'order_types'  => array_values(array_filter((array) $request->input('order_types', []), fn ($v) => $v !== '' && $v !== null)),
-        ];
-
-        return [$filters, $sections, $select, (string) $date];
+        return [$filters, $sections, (string) $date];
     }
 
     /** Owner recipients = the tenant's configured scheduled-report recipients, else the owner email. */
@@ -111,14 +111,14 @@ class PosQuickReportController extends Controller
     public function email(Request $request)
     {
         $this->guard();
-        [$filters, $sections, $select, $date] = $this->context($request);
+        [$filters, $sections, $date] = $this->context($request);
 
         $recipients = $this->recipients();
         if ($recipients === []) {
             return response()->json(['ok' => false, 'message' => 'No owner email is configured to send the report to.'], 422);
         }
 
-        $pdf = $this->document->pdf($filters, $sections, $select);
+        $pdf = $this->document->pdf($filters, $sections);
         Mail::to($recipients)->send(new SalesReportMail(
             $this->businessName(), $date . ' to ' . $date, [], $pdf, 'sales-report-' . $date . '.pdf', $sections
         ));
@@ -130,9 +130,9 @@ class PosQuickReportController extends Controller
     public function print(Request $request)
     {
         $this->guard();
-        [$filters, $sections, $select] = $this->context($request);
+        [$filters, $sections] = $this->context($request);
 
-        $data = $this->document->data($filters, $sections, false, $select);
+        $data = $this->document->data($filters, $sections, false);
         $data['mode']  = 'thermal';
         $data['paper'] = in_array($request->input('paper'), ['58mm', '80mm'], true) ? $request->input('paper') : '80mm';
 
@@ -150,8 +150,8 @@ class PosQuickReportController extends Controller
             return response()->json(['ok' => false, 'message' => 'Choose a network printer that has an IP address.'], 422);
         }
 
-        [$filters, $sections, $select, $date] = $this->context($request);
-        $data = $this->document->data($filters, $sections, false, $select);
+        [$filters, $sections, $date] = $this->context($request);
+        $data = $this->document->data($filters, $sections, false);
 
         $report = [
             'sections'      => $sections,
