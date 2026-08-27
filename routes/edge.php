@@ -37,5 +37,8 @@ Route::domain(config('tenancy.central_domain'))
 
             // OFFLINE-SYNC-ENGINE-1D — device-authenticated sync ingestion (thin boundary around 1C).
             Route::post('/sync/sales', [\App\Http\Controllers\Edge\EdgeSyncIngestionApiController::class, 'store'])->name('edge.api.sync.sales');
+
+            // PRODUCTIZATION GATE 0 — device-authenticated, READ-ONLY reconciliation status (no posting).
+            Route::post('/sync/reconcile', [\App\Http\Controllers\Edge\EdgeSyncReconciliationApiController::class, 'status'])->name('edge.api.sync.reconcile');
         });
     });

@@ -40,6 +40,7 @@ return [
     */
     'sync' => [
         'url'             => env('EDGE_SYNC_URL'),            // Cloud device-authed ingestion endpoint
+        'reconcile_url'   => env('EDGE_SYNC_RECONCILE_URL'),  // Cloud device-authed READ-ONLY reconciliation status
         'device_id'       => env('EDGE_SYNC_DEVICE_ID'),      // this appliance public_uuid
         'device_secret'   => env('EDGE_SYNC_DEVICE_SECRET'),  // paired device bearer secret
         'connect_timeout' => (int) env('EDGE_SYNC_CONNECT_TIMEOUT', 10),
