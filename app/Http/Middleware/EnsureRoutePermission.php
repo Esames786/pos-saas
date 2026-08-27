@@ -35,6 +35,9 @@ class EnsureRoutePermission
             'tenant.locale',
             'tenant.api.print-agent',
             'tenant.api.pos',
+            // QUICK-REPORT-SEND-1: the modal endpoints gate on the single synthetic permission
+            // `tenant.pos.quick-report-send` in the controller, not on per-route names.
+            'tenant.pos.quick-report',
             'tenant.api.catalog',
             'tenant.api.kitchen-display',
             // Read-only server clock the POS/report pages poll on every screen; behind auth:tenant,

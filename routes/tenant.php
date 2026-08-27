@@ -481,6 +481,15 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 Route::post('/pos/customers/{customer}/addresses', [CustomerController::class, 'storeAddress'])
                     ->name('tenant.pos.customers.addresses.store');
 
+                // QUICK-REPORT-SEND-1 — POS Quick Report modal (gated in-controller by
+                // tenant.pos.quick-report-send; exempted from the route-name permission via
+                // EnsureRoutePermission's 'tenant.pos.quick-report' allow-prefix).
+                Route::get('/pos/quick-report/settings', [\App\Http\Controllers\Tenant\PosQuickReportController::class, 'settings'])->name('tenant.pos.quick-report.settings');
+                Route::post('/pos/quick-report/save-settings', [\App\Http\Controllers\Tenant\PosQuickReportController::class, 'saveSettings'])->name('tenant.pos.quick-report.save-settings');
+                Route::get('/pos/quick-report/print', [\App\Http\Controllers\Tenant\PosQuickReportController::class, 'print'])->name('tenant.pos.quick-report.print');
+                Route::post('/pos/quick-report/email', [\App\Http\Controllers\Tenant\PosQuickReportController::class, 'email'])->name('tenant.pos.quick-report.email');
+                Route::post('/pos/quick-report/send-to-network', [\App\Http\Controllers\Tenant\PosQuickReportController::class, 'sendToNetwork'])->name('tenant.pos.quick-report.send-to-network');
+
                 // Sales Orders
                 Route::get('/sales-orders', [SalesOrderController::class, 'index'])->name('tenant.sales-orders.index');
                 Route::get('/sales-orders/create', [SalesOrderController::class, 'create'])->name('tenant.sales-orders.create');

@@ -497,6 +497,16 @@
                     <i class="ti ti-file-analytics me-1"></i>Report
                 </button>
             @endcan
+            @can('tenant.pos.quick-report-send')
+                {{-- QUICK-REPORT-SEND-1: a trusted user emails/prints/streams a WHOLE-TENANT sales report
+                     (no terminal/order-type scoping) — pick sections + categories/items/waiters/order-types. --}}
+                @php $quickReportDate = app(\App\Support\TenantClock::class)->currentBusinessDate(); @endphp
+                <button type="button" class="btn btn-sm btn-outline-primary me-2" id="pos-quick-report-btn"
+                        data-bs-toggle="modal" data-bs-target="#quickReportModal"
+                        title="Send or print a sales report (all data)">
+                    <i class="ti ti-send me-1"></i>Quick Report
+                </button>
+            @endcan
             <button type="button" class="btn btn-sm btn-outline-dark" id="pos-customer-btn"
                     data-bs-toggle="modal" data-bs-target="#customerModal">
                 <i class="ti ti-user-search me-1"></i>Add / Search Customer
@@ -1272,6 +1282,279 @@
     });
     modalEl.addEventListener('hidden.bs.modal', function () {
         frame.src = 'about:blank';   // free the report; refresh on next open
+    });
+})();
+</script>
+@endcan
+
+{{-- QUICK-REPORT-SEND-1: whole-tenant sales report — pick sections + categories/items/waiters/order-types,
+     then Email (A4 PDF) / Print here (thermal) / Send to network. Gated by tenant.pos.quick-report-send. --}}
+@can('tenant.pos.quick-report-send')
+@php $quickReportDate = app(\App\Support\TenantClock::class)->currentBusinessDate(); @endphp
+<div class="modal fade" id="quickReportModal" tabindex="-1" aria-labelledby="quickReportModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h2 class="modal-title h6 mb-0" id="quickReportModalLabel"><i class="ti ti-send me-1"></i>Quick Report</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="qr-toast" class="alert d-none py-2 small mb-3" role="alert"></div>
+
+                <div class="row g-3 mb-3">
+                    <div class="col-sm-5">
+                        <label class="form-label small mb-1">Business date</label>
+                        <input type="date" class="form-control form-control-sm" id="qr-date" value="{{ $quickReportDate }}">
+                    </div>
+                    <div class="col-sm-7 d-flex align-items-end">
+                        <div class="form-check form-switch ms-auto">
+                            <input class="form-check-input" type="checkbox" id="qr-save">
+                            <label class="form-check-label small" for="qr-save">Save my selection</label>
+                        </div>
+                    </div>
+                </div>
+
+                <label class="form-label small text-muted">Sections — tick what to include (whole tenant, all terminals &amp; order types)</label>
+                @php
+                    $qrSubFilterable = ['categories','items','waiters','order_types'];
+                    $qrSections = [
+                        'overview' => 'Overview', 'categories' => 'Categories', 'items' => 'Items',
+                        'waiters' => 'Waiters', 'order_types' => 'Order Types', 'order_type_combos' => 'Order-Type Combos',
+                        'cancellations' => 'Cancellations', 'cash_bank' => 'Cash & Bank',
+                    ];
+                @endphp
+                <div class="border rounded p-2">
+                    @foreach($qrSections as $key => $label)
+                    <div class="qr-section-row">
+                        <div class="form-check">
+                            <input class="form-check-input qr-section" type="checkbox" value="{{ $key }}" id="qr-sec-{{ $key }}" checked
+                                   @if(in_array($key, $qrSubFilterable, true)) data-panel="qr-panel-{{ $key }}" @endif>
+                            <label class="form-check-label" for="qr-sec-{{ $key }}">{{ $label }}</label>
+                        </div>
+
+                        @if($key === 'categories')
+                        <div class="qr-panel ms-4 mt-1" id="qr-panel-categories">
+                            <div class="small text-muted mb-1">Leave all unticked = every category.</div>
+                            <div class="d-flex flex-wrap gap-2">
+                                @foreach($categories as $cat)
+                                    <div class="form-check form-check-inline me-0">
+                                        <input class="form-check-input qr-category" type="checkbox" value="{{ $cat->id }}" id="qr-cat-{{ $cat->id }}">
+                                        <label class="form-check-label small" for="qr-cat-{{ $cat->id }}">{{ $cat->name }}</label>
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                        @elseif($key === 'items')
+                        <div class="qr-panel ms-4 mt-1" id="qr-panel-items">
+                            <div class="form-check form-switch mb-1">
+                                <input class="form-check-input" type="checkbox" id="qr-all-items" checked>
+                                <label class="form-check-label small" for="qr-all-items">All items</label>
+                            </div>
+                            <div id="qr-item-picker" class="d-none">
+                                <input type="text" class="form-control form-control-sm" id="qr-item-search" placeholder="Search product name / SKU…" autocomplete="off">
+                                <div id="qr-item-suggest" class="list-group position-absolute shadow-sm d-none" style="z-index:1080;max-height:220px;overflow:auto;min-width:260px"></div>
+                                <div id="qr-item-chips" class="d-flex flex-wrap gap-1 mt-2"></div>
+                            </div>
+                        </div>
+                        @elseif($key === 'waiters')
+                        <div class="qr-panel ms-4 mt-1" id="qr-panel-waiters">
+                            <div class="small text-muted mb-1">Leave all unticked = every waiter.</div>
+                            <div class="d-flex flex-wrap gap-2">
+                                @foreach($waiters as $w)
+                                    <div class="form-check form-check-inline me-0">
+                                        <input class="form-check-input qr-waiter" type="checkbox" value="{{ $w->id }}" id="qr-w-{{ $w->id }}">
+                                        <label class="form-check-label small" for="qr-w-{{ $w->id }}">{{ $w->name }}</label>
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                        @elseif($key === 'order_types')
+                        <div class="qr-panel ms-4 mt-1" id="qr-panel-order_types">
+                            <div class="small text-muted mb-1">Leave all unticked = every order type.</div>
+                            <div class="d-flex flex-wrap gap-2">
+                                @foreach(\App\Models\Tenant\User::ORDER_TYPES as $val => $otLabel)
+                                    <div class="form-check form-check-inline me-0">
+                                        <input class="form-check-input qr-ordertype" type="checkbox" value="{{ $val }}" id="qr-ot-{{ $val }}">
+                                        <label class="form-check-label small" for="qr-ot-{{ $val }}">{{ $otLabel }}</label>
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                        @endif
+                    </div>
+                    @endforeach
+                </div>
+
+                <div class="row g-2 mt-3">
+                    <div class="col-sm-8">
+                        <label class="form-label small mb-1">Network printer (for “Send to network”)</label>
+                        <select class="form-select form-select-sm" id="qr-printer">
+                            <option value="">— choose a network printer —</option>
+                            @foreach($quickReportPrinters as $p)
+                                <option value="{{ $p->id }}">{{ $p->name }} ({{ $p->paper_size }})</option>
+                            @endforeach
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="qr-print">
+                    <i class="ti ti-printer me-1"></i>Print here
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="qr-network">
+                    <i class="ti ti-wifi me-1"></i>Send to network
+                </button>
+                <button type="button" class="btn btn-sm btn-primary" id="qr-email">
+                    <i class="ti ti-mail me-1"></i>Email to owner
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    var modalEl = document.getElementById('quickReportModal');
+    if (!modalEl) return;
+    var csrf  = '{{ csrf_token() }}';
+    var base  = @json(url('/pos/quick-report'));
+    var PRODUCTS = (typeof products !== 'undefined' && Array.isArray(products)) ? products : [];
+    var chosenItems = {};   // id -> name
+
+    var toast = function (msg, ok) {
+        var el = document.getElementById('qr-toast');
+        el.className = 'alert py-2 small mb-3 alert-' + (ok ? 'success' : 'danger');
+        el.textContent = msg; el.classList.remove('d-none');
+    };
+    var checked = function (sel) { return Array.prototype.map.call(document.querySelectorAll(sel + ':checked'), function (c) { return c.value; }); };
+
+    // Section checkbox → show/hide its sub-filter panel.
+    document.querySelectorAll('.qr-section[data-panel]').forEach(function (cb) {
+        var panel = document.getElementById(cb.getAttribute('data-panel'));
+        var sync = function () { if (panel) panel.style.display = cb.checked ? '' : 'none'; };
+        cb.addEventListener('change', sync); sync();
+    });
+
+    // All-items toggle ↔ item picker.
+    var allItems = document.getElementById('qr-all-items');
+    var picker   = document.getElementById('qr-item-picker');
+    var syncItems = function () { picker.classList.toggle('d-none', allItems.checked); };
+    allItems.addEventListener('change', syncItems); syncItems();
+
+    // Item typeahead over the on-page products payload (no server call).
+    var search  = document.getElementById('qr-item-search');
+    var suggest = document.getElementById('qr-item-suggest');
+    var chips   = document.getElementById('qr-item-chips');
+    var renderChips = function () {
+        chips.innerHTML = '';
+        Object.keys(chosenItems).forEach(function (id) {
+            var b = document.createElement('span');
+            b.className = 'badge bg-light text-dark border';
+            b.innerHTML = chosenItems[id] + ' <a href="#" class="text-danger ms-1" data-id="' + id + '">&times;</a>';
+            chips.appendChild(b);
+        });
+        chips.querySelectorAll('a[data-id]').forEach(function (a) {
+            a.addEventListener('click', function (e) { e.preventDefault(); delete chosenItems[a.getAttribute('data-id')]; renderChips(); });
+        });
+    };
+    if (search) {
+        search.addEventListener('input', function () {
+            var q = search.value.trim().toLowerCase();
+            if (q.length < 2) { suggest.classList.add('d-none'); return; }
+            var hits = PRODUCTS.filter(function (p) {
+                return String(p.name || '').toLowerCase().indexOf(q) !== -1 || String(p.sku || '').toLowerCase().indexOf(q) !== -1;
+            }).slice(0, 12);
+            suggest.innerHTML = '';
+            hits.forEach(function (p) {
+                var a = document.createElement('a');
+                a.href = '#'; a.className = 'list-group-item list-group-item-action py-1 small';
+                a.textContent = p.name + (p.sku ? ' · ' + p.sku : '');
+                a.addEventListener('click', function (e) { e.preventDefault(); chosenItems[p.id] = p.name; renderChips(); suggest.classList.add('d-none'); search.value = ''; });
+                suggest.appendChild(a);
+            });
+            suggest.classList.toggle('d-none', hits.length === 0);
+        });
+        document.addEventListener('click', function (e) { if (!suggest.contains(e.target) && e.target !== search) suggest.classList.add('d-none'); });
+    }
+
+    // Gather the current selection into a params object.
+    var collect = function () {
+        return {
+            date: document.getElementById('qr-date').value,
+            sections: checked('.qr-section'),
+            category_ids: checked('.qr-category'),
+            waiter_ids: checked('.qr-waiter'),
+            order_types: checked('.qr-ordertype'),
+            all_items: allItems.checked ? 1 : 0,
+            product_ids: allItems.checked ? [] : Object.keys(chosenItems),
+            printer_id: document.getElementById('qr-printer').value,
+        };
+    };
+    var toForm = function (p) {
+        var fd = new FormData();
+        fd.append('date', p.date); fd.append('all_items', p.all_items); fd.append('printer_id', p.printer_id || '');
+        ['sections','category_ids','waiter_ids','order_types','product_ids'].forEach(function (k) {
+            (p[k] || []).forEach(function (v) { fd.append(k + '[]', v); });
+        });
+        return fd;
+    };
+    var toQuery = function (p) {
+        var q = ['date=' + encodeURIComponent(p.date), 'all_items=' + p.all_items];
+        ['sections','category_ids','waiter_ids','order_types','product_ids'].forEach(function (k) {
+            (p[k] || []).forEach(function (v) { q.push(k + '[]=' + encodeURIComponent(v)); });
+        });
+        return q.join('&');
+    };
+    var maybeSave = function (p) {
+        if (!document.getElementById('qr-save').checked) return;
+        var fd = toForm(p);
+        fetch(base + '/save-settings', { method: 'POST', headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' }, body: fd }).catch(function () {});
+    };
+
+    document.getElementById('qr-email').addEventListener('click', function () {
+        var p = collect(); if (!p.sections.length) { toast('Tick at least one section.', false); return; }
+        maybeSave(p);
+        fetch(base + '/email', { method: 'POST', headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' }, body: toForm(p) })
+            .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+            .then(function (res) { toast(res.ok ? ('Emailed to: ' + (res.d.sent_to || []).join(', ')) : (res.d.message || 'Email failed.'), res.ok); })
+            .catch(function () { toast('Email failed.', false); });
+    });
+
+    document.getElementById('qr-network').addEventListener('click', function () {
+        var p = collect(); if (!p.sections.length) { toast('Tick at least one section.', false); return; }
+        if (!p.printer_id) { toast('Choose a network printer first.', false); return; }
+        maybeSave(p);
+        fetch(base + '/send-to-network', { method: 'POST', headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' }, body: toForm(p) })
+            .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+            .then(function (res) { toast(res.ok ? ('Queued to ' + res.d.printer + '.') : (res.d.message || 'Send failed.'), res.ok); })
+            .catch(function () { toast('Send failed.', false); });
+    });
+
+    document.getElementById('qr-print').addEventListener('click', function () {
+        var p = collect(); if (!p.sections.length) { toast('Tick at least one section.', false); return; }
+        maybeSave(p);
+        var w = window.open(base + '/print?' + toQuery(p), '_blank');
+        if (w) { w.addEventListener('load', function () { try { w.print(); } catch (e) {} }); }
+    });
+
+    // Pre-fill from the user's saved selection on open.
+    modalEl.addEventListener('show.bs.modal', function () {
+        document.getElementById('qr-toast').classList.add('d-none');
+        fetch(base + '/settings', { headers: { Accept: 'application/json' } })
+            .then(function (r) { return r.json(); })
+            .then(function (res) {
+                var s = res && res.settings; if (!s) return;
+                document.querySelectorAll('.qr-section').forEach(function (c) { c.checked = (s.sections || []).indexOf(c.value) !== -1; c.dispatchEvent(new Event('change')); });
+                document.querySelectorAll('.qr-category').forEach(function (c) { c.checked = (s.category_ids || []).map(String).indexOf(c.value) !== -1; });
+                document.querySelectorAll('.qr-waiter').forEach(function (c) { c.checked = (s.waiter_ids || []).map(String).indexOf(c.value) !== -1; });
+                document.querySelectorAll('.qr-ordertype').forEach(function (c) { c.checked = (s.order_types || []).map(String).indexOf(c.value) !== -1; });
+                allItems.checked = s.all_items !== false; syncItems();
+                chosenItems = {};
+                (s.product_ids || []).forEach(function (id) {
+                    var hit = PRODUCTS.filter(function (p) { return String(p.id) === String(id); })[0];
+                    chosenItems[id] = hit ? hit.name : ('#' + id);
+                });
+                renderChips();
+            }).catch(function () {});
     });
 })();
 </script>

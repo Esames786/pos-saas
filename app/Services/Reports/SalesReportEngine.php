@@ -469,6 +469,9 @@ class SalesReportEngine
             $returnedQty = (float) ($returnQty->get($dim)?->quantity ?? 0);
 
             return [
+                // Raw dimension value (waiter_id / order_type). Additive: existing consumers key off
+                // 'label' + totals; the Quick Report modal uses this to post-filter to selected rows.
+                'id' => $dim === '' ? null : $dim,
                 'label' => $label($dim === '' ? null : $dim),
                 'orders' => (int) ($r->orders ?? 0),
                 'sold_qty' => (float) ($q->sold_qty ?? 0),
@@ -514,6 +517,7 @@ class SalesReportEngine
             $retQty = (float) ($ret->quantity ?? 0);
 
             return [
+                'id' => $dim === '' || $dim === null ? null : $dim,
                 'label' => $label($dim === '' || $dim === null ? null : $dim),
                 'orders' => (int) ($r->orders ?? 0),
                 'sold_qty' => $sold,

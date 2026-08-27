@@ -331,6 +331,12 @@ class POSController extends Controller
                 ->get(),
             'floors'              => $floors,
             'waiters'             => $waiters,
+            // QUICK-REPORT-SEND-1: network printers for the Quick Report modal's "Send to network"
+            // (only loaded for a user who actually holds the permission).
+            'quickReportPrinters' => auth('tenant')->user()?->can('tenant.pos.quick-report-send')
+                ? \App\Models\Tenant\Printer::where('is_active', 1)->where('printer_type', 'network')
+                    ->whereNotNull('ip_address')->orderBy('name')->get(['id', 'name', 'paper_size'])
+                : collect(),
             'deliveryChannels'    => $deliveryChannels,
             'deliveryRiders'      => $deliveryRiders,
             'allowedOrderTypes'   => $allowedOrderTypes,

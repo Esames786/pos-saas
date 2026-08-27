@@ -128,6 +128,10 @@ class ReportScheduleMySqlTest extends MySqlTenantTestCase
             'recipient_emails' => json_encode(['kashfgulzar@gmail.com', 'uit.mohsin95@gmail.com']),
             'delivery_format' => 'a4_pdf',
             'send_time' => '00:30',
+            // Deterministic: created the day BEFORE the fixed send moment, else the back-send guard
+            // (schedule created same-day-after-send_time) correctly skips it — which made this test
+            // pass or fail depending on the real calendar date it ran on.
+            'created_at' => '2026-08-26 00:00:00',
         ]);
         $svc = app(ReportScheduleService::class);
 
