@@ -40,5 +40,8 @@ Route::domain(config('tenancy.central_domain'))
 
             // PRODUCTIZATION GATE 0 — device-authenticated, READ-ONLY reconciliation status (no posting).
             Route::post('/sync/reconcile', [\App\Http\Controllers\Edge\EdgeSyncReconciliationApiController::class, 'status'])->name('edge.api.sync.reconcile');
+
+            // PRODUCTIZATION GATE 0 — device-authenticated operational-baseline issuance (Cloud official position).
+            Route::post('/sync/baseline', [\App\Http\Controllers\Edge\EdgeBaselineApiController::class, 'issue'])->name('edge.api.sync.baseline');
         });
     });
