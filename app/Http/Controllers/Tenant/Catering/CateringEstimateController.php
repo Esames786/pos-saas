@@ -62,8 +62,10 @@ class CateringEstimateController extends Controller
         })->all();
 
         try {
-            $this->estimates->saveDraftLines($cateringEstimate, $lines, $data);
-            $this->applyPunchedMaterials($cateringEstimate->refresh(), $lines);
+            \Illuminate\Support\Facades\DB::connection('tenant')->transaction(function () use ($cateringEstimate, $lines, $data) {
+                $this->estimates->saveDraftLines($cateringEstimate, $lines, $data);
+                $this->applyPunchedMaterials($cateringEstimate->refresh(), $lines);
+            });
         } catch (RuntimeException $e) {
             return back()->withErrors(['estimate' => $e->getMessage()])->withInput();
         }
@@ -104,15 +106,18 @@ class CateringEstimateController extends Controller
                     continue;
                 }
 
-                if (isset($material['kg']) && round((float) $material['kg'], 4) !== round((float) $snapshot->event_material_qty, 4)) {
-                    $blocks->overrideMaterialQuantity($snapshot, (float) $material['kg']);
-                }
                 if (isset($material['rate']) && round((float) $material['rate'], 4) !== round((float) $snapshot->refresh()->rate, 4)) {
                     $blocks->setChargedRate($snapshot, (float) $material['rate']);
                 }
-                $wantSupplied = round((float) ($material['cust'] ?? 0), 4);
-                if ($wantSupplied !== round($snapshot->refresh()->suppliedQty(), 4)) {
-                    $blocks->setCustomerSupplied($snapshot, false, $wantSupplied);
+                if (isset($material['kg'])) {
+                    $total = round((float) $material['kg'], 4);
+                    $party = round(min((float) ($material['cust'] ?? 0), $total), 4);
+                    $ours = round(max(0, $total - $party), 4);
+                    $current = $snapshot->refresh();
+                    if ($total !== round($current->physicalRequirement(), 4)
+                        || $party !== round($current->suppliedQty(), 4)) {
+                        $blocks->setSupplySplit($current, $ours, $party);
+                    }
                 }
             }
         }

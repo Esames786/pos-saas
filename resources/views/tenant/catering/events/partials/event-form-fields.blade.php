@@ -118,8 +118,16 @@
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">Service Time</label>
-                    <input type="time" name="service_time" class="form-control"
-                           value="{{ old('service_time', $event?->service_time ? \Carbon\Carbon::parse($event->service_time)->format('H:i') : '') }}">
+                    <div class="position-relative service-time-control">
+                        <input type="time" name="service_time" class="form-control pe-5"
+                               aria-label="Select service time"
+                               value="{{ old('service_time', $event?->service_time ? \Carbon\Carbon::parse($event->service_time)->format('H:i') : '') }}">
+                        <button type="button"
+                                class="btn btn-link text-muted position-absolute top-50 end-0 translate-middle-y pe-3"
+                                data-open-service-time aria-label="Open service time picker" title="Select service time">
+                            <i class="ti ti-clock fs-20"></i>
+                        </button>
+                    </div>
                     {{-- KASHIF-EVENT-FORM-1: the house's OWN sittings, from the
                          tenant's data — renameable, retimeable, retirable on the
                          Catering Settings screen. --}}

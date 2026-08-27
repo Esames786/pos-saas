@@ -625,7 +625,7 @@ class CateringCustomerSuppliedMySqlTest extends MySqlTenantTestCase
 
         // KASHIF-COSTPANEL-SIMPLE-1: the two shares are two LINKED boxes whose
         // sum is always the kitchen total.
-        $this->assertStringContainsString('Customer dega', $html);
+        $this->assertStringContainsString('Party dega', $html);
         $this->assertStringContainsString('Hum denge', $html);
         $this->assertStringContainsString('supply-split', $html);
         $this->assertStringContainsString('we issue 0', $html,

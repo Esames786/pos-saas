@@ -248,6 +248,50 @@ class CateringLineCostBlockService
     }
 
     /**
+     * Record the operator's two additive answers in one locked change:
+     * what WE provide plus what the PARTY provides equals what the kitchen
+     * receives. The snapshot continues to store total physical requirement
+     * and customer share, so every existing quotation/production/store reader
+     * keeps one authority and derives our share as total minus customer.
+     */
+    public function setSupplySplit(
+        CateringEstimateLineCostBlock $snapshot,
+        float $ourQty,
+        float $customerQty,
+    ): void {
+        if ($ourQty < 0 || $customerQty < 0) {
+            throw new RuntimeException('Our quantity and party quantity cannot be negative.');
+        }
+
+        DB::connection('tenant')->transaction(function () use ($snapshot, $ourQty, $customerQty) {
+            [, $line, $locked] = $this->locks->editableSnapshot($snapshot);
+
+            if (! $locked->isMaterial()) {
+                throw new RuntimeException("'{$locked->label}' is a charge, not a material, so it has no supply split.");
+            }
+            if ($customerQty > 0 && ! $this->partySupplyAllowed($line)) {
+                throw new RuntimeException(
+                    'Party supply is OFF for this item — turn on "Allow Party Meat" on its Catering Products screen first.'
+                );
+            }
+
+            $ourQty = round($ourQty, 4);
+            $customerQty = round($customerQty, 4);
+            $total = round($ourQty + $customerQty, 4);
+
+            $locked->forceFill([
+                'event_material_qty' => $total,
+                'is_overridden' => true,
+                'is_customer_supplied' => $total > 0 && $ourQty === 0.0 && $customerQty > 0,
+                'customer_supplied_qty' => $ourQty > 0 && $customerQty > 0 ? $customerQty : null,
+            ])->save();
+
+            $this->refreshSnapshotAmount($locked);
+            $this->repriceLocked($line);
+        });
+    }
+
+    /**
      * KASHIF-COSTPANEL-SIMPLE-1 — change what this part CHARGES, for this
      * booking only. The dish's own block never moves, and a hand-set rate
      * stops following the house rate book — otherwise tomorrow's book update

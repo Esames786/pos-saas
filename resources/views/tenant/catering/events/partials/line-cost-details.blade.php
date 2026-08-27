@@ -164,47 +164,33 @@
                     @if($block->isMaterial() && $block->event_material_qty !== null)
                         @if($editable)
                             @can('tenant.catering.estimates.update')
-                            {{-- Question 1: kitchen ko kitna chahiye? --}}
-                            <div class="d-inline-flex gap-1 align-items-center"
-                                 data-act="{{ url('/catering/line-cost-blocks/' . $block->id) }}"
-                                 data-act-method="PUT">
-                                <span class="fs-12 text-muted">Kitchen needs</span>
-                                <input type="number" step="0.0001" min="0" data-field="event_material_qty"
-                                       value="{{ $fmtQty($block->event_material_qty) }}"
-                                       class="form-control form-control-sm text-end" style="width:85px">
-                                <span class="fs-12 text-muted">{{ $block->unit_code }}</span>
-                                <button type="button" class="btn btn-sm btn-light js-act" title="Use this quantity for this booking only">
-                                    <i class="ti ti-check"></i>
-                                </button>
-                            </div>
-
-                            {{-- Question 2: us mein se kaun kitna dega? Two
-                                 LINKED boxes — the sum is ALWAYS the kitchen
-                                 total, so the two shares can never contradict.
-                                 Customer 0 = hum sab; customer = total = poora
-                                 customer ka (the service normalizes that to the
-                                 full flag). Only the customer share posts. --}}
+                            {{-- Additive entry contract: Hum + Party = total
+                                 received by the kitchen. The existing snapshot
+                                 stores total and party share atomically. --}}
                             @if(! $partyAllowed && $block->suppliedQty() <= 0)
                                 <div class="fs-12 text-muted mt-1">Party supply OFF for this item (Catering Products se on hota hai)</div>
-                            @else
+                            @endif
                             <div class="d-inline-flex gap-1 align-items-center mt-1 supply-split"
-                                 data-total="{{ $fmtQty($block->physicalRequirement()) }}"
                                  data-act="{{ url('/catering/line-cost-blocks/' . $block->id . '/customer-supplied') }}"
                                  data-act-method="PUT">
                                 <input type="hidden" data-field="is_customer_supplied" value="0">
-                                <span class="fs-12">Customer dega · <span dir="rtl">گاہک</span></span>
-                                <input type="number" step="0.0001" min="0" data-field="customer_supplied_qty"
-                                       value="{{ $block->suppliedQty() > 0 ? $fmtQty($block->suppliedQty()) : '0' }}"
-                                       class="form-control form-control-sm text-end split-customer" style="width:75px">
                                 <span class="fs-12">Hum denge · <span dir="rtl">ہم</span></span>
-                                <input type="number" step="0.0001" min="0"
+                                <input type="number" step="0.0001" min="0" data-field="our_supplied_qty"
                                        value="{{ $fmtQty($block->billableQty()) }}"
                                        class="form-control form-control-sm text-end split-ours" style="width:75px">
+                                <span class="fs-12">Party dega · <span dir="rtl">گاہک</span></span>
+                                <input type="number" step="0.0001" min="0" data-field="customer_supplied_qty"
+                                       value="{{ $block->suppliedQty() > 0 ? $fmtQty($block->suppliedQty()) : '0' }}"
+                                       class="form-control form-control-sm text-end split-customer" style="width:75px"
+                                       @disabled(! $partyAllowed && $block->suppliedQty() <= 0)>
+                                <span class="fs-12 text-muted">Total kitchen</span>
+                                <input type="text" readonly value="{{ $fmtQty($block->physicalRequirement()) }}"
+                                       class="form-control form-control-sm text-end split-total" style="width:75px">
+                                <span class="fs-12 text-muted">{{ $block->unit_code }}</span>
                                 <button type="button" class="btn btn-sm btn-light js-act" title="Save the split">
                                     <i class="ti ti-check"></i>
                                 </button>
                             </div>
-                            @endif
 
                             <div class="fs-12 text-muted mt-1">
                                 Recipe says: {{ $fmtQty($block->default_material_qty) }} {{ $block->unit_code }}

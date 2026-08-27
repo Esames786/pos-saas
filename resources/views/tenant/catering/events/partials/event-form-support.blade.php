@@ -40,6 +40,19 @@
                 tags: true,
                 minimumInputLength: 1,
                 placeholder: 'Phone ya naam…',
+                cache: false,
+                templateResult: function (item) {
+                    if (! item.id || ! item.customer) return item.text;
+                    const name = $('<div>').text(item.customer.name || '').html();
+                    const phone = item.customer.phone
+                        ? '<div class="fs-12 text-muted">' + $('<div>').text(item.customer.phone).html() + '</div>'
+                        : '';
+                    return $('<div><strong>' + name + '</strong>' + phone + '</div>');
+                },
+                templateSelection: function (item) {
+                    if (! item.customer) return item.text || '';
+                    return item.customer.phone ? (item.customer.name + ' — ' + item.customer.phone) : item.customer.name;
+                },
                 language: { inputTooShort: () => 'Phone ya naam likhein…', noResults: () => 'Koi match nahi — likha hua naam Enter karein' },
                 dropdownParent: $root.closest('.offcanvas').length ? $root.closest('.offcanvas') : $(document.body),
                 ajax: {
@@ -167,11 +180,15 @@
                 btn.classList.add('btn-secondary', 'text-white');
             });
         });
+        root.querySelector('[data-open-service-time]')?.addEventListener('click', () => {
+            const input = root.querySelector('[name=service_time]');
+            if (input?._flatpickr) input._flatpickr.open();
+            else input?.showPicker?.();
+        });
 
-        // KASHIF-EVENT-FORM-1 — a modern picker on the dates and the sitting
-        // time: type it, pick it, or clear it. Native <input type=date> stays
-        // the underlying field, so a browser without the library still works
-        // and the value posted is unchanged.
+        // KASHIF-EVENT-FORM-1 — dates remain keyboard-friendly; service time
+        // is deliberately selection-only so arbitrary text cannot be entered.
+        // Native date/time fields remain the fallback when Flatpickr is absent.
         if (window.flatpickr) {
             root.querySelectorAll('input[type=date]').forEach(function (el) {
                 if (el._flatpickr) return;
@@ -188,7 +205,25 @@
                 window.flatpickr(el, {
                     enableTime: true, noCalendar: true, dateFormat: 'H:i',
                     altInput: true, altFormat: 'h:i K', time_24hr: false,
-                    allowInput: true, disableMobile: true, minuteIncrement: 15,
+                    // Selection-only: use the professional clock, AM/PM toggle,
+                    // or a house preset. Arbitrary letters cannot remain in the
+                    // visible field or reach the canonical H:i value.
+                    allowInput: false, disableMobile: true, minuteIncrement: 15,
+                    clickOpens: true,
+                    onReady: function (dates, value, instance) {
+                        if (! instance.altInput) return;
+                        instance.altInput.readOnly = true;
+                        instance.altInput.inputMode = 'none';
+                        instance.altInput.autocomplete = 'off';
+                        instance.altInput.setAttribute('aria-label', 'Select service time');
+                    },
+                    onChange: function (dates, value) {
+                        root.querySelectorAll('[data-time]').forEach(function (button) {
+                            const selected = button.dataset.time === value;
+                            button.classList.toggle('btn-secondary', selected);
+                            button.classList.toggle('text-white', selected);
+                        });
+                    },
                 });
             });
         }

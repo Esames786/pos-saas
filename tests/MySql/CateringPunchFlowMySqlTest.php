@@ -237,4 +237,29 @@ class CateringPunchFlowMySqlTest extends MySqlTenantTestCase
         // ── And the whole trip moved no money and no stock. ──
         $this->assertSame($before, $ledgers());
     }
+
+    public function test_our_and_party_quantities_add_to_the_kitchen_requirement(): void
+    {
+        $event = $this->estimates->createEvent([
+            'branch_id' => $this->branchId, 'customer_name' => 'Split Customer',
+            'booking_date' => now()->toDateString(), 'event_date' => now()->addDays(3)->toDateString(),
+            'pax' => 100,
+        ]);
+        $this->estimates->saveDraftLines($event->currentEstimate, [[
+            'product_id' => $this->biryaniId, 'item_name' => 'Chicken Biryani',
+            'quantity' => 10, 'unit_id' => $this->unitId, 'unit_code' => 'KG', 'rate' => 0,
+        ]]);
+
+        $block = $this->block($event, 'Chicken Biryani', 'Chicken');
+        app(\App\Services\Catering\CateringLineCostBlockService::class)
+            ->setSupplySplit($block, 10, 10);
+
+        $block->refresh();
+        $this->assertSame(20.0, $block->physicalRequirement(), '10 ours + 10 party = 20 total kitchen');
+        $this->assertSame(10.0, $block->ourStockRequirement());
+        $this->assertSame(10.0, $block->suppliedQty());
+        $this->assertSame(1000.0, (float) $block->amount, 'only our 10 KG is charged at 100');
+        $this->assertSame(400.0, (float) $block->line->refresh()->calculated_rate,
+            '(1000 material + 3000 making) / 10 dish units');
+    }
 }

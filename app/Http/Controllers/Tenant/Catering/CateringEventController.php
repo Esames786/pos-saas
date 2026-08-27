@@ -207,7 +207,7 @@ class CateringEventController extends Controller
             ])->values());
 
         // Catering profile defaults (rate/unit/Urdu label) keyed by product for the builder.
-        $profileMap = \App\Models\Tenant\CateringProductProfile::with(['product.translations'])
+        $profileMap = \App\Models\Tenant\CateringProductProfile::with(['product.translations', 'defaultQuoteUnit'])
             ->where('catering_enabled', true)
             ->get()
             ->mapWithKeys(fn ($profile) => [$profile->product_id => [
@@ -218,6 +218,11 @@ class CateringEventController extends Controller
                 'mats' => $profile->costing_mode === 'blocks' ? ($blockMats[$profile->product_id] ?? collect())->all() : [],
                 'party' => (bool) ($profile->allow_party_supply ?? true),
                 'unit_id' => $profile->default_quote_unit_id,
+                // The estimate line's selling unit is the product profile's
+                // quote unit. A linked material can be KG while the item being
+                // sold is PCS (Arabian Puff); deriving this from mats[0] made
+                // the visible line and customer document lie about the unit.
+                'unit_code' => $profile->defaultQuoteUnit?->code,
                 'minimum_qty' => (float) ($profile->minimum_qty ?? 0),
                 'pricing_mode' => $profile->pricing_mode,
                 'name_ur' => optional($profile->product->translations->firstWhere('language_code', 'ur'))->name,
