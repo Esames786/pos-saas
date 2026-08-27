@@ -127,6 +127,7 @@ return [
         'edge:local:print-worker',
         'edge:local:print-status',
         'edge:local:sync-send', // OFFLINE-SYNC-ENGINE-1D: drain the sale outbox to Cloud
+        'edge:local:sync-status', // OFFLINE-SYNC-ENGINE-1E: read-only sync/exception/cutover status
         // Framework cache/runtime operations the appliance explicitly needs.
         'config:cache', 'config:clear',
         'route:cache', 'route:clear',

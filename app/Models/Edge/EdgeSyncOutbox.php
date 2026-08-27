@@ -32,12 +32,20 @@ class EdgeSyncOutbox extends Model
     public const STATE_ACKNOWLEDGED = 'acknowledged';
     public const STATE_FAILED_PERMANENT = 'failed_permanent';
 
-    /** Allowed state transitions (see class doc). Expiry reclaim is release+lease, not a new edge. */
+    /**
+     * Allowed state transitions (see class doc). Expiry reclaim is release+lease, not a new edge.
+     *
+     * OFFLINE-SYNC-ENGINE-1E: failed_permanent -> pending is the SANCTIONED supervisor REQUEUE (§H). It is
+     * performed ONLY by EdgeSyncOutboxService::requeueFailedPermanent, which refuses non-requeuable failure
+     * classes (hash conflict / wrong binding / stale activation / unsupported schema / invalid payload) and
+     * records the requeue audit. The state edge existing here is defence-in-depth for that one authority; no
+     * other code path may un-terminate a row, and acknowledged remains strictly terminal.
+     */
     public const TRANSITIONS = [
         self::STATE_PENDING => [self::STATE_LEASED],
         self::STATE_LEASED => [self::STATE_PENDING, self::STATE_ACKNOWLEDGED, self::STATE_FAILED_PERMANENT],
         self::STATE_ACKNOWLEDGED => [],
-        self::STATE_FAILED_PERMANENT => [],
+        self::STATE_FAILED_PERMANENT => [self::STATE_PENDING],
     ];
 
     /** The immutable envelope fields — frozen at creation, never rewritten. */
@@ -51,9 +59,11 @@ class EdgeSyncOutbox extends Model
         'config_revision' => 'integer',
         'activation_epoch' => 'integer',
         'attempts' => 'integer',
+        'requeue_count' => 'integer',
         'lease_expires_at' => 'datetime',
         'first_sent_at' => 'datetime',
         'acknowledged_at' => 'datetime',
+        'last_requeued_at' => 'datetime',
         'ack_payload' => 'array',
     ];
 

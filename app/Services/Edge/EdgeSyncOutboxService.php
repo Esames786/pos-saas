@@ -196,6 +196,67 @@ class EdgeSyncOutboxService
         $row->refresh();
     }
 
+    /**
+     * OFFLINE-SYNC-ENGINE-1E — "Retry Now" (§G): make a stuck row immediately eligible for the sender again.
+     * A leased row (typically an EXPIRED lease held by a dead worker) is released to pending; a pending row is
+     * already eligible (no-op). A failed_permanent row is NOT retried here — that requires the guarded
+     * supervisor requeue. An acknowledged row is terminal. Returns the resulting state.
+     */
+    public function retryNow(EdgeSyncOutbox $row): string
+    {
+        $row->refresh();
+        return match ($row->state) {
+            EdgeSyncOutbox::STATE_PENDING => EdgeSyncOutbox::STATE_PENDING,
+            EdgeSyncOutbox::STATE_LEASED => $this->releaseAndReturn($row),
+            EdgeSyncOutbox::STATE_FAILED_PERMANENT => throw new RuntimeException('OUTBOX_RETRY_TERMINAL: a permanently-failed row needs a supervisor requeue, not Retry Now.'),
+            default => throw new RuntimeException('OUTBOX_RETRY_INVALID: only a pending or leased row can be retried.'),
+        };
+    }
+
+    private function releaseAndReturn(EdgeSyncOutbox $row): string
+    {
+        $this->releaseLease($row, 'operator: retry now');
+
+        return EdgeSyncOutbox::STATE_PENDING;
+    }
+
+    /**
+     * OFFLINE-SYNC-ENGINE-1E — the guarded supervisor REQUEUE (§H): failed_permanent -> pending, reusing the
+     * SAME immutable envelope. Sanctioned ONLY when the parked failure is a REQUEUEABLE operational class
+     * (transient / insufficient_stock whose cause the supervisor has resolved). REFUSED for every terminal
+     * verdict whose cause a re-send of identical bytes cannot fix — hash conflict, wrong binding, stale
+     * activation, unsupported schema/feature, invalid payload, unresolved reference — those need reconciliation
+     * or a compensating action, never a blind requeue. The envelope is never edited; a full audit trail is kept.
+     */
+    public function requeueFailedPermanent(EdgeSyncOutbox $row, string $performedBy, string $reason): void
+    {
+        $row->refresh();
+        if ($row->state !== EdgeSyncOutbox::STATE_FAILED_PERMANENT) {
+            throw new RuntimeException('OUTBOX_REQUEUE_STATE: only a failed_permanent row can be requeued.');
+        }
+        if (trim($reason) === '') {
+            throw new RuntimeException('OUTBOX_REQUEUE_REASON: a requeue reason is required (why the cause is resolved).');
+        }
+
+        $class = EdgeSyncFailureClassifier::classify($row->last_error)['class'];
+        if (! in_array($class, EdgeSyncFailureClassifier::REQUEUEABLE_CLASSES, true)) {
+            throw new RuntimeException(
+                'OUTBOX_REQUEUE_REFUSED: this failure class [' . $class . '] cannot be requeued by re-sending the same envelope; '
+                . 'it requires reconciliation or a compensating action, not a blind requeue.'
+            );
+        }
+
+        $row->update([
+            'state' => EdgeSyncOutbox::STATE_PENDING,
+            'lease_owner' => null,
+            'lease_expires_at' => null,
+            'requeue_count' => (int) $row->requeue_count + 1,
+            'last_requeued_at' => now(),
+            'last_requeue_reason' => mb_substr($reason, 0, 500),
+            'last_requeued_by' => mb_substr($performedBy, 0, 191),
+        ]);
+    }
+
     /** leased -> failed_permanent. 1C/1D-ONLY: explicit terminal Cloud verdict (e.g. hash conflict). */
     public function markFailedPermanent(EdgeSyncOutbox $row, string $verdict): void
     {
