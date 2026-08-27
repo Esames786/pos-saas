@@ -101,6 +101,49 @@ class EdgeSyncOutboxService
         });
     }
 
+    /**
+     * OFFLINE-SYNC-ENGINE-1E — atomically lease ONE specific eligible row by sale_uuid (pending, or leased
+     * with an EXPIRED lease). Same single-statement SKIP LOCKED claim as lease(), but targeted: reconciliation
+     * must recover a specific sale, not "the oldest". Returns the claimed row, or null when that row is not
+     * currently eligible (already terminal, or held by a live lease). Never grabs a different row.
+     */
+    public function leaseSpecific(string $saleUuid, string $owner, int $leaseSeconds = self::DEFAULT_LEASE_SECONDS): ?EdgeSyncOutbox
+    {
+        $token = $owner . ':' . (string) Str::ulid();
+        $conn = DB::connection(self::CONN);
+
+        return $conn->transaction(function () use ($conn, $token, $saleUuid, $leaseSeconds) {
+            $row = $conn->table('edge_sync_outbox')
+                ->where('sale_uuid', $saleUuid)
+                ->where(function ($q) {
+                    $q->where('state', EdgeSyncOutbox::STATE_PENDING)
+                        ->orWhere(function ($q2) {
+                            $q2->where('state', EdgeSyncOutbox::STATE_LEASED)
+                                ->whereNotNull('lease_expires_at')
+                                ->where('lease_expires_at', '<=', now());
+                        });
+                })
+                ->lock('FOR UPDATE SKIP LOCKED')
+                ->first();
+
+            if (! $row) {
+                return null;
+            }
+
+            $now = $conn->getDriverName() === 'sqlite' ? "datetime('now')" : 'NOW()';
+            $conn->table('edge_sync_outbox')->where('id', $row->id)->update([
+                'state' => EdgeSyncOutbox::STATE_LEASED,
+                'lease_owner' => $token,
+                'lease_expires_at' => now()->addSeconds($leaseSeconds),
+                'attempts' => DB::raw('attempts + 1'),
+                'first_sent_at' => DB::raw('COALESCE(first_sent_at, ' . $now . ')'),
+                'updated_at' => now(),
+            ]);
+
+            return EdgeSyncOutbox::query()->whereKey($row->id)->firstOrFail();
+        });
+    }
+
     /** Retryable release: leased -> pending (the row becomes eligible again immediately). */
     public function releaseLease(EdgeSyncOutbox $row, ?string $error = null): void
     {
