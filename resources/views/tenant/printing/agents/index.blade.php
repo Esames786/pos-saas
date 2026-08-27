@@ -194,6 +194,15 @@
                                 </form>
                             @endif
                         @endcan
+                        @can('tenant.print-agents.destroy')
+                            <form method="POST"
+                                  action="{{ url('/print/agents/' . $agent->id) }}"
+                                  class="d-inline"
+                                  onsubmit="return confirm('Permanently remove this agent? Any jobs it was handling are released. This only removes the record — it does not touch the PC.')">
+                                @csrf @method('DELETE')
+                                <button class="btn btn-sm btn-danger" type="submit" title="Remove this agent from the list">Delete</button>
+                            </form>
+                        @endcan
                     </td>
                 </tr>
                 @empty

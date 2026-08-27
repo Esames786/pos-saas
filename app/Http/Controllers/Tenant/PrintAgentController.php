@@ -10,7 +10,9 @@ use App\Models\Tenant\Terminal;
 use App\Services\Printing\PrintAgentPairingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class PrintAgentController extends Controller
@@ -124,6 +126,31 @@ class PrintAgentController extends Controller
         $this->pairing->audit('print_agent.deactivated', $printAgent);
 
         return back()->with('status', 'Print agent deactivated.');
+    }
+
+    /**
+     * Permanently remove an agent (the old/decommissioned ones pile up in the list). Any print jobs or
+     * commands it had claimed are RELEASED first — claimed_by_agent_id is a nullable, un-constrained
+     * reference, so this leaves nothing dangling and never touches a printed job's document.
+     */
+    public function destroy(PrintAgent $printAgent)
+    {
+        $name = $printAgent->name;
+
+        DB::connection('tenant')->table('print_jobs')
+            ->where('claimed_by_agent_id', $printAgent->id)
+            ->update(['claimed_by_agent_id' => null, 'claimed_at' => null]);
+
+        if (Schema::connection('tenant')->hasTable('print_agent_commands')) {
+            DB::connection('tenant')->table('print_agent_commands')
+                ->where('claimed_by_agent_id', $printAgent->id)
+                ->update(['claimed_by_agent_id' => null]);
+        }
+
+        $this->pairing->audit('print_agent.deleted', $printAgent);
+        $printAgent->delete();
+
+        return back()->with('status', "Print agent \u{201C}{$name}\u{201D} removed.");
     }
 
     /**

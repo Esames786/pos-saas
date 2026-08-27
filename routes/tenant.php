@@ -649,6 +649,7 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 Route::post('/print/agents', [PrintAgentController::class, 'store'])->name('tenant.print-agents.store');
                 Route::post('/print/agents/{printAgent}/regenerate-token', [PrintAgentController::class, 'regenerateToken'])->name('tenant.print-agents.regenerate-token');
                 Route::post('/print/agents/{printAgent}/deactivate', [PrintAgentController::class, 'deactivate'])->name('tenant.print-agents.deactivate');
+                Route::delete('/print/agents/{printAgent}', [PrintAgentController::class, 'destroy'])->name('tenant.print-agents.destroy');
                 // PRINT-AGENT-INSTALLER-1 — pairing-code flow + test page + agent download
                 Route::post('/print/agents/{printAgent}/pairing-code', [PrintAgentController::class, 'pairingCode'])->name('tenant.print-agents.pairing-code');
                 Route::post('/print/agents/{printAgent}/test-print', [PrintAgentController::class, 'testPrint'])->name('tenant.print-agents.test-print');
