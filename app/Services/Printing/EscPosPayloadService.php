@@ -481,7 +481,7 @@ class EscPosPayloadService
             $items = collect($r['items']);
             $out .= $header('ITEMS') . $head3();
             foreach ($items as $row) {
-                $name = $row->item . ($row->variant ? ' (' . $row->variant . ')' : '');
+                $name = $row->item . ($this->meaningfulVariant($row->variant ?? null, $row->item ?? null) ? ' (' . $row->variant . ')' : '');
                 $out .= $entry($name, $row->sold_qty, $row->returned_qty, $row->net_qty, $row->net, $row->returns_amount, $row->net_value);
             }
             $out .= $bigTotal($items->sum('sold_qty'), $items->sum('returned_qty'), $items->sum('net_qty'), $items->sum('net'), $items->sum('returns_amount'), $items->sum('net_value'));
@@ -639,7 +639,7 @@ class EscPosPayloadService
                 $nameW, $qtyW, $rateW, $amountW, $dividers
             ), $rowTall);
 
-            if ($line->variant_name) {
+            if ($this->meaningfulVariant($line->variant_name, $line->product_name)) {
                 $out .= $this->sized('  (' . $line->variant_name . ')' . "\n", $rowTall);
             }
             if ($line->kitchen_note) {
@@ -716,6 +716,18 @@ class EscPosPayloadService
         return $out . self::CUT;
     }
 
+    /**
+     * A variant is worth printing only when it ADDS information — i.e. it differs from the product
+     * name. Many products carry a variant named exactly like the product (e.g. ALU-EXTRA-PIECE), and
+     * printing "(ALU-EXTRA-PIECE)" under "ALU-EXTRA-PIECE" is pure noise on a ticket.
+     */
+    private function meaningfulVariant(?string $variant, ?string $productName): bool
+    {
+        $variant = trim((string) $variant);
+
+        return $variant !== '' && strcasecmp($variant, trim((string) $productName)) !== 0;
+    }
+
     private function kot(SalesOrder $sale, PrintJob $job): string
     {
         $payload        = $job->payload ?? [];
@@ -753,7 +765,10 @@ class EscPosPayloadService
         $rowBig   = $this->scaleFor($layout?->item_font_size ?? $layout?->kot_font_size);
         $timeBig  = $this->scaleFor($layout?->time_font_size ?? $layout?->kot_font_size);
         $dividers = $show('show_column_dividers', false);
-        $rule = str_repeat('-', max((int) floor(self::COLS_80MM / max(1, $big['w'])), 8));
+        // Divider prints at NORMAL width (scaled() resets size), so it must span the FULL paper — 42
+        // dashes on 80mm. Dividing by the KOT font width made it only ~21 at a big font, ending the
+        // line halfway across the ticket. (The receipt already uses the full 42.)
+        $rule = str_repeat('-', self::COLS_80MM);
 
         $headerText = trim((string) ($layout?->header_text ?? ''));
         if ($headerText !== '') {
@@ -844,7 +859,7 @@ class EscPosPayloadService
             // Variant, modifiers and the cook's note stay one step below the item: always taller
             // than normal so they are readable, never double width, so they never wrap.
             $sub = ['w' => 1, 'h' => $rowBig['h']];
-            if ($line->variant_name) {
+            if ($this->meaningfulVariant($line->variant_name, $line->product_name)) {
                 $out .= $this->subRow('  ' . $line->variant_name, $sub);
             }
             foreach ($this->lineModifiers($line) as $modifier) {
@@ -870,7 +885,9 @@ class EscPosPayloadService
             $out .= $this->brandingFooter();
         }
 
-        $out .= str_repeat('-', 42) . "\n\n\n";
+        // Minimal tail feed before the cut — the cutter feeds to its own position anyway, so extra
+        // blank lines here just widen the gap between tickets.
+        $out .= str_repeat('-', 42) . "\n";
 
         return $out . self::CUT;
     }

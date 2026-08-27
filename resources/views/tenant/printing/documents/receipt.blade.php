@@ -210,7 +210,7 @@
                 {{-- Item name in its own column; Qty / Rate / Amount keep theirs so the numbers
                      never collide. Modifiers and combo components read as indented sub-rows. --}}
                 {{ $line->product_name }}
-                @if($line->variant_name)
+                @if($line->variant_name && strcasecmp(trim($line->variant_name), trim((string) $line->product_name)) !== 0)
                     <small>({{ $line->variant_name }})</small>
                 @endif
                 @foreach(($line->modifiers ?? []) as $modifier)

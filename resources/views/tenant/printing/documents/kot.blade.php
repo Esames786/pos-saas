@@ -172,7 +172,7 @@
             </td>
             <td class="item-name">
                 <span class="ibig">{{ ($eventType ?? null) === 'addition' ? '(R) ' : '' }}{{ strtoupper($line->product_name) }}</span>
-                @if($line->variant_name)
+                @if($line->variant_name && strcasecmp(trim($line->variant_name), trim((string) $line->product_name)) !== 0)
                     <br><small>{{ $line->variant_name }}</small>
                 @endif
                 @foreach(($line->modifiers ?? []) as $modifier)
