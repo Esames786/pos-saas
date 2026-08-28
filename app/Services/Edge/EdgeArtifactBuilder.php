@@ -124,6 +124,7 @@ class EdgeArtifactBuilder
             'edge_app_version'        => (string) config('edge.app_version'),
             'artifact_format_version' => (string) config('edge.artifact_format_version'),
             'bootstrap_schema'        => (string) config('edge.bootstrap_schema'),
+            'config_schema'           => (string) config('edge.config_schema'),
             'sync_protocol'           => (string) config('edge.sync_protocol'),
             'min_php'                 => (string) config('edge.min_php'),
             'min_db'                  => (string) config('edge.min_db'),

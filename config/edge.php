@@ -57,6 +57,19 @@ return [
     | Config catalog (products/categories/…) is intentionally NOT backed up: it is re-derivable from the
     | Cloud bootstrap on a replacement box. Nothing here is a secret.
     */
+    /*
+    | OFFLINE EDGE PRODUCTIZATION — signed appliance updates. ASYMMETRIC (Ed25519): the appliance ships the
+    | PUBLIC verification key ONLY; the private signing key lives on the Cloud/build side and is NEVER on the
+    | appliance and NEVER in git. A tampered package/artifact/version fails verification before any mutation.
+    */
+    'update' => [
+        'format'       => 'edge-update-v1',
+        'public_key'   => env('EDGE_UPDATE_PUBLIC_KEY'),   // appliance: verify (base64 Ed25519 public)
+        'signing_key'  => env('EDGE_UPDATE_SIGNING_KEY'),  // Cloud/build ONLY: sign (base64 Ed25519 secret)
+        'install_root' => env('EDGE_UPDATE_INSTALL_ROOT'), // versioned runtime dirs + the atomic `current` pointer
+        'allow_downgrade' => (bool) env('EDGE_UPDATE_ALLOW_DOWNGRADE', false),
+    ],
+
     'backup' => [
         'path'      => env('EDGE_BACKUP_PATH', storage_path('app/edge-backups')),
         'retention' => (int) env('EDGE_BACKUP_RETENTION', 24), // rolling copies to keep (hourly ≈ 1 day)
@@ -154,6 +167,7 @@ return [
         'edge:local:sync-status', // OFFLINE-SYNC-ENGINE-1E: read-only sync/exception/cutover status
         'edge:local:backup', // PRODUCTIZATION: encrypted local appliance backup
         'edge:local:restore', // PRODUCTIZATION: guarded restore of a local appliance backup
+        'edge:local:update', // PRODUCTIZATION: apply a signed appliance update
         // Framework cache/runtime operations the appliance explicitly needs.
         'config:cache', 'config:clear',
         'route:cache', 'route:clear',
