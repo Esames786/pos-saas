@@ -951,6 +951,11 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary btn-lg" data-bs-dismiss="modal">Back</button>
+                    {{-- Preview the FULL running bill (discount + tax + service charge + tip) exactly as
+                         Close & Pay will charge — for showing / printing to the customer before paying. --}}
+                    <button type="button" class="btn btn-outline-primary btn-lg" id="payment-bill-preview-btn">
+                        <i class="ti ti-file-invoice me-1"></i>Preview Bill
+                    </button>
                     <button type="button" class="btn btn-primary btn-lg flex-grow-1" id="complete-sale-btn">
                         {{ $tableSession ? 'Close & Pay Table Bill' : 'Complete Sale' }}
                     </button>
@@ -5539,6 +5544,29 @@ document.addEventListener('DOMContentLoaded', function () {
     });
     const billPreviewBtn = document.getElementById('bill-preview-btn');
     if (billPreviewBtn) { billPreviewBtn.addEventListener('click', billPreview); }
+
+    // Preview Bill FROM inside the Payment modal — reuses the same discount/tax/service-charge-aware
+    // cart preview, stacked over the Payment modal so the operator lands back on payment on close.
+    document.getElementById('payment-bill-preview-btn')?.addEventListener('click', billPreview);
+    (function () {
+        var previewModal = document.getElementById('billPreviewModal');
+        var paymentOpen = function () {
+            var p = document.getElementById('paymentModal');
+            return p && p.classList.contains('show');
+        };
+        // Bump the preview modal + its backdrop above the Payment modal when stacked.
+        previewModal?.addEventListener('shown.bs.modal', function () {
+            if (!paymentOpen()) return;
+            this.style.zIndex = '1075';
+            var backdrops = document.querySelectorAll('.modal-backdrop');
+            if (backdrops.length) backdrops[backdrops.length - 1].style.zIndex = '1070';
+        });
+        // Closing the top (preview) modal must not unlock the page while Payment is still open.
+        previewModal?.addEventListener('hidden.bs.modal', function () {
+            this.style.zIndex = '';
+            if (paymentOpen()) document.body.classList.add('modal-open');
+        });
+    })();
 
     document.getElementById('last-print-btn').addEventListener('click', openRecentPrints);
 
