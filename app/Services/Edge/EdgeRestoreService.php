@@ -32,11 +32,19 @@ class EdgeRestoreService
 {
     public const CONN = 'tenant';
 
-    /** [childTable, column, refTable] config references the recoverable rows must resolve. */
+    /**
+     * [childTable, column, refTable] — CONFIG references the recoverable rows must resolve on the target box.
+     * Only EXTERNAL (config) references belong here; intra-recoverable-set references (e.g. kot_batches ->
+     * sales_orders) are satisfied by the parents-first restore order, not the precheck.
+     */
     private const REFS = [
+        ['shifts', 'branch_id', 'branches'],
+        ['shifts', 'terminal_id', 'terminals'],
+        ['restaurant_table_sessions', 'restaurant_table_id', 'restaurant_tables'],
         ['sales_orders', 'branch_id', 'branches'],
         ['sales_order_lines', 'product_id', 'products'],
         ['sale_payments', 'payment_method_id', 'payment_methods'],
+        ['kot_batch_lines', 'product_id', 'products'],
         ['edge_operational_stock_balances', 'product_id', 'products'],
         ['edge_operational_stock_movements', 'product_id', 'products'],
     ];

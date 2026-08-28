@@ -33,18 +33,31 @@ class EdgeBackupService
     public const CONN = 'tenant';
     private const CIPHER = 'aes-256-gcm';
 
-    /** Recoverable local-state tables, parents-before-children for a clean FK-coherent restore. */
+    /**
+     * Recoverable local-state tables, PARENTS-BEFORE-CHILDREN for a clean FK-coherent restore.
+     * Coverage decided by the state census (docs/design/EDGE_BACKUP_STATE_CENSUS.md): anything whose loss
+     * could change money, stock, shift, dine-in/table, KOT, printing correctness, or exactly-once behaviour
+     * is captured. Config catalog (products/tables/printers/…) is excluded — re-derivable from Cloud
+     * bootstrap. Ephemeral worker/audit state (print worker lease, auth audit, consumed assertions, the
+     * backup log itself) is excluded — safely rebuilt.
+     */
     public const TABLES = [
         'edge_local_meta',
         'edge_local_user_credentials',
-        'sales_orders',
+        'shifts',                          // money: open shift + cash reconciliation
+        'restaurant_table_sessions',       // dine-in: active table sessions
+        'sales_orders',                    // sales incl. held/draft (status='held', is_draft)
         'sales_order_lines',
         'sale_payments',
+        'kot_batches',                     // KOT state (reprint correctness)
+        'kot_batch_lines',
+        'print_jobs',                      // local print queue + printed history (no duplicate print)
+        'edge_local_print_deliveries',     // Edge print delivery state
         'edge_operational_stock_baselines',
         'edge_operational_stock_balances',
         'edge_operational_stock_movements',
         'edge_baseline_cutovers',
-        'edge_sync_outbox',
+        'edge_sync_outbox',                // pending/leased/acknowledged/failed_permanent
     ];
 
     public function __construct(private readonly EdgeBackupKeyProvider $keys)
