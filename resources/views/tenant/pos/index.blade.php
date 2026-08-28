@@ -142,6 +142,11 @@
     .table-action-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: .75rem; }
     .pos-session-summary { min-width: 0; }
     .pos-session-summary .session-context { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* View Tables now lives in the page header, so the session bar carries ONLY live-session context
+       (#pos-session-details / #pos-session-actions). Collapse it to nothing whenever it has no visible
+       child (both .d-none = no active session), so an empty bar never eats a row. Overrides the inline
+       display the mode-switch JS still sets, without touching that logic. */
+    #pos-session-bar:not(:has(> :not(.d-none))) { display: none !important; }
 
     /* Recalled-order lock */
     .pos-controls-locked {
@@ -413,21 +418,27 @@
 </style>
 
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
-    <div class="d-flex align-items-center gap-2">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
         <button type="button" class="btn btn-outline-secondary" id="pos-sidebar-toggle" title="Show navigation" aria-label="Show navigation">
             <i class="ti ti-layout-sidebar-left-expand"></i>
         </button>
         <h1 class="h3 mb-0">Restaurant POS</h1>
+        {{-- Flash messages sit inline beside the title (compact) instead of each taking its own row. --}}
+        @if(session('status'))
+            <span class="alert alert-success py-1 px-2 mb-0 small d-inline-flex align-items-center" role="status">{{ session('status') }}</span>
+        @endif
+        @if($errors->any())
+            <span class="alert alert-danger py-1 px-2 mb-0 small d-inline-flex align-items-center" role="alert">{{ $errors->first() }}</span>
+        @endif
     </div>
+    {{-- View Tables moves up into the header (dine-in only) so it no longer eats a full empty row
+         below. Same id/handler; the session bar underneath now carries only live-session context. --}}
+    @if(in_array('dine_in', $allowedOrderTypes, true))
+        <button type="button" id="view-tables-btn" class="btn btn-dark btn-sm">
+            <i class="ti ti-layout-grid me-1"></i>View Tables
+        </button>
+    @endif
 </div>
-
-@if($errors->any())
-    <div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>
-@endif
-
-@if(session('status'))
-    <div class="alert alert-success" role="status">{{ session('status') }}</div>
-@endif
 
 {{-- Selected table-session bar — JS-managed: always in the DOM, shown when a dine-in
      session is active. Filled by applyTableSession() so switching tables needs no reload. --}}
@@ -436,10 +447,7 @@
 @if(in_array('dine_in', $allowedOrderTypes, true))
 <div id="pos-session-bar" class="pos-card px-3 py-2 mb-3 d-flex flex-wrap align-items-center gap-2 pos-session-summary"
      data-session-base="{{ url('/restaurant/table-sessions') }}"
-     style="{{ $activeMode === 'dine_in' ? '' : 'display:none;' }}">
-    <button type="button" id="view-tables-btn" class="btn btn-dark btn-sm">
-        <i class="ti ti-layout-grid me-1"></i>View Tables
-    </button>
+     style="{{ $activeMode === 'dine_in' && $tableSession ? '' : 'display:none;' }}">
     <div class="session-context {{ $tableSession ? '' : 'd-none' }}" id="pos-session-details">
         <strong>Table <span id="pos-session-table-no">{{ $tableSession?->table?->table_no }}</span></strong>
         <span class="text-muted ms-1" id="pos-session-no">{{ $tableSession?->session_no }}</span>
