@@ -196,12 +196,16 @@
     .product-name {
         font-size: 0.9rem;
         line-height: 1.3;
-        /* keep tiles uniform: at most 2 lines of name, ellipsis after */
+        /* keep tiles uniform: at most 2 lines of name, ellipsis after. Reserve exactly two lines
+           (min-height) so the SKU always sits BELOW the full name block — otherwise webkit
+           mis-measures -webkit-line-clamp at fractional zoom (e.g. 90%) and the 2nd line bleeds
+           over the SKU. */
         display: -webkit-box;
         -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
         overflow: hidden;
         word-break: break-word;
+        min-height: 2.6em;   /* 2 lines × 1.3 line-height */
     }
     .product-price { font-size: 1.08rem; white-space: nowrap; }
 
