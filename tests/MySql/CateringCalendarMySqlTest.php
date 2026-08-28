@@ -153,7 +153,9 @@ class CateringCalendarMySqlTest extends MySqlTenantTestCase
         $this->event($today->addDays(5)->toDateString(), CateringEvent::STATUS_CONFIRMED, 1000);
         $cancelled = $this->event($today->addDays(6)->toDateString(), CateringEvent::STATUS_CANCELLED, 1000);
 
-        $window = $this->service()->window();
+        // Anchored at the month the bookings live in — a window that ends
+        // at today's month-end cannot see a booking six days away in the next.
+        $window = $this->service()->window($today->addDays(6));
         $byNo = collect($this->allEvents($window))->keyBy('event_no');
 
         $this->assertArrayHasKey($cancelled->event_no, $byNo->all(), 'it stays visible on the grid');
@@ -168,9 +170,10 @@ class CateringCalendarMySqlTest extends MySqlTenantTestCase
     /** The money is on the dot, because "how much" is the next question. */
     public function test_each_event_carries_its_amount_and_a_link(): void
     {
-        $event = $this->event(CarbonImmutable::today()->addDays(3)->toDateString(), CateringEvent::STATUS_QUOTED, 750);
+        $date = CarbonImmutable::today()->addDays(3);
+        $event = $this->event($date->toDateString(), CateringEvent::STATUS_QUOTED, 750);
 
-        $one = collect($this->allEvents($this->service()->window()))->firstWhere('event_no', $event->event_no);
+        $one = collect($this->allEvents($this->service()->window($date)))->firstWhere('event_no', $event->event_no);
 
         $this->assertSame(7500.0, $one['amount']);
         $this->assertTrue($one['quoted']);
@@ -180,9 +183,10 @@ class CateringCalendarMySqlTest extends MySqlTenantTestCase
     /** An unpriced booking says so rather than showing a misleading zero. */
     public function test_an_unpriced_booking_is_marked_not_quoted(): void
     {
-        $event = $this->event(CarbonImmutable::today()->addDays(4)->toDateString(), CateringEvent::STATUS_DRAFT);
+        $date = CarbonImmutable::today()->addDays(4);
+        $event = $this->event($date->toDateString(), CateringEvent::STATUS_DRAFT);
 
-        $one = collect($this->allEvents($this->service()->window()))->firstWhere('event_no', $event->event_no);
+        $one = collect($this->allEvents($this->service()->window($date)))->firstWhere('event_no', $event->event_no);
 
         $this->assertFalse($one['quoted']);
         $this->assertSame(0.0, $one['amount']);
@@ -193,10 +197,11 @@ class CateringCalendarMySqlTest extends MySqlTenantTestCase
     {
         View::share('errors', new \Illuminate\Support\ViewErrorBag);
 
-        $event = $this->event(CarbonImmutable::today()->addDays(2)->toDateString(), CateringEvent::STATUS_CONFIRMED, 1200);
+        $date = CarbonImmutable::today()->addDays(2);
+        $event = $this->event($date->toDateString(), CateringEvent::STATUS_CONFIRMED, 1200);
 
         $html = View::make('tenant.partials.catering-calendar', [
-            'cateringCalendar' => $this->service()->window(),
+            'cateringCalendar' => $this->service()->window($date),
             'selectedBranch' => null,
         ])->render();
 

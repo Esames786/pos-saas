@@ -109,6 +109,32 @@ class CateringEventAjaxMySqlTest extends MySqlTenantTestCase
         $this->assertSame($before, $this->ledgerCounts(), 'creating a booking commits nothing');
     }
 
+    /**
+     * KASHIF-EVENT-FORM-3 — a TYPED customer name is not a customer id.
+     *
+     * The one-box customer field takes either a match from the book or a name
+     * nobody has yet. The second case posted the typed text as customer_id and
+     * the booking was refused — "The selected customer id is invalid" — even
+     * though the name, phone and address underneath were all filled in. A
+     * non-numeric id means "no existing customer": the booking is made, with
+     * its own copy of the customer, and nothing is linked.
+     */
+    public function test_a_typed_customer_name_books_instead_of_being_refused(): void
+    {
+        $response = $this->controller()->store($this->jsonRequest($this->valid([
+            'customer_id' => 'ad',            // what select2 posts for typed text
+            'customer_name' => 'Asad Walk-in',
+            'customer_phone' => '0300-9998887',
+        ])));
+
+        $this->assertInstanceOf(JsonResponse::class, $response);
+
+        $event = CateringEvent::firstOrFail();
+        $this->assertSame('Asad Walk-in', $event->customer_name);
+        $this->assertSame('0300-9998887', $event->customer_phone);
+        $this->assertNull($event->customer_id, 'nothing is linked to a customer that does not exist');
+    }
+
     public function test_ajax_create_validation_failure_creates_nothing(): void
     {
         try {

@@ -38,6 +38,24 @@
         padding: 1px 6px; font-size: 12.5px; min-height: 26px;
     }
     .punch-mode #lines-table .quoted-live [data-field=quoted_rate] { width: 85px !important; }
+
+    /* KASHIF-EVENT-FORM-3 — the grid answers the mouse: the row under the
+       pointer lights up, its empty space opens the same edit the pencil does,
+       and the two actions are big enough to hit without aiming. */
+    .punch-mode #lines-body > tr[data-row] { cursor: pointer; }
+    .punch-mode #lines-body > tr[data-row]:hover > td { background: var(--bs-primary-bg-subtle, #e8eefa); }
+    .punch-mode #lines-body > tr.punch-detail:hover > td { background: inherit; }
+    .punch-mode #lines-table .punch-edit,
+    .punch-mode #lines-table .punch-edit-unsaved,
+    .punch-mode #lines-table .remove-line,
+    .punch-mode #lines-table .punch-remove {
+        font-size: 19px; line-height: 1; padding: 4px 7px !important;
+        border-radius: 6px;
+    }
+    .punch-mode #lines-table .punch-edit:hover,
+    .punch-mode #lines-table .punch-edit-unsaved:hover { background: var(--bs-primary-bg-subtle, #e8eefa); }
+    .punch-mode #lines-table .remove-line:hover,
+    .punch-mode #lines-table .punch-remove:hover { background: var(--bs-danger-bg-subtle, #fbe4e4); }
     /* The Urdu name is a document concern, not a punching one — the column goes
        (its input still submits, hidden, so nothing typed is ever lost).
        CHILD selectors only: a descendant rule reached inside the breakdown
@@ -353,12 +371,25 @@
                         </select>
                         <input id="punch-instr" type="text" class="form-control mt-1" placeholder="Additional note (optional)">
                     </div>
-                    <div class="d-none punch-step border rounded px-3 py-2 bg-body" id="punch-price" style="min-width:220px">
-                        <div class="d-flex justify-content-between gap-3 fs-12 text-muted">
-                            <span>Customer rate / <span id="punch-price-unit">unit</span></span>
+                    {{-- KASHIF-EVENT-FORM-3: the customer rate is EDITABLE right
+                         here, for every item — including one with no cost blocks
+                         (Cream Cocktail's 1,200 was read-only, so the operator
+                         could not agree a different price while punching). Left
+                         alone it follows the system rate; typed over, it becomes
+                         this line's agreed rate through the same override
+                         authority the panel uses. --}}
+                    <div class="d-none punch-step border rounded px-3 py-2 bg-body" id="punch-price" style="min-width:250px">
+                        <div class="d-flex justify-content-between align-items-center gap-2 fs-12 text-muted">
+                            <span>System rate / <span id="punch-price-unit">unit</span></span>
                             <strong class="text-body" id="punch-live-rate">0.00</strong>
                         </div>
-                        <div class="d-flex justify-content-between gap-3 fw-bold">
+                        <div class="d-flex justify-content-between align-items-center gap-2 mt-1">
+                            <label class="fs-12 text-muted mb-0" for="punch-customer-rate">Customer rate</label>
+                            <input id="punch-customer-rate" type="number" step="0.01" min="0"
+                                   class="form-control form-control-sm text-end" style="width:110px"
+                                   placeholder="system">
+                        </div>
+                        <div class="d-flex justify-content-between gap-3 fw-bold mt-1">
                             <span>Line amount</span>
                             <span id="punch-live-amount">0.00</span>
                         </div>
@@ -1655,6 +1686,16 @@ $(function () {
         }, 150);
     }
 
+    // Clicking a row's empty space is the same as clicking its pencil — the
+    // operator aims at the line they mean, not at a 12-pixel icon. Anything
+    // interactive inside the row keeps its own behaviour.
+    $(document).on('click', '.punch-mode #lines-body > tr[data-row]', function (e) {
+        if ($(e.target).closest('input,select,button,a,label,.select2,.quoted-live,[data-act]').length) return;
+        const row = $(this);
+        const pencil = row.find('.punch-edit, .punch-edit-unsaved').first();
+        if (pencil.length) { pencil.trigger('click'); }
+    });
+
     // Row click → its punched data comes BACK UP into the bar for editing;
     // Enter updates the same row. The values are read from the row's own
     // snapshot panel (the quoted truth), block ids included.
@@ -1846,10 +1887,16 @@ $(function () {
         }).join(' · ');
         $('#punch-live').html(txt || (punch.name ? _.escape(punch.name) + ' — Enter se save' : ''));
         const calc = punchLineCalc(qty);
+        const money = n => (+n || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
         $('#punch-price-unit').text(punch.unitCode || 'unit');
-        $('#punch-live-rate').text(calc.rate.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}));
-        $('#punch-live-amount').text(calc.amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}));
+        $('#punch-live-rate').text(money(calc.rate));
+        // An agreed rate typed by the operator wins; left empty, the line
+        // follows the system rate and the amount says so.
+        const agreed = parseFloat($('#punch-customer-rate').val());
+        const useRate = (isFinite(agreed) && $('#punch-customer-rate').val() !== '') ? agreed : calc.rate;
+        $('#punch-live-amount').text(money(useRate * qty));
     }
+    $(document).on('input', '#punch-customer-rate', punchLive);
 
     // Enter ki qatar: qty → (O/P) → rate→kg→(گاہک) per material → commit.
     function punchSeq() {
@@ -1898,6 +1945,7 @@ $(function () {
         $('#punch-item').val(null).trigger('change');
         $('.punch-step').addClass('d-none');
         $('#punch-mats,#punch-live').empty();
+        $('#punch-customer-rate').val('');
         clearPunchInstructions();
     }
 
@@ -2011,6 +2059,15 @@ $(function () {
         return mats;
     }
 
+    // The operator's agreed rate if they typed one; the system rate otherwise.
+    // Empty means "follow the system" — never zero.
+    function punchAgreedRate(systemRate) {
+        const v = $('#punch-customer-rate').val();
+        const n = parseFloat(v);
+
+        return (v !== '' && isFinite(n) && n >= 0) ? n : systemRate;
+    }
+
     function punchRowHtml(idx, qty, calc) {
         const esc = s => _.escape(String(s == null ? '' : s));
         const h = (f, v) => '<input type="hidden" name="lines[' + idx + '][' + f + ']" value="' + esc(v) + '">';
@@ -2043,7 +2100,7 @@ $(function () {
                 + esc(punch.name)
                 + (supply ? '<span class="fs-12 text-success-emphasis ms-1">· customer: ' + esc(supply) + '</span>' : '')
                 + (punch.productId ? h('product_id', punch.productId) : '')
-                + h('item_name', punch.name) + h('rate', calc.rate)
+                + h('item_name', punch.name) + h('rate', punchAgreedRate(calc.rate))
                 + (punch.unitId ? h('unit_id', punch.unitId) : '')
                 + (note ? h('instructions', note) : '')
                 + instrIds.map(id => '<input type="hidden" name="lines[' + idx + '][instruction_ids][]" value="' + esc(id) + '">').join('')
@@ -2109,8 +2166,10 @@ $(function () {
             }
             row.find('[name="lines[' + idx + '][instructions]"]').val($('#punch-instr').val() || '');
             const calc = punchLineCalc(qty);
-            row.attr('data-rate', calc.rate);
-            row.find('.quoted-live [data-field=quoted_rate]').val(calc.rate.toFixed(2));
+            const agreed = punchAgreedRate(calc.rate);
+            row.attr('data-rate', agreed);
+            row.find('.quoted-live [data-field=quoted_rate]').val(agreed.toFixed(2));
+            row.find('[name="lines[' + idx + '][rate]"]').val(agreed);
             punchReset();
             recalc();
             setTimeout(() => $('#punch-item').select2('open'), 100);

@@ -108,6 +108,22 @@
             }
             $customer.on('select2:clear select2:unselect', clearCustomer);
             $root.find('.customer-reset').on('click', clearCustomer);
+
+            // KASHIF-EVENT-FORM-3 — a typed name is not a customer id.
+            // Leaving typed text in the box used to post it AS the id and the
+            // booking was refused with "The selected customer id is invalid",
+            // even though the name, phone and address below were all filled.
+            // A non-numeric value simply means "no existing customer": it is
+            // dropped, and the typed text becomes the name if none was given.
+            $root.closest('form').on('submit', function () {
+                const raw = String($customer.val() ?? '');
+                if (raw !== '' && ! /^\d+$/.test(raw)) {
+                    if (! $root.find('[name=customer_name]').val()) {
+                        $root.find('[name=customer_name]').val(raw);
+                    }
+                    $customer.val(null);
+                }
+            });
         }
 
         // Date usability — progressive enhancement over the native inputs (no

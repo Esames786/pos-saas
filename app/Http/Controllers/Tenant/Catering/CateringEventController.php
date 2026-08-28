@@ -397,6 +397,19 @@ class CateringEventController extends Controller
 
     private function validated(Request $request): array
     {
+        // KASHIF-EVENT-FORM-3 — a TYPED name is not a customer id.
+        //
+        // The one-box customer field accepts either: a match from the book, or
+        // a name nobody has yet. The second case posts the typed text as
+        // customer_id, and "The selected customer id is invalid" stopped a
+        // perfectly good walk-in booking whose name, phone and address were
+        // already filled in below. A non-numeric id simply means "no existing
+        // customer" — the booking carries its own copy of the customer either
+        // way, so drop it and let the booking through.
+        if (! ctype_digit((string) $request->input('customer_id', ''))) {
+            $request->merge(['customer_id' => null]);
+        }
+
         return $request->validate([
             'branch_id' => ['nullable', 'exists:branches,id'],
             'customer_id' => ['nullable', 'exists:customers,id'],
