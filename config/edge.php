@@ -48,6 +48,19 @@ return [
         'timeout'         => (int) env('EDGE_SYNC_TIMEOUT', 20),
     ],
 
+    /*
+    | OFFLINE EDGE PRODUCTIZATION — encrypted local appliance backup. A consistent logical snapshot of the
+    | appliance's RECOVERABLE local state (binding, local users, local sales, sync outbox, operational
+    | baseline + cutover audit) is written temp-first, integrity-verified, encrypted (Crypt / APP_KEY — a
+    | dedicated key is a productization refinement), atomically promoted, and pruned to a rolling window.
+    | Config catalog (products/categories/…) is intentionally NOT backed up: it is re-derivable from the
+    | Cloud bootstrap on a replacement box. Nothing here is a secret.
+    */
+    'backup' => [
+        'path'      => env('EDGE_BACKUP_PATH', storage_path('app/edge-backups')),
+        'retention' => (int) env('EDGE_BACKUP_RETENTION', 24), // rolling copies to keep (hourly ≈ 1 day)
+    ],
+
     'capabilities' => [
         'local_auth',                 // EDGE-LOCAL-AUTH-1 (Edge credentials, Argon2id, epoch-fenced)
         'local_pos_cash_sales',       // EDGE-LOCAL-POS-1 (cash quick_sale/takeaway/dine-in runtime)
@@ -130,6 +143,8 @@ return [
         'edge:local:print-status',
         'edge:local:sync-send', // OFFLINE-SYNC-ENGINE-1D: drain the sale outbox to Cloud
         'edge:local:sync-status', // OFFLINE-SYNC-ENGINE-1E: read-only sync/exception/cutover status
+        'edge:local:backup', // PRODUCTIZATION: encrypted local appliance backup
+        'edge:local:restore', // PRODUCTIZATION: guarded restore of a local appliance backup
         // Framework cache/runtime operations the appliance explicitly needs.
         'config:cache', 'config:clear',
         'route:cache', 'route:clear',
