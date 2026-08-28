@@ -108,6 +108,7 @@
 
     .restaurant-table-tile.available     { border-left: 6px solid #20c997; }
     .restaurant-table-tile.occupied      { border-left: 6px solid #fd7e14; }
+    .restaurant-table-tile.reserved      { border-left: 6px solid #a855f7; }
     .restaurant-table-tile.bill_requested{ border-left: 6px solid #0d6efd; }
     .restaurant-table-tile.selected      { border: 2px solid #111827; border-left: 6px solid #111827; background: #f8fafc; box-shadow: 0 14px 34px rgba(15,23,42,.16); }
     .restaurant-table-tile.selected .status-chip { background: #111827; color: #fff; }
@@ -1667,6 +1668,52 @@
 {{-- CUSTOMER-UX-2 (2026-08-11): ONE box. Type a phone (or name) — matches appear as you type;
      click one to attach instantly. No match? The same box becomes the quick-add: it already holds
      the phone, you type the name, press Enter and the customer is created AND attached. --}}
+{{-- TABLE-RESERVATION-1: Reserve a free table (attach a customer or type a walk-in) + time + note. --}}
+<div class="modal fade" id="reserveTableModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h2 class="modal-title h6 mb-0"><i class="ti ti-calendar-plus me-1"></i>Reserve Table <span id="reserve-table-no"></span></h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="reserve-table-id">
+                <input type="hidden" id="reserve-customer-id">
+                <div id="reserve-toast" class="alert d-none py-2 small mb-3" role="alert"></div>
+                <label class="form-label small mb-1">Customer <span class="text-muted">(search the book, or just type a name below)</span></label>
+                <input type="text" class="form-control form-control-sm mb-1" id="reserve-customer-search" placeholder="Search phone or name…" autocomplete="off">
+                <div id="reserve-customer-suggest" class="list-group mb-2 d-none" style="max-height:180px;overflow:auto"></div>
+                <div id="reserve-customer-chip" class="mb-2 d-none">
+                    <span class="badge bg-primary-subtle text-primary-emphasis border">Attached: <span id="reserve-customer-name"></span> <a href="#" class="text-danger ms-1" id="reserve-customer-clear">&times;</a></span>
+                </div>
+                <div class="row g-2">
+                    <div class="col-6"><label class="form-label small mb-1">Name</label><input type="text" class="form-control form-control-sm" id="reserve-name"></div>
+                    <div class="col-6"><label class="form-label small mb-1">Phone</label><input type="text" class="form-control form-control-sm" id="reserve-phone"></div>
+                </div>
+                <label class="form-label small mb-1 mt-2">Reserved for (date &amp; time)</label>
+                <input type="datetime-local" class="form-control form-control-sm" id="reserve-for">
+                <label class="form-label small mb-1 mt-2">Note</label>
+                <textarea class="form-control form-control-sm" id="reserve-note" rows="2" placeholder="e.g. 6 guests, window table"></textarea>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-sm btn-primary" id="reserve-save-btn"><i class="ti ti-calendar-check me-1"></i>Reserve Table</button>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal fade" id="reservationDetailsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h2 class="modal-title h6 mb-0"><i class="ti ti-calendar me-1"></i>Reservation</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="reservation-details-body"></div>
+        </div>
+    </div>
+</div>
+
 <div class="modal fade" id="customerModal" tabindex="-1" aria-labelledby="customerModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content">
@@ -5746,6 +5793,13 @@ document.addEventListener('DOMContentLoaded', function () {
             if (split) { openSplitForSession(split.dataset.tableSplit); return; }
             var move = event.target.closest('[data-table-move]');
             if (move) { showTableMove(move.dataset.tableMove, move.dataset.sourceTableId); return; }
+            // TABLE-RESERVATION-1
+            var reserve = event.target.closest('[data-table-reserve]');
+            if (reserve) { openReserveModal(reserve.dataset.tableReserve, reserve.dataset.tableNo); return; }
+            var unreserve = event.target.closest('[data-table-unreserve]');
+            if (unreserve) { cancelReservation(unreserve.dataset.tableUnreserve); return; }
+            var rdetails = event.target.closest('[data-reservation-details]');
+            if (rdetails) { showReservationDetails(rdetails.dataset.reservationDetails); return; }
             // Floor filter tabs.
             var tab = event.target.closest('[data-floor-tab]');
             if (tab && tableBoardEl.contains(tab)) {
@@ -5758,6 +5812,92 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         });
     }
+
+    /* ── TABLE-RESERVATION-1 — reserve / cancel / details ─────────────────────────────────────── */
+    var _reserveTablesBase = '{{ url('/restaurant/tables') }}';
+    var _reserveCustBase   = '{{ url('/ajax/customers') }}';
+    function _rget(id) { return document.getElementById(id); }
+
+    function openReserveModal(tableId, tableNo) {
+        _rget('reserve-table-id').value = tableId;
+        _rget('reserve-table-no').textContent = tableNo || '';
+        ['reserve-customer-search', 'reserve-name', 'reserve-phone', 'reserve-for', 'reserve-note', 'reserve-customer-id'].forEach(function (id) { var el = _rget(id); if (el) el.value = ''; });
+        _rget('reserve-customer-chip').classList.add('d-none');
+        _rget('reserve-customer-suggest').classList.add('d-none');
+        _rget('reserve-toast').classList.add('d-none');
+        bootstrap.Modal.getOrCreateInstance(_rget('reserveTableModal')).show();
+    }
+
+    function cancelReservation(tableId) {
+        if (!confirm('Cancel this reservation? The table becomes available.')) return;
+        fetch(_reserveTablesBase + '/' + tableId + '/unreserve', { method: 'POST', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', Accept: 'application/json' } })
+            .then(function () { if (typeof refreshTableBoard === 'function') refreshTableBoard(); })
+            .catch(function () {});
+    }
+
+    function showReservationDetails(tableId) {
+        fetch(_reserveTablesBase + '/' + tableId + '/reservation', { headers: { Accept: 'application/json' } })
+            .then(function (r) { return r.json(); })
+            .then(function (res) {
+                if (!res.ok) return;
+                var v = res.reservation, rows = '';
+                var add = function (l, x) { if (x) rows += '<div class="mb-1"><span class="text-muted small">' + l + ':</span> ' + escapeHtml(String(x)) + '</div>'; };
+                add('Name', v.name); add('Phone', v.phone); add('Reserved for', v.reserved_for); add('Note', v.note); add('Reserved by', v.reserved_by); add('Marked at', v.reserved_at);
+                _rget('reservation-details-body').innerHTML = rows || '<div class="text-muted small">No details.</div>';
+                bootstrap.Modal.getOrCreateInstance(_rget('reservationDetailsModal')).show();
+            }).catch(function () {});
+    }
+
+    (function () {
+        var search = _rget('reserve-customer-search');
+        var suggest = _rget('reserve-customer-suggest');
+        if (!search) return;
+        var t;
+        search.addEventListener('input', function () {
+            clearTimeout(t);
+            var q = search.value.trim();
+            if (q.length < 2) { suggest.classList.add('d-none'); return; }
+            t = setTimeout(function () {
+                fetch(_reserveCustBase + '?q=' + encodeURIComponent(q), { headers: { Accept: 'application/json' } })
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        suggest.innerHTML = '';
+                        (data.customers || []).slice(0, 8).forEach(function (c) {
+                            var a = document.createElement('a');
+                            a.href = '#'; a.className = 'list-group-item list-group-item-action py-1 small';
+                            a.textContent = (c.name || '') + ' · ' + (c.phone || '');
+                            a.addEventListener('click', function (e) {
+                                e.preventDefault();
+                                _rget('reserve-customer-id').value = c.id;
+                                _rget('reserve-customer-name').textContent = (c.name || '') + ' · ' + (c.phone || '');
+                                _rget('reserve-customer-chip').classList.remove('d-none');
+                                if (!_rget('reserve-name').value) _rget('reserve-name').value = c.name || '';
+                                if (!_rget('reserve-phone').value) _rget('reserve-phone').value = c.phone || '';
+                                suggest.classList.add('d-none'); search.value = '';
+                            });
+                            suggest.appendChild(a);
+                        });
+                        suggest.classList.toggle('d-none', !suggest.children.length);
+                    }).catch(function () {});
+            }, 250);
+        });
+        _rget('reserve-customer-clear')?.addEventListener('click', function (e) { e.preventDefault(); _rget('reserve-customer-id').value = ''; _rget('reserve-customer-chip').classList.add('d-none'); });
+        _rget('reserve-save-btn')?.addEventListener('click', function () {
+            var fd = new FormData();
+            fd.append('reserved_customer_id', _rget('reserve-customer-id').value || '');
+            fd.append('reserved_name', _rget('reserve-name').value || '');
+            fd.append('reserved_phone', _rget('reserve-phone').value || '');
+            fd.append('reserved_for', _rget('reserve-for').value || '');
+            fd.append('reservation_note', _rget('reserve-note').value || '');
+            fetch(_reserveTablesBase + '/' + _rget('reserve-table-id').value + '/reserve', { method: 'POST', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', Accept: 'application/json' }, body: fd })
+                .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+                .then(function (res) {
+                    if (!res.ok) { var el = _rget('reserve-toast'); el.className = 'alert alert-danger py-2 small mb-3'; el.textContent = res.d.message || 'Could not reserve the table.'; el.classList.remove('d-none'); return; }
+                    bootstrap.Modal.getOrCreateInstance(_rget('reserveTableModal')).hide();
+                    if (typeof refreshTableBoard === 'function') refreshTableBoard();
+                }).catch(function () {});
+        });
+    })();
 
     document.getElementById('complete-sale-btn').addEventListener('click', function () { submitPaidSale(false); });
 

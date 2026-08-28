@@ -16,14 +16,29 @@ class RestaurantTable extends Model
         'capacity',
         'status',
         'sort_order',
+        // TABLE-RESERVATION-1
+        'reserved_customer_id',
+        'reserved_name',
+        'reserved_phone',
+        'reserved_for',
+        'reservation_note',
+        'reserved_by_user_id',
+        'reserved_at',
     ];
 
     protected function casts(): array
     {
         return [
-            'capacity'   => 'integer',
-            'sort_order' => 'integer',
+            'capacity'     => 'integer',
+            'sort_order'   => 'integer',
+            'reserved_for' => 'datetime',
+            'reserved_at'  => 'datetime',
         ];
+    }
+
+    public function reservedCustomer()
+    {
+        return $this->belongsTo(Customer::class, 'reserved_customer_id');
     }
 
     public function branch()

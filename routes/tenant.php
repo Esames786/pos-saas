@@ -518,6 +518,11 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 Route::post('/restaurant/tables', [RestaurantTableController::class, 'store'])->name('tenant.restaurant.tables.store');
                 Route::put('/restaurant/tables/{restaurantTable}', [RestaurantTableController::class, 'update'])->name('tenant.restaurant.tables.update');
                 Route::delete('/restaurant/tables/{restaurantTable}', [RestaurantTableController::class, 'destroy'])->name('tenant.restaurant.tables.destroy');
+                // TABLE-RESERVATION-1 — gated in-controller on tenant.restaurant.table-sessions.open
+                // (any dine-in operator); exempted from the route-name check via EnsureRoutePermission.
+                Route::get('/restaurant/tables/{restaurantTable}/reservation', [RestaurantTableController::class, 'reservation'])->name('tenant.restaurant.tables.reservation');
+                Route::post('/restaurant/tables/{restaurantTable}/reserve', [RestaurantTableController::class, 'reserve'])->name('tenant.restaurant.tables.reserve');
+                Route::post('/restaurant/tables/{restaurantTable}/unreserve', [RestaurantTableController::class, 'unreserve'])->name('tenant.restaurant.tables.unreserve');
 
                 // Restaurant Waiters
                 Route::get('/restaurant/waiters', [RestaurantWaiterController::class, 'index'])->name('tenant.restaurant.waiters.index');
