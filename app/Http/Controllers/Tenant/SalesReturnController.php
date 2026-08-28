@@ -75,7 +75,9 @@ class SalesReturnController extends Controller
                     $lineQuery->whereNull('line_kind')
                         ->orWhereNotIn('line_kind', ['component', 'modifier']);
                 }),
-                'lines.product', 'lines.variant', 'lines.returnLines',
+                // lines.product.unit → the Return Qty stepper matches how the item was sold
+                // (whole units step by 1; weight/volume/length step by 0.001).
+                'lines.product.unit', 'lines.variant', 'lines.returnLines',
             ])
                 ->whereIn('status', ['paid', 'partially_returned'])
                 // USER-DATA-SCOPE-1: a terminal/order-type-restricted operator cannot open a sale

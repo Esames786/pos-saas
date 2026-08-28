@@ -498,6 +498,17 @@
                     <i class="ti ti-file-analytics me-1"></i>Report
                 </button>
             @endcan
+            @can('tenant.sales-returns.create')
+                {{-- POS-RETURN-LINK: open Sales Returns in a WINDOW on the same screen (modal + lazy
+                     iframe), like the Report button — search a paid sale and return items without
+                     leaving the POS. --}}
+                <button type="button" class="btn btn-sm btn-outline-danger me-2" id="pos-return-btn"
+                        data-bs-toggle="modal" data-bs-target="#posReturnModal"
+                        data-return-url="{{ url('/sales-returns/create') }}"
+                        title="Create a sales return (search a paid sale)">
+                    <i class="ti ti-arrow-back-up me-1"></i>Return
+                </button>
+            @endcan
             @can('tenant.pos.quick-report-send')
                 {{-- QUICK-REPORT-SEND-1: a trusted user emails/prints/streams a WHOLE-TENANT sales report
                      (no terminal/order-type scoping) — pick sections + categories/items/waiters/order-types. --}}
@@ -1291,6 +1302,41 @@
     });
     modalEl.addEventListener('hidden.bs.modal', function () {
         frame.src = 'about:blank';   // free the report; refresh on next open
+    });
+})();
+</script>
+@endcan
+
+{{-- POS-RETURN-LINK: Sales Returns in a same-screen window (lazy iframe), mirrors the Report window. --}}
+@can('tenant.sales-returns.create')
+<div class="modal fade" id="posReturnModal" tabindex="-1" aria-labelledby="posReturnModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-fullscreen-lg-down">
+        <div class="modal-content" style="height:94vh">
+            <div class="modal-header py-2">
+                <h2 class="modal-title h6 mb-0" id="posReturnModalLabel"><i class="ti ti-arrow-back-up me-1"></i>Sales Return</h2>
+                <a href="#" id="pos-return-newtab" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary ms-auto me-2" title="Open in a full tab"><i class="ti ti-external-link"></i></a>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0">
+                <iframe id="pos-return-frame" title="Sales Return" style="width:100%;height:100%;border:0" src="about:blank"></iframe>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    var modalEl = document.getElementById('posReturnModal');
+    var btn     = document.getElementById('pos-return-btn');
+    var frame   = document.getElementById('pos-return-frame');
+    var newTab  = document.getElementById('pos-return-newtab');
+    if (!modalEl || !btn || !frame) return;
+    modalEl.addEventListener('show.bs.modal', function () {
+        var url = btn.getAttribute('data-return-url');
+        if (newTab) newTab.href = url;
+        if (frame.getAttribute('src') === 'about:blank') frame.src = url;   // lazy-load once per open
+    });
+    modalEl.addEventListener('hidden.bs.modal', function () {
+        frame.src = 'about:blank';   // free the page; refresh on next open
     });
 })();
 </script>

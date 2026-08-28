@@ -2,6 +2,19 @@
 
 @section('title', 'Create Sales Return')
 
+@push('styles')
+<style>
+    /* Big, easy −/+ stepper beside the box — replaces the tiny native spinner. */
+    .return-qty-group .btn.return-step {
+        font-size: 1.3rem; font-weight: 700; line-height: 1;
+        min-width: 46px; padding: .35rem .6rem;
+    }
+    .return-qty-group .return-qty { font-size: 1.05rem; font-weight: 600; -moz-appearance: textfield; }
+    .return-qty-group .return-qty::-webkit-outer-spin-button,
+    .return-qty-group .return-qty::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+</style>
+@endpush
+
 @section('content')
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
     <div>
@@ -114,6 +127,14 @@
                         $allocation = $returnAllocations->get($line->id, ['discount' => 0, 'tax' => 0]);
                         $remainingDiscount = max((float) $allocation['discount'] - (float) $line->returnLines->sum('discount_amount'), 0);
                         $remainingTax = max((float) $allocation['tax'] - (float) $line->returnLines->sum('tax_amount'), 0);
+                        // Step the Return Qty the way the item was sold: whole units (unit_type 'quantity')
+                        // jump by 1; weight/volume/length jump by 0.001. Falls back to the sold qty's own
+                        // granularity when the product/unit is gone (deleted product on an old sale).
+                        $qtyUnit = $line->product?->unit;
+                        $qtyStep = $qtyUnit
+                            ? ($qtyUnit->unit_type !== 'quantity' ? '0.001' : '1')
+                            : (fmod((float) $line->quantity, 1.0) === 0.0 ? '1' : '0.001');
+                        $canReturn = $returnable > 0;
                     @endphp
                     <tr class="return-line"
                         data-quantity="{{ (float) $line->quantity }}"
@@ -133,21 +154,27 @@
                             <span class="badge {{ $returnable > 0 ? 'bg-success-subtle text-success-emphasis' : 'bg-secondary-subtle text-secondary-emphasis' }}">{{ number_format($returnable, 3) }}</span>
                         </td>
                         <td>
-                            {{-- readonly (NOT disabled) for a fully-returned line: a disabled input is
-                                 not submitted, so its lines[i][quantity] went missing while the hidden
-                                 sales_order_line_id was still posted — the backend then rejected the
-                                 whole return with "lines.N.quantity is required", blocking every
-                                 partial-return's remaining items. readonly still posts the 0. --}}
-                            <input type="number" step="0.001" min="0" max="{{ $returnable }}"
-                                   name="lines[{{ $i }}][quantity]"
-                                   class="form-control form-control-sm text-end return-qty"
-                                   style="width:110px"
-                                   aria-label="Return quantity for {{ $line->product_name }}"
-                                   value="0"
-                                   {{ $returnable <= 0 ? 'readonly' : '' }}>
-                            @if($returnable <= 0)
-                                <small class="text-muted">Fully returned</small>
-                            @endif
+                            {{-- Unit-aware stepper: the −/+ buttons jump by exactly one sold unit (whole = 1,
+                                 weight/volume = 0.001), so returning is one click per unit instead of fighting
+                                 a 0.001 spinner. readonly (NOT disabled) on a fully-returned line still posts
+                                 its 0 so the backend keeps the other lines (a disabled input drops its value,
+                                 which failed "lines.N.quantity is required" and blocked the whole return). --}}
+                            <div class="input-group return-qty-group" style="width:172px;margin-left:auto">
+                                <button type="button" class="btn btn-outline-secondary return-step" data-dir="-1"
+                                        tabindex="-1" aria-label="Decrease return quantity" {{ $canReturn ? '' : 'disabled' }}>&minus;</button>
+                                <input type="number" step="{{ $qtyStep }}" min="0" max="{{ $returnable }}"
+                                       name="lines[{{ $i }}][quantity]"
+                                       class="form-control text-center return-qty"
+                                       data-step="{{ $qtyStep }}"
+                                       aria-label="Return quantity for {{ $line->product_name }}"
+                                       value="0"
+                                       {{ $canReturn ? '' : 'readonly' }}>
+                                <button type="button" class="btn btn-outline-secondary return-step" data-dir="1"
+                                        tabindex="-1" aria-label="Increase return quantity" {{ $canReturn ? '' : 'disabled' }}>+</button>
+                            </div>
+                            @unless($canReturn)
+                                <small class="text-muted d-block text-end mt-1">Fully returned</small>
+                            @endunless
                         </td>
                         <td class="text-end line-refund">0.00</td>
                     </tr>
@@ -286,6 +313,24 @@
     }
     document.addEventListener('input', function (e) {
         if (e.target.classList && e.target.classList.contains('return-qty')) recalc();
+    });
+    // −/+ stepper: jump by exactly one sold unit, clamp to [0, returnable], then fire the same
+    // input event the refund preview listens on. Float-safe for 0.001 (weight) increments.
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest && e.target.closest('.return-step');
+        if (!btn) return;
+        var group = btn.closest('.return-qty-group');
+        var input = group && group.querySelector('.return-qty');
+        if (!input || input.hasAttribute('readonly')) return;
+        var step = parseFloat(input.dataset.step) || 1;
+        var dir = parseFloat(btn.dataset.dir) || 1;
+        var max = parseFloat(input.max);
+        var decimals = (String(step).split('.')[1] || '').length;
+        var next = parseFloat(((parseFloat(input.value) || 0) + dir * step).toFixed(decimals));
+        if (next < 0) next = 0;
+        if (!isNaN(max) && next > max) next = max;
+        input.value = next;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
     });
     document.getElementById('refund_method').addEventListener('change', recalc);
 
