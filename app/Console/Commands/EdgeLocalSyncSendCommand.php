@@ -29,6 +29,13 @@ class EdgeLocalSyncSendCommand extends Command
             return self::FAILURE;
         }
 
+        // Boot ordering: tolerate MariaDB not being ready yet (bounded wait; the task restarts otherwise).
+        if (! \App\Services\Edge\EdgeWorkerBootstrap::awaitDatabase((int) env('EDGE_WORKER_DB_WAIT_TRIES', 30))) {
+            $this->error('local database not ready — deferring sync send.');
+
+            return self::FAILURE;
+        }
+
         $owner = gethostname() . ':' . getmypid();
         $max = max(1, (int) $this->option('max'));
         $counts = ['acknowledged' => 0, 'retry' => 0, 'terminal' => 0, 'reject' => 0];
