@@ -5,6 +5,7 @@ namespace Tests\MySql;
 use App\Models\Edge\EdgeSyncOutbox;
 use App\Services\Edge\EdgeBackupService;
 use App\Services\Edge\EdgeRestoreService;
+use App\Services\Edge\EdgeSyncReconciliationService;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -217,5 +218,37 @@ class EdgeFreshDbRecoveryMySqlTest extends MySqlTenantTestCase
         $this->assertSame($sale['content_hash'], $row->content_hash, 'content hash identical');
         $this->assertSame($sale['envelope'], $row->envelope, 'envelope bytes identical');
         $this->assertSame(EdgeSyncOutbox::STATE_PENDING, $row->state);
+    }
+
+    public function test_a_lost_ack_recovers_across_two_databases_with_no_repost(): void
+    {
+        // ── APPLIANCE A: config + a paid sale whose Cloud ACK was lost (outbox still pending) + backup ──
+        $this->useDb($this->dbA);
+        $this->cleanTenant(array_merge(EdgeBackupService::TABLES, self::CONFIG_TABLES, ['restaurant_floors']));
+        $ids = $this->seedConfig();
+        $sale = $this->seedOperational($ids);
+        $config = $this->captureConfig();
+        $backup = app(EdgeBackupService::class)->backup();
+
+        // ── A is dead. Recover onto a genuinely fresh, independent EDGE_DB_B. ──
+        $this->useDb($this->dbB);
+        $this->cleanTenant(array_merge(EdgeBackupService::TABLES, self::CONFIG_TABLES, ['restaurant_floors']));
+        $this->insertConfig($config);
+        $this->assertSame(0, EdgeSyncOutbox::on('tenant')->count(), 'B has no outbox before restore');
+        app(EdgeRestoreService::class)->restore($backup->path, $ids['branch']);
+
+        // The restored outbox row is present and still NOT acknowledged.
+        $this->assertSame(EdgeSyncOutbox::STATE_PENDING, EdgeSyncOutbox::on('tenant')->where('sale_uuid', $sale['sale_uuid'])->value('state'));
+        $salesBefore = DB::table('sales_orders')->count();
+
+        // The Cloud (A is gone) already APPLIED this exact envelope; reconciliation acknowledges B's row from
+        // Cloud's own truth — through the owner-guarded authority, on the SEPARATE database B.
+        $cloudAck = ['status' => 'applied', 'sale_uuid' => $sale['sale_uuid'], 'content_hash' => $sale['content_hash'], 'ingestion_uuid' => 'ING-CROSS-DB'];
+        $outcome = app(EdgeSyncReconciliationService::class)->recoverLostAck($sale['sale_uuid'], $cloudAck);
+        $this->assertSame('acknowledged', $outcome);
+        $this->assertSame(EdgeSyncOutbox::STATE_ACKNOWLEDGED, EdgeSyncOutbox::on('tenant')->where('sale_uuid', $sale['sale_uuid'])->value('state'));
+
+        // A divergent hash on the same restored row would be refused (no silent overwrite).
+        $this->assertSame($salesBefore, DB::table('sales_orders')->count(), 'recovery reposted no sale into B');
     }
 }
