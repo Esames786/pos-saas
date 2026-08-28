@@ -816,7 +816,7 @@
     {{-- Payment modal (opened by "Review & Pay"). Kept inside #pos-sale-form; all IDs
          preserved so the existing POS JS reads values by id regardless of location. --}}
     <div class="modal fade" id="paymentModal" tabindex="-1" aria-labelledby="paymentModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable">
+        <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable" style="max-width: min(92vw, 1320px)">
             <div class="modal-content">
                 <div class="modal-header">
                     <h2 class="modal-title h5" id="paymentModalLabel"><span id="payment_heading">Payment</span></h2>
