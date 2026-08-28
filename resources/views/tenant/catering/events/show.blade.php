@@ -1723,6 +1723,9 @@ $(function () {
             unitId: row.find('[name$="[unit_id]"]').val() || null,
             unitCode: row.find('[name$="[unit_id]"] option:selected').text().trim() || 'KG',
             dishRate: profile.rate || (parseFloat(row.data('rate')) || 0),
+            blocks: row.find('.quoted-live').length > 0,
+            currentQuotedRate: parseFloat(row.find('[name="lines[' + idx + '][rate]"]').val()) || 0,
+            currentOverridden: row.find('.quoted-live').attr('data-overridden') === '1',
             party: profile.party !== false,
             mode: mats.some(m => m.cust > 0) ? 'PARTY' : 'OWN',
             mats, editRow: row.attr('data-row'), editIdx: idx, editSaved: true,
@@ -1733,6 +1736,7 @@ $(function () {
         if (! mats.length || ! punch.party) $('#punch-seg-wrap').addClass('d-none');
         punchSetMode(punch.mode);
         punchRenderMats();
+        $('#punch-customer-rate').val(punch.currentQuotedRate);
         $('#punch-qty').val(qty).trigger('focus').trigger('select');
         punchLive();
     });
@@ -1767,6 +1771,9 @@ $(function () {
             productId: productId || null, name: val('item_name'),
             unitId: val('unit_id') || null, unitCode: row.find('td').eq(3).text().trim() || 'KG',
             dishRate: profile.rate || 0,
+            blocks: !!profile.blocks,
+            currentQuotedRate: parseFloat(val('rate')) || 0,
+            currentOverridden: val('rate_action') === 'override',
             party: profile.party !== false,
             mode: mats.some(m => m.cust > 0) ? 'PARTY' : 'OWN',
             mats, editRow: row.attr('data-row'), editIdx: idx,
@@ -1780,6 +1787,7 @@ $(function () {
         if (!mats.length || !punch.party) $('#punch-seg-wrap').addClass('d-none');
         punchSetMode(punch.mode);
         punchRenderMats();
+        $('#punch-customer-rate').val(punch.currentQuotedRate);
         $('#punch-qty').val(qty).trigger('focus').trigger('select');
         punchLive();
     });
@@ -1793,6 +1801,7 @@ $(function () {
             name, unitId: p.unit_id || null, mode: 'OWN',
             party: p.party !== false,
             dishRate: p.rate || 0,
+            blocks: !!p.blocks,
             unitCode: p.unit_code || '—',
             mats: (p.mats || []).map(m => ({ ...m, own: null, cust: 0, ownTouched: false, origRate: m.rate })),
         };
@@ -2068,6 +2077,18 @@ $(function () {
         return (v !== '' && isFinite(n) && n >= 0) ? n : systemRate;
     }
 
+    // Block pricing is protected server-side. Only an explicit intent travels
+    // with Save Estimate; an untouched row keeps its existing agreed decision.
+    function punchRateIntent(calcRate) {
+        if (! punch.blocks) return null;
+        const agreed = punchAgreedRate(calcRate);
+        const changed = punch.currentQuotedRate === undefined
+            || Math.abs(agreed - punch.currentQuotedRate) > 0.009;
+        if (! changed) return null;
+
+        return Math.abs(agreed - calcRate) > 0.009 ? 'override' : 'calculated';
+    }
+
     function punchRowHtml(idx, qty, calc) {
         const esc = s => _.escape(String(s == null ? '' : s));
         const h = (f, v) => '<input type="hidden" name="lines[' + idx + '][' + f + ']" value="' + esc(v) + '">';
@@ -2093,14 +2114,21 @@ $(function () {
 
         const detail = punchDetailHtml(punch.mats, qty, punch.dishRate);
 
-        return '<tr data-row="p' + idx + '" data-rate="' + calc.rate + '" class="punch-row">'
+        const agreedRate = punchAgreedRate(calc.rate);
+        const rateIntent = punchRateIntent(calc.rate);
+        const rateAuthority = rateIntent
+            ? h('rate_action', rateIntent)
+                + (rateIntent === 'override' ? h('rate_override_reason', 'Customer agreed rate entered in order punch') : '')
+            : '';
+
+        return '<tr data-row="p' + idx + '" data-rate="' + agreedRate + '" class="punch-row">'
             + '<td>'
                 + '<button type="button" class="btn btn-link btn-sm p-0 me-1 punch-expand" title="Cost details">'
                 + '<i class="ti ti-chevron-right"></i></button>'
                 + esc(punch.name)
                 + (supply ? '<span class="fs-12 text-success-emphasis ms-1">· customer: ' + esc(supply) + '</span>' : '')
                 + (punch.productId ? h('product_id', punch.productId) : '')
-                + h('item_name', punch.name) + h('rate', punchAgreedRate(calc.rate))
+                + h('item_name', punch.name) + h('rate', agreedRate) + rateAuthority
                 + (punch.unitId ? h('unit_id', punch.unitId) : '')
                 + (note ? h('instructions', note) : '')
                 + instrIds.map(id => '<input type="hidden" name="lines[' + idx + '][instruction_ids][]" value="' + esc(id) + '">').join('')
@@ -2111,8 +2139,8 @@ $(function () {
             + '<td><input type="number" step="0.001" min="0.001" class="form-control form-control-sm text-end line-qty" name="lines[' + idx + '][quantity]" value="' + qty + '" readonly></td>'
             + '<td class="fs-13">' + esc(punch.unitCode || '') + '</td>'
             + '<td class="text-end">' + money(calc.rate) + '</td>'
-            + '<td class="text-end">' + money(calc.rate) + '</td>'
-            + '<td class="text-end line-amount">' + money(calc.amount) + '</td>'
+            + '<td class="text-end">' + money(agreedRate) + '</td>'
+            + '<td class="text-end line-amount">' + money(agreedRate * qty) + '</td>'
             + '<td class="fs-12">'
                 + (instrLabels.length || note
                     ? '<span class="badge bg-secondary-subtle text-secondary-emphasis" data-bs-toggle="tooltip" title="'
@@ -2167,9 +2195,23 @@ $(function () {
             row.find('[name="lines[' + idx + '][instructions]"]').val($('#punch-instr').val() || '');
             const calc = punchLineCalc(qty);
             const agreed = punchAgreedRate(calc.rate);
+            const rateIntent = punchRateIntent(calc.rate);
             row.attr('data-rate', agreed);
-            row.find('.quoted-live [data-field=quoted_rate]').val(agreed.toFixed(2));
-            row.find('[name="lines[' + idx + '][rate]"]').val(agreed);
+            row.find('[name="lines[' + idx + '][rate_action]"], [name="lines[' + idx + '][rate_override_reason]"]').remove();
+            if (rateIntent) {
+                row.find('td').first().append(
+                    '<input type="hidden" name="lines[' + idx + '][rate_action]" value="' + rateIntent + '">'
+                    + (rateIntent === 'override'
+                        ? '<input type="hidden" name="lines[' + idx + '][rate_override_reason]" value="Customer agreed rate entered in order punch">'
+                        : '')
+                );
+            }
+            if (punch.blocks) {
+                row.find('.quoted-live [data-field=quoted_rate]').val(agreed.toFixed(2));
+                row.find('[name="lines[' + idx + '][rate]"]').val(agreed);
+            } else {
+                row.find('.line-rate[name="lines[' + idx + '][rate]"]').val(agreed).trigger('input');
+            }
             punchReset();
             recalc();
             setTimeout(() => $('#punch-item').select2('open'), 100);
