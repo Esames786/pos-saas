@@ -59,6 +59,14 @@ return [
     'backup' => [
         'path'      => env('EDGE_BACKUP_PATH', storage_path('app/edge-backups')),
         'retention' => (int) env('EDGE_BACKUP_RETENTION', 24), // rolling copies to keep (hourly ≈ 1 day)
+
+        // Recovery wrapping key — provisioned per branch from the Cloud recovery authority, NEVER the
+        // APP_KEY and never committed to git. A replacement machine recovers this key independently of the
+        // dead appliance, so its backups stay decryptable. base64 of 32 bytes.
+        'recovery_key'    => env('EDGE_BACKUP_RECOVERY_KEY'),
+        'recovery_key_id' => env('EDGE_BACKUP_RECOVERY_KEY_ID', 'k1'),
+        // Retained older wrapping keys for recovering older backups after rotation: JSON { key_id: base64 }.
+        'retired_keys'    => json_decode((string) env('EDGE_BACKUP_RETIRED_KEYS', '{}'), true) ?: [],
     ],
 
     'capabilities' => [

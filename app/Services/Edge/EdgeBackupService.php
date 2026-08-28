@@ -3,29 +3,35 @@
 namespace App\Services\Edge;
 
 use App\Support\EdgeRuntime;
-use Illuminate\Support\Facades\Crypt;
+use Illuminate\Encryption\Encrypter;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
- * OFFLINE EDGE PRODUCTIZATION — the appliance's encrypted local BACKUP authority.
+ * OFFLINE EDGE PRODUCTIZATION — the appliance's encrypted local BACKUP authority (portable across machine loss).
  *
  * Captures a CONSISTENT logical snapshot (one REPEATABLE-READ transaction) of the appliance's RECOVERABLE
- * local state, integrity-checksums it, encrypts it, writes it temp-first, verifies it reads back, atomically
- * promotes it, records an audit row, and prunes to a rolling window. Local selling never depends on this —
- * it is a read-only snapshot that never blocks a sale.
+ * local state, checksums it, encrypts it, writes it temp-first, verifies it reads back, atomically promotes
+ * it, audit-logs it, and prunes to a rolling window (never below the last known-good). A single-writer lock
+ * means two overlapping runs never corrupt a backup. Read-only; never blocks a sale.
+ *
+ * PORTABILITY: a backup is NOT encrypted with APP_KEY. Each backup carries a random data-encryption key (DEK)
+ * that encrypts the payload; the DEK is wrapped by the recovery key resolved through EdgeBackupKeyProvider —
+ * a key provisioned per branch from the Cloud recovery authority and recoverable on a REPLACEMENT machine
+ * independently of the dead appliance. The backup stamps the key_id it was wrapped under, so keys rotate and
+ * older backups stay recoverable; an unknown/revoked key_id fails closed (never a plaintext fallback).
  *
  * What is captured (recoverable, NOT re-derivable from Cloud): the binding, local users, local sales, the
- * sync OUTBOX (un-synced sales — the whole point), the operational baseline, and the cutover audit. The
- * config catalog (products/categories/…) is deliberately excluded: a replacement box re-derives it from the
- * Cloud bootstrap before restore. device_secret_hash is a hash, not a secret; no plaintext secret is stored.
+ * sync OUTBOX (un-synced sales), the operational baseline, and the cutover audit. The config catalog
+ * (products/…) is excluded — a replacement box re-derives it from the Cloud bootstrap BEFORE restore.
  */
 class EdgeBackupService
 {
-    public const FORMAT = 'edge-backup-v1';
+    public const FORMAT = 'edge-backup-v2';
     public const CONN = 'tenant';
+    private const CIPHER = 'aes-256-gcm';
 
     /** Recoverable local-state tables, parents-before-children for a clean FK-coherent restore. */
     public const TABLES = [
@@ -41,6 +47,10 @@ class EdgeBackupService
         'edge_sync_outbox',
     ];
 
+    public function __construct(private readonly EdgeBackupKeyProvider $keys)
+    {
+    }
+
     /** Create an encrypted backup and return its audit row. */
     public function backup(): object
     {
@@ -48,57 +58,61 @@ class EdgeBackupService
             throw new RuntimeException('BACKUP_NOT_BRANCH_SERVER: appliance backup runs only on a Branch Server.');
         }
 
-        [$tables, $counts] = $this->snapshot();
-        $binding = $this->binding();
-        $tablesJson = json_encode($tables);
-        $checksum = hash('sha256', $tablesJson);
-
-        $payload = [
-            'format_version' => self::FORMAT,
-            'software_version' => (string) config('edge.app_version'),
-            'schema_generation' => (string) config('edge.config_schema'),
-            'created_at' => now()->toIso8601String(),
-            'binding' => $binding,
-            'checksum' => $checksum,
-            'table_counts' => $counts,
-            'tables' => $tables,
-        ];
-
         $dir = $this->dir();
-        $backupUuid = (string) Str::ulid();
-        $final = $dir . DIRECTORY_SEPARATOR . 'edge-backup-' . now()->format('Ymd_His') . '-' . Str::lower(Str::random(6)) . '.enc';
-        $tmp = $final . '.tmp';
+        $lock = $this->acquireLock($dir); // single writer — a concurrent run defers rather than corrupts
+        try {
+            [$tables, $counts] = $this->snapshot();
+            $binding = $this->binding();
+            $checksum = hash('sha256', json_encode($tables));
 
-        // Write temp-first, then verify it reads back and its checksum matches — never promote a partial file.
-        file_put_contents($tmp, Crypt::encryptString(json_encode($payload)));
-        $this->verifyFile($tmp, $checksum);
-        if (! @rename($tmp, $final)) {              // atomic promote on the same filesystem
-            @unlink($tmp);
-            throw new RuntimeException('BACKUP_PROMOTE_FAILED: could not atomically promote the verified backup.');
+            $payload = [
+                'format_version' => self::FORMAT,
+                'software_version' => (string) config('edge.app_version'),
+                'schema_generation' => (string) config('edge.config_schema'),
+                'created_at' => now()->toIso8601String(),
+                'binding' => $binding,
+                'checksum' => $checksum,
+                'table_counts' => $counts,
+                'tables' => $tables,
+            ];
+
+            $backupUuid = (string) Str::ulid();
+            $final = $dir . DIRECTORY_SEPARATOR . 'edge-backup-' . now()->format('Ymd_His') . '-' . Str::lower(Str::random(6)) . '.enc';
+            $tmp = $final . '.tmp';
+
+            // Write temp-first, then verify it reads back and its checksum matches — never promote a partial file.
+            file_put_contents($tmp, $this->seal($payload));
+            $this->verifyFile($tmp, $checksum);
+            if (! @rename($tmp, $final)) {              // atomic promote on the same filesystem
+                @unlink($tmp);
+                throw new RuntimeException('BACKUP_PROMOTE_FAILED: could not atomically promote the verified backup.');
+            }
+
+            $row = (object) [
+                'backup_uuid' => $backupUuid,
+                'path' => $final,
+                'format_version' => self::FORMAT,
+                'software_version' => $payload['software_version'],
+                'schema_generation' => $payload['schema_generation'],
+                'tenant_id' => $binding['tenant_id'] ?? null,
+                'branch_id' => $binding['branch_id'] ?? null,
+                'device_uuid' => $binding['device_uuid'] ?? null,
+                'activation_epoch' => $binding['activation_epoch'] ?? null,
+                'checksum' => $checksum,
+                'size_bytes' => (int) filesize($final),
+                'table_counts' => $counts,
+                'status' => 'completed',
+            ];
+            DB::connection(self::CONN)->table('edge_local_backups')->insert(array_merge((array) $row, [
+                'table_counts' => json_encode($counts), 'created_at' => now(), 'updated_at' => now(),
+            ]));
+
+            $this->prune();
+
+            return $row;
+        } finally {
+            $this->releaseLock($lock);
         }
-
-        $row = (object) [
-            'backup_uuid' => $backupUuid,
-            'path' => $final,
-            'format_version' => self::FORMAT,
-            'software_version' => $payload['software_version'],
-            'schema_generation' => $payload['schema_generation'],
-            'tenant_id' => $binding['tenant_id'] ?? null,
-            'branch_id' => $binding['branch_id'] ?? null,
-            'device_uuid' => $binding['device_uuid'] ?? null,
-            'activation_epoch' => $binding['activation_epoch'] ?? null,
-            'checksum' => $checksum,
-            'size_bytes' => (int) filesize($final),
-            'table_counts' => $counts,
-            'status' => 'completed',
-        ];
-        DB::connection(self::CONN)->table('edge_local_backups')->insert((array) array_merge((array) $row, [
-            'table_counts' => json_encode($counts), 'created_at' => now(), 'updated_at' => now(),
-        ]));
-
-        $this->prune();
-
-        return $row;
     }
 
     /** Decrypt + integrity-verify a backup file, returning its manifest (WITHOUT the table data). */
@@ -117,28 +131,61 @@ class EdgeBackupService
             ->orderByDesc('id')->limit(max(1, $limit))->get()->all();
     }
 
-    /** Decrypt, parse, and verify a backup's integrity (format + checksum). Throws on any tampering/partial. */
+    /**
+     * Decrypt, parse, and verify a backup's integrity. Resolves the wrapping key by the backup's key_id
+     * through EdgeBackupKeyProvider (NOT APP_KEY), unwraps the DEK, decrypts, then checks the content
+     * checksum. Any tampering, truncation, unknown key, or checksum mismatch fails closed.
+     */
     public function decodeAndVerify(string $path): array
     {
         if (! is_file($path)) {
             throw new RuntimeException('BACKUP_NOT_FOUND: ' . $path);
         }
-        try {
-            $decrypted = Crypt::decryptString((string) file_get_contents($path));
-        } catch (\Throwable $e) {
-            // A tampered or truncated ciphertext fails the authenticated-encryption MAC.
-            throw new RuntimeException('BACKUP_CORRUPT: the backup could not be decrypted (tampered or partial).');
-        }
-        $payload = json_decode($decrypted, true);
-        if (! is_array($payload) || ($payload['format_version'] ?? null) !== self::FORMAT) {
+        $envelope = json_decode((string) file_get_contents($path), true);
+        if (! is_array($envelope) || ($envelope['format_version'] ?? null) !== self::FORMAT) {
             throw new RuntimeException('BACKUP_UNSUPPORTED: unrecognised backup format.');
         }
+
+        // Resolve the recovery wrapping key for the key_id this backup was sealed under (throws if unknown).
+        $wrappingKey = $this->keys->wrappingKey((string) ($envelope['key_id'] ?? ''));
+
+        try {
+            $dek = base64_decode((new Encrypter($wrappingKey, self::CIPHER))->decryptString((string) $envelope['wrapped_dek']), true);
+            if ($dek === false || strlen($dek) !== 32) {
+                throw new RuntimeException('bad dek');
+            }
+            $plain = (new Encrypter($dek, self::CIPHER))->decryptString((string) $envelope['payload']);
+        } catch (\Throwable $e) {
+            // A tampered/truncated ciphertext, or the wrong recovery key, fails the authenticated-encryption MAC.
+            throw new RuntimeException('BACKUP_CORRUPT: the backup could not be decrypted (tampered, partial, or wrong recovery key).');
+        }
+
+        $payload = json_decode($plain, true);
         $tables = $payload['tables'] ?? null;
-        if (! is_array($tables) || ! hash_equals((string) ($payload['checksum'] ?? ''), hash('sha256', json_encode($tables)))) {
+        if (! is_array($payload) || ! is_array($tables)
+            || ! hash_equals((string) ($payload['checksum'] ?? ''), hash('sha256', json_encode($tables)))) {
             throw new RuntimeException('BACKUP_INTEGRITY: the backup checksum does not match its contents (corrupt or partial).');
         }
 
         return $payload;
+    }
+
+    /** Encrypt the payload: random DEK encrypts the data; the recovery key wraps the DEK. */
+    private function seal(array $payload): string
+    {
+        $dek = random_bytes(32);
+        $cipherPayload = (new Encrypter($dek, self::CIPHER))->encryptString(json_encode($payload));
+
+        $keyId = $this->keys->currentKeyId();
+        $wrappingKey = $this->keys->wrappingKey($keyId);
+        $wrappedDek = (new Encrypter($wrappingKey, self::CIPHER))->encryptString(base64_encode($dek));
+
+        return json_encode([
+            'format_version' => self::FORMAT,
+            'key_id' => $keyId,
+            'wrapped_dek' => $wrappedDek,
+            'payload' => $cipherPayload,
+        ]);
     }
 
     private function verifyFile(string $path, string $expectedChecksum): void
@@ -201,7 +248,29 @@ class EdgeBackupService
         return rtrim($dir, DIRECTORY_SEPARATOR);
     }
 
-    /** Keep the most recent N backups; delete older files and their audit rows. */
+    /** @return resource */
+    private function acquireLock(string $dir)
+    {
+        $handle = fopen($dir . DIRECTORY_SEPARATOR . '.backup.lock', 'c');
+        if ($handle === false) {
+            throw new RuntimeException('BACKUP_LOCK: could not open the backup lock.');
+        }
+        if (! flock($handle, LOCK_EX | LOCK_NB)) {
+            fclose($handle);
+            throw new RuntimeException('BACKUP_IN_PROGRESS: another backup is running; this run deferred.');
+        }
+
+        return $handle;
+    }
+
+    /** @param resource $handle */
+    private function releaseLock($handle): void
+    {
+        @flock($handle, LOCK_UN);
+        @fclose($handle);
+    }
+
+    /** Keep the most recent N backups; never delete the last known-good. */
     private function prune(): void
     {
         $keep = max(1, (int) config('edge.backup.retention', 24));

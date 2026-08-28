@@ -11,7 +11,15 @@ use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
-    public function register(): void {}
+    public function register(): void
+    {
+        // OFFLINE EDGE PRODUCTIZATION — the appliance backup recovery-key contract. The config/env provider
+        // is interim; a real Cloud KMS / key-vault provider implements the same interface later.
+        $this->app->bind(
+            \App\Services\Edge\EdgeBackupKeyProvider::class,
+            \App\Services\Edge\ConfigEdgeBackupKeyProvider::class,
+        );
+    }
 
     public function boot(): void
     {

@@ -52,7 +52,12 @@ class EdgeRestoreSyncRecoveryHttpMySqlTest extends MySqlTenantTestCase
         $this->reconcileUri = $base . 'reconcile';
         $this->deviceUuid = (string) Str::uuid();
         $this->backupDir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'edge-restore-test-' . Str::lower(Str::random(8));
-        config(['edge.backup.path' => $this->backupDir]);
+        config([
+            'edge.backup.path' => $this->backupDir,
+            'edge.backup.recovery_key' => base64_encode(random_bytes(32)),
+            'edge.backup.recovery_key_id' => 'k1',
+            'edge.backup.retired_keys' => [],
+        ]);
 
         $this->seedTenantRegistration();
         $this->seedTenantData();
