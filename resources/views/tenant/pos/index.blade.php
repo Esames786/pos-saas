@@ -417,26 +417,24 @@
     }
 </style>
 
-<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
-    <div class="d-flex align-items-center gap-2 flex-wrap">
-        <button type="button" class="btn btn-outline-secondary" id="pos-sidebar-toggle" title="Show navigation" aria-label="Show navigation">
-            <i class="ti ti-layout-sidebar-left-expand"></i>
-        </button>
-        <h1 class="h3 mb-0">Restaurant POS</h1>
-        {{-- Flash messages sit inline beside the title (compact) instead of each taking its own row. --}}
-        @if(session('status'))
-            <span class="alert alert-success py-1 px-2 mb-0 small d-inline-flex align-items-center" role="status">{{ session('status') }}</span>
-        @endif
-        @if($errors->any())
-            <span class="alert alert-danger py-1 px-2 mb-0 small d-inline-flex align-items-center" role="alert">{{ $errors->first() }}</span>
-        @endif
-    </div>
-    {{-- View Tables moves up into the header (dine-in only) so it no longer eats a full empty row
-         below. Same id/handler; the session bar underneath now carries only live-session context. --}}
+<div class="d-flex align-items-center flex-wrap gap-2 mb-3">
+    <button type="button" class="btn btn-outline-secondary" id="pos-sidebar-toggle" title="Show navigation" aria-label="Show navigation">
+        <i class="ti ti-layout-sidebar-left-expand"></i>
+    </button>
+    <h1 class="h3 mb-0">Restaurant POS</h1>
+    {{-- View Tables sits right beside the title (dine-in only) with a small gap — not shoved into the
+         far corner. Same id/handler; the session bar underneath carries only live-session context. --}}
     @if(in_array('dine_in', $allowedOrderTypes, true))
-        <button type="button" id="view-tables-btn" class="btn btn-dark btn-sm">
+        <button type="button" id="view-tables-btn" class="btn btn-dark btn-sm ms-2">
             <i class="ti ti-layout-grid me-1"></i>View Tables
         </button>
+    @endif
+    {{-- Flash messages inline (compact) instead of each taking its own row. --}}
+    @if(session('status'))
+        <span class="alert alert-success py-1 px-2 mb-0 small d-inline-flex align-items-center" role="status">{{ session('status') }}</span>
+    @endif
+    @if($errors->any())
+        <span class="alert alert-danger py-1 px-2 mb-0 small d-inline-flex align-items-center" role="alert">{{ $errors->first() }}</span>
     @endif
 </div>
 
