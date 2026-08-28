@@ -951,13 +951,14 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary btn-lg" data-bs-dismiss="modal">Back</button>
-                    {{-- Preview the FULL running bill (discount + tax + service charge + tip) exactly as
-                         Close & Pay will charge — for showing / printing to the customer before paying. --}}
-                    <button type="button" class="btn btn-outline-primary btn-lg" id="payment-bill-preview-btn">
-                        <i class="ti ti-file-invoice me-1"></i>Preview Bill
-                    </button>
                     <button type="button" class="btn btn-primary btn-lg flex-grow-1" id="complete-sale-btn">
                         {{ $tableSession ? 'Close & Pay Table Bill' : 'Complete Sale' }}
+                    </button>
+                    {{-- Preview the FULL running bill (discount + tax + service charge + tip) exactly as
+                         Close & Pay will charge — for showing / printing to the customer before paying.
+                         Kept on the far right with a gap. --}}
+                    <button type="button" class="btn btn-outline-primary btn-lg ms-2" id="payment-bill-preview-btn">
+                        <i class="ti ti-file-invoice me-1"></i>Preview Bill
                     </button>
                 </div>
             </div>
