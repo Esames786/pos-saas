@@ -110,7 +110,8 @@ class EdgeRestoreSyncRecoveryHttpMySqlTest extends MySqlTenantTestCase
         $this->cleanTenant([
             'edge_local_backups', 'edge_baseline_cutovers', 'edge_operational_stock_movements',
             'edge_operational_stock_balances', 'edge_operational_stock_baselines', 'edge_sync_outbox',
-            'edge_local_meta', 'edge_inbound_sale_ingestions',
+            'edge_local_print_deliveries', 'print_jobs', 'kot_batch_lines', 'kot_batches',
+            'restaurant_table_sessions', 'shifts', 'edge_local_meta', 'edge_inbound_sale_ingestions',
             'cash_bank_account_transactions', 'journal_lines', 'journal_entries', 'accounts', 'cash_bank_accounts',
             'stock_ledgers', 'stock_balances', 'inventory_batches', 'sale_payments', 'sales_order_lines',
             'sales_orders', 'payment_methods', 'products', 'categories', 'terminals', 'branches', 'users',

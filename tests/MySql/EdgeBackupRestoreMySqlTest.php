@@ -33,7 +33,8 @@ class EdgeBackupRestoreMySqlTest extends MySqlTenantTestCase
         $this->ensureEdgeSchema();
         $this->cleanTenant([
             'edge_local_backups', 'edge_sync_outbox', 'edge_baseline_cutovers', 'edge_operational_stock_movements',
-            'edge_operational_stock_balances', 'edge_operational_stock_baselines', 'edge_local_meta',
+            'edge_operational_stock_balances', 'edge_operational_stock_baselines', 'edge_local_print_deliveries',
+            'print_jobs', 'kot_batch_lines', 'kot_batches', 'restaurant_table_sessions', 'shifts', 'edge_local_meta',
             'sale_payments', 'sales_order_lines', 'sales_orders', 'products', 'categories', 'branches', 'users',
         ]);
         config(['app.role' => 'branch_server']);
