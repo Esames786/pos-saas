@@ -200,6 +200,30 @@ return [
             'tests', 'tests/*',
             'docs', 'docs/*',
             'node_modules', 'node_modules/*',
+            // PRODUCTIZATION — physically remove Cloud-only subsystems the Branch Server never executes
+            // (routes/web.php loads only edge_runtime.php on a branch_server; these are reachable only via
+            // the Cloud route groups). Prefix-matched by EdgeArtifactBuilder::isExcluded. See the exclusion
+            // analysis: none is referenced by any Edge runtime path.
+            'app/Services/Catering',
+            'app/Services/Saas',
+            'app/Services/Central',
+            'app/Services/Manufacturing',
+            'app/Services/Purchasing',
+            'app/Http/Controllers/Central',
+            'app/Http/Controllers/Tenant/Manufacturing',
+            'app/Http/Controllers/Tenant/Reports',
+            // Cloud-side Edge INGESTION/ISSUANCE authorities — they live under app/*/Edge but the appliance
+            // SENDS to them, it never hosts them (EdgeInboundSaleIngestionService self-guards it must never
+            // run on a Branch Server). Excluded by exact path so the surrounding Edge runtime stays.
+            'app/Services/Edge/EdgeInboundSaleIngestionService.php',
+            'app/Services/Edge/EdgeFinancePostingVerifier.php',
+            'app/Services/Edge/EdgeBaselineIssuanceService.php',
+            'app/Http/Controllers/Edge/EdgeSyncIngestionApiController.php',
+            'app/Http/Controllers/Edge/EdgeSyncReconciliationApiController.php',
+            'app/Http/Controllers/Edge/EdgeBaselineApiController.php',
+            'app/Models/Tenant/EdgeInboundSaleIngestion.php',
+            // Cloud AP posting — sits beside the KEPT JournalPostingService, so excluded by exact path only.
+            'app/Services/Finance/SupplierPayableService.php',
             'storage/logs/*',
             'storage/framework/cache/*',
             'storage/framework/sessions/*',

@@ -235,6 +235,74 @@ class EdgeArtifactTest extends TestCase
         }
     }
 
+    public function test_built_artifact_physically_excludes_cloud_modules_and_keeps_edge_runtime(): void
+    {
+        // Build the REAL app/ tree (no vendor) with the production exclude list into a temp artifact.
+        $builder = new EdgeArtifactBuilder([
+            'include' => ['app'],
+            'exclude' => (array) config('edge.artifact.exclude'),
+            'forbidden' => (array) config('edge.artifact.forbidden'),
+        ]);
+        $dest = $this->tempDir();
+        $builder->build(base_path(), $dest);
+
+        // Cloud-only subsystems are PHYSICALLY absent from the appliance artifact.
+        $absent = [
+            'app/Services/Saas', 'app/Services/Central', 'app/Services/Manufacturing', 'app/Services/Purchasing',
+            'app/Http/Controllers/Central', 'app/Http/Controllers/Tenant/Manufacturing', 'app/Http/Controllers/Tenant/Reports',
+            'app/Services/Edge/EdgeInboundSaleIngestionService.php', 'app/Services/Edge/EdgeFinancePostingVerifier.php',
+            'app/Services/Edge/EdgeBaselineIssuanceService.php', 'app/Http/Controllers/Edge/EdgeSyncIngestionApiController.php',
+            'app/Http/Controllers/Edge/EdgeSyncReconciliationApiController.php', 'app/Http/Controllers/Edge/EdgeBaselineApiController.php',
+            'app/Models/Tenant/EdgeInboundSaleIngestion.php', 'app/Services/Finance/SupplierPayableService.php',
+        ];
+        foreach ($absent as $rel) {
+            $this->assertFileDoesNotExist($dest . '/' . $rel, "Cloud-only path must be excluded: {$rel}");
+        }
+
+        // The Edge runtime + the genuinely-shared primitives it needs remain.
+        $present = [
+            'app/Services/Edge/EdgeSyncSender.php', 'app/Services/Edge/EdgeSyncReconciliationService.php',
+            'app/Services/Edge/EdgeBaselineCutoverService.php', 'app/Services/Edge/EdgeBackupService.php',
+            'app/Services/Edge/EdgeRestoreService.php', 'app/Services/Edge/EdgeLocalPosService.php',
+            'app/Services/Edge/EdgeBootstrapService.php',        // KEPT: config reads its SCHEMA_VERSION constant
+            'app/Services/Finance/JournalPostingService.php',    // KEPT: shared finance primitive
+        ];
+        foreach ($present as $rel) {
+            $this->assertFileExists($dest . '/' . $rel, "Edge runtime must ship: {$rel}");
+        }
+    }
+
+    public function test_built_artifact_source_scan_reports_zero_cloud_module_files(): void
+    {
+        $builder = new EdgeArtifactBuilder([
+            'include' => ['app'],
+            'exclude' => (array) config('edge.artifact.exclude'),
+            'forbidden' => (array) config('edge.artifact.forbidden'),
+        ]);
+        $dest = $this->tempDir();
+        $builder->build(base_path(), $dest);
+
+        $count = function (string $subdir) use ($dest): int {
+            $abs = $dest . '/' . $subdir;
+            if (! is_dir($abs)) {
+                return 0;
+            }
+            $n = 0;
+            foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($abs, \FilesystemIterator::SKIP_DOTS)) as $f) {
+                $n += $f->isFile() ? 1 : 0;
+            }
+
+            return $n;
+        };
+
+        $this->assertSame(0, $count('app/Services/Catering'), 'CATERING_FILES');
+        $this->assertSame(0, $count('app/Services/Saas'), 'SAAS_BILLING_FILES');
+        $this->assertSame(0, $count('app/Services/Manufacturing'), 'MANUFACTURING_FILES');
+        $this->assertSame(0, $count('app/Services/Purchasing'), 'PURCHASING_FILES');
+        $this->assertSame(0, $count('app/Http/Controllers/Central'), 'CLOUD_ADMIN_FILES');
+        $this->assertFileDoesNotExist($dest . '/app/Services/Edge/EdgeInboundSaleIngestionService.php', 'CLOUD_INGESTION_FILES');
+    }
+
     public function test_branch_server_allows_the_productization_commands_and_denies_cloud_ones(): void
     {
         config(['app.role' => 'branch_server']);
