@@ -194,7 +194,7 @@
     }
 
     .product-name {
-        font-size: 1rem;
+        font-size: 0.9rem;
         line-height: 1.3;
         /* keep tiles uniform: at most 2 lines of name, ellipsis after */
         display: -webkit-box;
@@ -493,7 +493,7 @@
                 @php $reportToday = app(\App\Support\TenantClock::class)->now()->toDateString(); @endphp
                 <button type="button" class="btn btn-sm btn-outline-dark me-2" id="pos-report-btn"
                         data-bs-toggle="modal" data-bs-target="#posReportModal"
-                        data-report-url="{{ url('/reports/center') }}?date_from={{ $reportToday }}&date_to={{ $reportToday }}"
+                        data-report-url="{{ url('/reports/center') }}?date_from={{ $reportToday }}&date_to={{ $reportToday }}&embed=1"
                         title="Open the Sales Report Center (today)">
                     <i class="ti ti-file-analytics me-1"></i>Report
                 </button>
@@ -504,7 +504,7 @@
                      leaving the POS. --}}
                 <button type="button" class="btn btn-sm btn-outline-danger me-2" id="pos-return-btn"
                         data-bs-toggle="modal" data-bs-target="#posReturnModal"
-                        data-return-url="{{ url('/sales-returns/create') }}"
+                        data-return-url="{{ url('/sales-returns/create') }}?embed=1"
                         title="Create a sales return (search a paid sale)">
                     <i class="ti ti-arrow-back-up me-1"></i>Return
                 </button>
@@ -1272,11 +1272,15 @@
     </div>
 </div>
 
+{{-- POS windows (Report / Return): a wide near-full-screen dialog. modal-fullscreen-lg-down still
+     takes over on small screens; on large screens this is much bigger than modal-xl (~1140px). --}}
+<style>.pos-window-modal { max-width: min(1680px, 96vw); }</style>
+
 {{-- POS-REPORT-LINK: Sales Report Center in a same-screen window (lazy iframe) --}}
 @can('tenant.reports.center.index')
 <div class="modal fade" id="posReportModal" tabindex="-1" aria-labelledby="posReportModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-centered modal-fullscreen-lg-down">
-        <div class="modal-content" style="height:92vh">
+    <div class="modal-dialog pos-window-modal modal-dialog-centered modal-fullscreen-lg-down">
+        <div class="modal-content" style="height:96vh">
             <div class="modal-header py-2">
                 <h2 class="modal-title h6 mb-0" id="posReportModalLabel"><i class="ti ti-file-analytics me-1"></i>Sales Report Center</h2>
                 <a href="#" id="pos-report-newtab" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary ms-auto me-2" title="Open in a full tab"><i class="ti ti-external-link"></i></a>
@@ -1310,8 +1314,8 @@
 {{-- POS-RETURN-LINK: Sales Returns in a same-screen window (lazy iframe), mirrors the Report window. --}}
 @can('tenant.sales-returns.create')
 <div class="modal fade" id="posReturnModal" tabindex="-1" aria-labelledby="posReturnModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-centered modal-fullscreen-lg-down">
-        <div class="modal-content" style="height:94vh">
+    <div class="modal-dialog pos-window-modal modal-dialog-centered modal-fullscreen-lg-down">
+        <div class="modal-content" style="height:96vh">
             <div class="modal-header py-2">
                 <h2 class="modal-title h6 mb-0" id="posReturnModalLabel"><i class="ti ti-arrow-back-up me-1"></i>Sales Return</h2>
                 <a href="#" id="pos-return-newtab" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary ms-auto me-2" title="Open in a full tab"><i class="ti ti-external-link"></i></a>

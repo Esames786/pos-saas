@@ -30,18 +30,20 @@
             body.pos-workspace .tenant-subscription-banner { display: none; }
         </style>
     @endif
-    @if(request()->boolean('embed'))
-        <style>
-            body.embedded-workspace .header,
-            body.embedded-workspace .sidebar,
-            body.embedded-workspace .skip-link,
-            body.embedded-workspace .tenant-subscription-banner { display: none !important; }
-            body.embedded-workspace .page-wrapper { margin: 0 !important; padding: 0 !important; }
-            body.embedded-workspace .page-wrapper > .content { min-height: 100vh; padding: 12px !important; }
-            body.embedded-workspace .content-wrapper,
-            body.embedded-workspace .content-wrapper > .content { margin: 0 !important; padding: 0 !important; }
-        </style>
-    @endif
+    {{-- Embedded mode: a page opened inside a POS window (iframe) hides the app chrome so only its
+         own content shows. Triggered by ?embed=1 (flash-free first load) OR by the iframe-detection
+         script below (covers in-window navigations that drop the query param). CSS is always emitted;
+         it only bites when the body actually carries .embedded-workspace. --}}
+    <style>
+        body.embedded-workspace .header,
+        body.embedded-workspace .sidebar,
+        body.embedded-workspace .skip-link,
+        body.embedded-workspace .tenant-subscription-banner { display: none !important; }
+        body.embedded-workspace .page-wrapper { margin: 0 !important; padding: 0 !important; }
+        body.embedded-workspace .page-wrapper > .content { min-height: 100vh; padding: 12px !important; }
+        body.embedded-workspace .content-wrapper,
+        body.embedded-workspace .content-wrapper > .content { margin: 0 !important; padding: 0 !important; }
+    </style>
     @stack('styles')
 </head>
 
@@ -49,6 +51,9 @@
     'pos-workspace nosidebar' => request()->is('pos'),
     'embedded-workspace' => request()->boolean('embed'),
 ])>
+{{-- Any page opened inside a POS window (iframe) hides the app chrome — even after an in-window
+     navigation (e.g. picking a sale) that drops the ?embed=1 param. Runs before paint, so no flash. --}}
+<script>try{if(window.self!==window.top){document.body.classList.add('embedded-workspace');}}catch(e){}</script>
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <div id="global-loader">
     <div class="whirly-loader"></div>
