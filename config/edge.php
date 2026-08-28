@@ -136,6 +136,9 @@ return [
         // EDGE-LOCAL-POS-1 restaurant layer (each name deliberate).
         'edge.local.pos.restaurant.board',
         'edge.local.pos.restaurant.table.open',
+        'edge.local.pos.restaurant.table.reservation',
+        'edge.local.pos.restaurant.table.reserve',
+        'edge.local.pos.restaurant.table.unreserve',
         'edge.local.pos.restaurant.session.close',
         'edge.local.pos.held.store',
         'edge.local.pos.held.kot',

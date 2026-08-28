@@ -38,7 +38,61 @@ class EdgeLocalPosController extends Controller
         private readonly EdgeLocalPosService $pos,
         private readonly ShiftService $shifts,
         private readonly EdgeOperationalBaselineService $baselines,
+        private readonly \App\Services\Edge\EdgeTableReservationService $reservations,
     ) {
+    }
+
+    /** ONLINE-POS PARITY — reserve a table (walk-in or existing customer, booking time, note). */
+    public function reserveTable(Request $request, int $table): JsonResponse
+    {
+        $data = $request->validate([
+            'customer_id' => ['nullable', 'integer'],
+            'customer_name' => ['nullable', 'string', 'max:190'],
+            'customer_phone' => ['nullable', 'string', 'max:40'],
+            'reserved_for' => ['nullable', 'date'],
+            'note' => ['nullable', 'string', 'max:1000'],
+        ]);
+        try {
+            $r = $this->reservations->reserve($table, $data, auth('tenant')->user());
+        } catch (\Throwable $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json($this->reservationView($r), 201);
+    }
+
+    /** ONLINE-POS PARITY — view the active reservation on a table. */
+    public function tableReservation(int $table): JsonResponse
+    {
+        $r = $this->reservations->activeFor($table);
+
+        return response()->json(['reservation' => $r ? $this->reservationView($r) : null]);
+    }
+
+    /** ONLINE-POS PARITY — cancel the active reservation on a table. */
+    public function cancelReservation(int $table): JsonResponse
+    {
+        try {
+            $this->reservations->cancel($table, auth('tenant')->user());
+        } catch (\Throwable $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['status' => 'cancelled']);
+    }
+
+    private function reservationView(\App\Models\Edge\EdgeTableReservation $r): array
+    {
+        return [
+            'reservation_uuid' => $r->reservation_uuid,
+            'restaurant_table_id' => (int) $r->restaurant_table_id,
+            'customer_id' => $r->customer_id !== null ? (int) $r->customer_id : null,
+            'customer_name' => $r->customer_name,
+            'customer_phone' => $r->customer_phone,
+            'reserved_for' => $r->reserved_for?->toIso8601String(),
+            'note' => $r->note,
+            'status' => $r->status,
+        ];
     }
 
     /** Terminal-selection data: the bound branch's active terminals + open-shift state + current selection. */

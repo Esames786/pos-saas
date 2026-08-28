@@ -125,6 +125,12 @@ class EdgeFreshDbRecoveryMySqlTest extends MySqlTenantTestCase
             'session_no' => 'S-' . Str::upper(Str::random(6)), 'branch_id' => $ids['branch'], 'restaurant_table_id' => $ids['table'],
             'opened_by_user_id' => $ids['user'], 'status' => 'open', 'opened_at' => now(), 'created_at' => now(), 'updated_at' => now(),
         ]);
+        // A table reservation (Edge-owned operational state) must also survive replacement-box recovery.
+        DB::table('edge_local_table_reservations')->insert([
+            'reservation_uuid' => (string) Str::ulid(), 'branch_id' => $ids['branch'], 'restaurant_table_id' => $ids['table'],
+            'customer_name' => 'Reserved Guest', 'customer_phone' => '0311', 'status' => 'active', 'reserved_at' => now(),
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
 
         // A HELD dine-in sale and a DRAFT sale (both status='held', draft flagged).
         $held = \App\Models\Tenant\SalesOrder::on('tenant')->create([
@@ -208,6 +214,7 @@ class EdgeFreshDbRecoveryMySqlTest extends MySqlTenantTestCase
         $this->assertSame(1, DB::table('shifts')->where('status', 'open')->count(), 'open shift survived');
         $this->assertSame(1, DB::table('restaurant_table_sessions')->where('status', 'open')->count(), 'table session survived');
         $this->assertSame(1, DB::table('kot_batches')->count(), 'KOT batch survived');
+        $this->assertSame(1, DB::table('edge_local_table_reservations')->where('status', 'active')->count(), 'table reservation survived');
         $this->assertSame(1, DB::table('print_jobs')->where('print_status', 'printed')->count(), 'printed job survived (no reprint)');
         $this->assertSame(1, DB::table('edge_local_print_deliveries')->count(), 'print delivery state survived');
         $this->assertSame(1, DB::table('edge_operational_stock_baselines')->where('status', 'accepted')->count(), 'baseline survived');

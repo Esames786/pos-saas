@@ -41,6 +41,7 @@ class EdgeRestoreService
         ['shifts', 'branch_id', 'branches'],
         ['shifts', 'terminal_id', 'terminals'],
         ['restaurant_table_sessions', 'restaurant_table_id', 'restaurant_tables'],
+        ['edge_local_table_reservations', 'restaurant_table_id', 'restaurant_tables'],
         ['sales_orders', 'branch_id', 'branches'],
         ['sales_order_lines', 'product_id', 'products'],
         ['sale_payments', 'payment_method_id', 'payment_methods'],

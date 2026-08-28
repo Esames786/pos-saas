@@ -415,6 +415,31 @@ class EdgeLocalPosService
         }
     }
 
+    /**
+     * ONLINE-POS PARITY — the customer for a held sale: the request's explicit customer wins; otherwise a
+     * SEATED reservation on this session's table carries its customer onto the order. Returns [id, name, phone].
+     */
+    private function resolveHeldSaleCustomer(array $data, ?RestaurantTableSession $session): array
+    {
+        if (array_key_exists('customer_id', $data) || array_key_exists('customer_name', $data) || array_key_exists('customer_phone', $data)) {
+            return [
+                'id' => isset($data['customer_id']) && $data['customer_id'] !== '' ? (int) $data['customer_id'] : null,
+                'name' => $data['customer_name'] ?? null,
+                'phone' => $data['customer_phone'] ?? null,
+            ];
+        }
+        if ($session) {
+            $r = \App\Models\Edge\EdgeTableReservation::on('tenant')
+                ->where('restaurant_table_session_id', $session->id)
+                ->where('status', \App\Models\Edge\EdgeTableReservation::STATUS_SEATED)->latest('id')->first();
+            if ($r) {
+                return ['id' => $r->customer_id !== null ? (int) $r->customer_id : null, 'name' => $r->customer_name, 'phone' => $r->customer_phone];
+            }
+        }
+
+        return ['id' => null, 'name' => null, 'phone' => null];
+    }
+
     private function requireActiveTerminal(?int $terminalId, int $branchId): Terminal
     {
         $terminal = Terminal::on('tenant')->where('id', (int) $terminalId)->where('branch_id', $branchId)->where('status', 'active')->first();
@@ -568,6 +593,14 @@ class EdgeLocalPosService
 
             $table->update(['status' => 'occupied']);
 
+            // ONLINE-POS PARITY: opening a RESERVED table seats its reservation and carries the customer onto
+            // this session, so the first held sale inherits it (see the held-sale customer resolution below).
+            \App\Models\Edge\EdgeTableReservation::on('tenant')
+                ->where('restaurant_table_id', $table->id)
+                ->where('status', \App\Models\Edge\EdgeTableReservation::STATUS_ACTIVE)
+                ->lockForUpdate()->latest('id')->first()
+                ?->update(['status' => \App\Models\Edge\EdgeTableReservation::STATUS_SEATED, 'restaurant_table_session_id' => $session->id, 'seated_at' => now()]);
+
             return $session->fresh();
         });
     }
@@ -642,6 +675,10 @@ class EdgeLocalPosService
             $resolved = $this->resolveLines($lines, $branch);
             $totals = $this->totals->calculate($resolved, 'none', 0, $branchId, $orderType, null, 0);
 
+            // ONLINE-POS PARITY: the request's customer wins; otherwise a seated reservation on this session's
+            // table carries its customer onto the order (matching "open reserved table -> customer on order").
+            $customer = $this->resolveHeldSaleCustomer($data, $session);
+
             $saleUlid = (string) Str::ulid();
             $sale = new SalesOrder([
                 'sale_no' => 'SO-' . $branchId . '-' . $terminal->id . '-' . $saleUlid,
@@ -663,6 +700,9 @@ class EdgeLocalPosService
                 'status' => 'held',
                 'is_draft' => $isDraft,
                 'created_by_user_id' => $user->id,
+                'customer_id' => $customer['id'],
+                'customer_name' => $customer['name'],
+                'customer_phone' => $customer['phone'],
                 'restaurant_table_session_id' => $session?->id,
                 'restaurant_table_id' => $session?->restaurant_table_id,
                 'restaurant_floor_id' => $session?->table?->restaurant_floor_id,

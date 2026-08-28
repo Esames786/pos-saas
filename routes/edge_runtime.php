@@ -45,6 +45,10 @@ Route::prefix('edge/local')->name('edge.local.')->group(function () {
         // settle/cancel, manager re-auth. Same authority envelope (EdgeLocalPosService); NO print transport.
         Route::get('/restaurant/board', [EdgeLocalPosController::class, 'restaurantBoard'])->name('restaurant.board');
         Route::post('/restaurant/tables/{table}/open', [EdgeLocalPosController::class, 'openTable'])->name('restaurant.table.open');
+        // ONLINE-POS PARITY — table reservations (reserve / view / cancel).
+        Route::get('/restaurant/tables/{table}/reservation', [EdgeLocalPosController::class, 'tableReservation'])->name('restaurant.table.reservation');
+        Route::post('/restaurant/tables/{table}/reserve', [EdgeLocalPosController::class, 'reserveTable'])->name('restaurant.table.reserve');
+        Route::post('/restaurant/tables/{table}/unreserve', [EdgeLocalPosController::class, 'cancelReservation'])->name('restaurant.table.unreserve');
         Route::post('/restaurant/table-sessions/{session}/close', [EdgeLocalPosController::class, 'closeTableSession'])->name('restaurant.session.close');
         Route::post('/held-sales', [EdgeLocalPosController::class, 'storeHeldSale'])->name('held.store');
         Route::post('/held-sales/{sale}/kot', [EdgeLocalPosController::class, 'queueKot'])->name('held.kot');

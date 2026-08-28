@@ -46,6 +46,7 @@ class EdgeBackupService
         'edge_local_user_credentials',
         'shifts',                          // money: open shift + cash reconciliation
         'restaurant_table_sessions',       // dine-in: active table sessions
+        'edge_local_table_reservations',   // dine-in: table reservations (+ customer carry-over)
         'sales_orders',                    // sales incl. held/draft (status='held', is_draft)
         'sales_order_lines',
         'sale_payments',
