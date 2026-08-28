@@ -115,6 +115,11 @@ class RestaurantTableSessionController extends Controller
                     'branch_id'            => $table->branch_id,
                     'restaurant_table_id'  => $table->id,
                     'restaurant_waiter_id' => $data['restaurant_waiter_id'] ?? null,
+                    // TABLE-RESERVATION-2b: carry any reservation's customer onto the session (read from
+                    // the locked row BEFORE the clear below) so the POS pre-attaches it to the first order.
+                    'customer_id'          => $table->reserved_customer_id,
+                    'customer_name'        => $table->reserved_name,
+                    'customer_phone'       => $table->reserved_phone,
                     'opened_by_user_id'    => Auth::id(),
                     'opened_shift_id'      => $shift->id,
                     'business_date'        => $shift->business_date->toDateString(),
@@ -163,6 +168,10 @@ class RestaurantTableSessionController extends Controller
                     'guest_count' => $session->guest_count,
                     'status'      => $session->status,
                     'branch_id'   => (int) $session->branch_id,
+                    // TABLE-RESERVATION-2b: let the POS pre-attach the carried-over reservation customer.
+                    'customer_id'    => $session->customer_id,
+                    'customer_name'  => $session->customer_name,
+                    'customer_phone' => $session->customer_phone,
                 ] : null,
             ]);
         }

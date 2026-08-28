@@ -588,9 +588,11 @@
             </div>
             {{-- CUSTOMER-UX-1: customer attaches via the Add/Search Customer modal (chip near
                  the order-type tabs). Hidden fields keep the form payload + existing JS ids. --}}
-            <input type="hidden" id="customer_id" name="customer_id" value="{{ $heldSale?->customer_id }}">
-            <input type="hidden" id="customer_name" name="customer_name" value="{{ $heldSale?->customer_name ?? $heldSale?->customer?->name }}">
-            <input type="hidden" id="customer_phone" name="customer_phone" value="{{ $heldSale?->customer_phone ?? $heldSale?->customer?->phone }}">
+            {{-- TABLE-RESERVATION-2b: a fresh dine-in session (no held sale yet) pre-attaches the customer
+                 carried over from the reservation; renderChip() shows it on load. Held sale always wins. --}}
+            <input type="hidden" id="customer_id" name="customer_id" value="{{ $heldSale?->customer_id ?? $tableSession?->customer_id }}">
+            <input type="hidden" id="customer_name" name="customer_name" value="{{ $heldSale?->customer_name ?? $heldSale?->customer?->name ?? $tableSession?->customer_name }}">
+            <input type="hidden" id="customer_phone" name="customer_phone" value="{{ $heldSale?->customer_phone ?? $heldSale?->customer?->phone ?? $tableSession?->customer_phone }}">
 
             {{-- Branch/terminal selects live in this modal (INSIDE the form: values still post).
                  All ids are unchanged so every existing JS hook keeps working. --}}
@@ -1988,6 +1990,14 @@ document.addEventListener('DOMContentLoaded', function () {
         forceDineInMode();
         setHidden('restaurant_table_session_id', session.id);
         setHidden('restaurant_table_id', session.table_id || '');
+        // TABLE-RESERVATION-2b: a freshly opened reserved table carries its customer — pre-attach it.
+        // Guarded so a normal (non-reserved) open never clobbers an already-typed customer.
+        if (session.customer_id || session.customer_name) {
+            setHidden('customer_id', session.customer_id || '');
+            setHidden('customer_name', session.customer_name || '');
+            setHidden('customer_phone', session.customer_phone || '');
+            if (window.posRenderCustomerChip) window.posRenderCustomerChip();
+        }
         setCompleteSaleLabel(true);
         updateStartFreshLabel();
         if (window.history && window.history.replaceState) {
@@ -6395,6 +6405,9 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         chip.classList.remove('d-none');
     }
+    // TABLE-RESERVATION-2b: applyTableSession() lives outside this IIFE — let it repaint the chip
+    // after pre-attaching a reserved table's carried-over customer on an in-page open.
+    window.posRenderCustomerChip = renderChip;
 
     const clearBtn = $id('chip-cust-clear');
     if (clearBtn) clearBtn.addEventListener('click', function () {
