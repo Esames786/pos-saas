@@ -182,6 +182,70 @@ class EdgeArtifactTest extends TestCase
         $this->assertSame([], $builder->forbidden($plan), 'the real Edge plan must contain no forbidden/secret files');
     }
 
+    public function test_build_is_reproducible_from_the_same_source(): void
+    {
+        $root = $this->tempDir();
+        $this->writeFile($root, 'app/Good.php', '<?php // good');
+        $this->writeFile($root, 'app/nested/Ok.php', '<?php // ok');
+        $this->writeFile($root, 'composer.json', '{}');
+
+        // Two builds from the SAME source (ignore build timestamp, which we do not pass into meta).
+        $dest1 = $this->tempDir();
+        $dest2 = $this->tempDir();
+        $this->builder()->build($root, $dest1, ['git_commit' => 'deadbeef']);
+        $this->builder()->build($root, $dest2, ['git_commit' => 'deadbeef']);
+
+        $m1 = json_decode((string) file_get_contents($dest1 . '/edge-build-manifest.json'), true);
+        $m2 = json_decode((string) file_get_contents($dest2 . '/edge-build-manifest.json'), true);
+        $this->assertSame($m1['files'], $m2['files'], 'file inventory + checksums must be identical');
+        $this->assertSame($m1['manifest_hash'], $m2['manifest_hash'], 'manifest hash must be stable across builds');
+    }
+
+    public function test_manifest_declares_the_full_runtime_identity(): void
+    {
+        $root = $this->tempDir();
+        $this->writeFile($root, 'app/A.php', '<?php');
+        $this->writeFile($root, 'composer.json', '{}');
+        $manifest = $this->builder()->build($root, $this->tempDir(), ['git_commit' => 'abc123']);
+
+        foreach (['edge_app_version', 'artifact_format_version', 'bootstrap_schema', 'min_php', 'min_db',
+            'capabilities', 'runtime_mode_supported', 'manifest_hash', 'file_count'] as $key) {
+            $this->assertArrayHasKey($key, $manifest, "manifest must declare {$key}");
+        }
+        $this->assertSame('branch_server', $manifest['runtime_mode_supported']);
+        $this->assertSame('abc123', $manifest['git_commit']);
+        $this->assertIsArray($manifest['capabilities']);
+    }
+
+    public function test_real_plan_ships_the_offline_productization_runtime(): void
+    {
+        $plan = EdgeArtifactBuilder::fromConfig()->plan(base_path());
+
+        // The shippable box must actually contain the sync/reconciliation/baseline/backup runtime we built.
+        foreach ([
+            'app/Services/Edge/EdgeSyncSender.php',
+            'app/Services/Edge/EdgeSyncReconciliationService.php',
+            'app/Services/Edge/EdgeBaselineCutoverService.php',
+            'app/Services/Edge/EdgeBackupService.php',
+            'app/Services/Edge/EdgeRestoreService.php',
+            'app/Console/Commands/EdgeLocalBackupCommand.php',
+            'app/Console/Commands/EdgeLocalRestoreCommand.php',
+        ] as $required) {
+            $this->assertContains($required, $plan, "the Edge artifact must ship {$required}");
+        }
+    }
+
+    public function test_branch_server_allows_the_productization_commands_and_denies_cloud_ones(): void
+    {
+        config(['app.role' => 'branch_server']);
+        foreach (['edge:local:backup', 'edge:local:restore', 'edge:local:sync-send', 'edge:local:sync-status'] as $cmd) {
+            $this->assertTrue(\App\Support\EdgeConsoleBoundary::isAllowed($cmd), "{$cmd} must run on a Branch Server");
+        }
+        // A Cloud-only command stays denied on the appliance.
+        $this->assertFalse(\App\Support\EdgeConsoleBoundary::isAllowed('migrate:fresh'), 'a destructive Cloud command must be denied');
+        config(['app.role' => null]);
+    }
+
     private function rrmdir(string $dir): void
     {
         if (! is_dir($dir)) {

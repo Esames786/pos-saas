@@ -126,6 +126,8 @@ class EdgeArtifactBuilder
             'bootstrap_schema'        => (string) config('edge.bootstrap_schema'),
             'sync_protocol'           => (string) config('edge.sync_protocol'),
             'min_php'                 => (string) config('edge.min_php'),
+            'min_db'                  => (string) config('edge.min_db'),
+            'capabilities'            => array_values((array) config('edge.capabilities', [])),
             'runtime_mode_supported'  => 'branch_server',
             'file_count'              => count($fileHashes),
             'manifest_hash'           => $manifestHash,

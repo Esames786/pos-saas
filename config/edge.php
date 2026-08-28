@@ -27,6 +27,7 @@ return [
     'config_schema'           => EdgeBootstrapService::CONFIG_SCHEMA_VERSION, // edge-config-v1
     'sync_protocol'           => 'edge-sync-v0', // placeholder ONLY — offline sync is not built yet
     'min_php'                 => '8.2.0',
+    'min_db'                  => env('EDGE_MIN_DB', '10.4'), // minimum MariaDB (appliance local DB)
 
     /*
     | EDGE-COMPATIBILITY-CONTRACT-1 — the capabilities THIS BUILD actually implements offline.
