@@ -31,6 +31,12 @@ class CateringEstimateController extends Controller
             'lines.*.quantity' => ['required', 'numeric', 'min:0.001'],
             'lines.*.unit_id' => ['nullable', 'exists:units,id'],
             'lines.*.rate' => ['required', 'numeric', 'min:0'],
+            // A block-costed line deliberately ignores the ordinary rate field.
+            // The punch bar therefore posts an explicit pricing intent when the
+            // operator changes Customer Rate, so Save Estimate can use the same
+            // audited authority as the inline "Apply rate" control.
+            'lines.*.rate_action' => ['nullable', Rule::in(['override', 'calculated'])],
+            'lines.*.rate_override_reason' => ['nullable', 'string', 'max:255'],
             'lines.*.instructions' => ['nullable', 'string', 'max:2000'],
             // KASHIF-CATERING-INSTRUCTIONS-1: managed vocabulary selections,
             // saved beside the free note (which stays the additional note).
@@ -65,6 +71,7 @@ class CateringEstimateController extends Controller
             \Illuminate\Support\Facades\DB::connection('tenant')->transaction(function () use ($cateringEstimate, $lines, $data) {
                 $this->estimates->saveDraftLines($cateringEstimate, $lines, $data);
                 $this->applyPunchedMaterials($cateringEstimate->refresh(), $lines);
+                $this->applyPunchedQuotedRates($cateringEstimate->refresh(), $lines);
             });
         } catch (RuntimeException $e) {
             return back()->withErrors(['estimate' => $e->getMessage()])->withInput();
@@ -120,6 +127,32 @@ class CateringEstimateController extends Controller
                     }
                 }
             }
+        }
+    }
+
+    /** Apply only the explicit Customer Rate decision staged by the punch bar. */
+    private function applyPunchedQuotedRates(CateringEstimate $estimate, array $lines): void
+    {
+        $blocks = app(\App\Services\Catering\CateringLineCostBlockService::class);
+        $saved = $estimate->lines()->get()->keyBy('sort_order');
+
+        foreach (array_values($lines) as $index => $line) {
+            $action = $line['rate_action'] ?? null;
+            $savedLine = $saved->get($index);
+            if (! $action || ! $savedLine || ! $savedLine->costBlocks()->exists()) {
+                continue;
+            }
+
+            if ($action === 'calculated') {
+                $blocks->useCalculatedRate($savedLine);
+                continue;
+            }
+
+            $blocks->overrideQuotedRate(
+                $savedLine,
+                (float) $line['rate'],
+                (string) ($line['rate_override_reason'] ?? ''),
+            );
         }
     }
 

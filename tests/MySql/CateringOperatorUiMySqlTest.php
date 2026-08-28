@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\View;
+use Illuminate\Http\Request;
 use RuntimeException;
 use Tests\MySql\Support\TenantFixtures;
 
@@ -220,6 +221,53 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
         // The free-text legacy line keeps an editable rate and a calculated dash.
         $this->assertStringContainsString('class="form-control form-control-sm text-end line-rate"', $html);
         $this->assertStringContainsString('not priced from cost blocks', $html);
+        $this->assertStringContainsString("h('rate_action', rateIntent)", $html,
+            'Ctrl+Enter stages an explicit block-rate decision for Ctrl+S');
+        $this->assertStringContainsString('applyPunchedQuotedRates',
+            file_get_contents(app_path('Http/Controllers/Tenant/Catering/CateringEstimateController.php')),
+            'Save Estimate applies the staged decision through the quoted-rate authority');
+    }
+
+    public function test_punch_customer_rate_survives_save_and_reload_for_a_block_line(): void
+    {
+        $event = $this->booking();
+        $estimate = $event->currentEstimate->refresh();
+        $block = $this->blockLine($event);
+        $plain = $estimate->lines()->whereNull('product_id')->firstOrFail();
+
+        $request = Request::create('/catering/estimates/'.$estimate->id, 'POST', [
+            'lines' => [
+                [
+                    'line_uuid' => $block->line_uuid,
+                    'product_id' => $block->product_id,
+                    'item_name' => $block->item_name,
+                    'quantity' => 10,
+                    'unit_id' => $block->unit_id,
+                    'rate' => 300,
+                    'rate_action' => 'override',
+                    'rate_override_reason' => 'Customer agreed rate entered in order punch',
+                ],
+                [
+                    'line_uuid' => $plain->line_uuid,
+                    'item_name' => $plain->item_name,
+                    'quantity' => 4,
+                    'unit_id' => $plain->unit_id,
+                    'rate' => 120,
+                ],
+            ],
+        ]);
+
+        app(\App\Http\Controllers\Tenant\Catering\CateringEstimateController::class)
+            ->update($request, $estimate);
+
+        $block->refresh();
+        $this->assertSame(300.0, round((float) $block->rate, 2));
+        $this->assertSame(3000.0, round((float) $block->amount, 2));
+        $this->assertSame('Customer agreed rate entered in order punch', $block->rate_override_reason);
+
+        $html = $this->render($event->refresh());
+        $this->assertStringContainsString('value="300.00"', $html,
+            'the agreed customer rate remains after the workspace reloads');
     }
 
     public function test_cost_details_offers_the_draft_actions_from_the_snapshot(): void
