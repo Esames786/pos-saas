@@ -20,7 +20,7 @@
     html { background: #e5e7eb; }
     body {
         font-family: {{ $isUr ? "'Jameel Noori Nastaleeq', 'Urdu Typesetting', 'Noto Nastaliq Urdu', serif" : "Arial, Helvetica, sans-serif" }};
-        color: #111827; font-size: 13px; line-height: 1.5;
+        color: #111827; font-size: {{ $isUr ? '16px' : '13px' }}; line-height: 1.5;
         width: 210mm; min-height: 297mm; margin: 12px auto; padding: 14mm;
         background: #fff; box-shadow: 0 2px 14px rgba(0,0,0,.18);
     }
@@ -32,23 +32,23 @@
         body { width: auto; min-height: 0; margin: 0; padding: 0; box-shadow: none; }
     }
     /* Nastaliq descenders clip at the body's Latin leading. */
-    .ur { font-family: 'Jameel Noori Nastaleeq', 'Urdu Typesetting', 'Noto Nastaliq Urdu', serif; direction: rtl; line-height: 2; }
+    .ur { font-family: 'Jameel Noori Nastaleeq', 'Urdu Typesetting', 'Noto Nastaliq Urdu', serif; direction: rtl; line-height: 2; font-size: {{ $isUr ? '1em' : '1.28em' }}; }
     .doc-header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #111827; padding-bottom: 12px; }
     .brand { font-size: 26px; font-weight: bold; }
-    .brand-sub { color: #6b7280; font-size: 12px; }
+    .brand-sub { color: #6b7280; font-size: {{ $isUr ? '16px' : '12px' }}; }
     .doc-title { text-align: {{ $isUr ? 'left' : 'right' }}; }
     .doc-title h2 { margin: 0; font-size: 20px; }
     .meta-grid { display: flex; gap: 24px; margin: 14px 0; }
     .meta-box { flex: 1; border: 1px solid #d1d5db; border-radius: 6px; padding: 10px 14px; }
-    .meta-box h4 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; color: #6b7280; letter-spacing: 1px; }
+    .meta-box h4 { margin: 0 0 6px; font-size: {{ $isUr ? '15px' : '11px' }}; text-transform: uppercase; color: #6b7280; letter-spacing: 1px; }
     .meta-row { display: flex; justify-content: space-between; padding: 2px 0; }
     .meta-row .k { color: #6b7280; }
     table.items { width: 100%; border-collapse: collapse; margin-top: 8px; }
-    table.items th { background: #111827; color: #fff; padding: 8px; font-size: 12px; text-align: {{ $isUr ? 'right' : 'left' }}; }
+    table.items th { background: #111827; color: #fff; padding: 8px; font-size: {{ $isUr ? '15px' : '12px' }}; text-align: {{ $isUr ? 'right' : 'left' }}; }
     table.items th.num, table.items td.num { text-align: {{ $isUr ? 'left' : 'right' }}; }
     table.items td { padding: 7px 8px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
     table.items tr:nth-child(even) td { background: #f9fafb; }
-    .item-ur { color: #374151; font-size: 14px; }
+    .item-ur { color: #374151; font-size: 18px; }
     .totals { width: 46%; margin-{{ $isUr ? 'right' : 'left' }}: auto; margin-top: 10px; border-collapse: collapse; }
     .totals td { padding: 5px 8px; }
     .totals .k { color: #6b7280; }

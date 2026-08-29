@@ -3,7 +3,12 @@
 @section('title', 'Making Adjustment')
 
 @section('content')
-@php $p = $preview; $proposed = $p['proposed']; @endphp
+@php
+    $p = $preview;
+    $proposed = $p['proposed'];
+    $mode = $p['mode'] ?? 'set';
+    $categories = collect($p['products'])->pluck('category_name', 'category_id')->sort();
+@endphp
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
     <div>
         <h1 class="mb-1">Making Adjustment</h1>
@@ -29,7 +34,15 @@
     <div class="card-body">
         <form method="GET" class="row g-2 align-items-end">
             <div class="col-auto">
-                <label class="form-label">Proposed Making rate</label>
+                <label class="form-label">Change type</label>
+                <select name="mode" class="form-select">
+                    <option value="set" @selected($mode === 'set')>Set exact rate</option>
+                    <option value="increase" @selected($mode === 'increase')>Increase (+)</option>
+                    <option value="decrease" @selected($mode === 'decrease')>Decrease (−)</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label">{{ $mode === 'set' ? 'New Making rate' : 'Change amount' }}</label>
                 <input type="number" step="0.01" min="0" name="proposed_rate" class="form-control"
                        style="width:160px" value="{{ $proposed !== null ? number_format($proposed, 2, '.', '') : '' }}"
                        placeholder="e.g. 350" required>
@@ -52,7 +65,19 @@
 {{-- ── Dishes (product masters) ──────────────────────────────────────────── --}}
 <div class="card mb-3">
     <div class="card-header d-flex align-items-center justify-content-between">
-        <h5 class="mb-0">Dishes</h5>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <h5 class="mb-0 me-2">Dishes</h5>
+            <select id="making-category-filter" class="form-select form-select-sm" style="width:220px">
+                <option value="">All categories</option>
+                @foreach($categories as $categoryId => $categoryName)
+                    <option value="{{ $categoryId }}">{{ $categoryName }}</option>
+                @endforeach
+            </select>
+            @if($proposed !== null)
+                <button type="button" class="btn btn-sm btn-outline-secondary js-select-visible" data-target="product-making-row">Select visible</button>
+                <button type="button" class="btn btn-sm btn-link js-clear-selection" data-target="product-making-row">Clear</button>
+            @endif
+        </div>
         @if($proposed !== null && count($p['products']))
             @can('tenant.catering.making-adjustment.apply-products')
                 <button class="btn btn-sm btn-primary" form="apply-products-form"
@@ -66,6 +91,7 @@
         <form id="apply-products-form" method="POST" action="{{ url('/catering/making-adjustment/apply-products') }}">
             @csrf
             <input type="hidden" name="proposed_rate" value="{{ $proposed }}">
+            <input type="hidden" name="mode" value="{{ $mode }}">
             <div class="table-responsive">
                 <table class="table table-sm mb-0 align-middle">
                     <thead>
@@ -81,7 +107,7 @@
                     </thead>
                     <tbody>
                         @forelse($p['products'] as $row)
-                        <tr>
+                        <tr class="product-making-row" data-category="{{ $row['category_id'] }}">
                             @if($proposed !== null)
                                 <td class="ps-3">
                                     <input type="checkbox" class="form-check-input" name="block_ids[]" value="{{ $row['block_id'] }}">
@@ -97,7 +123,7 @@
                                 @endif
                             </td>
                             <td class="text-end">{{ number_format($row['current_making'], 2) }}</td>
-                            <td class="text-end fw-semibold">{{ $proposed !== null ? number_format($proposed, 2) : '—' }}</td>
+                            <td class="text-end fw-semibold">{{ $row['new_making'] !== null ? number_format($row['new_making'], 2) : '—' }}</td>
                             <td class="text-end">{{ number_format($row['old_calculated_rate'], 2) }}</td>
                             <td class="text-end">{{ $row['new_calculated_rate'] !== null ? number_format($row['new_calculated_rate'], 2) : '—' }}</td>
                             <td class="text-end pe-3 {{ ($row['difference'] ?? 0) > 0 ? 'text-success' : (($row['difference'] ?? 0) < 0 ? 'text-danger' : 'text-muted') }}">
@@ -119,7 +145,13 @@
 {{-- ── Draft quotations ──────────────────────────────────────────────────── --}}
 <div class="card mb-3">
     <div class="card-header d-flex align-items-center justify-content-between">
-        <h5 class="mb-0">Draft Quotations</h5>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <h5 class="mb-0 me-2">Draft Quotations</h5>
+            @if($proposed !== null)
+                <button type="button" class="btn btn-sm btn-outline-secondary js-select-visible" data-target="draft-making-row">Select all</button>
+                <button type="button" class="btn btn-sm btn-link js-clear-selection" data-target="draft-making-row">Clear</button>
+            @endif
+        </div>
         @if($proposed !== null && count($p['drafts']))
             @can('tenant.catering.making-adjustment.apply-drafts')
                 <button class="btn btn-sm btn-primary" form="apply-drafts-form"
@@ -133,6 +165,7 @@
         <form id="apply-drafts-form" method="POST" action="{{ url('/catering/making-adjustment/apply-drafts') }}">
             @csrf
             <input type="hidden" name="proposed_rate" value="{{ $proposed }}">
+            <input type="hidden" name="mode" value="{{ $mode }}">
             <div class="table-responsive">
                 <table class="table table-sm mb-0 align-middle">
                     <thead>
@@ -151,7 +184,7 @@
                     </thead>
                     <tbody>
                         @forelse($p['drafts'] as $row)
-                        <tr>
+                        <tr class="draft-making-row" data-category="{{ $row['category_id'] }}">
                             @if($proposed !== null)
                                 <td class="ps-3">
                                     <input type="checkbox" class="form-check-input" name="snapshot_ids[]" value="{{ $row['snapshot_id'] }}">
@@ -163,7 +196,7 @@
                             <td>{{ $row['item_name'] }}</td>
                             <td class="text-end">{{ rtrim(rtrim(number_format($row['quantity'], 3), '0'), '.') }}</td>
                             <td class="text-end">{{ number_format($row['current_making'], 2) }}</td>
-                            <td class="text-end fw-semibold">{{ $proposed !== null ? number_format($proposed, 2) : '—' }}</td>
+                            <td class="text-end fw-semibold">{{ $row['new_making'] !== null ? number_format($row['new_making'], 2) : '—' }}</td>
                             <td class="text-end">{{ number_format($row['old_calculated_rate'], 2) }}</td>
                             <td class="text-end">{{ $row['new_calculated_rate'] !== null ? number_format($row['new_calculated_rate'], 2) : '—' }}</td>
                             <td class="text-end">{{ $row['difference'] !== null ? ($row['difference'] > 0 ? '+' : '').number_format($row['difference'], 2) : '—' }}</td>
@@ -218,3 +251,20 @@
 </div>
 @endif
 @endsection
+
+@push('scripts')
+<script>
+$(document).on('change', '#making-category-filter', function () {
+    const category = String(this.value);
+    $('.product-making-row, .draft-making-row').each(function () {
+        $(this).toggle(!category || String(this.dataset.category) === category);
+    });
+});
+$(document).on('click', '.js-select-visible', function () {
+    $('.' + this.dataset.target + ':visible input[type=checkbox]').prop('checked', true);
+});
+$(document).on('click', '.js-clear-selection', function () {
+    $('.' + this.dataset.target + ' input[type=checkbox]').prop('checked', false);
+});
+</script>
+@endpush

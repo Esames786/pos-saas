@@ -329,6 +329,24 @@ class CateringMakingAdjustmentMySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('440.00', $html, 'the worked projection is on screen');
         $this->assertStringContainsString('Apply to Selected Dishes', $html);
         $this->assertStringContainsString('Apply to Selected Drafts', $html);
+        $this->assertStringContainsString('All categories', $html);
+        $this->assertStringContainsString('Select visible', $html);
+        $this->assertStringContainsString('Increase (+)', $html);
+    }
+
+    public function test_increase_and_decrease_are_relative_and_apply_only_to_selected_rows(): void
+    {
+        $increase = $this->making->preview(50.0, 'increase')['products'][0];
+        $this->assertSame(350.0, $increase['new_making']);
+        $this->assertSame(440.0, $increase['new_calculated_rate']);
+
+        $decrease = $this->making->preview(75.0, 'decrease')['products'][0];
+        $this->assertSame(225.0, $decrease['new_making']);
+        $this->assertSame(315.0, $decrease['new_calculated_rate']);
+
+        $this->assertSame(1, $this->making->applyToProducts(50.0, [$this->makingBlock->id], null, 'increase'));
+        $this->assertSame(350.0, (float) $this->makingBlock->refresh()->rate);
+        $this->assertSame(40.0, (float) $this->packingBlock->refresh()->rate);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
