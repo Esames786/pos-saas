@@ -53,9 +53,15 @@ class ShiftController extends Controller
         $user  = auth('tenant')->user();
         $scope = app(\App\Services\Security\UserDataScope::class);
 
+        // SHIFT-OPEN-UX-1: terminals that already have an open shift are shown but locked (disabled +
+        // "already open" badge) so the operator knows they cannot re-open one — openMany() skips them
+        // server-side regardless, this just makes it visible instead of a silent skip.
+        $openTerminalIds = Shift::where('status', 'open')->pluck('terminal_id')->map(fn ($id) => (int) $id)->all();
+
         return view('tenant.shifts.open', [
-            'branches'  => $scope->branchesForPos($user),
-            'terminals' => $scope->terminalsForPos($user),
+            'branches'        => $scope->branchesForPos($user),
+            'terminals'       => $scope->terminalsForPos($user),
+            'openTerminalIds' => $openTerminalIds,
         ]);
     }
 
