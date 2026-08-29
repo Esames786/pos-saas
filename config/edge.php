@@ -241,6 +241,30 @@ return [
             'app/Models/Tenant/EdgeInboundSaleIngestion.php',
             // Cloud AP posting — sits beside the KEPT JournalPostingService, so excluded by exact path only.
             'app/Services/Finance/SupplierPayableService.php',
+
+            // POST-RECONCILIATION — the canonical merge brought the full Cloud business domains into the dev
+            // branch. The Branch Server never executes Catering / manufacturing / purchasing-AP / SaaS billing,
+            // so they are physically excluded from the DISTRIBUTED artifact (basename globs + view/asset dir
+            // prefixes; the physical scan + branch-server boot proof enforce it). Migrations are KEPT (schema
+            // coherence) and Reports SERVICES are KEPT (the offline Quick Report reuses the canonical report
+            // engine). Product::cateringProfile()/isManufacturingOnly() are lazy method bodies — no boot autoload.
+            'Catering*',
+            'Manufacturing*', 'HasManufacturingPostingStatus*', 'ProductionOrder*', 'FinishedGood*', 'Wip*', 'MaterialRequisition*',
+            'Purchase*', 'Supplier*', 'GoodsReceipt*',
+            'Subscription*', 'TenantBilling*', 'SelfSignup*', 'ExpireSubscriptions*', 'EnsureTenantSubscriptionAccess*',
+            'app/Http/Controllers/Tenant/Catering',
+            'resources/views/tenant/catering',
+            'resources/views/tenant/manufacturing',
+            'resources/views/tenant/suppliers',
+            'resources/views/tenant/billing',
+            'resources/views/tenant/purchase-bills', 'resources/views/tenant/purchase-orders', 'resources/views/tenant/purchase-returns',
+            'resources/views/tenant/reports/purchases',
+            'public/assets/img/supplier',
+            'app/Console/Commands/DispatchCateringRemindersCommand.php',
+            'catering-*',
+            'resources/views/emails/catering',
+            'resources/views/central/subscription-requests',
+            'resources/views/tenant/supplier-payments',
             'storage/logs/*',
             'storage/framework/cache/*',
             'storage/framework/sessions/*',

@@ -254,6 +254,13 @@ class EdgeArtifactTest extends TestCase
             'app/Services/Edge/EdgeBaselineIssuanceService.php', 'app/Http/Controllers/Edge/EdgeSyncIngestionApiController.php',
             'app/Http/Controllers/Edge/EdgeSyncReconciliationApiController.php', 'app/Http/Controllers/Edge/EdgeBaselineApiController.php',
             'app/Models/Tenant/EdgeInboundSaleIngestion.php', 'app/Services/Finance/SupplierPayableService.php',
+            // POST-RECONCILIATION — the Cloud business domains merged from canonical must NOT ship (business
+            // logic; migrations are kept separately for schema coherence).
+            'app/Http/Controllers/Tenant/Catering', 'app/Models/Tenant/CateringProductProfile.php',
+            'app/Models/Tenant/ManufacturingBom.php', 'app/Models/Tenant/ProductionOrder.php',
+            'app/Http/Controllers/Tenant/PurchaseOrderController.php', 'app/Http/Controllers/Tenant/SupplierController.php',
+            'app/Models/Master/Subscription.php', 'app/Http/Controllers/Tenant/TenantBillingController.php',
+            'app/Console/Commands/DispatchCateringRemindersCommand.php',
         ];
         foreach ($absent as $rel) {
             $this->assertFileDoesNotExist($dest . '/' . $rel, "Cloud-only path must be excluded: {$rel}");
