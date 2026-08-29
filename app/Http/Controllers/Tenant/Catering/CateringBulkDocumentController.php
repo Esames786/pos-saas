@@ -77,7 +77,20 @@ class CateringBulkDocumentController extends Controller
             }
         }
 
-        abort_if($releases->isEmpty(), 422, 'None of the selected bookings has a released kitchen sheet yet.');
+        // This page opens in a NEW TAB, so an abort() shows the operator a
+        // framework error for a situation where nothing is actually wrong: the
+        // bookings they picked simply have not been released to the kitchen
+        // yet. Say that, in the tab they are already looking at.
+        if ($releases->isEmpty()) {
+            return response()->view('tenant.catering.documents.nothing-to-print', [
+                'title' => 'No kitchen sheet yet',
+                'message' => $skipped === []
+                    ? 'No bookings were selected.'
+                    : 'These bookings have not been released to the kitchen yet, so there is no kitchen sheet to print:',
+                'references' => $skipped,
+                'hint' => 'Release production for the booking first — from the events list Actions menu, or from the booking itself. The kitchen sheet is created at that moment.',
+            ], 422);
+        }
 
         return view('tenant.catering.documents.bulk-kitchen-sheets', [
             'releases' => $releases->values(),

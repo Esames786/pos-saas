@@ -18,6 +18,7 @@ class CateringProductionReleaseLine extends Model
         'unit_code',
         'production_station',
         'instructions',
+        'materials_snapshot',
         'sort_order',
     ];
 
@@ -25,6 +26,7 @@ class CateringProductionReleaseLine extends Model
     {
         return [
             'quantity' => 'decimal:3',
+            'materials_snapshot' => 'array',
             'sort_order' => 'integer',
         ];
     }

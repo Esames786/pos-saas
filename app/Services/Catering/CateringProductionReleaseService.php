@@ -39,6 +39,10 @@ class CateringProductionReleaseService
             throw new RuntimeException("Event {$event->event_no} ({$event->status}) cannot release production.");
         }
 
+        // The line snapshot is read for every line below; loading it once keeps
+        // a fifty-dish release from becoming fifty queries.
+        $estimate->loadMissing('lines.costBlocks');
+
         $consolidated = $this->requirements->consolidatedForEstimate($estimate, $event->branch_id);
 
         return DB::connection('tenant')->transaction(function () use ($event, $estimate, $consolidated, $userId) {
@@ -107,6 +111,11 @@ class CateringProductionReleaseService
                             : null,
                         $profile?->instructions,
                     ]))) ?: null,
+                    // KASHIF-KITCHEN-MATERIALS-1: what this dish takes and who
+                    // brings it, frozen with the rest of the release. The kitchen
+                    // sheet reads THIS, never the live quotation — a sheet on the
+                    // wall must not change because someone edited the estimate.
+                    'materials_snapshot' => $line->materialSummary() ?: null,
                     'sort_order' => $index,
                 ]);
             }
