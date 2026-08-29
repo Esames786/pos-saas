@@ -71,7 +71,12 @@ class CateringProductionReleaseService
                     'product_id' => $line->product_id,
                     // Production label wins over the commercial name on the kitchen floor.
                     'item_name' => $profile?->production_label ?: $line->item_name,
-                    'item_name_ur' => $profile?->production_label_ur ?: $line->item_name_ur,
+                    // KASHIF-URDU-CARRY-1: the kitchen sheet prints Urdu when it HAS
+                    // Urdu. Production label first, then the line's own, then the
+                    // product book itself — a blank here was the only reason the
+                    // sheet read English on an Urdu sheet.
+                    'item_name_ur' => $profile?->production_label_ur
+                        ?: ($line->item_name_ur ?: $this->productUrduName($line->product_id)),
                     'quantity' => $line->quantity,
                     'unit_code' => $line->unit_code,
                     'production_station' => $profile?->production_station,
@@ -110,5 +115,22 @@ class CateringProductionReleaseService
 
             return $release;
         });
+    }
+
+    /** The product book's Urdu name, cached per request. */
+    /** @var array<int, string|null> Read once per product, per request. */
+    private array $urduNameCache = [];
+
+    private function productUrduName(?int $productId): ?string
+    {
+        if (! $productId) {
+            return null;
+        }
+
+        return $this->urduNameCache[$productId] ??= \Illuminate\Support\Facades\DB::connection('tenant')
+            ->table('product_translations')
+            ->where('product_id', $productId)
+            ->where('language_code', 'ur')
+            ->value('name');
     }
 }

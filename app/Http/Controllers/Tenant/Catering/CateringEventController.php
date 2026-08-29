@@ -29,7 +29,14 @@ class CateringEventController extends Controller
         // address. Deliberately NOT a cross-module global search.
         $q = trim((string) $request->input('q', ''));
 
-        $query = CateringEvent::with(['currentEstimate', 'finalInvoice:id,catering_event_id,balance_due,status'])
+        $query = CateringEvent::with([
+            'currentEstimate',
+            'finalInvoice:id,catering_event_id,balance_due,status',
+            // KASHIF-EVENT-ACTIONS-1: the row Actions menu links straight to the
+            // kitchen sheet / production release, so the release identity has to
+            // travel with the row rather than cost a query per booking.
+            'productionReleases:id,catering_event_id,release_no,status',
+        ])
             ->withCount('productionReleases')
             ->withSum('advances as advances_sum', 'amount')
             ->withSum('refunds as refunds_sum', 'amount')
