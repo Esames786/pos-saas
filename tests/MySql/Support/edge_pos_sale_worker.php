@@ -67,7 +67,7 @@ try {
 
     // ── EDGE-LOCAL-POS-1 restaurant races: every mode drives the REAL EdgeLocalPosService with an
     //    authenticated principal (master unreachable — config above). ──
-    if (in_array($mode, ['open_table', 'hold', 'revise', 'kot', 'settle'], true)) {
+    if (in_array($mode, ['open_table', 'hold', 'revise', 'kot', 'settle', 'reserve', 'cancel_reservation'], true)) {
         $user = User::on('tenant')->findOrFail((int) $argv[2]);
         \Illuminate\Support\Facades\Auth::guard('tenant')->setUser($user);
         \Illuminate\Support\Facades\Auth::shouldUse('tenant');
@@ -75,6 +75,14 @@ try {
         $pos = app(EdgeLocalPosService::class);
 
         switch ($mode) {
+            case 'reserve': // reserve <user> <terminal> <table_id> — races table reservation.
+                $r = app(\App\Services\Edge\EdgeTableReservationService::class)->reserve((int) $argv[4], ['customer_name' => 'Racer'], $user);
+                echo 'OK:reserve:' . $r->id . "\n";
+                exit(0);
+            case 'cancel_reservation': // cancel_reservation <user> <terminal> <table_id>
+                $r = app(\App\Services\Edge\EdgeTableReservationService::class)->cancel((int) $argv[4], $user);
+                echo 'OK:cancel:' . $r->id . "\n";
+                exit(0);
             case 'open_table': // open_table <user> <terminal> <table_id>
                 $session = $pos->openTableSession((int) $argv[4], ['guest_count' => 1], $user, $terminalId);
                 echo 'OK:open_table:' . $session->id . "\n";

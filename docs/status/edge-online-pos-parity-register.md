@@ -27,7 +27,7 @@ EDGE_CASHIER_UI = PARITY_GAP  (major workstream: build the offline browser cashi
 
 | Online POS workflow | Class | Edge status |
 |---|---|---|
-| **Table Reservations** (reserve/view/cancel + customer carry-over) | **FULL_OFFLINE_PARITY (business layer)** / UI-gapped | DONE at the service+API layer — `EdgeTableReservationService`, `edge.local.pos.restaurant.table.reserve/reservation/unreserve`; Local-Mode authority, concurrency, backup census, cross-DB recovery. No cashier UI (see above). |
+| **Table Reservations** (reserve/view/cancel + customer carry-over) | **BUSINESS_LAYER_IMPLEMENTED** (not yet FULL_OFFLINE_PARITY) / UI-gapped | DONE at the service+API layer — `EdgeTableReservationService`, `edge.local.pos.restaurant.table.reserve/reservation/unreserve`; Local-Mode authority; backup census + cross-DB recovery; **true concurrency CERTIFIED** (reserve↔reserve / reserve↔open / cancel↔open, independent processes). **Still pending before FULL_OFFLINE_PARITY:** (a) the reciprocal Cloud-side reservation fence and (b) the Local-Mode→Cloud handback — both depend on the canonical reservation Cloud controller + `restaurant_tables.reserved_*` columns, which are NOT on this Edge branch (merge-base `8799749`). See "Structural note" below. |
 | **Review & Pay → Preview Bill** (running bill, no mutation) | FULL_OFFLINE_PARITY (business) / **UI-gapped** | The totals math exists offline (`SaleTotalsService`); a no-mutation preview endpoint is a small add. The modal itself needs the Edge cashier UI. **Next.** |
 | **Payment modal / wider layout** | **UI-gapped** | Pure UI; needs the Edge cashier UI. |
 | **POS-HEADER / POS-TILE / POS-WINDOW** (`15afd50`,`9e93a4b`,`d2ab907`,`441c3a9`) | **UI-gapped** | Cloud POS Blade/CSS layout; equivalent behavior belongs in the (missing) Edge cashier UI. |
@@ -60,6 +60,29 @@ NORMAL_OPERATOR_POS_PARITY_PERCENT ≈ business/API layer ~85% (reservations, di
                                      screen/UI layer ~15% (login only) — the cashier UI is the gating gap.
 FULL_OFFLINE_PARITY_PERCENT ≈ 70% (financial return/refund/card parity + the cashier UI are the remaining majority)
 ```
+
+## Structural note — the Edge branch is far behind canonical's POS front-end
+
+`feat/edge-config-refresh-v1` branched at `8799749` (before the current POS front-end + the reservation
+feature). Three of the requested closures therefore depend on canonical code/schema **not present on this
+branch**, and cannot be honestly built here without first bringing that code across:
+
+- **Cloud-side reservation fence** — the canonical `RestaurantTableController::reserve/unreserve` (the thing to
+  fence when Local Mode owns the branch) does not exist on this branch; `RestaurantTableController` here has no
+  reserve method. The fence belongs on that controller and lands when reservations merge into the Edge line.
+- **Local-Mode → Cloud handback** — projecting active Edge reservations into `restaurant_tables.reserved_*`
+  requires those columns, which are **not** on this branch. Implementing/testing handback needs the canonical
+  reservation migration brought across (the Cloud DB is the projection target).
+- **Cashier UI parity** — the online cashier surface (`resources/views/tenant/pos/index.blade.php` + its JS/CSS)
+  has evolved substantially on canonical since `8799749`; matching it (the owner's rule: "do not invent a new
+  visual workflow") means porting/extracting that front-end or reconciling the branch — a major front-end
+  workstream, not a small endpoint.
+
+**Recommended sequence decision (needs owner steer):** either (1) reconcile `feat/edge-config-refresh-v1` with
+current canonical POS front-end + reservation controller/migrations (a deliberate merge), then build the Edge
+cashier UI + Cloud fence + handback on that aligned base; or (2) port the specific canonical POS view/controller/
+migration pieces onto the Edge branch. Building a from-scratch Edge cashier UI would violate the "no new visual
+workflow" rule and is not done here.
 
 **Acceptance rule (locked):** a shared online cashier action must either work the same offline, or the software
 must explicitly say Internet is required. A missing button / hidden behavior is not parity.
