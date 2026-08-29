@@ -10,7 +10,9 @@ use App\Models\Tenant\Terminal;
 use App\Services\Printing\PrintAgentPairingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class PrintAgentController extends Controller
@@ -26,7 +28,41 @@ class PrintAgentController extends Controller
             // Shown next to the download button so a shop can see which build it is about to
             // install, and compare it with the version its agent reports in the log.
             'agentVersion' => $this->agentVersion(),
+            // The installable builds on the shelf (latest first) so a shop can roll back if a new
+            // build misbehaves — the current agent (old version) keeps running regardless.
+            'agentBuilds'  => $this->availableAgentBuilds(),
         ]);
+    }
+
+    /** The compatible agent builds on the download shelf, latest first (kept to the most recent 3). */
+    public function availableAgentBuilds(): array
+    {
+        $dir = base_path('tools/print-agent/dist/releases');
+        if (! is_dir($dir)) {
+            return [];
+        }
+
+        $builds = [];
+        foreach (glob($dir . '/BingooPrintAgent-Setup-*.exe') as $file) {
+            if (preg_match('/BingooPrintAgent-Setup-([0-9]+\.[0-9]+\.[0-9]+)\.exe$/', $file, $m)) {
+                $builds[$m[1]] = ['version' => $m[1], 'size_mb' => round(filesize($file) / 1048576, 1)];
+            }
+        }
+        uksort($builds, 'version_compare');
+
+        return array_slice(array_reverse(array_values($builds)), 0, 3);
+    }
+
+    /** Serve one agent build, version-stamped in the filename and never cacheable. */
+    private function serveAgentExe(string $path, string $version)
+    {
+        // download() returns a Symfony BinaryFileResponse (no withHeaders) — set on the header bag.
+        $response = response()->download($path, 'BingooPrintAgent-Setup-' . $version . '.exe');
+        $response->headers->set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+        $response->headers->set('Pragma', 'no-cache');
+        $response->headers->set('X-Agent-Version', $version);
+
+        return $response;
     }
 
     /**
@@ -90,6 +126,31 @@ class PrintAgentController extends Controller
         $this->pairing->audit('print_agent.deactivated', $printAgent);
 
         return back()->with('status', 'Print agent deactivated.');
+    }
+
+    /**
+     * Permanently remove an agent (the old/decommissioned ones pile up in the list). Any print jobs or
+     * commands it had claimed are RELEASED first — claimed_by_agent_id is a nullable, un-constrained
+     * reference, so this leaves nothing dangling and never touches a printed job's document.
+     */
+    public function destroy(PrintAgent $printAgent)
+    {
+        $name = $printAgent->name;
+
+        DB::connection('tenant')->table('print_jobs')
+            ->where('claimed_by_agent_id', $printAgent->id)
+            ->update(['claimed_by_agent_id' => null, 'claimed_at' => null]);
+
+        if (Schema::connection('tenant')->hasTable('print_agent_commands')) {
+            DB::connection('tenant')->table('print_agent_commands')
+                ->where('claimed_by_agent_id', $printAgent->id)
+                ->update(['claimed_by_agent_id' => null]);
+        }
+
+        $this->pairing->audit('print_agent.deleted', $printAgent);
+        $printAgent->delete();
+
+        return back()->with('status', "Print agent \u{201C}{$name}\u{201D} removed.");
     }
 
     /**
@@ -173,28 +234,24 @@ class PrintAgentController extends Controller
      * Fallback (if the built .exe is not deployed): a ZIP of the script agent +
      * Windows helper scripts for the manual/Node install path.
      */
-    public function downloadWindows()
+    public function downloadWindows(\Illuminate\Http\Request $request)
     {
-        $base    = base_path('tools/print-agent');
+        $base = base_path('tools/print-agent');
+
+        // Versioned shelf: an explicit ?version=x.y.z serves that exact build (rollback); anything
+        // else serves the current latest. Every download is VERSION-STAMPED in the filename +
+        // UNCACHEABLE — a fixed name once let a browser cache hand Khatri the stale 2.0.1 installer.
+        $requested = (string) $request->query('version', '');
+        if ($requested !== '' && preg_match('/^[0-9]+\.[0-9]+\.[0-9]+$/', $requested)) {
+            $shelf = $base . '/dist/releases/BingooPrintAgent-Setup-' . $requested . '.exe';
+            if (is_file($shelf)) {
+                return $this->serveAgentExe($shelf, $requested);
+            }
+        }
+
         $setupExe = $base . '/dist/BingooPrintAgent-Setup.exe';
-
         if (is_file($setupExe)) {
-            // VERSION-STAMPED + UNCACHEABLE. Serving a fixed "BingooPrintAgent-Setup.exe" with no
-            // cache headers meant a shop that had downloaded before got the OLD installer straight
-            // from the browser cache — Khatri reinstalled and were still on 2.0.1, so a printing
-            // fix that had shipped never actually reached the counter. The filename now carries the
-            // version, so the saved file states which build it is and cannot be silently reused.
-            // download() returns a Symfony BinaryFileResponse, which has NO withHeaders() — set
-            // them on the header bag instead.
-            $response = response()->download(
-                $setupExe,
-                'BingooPrintAgent-Setup-' . $this->agentVersion() . '.exe'
-            );
-            $response->headers->set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
-            $response->headers->set('Pragma', 'no-cache');
-            $response->headers->set('X-Agent-Version', $this->agentVersion());
-
-            return $response;
+            return $this->serveAgentExe($setupExe, $this->agentVersion());
         }
 
         // Fallback: script bundle.

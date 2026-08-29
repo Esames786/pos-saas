@@ -3,9 +3,15 @@
 <body style="font-family: Arial, sans-serif; color: #1a1a1a">
 <h2 style="margin-bottom: 4px">{{ $businessName }}</h2>
 <p style="margin-top: 0">Sales report for <strong>{{ $periodLabel }}</strong>.</p>
-<p>The selected report sections are attached as CSV files (Excel-compatible):</p>
+<p>
+    @if($pdfContent !== null)
+        Your complete A4 Sales Report Centre report is attached as a PDF.
+    @else
+        The selected report sections are attached as CSV files (Excel-compatible).
+    @endif
+</p>
 <ul>
-    @foreach(array_keys($csvSections) as $section)
+    @foreach($reportSections ?: array_keys($csvSections) as $section)
         <li>{{ ucwords(str_replace('_', ' ', $section)) }}</li>
     @endforeach
 </ul>

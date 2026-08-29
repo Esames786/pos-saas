@@ -84,6 +84,24 @@ class ReportScheduleMySqlTest extends MySqlTenantTestCase
         $this->assertSame('skipped_already_sent', $svc->runDue(DB::connection('tenant')->table('report_schedules')->where('name', 'Weekly')->first(), $monday->copy()->addHour()));
     }
 
+    public function test_new_daily_schedule_created_after_send_time_waits_until_tomorrow(): void
+    {
+        $this->bindTenant('owner@example.test');
+        $svc = app(ReportScheduleService::class);
+        $created = Carbon::parse('2026-08-26 20:00', $svc->timezone());
+        $schedule = $this->makeSchedule([
+            'send_time' => '00:30',
+            'created_at' => $created->copy()->utc()->toDateTimeString(),
+        ]);
+
+        $this->assertSame('skipped_not_due', $svc->runDue($schedule, $created->copy()->addMinutes(15)));
+        Mail::assertNothingSent();
+
+        $tomorrow = Carbon::parse('2026-08-27 00:30', $svc->timezone());
+        $this->assertSame('sent', $svc->runDue($schedule, $tomorrow));
+        $this->assertSame('2026-08-26', DB::connection('tenant')->table('report_schedule_runs')->value('period_key'));
+    }
+
     public function test_missing_owner_email_is_a_controlled_failure_that_frees_the_claim(): void
     {
         $this->bindTenant(null);
@@ -100,5 +118,30 @@ class ReportScheduleMySqlTest extends MySqlTenantTestCase
         $this->bindTenant('owner@example.test');
         $this->assertSame('sent', $svc->runDue(DB::connection('tenant')->table('report_schedules')->first(), $at));
         Mail::assertSent(SalesReportMail::class, 1);
+    }
+
+    public function test_daily_a4_uses_previous_day_and_sends_to_all_explicit_recipients(): void
+    {
+        $this->bindTenant('fallback@example.test');
+        $schedule = $this->makeSchedule([
+            'sections' => json_encode(['overview', 'categories', 'cash_bank']),
+            'recipient_emails' => json_encode(['kashfgulzar@gmail.com', 'uit.mohsin95@gmail.com']),
+            'delivery_format' => 'a4_pdf',
+            'send_time' => '00:30',
+            // Deterministic: created the day BEFORE the fixed send moment, else the back-send guard
+            // (schedule created same-day-after-send_time) correctly skips it — which made this test
+            // pass or fail depending on the real calendar date it ran on.
+            'created_at' => '2026-08-26 00:00:00',
+        ]);
+        $svc = app(ReportScheduleService::class);
+
+        $this->assertSame('sent', $svc->runDue($schedule, Carbon::parse('2026-08-27 00:30', $svc->timezone())));
+        $this->assertSame('2026-08-26', DB::connection('tenant')->table('report_schedule_runs')->value('period_key'));
+        Mail::assertSent(SalesReportMail::class, function (SalesReportMail $mail) {
+            return $mail->hasTo('kashfgulzar@gmail.com')
+                && $mail->hasTo('uit.mohsin95@gmail.com')
+                && $mail->pdfFilename === 'sales-report-2026-08-26.pdf'
+                && str_starts_with((string) $mail->pdfContent, '%PDF-');
+        });
     }
 }

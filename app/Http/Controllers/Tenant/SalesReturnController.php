@@ -63,6 +63,8 @@ class SalesReturnController extends Controller
     public function create(Request $request, SalesReturnService $salesReturnService)
     {
         $salesOrder = null;
+        $scope = app(\App\Services\Security\UserDataScope::class);
+        $user = auth('tenant')->user();
 
         if ($request->filled('sales_order_id')) {
             $salesOrder = SalesOrder::with([
@@ -73,9 +75,14 @@ class SalesReturnController extends Controller
                     $lineQuery->whereNull('line_kind')
                         ->orWhereNotIn('line_kind', ['component', 'modifier']);
                 }),
-                'lines.product', 'lines.variant', 'lines.returnLines',
+                // lines.product.unit → the Return Qty stepper matches how the item was sold
+                // (whole units step by 1; weight/volume/length step by 0.001).
+                'lines.product.unit', 'lines.variant', 'lines.returnLines',
             ])
                 ->whereIn('status', ['paid', 'partially_returned'])
+                // USER-DATA-SCOPE-1: a terminal/order-type-restricted operator cannot open a sale
+                // outside his scope even by hand-editing sales_order_id (the search is scoped too).
+                ->when($scope->isScoped($user), fn ($q) => $scope->applyToSales($q, $user))
                 ->find($request->sales_order_id);
 
             // SALES-RETURN-UX-1: branch guard — users with explicit branch
@@ -84,6 +91,22 @@ class SalesReturnController extends Controller
                 return redirect(url('/sales-returns/create'))
                     ->withErrors(['return' => 'That sale belongs to a branch you are not assigned to.']);
             }
+        }
+
+        // RETURN-UX: default the refund method to how the customer originally paid (cash sale →
+        // Cash pre-selected), so the cashier confirms rather than picks from scratch. Split payments
+        // take the largest tender. The cashier can still override.
+        $defaultRefundMethod = null;
+        if ($salesOrder) {
+            $primary = $salesOrder->payments->sortByDesc('amount')->first();
+            $type = (string) ($primary?->method?->method_type ?? $primary?->payment_method ?? '');
+            $defaultRefundMethod = match ($type) {
+                'cash' => 'cash',
+                'card' => 'card',
+                'bank_transfer' => 'bank_transfer',
+                '' => null,
+                default => 'other',
+            };
         }
 
         $returnAllocations = $salesOrder
@@ -100,7 +123,7 @@ class SalesReturnController extends Controller
                 ->where('status', 'posted')->sum('delivery_charge_amount'), 2), 0)
             : 0.0;
 
-        return view('tenant.sales-returns.create', compact('salesOrder', 'returnAllocations', 'outstandingDelivery'));
+        return view('tenant.sales-returns.create', compact('salesOrder', 'returnAllocations', 'outstandingDelivery', 'defaultRefundMethod'));
     }
 
     private function userCanAccessBranch(int $branchId): bool
@@ -125,11 +148,24 @@ class SalesReturnController extends Controller
             'refund_amount'               => ['nullable', 'numeric', 'min:0'],
             'lines'                       => ['required', 'array', 'min:1'],
             'lines.*.sales_order_line_id' => ['required', 'exists:sales_order_lines,id'],
-            'lines.*.quantity'            => ['required', 'numeric', 'min:0.001'],
+            // min:0 (not 0.001): the form posts EVERY line, and lines the cashier did not touch stay
+            // at 0. Rejecting those made returning a single item impossible ("qty must be at least
+            // 0.001"). Zero lines are simply skipped by SalesReturnService; the guard below keeps a
+            // return with NOTHING selected from posting.
+            'lines.*.quantity'            => ['required', 'numeric', 'min:0'],
         ]);
 
+        if (collect($data['lines'])->sum(fn ($l) => (float) ($l['quantity'] ?? 0)) <= 0) {
+            return back()->withErrors(['return' => 'Enter a return quantity for at least one item.'])->withInput();
+        }
+
+        $scope = app(\App\Services\Security\UserDataScope::class);
+        $scopeUser = auth('tenant')->user();
         $salesOrder = SalesOrder::with(['branch', 'lines.product', 'lines.variant'])
             ->whereIn('status', ['paid', 'partially_returned'])
+            // Same terminal/order-type fence as the search + create screen — a scoped operator
+            // cannot post a return for a sale outside his terminals/order types.
+            ->when($scope->isScoped($scopeUser), fn ($q) => $scope->applyToSales($q, $scopeUser))
             ->findOrFail($data['sales_order_id']);
 
         // BRANCH-OPERATING-MODE-1: an active Local POS branch handles returns on its Branch Server.

@@ -37,15 +37,17 @@ class DepartmentReportService
      */
     public function sales(array $filters): array
     {
-        $grouped = DB::connection('tenant')->table('sales_order_lines as l')
+        // HARDEN-1: operational department sales group by BUSINESS date (COALESCE keeps legacy).
+        $base = fn () => DB::connection('tenant')->table('sales_order_lines as l')
             ->join('sales_orders as o', 'o.id', '=', 'l.sales_order_id')
             ->leftJoin('products as p', 'p.id', '=', 'l.product_id')
             ->where('o.status', 'paid')
-            // HARDEN-1: operational department sales group by BUSINESS date (COALESCE keeps legacy).
             ->when(!empty($filters['date_from']),  fn ($q) => $q->whereRaw('COALESCE(o.business_date, DATE(o.sale_date)) >= ?', [$filters['date_from']]))
             ->when(!empty($filters['date_to']),    fn ($q) => $q->whereRaw('COALESCE(o.business_date, DATE(o.sale_date)) <= ?', [$filters['date_to']]))
             ->when(!empty($filters['branch_id']),  fn ($q) => $q->where('o.branch_id', $filters['branch_id']))
-            ->when(!empty($filters['order_type']), fn ($q) => $q->where('o.order_type', $filters['order_type']))
+            ->when(!empty($filters['order_type']), fn ($q) => $q->where('o.order_type', $filters['order_type']));
+
+        $grouped = $base()
             ->groupBy('o.branch_id', 'l.product_id')
             ->select([
                 'o.branch_id',
@@ -53,13 +55,27 @@ class DepartmentReportService
                 DB::raw('MAX(p.name) as product_name'),
                 DB::raw('MAX(p.sku) as product_sku'),
                 DB::raw('MAX(p.category_id) as category_id'),
-                DB::raw('COUNT(DISTINCT o.id) as orders_count'),
                 DB::raw('SUM(l.quantity) as qty_sold'),
                 DB::raw('SUM(l.discount_amount) as discount_total'),
                 DB::raw('SUM(l.line_total) as net_total'),
                 DB::raw('SUM(l.cost_total) as cogs_total'),
             ])
             ->get();
+
+        // A department's order count must be DISTINCT across its products: an order that
+        // has two of a department's products would be double-counted if the per-product
+        // COUNT(DISTINCT order) figures were summed. Resolve each (product, order) pair to
+        // its department so one order lands in a department's set exactly once.
+        $deptOrderIds = [];
+        foreach ($base()->groupBy('o.branch_id', 'l.product_id', 'o.id')
+            ->select(['o.branch_id', 'l.product_id', DB::raw('MAX(p.category_id) as category_id'), 'o.id as order_id'])->get() as $pair) {
+            $resolver = $this->resolver((int) $pair->branch_id);
+            $dept = $resolver->resolve((int) $pair->product_id, $pair->category_id !== null ? (int) $pair->category_id : null);
+            if (!empty($filters['department_id']) && (! $dept || (int) $dept->id !== (int) $filters['department_id'])) {
+                continue;
+            }
+            $deptOrderIds[$pair->branch_id . '-' . ($dept?->id ?? 0)][$pair->order_id] = true;
+        }
 
         $rows       = [];
         $unassigned = [];
@@ -107,9 +123,6 @@ class DepartmentReportService
                 'cogs'            => 0.0,
             ];
 
-            // orders_count per product overlaps across products of one order —
-            // treated as an activity indicator, summed per department.
-            $rows[$rowKey]['orders']   += (int) $g->orders_count;
             $rows[$rowKey]['qty']      += (float) $g->qty_sold;
             $rows[$rowKey]['discount'] += (float) $g->discount_total;
             $rows[$rowKey]['net']      += (float) $g->net_total;
@@ -117,7 +130,9 @@ class DepartmentReportService
             $rows[$rowKey]['cogs']     += (float) $g->cogs_total;
         }
 
-        foreach ($rows as &$row) {
+        foreach ($rows as $rowKey => &$row) {
+            // distinct order count for the department (set built above), not a per-product sum.
+            $row['orders'] = count($deptOrderIds[$rowKey] ?? []);
             $row['gross_profit'] = $row['net'] - $row['cogs'];
         }
         unset($row);

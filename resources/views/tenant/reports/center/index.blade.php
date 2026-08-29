@@ -4,7 +4,21 @@
 
 @php
     $fmt = fn ($v) => number_format((float) $v, 2);
-    $qs = fn (array $extra = []) => http_build_query(array_filter(array_merge(request()->except('page'), $extra), fn ($v) => $v !== null && $v !== ''));
+    // REPORT-PRINT-SCOPE FIX: keep the branch/terminal filter-presence markers even when blank ("All").
+    // The report scope reads their ABSENCE as "first visit → default to my ONE terminal", which
+    // silently narrowed every Print / Z / Export / Email to a single terminal (an owner viewing all
+    // dine-in on Terminal 3 got a report of only his default Delivery terminal). Other blanks (dates)
+    // are still dropped so they default to today.
+    $qs = function (array $extra = []) {
+        $params = array_merge(request()->except('page'), $extra);
+        $params = array_filter(
+            $params,
+            fn ($v, $k) => in_array($k, ['branch_id', 'terminal_id'], true) ? $v !== null : ($v !== null && $v !== ''),
+            ARRAY_FILTER_USE_BOTH,
+        );
+
+        return http_build_query($params);
+    };
 @endphp
 
 @section('content')
@@ -112,6 +126,15 @@
         <button type="button" class="btn btn-sm btn-outline-secondary" data-sec-print="thermal">Print Selected (Thermal)</button>
         <button type="button" class="btn btn-sm btn-outline-secondary" data-sec-print="a4">Print Selected (A4)</button>
         <button type="button" class="btn btn-sm btn-outline-primary" id="sec-export">Export Selected CSV</button>
+        @if(($networkPrinters ?? collect())->isNotEmpty())
+            <span class="vr d-none d-md-inline"></span>
+            <select id="report-network-printer" class="form-select form-select-sm d-inline-block" style="width:auto" aria-label="Network printer">
+                @foreach($networkPrinters as $np)
+                    <option value="{{ $np->id }}">{{ $np->name }}</option>
+                @endforeach
+            </select>
+            <button type="button" class="btn btn-sm btn-outline-warning" id="sec-send-network"><i class="ti ti-broadcast me-1"></i>Send to Network</button>
+        @endif
     </div>
 </div></div>
 <script>
@@ -126,14 +149,39 @@
         btn.addEventListener('click', function () {
             var sections = picked();
             if (!sections.length) { alert('Tick at least one section first.'); return; }
-            window.open(withSections('{{ url('/reports/center/print') }}?{{ $qs() }}&mode=' + btn.dataset.secPrint, sections), '_blank');
+            {{-- {!! !!}: the query string must reach window.open() with raw & separators. {{ }} would
+                 HTML-escape them to &amp;, and JS (unlike an <a href>) does NOT decode entities, so
+                 every filter param would arrive mangled as amp;date_from / amp;branch_id and be lost.
+                 Safe: $qs() is http_build_query output — all values are already URL-encoded. --}}
+            window.open(withSections('{{ url('/reports/center/print') }}?{!! $qs() !!}&mode=' + btn.dataset.secPrint, sections), '_blank');
         });
     });
     var exp = document.getElementById('sec-export');
     if (exp) exp.addEventListener('click', function () {
         var sections = picked();
         if (!sections.length) { alert('Tick at least one section first.'); return; }
-        window.location.href = withSections('{{ url('/reports/center/export') }}?{{ $qs() }}', sections);
+        window.location.href = withSections('{{ url('/reports/center/export') }}?{!! $qs() !!}', sections);
+    });
+    // Send to network: POST the current filters + chosen sections + printer; the agent streams it.
+    var sendNet = document.getElementById('sec-send-network');
+    if (sendNet) sendNet.addEventListener('click', function () {
+        var sections = picked();
+        if (!sections.length) { alert('Tick at least one section first.'); return; }
+        var printerId = (document.getElementById('report-network-printer') || {}).value;
+        if (!printerId) { alert('Choose a network printer.'); return; }
+        var body = new URLSearchParams('{!! $qs() !!}');   // $qs() is URL-encoded, safe in a JS string
+        body.set('printer_id', printerId);
+        sections.forEach(function (s) { body.append('sections[]', s); });
+        sendNet.disabled = true;
+        fetch('{{ url('/reports/center/send-to-network') }}', {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: body.toString(),
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (d) { alert(d.ok ? ('Report sent to ' + d.printer + '.') : (d.message || 'Could not send the report.')); })
+        .catch(function () { alert('Could not send the report.'); })
+        .finally(function () { sendNet.disabled = false; });
     });
 })();
 </script>
@@ -391,15 +439,17 @@
 
 {{-- ── schedules ── --}}
 <div class="card mb-4"><div class="card-body">
-    <h6>Scheduled owner reports (email to the tenant default email)</h6>
+    <h6>Scheduled sales reports</h6>
     <div class="table-responsive">
         <table class="table table-sm align-middle">
-            <thead><tr><th>Name</th><th>Sections</th><th>Frequency</th><th>Time</th><th>Last run</th><th>Last failure</th><th></th></tr></thead>
+            <thead><tr><th>Name</th><th>Sections</th><th>Recipients</th><th>Format</th><th>Frequency</th><th>Time</th><th>Last run</th><th>Last failure</th><th></th></tr></thead>
             <tbody>
             @forelse($schedules as $s)
                 <tr>
                     <td>{{ $s->name }}</td>
                     <td class="small">{{ implode(', ', (array) json_decode($s->sections, true)) }}</td>
+                    <td class="small">{{ implode(', ', (array) json_decode($s->recipient_emails ?? '[]', true)) ?: (app('tenant')->owner_email ?? 'owner email') }}</td>
+                    <td>{{ ($s->delivery_format ?? 'csv') === 'a4_pdf' ? 'A4 PDF' : 'CSV' }}</td>
                     <td>{{ $s->frequency }}@if($s->weekday) (day {{ $s->weekday }})@endif @if($s->day_of_month) (dom {{ $s->day_of_month }})@endif</td>
                     <td>{{ $s->send_time }}</td>
                     <td class="small">{{ $s->last_success_at ?? '—' }}</td>
@@ -412,7 +462,7 @@
                     </td>
                 </tr>
             @empty
-                <tr><td colspan="7" class="text-muted">No schedules yet.</td></tr>
+                <tr><td colspan="9" class="text-muted">No schedules yet.</td></tr>
             @endforelse
             </tbody>
         </table>
@@ -429,6 +479,8 @@
         <div class="col-6 col-md-1"><label class="form-label small mb-0">Weekday</label><input name="weekday" type="number" min="1" max="7" class="form-control form-control-sm" placeholder="1-7"></div>
         <div class="col-6 col-md-1"><label class="form-label small mb-0">Day</label><input name="day_of_month" type="number" min="1" max="31" class="form-control form-control-sm" placeholder="1-31"></div>
         <div class="col-6 col-md-1"><label class="form-label small mb-0">Time</label><input name="send_time" type="time" class="form-control form-control-sm" value="08:00" required></div>
+        <div class="col-12 col-md-3"><label class="form-label small mb-0">Recipients</label><input name="recipient_emails" type="text" class="form-control form-control-sm" placeholder="owner@example.com, accounts@example.com"><div class="form-text">Comma-separated; blank uses tenant owner email.</div></div>
+        <div class="col-6 col-md-1"><label class="form-label small mb-0">Format</label><select name="delivery_format" class="form-select form-select-sm"><option value="a4_pdf">A4 PDF</option><option value="csv">CSV files</option></select></div>
         <div class="col-12 col-md-3">
             <label class="form-label small mb-0">Sections</label>
             <div class="d-flex flex-wrap gap-2">

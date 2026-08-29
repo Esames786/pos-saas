@@ -22,6 +22,9 @@ class RestaurantTableSession extends Model
         'branch_id',
         'restaurant_table_id',
         'restaurant_waiter_id',
+        'customer_id',
+        'customer_name',
+        'customer_phone',
         'opened_by_user_id',
         'closed_by_user_id',
         'opened_shift_id',
@@ -61,6 +64,13 @@ class RestaurantTableSession extends Model
     public function waiter()
     {
         return $this->belongsTo(RestaurantWaiter::class, 'restaurant_waiter_id');
+    }
+
+    // TABLE-RESERVATION-2b: the customer carried over from the reservation, pre-attached to the
+    // first POS order (walk-in reservations carry only customer_name/phone, no customer_id).
+    public function customer()
+    {
+        return $this->belongsTo(Customer::class, 'customer_id');
     }
 
     public function openedBy()

@@ -99,6 +99,24 @@ class POSController extends Controller
             ->orderBy('name')
             ->get();
 
+        // COMBO-COMPONENT-VISIBILITY: a combo may bundle a component that is NOT a grid product —
+        // a service side ("Arabic Rice"), a garnish, a filler. Those still have to ride in the
+        // payload so comboAvailability() can resolve them; a missing component is treated as
+        // makeable=0 and the combo shows a FALSE "out of stock" (even though the item is a service
+        // with no stock at all). Collect their ids to widen the payload query below; the grid itself
+        // stays clean because tiles are gated on pos_grid_visible.
+        $comboComponentProductIds = Combo::query()
+            ->where('status', 'active')
+            ->where(function ($q) use ($selectedBranchId) {
+                $q->whereNull('branch_id')->orWhere('branch_id', $selectedBranchId);
+            })
+            ->with('components:id,combo_id,product_id')
+            ->get()
+            ->flatMap(fn ($combo) => $combo->components->pluck('product_id'))
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
         $products = Product::with([
                 'category',
                 'unit',
@@ -115,7 +133,14 @@ class POSController extends Controller
             ])
             ->where('status', 'active')
             ->where('is_sellable', true)
-            ->where('is_pos_visible', true)   // PRODUCT-BOUNDARY-2: hide manufacturing/internal items
+            // PRODUCT-BOUNDARY-2: hide manufacturing/internal items from the grid — but keep any
+            // combo-component product in the payload (grid display is gated by pos_grid_visible).
+            ->where(function ($q) use ($comboComponentProductIds) {
+                $q->where('is_pos_visible', true);
+                if ($comboComponentProductIds->isNotEmpty()) {
+                    $q->orWhereIn('id', $comboComponentProductIds->all());
+                }
+            })
             // KHATRI-MENU-2: explicit small→large tile ordering, name as tiebreaker.
             ->orderBy('sort_order')
             ->orderBy('name')
@@ -233,6 +258,8 @@ class POSController extends Controller
                 'quantity_step'     => $product->unit && $product->unit->unit_type !== 'quantity' ? 0.001 : 1,
                 'price'             => (float) ($defaultVariant?->selling_price ?? $product->default_selling_price ?? $product->selling_price ?? 0),
                 'is_stock_tracked'  => (bool) $product->is_stock_tracked,
+                // Combo-only components ride in the payload for availability but are NOT grid tiles.
+                'pos_grid_visible'  => (bool) $product->is_pos_visible,
                 'is_taxable'        => (bool) ($product->is_taxable ?? false),
                 'tax_rate_percent'  => (float) ($product->tax_rate_percent ?? 0),
                 'barcodes'          => $barcodes,
@@ -304,6 +331,12 @@ class POSController extends Controller
                 ->get(),
             'floors'              => $floors,
             'waiters'             => $waiters,
+            // QUICK-REPORT-SEND-1: network printers for the Quick Report modal's "Send to network"
+            // (only loaded for a user who actually holds the permission).
+            'quickReportPrinters' => auth('tenant')->user()?->can('tenant.pos.quick-report-send')
+                ? \App\Models\Tenant\Printer::where('is_active', 1)->where('printer_type', 'network')
+                    ->whereNotNull('ip_address')->orderBy('name')->get(['id', 'name', 'paper_size'])
+                : collect(),
             'deliveryChannels'    => $deliveryChannels,
             'deliveryRiders'      => $deliveryRiders,
             'allowedOrderTypes'   => $allowedOrderTypes,

@@ -158,6 +158,7 @@ class SalesReportEngineMySqlTest extends MySqlTenantTestCase
         $this->assertSame(1000.0, $categories->sum('net_value'), 'category sold value less period returns');
         $biryani = $categories->firstWhere('name', 'Biryani');
         $this->assertSame(800.0, $biryani['net'], 'parent rollup: P1 600 + child P2 200');
+        $this->assertSame(2, $biryani['orders'], 'parent orders is a DISTINCT count over the subtree (A + C), not the child-sum 4');
         $this->assertSame(200.0, collect($biryani['children'])->firstWhere('name', 'Special Biryani')['net'], 'child stays visible inside the rollup');
         $items = collect($this->engine->byItem($f));
         $this->assertSame(1100.0, $items->sum(fn ($r) => (float) $r->net), 'Σitem net');
@@ -198,6 +199,74 @@ class SalesReportEngineMySqlTest extends MySqlTenantTestCase
         // waiter filter: W1 only.
         $f = $this->engine->normalizeFilters($base + ['waiter_id' => $ids['w1']]);
         $this->assertSame(500.0, $this->engine->overview($f)['net_sales']);
+    }
+
+    /**
+     * A CATEGORY filter narrows to specific LINES within a bill, so the order-level
+     * sections (overview, waiters, order types) must measure only those lines too — not
+     * every bill that merely contains the category. Otherwise the headline dwarfs the
+     * category the operator filtered to, and order-level charges (the delivery on bill C)
+     * that belong to no single category inflate it. With every filter "All", nothing
+     * changes and the report still reconciles order-level.
+     */
+    public function test_a_category_filter_narrows_the_order_level_sections_to_line_value(): void
+    {
+        $this->seedPopulation();
+        $base = ['date_from' => now()->toDateString(), 'date_to' => now()->toDateString()];
+        $biryani = DB::connection('tenant')->table('categories')->where('name', 'Biryani')->value('id');
+
+        $f = $this->engine->normalizeFilters($base + ['category_id' => $biryani]);
+
+        // Overview = the CATEGORY's line value, not the whole bills that contain it.
+        $o = $this->engine->overview($f);
+        $this->assertSame(2, $o['orders'], 'only bills A + C contain Biryani; B is beverages-only');
+        $this->assertSame(800.0, $o['gross_sales'], 'Biryani lines only');
+        $this->assertSame(800.0, $o['grand_total'], 'billed = category line net, not the bill');
+        $this->assertSame(0.0, $o['delivery_charge'], "bill C's 30 delivery is the order's, not the category's");
+        $this->assertSame(800.0, $o['net_sales']);
+        $this->assertSame([], $o['payments'], 'a payment method is not category-attributable');
+        $this->assertSame(800.0, $o['cash_collected']);
+        $this->assertSame(800.0, $o['net_cash_from_sales']);
+
+        // It reconciles with the categories tab — the two used to disagree.
+        $catNet = collect($this->engine->byCategory($f))->sum('net_value');
+        $this->assertSame(800.0, $catNet);
+        $this->assertSame($o['net_sales'], $catNet, 'overview == categories tab');
+
+        // Waiters and order types now sum to the SAME narrowed net — no whole-bill inflation.
+        $this->assertSame(800.0, collect($this->engine->byWaiter($f))->sum('net_sales'), 'Sum waiter net = category net');
+        $this->assertSame(800.0, collect($this->engine->byOrderType($f))->sum('net_sales'), 'Sum order-type net = category net');
+        $delivery = collect($this->engine->byOrderType($f))->firstWhere('label', 'Delivery');
+        $this->assertSame(300.0, $delivery['grand_total'], 'delivery order type carries its Biryani lines only (300), not +30');
+        $this->assertSame(0.0, $delivery['delivery_charge']);
+
+        // REQUIREMENT: every filter "All" → unchanged, still reconciles order-level.
+        $all = $this->engine->overview($this->engine->normalizeFilters($base));
+        $this->assertSame(1130.0, $all['grand_total'], 'unfiltered overview unchanged: whole bills + delivery');
+        $this->assertSame(30.0, $all['delivery_charge']);
+        $this->assertSame(830.0, $all['payments']['cash'], 'unfiltered payments unchanged');
+    }
+
+    /**
+     * BY ORDER TYPE prints MERCHANDISE nets, but a delivery type's cash/NET SALES also carries its
+     * delivery charge. orderTypeCombos exposes a per-type bridge (merch_net + net_charges = net_sales)
+     * so the print can close the gap — otherwise the delivery total looks like it contradicts the cash.
+     */
+    public function test_order_type_combos_carry_a_charge_bridge_to_net_sales(): void
+    {
+        $this->seedPopulation();
+        $base = ['date_from' => now()->toDateString(), 'date_to' => now()->toDateString()];
+        $combos = $this->engine->orderTypeCombos($this->engine->normalizeFilters($base));
+
+        // Delivery (sale C): 300 merchandise + 30 delivery charge = 330 net sales.
+        $d = $combos['totals']['Delivery'];
+        $this->assertSame(300.0, (float) $d['merch_net'], 'delivery merchandise net = its Biryani lines');
+        $this->assertSame(30.0, (float) $d['net_charges'], 'the 30 delivery charge is the bridge');
+        $this->assertSame(330.0, (float) $d['net_sales'], 'merchandise + charge = net sales');
+        $this->assertEqualsWithDelta((float) $d['merch_net'] + (float) $d['net_charges'], (float) $d['net_sales'], 0.001);
+
+        // Takeaway (sale B): no order-level charge — merchandise net already equals net sales, no bridge.
+        $this->assertSame(0.0, (float) $combos['totals']['Takeaway']['net_charges'], 'takeaway has no delivery charge to bridge');
     }
 
     /**

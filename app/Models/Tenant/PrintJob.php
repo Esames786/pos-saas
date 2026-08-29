@@ -10,7 +10,7 @@ class PrintJob extends Model
 
     protected $fillable = [
         'job_no', 'logical_key', 'copy_no', 'branch_id', 'terminal_id', 'printer_id',
-        'claimed_by_agent_id', 'claimed_at',
+        'claimed_by_agent_id', 'claimed_at', 'deferred_until',
         'document_type', 'print_status', 'reference_type', 'reference_id',
         'reference_no', 'payload', 'raw_payload', 'attempts',
         'printed_at', 'failed_at', 'error_message', 'created_by_user_id',
@@ -23,6 +23,7 @@ class PrintJob extends Model
             'printed_at' => 'datetime',
             'failed_at'  => 'datetime',
             'claimed_at' => 'datetime',
+            'deferred_until' => 'datetime',
             'attempts'   => 'integer',
             'copy_no'    => 'integer',
         ];

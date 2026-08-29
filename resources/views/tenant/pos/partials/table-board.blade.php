@@ -73,12 +73,35 @@
                                         data-table-move="{{ $session->id }}" data-source-table-id="{{ $table->id }}">Move</button>
                             @endcan
                         </div>
+                    @elseif($table->status === 'reserved')
+                        {{-- TABLE-RESERVATION-1: reserved (no session yet) — who + when + actions. --}}
+                        <div class="small mb-2">
+                            <strong>{{ $table->reserved_name ?: 'Reserved' }}</strong>
+                            @if($table->reserved_phone)<br><span class="text-muted">{{ $table->reserved_phone }}</span>@endif
+                            @if($table->reserved_for)<br><span class="text-muted">{{ $table->reserved_for->format('d-M h:i A') }}</span>@endif
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary w-100 mb-1"
+                                data-reservation-details="{{ $table->id }}">Details</button>
+                        @can('tenant.restaurant.table-sessions.open')
+                            <button type="button" class="btn btn-sm btn-success w-100 mb-1"
+                                data-open-table="1"
+                                data-table-id="{{ $table->id }}" data-table-no="{{ $table->table_no }}"
+                                data-reserved-customer-id="{{ $table->reserved_customer_id }}">
+                                Open Table
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-danger w-100"
+                                    data-table-unreserve="{{ $table->id }}">Cancel Reservation</button>
+                        @endcan
                     @else
                         @can('tenant.restaurant.table-sessions.open')
-                            <button type="button" class="btn btn-sm btn-success w-100"
+                            <button type="button" class="btn btn-sm btn-success w-100 mb-1"
                                 data-open-table="1"
                                 data-table-id="{{ $table->id }}" data-table-no="{{ $table->table_no }}">
                                 Open Table
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-primary w-100"
+                                    data-table-reserve="{{ $table->id }}" data-table-no="{{ $table->table_no }}">
+                                <i class="ti ti-calendar-plus me-1"></i>Reserve
                             </button>
                         @else
                             <span class="text-muted small">Available</span>

@@ -42,6 +42,16 @@
         </div>
         @endif
 
+        {{-- KASHIF-CATERING-CALENDAR-1 — booking diary, catering plans only.
+             $cateringCalendar is null unless the module is entitled, so this
+             renders nothing at all for a restaurant or retail tenant. --}}
+        @if(! empty($cateringKpis))
+            @include('tenant.partials.catering-kpis')
+        @endif
+        @if(! empty($cateringCalendar))
+            @include('tenant.partials.catering-calendar')
+        @endif
+
         {{-- Today KPI cards --}}
         <div class="row g-3 mb-4">
             <div class="col-xl-2 col-md-4 col-sm-6">

@@ -1,114 +1,114 @@
 <?php
 
 use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\Tenant\Ajax\FinishedGoodReceiptLookupController;
+use App\Http\Controllers\Tenant\Ajax\ManufacturingCustomerLookupController;
+use App\Http\Controllers\Tenant\Ajax\MaterialRequisitionLookupController;
+use App\Http\Controllers\Tenant\Ajax\ProductionOrderLookupController;
+use App\Http\Controllers\Tenant\Ajax\ProductLookupController;
+use App\Http\Controllers\Tenant\Ajax\WipJobLookupController;
+use App\Http\Controllers\Tenant\Api\PrintAgentApiController;
 use App\Http\Controllers\Tenant\Auth\PasswordResetController;
-use App\Http\Controllers\Tenant\ComingSoonController;
 use App\Http\Controllers\Tenant\BranchController;
 use App\Http\Controllers\Tenant\CategoryController;
+use App\Http\Controllers\Tenant\CategoryPrinterMappingController;
 use App\Http\Controllers\Tenant\ComboController;
+use App\Http\Controllers\Tenant\ComingSoonController;
 use App\Http\Controllers\Tenant\CurrencyController;
 use App\Http\Controllers\Tenant\CustomerController;
+use App\Http\Controllers\Tenant\DailyClosingController;
+use App\Http\Controllers\Tenant\DashboardController;
+use App\Http\Controllers\Tenant\DeliveryChannelController;
+use App\Http\Controllers\Tenant\DeliveryRiderController;
+use App\Http\Controllers\Tenant\DepartmentController;
+use App\Http\Controllers\Tenant\DepartmentCountController;
+use App\Http\Controllers\Tenant\DepartmentHandoverController;
+use App\Http\Controllers\Tenant\DepartmentStockTransferController;
 use App\Http\Controllers\Tenant\Finance\AccountController;
+use App\Http\Controllers\Tenant\Finance\BalanceSheetController;
+use App\Http\Controllers\Tenant\Finance\BranchProfitLossController;
 use App\Http\Controllers\Tenant\Finance\CashBankAccountController;
 use App\Http\Controllers\Tenant\Finance\CustomerPaymentController;
 use App\Http\Controllers\Tenant\Finance\ExpenseCategoryController;
 use App\Http\Controllers\Tenant\Finance\ExpenseVoucherController;
-use App\Http\Controllers\Tenant\Finance\BalanceSheetController;
-use App\Http\Controllers\Tenant\Finance\BranchProfitLossController;
 use App\Http\Controllers\Tenant\Finance\FinancialExportController;
 use App\Http\Controllers\Tenant\Finance\GeneralLedgerController;
 use App\Http\Controllers\Tenant\Finance\JournalEntryController;
 use App\Http\Controllers\Tenant\Finance\OpeningBalanceController;
 use App\Http\Controllers\Tenant\Finance\ProfitLossController;
 use App\Http\Controllers\Tenant\Finance\TrialBalanceController;
-use App\Http\Controllers\Tenant\DailyClosingController;
-use App\Http\Controllers\Tenant\DashboardController;
-use App\Http\Controllers\Tenant\DeliveryChannelController;
-use App\Http\Controllers\Tenant\DeliveryRiderController;
 use App\Http\Controllers\Tenant\GoodsReceiptController;
+use App\Http\Controllers\Tenant\HeldSaleController;
 use App\Http\Controllers\Tenant\InventoryController;
+use App\Http\Controllers\Tenant\KitchenDisplayController;
+use App\Http\Controllers\Tenant\KitchenProductionController;
+use App\Http\Controllers\Tenant\KitchenWastageController;
+use App\Http\Controllers\Tenant\ManagerApprovalController;
+use App\Http\Controllers\Tenant\Manufacturing\BomController;
+use App\Http\Controllers\Tenant\Manufacturing\FinishedGoodReceiptController;
+use App\Http\Controllers\Tenant\Manufacturing\ManufacturingConsumptionController;
+use App\Http\Controllers\Tenant\Manufacturing\ManufacturingConsumptionPostingController;
+use App\Http\Controllers\Tenant\Manufacturing\ManufacturingCustomerController;
+use App\Http\Controllers\Tenant\Manufacturing\ManufacturingPostingSettingController;
+use App\Http\Controllers\Tenant\Manufacturing\ManufacturingRejectionController;
+use App\Http\Controllers\Tenant\Manufacturing\ManufacturingReportController;
+use App\Http\Controllers\Tenant\Manufacturing\ManufacturingScrapController;
+use App\Http\Controllers\Tenant\Manufacturing\MaterialRequisitionController;
+use App\Http\Controllers\Tenant\Manufacturing\ProductionOrderController;
+use App\Http\Controllers\Tenant\Manufacturing\WipJobController;
+use App\Http\Controllers\Tenant\ModifierGroupController;
+use App\Http\Controllers\Tenant\OfflineEdgeController;
 use App\Http\Controllers\Tenant\PaymentMethodController;
 use App\Http\Controllers\Tenant\POSController;
-use App\Http\Controllers\Tenant\ModifierGroupController;
+use App\Http\Controllers\Tenant\PrintAgentController;
+use App\Http\Controllers\Tenant\PrintDocumentController;
+use App\Http\Controllers\Tenant\PrinterController;
+use App\Http\Controllers\Tenant\PrintJobController;
 use App\Http\Controllers\Tenant\ProductBarcodeController;
-use App\Http\Controllers\Tenant\PurchaseBillController;
-use App\Http\Controllers\Tenant\PurchaseOrderController;
-use App\Http\Controllers\Tenant\SalesLedgerController;
-use App\Http\Controllers\Tenant\SalesOrderController;
-use App\Http\Controllers\Tenant\SalesReturnController;
-use App\Http\Controllers\Tenant\SupplierController;
-use App\Http\Controllers\Tenant\SupplierPaymentController;
 use App\Http\Controllers\Tenant\ProductBranchPriceController;
 use App\Http\Controllers\Tenant\ProductBulkImportController;
 use App\Http\Controllers\Tenant\ProductController;
 use App\Http\Controllers\Tenant\ProductVariantController;
+use App\Http\Controllers\Tenant\PromotionController;
+use App\Http\Controllers\Tenant\PurchaseBillController;
+use App\Http\Controllers\Tenant\PurchaseOrderController;
+use App\Http\Controllers\Tenant\ReceiptLayoutController;
+use App\Http\Controllers\Tenant\RecipeController;
+use App\Http\Controllers\Tenant\Reports\AuditReportController;
+use App\Http\Controllers\Tenant\Reports\DepartmentReportController;
+use App\Http\Controllers\Tenant\Reports\InventoryReportController;
+use App\Http\Controllers\Tenant\Reports\KitchenReportController;
+use App\Http\Controllers\Tenant\Reports\PrintReportController;
+use App\Http\Controllers\Tenant\Reports\PurchaseReportController;
+use App\Http\Controllers\Tenant\Reports\RestaurantReportController;
+use App\Http\Controllers\Tenant\Reports\SalesReportController;
+use App\Http\Controllers\Tenant\Reports\ShiftReportController;
+use App\Http\Controllers\Tenant\RestaurantFloorController;
+use App\Http\Controllers\Tenant\RestaurantTableController;
+use App\Http\Controllers\Tenant\RestaurantTableSessionController;
+use App\Http\Controllers\Tenant\RestaurantWaiterController;
 use App\Http\Controllers\Tenant\RoleController;
+use App\Http\Controllers\Tenant\SalesLedgerController;
+use App\Http\Controllers\Tenant\SalesOrderController;
+use App\Http\Controllers\Tenant\SalesReturnController;
+use App\Http\Controllers\Tenant\ServiceChargeSettingController;
 use App\Http\Controllers\Tenant\ShiftController;
-use App\Http\Controllers\Tenant\TenantUserController;
+use App\Http\Controllers\Tenant\SplitBillController;
 use App\Http\Controllers\Tenant\StockAdjustmentController;
 use App\Http\Controllers\Tenant\StockCountController;
 use App\Http\Controllers\Tenant\StockTransferController;
-use App\Http\Controllers\Tenant\TerminalController;
-use App\Http\Controllers\Tenant\UnitController;
-use App\Http\Controllers\Tenant\RestaurantFloorController;
-use App\Http\Controllers\Tenant\RestaurantTableController;
-use App\Http\Controllers\Tenant\RestaurantWaiterController;
-use App\Http\Controllers\Tenant\RestaurantTableSessionController;
-use App\Http\Controllers\Tenant\HeldSaleController;
-use App\Http\Controllers\Tenant\SplitBillController;
-use App\Http\Controllers\Tenant\UnitConversionController;
-use App\Http\Controllers\Tenant\RecipeController;
-use App\Http\Controllers\Tenant\KitchenDisplayController;
-use App\Http\Controllers\Tenant\KitchenProductionController;
+use App\Http\Controllers\Tenant\SupplierController;
+use App\Http\Controllers\Tenant\SupplierPaymentController;
 use App\Http\Controllers\Tenant\TenantBillingController;
 use App\Http\Controllers\Tenant\TenantUpgradeController;
-use App\Http\Controllers\Tenant\OfflineEdgeController;
-use App\Http\Controllers\Tenant\KitchenWastageController;
-use App\Http\Controllers\Tenant\PrinterController;
-use App\Http\Controllers\Tenant\CategoryPrinterMappingController;
-use App\Http\Controllers\Tenant\ReceiptLayoutController;
-use App\Http\Controllers\Tenant\PrintJobController;
-use App\Http\Controllers\Tenant\PrintDocumentController;
-use App\Http\Controllers\Tenant\PrintAgentController;
-use App\Http\Controllers\Tenant\Api\PrintAgentApiController;
-use App\Http\Controllers\Tenant\PromotionController;
-use App\Http\Controllers\Tenant\ServiceChargeSettingController;
+use App\Http\Controllers\Tenant\TenantUserController;
+use App\Http\Controllers\Tenant\TerminalController;
+use App\Http\Controllers\Tenant\UnitController;
+use App\Http\Controllers\Tenant\UnitConversionController;
 use App\Http\Controllers\Tenant\VoidReasonController;
-use App\Http\Controllers\Tenant\ManagerApprovalController;
-use App\Http\Controllers\Tenant\Reports\SalesReportController;
-use App\Http\Controllers\Tenant\Reports\ShiftReportController;
-use App\Http\Controllers\Tenant\Reports\InventoryReportController;
-use App\Http\Controllers\Tenant\Reports\PurchaseReportController;
-use App\Http\Controllers\Tenant\Reports\RestaurantReportController;
-use App\Http\Controllers\Tenant\Reports\KitchenReportController;
-use App\Http\Controllers\Tenant\Reports\AuditReportController;
-use App\Http\Controllers\Tenant\Reports\PrintReportController;
-use App\Http\Controllers\Tenant\Reports\DepartmentReportController;
-use App\Http\Controllers\Tenant\DepartmentController;
-use App\Http\Controllers\Tenant\DepartmentHandoverController;
-use App\Http\Controllers\Tenant\DepartmentStockTransferController;
-use App\Http\Controllers\Tenant\DepartmentCountController;
-use App\Http\Controllers\Tenant\Manufacturing\ManufacturingCustomerController;
-use App\Http\Controllers\Tenant\Manufacturing\ProductionOrderController;
-use App\Http\Controllers\Tenant\Manufacturing\BomController;
-use App\Http\Controllers\Tenant\Manufacturing\MaterialRequisitionController;
-use App\Http\Controllers\Tenant\Manufacturing\WipJobController;
-use App\Http\Controllers\Tenant\Manufacturing\FinishedGoodReceiptController;
-use App\Http\Controllers\Tenant\Manufacturing\ManufacturingScrapController;
-use App\Http\Controllers\Tenant\Manufacturing\ManufacturingRejectionController;
-use App\Http\Controllers\Tenant\Manufacturing\ManufacturingConsumptionController;
-use App\Http\Controllers\Tenant\Manufacturing\ManufacturingConsumptionPostingController;
-use App\Http\Controllers\Tenant\Manufacturing\ManufacturingReportController;
-use App\Http\Controllers\Tenant\Manufacturing\ManufacturingPostingSettingController;
-use App\Http\Controllers\Tenant\Ajax\ProductLookupController;
-use App\Http\Controllers\Tenant\Ajax\ManufacturingCustomerLookupController;
-use App\Http\Controllers\Tenant\Ajax\ProductionOrderLookupController;
-use App\Http\Controllers\Tenant\Ajax\MaterialRequisitionLookupController;
-use App\Http\Controllers\Tenant\Ajax\WipJobLookupController;
-use App\Http\Controllers\Tenant\Ajax\FinishedGoodReceiptLookupController;
 use Illuminate\Support\Facades\Route;
 
-Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
+Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
     ->middleware(['tenant.only'])
     ->group(function () {
 
@@ -170,6 +170,13 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
             Route::middleware(['tenant.subscription.access', 'route.permission', 'prevent.demo.mutation'])->group(function () {
                 Route::get('/', fn () => redirect('/dashboard'));
                 Route::get('/dashboard', DashboardController::class)->name('tenant.dashboard');
+
+                // KASHIF-CATERING-CALENDAR-1 — older months for the booking
+                // calendar, loaded on demand. Named under tenant.dashboard so it
+                // inherits the always-allowed landing surface; the controller
+                // still refuses with 404 unless catering is on the plan.
+                Route::get('/dashboard/catering-calendar', [DashboardController::class, 'cateringCalendar'])
+                    ->name('tenant.dashboard.catering-calendar');
 
                 // Tenant Users
                 Route::get('/users', [TenantUserController::class, 'index'])->name('tenant.users.index');
@@ -366,12 +373,12 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
 
                 // Suppliers
                 Route::resource('suppliers', SupplierController::class)->names([
-                    'index'   => 'tenant.suppliers.index',
-                    'create'  => 'tenant.suppliers.create',
-                    'store'   => 'tenant.suppliers.store',
-                    'show'    => 'tenant.suppliers.show',
-                    'edit'    => 'tenant.suppliers.edit',
-                    'update'  => 'tenant.suppliers.update',
+                    'index' => 'tenant.suppliers.index',
+                    'create' => 'tenant.suppliers.create',
+                    'store' => 'tenant.suppliers.store',
+                    'show' => 'tenant.suppliers.show',
+                    'edit' => 'tenant.suppliers.edit',
+                    'update' => 'tenant.suppliers.update',
                     'destroy' => 'tenant.suppliers.destroy',
                 ]);
                 Route::get('/suppliers/{supplier}/ledger', [SupplierController::class, 'ledger'])
@@ -474,6 +481,15 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::post('/pos/customers/{customer}/addresses', [CustomerController::class, 'storeAddress'])
                     ->name('tenant.pos.customers.addresses.store');
 
+                // QUICK-REPORT-SEND-1 — POS Quick Report modal (gated in-controller by
+                // tenant.pos.quick-report-send; exempted from the route-name permission via
+                // EnsureRoutePermission's 'tenant.pos.quick-report' allow-prefix).
+                Route::get('/pos/quick-report/settings', [\App\Http\Controllers\Tenant\PosQuickReportController::class, 'settings'])->name('tenant.pos.quick-report.settings');
+                Route::post('/pos/quick-report/save-settings', [\App\Http\Controllers\Tenant\PosQuickReportController::class, 'saveSettings'])->name('tenant.pos.quick-report.save-settings');
+                Route::get('/pos/quick-report/print', [\App\Http\Controllers\Tenant\PosQuickReportController::class, 'print'])->name('tenant.pos.quick-report.print');
+                Route::post('/pos/quick-report/email', [\App\Http\Controllers\Tenant\PosQuickReportController::class, 'email'])->name('tenant.pos.quick-report.email');
+                Route::post('/pos/quick-report/send-to-network', [\App\Http\Controllers\Tenant\PosQuickReportController::class, 'sendToNetwork'])->name('tenant.pos.quick-report.send-to-network');
+
                 // Sales Orders
                 Route::get('/sales-orders', [SalesOrderController::class, 'index'])->name('tenant.sales-orders.index');
                 Route::get('/sales-orders/create', [SalesOrderController::class, 'create'])->name('tenant.sales-orders.create');
@@ -502,6 +518,11 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::post('/restaurant/tables', [RestaurantTableController::class, 'store'])->name('tenant.restaurant.tables.store');
                 Route::put('/restaurant/tables/{restaurantTable}', [RestaurantTableController::class, 'update'])->name('tenant.restaurant.tables.update');
                 Route::delete('/restaurant/tables/{restaurantTable}', [RestaurantTableController::class, 'destroy'])->name('tenant.restaurant.tables.destroy');
+                // TABLE-RESERVATION-1 — gated in-controller on tenant.restaurant.table-sessions.open
+                // (any dine-in operator); exempted from the route-name check via EnsureRoutePermission.
+                Route::get('/restaurant/tables/{restaurantTable}/reservation', [RestaurantTableController::class, 'reservation'])->name('tenant.restaurant.tables.reservation');
+                Route::post('/restaurant/tables/{restaurantTable}/reserve', [RestaurantTableController::class, 'reserve'])->name('tenant.restaurant.tables.reserve');
+                Route::post('/restaurant/tables/{restaurantTable}/unreserve', [RestaurantTableController::class, 'unreserve'])->name('tenant.restaurant.tables.unreserve');
 
                 // Restaurant Waiters
                 Route::get('/restaurant/waiters', [RestaurantWaiterController::class, 'index'])->name('tenant.restaurant.waiters.index');
@@ -595,6 +616,11 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::post('/printing/printers', [PrinterController::class, 'store'])->name('tenant.printing.printers.store');
                 Route::put('/printing/printers/{printer}', [PrinterController::class, 'update'])->name('tenant.printing.printers.update');
                 Route::delete('/printing/printers/{printer}', [PrinterController::class, 'destroy'])->name('tenant.printing.printers.destroy');
+                // PRINTER-HEALTH-1: live status + remote Test / Reset / Reboot (executed by the agent).
+                Route::get('/printing/printers/{printer}/status', [PrinterController::class, 'status'])->name('tenant.printing.printers.status');
+                Route::post('/printing/printers/{printer}/ping', [PrinterController::class, 'ping'])->name('tenant.printing.printers.ping');
+                Route::post('/printing/printers/{printer}/reset', [PrinterController::class, 'reset'])->name('tenant.printing.printers.reset');
+                Route::post('/printing/printers/{printer}/reboot', [PrinterController::class, 'reboot'])->name('tenant.printing.printers.reboot');
                 Route::post('/printing/terminal-settings', [PrinterController::class, 'saveTerminalSettings'])->name('tenant.printing.terminal-settings.save');
 
                 // Printing — Category Mappings
@@ -628,6 +654,7 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::post('/print/agents', [PrintAgentController::class, 'store'])->name('tenant.print-agents.store');
                 Route::post('/print/agents/{printAgent}/regenerate-token', [PrintAgentController::class, 'regenerateToken'])->name('tenant.print-agents.regenerate-token');
                 Route::post('/print/agents/{printAgent}/deactivate', [PrintAgentController::class, 'deactivate'])->name('tenant.print-agents.deactivate');
+                Route::delete('/print/agents/{printAgent}', [PrintAgentController::class, 'destroy'])->name('tenant.print-agents.destroy');
                 // PRINT-AGENT-INSTALLER-1 — pairing-code flow + test page + agent download
                 Route::post('/print/agents/{printAgent}/pairing-code', [PrintAgentController::class, 'pairingCode'])->name('tenant.print-agents.pairing-code');
                 Route::post('/print/agents/{printAgent}/test-print', [PrintAgentController::class, 'testPrint'])->name('tenant.print-agents.test-print');
@@ -687,18 +714,19 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
                 Route::get('/reports/center', [\App\Http\Controllers\Tenant\Reports\SalesReportCenterController::class, 'index'])->name('tenant.reports.center.index');
                 Route::get('/reports/center/export', [\App\Http\Controllers\Tenant\Reports\SalesReportCenterController::class, 'export'])->name('tenant.reports.center.export');
                 Route::get('/reports/center/print', [\App\Http\Controllers\Tenant\Reports\SalesReportCenterController::class, 'print'])->name('tenant.reports.center.print');
+                Route::post('/reports/center/send-to-network', [\App\Http\Controllers\Tenant\Reports\SalesReportCenterController::class, 'sendToNetwork'])->name('tenant.reports.center.send-to-network');
                 Route::post('/reports/center/email', [\App\Http\Controllers\Tenant\Reports\SalesReportCenterController::class, 'emailNow'])->name('tenant.reports.center.email');
                 Route::post('/reports/center/schedules', [\App\Http\Controllers\Tenant\Reports\SalesReportCenterController::class, 'storeSchedule'])->name('tenant.reports.center.schedules.store');
                 Route::delete('/reports/center/schedules/{schedule}', [\App\Http\Controllers\Tenant\Reports\SalesReportCenterController::class, 'destroySchedule'])->name('tenant.reports.center.schedules.destroy');
 
                 // Reports — Phase 1
-                Route::get('/reports/sales/summary',  [SalesReportController::class, 'summary'])->name('tenant.reports.sales.summary');
-                Route::get('/reports/sales/items',    [SalesReportController::class, 'items'])->name('tenant.reports.sales.items');
+                Route::get('/reports/sales/summary', [SalesReportController::class, 'summary'])->name('tenant.reports.sales.summary');
+                Route::get('/reports/sales/items', [SalesReportController::class, 'items'])->name('tenant.reports.sales.items');
                 Route::get('/reports/sales/payments', [SalesReportController::class, 'payments'])->name('tenant.reports.sales.payments');
                 Route::get('/reports/sales/receivables', [SalesReportController::class, 'receivables'])->name('tenant.reports.sales.receivables');
                 Route::get('/reports/sales/channels', [SalesReportController::class, 'channels'])->name('tenant.reports.sales.channels');
                 Route::get('/reports/sales/riders', [SalesReportController::class, 'riders'])->name('tenant.reports.sales.riders');
-                Route::get('/reports/shifts',         [ShiftReportController::class, 'index'])->name('tenant.reports.shifts');
+                Route::get('/reports/shifts', [ShiftReportController::class, 'index'])->name('tenant.reports.shifts');
                 Route::get('/reports/inventory/valuation', [InventoryReportController::class, 'valuation'])->name('tenant.reports.inventory.valuation');
 
                 // Reports — Phase 2
@@ -806,6 +834,160 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
 
                 Route::get('/quotations', [ComingSoonController::class, 'show'])
                     ->defaults('feature', 'quotations')->name('tenant.quotations.index');
+
+                // ── Catering & Events (CATERING-SLICE-1) — separate business vertical.
+                //    Estimates/events are catering documents, never sales_orders; zero
+                //    stock/GL/shift interaction from these routes. Module key: catering.
+                //
+                // KASHIF-CATERING-DOUBLE-SUBMIT-1: every catering POST goes through the
+                // duplicate guard. It is inert unless the form sends a _submit_token, so
+                // this line changes nothing on its own — it only lets a form opt in.
+                Route::middleware('prevent.duplicate.submit')->group(function () {
+                    Route::get('/catering/events', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'index'])->name('tenant.catering.events.index');
+                    Route::get('/catering/events/create', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'create'])->name('tenant.catering.events.create');
+                    Route::post('/catering/events', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'store'])->name('tenant.catering.events.store');
+                    Route::get('/catering/events/{cateringEvent}', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'show'])->name('tenant.catering.events.show');
+                    Route::get('/catering/events/{cateringEvent}/edit', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'edit'])->name('tenant.catering.events.edit');
+                    Route::put('/catering/events/{cateringEvent}', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'update'])->name('tenant.catering.events.update');
+                    Route::post('/catering/events/{cateringEvent}/confirm', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'confirm'])->name('tenant.catering.events.confirm');
+                    Route::post('/catering/events/{cateringEvent}/cancel', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'cancel'])->name('tenant.catering.events.cancel');
+
+                    Route::put('/catering/estimates/{cateringEstimate}', [\App\Http\Controllers\Tenant\Catering\CateringEstimateController::class, 'update'])->name('tenant.catering.estimates.update');
+                    Route::post('/catering/estimates/{cateringEstimate}/send', [\App\Http\Controllers\Tenant\Catering\CateringEstimateController::class, 'send'])->name('tenant.catering.estimates.send');
+                    Route::post('/catering/estimates/{cateringEstimate}/accept', [\App\Http\Controllers\Tenant\Catering\CateringEstimateController::class, 'accept'])->name('tenant.catering.estimates.accept');
+                    Route::post('/catering/estimates/{cateringEstimate}/revise', [\App\Http\Controllers\Tenant\Catering\CateringEstimateController::class, 'revise'])->name('tenant.catering.estimates.revise');
+                    // KASHIF-EVENT-HISTORY: restore an old quotation version / revert the event to a remembered state.
+                    Route::post('/catering/estimates/{cateringEstimate}/restore-version', [\App\Http\Controllers\Tenant\Catering\CateringEstimateController::class, 'restoreVersion'])->name('tenant.catering.estimates.restore-version');
+                    Route::post('/catering/events/{cateringEvent}/revisions/{revision}/revert', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'revertRevision'])->name('tenant.catering.events.revisions.revert');
+
+                    Route::post('/catering/estimates/{cateringEstimate}/reprice', [\App\Http\Controllers\Tenant\Catering\CateringEstimateController::class, 'reprice'])->name('tenant.catering.estimates.reprice');
+
+                    // KASHIF-CATERING-LINE-SNAPSHOT-1: decisions about ONE booking —
+                    // what tonight actually needs, and what is actually being quoted.
+                    // Neither touches the dish or any other quotation.
+                    Route::put('/catering/line-cost-blocks/{costBlock}', [\App\Http\Controllers\Tenant\Catering\CateringLineCostController::class, 'updateMaterial'])->name('tenant.catering.line-cost-blocks.update');
+                    Route::post('/catering/line-cost-blocks/{costBlock}/reset', [\App\Http\Controllers\Tenant\Catering\CateringLineCostController::class, 'resetMaterial'])->name('tenant.catering.line-cost-blocks.reset');
+                    // KASHIF-CATERING-CUSTOMER-SUPPLIED-1: the family brings the meat.
+                    // The kitchen still needs it; our store issues none of it, and it
+                    // is not charged for.
+                    Route::put('/catering/line-cost-blocks/{costBlock}/customer-supplied', [\App\Http\Controllers\Tenant\Catering\CateringLineCostController::class, 'customerSupplied'])->name('tenant.catering.line-cost-blocks.customer-supplied');
+                    Route::put('/catering/line-cost-blocks/{costBlock}/rate', [\App\Http\Controllers\Tenant\Catering\CateringLineCostController::class, 'chargedRate'])->name('tenant.catering.line-cost-blocks.rate');
+                    Route::put('/catering/estimate-lines/{cateringEstimateLine}/quoted-rate', [\App\Http\Controllers\Tenant\Catering\CateringLineCostController::class, 'quoteRate'])->name('tenant.catering.estimate-lines.quoted-rate');
+                    Route::post('/catering/estimate-lines/{cateringEstimateLine}/use-calculated-rate', [\App\Http\Controllers\Tenant\Catering\CateringLineCostController::class, 'useCalculatedRate'])->name('tenant.catering.estimate-lines.use-calculated-rate');
+
+                    Route::get('/catering/guide', [\App\Http\Controllers\Tenant\Catering\CateringGuideController::class, 'index'])->name('tenant.catering.guide.index');
+
+                    // A catering-only tenant owns raw materials (mutton, rice, oil) but has
+                    // no Manufacturing module, and the Catalog list deliberately shows only
+                    // sellable/recipe items — so its materials were reachable from NO screen
+                    // at all. These reuse ProductController's proven manufacturing context
+                    // under the catering module key; nothing about Manufacturing changes.
+                    Route::get('/catering/materials', [ProductController::class, 'index'])->name('tenant.catering.materials.index');
+                    Route::get('/catering/materials/create', [ProductController::class, 'create'])->name('tenant.catering.materials.create');
+                    Route::post('/catering/materials', [ProductController::class, 'store'])->name('tenant.catering.materials.store');
+                    Route::get('/catering/materials/{product}/edit', [ProductController::class, 'edit'])->name('tenant.catering.materials.edit');
+                    Route::put('/catering/materials/{product}', [ProductController::class, 'update'])->name('tenant.catering.materials.update');
+
+                    Route::get('/catering/material-rates', [\App\Http\Controllers\Tenant\Catering\CateringMaterialRateController::class, 'index'])->name('tenant.catering.material-rates.index');
+                    Route::post('/catering/material-rates', [\App\Http\Controllers\Tenant\Catering\CateringMaterialRateController::class, 'store'])->name('tenant.catering.material-rates.store');
+
+                    // KASHIF-CATERING-COMMERCIAL-RATE-1: what materials are CHARGED
+                    // at — a different book from what they cost — and what changing
+                    // a house rate would do before anything is changed.
+                    Route::get('/catering/commercial-rates', [\App\Http\Controllers\Tenant\Catering\CateringCommercialRateController::class, 'index'])->name('tenant.catering.commercial-rates.index');
+                    Route::post('/catering/commercial-rates', [\App\Http\Controllers\Tenant\Catering\CateringCommercialRateController::class, 'store'])->name('tenant.catering.commercial-rates.store');
+                    Route::get('/catering/commercial-rates/{product}/impact', [\App\Http\Controllers\Tenant\Catering\CateringCommercialRateController::class, 'impact'])->name('tenant.catering.commercial-rates.impact');
+                    Route::post('/catering/commercial-rates/{product}/apply-products', [\App\Http\Controllers\Tenant\Catering\CateringCommercialRateController::class, 'applyToProducts'])->name('tenant.catering.commercial-rates.apply-products');
+                    Route::post('/catering/commercial-rates/{product}/apply-drafts', [\App\Http\Controllers\Tenant\Catering\CateringCommercialRateController::class, 'applyToDrafts'])->name('tenant.catering.commercial-rates.apply-drafts');
+                    // A sent quotation is never repriced in place: this creates the
+                    // next version and applies the house rate to that one.
+                    Route::post('/catering/commercial-rates/{product}/revise-and-apply', [\App\Http\Controllers\Tenant\Catering\CateringCommercialRateController::class, 'reviseAndApply'])->name('tenant.catering.commercial-rates.revise-and-apply');
+
+                    Route::get('/catering/rate-impact', [\App\Http\Controllers\Tenant\Catering\CateringRateImpactController::class, 'index'])->name('tenant.catering.rate-impact.index');
+                    Route::post('/catering/rate-impact/apply', [\App\Http\Controllers\Tenant\Catering\CateringRateImpactController::class, 'apply'])->name('tenant.catering.rate-impact.apply');
+
+                    Route::get('/catering/profiles', [\App\Http\Controllers\Tenant\Catering\CateringProductProfileController::class, 'index'])->name('tenant.catering.profiles.index');
+                    Route::post('/catering/profiles', [\App\Http\Controllers\Tenant\Catering\CateringProductProfileController::class, 'store'])->name('tenant.catering.profiles.store');
+                    Route::put('/catering/profiles/{cateringProductProfile}', [\App\Http\Controllers\Tenant\Catering\CateringProductProfileController::class, 'update'])->name('tenant.catering.profiles.update');
+
+                    // KASHIF-CATERING-COST-BLOCKS-1: what a dish is made of, and what
+                    // each part adds to its price. Configuration only — posts nothing.
+                    Route::get('/catering/profiles/{cateringProductProfile}/blocks', [\App\Http\Controllers\Tenant\Catering\CateringCostBlockController::class, 'edit'])->name('tenant.catering.cost-blocks.edit');
+                    Route::put('/catering/profiles/{cateringProductProfile}/blocks', [\App\Http\Controllers\Tenant\Catering\CateringCostBlockController::class, 'update'])->name('tenant.catering.cost-blocks.update');
+
+                    Route::post('/catering/events/{cateringEvent}/advances', [\App\Http\Controllers\Tenant\Catering\CateringAdvanceController::class, 'store'])->name('tenant.catering.advances.store');
+
+                    // KASHIF-CATERING-CUSTOMER-CREDIT-1: the one catering action that
+                    // pays money OUT, behind its own permission for that reason.
+                    Route::post('/catering/events/{cateringEvent}/refunds', [\App\Http\Controllers\Tenant\Catering\CateringRefundController::class, 'store'])->name('tenant.catering.refunds.store');
+
+                    Route::post('/catering/events/{cateringEvent}/production-releases', [\App\Http\Controllers\Tenant\Catering\CateringProductionReleaseController::class, 'store'])->name('tenant.catering.production-releases.store');
+                    Route::get('/catering/production-releases/{cateringProductionRelease}', [\App\Http\Controllers\Tenant\Catering\CateringProductionReleaseController::class, 'show'])->name('tenant.catering.production-releases.show');
+                    Route::post('/catering/production-releases/{cateringProductionRelease}/print', [\App\Http\Controllers\Tenant\Catering\CateringProductionReleaseController::class, 'print'])->name('tenant.catering.production-releases.print');
+                    Route::post('/catering/production-releases/{cateringProductionRelease}/reprint', [\App\Http\Controllers\Tenant\Catering\CateringProductionReleaseController::class, 'reprint'])->name('tenant.catering.production-releases.reprint');
+                    Route::post('/catering/production-releases/{cateringProductionRelease}/issue-materials', [\App\Http\Controllers\Tenant\Catering\CateringMaterialIssueController::class, 'store'])->name('tenant.catering.material-issues.store');
+
+                    // KASHIF-CATERING-STORE-1 — the store counter, answering to nobody.
+                    // Issue any quantity, covering any number of bookings or none;
+                    // the booking reference is a note, never a requirement.
+                    Route::get('/catering/store-issues', [\App\Http\Controllers\Tenant\Catering\CateringStoreIssueController::class, 'index'])->name('tenant.catering.store-issues.index');
+                    Route::post('/catering/store-issues', [\App\Http\Controllers\Tenant\Catering\CateringStoreIssueController::class, 'store'])->name('tenant.catering.store-issues.store');
+                    // KASHIF-CATERING-STORE-2: read-only booking lookup for the
+                    // selection modal — "what is going out tonight".
+                    Route::get('/catering/store-issues/bookings', [\App\Http\Controllers\Tenant\Catering\CateringStoreIssueController::class, 'bookings'])->name('tenant.catering.store-issues.bookings');
+                    // CAT-STORE-001: what the selected bookings still need from
+                    // us — required, customer-supplied, already issued, remaining.
+                    // Read-only; looking at it moves no stock.
+                    Route::get('/catering/store-issues/requirements', [\App\Http\Controllers\Tenant\Catering\CateringStoreIssueController::class, 'requirements'])->name('tenant.catering.store-issues.requirements');
+
+                    Route::post('/catering/events/{cateringEvent}/final-invoice', [\App\Http\Controllers\Tenant\Catering\CateringFinalInvoiceController::class, 'store'])->name('tenant.catering.final-invoices.store');
+                    Route::post('/catering/events/{cateringEvent}/close', [\App\Http\Controllers\Tenant\Catering\CateringFinalInvoiceController::class, 'close'])->name('tenant.catering.events.close');
+
+                    Route::get('/catering/documents/estimate/{cateringEstimate}', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'estimate'])->name('tenant.catering.documents.estimate');
+                    Route::get('/catering/documents/kitchen-sheet/{cateringProductionRelease}', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'kitchenSheet'])->name('tenant.catering.documents.kitchen-sheet');
+                    Route::get('/catering/documents/final-invoice/{cateringFinalInvoice}', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'finalInvoice'])->name('tenant.catering.documents.final-invoice');
+
+                    // KASHIF-CATERING-OPERATOR-UI-1: bulk documents for a selected set
+                    // of bookings. GET + read-only composition for the browser print
+                    // dialog — no stock, no postings, no lifecycle change, no queue.
+                    Route::get('/catering/documents/bulk/quotations', [\App\Http\Controllers\Tenant\Catering\CateringBulkDocumentController::class, 'quotations'])->name('tenant.catering.documents.bulk-quotations');
+                    Route::get('/catering/documents/bulk/kitchen-sheets', [\App\Http\Controllers\Tenant\Catering\CateringBulkDocumentController::class, 'kitchenSheets'])->name('tenant.catering.documents.bulk-kitchen-sheets');
+                    Route::get('/catering/documents/bulk/address-sheet', [\App\Http\Controllers\Tenant\Catering\CateringBulkDocumentController::class, 'addressSheet'])->name('tenant.catering.documents.bulk-address-sheet');
+
+                    // KASHIF-CATERING-PRODUCT-UX-1 (item 7) — customer documents over the
+                    // existing print_jobs transport. English only: the ESC/POS path has no
+                    // codepage or raster support, so Urdu stays A4/browser and is refused
+                    // here rather than printed as mojibake.
+                    Route::post('/catering/documents/estimate/{cateringEstimate}/print', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'printEstimate'])->name('tenant.catering.documents.estimate-print');
+                    Route::post('/catering/documents/final-invoice/{cateringFinalInvoice}/print', [\App\Http\Controllers\Tenant\Catering\CateringDocumentController::class, 'printFinalInvoice'])->name('tenant.catering.documents.final-invoice-print');
+
+                    Route::get('/catering/printer-mappings', [\App\Http\Controllers\Tenant\Catering\CateringPrinterMappingController::class, 'index'])->name('tenant.catering.printer-mappings.index');
+                    Route::post('/catering/printer-mappings', [\App\Http\Controllers\Tenant\Catering\CateringPrinterMappingController::class, 'store'])->name('tenant.catering.printer-mappings.store');
+                    Route::delete('/catering/printer-mappings/{cateringPrinterMapping}', [\App\Http\Controllers\Tenant\Catering\CateringPrinterMappingController::class, 'destroy'])->name('tenant.catering.printer-mappings.destroy');
+                    Route::post('/catering/printer-mappings/copy-from-pos', [\App\Http\Controllers\Tenant\Catering\CateringPrinterMappingController::class, 'copyFromPos'])->name('tenant.catering.printer-mappings.copy-from-pos');
+
+                    // KASHIF-CATERING-MAKING-1: bulk Making adjustment — preview first,
+                    // then selective apply. Only charge_role=making blocks participate.
+                    Route::get('/catering/making-adjustment', [\App\Http\Controllers\Tenant\Catering\CateringMakingAdjustmentController::class, 'index'])->name('tenant.catering.making-adjustment.index');
+                    Route::post('/catering/making-adjustment/apply-products', [\App\Http\Controllers\Tenant\Catering\CateringMakingAdjustmentController::class, 'applyToProducts'])->name('tenant.catering.making-adjustment.apply-products');
+                    Route::post('/catering/making-adjustment/apply-drafts', [\App\Http\Controllers\Tenant\Catering\CateringMakingAdjustmentController::class, 'applyToDrafts'])->name('tenant.catering.making-adjustment.apply-drafts');
+
+                    // KASHIF-CATERING-EMAIL-1: manual Email to Customer / Resend through
+                    // the ONE mail/email-log authority. No business-state mutation.
+                    Route::post('/catering/estimates/{cateringEstimate}/email', [\App\Http\Controllers\Tenant\Catering\CateringDocumentEmailController::class, 'emailEstimate'])->name('tenant.catering.estimates.email');
+                    Route::post('/catering/final-invoices/{cateringFinalInvoice}/email', [\App\Http\Controllers\Tenant\Catering\CateringDocumentEmailController::class, 'emailFinalInvoice'])->name('tenant.catering.final-invoices.email');
+
+                    // KASHIF-CATERING-INSTRUCTIONS-1: the managed kitchen-instruction
+                    // vocabulary. Config only — no money, no stock.
+                    Route::get('/catering/instructions', [\App\Http\Controllers\Tenant\Catering\CateringInstructionController::class, 'index'])->name('tenant.catering.instructions.index');
+                    Route::post('/catering/instructions', [\App\Http\Controllers\Tenant\Catering\CateringInstructionController::class, 'store'])->name('tenant.catering.instructions.store');
+                    Route::put('/catering/instructions/{cateringInstruction}', [\App\Http\Controllers\Tenant\Catering\CateringInstructionController::class, 'update'])->name('tenant.catering.instructions.update');
+
+                    Route::get('/catering/settings', [\App\Http\Controllers\Tenant\Catering\CateringSettingController::class, 'index'])->name('tenant.catering.settings.index');
+                    Route::put('/catering/settings', [\App\Http\Controllers\Tenant\Catering\CateringSettingController::class, 'update'])->name('tenant.catering.settings.update');
+                    Route::put('/catering/settings/service-times', [\App\Http\Controllers\Tenant\Catering\CateringSettingController::class, 'saveTimePresets'])->name('tenant.catering.settings.service-times');
+                }); // end prevent.duplicate.submit group
+
                 Route::get('/purchase-requisitions', [ComingSoonController::class, 'show'])
                     ->defaults('feature', 'purchase-requisitions')->name('tenant.purchase-requisitions.index');
 
@@ -916,5 +1098,10 @@ Route::domain('{subdomain}.' . config('tenancy.tenant_base_domain'))
             Route::get('/pending', [PrintAgentApiController::class, 'pending'])->name('tenant.api.print-agent.pending');
             Route::post('/jobs/{printJob}/printed', [PrintAgentApiController::class, 'printed'])->name('tenant.api.print-agent.jobs.printed');
             Route::post('/jobs/{printJob}/failed', [PrintAgentApiController::class, 'failed'])->name('tenant.api.print-agent.jobs.failed');
+            // PRINTER-HEALTH-1: park a ticket whose printer is cooling — re-queued, never lost.
+            Route::post('/jobs/{printJob}/defer', [PrintAgentApiController::class, 'defer'])->name('tenant.api.print-agent.jobs.defer');
+            // v2.5.0 remote Test/Reboot commands.
+            Route::get('/commands', [PrintAgentApiController::class, 'commands'])->name('tenant.api.print-agent.commands');
+            Route::post('/commands/{printAgentCommand}/result', [PrintAgentApiController::class, 'commandResult'])->name('tenant.api.print-agent.commands.result');
         });
     });

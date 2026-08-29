@@ -4,7 +4,12 @@
 <meta charset="utf-8">
 <title>Sales Report — {{ $filters['date_from'] }} → {{ $filters['date_to'] }}</title>
 @php
-    $fmt = fn ($v) => number_format((float) $v, 2);
+    // Thermal Z / End-of-Day prints ROUND figures — no ".00" tail — so the counter reads clean
+    // whole rupees; A4 keeps 2 decimals for the formal ledger. (Menu prices are whole rupees, so
+    // rounding is exact; the raw values still drive every sum, only the printed figure is rounded.)
+    $fmt = ($mode === 'thermal')
+        ? fn ($v) => number_format((float) $v, 0)
+        : fn ($v) => number_format((float) $v, 2);
     $qty = fn ($v) => rtrim(rtrim(number_format((float) $v, 3, '.', ''), '0'), '.');
     $has = fn (string $s) => in_array($s, $sections, true);
 
@@ -32,44 +37,78 @@
     $tHead = fn () => '<tr><th></th><th class="amt">Sold</th><th class="amt">Ret</th><th class="amt">Net</th></tr>';
     $tCancelHead = fn () => '<tr><th colspan="2">Item / reason</th><th class="amt">Events</th><th class="amt">-Qty</th></tr>';
 
-    /** An entry carrying both quantities and money (categories, items). */
-    $tEntry = function (string $name, $sQ, $rQ, $nQ, $sV, $rV, $nV, bool $bold = false, string $indent = '') use ($qty, $fmt) {
-        $cls = $bold ? ' class="total"' : '';
+    // A long item name wraps over two/three lines on a narrow roll and pushes the layout around.
+    // Keep any trailing "(size)" — a shop reads the size — and truncate the head with an ellipsis
+    // so every name stays on ONE line. Short names (categories, most items) are returned untouched.
+    $nameMax = (($paper ?? '80mm') === '58mm') ? 28 : 34;
+    $shortName = function (string $name) use ($nameMax) {
+        if (mb_strlen($name) <= $nameMax) {
+            return $name;
+        }
+        if (preg_match('/^(.*\S)\s*(\([^)]*\))\s*$/u', $name, $m)) {
+            $tail = ' ' . $m[2];
+            $headMax = $nameMax - mb_strlen($tail) - 1;
+            if ($headMax >= 8) {
+                return rtrim(mb_substr($m[1], 0, $headMax)) . '…' . $tail;
+            }
+        }
+        return rtrim(mb_substr($name, 0, $nameMax - 1)) . '…';
+    };
 
-        return '<tr' . $cls . '><td colspan="4">' . $indent . e($name) . '</td></tr>'
-             . '<tr><td>' . $indent . 'Qty</td>'
+    /** An entry carrying both quantities and money (categories, items). */
+    $tEntry = function (string $name, $sQ, $rQ, $nQ, $sV, $rV, $nV, bool $bold = false, string $indent = '') use ($qty, $fmt, $shortName) {
+        $cls = $bold ? ' class="total"' : '';
+        // The name a reader scans for is always emphasised; a total's name carries both.
+        $nameCls = ' class="name' . ($bold ? ' total' : '') . '"';
+
+        return '<tr' . $nameCls . '><td colspan="4">' . $indent . e($shortName($name)) . '</td></tr>'
+             . '<tr><td class="lbl">' . $indent . 'Qty</td>'
              . '<td class="amt">' . $qty($sQ) . '</td><td class="amt">' . $qty($rQ) . '</td><td class="amt">' . $qty($nQ) . '</td></tr>'
-             . '<tr' . $cls . '><td>' . $indent . 'Amt</td>'
+             . '<tr' . $cls . '><td class="lbl">' . $indent . 'Amt</td>'
              . '<td class="amt">' . $fmt($sV) . '</td><td class="amt">' . $fmt($rV) . '</td><td class="amt">' . $fmt($nV) . '</td></tr>';
     };
 
     /** An order-level entry — money only, no line quantities (order types, waiters). */
     $tOrders = function (string $name, $orders, $billed, $ret, $net, bool $bold = false) use ($fmt) {
         $cls = $bold ? ' class="total"' : '';
+        $nameCls = ' class="name' . ($bold ? ' total' : '') . '"';
 
-        return '<tr' . $cls . '><td colspan="4">' . e($name) . '</td></tr>'
-             . '<tr' . $cls . '><td>' . (int) $orders . ' ord</td>'
+        return '<tr' . $nameCls . '><td colspan="4">' . e($name) . '</td></tr>'
+             . '<tr' . $cls . '><td class="lbl">' . (int) $orders . ' ord</td>'
              . '<td class="amt">' . $fmt($billed) . '</td><td class="amt">' . $fmt($ret) . '</td><td class="amt">' . $fmt($net) . '</td></tr>';
     };
 
-    // Item/category nets cover MERCHANDISE only; the delivery charge belongs to the order, not to
-    // any line. Printed alone those totals look like they contradict NET SALES, so every
-    // line-based section closes with the bridge that gets it there.
-    // NET delivery: what was charged, less what was handed back with a fully-returned order.
-    // Using the gross figure stopped the bridge reaching NET SALES the moment a delivery was
-    // refunded — and because the bridge only prints when the arithmetic closes, it would have
-    // quietly vanished rather than shown a wrong total.
-    $bridgeDelivery = (float) ($bridge['delivery_charge'] ?? 0) - (float) ($bridge['delivery_refunded'] ?? 0);
+    // Item/category nets cover MERCHANDISE only; the order-level charges (delivery, tax, service,
+    // tips, less discount) belong to the order, not to any line. Printed alone those totals look
+    // like they contradict NET SALES, so every line-based section closes with the bridge that gets
+    // it there. The gap is derived as (NET SALES − line net), so it ALWAYS closes — the old
+    // delivery-only figure silently vanished the moment a discount/tax existed (line net + delivery
+    // did not equal net sales), which is exactly why the global totals stopped reconciling.
     $bridgeNetSales = (float) ($bridge['net_sales'] ?? 0);
-    $bridgeRows = function (float $lineNet, int $span) use ($bridgeDelivery, $bridgeNetSales, $fmt) {
-        // Only claim a reconciliation when the arithmetic actually closes.
-        if (abs(($lineNet + $bridgeDelivery) - $bridgeNetSales) > 0.01) {
+    $bridgeRows = function (float $lineNet, int $span) use ($bridgeNetSales, $fmt) {
+        $netCharges = round($bridgeNetSales - $lineNet, 2);
+        if (abs($netCharges) <= 0.01) {
             return '';
         }
         $label = fn ($t) => '<td' . ($span > 1 ? ' colspan="' . ($span - 1) . '"' : '') . '>' . $t . '</td>';
 
-        return '<tr>' . $label('Plus Delivery Charges') . '<td class="amt">' . $fmt($bridgeDelivery) . '</td></tr>'
+        return '<tr>' . $label('Plus Delivery &amp; Other Charges (net)') . '<td class="amt">' . $fmt($netCharges) . '</td></tr>'
              . '<tr class="total">' . $label('= NET SALES') . '<td class="amt">' . $fmt($bridgeNetSales) . '</td></tr>';
+    };
+
+    // Per-order-type bridge: the BY ORDER TYPE categories/items are MERCHANDISE only, but this
+    // type's NET SALES includes its order-level charges (delivery etc.). Close the gap so a
+    // delivery total no longer looks like it contradicts the cash. Uses the engine's per-type
+    // totals; prints only when there is a charge to explain.
+    $otBridge = function (string $typeLabel, int $span) use ($combos, $fmt) {
+        $t = $combos['totals'][$typeLabel] ?? null;
+        if (! $t || abs((float) $t['net_charges']) <= 0.01) {
+            return '';
+        }
+        $label = fn ($x) => '<td' . ($span > 1 ? ' colspan="' . ($span - 1) . '"' : '') . '>' . $x . '</td>';
+
+        return '<tr>' . $label('Plus Delivery &amp; Other Charges (net)') . '<td class="amt">' . $fmt($t['net_charges']) . '</td></tr>'
+             . '<tr class="total">' . $label('= NET SALES') . '<td class="amt">' . $fmt($t['net_sales']) . '</td></tr>';
     };
 @endphp
 <style>
@@ -78,19 +117,34 @@
     @if($mode === 'thermal')
     /* Thermal heads print grey and thin — the counter could not read 10px normal weight. Bold at
        12px is the legibility win; 58mm stays smaller because it has ~20% less width to give. */
+    /* Emphasis is WEIGHT ONLY — never a bigger font. The numeric tables are measured to
+       fit 72mm exactly; enlarging a row overflowed the width and word-break shattered the
+       labels one character per line. 'Courier New' has 400 and 700, so normal detail against
+       700 headers/names/net rows reads as bold without touching a single column width. */
     body {
         width: {{ $paper === '58mm' ? '52mm' : '72mm' }};
         font-size: {{ $paper === '58mm' ? '11px' : '12px' }};
-        font-weight: 700;
+        font-weight: 400;
     }
-    h1 { font-size: {{ $paper === '58mm' ? '14px' : '15px' }}; text-align: center; margin: 4px 0; }
-    h2 { font-size: {{ $paper === '58mm' ? '12px' : '13px' }}; border-top: 1px dashed #000; padding-top: 4px; margin: 8px 0 4px; }
-    h3 { font-size: {{ $paper === '58mm' ? '11px' : '12px' }}; margin: 6px 0 2px; }
+    h1 { font-size: {{ $paper === '58mm' ? '14px' : '15px' }}; font-weight: 700; text-align: center; margin: 4px 0; }
+    h2 { font-size: {{ $paper === '58mm' ? '13px' : '15px' }}; font-weight: 700; border-top: 1px dashed #000; padding-top: 4px; margin: 8px 0 4px; }
+    h3 { font-size: {{ $paper === '58mm' ? '12px' : '13px' }}; font-weight: 700; margin: 6px 0 2px; }
     table { width: 100%; border-collapse: collapse; }
     th, td { vertical-align: top; word-break: break-word; text-align: left; padding: 1px 2px; }
     th { border-bottom: 1px dashed #000; }
     th.amt, td.amt { text-align: right; white-space: nowrap; }
-    .total { border-top: 1px dashed #000; font-weight: bold; }
+    /* The Qty/Amt/"N ord" row labels are the only breakable cell in a figures row, so when the
+       nowrap amount columns claim the width the browser shatters the label one char per line
+       ("Qt"/"y"). Keeping the 3-char label on one line costs no width and stops the shatter. */
+    td.lbl { white-space: nowrap; }
+    /* The Qty/Amt figure rows print in 400 weight and came out FAINT on the roll while the bold
+       headings read fine. A hair of text-stroke thickens the figures + their Qty/Amt label so they
+       show clearly in print — a paint-only effect, so it never changes a column's width. Headings
+       (th, .name) are left as they are. Tune the 0.2px up/down for more/less darkness. */
+    td.amt, td.lbl { -webkit-text-stroke: 0.2px currentColor; }
+    .name { font-weight: 700; }
+    .total { border-top: 1px dashed #000; font-weight: 700; }
+    .name td, .total td { font-weight: 700; }
     @else
     body { width: 190mm; font-family: Arial, sans-serif; font-size: 12px; }
     h1 { font-size: 18px; margin: 4px 0; }
@@ -99,6 +153,7 @@
     table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
     th, td { border: 1px solid #bbb; padding: 3px 6px; text-align: left; }
     th.amt, td.amt { text-align: right; }
+    .name { font-weight: bold; }
     .total { font-weight: bold; background: #f2f2f2; }
     @endif
     .no-print { text-align: center; margin: 8px 0; }
@@ -106,7 +161,9 @@
 </style>
 </head>
 <body>
+@unless($embedded ?? false)
 <div class="no-print"><button onclick="window.print()">Print</button></div>
+@endunless
 
 <h1>{{ app()->bound('tenant') ? app('tenant')->business_name : 'Bingoo POS' }}</h1>
 <div style="text-align:center">
@@ -257,8 +314,10 @@
         @endif
         @if($isThermal)
             {!! $tEntry('TOTAL', collect($rows)->sum('sold_qty'), collect($rows)->sum('returned_qty'), collect($rows)->sum('net_qty'), collect($rows)->sum('net'), collect($rows)->sum('returns_amount'), collect($rows)->sum('net_value'), true) !!}
+            {!! $otBridge($orderType, 4) !!}
         @else
             <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty(collect($rows)->sum('sold_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('returned_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('net_qty')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('returns_amount')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net_value')) }}</td></tr>
+            {!! $otBridge($orderType, 7) !!}
         @endif
     </table>
 @endforeach
@@ -278,8 +337,10 @@
         @endif
         @if($isThermal)
             {!! $tEntry('TOTAL', collect($rows)->sum('sold_qty'), collect($rows)->sum('returned_qty'), collect($rows)->sum('net_qty'), collect($rows)->sum('net'), collect($rows)->sum('returns_amount'), collect($rows)->sum('net_value'), true) !!}
+            {!! $otBridge($orderType, 4) !!}
         @else
             <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty(collect($rows)->sum('sold_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('returned_qty')) }}</td><td class="amt">{{ $qty(collect($rows)->sum('net_qty')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('returns_amount')) }}</td><td class="amt">{{ $fmt(collect($rows)->sum('net_value')) }}</td></tr>
+            {!! $otBridge($orderType, 7) !!}
         @endif
     </table>
 @endforeach

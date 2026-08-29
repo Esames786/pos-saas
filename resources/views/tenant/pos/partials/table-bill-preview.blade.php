@@ -9,6 +9,9 @@
     $heldTotal = (float) $heldSales->sum('grand_total');
     $paidTotal = (float) $paidSales->sum('grand_total');
     $fmtQty    = fn ($q) => rtrim(rtrim(number_format((float) $q, 3, '.', ''), '0'), '.');
+    // Money WITHOUT a forced ".00" — whole rupees print "3,500", real paisa stay ("449.50") —
+    // matching EscPosPayloadService::money() so the table bill reads like the printed receipt.
+    $fmtMoney  = fn ($v) => rtrim(rtrim(number_format((float) $v, 2), '0'), '.');
 @endphp
 
 {{-- Receipt-style bill preview so the on-screen preview AND its browser print match the
@@ -22,7 +25,7 @@
     .tbill-receipt hr      { border: none; border-top: 1px dashed #000; margin: 4px 0; }
     .tbill-receipt table   { width: 100%; border-collapse: collapse; }
     .tbill-receipt td      { vertical-align: top; padding: 1px 0; border: none !important; }
-    .tbill-receipt .r      { text-align: right; white-space: nowrap; }
+    .tbill-receipt .r      { text-align: right; white-space: nowrap; padding-left: 10px; }
     @media screen { .tbill-receipt { width: 320px; } }
 </style>
 
@@ -44,7 +47,7 @@
     @endif
 
     <hr>
-    <div class="center bold">TABLE BILL — NOT A TAX RECEIPT</div>
+    <div class="center bold">TABLE BILL</div>
     <hr>
 
     @if(!($layout?->show_table_info === false))
@@ -63,7 +66,7 @@
                 <tr>
                     <td>{{ $line->product_name }}@if($line->variant_name) ({{ $line->variant_name }})@endif</td>
                     <td class="r">{{ $fmtQty($line->quantity) }}</td>
-                    <td class="r">{{ number_format((float) $line->line_total, 2) }}</td>
+                    <td class="r">{{ $fmtMoney($line->line_total) }}</td>
                 </tr>
                 @foreach(($line->modifiers ?? []) as $modifier)
                     @if(!empty($modifier['name']))
@@ -71,23 +74,23 @@
                     @endif
                 @endforeach
             @endforeach
-            <tr><td class="r" colspan="2">Subtotal</td><td class="r">{{ number_format((float) $sale->subtotal, 2) }}</td></tr>
+            <tr><td class="r" colspan="2">Subtotal</td><td class="r">{{ $fmtMoney($sale->subtotal) }}</td></tr>
             @if((float) $sale->discount_amount > 0)
-                <tr><td class="r" colspan="2">Discount</td><td class="r">-{{ number_format((float) $sale->discount_amount, 2) }}</td></tr>
+                <tr><td class="r" colspan="2">Discount</td><td class="r">-{{ $fmtMoney($sale->discount_amount) }}</td></tr>
             @endif
             @if((float) $sale->tax_amount > 0)
-                <tr><td class="r" colspan="2">Tax</td><td class="r">{{ number_format((float) $sale->tax_amount, 2) }}</td></tr>
+                <tr><td class="r" colspan="2">Tax</td><td class="r">{{ $fmtMoney($sale->tax_amount) }}</td></tr>
             @endif
             @if((float) $sale->service_charge_amount > 0)
-                <tr><td class="r" colspan="2">Service Charge</td><td class="r">{{ number_format((float) $sale->service_charge_amount, 2) }}</td></tr>
+                <tr><td class="r" colspan="2">Service Charge</td><td class="r">{{ $fmtMoney($sale->service_charge_amount) }}</td></tr>
             @endif
             @if((float) $sale->delivery_charge_amount > 0)
-                <tr><td class="r" colspan="2">Delivery Charge</td><td class="r">{{ number_format((float) $sale->delivery_charge_amount, 2) }}</td></tr>
+                <tr><td class="r" colspan="2">Delivery Charge</td><td class="r">{{ $fmtMoney($sale->delivery_charge_amount) }}</td></tr>
             @endif
             @if((float) $sale->tip_amount > 0)
-                <tr><td class="r" colspan="2">Tip</td><td class="r">{{ number_format((float) $sale->tip_amount, 2) }}</td></tr>
+                <tr><td class="r" colspan="2">Tip</td><td class="r">{{ $fmtMoney($sale->tip_amount) }}</td></tr>
             @endif
-            <tr><td class="r bold" colspan="2">Order total</td><td class="r bold">{{ number_format((float) $sale->grand_total, 2) }}</td></tr>
+            <tr><td class="r bold" colspan="2">Order total</td><td class="r bold">{{ $fmtMoney($sale->grand_total) }}</td></tr>
         </table>
         <hr>
     @empty
@@ -96,9 +99,9 @@
     @endforelse
 
     <table>
-        <tr><td class="r bold">OPEN CHECK</td><td class="r bold">{{ number_format($heldTotal, 2) }}</td></tr>
+        <tr><td class="r bold">OPEN CHECK</td><td class="r bold">{{ $fmtMoney($heldTotal) }}</td></tr>
         @if($paidTotal > 0)
-            <tr><td class="r">Previously paid</td><td class="r">{{ number_format($paidTotal, 2) }}</td></tr>
+            <tr><td class="r">Previously paid</td><td class="r">{{ $fmtMoney($paidTotal) }}</td></tr>
         @endif
     </table>
 
@@ -110,7 +113,7 @@
                 <tr>
                     <td>{{ $sale->sale_no }}</td>
                     <td class="r">{{ app(\App\Support\TenantClock::class)->formatSale($sale, 'd/m H:i') }}</td>
-                    <td class="r">{{ number_format((float) $sale->grand_total, 2) }}</td>
+                    <td class="r">{{ $fmtMoney($sale->grand_total) }}</td>
                 </tr>
             @endforeach
         </table>

@@ -29,7 +29,7 @@ class SalesReportCenterController extends Controller
      */
     public static function sectionPermission(string $section): string
     {
-        return 'tenant.reports.center.sections.' . str_replace('_', '-', $section);
+        return 'tenant.reports.center.sections.'.str_replace('_', '-', $section);
     }
 
     /** Sections the current user may see, in canonical order. */
@@ -46,8 +46,7 @@ class SalesReportCenterController extends Controller
     public function __construct(
         private readonly SalesReportEngine $engine,
         private readonly SalesReportExporter $exporter,
-    ) {
-    }
+    ) {}
 
     private function filters(Request $request): array
     {
@@ -105,6 +104,46 @@ class SalesReportCenterController extends Controller
             };
         }
 
+        // Network printers the report can be streamed to (Send to network). When the report is scoped
+        // to ONE terminal — the resolved filter terminal_id (the POS counter passes its own, and a
+        // terminal-bound operator is auto-scoped to theirs) — only THAT terminal's attached printer(s)
+        // show, receipt first so it is the default choice. So the Delivery counter defaults to the
+        // Delivery printer and cannot stream to another counter. With no terminal in scope (an owner
+        // viewing "All") every network printer is offered.
+        $networkPrinterQuery = \App\Models\Tenant\Printer::where('is_active', 1)
+            ->where('printer_type', 'network')->whereNotNull('ip_address');
+
+        $terminalId = $filters['terminal_id'] ?? auth('tenant')->user()?->default_terminal_id;
+        if (! $terminalId) {
+            // A terminal-bound operator (e.g. a Delivery user with no default_terminal_id set) is
+            // still bound to exactly their counter via terminal_user — scope to that sole terminal.
+            $bound = DB::connection('tenant')->table('terminal_user')
+                ->where('user_id', auth('tenant')->id())->pluck('terminal_id');
+            if ($bound->count() === 1) {
+                $terminalId = (int) $bound->first();
+            }
+        }
+        $terminalPrinterIds = [];
+        if ($terminalId) {
+            $setting = \App\Models\Tenant\TerminalPrinterSetting::where('terminal_id', $terminalId)->first();
+            if ($setting) {
+                // Receipt first (default option), then a distinct KOT printer if the terminal has one.
+                $terminalPrinterIds = array_values(array_unique(array_filter([
+                    $setting->receipt_printer_id, $setting->kot_printer_id,
+                ])));
+            }
+        }
+        if (! empty($terminalPrinterIds)) {
+            $networkPrinterQuery->whereIn('id', $terminalPrinterIds);
+        }
+        $networkPrinters = $networkPrinterQuery->orderBy('name')->get(['id', 'name']);
+        if (! empty($terminalPrinterIds)) {
+            // Keep receipt-before-KOT order so the receipt printer is the first (default) option.
+            $networkPrinters = $networkPrinters
+                ->sortBy(fn ($p) => array_search($p->id, $terminalPrinterIds))
+                ->values();
+        }
+
         return view('tenant.reports.center.index', [
             'tab' => $tab,
             'allowedSections' => $allowed,
@@ -121,6 +160,8 @@ class SalesReportCenterController extends Controller
                 ? array_intersect_key(\App\Models\Tenant\User::ORDER_TYPES, array_flip($types))
                 : \App\Models\Tenant\User::ORDER_TYPES,
             'schedules' => DB::connection('tenant')->table('report_schedules')->orderBy('id')->get(),
+            // Network printers the report can be streamed to via the agent (scoped above).
+            'networkPrinters' => $networkPrinters,
         ]);
     }
 
@@ -145,11 +186,11 @@ class SalesReportCenterController extends Controller
         $csvBySection = $this->exporter->sections($filters, $sections);
 
         return CsvStreamer::download(
-            'sales-report-' . $filters['date_from'] . '_' . $filters['date_to'] . '.csv',
-            CsvStreamer::financeHeader('Sales Report Center', ['Period' => $filters['date_from'] . ' → ' . $filters['date_to']]),
+            'sales-report-'.$filters['date_from'].'_'.$filters['date_to'].'.csv',
+            CsvStreamer::financeHeader('Sales Report Center', ['Period' => $filters['date_from'].' → '.$filters['date_to']]),
             function ($out) use ($csvBySection) {
                 foreach ($csvBySection as $section => $csv) {
-                    fputcsv($out, ['== ' . strtoupper(str_replace('_', ' ', $section)) . ' ==']);
+                    fputcsv($out, ['== '.strtoupper(str_replace('_', ' ', $section)).' ==']);
                     // strip the per-section BOM; rows are already CSV text.
                     fwrite($out, preg_replace('/^\xEF\xBB\xBF/', '', $csv));
                     fputcsv($out, []);
@@ -197,6 +238,66 @@ class SalesReportCenterController extends Controller
         ]);
     }
 
+    /**
+     * REPORT-SEND-TO-NETWORK-1 — queue the report to a network thermal printer via the print agent,
+     * exactly like a receipt: build the ESC/POS bytes and drop one `report` print_jobs row; the agent
+     * streams it. Scoped through the same filters() as the screen, so a restricted operator can only
+     * ever send a report of his own terminals/order types. (order_type_combos is A4/screen only.)
+     */
+    public function sendToNetwork(Request $request, \App\Services\Printing\EscPosPayloadService $esc)
+    {
+        $request->validate(['printer_id' => ['required', 'exists:printers,id']]);
+
+        $printer = \App\Models\Tenant\Printer::findOrFail($request->integer('printer_id'));
+        if ($printer->printer_type !== 'network' || ! $printer->ip_address) {
+            return response()->json(['ok' => false, 'message' => 'Choose a network printer that has an IP address.'], 422);
+        }
+
+        $filters = $this->filters($request);
+        $allowed = $this->allowedSections();
+        $requested = (array) $request->input('sections', []);
+        $sections = array_values(array_intersect($requested ?: $allowed, $allowed));
+        $pick = fn (string $key, callable $loader) => in_array($key, $sections, true) ? $loader() : null;
+        $summary = $this->engine->overview($filters);
+
+        $report = [
+            'sections' => $sections,
+            'bridge' => $summary,
+            'overview' => in_array('overview', $sections, true) ? $summary : null,
+            'orderTypes' => $pick('order_types', fn () => $this->engine->byOrderType($filters)),
+            'categories' => $pick('categories', fn () => $this->engine->byCategory($filters)),
+            'items' => $pick('items', fn () => $this->engine->byItem($filters)),
+            'waiters' => $pick('waiters', fn () => $this->engine->byWaiter($filters)),
+            'cancellations' => $pick('cancellations', fn () => $this->engine->cancellations($filters)),
+            'cashBank' => $pick('cash_bank', fn () => $this->engine->cashBank($filters)),
+            'meta' => [
+                'business_name' => app()->bound('tenant') ? (app('tenant')->business_name ?? 'Sales Report') : 'Sales Report',
+                'label' => 'Z / End of Day',
+                'date_from' => $filters['date_from'] ?? '',
+                'date_to' => $filters['date_to'] ?? '',
+                'generated' => app(\App\Support\TenantClock::class)->now()->format('d-M-Y H:i'),
+                'paper' => in_array($printer->paper_size, ['58mm', '80mm'], true) ? $printer->paper_size : '80mm',
+            ],
+        ];
+
+        $branchId = collect($filters['branch_ids'] ?? [])->first() ?? auth('tenant')->user()?->default_branch_id;
+
+        $job = app(\App\Services\Printing\PrintJobFactory::class)->create([
+            'branch_id' => $branchId,
+            'terminal_id' => null,   // a report is not terminal-specific; any agent may print it
+            'printer_id' => $printer->id,
+            'document_type' => 'report',
+            'print_status' => 'queued',
+            'reference_type' => 'report',
+            'reference_no' => trim(($report['meta']['date_from'] ?: '').' - '.($report['meta']['date_to'] ?: ''), ' -'),
+            'payload' => ['sections' => $sections, 'date_from' => $report['meta']['date_from'], 'date_to' => $report['meta']['date_to']],
+            'raw_payload' => $esc->buildReport($report),
+            'created_by_user_id' => auth('tenant')->id(),
+        ], 'RPT');
+
+        return response()->json(['ok' => true, 'job_id' => $job->id, 'printer' => $printer->name]);
+    }
+
     /** Email Now — tenant default email; controlled error when unconfigured (spec Z). */
     public function emailNow(Request $request)
     {
@@ -210,11 +311,11 @@ class SalesReportCenterController extends Controller
         $csv = $this->exporter->sections($filters, $sections);
         Mail::to($recipient)->send(new SalesReportMail(
             (string) app('tenant')->business_name,
-            $filters['date_from'] . ' → ' . $filters['date_to'],
+            $filters['date_from'].' → '.$filters['date_to'],
             $csv
         ));
 
-        return back()->with('status', 'Report emailed to ' . $recipient . '.');
+        return back()->with('status', 'Report emailed to '.$recipient.'.');
     }
 
     public function storeSchedule(Request $request, ReportScheduleService $schedules)
@@ -222,18 +323,29 @@ class SalesReportCenterController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:120'],
             'sections' => ['required', 'array', 'min:1'],
-            'sections.*' => ['string', 'in:' . implode(',', self::SECTIONS)],
+            'sections.*' => ['string', 'in:'.implode(',', self::SECTIONS)],
             'frequency' => ['required', 'in:daily,weekly,monthly'],
             'weekday' => ['nullable', 'integer', 'min:1', 'max:7', 'required_if:frequency,weekly'],
             'day_of_month' => ['nullable', 'integer', 'min:1', 'max:31', 'required_if:frequency,monthly'],
             'send_time' => ['required', 'date_format:H:i'],
+            'recipient_emails' => ['nullable', 'string', 'max:1000'],
+            'delivery_format' => ['required', 'in:csv,a4_pdf'],
         ]);
-        if (! (app()->bound('tenant') ? app('tenant')?->owner_email : null)) {
+        $recipientInput = preg_split('/[\s,;]+/', trim((string) ($data['recipient_emails'] ?? '')), -1, PREG_SPLIT_NO_EMPTY);
+        $recipientEmails = array_values(array_unique(array_map('strtolower', $recipientInput ?: [])));
+        foreach ($recipientEmails as $email) {
+            if (filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+                return back()->withErrors(['recipient_emails' => 'Every report recipient must be a valid email address.'])->withInput();
+            }
+        }
+        if ($recipientEmails === [] && ! (app()->bound('tenant') ? app('tenant')?->owner_email : null)) {
             return back()->withErrors(['email' => 'Set the tenant default email (owner email) before scheduling reports.']);
         }
         DB::connection('tenant')->table('report_schedules')->insert([
             'name' => $data['name'],
             'sections' => json_encode(array_values($data['sections'])),
+            'recipient_emails' => $recipientEmails === [] ? null : json_encode($recipientEmails),
+            'delivery_format' => $data['delivery_format'],
             'frequency' => $data['frequency'],
             'weekday' => $data['weekday'] ?? null,
             'day_of_month' => $data['day_of_month'] ?? null,
@@ -243,7 +355,7 @@ class SalesReportCenterController extends Controller
             'created_at' => now(), 'updated_at' => now(),
         ]);
 
-        return back()->with('status', 'Schedule created (' . $data['frequency'] . ' at ' . $data['send_time'] . ', ' . $schedules->timezone() . ').');
+        return back()->with('status', 'Schedule created ('.$data['frequency'].' at '.$data['send_time'].', '.$schedules->timezone().').');
     }
 
     public function destroySchedule(int $schedule)

@@ -70,6 +70,8 @@ Route::domain(config('tenancy.central_domain'))
 
                 Route::post('/tenants/{tenant}/backup', [TenantController::class, 'backup'])->name('central.tenants.backup');
                 Route::get('/tenants/{tenant}/backups', [TenantController::class, 'backups'])->name('central.tenants.backups');
+                // TENANT-AUTO-BACKUP-1 — save a tenant's automatic backup schedule.
+                Route::post('/tenants/{tenant}/backup-settings', [TenantController::class, 'saveBackupSettings'])->name('central.tenants.backup-settings.save');
                 Route::post('/tenants/{tenant}/sync', [TenantController::class, 'sync'])->name('central.tenants.sync');
                 Route::post('/tenants/{tenant}/reset', [TenantController::class, 'reset'])->name('central.tenants.reset');
 

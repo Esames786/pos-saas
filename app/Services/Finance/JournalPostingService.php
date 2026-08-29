@@ -10,6 +10,7 @@ use App\Models\Tenant\JournalEntry;
 use App\Models\Tenant\PurchaseBill;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\SalesReturn;
+use App\Models\Tenant\Supplier;
 use App\Models\Tenant\SupplierPayment;
 use Illuminate\Support\Facades\DB;
 use Throwable;
@@ -38,6 +39,7 @@ class JournalPostingService
             $creditAccountId = $voucher->cashBankAccount?->account_id;
             if (! $creditAccountId) {
                 report(new \RuntimeException("Expense voucher {$voucher->voucher_no} cash/bank account has no linked CoA account; journal skipped."));
+
                 return null;
             }
 
@@ -46,33 +48,34 @@ class JournalPostingService
 
             foreach ($voucher->lines as $line) {
                 $lines[] = [
-                    'account_id'  => $line->account_id ?: $fallbackExpenseId,
-                    'branch_id'   => $voucher->branch_id,
+                    'account_id' => $line->account_id ?: $fallbackExpenseId,
+                    'branch_id' => $voucher->branch_id,
                     'description' => $line->description ?: 'Expense',
-                    'debit'       => (float) $line->line_total,
-                    'credit'      => 0,
+                    'debit' => (float) $line->line_total,
+                    'credit' => 0,
                 ];
             }
 
             $lines[] = [
-                'account_id'  => $creditAccountId,
-                'branch_id'   => $voucher->branch_id,
-                'description' => 'Paid from ' . ($voucher->cashBankAccount->name ?? 'cash/bank'),
-                'debit'       => 0,
-                'credit'      => (float) $voucher->total_amount,
+                'account_id' => $creditAccountId,
+                'branch_id' => $voucher->branch_id,
+                'description' => 'Paid from '.($voucher->cashBankAccount->name ?? 'cash/bank'),
+                'debit' => 0,
+                'credit' => (float) $voucher->total_amount,
             ];
 
             return $this->journal->post(
                 'expense_voucher',
                 $voucher->id,
                 $voucher->voucher_no,
-                'Expense voucher ' . $voucher->voucher_no,
+                'Expense voucher '.$voucher->voucher_no,
                 ($voucher->payment_date ?? $voucher->expense_date)?->toDateString() ?? now()->toDateString(),
                 $lines,
                 $userId
             );
         } catch (Throwable $e) {
             report($e);
+
             return null;
         }
     }
@@ -92,20 +95,56 @@ class JournalPostingService
 
             $lines = [
                 ['account_code' => '2100', 'branch_id' => $payment->branch_id, 'description' => 'Accounts Payable', 'debit' => (float) $payment->amount, 'credit' => 0],
-                ['account_id' => $creditAccountId, 'branch_id' => $payment->branch_id, 'description' => 'Supplier payment ' . $payment->payment_no, 'debit' => 0, 'credit' => (float) $payment->amount],
+                ['account_id' => $creditAccountId, 'branch_id' => $payment->branch_id, 'description' => 'Supplier payment '.$payment->payment_no, 'debit' => 0, 'credit' => (float) $payment->amount],
             ];
 
             return $this->journal->post(
                 'supplier_payment',
                 $payment->id,
                 $payment->payment_no,
-                'Supplier payment ' . $payment->payment_no,
+                'Supplier payment '.$payment->payment_no,
                 $payment->payment_date?->toDateString() ?? now()->toDateString(),
                 $lines,
                 $userId
             );
         } catch (Throwable $e) {
             report($e);
+
+            return null;
+        }
+    }
+
+    /**
+     * Dr Opening Balance Equity / Cr Accounts Payable — puts a supplier's OPENING payable
+     * into the GL so the subsidiary supplier ledger reconciles with the Accounts Payable
+     * control account. The offset is equity, not an expense: an opening balance predates the
+     * accounting period, so it must NEVER touch the current P&L. Idempotent via the source key.
+     */
+    public function postSupplierOpeningBalance(Supplier $supplier, ?int $userId = null): ?JournalEntry
+    {
+        try {
+            $opening = round((float) $supplier->opening_balance, 2);
+            if ($opening <= 0) {
+                return null;
+            }
+
+            $lines = [
+                ['account_code' => '3300', 'description' => 'Opening balance - '.$supplier->name, 'debit' => $opening, 'credit' => 0],
+                ['account_code' => '2100', 'description' => 'Supplier opening - '.$supplier->name, 'debit' => 0, 'credit' => $opening],
+            ];
+
+            return $this->journal->post(
+                'supplier_opening_balance',
+                $supplier->id,
+                'SUP-OPEN-'.$supplier->code,
+                'Supplier opening balance - '.$supplier->name,
+                $supplier->created_at?->toDateString() ?? now()->toDateString(),
+                $lines,
+                $userId
+            );
+        } catch (Throwable $e) {
+            report($e);
+
             return null;
         }
     }
@@ -124,7 +163,7 @@ class JournalPostingService
             }
 
             $lines = [
-                ['account_id' => $debitAccountId, 'branch_id' => $payment->branch_id, 'description' => 'Customer payment ' . $payment->payment_no, 'debit' => (float) $payment->amount, 'credit' => 0],
+                ['account_id' => $debitAccountId, 'branch_id' => $payment->branch_id, 'description' => 'Customer payment '.$payment->payment_no, 'debit' => (float) $payment->amount, 'credit' => 0],
                 ['account_code' => '1300', 'branch_id' => $payment->branch_id, 'description' => 'Accounts Receivable', 'debit' => 0, 'credit' => (float) $payment->amount],
             ];
 
@@ -132,13 +171,14 @@ class JournalPostingService
                 'customer_payment',
                 $payment->id,
                 $payment->payment_no,
-                'Customer payment ' . $payment->payment_no,
+                'Customer payment '.$payment->payment_no,
                 $payment->payment_date?->toDateString() ?? now()->toDateString(),
                 $lines,
                 $userId
             );
         } catch (Throwable $e) {
             report($e);
+
             return null;
         }
     }
@@ -180,9 +220,9 @@ class JournalPostingService
             $sale->loadMissing(['payments.method.cashBankAccount', 'lines']);
 
             $discount = round((float) ($sale->discount_amount ?? 0), 4);
-            $tax      = round((float) ($sale->tax_amount ?? 0), 4);
-            $service  = round((float) ($sale->service_charge_amount ?? 0), 4);
-            $tip      = round((float) ($sale->tip_amount ?? 0), 4);
+            $tax = round((float) ($sale->tax_amount ?? 0), 4);
+            $service = round((float) ($sale->service_charge_amount ?? 0), 4);
+            $tip = round((float) ($sale->tip_amount ?? 0), 4);
             $delivery = round((float) ($sale->delivery_charge_amount ?? 0), 4);
 
             $undepositedId = $this->journal->accountId('1500');
@@ -200,11 +240,11 @@ class JournalPostingService
                 }
                 $accountId = $payment->method?->cashBankAccount?->account_id ?? $undepositedId;
                 $lines[] = [
-                    'account_id'  => $accountId,
-                    'branch_id'   => $sale->branch_id,
-                    'description' => 'Sale receipt (' . ($payment->method?->name ?? 'payment') . ')',
-                    'debit'       => $applied,
-                    'credit'      => 0,
+                    'account_id' => $accountId,
+                    'branch_id' => $sale->branch_id,
+                    'description' => 'Sale receipt ('.($payment->method?->name ?? 'payment').')',
+                    'debit' => $applied,
+                    'credit' => 0,
                 ];
                 $remaining -= $applied;
             }
@@ -235,10 +275,10 @@ class JournalPostingService
                 if ($delivery > 0) {
                     $lines[] = ['account_code' => '4150', 'branch_id' => $sale->branch_id, 'description' => 'Delivery charge', 'debit' => 0, 'credit' => $delivery];
                 }
-                $lines[] = ['account_code' => $revenueCode, 'branch_id' => $sale->branch_id, 'description' => 'Sales revenue ' . $sale->sale_no, 'debit' => 0, 'credit' => $revenue];
+                $lines[] = ['account_code' => $revenueCode, 'branch_id' => $sale->branch_id, 'description' => 'Sales revenue '.$sale->sale_no, 'debit' => 0, 'credit' => $revenue];
             } else {
                 // Pathological (revenue computes <= 0): keep it simple and balanced.
-                $lines[] = ['account_code' => $revenueCode, 'branch_id' => $sale->branch_id, 'description' => 'Sales revenue ' . $sale->sale_no, 'debit' => 0, 'credit' => $grand];
+                $lines[] = ['account_code' => $revenueCode, 'branch_id' => $sale->branch_id, 'description' => 'Sales revenue '.$sale->sale_no, 'debit' => 0, 'credit' => $grand];
             }
 
             // COGS (FIN-7C): Dr 5100 Product COGS / Cr 1400 Inventory Asset — an
@@ -247,8 +287,8 @@ class JournalPostingService
             // consumption (postOutFefo on each ingredient), so their cost_total must
             // NOT credit 1400 again. Instead credit 5200 Recipe/Ingredient COGS for
             // those lines so the GL stays reconciled with the stock ledger.
-            $stockItemCogs  = 0.0;
-            $recipeCogs     = 0.0;
+            $stockItemCogs = 0.0;
+            $recipeCogs = 0.0;
             foreach ($sale->lines as $line) {
                 $method = $line->product?->inventory_consumption_method ?? 'stock_item';
                 if ($method === 'recipe') {
@@ -258,32 +298,33 @@ class JournalPostingService
                 }
             }
             $stockItemCogs = round($stockItemCogs, 4);
-            $recipeCogs    = round($recipeCogs, 4);
+            $recipeCogs = round($recipeCogs, 4);
 
             if ($stockItemCogs > 0) {
-                $lines[] = ['account_code' => '5100', 'branch_id' => $sale->branch_id, 'description' => 'COGS ' . $sale->sale_no, 'debit' => $stockItemCogs, 'credit' => 0];
-                $lines[] = ['account_code' => '1400', 'branch_id' => $sale->branch_id, 'description' => 'Inventory reduction ' . $sale->sale_no, 'debit' => 0, 'credit' => $stockItemCogs];
+                $lines[] = ['account_code' => '5100', 'branch_id' => $sale->branch_id, 'description' => 'COGS '.$sale->sale_no, 'debit' => $stockItemCogs, 'credit' => 0];
+                $lines[] = ['account_code' => '1400', 'branch_id' => $sale->branch_id, 'description' => 'Inventory reduction '.$sale->sale_no, 'debit' => 0, 'credit' => $stockItemCogs];
             }
             if ($recipeCogs > 0) {
                 // Recipe ingredient cost: stock was already moved by individual ingredient
                 // postOutFefo calls. We post Dr 5200 / Cr 5200 as a COGS reclassification
                 // — actually Dr 5200 Recipe COGS / Cr 5100 Product COGS to keep the P&L
                 // accurate without touching 1400 again.
-                $lines[] = ['account_code' => '5200', 'branch_id' => $sale->branch_id, 'description' => 'Recipe COGS ' . $sale->sale_no, 'debit' => $recipeCogs, 'credit' => 0];
-                $lines[] = ['account_code' => '5100', 'branch_id' => $sale->branch_id, 'description' => 'Recipe COGS transfer ' . $sale->sale_no, 'debit' => 0, 'credit' => $recipeCogs];
+                $lines[] = ['account_code' => '5200', 'branch_id' => $sale->branch_id, 'description' => 'Recipe COGS '.$sale->sale_no, 'debit' => $recipeCogs, 'credit' => 0];
+                $lines[] = ['account_code' => '5100', 'branch_id' => $sale->branch_id, 'description' => 'Recipe COGS transfer '.$sale->sale_no, 'debit' => 0, 'credit' => $recipeCogs];
             }
 
             return $this->journal->post(
                 'sales_order_paid',
                 $sale->id,
                 $sale->sale_no,
-                'Paid sale ' . $sale->sale_no,
+                'Paid sale '.$sale->sale_no,
                 ($sale->sale_date ?? now())->toDateString(),
                 $lines,
                 $userId
             );
         } catch (Throwable $e) {
             report($e);
+
             return null;
         }
     }
@@ -305,20 +346,21 @@ class JournalPostingService
 
             $lines = [
                 ['account_code' => '1300', 'branch_id' => $sale->branch_id, 'description' => 'Accounts Receivable', 'debit' => $amount, 'credit' => 0],
-                ['account_code' => $revenueCode, 'branch_id' => $sale->branch_id, 'description' => 'Credit sale ' . $sale->sale_no, 'debit' => 0, 'credit' => $amount],
+                ['account_code' => $revenueCode, 'branch_id' => $sale->branch_id, 'description' => 'Credit sale '.$sale->sale_no, 'debit' => 0, 'credit' => $amount],
             ];
 
             return $this->journal->post(
                 'sales_order_credit',
                 $sale->id,
                 $sale->sale_no,
-                'Credit sale ' . $sale->sale_no,
+                'Credit sale '.$sale->sale_no,
                 ($sale->sale_date ?? now())->toDateString(),
                 $lines,
                 $userId
             );
         } catch (Throwable $e) {
             report($e);
+
             return null;
         }
     }
@@ -339,7 +381,7 @@ class JournalPostingService
 
             $subtotal = round((float) $return->subtotal, 4);
             $discount = round((float) ($return->discount_amount ?? 0), 4);
-            $tax      = round((float) $return->tax_amount, 4);
+            $tax = round((float) $return->tax_amount, 4);
 
             $return->loadMissing(['order', 'lines.orderLine']);
 
@@ -355,9 +397,9 @@ class JournalPostingService
                 foreach ($return->order->payments as $payment) {
                     $methodType = $payment->method?->method_type;
                     $matches = match ($return->refund_method) {
-                        'cash'          => $methodType === 'cash',
+                        'cash' => $methodType === 'cash',
                         'bank_transfer' => $methodType === 'bank_transfer',
-                        default         => false,
+                        default => false,
                     };
                     if ($matches && $payment->method?->cashBankAccount?->account_id) {
                         $creditAccountId = $payment->method->cashBankAccount->account_id;
@@ -382,7 +424,7 @@ class JournalPostingService
 
             $lines = [];
             if ($subtotal > 0) {
-                $lines[] = ['account_code' => $revenueCode, 'branch_id' => $return->branch_id, 'description' => 'Sales return ' . $return->return_no, 'debit' => $subtotal, 'credit' => 0];
+                $lines[] = ['account_code' => $revenueCode, 'branch_id' => $return->branch_id, 'description' => 'Sales return '.$return->return_no, 'debit' => $subtotal, 'credit' => 0];
             }
             if ($tax > 0) {
                 $lines[] = ['account_code' => '2200', 'branch_id' => $return->branch_id, 'description' => 'Sales tax reversal', 'debit' => $tax, 'credit' => 0];
@@ -396,7 +438,7 @@ class JournalPostingService
             if ($deliveryRefund > 0) {
                 $lines[] = ['account_code' => '4150', 'branch_id' => $return->branch_id, 'description' => 'Delivery charge refunded', 'debit' => $deliveryRefund, 'credit' => 0];
             }
-            $lines[] = ['account_id' => $creditAccountId, 'branch_id' => $return->branch_id, 'description' => 'Refund ' . $return->return_no, 'debit' => 0, 'credit' => $grand];
+            $lines[] = ['account_id' => $creditAccountId, 'branch_id' => $return->branch_id, 'description' => 'Refund '.$return->return_no, 'debit' => 0, 'credit' => $grand];
 
             // COGS reversal — returned goods go back into inventory (balanced pair).
             $cogs = 0.0;
@@ -405,21 +447,22 @@ class JournalPostingService
             }
             $cogs = round($cogs, 4);
             if ($cogs > 0) {
-                $lines[] = ['account_code' => '1400', 'branch_id' => $return->branch_id, 'description' => 'Inventory restock ' . $return->return_no, 'debit' => $cogs, 'credit' => 0];
-                $lines[] = ['account_code' => '5100', 'branch_id' => $return->branch_id, 'description' => 'COGS reversal ' . $return->return_no, 'debit' => 0, 'credit' => $cogs];
+                $lines[] = ['account_code' => '1400', 'branch_id' => $return->branch_id, 'description' => 'Inventory restock '.$return->return_no, 'debit' => $cogs, 'credit' => 0];
+                $lines[] = ['account_code' => '5100', 'branch_id' => $return->branch_id, 'description' => 'COGS reversal '.$return->return_no, 'debit' => 0, 'credit' => $cogs];
             }
 
             return $this->journal->post(
                 'sales_return',
                 $return->id,
                 $return->return_no,
-                'Sales return ' . $return->return_no,
+                'Sales return '.$return->return_no,
                 ($return->return_date ?? now())->toDateString(),
                 $lines,
                 $userId
             );
         } catch (Throwable $e) {
             report($e);
+
             return null;
         }
     }
@@ -466,15 +509,15 @@ class JournalPostingService
 
                     CashBankAccountTransaction::create([
                         'cash_bank_account_id' => $cash->id,
-                        'transaction_date'     => ($sale->sale_date ?? now())->toDateString(),
-                        'direction'            => 'in',
-                        'amount'               => $payment->amount,
-                        'balance_after'        => $newBalance,
-                        'transaction_type'     => 'sales_payment',
-                        'reference_type'       => 'sale_payment',
-                        'reference_id'         => $payment->id,
-                        'notes'                => 'Sale receipt ' . $sale->sale_no,
-                        'created_by_user_id'   => $userId,
+                        'transaction_date' => ($sale->sale_date ?? now())->toDateString(),
+                        'direction' => 'in',
+                        'amount' => $payment->amount,
+                        'balance_after' => $newBalance,
+                        'transaction_type' => 'sales_payment',
+                        'reference_type' => 'sale_payment',
+                        'reference_id' => $payment->id,
+                        'notes' => 'Sale receipt '.$sale->sale_no,
+                        'created_by_user_id' => $userId,
                     ]);
 
                     $cash->update(['current_balance' => $newBalance]);
@@ -505,9 +548,9 @@ class JournalPostingService
                 foreach ($return->order->payments as $payment) {
                     $methodType = $payment->method?->method_type;
                     $matches = match ($return->refund_method) {
-                        'cash'          => $methodType === 'cash',
+                        'cash' => $methodType === 'cash',
                         'bank_transfer' => $methodType === 'bank_transfer',
-                        default         => false,
+                        default => false,
                     };
                     if ($matches && $payment->method?->cash_bank_account_id) {
                         $cashBankAccountId = $payment->method->cash_bank_account_id;
@@ -549,15 +592,15 @@ class JournalPostingService
 
                 CashBankAccountTransaction::create([
                     'cash_bank_account_id' => $cash->id,
-                    'transaction_date'     => ($return->return_date ?? now())->toDateString(),
-                    'direction'            => 'out',
-                    'amount'               => $amount,
-                    'balance_after'        => $newBalance,
-                    'transaction_type'     => 'sales_return_refund',
-                    'reference_type'       => 'sales_return',
-                    'reference_id'         => $return->id,
-                    'notes'                => 'Refund ' . $return->return_no,
-                    'created_by_user_id'   => $userId,
+                    'transaction_date' => ($return->return_date ?? now())->toDateString(),
+                    'direction' => 'out',
+                    'amount' => $amount,
+                    'balance_after' => $newBalance,
+                    'transaction_type' => 'sales_return_refund',
+                    'reference_type' => 'sales_return',
+                    'reference_id' => $return->id,
+                    'notes' => 'Refund '.$return->return_no,
+                    'created_by_user_id' => $userId,
                 ]);
 
                 $cash->update(['current_balance' => $newBalance]);
@@ -582,20 +625,21 @@ class JournalPostingService
 
             $lines = [
                 ['account_code' => '1400', 'branch_id' => $bill->branch_id, 'description' => 'Inventory Asset', 'debit' => $amount, 'credit' => 0],
-                ['account_code' => '2100', 'branch_id' => $bill->branch_id, 'description' => 'Purchase bill ' . $bill->bill_no, 'debit' => 0, 'credit' => $amount],
+                ['account_code' => '2100', 'branch_id' => $bill->branch_id, 'description' => 'Purchase bill '.$bill->bill_no, 'debit' => 0, 'credit' => $amount],
             ];
 
             return $this->journal->post(
                 'purchase_bill',
                 $bill->id,
                 $bill->bill_no,
-                'Purchase bill ' . $bill->bill_no,
+                'Purchase bill '.$bill->bill_no,
                 $bill->bill_date?->toDateString() ?? now()->toDateString(),
                 $lines,
                 $userId
             );
         } catch (Throwable $e) {
             report($e);
+
             return null;
         }
     }
@@ -616,7 +660,7 @@ class JournalPostingService
             }
 
             $lines = [
-                ['account_code' => '2100', 'branch_id' => $return->branch_id, 'description' => 'Purchase return ' . $return->return_no, 'debit' => $amount, 'credit' => 0],
+                ['account_code' => '2100', 'branch_id' => $return->branch_id, 'description' => 'Purchase return '.$return->return_no, 'debit' => $amount, 'credit' => 0],
                 ['account_code' => '1400', 'branch_id' => $return->branch_id, 'description' => 'Inventory Asset', 'debit' => 0, 'credit' => $amount],
             ];
 
@@ -624,13 +668,14 @@ class JournalPostingService
                 'purchase_return',
                 $return->id,
                 $return->return_no,
-                'Purchase return ' . $return->return_no,
+                'Purchase return '.$return->return_no,
                 $return->return_date?->toDateString() ?? now()->toDateString(),
                 $lines,
                 $userId
             );
         } catch (Throwable $e) {
             report($e);
+
             return null;
         }
     }
@@ -647,6 +692,7 @@ class JournalPostingService
             return $this->journal->reverse($entry, $reason, $userId);
         } catch (Throwable $e) {
             report($e);
+
             return null;
         }
     }
@@ -654,5 +700,245 @@ class JournalPostingService
     private function cashBankCoaId(int $cashBankAccountId): ?int
     {
         return CashBankAccount::whereKey($cashBankAccountId)->value('account_id');
+    }
+
+    // ── CATERING-GO-LIVE-READINESS-1 (§5): Catering translators ─────────────────
+    //
+    // DELIBERATE CONTRACT DIFFERENCE from the safe-null translators above: the
+    // catering business flows are ATOMIC (operational row + GL + cash/bank in one
+    // transaction), so these methods THROW instead of swallowing — a posting
+    // failure must roll the whole business operation back, never leave a document
+    // without its journal. Replay of the same source identity returns the existing
+    // entry; a replay whose amounts CONFLICT with the posted entry refuses loudly.
+
+    /** Guard: same source identity may replay, but never with different money. */
+    private function assertReplayMatches(string $sourceType, int $sourceId, float $expectedTotal): ?JournalEntry
+    {
+        $existing = $this->journal->findPostedForSource($sourceType, $sourceId);
+        if ($existing && round((float) $existing->total_debit, 2) !== round($expectedTotal, 2)) {
+            throw new \RuntimeException(
+                "Refusing {$sourceType}#{$sourceId} replay: posted journal {$existing->entry_no} totals "
+                .number_format((float) $existing->total_debit, 2).' but the payload now claims '
+                .number_format($expectedTotal, 2).' — conflicting financial payloads are never merged.'
+            );
+        }
+
+        return $existing;
+    }
+
+    /**
+     * A. Advance receipt (pre-invoice deposit): Dr mapped cash/bank (else 1500
+     * Undeposited Funds) / Cr 2300 Customer Advances.
+     */
+    public function postCateringAdvance(\App\Models\Tenant\CateringAdvance $advance, ?int $userId = null): JournalEntry
+    {
+        return $this->postCateringReceipt($advance, 'catering_advance', '2300', 'Customer Advances', $userId);
+    }
+
+    /**
+     * D. Settlement receipt (post-invoice payment): Dr mapped cash/bank (else
+     * 1500) / Cr 1300 Accounts Receivable.
+     */
+    public function postCateringSettlement(\App\Models\Tenant\CateringAdvance $advance, ?int $userId = null): JournalEntry
+    {
+        return $this->postCateringReceipt($advance, 'catering_settlement', '1300', 'Accounts Receivable', $userId);
+    }
+
+    private function postCateringReceipt(\App\Models\Tenant\CateringAdvance $advance, string $sourceType, string $creditCode, string $creditLabel, ?int $userId): JournalEntry
+    {
+        $amount = round((float) $advance->amount, 2);
+        if ($existing = $this->assertReplayMatches($sourceType, $advance->id, $amount)) {
+            return $existing;
+        }
+
+        $branchId = $advance->event?->branch_id;
+        $reference = 'Catering receipt '.($advance->reference ?: ('ADV-'.$advance->id)).' ('.($advance->event?->event_no ?? '').')';
+
+        $debit = $advance->cash_bank_account_id
+            ? ['account_id' => $this->cashBankCoaId($advance->cash_bank_account_id), 'branch_id' => $branchId, 'description' => $reference, 'debit' => $amount, 'credit' => 0]
+            : ['account_code' => '1500', 'branch_id' => $branchId, 'description' => $reference.' (undeposited)', 'debit' => $amount, 'credit' => 0];
+        if (($debit['account_id'] ?? null) === null && ! isset($debit['account_code'])) {
+            $debit = ['account_code' => '1500', 'branch_id' => $branchId, 'description' => $reference.' (undeposited)', 'debit' => $amount, 'credit' => 0];
+        }
+
+        return $this->journal->post(
+            $sourceType,
+            $advance->id,
+            $advance->advance_uuid,
+            $reference,
+            $advance->received_date?->toDateString() ?? now()->toDateString(),
+            [
+                $debit,
+                ['account_code' => $creditCode, 'branch_id' => $branchId, 'description' => $creditLabel, 'debit' => 0, 'credit' => $amount],
+            ],
+            $userId
+        );
+    }
+
+    /**
+     * A2. Refund of customer credit (KASHIF-CATERING-CUSTOMER-CREDIT-1):
+     * Dr 2300 Customer Advances / Cr the mapped cash or bank it left from.
+     *
+     * NO 1500 Undeposited Funds fallback, deliberately, and unlike the receipt
+     * above. "Undeposited" describes money that has arrived and not yet been
+     * banked — a sentence that means nothing about money going out. A refund
+     * credited to 1500 would assert that cash left an account that holds cash
+     * nobody has deposited yet.
+     *
+     * This refuses rather than guesses even though CateringRefundService already
+     * proves the account first. Defence in depth: the guard that matters for
+     * money out should not be one caller deep.
+     *
+     * Always 2300, because credit can only ever be sitting there. A receipt is
+     * refused once it would exceed the outstanding balance, so a booking can
+     * never be overpaid into Receivables; and an invoice applies at most its own
+     * value, so anything beyond it stays in the liability. Credit that reached
+     * 1300 would be a bug elsewhere, not a case to handle here.
+     *
+     * The receipt being settled is never touched. This entry stands beside it.
+     */
+    public function postCateringRefund(\App\Models\Tenant\CateringRefund $refund, ?int $userId = null): JournalEntry
+    {
+        $amount = round((float) $refund->amount, 2);
+        if ($existing = $this->assertReplayMatches('catering_refund', $refund->id, $amount)) {
+            return $existing;
+        }
+
+        $branchId = $refund->event?->branch_id;
+        $reference = 'Catering refund '.$refund->refund_no.' ('.($refund->event?->event_no ?? '').')';
+
+        $creditAccountId = $refund->cash_bank_account_id
+            ? $this->cashBankCoaId($refund->cash_bank_account_id)
+            : null;
+
+        if (! $creditAccountId) {
+            throw new \RuntimeException(
+                'Refusing to post catering refund '.($refund->refund_no ?? '#'.$refund->id)
+                .': no cash or bank account is mapped for it. Money out must name the account it left from.'
+            );
+        }
+
+        $credit = ['account_id' => $creditAccountId, 'branch_id' => $branchId, 'description' => $reference, 'debit' => 0, 'credit' => $amount];
+
+        return $this->journal->post(
+            'catering_refund',
+            $refund->id,
+            $refund->refund_no,
+            $reference,
+            $refund->refund_date?->toDateString() ?? now()->toDateString(),
+            [
+                ['account_code' => '2300', 'branch_id' => $branchId, 'description' => 'Customer Advances refunded', 'debit' => $amount, 'credit' => 0],
+                $credit,
+            ],
+            $userId
+        );
+    }
+
+    /**
+     * B. Final invoice: Dr 1300 AR grand_total (+ Dr 4200 discounts contra) /
+     * Cr 4160 Catering Revenue (subtotal + other charges) + Cr 4130 service
+     * charges + Cr 2200 tax. Balanced by construction.
+     */
+    public function postCateringFinalInvoice(\App\Models\Tenant\CateringFinalInvoice $invoice, ?int $userId = null): JournalEntry
+    {
+        $grand = round((float) $invoice->grand_total, 2);
+        $discount = round((float) $invoice->discount_amount, 2);
+        if ($existing = $this->assertReplayMatches('catering_final_invoice', $invoice->id, $grand + $discount)) {
+            return $existing;
+        }
+
+        $branchId = $invoice->event?->branch_id;
+        $lines = [
+            ['account_code' => '1300', 'branch_id' => $branchId, 'description' => 'Catering AR '.$invoice->invoice_no, 'debit' => $grand, 'credit' => 0],
+        ];
+        if ($discount > 0) {
+            $lines[] = ['account_code' => '4200', 'branch_id' => $branchId, 'description' => 'Catering discount '.$invoice->invoice_no, 'debit' => $discount, 'credit' => 0];
+        }
+        $revenue = round((float) $invoice->subtotal + (float) $invoice->other_charge_amount, 2);
+        if ($revenue > 0) {
+            $lines[] = ['account_code' => '4160', 'branch_id' => $branchId, 'description' => 'Catering revenue '.$invoice->invoice_no, 'debit' => 0, 'credit' => $revenue];
+        }
+        if ((float) $invoice->service_charge_amount > 0) {
+            $lines[] = ['account_code' => '4130', 'branch_id' => $branchId, 'description' => 'Catering service charges '.$invoice->invoice_no, 'debit' => 0, 'credit' => round((float) $invoice->service_charge_amount, 2)];
+        }
+        if ((float) $invoice->tax_amount > 0) {
+            $lines[] = ['account_code' => '2200', 'branch_id' => $branchId, 'description' => 'Catering tax '.$invoice->invoice_no, 'debit' => 0, 'credit' => round((float) $invoice->tax_amount, 2)];
+        }
+
+        return $this->journal->post(
+            'catering_final_invoice',
+            $invoice->id,
+            $invoice->invoice_no,
+            'Catering final invoice '.$invoice->invoice_no,
+            $invoice->issued_at?->toDateString() ?? now()->toDateString(),
+            $lines,
+            $userId
+        );
+    }
+
+    /**
+     * C. Apply pre-invoice advances against the invoice AR:
+     * Dr 2300 Customer Advances / Cr 1300 Accounts Receivable.
+     * No-op (null) when nothing was advanced before the invoice.
+     *
+     * KASHIF-CATERING-CUSTOMER-CREDIT-1: what clears is advance_applied, capped
+     * at the invoice's own value, not everything that was received. Any excess
+     * stays in 2300 as credit owed to the customer until it is refunded.
+     * Invoices issued before that column existed read back their advance_total,
+     * so their posted history is reproduced exactly as it stands.
+     */
+    public function applyCateringAdvance(\App\Models\Tenant\CateringFinalInvoice $invoice, ?int $userId = null): ?JournalEntry
+    {
+        $applied = round((float) ($invoice->advance_applied ?? $invoice->advance_total), 2);
+        if ($applied <= 0) {
+            return null;
+        }
+        if ($existing = $this->assertReplayMatches('catering_advance_application', $invoice->id, $applied)) {
+            return $existing;
+        }
+
+        $branchId = $invoice->event?->branch_id;
+
+        return $this->journal->post(
+            'catering_advance_application',
+            $invoice->id,
+            $invoice->invoice_no,
+            'Advance applied to '.$invoice->invoice_no,
+            $invoice->issued_at?->toDateString() ?? now()->toDateString(),
+            [
+                ['account_code' => '2300', 'branch_id' => $branchId, 'description' => 'Customer Advances cleared', 'debit' => $applied, 'credit' => 0],
+                ['account_code' => '1300', 'branch_id' => $branchId, 'description' => 'Applied to AR '.$invoice->invoice_no, 'debit' => 0, 'credit' => $applied],
+            ],
+            $userId
+        );
+    }
+
+    /**
+     * Catering COGS at ACTUAL FEFO cost from a material issue:
+     * Dr 5200 Recipe / Ingredient COGS / Cr 1400 Inventory Asset.
+     * The Material Rate Book (quoting cost) is never used here.
+     */
+    public function postCateringCogs(\App\Models\Tenant\CateringMaterialIssue $issue, ?int $userId = null): ?JournalEntry
+    {
+        $cost = round((float) $issue->total_fefo_cost, 4);
+        if ($cost <= 0) {
+            return null; // nothing stock-tracked was issued
+        }
+        if ($existing = $this->assertReplayMatches('catering_material_issue', $issue->id, $cost)) {
+            return $existing;
+        }
+
+        return $this->journal->post(
+            'catering_material_issue',
+            $issue->id,
+            $issue->issue_no,
+            'Catering COGS '.$issue->issue_no,
+            $issue->issued_at?->toDateString() ?? now()->toDateString(),
+            [
+                ['account_code' => '5200', 'branch_id' => $issue->branch_id, 'description' => 'Catering COGS '.$issue->issue_no, 'debit' => $cost, 'credit' => 0],
+                ['account_code' => '1400', 'branch_id' => $issue->branch_id, 'description' => 'Inventory issued '.$issue->issue_no, 'debit' => 0, 'credit' => $cost],
+            ],
+            $userId
+        );
     }
 }

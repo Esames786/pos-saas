@@ -173,11 +173,7 @@
 @endif
 
 @if($show('show_table_info') && $salesOrder->restaurantTable)
-<div>Table: {{ $salesOrder->restaurantTable->table_no }}
-    @if($salesOrder->restaurantTable->floor)
-        ({{ $salesOrder->restaurantTable->floor->name }})
-    @endif
-</div>
+<div>Table: {{ $salesOrder->restaurantTable->table_no }}</div>
 @if($salesOrder->restaurantTableSession?->waiter)
 <div>Waiter: {{ $salesOrder->restaurantTableSession->waiter->name }}</div>
 @endif
@@ -214,7 +210,7 @@
                 {{-- Item name in its own column; Qty / Rate / Amount keep theirs so the numbers
                      never collide. Modifiers and combo components read as indented sub-rows. --}}
                 {{ $line->product_name }}
-                @if($line->variant_name)
+                @if($line->variant_name && strcasecmp(trim($line->variant_name), trim((string) $line->product_name)) !== 0)
                     <small>({{ $line->variant_name }})</small>
                 @endif
                 @foreach(($line->modifiers ?? []) as $modifier)
@@ -225,9 +221,13 @@
                 @if($line->kitchen_note)
                     <br><small>&nbsp;* {{ $line->kitchen_note }}</small>
                 @endif
-                @foreach($salesOrder->lines->where('parent_sales_order_line_id', $line->id) as $component)
-                    <br><small>&nbsp;- {{ rtrim(rtrim(number_format((float) $component->quantity, 3, '.', ''), '0'), '.') }}{{ $unitSuffix($component->unit_code) }} x {{ $component->product_name }}</small>
-                @endforeach
+                {{-- COMBO-RECEIPT-NAME-ONLY: a deal shows its NAME only on the receipt / bill preview;
+                     its components are not listed here (the KOT still carries every component). --}}
+                @if(($line->line_kind ?? 'standard') !== 'combo_header')
+                    @foreach($salesOrder->lines->where('parent_sales_order_line_id', $line->id) as $component)
+                        <br><small>&nbsp;- {{ rtrim(rtrim(number_format((float) $component->quantity, 3, '.', ''), '0'), '.') }}{{ $unitSuffix($component->unit_code) }} x {{ $component->product_name }}</small>
+                    @endforeach
+                @endif
             </td>
             <td class="item-qty">{{ rtrim(rtrim(number_format((float) $line->quantity, 3, '.', ''), '0'), '.') }}{{ $unitSuffix($line->unit_code) }}</td>
             <td class="item-rate">{{ $money($line->unit_price) }}</td>

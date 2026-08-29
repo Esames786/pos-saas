@@ -13,6 +13,20 @@
     }
     $hasModule = fn (string $key) => in_array($key, $planModuleKeys, true);
 
+    // PLATFORM-ENTITLEMENT-BOUNDARY-1 — visibility must combine PERMISSION *and*
+    // MODULE ENTITLEMENT. deploy.sh grants the Owner every tenant.* permission
+    // regardless of plan, so @can alone is NOT an entitlement decision: any
+    // section without a module gate leaked into restricted plans (Sales, Reports,
+    // Manufacturing, ERP Extensions were all visible to a Catering-only tenant).
+    $hasAnyModule = fn (string ...$keys) => collect($keys)->contains(fn ($k) => in_array($k, $planModuleKeys, true));
+
+    // Customers + Payment Methods are shared by POS and Catering (mirrors
+    // TenantSubscriptionAccessService::SHARED_RESOURCE_MODULES). A POS tenant
+    // reaches them through the Sales menu; a Catering-only tenant has no Sales
+    // menu, so Operations surfaces them instead — never both at once.
+    $sharedCustomerAccess = $hasAnyModule('pos', 'catering');
+    $sharedUnderOperations = $sharedCustomerAccess && ! $hasModule('pos');
+
     // ERP "Coming Soon" roadmap — shown only to enterprise/finance_erp/standard plans.
     $showErpComingSoon = in_array($planCode, ['enterprise', 'standard', 'finance_erp'], true);
 
@@ -192,6 +206,30 @@
                                 </a>
                             </li>
                         @endcan
+                        {{-- Shared resources for a NON-POS tenant (Catering-only):
+                             the Sales menu is hidden for them, but Catering needs
+                             Customers (events) and Payment Methods (advances).
+                             Same routes/controllers/permissions — navigation only.
+                             A POS tenant reaches these through Sales instead, so
+                             they never appear in both places. --}}
+                        @if($sharedUnderOperations)
+                            @can('tenant.customers.index')
+                                @php $a = $isIn('customers*'); @endphp
+                                <li class="{{ $a ? 'active' : '' }}">
+                                    <a href="{{ url('/customers') }}" class="{{ $a ? 'active' : '' }}">
+                                        <i class="ti ti-users fs-16 me-2"></i><span>Customers</span>
+                                    </a>
+                                </li>
+                            @endcan
+                            @can('tenant.payment-methods.index')
+                                @php $a = $isIn('payment-methods*'); @endphp
+                                <li class="{{ $a ? 'active' : '' }}">
+                                    <a href="{{ url('/payment-methods') }}" class="{{ $a ? 'active' : '' }}">
+                                        <i class="ti ti-credit-card fs-16 me-2"></i><span>Payment Methods</span>
+                                    </a>
+                                </li>
+                            @endcan
+                        @endif
                     </ul>
                 </li>
 
@@ -423,6 +461,10 @@
                 @endif
 
                 {{-- ── SALES ───────────────────────────────────────────────────── --}}
+                {{-- Owns POS, orders, returns, ledger, delivery AND (for POS tenants)
+                     Customers + Payment Methods. A non-POS tenant never sees this
+                     menu; Operations surfaces the two shared resources instead. --}}
+                @if($hasModule('pos'))
                 @canany(['tenant.pos.index','tenant.sales-orders.index','tenant.customers.index','tenant.payment-methods.index','tenant.delivery-channels.index','tenant.delivery-riders.index','tenant.sales-ledger.index','tenant.sales-returns.index'])
                 <li class="submenu">
                     <a href="javascript:void(0);">
@@ -498,6 +540,7 @@
                     </ul>
                 </li>
                 @endcanany
+                @endif
 
                 {{-- ── RESTAURANT ──────────────────────────────────────────────── --}}
                 @if($hasModule('restaurant') || $hasModule('kitchen_display'))
@@ -603,6 +646,134 @@
                             <li class="{{ $a ? 'active' : '' }}">
                                 <a href="{{ url('/kitchen/wastages') }}" class="{{ $a ? 'active' : '' }}">
                                     <i class="ti ti-trash fs-16 me-2"></i><span>Wastages</span>
+                                </a>
+                            </li>
+                        @endcan
+                    </ul>
+                </li>
+                @endcanany
+                @endif
+
+                {{-- ── CATERING & EVENTS (CATERING-SLICE-1) ───────────────────── --}}
+                @if($hasModule('catering'))
+                {{-- A role granted only Store Issue or only Commercial Rates used
+                     to see no Catering menu at all — the parent gate never listed
+                     them, so the screens existed and were unreachable. --}}
+                @canany(['tenant.catering.events.index','tenant.catering.profiles.index','tenant.catering.material-rates.index','tenant.catering.instructions.index','tenant.catering.commercial-rates.index','tenant.catering.rate-impact.index','tenant.catering.making-adjustment.index','tenant.catering.store-issues.index','tenant.catering.printer-mappings.index','tenant.catering.settings.index'])
+                <li class="submenu">
+                    <a href="javascript:void(0);">
+                        <i class="ti ti-chef-hat fs-16 me-2"></i>
+                        <span>Catering</span>
+                        <span class="menu-arrow"></span>
+                    </a>
+                    <ul style="display:none;">
+                        @can('tenant.catering.events.index')
+                            @php $a = $isIn('catering/events*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/catering/events') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-calendar-event fs-16 me-2"></i><span>Events &amp; Estimates</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.catering.profiles.index')
+                            @php $a = $isIn('catering/profiles*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/catering/profiles') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-tools-kitchen-2 fs-16 me-2"></i><span>Catering Products</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.catering.materials.index')
+                            @php $a = $isIn('catering/materials*') && ! $isIn('catering/material-rates*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/catering/materials') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-meat fs-16 me-2"></i><span>Materials</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.catering.store-issues.index')
+                            @php $a = $isIn('catering/store-issues*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/catering/store-issues') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-package-export fs-16 me-2"></i><span>Store Issue</span>
+                                </a>
+                            </li>
+                        @endcan
+                        {{-- CAT-RATE-UX-001 — the two books belong side by side.
+                             Only the cost one was reachable from here, while the
+                             screen that decides what the CUSTOMER is charged had
+                             no entry at all and the cost screen called itself by
+                             the missing one's name. An owner could only find one
+                             door, and it was labelled with the other room. --}}
+                        @can('tenant.catering.material-rates.index')
+                            @php $a = $isIn('catering/material-rates*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/catering/material-rates') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-report-money fs-16 me-2"></i><span>Material Cost Rates</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.catering.instructions.index')
+                            @php $a = $isIn('catering/instructions*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/catering/instructions') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-list-details fs-16 me-2"></i><span>Kitchen Instructions</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.catering.commercial-rates.index')
+                            @php $a = $isIn('catering/commercial-rates*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/catering/commercial-rates') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-receipt-2 fs-16 me-2"></i><span>Commercial Charge Rates</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.catering.making-adjustment.index')
+                            @php $a = $isIn('catering/making-adjustment*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/catering/making-adjustment') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-tools-kitchen-2 fs-16 me-2"></i><span>Making Adjustment</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.catering.rate-impact.index')
+                            @php $a = $isIn('catering/rate-impact*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/catering/rate-impact') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-trending-up fs-16 me-2"></i><span>Cost Rate Impact</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.catering.store-issues.index')
+                            @php $a = $isIn('catering/store-issues*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/catering/store-issues') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-package-export fs-16 me-2"></i><span>Store Issue</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.catering.printer-mappings.index')
+                            @php $a = $isIn('catering/printer-mappings*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/catering/printer-mappings') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-printer fs-16 me-2"></i><span>Catering Printers</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.catering.settings.index')
+                            @php $a = $isIn('catering/settings*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/catering/settings') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-settings fs-16 me-2"></i><span>Catering Settings</span>
+                                </a>
+                            </li>
+                        @endcan
+                        @can('tenant.catering.guide.index')
+                            @php $a = $isIn('catering/guide*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/catering/guide') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-help-circle fs-16 me-2"></i><span>Guide</span>
                                 </a>
                             </li>
                         @endcan
@@ -938,6 +1109,7 @@
                 @endif
 
                 {{-- ── REPORTS ─────────────────────────────────────────────────── --}}
+                @if($hasModule('reports'))
                 @canany(['tenant.reports.center.index','tenant.reports.sales.summary','tenant.reports.sales.channels','tenant.reports.sales.riders','tenant.reports.sales.receivables','tenant.reports.shifts','tenant.reports.inventory.valuation','tenant.reports.inventory.negative-stock','tenant.reports.purchases.payables','tenant.reports.purchases.returns','tenant.reports.restaurant.tables','tenant.reports.kitchen.recipe-consumption','tenant.reports.departments.sales','tenant.reports.departments.consumption-exceptions','tenant.reports.audit.manager-approvals','tenant.reports.printing.jobs'])
                 <li class="submenu">
                     <a href="javascript:void(0);">
@@ -1074,6 +1246,7 @@
                     </ul>
                 </li>
                 @endcanany
+                @endif
 
                 {{-- ── SALES CONTROLS ──────────────────────────────────────────── --}}
                 @if($hasModule('sales_controls'))
@@ -1123,6 +1296,15 @@
                 @endif
 
                 {{-- ── PRINTING ─────────────────────────────────────────────────── --}}
+                {{-- Split by dependency (PLATFORM-ENTITLEMENT-BOUNDARY-1):
+                     Printers / Print Jobs / Print Agents are the SHARED physical
+                     transport — Catering production printing rides the same
+                     PrintJob pipeline, so a Catering-only tenant keeps them.
+                     KOT Routing and Layouts configure POS/restaurant receipts and
+                     KOTs, so they are gated by pos|restaurant. Catering has its
+                     own independent station→printer mapping under Catering. --}}
+                @php $posPrintConfig = $hasAnyModule('pos', 'restaurant'); @endphp
+                @if($hasModule('printing'))
                 @canany(['tenant.printing.printers.index','tenant.printing.category-mappings.index','tenant.printing.layouts.index','tenant.printing.jobs.index','tenant.print-agents.index'])
                 <li class="submenu">
                     <a href="javascript:void(0);">
@@ -1139,6 +1321,7 @@
                                 </a>
                             </li>
                         @endcan
+                        @if($posPrintConfig)
                         @can('tenant.printing.category-mappings.index')
                             @php $a = $isIn('printing/category-mappings*'); @endphp
                             <li class="{{ $a ? 'active' : '' }}">
@@ -1155,6 +1338,7 @@
                                 </a>
                             </li>
                         @endcan
+                        @endif
                         @can('tenant.printing.jobs.index')
                             @php $a = $isIn('printing/jobs*'); @endphp
                             <li class="{{ $a ? 'active' : '' }}">
@@ -1174,6 +1358,7 @@
                     </ul>
                 </li>
                 @endcanany
+                @endif
 
                 {{-- ── OFFLINE BRANCH EDGE — full setup entry hidden unless entitled + rolled out ── --}}
                 @if(config('app.edge_feature_enabled') && $hasModule('offline_edge'))

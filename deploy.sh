@@ -73,13 +73,19 @@ $PHP artisan system:clear-tenant-permission-cache
 
 echo "==> [7/9] Rebuild caches"
 $PHP artisan optimize:clear
-$PHP artisan config:cache
-$PHP artisan route:cache
-$PHP artisan view:cache
+# Build the caches AS the PHP-FPM user (www-data) so the compiled config/routes/VIEWS are owned by the
+# same user that serves requests. Running these as root left root-owned compiled views that PHP-FPM
+# (www-data) could not overwrite when a request needed to recompile — 500-ing the whole site (Khatri
+# outage 2026-08-28: "file_put_contents(storage/framework/views/…): Permission denied"). Fall back to
+# root (then the [8] chown fixes ownership) if www-data cannot run artisan on this host.
+if sudo -u www-data $PHP artisan --version >/dev/null 2>&1; then RUNWEB="sudo -u www-data $PHP"; else RUNWEB="$PHP"; fi
+$RUNWEB artisan config:cache
+$RUNWEB artisan route:cache
+$RUNWEB artisan view:cache
 # Workers cache booted code — tell them to restart (no-op if none running).
 $PHP artisan queue:restart || true
 
-echo "==> [8/9] Fix ownership (root-run artisan creates root-owned files that break web writes)"
+echo "==> [8/9] Fix ownership (belt-and-suspenders — see [7]: caches now build as www-data)"
 sudo chown -R www-data:www-data storage bootstrap/cache
 sudo chmod -R ug+rwX storage bootstrap/cache
 

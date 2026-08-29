@@ -25,9 +25,9 @@ class ReportScheduleService
     public function __construct(
         private readonly SalesReportEngine $engine,
         private readonly SalesReportExporter $exporter,
+        private readonly SalesReportDocumentService $document,
         private readonly TenantClock $clock,
-    ) {
-    }
+    ) {}
 
     /** The branch-anchored timezone used for all schedule time math (no tenant-level tz exists). */
     public function timezone(): string
@@ -46,6 +46,15 @@ class ReportScheduleService
         [$h, $m] = array_map('intval', explode(':', $schedule->send_time));
         if ($nowTz->hour < $h || ($nowTz->hour === $h && $nowTz->minute < $m)) {
             return false; // send time not reached today
+        }
+        // A schedule created after today's send time starts tomorrow. Without this guard, creating
+        // a new 00:30 schedule in the afternoon would immediately back-send the day before the
+        // operator intended, then send again at the next midnight boundary.
+        if (! empty($schedule->created_at)) {
+            $createdTz = Carbon::parse($schedule->created_at, config('app.timezone'))->setTimezone($nowTz->getTimezone());
+            if ($createdTz->isSameDay($nowTz) && $createdTz->format('H:i') > $schedule->send_time) {
+                return false;
+            }
         }
 
         return match ($schedule->frequency) {
@@ -103,14 +112,25 @@ class ReportScheduleService
         }
 
         try {
-            $recipient = app()->bound('tenant') ? app('tenant')?->owner_email : null;
-            if (! $recipient) {
-                throw new RuntimeException('Tenant default email (owner_email) is not configured.');
-            }
+            $recipients = $this->recipients($schedule);
             $filters = $this->engine->normalizeFilters(['date_from' => $period['from'], 'date_to' => $period['to']]);
-            $sections = $this->exporter->sections($filters, (array) json_decode($schedule->sections, true));
+            $selected = (array) json_decode($schedule->sections, true);
             $business = app()->bound('tenant') ? (string) app('tenant')->business_name : 'Bingoo POS';
-            Mail::to($recipient)->send(new SalesReportMail($business, $period['from'] . ' → ' . $period['to'], $sections));
+            $label = $period['from'].' to '.$period['to'];
+
+            if (($schedule->delivery_format ?? 'csv') === 'a4_pdf') {
+                $mail = new SalesReportMail(
+                    $business,
+                    $label,
+                    [],
+                    $this->document->pdf($filters, $selected),
+                    'sales-report-'.$period['from'].'.pdf',
+                    $selected,
+                );
+            } else {
+                $mail = new SalesReportMail($business, $label, $this->exporter->sections($filters, $selected));
+            }
+            Mail::to($recipients)->send($mail);
 
             DB::connection('tenant')->table('report_schedules')->where('id', $schedule->id)
                 ->update(['last_run_at' => now(), 'last_success_at' => now(), 'last_failure' => null, 'updated_at' => now()]);
@@ -125,5 +145,24 @@ class ReportScheduleService
 
             return 'failed';
         }
+    }
+
+    /** @return list<string> */
+    private function recipients(object $schedule): array
+    {
+        $configured = property_exists($schedule, 'recipient_emails')
+            ? (array) json_decode((string) ($schedule->recipient_emails ?? '[]'), true)
+            : [];
+        $fallback = app()->bound('tenant') ? app('tenant')?->owner_email : null;
+        $emails = array_values(array_unique(array_filter(
+            array_map(fn ($email) => strtolower(trim((string) $email)), $configured ?: [$fallback]),
+            fn ($email) => filter_var($email, FILTER_VALIDATE_EMAIL) !== false,
+        )));
+
+        if ($emails === []) {
+            throw new RuntimeException('No valid scheduled-report recipient email is configured (owner_email fallback is also empty).');
+        }
+
+        return $emails;
     }
 }

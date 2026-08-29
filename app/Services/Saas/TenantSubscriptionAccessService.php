@@ -19,6 +19,13 @@ class TenantSubscriptionAccessService
         'tenant.locale',
         'tenant.api',
         'tenant.billing',
+        // PLATFORM-ENTITLEMENT-BOUNDARY-1: the dashboard is the authenticated
+        // LANDING surface, not a reporting feature. It used to be mapped to the
+        // `reports` module, so any tenant on a plan without reports (e.g. a
+        // Catering-only tenant) was met with "Module Not Available" immediately
+        // after login. Reaching the landing page is never an entitlement
+        // decision; the widgets INSIDE it still respect their own modules.
+        'tenant.dashboard',
         'central.dashboard',
         'central.login',
         'central.logout',
@@ -29,6 +36,43 @@ class TenantSubscriptionAccessService
         'central.tenant-domains',
         'storage.local',
     ];
+
+    /**
+     * PLATFORM-ENTITLEMENT-BOUNDARY-1 — routes whose real entitlement is "ANY OF
+     * these modules", which the route-catalog schema cannot express because
+     * Module::forRouteModuleKey() resolves a key to exactly ONE owning module.
+     *
+     * Two distinct cases, both minimal and explicit:
+     *
+     *  SHARED RESOURCE — genuinely used by more than one module.
+     *    Customers and Payment Methods: POS sells to a customer and takes
+     *    payment; Catering books an event against a customer and receives
+     *    advances through a payment method. Only these two resources, only
+     *    these two modules — every other Sales route (POS, orders, returns,
+     *    ledger, delivery) stays owned by `pos` alone, so enabling Catering
+     *    never opens the Sales module.
+     *
+     *  NARROWER THAN ITS OWNER — the catalog maps it to a module that is too
+     *    broad. POS KOT routing and receipt/KOT layouts live under `printing`,
+     *    but a Catering-only tenant needs `printing` for the shared physical
+     *    transport (printers, job queue, LAN agents) while having no POS KOTs
+     *    or receipts to configure. Hiding them in the sidebar alone would leave
+     *    the URL reachable, so the requirement is enforced here too.
+     *
+     * @var array<string, array<int, string>> route module key => any-of module keys
+     */
+    private const ROUTE_ANY_OF_MODULES = [
+        'tenant.customers' => ['pos', 'catering'],
+        'tenant.payment-methods' => ['pos', 'catering'],
+        'tenant.printing.category-mappings' => ['pos', 'restaurant'],
+        'tenant.printing.layouts' => ['pos', 'restaurant'],
+    ];
+
+    /** Any-of module keys for a route key — used by the sidebar so UI and routes agree. */
+    public static function anyOfModulesFor(string $routeModuleKey): array
+    {
+        return self::ROUTE_ANY_OF_MODULES[$routeModuleKey] ?? [];
+    }
 
     public function check(Tenant $tenant, ?string $routeName): array
     {
@@ -44,43 +88,69 @@ class TenantSubscriptionAccessService
 
         if ($this->isAlwaysAllowed($routeModuleKey, $routeName)) {
             return [
-                'allowed'    => true,
-                'reason'     => 'always_allowed',
-                'message'    => null,
+                'allowed' => true,
+                'reason' => 'always_allowed',
+                'message' => null,
                 'module_key' => $routeModuleKey,
-                'module'     => null,
+                'module' => null,
             ];
         }
 
         $subscription = $tenant->subscription?->loadMissing(['plan.enabledModules']);
 
-        if (!$subscription) {
+        if (! $subscription) {
             return [
-                'allowed'    => false,
-                'reason'     => 'no_subscription',
-                'message'    => 'No active subscription found for this tenant.',
+                'allowed' => false,
+                'reason' => 'no_subscription',
+                'message' => 'No active subscription found for this tenant.',
                 'module_key' => null,
-                'module'     => null,
+                'module' => null,
             ];
         }
 
-        if (!$this->subscriptionIsUsable($subscription)) {
+        if (! $this->subscriptionIsUsable($subscription)) {
             return [
-                'allowed'    => false,
-                'reason'     => 'subscription_' . $subscription->status,
-                'message'    => 'Your subscription is not active. Please contact support.',
+                'allowed' => false,
+                'reason' => 'subscription_'.$subscription->status,
+                'message' => 'Your subscription is not active. Please contact support.',
                 'module_key' => null,
-                'module'     => null,
+                'module' => null,
             ];
         }
 
-        if (!$routeModuleKey) {
+        if (! $routeModuleKey) {
             return [
-                'allowed'    => true,
-                'reason'     => 'no_module_key',
-                'message'    => null,
+                'allowed' => true,
+                'reason' => 'no_module_key',
+                'message' => null,
                 'module_key' => null,
-                'module'     => null,
+                'module' => null,
+            ];
+        }
+
+        $plan = $subscription->plan;
+
+        // Any-of requirements are checked BEFORE the single-module lookup,
+        // because that lookup can only ever return one owning module.
+        if (isset(self::ROUTE_ANY_OF_MODULES[$routeModuleKey])) {
+            foreach (self::ROUTE_ANY_OF_MODULES[$routeModuleKey] as $moduleKey) {
+                if ($plan && $plan->hasEnabledModuleKey($moduleKey)) {
+                    return [
+                        'allowed' => true,
+                        'reason' => 'shared_resource_module_enabled',
+                        'message' => null,
+                        'module_key' => $routeModuleKey,
+                        'module' => Module::where('key', $moduleKey)->first(),
+                    ];
+                }
+            }
+
+            return [
+                'allowed' => false,
+                'reason' => 'module_disabled',
+                'message' => 'Your current plan does not include this feature.',
+                'module_key' => $routeModuleKey,
+                'module' => Module::forRouteModuleKey($routeModuleKey)->first(),
             ];
         }
 
@@ -88,34 +158,32 @@ class TenantSubscriptionAccessService
 
         // Important 14A-2B safety decision:
         // Unmapped routes are allowed for now, so one missing mapping does not break the tenant app.
-        if (!$module) {
+        if (! $module) {
             return [
-                'allowed'    => true,
-                'reason'     => 'unmapped_route_module_key',
-                'message'    => null,
+                'allowed' => true,
+                'reason' => 'unmapped_route_module_key',
+                'message' => null,
                 'module_key' => $routeModuleKey,
-                'module'     => null,
+                'module' => null,
             ];
         }
 
-        $plan = $subscription->plan;
-
-        if (!$plan || !$plan->hasEnabledModuleKey($module->key)) {
+        if (! $plan || ! $plan->hasEnabledModuleKey($module->key)) {
             return [
-                'allowed'    => false,
-                'reason'     => 'module_disabled',
-                'message'    => 'Your current plan does not include the ' . $module->name . ' module.',
+                'allowed' => false,
+                'reason' => 'module_disabled',
+                'message' => 'Your current plan does not include the '.$module->name.' module.',
                 'module_key' => $routeModuleKey,
-                'module'     => $module,
+                'module' => $module,
             ];
         }
 
         return [
-            'allowed'    => true,
-            'reason'     => 'module_enabled',
-            'message'    => null,
+            'allowed' => true,
+            'reason' => 'module_enabled',
+            'message' => null,
             'module_key' => $routeModuleKey,
-            'module'     => $module,
+            'module' => $module,
         ];
     }
 
@@ -123,10 +191,10 @@ class TenantSubscriptionAccessService
     {
         $subscription = $tenant->subscription?->loadMissing(['plan']);
 
-        if (!$subscription) {
+        if (! $subscription) {
             return [
-                'state'    => 'missing',
-                'message'  => 'No subscription is attached to this tenant.',
+                'state' => 'missing',
+                'message' => 'No subscription is attached to this tenant.',
                 'severity' => 'danger',
             ];
         }
@@ -136,40 +204,40 @@ class TenantSubscriptionAccessService
 
             if ($trialEndsAt && $trialEndsAt->isPast()) {
                 return [
-                    'state'    => 'trial_expired',
-                    'message'  => 'Your trial has expired. Please upgrade your subscription.',
+                    'state' => 'trial_expired',
+                    'message' => 'Your trial has expired. Please upgrade your subscription.',
                     'severity' => 'danger',
                 ];
             }
 
             return [
-                'state'    => 'trial',
-                'message'  => $trialEndsAt
-                    ? 'Trial plan: ' . ($subscription->plan?->name ?? 'Plan') . ' — ends ' . $trialEndsAt->format('Y-m-d')
-                    : 'Trial plan: ' . ($subscription->plan?->name ?? 'Plan'),
+                'state' => 'trial',
+                'message' => $trialEndsAt
+                    ? 'Trial plan: '.($subscription->plan?->name ?? 'Plan').' — ends '.$trialEndsAt->format('Y-m-d')
+                    : 'Trial plan: '.($subscription->plan?->name ?? 'Plan'),
                 'severity' => 'warning',
             ];
         }
 
         if ($subscription->status === 'past_due') {
             return [
-                'state'    => 'past_due',
-                'message'  => 'Your subscription payment is past due. Please update billing.',
+                'state' => 'past_due',
+                'message' => 'Your subscription payment is past due. Please update billing.',
                 'severity' => 'danger',
             ];
         }
 
         if ($subscription->status === 'cancelled') {
             return [
-                'state'    => 'cancelled',
-                'message'  => 'Your subscription is cancelled. Please contact support.',
+                'state' => 'cancelled',
+                'message' => 'Your subscription is cancelled. Please contact support.',
                 'severity' => 'danger',
             ];
         }
 
         return [
-            'state'    => 'active',
-            'message'  => null,
+            'state' => 'active',
+            'message' => null,
             'severity' => 'success',
         ];
     }
@@ -182,6 +250,7 @@ class TenantSubscriptionAccessService
             // not immediately locked out. The daily expiry sweep (saas:subscriptions-expire)
             // is the authoritative mechanism that eventually flips to past_due.
             $graceDays = (int) config('saas.subscription_grace_days', 3);
+
             return ! $subscription->current_period_ends_at
                 || \Illuminate\Support\Carbon::parse($subscription->current_period_ends_at)
                     ->addDays($graceDays)
@@ -221,7 +290,7 @@ class TenantSubscriptionAccessService
     {
         $subscription = $tenant->subscription?->loadMissing(['plan.features']);
 
-        if (!$subscription || !$subscription->plan) {
+        if (! $subscription || ! $subscription->plan) {
             // No usable subscription/plan: block creation safely (limit 0).
             return 0;
         }
@@ -251,29 +320,29 @@ class TenantSubscriptionAccessService
         // BUG-057 FIX: only count active resources so inactive branches/users/terminals
         // don't block tenants from adding new ones under their plan limit.
         return match ($resourceKey) {
-            'branches'  => Branch::where('status', 'active')->count(),
-            'users'     => User::where('status', 'active')->count(),
+            'branches' => Branch::where('status', 'active')->count(),
+            'users' => User::where('status', 'active')->count(),
             'terminals' => Terminal::where('status', 'active')->count(),
-            default     => 0,
+            default => 0,
         };
     }
 
     public function checkLimit(Tenant $tenant, string $resourceKey): array
     {
         $featureKey = match ($resourceKey) {
-            'branches'  => 'branch_limit',
-            'users'     => 'user_limit',
+            'branches' => 'branch_limit',
+            'users' => 'user_limit',
             'terminals' => 'terminal_limit',
-            default     => null,
+            default => null,
         };
 
-        if (!$featureKey) {
+        if (! $featureKey) {
             return [
-                'allowed'  => true,
-                'limit'    => null,
-                'used'     => 0,
+                'allowed' => true,
+                'limit' => null,
+                'used' => 0,
                 'resource' => $resourceKey,
-                'message'  => null,
+                'message' => null,
             ];
         }
 
@@ -282,11 +351,11 @@ class TenantSubscriptionAccessService
         // Unlimited (missing/negative feature) — allow.
         if ($limit === null) {
             return [
-                'allowed'  => true,
-                'limit'    => null,
-                'used'     => $this->currentTenantUsage($resourceKey),
+                'allowed' => true,
+                'limit' => null,
+                'used' => $this->currentTenantUsage($resourceKey),
                 'resource' => $resourceKey,
-                'message'  => null,
+                'message' => null,
             ];
         }
 
@@ -294,26 +363,26 @@ class TenantSubscriptionAccessService
 
         if ($used < $limit) {
             return [
-                'allowed'  => true,
-                'limit'    => $limit,
-                'used'     => $used,
+                'allowed' => true,
+                'limit' => $limit,
+                'used' => $used,
                 'resource' => $resourceKey,
-                'message'  => null,
+                'message' => null,
             ];
         }
 
         $label = match ($resourceKey) {
-            'branches'  => 'branch',
-            'users'     => 'user',
+            'branches' => 'branch',
+            'users' => 'user',
             'terminals' => 'terminal',
-            default     => 'resource',
+            default => 'resource',
         };
 
         $plural = match ($resourceKey) {
-            'branches'  => 'branches',
-            'users'     => 'users',
+            'branches' => 'branches',
+            'users' => 'users',
             'terminals' => 'terminals',
-            default     => 'resources',
+            default => 'resources',
         };
 
         $message = $used > $limit
@@ -321,11 +390,11 @@ class TenantSubscriptionAccessService
             : "Your current plan allows only {$limit} {$label}. Please upgrade your plan to add more {$plural}.";
 
         return [
-            'allowed'  => false,
-            'limit'    => $limit,
-            'used'     => $used,
+            'allowed' => false,
+            'limit' => $limit,
+            'used' => $used,
             'resource' => $resourceKey,
-            'message'  => $message,
+            'message' => $message,
         ];
     }
 }

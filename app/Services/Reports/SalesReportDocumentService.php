@@ -1,0 +1,51 @@
+<?php
+
+namespace App\Services\Reports;
+
+use Dompdf\Dompdf;
+use Dompdf\Options;
+
+/** Builds the same A4 Sales Report Centre document for browser print and scheduled email. */
+class SalesReportDocumentService
+{
+    public function __construct(private readonly SalesReportEngine $engine) {}
+
+    public function data(array $filters, array $sections, bool $embedded = false): array
+    {
+        $pick = fn (string $key, callable $loader) => in_array($key, $sections, true) ? $loader() : null;
+        $summary = $this->engine->overview($filters);
+
+        return [
+            'mode' => 'a4',
+            'paper' => '80mm',
+            'filters' => $filters,
+            'sections' => $sections,
+            'bridge' => $summary,
+            'overview' => in_array('overview', $sections, true) ? $summary : null,
+            'orderTypes' => $pick('order_types', fn () => $this->engine->byOrderType($filters)),
+            'categories' => $pick('categories', fn () => $this->engine->byCategory($filters)),
+            'items' => $pick('items', fn () => $this->engine->byItem($filters)),
+            'waiters' => $pick('waiters', fn () => $this->engine->byWaiter($filters)),
+            'combos' => $pick('order_type_combos', fn () => $this->engine->orderTypeCombos($filters)),
+            'cancellations' => $pick('cancellations', fn () => $this->engine->cancellations($filters)),
+            'cashBank' => $pick('cash_bank', fn () => $this->engine->cashBank($filters)),
+            'embedded' => $embedded,
+        ];
+    }
+
+    public function pdf(array $filters, array $sections): string
+    {
+        $html = view('tenant.reports.center.print', $this->data($filters, $sections, true))->render();
+        $options = new Options;
+        $options->set('defaultFont', 'DejaVu Sans');
+        $options->set('isRemoteEnabled', false);
+        $options->set('isPhpEnabled', false);
+
+        $pdf = new Dompdf($options);
+        $pdf->setPaper('a4', 'portrait');
+        $pdf->loadHtml($html, 'UTF-8');
+        $pdf->render();
+
+        return $pdf->output();
+    }
+}

@@ -126,7 +126,9 @@ class LayoutRowDividerMySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString(' | ', $payload, 'divider lines between the receipt columns');
         $this->assertStringContainsString('Amount', $payload, 'the Amount column header is present');
         $this->assertStringContainsString('Family Deal', $payload, 'combo header prints on the receipt');
-        $this->assertStringContainsString('Raita', $payload, 'combo component prints under its header');
+        // COMBO-RECEIPT-NAME-ONLY (f191680): the receipt shows only the DEAL NAME, not its components
+        // (the KOT keeps every component). This assertion was stale — it predated that shipped change.
+        $this->assertStringNotContainsString('Raita', $payload, 'combo components are dropped from the receipt (deal name only)');
         $this->assertStringContainsString('(1/2 kg)', $payload, 'variant prints in parentheses');
         $this->assertStringContainsString('Extra Spicy', $payload, 'modifier prints under its item');
     }

@@ -106,37 +106,38 @@
 @endif
 
 @if(!($layout?->show_order_no === false))
-<div>Order: <span class="bold">{{ $salesOrder->sale_no ?? $salesOrder->order_no }}</span></div>
-@endif
-@if(!($layout?->show_vehicle_number === false) && $salesOrder->vehicle_number)
-<div class="bold">Vehicle: {{ $salesOrder->vehicle_number }}</div>
+<div class="center">{{ $salesOrder->sale_no ?? $salesOrder->order_no }}</div>
 @endif
 
-<div>Time: {{ now()->format('d/m/Y h:i A') }}</div>
+<hr>
 
+{{-- Field ORDER + casing mirror EscPosPayloadService::kot() exactly, so the preview equals the
+     paper: TABLE / WAITER (big, uppercase, no floor) → CASHIER → VEHICLE → TIME + date. --}}
 @if(!($layout?->show_table_info === false) && $salesOrder->restaurantTable)
-<div class="big">
-    Table: {{ $salesOrder->restaurantTable->table_no }}
-    @if($salesOrder->restaurantTable->floor)
-        / {{ $salesOrder->restaurantTable->floor->name }}
-    @endif
-</div>
+<div class="big">TABLE: {{ $salesOrder->restaurantTable->table_no }}</div>
 @if($salesOrder->restaurantTableSession?->waiter)
-<div>Waiter: {{ $salesOrder->restaurantTableSession->waiter->name }}</div>
+<div class="big">WAITER: {{ strtoupper($salesOrder->restaurantTableSession->waiter->name) }}</div>
 @endif
 @endif
 
 @if(!($layout?->show_cashier_name === false) && $salesOrder->createdBy)
-<div>Cashier: {{ $salesOrder->createdBy->name }}</div>
+<div>CASHIER: {{ $salesOrder->createdBy->name }}</div>
 @endif
+
+@if(!($layout?->show_vehicle_number === false) && $salesOrder->vehicle_number)
+<div class="big">VEHICLE: {{ $salesOrder->vehicle_number }}</div>
+@endif
+
+<div>TIME: {{ now()->format('h:i A') }}</div>
+<div>{{ now()->format('D d-M-Y') }}</div>
 
 <hr>
 
 <table class="{{ $dividers ? 'col-div' : '' }}">
     <thead>
         <tr>
-            <td class="item-qty bold">Qty</td>
-            <td class="item-name bold">Item</td>
+            <td class="item-qty bold">QTY</td>
+            <td class="item-name bold">ITEM</td>
         </tr>
     </thead>
     <tbody>
@@ -170,8 +171,8 @@
                 @endif
             </td>
             <td class="item-name">
-                <span class="ibig">{{ ($eventType ?? null) === 'addition' ? '(R) ' : '' }}{{ $line->product_name }}</span>
-                @if($line->variant_name)
+                <span class="ibig">{{ ($eventType ?? null) === 'addition' ? '(R) ' : '' }}{{ strtoupper($line->product_name) }}</span>
+                @if($line->variant_name && strcasecmp(trim($line->variant_name), trim((string) $line->product_name)) !== 0)
                     <br><small>{{ $line->variant_name }}</small>
                 @endif
                 @foreach(($line->modifiers ?? []) as $modifier)

@@ -39,7 +39,13 @@ class SalesOrderController extends Controller
 
         // USER-DATA-SCOPE-1: a terminal/order-type restricted operator only ever lists his own
         // sales — applied to the QUERY so a hand-edited filter cannot widen it.
-        app(\App\Services\Security\UserDataScope::class)->applyToSales($query, auth('tenant')->user());
+        $scopeUser = auth('tenant')->user();
+        app(\App\Services\Security\UserDataScope::class)->applyToSales($query, $scopeUser);
+
+        // The Type filter only offers the order types this operator is assigned; a takeaway-only
+        // cashier never sees (or can filter to) delivery. Unrestricted users get all four.
+        $allowedOrderTypes = $scopeUser?->effectiveAllowedOrderTypes()
+            ?? array_keys(\App\Models\Tenant\User::ORDER_TYPES);
 
         if ($request->filled('branch_id')) {
             $query->where('branch_id', $request->branch_id);
@@ -55,7 +61,7 @@ class SalesOrderController extends Controller
             }
         }
 
-        if ($request->filled('order_type')) {
+        if ($request->filled('order_type') && in_array($request->order_type, $allowedOrderTypes, true)) {
             $query->where('order_type', $request->order_type);
         }
 
@@ -76,10 +82,11 @@ class SalesOrderController extends Controller
         }
 
         return view('tenant.sales-orders.index', [
-            'orders'   => $query->paginate(15)->withQueryString(),
-            'branches' => Branch::where('status', 'active')->orderBy('name')->get(),
-            'dateFrom' => $from,
-            'dateTo'   => $to,
+            'orders'     => $query->paginate(15)->withQueryString(),
+            'branches'   => Branch::where('status', 'active')->orderBy('name')->get(),
+            'orderTypes' => $allowedOrderTypes,
+            'dateFrom'   => $from,
+            'dateTo'     => $to,
         ]);
     }
 

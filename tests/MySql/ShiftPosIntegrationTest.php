@@ -97,6 +97,68 @@ class ShiftPosIntegrationTest extends MySqlTenantTestCase
         $this->assertSame($shiftB->business_date->toDateString(), $session->business_date->toDateString());
     }
 
+    // ── TABLE-RESERVATION-2b: opening a reserved table carries its customer onto the session ────────
+
+    public function test_open_table_carries_reserved_customer_onto_the_session(): void
+    {
+        $this->cleanTenant(['restaurant_table_sessions', 'restaurant_tables', 'restaurant_floors', 'shifts', 'terminals', 'branches', 'customers']);
+        $userId = $this->actingAsTenant();
+        $branchId = $this->makeBranch(['timezone' => 'Asia/Karachi']);
+        $terminal = $this->makeTerminal($branchId);
+        $this->openShift($branchId, $terminal, $userId);
+        $custId = \Illuminate\Support\Facades\DB::connection('tenant')->table('customers')->insertGetId([
+            'name' => 'Ayesha', 'phone' => '03001234567', 'status' => 'active', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $table = RestaurantTable::on('tenant')->find($this->makeTable($branchId));
+        $table->update([
+            'status' => 'reserved', 'reserved_customer_id' => $custId,
+            'reserved_name' => 'Ayesha', 'reserved_phone' => '03001234567',
+            'reserved_by_user_id' => $userId, 'reserved_at' => now(),
+        ]);
+
+        $resp = app()->call([app(RestaurantTableSessionController::class), 'open'], [
+            'request' => $this->jsonRequest('POST', ['terminal_id' => $terminal, 'guest_count' => 3]),
+            'restaurantTable' => $table,
+        ]);
+        $this->assertSame(200, $resp->getStatusCode(), 'Open should succeed: ' . $resp->getContent());
+
+        $session = \App\Models\Tenant\RestaurantTableSession::on('tenant')->where('restaurant_table_id', $table->id)->first();
+        $this->assertSame($custId, (int) $session->customer_id, 'the reserved customer id carries onto the session');
+        $this->assertSame('Ayesha', $session->customer_name, 'the reserved customer name snapshot carries onto the session');
+        $this->assertSame('03001234567', $session->customer_phone);
+
+        // The JSON response carries the customer so the POS pre-attaches it in place (no reload).
+        $json = $resp->getData(true);
+        $this->assertSame($custId, (int) $json['session']['customer_id']);
+        $this->assertSame('Ayesha', $json['session']['customer_name']);
+
+        // Opening consumes the reservation — the table's reserved_* fields are cleared.
+        $table->refresh();
+        $this->assertSame('occupied', $table->status);
+        $this->assertNull($table->reserved_customer_id);
+    }
+
+    public function test_open_table_without_a_reservation_leaves_the_session_customer_null(): void
+    {
+        $this->cleanTenant(['restaurant_table_sessions', 'restaurant_tables', 'restaurant_floors', 'shifts', 'terminals', 'branches', 'customers']);
+        $userId = $this->actingAsTenant();
+        $branchId = $this->makeBranch(['timezone' => 'Asia/Karachi']);
+        $terminal = $this->makeTerminal($branchId);
+        $this->openShift($branchId, $terminal, $userId);
+        $table = RestaurantTable::on('tenant')->find($this->makeTable($branchId)); // plain available table
+
+        $resp = app()->call([app(RestaurantTableSessionController::class), 'open'], [
+            'request' => $this->jsonRequest('POST', ['terminal_id' => $terminal, 'guest_count' => 2]),
+            'restaurantTable' => $table,
+        ]);
+        $this->assertSame(200, $resp->getStatusCode(), $resp->getContent());
+
+        $session = \App\Models\Tenant\RestaurantTableSession::on('tenant')->where('restaurant_table_id', $table->id)->first();
+        $this->assertNull($session->customer_id, 'a normal open must not fabricate a customer');
+        $this->assertNull($session->customer_name);
+        $this->assertNull($session->customer_phone);
+    }
+
     public function test_open_table_rejects_terminal_from_another_branch(): void
     {
         $this->cleanTenant(['restaurant_table_sessions', 'restaurant_tables', 'restaurant_floors', 'shifts', 'terminals', 'branches']);

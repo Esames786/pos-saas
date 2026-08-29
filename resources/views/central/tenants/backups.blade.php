@@ -25,6 +25,41 @@
     <div class="alert alert-success alert-dismissible fade show">{{ session('status') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
 @endif
 
+@can('central.tenants.backup-settings.save')
+@php($slots = $setting->times ?? [])
+<div class="card mb-4 border-primary-subtle">
+    <div class="card-body">
+        <form method="POST" action="{{ route('central.tenants.backup-settings.save', $tenant) }}">@csrf
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+                <h5 class="mb-0"><i class="ti ti-clock-play me-1"></i>Automatic Backups</h5>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" role="switch" id="autoEnabled" name="is_enabled" value="1" {{ $setting->is_enabled ? 'checked' : '' }}>
+                    <label class="form-check-label" for="autoEnabled">Enabled</label>
+                </div>
+            </div>
+            <p class="text-muted small mb-3">Take up to <strong>3 automatic backups a day</strong> at the times below. Times are <strong>Pakistan time (PKT)</strong>. Only these automatic backups are auto-deleted after the retention period — your manual backups are never touched.</p>
+            <input type="hidden" name="timezone" value="{{ $setting->timezone ?: 'Asia/Karachi' }}">
+            <div class="row g-3 align-items-end">
+                @for($i = 0; $i < 3; $i++)
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small">Backup time {{ $i + 1 }}</label>
+                        <input type="time" name="times[]" class="form-control" value="{{ $slots[$i] ?? '' }}">
+                    </div>
+                @endfor
+                <div class="col-6 col-md-2">
+                    <label class="form-label small">Keep (days)</label>
+                    <input type="number" name="retention_days" class="form-control" min="1" max="30" value="{{ $setting->retention_days ?: 7 }}">
+                </div>
+                <div class="col-md-1">
+                    <button class="btn btn-primary w-100">Save</button>
+                </div>
+            </div>
+            <p class="text-muted small mt-2 mb-0">Leave a time blank to use fewer than 3. Automatic backups appear in the list below tagged <span class="badge bg-light text-dark">scheduled</span>.</p>
+        </form>
+    </div>
+</div>
+@endcan
+
 <div class="card">
     <div class="card-body table-responsive">
         <table class="table align-middle">

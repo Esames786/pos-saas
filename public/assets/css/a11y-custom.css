@@ -1,17 +1,31 @@
+/* The skip link must be INVISIBLE until focused. Parking it at top:-40px
+   still let its box paint a dark sliver above the brand on some layouts —
+   clipping it to a zero-size rect removes it from the page entirely, and
+   :focus restores it in full. */
 .skip-link {
     position: absolute;
-    top: -40px;
-    left: 12px;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
     z-index: 9999;
     background: #111827;
     color: #ffffff;
-    padding: 10px 14px;
     border-radius: 6px;
     text-decoration: none;
 }
 
 .skip-link:focus {
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip: auto;
+    clip-path: none;
     top: 12px;
+    left: 12px;
+    padding: 10px 14px;
 }
 
 :focus-visible {

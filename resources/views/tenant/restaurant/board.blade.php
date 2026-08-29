@@ -10,7 +10,7 @@
 .table-card.available { border-left-color: #198754; }
 .table-card.occupied { border-left-color: #dc3545; }
 .table-card.bill_requested { border-left-color: #fd7e14; }
-.table-card.reserved { border-left-color: #0dcaf0; }
+.table-card.reserved { border-left-color: #a855f7; }
 .table-card.cleaning { border-left-color: #adb5bd; }
 .table-card.inactive { border-left-color: #343a40; opacity: .6; }
 .table-card .t-no { font-size: 1.25rem; font-weight: 700; }
@@ -174,13 +174,37 @@
                                 </form>
                                 @endcan
                             </div>
+                        @elseif($table->status === 'reserved')
+                            {{-- TABLE-RESERVATION-1: reserved (no session yet) — who + when + actions. --}}
+                            <div class="mt-2 small">
+                                <div><strong>{{ $table->reserved_name ?: 'Reserved' }}</strong></div>
+                                @if($table->reserved_phone)<div class="text-muted">{{ $table->reserved_phone }}</div>@endif
+                                @if($table->reserved_for)<div class="text-muted"><i class="ti ti-clock me-1"></i>{{ $table->reserved_for->format('d-M h:i A') }}</div>@endif
+                                @if($table->reservation_note)<div class="text-muted text-truncate" title="{{ $table->reservation_note }}">{{ $table->reservation_note }}</div>@endif
+                            </div>
+                            <div class="mt-2 d-flex flex-column gap-1">
+                                <button type="button" class="btn btn-sm btn-outline-secondary"
+                                        data-reservation-details="{{ $table->id }}">Details</button>
+                                @can('tenant.restaurant.table-sessions.open')
+                                <button class="btn btn-sm btn-success"
+                                        data-bs-toggle="modal" data-bs-target="#openModal-{{ $table->id }}">Open Session</button>
+                                <button type="button" class="btn btn-sm btn-outline-danger"
+                                        data-table-unreserve="{{ $table->id }}">Cancel Reservation</button>
+                                @endcan
+                            </div>
                         @elseif($table->status === 'available')
                             @can('tenant.restaurant.table-sessions.open')
-                            <button class="btn btn-sm btn-primary mt-2 w-100"
-                                    data-bs-toggle="modal"
-                                    data-bs-target="#openModal-{{ $table->id }}">
-                                Open Session
-                            </button>
+                            <div class="mt-2 d-flex flex-column gap-1">
+                                <button class="btn btn-sm btn-primary w-100"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#openModal-{{ $table->id }}">
+                                    Open Session
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-primary w-100"
+                                        data-table-reserve="{{ $table->id }}" data-table-no="{{ $table->table_no }}">
+                                    <i class="ti ti-calendar-plus me-1"></i>Reserve
+                                </button>
+                            </div>
                             @endcan
                         @endif
                     </div>
@@ -199,7 +223,7 @@
 {{-- Open session modals --}}
 @foreach($floors as $floor)
     @foreach($floor->tables as $table)
-        @if(!$table->openSession && $table->status === 'available')
+        @if(!$table->openSession && in_array($table->status, ['available', 'reserved'], true))
         <div class="modal fade" id="openModal-{{ $table->id }}" tabindex="-1">
             <div class="modal-dialog modal-sm">
                 <div class="modal-content">
@@ -240,4 +264,149 @@
         @endif
     @endforeach
 @endforeach
+
+{{-- TABLE-RESERVATION-1 — reserve / details modals (self-contained, mirror the POS board). --}}
+<div class="modal fade" id="reserveTableModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h2 class="modal-title h6 mb-0"><i class="ti ti-calendar-plus me-1"></i>Reserve Table <span id="reserve-table-no"></span></h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="reserve-table-id">
+                <input type="hidden" id="reserve-customer-id">
+                <div id="reserve-toast" class="alert d-none py-2 small mb-3" role="alert"></div>
+                <label class="form-label small mb-1">Customer <span class="text-muted">(search the book, or just type a name below)</span></label>
+                <input type="text" class="form-control form-control-sm mb-1" id="reserve-customer-search" placeholder="Search phone or name…" autocomplete="off">
+                <div id="reserve-customer-suggest" class="list-group mb-2 d-none" style="max-height:180px;overflow:auto"></div>
+                <div id="reserve-customer-chip" class="mb-2 d-none">
+                    <span class="badge bg-primary-subtle text-primary-emphasis border">Attached: <span id="reserve-customer-name"></span> <a href="#" class="text-danger ms-1" id="reserve-customer-clear">&times;</a></span>
+                </div>
+                <div class="row g-2">
+                    <div class="col-6"><label class="form-label small mb-1">Name</label><input type="text" class="form-control form-control-sm" id="reserve-name"></div>
+                    <div class="col-6"><label class="form-label small mb-1">Phone</label><input type="text" class="form-control form-control-sm" id="reserve-phone"></div>
+                </div>
+                <label class="form-label small mb-1 mt-2">Reserved for (date &amp; time)</label>
+                <input type="datetime-local" class="form-control form-control-sm" id="reserve-for">
+                <label class="form-label small mb-1 mt-2">Note</label>
+                <textarea class="form-control form-control-sm" id="reserve-note" rows="2" placeholder="e.g. 6 guests, window table"></textarea>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-sm btn-primary" id="reserve-save-btn"><i class="ti ti-calendar-check me-1"></i>Reserve Table</button>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal fade" id="reservationDetailsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h2 class="modal-title h6 mb-0"><i class="ti ti-calendar me-1"></i>Reservation</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="reservation-details-body"></div>
+        </div>
+    </div>
+</div>
+
+@push('scripts')
+<script>
+(function () {
+    var TABLES = '{{ url('/restaurant/tables') }}';
+    var CUST   = '{{ url('/ajax/customers') }}';
+    var CSRF   = '{{ csrf_token() }}';
+    function $id(id) { return document.getElementById(id); }
+    function esc(s) { var d = document.createElement('div'); d.textContent = String(s == null ? '' : s); return d.innerHTML; }
+
+    document.addEventListener('click', function (e) {
+        var r = e.target.closest('[data-table-reserve]');
+        if (r) { openReserveModal(r.dataset.tableReserve, r.dataset.tableNo); return; }
+        var u = e.target.closest('[data-table-unreserve]');
+        if (u) { cancelReservation(u.dataset.tableUnreserve); return; }
+        var d = e.target.closest('[data-reservation-details]');
+        if (d) { showReservationDetails(d.dataset.reservationDetails); return; }
+    });
+
+    function openReserveModal(tableId, tableNo) {
+        $id('reserve-table-id').value = tableId;
+        $id('reserve-table-no').textContent = tableNo || '';
+        ['reserve-customer-search', 'reserve-name', 'reserve-phone', 'reserve-for', 'reserve-note', 'reserve-customer-id'].forEach(function (id) { var el = $id(id); if (el) el.value = ''; });
+        $id('reserve-customer-chip').classList.add('d-none');
+        $id('reserve-customer-suggest').classList.add('d-none');
+        $id('reserve-toast').classList.add('d-none');
+        bootstrap.Modal.getOrCreateInstance($id('reserveTableModal')).show();
+    }
+
+    function cancelReservation(tableId) {
+        if (!confirm('Cancel this reservation? The table becomes available.')) return;
+        fetch(TABLES + '/' + tableId + '/unreserve', { method: 'POST', headers: { 'X-CSRF-TOKEN': CSRF, Accept: 'application/json' } })
+            .then(function () { location.reload(); }).catch(function () {});
+    }
+
+    function showReservationDetails(tableId) {
+        fetch(TABLES + '/' + tableId + '/reservation', { headers: { Accept: 'application/json' } })
+            .then(function (r) { return r.json(); })
+            .then(function (res) {
+                if (!res.ok) return;
+                var v = res.reservation, rows = '';
+                var add = function (l, x) { if (x) rows += '<div class="mb-1"><span class="text-muted small">' + l + ':</span> ' + esc(x) + '</div>'; };
+                add('Name', v.name); add('Phone', v.phone); add('Reserved for', v.reserved_for); add('Note', v.note); add('Reserved by', v.reserved_by); add('Marked at', v.reserved_at);
+                $id('reservation-details-body').innerHTML = rows || '<div class="text-muted small">No details.</div>';
+                bootstrap.Modal.getOrCreateInstance($id('reservationDetailsModal')).show();
+            }).catch(function () {});
+    }
+
+    var search = $id('reserve-customer-search'), suggest = $id('reserve-customer-suggest');
+    if (search) {
+        var t;
+        search.addEventListener('input', function () {
+            clearTimeout(t);
+            var q = search.value.trim();
+            if (q.length < 2) { suggest.classList.add('d-none'); return; }
+            t = setTimeout(function () {
+                fetch(CUST + '?q=' + encodeURIComponent(q), { headers: { Accept: 'application/json' } })
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        suggest.innerHTML = '';
+                        (data.customers || []).slice(0, 8).forEach(function (c) {
+                            var a = document.createElement('a');
+                            a.href = '#'; a.className = 'list-group-item list-group-item-action py-1 small';
+                            a.textContent = (c.name || '') + ' · ' + (c.phone || '');
+                            a.addEventListener('click', function (ev) {
+                                ev.preventDefault();
+                                $id('reserve-customer-id').value = c.id;
+                                $id('reserve-customer-name').textContent = (c.name || '') + ' · ' + (c.phone || '');
+                                $id('reserve-customer-chip').classList.remove('d-none');
+                                if (!$id('reserve-name').value) $id('reserve-name').value = c.name || '';
+                                if (!$id('reserve-phone').value) $id('reserve-phone').value = c.phone || '';
+                                suggest.classList.add('d-none'); search.value = '';
+                            });
+                            suggest.appendChild(a);
+                        });
+                        suggest.classList.toggle('d-none', !suggest.children.length);
+                    }).catch(function () {});
+            }, 250);
+        });
+        $id('reserve-customer-clear') && $id('reserve-customer-clear').addEventListener('click', function (e) { e.preventDefault(); $id('reserve-customer-id').value = ''; $id('reserve-customer-chip').classList.add('d-none'); });
+        $id('reserve-save-btn') && $id('reserve-save-btn').addEventListener('click', function () {
+            var fd = new FormData();
+            fd.append('reserved_customer_id', $id('reserve-customer-id').value || '');
+            fd.append('reserved_name', $id('reserve-name').value || '');
+            fd.append('reserved_phone', $id('reserve-phone').value || '');
+            fd.append('reserved_for', $id('reserve-for').value || '');
+            fd.append('reservation_note', $id('reserve-note').value || '');
+            fetch(TABLES + '/' + $id('reserve-table-id').value + '/reserve', { method: 'POST', headers: { 'X-CSRF-TOKEN': CSRF, Accept: 'application/json' }, body: fd })
+                .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+                .then(function (res) {
+                    if (!res.ok) { var el = $id('reserve-toast'); el.className = 'alert alert-danger py-2 small mb-3'; el.textContent = res.d.message || 'Could not reserve the table.'; el.classList.remove('d-none'); return; }
+                    bootstrap.Modal.getOrCreateInstance($id('reserveTableModal')).hide();
+                    location.reload();
+                }).catch(function () {});
+        });
+    }
+})();
+</script>
+@endpush
 @endsection

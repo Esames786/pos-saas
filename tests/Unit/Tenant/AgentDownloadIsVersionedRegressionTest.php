@@ -35,7 +35,7 @@ class AgentDownloadIsVersionedRegressionTest extends TestCase
         $code = $this->controller();
 
         $this->assertStringContainsString(
-            "'BingooPrintAgent-Setup-' . \$this->agentVersion() . '.exe'",
+            "'BingooPrintAgent-Setup-' . \$version . '.exe'",
             $code,
             'a fixed filename lets a cached copy masquerade as the new build'
         );
@@ -55,7 +55,7 @@ class AgentDownloadIsVersionedRegressionTest extends TestCase
             $this->markTestSkipped('installer artefact not present in this checkout');
         }
 
-        $response = app(\App\Http\Controllers\Tenant\PrintAgentController::class)->downloadWindows();
+        $response = app(\App\Http\Controllers\Tenant\PrintAgentController::class)->downloadWindows(new \Illuminate\Http\Request());
 
         $this->assertSame(200, $response->getStatusCode());
         $this->assertStringContainsString(
@@ -72,7 +72,7 @@ class AgentDownloadIsVersionedRegressionTest extends TestCase
         $view = file_get_contents(resource_path('views/tenant/printing/agents/index.blade.php'));
 
         $this->assertStringContainsString('$agentVersion', $view, 'the shop must see the version before installing');
-        $this->assertStringContainsString("'?v=' . \$agentVersion", $view, 'the link must bust a cached download');
+        $this->assertStringContainsString("v=' . \$agentVersion", $view, 'the link must bust a cached download');
     }
 
     public function test_the_shipped_agent_version_matches_the_installer_script(): void

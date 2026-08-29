@@ -58,6 +58,100 @@ class PermissionCatalogService
     ];
 
     /**
+     * CATERING-V1-CLOSURE-1 (§9): business-friendly grouping for the Catering
+     * module — the editor shows a short list of human actions instead of a flat
+     * list of raw routes. PRESENTATION ONLY: keys stay route names, buckets/sensitive
+     * classification is unchanged, and route-level enforcement is untouched.
+     */
+    private const CATERING_FEATURES = [
+        'tenant.catering.events.index' => 'View Catering',
+        'tenant.catering.events.show' => 'View Catering',
+        'tenant.catering.events.create' => 'Create / Edit Estimate',
+        'tenant.catering.events.store' => 'Create / Edit Estimate',
+        'tenant.catering.events.edit' => 'Create / Edit Estimate',
+        'tenant.catering.events.update' => 'Create / Edit Estimate',
+        'tenant.catering.estimates.update' => 'Create / Edit Estimate',
+        'tenant.catering.estimates.reprice' => 'Create / Edit Estimate',
+        // Adjusting one booking's materials or quoted price is estimate editing,
+        // not product configuration — it changes a quotation, never a dish.
+        'tenant.catering.line-cost-blocks.update' => 'Create / Edit Estimate',
+        'tenant.catering.line-cost-blocks.reset' => 'Create / Edit Estimate',
+        'tenant.catering.line-cost-blocks.customer-supplied' => 'Create / Edit Estimate',
+        'tenant.catering.estimate-lines.quoted-rate' => 'Create / Edit Estimate',
+        'tenant.catering.estimate-lines.use-calculated-rate' => 'Create / Edit Estimate',
+        'tenant.catering.estimates.send' => 'Send / Revise Quote',
+        'tenant.catering.estimates.accept' => 'Send / Revise Quote',
+        'tenant.catering.estimates.revise' => 'Send / Revise Quote',
+        'tenant.catering.events.confirm' => 'Confirm Booking',
+        'tenant.catering.events.cancel' => 'Confirm Booking',
+        'tenant.catering.material-rates.index' => 'Manage Material Rates',
+        'tenant.catering.material-rates.store' => 'Manage Material Rates',
+        // What materials are CHARGED at, kept as its own grant: seeing the house
+        // price list is one thing, repricing dishes and live quotations from it
+        // is another, and they should be grantable apart.
+        'tenant.catering.commercial-rates.index' => 'Commercial Rates',
+        'tenant.catering.commercial-rates.impact' => 'Commercial Rates',
+        'tenant.catering.commercial-rates.store' => 'Apply Commercial Rates',
+        'tenant.catering.commercial-rates.apply-products' => 'Apply Commercial Rates',
+        'tenant.catering.commercial-rates.apply-drafts' => 'Apply Commercial Rates',
+        'tenant.catering.commercial-rates.revise-and-apply' => 'Apply Commercial Rates',
+        'tenant.catering.rate-impact.index' => 'Manage Material Rates',
+        'tenant.catering.rate-impact.apply' => 'Manage Material Rates',
+        'tenant.catering.advances.store' => 'Record Advance',
+        // Money OUT is its own grant. Whoever may take a payment does not
+        // automatically get to hand one back.
+        'tenant.catering.refunds.store' => 'Refund Customer',
+        'tenant.catering.production-releases.store' => 'Release Production',
+        'tenant.catering.production-releases.show' => 'Release Production',
+        'tenant.catering.production-releases.print' => 'Print / Reprint',
+        'tenant.catering.production-releases.reprint' => 'Print / Reprint',
+        'tenant.catering.documents.estimate' => 'Print / Reprint',
+        'tenant.catering.documents.kitchen-sheet' => 'Print / Reprint',
+        'tenant.catering.documents.final-invoice' => 'Print / Reprint',
+        // Bulk print runs compose the same documents for a selected set of
+        // bookings — same grant family as the single-document prints.
+        // Making is money on every dish, so seeing the impact and applying it
+        // are separate grants — mirror of the commercial-rate split.
+        'tenant.catering.making-adjustment.index' => 'Making Adjustment',
+        'tenant.catering.making-adjustment.apply-products' => 'Apply Making Adjustment',
+        'tenant.catering.making-adjustment.apply-drafts' => 'Apply Making Adjustment',
+        // Manually emailing/resending customer documents.
+        'tenant.catering.estimates.email' => 'Email Customer Documents',
+        'tenant.catering.final-invoices.email' => 'Email Customer Documents',
+        // The managed kitchen-instruction vocabulary — config, like the books.
+        'tenant.catering.instructions.index' => 'Kitchen Instructions',
+        'tenant.catering.instructions.store' => 'Kitchen Instructions',
+        'tenant.catering.instructions.update' => 'Kitchen Instructions',
+        'tenant.catering.documents.bulk-quotations' => 'Print / Reprint',
+        'tenant.catering.documents.bulk-kitchen-sheets' => 'Print / Reprint',
+        'tenant.catering.documents.bulk-address-sheet' => 'Print / Reprint',
+        'tenant.catering.material-issues.store' => 'Issue Materials',
+        // The store counter, and the booking lookup its selection modal reads.
+        // Grouped together so the screen and the list it needs are granted as
+        // one thing — a granted screen whose lookup is denied shows an empty
+        // modal and looks broken.
+        'tenant.catering.store-issues.index' => 'Store Issue',
+        'tenant.catering.store-issues.store' => 'Store Issue',
+        'tenant.catering.store-issues.bookings' => 'Store Issue',
+        'tenant.catering.store-issues.requirements' => 'Store Issue',
+        'tenant.catering.final-invoices.store' => 'Finalise Event',
+        'tenant.catering.events.close' => 'Finalise Event',
+        'tenant.catering.profiles.index' => 'Catering Products',
+        'tenant.catering.profiles.store' => 'Catering Products',
+        'tenant.catering.profiles.update' => 'Catering Products',
+        // Same feature as the profile it hangs off: whoever may configure a
+        // catering product may say what it is made of.
+        'tenant.catering.cost-blocks.edit' => 'Catering Products',
+        'tenant.catering.cost-blocks.update' => 'Catering Products',
+        'tenant.catering.printer-mappings.index' => 'Catering Settings',
+        'tenant.catering.printer-mappings.store' => 'Catering Settings',
+        'tenant.catering.printer-mappings.destroy' => 'Catering Settings',
+        'tenant.catering.printer-mappings.copy-from-pos' => 'Catering Settings',
+        'tenant.catering.settings.index' => 'Catering Settings',
+        'tenant.catering.settings.update' => 'Catering Settings',
+    ];
+
+    /**
      * Build the editor catalog.
      *
      * @param  Collection<int, \Spatie\Permission\Models\Permission>  $permissions  all tenant-guard permissions
@@ -127,7 +221,7 @@ class PermissionCatalogService
         if (isset(self::SUPPORT_OVERRIDES[$name])) {
             $o = self::SUPPORT_OVERRIDES[$name];
 
-            return [$o['module'], $o['feature'], 'action', $this->humanize(Str::afterLast($name, '.')) . ' (support)', $o['shared']];
+            return [$o['module'], $o['feature'], 'action', $this->humanize(Str::afterLast($name, '.')).' (support)', $o['shared']];
         }
 
         $segments = explode('.', $name);
@@ -139,7 +233,7 @@ class PermissionCatalogService
 
         $last = end($segments);
         $featureSegments = array_slice($segments, 1, max(count($segments) - 2, 1));
-        $feature = $this->humanize(implode(' ', $featureSegments));
+        $feature = self::CATERING_FEATURES[$name] ?? $this->humanize(implode(' ', $featureSegments));
 
         // SENSITIVE first — a sensitive suffix can never be classified as CRUD.
         if (in_array($last, self::SENSITIVE_ACTIONS, true)) {

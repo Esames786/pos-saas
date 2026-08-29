@@ -530,6 +530,35 @@ class PrintJobService
     }
 
     /**
+     * PRINTER-HEALTH-1: a job whose printer is currently unreachable (the agent's circuit breaker is
+     * cooling that printer down) must be RE-QUEUED, not failed — a kitchen ticket cannot silently
+     * vanish because a printer was switched off for a minute.
+     *
+     * The distinction from markFailed(): a transient markFailed gives up after MAX_AUTO_REQUEUE and
+     * bumps `attempts`; a printer being OFF is not the ticket's fault, so defer NEVER bumps attempts
+     * and never gives up. `deferred_until` (a) keeps the ticket alive to reprint the instant the
+     * printer answers again, and (b) drops it out of the pending fetch meanwhile, so one dead
+     * printer's backlog can no longer starve the healthy printers' newer tickets.
+     *
+     * A COMPLETED print is never resurrected (a late defer racing a printed report must not reprint).
+     */
+    public function deferForRetry(PrintJob $job, string $reason, int $cooldownSeconds = 30): void
+    {
+        $job->refresh();
+        if ($job->print_status === 'printed') {
+            return;
+        }
+
+        $job->update([
+            'print_status'        => 'queued',
+            'error_message'       => $reason,
+            'claimed_by_agent_id' => null,
+            'claimed_at'          => null,
+            'deferred_until'      => now()->addSeconds(max(1, $cooldownSeconds)),
+        ]);
+    }
+
+    /**
      * The ONE shared requeue of a failed/cancelled job (EDGE-LOCAL-PRINT-1 §5 closure): Cloud
      * PrintJobController::retry and the Edge local retry both delegate here so the field contract
      * can never drift. Only failed|cancelled jobs are eligible — anything else throws.
@@ -546,6 +575,7 @@ class PrintJobService
             'failed_at'           => null,
             'claimed_by_agent_id' => null,
             'claimed_at'          => null,
+            'deferred_until'      => null,
         ]);
     }
 

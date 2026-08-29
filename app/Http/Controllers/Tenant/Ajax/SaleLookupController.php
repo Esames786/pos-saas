@@ -10,9 +10,10 @@ use Illuminate\Http\Request;
 /**
  * SALES-RETURN-UX-1 — Select2 lookup for returnable sales.
  *
- * Searches paid / partially_returned sales by sale no, customer name, or
- * phone. Branch-scoped: a user with explicit branch assignments only sees
- * sales of those branches (a user with none — e.g. Owner — sees all).
+ * Searches paid / partially_returned sales by sale no, customer name, or phone. Branch-scoped, and
+ * USER-DATA-SCOPE-1: a terminal/order-type-restricted operator only finds sales on HIS terminals and
+ * order types — this search was the one sales surface that still returned every order in the branch,
+ * so a Takeaway cashier could pull up (and return) a Delivery sale.
  */
 class SaleLookupController extends Controller
 {
@@ -25,12 +26,14 @@ class SaleLookupController extends Controller
 
         $user      = auth('tenant')->user();
         $branchIds = $user ? $user->branches()->pluck('branches.id') : collect();
+        $scope     = app(\App\Services\Security\UserDataScope::class);
 
         $query = SalesOrder::query()
             ->with(['branch:id,name', 'customer:id,name'])
             ->whereIn('status', ['paid', 'partially_returned'])
             ->when($branchIds->isNotEmpty(), fn ($s) => $s->whereIn('branch_id', $branchIds))
             ->when($request->filled('branch_id'), fn ($s) => $s->where('branch_id', (int) $request->input('branch_id')))
+            ->when($scope->isScoped($user), fn ($s) => $scope->applyToSales($s, $user))
             ->when($q !== '', function ($s) use ($q) {
                 $s->where(function ($w) use ($q) {
                     $w->where('sale_no', 'like', "%{$q}%")

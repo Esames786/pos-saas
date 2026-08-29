@@ -53,7 +53,27 @@ class SalesReportEngine
             'category_id' => $raw['category_id'] ?? null,
             'product_id' => $raw['product_id'] ?? null,
             'payment_method_id' => $raw['payment_method_id'] ?? null,
+            // QUICK-REPORT-SEND-1: multi-value filters (Quick Report only). Additive — the Report
+            // Center passes single-value filters and never these arrays, so an empty array makes every
+            // ->when() below a no-op and its output is byte-identical. All AND-compose with each other.
+            'category_ids' => array_values(array_filter(array_map('intval', $raw['category_ids'] ?? []))),
+            'product_ids' => array_values(array_filter(array_map('intval', $raw['product_ids'] ?? []))),
+            'waiter_ids' => array_values(array_filter($raw['waiter_ids'] ?? [], fn ($v) => $v !== '' && $v !== null)),
+            'order_types' => array_values(array_filter($raw['order_types'] ?? [], fn ($v) => $v !== '' && $v !== null)),
         ];
+    }
+
+    /** Union of each category id + all its descendants (for the multi-category filter). */
+    public function categoriesWithDescendants(array $categoryIds): array
+    {
+        $all = [];
+        foreach (array_unique(array_map('intval', $categoryIds)) as $id) {
+            foreach ($this->categoryWithDescendants($id) as $descendant) {
+                $all[$descendant] = true;
+            }
+        }
+
+        return array_keys($all);
     }
 
     /** Base sales_orders query with EVERY shared filter applied. */
@@ -69,8 +89,10 @@ class SalesReportEngine
             ->when($f['shift_id'], fn ($q) => $q->where('o.shift_id', $f['shift_id']))
             ->when($f['cashier_id'], fn ($q) => $q->where('o.created_by_user_id', $f['cashier_id']))
             ->when($f['waiter_id'], fn ($q) => $q->where('o.restaurant_waiter_id', $f['waiter_id']))
+            ->when($f['waiter_ids'], fn ($q) => $q->whereIn('o.restaurant_waiter_id', $f['waiter_ids']))
             ->when($f['order_type'], fn ($q) => $q->where('o.order_type', $f['order_type']))
             ->when(! $f['order_type'] && $f['allowed_order_types'], fn ($q) => $q->whereIn('o.order_type', $f['allowed_order_types']))
+            ->when($f['order_types'], fn ($q) => $q->whereIn('o.order_type', $f['order_types']))
             ->when($f['payment_method_id'], fn ($q) => $q->whereExists(function ($s) use ($f) {
                 $s->selectRaw('1')->from('sale_payments as sp')
                     ->whereColumn('sp.sales_order_id', 'o.id')
@@ -82,9 +104,19 @@ class SalesReportEngine
                     ->whereColumn('fl.sales_order_id', 'o.id')
                     ->whereIn('fp.category_id', $this->categoryWithDescendants((int) $f['category_id']));
             }))
+            ->when($f['category_ids'], fn ($q) => $q->whereExists(function ($s) use ($f) {
+                $s->selectRaw('1')->from('sales_order_lines as fl')
+                    ->join('products as fp', 'fp.id', '=', 'fl.product_id')
+                    ->whereColumn('fl.sales_order_id', 'o.id')
+                    ->whereIn('fp.category_id', $this->categoriesWithDescendants($f['category_ids']));
+            }))
             ->when($f['product_id'], fn ($q) => $q->whereExists(function ($s) use ($f) {
                 $s->selectRaw('1')->from('sales_order_lines as fl')
                     ->whereColumn('fl.sales_order_id', 'o.id')->where('fl.product_id', $f['product_id']);
+            }))
+            ->when($f['product_ids'], fn ($q) => $q->whereExists(function ($s) use ($f) {
+                $s->selectRaw('1')->from('sales_order_lines as fl')
+                    ->whereColumn('fl.sales_order_id', 'o.id')->whereIn('fl.product_id', $f['product_ids']);
             }));
     }
 
@@ -96,7 +128,9 @@ class SalesReportEngine
             ->leftJoin('products as p', 'p.id', '=', 'l.product_id')
             ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
             ->when($f['category_id'], fn ($q) => $q->whereIn('p.category_id', $this->categoryWithDescendants((int) $f['category_id'])))
-            ->when($f['product_id'], fn ($q) => $q->where('l.product_id', $f['product_id']));
+            ->when($f['category_ids'], fn ($q) => $q->whereIn('p.category_id', $this->categoriesWithDescendants($f['category_ids'])))
+            ->when($f['product_id'], fn ($q) => $q->where('l.product_id', $f['product_id']))
+            ->when($f['product_ids'], fn ($q) => $q->whereIn('l.product_id', $f['product_ids']));
     }
 
     /** Period returns (allocated by BUSINESS day — the order's day it reverses, calendar
@@ -111,7 +145,9 @@ class SalesReportEngine
             ->when($f['branch_ids'], fn ($q) => $q->whereIn('r.branch_id', $f['branch_ids']))
             ->when($f['order_type'], fn ($q) => $q->where('o.order_type', $f['order_type']))
             ->when(! $f['order_type'] && $f['allowed_order_types'], fn ($q) => $q->whereIn('o.order_type', $f['allowed_order_types']))
+            ->when($f['order_types'], fn ($q) => $q->whereIn('o.order_type', $f['order_types']))
             ->when($f['waiter_id'], fn ($q) => $q->where('o.restaurant_waiter_id', $f['waiter_id']))
+            ->when($f['waiter_ids'], fn ($q) => $q->whereIn('o.restaurant_waiter_id', $f['waiter_ids']))
             ->when($f['terminal_id'], fn ($q) => $q->where('o.terminal_id', $f['terminal_id']))
             ->when(! $f['terminal_id'] && $f['allowed_terminal_ids'], fn ($q) => $q->whereIn('o.terminal_id', $f['allowed_terminal_ids']))
             ->when($f['cashier_id'], fn ($q) => $q->where('o.created_by_user_id', $f['cashier_id']))
@@ -127,7 +163,9 @@ class SalesReportEngine
             ->leftJoin('products as p', 'p.id', '=', 'rl.product_id')
             ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
             ->when($f['category_id'], fn ($q) => $q->whereIn('p.category_id', $this->categoryWithDescendants((int) $f['category_id'])))
-            ->when($f['product_id'], fn ($q) => $q->where('rl.product_id', $f['product_id']));
+            ->when($f['category_ids'], fn ($q) => $q->whereIn('p.category_id', $this->categoriesWithDescendants($f['category_ids'])))
+            ->when($f['product_id'], fn ($q) => $q->where('rl.product_id', $f['product_id']))
+            ->when($f['product_ids'], fn ($q) => $q->whereIn('rl.product_id', $f['product_ids']));
     }
 
     /** category id + all descendants (MySQL 8 recursive CTE — adjacency list authority). */
@@ -163,9 +201,27 @@ class SalesReportEngine
         return $map;
     }
 
+    /**
+     * A category or product filter narrows the report to specific LINES within a bill.
+     * The order-level sections (overview, waiters, order types) must then measure only
+     * those lines too — otherwise a bill that merely CONTAINS the category counts whole,
+     * and the headline dwarfs the very category the operator filtered to. With no such
+     * filter this is false and every total stays order-level, so an all-"All" report
+     * reconciles exactly as before.
+     */
+    private function isLineNarrowed(array $f): bool
+    {
+        return ! empty($f['category_id']) || ! empty($f['product_id'])
+            || ! empty($f['category_ids']) || ! empty($f['product_ids']);
+    }
+
     // ── Q. Overview KPIs ─────────────────────────────────────────────────────────────────────────
     public function overview(array $f): array
     {
+        if ($this->isLineNarrowed($f)) {
+            return $this->overviewNarrowed($f);
+        }
+
         $s = $this->salesBase($f)->selectRaw(
             'COUNT(*) as orders,
              COALESCE(SUM(o.subtotal),0) as gross_sales,
@@ -216,6 +272,53 @@ class SalesReportEngine
         ];
     }
 
+    /**
+     * Overview restricted to the filtered lines — merchandise only. Order-level charges
+     * (delivery, service, tips) and the order-level discount/tax belong to the whole bill,
+     * not a category, so they are zero here; SUM(line_total) already carries any LINE
+     * discount/tax, so Items Sold − Discount + Tax still reconciles to BILLED. A bill's
+     * payment method cannot be split across its categories either, so the method breakdown
+     * is dropped and the cash section mirrors the slice's own net.
+     */
+    private function overviewNarrowed(array $f): array
+    {
+        $m = $this->linesBase($f)->selectRaw(
+            'COUNT(DISTINCT o.id) as orders,
+             COALESCE(SUM(l.quantity * l.unit_price),0) as gross_sales,
+             COALESCE(SUM(l.discount_amount),0) as discount,
+             COALESCE(SUM(l.tax_amount),0) as tax,
+             COALESCE(SUM(l.line_total),0) as net'
+        )->first();
+        $soldQty = (float) $this->linesBase($f)->sum('l.quantity');
+        $returnedQty = (float) $this->returnLinesBase($f)->sum('rl.quantity');
+        $returns = (float) $this->returnLinesBase($f)->sum('rl.line_total');
+        $billed = (float) $m->net;
+        $netSales = $billed - $returns;
+
+        return [
+            'orders' => (int) $m->orders,
+            'sold_qty' => $soldQty,
+            'returned_qty' => $returnedQty,
+            'net_qty' => $soldQty - $returnedQty,
+            'gross_sales' => (float) $m->gross_sales,
+            'discount' => (float) $m->discount,
+            'tax' => (float) $m->tax,
+            'service_charge' => 0.0,
+            'delivery_charge' => 0.0,
+            'delivery_refunded' => 0.0,
+            'tips' => 0.0,
+            'grand_total' => $billed,
+            'returns_amount' => $returns,
+            'refunds_recorded' => $returns,
+            'cash_refunds' => $returns,
+            'returns_not_refunded' => 0.0,
+            'net_sales' => $netSales,
+            'payments' => [],
+            'cash_collected' => $billed,
+            'net_cash_from_sales' => $netSales,
+        ];
+    }
+
     // ── R. Category → child → item rollup ───────────────────────────────────────────────────────
     public function byCategory(array $f): array
     {
@@ -263,9 +366,26 @@ class SalesReportEngine
             $tree[$rootId]['returns_amount'] = ($tree[$rootId]['returns_amount'] ?? 0) + (float) $return['amount'];
             unset($child);
         }
-        foreach ($tree as &$root) {
+        // A parent's "orders" must be a DISTINCT count over its sub-tree; summing the
+        // children (above) double-counts an order that has lines in two of them (the
+        // qty/gross/net sums are right — only a head-count double-counts). One pass maps
+        // every leaf category to its root and counts distinct orders per root.
+        $distinctOrdersByRoot = [];
+        if ($rootMap !== []) {
+            $cases = collect($rootMap)->map(fn ($root, $cat) => 'WHEN ' . (int) $cat . ' THEN ' . (int) $root)->implode(' ');
+            $rootExpr = 'CASE p.category_id ' . $cases . ' ELSE 0 END';
+            $distinctOrdersByRoot = $this->linesBase($f)
+                ->selectRaw($rootExpr . ' as root_id, COUNT(DISTINCT o.id) as orders')
+                ->groupBy(DB::raw($rootExpr))
+                ->pluck('orders', 'root_id')->all();
+        }
+
+        foreach ($tree as $rootId => &$root) {
             foreach (['orders', 'sold_qty', 'returned_qty', 'gross', 'discount', 'tax', 'net', 'returns_amount'] as $key) {
                 $root[$key] ??= 0;
+            }
+            if (array_key_exists((int) $rootId, $distinctOrdersByRoot)) {
+                $root['orders'] = (int) $distinctOrdersByRoot[(int) $rootId];
             }
             $root['net_qty'] = $root['sold_qty'] - $root['returned_qty'];
             $root['net_value'] = $root['net'] - $root['returns_amount'];
@@ -354,6 +474,10 @@ class SalesReportEngine
     /** Shared per-sale-dimension aggregation (waiter / order type). */
     private function dimensionReport(array $f, string $column, callable $label): array
     {
+        if ($this->isLineNarrowed($f)) {
+            return $this->dimensionReportNarrowed($f, $column, $label);
+        }
+
         $rows = $this->salesBase($f)->groupBy(DB::raw($column))
             ->selectRaw(
                 "$column as dim,
@@ -401,6 +525,51 @@ class SalesReportEngine
         })->values()->all();
     }
 
+    /**
+     * Per-dimension totals restricted to the filtered lines. Billed and Net are the
+     * category's own line value for that waiter / order type — not the whole bill — and
+     * no order-level charge is attributed, so the dimensions sum to the same narrowed
+     * NET SALES the categories and items sections show.
+     */
+    private function dimensionReportNarrowed(array $f, string $column, callable $label): array
+    {
+        $rows = $this->linesBase($f)->groupBy(DB::raw($column))
+            ->selectRaw(
+                "$column as dim,
+                 COUNT(DISTINCT o.id) as orders,
+                 COALESCE(SUM(l.quantity),0) as sold_qty,
+                 COALESCE(SUM(l.line_total),0) as net"
+            )->get()->keyBy('dim');
+        $returns = $this->returnLinesBase($f)->groupBy(DB::raw($column))
+            ->selectRaw("$column as dim, COALESCE(SUM(rl.line_total),0) as amount, COALESCE(SUM(rl.quantity),0) as quantity")
+            ->get()->keyBy('dim');
+
+        return $rows->keys()->merge($returns->keys())->unique()->map(function ($dim) use ($rows, $returns, $label) {
+            $r = $rows->get($dim);
+            $ret = $returns->get($dim);
+            $net = (float) ($r->net ?? 0);
+            $retAmt = (float) ($ret->amount ?? 0);
+            $sold = (float) ($r->sold_qty ?? 0);
+            $retQty = (float) ($ret->quantity ?? 0);
+
+            return [
+                'label' => $label($dim === '' || $dim === null ? null : $dim),
+                'orders' => (int) ($r->orders ?? 0),
+                'sold_qty' => $sold,
+                'returned_qty' => $retQty,
+                'net_qty' => $sold - $retQty,
+                'gross' => $net,
+                'discount' => 0.0,
+                'tax' => 0.0,
+                'service_charge' => 0.0,
+                'delivery_charge' => 0.0,
+                'grand_total' => $net,
+                'returns_amount' => $retAmt,
+                'net_sales' => $net - $retAmt,
+            ];
+        })->values()->all();
+    }
+
     // ── V. Order-type COMBINATION reports (Khatri request 2026-08-10): for every order type,
     //      its categories (root rollup), items and waiters — qty + line-net columns. ─────────────
     public function orderTypeCombos(array $f): array
@@ -414,6 +583,7 @@ class SalesReportEngine
         $categories = [];
         $items = [];
         $waiters = [];
+        $totals = [];
         foreach ($types as $type) {
             $typed = array_merge($f, ['order_type' => $type, 'allowed_order_types' => []]);
             $typeLabel = $ot($type);
@@ -437,9 +607,22 @@ class SalesReportEngine
                 'net_value' => $r->net_value,
             ])->values()->all();
             $waiters[$typeLabel] = $this->byWaiter($typed);
+
+            // Per-type reconciliation bridge: the category/item nets are MERCHANDISE only, but this
+            // order type's cash/NET SALES includes the order-level charges (delivery etc.). Carry the
+            // net charge so the print can close "merchandise + charges = NET SALES", like the global
+            // sections already do — otherwise a delivery total looks like it contradicts the cash.
+            $merchNet = (float) collect($categories[$typeLabel])->sum('net_value');
+            $grandTotal = (float) $this->salesBase($typed)->sum('o.grand_total');
+            $netSales = round($grandTotal - (float) $this->returnsBase($typed)->sum('r.grand_total'), 2);
+            $totals[$typeLabel] = [
+                'merch_net' => round($merchNet, 2),
+                'net_sales' => $netSales,
+                'net_charges' => round($netSales - $merchNet, 2),
+            ];
         }
 
-        return ['categories' => $categories, 'items' => $items, 'waiters' => $waiters];
+        return ['categories' => $categories, 'items' => $items, 'waiters' => $waiters, 'totals' => $totals];
     }
 
     // ── W. Cancellations: items voided / decreased AFTER the KOT went to the kitchen. Anchored on

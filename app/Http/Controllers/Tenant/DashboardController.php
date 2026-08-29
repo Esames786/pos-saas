@@ -15,13 +15,58 @@ use Illuminate\Http\Request;
 
 class DashboardController extends Controller
 {
+    /**
+     * KASHIF-CATERING-CALENDAR-1 — is catering actually on this tenant's plan?
+     *
+     * Entitlement, never permission. The two disagree here by design: every
+     * Owner holds every tenant.* permission, so only the plan can answer this.
+     */
+    private function cateringEnabled(): bool
+    {
+        try {
+            $plan = app('tenant')->subscription?->loadMissing('plan.enabledModules')->plan;
+
+            return (bool) $plan?->hasEnabledModuleKey('catering');
+        } catch (\Throwable) {
+            // No bound tenant (console, tests without tenancy) — show nothing.
+            return false;
+        }
+    }
+
+    /**
+     * Older months, fetched only when the operator steps back past the default
+     * three-month window. Keeps the first dashboard paint small on a kitchen
+     * terminal with years of history behind it.
+     */
+    public function cateringCalendar(Request $request)
+    {
+        if (! $this->cateringEnabled()) {
+            abort(404);
+        }
+
+        $anchor = $request->filled('month')
+            ? \Carbon\CarbonImmutable::createFromFormat('Y-m', $request->string('month')->toString())->startOfMonth()
+            : null;
+
+        return view('tenant.partials.catering-calendar', [
+            'cateringCalendar' => app(\App\Services\Catering\CateringCalendarService::class)
+                ->window($anchor, $request->integer('branch_id') ?: null),
+            'fragment' => true,
+        ]);
+    }
+
     public function __invoke(Request $request, SalesReportService $salesService, InventoryReportService $inventoryService)
     {
         $branches       = Branch::where('status', 'active')->orderBy('name')->get();
         $selectedBranch = $request->integer('branch_id') ?: null;
 
+        // USER-DATA-SCOPE-1: the dashboard defaults to the operator's own terminals + order types.
+        // A user assigned all terminals and all order types is unrestricted and sees everything.
+        $scopeUser = auth('tenant')->user();
+        $scope     = app(\App\Services\Security\UserDataScope::class);
+
         // Today's sales stats
-        $today = $salesService->todayStats($selectedBranch);
+        $today = $salesService->todayStats($selectedBranch, $scopeUser);
 
         // SHIFT-POS-INTEGRATION-CLOSURE-1: operational "today" uses the BUSINESS calendar date in
         // each branch's business timezone (via TenantClock) — NEVER Laravel's UTC today(), which can
@@ -50,7 +95,8 @@ class DashboardController extends Controller
             ->join('sales_orders', 'sale_payments.sales_order_id', '=', 'sales_orders.id')
             ->join('payment_methods', 'sale_payments.payment_method_id', '=', 'payment_methods.id')
             ->where('sales_orders.status', 'paid')
-            ->when($selectedBranch, fn ($q) => $q->where('sales_orders.branch_id', $selectedBranch)))
+            ->when($selectedBranch, fn ($q) => $q->where('sales_orders.branch_id', $selectedBranch))
+            ->tap(fn ($q) => $scope->applyToSales($q, $scopeUser, 'sales_orders')))
             ->where('payment_methods.method_type', 'cash')
             ->sum('sale_payments.amount');
 
@@ -58,13 +104,15 @@ class DashboardController extends Controller
             ->join('sales_orders', 'sale_payments.sales_order_id', '=', 'sales_orders.id')
             ->join('payment_methods', 'sale_payments.payment_method_id', '=', 'payment_methods.id')
             ->where('sales_orders.status', 'paid')
-            ->when($selectedBranch, fn ($q) => $q->where('sales_orders.branch_id', $selectedBranch)))
+            ->when($selectedBranch, fn ($q) => $q->where('sales_orders.branch_id', $selectedBranch))
+            ->tap(fn ($q) => $scope->applyToSales($q, $scopeUser, 'sales_orders')))
             ->whereIn('payment_methods.method_type', ['card', 'bank_transfer'])
             ->sum('sale_payments.amount');
 
-        // Open shifts
+        // Open shifts (scoped to the operator's terminals, when he is terminal-restricted).
         $openShifts = Shift::where('status', 'open')
             ->when($selectedBranch, fn ($q) => $q->where('branch_id', $selectedBranch))
+            ->when($scope->terminalIds($scopeUser), fn ($q, $t) => $q->whereIn('terminal_id', $t))
             ->count();
 
         // Failed print jobs (last 24h)
@@ -84,7 +132,8 @@ class DashboardController extends Controller
         $topProducts = $applyToday(SalesOrderLine::query()
             ->join('sales_orders', 'sales_order_lines.sales_order_id', '=', 'sales_orders.id')
             ->where('sales_orders.status', 'paid')
-            ->when($selectedBranch, fn ($q) => $q->where('sales_orders.branch_id', $selectedBranch)))
+            ->when($selectedBranch, fn ($q) => $q->where('sales_orders.branch_id', $selectedBranch))
+            ->tap(fn ($q) => $scope->applyToSales($q, $scopeUser, 'sales_orders')))
             ->selectRaw('sales_order_lines.product_name, SUM(sales_order_lines.quantity) as qty_sold, SUM(sales_order_lines.line_total) as revenue')
             ->groupBy('sales_order_lines.product_name')
             ->orderByDesc('qty_sold')
@@ -99,6 +148,7 @@ class DashboardController extends Controller
         $last7Days = SalesOrder::query()
             ->where('status', 'paid')
             ->when($selectedBranch, fn ($q) => $q->where('branch_id', $selectedBranch))
+            ->tap(fn ($q) => $scope->applyToSales($q, $scopeUser))
             ->whereRaw("$businessDayNoPrefix >= ?", [$windowStart])
             ->selectRaw("$businessDayNoPrefix as day, COALESCE(SUM(grand_total), 0) as net_sales, COUNT(*) as orders")
             ->groupByRaw($businessDayNoPrefix)
@@ -106,10 +156,26 @@ class DashboardController extends Controller
             ->get()
             ->keyBy('day');
 
+        // KASHIF-CATERING-CALENDAR-1 — the booking diary, for catering tenants only.
+        //
+        // Gated on the plan's ENTITLEMENT, not on @can. deploy.sh grants the Owner
+        // every tenant.* permission regardless of plan, so a permission check here
+        // would put a catering widget on a restaurant's dashboard. Null means the
+        // widget is not rendered at all, not merely hidden.
+        $calendarService = $this->cateringEnabled()
+            ? app(\App\Services\Catering\CateringCalendarService::class)
+            : null;
+        $cateringCalendar = $calendarService?->window(null, $selectedBranch);
+        // KASHIF-CATERING-OPERATOR-UI-1: the owner KPI cards and the next-7-days
+        // list, from the same presentation authority as the calendar itself.
+        $cateringKpis = $calendarService?->kpis($selectedBranch);
+        $cateringNextSeven = $calendarService ? $calendarService->nextDays(7, $selectedBranch) : [];
+
         return view('tenant.dashboard', compact(
             'branches', 'selectedBranch', 'today',
             'cashToday', 'cardToday', 'openShifts', 'failedPrints',
-            'lowStockCount', 'expiryCount', 'topProducts', 'last7Days'
+            'lowStockCount', 'expiryCount', 'topProducts', 'last7Days',
+            'cateringCalendar', 'cateringKpis', 'cateringNextSeven'
         ));
     }
 }

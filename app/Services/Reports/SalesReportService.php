@@ -171,14 +171,18 @@ class SalesReportService
      * Population and the returns deduction now match SalesReportEngine exactly: a returned order
      * keeps its original sale visible, and returns come off as a separate figure.
      */
-    public function todayStats(int $branchId = null): array
+    public function todayStats(int $branchId = null, ?\App\Models\Tenant\User $scopeUser = null): array
     {
-        $q = $this->currentBusinessDay(
-            SalesOrder::query()
-                ->whereIn('status', ['paid', 'partially_returned', 'returned'])
-                ->when($branchId, fn ($q, $v) => $q->where('branch_id', $v)),
-            $branchId
-        );
+        // USER-DATA-SCOPE-1: a terminal/order-type restricted operator's dashboard shows only his own
+        // numbers (branch + terminal + order_type). Unrestricted users see everything (no-op).
+        $scope = app(\App\Services\Security\UserDataScope::class);
+
+        $inner = SalesOrder::query()
+            ->whereIn('status', ['paid', 'partially_returned', 'returned'])
+            ->when($branchId, fn ($q, $v) => $q->where('branch_id', $v));
+        $scope->applyToSales($inner, $scopeUser);
+
+        $q = $this->currentBusinessDay($inner, $branchId);
 
         $count    = (clone $q)->count();
         $billed   = (float) (clone $q)->sum('grand_total');
@@ -195,6 +199,10 @@ class SalesReportService
         $returnQuery = \App\Models\Tenant\SalesReturn::query()
             ->where('status', 'posted')
             ->when($branchId, fn ($q, $v) => $q->where('branch_id', $v));
+        // A return's order type / terminal live on its originating sales order, so scope through it.
+        if ($scope->isScoped($scopeUser)) {
+            $returnQuery->whereHas('order', fn ($so) => $scope->applyToSales($so, $scopeUser));
+        }
 
         if ($branchId) {
             $returnQuery->whereRaw('COALESCE(business_date, DATE(return_date)) = ?', [$clock->currentBusinessDate(\App\Models\Tenant\Branch::find($branchId))]);

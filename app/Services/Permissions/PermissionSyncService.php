@@ -20,7 +20,7 @@ class PermissionSyncService
 
             // Laravel assigns temporary generated::* names to unnamed routes
             // while building the route cache. They are not stable permissions.
-            if (!$name || str_starts_with($name, 'generated::')) {
+            if (! $name || str_starts_with($name, 'generated::')) {
                 continue;
             }
 
@@ -29,11 +29,11 @@ class PermissionSyncService
             RouteCatalog::updateOrCreate(
                 ['route_name' => $name],
                 [
-                    'uri'        => $route->uri(),
-                    'method'     => implode('|', $route->methods()),
+                    'uri' => $route->uri(),
+                    'method' => implode('|', $route->methods()),
                     'module_key' => $this->moduleKey($name),
                     'action_key' => $this->actionKey($name),
-                    'synced_at'  => now(),
+                    'synced_at' => now(),
                 ]
             );
 
@@ -115,6 +115,18 @@ class PermissionSyncService
         // Manufacturing customer lookup exposes manufacturing data — gate it with
         // the manufacturing module, not the fail-open generic tenant.ajax prefix.
         'tenant.ajax.manufacturing-customers' => 'tenant.manufacturing',
+        // PLATFORM-ENTITLEMENT-BOUNDARY-1: POS KOT routing and receipt/KOT layout
+        // configuration sit under `tenant.printing`, but that module also carries
+        // the SHARED physical transport (printers, job queue, LAN agents) which a
+        // Catering-only tenant legitimately needs. Give these routes their own
+        // module keys so TenantSubscriptionAccessService::ROUTE_ANY_OF_MODULES can
+        // require pos|restaurant for them without restricting the transport.
+        'tenant.printing.category-mappings.index' => 'tenant.printing.category-mappings',
+        'tenant.printing.category-mappings.store' => 'tenant.printing.category-mappings',
+        'tenant.printing.category-mappings.destroy' => 'tenant.printing.category-mappings',
+        'tenant.printing.layouts.index' => 'tenant.printing.layouts',
+        'tenant.printing.layouts.store' => 'tenant.printing.layouts',
+        'tenant.printing.layouts.preview' => 'tenant.printing.layouts',
     ];
 
     public function moduleKey(string $routeName): string
@@ -126,7 +138,7 @@ class PermissionSyncService
         $parts = explode('.', $routeName);
 
         return count($parts) >= 2
-            ? $parts[0] . '.' . $parts[1]
+            ? $parts[0].'.'.$parts[1]
             : Str::before($routeName, '.');
     }
 

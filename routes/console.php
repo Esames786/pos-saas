@@ -33,10 +33,20 @@ if (\App\Support\EdgeRuntime::isCloudSafe()) {
     // local-only backups are NOT enough; sync them offsite.
     if (config('backup.schedule_enabled', false)) {
         Schedule::command('tenants:backup --prune')->dailyAt('02:00')->withoutOverlapping();
+
+        // TENANT-AUTO-BACKUP-1: per-tenant scheduled backups. Runs every few minutes and only acts
+        // when a tenant's configured HH:MM slot (in its own timezone) is due; the unique slot claim
+        // makes each fire once per day. Retention prune is per-tenant, scheduled-type only.
+        Schedule::command('tenants:auto-backup')->everyFiveMinutes()->withoutOverlapping();
     }
 
     // SALES REPORT CENTER — scheduled owner report emails. Safe at any cadence: each schedule's
     // reporting period is claimed idempotently (unique schedule+period), so retries/overlaps can
     // never double-send. Cloud-only (Edge CLI boundary default-denies the command anyway).
     Schedule::command('reports:dispatch-scheduled')->everyFifteenMinutes()->withoutOverlapping();
+
+    // CATERING-SLICE-3 — upcoming-event reminders (D-7/D-3/D-1/same-day). Safe at any
+    // cadence: each (event, offset) is claimed idempotently before sending, so retries
+    // and overlaps never double-send. Only tenants entitled to the catering module run.
+    Schedule::command('catering:dispatch-event-reminders')->everyFifteenMinutes()->withoutOverlapping();
 }

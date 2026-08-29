@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Tenant;
 
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Branch;
+use App\Models\Tenant\PrintAgentCommand;
 use App\Models\Tenant\Printer;
 use App\Models\Tenant\Terminal;
 use App\Models\Tenant\TerminalPrinterSetting;
+use App\Services\Printing\PrintJobFactory;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -21,6 +23,81 @@ class PrinterController extends Controller
         $terminalSettings = TerminalPrinterSetting::with(['receiptPrinter', 'kotPrinter'])->get()->keyBy('terminal_id');
 
         return view('tenant.printing.printers.index', compact('printers', 'branches', 'terminals', 'terminalSettings'));
+    }
+
+    /* ── PRINTER-HEALTH-1: live status + remote Test / Reset / Reboot ─────────────────────────── */
+
+    /** Live reachability + the latest command outcome for a printer — polled by the screen. */
+    public function status(Printer $printer)
+    {
+        // Resolve any command the agent claimed but never reported, so the pill/toast stops waiting on
+        // a dead command even when no agent is polling /commands to trigger the sweep.
+        PrintAgentCommand::expireStale();
+
+        $command = PrintAgentCommand::where('printer_id', $printer->id)->latest('id')->first();
+
+        return response()->json([
+            'id'           => $printer->id,
+            'last_ping_ok' => $printer->last_ping_ok === null ? null : (bool) $printer->last_ping_ok,
+            'last_ping_ms' => $printer->last_ping_ms,
+            'last_ping_at' => $printer->last_ping_at?->toIso8601String(),
+            'last_seen_at' => $printer->last_seen_at?->toIso8601String(),
+            'last_error'   => $printer->last_error,
+            'command'      => $command ? [
+                'id'         => $command->id,
+                'type'       => $command->type,
+                'status'     => $command->status,
+                'result'     => $command->result,
+                'latency_ms' => $command->latency_ms,
+            ] : null,
+        ]);
+    }
+
+    /** Queue a "test connection" command the agent runs against the printer's print port. */
+    public function ping(Printer $printer)
+    {
+        return response()->json(['ok' => true, 'command_id' => $this->queueCommand($printer, 'ping')->id]);
+    }
+
+    /** Queue a "reboot" command the agent sends to the printer's built-in web module. */
+    public function reboot(Printer $printer)
+    {
+        return response()->json(['ok' => true, 'command_id' => $this->queueCommand($printer, 'reboot')->id]);
+    }
+
+    /** Soft reset: send ESC @ (initialize) through the normal print pipeline to unstick a jammed printer. */
+    public function reset(Printer $printer)
+    {
+        abort_if($printer->printer_type !== 'network' || ! $printer->ip_address, 422, 'Reset needs a network printer with an IP.');
+
+        app(PrintJobFactory::class)->create([
+            'branch_id'          => $printer->branch_id,
+            'printer_id'         => $printer->id,
+            'document_type'      => 'reset',
+            'print_status'       => 'queued',
+            'reference_type'     => 'printer_reset',
+            'reference_id'       => $printer->id,
+            'reference_no'       => $printer->code,
+            'payload'            => ['reset' => true],
+            'raw_payload'        => "\x1B@",   // ESC @ — initialize / clear the buffer
+            'attempts'           => 0,
+            'created_by_user_id' => auth('tenant')->id(),
+        ], 'PJ-RESET');
+
+        return response()->json(['ok' => true]);
+    }
+
+    private function queueCommand(Printer $printer, string $type): PrintAgentCommand
+    {
+        abort_if($printer->printer_type !== 'network' || ! $printer->ip_address, 422, 'This needs a network printer with an IP address.');
+
+        return PrintAgentCommand::create([
+            'printer_id'           => $printer->id,
+            'branch_id'            => $printer->branch_id,
+            'type'                 => $type,
+            'status'               => 'queued',
+            'requested_by_user_id' => auth('tenant')->id(),
+        ]);
     }
 
     public function store(Request $request)

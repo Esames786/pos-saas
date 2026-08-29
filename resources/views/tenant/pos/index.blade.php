@@ -108,6 +108,7 @@
 
     .restaurant-table-tile.available     { border-left: 6px solid #20c997; }
     .restaurant-table-tile.occupied      { border-left: 6px solid #fd7e14; }
+    .restaurant-table-tile.reserved      { border-left: 6px solid #a855f7; }
     .restaurant-table-tile.bill_requested{ border-left: 6px solid #0d6efd; }
     .restaurant-table-tile.selected      { border: 2px solid #111827; border-left: 6px solid #111827; background: #f8fafc; box-shadow: 0 14px 34px rgba(15,23,42,.16); }
     .restaurant-table-tile.selected .status-chip { background: #111827; color: #fff; }
@@ -141,6 +142,11 @@
     .table-action-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: .75rem; }
     .pos-session-summary { min-width: 0; }
     .pos-session-summary .session-context { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* View Tables now lives in the page header, so the session bar carries ONLY live-session context
+       (#pos-session-details / #pos-session-actions). Collapse it to nothing whenever it has no visible
+       child (both .d-none = no active session), so an empty bar never eats a row. Overrides the inline
+       display the mode-switch JS still sets, without touching that logic. */
+    #pos-session-bar:not(:has(> :not(.d-none))) { display: none !important; }
 
     /* Recalled-order lock */
     .pos-controls-locked {
@@ -193,14 +199,18 @@
     }
 
     .product-name {
-        font-size: 1rem;
+        font-size: 0.9rem;
         line-height: 1.3;
-        /* keep tiles uniform: at most 2 lines of name, ellipsis after */
+        /* keep tiles uniform: at most 2 lines of name, ellipsis after. Reserve exactly two lines
+           (min-height) so the SKU always sits BELOW the full name block — otherwise webkit
+           mis-measures -webkit-line-clamp at fractional zoom (e.g. 90%) and the 2nd line bleeds
+           over the SKU. */
         display: -webkit-box;
         -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
         overflow: hidden;
         word-break: break-word;
+        min-height: 2.6em;   /* 2 lines × 1.3 line-height */
     }
     .product-price { font-size: 1.08rem; white-space: nowrap; }
 
@@ -407,22 +417,26 @@
     }
 </style>
 
-<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
-    <div class="d-flex align-items-center gap-2">
-        <button type="button" class="btn btn-outline-secondary" id="pos-sidebar-toggle" title="Show navigation" aria-label="Show navigation">
-            <i class="ti ti-layout-sidebar-left-expand"></i>
+<div class="d-flex align-items-center flex-wrap gap-2 mb-3">
+    <button type="button" class="btn btn-outline-secondary" id="pos-sidebar-toggle" title="Show navigation" aria-label="Show navigation">
+        <i class="ti ti-layout-sidebar-left-expand"></i>
+    </button>
+    <h1 class="h3 mb-0">Restaurant POS</h1>
+    {{-- View Tables sits right beside the title (dine-in only) with a small gap — not shoved into the
+         far corner. Same id/handler; the session bar underneath carries only live-session context. --}}
+    @if(in_array('dine_in', $allowedOrderTypes, true))
+        <button type="button" id="view-tables-btn" class="btn btn-dark btn-sm ms-2">
+            <i class="ti ti-layout-grid me-1"></i>View Tables
         </button>
-        <h1 class="h3 mb-0">Restaurant POS</h1>
-    </div>
+    @endif
+    {{-- Flash messages inline (compact) instead of each taking its own row. --}}
+    @if(session('status'))
+        <span class="alert alert-success py-1 px-2 mb-0 small d-inline-flex align-items-center" role="status">{{ session('status') }}</span>
+    @endif
+    @if($errors->any())
+        <span class="alert alert-danger py-1 px-2 mb-0 small d-inline-flex align-items-center" role="alert">{{ $errors->first() }}</span>
+    @endif
 </div>
-
-@if($errors->any())
-    <div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>
-@endif
-
-@if(session('status'))
-    <div class="alert alert-success" role="status">{{ session('status') }}</div>
-@endif
 
 {{-- Selected table-session bar — JS-managed: always in the DOM, shown when a dine-in
      session is active. Filled by applyTableSession() so switching tables needs no reload. --}}
@@ -431,10 +445,7 @@
 @if(in_array('dine_in', $allowedOrderTypes, true))
 <div id="pos-session-bar" class="pos-card px-3 py-2 mb-3 d-flex flex-wrap align-items-center gap-2 pos-session-summary"
      data-session-base="{{ url('/restaurant/table-sessions') }}"
-     style="{{ $activeMode === 'dine_in' ? '' : 'display:none;' }}">
-    <button type="button" id="view-tables-btn" class="btn btn-dark btn-sm">
-        <i class="ti ti-layout-grid me-1"></i>View Tables
-    </button>
+     style="{{ $activeMode === 'dine_in' && $tableSession ? '' : 'display:none;' }}">
     <div class="session-context {{ $tableSession ? '' : 'd-none' }}" id="pos-session-details">
         <strong>Table <span id="pos-session-table-no">{{ $tableSession?->table?->table_no }}</span></strong>
         <span class="text-muted ms-1" id="pos-session-no">{{ $tableSession?->session_no }}</span>
@@ -485,6 +496,39 @@
                 <span id="chip-cust-address" class="text-muted small ms-1 d-none"></span>
                 <button type="button" class="btn-close ms-2" id="chip-cust-clear" aria-label="Remove customer" style="font-size:.6rem"></button>
             </div>
+            @can('tenant.reports.center.index')
+                {{-- POS-REPORT-LINK: open the full Sales Report Center (today) in a WINDOW on the same
+                     screen (modal + lazy iframe) — same filters/sections/Send-to-Network/Print controls.
+                     Scoped server-side to the operator's terminal/order-types. --}}
+                @php $reportToday = app(\App\Support\TenantClock::class)->now()->toDateString(); @endphp
+                <button type="button" class="btn btn-sm btn-outline-dark me-2" id="pos-report-btn"
+                        data-bs-toggle="modal" data-bs-target="#posReportModal"
+                        data-report-url="{{ url('/reports/center') }}?date_from={{ $reportToday }}&date_to={{ $reportToday }}&embed=1"
+                        title="Open the Sales Report Center (today)">
+                    <i class="ti ti-file-analytics me-1"></i>Report
+                </button>
+            @endcan
+            @can('tenant.sales-returns.create')
+                {{-- POS-RETURN-LINK: open Sales Returns in a WINDOW on the same screen (modal + lazy
+                     iframe), like the Report button — search a paid sale and return items without
+                     leaving the POS. --}}
+                <button type="button" class="btn btn-sm btn-outline-danger me-2" id="pos-return-btn"
+                        data-bs-toggle="modal" data-bs-target="#posReturnModal"
+                        data-return-url="{{ url('/sales-returns/create') }}?embed=1"
+                        title="Create a sales return (search a paid sale)">
+                    <i class="ti ti-arrow-back-up me-1"></i>Return
+                </button>
+            @endcan
+            @can('tenant.pos.quick-report-send')
+                {{-- QUICK-REPORT-SEND-1: a trusted user emails/prints/streams a WHOLE-TENANT sales report
+                     (no terminal/order-type scoping) — pick sections + categories/items/waiters/order-types. --}}
+                @php $quickReportDate = app(\App\Support\TenantClock::class)->currentBusinessDate(); @endphp
+                <button type="button" class="btn btn-sm btn-outline-primary me-2" id="pos-quick-report-btn"
+                        data-bs-toggle="modal" data-bs-target="#quickReportModal"
+                        title="Send or print a sales report (all data)">
+                    <i class="ti ti-send me-1"></i>Quick Report
+                </button>
+            @endcan
             <button type="button" class="btn btn-sm btn-outline-dark" id="pos-customer-btn"
                     data-bs-toggle="modal" data-bs-target="#customerModal">
                 <i class="ti ti-user-search me-1"></i>Add / Search Customer
@@ -565,9 +609,11 @@
             </div>
             {{-- CUSTOMER-UX-1: customer attaches via the Add/Search Customer modal (chip near
                  the order-type tabs). Hidden fields keep the form payload + existing JS ids. --}}
-            <input type="hidden" id="customer_id" name="customer_id" value="{{ $heldSale?->customer_id }}">
-            <input type="hidden" id="customer_name" name="customer_name" value="{{ $heldSale?->customer_name ?? $heldSale?->customer?->name }}">
-            <input type="hidden" id="customer_phone" name="customer_phone" value="{{ $heldSale?->customer_phone ?? $heldSale?->customer?->phone }}">
+            {{-- TABLE-RESERVATION-2b: a fresh dine-in session (no held sale yet) pre-attaches the customer
+                 carried over from the reservation; renderChip() shows it on load. Held sale always wins. --}}
+            <input type="hidden" id="customer_id" name="customer_id" value="{{ $heldSale?->customer_id ?? $tableSession?->customer_id }}">
+            <input type="hidden" id="customer_name" name="customer_name" value="{{ $heldSale?->customer_name ?? $heldSale?->customer?->name ?? $tableSession?->customer_name }}">
+            <input type="hidden" id="customer_phone" name="customer_phone" value="{{ $heldSale?->customer_phone ?? $heldSale?->customer?->phone ?? $tableSession?->customer_phone }}">
 
             {{-- Branch/terminal selects live in this modal (INSIDE the form: values still post).
                  All ids are unchanged so every existing JS hook keeps working. --}}
@@ -745,6 +791,14 @@
                         </button>
                     </div>
                     <div class="col-auto">
+                        {{-- POS-DRAFT-1: small button beside Hold — parks the order WITHOUT sending the KOT
+                             (recall/edit/preview/cancel identical; a later Hold prints the KOT + clears draft). --}}
+                        <button type="button" class="btn btn-outline-warning btn-lg px-3 fw-semibold text-dark" id="save-draft-btn"
+                                title="Save as Draft — parks the order without sending the KOT to the kitchen">
+                            <i class="ti ti-file-pencil me-1"></i>Draft
+                        </button>
+                    </div>
+                    <div class="col-auto">
                         <button type="button" class="btn btn-outline-secondary btn-lg px-3" id="held-orders-btn"
                                 title="Held Orders (Ctrl+L)">
                             <i class="ti ti-layout-list"></i>
@@ -796,7 +850,7 @@
     {{-- Payment modal (opened by "Review & Pay"). Kept inside #pos-sale-form; all IDs
          preserved so the existing POS JS reads values by id regardless of location. --}}
     <div class="modal fade" id="paymentModal" tabindex="-1" aria-labelledby="paymentModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable">
+        <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable" style="max-width: min(92vw, 1320px)">
             <div class="modal-content">
                 <div class="modal-header">
                     <h2 class="modal-title h5" id="paymentModalLabel"><span id="payment_heading">Payment</span></h2>
@@ -933,6 +987,12 @@
                     <button type="button" class="btn btn-outline-secondary btn-lg" data-bs-dismiss="modal">Back</button>
                     <button type="button" class="btn btn-primary btn-lg flex-grow-1" id="complete-sale-btn">
                         {{ $tableSession ? 'Close & Pay Table Bill' : 'Complete Sale' }}
+                    </button>
+                    {{-- Preview the FULL running bill (discount + tax + service charge + tip) exactly as
+                         Close & Pay will charge — for showing / printing to the customer before paying.
+                         Kept on the far right with a gap. --}}
+                    <button type="button" class="btn btn-outline-primary btn-lg ms-2" id="payment-bill-preview-btn">
+                        <i class="ti ti-file-invoice me-1"></i>Preview Bill
                     </button>
                 </div>
             </div>
@@ -1135,7 +1195,7 @@
 
 {{-- Recent Prints Modal --}}
 <div class="modal fade" id="lastPrintModal" tabindex="-1" aria-labelledby="lastPrintModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-dialog modal-xl modal-fullscreen-lg-down modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
                 <div>
@@ -1232,11 +1292,500 @@
     </div>
 </div>
 
+{{-- POS windows (Report / Return): a wide near-full-screen dialog. modal-fullscreen-lg-down still
+     takes over on small screens; on large screens this is much bigger than modal-xl (~1140px). --}}
+<style>.pos-window-modal { max-width: min(1680px, 96vw); }</style>
+
+{{-- POS-REPORT-LINK: Sales Report Center in a same-screen window (lazy iframe) --}}
+@can('tenant.reports.center.index')
+<div class="modal fade" id="posReportModal" tabindex="-1" aria-labelledby="posReportModalLabel" aria-hidden="true">
+    <div class="modal-dialog pos-window-modal modal-dialog-centered modal-fullscreen-lg-down">
+        <div class="modal-content" style="height:96vh">
+            <div class="modal-header py-2">
+                <h2 class="modal-title h6 mb-0" id="posReportModalLabel"><i class="ti ti-file-analytics me-1"></i>Sales Report Center</h2>
+                <a href="#" id="pos-report-newtab" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary ms-auto me-2" title="Open in a full tab"><i class="ti ti-external-link"></i></a>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0">
+                <iframe id="pos-report-frame" title="Sales Report Center" style="width:100%;height:100%;border:0" src="about:blank"></iframe>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    var modalEl = document.getElementById('posReportModal');
+    var btn     = document.getElementById('pos-report-btn');
+    var frame   = document.getElementById('pos-report-frame');
+    var newTab  = document.getElementById('pos-report-newtab');
+    if (!modalEl || !btn || !frame) return;
+    modalEl.addEventListener('show.bs.modal', function () {
+        var url = btn.getAttribute('data-report-url');
+        if (newTab) newTab.href = url;
+        if (frame.getAttribute('src') === 'about:blank') frame.src = url;   // lazy-load once per open
+    });
+    modalEl.addEventListener('hidden.bs.modal', function () {
+        frame.src = 'about:blank';   // free the report; refresh on next open
+    });
+})();
+</script>
+@endcan
+
+{{-- POS-RETURN-LINK: Sales Returns in a same-screen window (lazy iframe), mirrors the Report window. --}}
+@can('tenant.sales-returns.create')
+<div class="modal fade" id="posReturnModal" tabindex="-1" aria-labelledby="posReturnModalLabel" aria-hidden="true">
+    <div class="modal-dialog pos-window-modal modal-dialog-centered modal-fullscreen-lg-down">
+        <div class="modal-content" style="height:96vh">
+            <div class="modal-header py-2">
+                <h2 class="modal-title h6 mb-0" id="posReturnModalLabel"><i class="ti ti-arrow-back-up me-1"></i>Sales Return</h2>
+                <a href="#" id="pos-return-newtab" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary ms-auto me-2" title="Open in a full tab"><i class="ti ti-external-link"></i></a>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0">
+                <iframe id="pos-return-frame" title="Sales Return" style="width:100%;height:100%;border:0" src="about:blank"></iframe>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    var modalEl = document.getElementById('posReturnModal');
+    var btn     = document.getElementById('pos-return-btn');
+    var frame   = document.getElementById('pos-return-frame');
+    var newTab  = document.getElementById('pos-return-newtab');
+    if (!modalEl || !btn || !frame) return;
+    modalEl.addEventListener('show.bs.modal', function () {
+        var url = btn.getAttribute('data-return-url');
+        if (newTab) newTab.href = url;
+        if (frame.getAttribute('src') === 'about:blank') frame.src = url;   // lazy-load once per open
+    });
+    modalEl.addEventListener('hidden.bs.modal', function () {
+        frame.src = 'about:blank';   // free the page; refresh on next open
+    });
+})();
+</script>
+@endcan
+
+{{-- QUICK-REPORT-SEND-1: whole-tenant sales report — pick sections + categories/items/waiters/order-types,
+     then Email (A4 PDF) / Print here (thermal) / Send to network. Gated by tenant.pos.quick-report-send. --}}
+@can('tenant.pos.quick-report-send')
+@php $quickReportDate = app(\App\Support\TenantClock::class)->currentBusinessDate(); @endphp
+<div class="modal fade" id="quickReportModal" tabindex="-1" aria-labelledby="quickReportModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h2 class="modal-title h6 mb-0" id="quickReportModalLabel"><i class="ti ti-send me-1"></i>Quick Report</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="qr-toast" class="alert d-none py-2 small mb-3" role="alert"></div>
+
+                <div class="row g-3 mb-3">
+                    <div class="col-sm-5">
+                        <label class="form-label small mb-1">Business date</label>
+                        <input type="date" class="form-control form-control-sm" id="qr-date" value="{{ $quickReportDate }}">
+                    </div>
+                    <div class="col-sm-7 d-flex align-items-end">
+                        <div class="form-check form-switch ms-auto">
+                            <input class="form-check-input" type="checkbox" id="qr-save">
+                            <label class="form-check-label small" for="qr-save">Save my selection</label>
+                        </div>
+                    </div>
+                </div>
+
+                <label class="form-label small text-muted">Sections — tick what to include (whole tenant, all terminals &amp; order types)</label>
+                @php
+                    $qrSubFilterable = ['categories','items','waiters','order_types'];
+                    $qrSections = [
+                        'overview' => 'Overview', 'categories' => 'Categories', 'items' => 'Items',
+                        'waiters' => 'Waiters', 'order_types' => 'Order Types', 'order_type_combos' => 'Order-Type Combos',
+                        'cancellations' => 'Cancellations', 'cash_bank' => 'Cash & Bank',
+                    ];
+                @endphp
+                <div class="border rounded p-2">
+                    @foreach($qrSections as $key => $label)
+                    <div class="qr-section-row">
+                        <div class="form-check">
+                            <input class="form-check-input qr-section" type="checkbox" value="{{ $key }}" id="qr-sec-{{ $key }}" checked
+                                   @if(in_array($key, $qrSubFilterable, true)) data-panel="qr-panel-{{ $key }}" @endif>
+                            <label class="form-check-label" for="qr-sec-{{ $key }}">{{ $label }}</label>
+                        </div>
+
+                        @if($key === 'categories')
+                        <div class="qr-panel ms-4 mt-1" id="qr-panel-categories">
+                            <div class="small text-muted mb-1">Leave all unticked = every category. Picking a category also includes its sub-categories &amp; items; the whole report (items, waiters, order types, totals) then follows what you pick.</div>
+                            @foreach($categories as $cat)
+                                <div class="d-flex flex-wrap gap-2 align-items-center mb-1">
+                                    <div class="form-check form-check-inline me-0">
+                                        <input class="form-check-input qr-category" type="checkbox" value="{{ $cat->id }}" id="qr-cat-{{ $cat->id }}">
+                                        <label class="form-check-label small fw-semibold" for="qr-cat-{{ $cat->id }}">{{ $cat->name }}</label>
+                                    </div>
+                                    @foreach($cat->children as $child)
+                                        <div class="form-check form-check-inline me-0 ms-3">
+                                            <input class="form-check-input qr-category" type="checkbox" value="{{ $child->id }}" id="qr-cat-{{ $child->id }}">
+                                            <label class="form-check-label small text-muted" for="qr-cat-{{ $child->id }}">↳ {{ $child->name }}</label>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            @endforeach
+                        </div>
+                        @elseif($key === 'items')
+                        <div class="qr-panel ms-4 mt-1" id="qr-panel-items">
+                            <div class="form-check form-switch mb-1">
+                                <input class="form-check-input" type="checkbox" id="qr-all-items" checked>
+                                <label class="form-check-label small" for="qr-all-items">All items</label>
+                            </div>
+                            <div id="qr-item-picker" class="d-none">
+                                <input type="text" class="form-control form-control-sm" id="qr-item-search" placeholder="Search product name / SKU…" autocomplete="off">
+                                <div id="qr-item-suggest" class="list-group position-absolute shadow-sm d-none" style="z-index:1080;max-height:220px;overflow:auto;min-width:260px"></div>
+                                <div id="qr-item-chips" class="d-flex flex-wrap gap-1 mt-2"></div>
+                            </div>
+                        </div>
+                        @elseif($key === 'waiters')
+                        <div class="qr-panel ms-4 mt-1" id="qr-panel-waiters">
+                            <div class="small text-muted mb-1">Leave all unticked = every waiter.</div>
+                            <div class="d-flex flex-wrap gap-2">
+                                @foreach($waiters as $w)
+                                    <div class="form-check form-check-inline me-0">
+                                        <input class="form-check-input qr-waiter" type="checkbox" value="{{ $w->id }}" id="qr-w-{{ $w->id }}">
+                                        <label class="form-check-label small" for="qr-w-{{ $w->id }}">{{ $w->name }}</label>
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                        @elseif($key === 'order_types')
+                        <div class="qr-panel ms-4 mt-1" id="qr-panel-order_types">
+                            <div class="small text-muted mb-1">Leave all unticked = every order type.</div>
+                            <div class="d-flex flex-wrap gap-2">
+                                @foreach(\App\Models\Tenant\User::ORDER_TYPES as $val => $otLabel)
+                                    <div class="form-check form-check-inline me-0">
+                                        <input class="form-check-input qr-ordertype" type="checkbox" value="{{ $val }}" id="qr-ot-{{ $val }}">
+                                        <label class="form-check-label small" for="qr-ot-{{ $val }}">{{ $otLabel }}</label>
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                        @endif
+                    </div>
+                    @endforeach
+                </div>
+
+                <div class="row g-2 mt-3">
+                    <div class="col-sm-8">
+                        <label class="form-label small mb-1">Network printer (for “Send to network”)</label>
+                        <select class="form-select form-select-sm" id="qr-printer">
+                            <option value="">— choose a network printer —</option>
+                            @foreach($quickReportPrinters as $p)
+                                <option value="{{ $p->id }}">{{ $p->name }} ({{ $p->paper_size }})</option>
+                            @endforeach
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="qr-print">
+                    <i class="ti ti-printer me-1"></i>Print here
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="qr-network">
+                    <i class="ti ti-wifi me-1"></i>Send to network
+                </button>
+                <button type="button" class="btn btn-sm btn-primary" id="qr-email">
+                    <i class="ti ti-mail me-1"></i>Email to owner
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    var modalEl = document.getElementById('quickReportModal');
+    if (!modalEl) return;
+    var csrf  = '{{ csrf_token() }}';
+    var base  = @json(url('/pos/quick-report'));
+    var PRODUCTS = (typeof products !== 'undefined' && Array.isArray(products)) ? products : [];
+    var chosenItems = {};   // id -> name
+
+    var toast = function (msg, ok) {
+        var el = document.getElementById('qr-toast');
+        el.className = 'alert py-2 small mb-3 alert-' + (ok ? 'success' : 'danger');
+        el.textContent = msg; el.classList.remove('d-none');
+    };
+    var checked = function (sel) { return Array.prototype.map.call(document.querySelectorAll(sel + ':checked'), function (c) { return c.value; }); };
+
+    // Section checkbox → show/hide its sub-filter panel.
+    document.querySelectorAll('.qr-section[data-panel]').forEach(function (cb) {
+        var panel = document.getElementById(cb.getAttribute('data-panel'));
+        var sync = function () { if (panel) panel.style.display = cb.checked ? '' : 'none'; };
+        cb.addEventListener('change', sync); sync();
+    });
+
+    // All-items toggle ↔ item picker.
+    var allItems = document.getElementById('qr-all-items');
+    var picker   = document.getElementById('qr-item-picker');
+    var syncItems = function () { picker.classList.toggle('d-none', allItems.checked); };
+    allItems.addEventListener('change', syncItems); syncItems();
+
+    // Item typeahead over the on-page products payload (no server call).
+    var search  = document.getElementById('qr-item-search');
+    var suggest = document.getElementById('qr-item-suggest');
+    var chips   = document.getElementById('qr-item-chips');
+    var renderChips = function () {
+        chips.innerHTML = '';
+        Object.keys(chosenItems).forEach(function (id) {
+            var b = document.createElement('span');
+            b.className = 'badge bg-light text-dark border';
+            b.innerHTML = chosenItems[id] + ' <a href="#" class="text-danger ms-1" data-id="' + id + '">&times;</a>';
+            chips.appendChild(b);
+        });
+        chips.querySelectorAll('a[data-id]').forEach(function (a) {
+            a.addEventListener('click', function (e) { e.preventDefault(); delete chosenItems[a.getAttribute('data-id')]; renderChips(); });
+        });
+    };
+    if (search) {
+        search.addEventListener('input', function () {
+            var q = search.value.trim().toLowerCase();
+            if (q.length < 2) { suggest.classList.add('d-none'); return; }
+            var hits = PRODUCTS.filter(function (p) {
+                return String(p.name || '').toLowerCase().indexOf(q) !== -1 || String(p.sku || '').toLowerCase().indexOf(q) !== -1;
+            }).slice(0, 12);
+            suggest.innerHTML = '';
+            hits.forEach(function (p) {
+                var a = document.createElement('a');
+                a.href = '#'; a.className = 'list-group-item list-group-item-action py-1 small';
+                a.textContent = p.name + (p.sku ? ' · ' + p.sku : '');
+                a.addEventListener('click', function (e) { e.preventDefault(); chosenItems[p.id] = p.name; renderChips(); suggest.classList.add('d-none'); search.value = ''; });
+                suggest.appendChild(a);
+            });
+            suggest.classList.toggle('d-none', hits.length === 0);
+        });
+        document.addEventListener('click', function (e) { if (!suggest.contains(e.target) && e.target !== search) suggest.classList.add('d-none'); });
+    }
+
+    // Gather the current selection into a params object.
+    var collect = function () {
+        return {
+            date: document.getElementById('qr-date').value,
+            sections: checked('.qr-section'),
+            category_ids: checked('.qr-category'),
+            waiter_ids: checked('.qr-waiter'),
+            order_types: checked('.qr-ordertype'),
+            all_items: allItems.checked ? 1 : 0,
+            product_ids: allItems.checked ? [] : Object.keys(chosenItems),
+            printer_id: document.getElementById('qr-printer').value,
+        };
+    };
+    var toForm = function (p) {
+        var fd = new FormData();
+        fd.append('date', p.date); fd.append('all_items', p.all_items); fd.append('printer_id', p.printer_id || '');
+        ['sections','category_ids','waiter_ids','order_types','product_ids'].forEach(function (k) {
+            (p[k] || []).forEach(function (v) { fd.append(k + '[]', v); });
+        });
+        return fd;
+    };
+    var toQuery = function (p) {
+        var q = ['date=' + encodeURIComponent(p.date), 'all_items=' + p.all_items];
+        ['sections','category_ids','waiter_ids','order_types','product_ids'].forEach(function (k) {
+            (p[k] || []).forEach(function (v) { q.push(k + '[]=' + encodeURIComponent(v)); });
+        });
+        return q.join('&');
+    };
+    var qrSaveToggle = document.getElementById('qr-save');
+    var saveNow = function () {
+        fetch(base + '/save-settings', { method: 'POST', headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' }, body: toForm(collect()) }).catch(function () {});
+    };
+    var maybeSave = function () { if (qrSaveToggle.checked) saveNow(); };
+    // Checking "Save my selection" persists the current picks straight away — not only when an action
+    // (Email/Print/Network) is used — so a reload restores them.
+    qrSaveToggle.addEventListener('change', function () { if (qrSaveToggle.checked) saveNow(); });
+
+    document.getElementById('qr-email').addEventListener('click', function () {
+        var p = collect(); if (!p.sections.length) { toast('Tick at least one section.', false); return; }
+        maybeSave(p);
+        fetch(base + '/email', { method: 'POST', headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' }, body: toForm(p) })
+            .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+            .then(function (res) { toast(res.ok ? ('Emailed to: ' + (res.d.sent_to || []).join(', ')) : (res.d.message || 'Email failed.'), res.ok); })
+            .catch(function () { toast('Email failed.', false); });
+    });
+
+    document.getElementById('qr-network').addEventListener('click', function () {
+        var p = collect(); if (!p.sections.length) { toast('Tick at least one section.', false); return; }
+        if (!p.printer_id) { toast('Choose a network printer first.', false); return; }
+        maybeSave(p);
+        fetch(base + '/send-to-network', { method: 'POST', headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' }, body: toForm(p) })
+            .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+            .then(function (res) { toast(res.ok ? ('Queued to ' + res.d.printer + '.') : (res.d.message || 'Send failed.'), res.ok); })
+            .catch(function () { toast('Send failed.', false); });
+    });
+
+    document.getElementById('qr-print').addEventListener('click', function () {
+        var p = collect(); if (!p.sections.length) { toast('Tick at least one section.', false); return; }
+        maybeSave(p);
+        var w = window.open(base + '/print?' + toQuery(p), '_blank');
+        if (w) { w.addEventListener('load', function () { try { w.print(); } catch (e) {} }); }
+    });
+
+    // Pre-fill from the user's saved selection on open.
+    modalEl.addEventListener('show.bs.modal', function () {
+        document.getElementById('qr-toast').classList.add('d-none');
+        fetch(base + '/settings', { headers: { Accept: 'application/json' } })
+            .then(function (r) { return r.json(); })
+            .then(function (res) {
+                var s = res && res.settings; if (!s) return;
+                qrSaveToggle.checked = true;   // a saved selection exists → reflect the toggle as on
+                document.querySelectorAll('.qr-section').forEach(function (c) { c.checked = (s.sections || []).indexOf(c.value) !== -1; c.dispatchEvent(new Event('change')); });
+                document.querySelectorAll('.qr-category').forEach(function (c) { c.checked = (s.category_ids || []).map(String).indexOf(c.value) !== -1; });
+                document.querySelectorAll('.qr-waiter').forEach(function (c) { c.checked = (s.waiter_ids || []).map(String).indexOf(c.value) !== -1; });
+                document.querySelectorAll('.qr-ordertype').forEach(function (c) { c.checked = (s.order_types || []).map(String).indexOf(c.value) !== -1; });
+                allItems.checked = s.all_items !== false; syncItems();
+                chosenItems = {};
+                (s.product_ids || []).forEach(function (id) {
+                    var hit = PRODUCTS.filter(function (p) { return String(p.id) === String(id); })[0];
+                    chosenItems[id] = hit ? hit.name : ('#' + id);
+                });
+                renderChips();
+            }).catch(function () {});
+    });
+
+    // Persist any last changes when the modal closes (only while "Save my selection" is on).
+    modalEl.addEventListener('hidden.bs.modal', function () { if (qrSaveToggle.checked) saveNow(); });
+})();
+</script>
+@endcan
+
+{{-- POS-PRINT-HERE: local/USB fallback print in a SAME-SCREEN window (no redirect / new tab).
+     Reused by the failed-print Swal (auto-detect, Approach A) and the Recent Prints "Print Here"
+     button (Approach B), for KOT / receipt / reminder alike. --}}
+<div class="modal fade" id="printHereModal" tabindex="-1" aria-labelledby="printHereModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:430px">
+        <div class="modal-content" style="height:88vh">
+            <div class="modal-header py-2">
+                <h2 class="modal-title h6 mb-0" id="printHereModalLabel"><i class="ti ti-printer me-1"></i>Print Here</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0" style="flex:1 1 auto;overflow:hidden">
+                <iframe id="print-here-frame" title="Print document" style="width:100%;height:100%;border:0" src="about:blank"></iframe>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-primary" id="print-here-print-btn"><i class="ti ti-printer me-1"></i>Print</button>
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    var modalEl  = document.getElementById('printHereModal');
+    var frame    = document.getElementById('print-here-frame');
+    var printBtn = document.getElementById('print-here-print-btn');
+    if (!modalEl || !frame) return;
+    var _promptedFailedJobs = {};
+
+    function doPrint() {
+        try { frame.contentWindow.focus(); frame.contentWindow.print(); }
+        catch (e) { try { window.print(); } catch (e2) {} }
+    }
+
+    // Open the document in a same-screen window (NEVER a redirect / new tab) and auto-fire the print
+    // dialog for one-click printing; the Print button reprints. jobId → the generic preview route,
+    // which renders KOT / receipt / reminder by the job's own document_type.
+    window.openPrintHere = function (jobId) {
+        if (!jobId) return;
+        frame.src = '{{ url('/printing/documents') }}/' + Number(jobId) + '/preview';
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    };
+
+    if (printBtn) printBtn.addEventListener('click', doPrint);
+    frame.addEventListener('load', function () {
+        if (frame.src && frame.src.indexOf('about:blank') === -1) setTimeout(doPrint, 300);
+    });
+    modalEl.addEventListener('hidden.bs.modal', function () { frame.src = 'about:blank'; });
+
+    // Approach A: after a network print is fired, poll THIS sale's jobs across the agent's retry/
+    // timeout window; a freshly FAILED job pops a Swal offering Print Here (same-screen). Covers
+    // KOT, receipt and reminder. Each failed job is prompted once.
+    function promptPrintHere(job) {
+        var label = String(job.document_type || 'document').toUpperCase();
+        if (typeof Swal === 'undefined') { window.openPrintHere(job.id); return; }
+        Swal.fire({
+            title: 'Print failed',
+            html: label + ' could not print on <strong>' + (job.printer_name || 'the printer') + '</strong>.<br>Print it here instead?',
+            icon: 'error', showCancelButton: true, reverseButtons: true,
+            confirmButtonText: '<i class="ti ti-printer me-1"></i>Print Here', cancelButtonText: 'Dismiss',
+            confirmButtonColor: '#0d6efd',
+        }).then(function (r) { if (r.isConfirmed) window.openPrintHere(job.id); });
+    }
+    window.watchPrintFailure = function (saleId) {
+        if (!saleId) return;
+        [4000, 9000, 15000].forEach(function (delay) {
+            setTimeout(function () {
+                fetch('{{ url('/api/pos/print-jobs') }}/' + Number(saleId), { headers: { 'Accept': 'application/json' } })
+                    .then(function (r) { return r.ok ? r.json() : null; })
+                    .then(function (d) {
+                        if (!d || !d.jobs) return;
+                        d.jobs.forEach(function (j) {
+                            if (j.print_status === 'failed' && !_promptedFailedJobs[j.id]) {
+                                _promptedFailedJobs[j.id] = true;
+                                promptPrintHere(j);
+                            }
+                        });
+                    }).catch(function () {});
+            }, delay);
+        });
+    };
+})();
+</script>
+
 {{-- Quick Customer Modal --}}
 {{-- CUSTOMER-UX-1: single Add/Search Customer modal (search by name/phone, address book, quick create) --}}
 {{-- CUSTOMER-UX-2 (2026-08-11): ONE box. Type a phone (or name) — matches appear as you type;
      click one to attach instantly. No match? The same box becomes the quick-add: it already holds
      the phone, you type the name, press Enter and the customer is created AND attached. --}}
+{{-- TABLE-RESERVATION-1: Reserve a free table (attach a customer or type a walk-in) + time + note. --}}
+<div class="modal fade" id="reserveTableModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h2 class="modal-title h6 mb-0"><i class="ti ti-calendar-plus me-1"></i>Reserve Table <span id="reserve-table-no"></span></h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="reserve-table-id">
+                <input type="hidden" id="reserve-customer-id">
+                <div id="reserve-toast" class="alert d-none py-2 small mb-3" role="alert"></div>
+                <label class="form-label small mb-1">Customer <span class="text-muted">(search the book, or just type a name below)</span></label>
+                <input type="text" class="form-control form-control-sm mb-1" id="reserve-customer-search" placeholder="Search phone or name…" autocomplete="off">
+                <div id="reserve-customer-suggest" class="list-group mb-2 d-none" style="max-height:180px;overflow:auto"></div>
+                <div id="reserve-customer-chip" class="mb-2 d-none">
+                    <span class="badge bg-primary-subtle text-primary-emphasis border">Attached: <span id="reserve-customer-name"></span> <a href="#" class="text-danger ms-1" id="reserve-customer-clear">&times;</a></span>
+                </div>
+                <div class="row g-2">
+                    <div class="col-6"><label class="form-label small mb-1">Name</label><input type="text" class="form-control form-control-sm" id="reserve-name"></div>
+                    <div class="col-6"><label class="form-label small mb-1">Phone</label><input type="text" class="form-control form-control-sm" id="reserve-phone"></div>
+                </div>
+                <label class="form-label small mb-1 mt-2">Reserved for (date &amp; time)</label>
+                <input type="datetime-local" class="form-control form-control-sm" id="reserve-for">
+                <label class="form-label small mb-1 mt-2">Note</label>
+                <textarea class="form-control form-control-sm" id="reserve-note" rows="2" placeholder="e.g. 6 guests, window table"></textarea>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-sm btn-primary" id="reserve-save-btn"><i class="ti ti-calendar-check me-1"></i>Reserve Table</button>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal fade" id="reservationDetailsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h2 class="modal-title h6 mb-0"><i class="ti ti-calendar me-1"></i>Reservation</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="reservation-details-body"></div>
+        </div>
+    </div>
+</div>
+
 <div class="modal fade" id="customerModal" tabindex="-1" aria-labelledby="customerModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content">
@@ -1511,6 +2060,14 @@ document.addEventListener('DOMContentLoaded', function () {
         forceDineInMode();
         setHidden('restaurant_table_session_id', session.id);
         setHidden('restaurant_table_id', session.table_id || '');
+        // TABLE-RESERVATION-2b: a freshly opened reserved table carries its customer — pre-attach it.
+        // Guarded so a normal (non-reserved) open never clobbers an already-typed customer.
+        if (session.customer_id || session.customer_name) {
+            setHidden('customer_id', session.customer_id || '');
+            setHidden('customer_name', session.customer_name || '');
+            setHidden('customer_phone', session.customer_phone || '');
+            if (window.posRenderCustomerChip) window.posRenderCustomerChip();
+        }
         setCompleteSaleLabel(true);
         updateStartFreshLabel();
         if (window.history && window.history.replaceState) {
@@ -1970,6 +2527,9 @@ document.addEventListener('DOMContentLoaded', function () {
         const dealsOnly = selectedParentCategory === '__deals__';
 
         const filtered = dealsOnly ? [] : products.filter(function (product) {
+            // COMBO-COMPONENT-VISIBILITY: combo-only fillers ride in the payload (so a combo isn't
+            // falsely "out of stock") but must never render as a sellable grid tile.
+            if (product.pos_grid_visible === false) return false;
             // KHATRI-MENU-2: a parent pill matches its OWN products AND its children's products
             // (menu items now live in child categories like "Saada"/"Non-Saada").
             const matchParent = !selectedParentCategory
@@ -2564,14 +3124,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 var deltaText = delta === 0 ? '' : ' <span>(' + (delta > 0 ? '+' : '') + money(delta) + ')</span>';
                 return '<div class="small text-muted ps-2">+ ' + escapeHtml(modifier.name) + deltaText + '</div>';
             }).join('');
+            // COMBO-CART-NAME-ONLY: a deal shows its NAME only in the cart — the component
+            // breakdown is not listed here (it still drives the KOT). Keeps the cart clean.
             var componentHtml = '';
-            if (item.line_kind === 'combo_header') {
-                componentHtml = cart.filter(function (child) {
-                    return child.parent_key === item.key && child.line_kind === 'component';
-                }).map(function (child) {
-                    return '<div class="small text-muted ps-2">- ' + formatQty(child.quantity, child.product) + ' x ' + escapeHtml(child.name) + '</div>';
-                }).join('');
-            }
             var canEditModifiers = item.line_kind !== 'combo_header' && item.line_kind !== 'component'
                 && !item.kot_sent && item.product && hasModifierGroups(item.product);
             var editBtnHtml = canEditModifiers
@@ -3561,6 +4116,7 @@ document.addEventListener('DOMContentLoaded', function () {
             });
             renderCart();
             handleReminderPlan(saleId, data.reminder || {});
+            if (window.watchPrintFailure) window.watchPrintFailure(saleId);   // POS-PRINT-HERE
             return data;
         })
         .catch(function (error) {
@@ -3648,6 +4204,8 @@ document.addEventListener('DOMContentLoaded', function () {
             if (data && (data.fallback || data.printer_type === 'browser') && data.preview_url) {
                 toast('warning', 'No printer found — opening receipt for manual print');
                 openPreviewTab(data.preview_url);
+            } else if (window.watchPrintFailure) {
+                window.watchPrintFailure(saleId);   // POS-PRINT-HERE: async network failure → offer Print Here
             }
         })
         .catch(function () {});
@@ -4250,7 +4808,8 @@ document.addEventListener('DOMContentLoaded', function () {
             data.sales.forEach(function (s) {
                 html += '<tr>' +
                     '<td><strong>' + escapeHtml(s.sale_no) + '</strong></td>' +
-                    '<td><span class="badge bg-secondary text-capitalize">' + escapeHtml(String(s.order_type || '').replace('_', ' ')) + '</span></td>' +
+                    '<td><span class="badge bg-secondary text-capitalize">' + escapeHtml(String(s.order_type || '').replace('_', ' ')) + '</span>' +
+                        (s.is_draft ? ' <span class="badge bg-warning text-dark">DRAFT</span>' : '') + '</td>' +
                     '<td>' + escapeHtml(s.customer || 'Walk-in') + posOrderMeta(s) + '</td>' +
                     '<td class="text-end">' + escapeHtml(s.items) + '</td>' +
                     '<td class="text-end fw-bold">' + escapeHtml(s.total) + '</td>' +
@@ -4371,10 +4930,13 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         }
 
-        // Sync terminal if provided
-        if (sale.terminal_id !== undefined && terminalEl) {
-            terminalEl.value = sale.terminal_id || '';
-        }
+        // POS-RECALL-TERMINAL-1: DO NOT sync the terminal from the recalled order. The operator's
+        // active terminal must NEVER change on recall — a programmatic overwrite here does not fire
+        // the change listener, so it silently leaks into the operator's NEXT new order (clearCart
+        // never resets #terminal_id). The recalled order instead adopts the operator's OWN active
+        // terminal when they Hold (HeldSaleController::store) or Review & Pay (SalesOrderController::
+        // store) — both stamp the posted terminal — so KOT, receipt and the sale's attribution all
+        // follow the operator's station. See docs/plans/pos-multi-terminal-recall-terminal-2026-08-24.md.
 
         // CUSTOMER-UX-1: restore the attached customer + address + vehicle and show the chip.
         { const el = document.getElementById('customer_id'); if (el) el.value = sale.customer_id || ''; }
@@ -4674,6 +5236,12 @@ document.addEventListener('DOMContentLoaded', function () {
                     ? '<button class="btn btn-sm btn-danger py-0 me-1" data-retry-job="' + Number(j.id) + '"><i class="ti ti-refresh me-1"></i>Retry</button>'
                     : '';
 
+                // POS-PRINT-HERE (Approach B): a FAILED job can be printed locally (browser/USB) in a
+                // same-screen window — the primary recovery when the network printer is offline.
+                const printHereBtn = j.print_status === 'failed'
+                    ? '<button class="btn btn-sm btn-primary py-0 me-1" data-print-here="' + Number(j.id) + '" title="Print here — local / USB printer"><i class="ti ti-printer me-1"></i>Print Here</button>'
+                    : '';
+
                 html += '<tr' + (j.print_status === 'failed' ? ' class="table-danger"' : '') + '>' +
                     '<td class="ps-3 fw-semibold small">' + escapeHtml(j.job_no) + '</td>' +
                     '<td>' + typeBadge(j.document_type) + '</td>' +
@@ -4682,6 +5250,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     '<td class="text-muted small">' + escapeHtml(itemsCell) + '</td>' +
                     '<td class="text-muted small">' + escapeHtml(j.created_at) + '</td>' +
                     '<td class="pe-3 text-end">' +
+                        printHereBtn +
                         viewBtn +
                         retryBtn +
                         '<button class="btn btn-sm btn-outline-secondary py-0" data-requeue-job="' + Number(j.id) + '" data-job-type="' + escapeHtml(j.document_type) + '" title="Reprint ' + escapeHtml(j.printer_name) + (j.document_type === 'reminder' ? ', revision ' + Number(j.revision || 1) : '') + '">' +
@@ -4706,6 +5275,13 @@ document.addEventListener('DOMContentLoaded', function () {
             body.querySelectorAll('[data-requeue-job]').forEach(function (btn) {
                 btn.addEventListener('click', function () {
                     requeueSingleJob(Number(btn.dataset.requeueJob), btn.dataset.jobType, btn);
+                });
+            });
+
+            // POS-PRINT-HERE (Approach B): wire per-row "Print Here" (same-screen local/USB print).
+            body.querySelectorAll('[data-print-here]').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    if (window.openPrintHere) window.openPrintHere(Number(btn.dataset.printHere));
                 });
             });
 
@@ -5097,6 +5673,29 @@ document.addEventListener('DOMContentLoaded', function () {
     const billPreviewBtn = document.getElementById('bill-preview-btn');
     if (billPreviewBtn) { billPreviewBtn.addEventListener('click', billPreview); }
 
+    // Preview Bill FROM inside the Payment modal — reuses the same discount/tax/service-charge-aware
+    // cart preview, stacked over the Payment modal so the operator lands back on payment on close.
+    document.getElementById('payment-bill-preview-btn')?.addEventListener('click', billPreview);
+    (function () {
+        var previewModal = document.getElementById('billPreviewModal');
+        var paymentOpen = function () {
+            var p = document.getElementById('paymentModal');
+            return p && p.classList.contains('show');
+        };
+        // Bump the preview modal + its backdrop above the Payment modal when stacked.
+        previewModal?.addEventListener('shown.bs.modal', function () {
+            if (!paymentOpen()) return;
+            this.style.zIndex = '1075';
+            var backdrops = document.querySelectorAll('.modal-backdrop');
+            if (backdrops.length) backdrops[backdrops.length - 1].style.zIndex = '1070';
+        });
+        // Closing the top (preview) modal must not unlock the page while Payment is still open.
+        previewModal?.addEventListener('hidden.bs.modal', function () {
+            this.style.zIndex = '';
+            if (paymentOpen()) document.body.classList.add('modal-open');
+        });
+    })();
+
     document.getElementById('last-print-btn').addEventListener('click', openRecentPrints);
 
     document.getElementById('reprint-all-kot-btn').addEventListener('click', function () {
@@ -5274,6 +5873,13 @@ document.addEventListener('DOMContentLoaded', function () {
             if (split) { openSplitForSession(split.dataset.tableSplit); return; }
             var move = event.target.closest('[data-table-move]');
             if (move) { showTableMove(move.dataset.tableMove, move.dataset.sourceTableId); return; }
+            // TABLE-RESERVATION-1
+            var reserve = event.target.closest('[data-table-reserve]');
+            if (reserve) { openReserveModal(reserve.dataset.tableReserve, reserve.dataset.tableNo); return; }
+            var unreserve = event.target.closest('[data-table-unreserve]');
+            if (unreserve) { cancelReservation(unreserve.dataset.tableUnreserve); return; }
+            var rdetails = event.target.closest('[data-reservation-details]');
+            if (rdetails) { showReservationDetails(rdetails.dataset.reservationDetails); return; }
             // Floor filter tabs.
             var tab = event.target.closest('[data-floor-tab]');
             if (tab && tableBoardEl.contains(tab)) {
@@ -5286,6 +5892,92 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         });
     }
+
+    /* ── TABLE-RESERVATION-1 — reserve / cancel / details ─────────────────────────────────────── */
+    var _reserveTablesBase = '{{ url('/restaurant/tables') }}';
+    var _reserveCustBase   = '{{ url('/ajax/customers') }}';
+    function _rget(id) { return document.getElementById(id); }
+
+    function openReserveModal(tableId, tableNo) {
+        _rget('reserve-table-id').value = tableId;
+        _rget('reserve-table-no').textContent = tableNo || '';
+        ['reserve-customer-search', 'reserve-name', 'reserve-phone', 'reserve-for', 'reserve-note', 'reserve-customer-id'].forEach(function (id) { var el = _rget(id); if (el) el.value = ''; });
+        _rget('reserve-customer-chip').classList.add('d-none');
+        _rget('reserve-customer-suggest').classList.add('d-none');
+        _rget('reserve-toast').classList.add('d-none');
+        bootstrap.Modal.getOrCreateInstance(_rget('reserveTableModal')).show();
+    }
+
+    function cancelReservation(tableId) {
+        if (!confirm('Cancel this reservation? The table becomes available.')) return;
+        fetch(_reserveTablesBase + '/' + tableId + '/unreserve', { method: 'POST', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', Accept: 'application/json' } })
+            .then(function () { if (typeof refreshTableBoard === 'function') refreshTableBoard(); })
+            .catch(function () {});
+    }
+
+    function showReservationDetails(tableId) {
+        fetch(_reserveTablesBase + '/' + tableId + '/reservation', { headers: { Accept: 'application/json' } })
+            .then(function (r) { return r.json(); })
+            .then(function (res) {
+                if (!res.ok) return;
+                var v = res.reservation, rows = '';
+                var add = function (l, x) { if (x) rows += '<div class="mb-1"><span class="text-muted small">' + l + ':</span> ' + escapeHtml(String(x)) + '</div>'; };
+                add('Name', v.name); add('Phone', v.phone); add('Reserved for', v.reserved_for); add('Note', v.note); add('Reserved by', v.reserved_by); add('Marked at', v.reserved_at);
+                _rget('reservation-details-body').innerHTML = rows || '<div class="text-muted small">No details.</div>';
+                bootstrap.Modal.getOrCreateInstance(_rget('reservationDetailsModal')).show();
+            }).catch(function () {});
+    }
+
+    (function () {
+        var search = _rget('reserve-customer-search');
+        var suggest = _rget('reserve-customer-suggest');
+        if (!search) return;
+        var t;
+        search.addEventListener('input', function () {
+            clearTimeout(t);
+            var q = search.value.trim();
+            if (q.length < 2) { suggest.classList.add('d-none'); return; }
+            t = setTimeout(function () {
+                fetch(_reserveCustBase + '?q=' + encodeURIComponent(q), { headers: { Accept: 'application/json' } })
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        suggest.innerHTML = '';
+                        (data.customers || []).slice(0, 8).forEach(function (c) {
+                            var a = document.createElement('a');
+                            a.href = '#'; a.className = 'list-group-item list-group-item-action py-1 small';
+                            a.textContent = (c.name || '') + ' · ' + (c.phone || '');
+                            a.addEventListener('click', function (e) {
+                                e.preventDefault();
+                                _rget('reserve-customer-id').value = c.id;
+                                _rget('reserve-customer-name').textContent = (c.name || '') + ' · ' + (c.phone || '');
+                                _rget('reserve-customer-chip').classList.remove('d-none');
+                                if (!_rget('reserve-name').value) _rget('reserve-name').value = c.name || '';
+                                if (!_rget('reserve-phone').value) _rget('reserve-phone').value = c.phone || '';
+                                suggest.classList.add('d-none'); search.value = '';
+                            });
+                            suggest.appendChild(a);
+                        });
+                        suggest.classList.toggle('d-none', !suggest.children.length);
+                    }).catch(function () {});
+            }, 250);
+        });
+        _rget('reserve-customer-clear')?.addEventListener('click', function (e) { e.preventDefault(); _rget('reserve-customer-id').value = ''; _rget('reserve-customer-chip').classList.add('d-none'); });
+        _rget('reserve-save-btn')?.addEventListener('click', function () {
+            var fd = new FormData();
+            fd.append('reserved_customer_id', _rget('reserve-customer-id').value || '');
+            fd.append('reserved_name', _rget('reserve-name').value || '');
+            fd.append('reserved_phone', _rget('reserve-phone').value || '');
+            fd.append('reserved_for', _rget('reserve-for').value || '');
+            fd.append('reservation_note', _rget('reserve-note').value || '');
+            fetch(_reserveTablesBase + '/' + _rget('reserve-table-id').value + '/reserve', { method: 'POST', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', Accept: 'application/json' }, body: fd })
+                .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+                .then(function (res) {
+                    if (!res.ok) { var el = _rget('reserve-toast'); el.className = 'alert alert-danger py-2 small mb-3'; el.textContent = res.d.message || 'Could not reserve the table.'; el.classList.remove('d-none'); return; }
+                    bootstrap.Modal.getOrCreateInstance(_rget('reserveTableModal')).hide();
+                    if (typeof refreshTableBoard === 'function') refreshTableBoard();
+                }).catch(function () {});
+        });
+    })();
 
     document.getElementById('complete-sale-btn').addEventListener('click', function () { submitPaidSale(false); });
 
@@ -5783,6 +6475,9 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         chip.classList.remove('d-none');
     }
+    // TABLE-RESERVATION-2b: applyTableSession() lives outside this IIFE — let it repaint the chip
+    // after pre-attaching a reserved table's carried-over customer on an in-page open.
+    window.posRenderCustomerChip = renderChip;
 
     const clearBtn = $id('chip-cust-clear');
     if (clearBtn) clearBtn.addEventListener('click', function () {
