@@ -40,6 +40,8 @@ Route::prefix('edge/local')->name('edge.local.')->group(function () {
         Route::post('/shift/open', [EdgeLocalPosController::class, 'openShift'])->name('shift.open');
         Route::post('/shift/close', [EdgeLocalPosController::class, 'closeShift'])->name('shift.close');
         Route::post('/sales', [EdgeLocalPosController::class, 'storeSale'])->name('sales.store');
+        // ONLINE-POS PARITY — Preview Bill (zero-mutation running bill).
+        Route::post('/preview-bill', [EdgeLocalPosController::class, 'previewBill'])->name('preview.bill');
 
         // Restaurant layer: dine-in table sessions, held orders (Add Round), KOT business events,
         // settle/cancel, manager re-auth. Same authority envelope (EdgeLocalPosService); NO print transport.

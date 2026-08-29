@@ -401,6 +401,33 @@ class EdgeLocalPosService
     }
 
     /** (B) The principal MUST be the authenticated local cashier and be branch-authorized (preflight + in-txn). */
+    /**
+     * ONLINE-POS PARITY — Preview Bill: the running bill computed on the SAME server-side sale/totals truth,
+     * with ZERO mutation (no sale, payment, stock movement, outbox, KOT, receipt, or Cloud call). Read-only.
+     */
+    public function previewBill(array $data, User $user, ?int $terminalId): array
+    {
+        $meta = $this->context->requireCurrent();
+        $branchId = (int) $meta->branch_id;
+        $this->requireAuthorizedPrincipal($user, $branchId);
+        $this->requireActiveTerminal($terminalId, $branchId);
+        $branch = Branch::on('tenant')->findOrFail($branchId);
+        $orderType = (string) ($data['order_type'] ?? 'quick_sale');
+
+        $resolved = $this->resolveLines($data['lines'] ?? [], $branch);
+        $totals = $this->totals->calculate(
+            $resolved,
+            (string) ($data['discount_type'] ?? 'none'),
+            (float) ($data['discount_value'] ?? 0),
+            $branchId,
+            $orderType,
+            $data['promo_code'] ?? null,
+            0
+        );
+
+        return ['order_type' => $orderType, 'lines' => $resolved, 'totals' => $totals];
+    }
+
     private function requireAuthorizedPrincipal(User $user, int $branchId): void
     {
         $authUser = auth('tenant')->user();

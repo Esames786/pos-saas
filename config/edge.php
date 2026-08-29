@@ -133,6 +133,7 @@ return [
         'edge.local.pos.shift.open',
         'edge.local.pos.shift.close',
         'edge.local.pos.sales.store',
+        'edge.local.pos.preview.bill',
         // EDGE-LOCAL-POS-1 restaurant layer (each name deliberate).
         'edge.local.pos.restaurant.board',
         'edge.local.pos.restaurant.table.open',

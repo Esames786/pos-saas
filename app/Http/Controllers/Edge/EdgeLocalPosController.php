@@ -42,6 +42,31 @@ class EdgeLocalPosController extends Controller
     ) {
     }
 
+    /** ONLINE-POS PARITY — Preview Bill: the running bill on the same sale truth, ZERO mutation. */
+    public function previewBill(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'order_type' => ['nullable', 'string'],
+            'discount_type' => ['nullable', 'string'],
+            'discount_value' => ['nullable', 'numeric'],
+            'promo_code' => ['nullable', 'string'],
+            'lines' => ['required', 'array', 'min:1'],
+            'lines.*.product_id' => ['required', 'integer'],
+            'lines.*.quantity' => ['required', 'numeric', 'min:0.001'],
+        ]);
+        $terminal = $this->selectedTerminal($request);
+        if ($terminal instanceof JsonResponse) {
+            return $terminal;
+        }
+        try {
+            $preview = $this->pos->previewBill($data, auth('tenant')->user(), $terminal->id);
+        } catch (\Throwable $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json($preview);
+    }
+
     /** ONLINE-POS PARITY — reserve a table (walk-in or existing customer, booking time, note). */
     public function reserveTable(Request $request, int $table): JsonResponse
     {
