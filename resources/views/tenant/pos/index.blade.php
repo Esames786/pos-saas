@@ -750,6 +750,9 @@
                     <div class="text-muted small">Total</div>
                     <div class="pos-charge-amt" id="pos-charge-total">0.00</div>
                 </div>
+                {{-- Review & Pay opens the payment modal for EVERYONE (a restricted operator can still
+                     apply a discount / promo and review the bill there). Taking the payment is gated
+                     separately on the Complete Sale button below (tenant.pos.store). --}}
                 <button type="button" class="btn btn-primary btn-lg flex-grow-1" id="review-pay-btn">
                     <i class="ti ti-cash-register me-1"></i>{{ $tableSession ? 'Close & Pay Bill' : 'Review & Pay' }}
                 </button>
@@ -975,9 +978,19 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary btn-lg" data-bs-dismiss="modal">Back</button>
+                    {{-- Taking payment is gated on tenant.pos.store. A restricted operator (Kashif Floor
+                         terminal) may open this modal to apply a discount/promo and Preview Bill, but the
+                         Complete Sale button is hidden — they Hold the order (discount kept) and a counter
+                         with the permission recalls & closes it. The server enforces the same on POST /pos. --}}
+                    @can('tenant.pos.store')
                     <button type="button" class="btn btn-primary btn-lg flex-grow-1" id="complete-sale-btn">
                         {{ $tableSession ? 'Close & Pay Table Bill' : 'Complete Sale' }}
                     </button>
+                    @else
+                    <span class="text-muted small flex-grow-1 text-center px-2">
+                        <i class="ti ti-info-circle me-1"></i>Apply the discount, then <strong>Hold</strong> — a counter will close the bill.
+                    </span>
+                    @endcan
                     {{-- Preview the FULL running bill (discount + tax + service charge + tip) exactly as
                          Close & Pay will charge — for showing / printing to the customer before paying.
                          Kept on the far right with a gap. --}}
@@ -5969,7 +5982,10 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     })();
 
-    document.getElementById('complete-sale-btn').addEventListener('click', function () { submitPaidSale(false); });
+    // Null-safe: the Complete Sale button is absent for operators without tenant.pos.store (e.g. the
+    // Kashif Floor terminal). Without the guard this line would throw and break every listener wired
+    // AFTER it — Hold Sale, Draft, Bill Preview — for that user. They stay fully functional.
+    document.getElementById('complete-sale-btn')?.addEventListener('click', function () { submitPaidSale(false); });
 
     // "Review & Pay" opens the payment modal (guarded on empty cart); focus tendered when shown.
     var paymentModalEl = document.getElementById('paymentModal');
