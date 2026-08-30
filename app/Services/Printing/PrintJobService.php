@@ -403,26 +403,29 @@ class PrintJobService
         $effective = $sale->lines->mapWithKeys(fn ($line) => [
             (string) $line->id => $wholeOrder ? 0.0 : (float) $line->quantity,
         ])->all();
-        // RECALL-REPRINT-TERMINAL-2: route the correction reminder to the operator's own counter.
-        // The HISTORICAL printers below are still merged in, so the station that received the
-        // original reminder is always told about the cancellation too — it just is no longer the
-        // ONLY place the correction can land.
-        $current = collect($this->routingService->reminderRoutesForSale($sale, $effective, $terminalId ? (int) $terminalId : null))->pluck('printer');
-
-        // A WHOLE-order cancellation zeroes every line, so the call above finds no active line and
-        // returns no route at all — the correction would then only ever reach printers that happen
-        // to be in the sale's reminder history. Resolve the cancelling counter's own route from the
-        // order's real lines, or the operator gets no paper where they actually cancelled.
+        // RECALL-REPRINT-TERMINAL-2 — ONE correction slip, at the counter that cancelled.
+        //
+        // When the operator's terminal is known, that counter is the whole answer: a WHOLE-order
+        // cancellation zeroes every line, so routing against $effective finds no active line and
+        // returns nothing — the route is resolved from the order's real lines instead. The sale's
+        // reminder HISTORY is deliberately skipped here, or the counter that created the order gets
+        // a second copy of the same cancellation (owner's call: no duplicate slips).
+        //
+        // With no terminal (Edge, and any caller that passes nothing) the original rule stands —
+        // current routes plus every printer that already holds a reminder for this sale.
         if ($terminalId) {
-            $current = $current->merge(
-                collect($this->routingService->reminderRoutesForSale($sale, [], (int) $terminalId))->pluck('printer')
-            );
+            $current = collect($this->routingService->reminderRoutesForSale($sale, [], (int) $terminalId))->pluck('printer');
+            $printerIds = $current->pluck('id')->unique();
+        } else {
+            $current = collect($this->routingService->reminderRoutesForSale($sale, $effective))->pluck('printer');
+            $historicalIds = PrintJob::where('reference_type', 'sales_order')
+                ->where('reference_id', $sale->id)->where('document_type', 'reminder')
+                ->whereNotNull('printer_id')->where('print_status', '!=', 'cancelled')
+                ->pluck('printer_id');
+            $printerIds = $current->pluck('id')->merge($historicalIds)->unique();
         }
-        $historicalIds = PrintJob::where('reference_type', 'sales_order')
-            ->where('reference_id', $sale->id)->where('document_type', 'reminder')
-            ->whereNotNull('printer_id')->where('print_status', '!=', 'cancelled')
-            ->pluck('printer_id');
-        $printers = Printer::whereIn('id', $current->pluck('id')->merge($historicalIds)->unique())
+
+        $printers = Printer::whereIn('id', $printerIds)
             ->where('is_active', true)->where('supports_reminder', true)->get();
 
         return $printers->map(fn ($printer) => $this->queueReminder(

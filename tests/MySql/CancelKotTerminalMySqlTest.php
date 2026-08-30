@@ -107,6 +107,68 @@ class CancelKotTerminalMySqlTest extends MySqlTenantTestCase
             'the counter that cancelled must be told, on paper, at its own printer.');
     }
 
+    /**
+     * ONE slip, not two. The order was punched at the floor and its ORIGINAL reminder printed there,
+     * so the sale's reminder history holds the floor printer — the counter that cancels must still
+     * not send a second copy of the same cancellation back to it.
+     */
+    public function test_the_cancellation_does_not_also_print_at_the_original_counter(): void
+    {
+        $drink = $this->makeProduct($this->drinksCat, ['name' => 'Soft Drink (345 ml)']);
+        $saleId = $this->makeSale($this->branchId, [
+            'status' => 'held', 'order_type' => 'dine_in', 'terminal_id' => $this->floorTerminal,
+        ]);
+        // kot_sent_quantity 0 so the first KOT really fires and leaves a reminder at the FLOOR.
+        $this->makeSaleLine($saleId, $drink, ['product_name' => 'Soft Drink (345 ml)', 'quantity' => 1, 'kot_sent_quantity' => 0]);
+        $sale = SalesOrder::on('tenant')->with('lines')->findOrFail($saleId);
+
+        $service = app(PrintJobService::class);
+        $originalKot = $service->queueKot(sale: $sale, terminalId: (string) $this->floorTerminal);
+        $service->planRemindersForKotJobs($sale, $originalKot);
+
+        $this->assertSame([$this->floorPrinter], $this->printerOf($originalKot),
+            'the original punch belongs to the floor — this is the history the fix must not re-use.');
+
+        $sale->refresh()->load('lines');
+        $quantities = [(string) $sale->lines->first()->id => 1.0];
+        $queued = $service->queueCancellationKot($sale, $quantities, (string) $this->counterTerminal);
+        $reminders = $service->queueCancellationReminders($sale, $queued['batch'], true, (string) $this->counterTerminal);
+
+        $this->assertSame([$this->counterPrinter], $this->printerOf($queued['jobs']),
+            'the cancel KOT prints ONLY at the counter that cancelled.');
+        $this->assertSame([$this->counterPrinter], $this->printerOf($reminders),
+            'and so does the correction reminder — no duplicate slip at the floor.');
+    }
+
+    /**
+     * A LINE-ITEM void (wholeOrder = false) behaves the same. This path differs: the remaining lines
+     * are still active, so routing DOES return the sale's own terminal — the override has to win
+     * over it, not merely fill a gap.
+     */
+    public function test_a_line_item_void_also_prints_only_at_the_voiding_counter(): void
+    {
+        $drink = $this->makeProduct($this->drinksCat, ['name' => 'Soft Drink (345 ml)']);
+        $saleId = $this->makeSale($this->branchId, [
+            'status' => 'held', 'order_type' => 'dine_in', 'terminal_id' => $this->floorTerminal,
+        ]);
+        $this->makeSaleLine($saleId, $drink, ['product_name' => 'Soft Drink (345 ml)', 'quantity' => 2, 'kot_sent_quantity' => 0]);
+        $sale = SalesOrder::on('tenant')->with('lines')->findOrFail($saleId);
+
+        $service = app(PrintJobService::class);
+        $service->planRemindersForKotJobs($sale, $service->queueKot(sale: $sale, terminalId: (string) $this->floorTerminal));
+
+        // Void ONE of the two — the order lives on, so the sale's terminal still routes.
+        $sale->refresh()->load('lines');
+        $quantities = [(string) $sale->lines->first()->id => 1.0];
+        $queued = $service->queueCancellationKot($sale, $quantities, (string) $this->counterTerminal);
+        $reminders = $service->queueCancellationReminders($sale, $queued['batch'], false, (string) $this->counterTerminal);
+
+        $this->assertSame([$this->counterPrinter], $this->printerOf($queued['jobs']),
+            'a line void prints its cancel KOT at the counter that voided.');
+        $this->assertSame([$this->counterPrinter], $this->printerOf($reminders),
+            'and the updated-order reminder goes there too — not back to the floor.');
+    }
+
     /** No override = the old behaviour, exactly. Nothing changes for anyone who passes nothing. */
     public function test_without_an_override_it_still_routes_on_the_sales_own_terminal(): void
     {

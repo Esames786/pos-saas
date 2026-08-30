@@ -138,6 +138,13 @@ class SalesOrderController extends Controller
         app(\App\Services\Edge\BranchOperatingModeService::class)
             ->assertSaleMutationAllowed(Branch::findOrFail($data['branch_id']));
 
+        // RECALL-REPRINT-TERMINAL-2: the counter this operator is standing at, for routing any
+        // void raised during checkout. Resolved HERE and carried into the transaction closure —
+        // that closure does not capture $request, and reaching for it inside is a fatal error on
+        // the Complete Sale path. Already validated against the operator's own terminals.
+        $operatorTerminalId = app(\App\Services\Security\UserDataScope::class)
+            ->operatorTerminalId(auth('tenant')->user(), $request->input('terminal_id'));
+
         // SALE-IDEMPOTENCY-1: one logical sale = one client_uuid. A retry / double
         // click / timeout replay of the same sale must never double-post.
         $clientUuid  = $idempotency->normalizeClientUuid($data['client_uuid'] ?? null);
@@ -184,7 +191,7 @@ class SalesOrderController extends Controller
 
         try {
             $sale = DB::connection('tenant')->transaction(function () use (
-                $data, $lines, $payments, $salesService, $inventoryService, $totalsService, $idempotencyFields, $cancellationService, $directPayPrintState, $approvalService, $clientUuid
+                $data, $lines, $payments, $salesService, $inventoryService, $totalsService, $idempotencyFields, $cancellationService, $directPayPrintState, $approvalService, $clientUuid, $operatorTerminalId
             ) {
                 $branch   = Branch::findOrFail($data['branch_id']);
                 $terminal = !empty($data['terminal_id']) ? Terminal::find($data['terminal_id']) : null;
@@ -430,8 +437,7 @@ class SalesOrderController extends Controller
                         $detectedCancellations,
                         (int) auth('tenant')->id(),
                         // RECALL-REPRINT-TERMINAL-2: void at the counter the operator is standing at.
-                        app(\App\Services\Security\UserDataScope::class)
-                            ->operatorTerminalId(auth('tenant')->user(), $request->input('terminal_id')),
+                        $operatorTerminalId,
                     );
                     $cancellationBatch = $cancellationResult['batch'] ?? null;
                     $kotSentByLineId = $existingLines->mapWithKeys(fn ($line) => [$line->id => (float) $line->kot_sent_quantity])->all();
@@ -519,7 +525,13 @@ class SalesOrderController extends Controller
 
                 if ($cancellationBatch) {
                     $sale->unsetRelation('lines');
-                    $cancellationService->queueCorrectionReminders($sale, $cancellationBatch);
+                    // RECALL-REPRINT-TERMINAL-2: the correction belongs to the counter that voided.
+                    $cancellationService->queueCorrectionReminders(
+                        $sale,
+                        $cancellationBatch,
+                        false,
+                        $operatorTerminalId,
+                    );
                 }
 
                 foreach ($payments as $payment) {
