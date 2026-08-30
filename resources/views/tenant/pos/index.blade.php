@@ -4272,6 +4272,12 @@ document.addEventListener('DOMContentLoaded', function () {
         const customerId = String((document.getElementById('customer_id') || {}).value || '').trim();
         if (!isDeliveryOrder || customerId) return true;
 
+        // AGGREGATOR-CUSTOMER-OPTIONAL: an aggregator channel (Foodpanda etc.) owns the customer on its
+        // platform — no attach required. Own delivery still needs one. Server enforces the same.
+        const chSel = document.getElementById('delivery_channel_id');
+        const chOpt = chSel && chSel.options[chSel.selectedIndex];
+        if (chOpt && chOpt.getAttribute('data-type') === 'aggregator') return true;
+
         const openCustomerModal = function () {
             const modalEl = document.getElementById('customerModal');
             if (modalEl && window.bootstrap) bootstrap.Modal.getOrCreateInstance(modalEl).show();

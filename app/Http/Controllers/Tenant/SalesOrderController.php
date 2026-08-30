@@ -860,9 +860,17 @@ class SalesOrderController extends Controller
     private function validateDeliveryAttribution(array $data): array
     {
         if (($data['order_type'] ?? null) === 'delivery' && empty($data['customer_id'])) {
-            throw ValidationException::withMessages([
-                'customer_id' => 'Attach a customer before saving a delivery order.',
-            ]);
+            // AGGREGATOR-CUSTOMER-OPTIONAL: an aggregator channel (Foodpanda etc.) owns the customer on
+            // its own platform, so no customer record is required here. Own delivery still needs one —
+            // we deliver, so we need the name/phone/address.
+            $channel = ! empty($data['delivery_channel_id'])
+                ? \App\Models\Tenant\DeliveryChannel::find($data['delivery_channel_id'])
+                : null;
+            if (! ($channel && $channel->type === 'aggregator')) {
+                throw ValidationException::withMessages([
+                    'customer_id' => 'Attach a customer before saving a delivery order.',
+                ]);
+            }
         }
 
         if (($data['order_type'] ?? null) !== 'delivery' || ! empty($data['restaurant_table_session_id'])) {
