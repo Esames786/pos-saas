@@ -172,6 +172,12 @@
             </td>
             <td class="item-name">
                 <span class="ibig">{{ ($eventType ?? null) === 'addition' ? '(R) ' : '' }}{{ strtoupper($line->product_name) }}</span>
+                {{-- COMBO-KOT-DEAL-NAME-1: a KOT is split by category and drops the combo header, so
+                     the station would otherwise see loose items with no idea they are one platter.
+                     Same sub-line the ESC/POS ticket prints, so paper and preview stay identical. --}}
+                @if(!empty($comboNames[(int) ($line->combo_id ?? 0)] ?? null))
+                    <br><small style="font-size:{{ max($fontSize - 3, 9) }}px; font-weight:normal">({{ $comboNames[(int) $line->combo_id] }})</small>
+                @endif
                 @if($line->variant_name && strcasecmp(trim($line->variant_name), trim((string) $line->product_name)) !== 0)
                     <br><small>{{ $line->variant_name }}</small>
                 @endif

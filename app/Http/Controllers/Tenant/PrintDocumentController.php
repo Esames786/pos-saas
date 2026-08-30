@@ -82,6 +82,9 @@ class PrintDocumentController extends Controller
                 'copyNo'         => (int) ($printJob->payload['copy_no'] ?? 1),
                 // one ticket per category — name the station this slip belongs to
                 'kotCategory'    => $printJob->payload['kot_category'] ?? null,
+                // COMBO-KOT-DEAL-NAME-1: the deal each component belongs to. The KOT drops the combo
+                // header line, so without this the station cannot tell one platter from loose items.
+                'comboNames'     => $this->comboNames($kotLines),
             ]);
         }
 
@@ -90,5 +93,22 @@ class PrintDocumentController extends Controller
             'salesOrder' => $salesOrder,
             'layout'     => $layout,
         ]);
+    }
+
+    /**
+     * COMBO-KOT-DEAL-NAME-1 — combo id => deal name for the lines on this ticket.
+     *
+     * One read for the whole slip, mirroring EscPosPayloadService so the browser preview and the
+     * paper say the same thing. Snapshot lines (a cancel KOT) are plain stdClass and may carry no
+     * combo_id, hence the null-safe read.
+     */
+    private function comboNames($kotLines)
+    {
+        $ids = collect($kotLines)->map(fn ($line) => (int) ($line->combo_id ?? 0))->filter()->unique();
+
+        return $ids->isEmpty()
+            ? collect()
+            : \Illuminate\Support\Facades\DB::connection('tenant')->table('combos')
+                ->whereIn('id', $ids->all())->pluck('name', 'id');
     }
 }
