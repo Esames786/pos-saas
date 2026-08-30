@@ -231,7 +231,10 @@ class PrintJobService
             return ['batch' => null, 'jobs' => []];
         }
 
-        $routes = $this->routingService->kotRoutesForQuantities($sale, $lineQuantities);
+        // RECALL-REPRINT-TERMINAL-2: the terminal was only stamped on the job row; printer resolution
+        // still keyed on the sale's terminal, so a cancellation raised from another counter printed
+        // at the counter that created the order.
+        $routes = $this->routingService->kotRoutesForQuantities($sale, $lineQuantities, $terminalId ? (int) $terminalId : null);
         $batch = $this->createKotBatch($sale, $lineQuantities, 'cancel');
         $jobs = [];
 
@@ -392,7 +395,7 @@ class PrintJobService
     }
 
     /** Queue non-interactive correction Reminders after cancellation approval/audit is durable. */
-    public function queueCancellationReminders(SalesOrder $sale, KotBatch $batch, bool $wholeOrder): array
+    public function queueCancellationReminders(SalesOrder $sale, KotBatch $batch, bool $wholeOrder, ?string $terminalId = null): array
     {
         $sale->loadMissing(['lines.product.category']);
         $cancellations = SalesOrderLineCancellation::with(['reason', 'requestedBy', 'approvedBy'])
@@ -400,7 +403,21 @@ class PrintJobService
         $effective = $sale->lines->mapWithKeys(fn ($line) => [
             (string) $line->id => $wholeOrder ? 0.0 : (float) $line->quantity,
         ])->all();
-        $current = collect($this->routingService->reminderRoutesForSale($sale, $effective))->pluck('printer');
+        // RECALL-REPRINT-TERMINAL-2: route the correction reminder to the operator's own counter.
+        // The HISTORICAL printers below are still merged in, so the station that received the
+        // original reminder is always told about the cancellation too — it just is no longer the
+        // ONLY place the correction can land.
+        $current = collect($this->routingService->reminderRoutesForSale($sale, $effective, $terminalId ? (int) $terminalId : null))->pluck('printer');
+
+        // A WHOLE-order cancellation zeroes every line, so the call above finds no active line and
+        // returns no route at all — the correction would then only ever reach printers that happen
+        // to be in the sale's reminder history. Resolve the cancelling counter's own route from the
+        // order's real lines, or the operator gets no paper where they actually cancelled.
+        if ($terminalId) {
+            $current = $current->merge(
+                collect($this->routingService->reminderRoutesForSale($sale, [], (int) $terminalId))->pluck('printer')
+            );
+        }
         $historicalIds = PrintJob::where('reference_type', 'sales_order')
             ->where('reference_id', $sale->id)->where('document_type', 'reminder')
             ->whereNotNull('printer_id')->where('print_status', '!=', 'cancelled')
