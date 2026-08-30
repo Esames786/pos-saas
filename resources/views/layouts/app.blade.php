@@ -35,6 +35,10 @@
          script below (covers in-window navigations that drop the query param). CSS is always emitted;
          it only bites when the body actually carries .embedded-workspace. --}}
     <style>
+        /* Hide the template's floating "Theme Customizer" toggle (a spinning cog in a gold circle on
+           the right edge, injected by theme-script.js) — a demo widget with a "Buy Product" button,
+           not for production. The script's dark/light logic is untouched; only its FAB is hidden. */
+        .toggle-theme { display: none !important; }
         body.embedded-workspace .header,
         body.embedded-workspace .sidebar,
         body.embedded-workspace .skip-link,
