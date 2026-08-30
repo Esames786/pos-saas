@@ -693,7 +693,10 @@
             <div class="mb-3">
                 <div class="category-strip" id="parent-category-strip">
                     <button type="button" class="category-pill active" data-parent-category="">All</button>
-                    @if(count($combosPayload))
+                    {{-- POS-COMBO-CATEGORY-1: the flat "Deals" pill stays only while some combos are still
+                         uncategorised. Once a tenant files every deal (e.g. a real "Deals" parent with
+                         Al-Faham/Midnight/Platters children), that category tree is the deals entry. --}}
+                    @if(count($combosPayload) && $hasUncategorizedCombos)
                         <button type="button" class="category-pill" data-parent-category="__deals__">Deals</button>
                     @endif
                     {{-- POS-COMBO-CATEGORY-1 + HIDE-EMPTY-TABS: only pills for categories with a visible
@@ -2565,25 +2568,18 @@ document.addEventListener('DOMContentLoaded', function () {
         productGrid.innerHTML = '';
 
         // POS-COMBO-CATEGORY-1 combo visibility:
-        //   • "All"  → every combo (with the products).
-        //   • "Deals" pill → only combos NOT filed to a sub-category (the generic deals), so
-        //     Al-Faham / Midnight / Platters are pulled OUT of "Deals" into their own tabs.
-        //   • a category tab → the combos filed to that category (parent, its child, or a child match).
+        //   • "All" and "Deals" → every combo (Deals stays the catch-all of all deals).
+        //   • a category tab → the combos filed to that category (parent, its child, or a child match)
+        //     — so a deal filed to its MAIN product's category also shows alongside that product.
+        const allOrDeals = dealsOnly || (!selectedParentCategory && !selectedChildCategory);
         const filteredCombos = combos.filter(function (combo) {
             const catId = Number(combo.category_id || 0);
-            let show;
-            if (dealsOnly) {
-                show = !catId;
-            } else if (!selectedParentCategory && !selectedChildCategory) {
-                show = true;
-            } else {
-                show = catId && (
-                    Number(catId) === Number(selectedParentCategory)
-                    || selectedParentChildIds.includes(catId)
-                    || (selectedChildCategory && catId === Number(selectedChildCategory))
-                );
-            }
-            if (!show) return false;
+            const matchCat = catId && (
+                Number(catId) === Number(selectedParentCategory)
+                || selectedParentChildIds.includes(catId)
+                || (selectedChildCategory && catId === Number(selectedChildCategory))
+            );
+            if (!(allOrDeals || matchCat)) return false;
             return !query
                 || String(combo.name).toLowerCase().includes(query)
                 || String(combo.code || '').toLowerCase().includes(query);

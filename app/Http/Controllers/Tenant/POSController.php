@@ -352,6 +352,11 @@ class POSController extends Controller
             // the whole book into the page hung the POS once a tenant passed a few hundred rows.
             'categories'       => $categories,
             'pillCategoryIds'  => $pillCategoryIds,
+            // POS-COMBO-CATEGORY-1: the legacy "Deals" pill (shows every combo, flat) stays ONLY while a
+            // tenant still has uncategorised combos — so tenants that never file deals keep it exactly as
+            // before. Once every combo is filed to a category (e.g. a "Deals" parent + Al-Faham/Midnight/
+            // Platters children), that real category tree replaces it and this pill hides.
+            'hasUncategorizedCombos' => collect($combosPayload)->contains(fn ($c) => empty($c['category_id'])),
             'productsPayload'  => $productsPayload,
             'combosPayload'    => $combosPayload,
             'paymentMethods'   => PaymentMethod::where('is_active', true)
