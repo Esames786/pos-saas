@@ -59,7 +59,7 @@ class PrintJobController extends Controller
         $this->assertSaleAccess($salesOrder);
         // Auto print after a sale is ensure-once (idempotent); explicit reprint forces a new job.
         $ensureOnce = ! $request->boolean('reprint');
-        $job = $this->printJobService->queueReceipt($salesOrder, ensureOnce: $ensureOnce);
+        $job = $this->printJobService->queueReceipt($salesOrder, terminalId: $this->reprintTerminalId($request), ensureOnce: $ensureOnce);
 
         $previewUrl = url('/printing/documents/' . $job->id . '/receipt');
 
@@ -91,7 +91,7 @@ class PrintJobController extends Controller
             sale:       $salesOrder,
             printer:    null,
             lineIds:    $lineIds,
-            terminalId: null,
+            terminalId: $this->reprintTerminalId($request),
             isReprint:  $isReprint,
         );
 
@@ -282,6 +282,27 @@ class PrintJobController extends Controller
         }
 
         return back()->with('status', 'Job dismissed.');
+    }
+
+    /**
+     * RECALL-REPRINT-TERMINAL-1: the operator's CURRENT terminal (POS #terminal_id), used to route a
+     * reprint to their OWN counter when they recalled another counter's saved order. Only a terminal
+     * the operator is allowed to operate is honoured, so a reprint can never be aimed at a foreign
+     * terminal; null (no/invalid terminal) routes on the sale's own terminal exactly as before. The
+     * sale row is never re-stamped — cash/shift attribution stays with the original terminal.
+     */
+    private function reprintTerminalId(Request $request): ?string
+    {
+        $tid = (int) $request->input('terminal_id');
+        if ($tid <= 0) {
+            return null;
+        }
+        $allowed = app(\App\Services\Security\UserDataScope::class)->terminalIds(auth('tenant')->user());
+        if (! empty($allowed) && ! in_array($tid, $allowed, true)) {
+            return null;
+        }
+
+        return (string) $tid;
     }
 
     private function assertSaleAccess(SalesOrder $sale): void

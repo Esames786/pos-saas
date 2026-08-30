@@ -16,9 +16,10 @@ class PrintRoutingService
      *
      * @return array<int, array{printer: Printer, ask_on_addition: bool}>
      */
-    public function reminderRoutesForSale(SalesOrder $sale, array $effectiveQuantities = []): array
+    public function reminderRoutesForSale(SalesOrder $sale, array $effectiveQuantities = [], ?int $terminalOverride = null): array
     {
         $sale->loadMissing(['lines.product.category.parent']);
+        $term = $this->effectiveTerminalId($sale, $terminalOverride);
 
         $categoryIds = $sale->lines
             ->filter(function ($line) use ($effectiveQuantities) {
@@ -66,10 +67,10 @@ class PrintRoutingService
                     $query->orWhereIn('category_id', $categoryIds->all());
                 }
             })
-            ->where(function ($query) use ($sale) {
+            ->where(function ($query) use ($term) {
                 $query->whereNull('terminal_id');
-                if ($sale->terminal_id) {
-                    $query->orWhere('terminal_id', $sale->terminal_id);
+                if ($term) {
+                    $query->orWhere('terminal_id', $term);
                 }
             })
             ->where('print_role', 'reminder')
@@ -79,7 +80,7 @@ class PrintRoutingService
             ->where('is_active', true)
             ->get()
             // Terminal precedence, same as the KOT path: a terminal-pinned reminder rule wins.
-            ->pipe(fn ($rows) => $this->applyTerminalPrecedence($rows, $sale->terminal_id ? (int) $sale->terminal_id : null))
+            ->pipe(fn ($rows) => $this->applyTerminalPrecedence($rows, $term))
             ->filter(fn ($mapping) => $mapping->printer?->is_active && $mapping->printer?->supports_reminder);
 
         return $mappings
@@ -110,10 +111,22 @@ class PrintRoutingService
             : $category->name;
     }
 
-    public function receiptPrinter(SalesOrder $sale): ?Printer
+    /**
+     * RECALL-REPRINT-TERMINAL-1: the terminal a print should route to. Defaults to the sale's own
+     * terminal (every existing caller); a caller may OVERRIDE it (e.g. a recalled order reprinted by a
+     * different counter should print at THAT counter) — the sale row is never touched, so cash/shift
+     * attribution stays with the original terminal.
+     */
+    private function effectiveTerminalId(SalesOrder $sale, ?int $terminalOverride = null): ?int
     {
-        if ($sale->terminal_id) {
-            $setting = TerminalPrinterSetting::where('terminal_id', $sale->terminal_id)->first();
+        return $terminalOverride ?: ($sale->terminal_id ? (int) $sale->terminal_id : null);
+    }
+
+    public function receiptPrinter(SalesOrder $sale, ?int $terminalOverride = null): ?Printer
+    {
+        $term = $this->effectiveTerminalId($sale, $terminalOverride);
+        if ($term) {
+            $setting = TerminalPrinterSetting::where('terminal_id', $term)->first();
             if ($setting?->receipt_printer_id) {
                 $printer = Printer::find($setting->receipt_printer_id);
                 if ($printer?->is_active) {
@@ -131,10 +144,11 @@ class PrintRoutingService
             ->first();
     }
 
-    public function defaultKotPrinter(SalesOrder $sale): ?Printer
+    public function defaultKotPrinter(SalesOrder $sale, ?int $terminalOverride = null): ?Printer
     {
-        if ($sale->terminal_id) {
-            $setting = TerminalPrinterSetting::where('terminal_id', $sale->terminal_id)->first();
+        $term = $this->effectiveTerminalId($sale, $terminalOverride);
+        if ($term) {
+            $setting = TerminalPrinterSetting::where('terminal_id', $term)->first();
             if ($setting?->kot_printer_id) {
                 $printer = Printer::find($setting->kot_printer_id);
                 if ($printer?->is_active) {
@@ -162,8 +176,9 @@ class PrintRoutingService
      * @param  array<int,string>  $roles
      * @return \Illuminate\Support\Collection<int,int>
      */
-    private function mappedPrinterIds(SalesOrder $sale, ?int $categoryId, array $roles, bool $categoryWildcard = true): Collection
+    private function mappedPrinterIds(SalesOrder $sale, ?int $categoryId, array $roles, bool $categoryWildcard = true, ?int $terminalOverride = null): Collection
     {
+        $term = $this->effectiveTerminalId($sale, $terminalOverride);
         $rows = CategoryPrinterMapping::query()
             ->where(function ($q) use ($sale) {
                 $q->whereNull('branch_id')->orWhere('branch_id', $sale->branch_id);
@@ -178,10 +193,10 @@ class PrintRoutingService
                     $q->where('category_id', $categoryId);
                 }
             })
-            ->where(function ($q) use ($sale) {
+            ->where(function ($q) use ($term) {
                 $q->whereNull('terminal_id');
-                if ($sale->terminal_id) {
-                    $q->orWhere('terminal_id', $sale->terminal_id);
+                if ($term) {
+                    $q->orWhere('terminal_id', $term);
                 }
             })
             ->whereIn('print_role', $roles)
@@ -191,7 +206,7 @@ class PrintRoutingService
             ->where('is_active', true)
             ->get(['printer_id', 'terminal_id']);
 
-        return $this->applyTerminalPrecedence($rows, $sale->terminal_id ? (int) $sale->terminal_id : null)
+        return $this->applyTerminalPrecedence($rows, $term)
             ->pluck('printer_id')
             ->unique()
             ->values();
@@ -219,7 +234,7 @@ class PrintRoutingService
      * Returns array of [printer, line_ids, line_quantities] groups.
      * Priority per line: category mapping (terminal-aware) → terminal KOT printer → branch default → browser fallback.
      */
-    public function kotRoutesForSale(SalesOrder $sale, array $onlyLineIds = [], bool $isReprint = false): array
+    public function kotRoutesForSale(SalesOrder $sale, array $onlyLineIds = [], bool $isReprint = false, ?int $terminalOverride = null): array
     {
         $sale->loadMissing(['lines.product.category.parent']);
 
@@ -253,7 +268,7 @@ class PrintRoutingService
 
             // Match this line's category route OR an "All categories" (NULL) wildcard route, with
             // terminal precedence (a rule pinned to this terminal wins over an "any terminal" rule).
-            $printerIds = $this->mappedPrinterIds($sale, $categoryId ? (int) $categoryId : null, ['kot', 'both']);
+            $printerIds = $this->mappedPrinterIds($sale, $categoryId ? (int) $categoryId : null, ['kot', 'both'], true, $terminalOverride);
 
             if ($printerIds->isNotEmpty()) {
                 $printers = Printer::whereIn('id', $printerIds)
@@ -263,7 +278,7 @@ class PrintRoutingService
             }
 
             if ($printers->isEmpty()) {
-                $default = $this->defaultKotPrinter($sale);
+                $default = $this->defaultKotPrinter($sale, $terminalOverride);
                 if ($default) {
                     $printers = collect([$default]);
                 }

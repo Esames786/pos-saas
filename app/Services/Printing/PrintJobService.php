@@ -64,7 +64,9 @@ class PrintJobService
 
         $sale->loadMissing(['branch', 'terminal', 'customer', 'lines', 'payments.method']);
 
-        $printer = $printer ?: $this->routingService->receiptPrinter($sale);
+        // RECALL-REPRINT-TERMINAL-1: when a caller passes a terminal (e.g. a recalled order reprinted
+        // from another counter), route to THAT terminal's receipt printer — the sale row is untouched.
+        $printer = $printer ?: $this->routingService->receiptPrinter($sale, $terminalId ? (int) $terminalId : null);
 
         $attributes = [
             'logical_key'         => $logicalKey,
@@ -165,7 +167,10 @@ class PrintJobService
         }
 
         // No explicit printer — use routing service.
-        $routes = $this->routingService->kotRoutesForSale($sale, $lineIds, $isReprint);
+        // RECALL-REPRINT-TERMINAL-1: route this KOT to the passed terminal when given (recalled-order
+        // reprint from another counter); counter-category items follow that terminal, station
+        // categories (BBQ/Fastfood) are terminal-agnostic and keep going to their stations.
+        $routes = $this->routingService->kotRoutesForSale($sale, $lineIds, $isReprint, $terminalId ? (int) $terminalId : null);
 
         if (!$isReprint && ($pendingFallback = $this->matchingQueuedBrowserFallback($sale, $routes))) {
             return [$pendingFallback];
