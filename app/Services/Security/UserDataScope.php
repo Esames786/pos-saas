@@ -144,6 +144,30 @@ class UserDataScope
     }
 
     /**
+     * RECALL-REPRINT-TERMINAL-1/2 — the operator's CURRENT terminal (the POS posts its #terminal_id),
+     * for routing a print to the counter the operator is standing at rather than the one that created
+     * the order.
+     *
+     * Honoured only when it is a terminal this operator may actually work on, so a print can never be
+     * aimed at a foreign counter. Null (absent or not allowed) means "route on the sale's own
+     * terminal", which is exactly the behaviour every caller had before an override existed.
+     *
+     * One definition, shared by reprints and cancellations — the two used to disagree, which is how
+     * a cancellation kept printing at the wrong counter.
+     */
+    public function operatorTerminalId(?User $user, mixed $requested): ?string
+    {
+        $terminalId = (int) $requested;
+        if ($terminalId <= 0) {
+            return null;
+        }
+
+        $allowed = $this->terminalIds($user);
+
+        return ($allowed && ! in_array($terminalId, $allowed, true)) ? null : (string) $terminalId;
+    }
+
+    /**
      * May this user operate (open/close a shift on) the given terminal?
      *
      * Same rule the POS terminal check already uses: a user bound to specific terminals is limited

@@ -312,7 +312,12 @@ class PrintRoutingService
     }
 
     /** Route explicit immutable quantities, used by cancellation KOT events. */
-    public function kotRoutesForQuantities(SalesOrder $sale, array $lineQuantities): array
+    /**
+     * RECALL-REPRINT-TERMINAL-2: the override RECALL-REPRINT-TERMINAL-1 added to every other route
+     * was never threaded here, so a cancellation raised by the counter that RECALLED an order still
+     * printed at the counter that created it — the one rule the rest of the print path had dropped.
+     */
+    public function kotRoutesForQuantities(SalesOrder $sale, array $lineQuantities, ?int $terminalOverride = null): array
     {
         $sale->loadMissing(['lines.product.category.parent']);
         $routes = [];
@@ -334,7 +339,7 @@ class PrintRoutingService
             if ($categoryId) {
                 // Category-specific (no wildcard here, matching the original cancellation rule) but
                 // terminal-aware, so a cancellation KOT lands on the same printer as its original.
-                $printerIds = $this->mappedPrinterIds($sale, (int) $categoryId, ['kot', 'both'], false);
+                $printerIds = $this->mappedPrinterIds($sale, (int) $categoryId, ['kot', 'both'], false, $terminalOverride);
 
                 if ($printerIds->isNotEmpty()) {
                     $printers = Printer::whereIn('id', $printerIds)
@@ -344,7 +349,7 @@ class PrintRoutingService
                 }
             }
 
-            if ($printers->isEmpty() && ($default = $this->defaultKotPrinter($sale))) {
+            if ($printers->isEmpty() && ($default = $this->defaultKotPrinter($sale, $terminalOverride))) {
                 $printers = collect([$default]);
             }
 

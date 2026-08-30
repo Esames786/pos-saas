@@ -4737,10 +4737,14 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function submitHeldOrderCancellation(saleId, details) {
+        // RECALL-REPRINT-TERMINAL-2: send the counter the operator is standing at, so a cancellation
+        // of a RECALLED order prints here and not at the counter that created it. The server still
+        // validates it against this operator's own terminals and falls back to the sale's own.
+        var cancelTerminal = (document.getElementById('terminal_id') || {}).value || '';
         return fetch('{{ url('/held-sales') }}/' + saleId + '/cancel', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
-            body: JSON.stringify(details),
+            body: JSON.stringify(Object.assign({ terminal_id: cancelTerminal }, details)),
         }).then(function (response) {
             return response.json().then(function (data) {
                 if (!response.ok) throw new Error(data.message || Object.values(data.errors || {})[0] || 'Cancellation failed');

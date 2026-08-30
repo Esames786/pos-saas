@@ -544,7 +544,9 @@ class HeldSaleController extends Controller
             $cancellationResult = $cancellationService->recordLineCancellations(
                 $sale,
                 $detectedCancellations,
-                (int) auth('tenant')->id()
+                (int) auth('tenant')->id(),
+                // RECALL-REPRINT-TERMINAL-2: void at the counter the operator is standing at.
+                app(UserDataScope::class)->operatorTerminalId(auth('tenant')->user(), $request->input('terminal_id')),
             );
             $cancellationBatch = $cancellationResult['batch'] ?? null;
 
@@ -815,6 +817,8 @@ class HeldSaleController extends Controller
             (int) $data['reason_id'],
             !empty($data['manager_approval_id']) ? (int) $data['manager_approval_id'] : null,
             (int) auth('tenant')->id(),
+            // RECALL-REPRINT-TERMINAL-2: cancel at the counter the operator is standing at.
+            app(UserDataScope::class)->operatorTerminalId(auth('tenant')->user(), $request->input('terminal_id')),
         );
 
         if (request()->expectsJson()) {

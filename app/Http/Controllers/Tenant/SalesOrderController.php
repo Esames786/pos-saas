@@ -428,7 +428,10 @@ class SalesOrderController extends Controller
                     $cancellationResult = $cancellationService->recordLineCancellations(
                         $sale,
                         $detectedCancellations,
-                        (int) auth('tenant')->id()
+                        (int) auth('tenant')->id(),
+                        // RECALL-REPRINT-TERMINAL-2: void at the counter the operator is standing at.
+                        app(\App\Services\Security\UserDataScope::class)
+                            ->operatorTerminalId(auth('tenant')->user(), $request->input('terminal_id')),
                     );
                     $cancellationBatch = $cancellationResult['batch'] ?? null;
                     $kotSentByLineId = $existingLines->mapWithKeys(fn ($line) => [$line->id => (float) $line->kot_sent_quantity])->all();
