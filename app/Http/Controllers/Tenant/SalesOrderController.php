@@ -449,10 +449,22 @@ class SalesOrderController extends Controller
                         'status'           => 'draft',
                         'inventory_posted' => false,
                         'completed_at'     => null,
-                        // Add Round / recall-to-pay keeps the ORIGINAL shift + business date. A held
-                        // check opened before midnight stays on its opening business day even when
-                        // paid after midnight (and even from a different shift).
-                        'shift_id'         => $sale->shift_id ?? $shift?->id,
+                        // POS-SHIFT-ATTRIBUTION-1: the shift follows the DRAWER the money went into,
+                        // the business date follows the order.
+                        //
+                        // Both used to stay with the order, because business_date was being taken
+                        // from the shift. It is its own column and is preserved on the line below,
+                        // so the shift no longer has to be dragged along for it: a check opened
+                        // before midnight still reports on its opening day, wherever it is paid.
+                        //
+                        // Keeping the opening shift put the cash in the wrong drawer. The Floor
+                        // counter cannot take payment at all (no tenant.pos.store), yet every check
+                        // opened there stayed on its shift — Rs 1,19,505 of expected cash on a shift
+                        // whose drawer never saw a rupee, and a Rs 21,505 shortfall at close that was
+                        // pure arithmetic. terminal_id already follows the paying counter; the shift
+                        // now agrees with it. Falls back to the order's own shift when the payment
+                        // path has none (manual / non-POS sources).
+                        'shift_id'         => $shift?->id ?? $sale->shift_id,
                         'business_date'    => $sale->business_date?->toDateString() ?? $businessDate,
                     ]));
                 } else {
