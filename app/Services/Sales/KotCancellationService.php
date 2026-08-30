@@ -26,11 +26,10 @@ class KotCancellationService
         int $reasonId,
         ?int $managerApprovalId,
         int $requestingUserId,
-        ?string $terminalId = null,
     ): array {
         $this->assertCancellationPermission($requestingUserId);
 
-        return DB::connection('tenant')->transaction(function () use ($sale, $reasonId, $managerApprovalId, $requestingUserId, $terminalId) {
+        return DB::connection('tenant')->transaction(function () use ($sale, $reasonId, $managerApprovalId, $requestingUserId) {
             $sale = SalesOrder::with(['branch', 'lines'])->lockForUpdate()->findOrFail($sale->id);
             if ($sale->status !== 'held') {
                 throw ValidationException::withMessages(['sale' => 'Only held sales can be cancelled.']);
@@ -52,9 +51,7 @@ class KotCancellationService
                 );
             }
 
-            // RECALL-REPRINT-TERMINAL-2: the CANCELLING counter's terminal, falling back to the one
-            // that created the order. Same rule the rest of the print path already follows.
-            $queued = $this->printJobService->queueCancellationKot($sale, $quantities, $terminalId ?: $sale->terminal_id);
+            $queued = $this->printJobService->queueCancellationKot($sale, $quantities, $sale->terminal_id);
             foreach ($sale->lines as $line) {
                 $quantity = (float) ($quantities[(string) $line->id] ?? 0);
                 if ($quantity <= 0) {
@@ -63,7 +60,7 @@ class KotCancellationService
                 $this->record($sale, $line, $quantity, $reason, $approval, $queued['batch']?->id, $requestingUserId, 'order');
             }
 
-            $reminderJobs = $this->queueCorrectionReminders($sale, $queued['batch'], true, $terminalId ?: $sale->terminal_id);
+            $reminderJobs = $this->queueCorrectionReminders($sale, $queued['batch'], true);
 
             $sale->update(['status' => 'cancelled']);
 
@@ -79,7 +76,7 @@ class KotCancellationService
     /**
      * @param array<int, array{line_id:int,quantity:float,reason_id:int,manager_approval_id:?int}> $cancellations
      */
-    public function recordLineCancellations(SalesOrder $sale, array $cancellations, int $requestingUserId, ?string $terminalId = null): array
+    public function recordLineCancellations(SalesOrder $sale, array $cancellations, int $requestingUserId): array
     {
         if (!$cancellations) {
             return ['jobs' => [], 'batch' => null];
@@ -87,7 +84,7 @@ class KotCancellationService
 
         $this->assertCancellationPermission($requestingUserId);
 
-        return DB::connection('tenant')->transaction(function () use ($sale, $cancellations, $requestingUserId, $terminalId) {
+        return DB::connection('tenant')->transaction(function () use ($sale, $cancellations, $requestingUserId) {
             $sale = SalesOrder::with(['branch', 'lines'])->lockForUpdate()->findOrFail($sale->id);
             if ($sale->status !== 'held') {
                 throw ValidationException::withMessages(['sale' => 'Only held sales can be edited.']);
@@ -159,7 +156,7 @@ class KotCancellationService
                 unset($item);
             }
 
-            $queued = $this->printJobService->queueCancellationKot($sale, $quantities, $terminalId ?: $sale->terminal_id);
+            $queued = $this->printJobService->queueCancellationKot($sale, $quantities, $sale->terminal_id);
             foreach ($resolved as $item) {
                 $this->record(
                     $sale,
@@ -179,14 +176,14 @@ class KotCancellationService
         });
     }
 
-    public function queueCorrectionReminders(SalesOrder $sale, $batch, bool $wholeOrder = false, ?string $terminalId = null): array
+    public function queueCorrectionReminders(SalesOrder $sale, $batch, bool $wholeOrder = false): array
     {
         if (!$batch) {
             return [];
         }
 
         try {
-            return $this->printJobService->queueCancellationReminders($sale, $batch, $wholeOrder, $terminalId);
+            return $this->printJobService->queueCancellationReminders($sale, $batch, $wholeOrder);
         } catch (\Throwable $exception) {
             Log::warning('Cancellation Reminder failed after Cancel KOT was queued.', [
                 'sales_order_id' => $sale->id,

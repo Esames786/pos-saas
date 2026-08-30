@@ -293,8 +293,16 @@ class PrintJobController extends Controller
      */
     private function reprintTerminalId(Request $request): ?string
     {
-        return app(\App\Services\Security\UserDataScope::class)
-            ->operatorTerminalId(auth('tenant')->user(), $request->input('terminal_id'));
+        $tid = (int) $request->input('terminal_id');
+        if ($tid <= 0) {
+            return null;
+        }
+        $allowed = app(\App\Services\Security\UserDataScope::class)->terminalIds(auth('tenant')->user());
+        if (! empty($allowed) && ! in_array($tid, $allowed, true)) {
+            return null;
+        }
+
+        return (string) $tid;
     }
 
     private function assertSaleAccess(SalesOrder $sale): void
