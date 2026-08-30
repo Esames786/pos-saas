@@ -696,10 +696,14 @@
                     @if(count($combosPayload))
                         <button type="button" class="category-pill" data-parent-category="__deals__">Deals</button>
                     @endif
+                    {{-- POS-COMBO-CATEGORY-1 + HIDE-EMPTY-TABS: only pills for categories with a visible
+                         product OR a combo (see $pillCategoryIds); empty tabs are skipped. --}}
                     @foreach($categories as $category)
+                        @if(in_array((int) $category->id, $pillCategoryIds, true))
                         <button type="button" class="category-pill" data-parent-category="{{ $category->id }}">
                             {{ $category->name }}
                         </button>
+                        @endif
                     @endforeach
                 </div>
             </div>
@@ -2560,14 +2564,29 @@ document.addEventListener('DOMContentLoaded', function () {
 
         productGrid.innerHTML = '';
 
-        // Combos appear on the "All" view and on the dedicated "Deals" view only —
-        // never inside a specific product category.
-        const showCombos = dealsOnly || (!selectedParentCategory && !selectedChildCategory);
-        const filteredCombos = (showCombos ? combos : []).filter(function (combo) {
-            const textMatch = !query
+        // POS-COMBO-CATEGORY-1 combo visibility:
+        //   • "All"  → every combo (with the products).
+        //   • "Deals" pill → only combos NOT filed to a sub-category (the generic deals), so
+        //     Al-Faham / Midnight / Platters are pulled OUT of "Deals" into their own tabs.
+        //   • a category tab → the combos filed to that category (parent, its child, or a child match).
+        const filteredCombos = combos.filter(function (combo) {
+            const catId = Number(combo.category_id || 0);
+            let show;
+            if (dealsOnly) {
+                show = !catId;
+            } else if (!selectedParentCategory && !selectedChildCategory) {
+                show = true;
+            } else {
+                show = catId && (
+                    Number(catId) === Number(selectedParentCategory)
+                    || selectedParentChildIds.includes(catId)
+                    || (selectedChildCategory && catId === Number(selectedChildCategory))
+                );
+            }
+            if (!show) return false;
+            return !query
                 || String(combo.name).toLowerCase().includes(query)
                 || String(combo.code || '').toLowerCase().includes(query);
-            return textMatch;
         });
 
         filteredCombos.forEach(function (combo) {

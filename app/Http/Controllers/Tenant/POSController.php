@@ -299,6 +299,8 @@ class POSController extends Controller
                 return [
                     'id' => (int) $combo->id,
                     'branch_id' => $combo->branch_id ? (int) $combo->branch_id : null,
+                    // POS-COMBO-CATEGORY-1: which POS tab this deal lives under (null = the "Deals" tab).
+                    'category_id' => $combo->category_id ? (int) $combo->category_id : null,
                     'code' => $combo->code,
                     'name' => $combo->name,
                     'price' => (float) $combo->price,
@@ -311,18 +313,45 @@ class POSController extends Controller
             ->filter(fn ($combo) => $combo['header_product_id'] > 0 && count($combo['components']) > 0)
             ->values();
 
+        // $categories stays the FULL active parent list — the Quick Report category filter and the POS
+        // child-category strip both read it and must not change.
+        $categories = Category::with('children')
+            ->whereNull('parent_id')
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get();
+
+        // POS-COMBO-CATEGORY-1 + HIDE-EMPTY-TABS: which parent categories get a PILL (display only).
+        // Only those with a grid-visible product OR a combo (self or a child): so deal sub-categories
+        // (combos, no products) show a pill, and product-only categories whose items are all hidden
+        // (e.g. combo-filler holders) stop rendering an empty tab. Does NOT touch $categories itself.
+        $contentCategoryIds = collect($productsPayload)
+            ->filter(fn ($p) => ($p['pos_grid_visible'] ?? true))
+            ->pluck('category_id')
+            ->merge($combosPayload->pluck('category_id'))
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique();
+        $pillCategoryIds = $categories
+            ->filter(fn ($parent) => collect([$parent->id])
+                ->merge($parent->children->pluck('id'))
+                ->map(fn ($id) => (int) $id)
+                ->intersect($contentCategoryIds)
+                ->isNotEmpty())
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
+
         return view('tenant.pos.index', [
             'branches'         => $branches,
             'selectedBranchId' => $selectedBranchId,
             'terminals'        => $scope->terminalsForPos($user, $branches->pluck('id')->map(fn ($id) => (int) $id)->all()),
             // CUSTOMER-UX-1: customers are looked up on demand via /ajax/customers — rendering
             // the whole book into the page hung the POS once a tenant passed a few hundred rows.
-            'categories'       => Category::with('children')
-                ->whereNull('parent_id')
-                ->where('is_active', true)
-                ->orderBy('sort_order')
-                ->orderBy('name')
-                ->get(),
+            'categories'       => $categories,
+            'pillCategoryIds'  => $pillCategoryIds,
             'productsPayload'  => $productsPayload,
             'combosPayload'    => $combosPayload,
             'paymentMethods'   => PaymentMethod::where('is_active', true)

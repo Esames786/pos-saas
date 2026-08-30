@@ -73,6 +73,8 @@ class ComboController extends Controller
     {
         return $request->validate([
             'branch_id' => ['nullable', 'exists:branches,id'],
+            // POS-COMBO-CATEGORY-1: optional POS grouping (Al-Faham / Midnight / …); null = "Deals" tab.
+            'category_id' => ['nullable', 'exists:categories,id'],
             'code' => ['nullable', 'string', 'max:80', Rule::unique('combos', 'code')->ignore($combo?->id)],
             'name' => ['required', 'string', 'max:190'],
             'price' => ['required', 'numeric', 'min:0'],
@@ -109,6 +111,7 @@ class ComboController extends Controller
     {
         return [
             'branches' => Branch::where('status', 'active')->orderBy('name')->get(['id', 'name']),
+            'categories' => \App\Models\Tenant\Category::where('is_active', true)->orderBy('name')->get(['id', 'name']),
             'products' => Product::where('status', 'active')->orderBy('name')->get(['id', 'name', 'sku']),
             'variants' => ProductVariant::where('is_active', true)->orderBy('name')->get(['id', 'product_id', 'name', 'sku']),
         ];

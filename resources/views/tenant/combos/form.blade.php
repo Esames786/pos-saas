@@ -53,6 +53,17 @@
                         </select>
                     </div>
                     <div class="col-md-4 mb-3">
+                        {{-- POS-COMBO-CATEGORY-1: optional POS tab grouping for this deal (Al-Faham /
+                             Midnight / Platters …). Leave blank to keep it under the shared "Deals" tab. --}}
+                        <label class="form-label" for="category_id">POS Category <span class="text-muted small">(deal grouping)</span></label>
+                        <select id="category_id" name="category_id" class="form-select">
+                            <option value="">Deals (default)</option>
+                            @foreach($categories as $category)
+                                <option value="{{ $category->id }}" @selected((string) old('category_id', $combo->category_id ?? '') === (string) $category->id)>{{ $category->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-4 mb-3">
                         <label class="form-label required" for="status">Status</label>
                         <select id="status" name="status" class="form-select" required>
                             <option value="active" @selected(old('status', $combo->status ?? 'active') === 'active')>Active</option>
