@@ -347,7 +347,14 @@ class POSController extends Controller
         return view('tenant.pos.index', [
             'branches'         => $branches,
             'selectedBranchId' => $selectedBranchId,
-            'terminals'        => $scope->terminalsForPos($user, $branches->pluck('id')->map(fn ($id) => (int) $id)->all()),
+            // POS-TERMINAL-PIN-1: a pinned operator is offered ONLY his own terminal. He may be BOUND
+            // to several (that is what lets him recall/reprint the counters' orders), but the POS he
+            // sells on must stay his — the picker is also what autoSelectTerminal() chooses from.
+            'terminals'        => $scope->terminalsForPos($user, $branches->pluck('id')->map(fn ($id) => (int) $id)->all())
+                ->when(
+                    ! $user?->can(UserDataScope::CHANGE_TERMINAL_PERMISSION) && $user?->default_terminal_id,
+                    fn ($list) => $list->where('id', (int) $user->default_terminal_id)->values()
+                ),
             // CUSTOMER-UX-1: customers are looked up on demand via /ajax/customers — rendering
             // the whole book into the page hung the POS once a tenant passed a few hundred rows.
             'categories'       => $categories,

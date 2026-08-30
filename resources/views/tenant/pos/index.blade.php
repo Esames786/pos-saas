@@ -572,9 +572,14 @@
                 <div id="no-terminal-warning" class="small text-warning-emphasis" style="display:none">
                     <i class="ti ti-alert-triangle me-1"></i>No terminal — auto receipt/KOT print is off
                 </div>
+                {{-- POS-TERMINAL-PIN-1: an operator pinned to his own terminal gets no way in. The
+                     server pins him too (UserDataScope::assertPosSelection) — this only spares him a
+                     button that would always be refused. --}}
+                @can(\App\Services\Security\UserDataScope::CHANGE_TERMINAL_PERMISSION)
                 <button type="button" class="btn btn-sm btn-outline-secondary py-0" data-bs-toggle="modal" data-bs-target="#posContextModal" title="Change branch or terminal">
                     <i class="ti ti-adjustments-horizontal me-1"></i>Change
                 </button>
+                @endcan
                 {{-- VEHICLE-NUMBER-1: drive-through capture, QUICK SALE orders only (inline). Required
                      for quick sale (guarded in JS + server); takeaway no longer captures a vehicle. --}}
                 <div id="vehicle-wrap" class="align-items-center gap-1" style="display:none">
