@@ -2574,11 +2574,11 @@ document.addEventListener('DOMContentLoaded', function () {
         const allOrDeals = dealsOnly || (!selectedParentCategory && !selectedChildCategory);
         const filteredCombos = combos.filter(function (combo) {
             const catId = Number(combo.category_id || 0);
-            const matchCat = catId && (
-                Number(catId) === Number(selectedParentCategory)
-                || selectedParentChildIds.includes(catId)
-                || (selectedChildCategory && catId === Number(selectedChildCategory))
-            );
+            // Mirror the product filter: a selected CHILD narrows to THAT child only; otherwise a
+            // selected parent matches its own combos + all of its children's.
+            const matchCat = selectedChildCategory
+                ? (catId === Number(selectedChildCategory))
+                : (catId && (Number(catId) === Number(selectedParentCategory) || selectedParentChildIds.includes(catId)));
             if (!(allOrDeals || matchCat)) return false;
             return !query
                 || String(combo.name).toLowerCase().includes(query)
