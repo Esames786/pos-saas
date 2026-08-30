@@ -2283,18 +2283,24 @@ document.addEventListener('DOMContentLoaded', function () {
         var saved = null;
         try { saved = localStorage.getItem('pos_terminal_' + branchId); } catch (e) {}
 
-        var candidate = '';
+        // POS-DEFAULT-TERMINAL-1: a cashier with an ASSIGNED terminal (default_terminal_id) always
+        // lands on THAT terminal, so their orders bind to it and print at its own printer — e.g. the
+        // DTQ 2 cashier lands on T3, never T2 — regardless of what a shared/previous browser left in
+        // localStorage. Falls back to the remembered terminal, then the first bound one.
+        var userDefault = String(@json((int) (auth('tenant')->user()->default_terminal_id ?? 0)) || '');
+
+        var inBranch = {}, first = '';
         for (var i = 0; i < terminalEl.options.length; i++) {
             var o = terminalEl.options[i];
             if (!o.value) continue;
-            if (saved && o.value === saved && (!o.dataset.branch || o.dataset.branch === branchId)) {
-                candidate = o.value;
-                break;
-            }
-            if (!candidate && o.dataset.branch === branchId) {
-                candidate = o.value; // first terminal of this branch as fallback
-            }
+            if (o.dataset.branch && o.dataset.branch !== branchId) continue;
+            inBranch[o.value] = true;
+            if (!first) first = o.value;   // first terminal of this branch
         }
+
+        var candidate = (userDefault && inBranch[userDefault]) ? userDefault
+                      : (saved && inBranch[saved]) ? saved
+                      : first;
 
         if (candidate) terminalEl.value = candidate;
         updateTerminalWarning();
