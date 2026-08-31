@@ -72,7 +72,38 @@
                             <tbody>
                                 @foreach($openShifts as $shift)
                                     <tr>
-                                        <td>{{ $shift->terminal?->name ?? ('Terminal #' . $shift->terminal_id) }}</td>
+                                        {{-- SHIFT-CANCELLATIONS-1: the breakup sits UNDER the terminal
+                                             name, not in extra columns — the counting columns have to
+                                             stay clear while someone is counting a drawer. Only the
+                                             parts that actually happened are printed, so a plain cash
+                                             terminal shows nothing extra. --}}
+                                        <td>
+                                            {{ $shift->terminal?->name ?? ('Terminal #' . $shift->terminal_id) }}
+                                            @php
+                                                $bits = [];
+                                                if ((float) $shift->total_cash != 0.0)          { $bits[] = 'cash ' . number_format((float) $shift->total_cash, 2); }
+                                                if ((float) $shift->total_card != 0.0)          { $bits[] = 'card ' . number_format((float) $shift->total_card, 2); }
+                                                if ((float) $shift->total_bank_transfer != 0.0) { $bits[] = 'bank ' . number_format((float) $shift->total_bank_transfer, 2); }
+                                                if ((float) $shift->total_cheque != 0.0)        { $bits[] = 'cheque ' . number_format((float) $shift->total_cheque, 2); }
+                                                if ((float) $shift->total_refunds != 0.0)       { $bits[] = 'refunds −' . number_format((float) $shift->total_refunds, 2); }
+                                                if ((float) $shift->total_discount != 0.0)      { $bits[] = 'discount ' . number_format((float) $shift->total_discount, 2); }
+                                                $c = $cancelledOrders[$shift->id] ?? null;
+                                                $v = $voidedLines[$shift->id] ?? null;
+                                            @endphp
+                                            @if($bits)
+                                                <div class="small text-muted mt-1">{!! implode(' &middot; ', $bits) !!}</div>
+                                            @endif
+                                            @if($c || $v)
+                                                <div class="small text-warning mt-1">
+                                                    cancelled
+                                                    @if($c) {{ number_format((float) $c->amount, 2) }}
+                                                        ({{ (int) $c->bills }} bill{{ (int) $c->bills === 1 ? '' : 's' }})@endif
+                                                    @if($c && $v) &middot; @endif
+                                                    @if($v) {{ rtrim(rtrim(number_format((float) $v->units, 2), '0'), '.') }}
+                                                        item{{ (float) $v->units == 1.0 ? '' : 's' }} voided@endif
+                                                </div>
+                                            @endif
+                                        </td>
                                         <td class="text-end">{{ number_format((float) $shift->opening_cash, 2) }}</td>
                                         <td class="text-end">{{ number_format((float) $shift->total_sales, 2) }}</td>
                                         <td class="text-end">{{ number_format((float) $shift->expected_cash, 2) }}</td>
