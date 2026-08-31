@@ -122,7 +122,7 @@ class POSController extends Controller
         // Recall resolves each line against the payload, so anything on an unpaid check has to be in
         // it — otherwise hiding that product makes the check impossible to recall or pay.
         $liveOrderProductIds = SalesOrderLine::query()
-            ->whereHas('salesOrder', fn ($q) => $q
+            ->whereHas('order', fn ($q) => $q
                 ->whereIn('status', ['held', 'draft'])
                 ->where('branch_id', $selectedBranchId))
             ->whereNotNull('product_id')
