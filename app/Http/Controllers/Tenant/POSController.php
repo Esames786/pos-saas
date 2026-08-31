@@ -15,6 +15,7 @@ use App\Models\Tenant\RestaurantFloor;
 use App\Models\Tenant\RestaurantTableSession;
 use App\Models\Tenant\RestaurantWaiter;
 use App\Models\Tenant\SalesOrder;
+use App\Models\Tenant\SalesOrderLine;
 use App\Models\Tenant\StockBalance;
 use App\Models\Tenant\Terminal;
 use App\Models\Tenant\TerminalPrinterSetting;
@@ -117,6 +118,20 @@ class POSController extends Controller
             ->unique()
             ->values();
 
+        // HIDDEN-PRODUCT-HELD-BILL-1: products sitting on a bill that is still open at this branch.
+        // Recall resolves each line against the payload, so anything on an unpaid check has to be in
+        // it — otherwise hiding that product makes the check impossible to recall or pay.
+        $liveOrderProductIds = SalesOrderLine::query()
+            ->whereHas('salesOrder', fn ($q) => $q
+                ->whereIn('status', ['held', 'draft'])
+                ->where('branch_id', $selectedBranchId))
+            ->whereNotNull('product_id')
+            ->distinct()
+            ->pluck('product_id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
         $products = Product::with([
                 'category',
                 'unit',
@@ -135,10 +150,19 @@ class POSController extends Controller
             ->where('is_sellable', true)
             // PRODUCT-BOUNDARY-2: hide manufacturing/internal items from the grid — but keep any
             // combo-component product in the payload (grid display is gated by pos_grid_visible).
-            ->where(function ($q) use ($comboComponentProductIds) {
+            //
+            // HIDDEN-PRODUCT-HELD-BILL-1: and keep anything sitting on an OPEN bill. Recall reads
+            // every line's product out of this payload, so a product hidden while a bill still
+            // carried it simply vanished and the bill could no longer be recalled or paid — five of
+            // them, mid-service, on 30 Aug. Being in a combo was the only thing that used to save a
+            // hidden product; an open bill has at least as much claim on it.
+            ->where(function ($q) use ($comboComponentProductIds, $liveOrderProductIds) {
                 $q->where('is_pos_visible', true);
                 if ($comboComponentProductIds->isNotEmpty()) {
                     $q->orWhereIn('id', $comboComponentProductIds->all());
+                }
+                if ($liveOrderProductIds->isNotEmpty()) {
+                    $q->orWhereIn('id', $liveOrderProductIds->all());
                 }
             })
             // KHATRI-MENU-2: explicit small→large tile ordering, name as tiebreaker.
@@ -359,6 +383,10 @@ class POSController extends Controller
             // the whole book into the page hung the POS once a tenant passed a few hundred rows.
             'categories'       => $categories,
             'pillCategoryIds'  => $pillCategoryIds,
+            // EMPTY-DEAL-PILL-1: the parent pills are filtered on this already; the CHILD strip is
+            // built client-side and used to render every child regardless, so a deal sub-category
+            // whose combos were retired kept a pill that opened on "No products found".
+            'contentCategoryIds' => $contentCategoryIds->values()->all(),
             // POS-COMBO-CATEGORY-1: the legacy "Deals" pill (shows every combo, flat) stays ONLY while a
             // tenant still has uncategorised combos — so tenants that never file deals keep it exactly as
             // before. Once every combo is filed to a category (e.g. a "Deals" parent + Al-Faham/Midnight/

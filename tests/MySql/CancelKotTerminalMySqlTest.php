@@ -181,6 +181,65 @@ class CancelKotTerminalMySqlTest extends MySqlTenantTestCase
             'with no terminal passed a cancellation must route on the sale, as it always did.');
     }
 
+    /**
+     * The JOB ROW must name the counter that raised the slip, not the one that created the order.
+     * Printing → Jobs filters on this column, so a mis-stamped row hides the slip from the operator
+     * who printed it — and offers it to a counter that never saw it.
+     */
+    public function test_the_cancellation_reminder_row_is_filed_under_the_cancelling_terminal(): void
+    {
+        $sale = $this->floorOrder();
+        $quantities = [(string) $sale->lines->first()->id => 1.0];
+
+        $service = app(PrintJobService::class);
+        $queued = $service->queueCancellationKot($sale, $quantities, (string) $this->counterTerminal);
+        $reminders = $service->queueCancellationReminders($sale, $queued['batch'], true, (string) $this->counterTerminal);
+
+        foreach ($queued['jobs'] as $job) {
+            $this->assertSame($this->counterTerminal, (int) $job->terminal_id, 'cancel KOT row');
+        }
+        foreach ($reminders as $job) {
+            $this->assertSame($this->counterTerminal, (int) $job->terminal_id,
+                'the reminder row must be filed under the counter that cancelled.');
+        }
+
+        $this->assertSame(
+            $this->floorTerminal,
+            (int) SalesOrder::on('tenant')->findOrFail($sale->id)->terminal_id,
+            'and the SALE still belongs to the counter that took it.'
+        );
+    }
+
+    /**
+     * With no terminal passed, the old path stands: the correction reaches whichever printers already
+     * hold a reminder for this sale, and the row keeps the sale's own terminal. Needs a real original
+     * reminder first — a whole-order cancel zeroes every line, so routing alone returns nothing and
+     * the history is all there is to go on.
+     */
+    public function test_without_an_override_the_reminder_row_keeps_the_sales_terminal(): void
+    {
+        $drink = $this->makeProduct($this->drinksCat, ['name' => 'Soft Drink (345 ml)']);
+        $saleId = $this->makeSale($this->branchId, [
+            'status' => 'held', 'order_type' => 'dine_in', 'terminal_id' => $this->floorTerminal,
+        ]);
+        $this->makeSaleLine($saleId, $drink, ['product_name' => 'Soft Drink (345 ml)', 'quantity' => 1, 'kot_sent_quantity' => 0]);
+        $sale = SalesOrder::on('tenant')->with('lines')->findOrFail($saleId);
+
+        $service = app(PrintJobService::class);
+        $service->planRemindersForKotJobs($sale, $service->queueKot(sale: $sale, terminalId: (string) $this->floorTerminal));
+
+        $sale->refresh()->load('lines');
+        $quantities = [(string) $sale->lines->first()->id => 1.0];
+        $queued = $service->queueCancellationKot($sale, $quantities, null);
+        $reminders = $service->queueCancellationReminders($sale, $queued['batch'], true, null);
+
+        $this->assertNotEmpty($reminders, 'the sale\'s reminder history still carries the correction.');
+        foreach ($reminders as $job) {
+            $this->assertSame($this->floorPrinter, (int) $job->printer_id, 'printer unchanged');
+            $this->assertSame($this->floorTerminal, (int) $job->terminal_id, 'row unchanged');
+        }
+    }
+
     /** An operator may only aim a cancellation at a terminal they are allowed to work on. */
     public function test_a_foreign_terminal_is_refused_and_falls_back(): void
     {

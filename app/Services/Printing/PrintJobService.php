@@ -376,6 +376,19 @@ class PrintJobService
             $payload['copy_no'] = $copyNo;
             $payload['is_reprint'] = true;
 
+            // REMINDER-REPRINT-SNAPSHOT-1: a reprint is a duplicate of the original slip — items,
+            // revision and the generated-at stamp all stay frozen, which is the whole point of asking
+            // for one. TABLE and WAITER are the exception: they say where the food has to GO, so they
+            // are read live. A check moved from table 18 to table 5 was reprinting "TABLE: 18" twenty
+            // seconds after the move, while the receipt printed alongside it said 5.
+            $liveSale = $source->reference_type === 'sales_order' && $source->reference_id
+                ? SalesOrder::with(['restaurantTable', 'restaurantWaiter'])->find($source->reference_id)
+                : null;
+            if ($liveSale) {
+                $payload['table'] = $liveSale->restaurantTable?->table_no;
+                $payload['waiter'] = $liveSale->restaurantWaiter?->name;
+            }
+
             return $this->createLogicalJob([
                 'logical_key' => $prefix . $copyNo,
                 'copy_no' => $copyNo,
@@ -436,7 +449,8 @@ class PrintJobService
             $wholeOrder ? 'cancelled_order' : 'cancelled_updated_order',
             [],
             $effective,
-            $cancellations
+            $cancellations,
+            $terminalId
         ))->values()->all();
     }
 
@@ -449,6 +463,7 @@ class PrintJobService
         array $cancelledQuantities = [],
         array $effectiveQuantities = [],
         $cancellations = null,
+        ?string $terminalId = null,
     ): PrintJob {
         $payload = $this->reminderSnapshot(
             $sale, $batch, $printer, $revision, $eventType,
@@ -459,7 +474,12 @@ class PrintJobService
             'logical_key' => 'reminder:' . $batch->event_uuid . ':' . $printer->id,
             'copy_no' => 1,
             'branch_id' => $sale->branch_id,
-            'terminal_id' => $sale->terminal_id,
+            // REMINDER-JOB-TERMINAL-1: the row must name the counter the slip was actually raised at,
+            // not the one that created the order. A cancellation routed to the cancelling counter was
+            // filed under the ORDER's terminal, and the Printing → Jobs list filters on this column —
+            // so the operator who raised the slip could not see it, or Retry it, while it cluttered
+            // another counter's list. The paper was always right; only the record was not.
+            'terminal_id' => $terminalId ?: $sale->terminal_id,
             'printer_id' => $printer->id,
             'document_type' => 'reminder',
             'print_status' => 'queued',

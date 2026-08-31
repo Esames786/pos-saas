@@ -2346,6 +2346,9 @@ document.addEventListener('DOMContentLoaded', function () {
     let selectedParentCategory = '';
     let selectedChildCategory  = '';
     let selectedParentChildIds = [];   // KHATRI-MENU-2: child category ids of the selected parent
+    // EMPTY-DEAL-PILL-1: category ids that hold a grid-visible product or an ACTIVE combo. The child
+    // strip renders only these, so an emptied deal sub-category stops leaving a dead tab behind.
+    const CATEGORY_HAS_CONTENT = @json($contentCategoryIds ?? []);
     let cart = [];
 
     /* helpers */
@@ -6240,7 +6243,15 @@ document.addEventListener('DOMContentLoaded', function () {
                 ? parent.children.map(function (ch) { return Number(ch.id); })
                 : [];
 
-            if (parent && parent.children && parent.children.length) {
+            // EMPTY-DEAL-PILL-1: only children that actually hold something get a pill. The parent
+            // pills are filtered server-side already; this strip used to render every child, so a
+            // deal sub-category whose combos were retired left a tab that opened on "No products
+            // found". If nothing survives the filter the whole strip stays hidden — a lone "All"
+            // button that filters nothing is worse than no strip.
+            const childrenWithContent = (parent && parent.children ? parent.children : [])
+                .filter(function (ch) { return CATEGORY_HAS_CONTENT.indexOf(Number(ch.id)) !== -1; });
+
+            if (childrenWithContent.length) {
                 wrap.style.display = '';
 
                 const allBtn     = document.createElement('button');
@@ -6255,7 +6266,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 });
                 strip.appendChild(allBtn);
 
-                parent.children.forEach(function (child) {
+                childrenWithContent.forEach(function (child) {
                     const childBtn     = document.createElement('button');
                     childBtn.type      = 'button';
                     childBtn.className = 'category-pill';

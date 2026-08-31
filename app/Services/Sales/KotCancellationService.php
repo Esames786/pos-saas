@@ -66,6 +66,7 @@ class KotCancellationService
             $reminderJobs = $this->queueCorrectionReminders($sale, $queued['batch'], true, $terminalId ?: $sale->terminal_id);
 
             $sale->update(['status' => 'cancelled']);
+            $this->releaseTableIfNothingLeft($sale, $requestingUserId);
 
             return [
                 'sale' => $sale,
@@ -74,6 +75,50 @@ class KotCancellationService
                 'batch' => $queued['batch'],
             ];
         });
+    }
+
+    /**
+     * CANCEL-FREES-TABLE-1 — a cancelled order gives its table back.
+     *
+     * Cancelling only set the sale to `cancelled`; the table session stayed open and the table stayed
+     * "Occupied" with a Rs 0 total, so nobody could be seated there and no one could tell why. Kashif
+     * Food's Table 9 sat like that on 30 Aug until it was freed by hand.
+     *
+     * SPLIT BILL is why this asks `exists()` and not "was this the only sale": one session can carry
+     * several bills, and cancelling one must not take the table away from the others. The table is
+     * released only when NOTHING live is left on the session.
+     *
+     * Runs inside the caller's transaction and locks the session, so two counters cancelling at once
+     * cannot both decide the table is free. A table someone else already closed is left alone.
+     */
+    private function releaseTableIfNothingLeft(SalesOrder $sale, int $requestingUserId): void
+    {
+        if (! $sale->restaurant_table_session_id) {
+            return;   // takeaway / delivery / quick sale — no table to give back
+        }
+
+        $session = \App\Models\Tenant\RestaurantTableSession::whereKey($sale->restaurant_table_session_id)
+            ->lockForUpdate()
+            ->first();
+
+        if (! $session || ! in_array($session->status, ['open', 'bill_requested'], true)) {
+            return;
+        }
+
+        $stillLive = SalesOrder::where('restaurant_table_session_id', $session->id)
+            ->whereIn('status', ['held', 'draft', 'paid', 'partially_returned'])
+            ->exists();
+
+        if ($stillLive) {
+            return;
+        }
+
+        $session->update([
+            'status' => 'cancelled',
+            'closed_by_user_id' => $requestingUserId,
+            'closed_at' => now(),
+        ]);
+        $session->table?->update(['status' => 'available']);
     }
 
     /**
