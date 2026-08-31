@@ -114,6 +114,94 @@ class KotSplitAndReprintWalkthroughMySqlTest extends MySqlTenantTestCase
         return trim(preg_replace('/[\x00-\x08\x0b\x0c\x0e-\x1f]/', '', $t));
     }
 
+    /**
+     * Decode the ESC/POS byte stream into the slip as the printer lays it out, keeping the SIZE of
+     * every line — because on an 80mm roll the size is what decides how much fits: 42 characters at
+     * normal, 21 at double width. Reading the text alone hides that a heading eats two lines.
+     */
+    private function slipWithSizes(string $raw): string
+    {
+        $w = $h = 1; $bold = false; $align = 0;
+        $out = [];
+        $line = '';
+        $lineW = 1; $lineH = 1; $lineBold = false; $lineAlign = 0;
+        $started = false;
+
+        for ($i = 0; $i < strlen($raw); $i++) {
+            $c = $raw[$i];
+
+            if ($c === "\x1d" && ($raw[$i + 1] ?? '') === '!') {          // GS ! n — size
+                $n = ord($raw[$i + 2] ?? "\x00");
+                $w = ($n >> 4) + 1; $h = ($n & 0x0F) + 1;
+                $i += 2;
+                if (! $started) { $lineW = $w; $lineH = $h; }
+                continue;
+            }
+            if ($c === "\x1b" && ($raw[$i + 1] ?? '') === 'E') {          // ESC E n — bold
+                $bold = ord($raw[$i + 2] ?? "\x00") > 0; $i += 2;
+                if (! $started) { $lineBold = $bold; }
+                continue;
+            }
+            if ($c === "\x1b" && ($raw[$i + 1] ?? '') === 'a') {          // ESC a n — align
+                $align = ord($raw[$i + 2] ?? "\x00"); $i += 2;
+                if (! $started) { $lineAlign = $align; }
+                continue;
+            }
+            if ($c === "\x1b" && ($raw[$i + 1] ?? '') === '@') { $i += 1; continue; }   // reset
+            if ($c === "\x1d" && ($raw[$i + 1] ?? '') === 'V') { $i += 3; continue; }   // cut
+
+            if ($c === "\n") {
+                $out[] = [$line, $lineW, $lineH, $lineBold, $lineAlign];
+                $line = ''; $started = false;
+                $lineW = $w; $lineH = $h; $lineBold = $bold; $lineAlign = $align;
+                continue;
+            }
+            if (ord($c) < 32) { continue; }
+            if (! $started) { $lineW = $w; $lineH = $h; $lineBold = $bold; $lineAlign = $align; $started = true; }
+            $line .= $c;
+        }
+        if (trim($line) !== '') { $out[] = [$line, $lineW, $lineH, $lineBold, $lineAlign]; }
+
+        $render = "        +--------------------------------------------+  size\n";
+        foreach ($out as [$text, $lw, $lh, $lb, $la]) {
+            $cols = intdiv(42, max(1, $lw));
+            $t = rtrim($text);
+            if ($la === 1) { $t = str_pad(ltrim($t), (int) floor(($cols + strlen(ltrim($t))) / 2), ' ', STR_PAD_LEFT); }
+            $tag = $lw . 'x' . $lh . ($lb ? ' B' : '  ');
+            $note = match (true) {
+                $lw >= 3 => 'HUGE  (14 cols)',
+                $lw === 2 => 'BIG   (21 cols)',
+                $lh >= 2 => 'tall  (42 cols)',
+                default => 'normal(42 cols)',
+            };
+            $render .= sprintf("        | %-42s |  %-5s %s\n", substr($t, 0, 42), $tag, $note);
+            if ($lh >= 2) {
+                $render .= sprintf("        | %-42s |        (takes 2 lines of paper)\n", '');
+            }
+        }
+
+        return $render . "        +--------------------------------------------+\n";
+    }
+
+    /** Kashif Food's real saved layout, so this preview matches the shop's printers exactly. */
+    private function applyKashifLayout(): void
+    {
+        $rows = [
+            ['kot', '*** KITCHEN ORDER TICKET ***', 14, 18, 17, 14],
+            ['reminder', '*** ORDER REMINDER ***', 18, 14, null, null],
+        ];
+        foreach ($rows as [$doc, $header, $font, $kotFont, $itemFont, $timeFont]) {
+            DB::connection('tenant')->table('receipt_layout_settings')->updateOrInsert(
+                ['document_type' => $doc, 'branch_id' => $this->branchId],
+                [
+                    'header_text' => $header, 'font_size' => $font, 'kot_font_size' => $kotFont,
+                    'item_font_size' => $itemFont, 'time_font_size' => $timeFont,
+                    'created_at' => now(), 'updated_at' => now(),
+                ]
+            );
+        }
+    }
+
     private function printerCode(?int $id): string
     {
         return (string) DB::connection('tenant')->table('printers')->where('id', $id)->value('code');
@@ -166,6 +254,7 @@ class KotSplitAndReprintWalkthroughMySqlTest extends MySqlTenantTestCase
      */
     public function test_a_deal_splits_across_stations_and_the_reminder_keeps_it_whole(): void
     {
+        $this->applyKashifLayout();
         $tableId = $this->makeTable($this->branchId, ['table_no' => '12']);
         $sale = $this->buildTheOrder($tableId);
 
@@ -195,17 +284,21 @@ class KotSplitAndReprintWalkthroughMySqlTest extends MySqlTenantTestCase
             echo sprintf("  %-10s %-22s %s\n", $code, $this->station($code), $items);
         }
 
-        echo "\n===== THE TICKETS, AS THEY PRINT =====\n";
+        echo "\n===== EACH TICKET, ON THE PAPER, AT ITS REAL SIZE =====\n";
+        echo "  (Kashif Food's saved layout: KOT heading 18px -> 2x2, items 17px -> double tall,\n";
+        echo "   time 14px -> normal. 80mm roll = 42 characters at normal, 21 at double width.)\n";
+        $n = 0;
         foreach ($kotJobs as $job) {
+            $n++;
             $code = $this->printerCode($job->printer_id);
-            echo "\n" . str_repeat('-', 46) . "\n  KOT -> {$code}   " . $this->station($code) . "\n" . str_repeat('-', 46) . "\n";
-            echo $this->readable($esc->build($job->refresh())) . "\n";
+            echo "\n\n  ***** TICKET {$n} of " . count($kotJobs) . "  ->  {$code}   " . $this->station($code) . " *****\n";
+            echo $this->slipWithSizes($esc->build($job->refresh()));
         }
 
         foreach ($reminderJobs as $job) {
             $code = $this->printerCode($job->printer_id);
-            echo "\n" . str_repeat('-', 46) . "\n  REMINDER -> {$code}   " . $this->station($code) . "\n" . str_repeat('-', 46) . "\n";
-            echo $this->readable($esc->buildReminder($job->refresh())) . "\n";
+            echo "\n\n  ***** REMINDER  ->  {$code}   " . $this->station($code) . " *****\n";
+            echo $this->slipWithSizes($esc->buildReminder($job->refresh()));
         }
 
         // The deal is genuinely torn apart: its three parts do not all land on one printer.
