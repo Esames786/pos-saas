@@ -1,0 +1,506 @@
+KASHIF|2026-08-30|OVERVIEW|net_sales|814327.00
+KASHIF|2026-08-30|OVERVIEW|sold_qty|1325.00
+KASHIF|2026-08-30|OVERVIEW|returns_amount|6730.00
+KASHIF|2026-08-30|OVERVIEW|returned_qty|5.00
+KASHIF|2026-08-30|CATEGORY|Starter|qty=24.00|net=27760.00
+KASHIF|2026-08-30|CATEGORY|Crispy Fried Chicken|qty=10.00|net=8500.00
+KASHIF|2026-08-30|CATEGORY|Kids House|qty=4.00|net=4750.00
+KASHIF|2026-08-30|CATEGORY|Burgers|qty=54.00|net=49700.00
+KASHIF|2026-08-30|CATEGORY|Smash Burgers|qty=5.00|net=4900.00
+KASHIF|2026-08-30|CATEGORY|Sandwiches|qty=16.00|net=13750.00
+KASHIF|2026-08-30|CATEGORY|Fries|qty=15.00|net=5350.00
+KASHIF|2026-08-30|CATEGORY|Pizza Fries|qty=11.00|net=10300.00
+KASHIF|2026-08-30|CATEGORY|Chinese|qty=29.00|net=39200.00
+KASHIF|2026-08-30|CATEGORY|Continental|qty=12.00|net=16600.00
+KASHIF|2026-08-30|CATEGORY|Bar-B-Que|qty=87.00|net=84570.00
+KASHIF|2026-08-30|CATEGORY|Bar-B-Que New Arrivals|qty=2.00|net=6950.00
+KASHIF|2026-08-30|CATEGORY|Paratha|qty=87.00|net=10110.00
+KASHIF|2026-08-30|CATEGORY|Rolls|qty=83.00|net=33890.00
+KASHIF|2026-08-30|CATEGORY|Singaporean Rice|qty=371.00|net=360340.00
+KASHIF|2026-08-30|CATEGORY|Chicken Biryani|qty=86.00|net=42065.00
+KASHIF|2026-08-30|CATEGORY|Beverages|qty=341.00|net=41370.00
+KASHIF|2026-08-30|CATEGORY|Raita & Salad|qty=16.00|net=1900.00
+KASHIF|2026-08-30|CATEGORY|Extras|qty=45.00|net=40315.00
+KASHIF|2026-08-30|CATEGORY|Dessert|qty=22.00|net=7200.00
+KASHIF|2026-08-30|ITEM|pid=158|Singaporean Rice (Regular)|qty=246.00|net=148545.00
+KASHIF|2026-08-30|ITEM|pid=159|Singaporean Rice (Large)|qty=76.00|net=84575.00
+KASHIF|2026-08-30|ITEM|pid=161|Singaporean Rice (Khass)|qty=17.00|net=49300.00
+KASHIF|2026-08-30|ITEM|pid=163|Singaporean Rice Family Pack (Large)|qty=9.00|net=36900.00
+KASHIF|2026-08-30|ITEM|pid=194|Classic Platter 3 (3 Persons)|qty=12.00|net=36600.00
+KASHIF|2026-08-30|ITEM|pid=160|Singaporean Rice (Platter)|qty=19.00|net=30020.00
+KASHIF|2026-08-30|ITEM|pid=165|Deal 4 (Serve 2)|qty=67.00|net=28295.00
+KASHIF|2026-08-30|ITEM|pid=175|Soft Drink (345 ml)|qty=206.00|net=24720.00
+KASHIF|2026-08-30|ITEM|pid=30|Midnight — Chicken Zinger Burger + Fries + Drink|qty=15.00|net=21150.00
+KASHIF|2026-08-30|ITEM|pid=87|Chicken Chow Mein (1 Person)|qty=14.00|net=16800.00
+KASHIF|2026-08-30|ITEM|pid=109|Chicken Tikka (Chest)|qty=25.00|net=16250.00
+KASHIF|2026-08-30|ITEM|pid=31|Chicken Zinger Burger (With Fries)|qty=16.00|net=12800.00
+KASHIF|2026-08-30|ITEM|pid=6|Fish And Chips 5 Pcs|qty=8.00|net=11920.00
+KASHIF|2026-08-30|ITEM|pid=101|Chicken Alfredo Pasta (1 Person)|qty=9.00|net=11250.00
+KASHIF|2026-08-30|ITEM|pid=162|Singaporean Rice Family Pack (Small)|qty=4.00|net=11000.00
+KASHIF|2026-08-30|ITEM|pid=166|Chicken Biryani (Large)|qty=14.00|net=10500.00
+KASHIF|2026-08-30|ITEM|pid=110|Deal 15 (Serve 2)|qty=14.00|net=9920.00
+KASHIF|2026-08-30|ITEM|pid=143|Chicken Chatni Roll|qty=26.00|net=9620.00
+KASHIF|2026-08-30|ITEM|pid=113|Midnight — Chicken Malai Boti + Drink|qty=8.00|net=9200.00
+KASHIF|2026-08-30|ITEM|pid=118|Beef Behari Boti|qty=7.00|net=8750.00
+KASHIF|2026-08-30|ITEM|pid=206|Midnight — Singaporean Rice Khaas + 2 Drinks|qty=3.00|net=8700.00
+KASHIF|2026-08-30|ITEM|pid=121|Beef Dhaga Kebab (Fry)|qty=6.00|net=8100.00
+KASHIF|2026-08-30|ITEM|pid=116|Chicken Shahi Chattakh|qty=6.00|net=7500.00
+KASHIF|2026-08-30|ITEM|pid=2|Dynamite Chicken|qty=7.00|net=6930.00
+KASHIF|2026-08-30|ITEM|pid=115|Chicken Reshmi Kebab|qty=6.00|net=6900.00
+KASHIF|2026-08-30|ITEM|pid=132|Parhata Large|qty=45.00|net=6750.00
+KASHIF|2026-08-30|ITEM|pid=171|Mineral Water (Large)|qty=38.00|net=6080.00
+KASHIF|2026-08-30|ITEM|pid=88|Chicken Chow Mein (2 Person)|qty=3.00|net=5700.00
+KASHIF|2026-08-30|ITEM|pid=128|Bar-B-Que Platter (4-5 Persons)|qty=1.00|net=5500.00
+KASHIF|2026-08-30|ITEM|pid=71|Shashlik With Fried Rice (1 Person)|qty=4.00|net=5400.00
+KASHIF|2026-08-30|ITEM|pid=54|Fries (Regular)|qty=14.00|net=4900.00
+KASHIF|2026-08-30|ITEM|pid=111|Chicken Malai Tikka (Chest)|qty=6.00|net=4500.00
+KASHIF|2026-08-30|ITEM|pid=202|Cream Cocktail Half Pack|qty=7.00|net=4200.00
+KASHIF|2026-08-30|ITEM|pid=95|Mushroom Steak (Chicken)|qty=2.00|net=4100.00
+KASHIF|2026-08-30|ITEM|pid=75|Chicken Chilli Dry With Fried Rice (1 Person)|qty=3.00|net=4050.00
+KASHIF|2026-08-30|ITEM|pid=65|Supreme Pizza Fries (Large)|qty=3.00|net=3900.00
+KASHIF|2026-08-30|ITEM|pid=29|Chicken Crunch Burger (With Fries)|qty=6.00|net=3900.00
+KASHIF|2026-08-30|ITEM|pid=144|Chicken Garlic Mayo Roll|qty=9.00|net=3600.00
+KASHIF|2026-08-30|ITEM|pid=49|Club Sandwich (With Fries)|qty=4.00|net=3600.00
+KASHIF|2026-08-30|ITEM|pid=170|Mineral Water (Small)|qty=44.00|net=3520.00
+KASHIF|2026-08-30|ITEM|pid=112|Chicken Malai Tikka (Leg)|qty=5.00|net=3500.00
+KASHIF|2026-08-30|ITEM|pid=33|Thrill Zinger Burger (Spicy, With Fries)|qty=4.00|net=3400.00
+KASHIF|2026-08-30|ITEM|pid=48|Midnight — Chicken Club Sandwich + Fries + Drink|qty=4.00|net=3300.00
+KASHIF|2026-08-30|ITEM|pid=13|2 Pcs Crispy Fried Chicken (With Fries)|qty=4.00|net=3200.00
+KASHIF|2026-08-30|ITEM|pid=201|Cream Cocktail Cup|qty=15.00|net=3000.00
+KASHIF|2026-08-30|ITEM|pid=35|Chicken Burger (With Fries)|qty=4.00|net=3000.00
+KASHIF|2026-08-30|ITEM|pid=1|Chicken Hot Wings (Spicy) 8 Pcs|qty=3.00|net=2970.00
+KASHIF|2026-08-30|ITEM|pid=51|Chicken Bar-B-Que Sandwich (With Fries)|qty=3.00|net=2850.00
+KASHIF|2026-08-30|ITEM|pid=155|Ustad Special Roll|qty=5.00|net=2750.00
+KASHIF|2026-08-30|ITEM|pid=149|Chicken Malai Chatni Roll|qty=7.00|net=2730.00
+KASHIF|2026-08-30|ITEM|pid=69|Manchurian With Fried Rice (1 Person)|qty=2.00|net=2700.00
+KASHIF|2026-08-30|ITEM|pid=172|Cold Drink (Can)|qty=16.00|net=2560.00
+KASHIF|2026-08-30|ITEM|pid=174|Soft Drink (300 ml)|qty=25.00|net=2500.00
+KASHIF|2026-08-30|ITEM|pid=26|Family Deal 1 - 9 Pcs Crispy Fried Chicken|qty=1.00|net=2500.00
+KASHIF|2026-08-30|ITEM|pid=72|Shashlik With Fried Rice (2 Person)|qty=1.00|net=2450.00
+KASHIF|2026-08-30|ITEM|pid=64|Supreme Pizza Fries (Small)|qty=3.00|net=2400.00
+KASHIF|2026-08-30|ITEM|pid=62|Tikka Pizza Fries (Small)|qty=3.00|net=2400.00
+KASHIF|2026-08-30|ITEM|pid=168|Chicken Biryani Family Pack 6 Pcs|qty=1.00|net=2270.00
+KASHIF|2026-08-30|ITEM|pid=131|Parhata Small|qty=28.00|net=2240.00
+KASHIF|2026-08-30|ITEM|pid=89|Vegetable Chow Mein (1 Person)|qty=2.00|net=2100.00
+KASHIF|2026-08-30|ITEM|pid=15|3 Pcs Crispy Fried Chicken (With Fries)|qty=2.00|net=2100.00
+KASHIF|2026-08-30|ITEM|pid=28|Chicken Crunch Burger|qty=4.00|net=2000.00
+KASHIF|2026-08-30|ITEM|pid=4|Supreme Nachos|qty=2.00|net=1980.00
+KASHIF|2026-08-30|ITEM|pid=5|Korean Chicken|qty=2.00|net=1980.00
+KASHIF|2026-08-30|ITEM|pid=3|Dhaka Chicken|qty=2.00|net=1980.00
+KASHIF|2026-08-30|ITEM|pid=134|Beef Boti Chatni Roll|qty=5.00|net=1850.00
+KASHIF|2026-08-30|ITEM|pid=145|Chicken Mayo Cheese Roll|qty=4.00|net=1640.00
+KASHIF|2026-08-30|ITEM|pid=140|Chicken Balochi Roll|qty=4.00|net=1600.00
+KASHIF|2026-08-30|ITEM|pid=66|Pepperoni Pizza Fries (Small)|qty=2.00|net=1600.00
+KASHIF|2026-08-30|ITEM|pid=37|Beef Burger (With Fries)|qty=2.00|net=1600.00
+KASHIF|2026-08-30|ITEM|pid=137|Beef Seekh Kebab Chatni Roll|qty=4.00|net=1480.00
+KASHIF|2026-08-30|ITEM|pid=129|Adana Kebab Beef|qty=1.00|net=1450.00
+KASHIF|2026-08-30|ITEM|pid=12|Midnight — 2 Pcs Crispy Fried Chicken + Fries + Drink|qty=2.00|net=1450.00
+KASHIF|2026-08-30|ITEM|pid=46|Chicken Sandwich|qty=2.00|net=1400.00
+KASHIF|2026-08-30|ITEM|pid=22|Nuggets 6 Pcs|qty=2.00|net=1400.00
+KASHIF|2026-08-30|ITEM|pid=181|Raita|qty=13.00|net=1300.00
+KASHIF|2026-08-30|ITEM|pid=103|Chicken Mac n Cheese Pasta (1 Person)|qty=1.00|net=1250.00
+KASHIF|2026-08-30|ITEM|pid=117|Chicken Baluchi Boti|qty=1.00|net=1250.00
+KASHIF|2026-08-30|ITEM|pid=135|Beef Boti Garlic Mayo Roll|qty=3.00|net=1200.00
+KASHIF|2026-08-30|ITEM|pid=157|Ustad Special Chipotle Roll|qty=2.00|net=1200.00
+KASHIF|2026-08-30|ITEM|pid=34|Chicken Burger|qty=2.00|net=1200.00
+KASHIF|2026-08-30|ITEM|pid=156|Ustad Special Mayo|qty=2.00|net=1200.00
+KASHIF|2026-08-30|ITEM|pid=133|Pori Paratha|qty=14.00|net=1120.00
+KASHIF|2026-08-30|ITEM|pid=38|American Vintage (Beef)|qty=1.00|net=1050.00
+KASHIF|2026-08-30|ITEM|pid=39|Mushroom Melt (Beef)|qty=1.00|net=1050.00
+KASHIF|2026-08-30|ITEM|pid=164|Chicken Biryani (Sadi)|qty=4.00|net=1000.00
+KASHIF|2026-08-30|ITEM|pid=44|Cheesy Blaze (Chicken)|qty=1.00|net=1000.00
+KASHIF|2026-08-30|ITEM|pid=53|Chicken Malai Boti Sandwich (With Fries)|qty=1.00|net=950.00
+KASHIF|2026-08-30|ITEM|pid=43|Grilled Mushroom (Chicken)|qty=1.00|net=900.00
+KASHIF|2026-08-30|ITEM|pid=14|3 Pcs Crispy Fried Chicken|qty=1.00|net=900.00
+KASHIF|2026-08-30|ITEM|pid=42|Smoke House (Chicken)|qty=1.00|net=900.00
+KASHIF|2026-08-30|ITEM|pid=178|Soft Drink (1.5 Ltr)|qty=4.00|net=880.00
+KASHIF|2026-08-30|ITEM|pid=47|Chicken Sandwich (With Fries)|qty=1.00|net=850.00
+KASHIF|2026-08-30|ITEM|pid=17|2 Pcs Crispy Fried Chicken (Spicy, With Fries)|qty=1.00|net=850.00
+KASHIF|2026-08-30|ITEM|pid=23|Nuggets 6 Pcs (With Fries)|qty=1.00|net=850.00
+KASHIF|2026-08-30|ITEM|pid=154|Chicken Reshmi Kebab Mayo Cheese Roll|qty=2.00|net=840.00
+KASHIF|2026-08-30|ITEM|pid=136|Beef Boti Mayo Cheese Roll|qty=2.00|net=820.00
+KASHIF|2026-08-30|ITEM|pid=183|Singaporean Sauce|qty=8.00|net=800.00
+KASHIF|2026-08-30|ITEM|pid=138|Beef Kebab Garlic Mayo Roll|qty=2.00|net=800.00
+KASHIF|2026-08-30|ITEM|pid=50|Chicken Bar-B-Que Sandwich|qty=1.00|net=800.00
+KASHIF|2026-08-30|ITEM|pid=36|Beef Burger|qty=1.00|net=650.00
+KASHIF|2026-08-30|ITEM|pid=193|Extra Skewer|qty=1.00|net=625.00
+KASHIF|2026-08-30|ITEM|pid=182|Fresh Salad|qty=3.00|net=600.00
+KASHIF|2026-08-30|ITEM|pid=176|Soft Drink (500 ml)|qty=4.00|net=560.00
+KASHIF|2026-08-30|ITEM|pid=148|Chicken Crispy Mayo Cheese Roll|qty=1.00|net=510.00
+KASHIF|2026-08-30|ITEM|pid=185|Garlic Fried|qty=5.00|net=500.00
+KASHIF|2026-08-30|ITEM|pid=191|Extra Sauce|qty=5.00|net=500.00
+KASHIF|2026-08-30|ITEM|pid=55|Fries (Large)|qty=1.00|net=450.00
+KASHIF|2026-08-30|ITEM|pid=141|Chicken Balochi Mayo Roll|qty=1.00|net=440.00
+KASHIF|2026-08-30|ITEM|pid=150|Chicken Malai Garlic Mayo Roll|qty=1.00|net=420.00
+KASHIF|2026-08-30|ITEM|pid=139|Beef Kebab Mayo Cheese Roll|qty=1.00|net=410.00
+KASHIF|2026-08-30|ITEM|pid=153|Chicken Reshmi Kebab Garlic Mayo Roll|qty=1.00|net=400.00
+KASHIF|2026-08-30|ITEM|pid=186|Cheese|qty=4.00|net=400.00
+KASHIF|2026-08-30|ITEM|pid=200|Soft Drink Sting (345 ml)|qty=3.00|net=390.00
+KASHIF|2026-08-30|ITEM|pid=152|Chicken Reshmi Kebab Chatni Roll|qty=1.00|net=380.00
+KASHIF|2026-08-30|ITEM|pid=188|Dinner Roll|qty=4.00|net=320.00
+KASHIF|2026-08-30|ITEM|pid=190|Mayo Sauce|qty=3.00|net=240.00
+KASHIF|2026-08-30|ITEM|pid=204|Plain Rice|qty=1.00|net=170.00
+KASHIF|2026-08-30|ITEM|pid=173|Soft Drink Sting (Can)|qty=1.00|net=160.00
+KASHIF|2026-08-30|ITEM|pid=189|Coleslaw|qty=2.00|net=160.00
+KASHIF|2026-08-30|WAITER|Unassigned|net=0.00
+KASHIF|2026-08-30|WAITER|Default Waiter|net=0.00
+KASHIF|2026-08-30|ORDERTYPE|Takeaway|net=0.00
+KASHIF|2026-08-30|ORDERTYPE|Dine In|net=0.00
+KASHIF|2026-08-30|ORDERTYPE|Delivery|net=0.00
+KASHIF|2026-08-30|ORDERTYPE|Quick Sale|net=0.00
+KASHIF|2026-08-30|CANCEL|total_events|58.00
+KASHIF|2026-08-30|CANCEL|total_qty|89.00
+KASHIF|2026-08-30|CASHBANK|shifts|5.00
+KASHIF|2026-08-30|CASHBANK|opening_cash|0.00
+KASHIF|2026-08-30|CASHBANK|expected_cash|728012.00
+KASHIF|2026-08-30|CASHBANK|counted_cash|296880.00
+KASHIF|2026-08-30|CASHBANK|cash_variance|-431132.00
+KASHIF|2026-08-30|CASHBANK|refunds|6730.00
+KASHIF|2026-08-30|CASHBANK|cash|731582.00
+KASHIF|2026-08-30|CASHBANK|card|76295.00
+KASHIF|2026-08-30|CASHBANK|bank_transfer|13180.00
+KASHIF|2026-08-30|CASHBANK|amount|13180.00
+KASHIF|2026-08-30|CASHBANK|rows|5.00
+KASHIF|2026-08-30|CASHBANK|amount|731582.00
+KASHIF|2026-08-30|CASHBANK|rows|348.00
+KASHIF|2026-08-30|CASHBANK|amount|3570.00
+KASHIF|2026-08-30|CASHBANK|rows|3.00
+KASHIF|2026-08-30|CASHBANK|amount|76295.00
+KASHIF|2026-08-30|CASHBANK|rows|28.00
+KASHIF|2026-08-30|CASHBANK|cash_in|731582.00
+KASHIF|2026-08-30|CASHBANK|cash_out|3570.00
+KASHIF|2026-08-30|CASHBANK|net_cash_movement|728012.00
+KASHIF|2026-08-30|CASHBANK|bank_in|13180.00
+KASHIF|2026-08-30|CASHBANK|bank_out|0.00
+KASHIF|2026-08-30|CASHBANK|net_bank_movement|13180.00
+KASHIF|2026-08-30|CASHBANK|expected_cash_formula|724852.00
+KASHIF|2026-08-30|DETAILS|rows|1161
+KASHIF|2026-08-30|DETAILS|qty|1624.00
+KASHIF|2026-08-30|DETAILS|net|816250.00
+KASHIF|2026-08-31|OVERVIEW|net_sales|463120.00
+KASHIF|2026-08-31|OVERVIEW|sold_qty|813.00
+KASHIF|2026-08-31|OVERVIEW|returns_amount|5630.00
+KASHIF|2026-08-31|OVERVIEW|returned_qty|12.00
+KASHIF|2026-08-31|CATEGORY|Starter|qty=5.00|net=5450.00
+KASHIF|2026-08-31|CATEGORY|Crispy Fried Chicken|qty=7.00|net=5250.00
+KASHIF|2026-08-31|CATEGORY|Kids House|qty=4.00|net=2900.00
+KASHIF|2026-08-31|CATEGORY|Burgers|qty=28.00|net=22355.00
+KASHIF|2026-08-31|CATEGORY|Smash Burgers|qty=5.00|net=4800.00
+KASHIF|2026-08-31|CATEGORY|Sandwiches|qty=16.00|net=14200.00
+KASHIF|2026-08-31|CATEGORY|Fries|qty=7.00|net=2550.00
+KASHIF|2026-08-31|CATEGORY|Pizza Fries|qty=6.00|net=4800.00
+KASHIF|2026-08-31|CATEGORY|Chinese|qty=20.00|net=25350.00
+KASHIF|2026-08-31|CATEGORY|Continental|qty=19.00|net=23400.00
+KASHIF|2026-08-31|CATEGORY|Bar-B-Que|qty=48.00|net=57400.00
+KASHIF|2026-08-31|CATEGORY|Bar-B-Que New Arrivals|qty=2.00|net=2700.00
+KASHIF|2026-08-31|CATEGORY|Paratha|qty=35.00|net=4340.00
+KASHIF|2026-08-31|CATEGORY|Rolls|qty=38.00|net=14920.00
+KASHIF|2026-08-31|CATEGORY|Singaporean Rice|qty=243.00|net=198530.00
+KASHIF|2026-08-31|CATEGORY|Chicken Biryani|qty=51.00|net=26195.00
+KASHIF|2026-08-31|CATEGORY|Beverages|qty=215.00|net=25290.00
+KASHIF|2026-08-31|CATEGORY|Raita & Salad|qty=18.00|net=1900.00
+KASHIF|2026-08-31|CATEGORY|Extras|qty=21.00|net=5590.00
+KASHIF|2026-08-31|CATEGORY|Al-Faham Components|qty=5.00|net=9500.00
+KASHIF|2026-08-31|CATEGORY|Dessert|qty=8.00|net=2400.00
+KASHIF|2026-08-31|ITEM|pid=158|Singaporean Rice (Regular) (Midnight)|qty=191.00|net=119630.00
+KASHIF|2026-08-31|ITEM|pid=159|Singaporean Rice (Large)|qty=34.00|net=35700.00
+KASHIF|2026-08-31|ITEM|pid=206|Singaporean Rice Khass (2-3 Persons)|qty=7.00|net=20300.00
+KASHIF|2026-08-31|ITEM|pid=175|Soft Drink (345 ml)|qty=138.00|net=16560.00
+KASHIF|2026-08-31|ITEM|pid=163|Singaporean Rice Family Pack (Large)|qty=4.00|net=16400.00
+KASHIF|2026-08-31|ITEM|pid=160|Singaporean Rice (Platter)|qty=10.00|net=15800.00
+KASHIF|2026-08-31|ITEM|pid=165|Deal 1 (Serve 1)|qty=33.00|net=13675.00
+KASHIF|2026-08-31|ITEM|pid=101|Chicken Alfredo Pasta (1 Person)|qty=10.00|net=12500.00
+KASHIF|2026-08-31|ITEM|pid=87|Chicken Chow Mein + Drink (Midnight)|qty=10.00|net=12000.00
+KASHIF|2026-08-31|ITEM|pid=109|Chicken Tikka (Chest)|qty=17.00|net=11050.00
+KASHIF|2026-08-31|ITEM|pid=162|Singaporean Rice Family Pack (Small)|qty=4.00|net=11000.00
+KASHIF|2026-08-31|ITEM|pid=31|Deal 9 (Serve 2)|qty=12.00|net=10555.00
+KASHIF|2026-08-31|ITEM|pid=166|Chicken Biryani (Large)|qty=12.00|net=9000.00
+KASHIF|2026-08-31|ITEM|pid=49|Club Sandwich (With Fries)|qty=8.00|net=7200.00
+KASHIF|2026-08-31|ITEM|pid=30|Chicken Zinger Burger + Fries + Drink (Midnight)|qty=9.00|net=6450.00
+KASHIF|2026-08-31|ITEM|pid=196|Grill Chicken Al-Faham (Half)|qty=4.00|net=6400.00
+KASHIF|2026-08-31|ITEM|pid=97|Spicy Mexican Steak (Chicken)|qty=3.00|net=6150.00
+KASHIF|2026-08-31|ITEM|pid=113|Chicken Malai Boti + Drink (Midnight)|qty=5.00|net=5750.00
+KASHIF|2026-08-31|ITEM|pid=69|Manchurian With Fried Rice (1 Person)|qty=4.00|net=5400.00
+KASHIF|2026-08-31|ITEM|pid=71|Shashlik With Fried Rice (1 Person)|qty=4.00|net=5400.00
+KASHIF|2026-08-31|ITEM|pid=117|Chicken Baluchi Boti|qty=4.00|net=5000.00
+KASHIF|2026-08-31|ITEM|pid=115|Chicken Reshmi Kebab|qty=4.00|net=4600.00
+KASHIF|2026-08-31|ITEM|pid=143|Chicken Chatni Roll|qty=12.00|net=4440.00
+KASHIF|2026-08-31|ITEM|pid=132|Parhata Large|qty=22.00|net=3300.00
+KASHIF|2026-08-31|ITEM|pid=194|Classic Platter 3 (3 Persons)|qty=1.00|net=3300.00
+KASHIF|2026-08-31|ITEM|pid=207|Grill Chicken Al-Faham (Full)|qty=1.00|net=3100.00
+KASHIF|2026-08-31|ITEM|pid=35|Chicken Burger (With Fries)|qty=4.00|net=3000.00
+KASHIF|2026-08-31|ITEM|pid=2|Dynamite Chicken|qty=3.00|net=2970.00
+KASHIF|2026-08-31|ITEM|pid=170|Mineral Water (Small)|qty=35.00|net=2800.00
+KASHIF|2026-08-31|ITEM|pid=12|2 Pcs Crispy Fried Chicken|qty=4.00|net=2600.00
+KASHIF|2026-08-31|ITEM|pid=134|Beef Boti Chatni Roll|qty=7.00|net=2590.00
+KASHIF|2026-08-31|ITEM|pid=120|Beef Dhaga Kebab|qty=2.00|net=2500.00
+KASHIF|2026-08-31|ITEM|pid=110|Chicken Tikka (Leg)|qty=4.00|net=2400.00
+KASHIF|2026-08-31|ITEM|pid=64|Supreme Pizza Fries (Small)|qty=3.00|net=2400.00
+KASHIF|2026-08-31|ITEM|pid=149|Chicken Malai Chatni Roll|qty=6.00|net=2340.00
+KASHIF|2026-08-31|ITEM|pid=168|Chicken Biryani Family Pack 6 Pcs|qty=1.00|net=2270.00
+KASHIF|2026-08-31|ITEM|pid=54|Fries (Regular)|qty=6.00|net=2100.00
+KASHIF|2026-08-31|ITEM|pid=144|Chicken Garlic Mayo Roll|qty=5.00|net=2000.00
+KASHIF|2026-08-31|ITEM|pid=53|Chicken Malai Boti Sandwich (With Fries)|qty=2.00|net=1900.00
+KASHIF|2026-08-31|ITEM|pid=43|Grilled Mushroom (Chicken)|qty=2.00|net=1800.00
+KASHIF|2026-08-31|ITEM|pid=171|Mineral Water (Large)|qty=11.00|net=1760.00
+KASHIF|2026-08-31|ITEM|pid=50|Chicken Bar-B-Que Sandwich|qty=2.00|net=1750.00
+KASHIF|2026-08-31|ITEM|pid=181|Raita|qty=17.00|net=1700.00
+KASHIF|2026-08-31|ITEM|pid=62|Tikka Pizza Fries (Small)|qty=2.00|net=1600.00
+KASHIF|2026-08-31|ITEM|pid=13|2 Pcs Crispy Fried Chicken (With Fries)|qty=2.00|net=1600.00
+KASHIF|2026-08-31|ITEM|pid=6|Fish And Chips 5 Pcs|qty=1.00|net=1490.00
+KASHIF|2026-08-31|ITEM|pid=130|Morocon Kebab|qty=1.00|net=1450.00
+KASHIF|2026-08-31|ITEM|pid=121|Beef Dhaga Kebab (Fry)|qty=1.00|net=1350.00
+KASHIF|2026-08-31|ITEM|pid=77|Kung Pao Chicken With Fried Rice (1 Person)|qty=1.00|net=1350.00
+KASHIF|2026-08-31|ITEM|pid=164|Chicken Biryani (Sadi)|qty=5.00|net=1250.00
+KASHIF|2026-08-31|ITEM|pid=119|Beef Seekh Kebab|qty=1.00|net=1250.00
+KASHIF|2026-08-31|ITEM|pid=118|Beef Behari Boti|qty=1.00|net=1250.00
+KASHIF|2026-08-31|ITEM|pid=103|Chicken Mac n Cheese Pasta (1 Person)|qty=1.00|net=1250.00
+KASHIF|2026-08-31|ITEM|pid=107|Chicken Parmesan Cheese Pasta (1 Person)|qty=1.00|net=1250.00
+KASHIF|2026-08-31|ITEM|pid=128|Tandoori Chicken|qty=1.00|net=1250.00
+KASHIF|2026-08-31|ITEM|pid=105|Chicken Red Sauce Pasta (1 Person)|qty=1.00|net=1250.00
+KASHIF|2026-08-31|ITEM|pid=116|Chicken Shahi Chattakh + Drink (Midnight)|qty=1.00|net=1250.00
+KASHIF|2026-08-31|ITEM|pid=136|Beef Boti Mayo Cheese Roll|qty=3.00|net=1230.00
+KASHIF|2026-08-31|ITEM|pid=201|Cream Cocktail Cup|qty=6.00|net=1200.00
+KASHIF|2026-08-31|ITEM|pid=85|Chicken Fried Rice (1 Person)|qty=1.00|net=1200.00
+KASHIF|2026-08-31|ITEM|pid=202|Cream Cocktail Half Pack|qty=2.00|net=1200.00
+KASHIF|2026-08-31|ITEM|pid=200|Soft Drink Sting (345 ml)|qty=9.00|net=1170.00
+KASHIF|2026-08-31|ITEM|pid=172|Cold Drink (Can)|qty=7.00|net=1120.00
+KASHIF|2026-08-31|ITEM|pid=155|Ustad Special Roll|qty=2.00|net=1100.00
+KASHIF|2026-08-31|ITEM|pid=183|Singaporean Sauce|qty=11.00|net=1100.00
+KASHIF|2026-08-31|ITEM|pid=15|3 Pcs Crispy Fried Chicken (With Fries)|qty=1.00|net=1050.00
+KASHIF|2026-08-31|ITEM|pid=38|American Vintage (Beef)|qty=1.00|net=1050.00
+KASHIF|2026-08-31|ITEM|pid=39|Mushroom Melt (Beef)|qty=1.00|net=1050.00
+KASHIF|2026-08-31|ITEM|pid=174|Soft Drink (300 ml)|qty=10.00|net=1000.00
+KASHIF|2026-08-31|ITEM|pid=4|Supreme Nachos|qty=1.00|net=990.00
+KASHIF|2026-08-31|ITEM|pid=51|Chicken Bar-B-Que Sandwich (With Fries)|qty=1.00|net=950.00
+KASHIF|2026-08-31|ITEM|pid=42|Smoke House (Chicken)|qty=1.00|net=900.00
+KASHIF|2026-08-31|ITEM|pid=28|Chicken Crunch Burger + Crispy Fried Chicken (Drum Stick) + Fries|qty=1.00|net=900.00
+KASHIF|2026-08-31|ITEM|pid=133|Pori Paratha|qty=11.00|net=880.00
+KASHIF|2026-08-31|ITEM|pid=23|Nuggets 6 Pcs (With Fries)|qty=1.00|net=850.00
+KASHIF|2026-08-31|ITEM|pid=47|Chicken Sandwich (With Fries)|qty=1.00|net=850.00
+KASHIF|2026-08-31|ITEM|pid=52|Chicken Malai Boti Sandwich|qty=1.00|net=800.00
+KASHIF|2026-08-31|ITEM|pid=25|Hot Shot 9 Pcs (With Fries)|qty=1.00|net=800.00
+KASHIF|2026-08-31|ITEM|pid=66|Pepperoni Pizza Fries (Small)|qty=1.00|net=800.00
+KASHIF|2026-08-31|ITEM|pid=37|Beef Burger (With Fries)|qty=1.00|net=800.00
+KASHIF|2026-08-31|ITEM|pid=48|Club Sandwich|qty=1.00|net=750.00
+KASHIF|2026-08-31|ITEM|pid=112|Chicken Malai Tikka (Leg)|qty=1.00|net=700.00
+KASHIF|2026-08-31|ITEM|pid=29|Chicken Crunch Burger (With Fries)|qty=1.00|net=650.00
+KASHIF|2026-08-31|ITEM|pid=24|Hot Shot 9 Pcs|qty=1.00|net=650.00
+KASHIF|2026-08-31|ITEM|pid=27|Crispy Fried Chicken 1 Pcs (With Fries)|qty=1.00|net=600.00
+KASHIF|2026-08-31|ITEM|pid=99|French Fries (Steak Side)|qty=2.00|net=600.00
+KASHIF|2026-08-31|ITEM|pid=204|Plain Rice|qty=3.00|net=510.00
+KASHIF|2026-08-31|ITEM|pid=58|Mayo Garlic Fries (Regular)|qty=1.00|net=450.00
+KASHIF|2026-08-31|ITEM|pid=178|Soft Drink (1.5 Ltr)|qty=2.00|net=440.00
+KASHIF|2026-08-31|ITEM|pid=154|Chicken Reshmi Kebab Mayo Cheese Roll|qty=1.00|net=420.00
+KASHIF|2026-08-31|ITEM|pid=150|Chicken Malai Garlic Mayo Roll|qty=1.00|net=420.00
+KASHIF|2026-08-31|ITEM|pid=100|Vegetable Rice (Steak Side)|qty=1.00|net=400.00
+KASHIF|2026-08-31|ITEM|pid=152|Chicken Reshmi Kebab Chatni Roll|qty=1.00|net=380.00
+KASHIF|2026-08-31|ITEM|pid=176|Soft Drink (500 ml)|qty=2.00|net=280.00
+KASHIF|2026-08-31|ITEM|pid=185|Garlic Fried|qty=2.00|net=200.00
+KASHIF|2026-08-31|ITEM|pid=182|Fresh Salad|qty=1.00|net=200.00
+KASHIF|2026-08-31|ITEM|pid=184|Butter|qty=1.00|net=200.00
+KASHIF|2026-08-31|ITEM|pid=131|Parhata Small|qty=2.00|net=160.00
+KASHIF|2026-08-31|ITEM|pid=173|Soft Drink Sting (Can)|qty=1.00|net=160.00
+KASHIF|2026-08-31|ITEM|pid=186|Cheese|qty=1.00|net=100.00
+KASHIF|2026-08-31|ITEM|pid=191|Extra Sauce|qty=1.00|net=100.00
+KASHIF|2026-08-31|ITEM|pid=188|Dinner Roll|qty=1.00|net=80.00
+KASHIF|2026-08-31|WAITER|Unassigned|net=0.00
+KASHIF|2026-08-31|WAITER|Default Waiter|net=0.00
+KASHIF|2026-08-31|ORDERTYPE|Takeaway|net=0.00
+KASHIF|2026-08-31|ORDERTYPE|Dine In|net=0.00
+KASHIF|2026-08-31|ORDERTYPE|Quick Sale|net=0.00
+KASHIF|2026-08-31|ORDERTYPE|Delivery|net=0.00
+KASHIF|2026-08-31|CANCEL|total_events|19.00
+KASHIF|2026-08-31|CANCEL|total_qty|22.00
+KASHIF|2026-08-31|CASHBANK|shifts|5.00
+KASHIF|2026-08-31|CASHBANK|opening_cash|0.00
+KASHIF|2026-08-31|CASHBANK|expected_cash|392635.00
+KASHIF|2026-08-31|CASHBANK|counted_cash|106715.00
+KASHIF|2026-08-31|CASHBANK|cash_variance|-285920.00
+KASHIF|2026-08-31|CASHBANK|refunds|5630.00
+KASHIF|2026-08-31|CASHBANK|cash|397715.00
+KASHIF|2026-08-31|CASHBANK|card|59465.00
+KASHIF|2026-08-31|CASHBANK|bank_transfer|11570.00
+KASHIF|2026-08-31|CASHBANK|amount|11570.00
+KASHIF|2026-08-31|CASHBANK|rows|5.00
+KASHIF|2026-08-31|CASHBANK|amount|397715.00
+KASHIF|2026-08-31|CASHBANK|rows|251.00
+KASHIF|2026-08-31|CASHBANK|amount|5080.00
+KASHIF|2026-08-31|CASHBANK|rows|5.00
+KASHIF|2026-08-31|CASHBANK|amount|59465.00
+KASHIF|2026-08-31|CASHBANK|rows|29.00
+KASHIF|2026-08-31|CASHBANK|cash_in|397715.00
+KASHIF|2026-08-31|CASHBANK|cash_out|5080.00
+KASHIF|2026-08-31|CASHBANK|net_cash_movement|392635.00
+KASHIF|2026-08-31|CASHBANK|bank_in|11570.00
+KASHIF|2026-08-31|CASHBANK|bank_out|0.00
+KASHIF|2026-08-31|CASHBANK|net_bank_movement|11570.00
+KASHIF|2026-08-31|CASHBANK|expected_cash_formula|392085.00
+KASHIF|2026-08-31|DETAILS|rows|697
+KASHIF|2026-08-31|DETAILS|qty|939.00
+KASHIF|2026-08-31|DETAILS|net|465450.00
+KHATRI|2026-08-30|OVERVIEW|net_sales|457308.00
+KHATRI|2026-08-30|OVERVIEW|sold_qty|1246.00
+KHATRI|2026-08-30|OVERVIEW|returns_amount|9330.00
+KHATRI|2026-08-30|OVERVIEW|returned_qty|15.00
+KHATRI|2026-08-30|CATEGORY|Singaporean Rice|qty=53.00|net=31550.00
+KHATRI|2026-08-30|CATEGORY|Desserts|qty=118.00|net=23060.00
+KHATRI|2026-08-30|CATEGORY|Beverages|qty=262.00|net=25220.00
+KHATRI|2026-08-30|CATEGORY|Extras|qty=115.00|net=7950.00
+KHATRI|2026-08-30|CATEGORY|Beef Khatri Biryani|qty=311.00|net=189700.00
+KHATRI|2026-08-30|CATEGORY|Beef Changezi Pulao|qty=235.00|net=125000.00
+KHATRI|2026-08-30|CATEGORY|Chicken Biryani|qty=137.00|net=47420.00
+KHATRI|2026-08-30|ITEM|pid=1|Beef Khatri Biryani (1/2 kg)|qty=205.00|net=92250.00
+KHATRI|2026-08-30|ITEM|pid=9|Beef Changezi Pulao (1/2 kg)|qty=182.00|net=81900.00
+KHATRI|2026-08-30|ITEM|pid=13|Chicken Biryani (1/2 kg)|qty=99.00|net=32670.00
+KHATRI|2026-08-30|ITEM|pid=2|Beef Khatri Biryani (1 kg)|qty=35.00|net=31500.00
+KHATRI|2026-08-30|ITEM|pid=4|Beef Khatri Biryani Special (1 kg)|qty=25.00|net=30000.00
+KHATRI|2026-08-30|ITEM|pid=10|Beef Changezi Pulao (1 kg)|qty=33.00|net=29700.00
+KHATRI|2026-08-30|ITEM|pid=17|Singaporean Rice (Small)|qty=51.00|net=28050.00
+KHATRI|2026-08-30|ITEM|pid=8|Matka Biryani Beef|qty=4.00|net=16000.00
+KHATRI|2026-08-30|ITEM|pid=33|Cola Next 300 ml|qty=156.00|net=14040.00
+KHATRI|2026-08-30|ITEM|pid=14|Chicken Biryani (1 kg)|qty=14.00|net=9100.00
+KHATRI|2026-08-30|ITEM|pid=40|Beef Changezi Pulao Special (1 kg)|qty=7.00|net=8400.00
+KHATRI|2026-08-30|ITEM|pid=39|Raita|qty=112.00|net=7840.00
+KHATRI|2026-08-30|ITEM|pid=28|Mango Delight (Cup)|qty=60.00|net=7800.00
+KHATRI|2026-08-30|ITEM|pid=3|Beef Khatri Biryani Special (1/2 kg)|qty=12.00|net=7200.00
+KHATRI|2026-08-30|ITEM|pid=5|Saadi Khatri Biryani (1/2 kg)|qty=26.00|net=6500.00
+KHATRI|2026-08-30|ITEM|pid=29|Mango Delight (Half)|qty=8.00|net=5200.00
+KHATRI|2026-08-30|ITEM|pid=25|Cream Cocktail (Cup)|qty=43.00|net=5160.00
+KHATRI|2026-08-30|ITEM|pid=45|Beef Biryani Matka (1.5 kg)|qty=1.00|net=4750.00
+KHATRI|2026-08-30|ITEM|pid=26|Cream Cocktail (Half Pack)|qty=6.00|net=3600.00
+KHATRI|2026-08-30|ITEM|pid=43|Saadi Chicken Biryani (1/2 kg)|qty=16.00|net=3200.00
+KHATRI|2026-08-30|ITEM|pid=11|Beef Changezi Pulao Special (1/2 kg)|qty=5.00|net=3000.00
+KHATRI|2026-08-30|ITEM|pid=19|Singaporean Rice Family Pack (Small)|qty=1.00|net=2500.00
+KHATRI|2026-08-30|ITEM|pid=31|Mineral Water (Small)|qty=40.00|net=2400.00
+KHATRI|2026-08-30|ITEM|pid=32|Mineral Water (Large)|qty=20.00|net=2400.00
+KHATRI|2026-08-30|ITEM|pid=44|Saadi Chicken Biryani (1 kg)|qty=5.00|net=2000.00
+KHATRI|2026-08-30|ITEM|pid=12|Saada Beef Changezi Pulao (1/2 kg)|qty=8.00|net=2000.00
+KHATRI|2026-08-30|ITEM|pid=35|Cola Next 1.5 Ltr|qty=10.00|net=1800.00
+KHATRI|2026-08-30|ITEM|pid=6|Saadi Khatri Biryani (1 kg)|qty=3.00|net=1500.00
+KHATRI|2026-08-30|ITEM|pid=37|1 Ltr Coldrink|qty=9.00|net=1440.00
+KHATRI|2026-08-30|ITEM|pid=34|Cola Next 500 ml|qty=13.00|net=1430.00
+KHATRI|2026-08-30|ITEM|pid=30|Mango Delight (Full)|qty=1.00|net=1300.00
+KHATRI|2026-08-30|ITEM|pid=18|Singaporean Rice (Large)|qty=1.00|net=1000.00
+KHATRI|2026-08-30|ITEM|pid=38|Pakola 300 ml|qty=11.00|net=990.00
+KHATRI|2026-08-30|ITEM|pid=36|Coldrink Jumbo|qty=3.00|net=720.00
+KHATRI|2026-08-30|ITEM|pid=16|Chicken Extra Piece|qty=3.00|net=450.00
+KHATRI|2026-08-30|ITEM|pid=41|750 ML Box|qty=2.00|net=60.00
+KHATRI|2026-08-30|ITEM|pid=42|1500 ML Box|qty=1.00|net=50.00
+KHATRI|2026-08-30|WAITER|Unassigned|net=0.00
+KHATRI|2026-08-30|WAITER|Hamza|net=0.00
+KHATRI|2026-08-30|WAITER|Ali|net=0.00
+KHATRI|2026-08-30|WAITER|Ali Hasan|net=0.00
+KHATRI|2026-08-30|WAITER|Shahzad|net=0.00
+KHATRI|2026-08-30|ORDERTYPE|Dine In|net=0.00
+KHATRI|2026-08-30|ORDERTYPE|Takeaway|net=0.00
+KHATRI|2026-08-30|ORDERTYPE|Delivery|net=0.00
+KHATRI|2026-08-30|ORDERTYPE|Quick Sale|net=0.00
+KHATRI|2026-08-30|CANCEL|total_events|37.00
+KHATRI|2026-08-30|CANCEL|total_qty|42.00
+KHATRI|2026-08-30|CASHBANK|shifts|3.00
+KHATRI|2026-08-30|CASHBANK|opening_cash|0.00
+KHATRI|2026-08-30|CASHBANK|expected_cash|455978.00
+KHATRI|2026-08-30|CASHBANK|counted_cash|233688.00
+KHATRI|2026-08-30|CASHBANK|cash_variance|-222290.00
+KHATRI|2026-08-30|CASHBANK|refunds|9330.00
+KHATRI|2026-08-30|CASHBANK|cash|461478.00
+KHATRI|2026-08-30|CASHBANK|bank_transfer|5160.00
+KHATRI|2026-08-30|CASHBANK|amount|461478.00
+KHATRI|2026-08-30|CASHBANK|rows|390.00
+KHATRI|2026-08-30|CASHBANK|amount|5500.00
+KHATRI|2026-08-30|CASHBANK|rows|4.00
+KHATRI|2026-08-30|CASHBANK|amount|5160.00
+KHATRI|2026-08-30|CASHBANK|rows|4.00
+KHATRI|2026-08-30|CASHBANK|amount|3830.00
+KHATRI|2026-08-30|CASHBANK|rows|3.00
+KHATRI|2026-08-30|CASHBANK|cash_in|461478.00
+KHATRI|2026-08-30|CASHBANK|cash_out|5500.00
+KHATRI|2026-08-30|CASHBANK|net_cash_movement|455978.00
+KHATRI|2026-08-30|CASHBANK|bank_in|5160.00
+KHATRI|2026-08-30|CASHBANK|bank_out|3830.00
+KHATRI|2026-08-30|CASHBANK|net_bank_movement|1330.00
+KHATRI|2026-08-30|CASHBANK|expected_cash_formula|452148.00
+KHATRI|2026-08-30|DETAILS|rows|872
+KHATRI|2026-08-30|DETAILS|qty|1246.00
+KHATRI|2026-08-30|DETAILS|net|458280.00
+KHATRI|2026-08-31|OVERVIEW|net_sales|296124.00
+KHATRI|2026-08-31|OVERVIEW|sold_qty|851.00
+KHATRI|2026-08-31|OVERVIEW|returns_amount|90.00
+KHATRI|2026-08-31|OVERVIEW|returned_qty|2.00
+KHATRI|2026-08-31|CATEGORY|Singaporean Rice|qty=27.00|net=15330.00
+KHATRI|2026-08-31|CATEGORY|Desserts|qty=69.00|net=11530.00
+KHATRI|2026-08-31|CATEGORY|Beverages|qty=196.00|net=18630.00
+KHATRI|2026-08-31|CATEGORY|Extras|qty=76.00|net=5260.00
+KHATRI|2026-08-31|CATEGORY|Beef Khatri Biryani|qty=248.00|net=132500.00
+KHATRI|2026-08-31|CATEGORY|Beef Changezi Pulao|qty=164.00|net=84250.00
+KHATRI|2026-08-31|CATEGORY|Chicken Biryani|qty=69.00|net=23740.00
+KHATRI|2026-08-31|ITEM|pid=1|Beef Khatri Biryani (1/2 kg)|qty=191.00|net=85950.00
+KHATRI|2026-08-31|ITEM|pid=9|Beef Changezi Pulao (1/2 kg)|qty=126.00|net=56700.00
+KHATRI|2026-08-31|ITEM|pid=2|Beef Khatri Biryani (1 kg)|qty=26.00|net=23400.00
+KHATRI|2026-08-31|ITEM|pid=13|Chicken Biryani (1/2 kg)|qty=48.00|net=15840.00
+KHATRI|2026-08-31|ITEM|pid=17|Singaporean Rice (Small)|qty=24.00|net=13200.00
+KHATRI|2026-08-31|ITEM|pid=10|Beef Changezi Pulao (1 kg)|qty=13.00|net=11700.00
+KHATRI|2026-08-31|ITEM|pid=33|Cola Next 300 ml|qty=110.00|net=9900.00
+KHATRI|2026-08-31|ITEM|pid=40|Beef Changezi Pulao Special (1 kg)|qty=8.00|net=9600.00
+KHATRI|2026-08-31|ITEM|pid=3|Beef Khatri Biryani Special (1/2 kg)|qty=15.00|net=9000.00
+KHATRI|2026-08-31|ITEM|pid=39|Raita|qty=74.00|net=5180.00
+KHATRI|2026-08-31|ITEM|pid=45|Beef Biryani Matka (1.5 kg)|qty=1.00|net=4750.00
+KHATRI|2026-08-31|ITEM|pid=28|Mango Delight (Cup)|qty=32.00|net=4160.00
+KHATRI|2026-08-31|ITEM|pid=8|Matka Biryani Beef|qty=1.00|net=4000.00
+KHATRI|2026-08-31|ITEM|pid=25|Cream Cocktail (Cup)|qty=31.00|net=3720.00
+KHATRI|2026-08-31|ITEM|pid=14|Chicken Biryani (1 kg)|qty=5.00|net=3250.00
+KHATRI|2026-08-31|ITEM|pid=26|Cream Cocktail (Half Pack)|qty=5.00|net=3000.00
+KHATRI|2026-08-31|ITEM|pid=5|Saadi Khatri Biryani (1/2 kg)|qty=12.00|net=3000.00
+KHATRI|2026-08-31|ITEM|pid=11|Beef Changezi Pulao Special (1/2 kg)|qty=5.00|net=3000.00
+KHATRI|2026-08-31|ITEM|pid=12|Saada Beef Changezi Pulao (1/2 kg)|qty=11.00|net=2750.00
+KHATRI|2026-08-31|ITEM|pid=4|Beef Khatri Biryani Special (1 kg)|qty=2.00|net=2400.00
+KHATRI|2026-08-31|ITEM|pid=31|Mineral Water (Small)|qty=37.00|net=2220.00
+KHATRI|2026-08-31|ITEM|pid=43|Saadi Chicken Biryani (1/2 kg)|qty=11.00|net=2200.00
+KHATRI|2026-08-31|ITEM|pid=18|Singaporean Rice (Large)|qty=2.00|net=2000.00
+KHATRI|2026-08-31|ITEM|pid=35|Cola Next 1.5 Ltr|qty=9.00|net=1620.00
+KHATRI|2026-08-31|ITEM|pid=15|Chicken Biryani Family Pack|qty=1.00|net=1600.00
+KHATRI|2026-08-31|ITEM|pid=34|Cola Next 500 ml|qty=14.00|net=1540.00
+KHATRI|2026-08-31|ITEM|pid=37|1 Ltr Coldrink|qty=8.00|net=1280.00
+KHATRI|2026-08-31|ITEM|pid=32|Mineral Water (Large)|qty=10.00|net=1200.00
+KHATRI|2026-08-31|ITEM|pid=29|Mango Delight (Half)|qty=1.00|net=650.00
+KHATRI|2026-08-31|ITEM|pid=38|Pakola 300 ml|qty=7.00|net=630.00
+KHATRI|2026-08-31|ITEM|pid=46|Saada Beef Changezi Pulao (1 kg)|qty=1.00|net=500.00
+KHATRI|2026-08-31|ITEM|pid=16|Chicken Extra Piece|qty=3.00|net=450.00
+KHATRI|2026-08-31|ITEM|pid=44|Saadi Chicken Biryani (1 kg)|qty=1.00|net=400.00
+KHATRI|2026-08-31|ITEM|pid=36|Coldrink Jumbo|qty=1.00|net=240.00
+KHATRI|2026-08-31|ITEM|pid=21|Extra Sauce|qty=1.00|net=130.00
+KHATRI|2026-08-31|ITEM|pid=42|1500 ML Box|qty=1.00|net=50.00
+KHATRI|2026-08-31|ITEM|pid=41|750 ML Box|qty=1.00|net=30.00
+KHATRI|2026-08-31|WAITER|Unassigned|net=0.00
+KHATRI|2026-08-31|WAITER|Hamza|net=0.00
+KHATRI|2026-08-31|WAITER|Ali|net=0.00
+KHATRI|2026-08-31|WAITER|Ali Hasan|net=0.00
+KHATRI|2026-08-31|WAITER|Shahzad|net=0.00
+KHATRI|2026-08-31|ORDERTYPE|Takeaway|net=0.00
+KHATRI|2026-08-31|ORDERTYPE|Delivery|net=0.00
+KHATRI|2026-08-31|ORDERTYPE|Dine In|net=0.00
+KHATRI|2026-08-31|ORDERTYPE|Quick Sale|net=0.00
+KHATRI|2026-08-31|CANCEL|total_events|22.00
+KHATRI|2026-08-31|CANCEL|total_qty|24.00
+KHATRI|2026-08-31|CASHBANK|shifts|3.00
+KHATRI|2026-08-31|CASHBANK|opening_cash|0.00
+KHATRI|2026-08-31|CASHBANK|expected_cash|296124.00
+KHATRI|2026-08-31|CASHBANK|counted_cash|135864.00
+KHATRI|2026-08-31|CASHBANK|cash_variance|-160260.00
+KHATRI|2026-08-31|CASHBANK|refunds|90.00
+KHATRI|2026-08-31|CASHBANK|cash|296214.00
+KHATRI|2026-08-31|CASHBANK|amount|296214.00
+KHATRI|2026-08-31|CASHBANK|rows|319.00
+KHATRI|2026-08-31|CASHBANK|amount|90.00
+KHATRI|2026-08-31|CASHBANK|rows|2.00
+KHATRI|2026-08-31|CASHBANK|cash_in|296214.00
+KHATRI|2026-08-31|CASHBANK|cash_out|90.00
+KHATRI|2026-08-31|CASHBANK|net_cash_movement|296124.00
+KHATRI|2026-08-31|CASHBANK|bank_in|0.00
+KHATRI|2026-08-31|CASHBANK|bank_out|0.00
+KHATRI|2026-08-31|CASHBANK|net_bank_movement|0.00
+KHATRI|2026-08-31|CASHBANK|expected_cash_formula|296124.00
+KHATRI|2026-08-31|DETAILS|rows|631
+KHATRI|2026-08-31|DETAILS|qty|851.00
+KHATRI|2026-08-31|DETAILS|net|291330.00
