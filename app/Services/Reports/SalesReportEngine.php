@@ -121,10 +121,32 @@ class SalesReportEngine
     }
 
     /** Line-level base (joins products/categories) constrained to the same sale population. */
-    private function linesBase(array $f)
+    /**
+     * REPORT-DEAL-COMPONENTS-1 — a deal's parts are not separate sales.
+     *
+     * Selling a deal writes a `combo_header` line carrying the WHOLE price, plus one `component`
+     * line per linked item carrying 0.00. The components exist to tell the kitchen what to cook and
+     * to draw the stock; they were never sold on their own.
+     *
+     * Counting them here made every quantity lie. On 30 Aug the report printed 1,620 units against
+     * 1,322 actually sold; Bar-B-Que read 148 when 87 were sold and 61 went out inside deals. It also
+     * produced rows like "Regular Drink 39 @ 0.00", which reads as 39 free drinks, and it DOUBLED a
+     * deal whose header points at the same product as one of its own components (Khaas is product
+     * 206 twice, so byItem's group-by merged 5 + 5 into 10).
+     *
+     * Excluding them cannot move a single rupee — their line_total is 0.00 — so every financial
+     * figure in every section is byte-identical before and after. Only the quantities become true.
+     *
+     * The DETAILED section passes $includeComponents = true: it is the line-by-line record, and a
+     * deal's parts belong in it.
+     */
+    private function linesBase(array $f, bool $includeComponents = false)
     {
         return DB::connection('tenant')->table('sales_order_lines as l')
             ->joinSub($this->salesBase($f)->select('o.*'), 'o', 'o.id', '=', 'l.sales_order_id')
+            ->unless($includeComponents, fn ($q) => $q->where(
+                fn ($w) => $w->where('l.line_kind', '!=', 'component')->orWhereNull('l.line_kind')
+            ))
             ->leftJoin('products as p', 'p.id', '=', 'l.product_id')
             ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
             ->when($f['category_id'], fn ($q) => $q->whereIn('p.category_id', $this->categoryWithDescendants((int) $f['category_id'])))
@@ -688,7 +710,10 @@ class SalesReportEngine
     // ── V. Detailed report (paginated; exports use the FULL filtered set via cursor) ─────────────
     public function detailedQuery(array $f)
     {
-        return $this->linesBase($f)
+        // REPORT-DEAL-COMPONENTS-1: components stay HERE. This is the line-by-line record of what
+        // was rung up, so a deal's parts belong in it — they are only kept out of the summary
+        // sections, where counting them as sales made the quantities lie.
+        return $this->linesBase($f, includeComponents: true)
             ->leftJoin('product_variants as v', 'v.id', '=', 'l.product_variant_id')
             ->leftJoin('restaurant_waiters as w', 'w.id', '=', 'o.restaurant_waiter_id')
             ->leftJoin('users as u', 'u.id', '=', 'o.created_by_user_id')
