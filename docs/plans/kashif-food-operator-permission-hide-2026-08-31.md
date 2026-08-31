@@ -55,6 +55,44 @@ Cross: **Customers**, **Payment Methods**, **Delivery Channels**, **Delivery Rid
 
 ---
 
+## ⚠️ ROLLOUT: pehle sirf DELIVERY par (owner verify kar raha hai)
+
+Pehle teenon roles par laga diya tha (159 rows). Owner ne kaha **sirf Delivery par rakho taake
+main khud dekh sakoon**, is liye **#3 Dine In aur #4 Dine In (Restricted) ko wapas bahal kar diya**.
+
+Bahali me ek jaal tha: families me **65** permissions hain magar har role ke paas sirf **53** thay.
+Farq wahi **12 `.destroy`** hain — onboarding command kisi operator role ko destroy/delete deta hi
+nahi (`if (str_ends_with($name,'.destroy') || str_contains($name,'.delete')) return false;`).
+Agar bina soche 65 daal dete to 12 nayi permission **de** dete, bahali nahi hoti.
+65 − 12 = 53 = 159 ÷ 3 — hisaab poora milta hai.
+
+Ab ki haalat:
+
+| Role | Total | In 9 families me se |
+|---|---|---|
+| #1 Owner | 647 | 53 / 53 |
+| **#2 Delivery** | **77** | **0 / 53 ← hide laga hua** |
+| #3 Dine In | 129 | 53 / 53 (bahal) |
+| #4 Dine In (Restricted) | 115 | 53 / 53 (bahal) |
+
+**Batch 1 (report access) teenon roles se hata hua hai** — usay wapas nahi kiya, owner ne kaha
+nahi tha aur wo subah se live chal raha hai.
+
+Delivery par tasdeeq: 11 ke 11 cheezein chhupi hain, aur POS, payment, held bill, customer
+search/add/address, quick report, Sales Orders, Sales Returns, Sales Ledger, table open, Shifts,
+Dashboard — **sab chal rahe hain**; POS screen 200 par render hoti hai.
+
+Bahal ki gayi roles par jo "MISSING" dikhta hai wo **pehle se** hai, is kaam ka asar nahi:
+Dine In ke paas `pos.quick-report-send` kabhi nahi tha (sirf Delivery ka hai — isi liye 77 vs 76),
+aur `floor4_kf` ka `pos.store` / `sales-returns.create` / `shifts.index` owner ne khud 30 Aug ko
+hataya tha.
+
+**Agla qadam:** owner Delivery user (`delivery_kf@bingoopos.com`) se log-in kar ke dekhega. Theek
+lage to wahi 53-permission wala set #3 aur #4 se bhi hata denge; masla ho to Delivery par bhi
+wapas bahal — dono ek command ki baat hai.
+
+---
+
 ## Batch 2 ka amal
 
 ### (a) Sidebar — sirf data, koi deploy nahi
