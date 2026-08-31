@@ -94,13 +94,24 @@
                                                 <div class="small text-muted mt-1">{!! implode(' &middot; ', $bits) !!}</div>
                                             @endif
                                             @if($c || $v)
+                                                @php
+                                                    // Built here, not with inline @if — a directive
+                                                    // glued to a word ("voided@endif") is not a
+                                                    // directive at all: Blade needs a non-word
+                                                    // character before the @, so it read straight
+                                                    // past it and left the @if unclosed.
+                                                    $parts = [];
+                                                    if ($c) {
+                                                        $parts[] = number_format((float) $c->amount, 2)
+                                                            . ' (' . (int) $c->bills . ' bill' . ((int) $c->bills === 1 ? '' : 's') . ')';
+                                                    }
+                                                    if ($v) {
+                                                        $units = rtrim(rtrim(number_format((float) $v->units, 2), '0'), '.');
+                                                        $parts[] = $units . ' item' . ((float) $v->units == 1.0 ? '' : 's') . ' voided';
+                                                    }
+                                                @endphp
                                                 <div class="small text-warning mt-1">
-                                                    cancelled
-                                                    @if($c) {{ number_format((float) $c->amount, 2) }}
-                                                        ({{ (int) $c->bills }} bill{{ (int) $c->bills === 1 ? '' : 's' }})@endif
-                                                    @if($c && $v) &middot; @endif
-                                                    @if($v) {{ rtrim(rtrim(number_format((float) $v->units, 2), '0'), '.') }}
-                                                        item{{ (float) $v->units == 1.0 ? '' : 's' }} voided@endif
+                                                    cancelled {!! implode(' &middot; ', $parts) !!}
                                                 </div>
                                             @endif
                                         </td>
