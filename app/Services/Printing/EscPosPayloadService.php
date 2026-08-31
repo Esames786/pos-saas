@@ -750,6 +750,23 @@ class EscPosPayloadService
             $lines = collect($payload['line_snapshots'])->map(fn ($line) => (object) $line);
         }
 
+        // KOT-REPRINT-BLANK-1 — a reprint must never hand the kitchen an empty ticket.
+        //
+        // The ids above are frozen into the job, but the LINES are read live, and saving a held bill
+        // deletes and recreates every line with a new id. After that the whereIn matches nothing and
+        // the ticket printed its heading over an empty list — no items, no error, and not even the
+        // station name, which is built from the items. On 31 Aug six of order 465's tickets were in
+        // that state, and 45 of Kashif Food's 81 tickets that day, though none had actually been
+        // reprinted.
+        //
+        // The job already carries a complete snapshot of what it sent — the cancellation path prints
+        // from exactly this. So when the live lines are gone, fall back to it: a reprint is a copy of
+        // what WAS sent, and the snapshot is that record. Only when nothing resolves, so a normal
+        // reprint keeps reading live and stays identical to today.
+        if ($lines->isEmpty() && ! empty($payload['line_snapshots'])) {
+            $lines = collect($payload['line_snapshots'])->map(fn ($line) => (object) $line);
+        }
+
         // PRINT-FORMAT-PARITY-1: honour the saved KOT layout like the browser preview does,
         // lead with the ORDER TYPE (kitchen reads it first), single-line item + qty column.
         $layout = $this->layoutFor($sale->branch_id, 'kot');

@@ -363,9 +363,12 @@ class KotSplitAndReprintWalkthroughMySqlTest extends MySqlTenantTestCase
             echo '    ' . (str_contains(strtoupper($slip), 'DEAL 1') ? 'reminder reprint STILL carries the deal' : 'reminder reprint is empty too') . "\n";
         }
 
-        echo "\n  => " . $blank . ' of ' . count($kotJobs) . " kitchen tickets would print BLANK.\n\n";
+        echo "\n  => " . $blank . ' of ' . count($kotJobs) . " kitchen tickets print blank.\n";
+        echo "     (before KOT-REPRINT-BLANK-1 this was " . count($kotJobs) . ' of ' . count($kotJobs)
+           . " — the tickets read their lines live, and the save had replaced them all.)\n\n";
 
-        $this->assertSame(count($kotJobs), $blank,
-            'this is the defect: after a save, every earlier KOT reprints with no items at all');
+        $this->assertSame(0, $blank,
+            'every ticket must still carry its food: when the live lines are gone the job falls back '
+            . 'to the snapshot it was sent with');
     }
 }
