@@ -40,11 +40,27 @@ trait TenantFixtures
         ], $attrs));
     }
 
+    /**
+     * A sale, stamped with a BUSINESS date the way the POS always stamps one.
+     *
+     * This used to leave business_date null and write sale_date as UTC now, so every report and
+     * dashboard query — which windows on COALESCE(business_date, DATE(sale_date)) against the
+     * BRANCH's business day — silently stopped seeing the test's own sales between midnight in the
+     * shop's timezone and midnight UTC. Three suites went red at 02:00 PKT on 1 Sep having been
+     * green all day, for no reason but the hour.
+     *
+     * Production never has that gap because the POS writes business_date on every sale. Neither
+     * should the fixture. A test that wants a different day still passes its own value.
+     */
     protected function makeSale(int $branchId, array $attrs = []): int
     {
+        $businessDate = app(\App\Support\TenantClock::class)
+            ->currentBusinessDate(\App\Models\Tenant\Branch::on('tenant')->find($branchId));
+
         return $this->tenant()->table('sales_orders')->insertGetId(array_merge([
             'sale_no' => 'SO-' . uniqid(), 'branch_id' => $branchId, 'order_source' => 'pos',
             'order_type' => 'quick_sale', 'sale_date' => now(), 'status' => 'paid',
+            'business_date' => $businessDate,
             'created_at' => now(), 'updated_at' => now(),
         ], $attrs));
     }

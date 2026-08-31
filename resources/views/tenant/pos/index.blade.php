@@ -5915,6 +5915,9 @@ document.addEventListener('DOMContentLoaded', function () {
             if (split) { openSplitForSession(split.dataset.tableSplit); return; }
             var move = event.target.closest('[data-table-move]');
             if (move) { showTableMove(move.dataset.tableMove, move.dataset.sourceTableId); return; }
+            // TABLE-CLOSE-EMPTY-1
+            var closeTable = event.target.closest('[data-table-close]');
+            if (closeTable) { closeEmptyTable(closeTable.dataset.tableClose, closeTable.dataset.tableNo); return; }
             // TABLE-RESERVATION-1
             var reserve = event.target.closest('[data-table-reserve]');
             if (reserve) { openReserveModal(reserve.dataset.tableReserve, reserve.dataset.tableNo); return; }
@@ -5948,6 +5951,36 @@ document.addEventListener('DOMContentLoaded', function () {
         _rget('reserve-customer-suggest').classList.add('d-none');
         _rget('reserve-toast').classList.add('d-none');
         bootstrap.Modal.getOrCreateInstance(_rget('reserveTableModal')).show();
+    }
+
+    /**
+     * TABLE-CLOSE-EMPTY-1 — free a table opened by mistake, from the board itself.
+     * The button only renders on a session with no orders, and the server refuses a close over an
+     * open order anyway, so this can never discard someone's running check.
+     */
+    function closeEmptyTable(sessionId, tableNo) {
+        Swal.fire({
+            title: 'Close table ' + (tableNo || '') + '?',
+            text: 'Nothing has been ordered on it. The table becomes available again.',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Close table',
+        }).then(function (res) {
+            if (!res.isConfirmed) return;
+            fetch('{{ url('/restaurant/table-sessions') }}/' + sessionId + '/close', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                    Accept: 'application/json',
+                },
+                body: JSON.stringify({ status: 'closed' }),
+            })
+            .then(function () { if (typeof refreshTableBoard === 'function') refreshTableBoard(); })
+            .catch(function () {
+                Swal.fire({ icon: 'error', title: 'Could not close', text: 'Try again, or close it from Restaurant → Board.' });
+            });
+        });
     }
 
     function cancelReservation(tableId) {

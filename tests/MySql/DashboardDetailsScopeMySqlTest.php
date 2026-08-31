@@ -269,7 +269,14 @@ class DashboardDetailsScopeMySqlTest extends MySqlTenantTestCase
         $product = $this->makeProduct($category, ['name' => 'Chicken Biryani']);
 
         // one paid sale today, so both cards have something real to show
-        $saleId = $this->makeSale($this->branchId, ['status' => 'paid', 'order_type' => 'takeaway', 'grand_total' => 850]);
+        // Stamp the BUSINESS date, as the POS always does. The fixture writes sale_date as UTC now
+        // and leaves business_date null, so between midnight in the shop's timezone and midnight UTC
+        // the dashboard's window and DATE(sale_date) fall on different days and the card goes empty.
+        $saleId = $this->makeSale($this->branchId, [
+            'status' => 'paid', 'order_type' => 'takeaway', 'grand_total' => 850,
+            'business_date' => app(\App\Support\TenantClock::class)
+                ->currentBusinessDate(\App\Models\Tenant\Branch::on('tenant')->find($this->branchId)),
+        ]);
         $this->makeSaleLine($saleId, $product, ['product_name' => 'Chicken Biryani', 'quantity' => 2]);
 
         DB::setDefaultConnection(config('tenancy.master_connection', 'master'));

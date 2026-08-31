@@ -215,34 +215,61 @@ class RestaurantTableSessionController extends Controller
         app(\App\Services\Edge\BranchOperatingModeService::class)
             ->assertSaleMutationAllowed(\App\Models\Tenant\Branch::findOrFail($restaurantTableSession->branch_id));
 
-        if (in_array($restaurantTableSession->status, ['closed', 'cancelled'])) {
-            return back()->withErrors(['session' => 'Session is already closed or cancelled.']);
-        }
-
         $closeType     = $request->input('status', 'closed');
         $sessionStatus = $closeType === 'cancelled' ? 'cancelled' : 'closed';
 
-        $openSales = $restaurantTableSession->salesOrders()
-            ->whereIn('status', ['draft', 'held'])
-            ->exists();
+        // TABLE-CLOSE-EMPTY-1 — decide under a LOCK, not on a stale read.
+        //
+        // The POS board can now offer Close on a session that carries nothing, but that button was
+        // drawn when the board last rendered. Between the render and the click, another counter can
+        // punch an order onto the same table — and the old code read the orders outside any lock, so
+        // two requests could both see "nothing here" and a live check could be closed out from under
+        // the counter working on it.
+        //
+        // The session row is locked first, then its status and its orders are read again inside that
+        // lock. A punch arriving at the same moment serialises behind it and is seen.
+        $failure = DB::connection('tenant')->transaction(function () use ($restaurantTableSession, $sessionStatus) {
+            $session = RestaurantTableSession::whereKey($restaurantTableSession->id)
+                ->lockForUpdate()
+                ->first();
 
-        if ($openSales) {
-            return back()->withErrors([
-                'session' => 'Cancel or complete every open order through POS before closing this table session.',
+            if (! $session || in_array($session->status, ['closed', 'cancelled'], true)) {
+                return 'This table session is already closed or cancelled.';
+            }
+
+            // Re-read INSIDE the lock. This is the check the button depends on.
+            $openSales = SalesOrder::where('restaurant_table_session_id', $session->id)
+                ->whereIn('status', ['draft', 'held'])
+                ->lockForUpdate()
+                ->exists();
+
+            if ($openSales) {
+                return 'This table has an open order now. Cancel or complete it through POS before closing.';
+            }
+
+            $session->update([
+                'status'            => $sessionStatus,
+                'closed_by_user_id' => Auth::id(),
+                'closed_at'         => now(),
             ]);
-        }
+            $session->table?->update(['status' => 'available']);
 
-        $restaurantTableSession->update([
-            'status'            => $sessionStatus,
-            'closed_by_user_id' => Auth::id(),
-            'closed_at'         => now(),
-        ]);
-
-        $restaurantTableSession->table->update(['status' => 'available']);
+            return null;
+        });
 
         $msg = $sessionStatus === 'cancelled' ? 'Session cancelled.' : 'Session closed as paid.';
 
-        return redirect(url('/restaurant/board'))->with('status', $msg);
+        // The POS board calls this with fetch(); a redirect would look like success to it and the
+        // cashier would watch the table stay occupied with no reason given.
+        if ($request->expectsJson()) {
+            return $failure
+                ? response()->json(['ok' => false, 'message' => $failure], 422)
+                : response()->json(['ok' => true, 'message' => $msg]);
+        }
+
+        return $failure
+            ? back()->withErrors(['session' => $failure])
+            : redirect(url('/restaurant/board'))->with('status', $msg);
     }
 
     public function show(RestaurantTableSession $restaurantTableSession)

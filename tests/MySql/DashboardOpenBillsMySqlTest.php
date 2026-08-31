@@ -66,9 +66,16 @@ class DashboardOpenBillsMySqlTest extends MySqlTenantTestCase
 
     private function sale(string $status, float $total, float $discount = 0, float $tax = 0): int
     {
+        // Stamp the BUSINESS date, exactly as the POS does. The fixture writes sale_date as UTC now
+        // and leaves business_date null, so between midnight in the shop's timezone and midnight UTC
+        // the dashboard's window (the branch's business day) and DATE(sale_date) fall on different
+        // days and this test silently stopped seeing its own sales. Production never has that
+        // problem because business_date is always written; neither should the test.
         $id = $this->makeSale($this->branchId, [
             'status' => $status, 'order_type' => 'takeaway',
             'grand_total' => $total, 'discount_amount' => $discount, 'tax_amount' => $tax,
+            'business_date' => app(\App\Support\TenantClock::class)
+                ->currentBusinessDate(\App\Models\Tenant\Branch::on('tenant')->find($this->branchId)),
         ]);
         $this->makeSaleLine($id, $this->productId, ['quantity' => 1]);
 
