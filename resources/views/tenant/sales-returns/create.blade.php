@@ -363,8 +363,79 @@
             title: 'Post this sales return?',
             html: 'Returned stock goes back into the branch.' + (refund > 0 ? '<br>Refund: <strong>' + refund.toFixed(2) + '</strong>' : '<br>No refund recorded.'),
             icon: 'question', showCancelButton: true, confirmButtonText: 'Post Return',
-        }).then(function (res) { if (res.isConfirmed) { f.dataset.confirmed = '1'; f.submit(); } });
+        }).then(function (res) {
+            if (! res.isConfirmed) { return; }
+            {{-- RETURN-MANAGER-APPROVAL-1: ask for the PIN only where the branch asks for it. This
+                 modal is a convenience, NOT the guard — the controller refuses an unapproved return
+                 whether or not this ever ran. --}}
+            @if($needsManagerApproval)
+                askManagerPin(f, refund);
+            @else
+                f.dataset.confirmed = '1'; f.submit();
+            @endif
+        });
     });
+
+    @if($needsManagerApproval)
+    /** The same verify endpoint the POS uses for cancellations, with its own action type. */
+    function askManagerPin(form, refund) {
+        Swal.fire({
+            title: 'Manager approval',
+            html: 'This branch needs a manager to approve a return.'
+                + (refund > 0 ? '<br>Refund: <strong>' + refund.toFixed(2) + '</strong>' : '')
+                + '<input id="return-manager-pin" type="password" inputmode="numeric" autocomplete="off"'
+                + ' class="swal2-input" placeholder="Manager PIN">',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Approve & post',
+            focusConfirm: false,
+            didOpen: function () { document.getElementById('return-manager-pin').focus(); },
+            preConfirm: function () {
+                var pin = document.getElementById('return-manager-pin').value;
+                if (! pin) { Swal.showValidationMessage('Enter the manager PIN'); return false; }
+
+                return fetch('{{ url('/api/manager-approvals/verify') }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        pin: pin,
+                        action_type: 'sales_return',
+                        // The figure the manager is reading as they type the PIN. The server binds
+                        // the approval to it, and SalesReturnService independently refuses any
+                        // amount that does not match what the chosen lines actually come to.
+                        payload: {
+                            sales_order_id: {{ (int) $salesOrder->id }},
+                            branch_id: {{ (int) $salesOrder->branch_id }},
+                            refund_method: document.getElementById('refund_method').value,
+                            refund_amount: Math.round(refund * 100) / 100,
+                        },
+                    }),
+                }).then(function (r) {
+                    return r.json().then(function (d) {
+                        if (! r.ok) { throw new Error(d.message || 'Approval failed'); }
+                        return d;
+                    });
+                }).catch(function (e) {
+                    Swal.showValidationMessage(e.message || 'Approval failed');
+                    return false;
+                });
+            },
+        }).then(function (res) {
+            if (! res.isConfirmed || ! res.value || ! res.value.approval_id) { return; }
+            var hidden = document.createElement('input');
+            hidden.type = 'hidden';
+            hidden.name = 'manager_approval_id';
+            hidden.value = res.value.approval_id;
+            form.appendChild(hidden);
+            form.dataset.confirmed = '1';
+            form.submit();
+        });
+    }
+    @endif
 
     recalc();
 })();
