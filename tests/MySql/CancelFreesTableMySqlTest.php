@@ -37,8 +37,14 @@ class CancelFreesTableMySqlTest extends MySqlTenantTestCase
             'print_jobs', 'kot_batch_lines', 'kot_batches', 'sales_order_line_cancellations',
             'void_reasons', 'sales_order_lines', 'sales_orders', 'restaurant_table_sessions',
             'restaurant_tables', 'restaurant_floors', 'category_printer_mappings', 'printers',
-            'products', 'categories', 'terminals', 'role_has_permissions', 'model_has_permissions', 'model_has_roles', 'permissions', 'roles', 'branches', 'users',
+            'products', 'categories', 'terminals', 'model_has_permissions', 'model_has_roles',
+            'branches', 'users',
         ]);
+        // `permissions`, `roles` and `role_has_permissions` are NOT truncated. Those rows come from a
+        // tenant MIGRATION, so wiping them destroys data no later test can restore — this test used
+        // to clear them and quietly stripped the catering permission set out from under
+        // CateringEntitlementMySqlTest (it expects 30+, found 7). Only the per-user assignment rows
+        // above are ours to clean.
 
         $this->userId = $this->makeUser(['employee_code' => 'CF' . Str::random(4)]);
         $user = User::on('tenant')->find($this->userId);
