@@ -55,7 +55,12 @@
                             {{ $isSelectedSession ? 'Selected / Continue' : 'Continue Table' }}
                         </button>
                         @can('tenant.restaurant.table-sessions.bill-preview')
-                            <button type="button" class="btn btn-sm btn-dark w-100 mb-1"
+                            {{-- HIDDEN by the owner's request (31 Aug): the Table Workspace card was
+                                 crowded and this duplicates the Bill / Preview available once the
+                                 table is continued. Hidden in the UI ONLY — the permission is
+                                 deliberately left in place, so nobody's access was changed and this
+                                 comes back by deleting the d-none below. --}}
+                            <button type="button" class="btn btn-sm btn-dark w-100 mb-1 d-none"
                                     data-table-bill-preview="{{ $session->id }}">Bill Preview</button>
                         @endcan
                         @php $firstHeld = $session->salesOrders->where('status', 'held')->first(); @endphp
