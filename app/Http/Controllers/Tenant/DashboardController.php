@@ -128,6 +128,31 @@ class DashboardController extends Controller
             ->whereDate('expiry_date', '<=', now()->addDays(30))
             ->count();
 
+        // DASHBOARD-OPEN-BILLS-1 — the money still sitting on the tables.
+        //
+        // Every tile above counts PAID work only, so a busy service is invisible until the bills are
+        // settled: on 31 Aug Kashif Food showed Rs 82,795 while another Rs 47,235 sat on 23 open
+        // checks — 36% of the day, nowhere on the page.
+        //
+        // These figures are EXPECTED, never earned. A held bill still changes: items get added or
+        // cancelled, a discount lands, the total is rounded. So they are shown as their own small
+        // line under the tile and are NEVER added into the tile's own number — that number has to
+        // keep matching the Report Center and the day's closing.
+        //
+        // Cash and Card get NO such line, deliberately. A held bill has no payment row at all (0 of
+        // them today), because the customer has not chosen a method yet — splitting the open total
+        // into cash and card would be an invention, not a forecast.
+        //
+        // Same business-date window and same user scope as the tiles, or the two numbers would not
+        // be comparable.
+        $openBills = $applyToday(SalesOrder::query()
+            ->whereIn('status', ['held', 'draft'])
+            ->when($selectedBranch, fn ($q) => $q->where('branch_id', $selectedBranch))
+            ->tap(fn ($q) => $scope->applyToSales($q, $scopeUser)))
+            ->selectRaw('COUNT(*) as orders, COALESCE(SUM(grand_total), 0) as amount,
+                         COALESCE(SUM(discount_amount), 0) as discount, COALESCE(SUM(tax_amount), 0) as tax')
+            ->first();
+
         // DASHBOARD-DETAILS-1: the two bottom cards read the whole branch — what sells, and how
         // each day of the week compared. Both are computed ONLY for a role that may see them.
         // The blade's @can alone would not be enough: the queries would still run, and "hidden"
@@ -186,7 +211,7 @@ class DashboardController extends Controller
         return view('tenant.dashboard', compact(
             'branches', 'selectedBranch', 'today',
             'cashToday', 'cardToday', 'openShifts', 'failedPrints',
-            'lowStockCount', 'expiryCount', 'topProducts', 'last7Days',
+            'lowStockCount', 'expiryCount', 'topProducts', 'last7Days', 'openBills',
             'cateringCalendar', 'cateringKpis', 'cateringNextSeven'
         ));
     }

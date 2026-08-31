@@ -52,6 +52,22 @@
             @include('tenant.partials.catering-calendar')
         @endif
 
+        {{-- DASHBOARD-OPEN-BILLS-1 — one line, four tiles.
+             Every tile counts PAID work, so a busy service is invisible until the bills settle.
+             This adds the still-open held/draft figure UNDER the tile, never inside it: the tile's
+             own number must keep matching the Report Center and the day's closing.
+             It is EXPECTED, not earned — a held bill still changes — so it says so, and it only
+             appears when something is actually open.
+             Cash and Card get no such line: a held bill has no payment row, because the method is
+             chosen at payment time. Splitting the open total into cash and card would be invented. --}}
+        @php
+            $openCount  = (int) ($openBills->orders ?? 0);
+            $openLine = function ($amount, $label = null) use ($openCount) {
+                if ($openCount < 1 || (float) $amount <= 0) { return null; }
+                return ['amount' => (float) $amount, 'label' => $label];
+            };
+        @endphp
+
         {{-- Today KPI cards --}}
         <div class="row g-3 mb-4">
             <div class="col-xl-2 col-md-4 col-sm-6">
@@ -70,6 +86,14 @@
                                 − returns {{ number_format($today['returns_amount'], 2) }}
                             </div>
                         @endif
+                        @if($openLine($openBills->amount ?? 0))
+                            <div class="small text-warning mt-1">
+                                + {{ number_format((float) $openBills->amount, 2) }} still open
+                            </div>
+                            <div class="small text-muted">
+                                expected {{ number_format($today['net_sales'] + (float) $openBills->amount, 2) }}
+                            </div>
+                        @endif
                     </div>
                 </div>
             </div>
@@ -82,6 +106,10 @@
                             <span class="text-muted small">Orders Today</span>
                         </div>
                         <h4 class="mb-0 fw-bold">{{ number_format($today['order_count']) }}</h4>
+                        @if($openCount > 0)
+                            <div class="small text-warning mt-1">+ {{ number_format($openCount) }} still open</div>
+                            <div class="small text-muted">expected {{ number_format($today['order_count'] + $openCount) }}</div>
+                        @endif
                     </div>
                 </div>
             </div>
@@ -130,6 +158,11 @@
                             <span class="text-muted small">Discounts Today</span>
                         </div>
                         <h4 class="mb-0 fw-bold">{{ number_format($today['total_discount'], 2) }}</h4>
+                        @if($openLine($openBills->discount ?? 0))
+                            <div class="small text-warning mt-1">
+                                + {{ number_format((float) $openBills->discount, 2) }} still open
+                            </div>
+                        @endif
                     </div>
                 </div>
             </div>
@@ -157,6 +190,11 @@
                 <div class="card border-0 shadow-sm"><div class="card-body">
                     <span class="text-muted small">Tax Collected</span>
                     <h5 class="mt-1 mb-0">{{ number_format($today['total_tax'], 2) }}</h5>
+                    @if($openLine($openBills->tax ?? 0))
+                        <div class="small text-warning mt-1">
+                            + {{ number_format((float) $openBills->tax, 2) }} still open
+                        </div>
+                    @endif
                 </div></div>
             </div>
             <div class="col-md-3 col-sm-6">
