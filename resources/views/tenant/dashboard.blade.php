@@ -173,7 +173,11 @@
             </div>
         </div>
 
-        {{-- Bottom row: Top Products + 7-day sales --}}
+        {{-- Bottom row: Top Products + 7-day sales.
+             DASHBOARD-DETAILS-1: both cards read the whole branch, so a counter operator does not
+             get them. The controller already returns empty collections without the permission —
+             this gate is what removes the empty cards from the page. --}}
+        @can('tenant.dashboard.details')
         <div class="row g-3">
             <div class="col-lg-5">
                 <div class="card border-0 shadow-sm h-100">
@@ -241,5 +245,6 @@
                 </div>
             </div>
         </div>
+        @endcan
 
 @endsection

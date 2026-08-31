@@ -128,33 +128,45 @@ class DashboardController extends Controller
             ->whereDate('expiry_date', '<=', now()->addDays(30))
             ->count();
 
+        // DASHBOARD-DETAILS-1: the two bottom cards read the whole branch — what sells, and how
+        // each day of the week compared. Both are computed ONLY for a role that may see them.
+        // The blade's @can alone would not be enough: the queries would still run, and "hidden"
+        // would mean rendered-then-dropped rather than never fetched.
+        $maySeeDetails = (bool) auth('tenant')->user()?->can('tenant.dashboard.details');
+
         // Top 5 products today
-        $topProducts = $applyToday(SalesOrderLine::query()
-            ->join('sales_orders', 'sales_order_lines.sales_order_id', '=', 'sales_orders.id')
-            ->where('sales_orders.status', 'paid')
-            ->when($selectedBranch, fn ($q) => $q->where('sales_orders.branch_id', $selectedBranch))
-            ->tap(fn ($q) => $scope->applyToSales($q, $scopeUser, 'sales_orders')))
-            ->selectRaw('sales_order_lines.product_name, SUM(sales_order_lines.quantity) as qty_sold, SUM(sales_order_lines.line_total) as revenue')
-            ->groupBy('sales_order_lines.product_name')
-            ->orderByDesc('qty_sold')
-            ->limit(5)
-            ->get();
+        $topProducts = collect();
+        if ($maySeeDetails) {
+            $topProducts = $applyToday(SalesOrderLine::query()
+                ->join('sales_orders', 'sales_order_lines.sales_order_id', '=', 'sales_orders.id')
+                ->where('sales_orders.status', 'paid')
+                ->when($selectedBranch, fn ($q) => $q->where('sales_orders.branch_id', $selectedBranch))
+                ->tap(fn ($q) => $scope->applyToSales($q, $scopeUser, 'sales_orders')))
+                ->selectRaw('sales_order_lines.product_name, SUM(sales_order_lines.quantity) as qty_sold, SUM(sales_order_lines.line_total) as revenue')
+                ->groupBy('sales_order_lines.product_name')
+                ->orderByDesc('qty_sold')
+                ->limit(5)
+                ->get();
+        }
 
         // Last 7 business days net sales (window anchored to the current business date, not UTC now)
         $businessDayNoPrefix = 'COALESCE(business_date, DATE(sale_date))';
         $windowStart = \Illuminate\Support\Carbon::parse(
             $clock->currentBusinessDate($selectedBranch ? \App\Models\Tenant\Branch::find($selectedBranch) : null)
         )->subDays(6)->toDateString();
-        $last7Days = SalesOrder::query()
-            ->where('status', 'paid')
-            ->when($selectedBranch, fn ($q) => $q->where('branch_id', $selectedBranch))
-            ->tap(fn ($q) => $scope->applyToSales($q, $scopeUser))
-            ->whereRaw("$businessDayNoPrefix >= ?", [$windowStart])
-            ->selectRaw("$businessDayNoPrefix as day, COALESCE(SUM(grand_total), 0) as net_sales, COUNT(*) as orders")
-            ->groupByRaw($businessDayNoPrefix)
-            ->orderBy('day')
-            ->get()
-            ->keyBy('day');
+        $last7Days = collect();
+        if ($maySeeDetails) {
+            $last7Days = SalesOrder::query()
+                ->where('status', 'paid')
+                ->when($selectedBranch, fn ($q) => $q->where('branch_id', $selectedBranch))
+                ->tap(fn ($q) => $scope->applyToSales($q, $scopeUser))
+                ->whereRaw("$businessDayNoPrefix >= ?", [$windowStart])
+                ->selectRaw("$businessDayNoPrefix as day, COALESCE(SUM(grand_total), 0) as net_sales, COUNT(*) as orders")
+                ->groupByRaw($businessDayNoPrefix)
+                ->orderBy('day')
+                ->get()
+                ->keyBy('day');
+        }
 
         // KASHIF-CATERING-CALENDAR-1 — the booking diary, for catering tenants only.
         //
