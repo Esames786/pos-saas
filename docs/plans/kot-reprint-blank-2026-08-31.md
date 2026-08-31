@@ -1,9 +1,13 @@
 # KOT-REPRINT-BLANK-1 — bill badalne ke baad purana KOT khali chhapta hai
 
-**Status:** RESEARCH — masla **local par dobara paida kar ke sabit** ho chuka. Fix abhi nahi kiya.
+**Status:** ✅ **FIX LIVE — `007e07f` (31 Aug)**
 **Date:** 2026-08-31
-**Live par aaj tak asar:** **0 waqiat** (Kashif Food + Khatri, dono par koi khali parchi nahi gayi)
-**Proof:** `tests/MySql/KotSplitAndReprintWalkthroughMySqlTest.php` — chala kar dekhi ja sakti hai
+**Live par asar tha:** **0 waqiat** (kisi kitchen ko khali parchi nahi gayi — har reprint bill
+badalne se pehle hua tha)
+**Proof:** `KotReprintBlankMySqlTest` (5/5, guard sabit-shuda) + `KotSplitAndReprintWalkthroughMySqlTest`
+**Tasdeeq:** prod par order 465 ke chhe ke chhe tickets ab poore items, quantity aur deal ke naam ke
+saath reprint hote hain. Regression 468/468.
+**Tasveer:** https://claude.ai/code/artifact/6c2911bc-392c-4fba-96b9-cabe5952b288 (pehle/baad)
 
 ---
 
