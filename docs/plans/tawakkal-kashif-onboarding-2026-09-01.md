@@ -452,6 +452,58 @@ So **Chicken Biryani (reg) = the 280 line**, **Singaporean Rice (reg) = the 500 
 
 ---
 
+## 7b. Printing — everything at the operator's own counter, no reminders
+
+**Owner's decision:** every KOT and every receipt prints at the counter the operator is standing at.
+**No reminder slips at all on this tenant.**
+
+### Two printers, and no category rules
+
+| | |
+|---|---|
+| `KF-P-T1` | The Kashif Foods counter · `print_role = both` · `supports_reminder = 0` · default |
+| `TB-P-T2` | Tawakkal Biryani counter · `print_role = both` · `supports_reminder = 0` |
+
+```
+terminal_printer_settings
+  T1  →  receipt = KF-P-T1   kot = KF-P-T1   auto_print_receipt = 1   auto_print_kot = 1
+  T2  →  receipt = TB-P-T2   kot = TB-P-T2   auto_print_receipt = 1   auto_print_kot = 1
+
+category_printer_mappings                    ← ZERO rows, deliberately
+```
+
+**Why zero category rules is the right answer, not a shortcut.** `PrintRoutingService` resolves each
+line in this order:
+
+```
+category mapping (terminal-aware)  →  terminal's KOT printer  →  branch default  →  browser
+```
+
+With no category rules, every line falls through to **the terminal's own KOT printer** — which is
+precisely "print at the counter I am standing at". It is also self-maintaining: a category added
+next month needs no mapping and cannot silently print in the wrong place. (For contrast, Kashif
+Food carries 49 KOT rules because it splits work across a BBQ and a Fastfood station; here there is
+nothing to split.)
+
+### How reminders are switched off
+
+A reminder fires only when **both** are true: a `category_printer_mappings` row with
+`print_role = 'reminder'`, **and** a printer whose `supports_reminder = 1`. Neither will exist, and
+`PrintRoutingService` states in its own comment that the reminder path has *"deliberately no default
+printer or browser fallback"*. So no reminder can print — there is no fallback to leak through.
+
+This is a data decision, not a code change, and it is reversible: set `supports_reminder` and add
+reminder rules the day the client wants them.
+
+### Consequence for the two platter questions
+
+Both the **Classic Platter** and **Singaporean Rice Khas** print in full at the counter, because
+there is no second station to route parts to. So the open question about whether Khas should be a
+combo (§10) is now purely a reporting/KOT-wording question, not a routing one — nothing is
+mis-routed either way.
+
+---
+
 ## 8. Onboarding completeness checklist
 
 Built from an actual table-by-table inventory of the live Kashif Food tenant, so nothing is
@@ -487,9 +539,9 @@ carried by memory. Every row is either **provided automatically**, **seeded by t
 | 8 | Categories | 12 total — 7 branch 1, 3 branch 2, 2 shared (`branch_id = NULL`) |
 | 9 | Products | 70, all service-based, SKU prefixed `KF-` / `TB-` / `CC-` |
 | 10 | Combos + components | 6 deals + Classic Platter = 7, bound to branch 1 |
-| 11 | Printers | **pending — owner will send** |
-| 12 | `category_printer_mappings` | **pending — depends on 11** |
-| 13 | `terminal_printer_settings` | **pending — depends on 11** |
+| 11 | Printers | 2 — one per counter, `print_role = both`, `supports_reminder = 0` (IPs pending) |
+| 12 | `category_printer_mappings` | **none** — every line falls through to the terminal's own printer (§7b) |
+| 13 | `terminal_printer_settings` | T1 → KF printer, T2 → TB printer; auto-print receipt + KOT both on |
 | 14 | Roles | 2 operator roles, cloned row-for-row from #348's live Dine In |
 | 15 | Users | 2 operators + Owner; `branch_user`, `terminal_user`, `allowed_order_types` |
 | 16 | `manager_pins` | 2 rows, **two different PINs** |
@@ -517,9 +569,12 @@ carried by memory. Every row is either **provided automatically**, **seeded by t
 
 ## 10. Still needed from the owner
 
-**One item: printers.** How many, where they sit, and which category prints at which station.
-Everything else is decided and buildable without them — and because KOT routing keys on the
-**category**, adding the printers later is a mapping exercise, not a rebuild.
+**One item: the two printers' LAN IP addresses.** Nothing else is outstanding — the printing
+*design* is settled (§7b), only the hardware addresses are missing, and they are a single field on
+each printer row that the client fills in on site. The system will not guess a LAN address: a
+printer with no IP simply has nothing to send to.
+
+Everything else is decided, and the seeder can be written and tested today.
 
 ### Settled since the first draft
 
@@ -528,11 +583,11 @@ Everything else is decided and buildable without them — and because KOT routin
 | Deals 7+ | **There are none** — the full card is confirmed, Deal 6 is the last |
 | Classic Platter | **A combo**, not a product — components mapped in §7, two hidden fillers created |
 | The 17 restaurant permissions | **Kept**, all 76 cloned verbatim |
+| Printers and routing | **One per counter; every KOT and receipt prints there; no reminders** (§7b) |
 
-### The one thing left inside the catalogue
+### One small catalogue question, no longer urgent
 
-**Singaporean Rice Khas (1550 / 2500).** The card gives it no contents, so it is seeded as two
-plain products. On the existing Kashif Food tenant a dish of that name is a *platter* whose BBQ
-parts print at the grill — if that is true here too, it becomes a combo like the Classic Platter.
-This only matters once a branch has more than one printer, so it can be answered together with the
-printer layout.
+**Singaporean Rice Khas (1550 / 2500).** The card gives it no contents, so it is seeded as two plain
+products. On the existing Kashif Food tenant a dish of that name is a *platter*. With a single
+printer per counter this **cannot mis-route anything** — it only changes how the KOT words the
+ticket and how the item reports. Worth confirming eventually; nothing waits on it.
