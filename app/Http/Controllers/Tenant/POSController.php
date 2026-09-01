@@ -826,7 +826,8 @@ class POSController extends Controller
         $allowedTypes = auth("tenant")->user()?->effectiveAllowedOrderTypes() ?? [];
         $filterType = (string) $request->input('order_type', '');
 
-        $sales = SalesOrder::with(['customer', 'deliveryRider', 'branch', 'shift', 'restaurantWaiter', 'restaurantTable'])
+        $sales = SalesOrder::with(['customer', 'deliveryChannel', 'deliveryRider', 'branch', 'shift',
+                                   'restaurantWaiter', 'restaurantTable'])
             ->where('status', '!=', 'held')
             ->whereNotNull('sale_no')
             ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
@@ -854,7 +855,11 @@ class POSController extends Controller
                 'status'         => $s->status,
                 'payment_status' => $s->payment_status,
                 'customer'       => $s->customer_name ?: $s->customer?->name ?: 'Walk-in',
-                'rider'          => $s->order_type === 'delivery' ? ($s->deliveryRider?->name ?? 'Unassigned') : null,
+                // Both lists render order meta through one JS helper, so both must feed it the
+                // same keys: which channel took the order, and who is carrying it.
+                'delivery_channel'      => $s->deliveryChannel?->name,
+                'delivery_channel_type' => $s->deliveryChannel?->type,
+                'delivery_rider'        => $s->deliveryRider?->name,
                 // Waiter (quick-sale + dine-in), vehicle (quick-sale), table (dine-in) for the list.
                 'waiter'         => $s->restaurantWaiter?->name,
                 'vehicle_number' => $s->vehicle_number,

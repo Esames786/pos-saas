@@ -4817,12 +4817,25 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    // Compact sub-line for the Held/Recent lists: whichever of table / waiter / vehicle applies.
+    // Compact sub-line for the Held/Recent lists: whichever of table / waiter / vehicle applies,
+    // plus — on a delivery order — the channel that took it and the rider carrying it. An
+    // aggregator (Foodpanda) sends its own rider, so no rider is expected or shown there;
+    // an own-delivery order with nobody attached yet says so, because the counter needs to know.
     function posOrderMeta(s) {
         var bits = [];
         if (s.table) bits.push('<i class="ti ti-armchair-2 me-1"></i>Table ' + escapeHtml(s.table));
         if (s.waiter) bits.push('<i class="ti ti-user me-1"></i>' + escapeHtml(s.waiter));
         if (s.vehicle_number) bits.push('<i class="ti ti-car me-1"></i>' + escapeHtml(s.vehicle_number));
+        if (s.delivery_channel) {
+            bits.push('<i class="ti ti-truck-delivery me-1"></i>' + escapeHtml(s.delivery_channel));
+        }
+        if (s.order_type === 'delivery' && s.delivery_channel_type !== 'aggregator') {
+            bits.push(s.delivery_rider
+                ? '<i class="ti ti-motorbike me-1"></i>' + escapeHtml(s.delivery_rider)
+                : '<i class="ti ti-motorbike me-1"></i><span class="text-warning-emphasis">Unassigned</span>');
+        } else if (s.delivery_rider) {
+            bits.push('<i class="ti ti-motorbike me-1"></i>' + escapeHtml(s.delivery_rider));
+        }
         return bits.length ? '<div class="text-muted small">' + bits.join(' · ') + '</div>' : '';
     }
 
@@ -5502,9 +5515,8 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             const rows = sales.map(function (s) {
                 var printStatus = '';
-                var riderStatus = s.order_type === 'delivery'
-                    ? '<div class="small text-muted mt-1"><i class="ti ti-motorbike me-1"></i>' + escapeHtml(s.rider || 'Unassigned') + '</div>'
-                    : '';
+                // The rider now rides in posOrderMeta() alongside the channel, so it is not
+                // rendered twice here — one helper, one truth, for both lists.
                 var orderAction = s.order_type === 'delivery'
                     ? '<a href="{{ url('/sales-orders') }}/' + Number(s.id) + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="View or change rider"><i class="ti ti-motorbike me-1"></i>Rider</a>'
                     : '<a href="{{ url('/sales-orders') }}/' + Number(s.id) + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="View order"><i class="ti ti-eye"></i></a>';
@@ -5513,7 +5525,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
                 return '<tr>' +
                     '<td><strong>' + escapeHtml(s.sale_no) + '</strong><div class="text-muted small">' + escapeHtml(s.time || s.ago || '') + '</div>' + printStatus + '</td>' +
-                    '<td>' + escapeHtml(s.customer || 'Walk-in') + '<div class="text-muted small text-capitalize">' + escapeHtml(String(s.order_type || '').replace(/_/g, ' ')) + '</div>' + posOrderMeta(s) + riderStatus + '</td>' +
+                    '<td>' + escapeHtml(s.customer || 'Walk-in') + '<div class="text-muted small text-capitalize">' + escapeHtml(String(s.order_type || '').replace(/_/g, ' ')) + '</div>' + posOrderMeta(s) + '</td>' +
                     '<td class="text-end fw-semibold">' + escapeHtml(s.total) + '</td>' +
                     '<td class="text-end text-nowrap">' +
                         '<button type="button" class="btn btn-sm btn-outline-primary me-1" data-reprint-receipt="' + Number(s.id) + '"><i class="ti ti-printer me-1"></i>Receipt</button>' +

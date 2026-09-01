@@ -54,7 +54,8 @@ class HeldSaleController extends Controller
         $allowedTypes = auth("tenant")->user()?->effectiveAllowedOrderTypes() ?? [];
         $filterType = (string) $request->input('order_type', '');
 
-        $sales = SalesOrder::with(['customer', 'lines', 'restaurantWaiter', 'restaurantTable'])
+        $sales = SalesOrder::with(['customer', 'lines', 'restaurantWaiter', 'restaurantTable',
+                                   'deliveryChannel', 'deliveryRider'])
             ->where('status', 'held')
             ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
             ->when($allowedTypes, fn ($q) => $q->whereIn('order_type', $allowedTypes))
@@ -77,6 +78,11 @@ class HeldSaleController extends Controller
                 'restaurant_table_id'         => $s->restaurant_table_id,
                 'delivery_channel_id'         => $s->delivery_channel_id,
                 'delivery_rider_id'           => $s->delivery_rider_id,
+                // List display: which channel took the order, and who is carrying it. An
+                // aggregator carries its own — the rider column stays empty there on purpose.
+                'delivery_channel'            => $s->deliveryChannel?->name,
+                'delivery_channel_type'       => $s->deliveryChannel?->type,
+                'delivery_rider'              => $s->deliveryRider?->name,
                 'delivery_address'            => $s->delivery_address,
                 'delivery_charge_amount'      => (float) $s->delivery_charge_amount,
                 'vehicle_number'              => $s->vehicle_number,
