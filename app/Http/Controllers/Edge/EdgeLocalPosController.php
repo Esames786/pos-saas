@@ -5,7 +5,11 @@ namespace App\Http\Controllers\Edge;
 use App\Exceptions\ShiftException;
 use App\Http\Controllers\Controller;
 use App\Models\Tenant\Branch;
+use App\Models\Tenant\Category;
+use App\Models\Tenant\Combo;
 use App\Models\Tenant\PaymentMethod;
+use App\Models\Tenant\Product;
+use App\Models\Tenant\RestaurantWaiter;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\Shift;
 use App\Models\Tenant\Terminal;
@@ -13,6 +17,8 @@ use App\Services\Edge\EdgeBranchContext;
 use App\Services\Edge\EdgeLocalPosService;
 use App\Services\Edge\EdgeOperationalBaselineService;
 use App\Services\Sales\ShiftService;
+use App\Services\Security\UserDataScope;
+use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use RuntimeException;
@@ -40,6 +46,101 @@ class EdgeLocalPosController extends Controller
         private readonly EdgeOperationalBaselineService $baselines,
         private readonly \App\Services\Edge\EdgeTableReservationService $reservations,
     ) {
+    }
+
+    /**
+     * EDGE-CASHIER-UI-1 — render the Branch-Server browser cashier POS.
+     *
+     * Serves the SAME operator experience as the current Online POS (the locked functional spec) but
+     * every mutation the page issues targets the Edge-local JSON APIs (edge.local.pos.*), never a Cloud
+     * posting/finance/inventory controller. The view-model is assembled from the bound branch only, using
+     * the tenant connection; it is the Edge analogue of Tenant\POSController@index (default terminal,
+     * terminal-switch authority, order types, category/deal tabs, grid products, cash payment methods,
+     * waiters) so Online→Offline does not feel like a different product. No Vite/build assets — the page
+     * is self-contained so it renders on the appliance with no Internet.
+     */
+    public function screen(Request $request): View
+    {
+        $meta = $this->context->requireCurrent();
+        $branchId = (int) $meta->branch_id;
+        $branch = Branch::on('tenant')->findOrFail($branchId);
+        $user = auth('tenant')->user();
+
+        // DEFAULT-TERMINAL + TERMINAL-SWITCH-AUTH parity: a pinned operator (no change-terminal permission)
+        // is offered ONLY his assigned terminal; the page auto-selects the default rather than "first seen".
+        $canChangeTerminal = (bool) $user?->can(UserDataScope::CHANGE_TERMINAL_PERMISSION);
+        $defaultTerminalId = $user?->default_terminal_id ? (int) $user->default_terminal_id : null;
+        $terminals = Terminal::on('tenant')->where('branch_id', $branchId)->where('status', 'active')
+            ->orderBy('name')->get(['id', 'code', 'name'])
+            ->when(! $canChangeTerminal && $defaultTerminalId,
+                fn ($list) => $list->where('id', $defaultTerminalId)->values());
+
+        // Order types: the user's effective set intersected with what Edge can execute offline. All four
+        // canonical types can be presented; the sale/held authority refuses anything unsupported.
+        $allowedOrderTypes = $user?->effectiveAllowedOrderTypes() ?? array_keys(\App\Models\Tenant\User::ORDER_TYPES);
+        $orderTypes = array_values(array_intersect(array_keys(\App\Models\Tenant\User::ORDER_TYPES), $allowedOrderTypes));
+        $defaultOrderType = $user?->effectiveDefaultOrderType() ?? ($orderTypes[0] ?? 'quick_sale');
+        if (! in_array($defaultOrderType, $orderTypes, true)) {
+            $defaultOrderType = $orderTypes[0] ?? 'quick_sale';
+        }
+
+        // Grid products: sellable, POS-visible, active — the same visibility truth the Online grid uses
+        // (per-tile availability/variants/modifiers land in a later milestone; the SALE re-validates stock).
+        $products = Product::on('tenant')
+            ->where('status', 'active')->where('is_sellable', true)->where('is_pos_visible', true)
+            ->orderBy('sort_order')->orderBy('name')
+            ->get(['id', 'name', 'category_id', 'default_selling_price'])
+            ->map(fn (Product $p) => [
+                'id' => (int) $p->id,
+                'name' => $p->name,
+                'category_id' => $p->category_id ? (int) $p->category_id : null,
+                'price' => (float) $p->default_selling_price,
+            ])->values();
+
+        // DEAL POS TABS parity: combos are display-only tabs; a deal with a header product + components
+        // sells as one line. Category on the combo picks the tab (null = the legacy flat "Deals" pill).
+        $combos = Combo::on('tenant')->with('components:id,combo_id,product_id')
+            ->where('status', 'active')
+            ->where(fn ($q) => $q->whereNull('branch_id')->orWhere('branch_id', $branchId))
+            ->orderBy('sort_order')->orderBy('name')
+            ->get()
+            ->map(fn (Combo $c) => [
+                'id' => (int) $c->id,
+                'category_id' => $c->category_id ? (int) $c->category_id : null,
+                'name' => $c->name,
+                'price' => (float) $c->price,
+                'component_count' => $c->components->count(),
+            ])
+            ->filter(fn ($c) => $c['component_count'] > 0)
+            ->values();
+
+        $categories = Category::on('tenant')->with('children:id,parent_id,name,sort_order')
+            ->whereNull('parent_id')->where('is_active', true)
+            ->orderBy('sort_order')->orderBy('name')
+            ->get(['id', 'parent_id', 'name', 'sort_order']);
+
+        $waiters = RestaurantWaiter::on('tenant')
+            ->where(fn ($q) => $q->whereNull('branch_id')->orWhere('branch_id', $branchId))
+            ->where('status', 'active')->orderBy('name')->get(['id', 'name']);
+
+        return view('edge.pos.index', [
+            'branchId' => $branchId,
+            'branchName' => $branch->name,
+            'userName' => $user?->name,
+            'terminals' => $terminals->values(),
+            'defaultTerminalId' => $defaultTerminalId,
+            'canChangeTerminal' => $canChangeTerminal,
+            'orderTypes' => $orderTypes,
+            'defaultOrderType' => $defaultOrderType,
+            'orderTypeLabels' => \App\Models\Tenant\User::ORDER_TYPES,
+            'categories' => $categories,
+            'products' => $products,
+            'combos' => $combos,
+            'waiters' => $waiters,
+            'paymentMethods' => PaymentMethod::on('tenant')->where('is_active', true)
+                ->where('method_type', 'cash')->orderBy('name')->get(['id', 'code', 'name']),
+            'operationalStockReady' => $this->baselines->currentAccepted() !== null,
+        ]);
     }
 
     /** ONLINE-POS PARITY — Preview Bill: the running bill on the same sale truth, ZERO mutation. */

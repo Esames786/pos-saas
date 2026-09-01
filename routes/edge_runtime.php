@@ -34,6 +34,8 @@ Route::prefix('edge/local')->name('edge.local.')->group(function () {
     // on a branch_server (this file is not loaded on Cloud), and every name is on the explicit allowlist.
     // Cash quick_sale/takeaway only; the service refuses everything else. activation_ready stays false.
     Route::prefix('pos')->name('pos.')->middleware(['edge.auth', 'edge.branch'])->group(function () {
+        // EDGE-CASHIER-UI-1 — the browser cashier POS page itself (the Online operator surface, Edge-executed).
+        Route::get('/', [EdgeLocalPosController::class, 'screen'])->name('screen');
         Route::get('/terminals', [EdgeLocalPosController::class, 'terminals'])->name('terminals');
         Route::post('/terminal/select', [EdgeLocalPosController::class, 'selectTerminal'])->name('terminal.select');
         Route::get('/shift', [EdgeLocalPosController::class, 'shiftStatus'])->name('shift.status');

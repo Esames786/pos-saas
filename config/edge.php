@@ -127,6 +127,7 @@ return [
         'edge.local.auth.logout',
         'edge.local.auth.status',
         // EDGE-LOCAL-POS-1 — the branch-local POS surface (each name deliberate; edge.auth + edge.branch).
+        'edge.local.pos.screen',
         'edge.local.pos.terminals',
         'edge.local.pos.terminal.select',
         'edge.local.pos.shift.status',
