@@ -238,27 +238,25 @@ Settings — and **anything ending `.destroy` or `.delete`**.
 >    difference were all `.destroy`, which onboarding never grants. Inserting the family in the name
 >    of a "restore" would have granted 12 new permissions.
 
-### 5.4 The one thing to decide
+### 5.4 The 17 restaurant permissions — SETTLED: keep them
 
-The 76 include **17 `tenant.restaurant.*`** permissions. They are inert — `allowed_order_types`
-is `[quick_sale, takeaway]`, and `POSController` aborts 403 on any table session for a user not
-allowed dine-in — but the **Restaurant menu will appear in the sidebar** with Tables / Floors /
-Waiters screens for a business that seats nobody.
+The 76 include 17 `tenant.restaurant.*` permissions. **Owner's decision: leave them in** — all 76
+are cloned verbatim, exact parity with the reference.
 
-**Recommendation: clone all 76 verbatim** (exact parity with the reference, which is what was
-asked), and if the owner then wants the Restaurant menu gone, remove those 17 in a **separate,
-reversible step** — exactly how Kashif Food's own hides were done, so the change is visible and
-undoable. One word from the owner either way.
+They are inert in practice: `allowed_order_types` is `[quick_sale, takeaway]`, and `POSController`
+aborts 403 on any table session for a user not allowed dine-in. The only visible effect is a
+Restaurant entry in the sidebar for a business that seats nobody, which the owner is content with.
+Removing them later is a separate, reversible step if that ever changes.
 
 ---
 
 ## 6. The catalogue
 
-69 products, 6 combos. Prices transcribed verbatim from the cards. Every product is
+70 products, 7 combos. Prices transcribed verbatim from the cards. Every product is
 **service-based** — `is_stock_tracked = 0`, consumption `none` — because there is no inventory
 module, so nothing touches stock balances or stock GL accounts.
 
-### 6.1 The Kashif Foods — 45 items · SKU prefix `KF-`
+### 6.1 The Kashif Foods — 46 items · SKU prefix `KF-`
 
 **Singaporean Rice** (5)
 
@@ -326,9 +324,19 @@ module, so nothing touches stock balances or stock GL accounts.
 | Beef Boti Chatni Roll | 240 |
 | Beef Boti Mayo Garlic Roll | 270 |
 
-**Classic Platter** (1) — **2300**, "3 to 4 persons"
-Printed contents: Tikka chest, Shashlik stick, Malai boti, Shahi Chattekh, Reshmi kabab,
-Seekh kabab and Rice.
+**Combo-only components** (2, hidden — `is_pos_visible = 0`)
+
+| Item | Category | Why |
+|---|---|---|
+| Shashlik Stick | BBQ | named in the Classic Platter, sold nowhere on its own |
+| Platter Rice | Chicken Biryani | the platter's rice is unnamed on the card |
+
+These exist so the Classic Platter combo (§7) can name what it contains and each part reaches the
+right station — routing follows the category, so they land correctly the moment printers exist.
+They are **not inventory items**: the stock modules are off and every product is service-based, so
+a hidden filler cannot turn into something to count.
+
+*(The Classic Platter itself is **not** a product — it is a combo. See §7.)*
 
 ### 6.2 Tawakkal Biryani — 20 items · SKU prefix `TB-`
 
@@ -387,9 +395,14 @@ Category seeded with `branch_id = NULL` → visible at both counters.
 
 ---
 
-## 7. Deals — The Kashif Foods only (6 combos)
+## 7. Combos — The Kashif Foods only (6 deals + the Classic Platter = 7)
 
 Combos carry `branch_id` natively, so these bind to branch 1 with no code change.
+**The deals card is complete at Deal 6** — the full page is confirmed; there is no Deal 7.
+
+A combo needs **no product of its own**: the `combo_header` line rides on its first component's
+`product_id` and displays the combo's name. That is precisely why a deal used to report under
+another product's name until `REPORT-DEAL-IDENTITY-1` (`03f0d99`) grouped on `combo_id` as well.
 
 | Deal | Price | Components |
 |---|---|---|
@@ -399,6 +412,27 @@ Combos carry `branch_id` natively, so these bind to branch 1 with no code change
 | Deal 4 | 810 | Singaporean Rice + Chicken Mayo Garlic Roll + Soft Drink 500 ml |
 | Deal 5 | 840 | Chicken Biryani + Singaporean Rice + Soft Drink 500 ml |
 | Deal 6 | 950 | Singaporean Rice + Chicken Tikka (Leg) + Soft Drink 500 ml |
+
+### Classic Platter — 2300, "3 to 4 persons" (combo, owner-confirmed)
+
+The card's wording mapped to real menu items:
+
+| Card says | Component product | On the card? |
+|---|---|---|
+| Tikka chest | Chicken Tikka (Chest) | ✅ 450 |
+| Shashlik stick | **Shashlik Stick** | ❌ hidden combo-only product |
+| Malai boti | Chicken Malai Boti | ✅ 550 |
+| Shahi Chattekh | Chicken Shahi Chatakh | ✅ 580 |
+| Reshmi kabab | Chicken Reshmi Kabab | ✅ 500 |
+| Seekh kabab | Beef Seekh Kabab | ✅ 500 — the only seekh kabab on the card |
+| Rice | **Platter Rice** | ❌ hidden combo-only product |
+
+> **These are platter portions, not à-la-carte plates.** The five named items alone come to 2,580
+> against a platter price of 2,300, so the components are clearly smaller servings. This costs
+> nothing financially — a combo's components carry 0.00 and all the money sits on the header — and
+> the kitchen is covered too: since `COMBO-KOT-DEAL-NAME-1` (`cf096ad`) a KOT prints the deal's name
+> beside each component, so the grill reads **"Chicken Tikka (Chest) — Classic Platter"** and knows
+> it is a platter portion, not a full plate.
 
 **The arithmetic confirms what "(reg)" and "Drink 500ml" mean** — no guessing was needed:
 
@@ -451,8 +485,8 @@ carried by memory. Every row is either **provided automatically**, **seeded by t
 | 6 | Unit | `EA` (Each) |
 | 7 | Terminals | `T1` (branch 1), `T2` (branch 2); every other terminal set inactive |
 | 8 | Categories | 12 total — 7 branch 1, 3 branch 2, 2 shared (`branch_id = NULL`) |
-| 9 | Products | 69, all service-based, SKU prefixed `KF-` / `TB-` / `CC-` |
-| 10 | Combos + components | 6 deals bound to branch 1 |
+| 9 | Products | 70, all service-based, SKU prefixed `KF-` / `TB-` / `CC-` |
+| 10 | Combos + components | 6 deals + Classic Platter = 7, bound to branch 1 |
 | 11 | Printers | **pending — owner will send** |
 | 12 | `category_printer_mappings` | **pending — depends on 11** |
 | 13 | `terminal_printer_settings` | **pending — depends on 11** |
@@ -483,9 +517,22 @@ carried by memory. Every row is either **provided automatically**, **seeded by t
 
 ## 10. Still needed from the owner
 
-1. **Printers** — how many, where, and which categories print at which station.
-2. **Deals 7+** — the deals image is cut off below Deal 6; if more exist, that part of the card.
-3. **Classic Platter (2300) and Singaporean Rice Khas (1550 / 2500)** — plain dishes, or platters
-   whose BBQ parts must reach a BBQ printer? Only matters once there is more than one printer per
-   branch; until then both are plain products. "Shashlik stick" is not otherwise on the card.
-4. **The 17 restaurant permissions** — keep for exact parity (recommended) or drop the sidebar menu.
+**One item: printers.** How many, where they sit, and which category prints at which station.
+Everything else is decided and buildable without them — and because KOT routing keys on the
+**category**, adding the printers later is a mapping exercise, not a rebuild.
+
+### Settled since the first draft
+
+| Was open | Now |
+|---|---|
+| Deals 7+ | **There are none** — the full card is confirmed, Deal 6 is the last |
+| Classic Platter | **A combo**, not a product — components mapped in §7, two hidden fillers created |
+| The 17 restaurant permissions | **Kept**, all 76 cloned verbatim |
+
+### The one thing left inside the catalogue
+
+**Singaporean Rice Khas (1550 / 2500).** The card gives it no contents, so it is seeded as two
+plain products. On the existing Kashif Food tenant a dish of that name is a *platter* whose BBQ
+parts print at the grill — if that is true here too, it becomes a combo like the Classic Platter.
+This only matters once a branch has more than one printer, so it can be answered together with the
+printer layout.
