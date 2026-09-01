@@ -107,7 +107,16 @@ class SalesReportService
             ->join('sales_orders', 'sales_order_lines.sales_order_id', '=', 'sales_orders.id')
             ->leftJoin('products', 'sales_order_lines.product_id', '=', 'products.id')
             ->leftJoin('categories', 'products.category_id', '=', 'categories.id')
-            ->where('sales_orders.status', 'paid')
+            // LEGACY-REPORTS-POPULATION-1 — two faults lived on this one line, and they hid each
+            // other: `paid` alone dropped every returned bill (money short), while nothing
+            // excluded a combo's component lines, so a deal counted its parts as separate sales
+            // (quantity over). At Kashif Food that read as 1,615 items sold for 808,120 where the
+            // Report Center said 1,325 for 816,250 — more things sold, for less money.
+            ->whereIn('sales_orders.status', SalesReportEngine::POPULATION)
+            // REPORT-DEAL-COMPONENTS-1, restated here: a deal's parts are not separate sales. All
+            // the money sits on the combo_header, so excluding them changes quantity, never value.
+            ->where(fn ($q) => $q->where('sales_order_lines.line_kind', '!=', 'component')
+                ->orWhereNull('sales_order_lines.line_kind'))
             ->when($branchIds, fn ($q) => $q->whereIn('sales_orders.branch_id', $branchIds))
             ->when(!empty($filters['date_from']),    fn ($q) => $q->whereRaw($this->businessDayExpr('sales_orders.') . ' >= ?', [$filters['date_from']]))
             ->when(!empty($filters['date_to']),      fn ($q) => $q->whereRaw($this->businessDayExpr('sales_orders.') . ' <= ?', [$filters['date_to']]))
@@ -144,7 +153,12 @@ class SalesReportService
         return SalePayment::query()
             ->join('sales_orders',    'sale_payments.sales_order_id',    '=', 'sales_orders.id')
             ->join('payment_methods', 'sale_payments.payment_method_id', '=', 'payment_methods.id')
-            ->where('sales_orders.status', 'paid')
+            // LEGACY-REPORTS-POPULATION-1 — this report answers "what came in at the counter", and
+            // money taken on a bill that was later returned still came in. `paid` alone hid
+            // 116,650 of it at Khatri. The refund is a document of its own and belongs on its own
+            // line, exactly as the Report Center's cash & bank section treats it — so the
+            // population widens here and nothing is netted off.
+            ->whereIn('sales_orders.status', SalesReportEngine::POPULATION)
             ->when($branchIds, fn ($q) => $q->whereIn('sales_orders.branch_id', $branchIds))
             ->when(!empty($filters['date_from']),   fn ($q) => $q->whereRaw($this->businessDayExpr('sales_orders.') . ' >= ?', [$filters['date_from']]))
             ->when(!empty($filters['date_to']),     fn ($q) => $q->whereRaw($this->businessDayExpr('sales_orders.') . ' <= ?', [$filters['date_to']]))
@@ -307,7 +321,13 @@ class SalesReportService
         $branchIds = $this->resolveBranchIds($filters);
 
         return SalesOrder::query()
-            ->where('sales_orders.status', 'paid')
+            // LEGACY-REPORTS-POPULATION-1 — feeds BOTH /reports/sales/channels and /riders, so this
+            // single line decided a rider's tally and an aggregator's commission. `paid` alone hid
+            // 44 delivery orders worth 63,610 at Khatri, carrying 9,076 of delivery charges that
+            // were never refunded — the same shape as the 22,500-vs-22,850 incident recorded on
+            // baseSalesQuery below, forty-four times over. Commission rises with the population,
+            // and that higher figure is the correct one.
+            ->whereIn('sales_orders.status', SalesReportEngine::POPULATION)
             ->where('sales_orders.order_type', 'delivery')
             ->when($branchIds, fn ($q) => $q->whereIn('sales_orders.branch_id', $branchIds))
             ->when(!empty($filters['date_from']), fn ($q) => $q->whereRaw($this->businessDayExpr('sales_orders.') . ' >= ?', [$filters['date_from']]))
