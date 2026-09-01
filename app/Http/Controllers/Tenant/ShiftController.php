@@ -179,9 +179,26 @@ class ShiftController extends Controller
     {
         abort_if($shift->status !== 'open', 404);
 
+        $shift->load(['branch', 'terminal']);
+
+        // HIDE-AMOUNTS-1 — see closeBranchForm(). Stripped on the model, not hidden in the Blade,
+        // because this screen also pre-fills and data-attributes the expected cash.
+        $maySeeAmounts = app(\App\Support\AmountVisibility::class)->allows(
+            auth('tenant')->user(), $shift->branch
+        );
+
+        if (! $maySeeAmounts) {
+            foreach (['expected_cash', 'total_sales', 'total_cash', 'total_card',
+                      'total_bank_transfer', 'total_cheque', 'total_discount',
+                      'total_refunds', 'total_tax', 'opening_cash'] as $field) {
+                $shift->setAttribute($field, null);
+            }
+        }
+
         return view('tenant.shifts.close', [
-            'shift'    => $shift->load(['branch', 'terminal']),
-            'currency' => Currency::where('is_default', true)->with('denominations')->first(),
+            'shift'         => $shift,
+            'currency'      => Currency::where('is_default', true)->with('denominations')->first(),
+            'maySeeAmounts' => $maySeeAmounts,
         ]);
     }
 
@@ -294,8 +311,38 @@ class ShiftController extends Controller
             ->selectRaw('o.shift_id, COUNT(*) as lines_count, COALESCE(SUM(c.quantity), 0) as units')
             ->groupBy('o.shift_id')->get()->keyBy('shift_id') : collect();
 
+        // HIDE-AMOUNTS-1: decided here, once, and the figures are STRIPPED from the models before
+        // they reach the view. A Blade-level @if would not be enough on this screen: the Counted
+        // input is pre-filled with the expected cash and carries data-expected for the live
+        // difference, so the number the operator is meant to verify would still be sitting in the
+        // page — in the very box they type into, and one View Source away.
+        $maySeeAmounts = app(\App\Support\AmountVisibility::class)->allows(
+            $user,
+            $selectedBranchId ? Branch::find($selectedBranchId) : null
+        );
+
+        if (! $maySeeAmounts) {
+            $openShifts = $openShifts->map(function ($shift) {
+                foreach (['expected_cash', 'total_sales', 'total_cash', 'total_card',
+                          'total_bank_transfer', 'total_cheque', 'total_discount',
+                          'total_refunds', 'total_tax', 'opening_cash'] as $field) {
+                    $shift->setAttribute($field, null);
+                }
+
+                return $shift;
+            });
+            // The cancellation COUNTS stay (an operator should know a bill was thrown away);
+            // their amounts do not.
+            $cancelledOrders = $cancelledOrders->map(function ($row) {
+                $row->amount = null;
+
+                return $row;
+            });
+        }
+
         return view('tenant.shifts.close-branch', compact(
-            'branches', 'selectedBranchId', 'openShifts', 'cancelledOrders', 'voidedLines'
+            'branches', 'selectedBranchId', 'openShifts', 'cancelledOrders', 'voidedLines',
+            'maySeeAmounts'
         ));
     }
 
