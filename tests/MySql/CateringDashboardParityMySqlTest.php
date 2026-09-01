@@ -274,13 +274,18 @@ class CateringDashboardParityMySqlTest extends MySqlTenantTestCase
     {
         $a = $this->booking(now()->addDays(2)->toDateString());
 
-        try {
-            app(CateringBulkDocumentController::class)->kitchenSheets(
-                Request::create('/x', 'GET', ['ids' => [$a->id]])
-            );
-            $this->fail('a booking without a release has no kitchen sheet to print');
-        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
-            $this->assertSame(422, $e->getStatusCode());
-        }
+        $response = app(CateringBulkDocumentController::class)->kitchenSheets(
+            Request::create('/x', 'GET', ['ids' => [$a->id]])
+        );
+
+        // Still a refusal, and still 422 — a booking without a release has no
+        // kitchen sheet to print. KASHIF-KITCHEN-MATERIALS-1 only changed what
+        // the operator SEES: these pages open in a new tab, where an exception
+        // renders a framework error for a situation where nothing is wrong.
+        $this->assertSame(422, $response->getStatusCode());
+        $this->assertStringNotContainsString('KITCHEN / SERVICE SHEET', $response->getContent(),
+            'no sheet was invented from an unreleased booking');
+        $this->assertStringContainsString($a->event_no, $response->getContent(),
+            'and the booking that has none is named');
     }
 }

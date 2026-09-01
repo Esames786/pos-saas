@@ -216,6 +216,62 @@ class PrintRoutingFoundationTest extends TestCase
         $this->assertSame([$componentPrinter->id], collect($reminderRoutes)->pluck('printer.id')->all());
     }
 
+    /**
+     * RECALL-REPRINT-TERMINAL-1: a terminal override routes the COUNTER-category items + receipt to the
+     * given (current operator's) terminal, while station categories (Fastfood/BBQ wildcard rules) keep
+     * going to their station. Without the override, everything routes on the sale's own terminal.
+     */
+    public function test_terminal_override_moves_counter_items_and_receipt_but_not_stations(): void
+    {
+        $counterT2 = $this->printer('counter-t2');
+        $counterT3 = $this->printer('counter-t3');
+        $station   = $this->printer('fastfood');
+
+        // COUNTER category 20: terminal-pinned rules — T2 -> counterT2, T3 -> counterT3.
+        foreach ([[2, $counterT2], [3, $counterT3]] as [$tid, $p]) {
+            CategoryPrinterMapping::create([
+                'branch_id' => 10, 'terminal_id' => $tid, 'category_id' => 20, 'printer_id' => $p->id,
+                'print_role' => 'kot', 'order_type' => 'all', 'is_active' => true,
+            ]);
+        }
+        // STATION category 21: wildcard (any terminal) -> Fastfood.
+        CategoryPrinterMapping::create([
+            'branch_id' => 10, 'terminal_id' => null, 'category_id' => 21, 'printer_id' => $station->id,
+            'print_role' => 'kot', 'order_type' => 'all', 'is_active' => true,
+        ]);
+        DB::connection('tenant')->table('terminal_printer_settings')->insert([
+            ['terminal_id' => 2, 'receipt_printer_id' => $counterT2->id, 'kot_printer_id' => null],
+            ['terminal_id' => 3, 'receipt_printer_id' => $counterT3->id, 'kot_printer_id' => null],
+        ]);
+
+        $makeLine = function (int $catId, int $lineId) {
+            $product = new Product(['category_id' => $catId]);
+            $product->id = 30 + $catId;
+            $line = new SalesOrderLine(['quantity' => 2, 'kot_sent_quantity' => 0]);
+            $line->id = $lineId;
+            $line->setRelation('product', $product);
+
+            return $line;
+        };
+        $sale = new SalesOrder(['branch_id' => 10, 'order_type' => 'dine_in', 'terminal_id' => 3]);
+        $sale->setRelation('lines', new Collection([$makeLine(20, 1), $makeLine(21, 2)]));
+
+        $svc = app(PrintRoutingService::class);
+        $sorted = fn ($routes) => collect($routes)->pluck('printer.id')->sort()->values()->all();
+        $exp = fn (array $ids) => collect($ids)->sort()->values()->all();
+
+        // WITHOUT override: counter -> T3's printer, station -> Fastfood; receipt -> T3.
+        $this->assertSame($exp([$counterT3->id, $station->id]), $sorted($svc->kotRoutesForSale($sale)));
+        $this->assertSame($counterT3->id, $svc->receiptPrinter($sale)->id);
+
+        // WITH override to T2: counter -> T2's printer, station STILL Fastfood; receipt -> T2.
+        $this->assertSame($exp([$counterT2->id, $station->id]), $sorted($svc->kotRoutesForSale($sale, [], false, 2)));
+        $this->assertSame($counterT2->id, $svc->receiptPrinter($sale, 2)->id);
+
+        // The sale row is NEVER re-stamped — attribution stays with terminal 3.
+        $this->assertSame(3, (int) $sale->terminal_id);
+    }
+
     private function printer(string $suffix): Printer
     {
         return Printer::create([

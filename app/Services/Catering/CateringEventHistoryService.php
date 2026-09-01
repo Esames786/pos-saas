@@ -137,6 +137,160 @@ class CateringEventHistoryService
         'venue' => 'Venue', 'pax' => 'PAX', 'branch_id' => 'Branch',
     ];
 
+    private const CHARGE_LABELS = [
+        'service_charge_amount' => 'Service charges',
+        'other_charge_label' => 'Other charge name',
+        'other_charge_amount' => 'Other charges',
+        'discount_type' => 'Discount type',
+        'discount_value' => 'Discount value',
+        'tax_amount' => 'Tax',
+        'terms' => 'Terms',
+    ];
+
+    /**
+     * The same diff as change_summary, but shaped for human scanning. Header
+     * and charge changes stay separate from item rows; every changed row owns
+     * its own list, so the UI never has to parse a punctuation-heavy sentence.
+     *
+     * @return array{event: array<int, array<string, mixed>>, charges: array<int, array<string, mixed>>, rows: array<int, array<string, mixed>>}
+     */
+    public function structuredDiff(array $old, array $new): array
+    {
+        $groups = ['event' => [], 'charges' => [], 'rows' => []];
+
+        foreach (self::HEADER_LABELS as $key => $label) {
+            $before = $old['header'][$key] ?? null;
+            $after = $new['header'][$key] ?? null;
+            if ($before != $after) {
+                $groups['event'][] = $this->change($label, $before, $after);
+            }
+        }
+
+        foreach (self::CHARGE_LABELS as $key => $label) {
+            $before = $old['charges'][$key] ?? null;
+            $after = $new['charges'][$key] ?? null;
+            if ($before != $after) {
+                $groups['charges'][] = $this->change($label, $before, $after);
+            }
+        }
+
+        $oldLines = array_values($old['lines'] ?? []);
+        $newLines = array_values($new['lines'] ?? []);
+        $count = max(count($oldLines), count($newLines));
+
+        for ($index = 0; $index < $count; $index++) {
+            $before = $oldLines[$index] ?? null;
+            $after = $newLines[$index] ?? null;
+
+            if ($before === null && $after !== null) {
+                $groups['rows'][] = [
+                    'row' => $index + 1,
+                    'item' => $after['item_name'] ?? 'Item',
+                    'kind' => 'added',
+                    'changes' => [
+                        $this->change('Item', null, $after['item_name'] ?? null),
+                        $this->change('Quantity', null, $this->quantityWithUnit($after)),
+                        $this->change('Customer rate', null, $this->q($after['rate'] ?? 0)),
+                    ],
+                ];
+
+                continue;
+            }
+
+            if ($before !== null && $after === null) {
+                $groups['rows'][] = [
+                    'row' => $index + 1,
+                    'item' => $before['item_name'] ?? 'Item',
+                    'kind' => 'removed',
+                    'changes' => [$this->change('Item', $before['item_name'] ?? null, null)],
+                ];
+
+                continue;
+            }
+
+            if ($before === null || $after === null) {
+                continue;
+            }
+
+            $changes = [];
+            foreach ([
+                'item_name' => 'Item name',
+                'item_name_ur' => 'Urdu name',
+                'unit_code' => 'Unit',
+                'instructions' => 'Instructions',
+            ] as $key => $label) {
+                if (($before[$key] ?? null) != ($after[$key] ?? null)) {
+                    $changes[] = $this->change($label, $before[$key] ?? null, $after[$key] ?? null);
+                }
+            }
+            if ((float) ($before['quantity'] ?? 0) !== (float) ($after['quantity'] ?? 0)) {
+                $changes[] = $this->change('Quantity', $this->quantityWithUnit($before), $this->quantityWithUnit($after));
+            }
+            if ((float) ($before['rate'] ?? 0) !== (float) ($after['rate'] ?? 0)) {
+                $changes[] = $this->change('Customer rate', $this->q($before['rate'] ?? 0), $this->q($after['rate'] ?? 0));
+            }
+
+            $beforeBlocks = collect($before['blocks'] ?? [])->keyBy('label');
+            $afterBlocks = collect($after['blocks'] ?? [])->keyBy('label');
+            foreach ($beforeBlocks->keys()->merge($afterBlocks->keys())->unique() as $label) {
+                $oldBlock = $beforeBlocks->get($label);
+                $newBlock = $afterBlocks->get($label);
+                if ($oldBlock === null || $newBlock === null) {
+                    $changes[] = $this->change('Material: '.$label, $oldBlock ? 'Present' : null, $newBlock ? 'Present' : null);
+                    continue;
+                }
+                if (($oldBlock['event_material_qty'] ?? null) != ($newBlock['event_material_qty'] ?? null)) {
+                    $changes[] = $this->change($label.' kitchen quantity', $this->q($oldBlock['event_material_qty'] ?? 0), $this->q($newBlock['event_material_qty'] ?? 0));
+                }
+                if (($oldBlock['is_customer_supplied'] ?? false) !== ($newBlock['is_customer_supplied'] ?? false)) {
+                    $changes[] = $this->change($label.' supplied by',
+                        ($oldBlock['is_customer_supplied'] ?? false) ? 'Customer' : 'Us',
+                        ($newBlock['is_customer_supplied'] ?? false) ? 'Customer' : 'Us');
+                }
+                if (($oldBlock['customer_supplied_qty'] ?? null) != ($newBlock['customer_supplied_qty'] ?? null)) {
+                    $changes[] = $this->change($label.' customer quantity', $this->q($oldBlock['customer_supplied_qty'] ?? 0), $this->q($newBlock['customer_supplied_qty'] ?? 0));
+                }
+            }
+
+            if ($changes !== []) {
+                $groups['rows'][] = [
+                    'row' => $index + 1,
+                    'item' => $after['item_name'] ?? $before['item_name'] ?? 'Item',
+                    'kind' => 'changed',
+                    'changes' => $changes,
+                ];
+            }
+        }
+
+        return $groups;
+    }
+
+    private function change(string $label, mixed $before, mixed $after): array
+    {
+        return [
+            'label' => $label,
+            'before' => $this->displayValue($before),
+            'after' => $this->displayValue($after),
+        ];
+    }
+
+    private function displayValue(mixed $value): string
+    {
+        if ($value === null || $value === '') {
+            return '—';
+        }
+        if (is_bool($value)) {
+            return $value ? 'Yes' : 'No';
+        }
+
+        return (string) $value;
+    }
+
+    private function quantityWithUnit(array $line): string
+    {
+        return trim($this->q($line['quantity'] ?? 0).' '.($line['unit_code'] ?? ''));
+    }
+
     public function diffSummary(array $old, array $new): string
     {
         $parts = [];

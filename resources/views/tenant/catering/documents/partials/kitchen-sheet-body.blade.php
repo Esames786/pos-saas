@@ -73,6 +73,14 @@
                             <div class="item-ur ur">{{ $line->item_name_ur }}</div>
                         @endif
                     @endif
+
+                    {{-- KASHIF-KITCHEN-MATERIALS-1: what this dish takes and who
+                         brings it, in the same words the customer's quotation
+                         uses. Read from the release SNAPSHOT — releases frozen
+                         before this existed carry nothing and print as before. --}}
+                    @include('tenant.catering.documents.partials.line-materials', [
+                        'materials' => $line->materials_snapshot ?? [],
+                    ])
                 </td>
                 <td class="instructions">{{ $line->instructions }}</td>
                 <td style="text-align:center; font-size: 18px;">☐</td>

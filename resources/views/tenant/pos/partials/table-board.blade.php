@@ -55,9 +55,31 @@
                             {{ $isSelectedSession ? 'Selected / Continue' : 'Continue Table' }}
                         </button>
                         @can('tenant.restaurant.table-sessions.bill-preview')
-                            <button type="button" class="btn btn-sm btn-dark w-100 mb-1"
+                            {{-- HIDDEN by the owner's request (31 Aug): the Table Workspace card was
+                                 crowded and this duplicates the Bill / Preview available once the
+                                 table is continued. Hidden in the UI ONLY — the permission is
+                                 deliberately left in place, so nobody's access was changed and this
+                                 comes back by deleting the d-none below. --}}
+                            <button type="button" class="btn btn-sm btn-dark w-100 mb-1 d-none"
                                     data-table-bill-preview="{{ $session->id }}">Bill Preview</button>
                         @endcan
+                        {{-- TABLE-CLOSE-EMPTY-1 — free a table that was opened by mistake.
+                             A session with nothing on it had no way out of this screen: the card
+                             offers Continue and Move only, and the close action lives on the
+                             standalone restaurant board. So a cashier who opened the wrong table
+                             left it "Occupied" until someone went looking, or the branch closed —
+                             table 1 sat like that from 13:18 on 31 Aug.
+                             Only shown while the session carries NO order at all. The moment
+                             anything is punched this disappears, and the controller refuses a close
+                             over an open order regardless of what this template does. --}}
+                        @php $hasAnyOrder = $session->salesOrders->isNotEmpty(); @endphp
+                        @if(! $hasAnyOrder)
+                            @can('tenant.restaurant.table-sessions.close')
+                                <button type="button" class="btn btn-sm btn-outline-danger w-100 mb-1"
+                                        data-table-close="{{ $session->id }}"
+                                        data-table-no="{{ $table->table_no }}">Close Table</button>
+                            @endcan
+                        @endif
                         @php $firstHeld = $session->salesOrders->where('status', 'held')->first(); @endphp
                         @if($firstHeld)
                             @can('tenant.sales-orders.split-bill')

@@ -136,7 +136,12 @@ class CateringEstimateService
                     'catering_estimate_id' => $estimate->id,
                     'product_id' => $productId,
                     'item_name' => $line['item_name'],
-                    'item_name_ur' => $line['item_name_ur'] ?? null,
+                    // KASHIF-URDU-CARRY-1: a product that HAS an Urdu name must
+                    // carry it onto the line. 938 Urdu names sat in the product
+                    // book while every quotation, kitchen sheet and release
+                    // printed English only, because nothing ever copied them
+                    // across. Typed value wins; the product fills a blank.
+                    'item_name_ur' => ($line['item_name_ur'] ?? null) ?: $this->productUrduName($productId),
                     'quantity' => $quantity,
                     'unit_id' => $line['unit_id'] ?? null,
                     'unit_code' => $line['unit_code'] ?? null,
@@ -472,65 +477,87 @@ class CateringEstimateService
      */
     private function cloneAsNewDraft(CateringEstimate $source, int $nextVersion, ?int $userId): CateringEstimate
     {
-            $revision = CateringEstimate::create([
-                'catering_event_id' => $source->catering_event_id,
-                'version_no' => $nextVersion,
-                'status' => CateringEstimate::STATUS_DRAFT,
-                'subtotal' => $source->subtotal,
-                'service_charge_amount' => $source->service_charge_amount,
-                'other_charge_label' => $source->other_charge_label,
-                'other_charge_amount' => $source->other_charge_amount,
-                'discount_type' => $source->discount_type,
-                'discount_value' => $source->discount_value,
-                'discount_amount' => $source->discount_amount,
-                'tax_amount' => $source->tax_amount,
-                'grand_total' => $source->grand_total,
-                'terms' => $source->terms,
-                'notes' => $source->notes,
-                'created_by_user_id' => $userId,
+        $revision = CateringEstimate::create([
+            'catering_event_id' => $source->catering_event_id,
+            'version_no' => $nextVersion,
+            'status' => CateringEstimate::STATUS_DRAFT,
+            'subtotal' => $source->subtotal,
+            'service_charge_amount' => $source->service_charge_amount,
+            'other_charge_label' => $source->other_charge_label,
+            'other_charge_amount' => $source->other_charge_amount,
+            'discount_type' => $source->discount_type,
+            'discount_value' => $source->discount_value,
+            'discount_amount' => $source->discount_amount,
+            'tax_amount' => $source->tax_amount,
+            'grand_total' => $source->grand_total,
+            'terms' => $source->terms,
+            'notes' => $source->notes,
+            'created_by_user_id' => $userId,
+        ]);
+
+        foreach ($source->lines as $line) {
+            $copy = CateringEstimateLine::create([
+                'catering_estimate_id' => $revision->id,
+                'product_id' => $line->product_id,
+                'item_name' => $line->item_name,
+                'item_name_ur' => $line->item_name_ur,
+                'quantity' => $line->quantity,
+                'unit_id' => $line->unit_id,
+                'unit_code' => $line->unit_code,
+                'rate' => $line->rate,
+                // KASHIF-CATERING-LINE-SNAPSHOT-1: a revision is a copy of a
+                // quotation, so it has to carry HOW that quotation was
+                // priced. Without these the new version arrives with no
+                // breakdown, no agreed rate and no reason for it — the
+                // operator would have to reconstruct decisions from memory.
+                'calculated_rate' => $line->calculated_rate,
+                'rate_override_reason' => $line->rate_override_reason,
+                'amount' => $line->amount,
+                'lump_sum_amount' => $line->lump_sum_amount,
+                'instructions' => $line->instructions,
+                'estimated_unit_cost' => $line->estimated_unit_cost,
+                'estimated_cost_total' => $line->estimated_cost_total,
+                'sort_order' => $line->sort_order,
             ]);
 
-            foreach ($source->lines as $line) {
-                $copy = CateringEstimateLine::create([
-                    'catering_estimate_id' => $revision->id,
-                    'product_id' => $line->product_id,
-                    'item_name' => $line->item_name,
-                    'item_name_ur' => $line->item_name_ur,
-                    'quantity' => $line->quantity,
-                    'unit_id' => $line->unit_id,
-                    'unit_code' => $line->unit_code,
-                    'rate' => $line->rate,
-                    // KASHIF-CATERING-LINE-SNAPSHOT-1: a revision is a copy of a
-                    // quotation, so it has to carry HOW that quotation was
-                    // priced. Without these the new version arrives with no
-                    // breakdown, no agreed rate and no reason for it — the
-                    // operator would have to reconstruct decisions from memory.
-                    'calculated_rate' => $line->calculated_rate,
-                    'rate_override_reason' => $line->rate_override_reason,
-                    'amount' => $line->amount,
-                    'lump_sum_amount' => $line->lump_sum_amount,
-                    'instructions' => $line->instructions,
-                    'estimated_unit_cost' => $line->estimated_unit_cost,
-                    'estimated_cost_total' => $line->estimated_cost_total,
-                    'sort_order' => $line->sort_order,
-                ]);
-
-                // And the breakdown itself, block by block — including the
-                // quantity this event settled on and who was bringing it.
-                foreach ($line->costBlocks as $block) {
-                    $clone = $block->replicate(['catering_estimate_line_id']);
-                    $clone->catering_estimate_line_id = $copy->id;
-                    $clone->save();
-                }
-
-                // KASHIF-CATERING-INSTRUCTIONS-1: the kitchen selections are part
-                // of what was agreed, so the revision carries them too.
-                $copy->managedInstructions()->sync(
-                    $line->managedInstructions()->pluck('catering_instructions.id')->all()
-                );
+            // And the breakdown itself, block by block — including the
+            // quantity this event settled on and who was bringing it.
+            foreach ($line->costBlocks as $block) {
+                $clone = $block->replicate(['catering_estimate_line_id']);
+                $clone->catering_estimate_line_id = $copy->id;
+                $clone->save();
             }
 
-            return $revision;
+            // KASHIF-CATERING-INSTRUCTIONS-1: the kitchen selections are part
+            // of what was agreed, so the revision carries them too.
+            $copy->managedInstructions()->sync(
+                $line->managedInstructions()->pluck('catering_instructions.id')->all()
+            );
+        }
+
+        return $revision;
+    }
+
+    /**
+     * The product's own Urdu name, if the book holds one.
+     *
+     * Read once per product per request: a fifty-line quotation must not become
+     * fifty queries.
+     */
+    /** @var array<int, string|null> Read once per product, per request. */
+    private array $urduNameCache = [];
+
+    private function productUrduName(?int $productId): ?string
+    {
+        if (! $productId) {
+            return null;
+        }
+
+        return $this->urduNameCache[$productId] ??= DB::connection('tenant')
+            ->table('product_translations')
+            ->where('product_id', $productId)
+            ->where('language_code', 'ur')
+            ->value('name');
     }
 
     /** Totals block from a computed subtotal + submitted charge inputs. */

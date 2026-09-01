@@ -67,6 +67,25 @@
        happens in the bar, and every row shows the SAME compact breakdown. */
     .punch-mode #lines-table .cost-details-row,
     .punch-mode #lines-table [data-bs-target^="#cost-details-"] { display: none !important; }
+
+    /* History is a timeline of small facts, not a paragraph. */
+    .event-history-timeline { position: relative; padding-left: 1.4rem; }
+    .event-history-timeline::before {
+        content: ''; position: absolute; left: .42rem; top: .5rem; bottom: .5rem;
+        width: 2px; background: var(--bs-border-color);
+    }
+    .event-history-entry { position: relative; }
+    .event-history-entry::before {
+        content: ''; position: absolute; left: -1.35rem; top: 1.15rem;
+        width: 11px; height: 11px; border-radius: 50%;
+        background: var(--bs-primary); box-shadow: 0 0 0 4px var(--bs-body-bg);
+    }
+    .history-change-grid { display: grid; grid-template-columns: minmax(125px, .8fr) 1fr auto 1fr; gap: .25rem .55rem; }
+    .history-row-card { border-left: 3px solid var(--bs-primary); }
+    @media (max-width: 575.98px) {
+        .history-change-grid { grid-template-columns: 1fr; }
+        .history-change-arrow { display: none; }
+    }
 </style>
 @include('tenant.catering.partials.tooltips')
 @include('tenant.catering.partials.submit-guard')
@@ -169,7 +188,15 @@
 {{-- The impact header belongs INSIDE the content section and BELOW the page
      header. Placed above @section it rendered outside the layout body and sat
      underneath the fixed top nav. --}}
+<div class="d-flex justify-content-end mb-2">
+    <button class="btn btn-sm btn-light" type="button" data-bs-toggle="collapse"
+            data-bs-target="#event-operation-guide" aria-expanded="false" aria-controls="event-operation-guide">
+        <i class="ti ti-info-circle me-1"></i>Operation guide
+    </button>
+</div>
+<div class="collapse" id="event-operation-guide">
 @include("tenant.catering.partials.screen-impact", ["manages" => "One booking end to end — quotation, advances, production and the final invoice.", "managesUr" => "ایک بکنگ مکمل — تخمینہ، پیشگی، پیداوار اور حتمی بل۔", "finance" => "Recording an advance and issuing the final invoice both post to the general ledger", "stock" => "Only when materials are issued against a production release", "prints" => "Estimate and final invoice as A4, kitchen sheet to the printers", "reversible" => "partly", "note" => "While the estimate is a draft nothing at all is posted. Cancelling after an advance has been received does NOT refund it — the money stays on the ledger and becomes credit owed to the customer, settled by the separate Refund action.", "noteUr" => "ڈرافٹ کی حالت میں کچھ پوسٹ نہیں ہوتا۔ پیشگی رقم کے بعد منسوخی سے رقم خود بخود واپس نہیں ہوتی — وہ گاہک کا کریڈٹ بن جاتی ہے اور ریفنڈ کے ذریعے واپس کی جاتی ہے۔"])
+</div>
 
 @if(session('status'))
     <div class="alert alert-success">{{ session('status') }}</div>
@@ -207,7 +234,22 @@
     @endif
 @endif
 
-<div class="row g-3 mb-3">
+<div class="card mb-2" id="event-booking-summary">
+    <button class="card-header bg-body border-0 d-flex align-items-center justify-content-between gap-3 text-start"
+            type="button" data-bs-toggle="collapse" data-bs-target="#event-booking-details"
+            aria-expanded="false" aria-controls="event-booking-details">
+        <span class="d-flex align-items-center flex-wrap gap-2">
+            <strong><i class="ti ti-user me-1"></i>{{ $event->customer_name }}</strong>
+            @if($event->customer_phone)<span class="text-muted">{{ $event->customer_phone }}</span>@endif
+            <span class="badge bg-light text-dark border"><i class="ti ti-calendar me-1"></i>{{ $event->event_date->format('d M Y') }}</span>
+            <span class="badge bg-light text-dark border"><i class="ti ti-clock me-1"></i>{{ $event->service_time ? \Carbon\Carbon::parse($event->service_time)->format('g:i A') : '—' }}</span>
+            <span class="badge bg-light text-dark border"><i class="ti ti-map-pin me-1"></i>{{ $event->venue ?? '—' }}</span>
+            <span class="badge bg-light text-dark border">{{ number_format($event->pax) }} PAX</span>
+        </span>
+        <span class="text-muted text-nowrap fs-12">Details <i class="ti ti-chevron-down ms-1"></i></span>
+    </button>
+</div>
+<div class="row g-3 mb-2 collapse" id="event-booking-details">
     <div class="col-lg-6">
         <div class="card h-100">
             <div class="card-header"><h5 class="mb-0">Customer</h5></div>
@@ -1268,7 +1310,7 @@
     $revisions = $revisions ?? collect();
     $historyClock = app(\App\Support\TenantClock::class);
 @endphp
-<div class="offcanvas offcanvas-end" tabindex="-1" id="eventHistoryOffcanvas" style="width:min(640px,95vw)">
+<div class="offcanvas offcanvas-end" tabindex="-1" id="eventHistoryOffcanvas" style="width:min(920px,98vw)">
     <div class="offcanvas-header border-bottom">
         <h5 class="offcanvas-title"><i class="ti ti-history me-1"></i>History — {{ $event->event_no }}</h5>
         <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
@@ -1279,19 +1321,65 @@
                 No remembered states yet — history starts with the next save on this booking.
             </div>
         @else
-            <div class="list-group list-group-flush">
+            <div class="event-history-timeline">
                 @foreach($revisions as $i => $rev)
-                    <div class="list-group-item px-0">
+                    @php
+                        $groups = $rev->change_groups ?? ['event' => [], 'charges' => [], 'rows' => []];
+                        $hasStructuredChanges = !empty($groups['event']) || !empty($groups['charges']) || !empty($groups['rows']);
+                    @endphp
+                    <article class="event-history-entry card mb-3 shadow-sm">
+                        <div class="card-body py-3">
                         <div class="d-flex justify-content-between align-items-start gap-2">
-                            <strong class="fs-14">{{ \App\Services\Catering\CateringEventHistoryService::ACTIONS[$rev->action] ?? ucfirst(str_replace('_', ' ', $rev->action)) }}</strong>
-                            <span class="text-muted fs-12 text-nowrap">{{ $historyClock->format($rev->changed_at, 'd M Y g:i A') }}</span>
+                            <div>
+                                <strong class="fs-14">{{ \App\Services\Catering\CateringEventHistoryService::ACTIONS[$rev->action] ?? ucfirst(str_replace('_', ' ', $rev->action)) }}</strong>
+                                @if($rev->changedBy)<span class="fs-12 text-muted ms-1">by {{ $rev->changedBy->name }}</span>@endif
+                            </div>
+                            <time class="text-muted fs-12 text-nowrap">{{ $historyClock->format($rev->changed_at, 'd M Y g:i A') }}</time>
                         </div>
-                        @if($rev->change_summary)
+
+                        @if(! $hasStructuredChanges && $rev->change_summary)
                             <div class="fs-13 mt-1">{{ $rev->change_summary }}</div>
                         @endif
-                        @if($rev->changedBy)
-                            <div class="fs-12 text-muted">by {{ $rev->changedBy->name }}</div>
+
+                        @if(!empty($groups['event']) || !empty($groups['charges']))
+                            <section class="mt-3">
+                                <div class="text-uppercase fw-semibold text-muted fs-12 mb-2"><i class="ti ti-calendar-event me-1"></i>Event & quotation</div>
+                                <div class="history-change-grid fs-13">
+                                    @foreach(array_merge($groups['event'], $groups['charges']) as $change)
+                                        <strong>{{ $change['label'] }}</strong>
+                                        <span class="text-muted text-break">{{ $change['before'] }}</span>
+                                        <i class="ti ti-arrow-right history-change-arrow text-primary"></i>
+                                        <span class="fw-semibold text-break">{{ $change['after'] }}</span>
+                                    @endforeach
+                                </div>
+                            </section>
                         @endif
+
+                        @if(!empty($groups['rows']))
+                            <section class="mt-3">
+                                <div class="text-uppercase fw-semibold text-muted fs-12 mb-2"><i class="ti ti-list-details me-1"></i>Item rows</div>
+                                <div class="vstack gap-2">
+                                    @foreach($groups['rows'] as $rowChange)
+                                        <div class="history-row-card bg-body-tertiary rounded px-3 py-2">
+                                            <div class="d-flex align-items-center gap-2 mb-1">
+                                                <span class="badge bg-dark">Row {{ $rowChange['row'] }}</span>
+                                                <strong>{{ $rowChange['item'] }}</strong>
+                                                <span class="badge bg-{{ $rowChange['kind'] === 'added' ? 'success' : ($rowChange['kind'] === 'removed' ? 'danger' : 'primary') }}-subtle text-{{ $rowChange['kind'] === 'added' ? 'success' : ($rowChange['kind'] === 'removed' ? 'danger' : 'primary') }}-emphasis">{{ ucfirst($rowChange['kind']) }}</span>
+                                            </div>
+                                            <div class="history-change-grid fs-13">
+                                                @foreach($rowChange['changes'] as $change)
+                                                    <span class="text-muted">{{ $change['label'] }}</span>
+                                                    <span class="text-muted text-break">{{ $change['before'] }}</span>
+                                                    <i class="ti ti-arrow-right history-change-arrow text-primary"></i>
+                                                    <span class="fw-semibold text-break">{{ $change['after'] }}</span>
+                                                @endforeach
+                                            </div>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            </section>
+                        @endif
+
                         @if($i > 0 && $event->isOpen())
                             @can('tenant.catering.events.revisions.revert')
                             <div class="mt-2"
@@ -1304,9 +1392,10 @@
                             </div>
                             @endcan
                         @elseif($i === 0)
-                            <div class="fs-12 text-muted mt-1">Current state</div>
+                            <div class="fs-12 text-success mt-2"><i class="ti ti-circle-check me-1"></i>Current state</div>
                         @endif
-                    </div>
+                        </div>
+                    </article>
                 @endforeach
             </div>
             <div class="text-muted fs-12 mt-3 border-top pt-2">
@@ -1720,6 +1809,7 @@ $(function () {
         punch = {
             productId: productId || null,
             name: row.find('.fw-semibold').first().text().trim() || row.find('.line-name').val() || '',
+            nameUr: row.find('[name="lines[' + idx + '][item_name_ur]"]').val() || '',
             unitId: row.find('[name$="[unit_id]"]').val() || null,
             unitCode: row.find('[name$="[unit_id]"] option:selected').text().trim() || 'KG',
             dishRate: profile.rate || (parseFloat(row.data('rate')) || 0),
@@ -1729,6 +1819,7 @@ $(function () {
             party: profile.party !== false,
             mode: mats.some(m => m.cust > 0) ? 'PARTY' : 'OWN',
             mats, editRow: row.attr('data-row'), editIdx: idx, editSaved: true,
+            customerRateTouched: true,
         };
         $('#punch-item').empty().append(new Option('EDIT — ' + punch.name, 'edit', true, true)).trigger('change');
         loadPunchInstructions(row, idx);
@@ -1768,7 +1859,7 @@ $(function () {
         const productId = val('product_id');
         const profile = productId ? (profiles[productId] || {}) : {};
         punch = {
-            productId: productId || null, name: val('item_name'),
+            productId: productId || null, name: val('item_name'), nameUr: val('item_name_ur') || '',
             unitId: val('unit_id') || null, unitCode: row.find('td').eq(3).text().trim() || 'KG',
             dishRate: profile.rate || 0,
             blocks: !!profile.blocks,
@@ -1777,6 +1868,7 @@ $(function () {
             party: profile.party !== false,
             mode: mats.some(m => m.cust > 0) ? 'PARTY' : 'OWN',
             mats, editRow: row.attr('data-row'), editIdx: idx,
+            customerRateTouched: true,
         };
 
         $('#punch-item').empty().append(new Option('EDIT — ' + punch.name, 'edit', true, true)).trigger('change');
@@ -1798,12 +1890,13 @@ $(function () {
         const p = profiles[id] || {};
         punch = {
             productId: /^\d+$/.test(String(id)) ? id : null,
-            name, unitId: p.unit_id || null, mode: 'OWN',
+            name, nameUr: p.name_ur || '', unitId: p.unit_id || null, mode: 'OWN',
             party: p.party !== false,
             dishRate: p.rate || 0,
             blocks: !!p.blocks,
             unitCode: p.unit_code || '—',
             mats: (p.mats || []).map(m => ({ ...m, own: null, cust: 0, ownTouched: false, origRate: m.rate })),
+            customerRateTouched: false,
         };
         clearPunchInstructions();
         $('#punch-unit').text('');
@@ -1899,13 +1992,24 @@ $(function () {
         const money = n => (+n || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
         $('#punch-price-unit').text(punch.unitCode || 'unit');
         $('#punch-live-rate').text(money(calc.rate));
+        if (! punch.customerRateTouched) {
+            // Fresh rows follow the live system rate until the operator types
+            // an agreed rate. Edited rows are already marked as touched.
+            $('#punch-customer-rate').val(calc.rate.toFixed(2));
+        }
         // An agreed rate typed by the operator wins; left empty, the line
         // follows the system rate and the amount says so.
         const agreed = parseFloat($('#punch-customer-rate').val());
         const useRate = (isFinite(agreed) && $('#punch-customer-rate').val() !== '') ? agreed : calc.rate;
         $('#punch-live-amount').text(money(useRate * qty));
     }
-    $(document).on('input', '#punch-customer-rate', punchLive);
+    $(document).on('input', '#punch-customer-rate', function () {
+        if (punch) punch.customerRateTouched = true;
+        punchLive();
+    });
+    $(document).on('focus click', '#punch-customer-rate', function () {
+        this.select();
+    });
 
     // Enter ki qatar: qty → (O/P) → rate→kg→(گاہک) per material → commit.
     function punchSeq() {
@@ -1917,6 +2021,7 @@ $(function () {
             if (punch.mode === 'PARTY') seq.push(r.find('.pm-cust')[0]);
         });
         // The note is the LAST field — only its Enter commits the row.
+        seq.push(document.getElementById('punch-customer-rate'));
         seq.push(document.getElementById('punch-instr'));
         return seq.filter(Boolean);
     }
@@ -2128,7 +2233,8 @@ $(function () {
                 + esc(punch.name)
                 + (supply ? '<span class="fs-12 text-success-emphasis ms-1">· customer: ' + esc(supply) + '</span>' : '')
                 + (punch.productId ? h('product_id', punch.productId) : '')
-                + h('item_name', punch.name) + h('rate', agreedRate) + rateAuthority
+                + h('item_name', punch.name) + h('item_name_ur', punch.nameUr || '')
+                + h('rate', agreedRate) + rateAuthority
                 + (punch.unitId ? h('unit_id', punch.unitId) : '')
                 + (note ? h('instructions', note) : '')
                 + instrIds.map(id => '<input type="hidden" name="lines[' + idx + '][instruction_ids][]" value="' + esc(id) + '">').join('')

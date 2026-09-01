@@ -128,33 +128,70 @@ class DashboardController extends Controller
             ->whereDate('expiry_date', '<=', now()->addDays(30))
             ->count();
 
+        // DASHBOARD-OPEN-BILLS-1 — the money still sitting on the tables.
+        //
+        // Every tile above counts PAID work only, so a busy service is invisible until the bills are
+        // settled: on 31 Aug Kashif Food showed Rs 82,795 while another Rs 47,235 sat on 23 open
+        // checks — 36% of the day, nowhere on the page.
+        //
+        // These figures are EXPECTED, never earned. A held bill still changes: items get added or
+        // cancelled, a discount lands, the total is rounded. So they are shown as their own small
+        // line under the tile and are NEVER added into the tile's own number — that number has to
+        // keep matching the Report Center and the day's closing.
+        //
+        // Cash and Card get NO such line, deliberately. A held bill has no payment row at all (0 of
+        // them today), because the customer has not chosen a method yet — splitting the open total
+        // into cash and card would be an invention, not a forecast.
+        //
+        // Same business-date window and same user scope as the tiles, or the two numbers would not
+        // be comparable.
+        $openBills = $applyToday(SalesOrder::query()
+            ->whereIn('status', ['held', 'draft'])
+            ->when($selectedBranch, fn ($q) => $q->where('branch_id', $selectedBranch))
+            ->tap(fn ($q) => $scope->applyToSales($q, $scopeUser)))
+            ->selectRaw('COUNT(*) as orders, COALESCE(SUM(grand_total), 0) as amount,
+                         COALESCE(SUM(discount_amount), 0) as discount, COALESCE(SUM(tax_amount), 0) as tax')
+            ->first();
+
+        // DASHBOARD-DETAILS-1: the two bottom cards read the whole branch — what sells, and how
+        // each day of the week compared. Both are computed ONLY for a role that may see them.
+        // The blade's @can alone would not be enough: the queries would still run, and "hidden"
+        // would mean rendered-then-dropped rather than never fetched.
+        $maySeeDetails = (bool) auth('tenant')->user()?->can('tenant.dashboard.details');
+
         // Top 5 products today
-        $topProducts = $applyToday(SalesOrderLine::query()
-            ->join('sales_orders', 'sales_order_lines.sales_order_id', '=', 'sales_orders.id')
-            ->where('sales_orders.status', 'paid')
-            ->when($selectedBranch, fn ($q) => $q->where('sales_orders.branch_id', $selectedBranch))
-            ->tap(fn ($q) => $scope->applyToSales($q, $scopeUser, 'sales_orders')))
-            ->selectRaw('sales_order_lines.product_name, SUM(sales_order_lines.quantity) as qty_sold, SUM(sales_order_lines.line_total) as revenue')
-            ->groupBy('sales_order_lines.product_name')
-            ->orderByDesc('qty_sold')
-            ->limit(5)
-            ->get();
+        $topProducts = collect();
+        if ($maySeeDetails) {
+            $topProducts = $applyToday(SalesOrderLine::query()
+                ->join('sales_orders', 'sales_order_lines.sales_order_id', '=', 'sales_orders.id')
+                ->where('sales_orders.status', 'paid')
+                ->when($selectedBranch, fn ($q) => $q->where('sales_orders.branch_id', $selectedBranch))
+                ->tap(fn ($q) => $scope->applyToSales($q, $scopeUser, 'sales_orders')))
+                ->selectRaw('sales_order_lines.product_name, SUM(sales_order_lines.quantity) as qty_sold, SUM(sales_order_lines.line_total) as revenue')
+                ->groupBy('sales_order_lines.product_name')
+                ->orderByDesc('qty_sold')
+                ->limit(5)
+                ->get();
+        }
 
         // Last 7 business days net sales (window anchored to the current business date, not UTC now)
         $businessDayNoPrefix = 'COALESCE(business_date, DATE(sale_date))';
         $windowStart = \Illuminate\Support\Carbon::parse(
             $clock->currentBusinessDate($selectedBranch ? \App\Models\Tenant\Branch::find($selectedBranch) : null)
         )->subDays(6)->toDateString();
-        $last7Days = SalesOrder::query()
-            ->where('status', 'paid')
-            ->when($selectedBranch, fn ($q) => $q->where('branch_id', $selectedBranch))
-            ->tap(fn ($q) => $scope->applyToSales($q, $scopeUser))
-            ->whereRaw("$businessDayNoPrefix >= ?", [$windowStart])
-            ->selectRaw("$businessDayNoPrefix as day, COALESCE(SUM(grand_total), 0) as net_sales, COUNT(*) as orders")
-            ->groupByRaw($businessDayNoPrefix)
-            ->orderBy('day')
-            ->get()
-            ->keyBy('day');
+        $last7Days = collect();
+        if ($maySeeDetails) {
+            $last7Days = SalesOrder::query()
+                ->where('status', 'paid')
+                ->when($selectedBranch, fn ($q) => $q->where('branch_id', $selectedBranch))
+                ->tap(fn ($q) => $scope->applyToSales($q, $scopeUser))
+                ->whereRaw("$businessDayNoPrefix >= ?", [$windowStart])
+                ->selectRaw("$businessDayNoPrefix as day, COALESCE(SUM(grand_total), 0) as net_sales, COUNT(*) as orders")
+                ->groupByRaw($businessDayNoPrefix)
+                ->orderBy('day')
+                ->get()
+                ->keyBy('day');
+        }
 
         // KASHIF-CATERING-CALENDAR-1 — the booking diary, for catering tenants only.
         //
@@ -174,7 +211,7 @@ class DashboardController extends Controller
         return view('tenant.dashboard', compact(
             'branches', 'selectedBranch', 'today',
             'cashToday', 'cardToday', 'openShifts', 'failedPrints',
-            'lowStockCount', 'expiryCount', 'topProducts', 'last7Days',
+            'lowStockCount', 'expiryCount', 'topProducts', 'last7Days', 'openBills',
             'cateringCalendar', 'cateringKpis', 'cateringNextSeven'
         ));
     }

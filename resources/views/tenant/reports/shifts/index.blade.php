@@ -105,8 +105,15 @@
                                 <th scope="col">Opened At</th>
                                 <th scope="col">Closed At</th>
                                 <th scope="col" class="text-end">Sales</th>
+                                {{-- SHIFT-CANCELLATIONS-1: the shift row already stored how the money
+                                     arrived and how it went back; only Cash was ever shown, so a card
+                                     or bank sale looked like a missing drawer. --}}
                                 <th scope="col" class="text-end">Cash</th>
-                                <th scope="col" class="text-end">Refunds</th>
+                                <th scope="col" class="text-end">Card</th>
+                                <th scope="col" class="text-end">Bank</th>
+                                <th scope="col" class="text-end">Refunds<br><span class="fw-normal text-muted" style="font-size:.72rem">cash / other</span></th>
+                                <th scope="col" class="text-end">Discount</th>
+                                <th scope="col" class="text-end">Cancelled<br><span class="fw-normal text-muted" style="font-size:.72rem">bills / items</span></th>
                                 <th scope="col" class="text-end">Expected Cash</th>
                                 <th scope="col" class="text-end">Counted</th>
                                 <th scope="col" class="text-end">Variance</th>
@@ -125,7 +132,36 @@
                                 <td>{{ $shift->closed_at ? app(\App\Support\TenantClock::class)->format($shift->closed_at, 'd/m/Y H:i', $shift->timezone_name) : '—' }}</td>
                                 <td class="text-end">{{ number_format($shift->total_sales, 2) }}</td>
                                 <td class="text-end">{{ number_format($shift->total_cash, 2) }}</td>
-                                <td class="text-end text-danger">{{ number_format($shift->total_refunds, 2) }}</td>
+                                <td class="text-end {{ (float) $shift->total_card == 0.0 ? 'text-muted' : '' }}">{{ number_format($shift->total_card, 2) }}</td>
+                                <td class="text-end {{ (float) $shift->total_bank_transfer == 0.0 ? 'text-muted' : '' }}">{{ number_format($shift->total_bank_transfer, 2) }}</td>
+                                <td class="text-end {{ (float) $shift->total_refunds > 0 ? 'text-danger' : 'text-muted' }}">
+                                    {{ number_format($shift->total_refunds, 2) }}
+                                    @if((float) $shift->total_refunds > 0)
+                                        <br><span class="text-muted" style="font-size:.72rem">
+                                            {{ number_format($shift->total_cash_refunds, 2) }} /
+                                            {{ number_format(((float) $shift->total_refunds) - ((float) $shift->total_cash_refunds), 2) }}
+                                        </span>
+                                    @endif
+                                </td>
+                                <td class="text-end {{ (float) $shift->total_discount == 0.0 ? 'text-muted' : '' }}">{{ number_format($shift->total_discount, 2) }}</td>
+                                {{-- Counted from the orders, not stored on the shift, so past shifts
+                                     report it too. Cancelled money never became a total on this row —
+                                     that is precisely why it needs its own column. --}}
+                                @php
+                                    $c = $cancelledOrders[$shift->id] ?? null;
+                                    $v = $voidedLines[$shift->id] ?? null;
+                                @endphp
+                                <td class="text-end {{ $c || $v ? 'text-warning fw-semibold' : 'text-muted' }}">
+                                    @if($c || $v)
+                                        {{ number_format((float) ($c->amount ?? 0), 2) }}
+                                        <br><span class="text-muted fw-normal" style="font-size:.72rem">
+                                            {{ (int) ($c->bills ?? 0) }} bill{{ (int) ($c->bills ?? 0) === 1 ? '' : 's' }} /
+                                            {{ rtrim(rtrim(number_format((float) ($v->units ?? 0), 2), '0'), '.') }} item{{ (float) ($v->units ?? 0) == 1.0 ? '' : 's' }}
+                                        </span>
+                                    @else
+                                        —
+                                    @endif
+                                </td>
                                 <td class="text-end">{{ number_format($shift->expected_cash, 2) }}</td>
                                 <td class="text-end">{{ $shift->counted_cash !== null ? number_format($shift->counted_cash, 2) : '—' }}</td>
                                 <td class="text-end @if(abs($shift->cash_variance ?? 0) > 0.01) text-danger fw-semibold @endif">
@@ -138,7 +174,7 @@
                                 </td>
                             </tr>
                             @empty
-                            <tr><td colspan="13" class="text-center text-muted py-4">No shifts in selected range.</td></tr>
+                            <tr><td colspan="18" class="text-center text-muted py-4">No shifts in selected range.</td></tr>
                             @endforelse
                         </tbody>
                     </table>

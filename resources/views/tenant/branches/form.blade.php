@@ -204,6 +204,24 @@
                     </div>
                 </div>
 
+                {{-- RETURN-MANAGER-APPROVAL-1: defaults to auto, unlike the two above — see the
+                     migration. Turning it on is the owner's call, not a deploy's. --}}
+                <div class="col-md-6">
+                    <label for="sales_return_approval_mode" class="form-label required">Sales returns</label>
+                    <select id="sales_return_approval_mode" name="sales_return_approval_mode" class="form-select" required>
+                        <option value="manager_required" @selected(old('sales_return_approval_mode', $branch?->sales_return_approval_mode ?? 'auto_approve') === 'manager_required')>
+                            Manager PIN required
+                        </option>
+                        <option value="auto_approve" @selected(old('sales_return_approval_mode', $branch?->sales_return_approval_mode ?? 'auto_approve') === 'auto_approve')>
+                            Any POS cashier may post
+                        </option>
+                    </select>
+                    <div class="form-text">
+                        Asked for once, when Post Return is pressed — it covers the whole return.
+                        A return hands money back, puts stock on the shelf and writes to the ledger.
+                    </div>
+                </div>
+
                 <div class="col-md-8">
                     <label for="receipt_footer" class="form-label">Receipt Footer Text</label>
                     <textarea id="receipt_footer" name="receipt_footer" class="form-control" rows="2"

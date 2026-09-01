@@ -572,9 +572,14 @@
                 <div id="no-terminal-warning" class="small text-warning-emphasis" style="display:none">
                     <i class="ti ti-alert-triangle me-1"></i>No terminal — auto receipt/KOT print is off
                 </div>
+                {{-- POS-TERMINAL-PIN-1: an operator pinned to his own terminal gets no way in. The
+                     server pins him too (UserDataScope::assertPosSelection) — this only spares him a
+                     button that would always be refused. --}}
+                @can(\App\Services\Security\UserDataScope::CHANGE_TERMINAL_PERMISSION)
                 <button type="button" class="btn btn-sm btn-outline-secondary py-0" data-bs-toggle="modal" data-bs-target="#posContextModal" title="Change branch or terminal">
                     <i class="ti ti-adjustments-horizontal me-1"></i>Change
                 </button>
+                @endcan
                 {{-- VEHICLE-NUMBER-1: drive-through capture, QUICK SALE orders only (inline). Required
                      for quick sale (guarded in JS + server); takeaway no longer captures a vehicle. --}}
                 <div id="vehicle-wrap" class="align-items-center gap-1" style="display:none">
@@ -693,13 +698,20 @@
             <div class="mb-3">
                 <div class="category-strip" id="parent-category-strip">
                     <button type="button" class="category-pill active" data-parent-category="">All</button>
-                    @if(count($combosPayload))
+                    {{-- POS-COMBO-CATEGORY-1: the flat "Deals" pill stays only while some combos are still
+                         uncategorised. Once a tenant files every deal (e.g. a real "Deals" parent with
+                         Al-Faham/Midnight/Platters children), that category tree is the deals entry. --}}
+                    @if(count($combosPayload) && $hasUncategorizedCombos)
                         <button type="button" class="category-pill" data-parent-category="__deals__">Deals</button>
                     @endif
+                    {{-- POS-COMBO-CATEGORY-1 + HIDE-EMPTY-TABS: only pills for categories with a visible
+                         product OR a combo (see $pillCategoryIds); empty tabs are skipped. --}}
                     @foreach($categories as $category)
+                        @if(in_array((int) $category->id, $pillCategoryIds, true))
                         <button type="button" class="category-pill" data-parent-category="{{ $category->id }}">
                             {{ $category->name }}
                         </button>
+                        @endif
                     @endforeach
                 </div>
             </div>
@@ -750,6 +762,9 @@
                     <div class="text-muted small">Total</div>
                     <div class="pos-charge-amt" id="pos-charge-total">0.00</div>
                 </div>
+                {{-- Review & Pay opens the payment modal for EVERYONE (a restricted operator can still
+                     apply a discount / promo and review the bill there). Taking the payment is gated
+                     separately on the Complete Sale button below (tenant.pos.store). --}}
                 <button type="button" class="btn btn-primary btn-lg flex-grow-1" id="review-pay-btn">
                     <i class="ti ti-cash-register me-1"></i>{{ $tableSession ? 'Close & Pay Bill' : 'Review & Pay' }}
                 </button>
@@ -985,9 +1000,19 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary btn-lg" data-bs-dismiss="modal">Back</button>
+                    {{-- Taking payment is gated on tenant.pos.store. A restricted operator (Kashif Floor
+                         terminal) may open this modal to apply a discount/promo and Preview Bill, but the
+                         Complete Sale button is hidden — they Hold the order (discount kept) and a counter
+                         with the permission recalls & closes it. The server enforces the same on POST /pos. --}}
+                    @can('tenant.pos.store')
                     <button type="button" class="btn btn-primary btn-lg flex-grow-1" id="complete-sale-btn">
                         {{ $tableSession ? 'Close & Pay Table Bill' : 'Complete Sale' }}
                     </button>
+                    @else
+                    <span class="text-muted small flex-grow-1 text-center px-2">
+                        <i class="ti ti-info-circle me-1"></i>Apply the discount, then <strong>Hold</strong> — a counter will close the bill.
+                    </span>
+                    @endcan
                     {{-- Preview the FULL running bill (discount + tax + service charge + tip) exactly as
                          Close & Pay will charge — for showing / printing to the customer before paying.
                          Kept on the far right with a gap. --}}
@@ -2280,18 +2305,24 @@ document.addEventListener('DOMContentLoaded', function () {
         var saved = null;
         try { saved = localStorage.getItem('pos_terminal_' + branchId); } catch (e) {}
 
-        var candidate = '';
+        // POS-DEFAULT-TERMINAL-1: a cashier with an ASSIGNED terminal (default_terminal_id) always
+        // lands on THAT terminal, so their orders bind to it and print at its own printer — e.g. the
+        // DTQ 2 cashier lands on T3, never T2 — regardless of what a shared/previous browser left in
+        // localStorage. Falls back to the remembered terminal, then the first bound one.
+        var userDefault = String(@json((int) (auth('tenant')->user()->default_terminal_id ?? 0)) || '');
+
+        var inBranch = {}, first = '';
         for (var i = 0; i < terminalEl.options.length; i++) {
             var o = terminalEl.options[i];
             if (!o.value) continue;
-            if (saved && o.value === saved && (!o.dataset.branch || o.dataset.branch === branchId)) {
-                candidate = o.value;
-                break;
-            }
-            if (!candidate && o.dataset.branch === branchId) {
-                candidate = o.value; // first terminal of this branch as fallback
-            }
+            if (o.dataset.branch && o.dataset.branch !== branchId) continue;
+            inBranch[o.value] = true;
+            if (!first) first = o.value;   // first terminal of this branch
         }
+
+        var candidate = (userDefault && inBranch[userDefault]) ? userDefault
+                      : (saved && inBranch[saved]) ? saved
+                      : first;
 
         if (candidate) terminalEl.value = candidate;
         updateTerminalWarning();
@@ -2325,6 +2356,9 @@ document.addEventListener('DOMContentLoaded', function () {
     let selectedParentCategory = '';
     let selectedChildCategory  = '';
     let selectedParentChildIds = [];   // KHATRI-MENU-2: child category ids of the selected parent
+    // EMPTY-DEAL-PILL-1: category ids that hold a grid-visible product or an ACTIVE combo. The child
+    // strip renders only these, so an emptied deal sub-category stops leaving a dead tab behind.
+    const CATEGORY_HAS_CONTENT = @json($contentCategoryIds ?? []);
     let cart = [];
 
     /* helpers */
@@ -2551,14 +2585,22 @@ document.addEventListener('DOMContentLoaded', function () {
 
         productGrid.innerHTML = '';
 
-        // Combos appear on the "All" view and on the dedicated "Deals" view only —
-        // never inside a specific product category.
-        const showCombos = dealsOnly || (!selectedParentCategory && !selectedChildCategory);
-        const filteredCombos = (showCombos ? combos : []).filter(function (combo) {
-            const textMatch = !query
+        // POS-COMBO-CATEGORY-1 combo visibility:
+        //   • "All" and "Deals" → every combo (Deals stays the catch-all of all deals).
+        //   • a category tab → the combos filed to that category (parent, its child, or a child match)
+        //     — so a deal filed to its MAIN product's category also shows alongside that product.
+        const allOrDeals = dealsOnly || (!selectedParentCategory && !selectedChildCategory);
+        const filteredCombos = combos.filter(function (combo) {
+            const catId = Number(combo.category_id || 0);
+            // Mirror the product filter: a selected CHILD narrows to THAT child only; otherwise a
+            // selected parent matches its own combos + all of its children's.
+            const matchCat = selectedChildCategory
+                ? (catId === Number(selectedChildCategory))
+                : (catId && (Number(catId) === Number(selectedParentCategory) || selectedParentChildIds.includes(catId)));
+            if (!(allOrDeals || matchCat)) return false;
+            return !query
                 || String(combo.name).toLowerCase().includes(query)
                 || String(combo.code || '').toLowerCase().includes(query);
-            return textMatch;
         });
 
         filteredCombos.forEach(function (combo) {
@@ -4269,6 +4311,12 @@ document.addEventListener('DOMContentLoaded', function () {
         const customerId = String((document.getElementById('customer_id') || {}).value || '').trim();
         if (!isDeliveryOrder || customerId) return true;
 
+        // AGGREGATOR-CUSTOMER-OPTIONAL: an aggregator channel (Foodpanda etc.) owns the customer on its
+        // platform — no attach required. Own delivery still needs one. Server enforces the same.
+        const chSel = document.getElementById('delivery_channel_id');
+        const chOpt = chSel && chSel.options[chSel.selectedIndex];
+        if (chOpt && chOpt.getAttribute('data-type') === 'aggregator') return true;
+
         const openCustomerModal = function () {
             const modalEl = document.getElementById('customerModal');
             if (modalEl && window.bootstrap) bootstrap.Modal.getOrCreateInstance(modalEl).show();
@@ -4702,10 +4750,14 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function submitHeldOrderCancellation(saleId, details) {
+        // RECALL-REPRINT-TERMINAL-2: send the counter the operator is standing at, so a cancellation
+        // of a RECALLED order prints here and not at the counter that created it. The server still
+        // validates it against this operator's own terminals and falls back to the sale's own.
+        var cancelTerminal = (document.getElementById('terminal_id') || {}).value || '';
         return fetch('{{ url('/held-sales') }}/' + saleId + '/cancel', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
-            body: JSON.stringify(details),
+            body: JSON.stringify(Object.assign({ terminal_id: cancelTerminal }, details)),
         }).then(function (response) {
             return response.json().then(function (data) {
                 if (!response.ok) throw new Error(data.message || Object.values(data.errors || {})[0] || 'Cancellation failed');
@@ -5873,6 +5925,9 @@ document.addEventListener('DOMContentLoaded', function () {
             if (split) { openSplitForSession(split.dataset.tableSplit); return; }
             var move = event.target.closest('[data-table-move]');
             if (move) { showTableMove(move.dataset.tableMove, move.dataset.sourceTableId); return; }
+            // TABLE-CLOSE-EMPTY-1
+            var closeTable = event.target.closest('[data-table-close]');
+            if (closeTable) { closeEmptyTable(closeTable.dataset.tableClose, closeTable.dataset.tableNo); return; }
             // TABLE-RESERVATION-1
             var reserve = event.target.closest('[data-table-reserve]');
             if (reserve) { openReserveModal(reserve.dataset.tableReserve, reserve.dataset.tableNo); return; }
@@ -5906,6 +5961,36 @@ document.addEventListener('DOMContentLoaded', function () {
         _rget('reserve-customer-suggest').classList.add('d-none');
         _rget('reserve-toast').classList.add('d-none');
         bootstrap.Modal.getOrCreateInstance(_rget('reserveTableModal')).show();
+    }
+
+    /**
+     * TABLE-CLOSE-EMPTY-1 — free a table opened by mistake, from the board itself.
+     * The button only renders on a session with no orders, and the server refuses a close over an
+     * open order anyway, so this can never discard someone's running check.
+     */
+    function closeEmptyTable(sessionId, tableNo) {
+        Swal.fire({
+            title: 'Close table ' + (tableNo || '') + '?',
+            text: 'Nothing has been ordered on it. The table becomes available again.',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Close table',
+        }).then(function (res) {
+            if (!res.isConfirmed) return;
+            fetch('{{ url('/restaurant/table-sessions') }}/' + sessionId + '/close', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                    Accept: 'application/json',
+                },
+                body: JSON.stringify({ status: 'closed' }),
+            })
+            .then(function () { if (typeof refreshTableBoard === 'function') refreshTableBoard(); })
+            .catch(function () {
+                Swal.fire({ icon: 'error', title: 'Could not close', text: 'Try again, or close it from Restaurant → Board.' });
+            });
+        });
     }
 
     function cancelReservation(tableId) {
@@ -5979,7 +6064,10 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     })();
 
-    document.getElementById('complete-sale-btn').addEventListener('click', function () { submitPaidSale(false); });
+    // Null-safe: the Complete Sale button is absent for operators without tenant.pos.store (e.g. the
+    // Kashif Floor terminal). Without the guard this line would throw and break every listener wired
+    // AFTER it — Hold Sale, Draft, Bill Preview — for that user. They stay fully functional.
+    document.getElementById('complete-sale-btn')?.addEventListener('click', function () { submitPaidSale(false); });
 
     // "Review & Pay" opens the payment modal (guarded on empty cart); focus tendered when shown.
     var paymentModalEl = document.getElementById('paymentModal');
@@ -6198,7 +6286,15 @@ document.addEventListener('DOMContentLoaded', function () {
                 ? parent.children.map(function (ch) { return Number(ch.id); })
                 : [];
 
-            if (parent && parent.children && parent.children.length) {
+            // EMPTY-DEAL-PILL-1: only children that actually hold something get a pill. The parent
+            // pills are filtered server-side already; this strip used to render every child, so a
+            // deal sub-category whose combos were retired left a tab that opened on "No products
+            // found". If nothing survives the filter the whole strip stays hidden — a lone "All"
+            // button that filters nothing is worse than no strip.
+            const childrenWithContent = (parent && parent.children ? parent.children : [])
+                .filter(function (ch) { return CATEGORY_HAS_CONTENT.indexOf(Number(ch.id)) !== -1; });
+
+            if (childrenWithContent.length) {
                 wrap.style.display = '';
 
                 const allBtn     = document.createElement('button');
@@ -6213,7 +6309,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 });
                 strip.appendChild(allBtn);
 
-                parent.children.forEach(function (child) {
+                childrenWithContent.forEach(function (child) {
                     const childBtn     = document.createElement('button');
                     childBtn.type      = 'button';
                     childBtn.className = 'category-pill';

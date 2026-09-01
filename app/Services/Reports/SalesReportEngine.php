@@ -121,10 +121,32 @@ class SalesReportEngine
     }
 
     /** Line-level base (joins products/categories) constrained to the same sale population. */
-    private function linesBase(array $f)
+    /**
+     * REPORT-DEAL-COMPONENTS-1 — a deal's parts are not separate sales.
+     *
+     * Selling a deal writes a `combo_header` line carrying the WHOLE price, plus one `component`
+     * line per linked item carrying 0.00. The components exist to tell the kitchen what to cook and
+     * to draw the stock; they were never sold on their own.
+     *
+     * Counting them here made every quantity lie. On 30 Aug the report printed 1,620 units against
+     * 1,322 actually sold; Bar-B-Que read 148 when 87 were sold and 61 went out inside deals. It also
+     * produced rows like "Regular Drink 39 @ 0.00", which reads as 39 free drinks, and it DOUBLED a
+     * deal whose header points at the same product as one of its own components (Khaas is product
+     * 206 twice, so byItem's group-by merged 5 + 5 into 10).
+     *
+     * Excluding them cannot move a single rupee — their line_total is 0.00 — so every financial
+     * figure in every section is byte-identical before and after. Only the quantities become true.
+     *
+     * The DETAILED section passes $includeComponents = true: it is the line-by-line record, and a
+     * deal's parts belong in it.
+     */
+    private function linesBase(array $f, bool $includeComponents = false)
     {
         return DB::connection('tenant')->table('sales_order_lines as l')
             ->joinSub($this->salesBase($f)->select('o.*'), 'o', 'o.id', '=', 'l.sales_order_id')
+            ->unless($includeComponents, fn ($q) => $q->where(
+                fn ($w) => $w->where('l.line_kind', '!=', 'component')->orWhereNull('l.line_kind')
+            ))
             ->leftJoin('products as p', 'p.id', '=', 'l.product_id')
             ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
             ->when($f['category_id'], fn ($q) => $q->whereIn('p.category_id', $this->categoryWithDescendants((int) $f['category_id'])))
@@ -403,29 +425,56 @@ class SalesReportEngine
     }
 
     // ── S. Item report ───────────────────────────────────────────────────────────────────────────
+    /**
+     * REPORT-DEAL-IDENTITY-1 — a deal reports under its OWN name.
+     *
+     * A deal has no product of its own: its `combo_header` line sits on an existing product, very
+     * often one of its own components. Grouping by product alone therefore piled several different
+     * things into one row and labelled the pile with MAX(product_name) — whichever name sorted
+     * highest. On 31 Aug that row read "Singaporean Rice (Regular) (Midnight) — 196", when Midnight
+     * had sold 30: the other 166 were ordinary Regular plus four more deals. Seven such rows that
+     * day, the largest on the report among them.
+     *
+     * Grouping now carries the combo as well, so each deal is its own row under `combos.name`, and
+     * the plain product keeps its own. NOTHING moves: grouping decides which rows exist, never the
+     * sum — measured at 465,450.00 either way before this shipped.
+     *
+     * RETURNS follow the same split, which is the part that could have moved money. A return keyed
+     * only by product would land on whichever row happened to match, or fall out entirely.
+     * returnLinesBase already joins the original order line, so its combo is known: on 31 Aug
+     * product 158's five returned units divide as 4 from ordinary sales and 1 from the Midnight
+     * deal — the same 2,950 as before. A return whose original line is missing keeps combo NULL and
+     * lands on the plain row rather than disappearing.
+     */
     public function byItem(array $f, string $sort = 'net'): array
     {
+        $key = fn ($r) => $r->product_id . ':' . ($r->product_variant_id ?? '') . ':' . ($r->combo_id ?? '');
+
         $rows = $this->linesBase($f)
             ->leftJoin('product_variants as v', 'v.id', '=', 'l.product_variant_id')
-            ->groupBy('l.product_id', 'l.product_variant_id')
+            ->leftJoin('combos as cb', 'cb.id', '=', 'l.combo_id')
+            ->groupBy('l.product_id', 'l.product_variant_id', 'l.combo_id')
             ->selectRaw(
-                'l.product_id, l.product_variant_id,
-                 MAX(l.product_name) as item, MAX(v.name) as variant, MAX(c.name) as category,
+                'l.product_id, l.product_variant_id, l.combo_id,
+                 COALESCE(MAX(cb.name), MAX(l.product_name)) as item,
+                 MAX(v.name) as variant, MAX(c.name) as category,
                  COALESCE(SUM(l.quantity),0) as sold_qty,
                  COALESCE(SUM(l.quantity * l.unit_price),0) as gross,
                  COALESCE(SUM(l.discount_amount),0) as discount,
                  COALESCE(SUM(l.tax_amount),0) as tax,
                  COALESCE(SUM(l.line_total),0) as net'
-            )->get()->keyBy(fn ($r) => $r->product_id . ':' . ($r->product_variant_id ?? ''));
+            )->get()->keyBy($key);
         $returnRows = $this->returnLinesBase($f)
             ->leftJoin('product_variants as v', 'v.id', '=', 'rl.product_variant_id')
-            ->groupBy('rl.product_id', 'rl.product_variant_id')
+            ->leftJoin('combos as cb', 'cb.id', '=', 'ol.combo_id')
+            ->groupBy('rl.product_id', 'rl.product_variant_id', 'ol.combo_id')
             ->selectRaw(
-                'rl.product_id, rl.product_variant_id,
-                 MAX(ol.product_name) as item, MAX(v.name) as variant, MAX(c.name) as category,
+                'rl.product_id, rl.product_variant_id, ol.combo_id,
+                 COALESCE(MAX(cb.name), MAX(ol.product_name)) as item,
+                 MAX(v.name) as variant, MAX(c.name) as category,
                  COALESCE(SUM(rl.quantity),0) as returned_qty,
                  COALESCE(SUM(rl.line_total),0) as returns_amount'
-            )->get()->keyBy(fn ($r) => $r->product_id . ':' . ($r->product_variant_id ?? ''));
+            )->get()->keyBy($key);
 
         $rows = $rows->keys()->merge($returnRows->keys())->unique()->map(function ($key) use ($rows, $returnRows) {
             $sold = $rows->get($key);
@@ -688,7 +737,10 @@ class SalesReportEngine
     // ── V. Detailed report (paginated; exports use the FULL filtered set via cursor) ─────────────
     public function detailedQuery(array $f)
     {
-        return $this->linesBase($f)
+        // REPORT-DEAL-COMPONENTS-1: components stay HERE. This is the line-by-line record of what
+        // was rung up, so a deal's parts belong in it — they are only kept out of the summary
+        // sections, where counting them as sales made the quantities lie.
+        return $this->linesBase($f, includeComponents: true)
             ->leftJoin('product_variants as v', 'v.id', '=', 'l.product_variant_id')
             ->leftJoin('restaurant_waiters as w', 'w.id', '=', 'o.restaurant_waiter_id')
             ->leftJoin('users as u', 'u.id', '=', 'o.created_by_user_id')

@@ -29,7 +29,14 @@ class CateringEventController extends Controller
         // address. Deliberately NOT a cross-module global search.
         $q = trim((string) $request->input('q', ''));
 
-        $query = CateringEvent::with(['currentEstimate', 'finalInvoice:id,catering_event_id,balance_due,status'])
+        $query = CateringEvent::with([
+            'currentEstimate',
+            'finalInvoice:id,catering_event_id,balance_due,status',
+            // KASHIF-EVENT-ACTIONS-1: the row Actions menu links straight to the
+            // kitchen sheet / production release, so the release identity has to
+            // travel with the row rather than cost a query per booking.
+            'productionReleases:id,catering_event_id,release_no,status',
+        ])
             ->withCount('productionReleases')
             ->withSum('advances as advances_sum', 'amount')
             ->withSum('refunds as refunds_sum', 'amount')
@@ -254,6 +261,24 @@ class CateringEventController extends Controller
         // and no screen works it out for itself again.
         $finance = app(\App\Services\Catering\CateringFinancialPositionService::class);
 
+        $history = app(\App\Services\Catering\CateringEventHistoryService::class);
+        $previousSnapshot = null;
+        $revisions = \App\Models\Tenant\CateringEventRevision::where('catering_event_id', $cateringEvent->id)
+            ->with('changedBy:id,name')
+            ->orderByDesc('changed_at')->orderByDesc('id')
+            ->limit(100)->get()
+            ->sortBy(fn ($revision) => sprintf('%s-%020d', $revision->changed_at?->format('YmdHis.u'), $revision->id))
+            ->values()
+            ->map(function ($revision) use (&$previousSnapshot, $history) {
+                $revision->setAttribute('change_groups', $previousSnapshot === null
+                    ? ['event' => [], 'charges' => [], 'rows' => []]
+                    : $history->structuredDiff($previousSnapshot, $revision->snapshot));
+                $previousSnapshot = $revision->snapshot;
+
+                return $revision;
+            })
+            ->reverse()->values();
+
         return view('tenant.catering.events.show', [
             'event' => $cateringEvent,
             'units' => $units,
@@ -269,10 +294,7 @@ class CateringEventController extends Controller
             'ledger' => $finance->ledger($cateringEvent),
             // KASHIF-EVENT-HISTORY-1: the unified timeline + every quotation
             // version, for the History panel.
-            'revisions' => \App\Models\Tenant\CateringEventRevision::where('catering_event_id', $cateringEvent->id)
-                ->with('changedBy:id,name')
-                ->orderByDesc('changed_at')->orderByDesc('id')
-                ->limit(100)->get(),
+            'revisions' => $revisions,
             'versions' => $cateringEvent->estimates()->orderByDesc('version_no')
                 ->get(['id', 'version_no', 'status', 'grand_total', 'updated_at', 'sent_at']),
         ]);

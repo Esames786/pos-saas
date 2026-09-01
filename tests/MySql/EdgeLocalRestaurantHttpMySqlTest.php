@@ -425,9 +425,15 @@ class EdgeLocalRestaurantHttpMySqlTest extends MySqlTenantTestCase
             ->assertOk()->assertJsonPath('status', 'cancelled');
         $this->assertSame(20.0, $this->edgeOnHand($this->baselineId, $this->productId), 'a cancelled check never touched stock');
 
-        // the session (no remaining open orders) closes; the table frees; the shift can close.
-        $this->postJson("/edge/local/pos/restaurant/table-sessions/{$sessionId}/close")->assertOk()->assertJsonPath('status', 'closed');
+        // CANCEL-FREES-TABLE-1: the cancel itself ends the session and hands the table back — nothing
+        // was left on it. Edge shares KotCancellationService with Cloud, so it inherits this.
+        $this->assertSame('cancelled', DB::connection('tenant')->table('restaurant_table_sessions')->where('id', $sessionId)->value('status'));
         $this->assertSame('available', DB::connection('tenant')->table('restaurant_tables')->where('id', $this->tableId)->value('status'));
+
+        // A close arriving afterwards (a retried offline request) is refused rather than rewriting a
+        // finished session — the same guard that stops one operator overwriting another's close.
+        $this->postJson("/edge/local/pos/restaurant/table-sessions/{$sessionId}/close")->assertStatus(422);
+        $this->assertSame('cancelled', DB::connection('tenant')->table('restaurant_table_sessions')->where('id', $sessionId)->value('status'));
         $this->postJson('/edge/local/pos/shift/close', ['counted_cash' => 0])->assertOk()->assertJsonPath('cash_variance', 0);
     }
 

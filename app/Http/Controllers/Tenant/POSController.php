@@ -15,6 +15,7 @@ use App\Models\Tenant\RestaurantFloor;
 use App\Models\Tenant\RestaurantTableSession;
 use App\Models\Tenant\RestaurantWaiter;
 use App\Models\Tenant\SalesOrder;
+use App\Models\Tenant\SalesOrderLine;
 use App\Models\Tenant\StockBalance;
 use App\Models\Tenant\Terminal;
 use App\Models\Tenant\TerminalPrinterSetting;
@@ -117,6 +118,20 @@ class POSController extends Controller
             ->unique()
             ->values();
 
+        // HIDDEN-PRODUCT-HELD-BILL-1: products sitting on a bill that is still open at this branch.
+        // Recall resolves each line against the payload, so anything on an unpaid check has to be in
+        // it — otherwise hiding that product makes the check impossible to recall or pay.
+        $liveOrderProductIds = SalesOrderLine::query()
+            ->whereHas('order', fn ($q) => $q
+                ->whereIn('status', ['held', 'draft'])
+                ->where('branch_id', $selectedBranchId))
+            ->whereNotNull('product_id')
+            ->distinct()
+            ->pluck('product_id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
         $products = Product::with([
                 'category',
                 'unit',
@@ -135,10 +150,19 @@ class POSController extends Controller
             ->where('is_sellable', true)
             // PRODUCT-BOUNDARY-2: hide manufacturing/internal items from the grid — but keep any
             // combo-component product in the payload (grid display is gated by pos_grid_visible).
-            ->where(function ($q) use ($comboComponentProductIds) {
+            //
+            // HIDDEN-PRODUCT-HELD-BILL-1: and keep anything sitting on an OPEN bill. Recall reads
+            // every line's product out of this payload, so a product hidden while a bill still
+            // carried it simply vanished and the bill could no longer be recalled or paid — five of
+            // them, mid-service, on 30 Aug. Being in a combo was the only thing that used to save a
+            // hidden product; an open bill has at least as much claim on it.
+            ->where(function ($q) use ($comboComponentProductIds, $liveOrderProductIds) {
                 $q->where('is_pos_visible', true);
                 if ($comboComponentProductIds->isNotEmpty()) {
                     $q->orWhereIn('id', $comboComponentProductIds->all());
+                }
+                if ($liveOrderProductIds->isNotEmpty()) {
+                    $q->orWhereIn('id', $liveOrderProductIds->all());
                 }
             })
             // KHATRI-MENU-2: explicit small→large tile ordering, name as tiebreaker.
@@ -299,6 +323,8 @@ class POSController extends Controller
                 return [
                     'id' => (int) $combo->id,
                     'branch_id' => $combo->branch_id ? (int) $combo->branch_id : null,
+                    // POS-COMBO-CATEGORY-1: which POS tab this deal lives under (null = the "Deals" tab).
+                    'category_id' => $combo->category_id ? (int) $combo->category_id : null,
                     'code' => $combo->code,
                     'name' => $combo->name,
                     'price' => (float) $combo->price,
@@ -311,18 +337,61 @@ class POSController extends Controller
             ->filter(fn ($combo) => $combo['header_product_id'] > 0 && count($combo['components']) > 0)
             ->values();
 
+        // $categories stays the FULL active parent list — the Quick Report category filter and the POS
+        // child-category strip both read it and must not change.
+        $categories = Category::with('children')
+            ->whereNull('parent_id')
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get();
+
+        // POS-COMBO-CATEGORY-1 + HIDE-EMPTY-TABS: which parent categories get a PILL (display only).
+        // Only those with a grid-visible product OR a combo (self or a child): so deal sub-categories
+        // (combos, no products) show a pill, and product-only categories whose items are all hidden
+        // (e.g. combo-filler holders) stop rendering an empty tab. Does NOT touch $categories itself.
+        $contentCategoryIds = collect($productsPayload)
+            ->filter(fn ($p) => ($p['pos_grid_visible'] ?? true))
+            ->pluck('category_id')
+            ->merge($combosPayload->pluck('category_id'))
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique();
+        $pillCategoryIds = $categories
+            ->filter(fn ($parent) => collect([$parent->id])
+                ->merge($parent->children->pluck('id'))
+                ->map(fn ($id) => (int) $id)
+                ->intersect($contentCategoryIds)
+                ->isNotEmpty())
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
+
         return view('tenant.pos.index', [
             'branches'         => $branches,
             'selectedBranchId' => $selectedBranchId,
-            'terminals'        => $scope->terminalsForPos($user, $branches->pluck('id')->map(fn ($id) => (int) $id)->all()),
+            // POS-TERMINAL-PIN-1: a pinned operator is offered ONLY his own terminal. He may be BOUND
+            // to several (that is what lets him recall/reprint the counters' orders), but the POS he
+            // sells on must stay his — the picker is also what autoSelectTerminal() chooses from.
+            'terminals'        => $scope->terminalsForPos($user, $branches->pluck('id')->map(fn ($id) => (int) $id)->all())
+                ->when(
+                    ! $user?->can(UserDataScope::CHANGE_TERMINAL_PERMISSION) && $user?->default_terminal_id,
+                    fn ($list) => $list->where('id', (int) $user->default_terminal_id)->values()
+                ),
             // CUSTOMER-UX-1: customers are looked up on demand via /ajax/customers — rendering
             // the whole book into the page hung the POS once a tenant passed a few hundred rows.
-            'categories'       => Category::with('children')
-                ->whereNull('parent_id')
-                ->where('is_active', true)
-                ->orderBy('sort_order')
-                ->orderBy('name')
-                ->get(),
+            'categories'       => $categories,
+            'pillCategoryIds'  => $pillCategoryIds,
+            // EMPTY-DEAL-PILL-1: the parent pills are filtered on this already; the CHILD strip is
+            // built client-side and used to render every child regardless, so a deal sub-category
+            // whose combos were retired kept a pill that opened on "No products found".
+            'contentCategoryIds' => $contentCategoryIds->values()->all(),
+            // POS-COMBO-CATEGORY-1: the legacy "Deals" pill (shows every combo, flat) stays ONLY while a
+            // tenant still has uncategorised combos — so tenants that never file deals keep it exactly as
+            // before. Once every combo is filed to a category (e.g. a "Deals" parent + Al-Faham/Midnight/
+            // Platters children), that real category tree replaces it and this pill hides.
+            'hasUncategorizedCombos' => collect($combosPayload)->contains(fn ($c) => empty($c['category_id'])),
             'productsPayload'  => $productsPayload,
             'combosPayload'    => $combosPayload,
             'paymentMethods'   => PaymentMethod::where('is_active', true)

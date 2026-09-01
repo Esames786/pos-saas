@@ -544,27 +544,39 @@ class HeldSaleController extends Controller
             $cancellationResult = $cancellationService->recordLineCancellations(
                 $sale,
                 $detectedCancellations,
-                (int) auth('tenant')->id()
+                (int) auth('tenant')->id(),
+                // RECALL-REPRINT-TERMINAL-2: void at the counter the operator is standing at.
+                app(UserDataScope::class)->operatorTerminalId(auth('tenant')->user(), $request->input('terminal_id')),
             );
             $cancellationBatch = $cancellationResult['batch'] ?? null;
 
             // BUG-014 FIX: include line_kind in the KOT key so a standalone product
             // and the same product appearing as a combo component never share a key
             // and incorrectly inherit each other's kot_sent status.
-            $kotSentKeys = $sale->lines()
-                ->where('kot_sent', true)
-                ->get(['product_id', 'product_variant_id', 'quantity', 'kot_sent_quantity', 'line_kind', 'combo_id'])
-                ->mapWithKeys(function ($l) {
-                    $sentQty = (float) $l->kot_sent_quantity > 0
-                        ? (float) $l->kot_sent_quantity
-                        : (float) $l->quantity;
-                    $key = $l->product_id
-                        . ':' . ($l->product_variant_id ?? 0)
-                        . ':' . ($l->line_kind ?? 'standard')
-                        . ':' . ($l->combo_id ?? 0);
-                    return [$key => $sentQty];
-                })
-                ->all();
+            //
+            // KOT-SENT-POOL-1: the key holds a POOL that new lines draw down, never a per-line
+            // stamp every matching line may take in full.
+            //
+            // Saving a held order deletes and re-creates its lines, so a line the POS could not
+            // identify by id falls back to this key. Handing each such line the whole sent quantity
+            // meant that ADDING a second helping of something already sent was born "already sent"
+            // — delta zero, no KOT, and the kitchen never heard about food the customer is charged
+            // for. Two identical sent lines also collapsed here, because mapWithKeys overwrites.
+            //
+            // So: SUM per key on the way in, and (below) let each line take only what it needs and
+            // leave the rest for the next one.
+            $kotSentKeys = [];
+            foreach ($sale->lines()->where('kot_sent', true)
+                ->get(['product_id', 'product_variant_id', 'quantity', 'kot_sent_quantity', 'line_kind', 'combo_id']) as $l) {
+                $sentQty = (float) $l->kot_sent_quantity > 0
+                    ? (float) $l->kot_sent_quantity
+                    : (float) $l->quantity;
+                $key = $l->product_id
+                    . ':' . ($l->product_variant_id ?? 0)
+                    . ':' . ($l->line_kind ?? 'standard')
+                    . ':' . ($l->combo_id ?? 0);
+                $kotSentKeys[$key] = ($kotSentKeys[$key] ?? 0) + $sentQty;
+            }
 
             $kotSentByLineId = $sale->lines()
                 ->where('kot_sent_quantity', '>', 0)
@@ -575,7 +587,17 @@ class HeldSaleController extends Controller
             $sale->lines()->delete();
             $sale->update([
                 'branch_id'                   => $data['branch_id'],
-                'terminal_id'                 => $data['terminal_id'] ?? null,
+                // HELD-SALE-TERMINAL-STAMP-1: terminal_id is set ONCE, when the order is created,
+                // and never rewritten on a later save.
+                //
+                // The update used to mirror the create and wrote every posted field back, so the
+                // counter that saved LAST became the order's owner: a T4 floor order recalled and
+                // saved at T2 moved into T2's sales, T2's shift and T2's daily closing. The terminal
+                // records which counter TOOK the order — a fact about the order — not who last
+                // touched it. RECALL-REPRINT-TERMINAL-1 already said as much ("the sale row is NEVER
+                // re-stamped, so cash/shift/closing stay with the original terminal") and added a
+                // print-time override precisely so this row would not have to move.
+                //
                 // Add Round keeps the order's original shift + business date (preserve if the held
                 // order predates the shift columns).
                 'shift_id'                    => $sale->shift_id ?? $shift->id,
@@ -669,8 +691,18 @@ class HeldSaleController extends Controller
                 . ':' . ($line['line_kind'] ?? 'standard')
                 . ':' . (($line['combo_id'] ?? null) ?? 0);
             $oldLineId = !empty($line['sales_order_line_id']) ? (int) $line['sales_order_line_id'] : null;
-            $sentQty   = $oldLineId ? ($kotSentByLineId[$oldLineId] ?? 0) : ($kotSentKeys[$kotKey] ?? 0);
             $newQty    = (float) $line['quantity'];
+
+            // KOT-SENT-POOL-1: a line the POS identified by id keeps exactly its own sent quantity.
+            // One it could not identify DRAWS from the key's pool and leaves the remainder behind,
+            // so a second helping added later starts at zero sent and does reach the kitchen.
+            if ($oldLineId) {
+                $sentQty = $kotSentByLineId[$oldLineId] ?? 0;
+            } else {
+                $available = $kotSentKeys[$kotKey] ?? 0;
+                $sentQty = min($available, $newQty);
+                $kotSentKeys[$kotKey] = $available - $sentQty;
+            }
             $kotSent   = $sentQty > 0 && $newQty <= $sentQty;
             $kotSentQty = min($sentQty, $newQty);
             $parentClientKey = $line['parent_client_line_key'] ?? null;
@@ -713,7 +745,13 @@ class HeldSaleController extends Controller
 
         if ($cancellationBatch) {
             $sale->unsetRelation('lines');
-            $cancellationService->queueCorrectionReminders($sale, $cancellationBatch);
+            // RECALL-REPRINT-TERMINAL-2: the correction belongs to the counter that voided the line.
+            $cancellationService->queueCorrectionReminders(
+                $sale,
+                $cancellationBatch,
+                false,
+                app(UserDataScope::class)->operatorTerminalId(auth('tenant')->user(), $request->input('terminal_id')),
+            );
         }
 
         if ($request->expectsJson()) {
@@ -815,6 +853,8 @@ class HeldSaleController extends Controller
             (int) $data['reason_id'],
             !empty($data['manager_approval_id']) ? (int) $data['manager_approval_id'] : null,
             (int) auth('tenant')->id(),
+            // RECALL-REPRINT-TERMINAL-2: cancel at the counter the operator is standing at.
+            app(UserDataScope::class)->operatorTerminalId(auth('tenant')->user(), $request->input('terminal_id')),
         );
 
         if (request()->expectsJson()) {

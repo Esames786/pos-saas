@@ -138,6 +138,13 @@ class SalesOrderController extends Controller
         app(\App\Services\Edge\BranchOperatingModeService::class)
             ->assertSaleMutationAllowed(Branch::findOrFail($data['branch_id']));
 
+        // RECALL-REPRINT-TERMINAL-2: the counter this operator is standing at, for routing any
+        // void raised during checkout. Resolved HERE and carried into the transaction closure —
+        // that closure does not capture $request, and reaching for it inside is a fatal error on
+        // the Complete Sale path. Already validated against the operator's own terminals.
+        $operatorTerminalId = app(\App\Services\Security\UserDataScope::class)
+            ->operatorTerminalId(auth('tenant')->user(), $request->input('terminal_id'));
+
         // SALE-IDEMPOTENCY-1: one logical sale = one client_uuid. A retry / double
         // click / timeout replay of the same sale must never double-post.
         $clientUuid  = $idempotency->normalizeClientUuid($data['client_uuid'] ?? null);
@@ -184,7 +191,7 @@ class SalesOrderController extends Controller
 
         try {
             $sale = DB::connection('tenant')->transaction(function () use (
-                $data, $lines, $payments, $salesService, $inventoryService, $totalsService, $idempotencyFields, $cancellationService, $directPayPrintState, $approvalService, $clientUuid
+                $data, $lines, $payments, $salesService, $inventoryService, $totalsService, $idempotencyFields, $cancellationService, $directPayPrintState, $approvalService, $clientUuid, $operatorTerminalId
             ) {
                 $branch   = Branch::findOrFail($data['branch_id']);
                 $terminal = !empty($data['terminal_id']) ? Terminal::find($data['terminal_id']) : null;
@@ -428,7 +435,9 @@ class SalesOrderController extends Controller
                     $cancellationResult = $cancellationService->recordLineCancellations(
                         $sale,
                         $detectedCancellations,
-                        (int) auth('tenant')->id()
+                        (int) auth('tenant')->id(),
+                        // RECALL-REPRINT-TERMINAL-2: void at the counter the operator is standing at.
+                        $operatorTerminalId,
                     );
                     $cancellationBatch = $cancellationResult['batch'] ?? null;
                     $kotSentByLineId = $existingLines->mapWithKeys(fn ($line) => [$line->id => (float) $line->kot_sent_quantity])->all();
@@ -440,10 +449,22 @@ class SalesOrderController extends Controller
                         'status'           => 'draft',
                         'inventory_posted' => false,
                         'completed_at'     => null,
-                        // Add Round / recall-to-pay keeps the ORIGINAL shift + business date. A held
-                        // check opened before midnight stays on its opening business day even when
-                        // paid after midnight (and even from a different shift).
-                        'shift_id'         => $sale->shift_id ?? $shift?->id,
+                        // POS-SHIFT-ATTRIBUTION-1: the shift follows the DRAWER the money went into,
+                        // the business date follows the order.
+                        //
+                        // Both used to stay with the order, because business_date was being taken
+                        // from the shift. It is its own column and is preserved on the line below,
+                        // so the shift no longer has to be dragged along for it: a check opened
+                        // before midnight still reports on its opening day, wherever it is paid.
+                        //
+                        // Keeping the opening shift put the cash in the wrong drawer. The Floor
+                        // counter cannot take payment at all (no tenant.pos.store), yet every check
+                        // opened there stayed on its shift — Rs 1,19,505 of expected cash on a shift
+                        // whose drawer never saw a rupee, and a Rs 21,505 shortfall at close that was
+                        // pure arithmetic. terminal_id already follows the paying counter; the shift
+                        // now agrees with it. Falls back to the order's own shift when the payment
+                        // path has none (manual / non-POS sources).
+                        'shift_id'         => $shift?->id ?? $sale->shift_id,
                         'business_date'    => $sale->business_date?->toDateString() ?? $businessDate,
                     ]));
                 } else {
@@ -516,7 +537,13 @@ class SalesOrderController extends Controller
 
                 if ($cancellationBatch) {
                     $sale->unsetRelation('lines');
-                    $cancellationService->queueCorrectionReminders($sale, $cancellationBatch);
+                    // RECALL-REPRINT-TERMINAL-2: the correction belongs to the counter that voided.
+                    $cancellationService->queueCorrectionReminders(
+                        $sale,
+                        $cancellationBatch,
+                        false,
+                        $operatorTerminalId,
+                    );
                 }
 
                 foreach ($payments as $payment) {
@@ -860,9 +887,17 @@ class SalesOrderController extends Controller
     private function validateDeliveryAttribution(array $data): array
     {
         if (($data['order_type'] ?? null) === 'delivery' && empty($data['customer_id'])) {
-            throw ValidationException::withMessages([
-                'customer_id' => 'Attach a customer before saving a delivery order.',
-            ]);
+            // AGGREGATOR-CUSTOMER-OPTIONAL: an aggregator channel (Foodpanda etc.) owns the customer on
+            // its own platform, so no customer record is required here. Own delivery still needs one —
+            // we deliver, so we need the name/phone/address.
+            $channel = ! empty($data['delivery_channel_id'])
+                ? \App\Models\Tenant\DeliveryChannel::find($data['delivery_channel_id'])
+                : null;
+            if (! ($channel && $channel->type === 'aggregator')) {
+                throw ValidationException::withMessages([
+                    'customer_id' => 'Attach a customer before saving a delivery order.',
+                ]);
+            }
         }
 
         if (($data['order_type'] ?? null) !== 'delivery' || ! empty($data['restaurant_table_session_id'])) {

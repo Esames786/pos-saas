@@ -47,11 +47,14 @@
                 <div id="terminal-list" class="border rounded p-2">
                     <div class="text-muted small p-2" id="terminal-empty">Select a branch to list its terminals.</div>
                     @foreach($terminals as $terminal)
-                        <div class="terminal-row d-flex align-items-center gap-2 py-1" data-branch="{{ $terminal->branch_id }}" style="display:none">
+                        @php $isOpen = in_array((int) $terminal->id, $openTerminalIds ?? [], true); @endphp
+                        <div class="terminal-row d-flex align-items-center gap-2 py-1" data-branch="{{ $terminal->branch_id }}" @if($isOpen) data-open="1" @endif style="display:none">
                             <div class="form-check mb-0 flex-grow-1">
                                 <input class="form-check-input term-check" type="checkbox" name="terminal_ids[]"
                                     value="{{ $terminal->id }}" id="term-{{ $terminal->id }}" disabled>
-                                <label class="form-check-label" for="term-{{ $terminal->id }}">{{ $terminal->name }}</label>
+                                <label class="form-check-label" for="term-{{ $terminal->id }}">{{ $terminal->name }}
+                                    @if($isOpen)<span class="badge bg-success-subtle text-success-emphasis border ms-1"><i class="ti ti-lock me-1"></i>Shift already open</span>@endif
+                                </label>
                             </div>
                             <div class="input-group input-group-sm" style="max-width:220px">
                                 <span class="input-group-text">Override cash</span>
@@ -95,9 +98,17 @@
         var anyVisible = false;
         rows.forEach(function (row) {
             var mine = row.getAttribute('data-branch') === b && b !== '';
+            var isOpen = row.getAttribute('data-open') === '1';
             row.style.display = mine ? '' : 'none';
             var chk = row.querySelector('.term-check');
             var ov  = row.querySelector('input[type="number"]');
+            // A terminal that already has an open shift stays locked (disabled + unchecked) even for
+            // its own branch — the operator sees the "already open" badge and it is never submitted.
+            if (isOpen) {
+                chk.disabled = true; chk.checked = false; ov.disabled = true;
+                if (mine) anyVisible = true;
+                return;
+            }
             chk.disabled = !mine;                 // disabled inputs are not submitted
             ov.disabled  = !mine;
             if (mine) {
@@ -114,7 +125,7 @@
 
     branchEl.addEventListener('change', function () { hadOld = false; apply(); });
     document.getElementById('term-all').addEventListener('click', function () {
-        rows.forEach(function (r) { if (r.style.display !== 'none') r.querySelector('.term-check').checked = true; });
+        rows.forEach(function (r) { if (r.style.display !== 'none' && r.getAttribute('data-open') !== '1') r.querySelector('.term-check').checked = true; });
     });
     document.getElementById('term-none').addEventListener('click', function () {
         rows.forEach(function (r) { if (r.style.display !== 'none') r.querySelector('.term-check').checked = false; });

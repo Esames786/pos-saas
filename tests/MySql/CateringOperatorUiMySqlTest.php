@@ -193,6 +193,14 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('Supply split', $html);
         $this->assertStringContainsString('punch-live-rate', $html, 'price per selling unit is visible before row save');
         $this->assertStringContainsString('punch-live-amount', $html, 'line amount is visible before row save');
+        $this->assertStringContainsString('customerRateTouched', $html,
+            'fresh rows follow system rate until an operator deliberately overrides it');
+        $this->assertStringContainsString("h('item_name_ur', punch.nameUr", $html,
+            'punched rows preserve the product Urdu name for customer and kitchen documents');
+        $this->assertStringContainsString("this.select();", $html,
+            'customer rate focus selects the existing number for one-keystroke replacement');
+        $this->assertStringContainsString('event-booking-details', $html,
+            'customer and event detail is compact and expandable');
         $this->assertStringContainsString('Quotation Total', $html);
         $this->assertStringContainsString('punch-edit', $html, 'saved rows expose an explicit edit action');
         $this->assertStringContainsString('clearPunchInstructions', $html,

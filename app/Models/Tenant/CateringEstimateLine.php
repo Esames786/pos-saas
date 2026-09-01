@@ -122,6 +122,40 @@ class CateringEstimateLine extends Model
         return $summary !== '' ? $summary : null;
     }
 
+    /**
+     * KASHIF-KITCHEN-MATERIALS-1 — what this line takes, and who brings it.
+     *
+     * ONE arithmetic, deliberately. The customer's quotation and the kitchen
+     * sheet print the same sentence about the same line, and the only way they
+     * can never disagree is for both to read it from here. Quantities are the
+     * line's TOTAL kitchen draw (`physicalRequirement`), with the split shown
+     * where a split exists — the kitchen cooks the whole eight kilos of rice
+     * whoever carried it through the door.
+     *
+     * Returns plain data, not words: the caller supplies the document's own
+     * language. Internal cost never appears — this goes on paper a customer
+     * holds.
+     *
+     * @return array<int, array{name: string, unit_code: ?string, qty: float, ours: float, customer: float, supply: string}>
+     */
+    public function materialSummary(): array
+    {
+        return $this->costBlocks
+            ->filter->isMaterial()
+            ->map(fn ($block) => [
+                'name' => $block->material_name ?: $block->label,
+                'unit_code' => $block->unit_code,
+                'qty' => $block->physicalRequirement(),
+                'ours' => $block->billableQty(),
+                'customer' => $block->suppliedQty(),
+                'supply' => $block->isCustomerSupplied()
+                    ? 'customer'
+                    : ($block->isPartiallyCustomerSupplied() ? 'split' : 'ours'),
+            ])
+            ->values()
+            ->all();
+    }
+
     public function estimate()
     {
         return $this->belongsTo(CateringEstimate::class, 'catering_estimate_id');

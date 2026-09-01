@@ -10,6 +10,7 @@ class Combo extends Model
 
     protected $fillable = [
         'branch_id',
+        'category_id',
         'code',
         'name',
         'price',
@@ -29,6 +30,12 @@ class Combo extends Model
     public function branch()
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    // POS-COMBO-CATEGORY-1: optional grouping so deals show under their own POS tab (null = "Deals").
+    public function category()
+    {
+        return $this->belongsTo(Category::class);
     }
 
     public function components()

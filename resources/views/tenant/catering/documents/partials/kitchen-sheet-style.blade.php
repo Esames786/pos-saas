@@ -38,6 +38,9 @@
     .item-ur { font-size: 18px; }
     .qty { font-size: 18px; font-weight: bold; white-space: nowrap; }
     .instructions { color: #374151; }
+    /* KASHIF-KITCHEN-MATERIALS-1: the material line sits UNDER the dish and
+       stays quieter than it — the dish name is what the cook reads first. */
+    .line-mats-inline { font-size: 11px; color: #4b5563; margin-top: 3px; line-height: 1.5; }
     .req { margin-top: 22px; page-break-inside: avoid; }
     .req h3 { border-bottom: 2px solid #111827; padding-bottom: 4px; font-size: 14px; }
     table.req-table { width: 100%; border-collapse: collapse; font-size: 12px; }

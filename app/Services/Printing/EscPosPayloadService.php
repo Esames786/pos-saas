@@ -750,6 +750,23 @@ class EscPosPayloadService
             $lines = collect($payload['line_snapshots'])->map(fn ($line) => (object) $line);
         }
 
+        // KOT-REPRINT-BLANK-1 — a reprint must never hand the kitchen an empty ticket.
+        //
+        // The ids above are frozen into the job, but the LINES are read live, and saving a held bill
+        // deletes and recreates every line with a new id. After that the whereIn matches nothing and
+        // the ticket printed its heading over an empty list — no items, no error, and not even the
+        // station name, which is built from the items. On 31 Aug six of order 465's tickets were in
+        // that state, and 45 of Kashif Food's 81 tickets that day, though none had actually been
+        // reprinted.
+        //
+        // The job already carries a complete snapshot of what it sent — the cancellation path prints
+        // from exactly this. So when the live lines are gone, fall back to it: a reprint is a copy of
+        // what WAS sent, and the snapshot is that record. Only when nothing resolves, so a normal
+        // reprint keeps reading live and stays identical to today.
+        if ($lines->isEmpty() && ! empty($payload['line_snapshots'])) {
+            $lines = collect($payload['line_snapshots'])->map(fn ($line) => (object) $line);
+        }
+
         // PRINT-FORMAT-PARITY-1: honour the saved KOT layout like the browser preview does,
         // lead with the ORDER TYPE (kitchen reads it first), single-line item + qty column.
         $layout = $this->layoutFor($sale->branch_id, 'kot');
@@ -833,6 +850,24 @@ class EscPosPayloadService
         $out .= $this->sized($this->qtyItemColumns('QTY', 'ITEM', $this->scaledWidth($rowBig), $dividers), $rowBig, true);
         $out .= $rule . "\n";
 
+        // COMBO-KOT-DEAL-NAME-1: name the deal under each of its components.
+        //
+        // A KOT is split by category, and the combo HEADER line is skipped below — so the grill
+        // station sees three loose kebabs with no way to know they are one platter, and plates them
+        // separately. The reminder never had this problem: it nests components under the header, so
+        // the deal name is already on it and is deliberately left alone.
+        //
+        // Read once for the whole ticket, keyed by combo id. Snapshot lines (a cancel KOT) are plain
+        // stdClass and may carry no combo_id at all — hence the null-safe read.
+        $comboIds = collect($lines)->map(fn ($l) => (int) ($l->combo_id ?? 0))->filter()->unique()->values();
+        $comboNames = $comboIds->isEmpty()
+            ? collect()
+            : \Illuminate\Support\Facades\DB::connection('tenant')->table('combos')
+                ->whereIn('id', $comboIds->all())->pluck('name', 'id');
+        // One step SMALLER than the item rows: the cook cooks from the item, and reads the deal
+        // only to group the plate. Never double width, so a long deal name cannot wrap to a stub.
+        $dealScale = ['w' => 1, 'h' => 1];
+
         foreach ($lines as $line) {
             if (($line->line_kind ?? 'standard') === 'combo_header') {
                 continue;
@@ -855,6 +890,12 @@ class EscPosPayloadService
             // COLUMN approach — Qty | Item — with the name wrapping under its column. No price:
             // a kitchen ticket carries none. Rows use the item scale + optional divider line.
             $out .= $this->sized($this->qtyItemColumns($kotQty, $name, $this->scaledWidth($rowBig), $dividers), $rowBig, true);
+
+            // The deal this item belongs to, directly under its name — the column layout above is
+            // untouched, this is one more sub-row of the kind variants and modifiers already use.
+            if ($dealName = $comboNames[(int) ($line->combo_id ?? 0)] ?? null) {
+                $out .= $this->subRow('  (' . $dealName . ')', $dealScale);
+            }
 
             // Variant, modifiers and the cook's note stay one step below the item: always taller
             // than normal so they are readable, never double width, so they never wrap.

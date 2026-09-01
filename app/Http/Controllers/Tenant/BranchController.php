@@ -134,6 +134,10 @@ class BranchController extends Controller
                 Branch::MANUAL_DISCOUNT_MANAGER_REQUIRED,
                 Branch::MANUAL_DISCOUNT_AUTO_APPROVE,
             ])],
+            'sales_return_approval_mode' => ['nullable', Rule::in([
+                Branch::SALES_RETURN_MANAGER_REQUIRED,
+                Branch::SALES_RETURN_AUTO_APPROVE,
+            ])],
             'receipt_footer'             => ['nullable', 'string'],
             'status'                     => ['required', Rule::in(['active', 'inactive'])],
         ]);
@@ -152,6 +156,11 @@ class BranchController extends Controller
         $data['manual_discount_approval_mode'] = $data['manual_discount_approval_mode']
             ?? $branch?->manual_discount_approval_mode
             ?? Branch::MANUAL_DISCOUNT_MANAGER_REQUIRED;
+        // RETURN-MANAGER-APPROVAL-1: falls back to AUTO, unlike the two above. Shipping a column
+        // must not start refusing returns at every tenant until someone finds the setting.
+        $data['sales_return_approval_mode'] = $data['sales_return_approval_mode']
+            ?? $branch?->sales_return_approval_mode
+            ?? Branch::SALES_RETURN_AUTO_APPROVE;
 
         return $data;
     }

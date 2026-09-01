@@ -27,6 +27,11 @@ class ManagerApprovalController extends Controller
             'payload.discount_value' => ['nullable', 'numeric', 'gt:0'],
             'payload.discount_amount' => ['nullable', 'numeric', 'gt:0'],
             'payload.quantity' => ['nullable', 'numeric', 'gt:0'],
+            // RETURN-MANAGER-APPROVAL-1: what a return approval is bound to. Listed so the keys
+            // survive validate() and reach the stored payload — an unlisted key is dropped, and a
+            // dropped key binds nothing.
+            'payload.refund_method' => ['nullable', 'string', 'max:30'],
+            'payload.refund_amount' => ['nullable', 'numeric', 'min:0'],
             'payload.cancellations' => ['nullable', 'array', 'min:1'],
             'payload.cancellations.*.line_id' => ['required_with:payload.cancellations', 'integer'],
             'payload.cancellations.*.quantity' => ['required_with:payload.cancellations', 'numeric', 'gt:0'],

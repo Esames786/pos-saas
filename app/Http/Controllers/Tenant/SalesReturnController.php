@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Tenant;
 
 use App\Http\Controllers\Controller;
+use App\Models\Tenant\Branch;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\SalesReturn;
 use App\Services\Sales\SalesReturnService;
@@ -123,7 +124,15 @@ class SalesReturnController extends Controller
                 ->where('status', 'posted')->sum('delivery_charge_amount'), 2), 0)
             : 0.0;
 
-        return view('tenant.sales-returns.create', compact('salesOrder', 'returnAllocations', 'outstandingDelivery', 'defaultRefundMethod'));
+        // RETURN-MANAGER-APPROVAL-1: decides whether the screen asks for a PIN. The controller
+        // enforces it regardless — this only tells the page whether to offer the modal.
+        $needsManagerApproval = $salesOrder
+            && ($salesOrder->branch?->sales_return_approval_mode ?? Branch::SALES_RETURN_AUTO_APPROVE)
+                !== Branch::SALES_RETURN_AUTO_APPROVE;
+
+        return view('tenant.sales-returns.create', compact(
+            'salesOrder', 'returnAllocations', 'outstandingDelivery', 'defaultRefundMethod', 'needsManagerApproval'
+        ));
     }
 
     private function userCanAccessBranch(int $branchId): bool
@@ -153,6 +162,9 @@ class SalesReturnController extends Controller
             // 0.001"). Zero lines are simply skipped by SalesReturnService; the guard below keeps a
             // return with NOTHING selected from posting.
             'lines.*.quantity'            => ['required', 'numeric', 'min:0'],
+            // RETURN-MANAGER-APPROVAL-1: present only when the branch asks for it. Validated as an
+            // existing row so a typed id cannot reach the lookup below and 500.
+            'manager_approval_id'         => ['nullable', 'integer', 'exists:manager_approvals,id'],
         ]);
 
         if (collect($data['lines'])->sum(fn ($l) => (float) ($l['quantity'] ?? 0)) <= 0) {
@@ -174,6 +186,58 @@ class SalesReturnController extends Controller
 
         if (! $this->userCanAccessBranch($salesOrder->branch_id)) {
             return back()->withErrors(['return' => 'That sale belongs to a branch you are not assigned to.'])->withInput();
+        }
+
+        // RETURN-MANAGER-APPROVAL-1 — a branch may require a manager before money goes back.
+        //
+        // Posting a return hands cash over, puts stock back on the shelf and writes to the ledger,
+        // yet it was the one POS action with no approval at all — cancelling a single item already
+        // needed one. Same machinery cancellations use, with its own action_type so an approval for
+        // one can never authorise the other.
+        //
+        // The approval is bound to the REFUND AMOUNT, which is the number the manager actually
+        // reads before typing the PIN. That one binding closes both doors, because
+        // SalesReturnService independently refuses any refund_amount that does not equal the total
+        // it computes from the lines:
+        //   - approve 100, then post lines worth 10,000  -> the service rejects the mismatch
+        //   - approve 100, then post 10,000              -> consume() rejects the changed payload
+        // So the amount is required here; without it the service skips its own check and the
+        // binding would guard nothing.
+        $needsManager = ($salesOrder->branch?->sales_return_approval_mode ?? Branch::SALES_RETURN_AUTO_APPROVE)
+            !== Branch::SALES_RETURN_AUTO_APPROVE;
+
+        if ($needsManager) {
+            if (! isset($data['refund_amount']) || $data['refund_amount'] === null) {
+                return back()->withErrors([
+                    'refund_amount' => 'Enter the refund amount — a manager-approved return is approved for a specific figure.',
+                ])->withInput();
+            }
+            if (empty($data['manager_approval_id'])) {
+                return back()->withErrors([
+                    'manager_approval_id' => 'Manager approval is required to post a return at this branch.',
+                ])->withInput();
+            }
+
+            $approval = \App\Models\Tenant\ManagerApproval::find($data['manager_approval_id']);
+            if (! $approval) {
+                return back()->withErrors(['manager_approval_id' => 'Manager approval was not found.'])->withInput();
+            }
+
+            try {
+                app(\App\Services\Sales\ManagerApprovalService::class)->consume(
+                    $approval,
+                    'sales_return',
+                    (int) auth('tenant')->id(),
+                    [
+                        'sales_order_id' => (int) $salesOrder->id,
+                        'branch_id'      => (int) $salesOrder->branch_id,
+                        'refund_method'  => (string) $data['refund_method'],
+                        'refund_amount'  => round((float) $data['refund_amount'], 2),
+                    ]
+                );
+            } catch (\RuntimeException $exception) {
+                return back()->withErrors(['manager_approval_id' => $exception->getMessage()])->withInput();
+            }
         }
 
         try {

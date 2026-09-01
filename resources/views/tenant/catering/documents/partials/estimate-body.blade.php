@@ -91,7 +91,6 @@
     </thead>
     <tbody>
         @foreach($estimate->lines as $line)
-        @php $matBlocks = $line->costBlocks->filter->isMaterial(); @endphp
         <tr>
             <td>{{ $loop->iteration }}</td>
             <td>
@@ -110,29 +109,14 @@
 
                 {{-- KASHIF-LEGACY-ALIGN-1 ("Is p gosht nh arha"): what this line
                      takes and who brings it — one quiet line UNDER the item, not
-                     a box competing with it. Quantities are the line's TOTAL
-                     kitchen draw, the same numbers the release sheet works from.
+                     a box competing with it. KASHIF-KITCHEN-MATERIALS-1 moved the
+                     arithmetic to the line itself and the wording to a shared
+                     partial, so the kitchen sheet now prints the SAME sentence.
                      Internal cost never reaches a customer's document, and the
                      document's own language is respected — no forced Urdu. --}}
-                @php
-                    $fmtQty = fn ($q) => rtrim(rtrim(number_format((float) $q, 3), '0'), '.');
-                    $matLine = $matBlocks->map(function ($mb) use ($fmtQty, $t) {
-                        $name = $mb->material_name ?: $mb->label;
-                        $qty = $fmtQty($mb->event_material_qty ?? 0).' '.$mb->unit_code;
-                        if ($mb->isCustomerSupplied()) {
-                            return $name.' '.$qty.' ('.$t('customer', 'گاہک').')';
-                        }
-                        if ($mb->isPartiallyCustomerSupplied()) {
-                            return $name.' '.$qty.' ('.$t('us', 'ہم').' '.$fmtQty($mb->billableQty())
-                                .', '.$t('customer', 'گاہک').' '.$fmtQty($mb->suppliedQty()).')';
-                        }
-
-                        return $name.' '.$qty.' ('.$t('us', 'ہم').')';
-                    })->implode(' · ');
-                @endphp
-                @if($matLine !== '')
-                    <div class="line-mats-inline">{{ $matLine }}</div>
-                @endif
+                @include('tenant.catering.documents.partials.line-materials', [
+                    'materials' => $line->materialSummary(),
+                ])
             </td>
             <td class="num">{{ rtrim(rtrim(number_format($line->quantity, 3), '0'), '.') }}</td>
             <td>{{ $line->unit_code }}</td>

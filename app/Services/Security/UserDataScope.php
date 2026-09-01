@@ -110,6 +110,61 @@ class UserDataScope
         if (($terminals = $this->terminalIds($user)) && ! in_array($terminalId, $terminals, true)) {
             abort(403, 'Your account is not assigned to this terminal.');
         }
+
+        $this->assertTerminalNotSwitched($user, $terminalId);
+    }
+
+    /** Synthetic (non-route) permission: may this operator change the POS branch/terminal at all? */
+    public const CHANGE_TERMINAL_PERMISSION = 'tenant.pos.change-terminal';
+
+    /**
+     * POS-TERMINAL-PIN-1 — an operator WITHOUT `tenant.pos.change-terminal` is pinned to his own
+     * default terminal, whatever the request says.
+     *
+     * A floor operator is bound to several terminals so he can RECALL and REPRINT the counters'
+     * orders (deniesSale keys on the bound list). That binding, on its own, would also let him
+     * switch the POS onto a counter's terminal — and then his orders would stamp that counter,
+     * print at its printer and land in its shift. The binding is for reading other terminals'
+     * work; this keeps WRITING on his own.
+     *
+     * Hiding the Change button is not enough — the terminal is a posted form field, so the pin has
+     * to live at the guard every POS write path already funnels through. A user who holds the
+     * permission, or who has no default terminal to be pinned to, is unaffected.
+     */
+    private function assertTerminalNotSwitched(?User $user, int $terminalId): void
+    {
+        if (! $user || $user->can(self::CHANGE_TERMINAL_PERMISSION)) {
+            return;
+        }
+
+        $pinned = (int) ($user->default_terminal_id ?? 0);
+        if ($pinned > 0 && $pinned !== $terminalId) {
+            abort(403, 'You can only work on your own terminal.');
+        }
+    }
+
+    /**
+     * RECALL-REPRINT-TERMINAL-1/2 — the operator's CURRENT terminal (the POS posts its #terminal_id),
+     * for routing a print to the counter the operator is standing at rather than the one that created
+     * the order.
+     *
+     * Honoured only when it is a terminal this operator may actually work on, so a print can never be
+     * aimed at a foreign counter. Null (absent or not allowed) means "route on the sale's own
+     * terminal", which is exactly the behaviour every caller had before an override existed.
+     *
+     * One definition, shared by reprints and cancellations — the two used to disagree, which is how
+     * a cancellation kept printing at the wrong counter.
+     */
+    public function operatorTerminalId(?User $user, mixed $requested): ?string
+    {
+        $terminalId = (int) $requested;
+        if ($terminalId <= 0) {
+            return null;
+        }
+
+        $allowed = $this->terminalIds($user);
+
+        return ($allowed && ! in_array($terminalId, $allowed, true)) ? null : (string) $terminalId;
     }
 
     /**

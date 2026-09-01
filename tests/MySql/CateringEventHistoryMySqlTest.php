@@ -145,6 +145,14 @@ class CateringEventHistoryMySqlTest extends MySqlTenantTestCase
         $this->assertNotNull($second);
         $this->assertStringContainsString('PAX 100→250', $second->change_summary);
         $this->assertStringContainsString('Chicken Biryani 10→15 KG', $second->change_summary);
+
+        $groups = $this->history->structuredDiff($first->snapshot, $second->snapshot);
+        $this->assertSame('PAX', $groups['event'][0]['label']);
+        $this->assertSame('100', $groups['event'][0]['before']);
+        $this->assertSame('250', $groups['event'][0]['after']);
+        $this->assertSame(1, $groups['rows'][0]['row']);
+        $this->assertSame('Chicken Biryani', $groups['rows'][0]['item']);
+        $this->assertSame('Quantity', $groups['rows'][0]['changes'][0]['label']);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

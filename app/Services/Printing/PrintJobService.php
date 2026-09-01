@@ -64,7 +64,9 @@ class PrintJobService
 
         $sale->loadMissing(['branch', 'terminal', 'customer', 'lines', 'payments.method']);
 
-        $printer = $printer ?: $this->routingService->receiptPrinter($sale);
+        // RECALL-REPRINT-TERMINAL-1: when a caller passes a terminal (e.g. a recalled order reprinted
+        // from another counter), route to THAT terminal's receipt printer — the sale row is untouched.
+        $printer = $printer ?: $this->routingService->receiptPrinter($sale, $terminalId ? (int) $terminalId : null);
 
         $attributes = [
             'logical_key'         => $logicalKey,
@@ -165,7 +167,10 @@ class PrintJobService
         }
 
         // No explicit printer — use routing service.
-        $routes = $this->routingService->kotRoutesForSale($sale, $lineIds, $isReprint);
+        // RECALL-REPRINT-TERMINAL-1: route this KOT to the passed terminal when given (recalled-order
+        // reprint from another counter); counter-category items follow that terminal, station
+        // categories (BBQ/Fastfood) are terminal-agnostic and keep going to their stations.
+        $routes = $this->routingService->kotRoutesForSale($sale, $lineIds, $isReprint, $terminalId ? (int) $terminalId : null);
 
         if (!$isReprint && ($pendingFallback = $this->matchingQueuedBrowserFallback($sale, $routes))) {
             return [$pendingFallback];
@@ -226,7 +231,10 @@ class PrintJobService
             return ['batch' => null, 'jobs' => []];
         }
 
-        $routes = $this->routingService->kotRoutesForQuantities($sale, $lineQuantities);
+        // RECALL-REPRINT-TERMINAL-2: the terminal was only stamped on the job row; printer resolution
+        // still keyed on the sale's terminal, so a cancellation raised from another counter printed
+        // at the counter that created the order.
+        $routes = $this->routingService->kotRoutesForQuantities($sale, $lineQuantities, $terminalId ? (int) $terminalId : null);
         $batch = $this->createKotBatch($sale, $lineQuantities, 'cancel');
         $jobs = [];
 
@@ -368,6 +376,19 @@ class PrintJobService
             $payload['copy_no'] = $copyNo;
             $payload['is_reprint'] = true;
 
+            // REMINDER-REPRINT-SNAPSHOT-1: a reprint is a duplicate of the original slip — items,
+            // revision and the generated-at stamp all stay frozen, which is the whole point of asking
+            // for one. TABLE and WAITER are the exception: they say where the food has to GO, so they
+            // are read live. A check moved from table 18 to table 5 was reprinting "TABLE: 18" twenty
+            // seconds after the move, while the receipt printed alongside it said 5.
+            $liveSale = $source->reference_type === 'sales_order' && $source->reference_id
+                ? SalesOrder::with(['restaurantTable', 'restaurantWaiter'])->find($source->reference_id)
+                : null;
+            if ($liveSale) {
+                $payload['table'] = $liveSale->restaurantTable?->table_no;
+                $payload['waiter'] = $liveSale->restaurantWaiter?->name;
+            }
+
             return $this->createLogicalJob([
                 'logical_key' => $prefix . $copyNo,
                 'copy_no' => $copyNo,
@@ -387,7 +408,7 @@ class PrintJobService
     }
 
     /** Queue non-interactive correction Reminders after cancellation approval/audit is durable. */
-    public function queueCancellationReminders(SalesOrder $sale, KotBatch $batch, bool $wholeOrder): array
+    public function queueCancellationReminders(SalesOrder $sale, KotBatch $batch, bool $wholeOrder, ?string $terminalId = null): array
     {
         $sale->loadMissing(['lines.product.category']);
         $cancellations = SalesOrderLineCancellation::with(['reason', 'requestedBy', 'approvedBy'])
@@ -395,12 +416,29 @@ class PrintJobService
         $effective = $sale->lines->mapWithKeys(fn ($line) => [
             (string) $line->id => $wholeOrder ? 0.0 : (float) $line->quantity,
         ])->all();
-        $current = collect($this->routingService->reminderRoutesForSale($sale, $effective))->pluck('printer');
-        $historicalIds = PrintJob::where('reference_type', 'sales_order')
-            ->where('reference_id', $sale->id)->where('document_type', 'reminder')
-            ->whereNotNull('printer_id')->where('print_status', '!=', 'cancelled')
-            ->pluck('printer_id');
-        $printers = Printer::whereIn('id', $current->pluck('id')->merge($historicalIds)->unique())
+        // RECALL-REPRINT-TERMINAL-2 — ONE correction slip, at the counter that cancelled.
+        //
+        // When the operator's terminal is known, that counter is the whole answer: a WHOLE-order
+        // cancellation zeroes every line, so routing against $effective finds no active line and
+        // returns nothing — the route is resolved from the order's real lines instead. The sale's
+        // reminder HISTORY is deliberately skipped here, or the counter that created the order gets
+        // a second copy of the same cancellation (owner's call: no duplicate slips).
+        //
+        // With no terminal (Edge, and any caller that passes nothing) the original rule stands —
+        // current routes plus every printer that already holds a reminder for this sale.
+        if ($terminalId) {
+            $current = collect($this->routingService->reminderRoutesForSale($sale, [], (int) $terminalId))->pluck('printer');
+            $printerIds = $current->pluck('id')->unique();
+        } else {
+            $current = collect($this->routingService->reminderRoutesForSale($sale, $effective))->pluck('printer');
+            $historicalIds = PrintJob::where('reference_type', 'sales_order')
+                ->where('reference_id', $sale->id)->where('document_type', 'reminder')
+                ->whereNotNull('printer_id')->where('print_status', '!=', 'cancelled')
+                ->pluck('printer_id');
+            $printerIds = $current->pluck('id')->merge($historicalIds)->unique();
+        }
+
+        $printers = Printer::whereIn('id', $printerIds)
             ->where('is_active', true)->where('supports_reminder', true)->get();
 
         return $printers->map(fn ($printer) => $this->queueReminder(
@@ -411,7 +449,8 @@ class PrintJobService
             $wholeOrder ? 'cancelled_order' : 'cancelled_updated_order',
             [],
             $effective,
-            $cancellations
+            $cancellations,
+            $terminalId
         ))->values()->all();
     }
 
@@ -424,6 +463,7 @@ class PrintJobService
         array $cancelledQuantities = [],
         array $effectiveQuantities = [],
         $cancellations = null,
+        ?string $terminalId = null,
     ): PrintJob {
         $payload = $this->reminderSnapshot(
             $sale, $batch, $printer, $revision, $eventType,
@@ -434,7 +474,12 @@ class PrintJobService
             'logical_key' => 'reminder:' . $batch->event_uuid . ':' . $printer->id,
             'copy_no' => 1,
             'branch_id' => $sale->branch_id,
-            'terminal_id' => $sale->terminal_id,
+            // REMINDER-JOB-TERMINAL-1: the row must name the counter the slip was actually raised at,
+            // not the one that created the order. A cancellation routed to the cancelling counter was
+            // filed under the ORDER's terminal, and the Printing → Jobs list filters on this column —
+            // so the operator who raised the slip could not see it, or Retry it, while it cluttered
+            // another counter's list. The paper was always right; only the record was not.
+            'terminal_id' => $terminalId ?: $sale->terminal_id,
             'printer_id' => $printer->id,
             'document_type' => 'reminder',
             'print_status' => 'queued',

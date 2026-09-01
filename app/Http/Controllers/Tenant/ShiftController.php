@@ -7,6 +7,7 @@ use App\Models\Tenant\Branch;
 use App\Models\Tenant\CashCountLine;
 use App\Models\Tenant\Currency;
 use App\Exceptions\ShiftException;
+use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\Shift;
 use App\Models\Tenant\Terminal;
 use App\Services\Sales\ShiftService;
@@ -53,9 +54,15 @@ class ShiftController extends Controller
         $user  = auth('tenant')->user();
         $scope = app(\App\Services\Security\UserDataScope::class);
 
+        // SHIFT-OPEN-UX-1: terminals that already have an open shift are shown but locked (disabled +
+        // "already open" badge) so the operator knows they cannot re-open one — openMany() skips them
+        // server-side regardless, this just makes it visible instead of a silent skip.
+        $openTerminalIds = Shift::where('status', 'open')->pluck('terminal_id')->map(fn ($id) => (int) $id)->all();
+
         return view('tenant.shifts.open', [
-            'branches'  => $scope->branchesForPos($user),
-            'terminals' => $scope->terminalsForPos($user),
+            'branches'        => $scope->branchesForPos($user),
+            'terminals'       => $scope->terminalsForPos($user),
+            'openTerminalIds' => $openTerminalIds,
         ]);
     }
 
@@ -268,7 +275,28 @@ class ShiftController extends Controller
                 ->values();
         }
 
-        return view('tenant.shifts.close-branch', compact('branches', 'selectedBranchId', 'openShifts'));
+        // SHIFT-CANCELLATIONS-1 — the same breakup the Shift Report shows, at the moment it matters
+        // most: while the drawer is being counted. "Sales 270,740 but Expected 224,305" looks like a
+        // hole until the line underneath says 46,435 of it arrived by card and bank and never went
+        // into the till. Cancellations come from the orders, not the shift row, so a shift that
+        // closed months ago reports them too.
+        $shiftIds = $openShifts->pluck('id')->all();
+
+        $cancelledOrders = $shiftIds ? SalesOrder::query()
+            ->whereIn('shift_id', $shiftIds)->where('status', 'cancelled')
+            ->selectRaw('shift_id, COUNT(*) as bills, COALESCE(SUM(grand_total), 0) as amount')
+            ->groupBy('shift_id')->get()->keyBy('shift_id') : collect();
+
+        $voidedLines = $shiftIds ? DB::connection('tenant')
+            ->table('sales_order_line_cancellations as c')
+            ->join('sales_orders as o', 'o.id', '=', 'c.sales_order_id')
+            ->whereIn('o.shift_id', $shiftIds)
+            ->selectRaw('o.shift_id, COUNT(*) as lines_count, COALESCE(SUM(c.quantity), 0) as units')
+            ->groupBy('o.shift_id')->get()->keyBy('shift_id') : collect();
+
+        return view('tenant.shifts.close-branch', compact(
+            'branches', 'selectedBranchId', 'openShifts', 'cancelledOrders', 'voidedLines'
+        ));
     }
 
     public function closeBranch(Request $request, ShiftService $shiftService)

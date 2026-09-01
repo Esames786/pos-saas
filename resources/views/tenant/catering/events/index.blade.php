@@ -182,8 +182,123 @@
                             <span class="badge bg-{{ $badge }}">{{ ucwords(str_replace('_', ' ', $event->status)) }}</span>
                         </td>
                         <td class="fs-12">{{ app(\App\Services\Catering\CateringCalendarService::class)->nextAction($event) }}</td>
+                        {{-- KASHIF-EVENT-ACTIONS-1 — the actions an operator was
+                             opening the booking to reach: its documents, its
+                             production release, and the next lawful step in its
+                             lifecycle. Every entry posts through the SAME
+                             authority the event screen uses, and only the steps
+                             this status actually allows are offered — a status
+                             dropdown writing the column directly would walk
+                             straight past the quotation, production and finance
+                             rules. --}}
+                        @php
+                            $release = $event->productionReleases->sortByDesc('id')->first();
+                            $estimateId = $event->currentEstimate?->id;
+                            $isOpen = $event->isOpen();
+                            $sentEstimate = $event->currentEstimate && ! $event->currentEstimate->isDraft();
+                            $canRelease = $sentEstimate
+                                && in_array($event->status, ['quoted', 'confirmed', 'production_ready'], true);
+                            $canInvoice = $sentEstimate && ! $event->finalInvoice
+                                && in_array($event->status, ['confirmed', 'production_ready', 'released'], true);
+                        @endphp
                         <td class="text-end">
-                            <a href="{{ url('/catering/events/' . $event->id) }}" class="btn btn-sm btn-light">Open</a>
+                            <div class="btn-group">
+                                <a href="{{ url('/catering/events/' . $event->id) }}" class="btn btn-sm btn-light">Open</a>
+                                <button type="button" class="btn btn-sm btn-light dropdown-toggle dropdown-toggle-split"
+                                        data-bs-toggle="dropdown" aria-expanded="false" title="Actions">
+                                    <span class="visually-hidden">Actions</span>
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end">
+                                    <li><h6 class="dropdown-header">Documents</h6></li>
+                                    @if($estimateId)
+                                        <li><a class="dropdown-item" target="_blank"
+                                               href="{{ url('/catering/documents/estimate/' . $estimateId) }}">
+                                            <i class="ti ti-file-invoice me-2"></i>Quotation</a></li>
+                                    @endif
+                                    @if($release)
+                                        <li><a class="dropdown-item" target="_blank"
+                                               href="{{ url('/catering/documents/kitchen-sheet/' . $release->id) }}">
+                                            <i class="ti ti-tools-kitchen-2 me-2"></i>Kitchen Sheet</a></li>
+                                        <li><a class="dropdown-item"
+                                               href="{{ url('/catering/production-releases/' . $release->id) }}">
+                                            <i class="ti ti-clipboard-check me-2"></i>Production Release
+                                            <span class="text-muted fs-12">{{ $release->release_no }}</span></a></li>
+                                    @else
+                                        <li><span class="dropdown-item-text text-muted fs-12">No production release yet</span></li>
+                                    @endif
+
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li><h6 class="dropdown-header">Next step</h6></li>
+
+                                    @can('tenant.catering.events.confirm')
+                                        @if($isOpen && in_array($event->status, ['quoted', 'draft'], true))
+                                            <li>
+                                                <button type="button" class="dropdown-item js-event-action"
+                                                        data-url="{{ url('/catering/events/' . $event->id . '/confirm') }}"
+                                                        data-confirm="Confirm this booking?">
+                                                    <i class="ti ti-check me-2 text-success"></i>Confirm Booking
+                                                </button>
+                                            </li>
+                                        @endif
+                                    @endcan
+
+                                    @can('tenant.catering.production-releases.store')
+                                        @if($canRelease)
+                                            <li>
+                                                <button type="button" class="dropdown-item js-event-action"
+                                                        data-url="{{ url('/catering/events/' . $event->id . '/production-releases') }}"
+                                                        data-confirm="Release production for this booking? The kitchen sheet is taken from the quotation as it stands.">
+                                                    <i class="ti ti-send me-2 text-primary"></i>Release Production
+                                                </button>
+                                            </li>
+                                        @endif
+                                    @endcan
+
+                                    @can('tenant.catering.final-invoices.store')
+                                        @if($canInvoice)
+                                            <li>
+                                                <button type="button" class="dropdown-item js-event-action"
+                                                        data-url="{{ url('/catering/events/' . $event->id . '/final-invoice') }}"
+                                                        data-confirm="Issue the final invoice? This posts to the general ledger and closes the booking to commercial change.">
+                                                    <i class="ti ti-receipt-2 me-2 text-warning"></i>Issue Final Invoice
+                                                </button>
+                                            </li>
+                                        @endif
+                                    @endcan
+
+                                    @can('tenant.catering.events.close')
+                                        {{-- Closure is offered only where the finance authority would
+                                             actually grant it: invoiced, and nothing left owing in
+                                             either direction. Offering it earlier would hand the
+                                             operator a button whose only outcome is an error. --}}
+                                        @if($event->status === 'completed' && $event->finalInvoice && (float) $event->finalInvoice->balance_due <= 0)
+                                            <li>
+                                                <button type="button" class="dropdown-item js-event-action"
+                                                        data-url="{{ url('/catering/events/' . $event->id . '/close') }}"
+                                                        data-confirm="Close this booking? It stops accepting further changes.">
+                                                    <i class="ti ti-lock me-2"></i>Complete and Close
+                                                </button>
+                                            </li>
+                                        @endif
+                                    @endcan
+
+                                    @can('tenant.catering.events.cancel')
+                                        @if($isOpen)
+                                            <li><hr class="dropdown-divider"></li>
+                                            <li>
+                                                {{-- A cancellation must say WHY: the reason becomes part
+                                                     of the record, so it is asked for here rather than
+                                                     quietly skipped. --}}
+                                                <button type="button" class="dropdown-item text-danger js-event-action"
+                                                        data-url="{{ url('/catering/events/' . $event->id . '/cancel') }}"
+                                                        data-ask-reason="Why is this booking being cancelled?">
+                                                    <i class="ti ti-ban me-2"></i>Cancel Booking
+                                                </button>
+                                            </li>
+                                        @endif
+                                    @endcan
+                                </ul>
+                            </div>
                         </td>
                     </tr>
                     @empty
@@ -228,6 +343,53 @@
         var url = new URL(btn.getAttribute('data-url'), window.location.origin);
         ids.forEach(function (id) { url.searchParams.append('ids[]', id); });
         window.open(url.toString(), '_blank');
+    });
+})();
+
+(function () {
+    // KASHIF-EVENT-ACTIONS-1 — a lifecycle action from the list is the SAME
+    // POST the event screen makes: a real form submit, so the controller's
+    // redirect, flash message and validation errors all land normally. No
+    // status is ever written directly from here.
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest('.js-event-action');
+        if (!btn) return;
+        e.preventDefault();
+
+        var reason = null;
+        if (btn.dataset.askReason) {
+            reason = window.prompt(btn.dataset.askReason);
+            // Cancelled out, or too short for the reason the server insists on.
+            if (reason === null) return;
+            if (reason.trim().length < 3) {
+                window.alert('Please give a reason of at least 3 characters.');
+                return;
+            }
+        } else if (btn.dataset.confirm && !window.confirm(btn.dataset.confirm)) {
+            return;
+        }
+
+        var form = document.createElement('form');
+        form.method = 'POST';
+        form.action = btn.dataset.url;
+        form.style.display = 'none';
+
+        var token = document.createElement('input');
+        token.type = 'hidden';
+        token.name = '_token';
+        token.value = @json(csrf_token());
+        form.appendChild(token);
+
+        if (reason !== null) {
+            var input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'cancel_reason';
+            input.value = reason.trim();
+            form.appendChild(input);
+        }
+
+        document.body.appendChild(form);
+        form.submit();
     });
 })();
 </script>
