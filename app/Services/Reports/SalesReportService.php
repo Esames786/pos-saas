@@ -5,6 +5,7 @@ namespace App\Services\Reports;
 use App\Models\Tenant\SalePayment;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\SalesOrderLine;
+use App\Models\Tenant\SalesReturn;
 use App\Services\Concerns\ResolvesBranchIds;
 use Illuminate\Support\Facades\DB;
 
@@ -196,7 +197,7 @@ class SalesReportService
         // the engine does, so a refund punched after midnight on a still-open shift stays on that
         // shift's day. Calendar return_date is only the fallback for un-backfilled legacy rows.
         $clock = app(\App\Support\TenantClock::class);
-        $returnQuery = \App\Models\Tenant\SalesReturn::query()
+        $returnQuery = SalesReturn::query()
             ->where('status', 'posted')
             ->when($branchId, fn ($q, $v) => $q->where('branch_id', $v));
         // A return's order type / terminal live on its originating sales order, so scope through it.
@@ -344,6 +345,82 @@ class SalesReportService
      * business_date — so a sale rung after midnight books to the business day it belongs to, not
      * the wall-clock date. COALESCE keeps legacy rows (pre-backfill) grouped by their sale_date.
      */
+    /**
+     * DASHBOARD-7DAY-POPULATION-1 — the same day, counted the same way, over a RANGE of days.
+     *
+     * The dashboard's "Last 7 Days" card used to run its own query inside the controller:
+     * `status = paid` only, and no return subtraction. So a bill that was returned vanished from
+     * it, while the tile above it — and every report in the system — still counted that bill and
+     * merely netted the refund off. On 1 September that showed "Orders Today 295" beside a row
+     * saying 291 for the same day; on the two days before, which carried PARTIAL returns, it also
+     * left 1,400 and 2,490 of genuinely kept revenue out of the history.
+     *
+     * The population and the arithmetic here are deliberately the ones `todayStats()` uses, which
+     * are the ones `SalesReportEngine` uses:
+     *   population = paid + partially_returned + returned   (a return does not un-sell a bill)
+     *   net_sales  = SUM(grand_total) − posted returns of that business day
+     *
+     * Returns are allocated by the return's BUSINESS day, exactly as `todayStats()` does, so a
+     * refund punched after midnight on a still-open shift stays on that shift's day.
+     *
+     * @return array<string, array{orders:int, billed:float, returns_amount:float, net_sales:float}>
+     *         keyed by business date (Y-m-d)
+     */
+    public function dailyStats(
+        string $from,
+        string $to,
+        ?int $branchId = null,
+        ?\App\Models\Tenant\User $scopeUser = null
+    ): array {
+        $scope = app(\App\Services\Security\UserDataScope::class);
+        $day   = $this->businessDayExpr();
+
+        $sales = SalesOrder::query()
+            ->whereIn('status', SalesReportEngine::POPULATION)
+            ->when($branchId, fn ($q, $v) => $q->where('branch_id', $v))
+            ->whereRaw("$day >= ?", [$from])
+            ->whereRaw("$day <= ?", [$to]);
+        $scope->applyToSales($sales, $scopeUser);
+
+        $rows = $sales
+            ->selectRaw("$day as day, COUNT(*) as orders, COALESCE(SUM(grand_total), 0) as billed")
+            ->groupByRaw($day)
+            ->get();
+
+        $returnDay   = 'COALESCE(business_date, DATE(return_date))';
+        $returnQuery = SalesReturn::query()
+            ->where('status', 'posted')
+            ->when($branchId, fn ($q, $v) => $q->where('branch_id', $v))
+            ->whereRaw("$returnDay >= ?", [$from])
+            ->whereRaw("$returnDay <= ?", [$to]);
+
+        // A return's order type / terminal live on its originating sales order, so scope through it.
+        if ($scope->isScoped($scopeUser)) {
+            $returnQuery->whereHas('order', fn ($so) => $scope->applyToSales($so, $scopeUser));
+        }
+
+        $returns = $returnQuery
+            ->selectRaw("$returnDay as day, COALESCE(SUM(grand_total), 0) as amount")
+            ->groupByRaw($returnDay)
+            ->pluck('amount', 'day');
+
+        $out = [];
+        foreach ($rows as $row) {
+            $date     = (string) $row->day;
+            $billed   = (float) $row->billed;
+            $returned = (float) ($returns[$date] ?? 0);
+
+            $out[$date] = [
+                'orders'         => (int) $row->orders,
+                'billed'         => $billed,
+                'returns_amount' => $returned,
+                'net_sales'      => round($billed - $returned, 2),
+            ];
+        }
+
+        return $out;
+    }
+
     private function businessDayExpr(string $prefix = ''): string
     {
         return "COALESCE({$prefix}business_date, DATE({$prefix}sale_date))";
