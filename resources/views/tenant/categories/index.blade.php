@@ -58,6 +58,7 @@
                     <th scope="col">Code</th>
                     <th scope="col">Name</th>
                     <th scope="col">Parent</th>
+                    <th scope="col">Branch</th>
                     <th scope="col">Sort Order</th>
                     <th scope="col">Status</th>
                     <th scope="col" class="text-end">Action</th>
@@ -69,6 +70,13 @@
                     <td><code>{{ $category->code }}</code></td>
                     <td>{{ $category->name }}</td>
                     <td>{{ $category->parent?->name ?? '—' }}</td>
+                    <td>
+                        @if($category->branch)
+                            {{ $category->branch->name }}
+                        @else
+                            <span class="text-muted">All branches</span>
+                        @endif
+                    </td>
                     <td>{{ $category->sort_order }}</td>
                     <td>
                         @if($category->is_active)
@@ -93,7 +101,7 @@
                 </tr>
             @empty
                 <tr>
-                    <td colspan="6" class="text-center text-muted py-4">No categories found.</td>
+                    <td colspan="7" class="text-center text-muted py-4">No categories found.</td>
                 </tr>
             @endforelse
             </tbody>

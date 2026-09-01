@@ -55,6 +55,24 @@
                     @error('parent_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
                 </div>
 
+                {{-- CATEGORY-BRANCH-SCOPE-1: blank = every branch, which is what every category
+                     already is. Worth setting only where branches sell different menus. --}}
+                <div class="col-md-4">
+                    <label for="branch_id" class="form-label">Branch</label>
+                    <select id="branch_id" name="branch_id"
+                            class="form-select @error('branch_id') is-invalid @enderror">
+                        <option value="">— All branches —</option>
+                        @foreach($branches as $branch)
+                            <option value="{{ $branch->id }}"
+                                    @selected(old('branch_id', $category?->branch_id) == $branch->id)>
+                                {{ $branch->name }}
+                            </option>
+                        @endforeach
+                    </select>
+                    @error('branch_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                    <div class="form-text">Leave on “All branches” unless this menu belongs to one branch only.</div>
+                </div>
+
                 <div class="col-md-8">
                     <label for="description" class="form-label">Description</label>
                     <textarea id="description" name="description" rows="3"
