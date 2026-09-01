@@ -271,14 +271,18 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                @for($i = 6; $i >= 0; $i--)
-                                    @php $day = now()->subDays($i)->format('Y-m-d'); $row = $last7Days[$day] ?? null; @endphp
-                                    <tr @if($day === today()->format('Y-m-d')) class="table-primary" @endif>
+                                {{-- The days come from the controller's BUSINESS-day window, not from
+                                     now(): the UTC calendar date and the Karachi business date are
+                                     different things between midnight there and midnight UTC, and this
+                                     table used to ask for keys the query had never produced. --}}
+                                @foreach($last7DayKeys as $day)
+                                    @php $row = $last7Days[$day] ?? null; @endphp
+                                    <tr @if($day === $todayBusinessDate) class="table-primary" @endif>
                                         <td>{{ \Carbon\Carbon::parse($day)->format('D, d M') }}</td>
                                         <td class="text-end">{{ $row ? $fig($row->orders, 0) : "—" }}</td>
                                         <td class="text-end">{{ $row ? $fig($row->net_sales) : "—" }}</td>
                                     </tr>
-                                @endfor
+                                @endforeach
                             </tbody>
                         </table>
                     </div>
