@@ -208,11 +208,23 @@ class DashboardController extends Controller
         $cateringKpis = $calendarService?->kpis($selectedBranch);
         $cateringNextSeven = $calendarService ? $calendarService->nextDays(7, $selectedBranch) : [];
 
+        // HIDE-AMOUNTS-1: the tiles follow the same branch flag as the closing screens. On "All
+        // Branches" there is no single branch to ask about, so allowsAcross() fails CLOSED — one
+        // restricted branch in view masks the tiles. Showing the money because the question was
+        // ambiguous is the one answer that cannot be defended.
+        $maySeeAmounts = app(\App\Support\AmountVisibility::class)->allowsAcross(
+            auth('tenant')->user(),
+            $selectedBranch
+                ? \App\Models\Tenant\Branch::where('id', $selectedBranch)->get()
+                : $branches
+        );
+
         return view('tenant.dashboard', compact(
             'branches', 'selectedBranch', 'today',
             'cashToday', 'cardToday', 'openShifts', 'failedPrints',
             'lowStockCount', 'expiryCount', 'topProducts', 'last7Days', 'openBills',
-            'cateringCalendar', 'cateringKpis', 'cateringNextSeven'
+            'cateringCalendar', 'cateringKpis', 'cateringNextSeven',
+            'maySeeAmounts'
         ));
     }
 }

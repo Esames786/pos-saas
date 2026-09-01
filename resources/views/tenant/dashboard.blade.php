@@ -66,6 +66,11 @@
                 if ($openCount < 1 || (float) $amount <= 0) { return null; }
                 return ['amount' => (float) $amount, 'label' => $label];
             };
+            // HIDE-AMOUNTS-1 — every figure on these tiles goes through here, so a tile added
+            // later cannot quietly skip the mask. $maySeeAmounts is decided in the controller.
+            $fig = fn ($value, $decimals = 2) => $maySeeAmounts
+                ? number_format((float) $value, $decimals)
+                : '*****';
         @endphp
 
         {{-- Today KPI cards --}}
@@ -77,21 +82,21 @@
                             <span class="bg-primary bg-opacity-10 rounded p-2"><i class="ti ti-currency-dollar text-primary fs-5"></i></span>
                             <span class="text-muted small">Net Sales Today</span>
                         </div>
-                        <h4 class="mb-0 fw-bold">{{ number_format($today['net_sales'], 2) }}</h4>
+                        <h4 class="mb-0 fw-bold">{{ $fig($today['net_sales']) }}</h4>
                         {{-- Show the deduction rather than a bare net, so this tile can be tied to
                              the Report Center at a glance instead of looking like a third figure. --}}
                         @if(($today['returns_amount'] ?? 0) > 0)
                             <div class="small text-muted mt-1">
-                                billed {{ number_format($today['billed'], 2) }}
-                                − returns {{ number_format($today['returns_amount'], 2) }}
+                                billed {{ $fig($today['billed']) }}
+                                − returns {{ $fig($today['returns_amount']) }}
                             </div>
                         @endif
                         @if($openLine($openBills->amount ?? 0))
                             <div class="small text-warning mt-1">
-                                + {{ number_format((float) $openBills->amount, 2) }} still open
+                                + {{ $fig($openBills->amount) }} still open
                             </div>
                             <div class="small text-muted">
-                                expected {{ number_format($today['net_sales'] + (float) $openBills->amount, 2) }}
+                                expected {{ $fig($today['net_sales'] + (float) $openBills->amount) }}
                             </div>
                         @endif
                     </div>
@@ -105,10 +110,10 @@
                             <span class="bg-success bg-opacity-10 rounded p-2"><i class="ti ti-shopping-cart text-success fs-5"></i></span>
                             <span class="text-muted small">Orders Today</span>
                         </div>
-                        <h4 class="mb-0 fw-bold">{{ number_format($today['order_count']) }}</h4>
+                        <h4 class="mb-0 fw-bold">{{ $fig($today['order_count'], 0) }}</h4>
                         @if($openCount > 0)
-                            <div class="small text-warning mt-1">+ {{ number_format($openCount) }} still open</div>
-                            <div class="small text-muted">expected {{ number_format($today['order_count'] + $openCount) }}</div>
+                            <div class="small text-warning mt-1">+ {{ $fig($openCount, 0) }} still open</div>
+                            <div class="small text-muted">expected {{ $fig($today['order_count'] + $openCount, 0) }}</div>
                         @endif
                     </div>
                 </div>
@@ -121,7 +126,7 @@
                             <span class="bg-info bg-opacity-10 rounded p-2"><i class="ti ti-chart-line text-info fs-5"></i></span>
                             <span class="text-muted small">Avg Order Value</span>
                         </div>
-                        <h4 class="mb-0 fw-bold">{{ number_format($today['avg_order_value'], 2) }}</h4>
+                        <h4 class="mb-0 fw-bold">{{ $fig($today['avg_order_value']) }}</h4>
                     </div>
                 </div>
             </div>
@@ -133,7 +138,7 @@
                             <span class="bg-warning bg-opacity-10 rounded p-2"><i class="ti ti-cash text-warning fs-5"></i></span>
                             <span class="text-muted small">Cash Today</span>
                         </div>
-                        <h4 class="mb-0 fw-bold">{{ number_format($cashToday, 2) }}</h4>
+                        <h4 class="mb-0 fw-bold">{{ $fig($cashToday) }}</h4>
                     </div>
                 </div>
             </div>
@@ -145,7 +150,7 @@
                             <span class="bg-secondary bg-opacity-10 rounded p-2"><i class="ti ti-credit-card text-secondary fs-5"></i></span>
                             <span class="text-muted small">Card/Bank Today</span>
                         </div>
-                        <h4 class="mb-0 fw-bold">{{ number_format($cardToday, 2) }}</h4>
+                        <h4 class="mb-0 fw-bold">{{ $fig($cardToday) }}</h4>
                     </div>
                 </div>
             </div>
@@ -157,10 +162,10 @@
                             <span class="bg-danger bg-opacity-10 rounded p-2"><i class="ti ti-tag text-danger fs-5"></i></span>
                             <span class="text-muted small">Discounts Today</span>
                         </div>
-                        <h4 class="mb-0 fw-bold">{{ number_format($today['total_discount'], 2) }}</h4>
+                        <h4 class="mb-0 fw-bold">{{ $fig($today['total_discount']) }}</h4>
                         @if($openLine($openBills->discount ?? 0))
                             <div class="small text-warning mt-1">
-                                + {{ number_format((float) $openBills->discount, 2) }} still open
+                                + {{ $fig($openBills->discount) }} still open
                             </div>
                         @endif
                     </div>
@@ -174,7 +179,7 @@
             <div class="col-md-3 col-sm-6">
                 <div class="card border-0 shadow-sm"><div class="card-body">
                     <span class="text-muted small">Service Charge</span>
-                    <h5 class="mt-1 mb-0">{{ number_format($today['total_service_charge'], 2) }}</h5>
+                    <h5 class="mt-1 mb-0">{{ $fig($today['total_service_charge']) }}</h5>
                 </div></div>
             </div>
             @endif
@@ -182,17 +187,17 @@
             <div class="col-md-3 col-sm-6">
                 <div class="card border-0 shadow-sm"><div class="card-body">
                     <span class="text-muted small">Tips</span>
-                    <h5 class="mt-1 mb-0">{{ number_format($today['total_tips'], 2) }}</h5>
+                    <h5 class="mt-1 mb-0">{{ $fig($today['total_tips']) }}</h5>
                 </div></div>
             </div>
             @endif
             <div class="col-md-3 col-sm-6">
                 <div class="card border-0 shadow-sm"><div class="card-body">
                     <span class="text-muted small">Tax Collected</span>
-                    <h5 class="mt-1 mb-0">{{ number_format($today['total_tax'], 2) }}</h5>
+                    <h5 class="mt-1 mb-0">{{ $fig($today['total_tax']) }}</h5>
                     @if($openLine($openBills->tax ?? 0))
                         <div class="small text-warning mt-1">
-                            + {{ number_format((float) $openBills->tax, 2) }} still open
+                            + {{ $fig($openBills->tax) }} still open
                         </div>
                     @endif
                 </div></div>
@@ -200,13 +205,13 @@
             <div class="col-md-3 col-sm-6">
                 <div class="card border-0 shadow-sm"><div class="card-body">
                     <span class="text-muted small">Open Shifts</span>
-                    <h5 class="mt-1 mb-0">{{ $openShifts }}</h5>
+                    <h5 class="mt-1 mb-0">{{ $fig($openShifts, 0) }}</h5>
                 </div></div>
             </div>
             <div class="col-md-3 col-sm-6">
                 <div class="card border-0 shadow-sm @if($expiryCount > 0) border-warning @endif"><div class="card-body">
                     <span class="text-muted small">Expiry Alerts (30d)</span>
-                    <h5 class="mt-1 mb-0 @if($expiryCount > 0) text-warning @endif">{{ $expiryCount }}</h5>
+                    <h5 class="mt-1 mb-0 @if($expiryCount > 0) text-warning @endif">{{ $fig($expiryCount, 0) }}</h5>
                 </div></div>
             </div>
         </div>
@@ -239,8 +244,8 @@
                                 @foreach($topProducts as $p)
                                 <tr>
                                     <td>{{ $p->product_name }}</td>
-                                    <td class="text-end">{{ number_format($p->qty_sold, 2) }}</td>
-                                    <td class="text-end">{{ number_format($p->revenue, 2) }}</td>
+                                    <td class="text-end">{{ $fig($p->qty_sold) }}</td>
+                                    <td class="text-end">{{ $fig($p->revenue) }}</td>
                                 </tr>
                                 @endforeach
                             </tbody>
@@ -270,8 +275,8 @@
                                     @php $day = now()->subDays($i)->format('Y-m-d'); $row = $last7Days[$day] ?? null; @endphp
                                     <tr @if($day === today()->format('Y-m-d')) class="table-primary" @endif>
                                         <td>{{ \Carbon\Carbon::parse($day)->format('D, d M') }}</td>
-                                        <td class="text-end">{{ $row ? number_format($row->orders) : '—' }}</td>
-                                        <td class="text-end">{{ $row ? number_format($row->net_sales, 2) : '—' }}</td>
+                                        <td class="text-end">{{ $row ? $fig($row->orders, 0) : "—" }}</td>
+                                        <td class="text-end">{{ $row ? $fig($row->net_sales) : "—" }}</td>
                                     </tr>
                                 @endfor
                             </tbody>
