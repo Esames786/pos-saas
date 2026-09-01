@@ -52,58 +52,173 @@ mid-September regardless of this tenant.
 
 ## 3. The one code change: categories become branch-aware
 
-**Why it is needed.** A tenant has one product book, and the POS grid is not branch-aware. Without
-this, the Tawakkal cashier's screen shows all 19 BBQ items and all 6 rolls, and the Kashif Foods
-cashier sees Chana Pulao and Beef Pulao. Both counters would get a menu that is not theirs.
+**Why it is needed — and it still is.** A tenant has one product book, and the POS grid is not
+branch-aware. Without this, the Tawakkal cashier's screen shows all 19 BBQ items and all 6 rolls,
+and the Kashif Foods cashier sees Chana Pulao and Beef Pulao. Both counters get a menu that is not
+theirs. The printing decision (§7b) does not help here — that is about where a ticket comes out,
+not about what the operator can punch.
 
-**What changes.**
+**No existing mechanism does this.** Checked before writing any code:
+
+| Candidate | Verdict |
+|---|---|
+| `products.is_pos_visible` | a single global boolean (added to hide manufacturing items) — not per branch, not per role |
+| `product_kind` / BOM flags | manufacturing classification only |
+| `product_branch_prices` | per-branch **price**, not per-branch visibility |
+| `combos.branch_id` | exists, and is used — but only for combos |
+| Role/permission | gates *screens*, never individual products |
+
+### 3.1 What actually changes — four files
+
+**1 · Migration (additive)** — `database/migrations/tenant/2026_09_xx_000001_add_branch_id_to_categories.php`
+
+```php
+$table->foreignId('branch_id')->nullable()->after('parent_id')
+      ->constrained('branches')->nullOnDelete();
+$table->index(['branch_id', 'is_active']);
+```
+
+`NULL` = "every branch". Every existing category in every existing tenant stays `NULL`, so their
+behaviour is unchanged by construction.
+
+**2 · `app/Models/Tenant/Category.php`** — add `branch_id` to `$fillable` (line 11) and a
+`branch()` relation.
+
+**3 · `app/Http/Controllers/Tenant/POSController.php`** — one filter, in **one** place.
+
+This is the part to get exactly right. The products query today reads (≈ line 150):
+
+```php
+->where('status', 'active')
+->where('is_sellable', true)
+->where(function ($q) use ($comboComponentProductIds, $liveOrderProductIds) {
+    $q->where('is_pos_visible', true);
+    if ($comboComponentProductIds->isNotEmpty()) { $q->orWhereIn('id', $comboComponentProductIds->all()); }
+    if ($liveOrderProductIds->isNotEmpty())      { $q->orWhereIn('id', $liveOrderProductIds->all()); }
+})
+```
+
+Those two `orWhereIn` clauses are **escape hatches**, and they exist because of a real outage:
+`HIDDEN-PRODUCT-HELD-BILL-1` — a product hidden while a bill still carried it made the bill
+impossible to recall or pay, five of them mid-service on 30 August. **A branch filter bolted on as a
+separate `->where()` would re-create that outage exactly**, because a product sitting on an open
+bill would be dropped from the payload the moment its category belonged to the other branch.
+
+So the filter goes **inside the visible branch of that group**, leaving both escape hatches intact:
+
+```php
+->where(function ($q) use ($selectedBranchId, $comboComponentProductIds, $liveOrderProductIds) {
+    $q->where(function ($visible) use ($selectedBranchId) {
+        $visible->where('is_pos_visible', true)
+            ->where(function ($scope) use ($selectedBranchId) {
+                $scope->whereNull('category_id')                       // uncategorised = everywhere
+                    ->orWhereHas('category', fn ($c) => $c
+                        ->whereNull('branch_id')                       // shared category
+                        ->orWhere('branch_id', $selectedBranchId));    // this branch's category
+            });
+    });
+    if ($comboComponentProductIds->isNotEmpty()) { $q->orWhereIn('id', $comboComponentProductIds->all()); }
+    if ($liveOrderProductIds->isNotEmpty())      { $q->orWhereIn('id', $liveOrderProductIds->all()); }
+})
+```
+
+**4 · Edge (two lines, so the appliance cannot drift from the cloud)**
 
 ```
-migration (additive):   categories.branch_id  nullable, indexed, FK → branches
-POS grid filter:        WHERE branch_id IS NULL OR branch_id = :selected_branch
+EdgeBootstrapService:440   $add('categories')            →  $add('categories', 'branch_id')
+EdgeBootstrapService:552   column list                   →  add 'branch_id'
+EdgeLocalBootstrapImporter PLAN
+                           ['categories','categories',false] → true   (branchScoped)
 ```
 
-`NULL` means "every branch" — which is what every existing category in every existing tenant will
-be, so their behaviour is unchanged by construction.
+The importer already understands that a `NULL branch_id` row is global, so no new logic is needed —
+only the declaration. Edge is dormant on production; this keeps the code coherent rather than
+enabling anything.
 
-**Why the blast radius is small — verified in the code, not assumed:**
+### 3.2 The tabs fix themselves — no second change needed
+
+This is the find that makes the change small. `POSController` already computes which parent
+categories get a pill (`POS-COMBO-CATEGORY-1` + `HIDE-EMPTY-TABS`, ≈ line 349):
+
+```php
+$contentCategoryIds = products in the payload (grid-visible) + combos
+$pillCategoryIds    = parents that intersect $contentCategoryIds
+```
+
+Once the other branch's products are out of the payload, its categories fall out of
+`$contentCategoryIds` on their own, and **the tabs disappear through logic that already ships and is
+already tested**. So:
+
+- `$categories` is **not touched** — and its own comment warns it must not be
+  (*"stays the FULL active parent list — the Quick Report category filter and the POS
+  child-category strip both read it"*).
+- No change to the pill logic, the child strip, or the Blade.
+
+### 3.3 Admin needs one field
+
+`CategoryController::validated()` (≈ line 87) gains:
+
+```php
+'branch_id' => ['nullable', 'exists:branches,id'],
+```
+
+plus a branch select on the create/edit form and a Branch column on the index — otherwise the owner
+cannot set the thing the POS is now reading. Blank in the form = **All branches**, which is the
+correct default and matches every existing row.
+
+**Nothing else is filtered.** Product form, Combo form, printer mapping, report filters, bulk
+import and Category CRUD all keep listing every category, because the owner configures both
+branches from one screen.
+
+### 3.4 Who else reads a category — verified in code, not assumed
 
 | Consumer | How it uses a category | Effect |
 |---|---|---|
-| KOT routing (`CategoryPrinterMapping`) | product's category → printer | **none** — and that table is *already* branch-scoped: `unique(branch_id, category_id, print_role)` |
+| KOT routing (`CategoryPrinterMapping`) | product's category → printer | **none** — that table is *already* branch-scoped: `unique(branch_id, category_id, print_role)` |
 | Sales reports | `groupBy('p.category_id')` | none |
 | Departments | `departments` already branch-scoped (`unique(branch_id, code)`) | none |
 | Catering | reads `CategoryPrinterMapping` | none |
-| Manufacturing | does not reference categories at all | none |
-| Edge local POS | writes `category_id` on a line only | none |
+| Manufacturing | never references categories | none |
+| Edge local POS | writes `category_id` on a line | none |
+| Promotions, Kitchen Display, bulk import | list categories for selection | none — unfiltered on purpose |
 
-**The filter is applied in the POS grid only.** Every admin and configuration screen — Category CRUD,
-Product form, Combo form, printer mapping, report filters, bulk import — keeps showing all
-categories, because the owner configures both branches from one place.
+### 3.5 Risks, and what each one is answered with
 
-**Two things to get right during the build:**
+| Risk | Answer |
+|---|---|
+| An open bill's product vanishes from the payload → bill cannot be paid | The filter sits **inside** the visible branch; the `liveOrderProductIds` escape hatch is untouched. A guard test punches a held bill, moves its category to the other branch, and insists the POS still returns the product. |
+| A combo component gets filtered out → false "out of stock" | Same — `comboComponentProductIds` escape hatch untouched. Guard test covers it. |
+| An existing single-branch tenant sees a changed grid | Every category is `NULL` → matches every branch. Guard test asserts a single-branch POS payload is **identical** before and after. |
+| A product with no category disappears | `whereNull('category_id')` is explicitly allowed through. |
+| Two branches want the same category name | Allowed — but `slug` and `code` are unique per tenant, so the slugs must differ (`chicken-biryani-kf` / `chicken-biryani-tb`). Not new; it is how the table has always been. |
+| Edge appliance shows what the cloud hides | The three Edge lines above. |
 
-1. `EdgeBootstrapService` exports categories with an **explicit column list**
-   (`id, parent_id, code, name, slug, sort_order, is_active`). `branch_id` must be added there or the
-   Edge box would see everything while the cloud filters. The Edge importer already understands that
-   a `NULL branch_id` row is global. (Edge is dormant on production; the code must still stay
-   coherent.)
-2. `categories.slug`, `categories.code` and `products.sku` are **globally unique within a tenant**.
-   Both branches may show a category named "Chicken Biryani", but the slugs must differ
-   (`chicken-biryani-kf` / `chicken-biryani-tb`). This is not new — it is how the table has always
-   been.
+### 3.6 Live-tenant safety
 
-**Live-tenant safety.** All three paying tenants are single-branch, so the filter returns exactly
-what it returns today for them:
+All three paying tenants are single-branch, so the filter returns exactly what it returns today:
 
 ```
 khatribiryani  1 branch    kashifkitchen  1 branch    kashiffood  1 branch
-(multi-branch exists only in demo tenants: demo 3, enterprisedemo 4, restaurantprodemo 2,
+(multi-branch exists only in demos: demo 3, enterprisedemo 4, restaurantprodemo 2,
  inventorydemo 2, financedemo 2 — where a mistake is cheap and visible)
 ```
 
-The guard test must prove a single-branch tenant's POS payload is **byte-identical** before and
-after.
+### 3.7 The guard tests
+
+Written **before** the change ships, and each proven to bite by reintroducing the bug:
+
+1. **A single-branch tenant's POS payload is unchanged** — product ids, categories and pills
+   identical before and after. This is the one that protects Khatri and Kashif Food.
+2. **Two branches, two menus** — branch A's POS carries A's products and none of B's, and vice versa.
+3. **A shared category (`branch_id = NULL`) appears at both.**
+4. **A product on a held bill survives** even when its category belongs to the other branch —
+   the `HIDDEN-PRODUCT-HELD-BILL-1` guarantee, restated for this filter.
+5. **A combo component survives** the same way.
+6. **A product with no category at all** still shows.
+7. **The empty tab disappears** — branch B's pills do not include A's categories.
+
+All seven run over **real HTTP against the POS screen**, not by rebuilding the query — the rule
+that exists because 480 green tests once failed to stop a 25-minute outage.
 
 ---
 
