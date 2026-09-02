@@ -24,7 +24,10 @@ class SalesReportDocumentService
             'overview' => in_array('overview', $sections, true) ? $summary : null,
             'orderTypes' => $pick('order_types', fn () => $this->engine->byOrderType($filters)),
             'categories' => $pick('categories', fn () => $this->engine->byCategory($filters)),
-            'items' => $pick('items', fn () => $this->engine->byItem($filters)),
+            // DEAL-CATEGORY-1: Items no longer carries the deals — they have a section of their
+            // own, and printed in both they would count the same money twice.
+            'items' => $pick('items', fn () => $this->engine->byItem($filters, 'net', true)),
+            'deals' => $pick('deals', fn () => $this->engine->byDeal($filters)),
             'waiters' => $pick('waiters', fn () => $this->engine->byWaiter($filters)),
             'combos' => $pick('order_type_combos', fn () => $this->engine->orderTypeCombos($filters)),
             'cancellations' => $pick('cancellations', fn () => $this->engine->cancellations($filters)),

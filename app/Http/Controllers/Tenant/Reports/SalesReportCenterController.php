@@ -20,7 +20,7 @@ use Illuminate\Support\Facades\Mail;
  */
 class SalesReportCenterController extends Controller
 {
-    public const SECTIONS = ['overview', 'categories', 'items', 'waiters', 'order_types', 'order_type_combos', 'cancellations', 'detailed', 'cash_bank'];
+    public const SECTIONS = ['overview', 'categories', 'items', 'deals', 'waiters', 'order_types', 'order_type_combos', 'cancellations', 'detailed', 'cash_bank'];
 
     /**
      * Per-section permission (Khatri #7): a role sees/prints/exports ONLY its assigned sections.
@@ -37,9 +37,19 @@ class SalesReportCenterController extends Controller
     {
         $user = auth('tenant')->user();
 
+        // DEAL-CATEGORY-1: a tenant that sells no deals is not offered a Deals section. Khatri has
+        // never had a single combo, so the tab would be a checkbox and a heading that can only ever
+        // say "no deals sold". The POS already does this — HIDE-EMPTY-TABS drops a category pill
+        // with nothing behind it — and the moment a first combo is created the section appears on
+        // its own. This is about the TENANT selling deals at all, not about this period's takings:
+        // a slow day still shows the section, correctly empty.
+        $sellsDeals = \App\Models\Tenant\Combo::query()->exists();
+
         return array_values(array_filter(
             self::SECTIONS,
-            fn ($s) => $user && $user->can(self::sectionPermission($s))
+            fn ($s) => $user
+                && $user->can(self::sectionPermission($s))
+                && ($s !== 'deals' || $sellsDeals)
         ));
     }
 
@@ -92,7 +102,9 @@ class SalesReportCenterController extends Controller
         } else {
             $data += match ($tab) {
                 'categories' => ['categories' => $this->engine->byCategory($filters)],
-                'items' => ['items' => $this->engine->byItem($filters, $request->input('sort', 'net'))],
+                // DEAL-CATEGORY-1: deals have their own section now, so Items excludes them.
+                'items' => ['items' => $this->engine->byItem($filters, $request->input('sort', 'net'), true)],
+                'deals' => ['deals' => $this->engine->byDeal($filters)],
                 'waiters' => ['waiters' => $this->engine->byWaiter($filters)],
                 'order_types' => ['order_types' => $this->engine->byOrderType($filters)],
                 'order_type_combos' => ['order_type_combos' => $this->engine->orderTypeCombos($filters)],
@@ -230,7 +242,9 @@ class SalesReportCenterController extends Controller
             'overview' => in_array('overview', $sections, true) ? $summary : null,
             'orderTypes' => $pick('order_types', fn () => $this->engine->byOrderType($filters)),
             'categories' => $pick('categories', fn () => $this->engine->byCategory($filters)),
-            'items' => $pick('items', fn () => $this->engine->byItem($filters)),
+            // DEAL-CATEGORY-1: Items drops the deals; they print under their own heads below.
+            'items' => $pick('items', fn () => $this->engine->byItem($filters, 'net', true)),
+            'deals' => $pick('deals', fn () => $this->engine->byDeal($filters)),
             'waiters' => $pick('waiters', fn () => $this->engine->byWaiter($filters)),
             'combos' => $pick('order_type_combos', fn () => $this->engine->orderTypeCombos($filters)),
             'cancellations' => $pick('cancellations', fn () => $this->engine->cancellations($filters)),
