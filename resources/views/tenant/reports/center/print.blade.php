@@ -297,6 +297,9 @@
         @endforeach
     @endforeach
     {!! $tEntry('TOTAL', $ciRows->sum('sold_qty'), $ciRows->sum('returned_qty'), $ciRows->sum('net_qty'), $ciRows->sum('net'), $ciRows->sum('returns_amount'), $ciRows->sum('net_value'), true) !!}
+    {{-- Merchandise only, like every other line-based section: close the gap to NET SALES, or the
+         total reads as though it contradicted the day's takings. --}}
+    {!! $bridgeRows((float) $ciRows->sum('net_value'), 4) !!}
 </table>
 @else
 <table>
@@ -313,6 +316,7 @@
         @endforeach
     @endforeach
     <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty($ciRows->sum('sold_qty')) }}</td><td class="amt">{{ $qty($ciRows->sum('returned_qty')) }}</td><td class="amt">{{ $qty($ciRows->sum('net_qty')) }}</td><td class="amt">{{ $fmt($ciRows->sum('net')) }}</td><td class="amt">{{ $fmt($ciRows->sum('returns_amount')) }}</td><td class="amt">{{ $fmt($ciRows->sum('net_value')) }}</td></tr>
+    {!! $bridgeRows((float) $ciRows->sum('net_value'), 7) !!}
 </table>
 @endif
 @endif
