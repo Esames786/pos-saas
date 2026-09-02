@@ -266,7 +266,11 @@ class SalesReportService
                 MAX(COALESCE(delivery_channels.type, ''))                    as channel_type,
                 MAX(COALESCE(delivery_channels.commission_percent, 0))       as commission_percent,
                 COUNT(*)                                                     as order_count,
+                SUM(CASE WHEN rf.refunded IS NULL THEN 0 ELSE 1 END)          as returned_count,
                 COALESCE(SUM(sales_orders.grand_total), 0)                   as gross_amount,
+                COALESCE(SUM(rf.refunded), 0)                                as returns_amount,
+                COALESCE(SUM(sales_orders.grand_total), 0)
+                    - COALESCE(SUM(rf.refunded), 0)                          as net_amount,
                 ROUND(COALESCE(SUM(sales_orders.grand_total), 0)
                     * MAX(COALESCE(delivery_channels.commission_percent, 0)) / 100, 2) as commission_amount
             ")
@@ -290,7 +294,11 @@ class SalesReportService
                 MAX(COALESCE(delivery_riders.phone, ''))            as rider_phone,
                 MAX(COALESCE(branches.name, 'All Branches'))        as rider_branch,
                 COUNT(*)                                            as delivery_count,
-                COALESCE(SUM(sales_orders.grand_total), 0)          as total_amount
+                SUM(CASE WHEN rf.refunded IS NULL THEN 0 ELSE 1 END) as returned_count,
+                COALESCE(SUM(sales_orders.grand_total), 0)          as total_amount,
+                COALESCE(SUM(rf.refunded), 0)                       as returns_amount,
+                COALESCE(SUM(sales_orders.grand_total), 0)
+                    - COALESCE(SUM(rf.refunded), 0)                 as net_amount
             ")
             ->groupBy('sales_orders.delivery_rider_id')
             ->orderByDesc('delivery_count')
@@ -303,7 +311,11 @@ class SalesReportService
                 sales_orders.delivery_rider_id,
                 COALESCE(MAX(delivery_riders.name), '(No rider)')  as rider_name,
                 COUNT(*)                                            as delivery_count,
-                COALESCE(SUM(sales_orders.grand_total), 0)          as total_amount
+                SUM(CASE WHEN rf.refunded IS NULL THEN 0 ELSE 1 END) as returned_count,
+                COALESCE(SUM(sales_orders.grand_total), 0)          as total_amount,
+                COALESCE(SUM(rf.refunded), 0)                       as returns_amount,
+                COALESCE(SUM(sales_orders.grand_total), 0)
+                    - COALESCE(SUM(rf.refunded), 0)                 as net_amount
             ")
             ->groupByRaw($this->businessDayExpr('sales_orders.') . ', sales_orders.delivery_rider_id')
             ->orderByDesc('sale_day')
@@ -315,12 +327,30 @@ class SalesReportService
 
     // ── Private helpers ──────────────────────────────────────────────────
 
-    /** Paid DELIVERY sales with the standard report filters applied. */
+    /**
+     * RIDER-RETURNS-1 — posted refunds per delivery order, as a joinable subquery.
+     *
+     * One row per order, so joining it cannot fan the aggregate out; a plain join to
+     * `sales_returns` would duplicate an order refunded twice and inflate every column on it.
+     */
+    private function refundsPerOrder()
+    {
+        return DB::connection('tenant')->table('sales_returns')
+            ->where('status', 'posted')
+            ->selectRaw('sales_order_id, COALESCE(SUM(grand_total), 0) as refunded')
+            ->groupBy('sales_order_id');
+    }
+
+    /** DELIVERY sales with the standard report filters applied. */
     private function baseDeliveryQuery(array $filters)
     {
         $branchIds = $this->resolveBranchIds($filters);
 
         return SalesOrder::query()
+            // RIDER-RETURNS-1: so every delivery figure can also say what came back. The rider
+            // carried the order either way — the refund is a separate fact about it, not a reason
+            // to pretend the delivery never happened.
+            ->leftJoinSub($this->refundsPerOrder(), 'rf', 'rf.sales_order_id', '=', 'sales_orders.id')
             // LEGACY-REPORTS-POPULATION-1 — feeds BOTH /reports/sales/channels and /riders, so this
             // single line decided a rider's tally and an aggregator's commission. `paid` alone hid
             // 44 delivery orders worth 63,610 at Khatri, carrying 9,076 of delivery charges that

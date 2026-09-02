@@ -4,7 +4,7 @@
 
 @section('content')
         <div class="page-header">
-            <div class="page-title"><h4>Rider Deliveries</h4><h6>Paid delivery orders per rider</h6></div>
+            <div class="page-title"><h4>Rider Deliveries</h4><h6>Delivery orders per rider — returns shown separately</h6></div>
             <div class="page-btn">
                 <a href="{{ url('/reports/sales/channels') }}" class="btn btn-outline-secondary btn-sm">Channel Report</a>
                 <a href="{{ url('/reports/sales/summary') }}" class="btn btn-outline-secondary btn-sm">Summary</a>
@@ -60,7 +60,10 @@
                             <th scope="col">Phone</th>
                             <th scope="col">Branch</th>
                             <th scope="col" class="text-end">Deliveries</th>
+                            <th scope="col" class="text-end">Returned</th>
                             <th scope="col" class="text-end">Total Amount</th>
+                            <th scope="col" class="text-end">Returns</th>
+                            <th scope="col" class="text-end">Net Amount</th>
                             <th scope="col" class="text-end">Avg / Delivery</th>
                         </tr>
                     </thead>
@@ -71,11 +74,14 @@
                             <td>{{ $row->rider_phone ?: '-' }}</td>
                             <td>{{ $row->rider_branch }}</td>
                             <td class="text-end">{{ number_format($row->delivery_count) }}</td>
-                            <td class="text-end fw-semibold">{{ number_format($row->total_amount, 2) }}</td>
-                            <td class="text-end">{{ number_format($row->delivery_count > 0 ? $row->total_amount / $row->delivery_count : 0, 2) }}</td>
+                            <td class="text-end">{{ $row->returned_count > 0 ? number_format($row->returned_count) : '-' }}</td>
+                            <td class="text-end">{{ number_format($row->total_amount, 2) }}</td>
+                            <td class="text-end text-danger">{{ $row->returns_amount > 0 ? number_format($row->returns_amount, 2) : '-' }}</td>
+                            <td class="text-end fw-semibold">{{ number_format($row->net_amount, 2) }}</td>
+                            <td class="text-end">{{ number_format($row->delivery_count > 0 ? $row->net_amount / $row->delivery_count : 0, 2) }}</td>
                         </tr>
                         @empty
-                        <tr><td colspan="6" class="text-center text-muted py-4">No paid delivery orders in the selected range.</td></tr>
+                        <tr><td colspan="9" class="text-center text-muted py-4">No delivery orders in the selected range.</td></tr>
                         @endforelse
                     </tbody>
                     @if($rows->isNotEmpty())
@@ -83,7 +89,10 @@
                         <tr>
                             <td colspan="3">Total</td>
                             <td class="text-end">{{ number_format($rows->sum('delivery_count')) }}</td>
+                            <td class="text-end">{{ number_format($rows->sum('returned_count')) }}</td>
                             <td class="text-end">{{ number_format($rows->sum('total_amount'), 2) }}</td>
+                            <td class="text-end text-danger">{{ number_format($rows->sum('returns_amount'), 2) }}</td>
+                            <td class="text-end">{{ number_format($rows->sum('net_amount'), 2) }}</td>
                             <td></td>
                         </tr>
                     </tfoot>
@@ -103,7 +112,10 @@
                             <th scope="col">Date</th>
                             <th scope="col">Rider</th>
                             <th scope="col" class="text-end">Deliveries</th>
+                            <th scope="col" class="text-end">Returned</th>
                             <th scope="col" class="text-end">Total Amount</th>
+                            <th scope="col" class="text-end">Returns</th>
+                            <th scope="col" class="text-end">Net Amount</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -112,7 +124,10 @@
                             <td>{{ $row->sale_day }}</td>
                             <td>{{ $row->rider_name }}</td>
                             <td class="text-end">{{ number_format($row->delivery_count) }}</td>
+                            <td class="text-end">{{ $row->returned_count > 0 ? number_format($row->returned_count) : '-' }}</td>
                             <td class="text-end">{{ number_format($row->total_amount, 2) }}</td>
+                            <td class="text-end text-danger">{{ $row->returns_amount > 0 ? number_format($row->returns_amount, 2) : '-' }}</td>
+                            <td class="text-end fw-semibold">{{ number_format($row->net_amount, 2) }}</td>
                         </tr>
                         @endforeach
                     </tbody>
