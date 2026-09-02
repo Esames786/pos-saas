@@ -167,88 +167,186 @@ Deals, Midnight, Platters, Exclusive Deals, Meal Deal, Pocket Friendly. It was d
 Point 3 is already true since 31 August — a deal's components no longer appear as separate sales.
 What is left is 1, 2 and 4.
 
-## 2.4 Proposed design
+## 2.4 The chosen design — one definition, read at report time
 
-### (a) A deal is filed under the deal's category
+Two solutions were weighed. The second wins, and the reason is history.
+
+| | **A · give every deal its own product** | **B · read the deal's own category** ✅ |
+|---|---|---|
+| How | A hidden product per combo in the right category; the money lands on it | The deal's category is already stored; the report uses it when the line belongs to a deal |
+| **Existing sales** | **Stay wrong.** 182 lines are already written against Arabic Rice. Fixing them means editing bills that have been sold. | **Correct themselves.** Every one of those 182 lines already carries its `combo_id` — **zero are missing it** (verified on production). Yesterday's report becomes right the moment this ships. |
+| Blast radius | Changing which product a header lands on touches the POS, the KOT and the reprint | Nothing is written. A read-time interpretation, reversible by reverting one query |
+| Work | ~74 products per tenant + an onboarding rule that must never be forgotten | One expression |
+
+**Verified on production before choosing:**
 
 ```
-byCategory():  group on  COALESCE(cb.category_id, p.category_id)
-                         └─ a combo line files under the COMBO's category;
-                            everything else is unchanged
+KASHIF FOOD   combo_header lines = 182     combo_id missing = 0      (every line carries it)
+              combos = 74                  with their own category = 74   (all of them)
+KHATRI        combo_header lines = 0       combos = 0                (cannot be affected)
 ```
 
-Only combo lines move. A normal product's row cannot shift, because it has no `combo_id`. The
-grand total does not change — **money moves between category rows, nothing is created or lost.**
+### 2.4.1 The rule
 
-### (b) A new `deals` section
+```
+reporting category of a line  =  COALESCE(combos.category_id, products.category_id)
+```
 
-`SalesReportEngine::byDeal($f)` — one row per combo, grouped by its category, with qty, gross,
-discount, returns and net. This is the section the old software calls DEALS / MIDNIGHT DEAL 1 /
-CLASSIC PLATTER, all in one table with subtotals per head.
+A combo line files under the combo's category; everything else is untouched, because a normal
+product line has no `combo_id`. A combo whose category is not set falls back to today's behaviour.
 
-### (c) Items stops carrying deals
+### 2.4.2 The condition that matters more than the rule
 
-`byItem()` gains `excludeCombos: true` for the Items section, so a deal appears **once** — in the
-Deals section — and never in Items. `orderTypeCombos()` (the "By Order Type" section) reuses
-`byItem`, so it inherits the same rule and must be checked, not assumed.
+The category is worked out in **three** places today. Patching three `COALESCE`s would fix
+September and lose again in October, because the fourth place written next month would not know the
+rule. **That is precisely how this family of bugs keeps returning** — the quotation against the
+kitchen sheet, the report against the deal identity, the engine against six legacy queries, three
+times in one week.
 
-> ⚠️ **The one thing to be careful about.** Today the Items section is the only place a deal shows
-> at all. If Items excludes deals and someone prints Items *without* Deals, the report's item total
-> stops reconciling with Net Sales. The two must therefore be **linked in the UI**: ticking Items
-> also ticks Deals unless the user deliberately unticks it, and the Items table carries a footer
-> line saying how much sits in Deals. Otherwise this fix creates a new way to read a wrong total —
-> which is exactly what we have spent two days removing.
+So it gets **one definition in one place**, the way `businessDayExpr()` is already the single
+definition of the business day:
 
-## 2.5 Every screen this touches
+```php
+/** The category a report should file this line under. */
+private function lineCategoryExpr(): string
+{
+    return 'COALESCE(cb.category_id, p.category_id)';
+}
+```
 
-The section list is one array, and everything downstream reads it — so the work is one section plus
-its renderers, not eleven separate jobs.
+…and `linesBase()` / `returnLinesBase()` gain the `combos as cb` join once, so **every** consumer
+of those two builders inherits it without being told. A new report written next month is right by
+default rather than by memory.
 
-| Screen | What changes |
+### 2.4.3 Exactly where it is read today
+
+Traced line by line through `SalesReportEngine`, so nothing is patched by guesswork:
+
+| Where | Line | What it does now | After |
+|---|---|---|---|
+| `salesBase()` category filter | 101–105 | `whereExists` lines→products, `fp.category_id` | joins `combos`, uses the expression |
+| `salesBase()` category_ids filter | 107–111 | same | same |
+| `linesBase()` category name join | 151 | `categories` on `p.category_id` | on the expression |
+| `linesBase()` category filters | 152–153 | `p.category_id` | the expression |
+| `returnLinesBase()` name join | 186 | `categories` on `p.category_id` | on the expression |
+| `returnLinesBase()` filters | 187–188 | `p.category_id` | the expression |
+| `byCategory()` grouping | 348, 350 | `groupBy('p.category_id')` | the expression |
+| `byCategory()` returns | 359 | `returnStatsBy($f, 'p.category_id')` | the expression |
+| `byCategory()` distinct-order rollup | 398 | `CASE p.category_id …` | the expression |
+| `DepartmentReportService` | 57, 71, 73 | resolves department from `p.category_id` | the expression |
+
+**The filter is the one that would have been missed.** If only the grouping moved, a deal would
+appear under Platters but a report *filtered* to Platters would not find it — a fresh
+inconsistency, and a worse one than the original because it looks deliberate.
+
+---
+
+## 2.5 Every screen this reaches — nothing left out
+
+The category change and the new Deals section travel through the same renderers, so this is one
+list, not two.
+
+### 2.5.1 Report Center
+
+| Screen / button | What changes |
 |---|---|
-| **Report Center** — screen | new `deals` checkbox + a Deals tab; Categories now files deals correctly |
-| **Report Center** — Print All / Print Selected (A4) | new section in the A4 blade |
-| **Report Center** — Print All / Print Selected (Thermal) | new block in `EscPosPayloadService` |
-| **Report Center** — Export All / Export Selected CSV | new block in `SalesReportExporter` |
-| **Report Center** — Email Now | rides the A4 document, no extra work |
-| **Report Center** — Send to Network | rides the thermal payload |
-| **Z Report (End of Day)** | preset is Overview + Order Types + Categories + Waiters + Payments + Cash & Bank — **decision needed: add Deals?** The old software's Z report has deal heads, so probably yes |
-| **POS Quick Report** — modal | `SECTIONS` const + two checkboxes |
-| **POS Quick Report** — Print here / Send to network / Email to owner | same document service, inherits |
-| **Nightly cron email** | `report_schedules.sections` — Kashif's schedule #1 would need `deals` added, a data step |
+| Categories section (screen) | deals file under their own head |
+| **Category filter dropdown** | filtering "Platters" now finds the deals |
+| Items section | deals leave it (they live in Deals) |
+| **Deals section** (new) | new checkbox + tab |
+| "By Order Type" section | reuses `byCategory` + `byItem` per order type — inherits both changes; **must be checked, not assumed** |
+| Departments section | department resolution follows the same expression |
+| Print All (A4) · Print Selected (A4) | new section in the A4 blade |
+| Print All (Thermal) · Print Selected (Thermal) | new block in `EscPosPayloadService` |
+| Export All CSV · Export Selected CSV | new block in `SalesReportExporter` |
+| Email Now | rides the A4 document — inherits |
+| Send to Network | rides the thermal payload — inherits |
+| **Z Report (End of Day)** | its preset includes Categories, so it moves. **Add Deals to the preset?** (the old software's Z report has the deal heads — recommend yes) |
 
-Files: `SalesReportEngine`, `SalesReportDocumentService`, `SalesReportExporter`,
-`EscPosPayloadService`, `SalesReportCenterController`, `PosQuickReportController`, the Report Center
-blades and the Quick Report modal.
+### 2.5.2 POS
 
-## 2.6 What must not move
-
-| Risk | Answer |
+| Screen / button | What changes |
 |---|---|
-| Net Sales changes | It must not. Deals move **between** category rows. Guard test: the grand total before and after is identical, to the paisa. |
-| A deal counted twice | The point of the change. Guard test: a deal appears in Deals and **not** in Items, and the two sections plus the rest sum to Net Sales. |
-| A combo without a category | Falls back to the product's category — today's behaviour — so nothing breaks while the owner is still filing deals. Guard test covers it. |
-| Khatri | Its combos have no `category_id`, so the fallback keeps it exactly as it is today. Worth confirming before deploy, not assuming. |
-| The nightly email silently loses deals | The schedule's stored `sections` will not contain `deals`. It needs adding as a deliberate data step, or the owner's 02:30 report will show Items without deals. **This is the easiest thing to forget.** |
+| Quick Report modal | `SECTIONS` const + the two checkboxes (Deals · Items + Categories) |
+| Quick Report → Print here | inherits |
+| Quick Report → Send to network | inherits |
+| Quick Report → Email to owner | inherits |
+| Quick Report **category picker** | same filter fix — picking "Platters" finds the deals |
+
+### 2.5.3 Scheduled / background
+
+| | What changes |
+|---|---|
+| **Nightly cron email (02:30)** | `report_schedules.sections` is a stored list. Kashif's schedule #1 does **not** contain `deals`. Without a data step the owner's nightly report shows Items with the deals removed and no Deals section — **a total that does not reconcile.** This is the single easiest thing to forget in this whole change. |
+
+### 2.5.4 Legacy screens (decide, don't drift)
+
+| | Note |
+|---|---|
+| `/reports/sales/items` | prints a `category_name` column resolved from the product. It was brought back into the population yesterday; it should follow this rule too, or it becomes the next screen that disagrees. |
+| `/reports/sales/summary`, `/payments`, `/channels`, `/riders` | no category column — unaffected |
+| Restaurant → Tables / Waiters / Order Types | no category column — unaffected |
+
+### 2.5.5 Deliberately NOT changed
+
+**KOT routing.** A ticket routes on the **component's** product category, which is how the BBQ
+items of a platter reach the BBQ printer. That is correct and must stay exactly as it is. This
+change touches reporting only.
+
+---
+
+## 2.6 What must not move — and how each is proven
+
+| Risk | Guard |
+|---|---|
+| Net Sales changes | It must not. Measured on 1 Sep: **596,995.00 before, 596,995.00 after.** Test asserts the grand total is identical to the paisa. |
+| A deal counted twice | Test: a deal appears in Deals and **not** in Items, and Items + Deals + the rest reconcile to Net Sales. |
+| A combo with no category | Falls back to the product's category. Test covers it. |
+| The category filter disagrees with the grouping | Test: filter by the deal's category and the deal is returned. |
+| Khatri | Zero combos — the change cannot reach it. Test asserts a tenant with no combos produces a byte-identical category table. |
+| The nightly email quietly loses deals | Not a code risk — a **data step**, listed in the build order below so it cannot be skipped. |
+| Departments shifts | Deals move into their deal category, so a department mapped on the old category loses them. **Check Kashif's department maps before deploy** — if none exist, nothing to do. |
+
+---
 
 ## 2.7 Questions for the owner
 
-1. **Z Report preset** — add Deals to it? (The old software's Z report has the deal heads, so I
-   would say yes.)
-2. **The three shelving differences** in §1.4 — move Extra Sauce / Garlic Fried / Plain Rice into
-   Singaporean Rice, and Ustad rolls into Chicken Roll, to match the old paper? Or keep ours?
+1. **Z Report preset** — add Deals? (Old software has the heads; recommend yes.)
+2. **Shelving** (§1.4) — move Extra Sauce / Garlic Fried / Plain Rice into Singaporean Rice, and
+   the Ustad rolls into Chicken Roll, to match the old paper? Or keep ours?
 3. **"Parhata"** → "Paratha": correct our typo?
-4. **Deal categories that do not exist yet.** The Z report shows heads we have no combo category
-   for — CHULLU KEBAB, FAMILY DEAL, PLATTER2, POCKET FRIENDLY. Some of our combos are already
-   filed under Pocket Friendly and Meal Deal. Should the deal categories be renamed to match the
-   old software's heads exactly, so the two papers read the same?
+4. **Deal head names** — the old software prints CHULLU KEBAB, FAMILY DEAL, PLATTER2. Ours are
+   Deals, Midnight, Platters, Exclusive Deals, Meal Deal, Pocket Friendly. Rename ours to match
+   exactly, so the two papers read the same?
+
+---
 
 ## 2.8 If approved, the build order
 
-1. `byCategory` files a combo under the combo's category — with the grand-total-unchanged guard.
-2. `byDeal()` + the `deals` section through all six renderers.
-3. `byItem` excludes combos; Items and Deals linked in the UI so a total cannot be read short.
-4. Guard tests, each proven to bite; the reconciliation test is the one that matters.
-5. Prod before/after snapshot for both tenants, as the deal-identity change was done.
-6. Deploy, then re-read the same figures on production, then add `deals` to Kashif's 02:30
-   schedule.
+1. `lineCategoryExpr()` in `SalesReportEngine`, the `combos` join in both line builders, and every
+   one of the ten call sites in §2.4.3 switched to it.
+2. `DepartmentReportService` follows the same expression.
+3. `byDeal()` + the `deals` section through all six renderers (screen, A4, thermal, CSV, email,
+   Quick Report).
+4. `byItem()` excludes combos; **Items and Deals linked in the UI** so a total cannot be printed
+   short.
+5. Guard tests, each proven to bite. The reconciliation test — grand total unchanged — is the one
+   that matters most.
+6. Prod before/after snapshot for both tenants, as the deal-identity change was done.
+7. Full suite → deploy → re-read the same figures on production.
+8. **Add `deals` to Kashif Food's 02:30 schedule** (data step — see §2.5.3).
+9. Check Kashif's department category maps (§2.6).
+
+---
+
+## 2.9 The worked example, on one page
+
+A live before/after built from Kashif Food's actual 1 September data — the deal traced through the
+database, the Categories section computed both ways, and the proof that the day's total does not
+move:
+
+**https://claude.ai/code/artifact/37e516b4-45fe-47c8-89d0-555a7aa0e8d2**
+
+The headline from it: **596,995.00 before, 596,995.00 after.** Extras falls from 30,490 to 2,190,
+and a Deals head appears at 94,705 — Platters 39,900, Midnight 31,250, Deals 18,305, Exclusive
+Deals 2,500, Meal Deal 2,000, Pocket Friendly 750.
