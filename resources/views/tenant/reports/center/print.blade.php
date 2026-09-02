@@ -152,6 +152,12 @@
     tr:first-child + tr.name { border-top: 0; }
     .total { border-top: 1px dashed #000; font-weight: 700; }
     .name td, .total td { font-weight: 700; }
+    /* Where one category head ends and the next begins. Every other rule on the roll is dashed,
+       so this one is SOLID and carries a little air above it — with a dashed rule now fencing
+       every single entry, a head that shares their line weight disappears among them. */
+    .grouprule td { border-top: 2px solid #000; padding: 0; height: 0; line-height: 0; font-size: 0; }
+    .grouprule + tr.name { border-top: 0; }
+    tr.gap td { padding: 0; height: 3px; line-height: 0; font-size: 0; }
     @else
     body { width: 190mm; font-family: Arial, sans-serif; font-size: 12px; }
     h1 { font-size: 18px; margin: 4px 0; }
@@ -292,18 +298,23 @@
 @if($isThermal)
 <table>
     {!! $tHead() !!}
-    {{-- A head is printed the way CATEGORIES prints one: bold, over a dashed rule, carrying its
-         own figures. It was a bare <strong> line before — on a roll of monospace text that reads
-         as just another item, and the shop could not see where one category ended and the next
-         began. The indent then does the rest of the work: sub-head one space, item two. --}}
+    {{-- Three things tell the reader where a category starts and what belongs to it:
+         a SOLID rule above the head (every other rule on the roll is dashed), the head's name in
+         CAPITALS the way the raw ESC/POS prints it, and a real indent on everything beneath it.
+         The indent has to be &nbsp; — HTML collapses ordinary spaces, so the roll was indented
+         correctly while the screen and the PDF showed head and item flush against each other,
+         which is exactly what made the section unreadable. --}}
+    @php $ciFirst = true; @endphp
     @foreach($categoryItems as $head)
-        {!! $tEntry($head['head'], $head['sold_qty'], $head['returned_qty'], $head['net_qty'], $head['net'], $head['returns_amount'], $head['net_value'], true) !!}
+        @if(! $ciFirst)<tr class="gap"><td colspan="4"></td></tr><tr class="grouprule"><td colspan="4"></td></tr>@endif
+        @php $ciFirst = false; @endphp
+        {!! $tEntry(mb_strtoupper($head['head']), $head['sold_qty'], $head['returned_qty'], $head['net_qty'], $head['net'], $head['returns_amount'], $head['net_value'], true) !!}
         @foreach($head['groups'] as $group)
             @if($head['nested'])
-                {!! $tEntry($group['name'], $group['sold_qty'], $group['returned_qty'], $group['net_qty'], $group['net'], $group['returns_amount'], $group['net_value'], false, ' ') !!}
+                {!! $tEntry($group['name'], $group['sold_qty'], $group['returned_qty'], $group['net_qty'], $group['net'], $group['returns_amount'], $group['net_value'], true, '&nbsp;&nbsp;') !!}
             @endif
             @foreach($group['items'] as $item)
-                {!! $tEntry($item['item'] . ($item['variant'] ? ' (' . $item['variant'] . ')' : ''), $item['sold_qty'], $item['returned_qty'], $item['net_qty'], $item['net'], $item['returns_amount'], $item['net_value'], false, $head['nested'] ? '  ' : ' ') !!}
+                {!! $tEntry($item['item'] . ($item['variant'] ? ' (' . $item['variant'] . ')' : ''), $item['sold_qty'], $item['returned_qty'], $item['net_qty'], $item['net'], $item['returns_amount'], $item['net_value'], false, $head['nested'] ? '&nbsp;&nbsp;&nbsp;&nbsp;' : '&nbsp;&nbsp;') !!}
             @endforeach
         @endforeach
     @endforeach
