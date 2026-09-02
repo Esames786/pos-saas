@@ -277,6 +277,52 @@ class ItemsByCategoryMySqlTest extends MySqlTenantTestCase
             . 'of deals alone leaves this section empty rather than listing the parts');
     }
 
+    /* ── the bridge to NET SALES ─────────────────────────────────────────── */
+
+    /**
+     * BRIDGE-DEALS-1 — a section that leaves the deals out is short of NET SALES by the deals as
+     * well as by the charges. The A4 bridge used to print that whole gap as "Plus Delivery & Other
+     * Charges": at Kashif Food on 2 September it read 95,859 where the real charges were 4,369,
+     * and the missing 91,490 was deal money wearing a name that was not its own.
+     *
+     * `dealsNet()` is what lets the bridge name them separately, so it must agree with the Deals
+     * section to the paisa — two numbers for "the deals" is how this drifts again.
+     */
+    public function test_the_bridges_deals_figure_agrees_with_the_deals_section(): void
+    {
+        $this->seedDay();
+        $engine = app(SalesReportEngine::class);
+
+        $this->assertEqualsWithDelta(
+            (float) collect($engine->byDeal($this->filters()))->sum('net_value'),
+            $engine->dealsNet($this->filters()), 0.01,
+            'the bridge and the Deals section must not disagree about what the deals came to'
+        );
+    }
+
+    /** Items + deals is the whole of the merchandise — what is left over really is charges. */
+    public function test_items_plus_deals_is_the_whole_of_the_merchandise(): void
+    {
+        $this->seedDay();
+        $engine = app(SalesReportEngine::class);
+
+        $items = collect($engine->byCategoryItems($this->filters()))->sum('net_value');
+        $deals = $engine->dealsNet($this->filters());
+        $cats  = collect($engine->byCategory($this->filters()))
+            ->sum(fn ($r) => (float) $r['net'] - (float) ($r['returns_amount'] ?? 0));
+
+        $this->assertEqualsWithDelta($cats, $items + $deals, 0.01,
+            'whatever the bridge then calls "charges" is the gap to NET SALES and nothing else');
+    }
+
+    /** A tenant with no deals gets no deals line — the bridge must not invent one. */
+    public function test_a_tenant_with_no_deals_has_nothing_to_bridge_for_them(): void
+    {
+        $this->sell($this->drinkProduct, 120, 5);
+
+        $this->assertEqualsWithDelta(0.0, app(SalesReportEngine::class)->dealsNet($this->filters()), 0.01);
+    }
+
     /* ── returns ─────────────────────────────────────────────────────────── */
 
     public function test_a_refund_comes_off_the_head_it_was_sold_under(): void

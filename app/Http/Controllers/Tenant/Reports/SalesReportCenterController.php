@@ -240,7 +240,9 @@ class SalesReportCenterController extends Controller
             'paper' => $paper,
             'filters' => $filters,
             'sections' => $sections,
-            'bridge' => $summary,
+            // BRIDGE-DEALS-1: a section that leaves the deals out cannot close to NET SALES on
+            // charges alone — it needs the deals named on their own line.
+            'bridge' => $summary + ['deals_net' => $this->engine->dealsNet($filters)],
             'overview' => in_array('overview', $sections, true) ? $summary : null,
             'orderTypes' => $pick('order_types', fn () => $this->engine->byOrderType($filters)),
             'categories' => $pick('categories', fn () => $this->engine->byCategory($filters)),
@@ -279,7 +281,9 @@ class SalesReportCenterController extends Controller
 
         $report = [
             'sections' => $sections,
-            'bridge' => $summary,
+            // BRIDGE-DEALS-1: a section that leaves the deals out cannot close to NET SALES on
+            // charges alone — it needs the deals named on their own line.
+            'bridge' => $summary + ['deals_net' => $this->engine->dealsNet($filters)],
             'overview' => in_array('overview', $sections, true) ? $summary : null,
             'orderTypes' => $pick('order_types', fn () => $this->engine->byOrderType($filters)),
             'categories' => $pick('categories', fn () => $this->engine->byCategory($filters)),
