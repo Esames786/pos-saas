@@ -29,7 +29,7 @@ use Illuminate\Support\Facades\Mail;
 class PosQuickReportController extends Controller
 {
     /** Sections offered in the modal (Report Center's, minus the CSV-only "detailed"). */
-    public const SECTIONS = ['overview', 'categories', 'items', 'deals', 'waiters', 'order_types', 'order_type_combos', 'cancellations', 'cash_bank'];
+    public const SECTIONS = ['overview', 'categories', 'items', 'category_items', 'deals', 'waiters', 'order_types', 'order_type_combos', 'cancellations', 'cash_bank'];
 
     private const PERMISSION = 'tenant.pos.quick-report-send';
 

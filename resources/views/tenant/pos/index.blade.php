@@ -1415,6 +1415,7 @@
                     // printing one without the other gives a total that does not reconcile.
                     $qrSections = [
                         'overview' => 'Overview', 'categories' => 'Categories', 'items' => 'Items',
+                        'category_items' => 'Items by Category',
                         'deals' => 'Deals',
                         'waiters' => 'Waiters', 'order_types' => 'Order Types', 'order_type_combos' => 'Order-Type Combos',
                         'cancellations' => 'Cancellations', 'cash_bank' => 'Cash & Bank',

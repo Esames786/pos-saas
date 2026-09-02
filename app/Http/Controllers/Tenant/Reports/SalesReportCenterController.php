@@ -20,7 +20,7 @@ use Illuminate\Support\Facades\Mail;
  */
 class SalesReportCenterController extends Controller
 {
-    public const SECTIONS = ['overview', 'categories', 'items', 'deals', 'waiters', 'order_types', 'order_type_combos', 'cancellations', 'detailed', 'cash_bank'];
+    public const SECTIONS = ['overview', 'categories', 'items', 'category_items', 'deals', 'waiters', 'order_types', 'order_type_combos', 'cancellations', 'detailed', 'cash_bank'];
 
     /**
      * Per-section permission (Khatri #7): a role sees/prints/exports ONLY its assigned sections.
@@ -104,6 +104,8 @@ class SalesReportCenterController extends Controller
                 'categories' => ['categories' => $this->engine->byCategory($filters)],
                 // DEAL-CATEGORY-1: deals have their own section now, so Items excludes them.
                 'items' => ['items' => $this->engine->byItem($filters, $request->input('sort', 'net'), true)],
+                // ITEMS-BY-CATEGORY-1: the same rows as Items, filed under their category heads.
+                'category_items' => ['category_items' => $this->engine->byCategoryItems($filters)],
                 'deals' => ['deals' => $this->engine->byDeal($filters)],
                 'waiters' => ['waiters' => $this->engine->byWaiter($filters)],
                 'order_types' => ['order_types' => $this->engine->byOrderType($filters)],
@@ -244,6 +246,7 @@ class SalesReportCenterController extends Controller
             'categories' => $pick('categories', fn () => $this->engine->byCategory($filters)),
             // DEAL-CATEGORY-1: Items drops the deals; they print under their own heads below.
             'items' => $pick('items', fn () => $this->engine->byItem($filters, 'net', true)),
+            'categoryItems' => $pick('category_items', fn () => $this->engine->byCategoryItems($filters)),
             'deals' => $pick('deals', fn () => $this->engine->byDeal($filters)),
             'waiters' => $pick('waiters', fn () => $this->engine->byWaiter($filters)),
             'combos' => $pick('order_type_combos', fn () => $this->engine->orderTypeCombos($filters)),
@@ -281,6 +284,7 @@ class SalesReportCenterController extends Controller
             'orderTypes' => $pick('order_types', fn () => $this->engine->byOrderType($filters)),
             'categories' => $pick('categories', fn () => $this->engine->byCategory($filters)),
             'items' => $pick('items', fn () => $this->engine->byItem($filters)),
+            'categoryItems' => $pick('category_items', fn () => $this->engine->byCategoryItems($filters)),
             'waiters' => $pick('waiters', fn () => $this->engine->byWaiter($filters)),
             'cancellations' => $pick('cancellations', fn () => $this->engine->cancellations($filters)),
             'cashBank' => $pick('cash_bank', fn () => $this->engine->cashBank($filters)),

@@ -275,6 +275,48 @@
 @endif
 @endif
 
+{{-- ITEMS BY CATEGORY — ITEMS-BY-CATEGORY-1. The same rows as ITEMS, filed under their category
+     heads with a subtotal each — the shape the client's old software prints. The head is the ROOT
+     category so every subtotal reconciles against CATEGORIES; a sub-head appears only where that
+     root really has children with sales. --}}
+@if($has('category_items') && ($categoryItems ?? null) !== null)
+@php $ciRows = collect($categoryItems); @endphp
+<h2>ITEMS BY CATEGORY</h2>
+@if($isThermal)
+<table>
+    {!! $tHead() !!}
+    @foreach($categoryItems as $head)
+        <tr><td colspan="7"><strong>{{ strtoupper($head['head']) }}</strong></td></tr>
+        @foreach($head['groups'] as $group)
+            @if($head['nested'])
+                {!! $tEntry('  ' . $group['name'], $group['sold_qty'], $group['returned_qty'], $group['net_qty'], $group['net'], $group['returns_amount'], $group['net_value']) !!}
+            @endif
+            @foreach($group['items'] as $item)
+                {!! $tEntry(($head['nested'] ? '    ' : '  ') . $item['item'] . ($item['variant'] ? ' (' . $item['variant'] . ')' : ''), $item['sold_qty'], $item['returned_qty'], $item['net_qty'], $item['net'], $item['returns_amount'], $item['net_value']) !!}
+            @endforeach
+        @endforeach
+    @endforeach
+    {!! $tEntry('TOTAL', $ciRows->sum('sold_qty'), $ciRows->sum('returned_qty'), $ciRows->sum('net_qty'), $ciRows->sum('net'), $ciRows->sum('returns_amount'), $ciRows->sum('net_value'), true) !!}
+</table>
+@else
+<table>
+    <tr><th>Category / Item</th><th class="amt">Sold Qty</th><th class="amt">Ret Qty</th><th class="amt">Net Qty</th><th class="amt">Sold</th><th class="amt">Returns</th><th class="amt">Net</th></tr>
+    @foreach($categoryItems as $head)
+        <tr class="total"><td><strong>{{ strtoupper($head['head']) }}</strong></td><td class="amt">{{ $qty($head['sold_qty']) }}</td><td class="amt">{{ $qty($head['returned_qty']) }}</td><td class="amt">{{ $qty($head['net_qty']) }}</td><td class="amt">{{ $fmt($head['net']) }}</td><td class="amt">{{ $fmt($head['returns_amount']) }}</td><td class="amt">{{ $fmt($head['net_value']) }}</td></tr>
+        @foreach($head['groups'] as $group)
+            @if($head['nested'])
+                <tr><td><strong>&nbsp;&nbsp;{{ $group['name'] }}</strong></td><td class="amt">{{ $qty($group['sold_qty']) }}</td><td class="amt">{{ $qty($group['returned_qty']) }}</td><td class="amt">{{ $qty($group['net_qty']) }}</td><td class="amt">{{ $fmt($group['net']) }}</td><td class="amt">{{ $fmt($group['returns_amount']) }}</td><td class="amt">{{ $fmt($group['net_value']) }}</td></tr>
+            @endif
+            @foreach($group['items'] as $item)
+                <tr><td>{!! $head['nested'] ? '&nbsp;&nbsp;&nbsp;&nbsp;' : '&nbsp;&nbsp;' !!}{{ $item['item'] }}{{ $item['variant'] ? ' (' . $item['variant'] . ')' : '' }}</td><td class="amt">{{ $qty($item['sold_qty']) }}</td><td class="amt">{{ $qty($item['returned_qty']) }}</td><td class="amt">{{ $qty($item['net_qty']) }}</td><td class="amt">{{ $fmt($item['net']) }}</td><td class="amt">{{ $fmt($item['returns_amount']) }}</td><td class="amt">{{ $fmt($item['net_value']) }}</td></tr>
+            @endforeach
+        @endforeach
+    @endforeach
+    <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty($ciRows->sum('sold_qty')) }}</td><td class="amt">{{ $qty($ciRows->sum('returned_qty')) }}</td><td class="amt">{{ $qty($ciRows->sum('net_qty')) }}</td><td class="amt">{{ $fmt($ciRows->sum('net')) }}</td><td class="amt">{{ $fmt($ciRows->sum('returns_amount')) }}</td><td class="amt">{{ $fmt($ciRows->sum('net_value')) }}</td></tr>
+</table>
+@endif
+@endif
+
 {{-- DEALS — DEAL-CATEGORY-1. Grouped under their own heads, the way the client's old software
      prints DEALS / MIDNIGHT DEAL 1 / CLASSIC PLATTER. ITEMS above no longer carries them. --}}
 @if($has('deals') && ($deals ?? null) !== null)

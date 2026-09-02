@@ -512,6 +512,9 @@ class SalesReportEngine
                 'l.product_id, l.product_variant_id, l.combo_id,
                  COALESCE(MAX(cb.name), MAX(l.product_name)) as item,
                  MAX(v.name) as variant, MAX(c.name) as category,
+                 -- ITEMS-BY-CATEGORY-1: the id travels with the name, so a row can be filed under
+                 -- its ROOT head without a second query guessing the head from a string.
+                 MAX(c.id) as category_id,
                  COALESCE(SUM(l.quantity),0) as sold_qty,
                  COALESCE(SUM(l.quantity * l.unit_price),0) as gross,
                  COALESCE(SUM(l.discount_amount),0) as discount,
@@ -529,6 +532,7 @@ class SalesReportEngine
                 'rl.product_id, rl.product_variant_id, ol.combo_id,
                  COALESCE(MAX(cb.name), MAX(ol.product_name)) as item,
                  MAX(v.name) as variant, MAX(c.name) as category,
+                 MAX(c.id) as category_id,
                  COALESCE(SUM(rl.quantity),0) as returned_qty,
                  COALESCE(SUM(rl.line_total),0) as returns_amount'
             )->get()->keyBy($key);
@@ -556,6 +560,104 @@ class SalesReportEngine
             'alpha' => null,
             default => (float) $r->net_value,
         })->when($sort === 'alpha', fn ($c) => $c->sortBy('item'))->values()->all();
+    }
+
+    /**
+     * ITEMS-BY-CATEGORY-1 — the Items section, filed under category heads.
+     *
+     * The client's old software prints its item report this way: a category head with its own
+     * subtotal, then the items beneath it. The owner reads both papers side by side, so he asked
+     * for the same shape here — but as a SECTION OF ITS OWN, beside Items rather than instead of
+     * it, exactly as Deals was added on 2 September. The existing Items report is untouched.
+     *
+     * It is built ON TOP OF `byItem($f, 'net', excludeCombos: true)` and does no arithmetic of its
+     * own beyond adding those same rows up. That is deliberate: two queries computing "the same"
+     * item money is how two figures eventually disagree, and this report exists precisely so the
+     * owner can reconcile. Deals stay out for the reason they are out of Items — they have their
+     * own section, and counting them here would double the money.
+     *
+     * Heads are ROOTS. A tenant nests its categories (Khatri files Beef Khatri / Khatri Sadi /
+     * Matka under Beef Khatri Biryani; Kashif files seven kinds of roll under Rolls), and the
+     * Categories section already rolls those up to the root. Filing items under the leaf instead
+     * would print head names that appear nowhere else on the report, with subtotals that reconcile
+     * against nothing. So the root leads and the leaf appears as a sub-head beneath it — but only
+     * where a root really has children with sales. A flat category prints its items directly,
+     * without a ceremonial sub-head repeating the name above it.
+     *
+     * @return list<array{head:string, head_id:int, nested:bool, groups:list<array>}>
+     */
+    public function byCategoryItems(array $f): array
+    {
+        $rows = $this->byItem($f, 'net', true);
+
+        if ($rows === []) {
+            return [];
+        }
+
+        $rootMap = $this->rootMap();
+        $names   = DB::connection('tenant')->table('categories')->pluck('name', 'id');
+        $money   = ['sold_qty', 'returned_qty', 'net_qty', 'gross', 'discount', 'tax', 'net', 'returns_amount', 'net_value'];
+
+        $heads = [];
+        foreach ($rows as $row) {
+            $leafId = $row->category_id !== null ? (int) $row->category_id : 0;
+            $rootId = $leafId !== 0 ? ($rootMap[$leafId] ?? $leafId) : 0;
+
+            $heads[$rootId]['head_id'] ??= $rootId;
+            $heads[$rootId]['head']    ??= $rootId === 0 ? 'Uncategorised' : ($names[$rootId] ?? ('#' . $rootId));
+
+            $group = &$heads[$rootId]['groups'][$leafId];
+            $group['id']   ??= $leafId;
+            $group['name'] ??= $leafId === 0 ? 'Uncategorised' : ($names[$leafId] ?? ('#' . $leafId));
+
+            foreach ($money as $k) {
+                $v                  = (float) ($row->{$k} ?? 0);
+                $group[$k]          = ($group[$k] ?? 0) + $v;
+                $heads[$rootId][$k] = ($heads[$rootId][$k] ?? 0) + $v;
+            }
+
+            $group['items'][] = [
+                'item'           => (string) $row->item,
+                'variant'        => $row->variant !== null ? (string) $row->variant : null,
+                'category'       => (string) ($row->category ?? ''),
+                'sold_qty'       => (float) $row->sold_qty,
+                'returned_qty'   => (float) $row->returned_qty,
+                'net_qty'        => (float) $row->net_qty,
+                'gross'          => (float) $row->gross,
+                'discount'       => (float) $row->discount,
+                'tax'            => (float) $row->tax,
+                'net'            => (float) $row->net,
+                'returns_amount' => (float) $row->returns_amount,
+                'net_value'      => round((float) $row->net_value, 2),
+            ];
+            unset($group);
+        }
+
+        $out = [];
+        foreach ($heads as $rootId => $head) {
+            $groups = collect($head['groups'])
+                ->sortByDesc('net_value')
+                ->map(function (array $g) {
+                    $g['items'] = collect($g['items'])->sortByDesc('net_value')->values()->all();
+
+                    return $g;
+                })->values()->all();
+
+            // A sub-head earns its line only when it says something the head does not: either the
+            // root has more than one child with sales, or the single group is a child by another
+            // name. One group named exactly like its head is just the head printed twice.
+            $head['nested'] = count($groups) > 1 || (int) ($groups[0]['id'] ?? 0) !== (int) $rootId;
+            $head['groups'] = $groups;
+            foreach ($money as $k) {
+                $head[$k] = round((float) ($head[$k] ?? 0), 2);
+            }
+            $out[] = $head;
+        }
+
+        // Biggest head first, the way the Items section leads with the biggest earner.
+        usort($out, fn (array $a, array $b) => $b['net_value'] <=> $a['net_value']);
+
+        return $out;
     }
 
     /**
