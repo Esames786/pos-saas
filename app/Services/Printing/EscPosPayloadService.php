@@ -22,6 +22,16 @@ class EscPosPayloadService
     private const BOLD_OFF = "\x1B\x45\x00";
 
     /**
+     * ESC - n — underline on/off, one dot thick.
+     *
+     * A full-width rule fences a block; an underline names one thing, and it is exactly as wide as
+     * the name it sits under. A category head needs the second, or on a roll where every entry is
+     * already fenced by a rule it reads as one more item.
+     */
+    private const UNDERLINE_ON  = "\x1B\x2D\x01";
+    private const UNDERLINE_OFF = "\x1B\x2D\x00";
+
+    /**
      * GS ! n — character size. The low nibble is height-1, the high nibble is width-1, so
      * 0x00 is normal, 0x11 is double both, 0x22 is triple both.
      */
@@ -395,8 +405,13 @@ class EscPosPayloadService
         $header = fn (string $title) => $rule . "\n" . $big($this->center($title, $cols)) . "\n";
 
         // The name a reader scans for prints big; the Qty/Amt detail stays compact.
-        $entry = fn ($name, $sQ, $rQ, $nQ, $sV, $rV, $nV, $indent = '', $bigName = false) =>
-            ($bigName ? $big($indent . strtoupper((string) $name)) : $indent . strtoupper((string) $name)) . "\n"
+        // $underline draws ESC - under the NAME itself, so the line is exactly as wide as the name.
+        // The indent stays outside it: a line that starts in the margin looks like a mistake.
+        $entry = fn ($name, $sQ, $rQ, $nQ, $sV, $rV, $nV, $indent = '', $bigName = false, $underline = false) =>
+            $indent
+            . ($underline ? self::UNDERLINE_ON : '')
+            . ($bigName ? $big(strtoupper((string) $name)) : strtoupper((string) $name))
+            . ($underline ? self::UNDERLINE_OFF : '') . "\n"
             . $three($indent . 'Qty', $qty($sQ), $qty($rQ), $qty($nQ))
             . $three($indent . 'Amt', $money($sV), $money($rV), $money($nV));
         $orderRow = fn ($name, $orders, $billed, $ret, $net, $bigName = false) =>
@@ -521,7 +536,7 @@ class EscPosPayloadService
                 $first = false;
 
                 $out .= $entry($headRow['head'], $headRow['sold_qty'], $headRow['returned_qty'],
-                    $headRow['net_qty'], $headRow['net'], $headRow['returns_amount'], $headRow['net_value'], '', true);
+                    $headRow['net_qty'], $headRow['net'], $headRow['returns_amount'], $headRow['net_value'], '', true, true);
 
                 foreach ($headRow['groups'] as $group) {
                     // Only a head that really has children earns a sub-head line; on 42 columns a
@@ -529,7 +544,7 @@ class EscPosPayloadService
                     if ($headRow['nested']) {
                         $out .= $rule . "\n";
                         $out .= $entry($group['name'], $group['sold_qty'], $group['returned_qty'],
-                            $group['net_qty'], $group['net'], $group['returns_amount'], $group['net_value'], ' ', true);
+                            $group['net_qty'], $group['net'], $group['returns_amount'], $group['net_value'], ' ', true, true);
                     }
                     foreach ($group['items'] as $item) {
                         // Same rule between items as in ITEMS above — three-line entries need a

@@ -563,6 +563,25 @@ class SalesReportEngine
     }
 
     /**
+     * BRIDGE-DEALS-1 — the net value of the deals in a period, for the section bridges.
+     *
+     * A section that EXCLUDES deals (Items, and Items by Category) cannot close to NET SALES by
+     * adding charges alone: the deals are missing from its total too. Before this the whole gap was
+     * printed as "Plus Delivery & Other Charges", so at Kashif Food on 2 September a line that
+     * should have read 4,369 read 95,859 — the other 91,490 was deal money wearing the wrong name.
+     *
+     * Deliberately a small aggregate of its own rather than a byDeal() call: the bridge needs one
+     * number and byDeal builds a whole grouped report to get it.
+     */
+    public function dealsNet(array $f): float
+    {
+        $sold = (float) $this->linesBase($f)->whereNotNull('l.combo_id')->sum('l.line_total');
+        $back = (float) $this->returnLinesBase($f)->whereNotNull('ol.combo_id')->sum('rl.line_total');
+
+        return round($sold - $back, 2);
+    }
+
+    /**
      * ITEMS-BY-CATEGORY-1 — the Items section, filed under category heads.
      *
      * The client's old software prints its item report this way: a category head with its own
