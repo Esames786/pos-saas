@@ -350,3 +350,88 @@ move:
 The headline from it: **596,995.00 before, 596,995.00 after.** Extras falls from 30,490 to 2,190,
 and a Deals head appears at 94,705 — Platters 39,900, Midnight 31,250, Deals 18,305, Exclusive
 Deals 2,500, Meal Deal 2,000, Pocket Friendly 750.
+
+---
+
+## 2.10 Splitting Platters into the old software's heads — owner-approved
+
+One "Platters" head holds nine different things. The old software gives each its own, and the owner
+asked for the same, **with Singaporean Rice Khass on a head of its own** ("khaas platter he hai —
+us ko platter ke new head me daal do alag se").
+
+| New head | Deals it holds | 1 Sep |
+|---|---|---|
+| **Classic Platter** | Classic Platter 1 (6 Persons) · 2 (4 Persons) · 3 (3 Persons) | 8 · 26,400 |
+| **Singaporean Rice Khass** | Singaporean Rice Khass (2–3 Persons) | 4 · 11,600 |
+| **Chullu Kebab** | Chullu Kebab Beef · Chullu Kebab Chicken · Balochi Boti Rice | 1 · 1,900 |
+| **Platter 2** | Bar-B-Que Platter (4–5 Persons) · Turkiya Kebab (1–2 Persons) | none sold |
+| Al-Faham | *already its own head* — matches the old paper's `PLATTER` | none sold |
+| | **was: Platters** | **13 · 39,900** |
+
+The four heads add up to exactly what Platters held. Deals stays 94,705; the day stays 596,995.
+
+> **Note on the old paper.** The Z report files `SINGAPOREAN KHASS` under its **SINGAPOREAN RICE**
+> head, not under a platter one. The owner's decision is that Khass *is* a platter and gets its own
+> head — so on this row the two papers will differ by design, not by accident.
+
+### 2.10.1 This needs no code
+
+These are categories created in the Catalog screen with the deals moved into them. The report reads
+whatever heads exist, so nothing in §2.4 changes.
+
+**Where they must sit — and the reason is the POS, not the report.**
+
+`byCategory` maps each line's category to its **ultimate root** (`rootMap()` is a recursive CTE)
+and files it as `root → leaf`, skipping any level in between. So a head placed three deep
+(*Deals → Platters → Classic Platter*) would still appear as a child row of **Deals** — the report
+handles it either way, and an earlier note in this document claiming otherwise was wrong.
+
+The POS is the constraint. Its deal strip renders `$cat->children` — the **immediate** children of
+the selected parent, one level only. A head buried under Platters would never get a chip.
+
+**So: create the new heads as direct children of `Deals`, and retire `Platters` once empty.**
+That satisfies both screens.
+
+### 2.10.2 Effect — checked, not assumed
+
+| | Effect |
+|---|---|
+| Money | **None.** Same lines, same sums; only which row they print on. |
+| Counts | **None.** 13 items stay 13, across four rows instead of one. |
+| **KOT · reminder · receipt** | **None** — proven below. |
+| POS "Deals" tab | Gains chips: Classic Platter, Khass, Chullu Kebab, Platter 2. Cashiers need **Ctrl+F5**. |
+| Khatri Biryani | **None** — no combos at all. |
+| Reprinting an **old** report | The head is read from the deal at report time, not frozen onto the sale, so an August platter reprints under its **new** head. Money identical; only the label differs from an earlier copy. |
+
+**Why the kitchen cannot be affected — from `PrintRoutingService`, line 251:**
+
+```php
+// A combo header is a display row — the kitchen makes its COMPONENTS,
+// and both renderers skip it.
+if ($line->line_kind === 'combo_header') {
+    continue;                       // the deal's own row never routes
+}
+…routes on  $line->product->category_id     // the COMPONENT's category
+```
+
+A ticket is routed by each **component's** product category — which is how a platter's kebabs reach
+the grill and its rice reaches the counter. The combo is read for its **name** only, by id
+(`COMBO-KOT-DEAL-NAME-1`). **`combos.category_id` is never read by any printing code**, so moving a
+deal between heads cannot change a single slip.
+
+### 2.10.3 Freezing the head onto the sale — considered and declined
+
+History could be frozen by stamping the category onto every sale line at punch time, the way the
+catering release snapshots its materials. Declined, for now:
+
+- it needs a new column **and** a change to how the POS writes a sale — a write-path change for a
+  reporting nicety;
+- it only works **forward**, so August stays as it is regardless;
+- and the drift it prevents is cosmetic: the money never moves, only the label.
+
+Worth revisiting if the owner ever needs a reprint to match an earlier copy line for line.
+
+### 2.10.4 The worked example
+
+Both the split heads and the working Report Center are on the live page, built from 1 September:
+**https://claude.ai/code/artifact/37e516b4-45fe-47c8-89d0-555a7aa0e8d2**
