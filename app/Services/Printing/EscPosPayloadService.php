@@ -487,6 +487,35 @@ class EscPosPayloadService
             $out .= $bigTotal($items->sum('sold_qty'), $items->sum('returned_qty'), $items->sum('net_qty'), $items->sum('net'), $items->sum('returns_amount'), $items->sum('net_value'));
         }
 
+        // ITEMS BY CATEGORY — ITEMS-BY-CATEGORY-1.
+        //
+        // The same rows as ITEMS above, under their category heads with a subtotal each — the
+        // shape the client's old software prints. Both may be ticked at once; they are two views
+        // of one set of rows, not two sets, so no money is counted twice by printing both.
+        if ($has('category_items') && ($r['categoryItems'] ?? null) !== null) {
+            $heads = collect($r['categoryItems']);
+            $out .= $header('ITEMS BY CATEGORY') . $head3();
+            foreach ($heads as $headRow) {
+                $out .= $big(strtoupper((string) $headRow['head'])) . "
+";
+                foreach ($headRow['groups'] as $group) {
+                    // Only a head that really has children earns a sub-head line; on 42 columns a
+                    // line repeating the heading above it is paper spent saying nothing.
+                    if ($headRow['nested']) {
+                        $out .= $entry('  ' . $group['name'], $group['sold_qty'], $group['returned_qty'],
+                            $group['net_qty'], $group['net'], $group['returns_amount'], $group['net_value']);
+                    }
+                    foreach ($group['items'] as $item) {
+                        $name = $item['item'] . ($this->meaningfulVariant($item['variant'] ?? null, $item['item'] ?? null) ? ' (' . $item['variant'] . ')' : '');
+                        $out .= $entry(($headRow['nested'] ? '    ' : '  ') . $name, $item['sold_qty'], $item['returned_qty'],
+                            $item['net_qty'], $item['net'], $item['returns_amount'], $item['net_value']);
+                    }
+                }
+            }
+            $out .= $bigTotal($heads->sum('sold_qty'), $heads->sum('returned_qty'), $heads->sum('net_qty'),
+                $heads->sum('net'), $heads->sum('returns_amount'), $heads->sum('net_value'));
+        }
+
         // DEALS — DEAL-CATEGORY-1.
         //
         // Printed under their own heads, the way the client's old software has always printed
