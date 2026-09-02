@@ -511,8 +511,12 @@ class EscPosPayloadService
                 // on a roll of monospace reads as just another item: the shop could not see where
                 // one category ended and the next began. The first head needs no rule; the section
                 // heading above it already drew one.
+                //
+                // The head's rule is DOUBLE. Every entry beneath it is now fenced by a single
+                // dashed rule, so a head drawn with the same line weight sinks among them — the
+                // reader could no longer tell where a category started or which items were its own.
                 if (! $first) {
-                    $out .= $rule . "\n";
+                    $out .= str_repeat('=', strlen($rule)) . "\n";
                 }
                 $first = false;
 
