@@ -142,7 +142,14 @@
        show clearly in print — a paint-only effect, so it never changes a column's width. Headings
        (th, .name) are left as they are. Tune the 0.2px up/down for more/less darkness. */
     td.amt, td.lbl { -webkit-text-stroke: 0.2px currentColor; }
-    .name { font-weight: 700; }
+    /* Each entry is three rows deep — name, Qty, Amt — so a long list runs together and the eye
+       cannot find where one item ends and the next begins. A dashed rule above every NAME row
+       fences each entry off. Bold entries (heads, TOTAL) already carry the same rule through
+       .total, so they gain no second line. */
+    .name { font-weight: 700; border-top: 1px dashed #000; }
+    /* …except the very first entry of a table, which would otherwise sit under two rules: the
+       column header's own border and its. */
+    tr:first-child + tr.name { border-top: 0; }
     .total { border-top: 1px dashed #000; font-weight: 700; }
     .name td, .total td { font-weight: 700; }
     @else

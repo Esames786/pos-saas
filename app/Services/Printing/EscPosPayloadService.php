@@ -480,7 +480,16 @@ class EscPosPayloadService
         if ($has('items') && ($r['items'] ?? null) !== null) {
             $items = collect($r['items']);
             $out .= $header('ITEMS') . $head3();
+            // Every entry is three lines deep — name, Qty, Amt — so a hundred of them run together
+            // and the eye cannot find where one item ends and the next begins. A rule between them
+            // fences each entry off. It costs a line of roll per item, which is the trade the shop
+            // asked for after reading a Z report off the counter.
+            $first = true;
             foreach ($items as $row) {
+                if (! $first) {
+                    $out .= $rule . "\n";
+                }
+                $first = false;
                 $name = $row->item . ($this->meaningfulVariant($row->variant ?? null, $row->item ?? null) ? ' (' . $row->variant . ')' : '');
                 $out .= $entry($name, $row->sold_qty, $row->returned_qty, $row->net_qty, $row->net, $row->returns_amount, $row->net_value);
             }
@@ -514,10 +523,14 @@ class EscPosPayloadService
                     // Only a head that really has children earns a sub-head line; on 42 columns a
                     // line repeating the heading above it is paper spent saying nothing.
                     if ($headRow['nested']) {
+                        $out .= $rule . "\n";
                         $out .= $entry($group['name'], $group['sold_qty'], $group['returned_qty'],
                             $group['net_qty'], $group['net'], $group['returns_amount'], $group['net_value'], ' ', true);
                     }
                     foreach ($group['items'] as $item) {
+                        // Same rule between items as in ITEMS above — three-line entries need a
+                        // fence or they read as one block of figures.
+                        $out .= $rule . "\n";
                         $name = $item['item'] . ($this->meaningfulVariant($item['variant'] ?? null, $item['item'] ?? null) ? ' (' . $item['variant'] . ')' : '');
                         $out .= $entry($name, $item['sold_qty'], $item['returned_qty'],
                             $item['net_qty'], $item['net'], $item['returns_amount'], $item['net_value'],
