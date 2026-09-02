@@ -487,6 +487,27 @@ class EscPosPayloadService
             $out .= $bigTotal($items->sum('sold_qty'), $items->sum('returned_qty'), $items->sum('net_qty'), $items->sum('net'), $items->sum('returns_amount'), $items->sum('net_value'));
         }
 
+        // DEALS — DEAL-CATEGORY-1.
+        //
+        // Printed under their own heads, the way the client's old software has always printed
+        // DEALS / MIDNIGHT DEAL 1 / CLASSIC PLATTER, each with its own subtotal. ITEMS above no
+        // longer carries them, so the two sections together are the whole of the trading.
+        if ($has('deals') && ($r['deals'] ?? null) !== null) {
+            $deals = collect($r['deals']);
+            $out .= $header('DEALS') . $head3();
+            $head = null;
+            foreach ($deals as $row) {
+                if (($row['head'] ?? null) !== $head) {
+                    $head = $row['head'] ?? 'Uncategorised';
+                    $out .= $big(strtoupper((string) $head)) . "\n";
+                }
+                $out .= $entry($row['deal'], $row['sold_qty'], $row['returned_qty'], $row['net_qty'],
+                    $row['net'], $row['returns_amount'], $row['net_value']);
+            }
+            $out .= $bigTotal($deals->sum('sold_qty'), $deals->sum('returned_qty'), $deals->sum('net_qty'),
+                $deals->sum('net'), $deals->sum('returns_amount'), $deals->sum('net_value'));
+        }
+
         // CANCELLATIONS.
         if ($has('cancellations') && ($r['cancellations'] ?? null) !== null) {
             $out .= $header('CANCELLATIONS');

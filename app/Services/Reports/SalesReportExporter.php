@@ -23,6 +23,7 @@ class SalesReportExporter
                 'overview' => $this->overviewCsv($filters),
                 'categories' => $this->categoriesCsv($filters),
                 'items' => $this->itemsCsv($filters),
+                'deals' => $this->dealsCsv($filters),
                 'waiters' => $this->dimensionCsv($this->engine->byWaiter($filters), 'Waiter'),
                 'order_types' => $this->dimensionCsv($this->engine->byOrderType($filters), 'Order Type'),
                 'order_type_combos' => $this->combosCsv($filters),
@@ -116,8 +117,21 @@ class SalesReportExporter
     private function itemsCsv(array $f): string
     {
         $rows = [['Item', 'Variant', 'Category', 'Sold Qty', 'Returned Qty', 'Net Qty', 'Gross', 'Discount', 'Tax', 'Sold Value', 'Returns', 'Net Value']];
-        foreach ($this->engine->byItem($f) as $r) {
+        // DEAL-CATEGORY-1: deals export in a sheet of their own — here they would count twice.
+        foreach ($this->engine->byItem($f, 'net', true) as $r) {
             $rows[] = [$r->item, $r->variant, $r->category, $r->sold_qty, $r->returned_qty, $r->net_qty, $r->gross, $r->discount, $r->tax, $r->net, $r->returns_amount, $r->net_value];
+        }
+
+        return $this->csv($rows);
+    }
+
+    /** DEAL-CATEGORY-1: one row per deal under its own head — the shape the old software prints. */
+    private function dealsCsv(array $f): string
+    {
+        $rows = [['Head', 'Deal', 'Orders', 'Sold Qty', 'Returned Qty', 'Net Qty', 'Gross', 'Discount', 'Sold Value', 'Returns', 'Net Value']];
+        foreach ($this->engine->byDeal($f) as $r) {
+            $rows[] = [$r['head'], $r['deal'], $r['orders'], $r['sold_qty'], $r['returned_qty'],
+                $r['net_qty'], $r['gross'], $r['discount'], $r['net'], $r['returns_amount'], $r['net_value']];
         }
 
         return $this->csv($rows);

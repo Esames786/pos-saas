@@ -275,6 +275,38 @@
 @endif
 @endif
 
+{{-- DEALS — DEAL-CATEGORY-1. Grouped under their own heads, the way the client's old software
+     prints DEALS / MIDNIGHT DEAL 1 / CLASSIC PLATTER. ITEMS above no longer carries them. --}}
+@if($has('deals') && ($deals ?? null) !== null)
+<h2>DEALS</h2>
+@php $dealRows = collect($deals); $currentHead = null; @endphp
+@if($isThermal)
+<table>
+    {!! $tHead() !!}
+    @foreach($deals as $r)
+        @if($r['head'] !== $currentHead)
+            @php $currentHead = $r['head']; @endphp
+            <tr><td colspan="7"><strong>{{ strtoupper($currentHead) }}</strong></td></tr>
+        @endif
+        {!! $tEntry($r['deal'], $r['sold_qty'], $r['returned_qty'], $r['net_qty'], $r['net'], $r['returns_amount'], $r['net_value']) !!}
+    @endforeach
+    {!! $tEntry('TOTAL', $dealRows->sum('sold_qty'), $dealRows->sum('returned_qty'), $dealRows->sum('net_qty'), $dealRows->sum('net'), $dealRows->sum('returns_amount'), $dealRows->sum('net_value'), true) !!}
+</table>
+@else
+<table>
+    <tr><th>Deal</th><th class="amt">Sold Qty</th><th class="amt">Ret Qty</th><th class="amt">Net Qty</th><th class="amt">Sold</th><th class="amt">Returns</th><th class="amt">Net</th></tr>
+    @foreach($deals as $r)
+        @if($r['head'] !== $currentHead)
+            @php $currentHead = $r['head']; @endphp
+            <tr><td colspan="7"><strong>{{ $currentHead }}</strong></td></tr>
+        @endif
+        <tr><td>{{ $r['deal'] }}</td><td class="amt">{{ $qty($r['sold_qty']) }}</td><td class="amt">{{ $qty($r['returned_qty']) }}</td><td class="amt">{{ $qty($r['net_qty']) }}</td><td class="amt">{{ $fmt($r['net']) }}</td><td class="amt">{{ $fmt($r['returns_amount']) }}</td><td class="amt">{{ $fmt($r['net_value']) }}</td></tr>
+    @endforeach
+    <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty($dealRows->sum('sold_qty')) }}</td><td class="amt">{{ $qty($dealRows->sum('returned_qty')) }}</td><td class="amt">{{ $qty($dealRows->sum('net_qty')) }}</td><td class="amt">{{ $fmt($dealRows->sum('net')) }}</td><td class="amt">{{ $fmt($dealRows->sum('returns_amount')) }}</td><td class="amt">{{ $fmt($dealRows->sum('net_value')) }}</td></tr>
+</table>
+@endif
+@endif
+
 @if($has('waiters') && $waiters !== null)
 <h2>WAITERS</h2>
 @if($isThermal)
