@@ -285,14 +285,18 @@
 @if($isThermal)
 <table>
     {!! $tHead() !!}
+    {{-- A head is printed the way CATEGORIES prints one: bold, over a dashed rule, carrying its
+         own figures. It was a bare <strong> line before — on a roll of monospace text that reads
+         as just another item, and the shop could not see where one category ended and the next
+         began. The indent then does the rest of the work: sub-head one space, item two. --}}
     @foreach($categoryItems as $head)
-        <tr><td colspan="7"><strong>{{ strtoupper($head['head']) }}</strong></td></tr>
+        {!! $tEntry($head['head'], $head['sold_qty'], $head['returned_qty'], $head['net_qty'], $head['net'], $head['returns_amount'], $head['net_value'], true) !!}
         @foreach($head['groups'] as $group)
             @if($head['nested'])
-                {!! $tEntry('  ' . $group['name'], $group['sold_qty'], $group['returned_qty'], $group['net_qty'], $group['net'], $group['returns_amount'], $group['net_value']) !!}
+                {!! $tEntry($group['name'], $group['sold_qty'], $group['returned_qty'], $group['net_qty'], $group['net'], $group['returns_amount'], $group['net_value'], false, ' ') !!}
             @endif
             @foreach($group['items'] as $item)
-                {!! $tEntry(($head['nested'] ? '    ' : '  ') . $item['item'] . ($item['variant'] ? ' (' . $item['variant'] . ')' : ''), $item['sold_qty'], $item['returned_qty'], $item['net_qty'], $item['net'], $item['returns_amount'], $item['net_value']) !!}
+                {!! $tEntry($item['item'] . ($item['variant'] ? ' (' . $item['variant'] . ')' : ''), $item['sold_qty'], $item['returned_qty'], $item['net_qty'], $item['net'], $item['returns_amount'], $item['net_value'], false, $head['nested'] ? '  ' : ' ') !!}
             @endforeach
         @endforeach
     @endforeach

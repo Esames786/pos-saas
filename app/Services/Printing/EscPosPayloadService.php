@@ -495,20 +495,33 @@ class EscPosPayloadService
         if ($has('category_items') && ($r['categoryItems'] ?? null) !== null) {
             $heads = collect($r['categoryItems']);
             $out .= $header('ITEMS BY CATEGORY') . $head3();
+            $first = true;
             foreach ($heads as $headRow) {
-                $out .= $big(strtoupper((string) $headRow['head'])) . "
-";
+                // A rule above each head, and the head itself printed big with its own figures —
+                // the same treatment CATEGORIES gives a root. It was a bare name line before, which
+                // on a roll of monospace reads as just another item: the shop could not see where
+                // one category ended and the next began. The first head needs no rule; the section
+                // heading above it already drew one.
+                if (! $first) {
+                    $out .= $rule . "\n";
+                }
+                $first = false;
+
+                $out .= $entry($headRow['head'], $headRow['sold_qty'], $headRow['returned_qty'],
+                    $headRow['net_qty'], $headRow['net'], $headRow['returns_amount'], $headRow['net_value'], '', true);
+
                 foreach ($headRow['groups'] as $group) {
                     // Only a head that really has children earns a sub-head line; on 42 columns a
                     // line repeating the heading above it is paper spent saying nothing.
                     if ($headRow['nested']) {
-                        $out .= $entry('  ' . $group['name'], $group['sold_qty'], $group['returned_qty'],
-                            $group['net_qty'], $group['net'], $group['returns_amount'], $group['net_value']);
+                        $out .= $entry($group['name'], $group['sold_qty'], $group['returned_qty'],
+                            $group['net_qty'], $group['net'], $group['returns_amount'], $group['net_value'], ' ', true);
                     }
                     foreach ($group['items'] as $item) {
                         $name = $item['item'] . ($this->meaningfulVariant($item['variant'] ?? null, $item['item'] ?? null) ? ' (' . $item['variant'] . ')' : '');
-                        $out .= $entry(($headRow['nested'] ? '    ' : '  ') . $name, $item['sold_qty'], $item['returned_qty'],
-                            $item['net_qty'], $item['net'], $item['returns_amount'], $item['net_value']);
+                        $out .= $entry($name, $item['sold_qty'], $item['returned_qty'],
+                            $item['net_qty'], $item['net'], $item['returns_amount'], $item['net_value'],
+                            $headRow['nested'] ? '  ' : ' ');
                     }
                 }
             }
