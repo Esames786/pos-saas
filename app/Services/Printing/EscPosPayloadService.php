@@ -563,7 +563,7 @@ class EscPosPayloadService
                     . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n";
             }
             $cats = collect($r['categories']);
-            $out .= "\n" . $big($this->center('KUL', $cols)) . "\n" . self::BOLD_ON
+            $out .= "\n" . $big($this->center('GRAND TOTAL', $cols)) . "\n" . self::BOLD_ON
                 . $figures('', $cats->sum('sold_qty'), $cats->sum('returned_qty'), $cats->sum('net_qty'),
                     $cats->sum('net'), $cats->sum('returns_amount'), $cats->sum('net_value'))
                 . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n";
@@ -643,7 +643,7 @@ class EscPosPayloadService
                     . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n";
             }
 
-            $out .= "\n" . $big($this->center('KUL', $cols)) . "\n" . self::BOLD_ON
+            $out .= "\n" . $big($this->center('GRAND TOTAL', $cols)) . "\n" . self::BOLD_ON
                 . $figures('', $heads->sum('sold_qty'), $heads->sum('returned_qty'), $heads->sum('net_qty'),
                     $heads->sum('net'), $heads->sum('returns_amount'), $heads->sum('net_value'))
                 . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n";
@@ -680,7 +680,7 @@ class EscPosPayloadService
                     . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n";
             }
 
-            $out .= "\n" . $big($this->center('KUL', $cols)) . "\n" . self::BOLD_ON
+            $out .= "\n" . $big($this->center('GRAND TOTAL', $cols)) . "\n" . self::BOLD_ON
                 . $figures('', $deals->sum('sold_qty'), $deals->sum('returned_qty'), $deals->sum('net_qty'),
                     $deals->sum('net'), $deals->sum('returns_amount'), $deals->sum('net_value'))
                 . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n";
