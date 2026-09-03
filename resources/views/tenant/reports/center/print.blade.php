@@ -37,23 +37,14 @@
     $tHead = fn () => '<tr><th></th><th class="amt">Sold</th><th class="amt">Ret</th><th class="amt">Net</th></tr>';
     $tCancelHead = fn () => '<tr><th colspan="2">Item / reason</th><th class="amt">Events</th><th class="amt">-Qty</th></tr>';
 
-    // A long item name wraps over two/three lines on a narrow roll and pushes the layout around.
-    // Keep any trailing "(size)" — a shop reads the size — and truncate the head with an ellipsis
-    // so every name stays on ONE line. Short names (categories, most items) are returned untouched.
-    $nameMax = (($paper ?? '80mm') === '58mm') ? 28 : 34;
-    $shortName = function (string $name) use ($nameMax) {
-        if (mb_strlen($name) <= $nameMax) {
-            return $name;
-        }
-        if (preg_match('/^(.*\S)\s*(\([^)]*\))\s*$/u', $name, $m)) {
-            $tail = ' ' . $m[2];
-            $headMax = $nameMax - mb_strlen($tail) - 1;
-            if ($headMax >= 8) {
-                return rtrim(mb_substr($m[1], 0, $headMax)) . '…' . $tail;
-            }
-        }
-        return rtrim(mb_substr($name, 0, $nameMax - 1)) . '…';
-    };
+    // A long item name wraps over two lines on a narrow roll and pushes the layout around, so every
+    // name is fitted to the paper before it is printed — the trailing "(size)" kept, the head cut.
+    //
+    // THERMAL-ITEM-LAYOUT-1: that rule now lives in ONE place, App\Support\ThermalLayout, and the
+    // roll calls the very same method. These two paths have already drifted apart once over
+    // indentation; a name cut one way on paper and another on screen would be that mistake again.
+    $nameMax = \App\Support\ThermalLayout::columns($paper ?? '80mm') - 6;
+    $shortName = fn (string $name) => \App\Support\ThermalLayout::fit($name, $nameMax);
 
     /** An entry carrying both quantities and money (categories, items). */
     /**
@@ -84,6 +75,15 @@
              . '<tr' . $cls . '><td class="lbl">' . $indent . 'Amt</td>'
              . '<td class="amt">' . $fmt($sV) . '</td><td class="amt">' . $fmt($rV) . '</td><td class="amt">' . $fmt($nV) . '</td></tr>';
     };
+
+    /**
+     * THERMAL-ITEM-LAYOUT-1 — a heading ALONE: the category's name and the rule that closes it,
+     * with no figures. A head's total no longer rides on its heading; it prints at the foot of the
+     * block, after the items it is the total of.
+     */
+    $tName = fn (string $name, string $indent = '', string $level = 'head') =>
+        '<tr class="name lvl-' . $level . '"><td colspan="4">' . $indent
+        . '<span class="ul">' . e($shortName($name)) . '</span></td></tr>';
 
     /** An order-level entry — money only, no line quantities (order types, waiters). */
     $tOrders = function (string $name, $orders, $billed, $ret, $net, bool $bold = false) use ($fmt) {
@@ -175,25 +175,28 @@
        show clearly in print — a paint-only effect, so it never changes a column's width. Headings
        (th, .name) are left as they are. Tune the 0.2px up/down for more/less darkness. */
     td.amt, td.lbl { -webkit-text-stroke: 0.2px currentColor; }
-    /* Each entry is three rows deep — name, Qty, Amt — so a long list runs together and the eye
-       cannot find where one item ends and the next begins. A dashed rule above every NAME row
-       fences each entry off. Bold entries (heads, TOTAL) already carry the same rule through
-       .total, so they gain no second line. */
-    .name { font-weight: 700; border-top: 1px dashed #000; }
-    /* …except the very first entry of a table, which would otherwise sit under two rules: the
-       column header's own border and its. */
-    tr:first-child + tr.name { border-top: 0; }
+    /* THERMAL-ITEM-LAYOUT-1: NO rule between entries. One after every row of a hundred was a
+       hundred lines of paper spent saying nothing, and it drowned the category headings — the one
+       thing a reader is actually looking for. A blank line separates entries; rules are reserved
+       for the two places that mean something: a category head and a total. */
+    .name { font-weight: 700; }
     .total { border-top: 1px dashed #000; font-weight: 700; }
     .name td, .total td { font-weight: 700; }
     /* Three levels, three weights. Every name row is bold by default, so a bold sub-category said
        nothing — it looked exactly like the items beneath it and only two spaces of indent told
        them apart. Now the head and the sub-head carry a SOLID line under the text itself, as wide
        as the name, and the items step back to normal weight. */
-    .lvl-head .ul { border-bottom: 2px solid #000; padding-bottom: 1px; }
-    .lvl-sub  .ul { border-bottom: 1px solid #000; padding-bottom: 1px; }
-    .lvl-head td { letter-spacing: 0.4px; }
-    .lvl-item td { font-weight: 400; }
+    /* Parent closes with a SOLID rule across the paper, child with a DOTTED one, an item with
+       neither — only its indent. Three levels, three marks. */
+    .lvl-head td   { border-bottom: 2px solid #000; letter-spacing: .4px; padding-bottom: 3px; }
+    .lvl-sub td    { border-bottom: 1px dotted #000; padding-bottom: 3px; }
+    .lvl-head .ul, .lvl-sub .ul { border-bottom: 0; }
+    .lvl-item td   { font-weight: 400; }
     .lvl-item td.amt, .lvl-item td.lbl { font-weight: 400; }
+    /* A child TOTAL closes its block with the same dotted line the child opened with; a parent
+       TOTAL closes with the solid one. */
+    .lvl-subtotal  { border-top: 1px dotted #000; }
+    .lvl-headtotal { border-top: 2px solid #000; }
     tr.gap td { padding: 0; height: 3px; line-height: 0; font-size: 0; }
     @else
     body { width: 190mm; font-family: Arial, sans-serif; font-size: 12px; }
@@ -308,7 +311,7 @@
 <table>
     {!! $tHead() !!}
     @foreach($items as $r)
-        {!! $tEntry($r->item . ($r->variant ? ' (' . $r->variant . ')' : ''), $r->sold_qty, $r->returned_qty, $r->net_qty, $r->net, $r->returns_amount, $r->net_value) !!}
+        {!! $tEntry($r->item . ($r->variant ? ' (' . $r->variant . ')' : ''), $r->sold_qty, $r->returned_qty, $r->net_qty, $r->net, $r->returns_amount, $r->net_value, false, '&nbsp;&nbsp;', 'item') !!}
     @endforeach
     {!! $tEntry('TOTAL', collect($items)->sum('sold_qty'), collect($items)->sum('returned_qty'), collect($items)->sum('net_qty'), collect($items)->sum('net'), collect($items)->sum('returns_amount'), collect($items)->sum('net_value'), true) !!}
     {!! $bridgeRows((float) collect($items)->sum('net_value'), 4, true) !!}
@@ -341,21 +344,28 @@
          The indent has to be &nbsp; — HTML collapses ordinary spaces, so the roll was indented
          correctly while the screen and the PDF showed head and item flush against each other,
          which is exactly what made the section unreadable. --}}
-    @php $ciFirst = true; @endphp
+    {{-- THERMAL-ITEM-LAYOUT-1: a total belongs AFTER the things it totals, at the indent of the
+         thing it is totalling. It used to print directly under its own heading, before a single one
+         of its items — and the eye looks for a total at the foot of a block, never at its head. --}}
     @foreach($categoryItems as $head)
-        @if(! $ciFirst)<tr class="gap"><td colspan="4"></td></tr>@endif
-        @php $ciFirst = false; @endphp
-        {!! $tEntry(mb_strtoupper($head['head']), $head['sold_qty'], $head['returned_qty'], $head['net_qty'], $head['net'], $head['returns_amount'], $head['net_value'], true, '', 'head') !!}
+        <tr class="gap"><td colspan="4"></td></tr>
+        {!! $tName(mb_strtoupper($head['head']), '', 'head') !!}
         @foreach($head['groups'] as $group)
             @if($head['nested'])
-                {!! $tEntry($group['name'], $group['sold_qty'], $group['returned_qty'], $group['net_qty'], $group['net'], $group['returns_amount'], $group['net_value'], true, '&nbsp;&nbsp;', 'sub') !!}
+                <tr class="gap"><td colspan="4"></td></tr>
+                {!! $tName($group['name'], '&nbsp;&nbsp;', 'sub') !!}
             @endif
             @foreach($group['items'] as $item)
-                {!! $tEntry($item['item'] . ($item['variant'] ? ' (' . $item['variant'] . ')' : ''), $item['sold_qty'], $item['returned_qty'], $item['net_qty'], $item['net'], $item['returns_amount'], $item['net_value'], false, $head['nested'] ? '&nbsp;&nbsp;&nbsp;&nbsp;' : '&nbsp;&nbsp;', 'item') !!}
+                {!! $tEntry($item['item'] . ($item['variant'] ? ' (' . $item['variant'] . ')' : ''), $item['sold_qty'], $item['returned_qty'], $item['net_qty'], $item['net'], $item['returns_amount'], $item['net_value'], false, $head['nested'] ? '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' : '&nbsp;&nbsp;', 'item') !!}
             @endforeach
+            @if($head['nested'])
+                {!! $tEntry('TOTAL', $group['sold_qty'], $group['returned_qty'], $group['net_qty'], $group['net'], $group['returns_amount'], $group['net_value'], true, '&nbsp;&nbsp;', 'subtotal') !!}
+            @endif
         @endforeach
+        {!! $tEntry('TOTAL', $head['sold_qty'], $head['returned_qty'], $head['net_qty'], $head['net'], $head['returns_amount'], $head['net_value'], true, '', 'headtotal') !!}
     @endforeach
-    {!! $tEntry('TOTAL', $ciRows->sum('sold_qty'), $ciRows->sum('returned_qty'), $ciRows->sum('net_qty'), $ciRows->sum('net'), $ciRows->sum('returns_amount'), $ciRows->sum('net_value'), true) !!}
+    <tr class="gap"><td colspan="4"></td></tr>
+    {!! $tEntry('KUL', $ciRows->sum('sold_qty'), $ciRows->sum('returned_qty'), $ciRows->sum('net_qty'), $ciRows->sum('net'), $ciRows->sum('returns_amount'), $ciRows->sum('net_value'), true) !!}
     {{-- Merchandise only, like every other line-based section: close the gap to NET SALES, or the
          total reads as though it contradicted the day's takings. --}}
     {!! $bridgeRows((float) $ciRows->sum('net_value'), 4, true) !!}
