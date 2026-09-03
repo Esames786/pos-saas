@@ -187,3 +187,68 @@ saboot wo hai ke **Extras + Raita ka jama purane Extras ke barabar hai**.
 `Raita & Salad` (#28) ab khali hai magar **`is_active = 1`** hai aur uska `sort_order` bhi **28** —
 yani nayi `Raita` ke saath barabar. POS aur report dono me wo dikhta nahi (khali hai), is liye abhi
 koi nuqsan nahi. Kahen to `is_active = 0` kar diya jaye — ek khaana, wapas mor-ne layak.
+
+---
+
+# 12. USI SHAAM DO AUR BADLAV (3 Sep, dukan khuli — dono data-only)
+
+## (a) Naya product: `BBQ Sauce` — PKR 80, KOT BBQ par
+
+Owner: *"1 new item banega BBQ Sauce k name se 80 rps ka jis ki KOT BBQ p nikle gi"*
+
+`Extras / BBQ Sauce` (cat#40) ka KOT pehle hi `BBQ / Grill KOT` par jaata hai, is liye **koi naya
+mapping nahi banaya** — product usi category me daal diya. Routing product ki nahi, uski category
+ki hoti hai.
+
+Product **#211**, row **Fresh Salad (#182) se NAKAL** — sirf naam/sku/slug/qeemat badle. Nakal is
+liye ke pichli baar naya product haath se `simple` + `is_stock_tracked=1` bana diya gaya tha aur POS
+par *"out of stock"* aa gaya tha. Sauce `service` / `inventory none` / stock-tracked nahi hai.
+
+## (b) `Singaporean Sauce` ka KOT punching counter par
+
+Owner: *"only Singaporean Sauce will go to punching counter … currently going to Fastfood"*
+
+Wo `Extras / Fastfood Sauce` (cat#42) me tha — magar us category me **Mayo Sauce aur Extra Sauce
+bhi** hain, jinhe Fastfood par hi rehna tha. Category ka mapping modna teenon ko hila deta, is liye
+Singaporean Sauce ko apni category di: **#45 `Singaporean Sauce`**, aath mapping rows Chicken
+Biryani (cat#26) se nakal, product #183 usme.
+
+**Raita se ek farq jaan-boojh kar:** ye `Extras` ka **CHILD** hai, alag root nahi.
+
+| | Raita (#44, root) | Singaporean Sauce (#45, Extras ka child) |
+|---|---|---|
+| POS | naya top-level tab | wahi `Extras` tab, naya pill |
+| Report | apna naya sar; paisa Extras se nikal kar udhar gaya | root `Extras` hi rehta hai — **paisa bilkul nahi hila** |
+
+Child behtar hai jab cheez mantaqi tor par Extras ki hi hai — menu bhi nahi badalta aur report bhi
+nahi.
+
+## Tasdeeq (asli `PrintRoutingService`, chaaron terminals)
+
+```
+Singaporean Sauce   Fastfood  →  T1 | T2 | T3 | T4     (jo counter punch kare)
+Mayo Sauce          Fastfood  →  Fastfood              (be-harkat)
+Extra Sauce         Fastfood  →  Fastfood              (be-harkat)
+BBQ Sauce (naya)              →  BBQ / Grill           (chaaron par)
+```
+
+- Khuli bills par in me se kisi ka KOT baqi nahi tha — beech-e-service koi parchi mu'attal nahi hui
+- Cashiers ko **Ctrl+F5**
+
+## Extras ke neeche ab poori tasveer
+
+| Pill | Products | KOT |
+|---|---|---|
+| Fastfood Sauce (#42) | Mayo Sauce · Extra Sauce | Fastfood |
+| BBQ Sauce (#40) | **BBQ Sauce (80)** · Extra Skewer · Fresh Salad · Chatnies *(chhupi)* | BBQ / Grill |
+| Singaporean Sauce (#45) | Singaporean Sauce | **punching counter** |
+| *(Extras khud, #29)* | Butter · Cheese · Bun · Plain Rice · Arabic Rice · Coleslaw · Dinner Roll · Garlic Fried · Sizzling Charge | Fastfood |
+
+> Reminder chaaron groups me hamesha **punching counter** par jaata hai. Client ki "KOT kahin nahi
+> gaya" wali shikayat isi farq se thi: reminder unke saamne aata tha, KOT station par.
+
+## Ek dhyan talab baat
+
+Ab ek **product** `BBQ Sauce` ek **category** `BBQ Sauce` ke andar hai. Kaam theek karta hai, magar
+report me dono naam saath aayenge. Category ka naam `BBQ Sides` / `BBQ Extras` karna ho to routing
+par koi asar nahi parega — owner ka faisla.
