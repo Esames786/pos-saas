@@ -158,3 +158,47 @@ tenant × do din) — diff khali hona chahiye.
 3. Har category ka total **apne items ke baad**
 4. Guard test dono raaston par
 5. Poori suite green
+
+---
+
+## 7. Doosri qist — `0de76fb` ke baad jo reh gaya tha (3 Sep)
+
+`0de76fb` par sirf **roll (ESC/POS)** wala raasta durust hua tha. Dukan ne jo dekha wo **preview /
+PDF** ka raasta tha, is liye wahi purani shikayat dobara aayi:
+
+> "deals mai bilkul b line brakup nhi hai bht bura lag ra hai"
+> "item + cat mai abhe b items width say bahir nikal rahe"
+
+Do alag wajhein, dono blade me:
+
+**(a) CATEGORIES aur DEALS blade me chhoot gaye.** DEALS ka purana block chaar-column table par
+`colspan="7"` ka nanga `<strong>` chhapta tha — kahin koi lakeer nahi. Ab dono blocks wahi shakl
+lete hain jo ITEMS BY CATEGORY leta hai: sar, uske neeche uske afrad, phir uska total.
+
+**(b) Naam ek hi chaurai par kat rahe the.** `fit()` ko har naam ke liye `columns - 6` diya ja raha
+tha — chahe wo parent ho, child ho ya item, jab ke un ka indent alag hai. 6 andar baitha item apni
+jagah se bahar nikal jata tha aur browser use tor deta tha. Ab indent ek **integer** hai aur
+`fit(name, cols - indent)` har satah par apna hisab karta hai. `tr.name td { white-space: nowrap }`
+peti ke saath belt hai.
+
+### Us ke saath teen aur cheezein jo dukan ne kahin
+
+| Kaha | Kiya |
+|---|---|
+| "category mai qty aur amount rows ki dotted line hatado" | Har `lvl-*` row ka `border-top` sifar. Ek entry ke Qty aur Amt ke darmiyan ab kuch nahi — wo ek hi parhne ki do adhiyan hain. |
+| "har category end pe total ke baad bold line" | Lakeer ab **total ke neeche** hai, upar nahi. Amt row ko apni class (`amt-row`) mili taake CSS us akhri satar ko pehchan sake — pehle ye `total` class par tika tha, jo naam wali satar par bhi lagti hai. |
+| Childless category do satar kha rahi thi | Jis block ka sar pehle chhap chuka ho wo `$tEntry` ko khali naam deta hai, aur khali naam ab **koi satar nahi** banata. |
+
+### Indent ka usool (dono raaston par ek)
+
+Item apne **oopar wale** se ek qadam andar hota hai — sub-head se, agar parent ke bachche hain;
+warna khud parent se. Flat category apne naam ke chaar characters ek aise qadam par kharch kar rahi
+thi jo kisi se door nahi ja raha tha. DEALS bhi isi usool par: deal ke sar ke neeche koi sub-level
+nahi, to deals ek hi qadam andar.
+
+### Guard
+
+`tests/MySql/ThermalItemLayoutBladeMySqlTest.php` (8) — **blade** ka apna guard, kyunke purana
+guard sirf roll parhta tha aur isi liye ye kharabi pakad nahi paya. Dono raaston ka guard ab alag
+alag maujood hai. Donon assertion ko tor kar dekha gaya (khali satar wapas dali → RED; `nowrap`
+hatai → RED), phir bahaal kar ke green.
