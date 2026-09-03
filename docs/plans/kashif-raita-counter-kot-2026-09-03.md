@@ -122,3 +122,68 @@ theek Biryani/Beverages jaisa.
 ## 10. Wapsi
 
 `products.category_id` wapas 40. Ek khaana. Kuch aur chhua hi nahi jata.
+
+---
+
+# 11. JO WAQ'I KIYA GAYA (2026-09-03, ~20:21 PKT — dukan khuli thi)
+
+Owner ne cat#28 dobara istemal karne ke bajaye **nayi category** maangi:
+
+> "simple cheez hai — new category banalo Raita ki, aur us ko har station pe point kardo"
+
+("station" = counter; owner khud pehle keh chuke hain "punching counter b to station he hain na".)
+
+## Kya badla — teen cheezein, ek transaction me
+
+| # | Badlav |
+|---|---|
+| 1 | Nayi root category **#44 `Raita`** (`code=RAITA`, `slug=raita`, `sort_order=28`, active) |
+| 2 | **8 mapping rows Chicken Biryani (cat#26) se NAKAL** — sirf `category_id` badla. 4 × `kot` + 4 × `reminder`, har terminal → apna counter printer |
+| 3 | `products.category_id` — Raita (#181): **40 → 44** |
+
+Mappings ko **nakal** karne ki wajah: `order_type`, `reminder_confirm_on_addition`, `is_active`
+jaisa koi column mere haath se reference se alag na ho jaye.
+
+## Saboot (asli `PrintRoutingService` se, koi print job queue nahi hua)
+
+```
+                 PEHLE                    BAAD ME
+Raita  @ Delivery      BBQ / Grill KOT  →  T1 Counter Printer
+Raita  @ DTQ 2         BBQ / Grill KOT  →  T2 Counter Printer
+Raita  @ DTQ 3         BBQ / Grill KOT  →  T3 Counter Printer
+Raita  @ DTQ Floor T4  BBQ / Grill KOT  →  T4 Counter Printer
+
+Fresh Salad @ chaaron  BBQ / Grill KOT  →  BBQ / Grill KOT   (be-harkat)
+```
+
+> ⚠️ **Probe khud pehle jhoot bol raha tha.** `kotRoutesForSale()` me
+> `qtyToPrint = quantity − kot_sent_quantity`, jo chhap chuke purane bill par 0 hai — line skip ho
+> jaati thi aur probe "koi route nahi" bolta tha, Fresh Salad par bhi. `isReprint = true` dene par
+> asli rasta nazar aaya. Pehla natija phenk diya gaya.
+
+## Paisa
+
+```
+PEHLE:  Extras 113,515.00  (qty 281)
+BAAD:   Extras 102,915.00  (qty 175)  +  Raita 10,600.00  (qty 106)  =  113,515.00  (qty 281)
+```
+
+Bilkul barabar. **Kul jama +600 hua, magar wo mere badlav se nahi:** bill #1612
+(`HS-20260903144759-919`, bana 14:47) badlav ke **do second baad** 15:21:48 par paid hua, uski line
+`Chicken Tikka (Leg)` 600.00. Dukan chal rahi thi. Chalti dukan me "kul jama" saboot nahi banta —
+saboot wo hai ke **Extras + Raita ka jama purane Extras ke barabar hai**.
+
+## Aur
+
+- Khuli bill par Raita **koi nahi** thi, is liye beech-e-service koi parchi mu'attal nahi hui
+- `Fresh Salad`, `Extra Skewer`, `3 Different Chatnies` — cat#40 me, BBQ par, jyun ke tyun
+- Reminder pehle bhi punching counter par tha, ab bhi
+- Purane page khule cashier ko Raita abhi bhi `BBQ Sauce` ke neeche dikhega, magar **KOT phir bhi
+  counter par hi jayega** — routing server par print ke waqt hoti hai, page ke payload se nahi.
+  Nayi `Raita` pill dekhne ke liye **Ctrl+F5**.
+
+## Bacha hua kachra (owner ke faisle ka muntazir)
+
+`Raita & Salad` (#28) ab khali hai magar **`is_active = 1`** hai aur uska `sort_order` bhi **28** —
+yani nayi `Raita` ke saath barabar. POS aur report dono me wo dikhta nahi (khali hai), is liye abhi
+koi nuqsan nahi. Kahen to `is_active = 0` kar diya jaye — ek khaana, wapas mor-ne layak.
