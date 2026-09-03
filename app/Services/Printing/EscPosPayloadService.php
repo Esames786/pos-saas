@@ -616,10 +616,16 @@ class EscPosPayloadService
                             . self::BOLD_OFF . "\n" . ThermalLayout::dotted($cols, $indentChild) . "\n";
                     }
 
+                    // An item steps in from whatever is directly above it: a sub-head where the
+                    // parent has children, otherwise the parent itself. A flat category was
+                    // spending four characters of name on a step away from nothing.
+                    $itemInd = $headRow['nested'] ? $indentItem : $indentChild;
+                    $itemPad = str_repeat(' ', $itemInd);
+
                     foreach ($group['items'] as $item) {
                         $name = $item['item'] . ($this->meaningfulVariant($item['variant'] ?? null, $item['item'] ?? null) ? ' (' . $item['variant'] . ')' : '');
-                        $out .= "\n" . $indentI . ThermalLayout::fit($name, $cols - $indentItem) . "\n"
-                            . $figures($indentI, $item['sold_qty'], $item['returned_qty'], $item['net_qty'],
+                        $out .= "\n" . $itemPad . ThermalLayout::fit($name, $cols - $itemInd) . "\n"
+                            . $figures($itemPad, $item['sold_qty'], $item['returned_qty'], $item['net_qty'],
                                 $item['net'], $item['returns_amount'], $item['net_value']);
                     }
 
@@ -662,8 +668,8 @@ class EscPosPayloadService
                 foreach ($rows as $row) {
                     // A deal name is the longest text on the whole slip — "EXCLUSIVE DEAL 1 - 2
                     // ZINGER + 2 SINGAPOREAN RICE + 4 DRINKS" is 59 characters on 42 of paper.
-                    $out .= "\n" . $indentI . ThermalLayout::fit((string) $row['deal'], $cols - $indentItem) . "\n"
-                        . $figures($indentI, $row['sold_qty'], $row['returned_qty'], $row['net_qty'],
+                    $out .= "\n" . $indentC . ThermalLayout::fit((string) $row['deal'], $cols - $indentChild) . "\n"
+                        . $figures($indentC, $row['sold_qty'], $row['returned_qty'], $row['net_qty'],
                             $row['net'], $row['returns_amount'], $row['net_value']);
                 }
 
