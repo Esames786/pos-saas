@@ -222,8 +222,12 @@ class ItemsByCategoryMySqlTest extends MySqlTenantTestCase
         $biryani = $this->headNamed($heads, 'Biryani');
         $this->assertNotNull($biryani, 'items filed under a child report under the ROOT head');
         $this->assertTrue($biryani['nested'], 'Biryani has Plain and Special beneath it');
-        $this->assertSame(['Special', 'Plain'], array_column($biryani['groups'], 'name'),
-            'sub-heads come biggest first: Special 1,400 before Plain 1,200');
+        // REPORT-CATEGORY-ORDER-1 changed this rule on purpose: a sub-head is a CATEGORY, so it
+        // now follows the menu's sort_order rather than the money. Both are 0 in this fixture, so
+        // the name breaks the tie — Plain before Special, where value alone would have led with
+        // Special's 1,400. The order this test pins is the owner's, not the day's.
+        $this->assertSame(['Plain', 'Special'], array_column($biryani['groups'], 'name'),
+            'sub-heads follow the menu order, not the takings');
         $this->assertEqualsWithDelta(2600.00, (float) $biryani['net_value'], 0.01, '1,200 + 1,400');
 
         $drinks = $this->headNamed($heads, 'Drinks');
