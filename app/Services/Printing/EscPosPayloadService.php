@@ -6,6 +6,7 @@ use App\Models\Tenant\Branch;
 use App\Models\Tenant\PrintJob;
 use App\Models\Tenant\SalesOrder;
 use App\Support\TenantClock;
+use App\Support\ThermalLayout;
 
 class EscPosPayloadService
 {
@@ -383,19 +384,70 @@ class EscPosPayloadService
      */
     public function buildReport(array $r): string
     {
-        $cols   = ($r['meta']['paper'] ?? '80mm') === '58mm' ? 32 : self::COLS_80MM;
-        $money  = fn ($v) => number_format((float) $v, 2);
+        $cols   = ThermalLayout::columns($r['meta']['paper'] ?? '80mm');
+        // THERMAL-ITEM-LAYOUT-1: money prints WHOLE on the roll, as the on-screen preview has always
+        // printed it. Menu prices are whole rupees so nothing is lost, and the ".00" was costing
+        // three characters in every one of the three columns — the very three that had to be found
+        // before an item could be indented far enough to look like an item.
+        $money  = fn ($v) => number_format((float) $v, 0);
         $qty    = fn ($v) => rtrim(rtrim(number_format((float) $v, 3, '.', ''), '0'), '.');
         $sections = $r['sections'] ?? [];
         $has    = fn (string $s) => in_array($s, $sections, true);
         $rule   = str_repeat('-', $cols);
 
-        // Column geometry for the three-figure (Sold/Ret/Net) tables.
-        $c = (int) max(8, floor(($cols - 6) / 3));
+        // Column geometry, measured from the figures THIS report will actually print rather than
+        // guessed — a guess is how the 58mm slip lost its Qty/Amt labels. See ThermalLayout.
+        $samples = [];
+        $collect = function ($d) use (&$samples, $money, $qty) {
+            $get = fn ($k) => is_array($d) ? ($d[$k] ?? 0) : ($d->{$k} ?? 0);
+            foreach (['sold_qty', 'returned_qty', 'net_qty'] as $k) { $samples[] = $qty($get($k)); }
+            foreach (['net', 'returns_amount', 'net_value', 'gross'] as $k) { $samples[] = $money($get($k)); }
+        };
+        foreach (($r['categories'] ?? []) as $root) {
+            $collect($root);
+            foreach (($root['children'] ?? []) as $child) { $collect($child); }
+        }
+        foreach (($r['items'] ?? []) as $row) { $collect($row); }
+        foreach (($r['categoryItems'] ?? []) as $head) {
+            $collect($head);
+            foreach (($head['groups'] ?? []) as $g) {
+                $collect($g);
+                foreach (($g['items'] ?? []) as $i) { $collect($i); }
+            }
+        }
+        foreach (($r['deals'] ?? []) as $row) { $collect($row); }
+
+        // The TOTALS too — and this is the whole point of measuring rather than guessing. A column
+        // sized to the widest ITEM is too narrow for the sum of them: the first draft printed
+        // "0" and "14,460" with no gap between them, because 14,460 was longer than any single row
+        // it was the total of.
+        foreach (['items', 'categoryItems', 'deals'] as $key) {
+            $rows = collect($r[$key] ?? []);
+            if ($rows->isEmpty()) { continue; }
+            $sum = fn (string $f) => $rows->sum(fn ($x) => (float) (is_array($x) ? ($x[$f] ?? 0) : ($x->{$f} ?? 0)));
+            foreach (['sold_qty', 'returned_qty', 'net_qty'] as $f) { $samples[] = $qty($sum($f)); }
+            foreach (['net', 'returns_amount', 'net_value'] as $f) { $samples[] = $money($sum($f)); }
+        }
+
+        $c  = min(ThermalLayout::figureWidth($samples), (int) floor(($cols - 4) / 3));
         $lw = $cols - 3 * $c;
-        $three = fn (string $label, string $a, string $b, string $d) => $this->mbStrPad($label, $lw)
-            . $this->mbStrPad($a, $c, ' ', STR_PAD_LEFT) . $this->mbStrPad($b, $c, ' ', STR_PAD_LEFT) . $this->mbStrPad($d, $c, ' ', STR_PAD_LEFT) . "\n";
+        [$indentItem, $indentChild] = ThermalLayout::indents($lw);
+
+        $three = fn (string $label, string $a, string $b, string $d) =>
+            ThermalLayout::figureRow($label, [$a, $b, $d], $lw, $c) . "\n";
         $head3 = fn () => $three('', 'Sold', 'Ret', 'Net') . $rule . "\n";
+
+        // THERMAL-ITEM-LAYOUT-1 indents. Parent sits at the margin, a child steps in, an item steps
+        // in further. How far is not a matter of taste — it is whatever the label column can still
+        // afford once the three figure columns are paid for, which on 58mm is less than on 80mm.
+        $indentI = str_repeat(' ', $indentItem);
+        $indentC = str_repeat(' ', $indentChild);
+        $indent2 = $indentC;   // the flat ITEMS list has no hierarchy, so it uses the child step
+
+        /** The Qty and Amt lines of one entry, at a given indent. */
+        $figures = fn (string $ind, $sQ, $rQ, $nQ, $sV, $rV, $nV) =>
+            $three($ind . 'Qty', $qty($sQ), $qty($rQ), $qty($nQ))
+            . $three($ind . 'Amt', $money($sV), $money($rV), $money($nV));
 
         // A highlighted line: bold AND double-height (2x tall, width left at 1x so the
         // 42-column alignment still holds). Self-contained — it turns both off again
@@ -476,89 +528,119 @@ class EscPosPayloadService
             }
         }
 
-        // CATEGORIES (with children).
+        // CATEGORIES (with children) — THERMAL-ITEM-LAYOUT-1.
+        //
+        // This section has never carried a single rule, and one category ran straight into the next
+        // with its children set apart by ONE space. Beside the new ITEMS BY CATEGORY it read as a
+        // wall. It gets the same three marks: the head over a solid rule, a child stepped in under
+        // a dotted one, and the head's own figures at the FOOT of its block where a total belongs.
         if ($has('categories') && ($r['categories'] ?? null) !== null) {
             $out .= $header('CATEGORIES') . $head3();
             foreach ($r['categories'] as $root) {
-                $out .= $entry($root['name'], $root['sold_qty'], $root['returned_qty'], $root['net_qty'], $root['net'], $root['returns_amount'], $root['net_value'], '', true);
-                foreach (($root['children'] ?? []) as $child) {
-                    if (($child['id'] ?? null) !== ($root['id'] ?? null)) {
-                        $out .= $entry($child['name'], $child['sold_qty'], $child['returned_qty'], $child['net_qty'], $child['net'], $child['returns_amount'], $child['net_value'], ' ', true);
-                    }
+                $children = collect($root['children'] ?? [])
+                    ->filter(fn ($child) => ($child['id'] ?? null) !== ($root['id'] ?? null))
+                    ->values();
+
+                // A category with children opens with a rule and closes with a TOTAL; one without
+                // is a single fact — its name and its figures — and two rules around two lines of
+                // it is a fence built round a pebble.
+                $out .= "\n" . $big(ThermalLayout::fit(mb_strtoupper((string) $root['name']), $cols)) . "\n"
+                    . ($children->isNotEmpty() ? ThermalLayout::solid($cols) . "\n" : '');
+
+                foreach ($children as $child) {
+                    $out .= "\n" . $indentC . self::BOLD_ON
+                        . ThermalLayout::fit((string) $child['name'], $cols - $indentChild)
+                        . self::BOLD_OFF . "\n"
+                        . $figures($indentC, $child['sold_qty'], $child['returned_qty'], $child['net_qty'],
+                            $child['net'], $child['returns_amount'], $child['net_value'])
+                        . ThermalLayout::dotted($cols, $indentChild) . "\n";
                 }
+
+                // A category with children is totalled; one without simply states its own figures.
+                $out .= ($children->isNotEmpty() ? "\n" . $big('TOTAL') . "\n" : '') . self::BOLD_ON
+                    . $figures('', $root['sold_qty'], $root['returned_qty'], $root['net_qty'],
+                        $root['net'], $root['returns_amount'], $root['net_value'])
+                    . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n";
             }
             $cats = collect($r['categories']);
-            $out .= $bigTotal($cats->sum('sold_qty'), $cats->sum('returned_qty'), $cats->sum('net_qty'), $cats->sum('net'), $cats->sum('returns_amount'), $cats->sum('net_value'));
+            $out .= "\n" . $big($this->center('KUL', $cols)) . "\n" . self::BOLD_ON
+                . $figures('', $cats->sum('sold_qty'), $cats->sum('returned_qty'), $cats->sum('net_qty'),
+                    $cats->sum('net'), $cats->sum('returns_amount'), $cats->sum('net_value'))
+                . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n";
         }
 
-        // ITEMS.
+        // ITEMS — THERMAL-ITEM-LAYOUT-1.
+        //
+        // A name gets its own full-width line, fitted so it can never wrap or run off the paper,
+        // and its figures sit beneath it. Entries are separated by a blank line, not a rule: a rule
+        // after every one of a hundred entries is a hundred lines of roll spent saying nothing, and
+        // it made the section headings sink among them.
         if ($has('items') && ($r['items'] ?? null) !== null) {
             $items = collect($r['items']);
             $out .= $header('ITEMS') . $head3();
-            // Every entry is three lines deep — name, Qty, Amt — so a hundred of them run together
-            // and the eye cannot find where one item ends and the next begins. A rule between them
-            // fences each entry off. It costs a line of roll per item, which is the trade the shop
-            // asked for after reading a Z report off the counter.
-            $first = true;
             foreach ($items as $row) {
-                if (! $first) {
-                    $out .= $rule . "\n";
-                }
-                $first = false;
                 $name = $row->item . ($this->meaningfulVariant($row->variant ?? null, $row->item ?? null) ? ' (' . $row->variant . ')' : '');
-                $out .= $entry($name, $row->sold_qty, $row->returned_qty, $row->net_qty, $row->net, $row->returns_amount, $row->net_value);
+                $out .= "\n" . $indent2 . ThermalLayout::fit($name, $cols - $indentChild) . "\n"
+                    . $figures($indent2, $row->sold_qty, $row->returned_qty, $row->net_qty,
+                        $row->net, $row->returns_amount, $row->net_value);
             }
-            $out .= $bigTotal($items->sum('sold_qty'), $items->sum('returned_qty'), $items->sum('net_qty'), $items->sum('net'), $items->sum('returns_amount'), $items->sum('net_value'));
+            $out .= "\n" . $big('TOTAL') . "\n" . self::BOLD_ON
+                . $figures('', $items->sum('sold_qty'), $items->sum('returned_qty'), $items->sum('net_qty'),
+                    $items->sum('net'), $items->sum('returns_amount'), $items->sum('net_value'))
+                . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n";
         }
 
-        // ITEMS BY CATEGORY — ITEMS-BY-CATEGORY-1.
+        // ITEMS BY CATEGORY — ITEMS-BY-CATEGORY-1, laid out by THERMAL-ITEM-LAYOUT-1.
         //
-        // The same rows as ITEMS above, under their category heads with a subtotal each — the
-        // shape the client's old software prints. Both may be ticked at once; they are two views
-        // of one set of rows, not two sets, so no money is counted twice by printing both.
+        // The same rows as ITEMS above, under their category heads with a subtotal each — the shape
+        // the client's old software prints. Both may be ticked at once; they are two views of one
+        // set of rows, not two sets, so no money is counted twice by printing both.
+        //
+        // Three levels, three marks: a PARENT closes with a solid rule, a CHILD with a dotted one,
+        // and an item carries neither — only an indent. A total belongs AFTER the things it totals,
+        // at the indent of whatever it is totalling, which is where a reader's eye looks for it.
         if ($has('category_items') && ($r['categoryItems'] ?? null) !== null) {
             $heads = collect($r['categoryItems']);
             $out .= $header('ITEMS BY CATEGORY') . $head3();
-            $first = true;
-            foreach ($heads as $headRow) {
-                // A rule above each head, and the head itself printed big with its own figures —
-                // the same treatment CATEGORIES gives a root. It was a bare name line before, which
-                // on a roll of monospace reads as just another item: the shop could not see where
-                // one category ended and the next began. The first head needs no rule; the section
-                // heading above it already drew one.
-                //
-                // The head's rule is DOUBLE. Every entry beneath it is now fenced by a single
-                // dashed rule, so a head drawn with the same line weight sinks among them — the
-                // reader could no longer tell where a category started or which items were its own.
-                if (! $first) {
-                    $out .= str_repeat('=', strlen($rule)) . "\n";
-                }
-                $first = false;
 
-                $out .= $entry($headRow['head'], $headRow['sold_qty'], $headRow['returned_qty'],
-                    $headRow['net_qty'], $headRow['net'], $headRow['returns_amount'], $headRow['net_value'], '', true, true);
+            foreach ($heads as $headRow) {
+                $out .= "\n" . $big(ThermalLayout::fit(mb_strtoupper((string) $headRow['head']), $cols)) . "\n"
+                    . ThermalLayout::solid($cols) . "\n";
 
                 foreach ($headRow['groups'] as $group) {
-                    // Only a head that really has children earns a sub-head line; on 42 columns a
-                    // line repeating the heading above it is paper spent saying nothing.
+                    // Only a head that really has children earns a sub-head; on 42 columns a line
+                    // repeating the heading above it is paper spent saying nothing.
                     if ($headRow['nested']) {
-                        $out .= $rule . "\n";
-                        $out .= $entry($group['name'], $group['sold_qty'], $group['returned_qty'],
-                            $group['net_qty'], $group['net'], $group['returns_amount'], $group['net_value'], ' ', true, true);
+                        $out .= "\n" . $indentC . self::BOLD_ON
+                            . ThermalLayout::fit((string) $group['name'], $cols - $indentChild)
+                            . self::BOLD_OFF . "\n" . ThermalLayout::dotted($cols, $indentChild) . "\n";
                     }
+
                     foreach ($group['items'] as $item) {
-                        // Same rule between items as in ITEMS above — three-line entries need a
-                        // fence or they read as one block of figures.
-                        $out .= $rule . "\n";
                         $name = $item['item'] . ($this->meaningfulVariant($item['variant'] ?? null, $item['item'] ?? null) ? ' (' . $item['variant'] . ')' : '');
-                        $out .= $entry($name, $item['sold_qty'], $item['returned_qty'],
-                            $item['net_qty'], $item['net'], $item['returns_amount'], $item['net_value'],
-                            $headRow['nested'] ? '  ' : ' ');
+                        $out .= "\n" . $indentI . ThermalLayout::fit($name, $cols - $indentItem) . "\n"
+                            . $figures($indentI, $item['sold_qty'], $item['returned_qty'], $item['net_qty'],
+                                $item['net'], $item['returns_amount'], $item['net_value']);
+                    }
+
+                    if ($headRow['nested']) {
+                        $out .= "\n" . $indentC . self::BOLD_ON . 'TOTAL' . self::BOLD_OFF . "\n"
+                            . $figures($indentC, $group['sold_qty'], $group['returned_qty'], $group['net_qty'],
+                                $group['net'], $group['returns_amount'], $group['net_value'])
+                            . ThermalLayout::dotted($cols, $indentChild) . "\n";
                     }
                 }
+
+                $out .= "\n" . $big('TOTAL') . "\n" . self::BOLD_ON
+                    . $figures('', $headRow['sold_qty'], $headRow['returned_qty'], $headRow['net_qty'],
+                        $headRow['net'], $headRow['returns_amount'], $headRow['net_value'])
+                    . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n";
             }
-            $out .= $bigTotal($heads->sum('sold_qty'), $heads->sum('returned_qty'), $heads->sum('net_qty'),
-                $heads->sum('net'), $heads->sum('returns_amount'), $heads->sum('net_value'));
+
+            $out .= "\n" . $big($this->center('KUL', $cols)) . "\n" . self::BOLD_ON
+                . $figures('', $heads->sum('sold_qty'), $heads->sum('returned_qty'), $heads->sum('net_qty'),
+                    $heads->sum('net'), $heads->sum('returns_amount'), $heads->sum('net_value'))
+                . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n";
         }
 
         // DEALS — DEAL-CATEGORY-1.
@@ -566,20 +648,36 @@ class EscPosPayloadService
         // Printed under their own heads, the way the client's old software has always printed
         // DEALS / MIDNIGHT DEAL 1 / CLASSIC PLATTER, each with its own subtotal. ITEMS above no
         // longer carries them, so the two sections together are the whole of the trading.
+        // THERMAL-ITEM-LAYOUT-1 gives it the shape ITEMS BY CATEGORY has: a head over a solid rule,
+        // its deals stepped in beneath, and the head's own total at the foot of the block.
         if ($has('deals') && ($r['deals'] ?? null) !== null) {
             $deals = collect($r['deals']);
             $out .= $header('DEALS') . $head3();
-            $head = null;
-            foreach ($deals as $row) {
-                if (($row['head'] ?? null) !== $head) {
-                    $head = $row['head'] ?? 'Uncategorised';
-                    $out .= $big(strtoupper((string) $head)) . "\n";
+
+            // The rows arrive already grouped by head and ordered within it; groupBy keeps that.
+            foreach ($deals->groupBy(fn ($row) => $row['head'] ?? 'Uncategorised') as $headName => $rows) {
+                $out .= "\n" . $big(ThermalLayout::fit(mb_strtoupper((string) $headName), $cols)) . "\n"
+                    . ThermalLayout::solid($cols) . "\n";
+
+                foreach ($rows as $row) {
+                    // A deal name is the longest text on the whole slip — "EXCLUSIVE DEAL 1 - 2
+                    // ZINGER + 2 SINGAPOREAN RICE + 4 DRINKS" is 59 characters on 42 of paper.
+                    $out .= "\n" . $indentI . ThermalLayout::fit((string) $row['deal'], $cols - $indentItem) . "\n"
+                        . $figures($indentI, $row['sold_qty'], $row['returned_qty'], $row['net_qty'],
+                            $row['net'], $row['returns_amount'], $row['net_value']);
                 }
-                $out .= $entry($row['deal'], $row['sold_qty'], $row['returned_qty'], $row['net_qty'],
-                    $row['net'], $row['returns_amount'], $row['net_value']);
+
+                $g = collect($rows);
+                $out .= "\n" . $big('TOTAL') . "\n" . self::BOLD_ON
+                    . $figures('', $g->sum('sold_qty'), $g->sum('returned_qty'), $g->sum('net_qty'),
+                        $g->sum('net'), $g->sum('returns_amount'), $g->sum('net_value'))
+                    . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n";
             }
-            $out .= $bigTotal($deals->sum('sold_qty'), $deals->sum('returned_qty'), $deals->sum('net_qty'),
-                $deals->sum('net'), $deals->sum('returns_amount'), $deals->sum('net_value'));
+
+            $out .= "\n" . $big($this->center('KUL', $cols)) . "\n" . self::BOLD_ON
+                . $figures('', $deals->sum('sold_qty'), $deals->sum('returned_qty'), $deals->sum('net_qty'),
+                    $deals->sum('net'), $deals->sum('returns_amount'), $deals->sum('net_value'))
+                . self::BOLD_OFF . ThermalLayout::solid($cols) . "\n";
         }
 
         // CANCELLATIONS.
@@ -590,8 +688,14 @@ class EscPosPayloadService
                 $out .= 'No cancellations in this period.' . "\n";
             }
             foreach ($rows as $row) {
-                $out .= strtoupper((string) $row['item']) . "\n";
-                $out .= $this->columns('  ' . $row['order_type'] . ' / ' . $row['reason'], $row['events'] . ' x  -' . $qty($row['qty']), $cols) . "\n";
+                $out .= ThermalLayout::fit(strtoupper((string) $row['item']), $cols) . "\n";
+                // The reason line carries an order type AND a reason, so it is the other place a
+                // long string used to walk off the roll: "Dine In / Order cancelled by customer"
+                // plus its count came to 47 characters on 42 of paper.
+                $right = $row['events'] . ' x  -' . $qty($row['qty']);
+                $left  = ThermalLayout::fit('  ' . $row['order_type'] . ' / ' . $row['reason'],
+                    max(4, $cols - mb_strlen($right) - 1));
+                $out .= $this->columns($left, $right, $cols) . "\n";
             }
             $out .= $big($this->columns('TOTAL', ($r['cancellations']['total_events'] ?? 0) . ' x  -' . $qty($r['cancellations']['total_qty'] ?? 0), $cols)) . "\n";
         }
