@@ -463,9 +463,16 @@ class SalesReportEngine
                 $c['net_qty'] = $c['sold_qty'] - $c['returned_qty'];
                 $c['net_value'] = $c['net'] - $c['returns_amount'];
             }
+            // REPORT-CATEGORY-ORDER-1: within a head too, so a sub-category lands where the menu
+            // puts it rather than where the grouping happened to leave it.
+            usort($root['children'], fn ($x, $y) => $this->compareCategoryOrder((int) $x['id'], (int) $y['id']));
         }
+        unset($root);
 
-        return array_values($tree);
+        $out = array_values($tree);
+        usort($out, fn ($a, $b) => $this->compareCategoryOrder((int) $a['id'], (int) $b['id']));
+
+        return $out;
     }
 
     // ── S. Item report ───────────────────────────────────────────────────────────────────────────
@@ -563,6 +570,44 @@ class SalesReportEngine
     }
 
     /**
+     * REPORT-CATEGORY-ORDER-1 — the menu's own order, for the report to print in.
+     *
+     * `categories.sort_order` is the number the owner sets on the Catalog screen, and the POS has
+     * always laid its pills out by it. The reports never looked: CATEGORIES came back in whatever
+     * order MySQL grouped the rows in, and ITEMS BY CATEGORY led with the biggest earner. So the
+     * shop read its takings in an order it had never chosen, and the one field that exists to say
+     * "print biryani first" did nothing outside the till.
+     *
+     * Name is the tiebreaker so two categories sharing a number still come out the same way twice.
+     *
+     * DELIBERATELY NOT CACHED in a static. The scheduled report command walks every tenant inside
+     * one PHP process, so a map held in a static would be built from the first tenant's categories
+     * and then silently reused for the rest — every shop after the first would print in a
+     * stranger's order. It is one small query per section; a report asks for it twice.
+     *
+     * @return array<int, array{0:int, 1:string}>  id => [sort_order, name]
+     */
+    private function categoryOrder(): array
+    {
+        return DB::connection('tenant')->table('categories')
+            ->get(['id', 'sort_order', 'name'])
+            ->mapWithKeys(fn ($c) => [(int) $c->id => [(int) $c->sort_order, (string) $c->name]])
+            ->all();
+    }
+
+    /** Compare two category ids by the order the owner set on the Catalog screen. */
+    private function compareCategoryOrder(int $a, int $b): int
+    {
+        $order = $this->categoryOrder();
+        // Anything with no category of its own ("Uncategorised") sorts last, not first: a bucket
+        // for the unfiled is not what a shop wants at the top of its report.
+        $left  = $order[$a] ?? [PHP_INT_MAX, 'zzz'];
+        $right = $order[$b] ?? [PHP_INT_MAX, 'zzz'];
+
+        return [$left[0], $left[1]] <=> [$right[0], $right[1]];
+    }
+
+    /**
      * BRIDGE-DEALS-1 — the net value of the deals in a period, for the section bridges.
      *
      * A section that EXCLUDES deals (Items, and Items by Category) cannot close to NET SALES by
@@ -654,13 +699,16 @@ class SalesReportEngine
 
         $out = [];
         foreach ($heads as $rootId => $head) {
+            // REPORT-CATEGORY-ORDER-1: sub-heads follow the menu, items stay biggest-first. The
+            // owner asked for exactly that — the CATEGORY order is his to arrange, the items
+            // beneath it are better read by size.
             $groups = collect($head['groups'])
-                ->sortByDesc('net_value')
                 ->map(function (array $g) {
                     $g['items'] = collect($g['items'])->sortByDesc('net_value')->values()->all();
 
                     return $g;
                 })->values()->all();
+            usort($groups, fn ($x, $y) => $this->compareCategoryOrder((int) $x['id'], (int) $y['id']));
 
             // A sub-head earns its line only when it says something the head does not: either the
             // root has more than one child with sales, or the single group is a child by another
@@ -673,8 +721,9 @@ class SalesReportEngine
             $out[] = $head;
         }
 
-        // Biggest head first, the way the Items section leads with the biggest earner.
-        usort($out, fn (array $a, array $b) => $b['net_value'] <=> $a['net_value']);
+        // REPORT-CATEGORY-ORDER-1: the menu's order, the same one CATEGORIES prints in, so the two
+        // sections can be read side by side without hunting.
+        usort($out, fn (array $a, array $b) => $this->compareCategoryOrder((int) $a['head_id'], (int) $b['head_id']));
 
         return $out;
     }
