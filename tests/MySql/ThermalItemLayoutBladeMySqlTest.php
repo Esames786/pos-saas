@@ -204,6 +204,29 @@ class ThermalItemLayoutBladeMySqlTest extends MySqlTenantTestCase
         );
     }
 
+    public function test_the_section_wide_total_is_named_in_the_reports_own_language(): void
+    {
+        $html = $this->render();
+
+        // It was "KUL" — Urdu for total — on a report written entirely in English, and the owner
+        // had to ask what it meant. If the person who commissioned the report cannot read a word
+        // on it, the cashier at the counter certainly cannot.
+        $this->assertStringNotContainsString('KUL', $html, 'no Urdu label on an English report');
+
+        // One per section, and never confusable with the per-category TOTAL above it.
+        foreach (['CATEGORIES', 'ITEMS BY CATEGORY', 'DEALS'] as $heading) {
+            $texts = array_map(
+                fn ($r) => trim(str_replace("\xC2\xA0", ' ', $r['text'])),
+                $this->names($this->section($html, $heading))
+            );
+            $this->assertSame(
+                1,
+                count(array_keys($texts, 'GRAND TOTAL', true)),
+                "{$heading}: exactly one section-wide total, named GRAND TOTAL"
+            );
+        }
+    }
+
     public function test_each_level_steps_in_from_the_one_above_it(): void
     {
         $indent = fn (string $t) => mb_strlen($t) - mb_strlen(ltrim(str_replace("\xC2\xA0", ' ', $t)));

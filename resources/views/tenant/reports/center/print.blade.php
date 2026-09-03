@@ -305,7 +305,7 @@
         {!! $tEntry($kids->isNotEmpty() ? 'TOTAL' : '', $root['sold_qty'], $root['returned_qty'], $root['net_qty'], $root['net'], $root['returns_amount'], $root['net_value'], true, 0, 'headtotal') !!}
     @endforeach
     <tr class="gap"><td colspan="4"></td></tr>
-    {!! $tEntry('KUL', collect($categories)->sum('sold_qty'), collect($categories)->sum('returned_qty'), collect($categories)->sum('net_qty'), collect($categories)->sum('net'), collect($categories)->sum('returns_amount'), collect($categories)->sum('net_value'), true) !!}
+    {!! $tEntry('GRAND TOTAL', collect($categories)->sum('sold_qty'), collect($categories)->sum('returned_qty'), collect($categories)->sum('net_qty'), collect($categories)->sum('net'), collect($categories)->sum('returns_amount'), collect($categories)->sum('net_value'), true) !!}
     {!! $bridgeRows((float) collect($categories)->sum('net_value'), 4) !!}
 </table>
 @else
@@ -383,7 +383,7 @@
         {!! $tEntry('TOTAL', $head['sold_qty'], $head['returned_qty'], $head['net_qty'], $head['net'], $head['returns_amount'], $head['net_value'], true, 0, 'headtotal') !!}
     @endforeach
     <tr class="gap"><td colspan="4"></td></tr>
-    {!! $tEntry('KUL', $ciRows->sum('sold_qty'), $ciRows->sum('returned_qty'), $ciRows->sum('net_qty'), $ciRows->sum('net'), $ciRows->sum('returns_amount'), $ciRows->sum('net_value'), true) !!}
+    {!! $tEntry('GRAND TOTAL', $ciRows->sum('sold_qty'), $ciRows->sum('returned_qty'), $ciRows->sum('net_qty'), $ciRows->sum('net'), $ciRows->sum('returns_amount'), $ciRows->sum('net_value'), true) !!}
     {{-- Merchandise only, like every other line-based section: close the gap to NET SALES, or the
          total reads as though it contradicted the day's takings. --}}
     {!! $bridgeRows((float) $ciRows->sum('net_value'), 4, true) !!}
@@ -428,7 +428,7 @@
         {!! $tEntry('TOTAL', collect($group)->sum('sold_qty'), collect($group)->sum('returned_qty'), collect($group)->sum('net_qty'), collect($group)->sum('net'), collect($group)->sum('returns_amount'), collect($group)->sum('net_value'), true, 0, 'headtotal') !!}
     @endforeach
     <tr class="gap"><td colspan="4"></td></tr>
-    {!! $tEntry('KUL', $dealRows->sum('sold_qty'), $dealRows->sum('returned_qty'), $dealRows->sum('net_qty'), $dealRows->sum('net'), $dealRows->sum('returns_amount'), $dealRows->sum('net_value'), true) !!}
+    {!! $tEntry('GRAND TOTAL', $dealRows->sum('sold_qty'), $dealRows->sum('returned_qty'), $dealRows->sum('net_qty'), $dealRows->sum('net'), $dealRows->sum('returns_amount'), $dealRows->sum('net_value'), true) !!}
 </table>
 @else
 <table>
