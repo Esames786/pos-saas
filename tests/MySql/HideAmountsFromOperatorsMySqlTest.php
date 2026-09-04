@@ -33,6 +33,8 @@ class HideAmountsFromOperatorsMySqlTest extends MySqlTenantTestCase
     use TenantFixtures;
 
     private const EXPECTED_CASH = 224305.00;
+    /** Distinct on purpose: the list shows ONLY this figure, so a mask there is provable. */
+    private const OPENING_CASH  = 12000.00;
     private const TOTAL_SALES   = 270740.00;
     private const TOTAL_CARD    = 46435.00;
 
@@ -175,6 +177,98 @@ class HideAmountsFromOperatorsMySqlTest extends MySqlTenantTestCase
     }
 
     /** The dashboard tiles follow the same flag. */
+    /**
+     * HIDE-AMOUNTS-2 — the shift's own page. It carries the same seven figures the close screen
+     * carries, Expected Cash among them, and it had NO mask at all: an operator who could open
+     * /shifts/{id} simply read them. The feature was live and defeated on this one route.
+     */
+    public function test_the_shift_page_gives_the_operator_nothing_to_read(): void
+    {
+        $this->hideOn();
+        $this->revokeFromOperator();
+
+        $html = $this->visit($this->operatorId, '/shifts/' . $this->shiftId)->getContent();
+
+        $this->assertBodyHasNoExpectedCash($html, 'shift page');
+        $this->assertStringContainsString('*****', $html,
+            'shift page: the operator must see the mask, not an empty box that looks like a bug');
+    }
+
+    /** The list shows Opening Cash, which is money too. */
+    public function test_the_shift_list_masks_the_opening_cash(): void
+    {
+        $this->hideOn();
+        $this->revokeFromOperator();
+
+        $html = $this->visit($this->operatorId, '/shifts')->getContent();
+
+        $this->assertStringNotContainsString('12,000.00', $html,
+            'shift list: the opening cash is still readable');
+        $this->assertStringContainsString('*****', $html, 'shift list: the mask must be shown');
+    }
+
+    /** Same two screens, Owner: nothing is hidden from the person who owns the money. */
+    public function test_the_owner_still_reads_the_shift_page_and_list(): void
+    {
+        $this->hideOn();
+        $this->revokeFromOperator();
+
+        $page = $this->visit($this->ownerId, '/shifts/' . $this->shiftId)->getContent();
+        $this->assertStringContainsString('224,305.00', $page,
+            'the Owner must still see the expected cash on the shift page');
+
+        $list = $this->visit($this->ownerId, '/shifts')->getContent();
+        $this->assertStringNotContainsString('*****', $list,
+            'the Owner must not be masked on the list');
+    }
+    /**
+     * SHIFT-CLOSE-SCOPE — an operator must not close a drawer that is not his.
+     *
+     * The owner asked directly: "main delivery counter se login hoon, main kisi doosre ki shift
+     * close na kar paaun agar mujhe assign nahi." Reading the code says close() calls
+     * assertCanOperateTerminal; only the real POST proves it, so this posts it.
+     */
+    public function test_an_operator_cannot_close_a_terminal_that_is_not_his(): void
+    {
+        // Operator ko DOOSRE terminal se baandho — hataana kaafi nahi tha: canOperateTerminal me
+        // khali list ka matlab "koi pabandi nahi" hai, is liye assignment hatane se wo har terminal
+        // par azaad ho jata hai. Pabandi tab lagti hai jab uska apna terminal koi aur ho.
+        $c = DB::connection('tenant');
+        $otherTerminal = (int) $c->table('terminals')->insertGetId([
+            'branch_id' => $this->branchId, 'code' => 'T2', 'name' => 'Counter 2',
+            'requires_shift' => 1, 'status' => 'active', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $c->table('terminal_user')->where('user_id', $this->operatorId)->delete();
+        $c->table('terminal_user')->insert(['terminal_id' => $otherTerminal, 'user_id' => $this->operatorId]);
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+        $res = $this->actingAs(User::on('tenant')->find($this->operatorId), 'tenant')
+            ->post('http://' . $this->host . '/shifts/' . $this->shiftId . '/close', [
+                'counted_cash' => 1000,
+            ]);
+
+        $this->assertSame(403, $res->getStatusCode(),
+            'a cashier must not close a drawer on a terminal that is not assigned to him');
+
+        $shift = DB::connection('tenant')->table('shifts')->where('id', $this->shiftId)->first();
+        $this->assertSame('open', $shift->status, 'the refused close must leave the shift open');
+        $this->assertNull($shift->counted_cash, 'the refused close must not write a count');
+        $this->assertNull($shift->closed_at, 'the refused close must not stamp a closing time');
+    }
+
+    /** And with the terminal assigned, the same POST goes through — so the 403 above is the rule, not a broken route. */
+    public function test_the_same_operator_closes_his_own_terminal(): void
+    {
+        $res = $this->actingAs(User::on('tenant')->find($this->operatorId), 'tenant')
+            ->post('http://' . $this->host . '/shifts/' . $this->shiftId . '/close', [
+                'counted_cash' => 1000,
+            ]);
+
+        $this->assertSame(302, $res->getStatusCode(), 'his own terminal must close');
+
+        $shift = DB::connection('tenant')->table('shifts')->where('id', $this->shiftId)->first();
+        $this->assertSame('closed', $shift->status, 'his own shift must actually close');
+    }
     public function test_the_dashboard_tiles_are_masked(): void
     {
         $this->hideOn();
@@ -371,7 +465,7 @@ class HideAmountsFromOperatorsMySqlTest extends MySqlTenantTestCase
             'branch_id' => $this->branchId, 'terminal_id' => $this->terminalId,
             'opened_by_user_id' => $this->operatorId,
             'opened_at' => now()->subHours(6), 'status' => 'open',
-            'opening_cash' => 0,
+            'opening_cash' => self::OPENING_CASH,
             'total_sales' => self::TOTAL_SALES,
             'total_cash' => self::EXPECTED_CASH,
             'total_card' => self::TOTAL_CARD,
