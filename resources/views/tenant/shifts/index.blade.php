@@ -107,7 +107,7 @@
                         <td>{{ $shift->openedBy?->name }}</td>
                         <td>{{ app(\App\Support\TenantClock::class)->format($shift->opened_at, 'Y-m-d H:i', $shift->timezone_name) }}</td>
                         <td>{{ $shift->closed_at ? app(\App\Support\TenantClock::class)->format($shift->closed_at, 'Y-m-d H:i', $shift->timezone_name) : '—' }}</td>
-                        <td>{{ number_format($shift->opening_cash, 2) }}</td>
+                        <td>{{ ($maySeeAmounts[$shift->branch_id] ?? false) ? number_format($shift->opening_cash, 2) : '*****' }}</td>
                         <td>
                             @if($shift->status === 'open')
                                 <span class="badge bg-warning text-dark">Open</span>

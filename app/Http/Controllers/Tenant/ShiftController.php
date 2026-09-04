@@ -40,10 +40,23 @@ class ShiftController extends Controller
             ->groupBy('branch_id')
             ->pluck('c', 'branch_id');
 
+        $shifts = $query->paginate(15)->withQueryString();
+
+        // HIDE-AMOUNTS-2: list kai branches par phaili ho sakti hai, is liye faisla PER BRANCH
+        // hota hai — ek branch ka masked hona doosre ka masked hona nahi. Jis row ka branch hi na
+        // mile wo masked rehti hai (fail closed), wohi rukh jo AmountVisibility khud apnaata hai.
+        $visibility = app(\App\Support\AmountVisibility::class);
+        $user       = auth('tenant')->user();
+        $maySeeAmounts = collect($shifts->items())
+            ->pluck('branch')->filter()->unique('id')
+            ->mapWithKeys(fn ($branch) => [$branch->id => $visibility->allows($user, $branch)])
+            ->all();
+
         return view('tenant.shifts.index', [
-            'shifts'     => $query->paginate(15)->withQueryString(),
-            'branches'   => Branch::where('status', 'active')->orderBy('name')->get(),
-            'openCounts' => $openCounts,
+            'shifts'        => $shifts,
+            'branches'      => Branch::where('status', 'active')->orderBy('name')->get(),
+            'openCounts'    => $openCounts,
+            'maySeeAmounts' => $maySeeAmounts,
         ]);
     }
 
@@ -172,7 +185,14 @@ class ShiftController extends Controller
     {
         $shift->load(['branch', 'terminal', 'openedBy', 'closedBy', 'cashCountLines.denomination']);
 
-        return view('tenant.shifts.show', compact('shift'));
+        // HIDE-AMOUNTS-2: ye screen wohi saat figures dikhati hai jo Close Shift par masked hain —
+        // Expected Cash samet — magar mask yahan lagta hi nahi tha. Chaar operator accounts is
+        // safhe tak pahunch rakhte hain, is liye feature is raaste par be-asar tha.
+        return view('tenant.shifts.show', [
+            'shift'         => $shift,
+            'maySeeAmounts' => app(\App\Support\AmountVisibility::class)
+                ->allows(auth('tenant')->user(), $shift->branch),
+        ]);
     }
 
     public function closeForm(Shift $shift)
