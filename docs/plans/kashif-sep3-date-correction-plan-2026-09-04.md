@@ -140,3 +140,26 @@ karna chahiye.
 hai. Hissa A us usool ko **jaan-boojh kar** tor raha hai — ek dafa, haath se, is liye ke jami hui
 qeemat khud ghalat hai. Ye kisi code ka raasta nahi banega, aur isi doc me darj hai taake baad me
 koi isay misaal na samjhe.
+
+---
+
+## 10. ⚠️ 1 baje shift band karne ke baad NAYI shift MAT kholna
+
+Owner ka pehla khayal tha: "purani shift band kar ke wapsi foran nayi khol dete hain."
+**1 baje ye ghalat hoga**, aur wajah wohi clock hai jisne ye masla paida kiya.
+
+`TenantClock::businessDateForOpening()` **Karachi ki calendar date** leta hai. Raat 1 baje Karachi
+me **5 September** ho chuka hoga, is liye us waqt kholi gayi shift par **`business_date = 2026-09-05`**
+jam jayegi — aur 4 September ki service ke bache-khuche bills **5 September** me chale jayenge.
+Yani aaj ka masla kal dobara, sirf ek din aage.
+
+**Theek tareeqa:**
+
+| Waqt | Kya karna hai |
+|---|---|
+| ~1 baje (5 Sep raat) | Sab bills settle, tables band, **Close Branch** — chaaron shifts band. **Koi nayi shift nahi kholni.** |
+| Kal dopeher (5 Sep) | Rozana ki tarah nayi shifts kholna — us waqt Karachi me 5 Sep hai, to `business_date = 2026-09-05` — **bilkul durust** |
+
+Yehi wajah hai ke shift ki tareekh khulte waqt jamti hai: dukan raat 12 baje ke baad tak chalti
+hai, aur us poori raat ka kaam **usi din** me rehna chahiye jis din shift khuli thi. Nizam theek
+hai — bas shift waqt par band honi chahiye.

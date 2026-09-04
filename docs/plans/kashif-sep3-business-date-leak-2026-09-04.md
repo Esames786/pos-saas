@@ -78,6 +78,12 @@ khilaf hain — koi return ghalat din me nahi gira, is liye returns me koi adjus
 `business_date = 2026-09-03` magar bill **4 Sep ko bana** = aaj ka kaam jo purani shift ki wajah se
 kal me gira.
 
+> **Durusti:** pehle yahan likha tha ke "Kashif ka din UTC ki tareekh par jamta hai" — ye GHALAT
+> tha. `TenantClock::businessDateForOpening()` **Karachi** ki calendar date leta hai (`Asia/Karachi`),
+> aur wohi shift par jam jaati hai. Taqseem wala usool phir bhi durust hai: shift #24 ke leak hue
+> saare bills 4 Sep 12:44 PKT ke baad bane, is liye `created_at >= 4 Sep 00:00 UTC` un sab ko theek
+> pakadta hai aur 3 Sep ki asli raat wale bills ko chhota nahi.
+
 ---
 
 ## 5. Owner ka andaza kahan tak durust tha
