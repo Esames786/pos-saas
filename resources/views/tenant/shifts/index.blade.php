@@ -54,12 +54,12 @@
             <div class="col-md-2">
                 <label for="date-from" class="form-label">Din (se)</label>
                 <input type="date" id="date-from" name="date_from" class="form-control"
-                    value="{{ request('date_from') }}" max="{{ $today }}">
+                    value="{{ request('date_from') }}" max="{{ $maxDate }}">
             </div>
             <div class="col-md-2">
                 <label for="date-to" class="form-label">Din (tak)</label>
                 <input type="date" id="date-to" name="date_to" class="form-control"
-                    value="{{ request('date_to') }}" max="{{ $today }}">
+                    value="{{ request('date_to') }}" max="{{ $maxDate }}">
             </div>
             <div class="col-md-3">
                 <button class="btn btn-dark" type="submit">Filter</button>
