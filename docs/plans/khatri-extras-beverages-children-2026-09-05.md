@@ -111,3 +111,75 @@ hai (REPORT-CATEGORY-ORDER-1), is liye `sort_order` bhi client ki list ke mutabi
 ## 10. Wapsi
 
 `products.category_id` wapas purani, 16 mapping rows delete, 4 categories delete. Sab reversible.
+
+---
+
+# 11. OWNER KA FAISLA (5 Sep) — tasadum hal ho gaya
+
+> "Singaporean Rice se Extra Sauce nikaal kar Extras ki child category **Sauce** me daal do, aur
+> Sauce ko waise hi route kar do jaise Singaporean Rice ka station route hai."
+
+Yani `Boxes and Sauces` **ek category nahi** rahegi — sauce ko apni category milegi apni routing ke
+saath. Ye theek wohi hal hai jo §10 me pehla raasta tha, aur isi se dono baatein poori hoti hain.
+
+## Ab ka poora naqsha
+
+| Category | Products | KOT kahan | Mapping kis se nakal |
+|---|---|---|---|
+| **Extras** (#8) | — | — | (parent, khali) |
+| ↳ **Raitas** *(nayi)* | Raita | `XPrinter` | **Extras** (#8) |
+| ↳ **Sauce** *(nayi)* | **Extra Sauce** | **har terminal ka apna counter printer** | **Singaporean Rice** (#4) |
+| ↳ **Boxes** *(nayi — §12 dekhein)* | 750 ML Box · 1500 ML Box | `XPrinter` | **Extras** (#8) |
+| **Beverages** (#7) | — | — | (parent, khali) |
+| ↳ **Mineral Water** *(nayi)* | Mineral Water Small · Large | `XPrinter` | **Beverages** (#7) |
+| ↳ **Soft Drinks** *(nayi)* | Cola Next ×3 · 1 Ltr Coldrink · Coldrink Jumbo · Pakola | `XPrinter` | **Beverages** (#7) |
+
+**`Sauce` ki routing (Singaporean Rice se hoobahoo):**
+
+| Terminal | Printer |
+|---|---|
+| Delivery | `BlackCopper BC97AC - Delivery Receipt + KOT` |
+| Takeaway | `BlackCopper - Takeaway Receipt + KOT` |
+| Dine In | `BlackCopper - Dine In Receipt + KOT` |
+| Quick Sale | `BlackCopper - QucikSale Receipt + KOT` |
+
+> Yani Extra Sauce ka KOT **abhi jahan nikalta hai wahin nikalta rahega** — sirf uska category head
+> badlega. Ye is faisle ki sab se achhi baat hai: kitchen ke liye kuch nahi badalta, sirf report
+> aur POS ki tarteeb saaf hoti hai.
+
+## Kaam ki nayi fehrist
+
+| # | Kya | Rows |
+|---|---|---:|
+| 1 | 5 nayi categories: `Raitas`, `Sauce`, `Boxes` (parent 8); `Mineral Water`, `Soft Drinks` (parent 7) | 5 |
+| 2 | **20 mapping rows** — har child ke 4 `kot` rows; `Sauce` ke **cat#4 se**, baqi charon ke apne parent se | 20 |
+| 3 | `products.category_id` — Raita → Raitas; 2 boxes → Boxes; **Extra Sauce → Sauce** | 4 |
+| 4 | `products.category_id` — 2 water → Mineral Water; 6 drinks → Soft Drinks | 8 |
+
+## 12. Ek chhoti si baat jo abhi tay honi hai
+
+Owner ne `Sauce` ka naam liya, `Boxes` ka nahi. Do surtein hain:
+
+- **(a)** `Boxes` bhi apni child ban jaye *(upar ke naqshe me yehi maana gaya hai)* — phir `Extras`
+  poori tarah sirf ek parent reh jata hai, aur report me har cheez apne naam se aati hai.
+- **(b)** Dono box `Extras` me hi pare rahen — kaam ek category aur 4 rows kam, magar `Extras` ka
+  sar aadha khali aur aadha bhara rahega (kuch products seedhe us par, kuch children me).
+
+**Mera mashwara (a)** — kyunke report me ek hi head ka aadha bhara hona wohi uljhan paida karta hai
+jo abhi Platters me thi. Magar ye owner ka faisla hai; boxes ka **routing dono surton me wahi
+XPrinter** rehta hai, is liye kitchen par koi asar nahi.
+
+## 13. Paisa — kahan se kahan
+
+Koi rupya banta ya gum nahi hota; sirf **category heads** ke darmiyan manteqil hota hai (30 din):
+
+| Se | Ko | Raqam |
+|---|---|---:|
+| `Singaporean Rice` | `Extras → Sauce` | **1,300** |
+| `Extras` (seedha) | `Extras → Raitas` | 105,560 |
+| `Extras` (seedha) | `Extras → Boxes` | 690 |
+| `Beverages` (seedha) | `Beverages → Mineral Water` | 66,420 |
+| `Beverages` (seedha) | `Beverages → Soft Drinks` | 352,590 |
+
+Sirf pehli qatar **root** badalti hai (Singaporean Rice → Extras); baqi sab apne hi root ke andar
+hilti hain. **NET SALES phir bhi ek rupya nahi hilta.**
