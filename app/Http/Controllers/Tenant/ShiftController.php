@@ -257,9 +257,12 @@ class ShiftController extends Controller
             // No count entered at all used to silently close at 0 — recording the whole drawer as
             // missing and raising a full-takings shortage voucher (it happened live: a 28,400
             // shift closed at 0). Typing 0 explicitly is still allowed; defaulting to it is not.
-            if ($countedCash === null) {
-                return back()->withErrors(['counted_cash' => 'Count the drawer first — enter the counted cash (0 must be typed deliberately).'])->withInput();
-            }
+            //
+            // ZERO-DRAWER-1: except when the drawer is EMPTY by arithmetic — Kashif Food's floor
+            // terminal takes orders but never money, so its expected cash is 0 every night, and
+            // demanding a count there asks the cashier to certify nothing. That decision is NOT
+            // made here: a NULL count is passed down and ShiftService resolves it under the row
+            // lock, where expected_cash is the only place it is authoritative.
             $closed = $shiftService->closeShift($shift, (int) auth('tenant')->id(), $countedCash, $data['closing_notes'] ?? null);
         } catch (ShiftException $e) {
             return back()->withErrors(['shift' => $e->getMessage()])->withInput();
@@ -413,8 +416,19 @@ class ShiftController extends Controller
                     // per_terminal: the entered count for THIS terminal. branch_total: each terminal
                     // closes at its expected (per-terminal variance 0 — drawers weren't counted
                     // separately); the real figure is recorded at branch level on a Daily Closing.
-                    if ($data['mode'] === 'per_terminal'
-                        && (! isset($data['counted'][$locked->id]) || $data['counted'][$locked->id] === '' || $data['counted'][$locked->id] === null)) {
+                    $blank = ! isset($data['counted'][$locked->id])
+                        || $data['counted'][$locked->id] === ''
+                        || $data['counted'][$locked->id] === null;
+
+                    // ZERO-DRAWER-1: a terminal whose expected cash is 0 has nothing to count, so a
+                    // blank box there is not an unanswered question — it is the answer. Without
+                    // this, ONE such terminal fails the whole Close Branch, because all the
+                    // branch's shifts close in a single transaction: Kashif Food could not close
+                    // its four counters because the floor terminal, which never takes money, had
+                    // no figure to type.
+                    $emptyDrawer = abs((float) $locked->expected_cash) < 0.005;
+
+                    if ($data['mode'] === 'per_terminal' && $blank && ! $emptyDrawer) {
                         // A drawer left blank used to close at 0 — the whole terminal's takings
                         // recorded as missing. Every open drawer must be counted (0 typed counts).
                         throw new ShiftException(
@@ -424,7 +438,7 @@ class ShiftController extends Controller
                         );
                     }
                     $counted = $data['mode'] === 'per_terminal'
-                        ? (float) $data['counted'][$locked->id]
+                        ? ($blank ? 0.0 : (float) $data['counted'][$locked->id])
                         : $expected;
 
                     $locked->update([
