@@ -10,7 +10,10 @@
                 <h4 class="mb-1">{{ __('dashboard.tenant_panel') }}</h4>
                 <p class="text-muted small mb-0">
                     Business: <strong class="text-primary">{{ app('tenant')->business_name }}</strong>
-                    &nbsp;&mdash;&nbsp; {{ now()->format('l, d M Y') }}
+                    {{-- OPERATING-DATE-1: pehle yahan now() tha — SARWAR ka UTC, kisi ka business
+                         timezone nahi. Ab wohi din jo neeche ki tiles gin rahi hain, warna header
+                         ek din kehta aur hindse doosre din ke hote. --}}
+                    &nbsp;&mdash;&nbsp; {{ \Illuminate\Support\Carbon::parse($todayBusinessDate)->format('l, d M Y') }}
                 </p>
             </div>
 
