@@ -51,7 +51,7 @@ class EdgeLocalBootstrapImporter
     private const PLAN = [
         ['branch', 'branches', false],               // the appliance's own branch row (id preserved)
         ['units', 'units', false],
-        ['categories', 'categories', false],         // self-referential — topologically ordered on insert
+        ['categories', 'categories', true],          // self-referential — topologically ordered on insert; NULL branch_id = shared
         ['products', 'products', false],
         ['product_variants', 'product_variants', false],
         ['product_barcodes', 'product_barcodes', false],

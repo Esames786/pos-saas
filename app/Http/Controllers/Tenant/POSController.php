@@ -156,8 +156,21 @@ class POSController extends Controller
             // carried it simply vanished and the bill could no longer be recalled or paid — five of
             // them, mid-service, on 30 Aug. Being in a combo was the only thing that used to save a
             // hidden product; an open bill has at least as much claim on it.
-            ->where(function ($q) use ($comboComponentProductIds, $liveOrderProductIds) {
-                $q->where('is_pos_visible', true);
+            //
+            // CATEGORY-BRANCH-SCOPE-1: a category may belong to one branch, and a product follows
+            // its category. The scope sits INSIDE the visible branch on purpose — bolted on as its
+            // own ->where() it would apply to the two escape hatches above as well, and a product
+            // sitting on an open bill would vanish again the moment its category belonged to the
+            // other branch. That is the 30 Aug outage, rebuilt. A NULL branch_id (every category on
+            // every existing tenant) matches every branch, so nothing changes for them.
+            ->where(function ($q) use ($selectedBranchId, $comboComponentProductIds, $liveOrderProductIds) {
+                $q->where(function ($visible) use ($selectedBranchId) {
+                    $visible->where('is_pos_visible', true)
+                        ->where(function ($scope) use ($selectedBranchId) {
+                            $scope->whereNull('category_id')
+                                ->orWhereHas('category', fn ($c) => $c->forBranch($selectedBranchId));
+                        });
+                });
                 if ($comboComponentProductIds->isNotEmpty()) {
                     $q->orWhereIn('id', $comboComponentProductIds->all());
                 }

@@ -8,7 +8,7 @@ class Category extends Model
 {
     protected $connection = 'tenant';
 
-    protected $fillable = ['parent_id', 'code', 'name', 'slug', 'sort_order', 'is_active'];
+    protected $fillable = ['parent_id', 'branch_id', 'code', 'name', 'slug', 'sort_order', 'is_active'];
 
     protected function casts(): array
     {
@@ -21,6 +21,26 @@ class Category extends Model
     public function parent()
     {
         return $this->belongsTo(Category::class, 'parent_id');
+    }
+
+    /**
+     * CATEGORY-BRANCH-SCOPE-1: the branch this category belongs to — NULL means every branch,
+     * which is what every category on every existing tenant is.
+     */
+    public function branch()
+    {
+        return $this->belongsTo(Branch::class);
+    }
+
+    /** What a branch may show: its own categories, plus the ones shared across all branches. */
+    public function scopeForBranch($query, ?int $branchId)
+    {
+        return $query->where(function ($q) use ($branchId) {
+            $q->whereNull('branch_id');
+            if ($branchId) {
+                $q->orWhere('branch_id', $branchId);
+            }
+        });
     }
 
     public function children()

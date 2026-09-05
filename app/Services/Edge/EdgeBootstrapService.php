@@ -549,7 +549,13 @@ class EdgeBootstrapService
             ]],
             'terminals' => $rows($conn->table('terminals')->where('branch_id', $b)->where('status', 'active'),
                 ['id', 'branch_id', 'code', 'name', 'device_identifier', 'requires_shift', 'status']),
-            'categories' => $rows($conn->table('categories')->where('is_active', 1), ['id', 'parent_id', 'code', 'name', 'slug', 'sort_order', 'is_active']),
+            // CATEGORY-BRANCH-SCOPE-1: the appliance receives its own branch's categories plus the
+            // shared ones (branch_id NULL) — the same set its cloud POS would show, so the two
+            // cannot disagree about the menu. A category bound to ANOTHER branch is withheld, which
+            // is also what `assertBranchScoping` now insists on for this section.
+            'categories' => $rows($conn->table('categories')->where('is_active', 1)
+                ->where(fn ($q) => $q->whereNull('branch_id')->orWhere('branch_id', $b)),
+                ['id', 'parent_id', 'branch_id', 'code', 'name', 'slug', 'sort_order', 'is_active']),
             'units' => $rows($conn->table('units')->where(fn ($q) => $q->where('is_active', 1)->orWhereIn('id', $referencedUnitIds ?: [0])),
                 ['id', 'code', 'name', 'unit_type', 'base_factor', 'is_base', 'is_active']),
             // Products = sellable set PLUS recipe raw-material products (bare config rows), so
