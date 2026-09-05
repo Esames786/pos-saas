@@ -57,6 +57,20 @@
     </div>
 </div>
 
+@php $anyCash = collect($maySeeAmounts ?? [])->contains(true); @endphp
+@if($anyCash)
+@push('styles')
+<style>
+    /* Chhota, ginne wala panel — labels halke, hindse ek line par, digits ek doosre ke neeche. */
+    .cash-grid{display:flex; flex-wrap:wrap; gap:6px 26px; padding:6px 2px}
+    .cash-grid > div{display:flex; flex-direction:column; min-width:104px}
+    .cash-grid span{font-size:.72rem; letter-spacing:.04em; text-transform:uppercase; opacity:.65}
+    .cash-grid b{font-variant-numeric:tabular-nums; font-size:.95rem}
+    [data-cash-toggle][aria-expanded="true"]{background:var(--bs-secondary-bg); border-color:var(--bs-secondary)}
+</style>
+@endpush
+@endif
+
 <div class="card">
     <div class="card-body table-responsive">
         <table class="table table-nowrap align-middle">
@@ -68,20 +82,7 @@
                     <th scope="col">Opened By</th>
                     <th scope="col">Opened At</th>
                     <th scope="col">Closed At</th>
-                    {{-- SHIFT-RECONCILE-1: pehle sirf Opening Cash tha, jo Kashif par har raat 0.00
-                         hota hai — yani us column ne kabhi kuch bataya hi nahi. Ab wahi hisab jo
-                         daraz band karte waqt saamne hota hai: kitna aana chahiye tha, kitna nikla,
-                         aur farq. Cheque ka column jaan-boojh kar nahi: dono tenants par wo
-                         aaj tak sifar hai, aur hamesha khali column wohi bemaani cheez ban jata
-                         hai jo Opening Cash ban chuka tha. --}}
-                    <th scope="col" class="text-end">Opening</th>
-                    <th scope="col" class="text-end">Cash Sale</th>
-                    <th scope="col" class="text-end">Card</th>
-                    <th scope="col" class="text-end">Bank</th>
-                    <th scope="col" class="text-end">Refunds</th>
-                    <th scope="col" class="text-end">Expected</th>
-                    <th scope="col" class="text-end">Counted</th>
-                    <th scope="col" class="text-end">Difference</th>
+                    <th scope="col">Opening Cash</th>
                     <th scope="col">Status</th>
                     <th scope="col" class="text-end">Action</th>
                 </tr>
@@ -94,13 +95,29 @@
                     $branchOpen = (int) ($openCounts[$branchId] ?? 0);
                 @endphp
                 <tr class="table-light">
-                    <td colspan="13">
+                    <td colspan="7">
                         <i class="ti ti-building-store me-1" aria-hidden="true"></i>
                         <strong>{{ $branchName }}</strong>
                         @if($branchOpen > 0)
                             <span class="badge bg-warning text-dark ms-2">{{ $branchOpen }} open</span>
                         @else
                             <span class="badge bg-secondary ms-2">all closed</span>
+                        @endif
+                        {{-- Is safhe ka jama — list paginated hai, is liye ye poore branch ka hisab
+                             hone ka dawa nahi karta, aur label bhi yehi kehta hai. --}}
+                        @if($maySeeAmounts[$branchId] ?? false)
+                            @php
+                                $pgExpected = $branchShifts->sum(fn ($s) => (float) $s->expected_cash);
+                                $pgVar      = $branchShifts->whereNotNull('cash_variance')->sum(fn ($s) => (float) $s->cash_variance);
+                            @endphp
+                            <span class="ms-3 small text-muted">
+                                is safhe par expected
+                                <b class="text-body">{{ number_format($pgExpected, 2) }}</b>
+                                @if(abs($pgVar) > 0.005)
+                                    · farq
+                                    <b class="{{ $pgVar < 0 ? 'text-danger' : 'text-warning' }}">{{ number_format($pgVar, 2) }}</b>
+                                @endif
+                            </span>
                         @endif
                     </td>
                     <td class="text-end">
@@ -120,33 +137,7 @@
                         <td>{{ $shift->openedBy?->name }}</td>
                         <td>{{ app(\App\Support\TenantClock::class)->format($shift->opened_at, 'Y-m-d H:i', $shift->timezone_name) }}</td>
                         <td>{{ $shift->closed_at ? app(\App\Support\TenantClock::class)->format($shift->closed_at, 'Y-m-d H:i', $shift->timezone_name) : '—' }}</td>
-                        @php
-                            // Ek hi faisla, har khaane par — wahi AmountVisibility jo Close Shift
-                            // aur dashboard poochte hain. Branch na mile to masked (fail closed).
-                            $see  = $maySeeAmounts[$shift->branch_id] ?? false;
-                            $mny  = fn ($v) => $see ? number_format((float) $v, 2) : '*****';
-                            $diff = $shift->cash_variance;
-                        @endphp
-                        <td class="text-end">{{ $mny($shift->opening_cash) }}</td>
-                        <td class="text-end">{{ $mny($shift->total_cash) }}</td>
-                        <td class="text-end">{{ $mny($shift->total_card) }}</td>
-                        <td class="text-end">{{ $mny($shift->total_bank_transfer) }}</td>
-                        <td class="text-end">{{ $mny($shift->total_refunds) }}</td>
-                        <td class="text-end fw-semibold">{{ $mny($shift->expected_cash) }}</td>
-                        <td class="text-end">{{ $shift->counted_cash === null ? '—' : $mny($shift->counted_cash) }}</td>
-                        <td class="text-end">
-                            @if(! $see)
-                                *****
-                            @elseif($diff === null)
-                                <span class="text-muted">—</span>
-                            @else
-                                {{-- Kami surkh, zyadti amber, barabar sabz: rang khud bata deta hai
-                                     ke kis daraz ko dekhna hai. --}}
-                                <span class="{{ $diff < -0.005 ? 'text-danger fw-semibold' : ($diff > 0.005 ? 'text-warning fw-semibold' : 'text-success') }}">
-                                    {{ number_format((float) $diff, 2) }}
-                                </span>
-                            @endif
-                        </td>
+                        <td>{{ ($maySeeAmounts[$shift->branch_id] ?? false) ? number_format($shift->opening_cash, 2) : '*****' }}</td>
                         <td>
                             @if($shift->status === 'open')
                                 <span class="badge bg-warning text-dark">Open</span>
@@ -155,39 +146,50 @@
                             @endif
                         </td>
                         <td class="text-end">
+                            {{-- SHIFT-RECONCILE-2: hisab yahin, isi satar ke neeche — safha chhora
+                                 kiye bagair. Jis ke paas raqam parhne ki ijazat nahi, uske liye ye
+                                 button hai hi nahi: ek khali panel khol dena us se bura hai. --}}
+                            @if($maySeeAmounts[$shift->branch_id] ?? false)
+                                <button type="button" class="btn btn-sm btn-outline-secondary me-1"
+                                    data-cash-toggle="{{ $shift->id }}"
+                                    aria-expanded="false" aria-controls="cash-{{ $shift->id }}"
+                                    title="Cash detail">
+                                    <i class="ti ti-cash" aria-hidden="true"></i>
+                                </button>
+                            @endif
                             @can('tenant.shifts.show')
                                 <a href="{{ url('/shifts/' . $shift->id) }}" class="btn btn-sm btn-dark">View</a>
                             @endcan
                         </td>
                     </tr>
-                @php
-                    // Sirf IS SAFHE ka jama — list paginated hai, is liye ye poore branch ka
-                    // hisab hone ka dawa nahi karta, aur label bhi yehi kehta hai.
-                    $see    = $maySeeAmounts[$branchId] ?? false;
-                    $sum    = fn (string $col) => $branchShifts->sum(fn ($s) => (float) $s->{$col});
-                    $sumVar = $branchShifts->whereNotNull('cash_variance')->sum(fn ($s) => (float) $s->cash_variance);
-                    $mny    = fn ($v) => $see ? number_format((float) $v, 2) : '*****';
-                @endphp
-                <tr class="fw-semibold border-top border-2">
-                    <td colspan="5" class="text-end text-muted">Is safhe ka jama —</td>
-                    <td class="text-end">{{ $mny($sum('opening_cash')) }}</td>
-                    <td class="text-end">{{ $mny($sum('total_cash')) }}</td>
-                    <td class="text-end">{{ $mny($sum('total_card')) }}</td>
-                    <td class="text-end">{{ $mny($sum('total_bank_transfer')) }}</td>
-                    <td class="text-end">{{ $mny($sum('total_refunds')) }}</td>
-                    <td class="text-end">{{ $mny($sum('expected_cash')) }}</td>
-                    <td class="text-end">{{ $mny($sum('counted_cash')) }}</td>
-                    <td class="text-end">
-                        @if(! $see)
-                            *****
-                        @else
-                            <span class="{{ $sumVar < -0.005 ? 'text-danger' : ($sumVar > 0.005 ? 'text-warning' : 'text-success') }}">
-                                {{ number_format($sumVar, 2) }}
-                            </span>
-                        @endif
-                    </td>
-                    <td colspan="2"></td>
-                </tr>
+                    @if($maySeeAmounts[$shift->branch_id] ?? false)
+                        @php
+                            $mny  = fn ($v) => number_format((float) $v, 2);
+                            $diff = $shift->cash_variance;
+                        @endphp
+                        <tr id="cash-{{ $shift->id }}" class="cash-detail d-none">
+                            <td colspan="8" class="bg-body-tertiary">
+                                <div class="cash-grid">
+                                    <div><span>Cash sale</span><b>{{ $mny($shift->total_cash) }}</b></div>
+                                    <div><span>Card</span><b>{{ $mny($shift->total_card) }}</b></div>
+                                    <div><span>Bank</span><b>{{ $mny($shift->total_bank_transfer) }}</b></div>
+                                    <div><span>Refunds</span><b>{{ $mny($shift->total_refunds) }}</b></div>
+                                    <div><span>Expected</span><b>{{ $mny($shift->expected_cash) }}</b></div>
+                                    <div><span>Counted</span><b>{{ $shift->counted_cash === null ? '—' : $mny($shift->counted_cash) }}</b></div>
+                                    <div>
+                                        <span>Difference</span>
+                                        @if($diff === null)
+                                            <b class="text-muted">—</b>
+                                        @else
+                                            {{-- Kami surkh, zyadti amber, barabar sabz — rang khud
+                                                 bata deta hai ke kis daraz ko dekhna hai. --}}
+                                            <b class="{{ $diff < -0.005 ? 'text-danger' : ($diff > 0.005 ? 'text-warning' : 'text-success') }}">{{ $mny($diff) }}</b>
+                                        @endif
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    @endif
                 @endforeach
             @empty
                 <tr>
@@ -196,6 +198,22 @@
             @endforelse
             </tbody>
         </table>
+@if($anyCash)
+@push('scripts')
+<script>
+    /* Ek hi listener poore table ke liye — har qatar par apna handler lagana paginated list par
+       fuzool hai, aur naye rows par khud chalta rehta hai. */
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-cash-toggle]');
+        if (!btn) { return; }
+        var row = document.getElementById('cash-' + btn.dataset.cashToggle);
+        if (!row) { return; }
+        var open = row.classList.toggle('d-none');
+        btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+    });
+</script>
+@endpush
+@endif
 
         <div class="mt-3">{{ $shifts->links() }}</div>
     </div>

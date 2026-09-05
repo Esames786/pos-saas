@@ -195,12 +195,12 @@ class HideAmountsFromOperatorsMySqlTest extends MySqlTenantTestCase
     }
 
     /**
-     * SHIFT-RECONCILE-1: the list carries the whole reconciliation now — opening, cash sale, card,
-     * bank, refunds, expected, counted and the difference — so every one of those columns has to
-     * answer the same AmountVisibility the close screen does. A mask on six columns and a figure
-     * on the seventh would be no mask at all.
+     * SHIFT-RECONCILE-2: the cash detail lives in a panel that opens under the row. Hidden is not
+     * the same as absent — a d-none row still ships its figures in the HTML — so for an operator
+     * the whole panel must not be RENDERED at all, and neither must the button that opens it. An
+     * empty panel would be worse than no panel.
      */
-    public function test_the_shift_list_masks_every_money_column(): void
+    public function test_the_shift_list_renders_no_cash_panel_for_an_operator(): void
     {
         $this->hideOn();
         $this->revokeFromOperator();
@@ -210,10 +210,14 @@ class HideAmountsFromOperatorsMySqlTest extends MySqlTenantTestCase
         $this->assertBodyHasNoExpectedCash($html, 'shift list');
         $this->assertStringNotContainsString('12,000.00', $html,
             'shift list: the opening cash is still readable');
+        $this->assertStringNotContainsString('data-cash-toggle', $html,
+            'shift list: an operator must not even be offered the cash panel');
+        $this->assertStringNotContainsString('cash-detail', $html,
+            'shift list: the panel itself must not be in the page');
         $this->assertStringContainsString('*****', $html, 'shift list: the mask must be shown');
     }
 
-    /** And the Owner reads the same list in full. */
+    /** And the Owner gets the panel, with the figures in it. */
     public function test_the_owner_reads_every_money_column_on_the_list(): void
     {
         $this->hideOn();
@@ -229,6 +233,9 @@ class HideAmountsFromOperatorsMySqlTest extends MySqlTenantTestCase
             $this->assertStringContainsString($figure, $html, "the Owner must still read {$what}");
         }
         $this->assertStringNotContainsString('*****', $html, 'nothing is masked from the Owner');
+        $this->assertStringContainsString('data-cash-toggle', $html,
+            'the Owner is offered the cash panel');
+        $this->assertStringContainsString('cash-detail', $html, 'and the panel is rendered');
     }
 
     /** Same two screens, Owner: nothing is hidden from the person who owns the money. */
