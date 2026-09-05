@@ -116,21 +116,62 @@
      * deal money. So such a section names the deals on their own line first, and only what is left
      * is called charges. CATEGORIES still carries its deals and passes false.
      */
-    $bridgeRows = function (float $lineNet, int $span, bool $excludesDeals = false) use ($bridgeNetSales, $bridgeDealsNet, $fmt) {
+    /**
+     * CHARGE-BREAKUP-1 — har charge apne naam se.
+     *
+     * "Plus Delivery & Other Charges" ek residual thi, jama nahi: NET SALES minus section ka apna
+     * total. Us ek naam ke neeche chaar alag cheezein thin — delivery, tips, tax, service charge —
+     * aur padhne wala ye nahi keh sakta tha ke 600 kis ka hai. Ab har ek apni satar par hai.
+     *
+     * Residual KHATM nahi hui, sirf aakhir me chali gayi. Wo is liye rakhi gayi thi ke hisab
+     * HAMESHA band ho (REPORT-CHARGE-BRIDGE-1): agar sirf delivery chhapti, to jis din koi aur
+     * charge hota us din section NET SALES tak pahunchta hi nahi aur farq CHUP-CHAAP gum ho jata.
+     * Ab jo naam nahi paata wo "Plus Other Charges" me nazar aata hai — gum nahi hota, aur ye
+     * ishara bhi deta hai ke kuch naya aa gaya hai jise naam dena chahiye.
+     *
+     * Delivery NET hai (charged − refunded): poori return par delivery wapas hoti hai, aur usay na
+     * ghatana bridge ko NET SALES se aage le jata.
+     */
+    $bridgeParts = [
+        'Plus Delivery Charge' => (float) ($bridge['delivery_charge'] ?? 0) - (float) ($bridge['delivery_refunded'] ?? 0),
+        'Plus Service Charge'  => (float) ($bridge['service_charge'] ?? 0),
+        'Plus Tax'             => (float) ($bridge['tax'] ?? 0),
+        'Plus Tips'            => (float) ($bridge['tips'] ?? 0),
+        // Ye BILL ka discount hai (SUM(o.discount_amount)), line ka nahi — line ke discounts pehle
+        // hi line_total ke andar hain, is liye yahan dobara nahi ginte. Bill ka discount lines me
+        // se ghata hi nahi jaata, is liye bridge me ghatna PARTA hai; bagair iske wo ek be-naam
+        // manfi "Other" ban kar khara rehta tha.
+        'Less Discount'         => -(float) ($bridge['discount'] ?? 0),
+    ];
+
+    $bridgeRows = function (float $lineNet, int $span, bool $excludesDeals = false) use ($bridgeNetSales, $bridgeDealsNet, $bridgeParts, $fmt) {
         $deals = $excludesDeals ? $bridgeDealsNet : 0.0;
         $netCharges = round($bridgeNetSales - $lineNet - $deals, 2);
         if (abs($netCharges) <= 0.01 && abs($deals) <= 0.01) {
             return '';
         }
         $label = fn ($t) => '<td' . ($span > 1 ? ' colspan="' . ($span - 1) . '"' : '') . '>' . $t . '</td>';
+        $row   = fn ($t, $v) => '<tr>' . $label($t) . '<td class="amt">' . $fmt($v) . '</td></tr>';
 
-        return (abs($deals) > 0.01
-                ? '<tr>' . $label('Plus Deals') . '<td class="amt">' . $fmt($deals) . '</td></tr>'
-                : '')
-             . (abs($netCharges) > 0.01
-                ? '<tr>' . $label('Plus Delivery &amp; Other Charges (net)') . '<td class="amt">' . $fmt($netCharges) . '</td></tr>'
-                : '')
-             . '<tr class="total">' . $label('= NET SALES') . '<td class="amt">' . $fmt($bridgeNetSales) . '</td></tr>';
+        $out = abs($deals) > 0.01 ? $row('Plus Deals', $deals) : '';
+
+        // Naam wali lines pehle; jo sifar hai wo chhapti hi nahi — ek khali satar kagaz par kuch
+        // nahi kehti.
+        $named = 0.0;
+        foreach ($bridgeParts as $name => $amount) {
+            if (abs($amount) > 0.01) {
+                $out .= $row($name, $amount);
+                $named += $amount;
+            }
+        }
+
+        // Aur jo bacha — agar bacha. Yehi wo zamanat hai jo hisab band rakhti hai.
+        $other = round($netCharges - $named, 2);
+        if (abs($other) > 0.01) {
+            $out .= $row('Plus Other Charges', $other);
+        }
+
+        return $out . '<tr class="total">' . $label('= NET SALES') . '<td class="amt">' . $fmt($bridgeNetSales) . '</td></tr>';
     };
 
     // Per-order-type bridge: the BY ORDER TYPE categories/items are MERCHANDISE only, but this
