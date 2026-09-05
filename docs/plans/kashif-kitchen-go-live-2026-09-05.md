@@ -1,6 +1,7 @@
 # Kashif Kitchen go-live — research + plan
 
-**Date:** 2026-09-05 · **Status:** RESEARCH COMPLETE — nothing executed, nothing deployed
+**Date:** 2026-09-05 · **Status:** RESEARCH COMPLETE + BUILT — owner said go ahead; §9 records what
+the build actually found, which differs from the research in three places
 **Tenant:** `kashifkitchen` (kashifkitchen.bingoopos.com) — catering
 **Untouched by everything in this document:** `khatribiryani`, `kashiffood`, `tawakalkashif`,
 and the six public demos. Every finding below comes from READ-ONLY queries against prod
@@ -329,3 +330,73 @@ naye route ka permission `deploy.sh` sirf Owner ko deta hai (memory ka standing 
   reset chalane ki koshish auto-mode classifier ne roki — sahi roka; live-fire proof
   Owner ki ijazat ka muntazir hai.
 - **Prod HEAD:** `4ca972e` — is research se koi code nahi badla.
+
+
+---
+
+## 9. Jo build ke doran mila — research se teen jagah farq nikla
+
+Research parh kar likha gaya tha; build karte waqt teen cheezein **badal gayin**. Neeche
+sach likha hai, purana andaza nahi.
+
+### 9.1 Reset ki kamiyaan **do** nahi, **char** thin
+
+Guard ko poore schema par chalate hi do aur tables saamne aa gayin jo local
+kashifkitchen par maujood hi nahi thin (uski migrations peechay hain), magar asli
+schema me hain:
+
+| table | faisla | kyun |
+|---|---|---|
+| `customer_translations` | KEEP | master data ka tarjuma |
+| `supplier_translations` | KEEP | wahi |
+| `pos_quick_report_settings` | KEEP | per-user config, `user_printer_settings` ke saath |
+| `print_agent_commands` | **WIPE** | agent ko diye gaye ping/reboot work items — `print_jobs` ki tarah aarzi. Hafte purana queued reboot reset ke baad chalna nahi chahiye |
+
+Yehi is guard ke widen karne ka poora point tha: **jo guard apne contract se tang ho,
+wo hamesha theek un tables ke baare me khamosh rahega jin ke baare me kisi ne socha hi
+nahi.**
+
+### 9.2 Phone: 165 nahi — **161 provable + 9 aise jinhe chhoona ghalat hoga**
+
+Pehla ginti ka tareeqa (`<10 ya >12 digits`) galat tha; 12-digit wale chhoot gaye thay.
+Asli tasveer:
+
+| shakl | ginti | faisla |
+|---|---|---|
+| 22 digits = 11 + 11, dono `0` se shuru | **161** | split — saboot pukhta |
+| 12 digits, ek digit bacha | 5 | **chhoda** — ye doosra number nahi, **typo** hai. Split karne se ek asli number ghalat ban jata |
+| 15 / 21 / 26 / 33 digits | 4 | **chhoda** — adhoore ya teen number chipke hue; insaan dekhe |
+
+Aur jo research me bilkul nazar nahi aaya tha: **161 me se 61 rows theek hone ke baad
+un customers ke saath phone share karte hain jo pehle se book me hain** —
+`#4692 MR,MUBASHSHIR` ↔ `#117 MR,MUBASHSHIR`, `#4705 MR. SHERJIL` ↔ `#551 MR. SHERJEEL`.
+Yaani yehi ek shakhs do baar mojood hai. Command **merge nahi karta** — kaunsa row asli
+hai, kaunsa naam, kaunsa address, ye faisla script ka nahi. Wo sirf list chhaap deta hai.
+
+### 9.3 Jad theek ki gayi, sirf rows nahi
+
+`scripts/extract-legacy-xlsx.php:91` par `preg_replace('/[^0-9]/', '', …)` hi asal mujrim
+tha: purane software ke DO number chipak kar **ek 22-digit string** ban jaate, aur wohi
+string customer ki **shanakht** ban jaati. Sirf prod ki rows theek karne se agla rebuild
+wapas wahi kharabi le aata.
+
+Extractor dobara chala: **customers 4,848 → 4,785** — 63 jhooti shanakhtein apni asli
+shanakht me mil gayin. `CateringLegacyRebuildMySqlTest` ki 4,848 wali tawaqqo **buggy
+output ki ginti thi**; ab 4,785 hai, wajah comment me likhi hai taake koi ise "theek"
+kar ke wapas na tore.
+
+### 9.4 Jo bana
+
+| cheez | kya karta hai |
+|---|---|
+| `catering:import-legacy-suppliers` | 236 naam + 28 phone. Allowlist `kashifkitchen`, `--dry-run` default, `code` par idempotent. **Opening balance kabhi nahi likhta** — 14 suppliers (Σ 6,491,957 cr / Σ 4,485,746 dr) naam le kar warn karta hai. GL/stock fingerprint before/after |
+| `catering:repair-legacy-customer-phones` | Sirf 22-digit shakl split karta hai; doosra number address me `Alt phone:` bana kar rakhta hai; **row kabhi delete nahi, merge kabhi nahi**; dobara chalane par note stack nahi hota; customer count before/after assert karta hai |
+| `CateringLegacyMasterDataMySqlTest` | 8 guards — asal commands Artisan se chalate hain, rule ki naqal nahi. Allowlist, flag, paisa, idempotency, "delete nahi", "merge nahi" |
+
+### 9.5 Opening balances — abhi bhi ruke hue hain, aur ye jaan-boojh kar hai
+
+Command inhe chhoota nahi. 14 suppliers ki ye rakamein **paisa** hain: bina journal
+entry ke `suppliers.opening_balance` me daalna 64.9 lakh ki aisi liability bana deta jise
+koi ledger support na karta, aur trial balance jhoot bolta. Ye tabhi jayen jab owner
+tasdeeq kar de ke aaj bhi sach hain, aur GL posting (Dr 3300 / Cr 2100) ke saath jayen —
+wahi raasta jo Khatri ke liye `52b5c85` me bana tha.
