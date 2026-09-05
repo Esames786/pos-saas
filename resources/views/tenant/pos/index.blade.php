@@ -1411,8 +1411,12 @@
                 <label class="form-label small text-muted">Sections — tick what to include (whole tenant, all terminals &amp; order types)</label>
                 @php
                     $qrSubFilterable = ['categories','items','waiters','order_types'];
+                    // DEAL-CATEGORY-1: Deals sits beside Items — Items no longer carries them, so
+                    // printing one without the other gives a total that does not reconcile.
                     $qrSections = [
                         'overview' => 'Overview', 'categories' => 'Categories', 'items' => 'Items',
+                        'category_items' => 'Items by Category',
+                        'deals' => 'Deals',
                         'waiters' => 'Waiters', 'order_types' => 'Order Types', 'order_type_combos' => 'Order-Type Combos',
                         'cancellations' => 'Cancellations', 'cash_bank' => 'Cash & Bank',
                     ];

@@ -26,6 +26,7 @@ class Branch extends Model
         'held_kot_line_cancellation_approval_mode',
         'manual_discount_approval_mode',
         'sales_return_approval_mode',
+        'hide_amounts_from_operators',
         'receipt_footer',
         'status',
         'sales_operating_mode',
@@ -41,6 +42,7 @@ class Branch extends Model
             'is_tax_enabled' => 'boolean',
             'show_tax_number_on_invoice' => 'boolean',
             'allow_negative_stock' => 'boolean',
+            'hide_amounts_from_operators' => 'boolean',
             'local_edge_activated_at' => 'datetime',
             'local_edge_suspended_at' => 'datetime',
         ];

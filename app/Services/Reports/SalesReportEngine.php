@@ -98,17 +98,25 @@ class SalesReportEngine
                     ->whereColumn('sp.sales_order_id', 'o.id')
                     ->where('sp.payment_method_id', $f['payment_method_id']);
             }))
+            // DEAL-CATEGORY-1: the FILTER follows the same rule as the grouping. Left on the
+            // product alone, a report filtered to "Platters" would find no deals while the
+            // Categories section happily filed them there — a fresh contradiction, and a worse one
+            // than the original because it would look deliberate.
             ->when($f['category_id'], fn ($q) => $q->whereExists(function ($s) use ($f) {
                 $s->selectRaw('1')->from('sales_order_lines as fl')
-                    ->join('products as fp', 'fp.id', '=', 'fl.product_id')
+                    ->leftJoin('products as fp', 'fp.id', '=', 'fl.product_id')
+                    ->leftJoin('combos as fcb', 'fcb.id', '=', 'fl.combo_id')
                     ->whereColumn('fl.sales_order_id', 'o.id')
-                    ->whereIn('fp.category_id', $this->categoryWithDescendants((int) $f['category_id']));
+                    ->whereIn(DB::raw('COALESCE(fcb.category_id, fp.category_id)'),
+                        $this->categoryWithDescendants((int) $f['category_id']));
             }))
             ->when($f['category_ids'], fn ($q) => $q->whereExists(function ($s) use ($f) {
                 $s->selectRaw('1')->from('sales_order_lines as fl')
-                    ->join('products as fp', 'fp.id', '=', 'fl.product_id')
+                    ->leftJoin('products as fp', 'fp.id', '=', 'fl.product_id')
+                    ->leftJoin('combos as fcb', 'fcb.id', '=', 'fl.combo_id')
                     ->whereColumn('fl.sales_order_id', 'o.id')
-                    ->whereIn('fp.category_id', $this->categoriesWithDescendants($f['category_ids']));
+                    ->whereIn(DB::raw('COALESCE(fcb.category_id, fp.category_id)'),
+                        $this->categoriesWithDescendants($f['category_ids']));
             }))
             ->when($f['product_id'], fn ($q) => $q->whereExists(function ($s) use ($f) {
                 $s->selectRaw('1')->from('sales_order_lines as fl')
@@ -142,17 +150,44 @@ class SalesReportEngine
      */
     private function linesBase(array $f, bool $includeComponents = false)
     {
+        $cat = $this->lineCategoryExpr();
+
         return DB::connection('tenant')->table('sales_order_lines as l')
             ->joinSub($this->salesBase($f)->select('o.*'), 'o', 'o.id', '=', 'l.sales_order_id')
             ->unless($includeComponents, fn ($q) => $q->where(
                 fn ($w) => $w->where('l.line_kind', '!=', 'component')->orWhereNull('l.line_kind')
             ))
             ->leftJoin('products as p', 'p.id', '=', 'l.product_id')
-            ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
-            ->when($f['category_id'], fn ($q) => $q->whereIn('p.category_id', $this->categoryWithDescendants((int) $f['category_id'])))
-            ->when($f['category_ids'], fn ($q) => $q->whereIn('p.category_id', $this->categoriesWithDescendants($f['category_ids'])))
+            // DEAL-CATEGORY-1: joined here, once, so every consumer of this builder files a deal
+            // under the deal's own head without having to remember the rule.
+            ->leftJoin('combos as cb', 'cb.id', '=', 'l.combo_id')
+            ->leftJoin('categories as c', fn ($j) => $j->on(DB::raw('c.id'), '=', DB::raw($cat)))
+            ->when($f['category_id'], fn ($q) => $q->whereIn(DB::raw($cat), $this->categoryWithDescendants((int) $f['category_id'])))
+            ->when($f['category_ids'], fn ($q) => $q->whereIn(DB::raw($cat), $this->categoriesWithDescendants($f['category_ids'])))
             ->when($f['product_id'], fn ($q) => $q->where('l.product_id', $f['product_id']))
             ->when($f['product_ids'], fn ($q) => $q->whereIn('l.product_id', $f['product_ids']));
+    }
+
+    /**
+     * DEAL-CATEGORY-1 — the ONE definition of "which category a sales line reports under".
+     *
+     * A deal has no product of its own: its `combo_header` line sits on whichever product it was
+     * built from, so the money followed that product's category. Classic Platter 3 begins with
+     * Arabic Rice, so 26,400 of platters was filed under Extras — beside the cheese slices.
+     *
+     * The combo already knows its own head (`combos.category_id`, populated since
+     * POS-COMBO-CATEGORY-1 on 30 Aug and declared display-only at the time). This reads it.
+     *
+     * It lives in ONE place on purpose. The category was worked out in three separate spots —
+     * the grouping, the category FILTER and the departments report — and three separate COALESCEs
+     * would fix September and lose again the next time somebody writes a fourth. That is precisely
+     * how this family of bugs keeps returning. Same reasoning as `businessDayExpr()`.
+     *
+     * Requires `combos as cb` and `products as p` to be in scope — both line builders join them.
+     */
+    private function lineCategoryExpr(): string
+    {
+        return 'COALESCE(cb.category_id, p.category_id)';
     }
 
     /** Period returns (allocated by BUSINESS day — the order's day it reverses, calendar
@@ -179,13 +214,18 @@ class SalesReportEngine
     /** Period return lines with the same sale-side filters as returnsBase(). */
     private function returnLinesBase(array $f)
     {
+        $cat = $this->lineCategoryExpr();
+
         return $this->returnsBase($f)
             ->join('sales_return_lines as rl', 'rl.sales_return_id', '=', 'r.id')
             ->join('sales_order_lines as ol', 'ol.id', '=', 'rl.sales_order_line_id')
             ->leftJoin('products as p', 'p.id', '=', 'rl.product_id')
-            ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
-            ->when($f['category_id'], fn ($q) => $q->whereIn('p.category_id', $this->categoryWithDescendants((int) $f['category_id'])))
-            ->when($f['category_ids'], fn ($q) => $q->whereIn('p.category_id', $this->categoriesWithDescendants($f['category_ids'])))
+            // DEAL-CATEGORY-1: the combo comes off the ORIGINAL sale line, so a refunded deal
+            // credits back to the same head it was sold under.
+            ->leftJoin('combos as cb', 'cb.id', '=', 'ol.combo_id')
+            ->leftJoin('categories as c', fn ($j) => $j->on(DB::raw('c.id'), '=', DB::raw($cat)))
+            ->when($f['category_id'], fn ($q) => $q->whereIn(DB::raw($cat), $this->categoryWithDescendants((int) $f['category_id'])))
+            ->when($f['category_ids'], fn ($q) => $q->whereIn(DB::raw($cat), $this->categoriesWithDescendants($f['category_ids'])))
             ->when($f['product_id'], fn ($q) => $q->where('rl.product_id', $f['product_id']))
             ->when($f['product_ids'], fn ($q) => $q->whereIn('rl.product_id', $f['product_ids']));
     }
@@ -344,10 +384,12 @@ class SalesReportEngine
     // ── R. Category → child → item rollup ───────────────────────────────────────────────────────
     public function byCategory(array $f): array
     {
+        $cat = $this->lineCategoryExpr();
+
         $rows = $this->linesBase($f)
-            ->groupBy('p.category_id')
+            ->groupByRaw($cat)
             ->selectRaw(
-                'p.category_id,
+                $cat . ' as category_id,
                  MAX(c.name) as category_name, MAX(c.parent_id) as parent_id,
                  COUNT(DISTINCT o.id) as orders,
                  COALESCE(SUM(l.quantity),0) as sold_qty,
@@ -356,7 +398,7 @@ class SalesReportEngine
                  COALESCE(SUM(l.tax_amount),0) as tax,
                  COALESCE(SUM(l.line_total),0) as net'
             )->get();
-        $returnByCategory = $this->returnStatsBy($f, 'p.category_id');
+        $returnByCategory = $this->returnStatsBy($f, $cat);
         $rootMap = $this->rootMap();
         $names = DB::connection('tenant')->table('categories')->pluck('name', 'id');
 
@@ -394,8 +436,10 @@ class SalesReportEngine
         // every leaf category to its root and counts distinct orders per root.
         $distinctOrdersByRoot = [];
         if ($rootMap !== []) {
-            $cases = collect($rootMap)->map(fn ($root, $cat) => 'WHEN ' . (int) $cat . ' THEN ' . (int) $root)->implode(' ');
-            $rootExpr = 'CASE p.category_id ' . $cases . ' ELSE 0 END';
+            $cases = collect($rootMap)->map(fn ($root, $catId) => 'WHEN ' . (int) $catId . ' THEN ' . (int) $root)->implode(' ');
+            // DEAL-CATEGORY-1: rolls up from the SAME category the rows were grouped by, or a
+            // deal's order would be counted against the head its anchor product happens to sit in.
+            $rootExpr = 'CASE ' . $cat . ' ' . $cases . ' ELSE 0 END';
             $distinctOrdersByRoot = $this->linesBase($f)
                 ->selectRaw($rootExpr . ' as root_id, COUNT(DISTINCT o.id) as orders')
                 ->groupBy(DB::raw($rootExpr))
@@ -419,9 +463,16 @@ class SalesReportEngine
                 $c['net_qty'] = $c['sold_qty'] - $c['returned_qty'];
                 $c['net_value'] = $c['net'] - $c['returns_amount'];
             }
+            // REPORT-CATEGORY-ORDER-1: within a head too, so a sub-category lands where the menu
+            // puts it rather than where the grouping happened to leave it.
+            usort($root['children'], fn ($x, $y) => $this->compareCategoryOrder((int) $x['id'], (int) $y['id']));
         }
+        unset($root);
 
-        return array_values($tree);
+        $out = array_values($tree);
+        usort($out, fn ($a, $b) => $this->compareCategoryOrder((int) $a['id'], (int) $b['id']));
+
+        return $out;
     }
 
     // ── S. Item report ───────────────────────────────────────────────────────────────────────────
@@ -446,18 +497,31 @@ class SalesReportEngine
      * deal — the same 2,950 as before. A return whose original line is missing keeps combo NULL and
      * lands on the plain row rather than disappearing.
      */
-    public function byItem(array $f, string $sort = 'net'): array
+    /**
+     * DEAL-CATEGORY-1: `$excludeCombos` takes the deals out, because they now have a section of
+     * their own (`byDeal`). Printed together they would count the same money twice.
+     *
+     * The flag defaults to FALSE so nothing that already calls this changes behaviour; only the
+     * Items section asks for the split. And the two must stay linked in the UI — Items alone, with
+     * deals removed and no Deals section beside it, is a total that does not reconcile.
+     */
+    public function byItem(array $f, string $sort = 'net', bool $excludeCombos = false): array
     {
         $key = fn ($r) => $r->product_id . ':' . ($r->product_variant_id ?? '') . ':' . ($r->combo_id ?? '');
 
         $rows = $this->linesBase($f)
+            ->when($excludeCombos, fn ($q) => $q->whereNull('l.combo_id'))
             ->leftJoin('product_variants as v', 'v.id', '=', 'l.product_variant_id')
-            ->leftJoin('combos as cb', 'cb.id', '=', 'l.combo_id')
+            // `combos as cb` is joined by linesBase() since DEAL-CATEGORY-1 — joining it again
+            // here would be a duplicate alias.
             ->groupBy('l.product_id', 'l.product_variant_id', 'l.combo_id')
             ->selectRaw(
                 'l.product_id, l.product_variant_id, l.combo_id,
                  COALESCE(MAX(cb.name), MAX(l.product_name)) as item,
                  MAX(v.name) as variant, MAX(c.name) as category,
+                 -- ITEMS-BY-CATEGORY-1: the id travels with the name, so a row can be filed under
+                 -- its ROOT head without a second query guessing the head from a string.
+                 MAX(c.id) as category_id,
                  COALESCE(SUM(l.quantity),0) as sold_qty,
                  COALESCE(SUM(l.quantity * l.unit_price),0) as gross,
                  COALESCE(SUM(l.discount_amount),0) as discount,
@@ -466,12 +530,16 @@ class SalesReportEngine
             )->get()->keyBy($key);
         $returnRows = $this->returnLinesBase($f)
             ->leftJoin('product_variants as v', 'v.id', '=', 'rl.product_variant_id')
-            ->leftJoin('combos as cb', 'cb.id', '=', 'ol.combo_id')
+            // as above — returnLinesBase() already joins `combos as cb` off ol.combo_id.
+            // The refund follows the sale: exclude a deal's refund from Items too, or a returned
+            // deal would credit a section it was never counted in.
+            ->when($excludeCombos, fn ($q) => $q->whereNull('ol.combo_id'))
             ->groupBy('rl.product_id', 'rl.product_variant_id', 'ol.combo_id')
             ->selectRaw(
                 'rl.product_id, rl.product_variant_id, ol.combo_id,
                  COALESCE(MAX(cb.name), MAX(ol.product_name)) as item,
                  MAX(v.name) as variant, MAX(c.name) as category,
+                 MAX(c.id) as category_id,
                  COALESCE(SUM(rl.quantity),0) as returned_qty,
                  COALESCE(SUM(rl.line_total),0) as returns_amount'
             )->get()->keyBy($key);
@@ -499,6 +567,235 @@ class SalesReportEngine
             'alpha' => null,
             default => (float) $r->net_value,
         })->when($sort === 'alpha', fn ($c) => $c->sortBy('item'))->values()->all();
+    }
+
+    /**
+     * REPORT-CATEGORY-ORDER-1 — the menu's own order, for the report to print in.
+     *
+     * `categories.sort_order` is the number the owner sets on the Catalog screen, and the POS has
+     * always laid its pills out by it. The reports never looked: CATEGORIES came back in whatever
+     * order MySQL grouped the rows in, and ITEMS BY CATEGORY led with the biggest earner. So the
+     * shop read its takings in an order it had never chosen, and the one field that exists to say
+     * "print biryani first" did nothing outside the till.
+     *
+     * Name is the tiebreaker so two categories sharing a number still come out the same way twice.
+     *
+     * DELIBERATELY NOT CACHED in a static. The scheduled report command walks every tenant inside
+     * one PHP process, so a map held in a static would be built from the first tenant's categories
+     * and then silently reused for the rest — every shop after the first would print in a
+     * stranger's order. It is one small query per section; a report asks for it twice.
+     *
+     * @return array<int, array{0:int, 1:string}>  id => [sort_order, name]
+     */
+    private function categoryOrder(): array
+    {
+        return DB::connection('tenant')->table('categories')
+            ->get(['id', 'sort_order', 'name'])
+            ->mapWithKeys(fn ($c) => [(int) $c->id => [(int) $c->sort_order, (string) $c->name]])
+            ->all();
+    }
+
+    /** Compare two category ids by the order the owner set on the Catalog screen. */
+    private function compareCategoryOrder(int $a, int $b): int
+    {
+        $order = $this->categoryOrder();
+        // Anything with no category of its own ("Uncategorised") sorts last, not first: a bucket
+        // for the unfiled is not what a shop wants at the top of its report.
+        $left  = $order[$a] ?? [PHP_INT_MAX, 'zzz'];
+        $right = $order[$b] ?? [PHP_INT_MAX, 'zzz'];
+
+        return [$left[0], $left[1]] <=> [$right[0], $right[1]];
+    }
+
+    /**
+     * BRIDGE-DEALS-1 — the net value of the deals in a period, for the section bridges.
+     *
+     * A section that EXCLUDES deals (Items, and Items by Category) cannot close to NET SALES by
+     * adding charges alone: the deals are missing from its total too. Before this the whole gap was
+     * printed as "Plus Delivery & Other Charges", so at Kashif Food on 2 September a line that
+     * should have read 4,369 read 95,859 — the other 91,490 was deal money wearing the wrong name.
+     *
+     * Deliberately a small aggregate of its own rather than a byDeal() call: the bridge needs one
+     * number and byDeal builds a whole grouped report to get it.
+     */
+    public function dealsNet(array $f): float
+    {
+        $sold = (float) $this->linesBase($f)->whereNotNull('l.combo_id')->sum('l.line_total');
+        $back = (float) $this->returnLinesBase($f)->whereNotNull('ol.combo_id')->sum('rl.line_total');
+
+        return round($sold - $back, 2);
+    }
+
+    /**
+     * ITEMS-BY-CATEGORY-1 — the Items section, filed under category heads.
+     *
+     * The client's old software prints its item report this way: a category head with its own
+     * subtotal, then the items beneath it. The owner reads both papers side by side, so he asked
+     * for the same shape here — but as a SECTION OF ITS OWN, beside Items rather than instead of
+     * it, exactly as Deals was added on 2 September. The existing Items report is untouched.
+     *
+     * It is built ON TOP OF `byItem($f, 'net', excludeCombos: true)` and does no arithmetic of its
+     * own beyond adding those same rows up. That is deliberate: two queries computing "the same"
+     * item money is how two figures eventually disagree, and this report exists precisely so the
+     * owner can reconcile. Deals stay out for the reason they are out of Items — they have their
+     * own section, and counting them here would double the money.
+     *
+     * Heads are ROOTS. A tenant nests its categories (Khatri files Beef Khatri / Khatri Sadi /
+     * Matka under Beef Khatri Biryani; Kashif files seven kinds of roll under Rolls), and the
+     * Categories section already rolls those up to the root. Filing items under the leaf instead
+     * would print head names that appear nowhere else on the report, with subtotals that reconcile
+     * against nothing. So the root leads and the leaf appears as a sub-head beneath it — but only
+     * where a root really has children with sales. A flat category prints its items directly,
+     * without a ceremonial sub-head repeating the name above it.
+     *
+     * @return list<array{head:string, head_id:int, nested:bool, groups:list<array>}>
+     */
+    public function byCategoryItems(array $f): array
+    {
+        $rows = $this->byItem($f, 'net', true);
+
+        if ($rows === []) {
+            return [];
+        }
+
+        $rootMap = $this->rootMap();
+        $names   = DB::connection('tenant')->table('categories')->pluck('name', 'id');
+        $money   = ['sold_qty', 'returned_qty', 'net_qty', 'gross', 'discount', 'tax', 'net', 'returns_amount', 'net_value'];
+
+        $heads = [];
+        foreach ($rows as $row) {
+            $leafId = $row->category_id !== null ? (int) $row->category_id : 0;
+            $rootId = $leafId !== 0 ? ($rootMap[$leafId] ?? $leafId) : 0;
+
+            $heads[$rootId]['head_id'] ??= $rootId;
+            $heads[$rootId]['head']    ??= $rootId === 0 ? 'Uncategorised' : ($names[$rootId] ?? ('#' . $rootId));
+
+            $group = &$heads[$rootId]['groups'][$leafId];
+            $group['id']   ??= $leafId;
+            $group['name'] ??= $leafId === 0 ? 'Uncategorised' : ($names[$leafId] ?? ('#' . $leafId));
+
+            foreach ($money as $k) {
+                $v                  = (float) ($row->{$k} ?? 0);
+                $group[$k]          = ($group[$k] ?? 0) + $v;
+                $heads[$rootId][$k] = ($heads[$rootId][$k] ?? 0) + $v;
+            }
+
+            $group['items'][] = [
+                'item'           => (string) $row->item,
+                'variant'        => $row->variant !== null ? (string) $row->variant : null,
+                'category'       => (string) ($row->category ?? ''),
+                'sold_qty'       => (float) $row->sold_qty,
+                'returned_qty'   => (float) $row->returned_qty,
+                'net_qty'        => (float) $row->net_qty,
+                'gross'          => (float) $row->gross,
+                'discount'       => (float) $row->discount,
+                'tax'            => (float) $row->tax,
+                'net'            => (float) $row->net,
+                'returns_amount' => (float) $row->returns_amount,
+                'net_value'      => round((float) $row->net_value, 2),
+            ];
+            unset($group);
+        }
+
+        $out = [];
+        foreach ($heads as $rootId => $head) {
+            // REPORT-CATEGORY-ORDER-1: sub-heads follow the menu, items stay biggest-first. The
+            // owner asked for exactly that — the CATEGORY order is his to arrange, the items
+            // beneath it are better read by size.
+            $groups = collect($head['groups'])
+                ->map(function (array $g) {
+                    $g['items'] = collect($g['items'])->sortByDesc('net_value')->values()->all();
+
+                    return $g;
+                })->values()->all();
+            usort($groups, fn ($x, $y) => $this->compareCategoryOrder((int) $x['id'], (int) $y['id']));
+
+            // A sub-head earns its line only when it says something the head does not: either the
+            // root has more than one child with sales, or the single group is a child by another
+            // name. One group named exactly like its head is just the head printed twice.
+            $head['nested'] = count($groups) > 1 || (int) ($groups[0]['id'] ?? 0) !== (int) $rootId;
+            $head['groups'] = $groups;
+            foreach ($money as $k) {
+                $head[$k] = round((float) ($head[$k] ?? 0), 2);
+            }
+            $out[] = $head;
+        }
+
+        // REPORT-CATEGORY-ORDER-1: the menu's order, the same one CATEGORIES prints in, so the two
+        // sections can be read side by side without hunting.
+        usort($out, fn (array $a, array $b) => $this->compareCategoryOrder((int) $a['head_id'], (int) $b['head_id']));
+
+        return $out;
+    }
+
+    /**
+     * DEAL-CATEGORY-1 — the Deals section: one row per deal, under its own head.
+     *
+     * This is the shape the client's old software has always printed — DEALS, MIDNIGHT DEAL 1,
+     * CLASSIC PLATTER, CHULLU KEBAB, POCKET FRIENDLY, each with its own subtotal — and the shape
+     * the POS has grouped deals in since POS-COMBO-CATEGORY-1.
+     *
+     * Only combo lines. Their counterpart, `byItem($f, …, excludeCombos: true)`, takes them out of
+     * Items, so the two sections together are the whole of the trading and neither double-counts.
+     *
+     * @return array<int, array{head:string, deal:string, sold_qty:float, returned_qty:float,
+     *                          net_qty:float, gross:float, discount:float, net:float,
+     *                          returns_amount:float, net_value:float}>
+     */
+    public function byDeal(array $f): array
+    {
+        $rows = $this->linesBase($f)
+            ->whereNotNull('l.combo_id')
+            ->groupBy('l.combo_id')
+            ->selectRaw(
+                'l.combo_id,
+                 MAX(cb.name) as deal,
+                 MAX(c.name) as head,
+                 COUNT(DISTINCT o.id) as orders,
+                 COALESCE(SUM(l.quantity),0) as sold_qty,
+                 COALESCE(SUM(l.quantity * l.unit_price),0) as gross,
+                 COALESCE(SUM(l.discount_amount),0) as discount,
+                 COALESCE(SUM(l.line_total),0) as net'
+            )->get()->keyBy('combo_id');
+
+        // A refunded deal credits the same row it sold on — the combo comes off the ORIGINAL line.
+        $returns = $this->returnLinesBase($f)
+            ->whereNotNull('ol.combo_id')
+            ->groupBy('ol.combo_id')
+            ->selectRaw('ol.combo_id, COALESCE(SUM(rl.quantity),0) as qty, COALESCE(SUM(rl.line_total),0) as amount')
+            ->get()->keyBy('combo_id');
+
+        $out = [];
+        foreach ($rows->keys()->merge($returns->keys())->unique() as $comboId) {
+            $row = $rows[$comboId] ?? null;
+            $ret = $returns[$comboId] ?? null;
+            $soldQty = (float) ($row->sold_qty ?? 0);
+            $retQty  = (float) ($ret->qty ?? 0);
+            $net     = (float) ($row->net ?? 0);
+            $retAmt  = (float) ($ret->amount ?? 0);
+
+            $out[] = [
+                'head'           => $row->head ?? 'Uncategorised',
+                'deal'           => $row->deal ?? ('#' . $comboId),
+                'orders'         => (int) ($row->orders ?? 0),
+                'sold_qty'       => $soldQty,
+                'returned_qty'   => $retQty,
+                'net_qty'        => $soldQty - $retQty,
+                'gross'          => (float) ($row->gross ?? 0),
+                'discount'       => (float) ($row->discount ?? 0),
+                'net'            => $net,
+                'returns_amount' => $retAmt,
+                'net_value'      => round($net - $retAmt, 2),
+            ];
+        }
+
+        // Grouped by head, biggest head first, biggest deal first inside it — the way the old
+        // software's item report reads.
+        $byHead = collect($out)->groupBy('head')
+            ->sortByDesc(fn ($g) => $g->sum('net_value'))
+            ->map(fn ($g) => $g->sortByDesc('net_value')->values());
+
+        return $byHead->flatten(1)->all();
     }
 
     // ── T. Waiter report (explicit Unassigned bucket) ────────────────────────────────────────────

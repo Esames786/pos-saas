@@ -118,13 +118,16 @@ class SalesReportController extends Controller
         if ($request->boolean('export_csv')) {
             return response()->streamDownload(function () use ($rows) {
                 $fp = fopen('php://output', 'w');
-                fputcsv($fp, ['Channel', 'Type', 'Orders', 'Gross Amount', 'Commission %', 'Commission Amount', 'Net After Commission']);
+                fputcsv($fp, ['Channel', 'Type', 'Orders', 'Returned', 'Gross Amount', 'Returns', 'Net of Returns', 'Commission %', 'Commission Amount', 'Net After Commission']);
                 foreach ($rows as $r) {
                     fputcsv($fp, [
                         $r->channel_name,
                         $r->channel_type ?: '-',
                         $r->order_count,
+                        $r->returned_count,
                         number_format($r->gross_amount, 2),
+                        number_format($r->returns_amount, 2),
+                        number_format($r->net_amount, 2),
                         number_format($r->commission_percent, 2),
                         number_format($r->commission_amount, 2),
                         number_format($r->gross_amount - $r->commission_amount, 2),
@@ -155,14 +158,17 @@ class SalesReportController extends Controller
         if ($request->boolean('export_csv')) {
             return response()->streamDownload(function () use ($rows) {
                 $fp = fopen('php://output', 'w');
-                fputcsv($fp, ['Rider', 'Phone', 'Branch', 'Deliveries', 'Total Amount']);
+                fputcsv($fp, ['Rider', 'Phone', 'Branch', 'Deliveries', 'Returned', 'Total Amount', 'Returns', 'Net Amount']);
                 foreach ($rows as $r) {
                     fputcsv($fp, [
                         $r->rider_name,
                         $r->rider_phone ?: '-',
                         $r->rider_branch,
                         $r->delivery_count,
+                        $r->returned_count,
                         number_format($r->total_amount, 2),
+                        number_format($r->returns_amount, 2),
+                        number_format($r->net_amount, 2),
                     ]);
                 }
                 fclose($fp);

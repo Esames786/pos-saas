@@ -5,6 +5,7 @@ namespace App\Services\Reports;
 use App\Models\Tenant\SalePayment;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\SalesOrderLine;
+use App\Models\Tenant\SalesReturn;
 use App\Services\Concerns\ResolvesBranchIds;
 use Illuminate\Support\Facades\DB;
 
@@ -106,7 +107,16 @@ class SalesReportService
             ->join('sales_orders', 'sales_order_lines.sales_order_id', '=', 'sales_orders.id')
             ->leftJoin('products', 'sales_order_lines.product_id', '=', 'products.id')
             ->leftJoin('categories', 'products.category_id', '=', 'categories.id')
-            ->where('sales_orders.status', 'paid')
+            // LEGACY-REPORTS-POPULATION-1 — two faults lived on this one line, and they hid each
+            // other: `paid` alone dropped every returned bill (money short), while nothing
+            // excluded a combo's component lines, so a deal counted its parts as separate sales
+            // (quantity over). At Kashif Food that read as 1,615 items sold for 808,120 where the
+            // Report Center said 1,325 for 816,250 — more things sold, for less money.
+            ->whereIn('sales_orders.status', SalesReportEngine::POPULATION)
+            // REPORT-DEAL-COMPONENTS-1, restated here: a deal's parts are not separate sales. All
+            // the money sits on the combo_header, so excluding them changes quantity, never value.
+            ->where(fn ($q) => $q->where('sales_order_lines.line_kind', '!=', 'component')
+                ->orWhereNull('sales_order_lines.line_kind'))
             ->when($branchIds, fn ($q) => $q->whereIn('sales_orders.branch_id', $branchIds))
             ->when(!empty($filters['date_from']),    fn ($q) => $q->whereRaw($this->businessDayExpr('sales_orders.') . ' >= ?', [$filters['date_from']]))
             ->when(!empty($filters['date_to']),      fn ($q) => $q->whereRaw($this->businessDayExpr('sales_orders.') . ' <= ?', [$filters['date_to']]))
@@ -143,7 +153,12 @@ class SalesReportService
         return SalePayment::query()
             ->join('sales_orders',    'sale_payments.sales_order_id',    '=', 'sales_orders.id')
             ->join('payment_methods', 'sale_payments.payment_method_id', '=', 'payment_methods.id')
-            ->where('sales_orders.status', 'paid')
+            // LEGACY-REPORTS-POPULATION-1 — this report answers "what came in at the counter", and
+            // money taken on a bill that was later returned still came in. `paid` alone hid
+            // 116,650 of it at Khatri. The refund is a document of its own and belongs on its own
+            // line, exactly as the Report Center's cash & bank section treats it — so the
+            // population widens here and nothing is netted off.
+            ->whereIn('sales_orders.status', SalesReportEngine::POPULATION)
             ->when($branchIds, fn ($q) => $q->whereIn('sales_orders.branch_id', $branchIds))
             ->when(!empty($filters['date_from']),   fn ($q) => $q->whereRaw($this->businessDayExpr('sales_orders.') . ' >= ?', [$filters['date_from']]))
             ->when(!empty($filters['date_to']),     fn ($q) => $q->whereRaw($this->businessDayExpr('sales_orders.') . ' <= ?', [$filters['date_to']]))
@@ -196,7 +211,7 @@ class SalesReportService
         // the engine does, so a refund punched after midnight on a still-open shift stays on that
         // shift's day. Calendar return_date is only the fallback for un-backfilled legacy rows.
         $clock = app(\App\Support\TenantClock::class);
-        $returnQuery = \App\Models\Tenant\SalesReturn::query()
+        $returnQuery = SalesReturn::query()
             ->where('status', 'posted')
             ->when($branchId, fn ($q, $v) => $q->where('branch_id', $v));
         // A return's order type / terminal live on its originating sales order, so scope through it.
@@ -205,9 +220,9 @@ class SalesReportService
         }
 
         if ($branchId) {
-            $returnQuery->whereRaw('COALESCE(business_date, DATE(return_date)) = ?', [$clock->currentBusinessDate(\App\Models\Tenant\Branch::find($branchId))]);
+            $returnQuery->whereRaw('COALESCE(business_date, DATE(return_date)) = ?', [$clock->operatingBusinessDate(\App\Models\Tenant\Branch::find($branchId))]);
         } else {
-            $map = $clock->currentBusinessDatesByBranch();
+            $map = $clock->operatingBusinessDatesByBranch();
             $returnQuery->where(function ($q) use ($map) {
                 foreach ($map as $bid => $date) {
                     $q->orWhere(fn ($w) => $w->where('branch_id', $bid)->whereRaw('COALESCE(business_date, DATE(return_date)) = ?', [$date]));
@@ -251,7 +266,11 @@ class SalesReportService
                 MAX(COALESCE(delivery_channels.type, ''))                    as channel_type,
                 MAX(COALESCE(delivery_channels.commission_percent, 0))       as commission_percent,
                 COUNT(*)                                                     as order_count,
+                SUM(CASE WHEN rf.refunded IS NULL THEN 0 ELSE 1 END)          as returned_count,
                 COALESCE(SUM(sales_orders.grand_total), 0)                   as gross_amount,
+                COALESCE(SUM(rf.refunded), 0)                                as returns_amount,
+                COALESCE(SUM(sales_orders.grand_total), 0)
+                    - COALESCE(SUM(rf.refunded), 0)                          as net_amount,
                 ROUND(COALESCE(SUM(sales_orders.grand_total), 0)
                     * MAX(COALESCE(delivery_channels.commission_percent, 0)) / 100, 2) as commission_amount
             ")
@@ -275,7 +294,11 @@ class SalesReportService
                 MAX(COALESCE(delivery_riders.phone, ''))            as rider_phone,
                 MAX(COALESCE(branches.name, 'All Branches'))        as rider_branch,
                 COUNT(*)                                            as delivery_count,
-                COALESCE(SUM(sales_orders.grand_total), 0)          as total_amount
+                SUM(CASE WHEN rf.refunded IS NULL THEN 0 ELSE 1 END) as returned_count,
+                COALESCE(SUM(sales_orders.grand_total), 0)          as total_amount,
+                COALESCE(SUM(rf.refunded), 0)                       as returns_amount,
+                COALESCE(SUM(sales_orders.grand_total), 0)
+                    - COALESCE(SUM(rf.refunded), 0)                 as net_amount
             ")
             ->groupBy('sales_orders.delivery_rider_id')
             ->orderByDesc('delivery_count')
@@ -288,7 +311,11 @@ class SalesReportService
                 sales_orders.delivery_rider_id,
                 COALESCE(MAX(delivery_riders.name), '(No rider)')  as rider_name,
                 COUNT(*)                                            as delivery_count,
-                COALESCE(SUM(sales_orders.grand_total), 0)          as total_amount
+                SUM(CASE WHEN rf.refunded IS NULL THEN 0 ELSE 1 END) as returned_count,
+                COALESCE(SUM(sales_orders.grand_total), 0)          as total_amount,
+                COALESCE(SUM(rf.refunded), 0)                       as returns_amount,
+                COALESCE(SUM(sales_orders.grand_total), 0)
+                    - COALESCE(SUM(rf.refunded), 0)                 as net_amount
             ")
             ->groupByRaw($this->businessDayExpr('sales_orders.') . ', sales_orders.delivery_rider_id')
             ->orderByDesc('sale_day')
@@ -300,13 +327,37 @@ class SalesReportService
 
     // ── Private helpers ──────────────────────────────────────────────────
 
-    /** Paid DELIVERY sales with the standard report filters applied. */
+    /**
+     * RIDER-RETURNS-1 — posted refunds per delivery order, as a joinable subquery.
+     *
+     * One row per order, so joining it cannot fan the aggregate out; a plain join to
+     * `sales_returns` would duplicate an order refunded twice and inflate every column on it.
+     */
+    private function refundsPerOrder()
+    {
+        return DB::connection('tenant')->table('sales_returns')
+            ->where('status', 'posted')
+            ->selectRaw('sales_order_id, COALESCE(SUM(grand_total), 0) as refunded')
+            ->groupBy('sales_order_id');
+    }
+
+    /** DELIVERY sales with the standard report filters applied. */
     private function baseDeliveryQuery(array $filters)
     {
         $branchIds = $this->resolveBranchIds($filters);
 
         return SalesOrder::query()
-            ->where('sales_orders.status', 'paid')
+            // RIDER-RETURNS-1: so every delivery figure can also say what came back. The rider
+            // carried the order either way — the refund is a separate fact about it, not a reason
+            // to pretend the delivery never happened.
+            ->leftJoinSub($this->refundsPerOrder(), 'rf', 'rf.sales_order_id', '=', 'sales_orders.id')
+            // LEGACY-REPORTS-POPULATION-1 — feeds BOTH /reports/sales/channels and /riders, so this
+            // single line decided a rider's tally and an aggregator's commission. `paid` alone hid
+            // 44 delivery orders worth 63,610 at Khatri, carrying 9,076 of delivery charges that
+            // were never refunded — the same shape as the 22,500-vs-22,850 incident recorded on
+            // baseSalesQuery below, forty-four times over. Commission rises with the population,
+            // and that higher figure is the correct one.
+            ->whereIn('sales_orders.status', SalesReportEngine::POPULATION)
             ->where('sales_orders.order_type', 'delivery')
             ->when($branchIds, fn ($q) => $q->whereIn('sales_orders.branch_id', $branchIds))
             ->when(!empty($filters['date_from']), fn ($q) => $q->whereRaw($this->businessDayExpr('sales_orders.') . ' >= ?', [$filters['date_from']]))
@@ -344,6 +395,82 @@ class SalesReportService
      * business_date — so a sale rung after midnight books to the business day it belongs to, not
      * the wall-clock date. COALESCE keeps legacy rows (pre-backfill) grouped by their sale_date.
      */
+    /**
+     * DASHBOARD-7DAY-POPULATION-1 — the same day, counted the same way, over a RANGE of days.
+     *
+     * The dashboard's "Last 7 Days" card used to run its own query inside the controller:
+     * `status = paid` only, and no return subtraction. So a bill that was returned vanished from
+     * it, while the tile above it — and every report in the system — still counted that bill and
+     * merely netted the refund off. On 1 September that showed "Orders Today 295" beside a row
+     * saying 291 for the same day; on the two days before, which carried PARTIAL returns, it also
+     * left 1,400 and 2,490 of genuinely kept revenue out of the history.
+     *
+     * The population and the arithmetic here are deliberately the ones `todayStats()` uses, which
+     * are the ones `SalesReportEngine` uses:
+     *   population = paid + partially_returned + returned   (a return does not un-sell a bill)
+     *   net_sales  = SUM(grand_total) − posted returns of that business day
+     *
+     * Returns are allocated by the return's BUSINESS day, exactly as `todayStats()` does, so a
+     * refund punched after midnight on a still-open shift stays on that shift's day.
+     *
+     * @return array<string, array{orders:int, billed:float, returns_amount:float, net_sales:float}>
+     *         keyed by business date (Y-m-d)
+     */
+    public function dailyStats(
+        string $from,
+        string $to,
+        ?int $branchId = null,
+        ?\App\Models\Tenant\User $scopeUser = null
+    ): array {
+        $scope = app(\App\Services\Security\UserDataScope::class);
+        $day   = $this->businessDayExpr();
+
+        $sales = SalesOrder::query()
+            ->whereIn('status', SalesReportEngine::POPULATION)
+            ->when($branchId, fn ($q, $v) => $q->where('branch_id', $v))
+            ->whereRaw("$day >= ?", [$from])
+            ->whereRaw("$day <= ?", [$to]);
+        $scope->applyToSales($sales, $scopeUser);
+
+        $rows = $sales
+            ->selectRaw("$day as day, COUNT(*) as orders, COALESCE(SUM(grand_total), 0) as billed")
+            ->groupByRaw($day)
+            ->get();
+
+        $returnDay   = 'COALESCE(business_date, DATE(return_date))';
+        $returnQuery = SalesReturn::query()
+            ->where('status', 'posted')
+            ->when($branchId, fn ($q, $v) => $q->where('branch_id', $v))
+            ->whereRaw("$returnDay >= ?", [$from])
+            ->whereRaw("$returnDay <= ?", [$to]);
+
+        // A return's order type / terminal live on its originating sales order, so scope through it.
+        if ($scope->isScoped($scopeUser)) {
+            $returnQuery->whereHas('order', fn ($so) => $scope->applyToSales($so, $scopeUser));
+        }
+
+        $returns = $returnQuery
+            ->selectRaw("$returnDay as day, COALESCE(SUM(grand_total), 0) as amount")
+            ->groupByRaw($returnDay)
+            ->pluck('amount', 'day');
+
+        $out = [];
+        foreach ($rows as $row) {
+            $date     = (string) $row->day;
+            $billed   = (float) $row->billed;
+            $returned = (float) ($returns[$date] ?? 0);
+
+            $out[$date] = [
+                'orders'         => (int) $row->orders,
+                'billed'         => $billed,
+                'returns_amount' => $returned,
+                'net_sales'      => round($billed - $returned, 2),
+            ];
+        }
+
+        return $out;
+    }
+
     private function businessDayExpr(string $prefix = ''): string
     {
         return "COALESCE({$prefix}business_date, DATE({$prefix}sale_date))";
@@ -361,10 +488,10 @@ class SalesReportService
         $day = $this->businessDayExpr($prefix);
 
         if ($branchId) {
-            return $query->whereRaw("$day = ?", [$clock->currentBusinessDate(\App\Models\Tenant\Branch::find($branchId))]);
+            return $query->whereRaw("$day = ?", [$clock->operatingBusinessDate(\App\Models\Tenant\Branch::find($branchId))]);
         }
 
-        $map = $clock->currentBusinessDatesByBranch();
+        $map = $clock->operatingBusinessDatesByBranch();
 
         return $query->where(function ($q) use ($map, $day, $prefix) {
             foreach ($map as $bid => $date) {

@@ -37,36 +37,57 @@
     $tHead = fn () => '<tr><th></th><th class="amt">Sold</th><th class="amt">Ret</th><th class="amt">Net</th></tr>';
     $tCancelHead = fn () => '<tr><th colspan="2">Item / reason</th><th class="amt">Events</th><th class="amt">-Qty</th></tr>';
 
-    // A long item name wraps over two/three lines on a narrow roll and pushes the layout around.
-    // Keep any trailing "(size)" — a shop reads the size — and truncate the head with an ellipsis
-    // so every name stays on ONE line. Short names (categories, most items) are returned untouched.
-    $nameMax = (($paper ?? '80mm') === '58mm') ? 28 : 34;
-    $shortName = function (string $name) use ($nameMax) {
-        if (mb_strlen($name) <= $nameMax) {
-            return $name;
-        }
-        if (preg_match('/^(.*\S)\s*(\([^)]*\))\s*$/u', $name, $m)) {
-            $tail = ' ' . $m[2];
-            $headMax = $nameMax - mb_strlen($tail) - 1;
-            if ($headMax >= 8) {
-                return rtrim(mb_substr($m[1], 0, $headMax)) . '…' . $tail;
-            }
-        }
-        return rtrim(mb_substr($name, 0, $nameMax - 1)) . '…';
-    };
+    /**
+     * An entry carrying both quantities and money (categories, items).
+     *
+     * `$level` marks WHAT this entry is, for the sections that have a hierarchy: 'head', 'sub' or
+     * 'item'. Everything else leaves it empty and looks exactly as it always has.
+     *
+     * It exists because every name row is bold already, so making a sub-category bold said nothing
+     * — a sub-head and the items under it were told apart only by two spaces of indent, which on a
+     * long roll is no help at all. The class lets the three levels carry three different weights
+     * and rules; see the .lvl-* rules in the stylesheet.
+     */
+    /**
+     * THERMAL-ITEM-LAYOUT-1 — `$indent` is a NUMBER OF CHARACTERS, not a string of spaces.
+     *
+     * That is the whole fix. A name was being cut to one fixed width whatever level it sat at, so a
+     * parent had room to spare while an item — six characters further in — still overflowed and the
+     * browser broke it over two lines, stranding "Roll" at the left margin. The width a name may
+     * take is the paper MINUS ITS OWN INDENT, and only the caller knows the indent, so it passes a
+     * number and the helper does the arithmetic. The nowrap in the stylesheet is the belt to this
+     * pair of braces: even a name that somehow slipped through can no longer wrap.
+     */
+    $tCols = \App\Support\ThermalLayout::columns($paper ?? '80mm');
+    $tPad  = fn (int $n) => str_repeat('&nbsp;', max(0, $n));
+    $tFit  = fn (string $name, int $indent) => e(\App\Support\ThermalLayout::fit($name, $tCols - $indent));
 
-    /** An entry carrying both quantities and money (categories, items). */
-    $tEntry = function (string $name, $sQ, $rQ, $nQ, $sV, $rV, $nV, bool $bold = false, string $indent = '') use ($qty, $fmt, $shortName) {
-        $cls = $bold ? ' class="total"' : '';
+    $tEntry = function (string $name, $sQ, $rQ, $nQ, $sV, $rV, $nV, bool $bold = false, int $indent = 0, string $level = '') use ($qty, $fmt, $tPad, $tFit) {
+        $lvl = $level !== '' ? ' lvl-' . $level : '';
+        $cls = ' class="amt-row' . ($bold ? ' total' : '') . $lvl . '"';
         // The name a reader scans for is always emphasised; a total's name carries both.
-        $nameCls = ' class="name' . ($bold ? ' total' : '') . '"';
+        $nameCls = ' class="name' . ($bold ? ' total' : '') . $lvl . '"';
+        $pad = $tPad($indent);
 
-        return '<tr' . $nameCls . '><td colspan="4">' . $indent . e($shortName($name)) . '</td></tr>'
-             . '<tr><td class="lbl">' . $indent . 'Qty</td>'
+        // A block whose heading has already been printed passes no name: the figures then follow the
+        // heading directly instead of pushing a blank line between the two.
+        $nameRow = $name === '' ? ''
+            : '<tr' . $nameCls . '><td colspan="4">' . $pad . $tFit($name, $indent) . '</td></tr>';
+
+        return $nameRow
+             . '<tr' . ($lvl !== '' ? ' class="' . ltrim($lvl) . '"' : '') . '><td class="lbl">' . $pad . 'Qty</td>'
              . '<td class="amt">' . $qty($sQ) . '</td><td class="amt">' . $qty($rQ) . '</td><td class="amt">' . $qty($nQ) . '</td></tr>'
-             . '<tr' . $cls . '><td class="lbl">' . $indent . 'Amt</td>'
+             . '<tr' . $cls . '><td class="lbl">' . $pad . 'Amt</td>'
              . '<td class="amt">' . $fmt($sV) . '</td><td class="amt">' . $fmt($rV) . '</td><td class="amt">' . $fmt($nV) . '</td></tr>';
     };
+
+    /**
+     * A heading ALONE: the category's name and the rule that closes it, with no figures. A head's
+     * total no longer rides on its heading; it prints at the foot of the block it totals.
+     */
+    $tName = fn (string $name, int $indent = 0, string $level = 'head') =>
+        '<tr class="name lvl-' . $level . '"><td colspan="4">' . $tPad($indent)
+        . $tFit($name, $indent) . '</td></tr>';
 
     /** An order-level entry — money only, no line quantities (order types, waiters). */
     $tOrders = function (string $name, $orders, $billed, $ret, $net, bool $bold = false) use ($fmt) {
@@ -85,15 +106,72 @@
     // delivery-only figure silently vanished the moment a discount/tax existed (line net + delivery
     // did not equal net sales), which is exactly why the global totals stopped reconciling.
     $bridgeNetSales = (float) ($bridge['net_sales'] ?? 0);
-    $bridgeRows = function (float $lineNet, int $span) use ($bridgeNetSales, $fmt) {
-        $netCharges = round($bridgeNetSales - $lineNet, 2);
-        if (abs($netCharges) <= 0.01) {
+    $bridgeDealsNet = (float) ($bridge['deals_net'] ?? 0);
+
+    /**
+     * BRIDGE-DEALS-1: a section that leaves the DEALS out (Items, Items by Category) is short of
+     * NET SALES by the deals as well as by the charges, and printing the whole gap as "Plus
+     * Delivery & Other Charges" put a name on the deals that was not theirs. At Kashif Food on
+     * 2 September that line read 95,859 where the real charges were 4,369 — the other 91,490 was
+     * deal money. So such a section names the deals on their own line first, and only what is left
+     * is called charges. CATEGORIES still carries its deals and passes false.
+     */
+    /**
+     * CHARGE-BREAKUP-1 — har charge apne naam se.
+     *
+     * "Plus Delivery & Other Charges" ek residual thi, jama nahi: NET SALES minus section ka apna
+     * total. Us ek naam ke neeche chaar alag cheezein thin — delivery, tips, tax, service charge —
+     * aur padhne wala ye nahi keh sakta tha ke 600 kis ka hai. Ab har ek apni satar par hai.
+     *
+     * Residual KHATM nahi hui, sirf aakhir me chali gayi. Wo is liye rakhi gayi thi ke hisab
+     * HAMESHA band ho (REPORT-CHARGE-BRIDGE-1): agar sirf delivery chhapti, to jis din koi aur
+     * charge hota us din section NET SALES tak pahunchta hi nahi aur farq CHUP-CHAAP gum ho jata.
+     * Ab jo naam nahi paata wo "Plus Other Charges" me nazar aata hai — gum nahi hota, aur ye
+     * ishara bhi deta hai ke kuch naya aa gaya hai jise naam dena chahiye.
+     *
+     * Delivery NET hai (charged − refunded): poori return par delivery wapas hoti hai, aur usay na
+     * ghatana bridge ko NET SALES se aage le jata.
+     */
+    $bridgeParts = [
+        'Plus Delivery Charge' => (float) ($bridge['delivery_charge'] ?? 0) - (float) ($bridge['delivery_refunded'] ?? 0),
+        'Plus Service Charge'  => (float) ($bridge['service_charge'] ?? 0),
+        'Plus Tax'             => (float) ($bridge['tax'] ?? 0),
+        'Plus Tips'            => (float) ($bridge['tips'] ?? 0),
+        // Ye BILL ka discount hai (SUM(o.discount_amount)), line ka nahi — line ke discounts pehle
+        // hi line_total ke andar hain, is liye yahan dobara nahi ginte. Bill ka discount lines me
+        // se ghata hi nahi jaata, is liye bridge me ghatna PARTA hai; bagair iske wo ek be-naam
+        // manfi "Other" ban kar khara rehta tha.
+        'Less Discount'         => -(float) ($bridge['discount'] ?? 0),
+    ];
+
+    $bridgeRows = function (float $lineNet, int $span, bool $excludesDeals = false) use ($bridgeNetSales, $bridgeDealsNet, $bridgeParts, $fmt) {
+        $deals = $excludesDeals ? $bridgeDealsNet : 0.0;
+        $netCharges = round($bridgeNetSales - $lineNet - $deals, 2);
+        if (abs($netCharges) <= 0.01 && abs($deals) <= 0.01) {
             return '';
         }
         $label = fn ($t) => '<td' . ($span > 1 ? ' colspan="' . ($span - 1) . '"' : '') . '>' . $t . '</td>';
+        $row   = fn ($t, $v) => '<tr>' . $label($t) . '<td class="amt">' . $fmt($v) . '</td></tr>';
 
-        return '<tr>' . $label('Plus Delivery &amp; Other Charges (net)') . '<td class="amt">' . $fmt($netCharges) . '</td></tr>'
-             . '<tr class="total">' . $label('= NET SALES') . '<td class="amt">' . $fmt($bridgeNetSales) . '</td></tr>';
+        $out = abs($deals) > 0.01 ? $row('Plus Deals', $deals) : '';
+
+        // Naam wali lines pehle; jo sifar hai wo chhapti hi nahi — ek khali satar kagaz par kuch
+        // nahi kehti.
+        $named = 0.0;
+        foreach ($bridgeParts as $name => $amount) {
+            if (abs($amount) > 0.01) {
+                $out .= $row($name, $amount);
+                $named += $amount;
+            }
+        }
+
+        // Aur jo bacha — agar bacha. Yehi wo zamanat hai jo hisab band rakhti hai.
+        $other = round($netCharges - $named, 2);
+        if (abs($other) > 0.01) {
+            $out .= $row('Plus Other Charges', $other);
+        }
+
+        return $out . '<tr class="total">' . $label('= NET SALES') . '<td class="amt">' . $fmt($bridgeNetSales) . '</td></tr>';
     };
 
     // Per-order-type bridge: the BY ORDER TYPE categories/items are MERCHANDISE only, but this
@@ -142,9 +220,38 @@
        show clearly in print — a paint-only effect, so it never changes a column's width. Headings
        (th, .name) are left as they are. Tune the 0.2px up/down for more/less darkness. */
     td.amt, td.lbl { -webkit-text-stroke: 0.2px currentColor; }
+    /* THERMAL-ITEM-LAYOUT-1 — where a rule may and may not appear.
+       A rule after every row of a hundred was a hundred lines of paper spent saying nothing, and
+       it drowned the headings a reader is actually looking for. So a rule is spent in exactly
+       three places: under a category head, under a sub-head, and BELOW a total to close its
+       block. Nowhere else — least of all between an entry's own Qty and Amt. */
     .name { font-weight: 700; }
-    .total { border-top: 1px dashed #000; font-weight: 700; }
     .name td, .total td { font-weight: 700; }
+    /* The legacy sections (order types, waiters, cancellations) keep the dashed rule they have
+       always had; the levelled ones below draw their own and must not inherit it. */
+    .total { border-top: 1px dashed #000; }
+    tr[class*="lvl-"] { border-top: 0; }
+    tr[class*="lvl-"] td { border-top: 0; }
+
+    /* A name may NEVER wrap. It is fitted to the paper before it gets here; this is the belt to
+       that pair of braces — anything that slipped through is clipped at the edge rather than
+       broken over two lines with its tail stranded at the left margin. */
+    tr.name td, td.lbl { white-space: nowrap; overflow: hidden; text-overflow: clip; }
+
+    /* Head with children: SOLID under the name. Sub-head: DOTTED. */
+    .lvl-head td      { border-bottom: 2px solid #000; letter-spacing: .4px; padding-bottom: 3px; }
+    .lvl-sub td       { border-bottom: 1px dotted #000; padding-bottom: 3px; }
+    /* A category with no children leads with its name and closes on its own figures, so the name
+       itself carries no rule — a fence round two lines is a fence round a pebble. */
+    .lvl-plainhead td { letter-spacing: .4px; }
+    .lvl-item td, .lvl-item td.amt, .lvl-item td.lbl { font-weight: 400; }
+
+    /* A TOTAL closes the block it totals, and the rule goes BELOW it — the last line of the
+       block, not the first. Only the Amt row carries it: it is the one that ends the entry. */
+    tr.amt-row.lvl-headtotal td { border-bottom: 2px solid #000; padding-bottom: 3px; }
+    tr.amt-row.lvl-subtotal  td { border-bottom: 1px dotted #000; padding-bottom: 3px; }
+
+    tr.gap td { padding: 0; height: 3px; line-height: 0; font-size: 0; }
     @else
     body { width: 190mm; font-family: Arial, sans-serif; font-size: 12px; }
     h1 { font-size: 18px; margin: 4px 0; }
@@ -226,15 +333,20 @@
 @if($isThermal)
 <table>
     {!! $tHead() !!}
+    {{-- THERMAL-ITEM-LAYOUT-1: the same shape the roll prints — head over a solid rule, children
+         stepped in under a dotted one, and the head's own figures at the FOOT of its block. A
+         category with no children is a single fact and needs no rule around two lines of it. --}}
     @foreach($categories as $root)
-        {!! $tEntry($root['name'], $root['sold_qty'], $root['returned_qty'], $root['net_qty'], $root['net'], $root['returns_amount'], $root['net_value'], true) !!}
-        @foreach($root['children'] as $c)
-            @if($c['id'] !== $root['id'])
-                {!! $tEntry($c['name'], $c['sold_qty'], $c['returned_qty'], $c['net_qty'], $c['net'], $c['returns_amount'], $c['net_value'], false, ' ') !!}
-            @endif
+        @php $kids = collect($root['children'] ?? [])->filter(fn ($c) => $c['id'] !== $root['id'])->values(); @endphp
+        <tr class="gap"><td colspan="4"></td></tr>
+        {!! $tName(mb_strtoupper($root['name']), 0, $kids->isNotEmpty() ? 'head' : 'plainhead') !!}
+        @foreach($kids as $c)
+            {!! $tEntry($c['name'], $c['sold_qty'], $c['returned_qty'], $c['net_qty'], $c['net'], $c['returns_amount'], $c['net_value'], false, 2, 'subtotal') !!}
         @endforeach
+        {!! $tEntry($kids->isNotEmpty() ? 'TOTAL' : '', $root['sold_qty'], $root['returned_qty'], $root['net_qty'], $root['net'], $root['returns_amount'], $root['net_value'], true, 0, 'headtotal') !!}
     @endforeach
-    {!! $tEntry('TOTAL', collect($categories)->sum('sold_qty'), collect($categories)->sum('returned_qty'), collect($categories)->sum('net_qty'), collect($categories)->sum('net'), collect($categories)->sum('returns_amount'), collect($categories)->sum('net_value'), true) !!}
+    <tr class="gap"><td colspan="4"></td></tr>
+    {!! $tEntry('GRAND TOTAL', collect($categories)->sum('sold_qty'), collect($categories)->sum('returned_qty'), collect($categories)->sum('net_qty'), collect($categories)->sum('net'), collect($categories)->sum('returns_amount'), collect($categories)->sum('net_value'), true) !!}
     {!! $bridgeRows((float) collect($categories)->sum('net_value'), 4) !!}
 </table>
 @else
@@ -258,10 +370,10 @@
 <table>
     {!! $tHead() !!}
     @foreach($items as $r)
-        {!! $tEntry($r->item . ($r->variant ? ' (' . $r->variant . ')' : ''), $r->sold_qty, $r->returned_qty, $r->net_qty, $r->net, $r->returns_amount, $r->net_value) !!}
+        {!! $tEntry($r->item . ($r->variant ? ' (' . $r->variant . ')' : ''), $r->sold_qty, $r->returned_qty, $r->net_qty, $r->net, $r->returns_amount, $r->net_value, false, 2, 'item') !!}
     @endforeach
     {!! $tEntry('TOTAL', collect($items)->sum('sold_qty'), collect($items)->sum('returned_qty'), collect($items)->sum('net_qty'), collect($items)->sum('net'), collect($items)->sum('returns_amount'), collect($items)->sum('net_value'), true) !!}
-    {!! $bridgeRows((float) collect($items)->sum('net_value'), 4) !!}
+    {!! $bridgeRows((float) collect($items)->sum('net_value'), 4, true) !!}
 </table>
 @else
 <table>
@@ -270,7 +382,106 @@
         <tr><td>{{ $r->item }}{{ $r->variant ? ' (' . $r->variant . ')' : '' }}</td><td class="amt">{{ $qty($r->sold_qty) }}</td><td class="amt">{{ $qty($r->returned_qty) }}</td><td class="amt">{{ $qty($r->net_qty) }}</td><td class="amt">{{ $fmt($r->net) }}</td><td class="amt">{{ $fmt($r->returns_amount) }}</td><td class="amt">{{ $fmt($r->net_value) }}</td></tr>
     @endforeach
     <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty(collect($items)->sum('sold_qty')) }}</td><td class="amt">{{ $qty(collect($items)->sum('returned_qty')) }}</td><td class="amt">{{ $qty(collect($items)->sum('net_qty')) }}</td><td class="amt">{{ $fmt(collect($items)->sum('net')) }}</td><td class="amt">{{ $fmt(collect($items)->sum('returns_amount')) }}</td><td class="amt">{{ $fmt(collect($items)->sum('net_value')) }}</td></tr>
-    {!! $bridgeRows((float) collect($items)->sum('net_value'), 7) !!}
+    {!! $bridgeRows((float) collect($items)->sum('net_value'), 7, true) !!}
+</table>
+@endif
+@endif
+
+{{-- ITEMS BY CATEGORY — ITEMS-BY-CATEGORY-1. The same rows as ITEMS, filed under their category
+     heads with a subtotal each — the shape the client's old software prints. The head is the ROOT
+     category so every subtotal reconciles against CATEGORIES; a sub-head appears only where that
+     root really has children with sales. --}}
+@if($has('category_items') && ($categoryItems ?? null) !== null)
+@php $ciRows = collect($categoryItems); @endphp
+<h2>ITEMS BY CATEGORY</h2>
+@if($isThermal)
+<table>
+    {!! $tHead() !!}
+    {{-- Three things tell the reader where a category starts and what belongs to it:
+         a SOLID rule above the head (every other rule on the roll is dashed), the head's name in
+         CAPITALS the way the raw ESC/POS prints it, and a real indent on everything beneath it.
+         The indent has to be &nbsp; — HTML collapses ordinary spaces, so the roll was indented
+         correctly while the screen and the PDF showed head and item flush against each other,
+         which is exactly what made the section unreadable. --}}
+    {{-- THERMAL-ITEM-LAYOUT-1: a total belongs AFTER the things it totals, at the indent of the
+         thing it is totalling. It used to print directly under its own heading, before a single one
+         of its items — and the eye looks for a total at the foot of a block, never at its head. --}}
+    @foreach($categoryItems as $head)
+        <tr class="gap"><td colspan="4"></td></tr>
+        {!! $tName(mb_strtoupper($head['head']), 0, 'head') !!}
+        @foreach($head['groups'] as $group)
+            @if($head['nested'])
+                <tr class="gap"><td colspan="4"></td></tr>
+                {!! $tName($group['name'], 2, 'sub') !!}
+            @endif
+            @foreach($group['items'] as $item)
+                {!! $tEntry($item['item'] . ($item['variant'] ? ' (' . $item['variant'] . ')' : ''), $item['sold_qty'], $item['returned_qty'], $item['net_qty'], $item['net'], $item['returns_amount'], $item['net_value'], false, $head['nested'] ? 6 : 2, 'item') !!}
+            @endforeach
+            @if($head['nested'])
+                {!! $tEntry('TOTAL', $group['sold_qty'], $group['returned_qty'], $group['net_qty'], $group['net'], $group['returns_amount'], $group['net_value'], true, 2, 'subtotal') !!}
+            @endif
+        @endforeach
+        {!! $tEntry('TOTAL', $head['sold_qty'], $head['returned_qty'], $head['net_qty'], $head['net'], $head['returns_amount'], $head['net_value'], true, 0, 'headtotal') !!}
+    @endforeach
+    <tr class="gap"><td colspan="4"></td></tr>
+    {!! $tEntry('GRAND TOTAL', $ciRows->sum('sold_qty'), $ciRows->sum('returned_qty'), $ciRows->sum('net_qty'), $ciRows->sum('net'), $ciRows->sum('returns_amount'), $ciRows->sum('net_value'), true) !!}
+    {{-- Merchandise only, like every other line-based section: close the gap to NET SALES, or the
+         total reads as though it contradicted the day's takings. --}}
+    {!! $bridgeRows((float) $ciRows->sum('net_value'), 4, true) !!}
+</table>
+@else
+<table>
+    <tr><th>Category / Item</th><th class="amt">Sold Qty</th><th class="amt">Ret Qty</th><th class="amt">Net Qty</th><th class="amt">Sold</th><th class="amt">Returns</th><th class="amt">Net</th></tr>
+    @foreach($categoryItems as $head)
+        <tr class="total"><td><strong>{{ strtoupper($head['head']) }}</strong></td><td class="amt">{{ $qty($head['sold_qty']) }}</td><td class="amt">{{ $qty($head['returned_qty']) }}</td><td class="amt">{{ $qty($head['net_qty']) }}</td><td class="amt">{{ $fmt($head['net']) }}</td><td class="amt">{{ $fmt($head['returns_amount']) }}</td><td class="amt">{{ $fmt($head['net_value']) }}</td></tr>
+        @foreach($head['groups'] as $group)
+            @if($head['nested'])
+                <tr><td><strong>&nbsp;&nbsp;{{ $group['name'] }}</strong></td><td class="amt">{{ $qty($group['sold_qty']) }}</td><td class="amt">{{ $qty($group['returned_qty']) }}</td><td class="amt">{{ $qty($group['net_qty']) }}</td><td class="amt">{{ $fmt($group['net']) }}</td><td class="amt">{{ $fmt($group['returns_amount']) }}</td><td class="amt">{{ $fmt($group['net_value']) }}</td></tr>
+            @endif
+            @foreach($group['items'] as $item)
+                <tr><td>{!! $head['nested'] ? '&nbsp;&nbsp;&nbsp;&nbsp;' : '&nbsp;&nbsp;' !!}{{ $item['item'] }}{{ $item['variant'] ? ' (' . $item['variant'] . ')' : '' }}</td><td class="amt">{{ $qty($item['sold_qty']) }}</td><td class="amt">{{ $qty($item['returned_qty']) }}</td><td class="amt">{{ $qty($item['net_qty']) }}</td><td class="amt">{{ $fmt($item['net']) }}</td><td class="amt">{{ $fmt($item['returns_amount']) }}</td><td class="amt">{{ $fmt($item['net_value']) }}</td></tr>
+            @endforeach
+        @endforeach
+    @endforeach
+    <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty($ciRows->sum('sold_qty')) }}</td><td class="amt">{{ $qty($ciRows->sum('returned_qty')) }}</td><td class="amt">{{ $qty($ciRows->sum('net_qty')) }}</td><td class="amt">{{ $fmt($ciRows->sum('net')) }}</td><td class="amt">{{ $fmt($ciRows->sum('returns_amount')) }}</td><td class="amt">{{ $fmt($ciRows->sum('net_value')) }}</td></tr>
+    {!! $bridgeRows((float) $ciRows->sum('net_value'), 7, true) !!}
+</table>
+@endif
+@endif
+
+{{-- DEALS — DEAL-CATEGORY-1. Grouped under their own heads, the way the client's old software
+     prints DEALS / MIDNIGHT DEAL 1 / CLASSIC PLATTER. ITEMS above no longer carries them. --}}
+@if($has('deals') && ($deals ?? null) !== null)
+<h2>DEALS</h2>
+@php $dealRows = collect($deals); $currentHead = null; @endphp
+@if($isThermal)
+<table>
+    {!! $tHead() !!}
+    {{-- THERMAL-ITEM-LAYOUT-1: grouped like ITEMS BY CATEGORY — head, its deals, then its total.
+         The old shape printed a bare <strong> line with a colspan of SEVEN on a four-column
+         table, and no rule anywhere; on paper it read as one unbroken block. --}}
+    @foreach($dealRows->groupBy(fn ($r) => $r['head'] ?? 'Uncategorised') as $dealHead => $group)
+        <tr class="gap"><td colspan="4"></td></tr>
+        {!! $tName(mb_strtoupper($dealHead), 0, 'head') !!}
+        @foreach($group as $r)
+            {!! $tEntry($r['deal'], $r['sold_qty'], $r['returned_qty'], $r['net_qty'], $r['net'], $r['returns_amount'], $r['net_value'], false, 2, 'item') !!}
+        @endforeach
+        {!! $tEntry('TOTAL', collect($group)->sum('sold_qty'), collect($group)->sum('returned_qty'), collect($group)->sum('net_qty'), collect($group)->sum('net'), collect($group)->sum('returns_amount'), collect($group)->sum('net_value'), true, 0, 'headtotal') !!}
+    @endforeach
+    <tr class="gap"><td colspan="4"></td></tr>
+    {!! $tEntry('GRAND TOTAL', $dealRows->sum('sold_qty'), $dealRows->sum('returned_qty'), $dealRows->sum('net_qty'), $dealRows->sum('net'), $dealRows->sum('returns_amount'), $dealRows->sum('net_value'), true) !!}
+</table>
+@else
+<table>
+    <tr><th>Deal</th><th class="amt">Sold Qty</th><th class="amt">Ret Qty</th><th class="amt">Net Qty</th><th class="amt">Sold</th><th class="amt">Returns</th><th class="amt">Net</th></tr>
+    @foreach($deals as $r)
+        @if($r['head'] !== $currentHead)
+            @php $currentHead = $r['head']; @endphp
+            <tr><td colspan="7"><strong>{{ $currentHead }}</strong></td></tr>
+        @endif
+        <tr><td>{{ $r['deal'] }}</td><td class="amt">{{ $qty($r['sold_qty']) }}</td><td class="amt">{{ $qty($r['returned_qty']) }}</td><td class="amt">{{ $qty($r['net_qty']) }}</td><td class="amt">{{ $fmt($r['net']) }}</td><td class="amt">{{ $fmt($r['returns_amount']) }}</td><td class="amt">{{ $fmt($r['net_value']) }}</td></tr>
+    @endforeach
+    <tr class="total"><td>TOTAL</td><td class="amt">{{ $qty($dealRows->sum('sold_qty')) }}</td><td class="amt">{{ $qty($dealRows->sum('returned_qty')) }}</td><td class="amt">{{ $qty($dealRows->sum('net_qty')) }}</td><td class="amt">{{ $fmt($dealRows->sum('net')) }}</td><td class="amt">{{ $fmt($dealRows->sum('returns_amount')) }}</td><td class="amt">{{ $fmt($dealRows->sum('net_value')) }}</td></tr>
 </table>
 @endif
 @endif

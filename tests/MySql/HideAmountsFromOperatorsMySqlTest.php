@@ -1,0 +1,645 @@
+<?php
+
+namespace Tests\MySql;
+
+use App\Models\Master\Module;
+use App\Models\Tenant\User;
+use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
+use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Spatie\Permission\PermissionRegistrar;
+use Tests\MySql\Support\TenantFixtures;
+
+/**
+ * HIDE-AMOUNTS-1 — a branch can make its counter count blind.
+ *
+ * The point is NOT that the figures are visually hidden. It is that they never reach the page.
+ * The Close Branch screen pre-fills the Counted box with the expected cash and puts the same
+ * number in `data-expected` for the live difference — so a Blade-level `@if` would leave the
+ * amount sitting in the very box the operator types into, and one View Source away. Test 3 is
+ * the one that matters: it reads the raw response body.
+ *
+ * Two switches, and BOTH must move: the branch flag AND the loss of `tenant.shifts.view-amounts`.
+ * Test 1 exists because the flag ships off and the permission ships granted to every role — so a
+ * tenant that changed nothing must render exactly what it rendered yesterday. That is what
+ * protects Khatri Biryani and Kashif Food on the day this deploys.
+ *
+ * Everything runs over real HTTP. A test that re-derives the figures cannot fail when the page
+ * leaks them.
+ */
+class HideAmountsFromOperatorsMySqlTest extends MySqlTenantTestCase
+{
+    use TenantFixtures;
+
+    private const EXPECTED_CASH = 224305.00;
+    /** Distinct on purpose: the list shows ONLY this figure, so a mask there is provable. */
+    private const OPENING_CASH  = 12000.00;
+    private const TOTAL_SALES   = 270740.00;
+    private const TOTAL_CARD    = 46435.00;
+
+    private string $host;
+    private int $tenantId;
+    private int $branchId;
+    private int $otherBranchId;
+    private int $terminalId;
+    private int $ownerId;
+    private int $operatorId;
+    private int $shiftId;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->withoutMiddleware([ValidateCsrfToken::class, VerifyCsrfToken::class]);
+
+        $this->host = 'hideamt.' . config('tenancy.tenant_base_domain');
+        $this->seedMaster();
+        $this->seedSubscription();
+        $this->seedTenant();
+    }
+
+    protected function tearDown(): void
+    {
+        try {
+            $m = DB::connection('master');
+            $m->table('tenant_domains')->where('domain', $this->host)->delete();
+            $m->table('tenant_databases')->where('db_database', $this->tenantDb)->where('tenant_id', $this->tenantId)->delete();
+            $m->table('subscriptions')->where('tenant_id', $this->tenantId)->delete();
+            $m->table('tenants')->where('tenant_code', 'hideamt')->delete();
+        } catch (\Throwable) {
+            // best effort; never mask the real outcome
+        }
+        parent::tearDown();
+    }
+
+    /* ── helpers ─────────────────────────────────────────────────────────── */
+
+    private function hideOn(?int $branchId = null): void
+    {
+        DB::connection('tenant')->table('branches')
+            ->where('id', $branchId ?? $this->branchId)
+            ->update(['hide_amounts_from_operators' => 1]);
+    }
+
+    /** Take the permission away from the operator's role — the owner's second, deliberate step. */
+    private function revokeFromOperator(): void
+    {
+        $c = DB::connection('tenant');
+        $permId = $c->table('permissions')->where('name', 'tenant.shifts.view-amounts')
+            ->where('guard_name', 'tenant')->value('id');
+        $roleId = $c->table('roles')->where('name', 'Counter')->where('guard_name', 'tenant')->value('id');
+        $c->table('role_has_permissions')->where('permission_id', $permId)->where('role_id', $roleId)->delete();
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+    }
+
+    private function visit(int $userId, string $url)
+    {
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+        $res = $this->actingAs(User::on('tenant')->find($userId), 'tenant')
+            ->get('http://' . $this->host . $url);
+
+        $this->assertSame(200, $res->getStatusCode(),
+            "{$url} must load; got " . $res->getStatusCode() . ' — '
+            . Str::limit(trim(preg_replace('/\s+/', ' ', strip_tags($res->getContent()))), 300));
+
+        return $res;
+    }
+
+    /** Every way the expected cash could appear in a page — formatted, raw, or in an attribute. */
+    private function assertBodyHasNoExpectedCash(string $html, string $why): void
+    {
+        foreach ([
+            '224,305.00' => 'the formatted figure',
+            '224305.00'  => 'the raw value (data-expected / a pre-filled input)',
+            '270,740.00' => 'total sales',
+            '46,435.00'  => 'the card breakup',
+        ] as $needle => $what) {
+            $this->assertStringNotContainsString($needle, $html, "{$why}: {$what} is still in the page");
+        }
+
+        $this->assertStringNotContainsString('data-expected="', $html,
+            "{$why}: data-expected still hands the amount to the browser");
+    }
+
+    /* ── 1. the live tenants ─────────────────────────────────────────────── */
+
+    /**
+     * Nothing changed on this tenant: the flag is off and every role still holds the permission.
+     * Both screens must show the figures exactly as they did before this feature existed.
+     */
+    public function test_a_tenant_that_changed_nothing_still_sees_every_figure(): void
+    {
+        foreach ([$this->ownerId, $this->operatorId] as $userId) {
+            $html = $this->visit($userId, '/shifts-close-branch?branch_id=' . $this->branchId)->getContent();
+            $this->assertStringContainsString('224,305.00', $html,
+                'with the flag off, the expected cash must still be shown to everyone');
+            $this->assertStringContainsString('data-expected="', $html,
+                'with the flag off, the live difference must still work');
+        }
+    }
+
+    /** The permission alone changes nothing while the branch flag is off. */
+    public function test_revoking_the_permission_alone_hides_nothing(): void
+    {
+        $this->revokeFromOperator();
+
+        $html = $this->visit($this->operatorId, '/shifts-close-branch?branch_id=' . $this->branchId)->getContent();
+
+        $this->assertStringContainsString('224,305.00', $html,
+            'the flag is what hides the figures — the permission on its own must not');
+    }
+
+    /* ── 2-3. the feature ────────────────────────────────────────────────── */
+
+    /** THE test. The number must not be anywhere in the response — not even in an attribute. */
+    public function test_close_branch_gives_the_operator_nothing_to_read(): void
+    {
+        $this->hideOn();
+        $this->revokeFromOperator();
+
+        $html = $this->visit($this->operatorId, '/shifts-close-branch?branch_id=' . $this->branchId)->getContent();
+
+        $this->assertBodyHasNoExpectedCash($html, 'Close Branch, hidden');
+        $this->assertStringContainsString('*****', $html, 'the operator should see the mask');
+    }
+
+    /** Same guarantee on the single-terminal close screen. */
+    public function test_close_shift_gives_the_operator_nothing_to_read(): void
+    {
+        $this->hideOn();
+        $this->revokeFromOperator();
+
+        $html = $this->visit($this->operatorId, '/shifts/' . $this->shiftId . '/close')->getContent();
+
+        $this->assertBodyHasNoExpectedCash($html, 'Close Shift, hidden');
+        $this->assertStringContainsString('*****', $html);
+    }
+
+    /** The dashboard tiles follow the same flag. */
+    /**
+     * HIDE-AMOUNTS-2 — the shift's own page. It carries the same seven figures the close screen
+     * carries, Expected Cash among them, and it had NO mask at all: an operator who could open
+     * /shifts/{id} simply read them. The feature was live and defeated on this one route.
+     */
+    public function test_the_shift_page_gives_the_operator_nothing_to_read(): void
+    {
+        $this->hideOn();
+        $this->revokeFromOperator();
+
+        $html = $this->visit($this->operatorId, '/shifts/' . $this->shiftId)->getContent();
+
+        $this->assertBodyHasNoExpectedCash($html, 'shift page');
+        $this->assertStringContainsString('*****', $html,
+            'shift page: the operator must see the mask, not an empty box that looks like a bug');
+    }
+
+    /**
+     * SHIFT-RECONCILE-2: the cash detail lives in a panel that opens under the row. Hidden is not
+     * the same as absent — a d-none row still ships its figures in the HTML — so for an operator
+     * the whole panel must not be RENDERED at all, and neither must the button that opens it. An
+     * empty panel would be worse than no panel.
+     */
+    public function test_the_shift_list_renders_no_cash_panel_for_an_operator(): void
+    {
+        $this->hideOn();
+        $this->revokeFromOperator();
+
+        $html = $this->visit($this->operatorId, '/shifts')->getContent();
+
+        $this->assertBodyHasNoExpectedCash($html, 'shift list');
+        $this->assertStringNotContainsString('12,000.00', $html,
+            'shift list: the opening cash is still readable');
+        $this->assertStringNotContainsString('data-cash-toggle', $html,
+            'shift list: an operator must not even be offered the cash panel');
+        $this->assertStringNotContainsString('cash-detail', $html,
+            'shift list: the panel itself must not be in the page');
+        $this->assertStringContainsString('*****', $html, 'shift list: the mask must be shown');
+    }
+
+    /** And the Owner gets the panel, with the figures in it. */
+    public function test_the_owner_reads_every_money_column_on_the_list(): void
+    {
+        $this->hideOn();
+        $this->revokeFromOperator();
+
+        $html = $this->visit($this->ownerId, '/shifts')->getContent();
+
+        // total_sales jaan-boojh kar list par nahi hai: ye safha DARAZ ka hisab hai, bikri ka
+        // nahi — jo cash daraz me aata hai wohi ginne ke qabil hai. Bikri shift ke apne safhe par
+        // maujood hai.
+        foreach (['224,305.00' => 'expected cash', '46,435.00' => 'the card figure',
+                  '12,000.00' => 'the opening cash'] as $figure => $what) {
+            $this->assertStringContainsString($figure, $html, "the Owner must still read {$what}");
+        }
+        $this->assertStringNotContainsString('*****', $html, 'nothing is masked from the Owner');
+        $this->assertStringContainsString('data-cash-toggle', $html,
+            'the Owner is offered the cash panel');
+        $this->assertStringContainsString('cash-detail', $html, 'and the panel is rendered');
+    }
+
+    /** Same two screens, Owner: nothing is hidden from the person who owns the money. */
+    public function test_the_owner_still_reads_the_shift_page_and_list(): void
+    {
+        $this->hideOn();
+        $this->revokeFromOperator();
+
+        $page = $this->visit($this->ownerId, '/shifts/' . $this->shiftId)->getContent();
+        $this->assertStringContainsString('224,305.00', $page,
+            'the Owner must still see the expected cash on the shift page');
+
+        $list = $this->visit($this->ownerId, '/shifts')->getContent();
+        $this->assertStringNotContainsString('*****', $list,
+            'the Owner must not be masked on the list');
+    }
+    /**
+     * SHIFT-CLOSE-SCOPE — an operator must not close a drawer that is not his.
+     *
+     * The owner asked directly: "main delivery counter se login hoon, main kisi doosre ki shift
+     * close na kar paaun agar mujhe assign nahi." Reading the code says close() calls
+     * assertCanOperateTerminal; only the real POST proves it, so this posts it.
+     */
+    public function test_an_operator_cannot_close_a_terminal_that_is_not_his(): void
+    {
+        // Operator ko DOOSRE terminal se baandho — hataana kaafi nahi tha: canOperateTerminal me
+        // khali list ka matlab "koi pabandi nahi" hai, is liye assignment hatane se wo har terminal
+        // par azaad ho jata hai. Pabandi tab lagti hai jab uska apna terminal koi aur ho.
+        $c = DB::connection('tenant');
+        $otherTerminal = (int) $c->table('terminals')->insertGetId([
+            'branch_id' => $this->branchId, 'code' => 'T2', 'name' => 'Counter 2',
+            'requires_shift' => 1, 'status' => 'active', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $c->table('terminal_user')->where('user_id', $this->operatorId)->delete();
+        $c->table('terminal_user')->insert(['terminal_id' => $otherTerminal, 'user_id' => $this->operatorId]);
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+        $res = $this->actingAs(User::on('tenant')->find($this->operatorId), 'tenant')
+            ->post('http://' . $this->host . '/shifts/' . $this->shiftId . '/close', [
+                'counted_cash' => 1000,
+            ]);
+
+        $this->assertSame(403, $res->getStatusCode(),
+            'a cashier must not close a drawer on a terminal that is not assigned to him');
+
+        $shift = DB::connection('tenant')->table('shifts')->where('id', $this->shiftId)->first();
+        $this->assertSame('open', $shift->status, 'the refused close must leave the shift open');
+        $this->assertNull($shift->counted_cash, 'the refused close must not write a count');
+        $this->assertNull($shift->closed_at, 'the refused close must not stamp a closing time');
+    }
+
+    /** And with the terminal assigned, the same POST goes through — so the 403 above is the rule, not a broken route. */
+    public function test_the_same_operator_closes_his_own_terminal(): void
+    {
+        $res = $this->actingAs(User::on('tenant')->find($this->operatorId), 'tenant')
+            ->post('http://' . $this->host . '/shifts/' . $this->shiftId . '/close', [
+                'counted_cash' => 1000,
+            ]);
+
+        $this->assertSame(302, $res->getStatusCode(), 'his own terminal must close');
+
+        $shift = DB::connection('tenant')->table('shifts')->where('id', $this->shiftId)->first();
+        $this->assertSame('closed', $shift->status, 'his own shift must actually close');
+    }
+    /* ── ZERO-DRAWER-1 ────────────────────────────────────────────────────── */
+
+    /** A shift that took no money at all: expected 0, and nothing in the drawer to count. */
+    private function emptyShift(): int
+    {
+        return (int) DB::connection('tenant')->table('shifts')->insertGetId([
+            'branch_id' => $this->branchId, 'terminal_id' => $this->terminalId,
+            'opened_by_user_id' => $this->operatorId,
+            'opened_at' => now()->subHours(3), 'status' => 'open',
+            'opening_cash' => 0, 'total_sales' => 0, 'total_cash' => 0, 'total_card' => 0,
+            'total_bank_transfer' => 0, 'total_cheque' => 0, 'total_refunds' => 0,
+            'total_discount' => 0, 'total_tax' => 0, 'expected_cash' => 0,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+    }
+
+    /**
+     * Kashif Food's floor terminal takes orders but never money — every bill it opens is settled
+     * at another counter — so its expected cash is 0 every night. Asking the cashier to certify
+     * nothing had a worse answer than the rule: on 4 September someone typed 1 to get past it and
+     * the drawer closed a rupee over. A drawer with nothing in it now closes on a blank box.
+     */
+    public function test_an_empty_drawer_closes_without_a_typed_count(): void
+    {
+        DB::connection('tenant')->table('shifts')->where('id', $this->shiftId)
+            ->update(['status' => 'closed', 'closed_at' => now()]);
+        $empty = $this->emptyShift();
+
+        $res = $this->actingAs(User::on('tenant')->find($this->operatorId), 'tenant')
+            ->post('http://' . $this->host . '/shifts/' . $empty . '/close', []);
+
+        $this->assertSame(302, $res->getStatusCode(), 'an empty drawer must not be blocked');
+
+        $shift = DB::connection('tenant')->table('shifts')->where('id', $empty)->first();
+        $this->assertSame('closed', $shift->status, 'the empty drawer closes');
+        $this->assertEquals(0.0, (float) $shift->counted_cash, 'it closes at 0, which is the arithmetic');
+        $this->assertEquals(0.0, (float) $shift->cash_variance, 'and at no variance — nothing is missing');
+    }
+
+    /**
+     * THE guard this must not cost. A drawer that HELD money still may not close on a blank box:
+     * that is the fault ZERO-DRAWER-1 must not reintroduce — a 28,400 shift once closed at 0 and
+     * raised a shortage for its whole takings.
+     */
+    public function test_a_drawer_with_money_still_demands_a_count(): void
+    {
+        $res = $this->actingAs(User::on('tenant')->find($this->operatorId), 'tenant')
+            ->post('http://' . $this->host . '/shifts/' . $this->shiftId . '/close', []);
+
+        $shift = DB::connection('tenant')->table('shifts')->where('id', $this->shiftId)->first();
+        $this->assertSame('open', $shift->status,
+            'a drawer holding 224,305 must not close because the box was left blank');
+        $this->assertNull($shift->counted_cash, 'and no count may be invented for it');
+    }
+
+    /** Typing 0 deliberately was always allowed, and still is. */
+    public function test_a_typed_zero_is_accepted_on_a_drawer_with_money(): void
+    {
+        $res = $this->actingAs(User::on('tenant')->find($this->operatorId), 'tenant')
+            ->post('http://' . $this->host . '/shifts/' . $this->shiftId . '/close', ['counted_cash' => '0']);
+
+        $this->assertSame(302, $res->getStatusCode());
+        $shift = DB::connection('tenant')->table('shifts')->where('id', $this->shiftId)->first();
+        $this->assertSame('closed', $shift->status, 'a deliberate 0 closes the shift');
+        $this->assertEquals(0.0, (float) $shift->counted_cash);
+        $this->assertEquals(-224305.0, (float) $shift->cash_variance, 'and records the whole shortage');
+    }
+
+    /**
+     * Close Branch closes every shift in ONE transaction, so one un-countable terminal used to
+     * fail all of them. Kashif Food could not close its four counters because the floor terminal
+     * had no figure to type.
+     */
+    public function test_close_branch_is_not_blocked_by_an_empty_terminal(): void
+    {
+        $empty = $this->emptyShift();
+
+        $res = $this->actingAs(User::on('tenant')->find($this->ownerId), 'tenant')
+            ->post('http://' . $this->host . '/shifts-close-branch', [
+                'branch_id' => $this->branchId,
+                'mode'      => 'per_terminal',
+                'counted'   => [$this->shiftId => '224305'],   // empty shift ka khaana bheja hi nahi
+            ]);
+
+        $this->assertSame(302, $res->getStatusCode());
+
+        foreach ([$this->shiftId, $empty] as $id) {
+            $shift = DB::connection('tenant')->table('shifts')->where('id', $id)->first();
+            $this->assertSame('closed', $shift->status, "shift {$id} must have closed");
+        }
+
+        $shift = DB::connection('tenant')->table('shifts')->where('id', $empty)->first();
+        $this->assertEquals(0.0, (float) $shift->cash_variance, 'the empty terminal closes at no variance');
+    }
+
+    /** And a counted terminal left blank still stops the branch close. */
+    public function test_close_branch_still_refuses_a_blank_drawer_that_held_money(): void
+    {
+        $res = $this->actingAs(User::on('tenant')->find($this->ownerId), 'tenant')
+            ->post('http://' . $this->host . '/shifts-close-branch', [
+                'branch_id' => $this->branchId,
+                'mode'      => 'per_terminal',
+                'counted'   => [],
+            ]);
+
+        $shift = DB::connection('tenant')->table('shifts')->where('id', $this->shiftId)->first();
+        $this->assertSame('open', $shift->status,
+            'the branch close must still refuse while a drawer holding money is uncounted');
+    }
+    /** SHIFT-DATE-FILTER-1: din ka filter safha tor na de — khali, bhara, aur khali nateeje wala. */
+    public function test_the_shift_list_renders_with_a_date_filter(): void
+    {
+        foreach (["", "?date_from=2026-09-04&date_to=2026-09-05", "?date_from=2026-01-01&date_to=2026-01-01"] as $qs) {
+            $html = $this->visit($this->ownerId, "/shifts" . $qs)->getContent();
+            $this->assertStringContainsString("Yesterday", $html, "date filter blew up on: " . $qs);
+        }
+    }
+
+    public function test_the_dashboard_tiles_are_masked(): void
+    {
+        $this->hideOn();
+        $this->revokeFromOperator();
+
+        $html = $this->visit($this->operatorId, '/dashboard')->getContent();
+
+        $this->assertStringContainsString('*****', $html, 'the tiles must be masked');
+        $this->assertStringNotContainsString('270,740.00', $html, 'a sales figure is still on the dashboard');
+    }
+
+    /* ── 4. the admin ────────────────────────────────────────────────────── */
+
+    /** The Owner keeps the permission, so the flag does not touch them. */
+    public function test_the_owner_still_sees_everything(): void
+    {
+        $this->hideOn();
+        $this->revokeFromOperator();
+
+        $html = $this->visit($this->ownerId, '/shifts-close-branch?branch_id=' . $this->branchId)->getContent();
+
+        $this->assertStringContainsString('224,305.00', $html, 'the Owner must still see the expected cash');
+        $this->assertStringContainsString('data-expected="', $html, 'the Owner keeps the live difference');
+        $this->assertStringNotContainsString('*****', $html);
+    }
+
+    /* ── 5. blast radius ─────────────────────────────────────────────────── */
+
+    /** One branch restricted must not restrict the other. */
+    public function test_the_other_branch_is_unaffected(): void
+    {
+        $this->hideOn($this->otherBranchId);
+        $this->revokeFromOperator();
+
+        $html = $this->visit($this->operatorId, '/shifts-close-branch?branch_id=' . $this->branchId)->getContent();
+
+        $this->assertStringContainsString('224,305.00', $html,
+            'hiding branch B must not hide branch A');
+    }
+
+    /* ── 6. the system must still know ───────────────────────────────────── */
+
+    /**
+     * Hiding the figure from the screen must not blind the system. The shift still closes, the
+     * expected cash is still computed server-side, and the variance is still recorded — otherwise
+     * counting blind would also mean counting for nothing.
+     */
+    public function test_closing_still_records_the_shortage(): void
+    {
+        $this->hideOn();
+        $this->revokeFromOperator();
+
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+        $res = $this->actingAs(User::on('tenant')->find($this->operatorId), 'tenant')
+            ->post('http://' . $this->host . '/shifts/' . $this->shiftId . '/close', [
+                'counted_cash' => 200000,
+            ]);
+
+        $this->assertContains($res->getStatusCode(), [200, 302],
+            'a masked operator must still be able to close the shift; got ' . $res->getStatusCode());
+
+        $shift = DB::connection('tenant')->table('shifts')->where('id', $this->shiftId)->first();
+
+        $this->assertSame('closed', $shift->status, 'the shift must actually close');
+        $this->assertEquals(200000, (float) $shift->counted_cash, 'the counted figure must be recorded');
+        $this->assertEquals(self::EXPECTED_CASH, (float) $shift->expected_cash,
+            'the system must still know the expected cash even though the operator never saw it');
+    }
+
+    /* ── seeding ─────────────────────────────────────────────────────────── */
+
+    private function seedMaster(): void
+    {
+        DB::setDefaultConnection(config('tenancy.master_connection', 'master'));
+        $master = DB::connection('master');
+
+        $master->table('tenant_domains')->where('domain', $this->host)->delete();
+        $master->table('tenants')->where('tenant_code', 'hideamt')->delete();
+
+        $this->tenantId = $master->table('tenants')->insertGetId([
+            'tenant_code' => 'hideamt', 'business_name' => 'Hide Amounts',
+            'owner_name' => 'Owner', 'owner_email' => 'owner@hideamt.test',
+            'currency_code' => 'PKR', 'status' => 'active', 'is_demo' => 0,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $master->table('tenant_databases')->insert([
+            'tenant_id' => $this->tenantId, 'db_connection' => 'tenant',
+            'db_host' => config('database.connections.tenant.host'),
+            'db_port' => (int) config('database.connections.tenant.port'),
+            'db_database' => $this->tenantDb,
+            'db_username' => config('database.connections.tenant.username'),
+            'db_password' => null,
+            'migration_status' => 'completed', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $master->table('tenant_domains')->insert([
+            'tenant_id' => $this->tenantId, 'domain' => $this->host, 'is_primary' => 1,
+            'status' => 'active', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+    }
+
+    private function seedSubscription(): void
+    {
+        DB::setDefaultConnection(config('tenancy.master_connection', 'master'));
+        $m = DB::connection('master');
+
+        $planId = $m->table('plans')->where('code', 'hideamt-plan')->value('id')
+            ?: $m->table('plans')->insertGetId([
+                'code' => 'hideamt-plan', 'name' => 'Hide Amounts', 'price' => 0,
+                'is_active' => 1, 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        $m->table('plan_modules')->where('plan_id', $planId)->delete();
+
+        foreach (['tenant.pos.index', 'tenant.dashboard', 'tenant.shifts.index'] as $routeName) {
+            $key = $m->table('route_catalogs')->where('route_name', $routeName)->value('module_key');
+            $module = $key ? Module::forRouteModuleKey($key)->first() : null;
+            if ($module) {
+                $m->table('plan_modules')->updateOrInsert(
+                    ['plan_id' => $planId, 'module_id' => $module->id], ['is_enabled' => 1]
+                );
+            }
+        }
+
+        $m->table('subscriptions')->where('tenant_id', $this->tenantId)->delete();
+        $m->table('subscriptions')->insert([
+            'tenant_id' => $this->tenantId, 'plan_id' => $planId, 'status' => 'active',
+            'current_period_ends_at' => now()->addYear(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+    }
+
+    private function seedTenant(): void
+    {
+        // permissions/roles come from a tenant MIGRATION — never truncate them.
+        $this->cleanTenant([
+            'sales_order_lines', 'sales_orders', 'shifts', 'terminal_user', 'branch_user',
+            'model_has_roles', 'users', 'terminals', 'branches',
+        ]);
+
+        DB::setDefaultConnection('tenant');
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+        $c = DB::connection('tenant');
+
+        $this->branchId      = $this->makeBranch(['name' => 'Main Branch']);
+        $this->otherBranchId = $this->makeBranch(['name' => 'Second Branch']);
+
+        $this->terminalId = (int) $c->table('terminals')->insertGetId([
+            'branch_id' => $this->branchId, 'code' => 'T1', 'name' => 'Counter 1',
+            'requires_shift' => 1, 'status' => 'active', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        // Roles: an Owner who may read money, and a Counter who — after the owner's second step —
+        // may not. Both start holding the permission, exactly as the migration leaves them.
+        $ownerRole = $c->table('roles')->where('name', 'Owner')->where('guard_name', 'tenant')->value('id')
+            ?: $c->table('roles')->insertGetId([
+                'name' => 'Owner', 'guard_name' => 'tenant', 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        $counterRole = $c->table('roles')->where('name', 'Counter')->where('guard_name', 'tenant')->value('id')
+            ?: $c->table('roles')->insertGetId([
+                'name' => 'Counter', 'guard_name' => 'tenant', 'created_at' => now(), 'updated_at' => now(),
+            ]);
+
+        foreach (['tenant.dashboard', 'tenant.shifts.index', 'tenant.shifts.show', 'tenant.shifts.close',
+                  'tenant.shifts.close-form', 'tenant.shifts.close-branch', 'tenant.shifts.close-branch-form',
+                  'tenant.shifts.view-amounts'] as $name) {
+            $c->table('permissions')->updateOrInsert(
+                ['name' => $name, 'guard_name' => 'tenant'],
+                ['created_at' => now(), 'updated_at' => now()]
+            );
+        }
+        foreach ($c->table('permissions')->where('guard_name', 'tenant')->pluck('id') as $permId) {
+            foreach ([$ownerRole, $counterRole] as $roleId) {
+                $c->table('role_has_permissions')->updateOrInsert(
+                    ['permission_id' => $permId, 'role_id' => $roleId], []
+                );
+            }
+        }
+
+        $this->ownerId    = $this->makeUser($c, 'owner@hideamt.test', 'Owner', $ownerRole);
+        $this->operatorId = $this->makeUser($c, 'counter@hideamt.test', 'Counter One', $counterRole);
+
+        foreach ([$this->ownerId, $this->operatorId] as $uid) {
+            $c->table('branch_user')->updateOrInsert(
+                ['branch_id' => $this->branchId, 'user_id' => $uid],
+                ['is_active' => 1, 'created_at' => now(), 'updated_at' => now()]
+            );
+            $c->table('terminal_user')->updateOrInsert(
+                ['terminal_id' => $this->terminalId, 'user_id' => $uid], []
+            );
+        }
+
+        // One open shift carrying figures distinctive enough that finding them in a page is proof.
+        $this->shiftId = (int) $c->table('shifts')->insertGetId([
+            'branch_id' => $this->branchId, 'terminal_id' => $this->terminalId,
+            'opened_by_user_id' => $this->operatorId,
+            'opened_at' => now()->subHours(6), 'status' => 'open',
+            'opening_cash' => self::OPENING_CASH,
+            'total_sales' => self::TOTAL_SALES,
+            'total_cash' => self::EXPECTED_CASH,
+            'total_card' => self::TOTAL_CARD,
+            'total_bank_transfer' => 0, 'total_cheque' => 0, 'total_refunds' => 0,
+            'total_discount' => 0, 'total_tax' => 0,
+            'expected_cash' => self::EXPECTED_CASH,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        DB::setDefaultConnection(config('tenancy.master_connection', 'master'));
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+    }
+
+    private function makeUser($c, string $email, string $name, int $roleId): int
+    {
+        $id = (int) $c->table('users')->insertGetId([
+            'name' => $name, 'email' => $email, 'password' => bcrypt('x'),
+            'employee_code' => strtoupper(Str::random(6)), 'status' => 'active', 'locale' => 'en',
+            'default_branch_id' => $this->branchId, 'default_terminal_id' => $this->terminalId,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $c->table('model_has_roles')->insert([
+            'role_id' => $roleId, 'model_type' => User::class, 'model_id' => $id,
+        ]);
+
+        return $id;
+    }
+}

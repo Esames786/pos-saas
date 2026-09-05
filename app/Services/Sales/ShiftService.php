@@ -219,12 +219,27 @@ class ShiftService
      * shift endpoint), extracted so the locking/update logic never forks: atomic txn, row lock + closable
      * assertion (assertClosableUnderLock — unresolved held/table work blocks automatically), variance from
      * expected_cash, close stamp. Throws ShiftException (controlled) when blocked.
+     *
+     * ZERO-DRAWER-1: $countedCash NULL ka matlab hai "koi ginti di hi nahi gayi". Aisi soorat me
+     * daraz sirf tab band hota hai jab uska expected 0 ho — us daraz me ginne ko kuch hai hi nahi.
+     * Ye faisla yahan, LOCK KE ANDAR hota hai, kyunke bahar parhi hui expected_cash basi ho sakti
+     * hai: controller ke parhne aur lock milne ke darmiyan ek bikri commit ho jaye to 0 likhna ek
+     * jhoota shortage bana deta.
      */
-    public function closeShift(Shift $shift, int $userId, float $countedCash, ?string $closingNotes = null): Shift
+    public function closeShift(Shift $shift, int $userId, ?float $countedCash, ?string $closingNotes = null): Shift
     {
         return DB::connection('tenant')->transaction(function () use ($shift, $userId, $countedCash, $closingNotes) {
             $locked = $this->assertClosableUnderLock($shift);
             $expectedCash = (float) $locked->expected_cash;
+
+            if ($countedCash === null) {
+                if (abs($expectedCash) >= 0.005) {
+                    throw new ShiftException(
+                        'Count the drawer first — enter the counted cash (0 must be typed deliberately).'
+                    );
+                }
+                $countedCash = 0.0;
+            }
 
             $locked->update([
                 'closed_by_user_id' => $userId,

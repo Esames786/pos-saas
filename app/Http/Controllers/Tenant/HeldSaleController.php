@@ -571,9 +571,25 @@ class HeldSaleController extends Controller
             //
             // So: SUM per key on the way in, and (below) let each line take only what it needs and
             // leave the rest for the next one.
+            //
+            // KOT-SENT-POOL-2: and the two halves must share ONE ledger. A line the POS names by id
+            // takes its quantity from $kotSentByLineId — but it also has to come OUT of the pool,
+            // or the pool still holds the full amount when the next, unnamed line reaches it and
+            // hands the same quantity out twice. That is exactly what POOL-1 set out to stop, and
+            // it survived in the commonest shape of all: the old line comes back BY ID and the new
+            // helping comes back with none. Kashif Food, bill HS-20260902191935-749 — a second
+            // Singaporean Rice (Midnight) added to a running check was born already sent, printed
+            // nothing, and the kitchen never heard about food the customer was charged for. Four
+            // bills carried the gap between 30 Aug and 2 Sep; the money on each was correct, the
+            // cooking was not.
+            //
+            // The draw-down happens BEFORE any line is created, so it cannot depend on the order
+            // the POS happens to submit lines in.
             $kotSentKeys = [];
-            foreach ($sale->lines()->where('kot_sent', true)
-                ->get(['product_id', 'product_variant_id', 'quantity', 'kot_sent_quantity', 'line_kind', 'combo_id']) as $l) {
+            $kotSentPoolByLineId = [];
+            foreach ($sale->lines()
+                ->where(fn ($q) => $q->where('kot_sent', true)->orWhere('kot_sent_quantity', '>', 0))
+                ->get(['id', 'product_id', 'product_variant_id', 'quantity', 'kot_sent_quantity', 'line_kind', 'combo_id']) as $l) {
                 $sentQty = (float) $l->kot_sent_quantity > 0
                     ? (float) $l->kot_sent_quantity
                     : (float) $l->quantity;
@@ -582,6 +598,7 @@ class HeldSaleController extends Controller
                     . ':' . ($l->line_kind ?? 'standard')
                     . ':' . ($l->combo_id ?? 0);
                 $kotSentKeys[$key] = ($kotSentKeys[$key] ?? 0) + $sentQty;
+                $kotSentPoolByLineId[(int) $l->id] = ['key' => $key, 'quantity' => $sentQty];
             }
 
             $kotSentByLineId = $sale->lines()
@@ -589,6 +606,24 @@ class HeldSaleController extends Controller
                 ->pluck('kot_sent_quantity', 'id')
                 ->map(fn ($quantity) => (float) $quantity)
                 ->all();
+
+            // KOT-SENT-POOL-2: whatever a named line carries is already accounted for — take its
+            // whole prior sent quantity out of the pool. The whole amount, not the part it keeps:
+            // any quantity it gave up was cancelled just above, and cancelled food must not be
+            // left lying in the pool for a new line to inherit.
+            $drainedLineIds = [];
+            foreach ($lines as $line) {
+                $namedId = !empty($line['sales_order_line_id']) ? (int) $line['sales_order_line_id'] : null;
+                if (! $namedId || ! isset($kotSentPoolByLineId[$namedId]) || isset($drainedLineIds[$namedId])) {
+                    // Each existing line is drained ONCE, however many submitted rows name it: a POS
+                    // that splits one line into two carries the same id on both, and draining twice
+                    // would take another line's sent quantity out of the pool with it.
+                    continue;
+                }
+                $drainedLineIds[$namedId] = true;
+                $taken = $kotSentPoolByLineId[$namedId];
+                $kotSentKeys[$taken['key']] = max(($kotSentKeys[$taken['key']] ?? 0) - $taken['quantity'], 0);
+            }
 
             $sale->lines()->delete();
             $sale->update([
