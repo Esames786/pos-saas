@@ -112,3 +112,48 @@ sunayenge, jo isi hafte report ke preview par ho chuka hai.
 - Lines ke naam: `Plus Delivery Charge (net)` theek hai, ya sirf `Delivery Charges`?
 - Sifar wali lines chhupani hain (mera mashwara: haan) ya sifar ke saath dikhani hain?
 - Thermal roll par bhi bridge lagana hai (§6)? Mera mashwara: haan, saath hi.
+
+---
+
+# 10. Poora naqsha — kaunsi screen, kahan se banti hai
+
+Poore system me ye line **sirf EK file** me hai:
+`resources/views/tenant/reports/center/print.blade.php` — do helper (`$bridgeRows`, `$otBridge`),
+**10 call sites**.
+
+Magar wo ek file **paanch outputs** chalati hai. Yani ek jagah theek karne se paanchon theek honge:
+
+| # | Screen / output | Kahan se banta hai | Line abhi hai? |
+|---|---|---|---|
+| 1 | **Report Center → A4 / PDF** | `SalesReportCenterController:238` + `SalesReportDocumentService:46` | ✅ mili hui |
+| 2 | **Report Center → Thermal preview** | wahi blade, `mode=thermal` | ✅ mili hui |
+| 3 | **Z Report (End of Day)** | ye alag renderer **nahi** — Report Center ka *preset* hai (`?preset=z`) | ✅ mili hui |
+| 4 | **POS Quick Report** (screen + thermal print) | `PosQuickReportController:139` → wahi blade | ✅ mili hui |
+| 5 | **Quick Report ka email + raat wala schedule** | `ReportScheduleService:126` → `SalesReportDocumentService::pdf()` → wahi blade | ✅ mili hui |
+
+## 11. Aur teen jagahen jahan ye line HAI HI NAHI
+
+Ye us se bhi bara masla ho sakta hai: wahan section ka total **NET SALES tak pahunchta hi nahi**,
+aur parhne wale ko farq ka pata bhi nahi chalta.
+
+| # | Screen | Faili | Halat |
+|---|---|---|---|
+| 6 | **Report Center ki apni screen** | `reports/center/index.blade.php` | ❌ **koi bridge nahi** — sirf OVERVIEW me Net Sales hai; sections ke totals bina bridge ke khade hain |
+| 7 | **Thermal roll / Send-to-Network** | `EscPosPayloadService::buildReport()` | ❌ **koi bridge nahi** — CATEGORIES/ITEMS/DEALS apna TOTAL aur GRAND TOTAL chhapte hain, bas |
+| 8 | **CSV export** | `SalesReportExporter` | ❌ koi bridge nahi (CSV me shayad zaroori bhi na ho — owner ka faisla) |
+
+> ⚠️ **#7 sab se ahem hai.** Roll par jo parchi counter se nikalti hai us par section ka total NET
+> SALES se milta hi nahi. A4 par bridge hai, roll par nahi — dono alag kahani sunate hain. Isi
+> hafte report ke preview aur printer ke darmiyan bilkul yehi farq nikla tha.
+
+## 12. Kaam ka andaza
+
+| Hissa | Kahan | Kitna |
+|---|---|---|
+| **A** | `print.blade.php` ke `$bridgeRows` — teen sections | Sirf blade; data pehle se maujood. **Paanch outputs ek saath theek** |
+| **B** | `print.blade.php` ke `$otBridge` — BY ORDER TYPE | Engine ka kaam: `SalesReportEngine:967` per type sirf `net_charges` deta hai, uske hisse nahi |
+| **C** | `EscPosPayloadService::buildReport()` | Roll par bridge banana — abhi hai hi nahi |
+| **D** | `reports/center/index.blade.php` | Screen par bridge banana — abhi hai hi nahi |
+
+Mera mashwara: **A + C ek saath** (A4 aur roll ek jaisa bolen, aur paanchon outputs durust), phir
+**B**, phir **D**. Har hisse ka apna guard, aur dono raaston ka muqabla — warna wohi drift.
