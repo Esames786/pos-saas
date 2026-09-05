@@ -220,9 +220,9 @@ class SalesReportService
         }
 
         if ($branchId) {
-            $returnQuery->whereRaw('COALESCE(business_date, DATE(return_date)) = ?', [$clock->currentBusinessDate(\App\Models\Tenant\Branch::find($branchId))]);
+            $returnQuery->whereRaw('COALESCE(business_date, DATE(return_date)) = ?', [$clock->operatingBusinessDate(\App\Models\Tenant\Branch::find($branchId))]);
         } else {
-            $map = $clock->currentBusinessDatesByBranch();
+            $map = $clock->operatingBusinessDatesByBranch();
             $returnQuery->where(function ($q) use ($map) {
                 foreach ($map as $bid => $date) {
                     $q->orWhere(fn ($w) => $w->where('branch_id', $bid)->whereRaw('COALESCE(business_date, DATE(return_date)) = ?', [$date]));
@@ -488,10 +488,10 @@ class SalesReportService
         $day = $this->businessDayExpr($prefix);
 
         if ($branchId) {
-            return $query->whereRaw("$day = ?", [$clock->currentBusinessDate(\App\Models\Tenant\Branch::find($branchId))]);
+            return $query->whereRaw("$day = ?", [$clock->operatingBusinessDate(\App\Models\Tenant\Branch::find($branchId))]);
         }
 
-        $map = $clock->currentBusinessDatesByBranch();
+        $map = $clock->operatingBusinessDatesByBranch();
 
         return $query->where(function ($q) use ($map, $day, $prefix) {
             foreach ($map as $bid => $date) {

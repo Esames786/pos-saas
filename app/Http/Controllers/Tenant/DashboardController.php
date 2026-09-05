@@ -76,9 +76,9 @@ class DashboardController extends Controller
         $businessDay = 'COALESCE(sales_orders.business_date, DATE(sales_orders.sale_date))';
         $applyToday = function ($query) use ($clock, $selectedBranch, $businessDay) {
             if ($selectedBranch) {
-                return $query->whereRaw("$businessDay = ?", [$clock->currentBusinessDate(\App\Models\Tenant\Branch::find($selectedBranch))]);
+                return $query->whereRaw("$businessDay = ?", [$clock->operatingBusinessDate(\App\Models\Tenant\Branch::find($selectedBranch))]);
             }
-            $map = $clock->currentBusinessDatesByBranch();
+            $map = $clock->operatingBusinessDatesByBranch();
 
             return $query->where(function ($q) use ($map, $businessDay) {
                 foreach ($map as $bid => $date) {
@@ -175,7 +175,7 @@ class DashboardController extends Controller
         }
 
         // Last 7 business days net sales (window anchored to the current business date, not UTC now)
-        $todayBusinessDate = $clock->currentBusinessDate(
+        $todayBusinessDate = $clock->operatingBusinessDate(
             $selectedBranch ? \App\Models\Tenant\Branch::find($selectedBranch) : null
         );
         $windowStart = \Illuminate\Support\Carbon::parse($todayBusinessDate)->subDays(6)->toDateString();
