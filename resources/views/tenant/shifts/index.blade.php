@@ -30,7 +30,7 @@
 <div class="card mb-3">
     <div class="card-body">
         <form method="GET" action="{{ url('/shifts') }}" class="row g-3 align-items-end">
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <label for="branch-filter" class="form-label">Branch</label>
                 <select id="branch-filter" name="branch_id" class="form-select">
                     <option value="">All Branches</option>
@@ -41,7 +41,7 @@
                     @endforeach
                 </select>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label for="status-filter" class="form-label">Status</label>
                 <select id="status-filter" name="status" class="form-select">
                     <option value="">All</option>
@@ -49,9 +49,37 @@
                     <option value="closed" @selected(request('status') === 'closed')>Closed</option>
                 </select>
             </div>
+            {{-- SHIFT-DATE-FILTER-1: din = shift ka business_date (jo khulte waqt jam jaata hai),
+                 closed_at nahi — raat 1 baje band hui shift agle din ki nahi hoti. --}}
             <div class="col-md-2">
+                <label for="date-from" class="form-label">Din (se)</label>
+                <input type="date" id="date-from" name="date_from" class="form-control"
+                    value="{{ request('date_from') }}" max="{{ $today }}">
+            </div>
+            <div class="col-md-2">
+                <label for="date-to" class="form-label">Din (tak)</label>
+                <input type="date" id="date-to" name="date_to" class="form-control"
+                    value="{{ request('date_to') }}" max="{{ $today }}">
+            </div>
+            <div class="col-md-3">
                 <button class="btn btn-dark" type="submit">Filter</button>
                 <a href="{{ url('/shifts') }}" class="btn btn-light">Reset</a>
+            </div>
+            <div class="col-12 d-flex align-items-center gap-2 pt-1">
+                <span class="small text-muted">Jaldi se:</span>
+                @php
+                    // Baaqi filter (branch/status) qaayam rehte hain; page 1 par wapas.
+                    $quick = fn (string $d) => request()->fullUrlWithQuery(['date_from' => $d, 'date_to' => $d, 'page' => null]);
+                    $isDay = fn (string $d) => request('date_from') === $d && request('date_to') === $d;
+                @endphp
+                <a href="{{ $quick($today) }}"
+                   class="btn btn-sm {{ $isDay($today) ? 'btn-dark' : 'btn-outline-secondary' }}">
+                    Today <span class="opacity-75">({{ $today }})</span>
+                </a>
+                <a href="{{ $quick($yesterday) }}"
+                   class="btn btn-sm {{ $isDay($yesterday) ? 'btn-dark' : 'btn-outline-secondary' }}">
+                    Yesterday <span class="opacity-75">({{ $yesterday }})</span>
+                </a>
             </div>
         </form>
     </div>

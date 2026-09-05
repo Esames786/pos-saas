@@ -409,6 +409,15 @@ class HideAmountsFromOperatorsMySqlTest extends MySqlTenantTestCase
         $this->assertSame('open', $shift->status,
             'the branch close must still refuse while a drawer holding money is uncounted');
     }
+    /** SHIFT-DATE-FILTER-1: din ka filter safha tor na de — khali, bhara, aur khali nateeje wala. */
+    public function test_the_shift_list_renders_with_a_date_filter(): void
+    {
+        foreach (["", "?date_from=2026-09-04&date_to=2026-09-05", "?date_from=2026-01-01&date_to=2026-01-01"] as $qs) {
+            $html = $this->visit($this->ownerId, "/shifts" . $qs)->getContent();
+            $this->assertStringContainsString("Yesterday", $html, "date filter blew up on: " . $qs);
+        }
+    }
+
     public function test_the_dashboard_tiles_are_masked(): void
     {
         $this->hideOn();

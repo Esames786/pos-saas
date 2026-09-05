@@ -32,6 +32,27 @@ class ShiftController extends Controller
             $query->where('branch_id', $request->branch_id);
         }
 
+        // SHIFT-DATE-FILTER-1: din wohi jo baaqi system ka hai — shift ka FROZEN business_date,
+        // jo khulte waqt tay hota hai. Jin purani rows par wo hai hi nahi (business_date se pehle
+        // khuli thin) unke liye opened_at ki tareekh — warna wo rows kisi bhi din ke filter se
+        // gayab ho jatin. Yehi jorr Daily Closing bhi lagata hai, is liye dono screens ek hi din
+        // dikhati hain. sale_date ya closed_at par filter karna GHALAT hota: raat 1 baje band hui
+        // shift kal ki nahi, apne business date ki hai.
+        $dates = $request->validate([
+            'date_from' => ['nullable', 'date_format:Y-m-d'],
+            'date_to'   => ['nullable', 'date_format:Y-m-d'],
+        ]);
+
+        $onDay = function ($q, string $op, string $date) {
+            $q->where(function ($w) use ($op, $date) {
+                $w->where(fn ($a) => $a->whereNotNull('business_date')->whereDate('business_date', $op, $date))
+                  ->orWhere(fn ($a) => $a->whereNull('business_date')->whereDate('opened_at', $op, $date));
+            });
+        };
+
+        if (! empty($dates['date_from'])) { $onDay($query, '>=', $dates['date_from']); }
+        if (! empty($dates['date_to']))   { $onDay($query, '<=', $dates['date_to']); }
+
         // True open-shift count per branch (not just the current page) so the "Close Branch" action
         // is accurate even when a branch's shifts span pages.
         $openCounts = Shift::where('status', 'open')
@@ -52,11 +73,20 @@ class ShiftController extends Controller
             ->mapWithKeys(fn ($branch) => [$branch->id => $visibility->allows($user, $branch)])
             ->all();
 
+        // Today/Yesterday browser ki tareekh nahi — tenant ka business date (Asia/Karachi), wohi
+        // jo shift khulte waqt jam jaata hai. Sarwar UTC par hai, is liye raat ko dono alag hote
+        // hain aur browser ka "aaj" ek ghalat din khol deta.
+        $today = app(\App\Support\TenantClock::class)->currentBusinessDate(
+            $request->filled('branch_id') ? Branch::find($request->branch_id) : null
+        );
+
         return view('tenant.shifts.index', [
             'shifts'        => $shifts,
             'branches'      => Branch::where('status', 'active')->orderBy('name')->get(),
             'openCounts'    => $openCounts,
             'maySeeAmounts' => $maySeeAmounts,
+            'today'         => $today,
+            'yesterday'     => \Carbon\Carbon::parse($today)->subDay()->format('Y-m-d'),
         ]);
     }
 
