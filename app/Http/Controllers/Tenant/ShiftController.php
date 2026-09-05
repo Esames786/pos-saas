@@ -73,12 +73,18 @@ class ShiftController extends Controller
             ->mapWithKeys(fn ($branch) => [$branch->id => $visibility->allows($user, $branch)])
             ->all();
 
-        // Today/Yesterday browser ki tareekh nahi — tenant ka business date (Asia/Karachi), wohi
-        // jo shift khulte waqt jam jaata hai. Sarwar UTC par hai, is liye raat ko dono alag hote
-        // hain aur browser ka "aaj" ek ghalat din khol deta.
-        $today = app(\App\Support\TenantClock::class)->currentBusinessDate(
-            $request->filled('branch_id') ? Branch::find($request->branch_id) : null
-        );
+        // OPERATING-DATE-1: "Today" ghadi ka aaj nahi — wo din jis par floor ABHI kaam kar raha hai,
+        // yani khuli shifton ka sab se naya business_date. Raat 12 baje ghadi agle din par chali
+        // jaati hai jabke shift wohi purani khuli hoti hai, is liye ghadi wala "aaj" us waqt ek
+        // khali list kholta tha. Koi shift khuli na ho to purana usool — branch ke timezone ka aaj.
+        // Browser ki tareekh yahan kabhi nahi chalti: sarwar UTC par hai aur tenant Asia/Karachi.
+        $clock  = app(\App\Support\TenantClock::class);
+        $branch = $request->filled('branch_id') ? Branch::find($request->branch_id) : null;
+        $today  = $clock->operatingBusinessDate($branch);
+
+        // Input ka "max" alag cheez hai: agar kisi terminal ne agle din ki shift khol li ho to us
+        // din ko chunna mana nahi hona chahiye. Y-m-d hai, is liye seedha string muqabla kaafi hai.
+        $maxDate = max($today, $clock->currentBusinessDate($branch));
 
         return view('tenant.shifts.index', [
             'shifts'        => $shifts,
@@ -86,6 +92,7 @@ class ShiftController extends Controller
             'openCounts'    => $openCounts,
             'maySeeAmounts' => $maySeeAmounts,
             'today'         => $today,
+            'maxDate'       => $maxDate,
             'yesterday'     => \Carbon\Carbon::parse($today)->subDay()->format('Y-m-d'),
         ]);
     }
