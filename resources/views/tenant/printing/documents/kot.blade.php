@@ -128,8 +128,21 @@
 <div class="big">VEHICLE: {{ $salesOrder->vehicle_number }}</div>
 @endif
 
-<div>TIME: {{ now()->format('h:i A') }}</div>
-<div>{{ now()->format('D d-M-Y') }}</div>
+{{-- KOT-TIME-TRUTH-1: wohi waqt jo printer par jaata hai — usi helper se, us hi timezone me.
+     Pehle yahan now() tha aur koi timezone nahi: preview sarwar ka UTC dikhata tha jabke parchi
+     Karachi ka waqt chhapti thi, yani do screenon par do jawab. --}}
+@php
+    $kotTz      = app(\App\Support\TenantClock::class)->normalize($salesOrder->shift?->timezone_name)
+                  ?? app(\App\Support\TenantClock::class)->normalize($salesOrder->branch?->timezone)
+                  ?? \App\Support\TenantClock::DEFAULT_TIMEZONE;
+    $kotOrdered = (\App\Support\KotTicketTime::orderedAt($job, $salesOrder) ?? now())->timezone($kotTz);
+    $kotReprint = \App\Support\KotTicketTime::reprintAt($job);
+@endphp
+<div>TIME: {{ $kotOrdered->format('h:i A') }}</div>
+<div>{{ $kotOrdered->format('D d-M-Y') }}</div>
+@if($kotReprint)
+<div>REPRINT: {{ $kotReprint->timezone($kotTz)->format('d/m/Y h:i A') }}</div>
+@endif
 
 <hr>
 

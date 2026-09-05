@@ -1045,11 +1045,22 @@ class EscPosPayloadService
         if ($show('show_vehicle_number') && $sale->vehicle_number) {
             $out .= $this->scaled('VEHICLE: ' . $sale->vehicle_number, $big, true);
         }
+        // KOT-TIME-TRUTH-1: parchi ka waqt ab ORDER ka hai, chhapne ka nahi.
+        //
+        // Pehle yahan seedha now() tha, is liye saat din purani KOT reprint karne par aaj ki
+        // tareekh chhapti thi — kitchen ke liye ye parchi taaza dikhti thi. Ab waqt us ROUND ka
+        // hai jiska ye khana hai (KotTicketTime), aur duplicate par nikalne ka waqt apni alag
+        // line me — dono cheezein chahiye, ek doosre ki jagah nahi.
+        //
         // The old ticket led with a big wall-clock time; the date is reference and stays small.
         // TIME honours time_font_size so the kitchen can shrink the clock below the food rows.
-        $now = now()->timezone($this->printTz($sale));
-        $out .= $this->scaled('TIME: ' . $now->format('h:i A'), $timeBig, true);
-        $out .= $now->format('D d-M-Y') . "\n";
+        $tz      = $this->printTz($sale);
+        $ordered = (\App\Support\KotTicketTime::orderedAt($job, $sale) ?? now())->timezone($tz);
+        $out .= $this->scaled('TIME: ' . $ordered->format('h:i A'), $timeBig, true);
+        $out .= $ordered->format('D d-M-Y') . "\n";
+        if ($reprintAt = \App\Support\KotTicketTime::reprintAt($job)) {
+            $out .= 'REPRINT: ' . $reprintAt->timezone($tz)->format('d/m/Y h:i A') . "\n";
+        }
         $out .= $rule . "\n";
         // Qty | Item column header (no price — a kitchen ticket carries none), at the row scale.
         $out .= $this->sized($this->qtyItemColumns('QTY', 'ITEM', $this->scaledWidth($rowBig), $dividers), $rowBig, true);
