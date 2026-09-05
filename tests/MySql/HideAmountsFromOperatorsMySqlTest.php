@@ -194,17 +194,41 @@ class HideAmountsFromOperatorsMySqlTest extends MySqlTenantTestCase
             'shift page: the operator must see the mask, not an empty box that looks like a bug');
     }
 
-    /** The list shows Opening Cash, which is money too. */
-    public function test_the_shift_list_masks_the_opening_cash(): void
+    /**
+     * SHIFT-RECONCILE-1: the list carries the whole reconciliation now — opening, cash sale, card,
+     * bank, refunds, expected, counted and the difference — so every one of those columns has to
+     * answer the same AmountVisibility the close screen does. A mask on six columns and a figure
+     * on the seventh would be no mask at all.
+     */
+    public function test_the_shift_list_masks_every_money_column(): void
     {
         $this->hideOn();
         $this->revokeFromOperator();
 
         $html = $this->visit($this->operatorId, '/shifts')->getContent();
 
+        $this->assertBodyHasNoExpectedCash($html, 'shift list');
         $this->assertStringNotContainsString('12,000.00', $html,
             'shift list: the opening cash is still readable');
         $this->assertStringContainsString('*****', $html, 'shift list: the mask must be shown');
+    }
+
+    /** And the Owner reads the same list in full. */
+    public function test_the_owner_reads_every_money_column_on_the_list(): void
+    {
+        $this->hideOn();
+        $this->revokeFromOperator();
+
+        $html = $this->visit($this->ownerId, '/shifts')->getContent();
+
+        // total_sales jaan-boojh kar list par nahi hai: ye safha DARAZ ka hisab hai, bikri ka
+        // nahi — jo cash daraz me aata hai wohi ginne ke qabil hai. Bikri shift ke apne safhe par
+        // maujood hai.
+        foreach (['224,305.00' => 'expected cash', '46,435.00' => 'the card figure',
+                  '12,000.00' => 'the opening cash'] as $figure => $what) {
+            $this->assertStringContainsString($figure, $html, "the Owner must still read {$what}");
+        }
+        $this->assertStringNotContainsString('*****', $html, 'nothing is masked from the Owner');
     }
 
     /** Same two screens, Owner: nothing is hidden from the person who owns the money. */
@@ -268,6 +292,115 @@ class HideAmountsFromOperatorsMySqlTest extends MySqlTenantTestCase
 
         $shift = DB::connection('tenant')->table('shifts')->where('id', $this->shiftId)->first();
         $this->assertSame('closed', $shift->status, 'his own shift must actually close');
+    }
+    /* ── ZERO-DRAWER-1 ────────────────────────────────────────────────────── */
+
+    /** A shift that took no money at all: expected 0, and nothing in the drawer to count. */
+    private function emptyShift(): int
+    {
+        return (int) DB::connection('tenant')->table('shifts')->insertGetId([
+            'branch_id' => $this->branchId, 'terminal_id' => $this->terminalId,
+            'opened_by_user_id' => $this->operatorId,
+            'opened_at' => now()->subHours(3), 'status' => 'open',
+            'opening_cash' => 0, 'total_sales' => 0, 'total_cash' => 0, 'total_card' => 0,
+            'total_bank_transfer' => 0, 'total_cheque' => 0, 'total_refunds' => 0,
+            'total_discount' => 0, 'total_tax' => 0, 'expected_cash' => 0,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+    }
+
+    /**
+     * Kashif Food's floor terminal takes orders but never money — every bill it opens is settled
+     * at another counter — so its expected cash is 0 every night. Asking the cashier to certify
+     * nothing had a worse answer than the rule: on 4 September someone typed 1 to get past it and
+     * the drawer closed a rupee over. A drawer with nothing in it now closes on a blank box.
+     */
+    public function test_an_empty_drawer_closes_without_a_typed_count(): void
+    {
+        DB::connection('tenant')->table('shifts')->where('id', $this->shiftId)
+            ->update(['status' => 'closed', 'closed_at' => now()]);
+        $empty = $this->emptyShift();
+
+        $res = $this->actingAs(User::on('tenant')->find($this->operatorId), 'tenant')
+            ->post('http://' . $this->host . '/shifts/' . $empty . '/close', []);
+
+        $this->assertSame(302, $res->getStatusCode(), 'an empty drawer must not be blocked');
+
+        $shift = DB::connection('tenant')->table('shifts')->where('id', $empty)->first();
+        $this->assertSame('closed', $shift->status, 'the empty drawer closes');
+        $this->assertEquals(0.0, (float) $shift->counted_cash, 'it closes at 0, which is the arithmetic');
+        $this->assertEquals(0.0, (float) $shift->cash_variance, 'and at no variance — nothing is missing');
+    }
+
+    /**
+     * THE guard this must not cost. A drawer that HELD money still may not close on a blank box:
+     * that is the fault ZERO-DRAWER-1 must not reintroduce — a 28,400 shift once closed at 0 and
+     * raised a shortage for its whole takings.
+     */
+    public function test_a_drawer_with_money_still_demands_a_count(): void
+    {
+        $res = $this->actingAs(User::on('tenant')->find($this->operatorId), 'tenant')
+            ->post('http://' . $this->host . '/shifts/' . $this->shiftId . '/close', []);
+
+        $shift = DB::connection('tenant')->table('shifts')->where('id', $this->shiftId)->first();
+        $this->assertSame('open', $shift->status,
+            'a drawer holding 224,305 must not close because the box was left blank');
+        $this->assertNull($shift->counted_cash, 'and no count may be invented for it');
+    }
+
+    /** Typing 0 deliberately was always allowed, and still is. */
+    public function test_a_typed_zero_is_accepted_on_a_drawer_with_money(): void
+    {
+        $res = $this->actingAs(User::on('tenant')->find($this->operatorId), 'tenant')
+            ->post('http://' . $this->host . '/shifts/' . $this->shiftId . '/close', ['counted_cash' => '0']);
+
+        $this->assertSame(302, $res->getStatusCode());
+        $shift = DB::connection('tenant')->table('shifts')->where('id', $this->shiftId)->first();
+        $this->assertSame('closed', $shift->status, 'a deliberate 0 closes the shift');
+        $this->assertEquals(0.0, (float) $shift->counted_cash);
+        $this->assertEquals(-224305.0, (float) $shift->cash_variance, 'and records the whole shortage');
+    }
+
+    /**
+     * Close Branch closes every shift in ONE transaction, so one un-countable terminal used to
+     * fail all of them. Kashif Food could not close its four counters because the floor terminal
+     * had no figure to type.
+     */
+    public function test_close_branch_is_not_blocked_by_an_empty_terminal(): void
+    {
+        $empty = $this->emptyShift();
+
+        $res = $this->actingAs(User::on('tenant')->find($this->ownerId), 'tenant')
+            ->post('http://' . $this->host . '/shifts-close-branch', [
+                'branch_id' => $this->branchId,
+                'mode'      => 'per_terminal',
+                'counted'   => [$this->shiftId => '224305'],   // empty shift ka khaana bheja hi nahi
+            ]);
+
+        $this->assertSame(302, $res->getStatusCode());
+
+        foreach ([$this->shiftId, $empty] as $id) {
+            $shift = DB::connection('tenant')->table('shifts')->where('id', $id)->first();
+            $this->assertSame('closed', $shift->status, "shift {$id} must have closed");
+        }
+
+        $shift = DB::connection('tenant')->table('shifts')->where('id', $empty)->first();
+        $this->assertEquals(0.0, (float) $shift->cash_variance, 'the empty terminal closes at no variance');
+    }
+
+    /** And a counted terminal left blank still stops the branch close. */
+    public function test_close_branch_still_refuses_a_blank_drawer_that_held_money(): void
+    {
+        $res = $this->actingAs(User::on('tenant')->find($this->ownerId), 'tenant')
+            ->post('http://' . $this->host . '/shifts-close-branch', [
+                'branch_id' => $this->branchId,
+                'mode'      => 'per_terminal',
+                'counted'   => [],
+            ]);
+
+        $shift = DB::connection('tenant')->table('shifts')->where('id', $this->shiftId)->first();
+        $this->assertSame('open', $shift->status,
+            'the branch close must still refuse while a drawer holding money is uncounted');
     }
     public function test_the_dashboard_tiles_are_masked(): void
     {

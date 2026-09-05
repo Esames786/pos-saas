@@ -68,7 +68,20 @@
                     <th scope="col">Opened By</th>
                     <th scope="col">Opened At</th>
                     <th scope="col">Closed At</th>
-                    <th scope="col">Opening Cash</th>
+                    {{-- SHIFT-RECONCILE-1: pehle sirf Opening Cash tha, jo Kashif par har raat 0.00
+                         hota hai — yani us column ne kabhi kuch bataya hi nahi. Ab wahi hisab jo
+                         daraz band karte waqt saamne hota hai: kitna aana chahiye tha, kitna nikla,
+                         aur farq. Cheque ka column jaan-boojh kar nahi: dono tenants par wo
+                         aaj tak sifar hai, aur hamesha khali column wohi bemaani cheez ban jata
+                         hai jo Opening Cash ban chuka tha. --}}
+                    <th scope="col" class="text-end">Opening</th>
+                    <th scope="col" class="text-end">Cash Sale</th>
+                    <th scope="col" class="text-end">Card</th>
+                    <th scope="col" class="text-end">Bank</th>
+                    <th scope="col" class="text-end">Refunds</th>
+                    <th scope="col" class="text-end">Expected</th>
+                    <th scope="col" class="text-end">Counted</th>
+                    <th scope="col" class="text-end">Difference</th>
                     <th scope="col">Status</th>
                     <th scope="col" class="text-end">Action</th>
                 </tr>
@@ -81,7 +94,7 @@
                     $branchOpen = (int) ($openCounts[$branchId] ?? 0);
                 @endphp
                 <tr class="table-light">
-                    <td colspan="7">
+                    <td colspan="13">
                         <i class="ti ti-building-store me-1" aria-hidden="true"></i>
                         <strong>{{ $branchName }}</strong>
                         @if($branchOpen > 0)
@@ -107,7 +120,33 @@
                         <td>{{ $shift->openedBy?->name }}</td>
                         <td>{{ app(\App\Support\TenantClock::class)->format($shift->opened_at, 'Y-m-d H:i', $shift->timezone_name) }}</td>
                         <td>{{ $shift->closed_at ? app(\App\Support\TenantClock::class)->format($shift->closed_at, 'Y-m-d H:i', $shift->timezone_name) : '—' }}</td>
-                        <td>{{ ($maySeeAmounts[$shift->branch_id] ?? false) ? number_format($shift->opening_cash, 2) : '*****' }}</td>
+                        @php
+                            // Ek hi faisla, har khaane par — wahi AmountVisibility jo Close Shift
+                            // aur dashboard poochte hain. Branch na mile to masked (fail closed).
+                            $see  = $maySeeAmounts[$shift->branch_id] ?? false;
+                            $mny  = fn ($v) => $see ? number_format((float) $v, 2) : '*****';
+                            $diff = $shift->cash_variance;
+                        @endphp
+                        <td class="text-end">{{ $mny($shift->opening_cash) }}</td>
+                        <td class="text-end">{{ $mny($shift->total_cash) }}</td>
+                        <td class="text-end">{{ $mny($shift->total_card) }}</td>
+                        <td class="text-end">{{ $mny($shift->total_bank_transfer) }}</td>
+                        <td class="text-end">{{ $mny($shift->total_refunds) }}</td>
+                        <td class="text-end fw-semibold">{{ $mny($shift->expected_cash) }}</td>
+                        <td class="text-end">{{ $shift->counted_cash === null ? '—' : $mny($shift->counted_cash) }}</td>
+                        <td class="text-end">
+                            @if(! $see)
+                                *****
+                            @elseif($diff === null)
+                                <span class="text-muted">—</span>
+                            @else
+                                {{-- Kami surkh, zyadti amber, barabar sabz: rang khud bata deta hai
+                                     ke kis daraz ko dekhna hai. --}}
+                                <span class="{{ $diff < -0.005 ? 'text-danger fw-semibold' : ($diff > 0.005 ? 'text-warning fw-semibold' : 'text-success') }}">
+                                    {{ number_format((float) $diff, 2) }}
+                                </span>
+                            @endif
+                        </td>
                         <td>
                             @if($shift->status === 'open')
                                 <span class="badge bg-warning text-dark">Open</span>
@@ -121,6 +160,34 @@
                             @endcan
                         </td>
                     </tr>
+                @php
+                    // Sirf IS SAFHE ka jama — list paginated hai, is liye ye poore branch ka
+                    // hisab hone ka dawa nahi karta, aur label bhi yehi kehta hai.
+                    $see    = $maySeeAmounts[$branchId] ?? false;
+                    $sum    = fn (string $col) => $branchShifts->sum(fn ($s) => (float) $s->{$col});
+                    $sumVar = $branchShifts->whereNotNull('cash_variance')->sum(fn ($s) => (float) $s->cash_variance);
+                    $mny    = fn ($v) => $see ? number_format((float) $v, 2) : '*****';
+                @endphp
+                <tr class="fw-semibold border-top border-2">
+                    <td colspan="5" class="text-end text-muted">Is safhe ka jama —</td>
+                    <td class="text-end">{{ $mny($sum('opening_cash')) }}</td>
+                    <td class="text-end">{{ $mny($sum('total_cash')) }}</td>
+                    <td class="text-end">{{ $mny($sum('total_card')) }}</td>
+                    <td class="text-end">{{ $mny($sum('total_bank_transfer')) }}</td>
+                    <td class="text-end">{{ $mny($sum('total_refunds')) }}</td>
+                    <td class="text-end">{{ $mny($sum('expected_cash')) }}</td>
+                    <td class="text-end">{{ $mny($sum('counted_cash')) }}</td>
+                    <td class="text-end">
+                        @if(! $see)
+                            *****
+                        @else
+                            <span class="{{ $sumVar < -0.005 ? 'text-danger' : ($sumVar > 0.005 ? 'text-warning' : 'text-success') }}">
+                                {{ number_format($sumVar, 2) }}
+                            </span>
+                        @endif
+                    </td>
+                    <td colspan="2"></td>
+                </tr>
                 @endforeach
             @empty
                 <tr>
