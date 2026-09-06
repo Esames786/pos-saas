@@ -245,4 +245,35 @@ class PosScreenRendersHttpMySqlTest extends MySqlTenantTestCase
         DB::setDefaultConnection(config('tenancy.master_connection', 'master'));
         app(PermissionRegistrar::class)->forgetCachedPermissions();
     }
+    /**
+     * ADDRESS-ATTACH-1 — address "Save" karne se wo ORDER par bhi chadhe.
+     *
+     * Pehle sirf customer ke khaate me jata tha aur radio chun jata tha; order ka apna khaana
+     * (#delivery_address) khali reh jata tha jab tak cashier "Attach to Order" bhi na dabaye.
+     * Screen teen taraf se keh rahi hoti thi ke kaam ho gaya, is liye kisi ko shak nahi hota tha —
+     * owner ke apne order me address HOLD se 11 second pehle save hua aur phir bhi bill par nahi tha.
+     *
+     * SACH: ye mantiq browser me chalti hai, is liye ye guard usay CHALA kar nahi dekh sakta. Ye
+     * itna karta hai ke wo satar safhe se ghayab na ho jaye — hataoge to ye RED hoga.
+     */
+    public function test_saving_an_address_also_puts_it_on_the_order(): void
+    {
+        $html = $this->get_pos()->getContent();
+
+        // Us HANDLER par nishana jo address save karta hai — "new-addr-save" do baar aata hai
+        // (pehle button ka id, phir uska listener), is liye listener wali jagah se katte hain.
+        $at = strpos($html, 'saveAddrBtn.addEventListener');
+        $this->assertNotFalse($at, 'address save karne wala handler safhe par hona chahiye');
+        $end = strpos($html, "'Address saved'", $at);
+        $this->assertNotFalse($end, 'save ka mukammal hone wala paighaam milna chahiye');
+        $block = substr($html, $at, $end - $at);
+
+        $this->assertStringContainsString('ADDRESS-ATTACH-1', $block,
+            'address save hone par usay order par chadhane wali mantiq gayab hai');
+        $this->assertStringContainsString('delivery_address', $block,
+            'save ke baad order ka apna address khaana bharna chahiye');
+        $this->assertStringContainsString('isDelivery()', $block,
+            'ye sirf delivery order par lagna chahiye — warna naya order / recall / type-switch '
+            .'wali chaar hifazatein toot jati hain');
+    }
 }
