@@ -186,4 +186,28 @@ class KotTicketTimeMySqlTest extends MySqlTenantTestCase
             $this->assertStringNotContainsString('REPRINT:', $out, "{$where}: asli parchi par REPRINT ki line bekaar hai");
         }
     }
+    /**
+     * Ye blade TEEN jagah se render hota hai. Maine do sambhale aur teesri chhod di: Layout screen
+     * ka live preview koi print job deta hi nahi — wo settings dikhata hai, kisi parchi ki nakal
+     * nahi — aur safha 500 ho gaya: "Undefined variable $job". Owner ne screenshot bhej kar pakra.
+     *
+     * Guard usi ASLI raaste par hai (wohi controller method jo route chalata hai), mirror kiye
+     * hue view par nahi — warna wo apna hi banaya hua safha parhta rehta.
+     */
+    public function test_the_layout_preview_renders_without_a_print_job(): void
+    {
+        $sale = $this->heldOrderWithTwoItems();
+        app(PrintJobService::class)->queueKot(sale: $sale, terminalId: (string) $this->terminalId);
+
+        $layout = \App\Models\Tenant\ReceiptLayoutSetting::on('tenant')->create([
+            'branch_id' => $this->branchId, 'document_type' => 'kot',
+            'paper_size' => '80mm', 'font_size' => 14, 'is_active' => true,
+        ]);
+
+        $html = app(\App\Http\Controllers\Tenant\ReceiptLayoutController::class)
+            ->preview(new \Illuminate\Http\Request(), $layout)->render();
+
+        $this->assertStringContainsString('TIME:', $html, 'layout preview par KOT ka waqt hona chahiye');
+        $this->assertStringNotContainsString('Undefined variable', $html);
+    }
 }

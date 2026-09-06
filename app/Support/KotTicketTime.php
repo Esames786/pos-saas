@@ -30,7 +30,7 @@ class KotTicketTime
      * Jin purani KOTs ka koi batch nahi (batch se pehle ki), un ke liye order ka `created_at` —
      * `sale_date` NAHI, kyunke wo payment ke waqt dobara likh diya jaata hai aur jhoot bolta hai.
      */
-    public static function orderedAt(?PrintJob $job, ?SalesOrder $sale): ?Carbon
+    public static function orderedAt(?PrintJob $job, ?object $sale = null): ?Carbon
     {
         $batchId = $job?->payload['kot_batch_id'] ?? null;
 
@@ -41,7 +41,17 @@ class KotTicketTime
             }
         }
 
-        return $sale?->created_at?->copy() ?? $sale?->sale_date?->copy();
+        // `object`, `SalesOrder` nahi: Layout ka live preview ek NAMOONA sale bhejta hai (stdClass)
+        // jab tenant par abhi koi bikri hui hi na ho — nayi dukaan par yehi soorat hoti hai. Sakht
+        // type ne wo safha 500 kar diya tha. Waqt ka sawal model ki qism se nahi bandha hona chahiye.
+        foreach (['created_at', 'sale_date'] as $field) {
+            $v = $sale?->{$field} ?? null;
+            if ($v) {
+                return $v instanceof Carbon ? $v->copy() : Carbon::parse($v);
+            }
+        }
+
+        return null;
     }
 
     /**
