@@ -135,8 +135,12 @@
     $kotTz      = app(\App\Support\TenantClock::class)->normalize($salesOrder->shift?->timezone_name)
                   ?? app(\App\Support\TenantClock::class)->normalize($salesOrder->branch?->timezone)
                   ?? \App\Support\TenantClock::DEFAULT_TIMEZONE;
-    $kotOrdered = (\App\Support\KotTicketTime::orderedAt($job, $salesOrder) ?? now())->timezone($kotTz);
-    $kotReprint = \App\Support\KotTicketTime::reprintAt($job);
+    // Ye blade TEEN jagah se render hota hai: asli print job ka preview, aur Layout screen ka
+    // live preview jo koi job deta hi nahi (wo settings dikhata hai, kisi parchi ki nakal nahi).
+    // $job ko farz kar lena us screen ko 500 kar deta hai — wohi hua tha.
+    $kotJob     = $job ?? null;
+    $kotOrdered = (\App\Support\KotTicketTime::orderedAt($kotJob, $salesOrder) ?? now())->timezone($kotTz);
+    $kotReprint = \App\Support\KotTicketTime::reprintAt($kotJob);
 @endphp
 <div>TIME: {{ $kotOrdered->format('h:i A') }}</div>
 <div>{{ $kotOrdered->format('D d-M-Y') }}</div>
