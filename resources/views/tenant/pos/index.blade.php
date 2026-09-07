@@ -1396,11 +1396,25 @@
                 <div id="qr-toast" class="alert d-none py-2 small mb-3" role="alert"></div>
 
                 <div class="row g-3 mb-3">
-                    <div class="col-sm-5">
+                    <div class="col-sm-4">
                         <label class="form-label small mb-1">Business date</label>
                         <input type="date" class="form-control form-control-sm" id="qr-date" value="{{ $quickReportDate }}">
                     </div>
-                    <div class="col-sm-7 d-flex align-items-end">
+                    {{-- QUICK-REPORT-BRANCH-SCOPE-1: sirf apni branchein. Ek hi ho to wohi chuni hui
+                         hoti hai aur "All my branches" ka option hi nahi aata — us soorat me chunne
+                         ko kuch nahi hai. Server phir bhi chunaav ko apni hadd se kaat-ta hai. --}}
+                    <div class="col-sm-4">
+                        <label class="form-label small mb-1" for="qr-branch">Branch</label>
+                        <select id="qr-branch" class="form-select form-select-sm">
+                            @if(($quickReportBranches ?? collect())->count() > 1)
+                                <option value="">All my branches</option>
+                            @endif
+                            @foreach(($quickReportBranches ?? collect()) as $qrB)
+                                <option value="{{ $qrB->id }}" @selected(($quickReportBranches ?? collect())->count() === 1)>{{ $qrB->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-sm-4 d-flex align-items-end">
                         <div class="form-check form-switch ms-auto">
                             <input class="form-check-input" type="checkbox" id="qr-save">
                             <label class="form-check-label small" for="qr-save">Save my selection</label>
@@ -1584,6 +1598,7 @@
     var collect = function () {
         return {
             date: document.getElementById('qr-date').value,
+            branch_ids: (function () { var v = (document.getElementById('qr-branch') || {}).value; return v ? [v] : []; })(),
             sections: checked('.qr-section'),
             category_ids: checked('.qr-category'),
             waiter_ids: checked('.qr-waiter'),
@@ -1596,14 +1611,14 @@
     var toForm = function (p) {
         var fd = new FormData();
         fd.append('date', p.date); fd.append('all_items', p.all_items); fd.append('printer_id', p.printer_id || '');
-        ['sections','category_ids','waiter_ids','order_types','product_ids'].forEach(function (k) {
+        ['sections','category_ids','waiter_ids','order_types','product_ids','branch_ids'].forEach(function (k) {
             (p[k] || []).forEach(function (v) { fd.append(k + '[]', v); });
         });
         return fd;
     };
     var toQuery = function (p) {
         var q = ['date=' + encodeURIComponent(p.date), 'all_items=' + p.all_items];
-        ['sections','category_ids','waiter_ids','order_types','product_ids'].forEach(function (k) {
+        ['sections','category_ids','waiter_ids','order_types','product_ids','branch_ids'].forEach(function (k) {
             (p[k] || []).forEach(function (v) { q.push(k + '[]=' + encodeURIComponent(v)); });
         });
         return q.join('&');
