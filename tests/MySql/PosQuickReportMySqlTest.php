@@ -200,4 +200,121 @@ class PosQuickReportMySqlTest extends MySqlTenantTestCase
         $this->assertSame([$this->prodA], $out['settings']['product_ids']);
         $this->assertFalse($out['settings']['all_items']);
     }
+    /* ── QUICK-REPORT-OPEN-BILLS-1 ─────────────────────────────────────────────────────────────── */
+
+    /** Ek held aur ek draft bill usi din par — beech-e-service ki soorat. */
+    private function twoOpenBills(): void
+    {
+        $h = $this->makeSale($this->branchId, ['status' => 'held', 'order_type' => 'dine_in',
+            'business_date' => $this->date, 'subtotal' => 500, 'grand_total' => 500]);
+        $this->makeSaleLine($h, $this->prodA, ['unit_price' => 500, 'line_total' => 500]);
+
+        $d = $this->makeSale($this->branchId, ['status' => 'draft', 'order_type' => 'takeaway',
+            'business_date' => $this->date, 'subtotal' => 300, 'grand_total' => 300]);
+        $this->makeSaleLine($d, $this->prodB, ['unit_price' => 300, 'line_total' => 300]);
+    }
+
+    /**
+     * SAB SE EHEM TEST: Report Center ka hisab hilna NAHI chahiye.
+     *
+     * Isi liye population (SalesReportEngine::POPULATION) ko chhua hi nahi gaya — khule bills ek
+     * ALAG query se aate hain. Ye test wohi sabit karta hai: khule bills mojood hone ke bawajood
+     * paid ka hisab hu-ba-hu wohi rehta hai.
+     */
+    public function test_open_bills_never_move_the_paid_figures(): void
+    {
+        Auth::guard('tenant')->login($this->permittedUser());
+        $before = $this->controller()->print($this->req(['sections' => PosQuickReportController::SECTIONS]))->getData();
+
+        $this->twoOpenBills();
+
+        $after = $this->controller()->print($this->req(['sections' => PosQuickReportController::SECTIONS]))->getData();
+
+        $this->assertSame($before['overview']['orders'], $after['overview']['orders'],
+            'khule bills paid orders ki ginti nahi barha sakte');
+        $this->assertSame($before['overview']['net_sales'], $after['overview']['net_sales'],
+            'NET SALES apni jagah qaayam rehna chahiye — warna Report Center ka hindsa bhi hil jayega');
+        $this->assertSame($before['overview']['grand_total'], $after['overview']['grand_total']);
+        $this->assertEquals($before['cashBank'], $after['cashBank'],
+            'cash/bank payments par chalta hai, aur khule bill par payment hoti hi nahi');
+    }
+
+    /** Aur Quick Report par wo alag figure nazar aana chahiye. */
+    public function test_quick_report_reports_the_open_bills_separately(): void
+    {
+        Auth::guard('tenant')->login($this->permittedUser());
+        $this->twoOpenBills();
+
+        $data = $this->controller()->print($this->req(['sections' => PosQuickReportController::SECTIONS]))->getData();
+
+        $this->assertArrayHasKey('open', $data, 'Quick Report ko khule bills ka figure milna chahiye');
+        $this->assertSame(2, $data['open']['orders'], 'ek held + ek draft');
+        $this->assertEqualsWithDelta(800.0, (float) $data['open']['grand_total'], 0.01, '500 + 300');
+    }
+
+    /**
+     * Report Center is kunji ke BAGHAIR aata hai — us ke liye ye satrein banti bhi nahi.
+     * Yehi wo cheez hai jo poore feature ko sirf Quick Report tak mehdood rakhti hai.
+     */
+    public function test_report_center_never_receives_the_open_figure(): void
+    {
+        Auth::guard('tenant')->login($this->permittedUser());
+        $this->twoOpenBills();
+
+        $filters = app(\App\Services\Reports\SalesReportEngine::class)->normalizeFilters([
+            'date_from' => $this->date, 'date_to' => $this->date, 'branch_ids' => [$this->branchId],
+        ]);
+
+        $plain = app(\App\Services\Reports\SalesReportDocumentService::class)
+            ->data($filters, PosQuickReportController::SECTIONS);
+
+        $this->assertNull($plain['open'] ?? null,
+            'jo caller khule bills na maange usay milna hi nahi chahiye');
+    }
+
+    /** Cancelled bill khula nahi hota — wo mansookh hai, aur kisi jama me nahi aa sakta. */
+    public function test_a_cancelled_bill_is_not_an_open_bill(): void
+    {
+        Auth::guard('tenant')->login($this->permittedUser());
+        $c = $this->makeSale($this->branchId, ['status' => 'cancelled', 'order_type' => 'dine_in',
+            'business_date' => $this->date, 'subtotal' => 9999, 'grand_total' => 9999]);
+        $this->makeSaleLine($c, $this->prodA, ['unit_price' => 9999, 'line_total' => 9999]);
+
+        $data = $this->controller()->print($this->req(['sections' => PosQuickReportController::SECTIONS]))->getData();
+
+        $this->assertSame(0, $data['open']['orders'], 'cancelled bill khula nahi hai');
+        $this->assertEqualsWithDelta(0.0, (float) $data['open']['grand_total'], 0.01);
+    }
+
+    /** Khule bills bhi wohi filters mante hain jo baaqi report mante hai. */
+    public function test_open_bills_honour_the_same_filters(): void
+    {
+        Auth::guard('tenant')->login($this->permittedUser());
+        $this->twoOpenBills();
+
+        $catA = $this->controller()->print($this->req([
+            'sections' => PosQuickReportController::SECTIONS, 'category_ids' => [$this->catA],
+        ]))->getData();
+
+        $this->assertSame(1, $catA['open']['orders'], 'sirf catA wala khula bill');
+        $this->assertEqualsWithDelta(500.0, (float) $catA['open']['grand_total'], 0.01);
+    }
+
+    /** Parchi DO raaston se chhapti hai — dono par satrein aani chahiye. */
+    public function test_both_renderers_carry_the_open_lines(): void
+    {
+        Auth::guard('tenant')->login($this->permittedUser());
+        $this->twoOpenBills();
+
+        $data = $this->controller()->print($this->req(['sections' => PosQuickReportController::SECTIONS]))->getData();
+
+        $html = view('tenant.reports.center.print', $data)->render();
+        $this->assertStringContainsString('Still Open (2)', $html, 'blade par khule bills ki satar nahi aayi');
+        $this->assertStringContainsString('EXPECTED', $html, 'blade par expected ki satar nahi aayi');
+
+        $bytes = app(\App\Services\Printing\EscPosPayloadService::class)->buildReport($data);
+        $txt = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', '', $bytes);
+        $this->assertStringContainsString('Still Open (2)', $txt, 'printer ki bytes me satar nahi aayi');
+        $this->assertStringContainsString('EXPECTED', $txt, 'printer ki bytes me expected nahi aaya');
+    }
 }

@@ -76,6 +76,69 @@ class SalesReportEngine
         return array_keys($all);
     }
 
+    /**
+     * QUICK-REPORT-OPEN-BILLS-1 — jo bills ABHI khule hain (held + draft).
+     *
+     * Ye `salesBase()` se ALAG jaan-boojh kar hai, aur `POPULATION` ko chhoo-ta bhi nahi. Wajah:
+     * agar main population badalta to Report Center, nightly email, Z Report, legacy reports,
+     * restaurant reports aur dashboard — sab ki buniyadi query badal jaati, aur unki hifazat sirf
+     * "default false" par bharosa maangti. Alag method ka matlab hai un ki query me EK HARF nahi
+     * badalta, aur jo caller ye figure na maange usay milta hi nahi.
+     *
+     * Bilkul wohi rukh jo dashboard pehle se apnata hai (DASHBOARD-OPEN-BILLS-1): khula paisa apni
+     * alag satar par, kamaye hue me kabhi mila kar nahi — kyunke wo aya nahi, aur badalta rehta hai
+     * (item barhta hai, cancel hota hai, discount lagta hai).
+     *
+     * `cancelled` yahan NAHI: khula bill wo hai jo abhi zinda hai, mukammal ya mansookh nahi.
+     * Har wohi filter jo baaqi report par lagta hai (din, branch, category, waiter, order type) —
+     * warna Overview ki satar aur neeche ke sections ek doosre se mel nahi khaate.
+     */
+    public function openBills(array $f): array
+    {
+        $q = DB::connection('tenant')->table('sales_orders as o')
+            ->whereIn('o.status', ['held', 'draft'])
+            ->whereRaw($this->businessDayExpr() . ' >= ?', [$f['date_from']])
+            ->whereRaw($this->businessDayExpr() . ' <= ?', [$f['date_to']])
+            ->when($f['branch_ids'], fn ($q) => $q->whereIn('o.branch_id', $f['branch_ids']))
+            ->when($f['terminal_id'], fn ($q) => $q->where('o.terminal_id', $f['terminal_id']))
+            ->when(! $f['terminal_id'] && $f['allowed_terminal_ids'], fn ($q) => $q->whereIn('o.terminal_id', $f['allowed_terminal_ids']))
+            ->when($f['waiter_id'], fn ($q) => $q->where('o.restaurant_waiter_id', $f['waiter_id']))
+            ->when($f['waiter_ids'], fn ($q) => $q->whereIn('o.restaurant_waiter_id', $f['waiter_ids']))
+            ->when($f['order_type'], fn ($q) => $q->where('o.order_type', $f['order_type']))
+            ->when(! $f['order_type'] && $f['allowed_order_types'], fn ($q) => $q->whereIn('o.order_type', $f['allowed_order_types']))
+            ->when($f['order_types'], fn ($q) => $q->whereIn('o.order_type', $f['order_types']));
+
+        // Category / item ka chunaav lines par lagta hai, order par nahi — wohi shakl jo baaqi
+        // report me hai: aisa order jis me chuna hua maal MOJOOD ho.
+        $cats = $this->categoriesWithDescendants($f['category_ids'] ?: array_filter([$f['category_id']]));
+        $prods = $f['product_ids'] ?: array_filter([$f['product_id']]);
+        if ($cats || $prods) {
+            $q->whereExists(function ($s) use ($cats, $prods) {
+                $s->selectRaw('1')->from('sales_order_lines as l')
+                    ->leftJoin('products as p', 'p.id', '=', 'l.product_id')
+                    ->leftJoin('combos as cb', 'cb.id', '=', 'l.combo_id')
+                    ->whereColumn('l.sales_order_id', 'o.id')
+                    ->when($cats, fn ($w) => $w->whereIn(DB::raw('COALESCE(cb.category_id, p.category_id)'), $cats))
+                    ->when($prods, fn ($w) => $w->whereIn('l.product_id', $prods));
+            });
+        }
+
+        $r = $q->selectRaw(
+            'COUNT(*) as orders,
+             COALESCE(SUM(o.subtotal),0) as gross,
+             COALESCE(SUM(o.discount_amount),0) as discount,
+             COALESCE(SUM(o.tax_amount),0) as tax,
+             COALESCE(SUM(o.grand_total),0) as grand_total'
+        )->first();
+
+        return [
+            'orders'      => (int) ($r->orders ?? 0),
+            'gross'       => (float) ($r->gross ?? 0),
+            'discount'    => (float) ($r->discount ?? 0),
+            'tax'         => (float) ($r->tax ?? 0),
+            'grand_total' => (float) ($r->grand_total ?? 0),
+        ];
+    }
     /** Base sales_orders query with EVERY shared filter applied. */
     private function salesBase(array $f)
     {
