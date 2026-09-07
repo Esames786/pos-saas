@@ -63,3 +63,45 @@
 .feather-14 { width: 14px !important; height: 14px !important; }
 #toggle_btn svg { width: 16px !important; height: 16px !important; }
 .sidebar-logo svg { width: 16px !important; height: 16px !important; }
+
+/* ---------------------------------------------------------------------------
+   fs-1 .. fs-6 : Bootstrap ke maani bahal
+   ---------------------------------------------------------------------------
+   Theme ki style.css bootstrap.min.css ke BAAD load hoti hai aur usi naam ki
+   chha classes dobara ta'reef karti hai — apne scale par, jahan fs-N ka matlab
+   N PIXEL hai:
+
+       .fs-5 { font-size: 5px !important; }    <- theme  (jeet raha tha)
+       .fs-5 { font-size: 1.25rem !important; } <- bootstrap
+
+   Theme fs-1 se fs-40 tak deti hai, bootstrap sirf fs-1 se fs-6. Takrao bilkul
+   wahi chha hain, aur baad me aane ki wajah se theme jeet-ti thi. Nateeja: jo
+   bhi bootstrap ke maani me fs-5 likhta tha, usay 5px milte the.
+
+   Close Shift ka safha isi se pakra gaya — Opening Cash / Total Sales /
+   Expected Cash ki raqam 5px par chhap rahi thi, jabke Opened At (jis par koi
+   class nahi thi) theek dikhta tha. Yehi farq isharah tha.
+
+   Poore app me in chha classes ka HAR istemal bootstrap ke maani par likha hai
+   (fs-1 ek bara shield icon, fs-3/fs-4 mote KPI numbers, fs-5 numayan raqam) —
+   1 se 6 pixel koi jagah nahi chahti. Is liye ilaj yahan ek jagah hai, 99 blade
+   files me nahi: qeematein hu-ba-hu bootstrap.min.css se li gayi hain, us ke
+   min-width:1200px wale steps bhi.
+
+   ⚠️ Theme ka apna scale (fs-7 se fs-40) CHHOOA NAHI — wo theme ki apni markup
+   chalata hai. Naya kaam likhte waqt bhi theme wala hi istemal karo (fs-14,
+   fs-18, fs-20): wahan koi takrao nahi hai.
+   --------------------------------------------------------------------------- */
+.fs-1 { font-size: calc(1.375rem + 1.5vw) !important; }
+.fs-2 { font-size: calc(1.325rem + 0.9vw) !important; }
+.fs-3 { font-size: calc(1.3rem + 0.6vw) !important; }
+.fs-4 { font-size: calc(1.275rem + 0.3vw) !important; }
+.fs-5 { font-size: 1.25rem !important; }
+.fs-6 { font-size: 1rem !important; }
+
+@media (min-width: 1200px) {
+    .fs-1 { font-size: 2.5rem !important; }
+    .fs-2 { font-size: 2rem !important; }
+    .fs-3 { font-size: 1.75rem !important; }
+    .fs-4 { font-size: 1.5rem !important; }
+}
