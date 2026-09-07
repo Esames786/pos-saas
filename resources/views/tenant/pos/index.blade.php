@@ -6681,6 +6681,22 @@ document.addEventListener('DOMContentLoaded', function () {
             // the address just typed is the one this order goes to — select it straight away
             const justAdded = document.querySelector('#addr-' + CSS.escape(String(data.address.id)));
             if (justAdded) justAdded.checked = true;
+
+            // ADDRESS-ATTACH-1: sirf select kar dena kaafi nahi tha — order ka apna khaana
+            // (#delivery_address) khali reh jata tha, aur wo tab bharta tha jab cashier "Attach to
+            // Order" bhi daba de. Screen teen taraf se keh rahi hoti thi ke kaam ho gaya ("Address
+            // saved", tick, aur customer ka chip pehle se juda) — is liye kisi ko shak hi nahi
+            // hota tha. Owner ke apne orders: address HOLD se 11 second pehle save hua, phir bhi
+            // us held order par nahi tha; baad me attach dabate hi paid bill par aa gaya.
+            //
+            // Delivery ki shart lazmi hai: non-delivery order par address bharna un chaar hifazaton
+            // ko tor deta hai jo naya order / recall / type-switch / chip-clear par ise saaf rakhti
+            // hain. Modal band NAHI karte — cashier shayad rider ya kuch aur bhi chunna chahe.
+            if (isDelivery()) {
+                const orderAddr = $id('delivery_address');
+                if (orderAddr) { orderAddr.value = data.address.address || ''; }
+                renderChip();
+            }
             notify('success', 'Address saved');
         })
         .catch(function () { notify('error', 'Could not save the address.'); })
