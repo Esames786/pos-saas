@@ -200,90 +200,107 @@ class PosQuickReportMySqlTest extends MySqlTenantTestCase
         $this->assertSame([$this->prodA], $out['settings']['product_ids']);
         $this->assertFalse($out['settings']['all_items']);
     }
-    /* ── QUICK-REPORT-OPEN-BILLS-1 ─────────────────────────────────────────────────────────────── */
+    /* -- QUICK-REPORT-OPEN-BILLS-1 ------------------------------------------------------------- */
 
-    /** Ek held aur ek draft bill usi din par — beech-e-service ki soorat. */
     private function twoOpenBills(): void
     {
         $h = $this->makeSale($this->branchId, ['status' => 'held', 'order_type' => 'dine_in',
             'business_date' => $this->date, 'subtotal' => 500, 'grand_total' => 500]);
-        $this->makeSaleLine($h, $this->prodA, ['unit_price' => 500, 'line_total' => 500]);
+        $this->makeSaleLine($h, $this->prodA, ['unit_price' => 500, 'line_total' => 500, 'quantity' => 1]);
 
         $d = $this->makeSale($this->branchId, ['status' => 'draft', 'order_type' => 'takeaway',
             'business_date' => $this->date, 'subtotal' => 300, 'grand_total' => 300]);
-        $this->makeSaleLine($d, $this->prodB, ['unit_price' => 300, 'line_total' => 300]);
+        $this->makeSaleLine($d, $this->prodB, ['unit_price' => 300, 'line_total' => 300, 'quantity' => 1]);
+    }
+
+    private function reportCentreData(): array
+    {
+        $eng = app(\App\Services\Reports\SalesReportEngine::class);
+
+        return app(\App\Services\Reports\SalesReportDocumentService::class)->data(
+            $eng->normalizeFilters([
+                'date_from' => $this->date, 'date_to' => $this->date, 'branch_ids' => [$this->branchId],
+            ]),
+            PosQuickReportController::SECTIONS,
+        );
     }
 
     /**
-     * SAB SE EHEM TEST: Report Center ka hisab hilna NAHI chahiye.
+     * SAB SE EHEM TEST -- poore feature ki hifazat isi par hai.
      *
-     * Isi liye population (SalesReportEngine::POPULATION) ko chhua hi nahi gaya — khule bills ek
-     * ALAG query se aate hain. Ye test wohi sabit karta hai: khule bills mojood hone ke bawajood
-     * paid ka hisab hu-ba-hu wohi rehta hai.
+     * Quick Report ke hindse ab jaan-boojh kar barhte hain, is liye "kuch na hile" wali shart
+     * REPORT CENTER par hai. Wo include_open bhejta hi nahi, aur salesBase() default par purani
+     * population leta hai. Gyarah hisse milaye jate hain, ek nahi.
      */
-    public function test_open_bills_never_move_the_paid_figures(): void
+    public function test_report_center_is_untouched_by_open_bills(): void
     {
         Auth::guard('tenant')->login($this->permittedUser());
-        $before = $this->controller()->print($this->req(['sections' => PosQuickReportController::SECTIONS]))->getData();
+        $before = $this->reportCentreData();
 
         $this->twoOpenBills();
+        $after = $this->reportCentreData();
+
+        foreach (['overview', 'categories', 'items', 'categoryItems', 'deals', 'waiters',
+                  'orderTypes', 'combos', 'cancellations', 'cashBank', 'bridge'] as $s) {
+            $this->assertEquals($before[$s], $after[$s],
+                "Report Center ka [{$s}] khule bills se hilna NAHI chahiye");
+        }
+    }
+
+    /** Quick Report me khule bills HAR section me aayein -- jama, categories, items, sab. */
+    public function test_quick_report_counts_open_bills_in_every_section(): void
+    {
+        Auth::guard('tenant')->login($this->permittedUser());
+        $plain = $this->controller()->print($this->req(['sections' => PosQuickReportController::SECTIONS]))->getData();
+
+        $this->twoOpenBills();
+        $open = $this->controller()->print($this->req(['sections' => PosQuickReportController::SECTIONS]))->getData();
+
+        $this->assertSame($plain['overview']['orders'] + 2, $open['overview']['orders'],
+            'khule bills orders ki ginti me aane chahiye');
+        $this->assertEqualsWithDelta((float) $plain['overview']['net_sales'] + 800.0,
+            (float) $open['overview']['net_sales'], 0.01, 'NET SALES me 500 + 300 aane chahiye');
+
+        $catAmt = fn (array $d) => collect($d['categories'])->sum(fn ($c) => (float) ((array) $c)['net']);
+        $this->assertEqualsWithDelta($catAmt($plain) + 800.0, $catAmt($open), 0.01,
+            'Categories me bhi khule bills ka maal aana chahiye');
+
+        $itemQty = fn (array $d) => collect($d['items'])->sum(fn ($i) => (float) ((array) $i)['net_qty']);
+        $this->assertEqualsWithDelta($itemQty($plain) + 2.0, $itemQty($open), 0.01,
+            'Items ki ginti me khule bills ke items aane chahiye');
+
+        $this->assertNotEmpty($open['categoryItems'], 'Items by Category bhi bharna chahiye');
+        $this->assertNotEmpty($open['orderTypes'], 'Order Types bhi bharna chahiye');
+    }
+
+    /** Cancelled bill na khula hai na paid -- kisi jama me nahi aa sakta. */
+    public function test_a_cancelled_bill_is_never_counted(): void
+    {
+        Auth::guard('tenant')->login($this->permittedUser());
+        $plain = $this->controller()->print($this->req(['sections' => PosQuickReportController::SECTIONS]))->getData();
+
+        $c = $this->makeSale($this->branchId, ['status' => 'cancelled', 'order_type' => 'dine_in',
+            'business_date' => $this->date, 'subtotal' => 9999, 'grand_total' => 9999]);
+        $this->makeSaleLine($c, $this->prodA, ['unit_price' => 9999, 'line_total' => 9999, 'quantity' => 1]);
 
         $after = $this->controller()->print($this->req(['sections' => PosQuickReportController::SECTIONS]))->getData();
 
-        $this->assertSame($before['overview']['orders'], $after['overview']['orders'],
-            'khule bills paid orders ki ginti nahi barha sakte');
-        $this->assertSame($before['overview']['net_sales'], $after['overview']['net_sales'],
-            'NET SALES apni jagah qaayam rehna chahiye — warna Report Center ka hindsa bhi hil jayega');
-        $this->assertSame($before['overview']['grand_total'], $after['overview']['grand_total']);
-        $this->assertEquals($before['cashBank'], $after['cashBank'],
-            'cash/bank payments par chalta hai, aur khule bill par payment hoti hi nahi');
+        $this->assertSame($plain['overview']['orders'], $after['overview']['orders']);
+        $this->assertEqualsWithDelta((float) $plain['overview']['net_sales'],
+            (float) $after['overview']['net_sales'], 0.01);
     }
 
-    /** Aur Quick Report par wo alag figure nazar aana chahiye. */
-    public function test_quick_report_reports_the_open_bills_separately(): void
+    /** Cash/Bank khule bills se NAHI barhta -- un par payment row hoti hi nahi. */
+    public function test_cash_bank_never_grows_with_open_bills(): void
     {
         Auth::guard('tenant')->login($this->permittedUser());
+        $plain = $this->controller()->print($this->req(['sections' => PosQuickReportController::SECTIONS]))->getData();
+
         $this->twoOpenBills();
+        $after = $this->controller()->print($this->req(['sections' => PosQuickReportController::SECTIONS]))->getData();
 
-        $data = $this->controller()->print($this->req(['sections' => PosQuickReportController::SECTIONS]))->getData();
-
-        $this->assertArrayHasKey('open', $data, 'Quick Report ko khule bills ka figure milna chahiye');
-        $this->assertSame(2, $data['open']['orders'], 'ek held + ek draft');
-        $this->assertEqualsWithDelta(800.0, (float) $data['open']['grand_total'], 0.01, '500 + 300');
-    }
-
-    /**
-     * Report Center is kunji ke BAGHAIR aata hai — us ke liye ye satrein banti bhi nahi.
-     * Yehi wo cheez hai jo poore feature ko sirf Quick Report tak mehdood rakhti hai.
-     */
-    public function test_report_center_never_receives_the_open_figure(): void
-    {
-        Auth::guard('tenant')->login($this->permittedUser());
-        $this->twoOpenBills();
-
-        $filters = app(\App\Services\Reports\SalesReportEngine::class)->normalizeFilters([
-            'date_from' => $this->date, 'date_to' => $this->date, 'branch_ids' => [$this->branchId],
-        ]);
-
-        $plain = app(\App\Services\Reports\SalesReportDocumentService::class)
-            ->data($filters, PosQuickReportController::SECTIONS);
-
-        $this->assertNull($plain['open'] ?? null,
-            'jo caller khule bills na maange usay milna hi nahi chahiye');
-    }
-
-    /** Cancelled bill khula nahi hota — wo mansookh hai, aur kisi jama me nahi aa sakta. */
-    public function test_a_cancelled_bill_is_not_an_open_bill(): void
-    {
-        Auth::guard('tenant')->login($this->permittedUser());
-        $c = $this->makeSale($this->branchId, ['status' => 'cancelled', 'order_type' => 'dine_in',
-            'business_date' => $this->date, 'subtotal' => 9999, 'grand_total' => 9999]);
-        $this->makeSaleLine($c, $this->prodA, ['unit_price' => 9999, 'line_total' => 9999]);
-
-        $data = $this->controller()->print($this->req(['sections' => PosQuickReportController::SECTIONS]))->getData();
-
-        $this->assertSame(0, $data['open']['orders'], 'cancelled bill khula nahi hai');
-        $this->assertEqualsWithDelta(0.0, (float) $data['open']['grand_total'], 0.01);
+        $this->assertEquals($plain['cashBank'], $after['cashBank'],
+            'khule bill ka paisa aya nahi -- cash/bank ko usay ginna nahi chahiye');
     }
 
     /** Khule bills bhi wohi filters mante hain jo baaqi report mante hai. */
@@ -296,25 +313,10 @@ class PosQuickReportMySqlTest extends MySqlTenantTestCase
             'sections' => PosQuickReportController::SECTIONS, 'category_ids' => [$this->catA],
         ]))->getData();
 
-        $this->assertSame(1, $catA['open']['orders'], 'sirf catA wala khula bill');
-        $this->assertEqualsWithDelta(500.0, (float) $catA['open']['grand_total'], 0.01);
-    }
-
-    /** Parchi DO raaston se chhapti hai — dono par satrein aani chahiye. */
-    public function test_both_renderers_carry_the_open_lines(): void
-    {
-        Auth::guard('tenant')->login($this->permittedUser());
-        $this->twoOpenBills();
-
-        $data = $this->controller()->print($this->req(['sections' => PosQuickReportController::SECTIONS]))->getData();
-
-        $html = view('tenant.reports.center.print', $data)->render();
-        $this->assertStringContainsString('Still Open (2)', $html, 'blade par khule bills ki satar nahi aayi');
-        $this->assertStringContainsString('EXPECTED', $html, 'blade par expected ki satar nahi aayi');
-
-        $bytes = app(\App\Services\Printing\EscPosPayloadService::class)->buildReport($data);
-        $txt = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', '', $bytes);
-        $this->assertStringContainsString('Still Open (2)', $txt, 'printer ki bytes me satar nahi aayi');
-        $this->assertStringContainsString('EXPECTED', $txt, 'printer ki bytes me expected nahi aaya');
+        $names = collect($catA['categories'])->map(fn ($c) => ((array) $c)['category'] ?? '')->all();
+        $this->assertCount(1, $catA['categories'], 'sirf chuni hui category');
+        $this->assertEqualsWithDelta(600.0,
+            (float) ((array) $catA['categories'][0])['net'], 0.01,
+            'catA: paid 100 + khula 500');
     }
 }

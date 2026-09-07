@@ -10,13 +10,7 @@ class SalesReportDocumentService
 {
     public function __construct(private readonly SalesReportEngine $engine) {}
 
-    /**
-     * QUICK-REPORT-OPEN-BILLS-1: `$withOpen` sirf POS ki Quick Report bhejti hai. Jo caller ise na
-     * bheje (Report Center, nightly email, Z Report) uske data me `open` ki kunji MOJOOD HI NAHI
-     * hoti — aur renderer wo satrein `isset()` ke peeche rakhta hai, is liye un ke liye wo satrein
-     * banti bhi nahi. Paid ka hisab kisi soorat me nahi badalta: `openBills()` ek ALAG query hai.
-     */
-    public function data(array $filters, array $sections, bool $embedded = false, bool $withOpen = false): array
+    public function data(array $filters, array $sections, bool $embedded = false): array
     {
         $pick = fn (string $key, callable $loader) => in_array($key, $sections, true) ? $loader() : null;
         $summary = $this->engine->overview($filters);
@@ -43,14 +37,13 @@ class SalesReportDocumentService
             'combos' => $pick('order_type_combos', fn () => $this->engine->orderTypeCombos($filters)),
             'cancellations' => $pick('cancellations', fn () => $this->engine->cancellations($filters)),
             'cashBank' => $pick('cash_bank', fn () => $this->engine->cashBank($filters)),
-            'open' => $withOpen ? $this->engine->openBills($filters) : null,
             'embedded' => $embedded,
         ];
     }
 
-    public function pdf(array $filters, array $sections, bool $withOpen = false): string
+    public function pdf(array $filters, array $sections): string
     {
-        $html = view('tenant.reports.center.print', $this->data($filters, $sections, true, $withOpen))->render();
+        $html = view('tenant.reports.center.print', $this->data($filters, $sections, true))->render();
         $options = new Options;
         $options->set('defaultFont', 'DejaVu Sans');
         $options->set('isRemoteEnabled', false);

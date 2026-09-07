@@ -67,6 +67,10 @@ class PosQuickReportController extends Controller
             'product_ids'  => $request->boolean('all_items') ? [] : (array) $request->input('product_ids', []),
             'waiter_ids'   => (array) $request->input('waiter_ids', []),
             'order_types'  => (array) $request->input('order_types', []),
+            // QUICK-REPORT-OPEN-BILLS-1: owner ko beech-e-service live tasveer chahiye — mezon par
+            // baitha kaam har section me nazar aaye (Categories, Items, Items by Category samet),
+            // na ke sirf jama me. Report Center ye kunji nahi bhejta, is liye wo achhoota hai.
+            'include_open' => true,
         ]);
 
         $allowed  = self::SECTIONS;
@@ -118,7 +122,7 @@ class PosQuickReportController extends Controller
             return response()->json(['ok' => false, 'message' => 'No owner email is configured to send the report to.'], 422);
         }
 
-        $pdf = $this->document->pdf($filters, $sections, withOpen: true);
+        $pdf = $this->document->pdf($filters, $sections);
         Mail::to($recipients)->send(new SalesReportMail(
             $this->businessName(), $date . ' to ' . $date, [], $pdf, 'sales-report-' . $date . '.pdf', $sections
         ));
@@ -132,7 +136,7 @@ class PosQuickReportController extends Controller
         $this->guard();
         [$filters, $sections] = $this->context($request);
 
-        $data = $this->document->data($filters, $sections, false, withOpen: true);
+        $data = $this->document->data($filters, $sections, false);
         $data['mode']  = 'thermal';
         $data['paper'] = in_array($request->input('paper'), ['58mm', '80mm'], true) ? $request->input('paper') : '80mm';
 
@@ -151,7 +155,7 @@ class PosQuickReportController extends Controller
         }
 
         [$filters, $sections, $date] = $this->context($request);
-        $data = $this->document->data($filters, $sections, false, withOpen: true);
+        $data = $this->document->data($filters, $sections, false);
 
         $report = [
             'sections'      => $sections,
