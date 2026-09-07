@@ -501,19 +501,6 @@ class EscPosPayloadService
             $out .= $this->columns('Less Posted Returns', '-' . $money($ov['returns_amount'] ?? 0), $cols) . "\n";
             $out .= $big($this->columns('NET SALES', $money($ov['net_sales'] ?? 0), $cols)) . "\n";
 
-            // QUICK-REPORT-OPEN-BILLS-1: khule bills ki apni do satrein — SIRF wahan jahan caller
-            // ne `open` bheji (POS ki Quick Report). Report Center, nightly email aur Z Report is
-            // kunji ke baghair aate hain, to un ke liye ye satrein banti bhi nahi.
-            //
-            // Ye blade ki nakal NAHI hai — parchi do alag raaston se chhapti hai (yahan bytes,
-            // wahan HTML). Isi jori ka ek raasta pehle bhi chhoot chuka hai (KOT ka waqt), is liye
-            // guard dono par chalta hai. NET SALES apni jagah qaayam: khula paisa alag satar par.
-            $open = $r['open'] ?? null;
-            if (($open['orders'] ?? 0) > 0) {
-                $out .= $this->columns('  + Still Open (' . $open['orders'] . ')', $money($open['grand_total']), $cols) . "\n";
-                $out .= $big($this->columns('EXPECTED', $money((float) ($ov['net_sales'] ?? 0) + (float) $open['grand_total']), $cols)) . "\n";
-            }
-
             $out .= $header('CASH FROM SALES');
             $out .= $this->columns('Cash Collected', $money($ov['cash_collected'] ?? 0), $cols) . "\n";
             $out .= $this->columns('Cash Refunds Paid', '-' . $money($ov['cash_refunds'] ?? 0), $cols) . "\n";

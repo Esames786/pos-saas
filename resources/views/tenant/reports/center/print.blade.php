@@ -295,15 +295,6 @@
     <tr class="total"><td>BILLED TO CUSTOMERS</td><td class="amt">{{ $fmt($overview['grand_total']) }}</td></tr>
     <tr><td>Less Posted Returns</td><td class="amt">-{{ $fmt($overview['returns_amount']) }}</td></tr>
     <tr class="total"><td>NET SALES</td><td class="amt">{{ $fmt($overview['net_sales']) }}</td></tr>
-    {{-- QUICK-REPORT-OPEN-BILLS-1: khule bills ki apni do satrein — SIRF wahan jahan caller ne
-         `open` bheji (POS ki Quick Report). Report Center, nightly email aur Z Report is kunji ke
-         baghair aate hain, is liye un ke liye ye satrein banti bhi nahi (chhupti nahi — banti nahi).
-         Kamaye hue me mila kar NAHI dikhaya: NET SALES apni jagah par qaayam rehta hai aur khula
-         paisa alag nazar aata hai. Wohi alfaz jo dashboard par owner pehle se parh raha hai. --}}
-    @if(($open['orders'] ?? 0) > 0)
-    <tr><td>&nbsp;&nbsp;+ Still Open ({{ $open['orders'] }})</td><td class="amt">{{ $fmt($open['grand_total']) }}</td></tr>
-    <tr class="total"><td>EXPECTED</td><td class="amt">{{ $fmt($overview['net_sales'] + $open['grand_total']) }}</td></tr>
-    @endif
 </table>
 <h3>CASH FROM SALES</h3>
 <table>
