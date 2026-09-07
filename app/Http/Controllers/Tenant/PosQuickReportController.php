@@ -11,6 +11,7 @@ use App\Services\Printing\EscPosPayloadService;
 use App\Services\Printing\PrintJobFactory;
 use App\Services\Reports\SalesReportDocumentService;
 use App\Services\Reports\SalesReportEngine;
+use App\Services\Security\UserDataScope;
 use App\Support\TenantClock;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -19,8 +20,8 @@ use Illuminate\Support\Facades\Mail;
 /**
  * QUICK-REPORT-SEND-1 — the POS "Quick Report" modal backend.
  *
- * A TRUSTED user (holding `tenant.pos.quick-report-send`) builds a Sales Report over the WHOLE tenant
- * (no terminal / order-type scoping — the permission is the only gate) for a single business date,
+ * A TRUSTED user (holding `tenant.pos.quick-report-send`) builds a Sales Report for a single business
+ * date over the branches he is assigned to (QUICK-REPORT-BRANCH-SCOPE-1 in context() below),
  * picks sections + optionally specific categories / items / waiters / order-types, and emails it as an
  * A4 PDF to the owner recipients, prints it here (thermal), or streams it to a network thermal printer.
  * Output is byte-identical to the Report Center — this is only a filter/selection front-end that reuses
@@ -44,11 +45,20 @@ class PosQuickReportController extends Controller
     }
 
     /**
-     * Build the UNSCOPED filters (whole tenant, single date) + the requested sections. The
+     * Build the filters (single date, the user own branches) + the requested sections. The
      * category/item/waiter/order-type multi-selects are passed into the engine so they narrow the
      * WHOLE report (every section + the NET SALES headline) and AND-compose — categories pull in their
-     * sub-categories, and "All items" then means all items WITHIN the selected categories. Deliberately
-     * does NOT call UserDataScope — an unscoped whole-tenant report is the whole point of the feature.
+     * sub-categories, and "All items" then means all items WITHIN the selected categories.
+     *
+     * QUICK-REPORT-BRANCH-SCOPE-1: pehle ye report POORE tenant par chalti thi, aur comment me likha
+     * tha ke ye "jaan-boojh kar unscoped" hai. Ek branch wale tenant par us ka koi asar nahi tha —
+     * poora tenant aur us ki ek branch, ek hi cheez. Magar Tawakal + The Kashif Foods DO branch ka
+     * tenant hai, aur wahan Tawakkal ka cashier apni parchi par DOOSRE restaurant ka maal parh raha
+     * tha (owner ne Singaporean Rice dekh kar pakra — wo Kashif Foods ki category hai).
+     *
+     * Ab branch UserDataScope se aati hai, jis ka usool poore system me wohi hai: KHALI assignment
+     * = koi rukawat nahi. Is liye Owner (jise dono branch assign hain) aur ek-branch wale tenants ka
+     * jawab hu-ba-hu wohi rehta hai; sirf wo user tang hota hai jise koi khaas branch di gayi ho.
      */
     private function context(Request $request): array
     {
@@ -60,8 +70,10 @@ class PosQuickReportController extends Controller
         $filters = $this->engine->normalizeFilters([
             'date_from'  => (string) $date,
             'date_to'    => (string) $date,
-            // Whole tenant: every active branch. No terminal / order-type / cashier restriction.
-            'branch_ids' => Branch::where('status', 'active')->pluck('id')->all(),
+            // QUICK-REPORT-BRANCH-SCOPE-1: apni branch(ein). Khali assignment = koi rukawat nahi,
+            // to us soorat me poora tenant — bilkul jaise pehle tha. Terminal / order-type / cashier
+            // ki koi qaid ab bhi nahi.
+            'branch_ids' => $this->allowedBranchIds($request),
             // Multi-value report filters (empty = all). Item selection is ignored when All-items is on.
             'category_ids' => (array) $request->input('category_ids', []),
             'product_ids'  => $request->boolean('all_items') ? [] : (array) $request->input('product_ids', []),
@@ -80,6 +92,29 @@ class PosQuickReportController extends Controller
         }
 
         return [$filters, $sections, (string) $date];
+    }
+
+    /**
+     * QUICK-REPORT-BRANCH-SCOPE-1 — kis branch ka data.
+     *
+     * Do darwaze hain aur DONO band karne parte the: user apni assign shuda branch se bahar na
+     * dekh sake, AUR modal se koi doosri branch ki id bhej kar us hadd ko na paar kar sake. Is
+     * liye chunaav ko apni hadd se KAAT-A jaata hai (intersect), rad nahi kiya jaata — cashier ne
+     * ghalti nahi ki, use apni branch ka jawab milna chahiye.
+     *
+     * Khali assignment = koi rukawat nahi (poore system ka wohi usool), to us soorat me sab active
+     * branchein — bilkul jaise pehle tha, aur isi liye ek-branch wale tenants achhoote hain.
+     */
+    private function allowedBranchIds(Request $request): array
+    {
+        $allowed = app(UserDataScope::class)->branchIds(auth('tenant')->user())
+            ?: Branch::where('status', 'active')->pluck('id')->all();
+
+        $asked = array_values(array_filter(array_map('intval', (array) $request->input('branch_ids', []))));
+
+        $picked = array_values(array_intersect($asked, $allowed));
+
+        return $picked ?: $allowed;
     }
 
     /** Owner recipients = the tenant's configured scheduled-report recipients, else the owner email. */

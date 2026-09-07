@@ -415,6 +415,17 @@ class POSController extends Controller
             'waiters'             => $waiters,
             // QUICK-REPORT-SEND-1: network printers for the Quick Report modal's "Send to network"
             // (only loaded for a user who actually holds the permission).
+            // QUICK-REPORT-BRANCH-SCOPE-1: modal me sirf apni branchein. Ek hi assign ho to wohi
+            // ek option (aur wohi chuni hui) — cashier ke saamne koi aisa chunaav hi na aaye jo
+            // server bad me kaat de.
+            'quickReportBranches' => auth('tenant')->user()?->can('tenant.pos.quick-report-send')
+                ? (function () {
+                    $mine = app(\App\Services\Security\UserDataScope::class)->branchIds(auth('tenant')->user());
+                    $q = \App\Models\Tenant\Branch::where('status', 'active')->orderBy('name');
+
+                    return ($mine ? $q->whereIn('id', $mine) : $q)->get(['id', 'name']);
+                })()
+                : collect(),
             'quickReportPrinters' => auth('tenant')->user()?->can('tenant.pos.quick-report-send')
                 ? \App\Models\Tenant\Printer::where('is_active', 1)->where('printer_type', 'network')
                     ->whereNotNull('ip_address')->orderBy('name')->get(['id', 'name', 'paper_size'])

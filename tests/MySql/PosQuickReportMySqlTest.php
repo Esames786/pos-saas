@@ -313,10 +313,114 @@ class PosQuickReportMySqlTest extends MySqlTenantTestCase
             'sections' => PosQuickReportController::SECTIONS, 'category_ids' => [$this->catA],
         ]))->getData();
 
-        $names = collect($catA['categories'])->map(fn ($c) => ((array) $c)['category'] ?? '')->all();
+        $names = collect($catA['categories'])->map(fn ($c) => ((array) $c)['name'] ?? '')->all();
         $this->assertCount(1, $catA['categories'], 'sirf chuni hui category');
         $this->assertEqualsWithDelta(600.0,
             (float) ((array) $catA['categories'][0])['net'], 0.01,
             'catA: paid 100 + khula 500');
+    }
+    /* -- QUICK-REPORT-BRANCH-SCOPE-1 ------------------------------------------------------------ */
+
+    /** Doosri branch, uski apni category aur us par ek paid bill. */
+    private function secondBranchWithASale(): array
+    {
+        $b2 = $this->makeBranch(['status' => 'active', 'name' => 'Doosri Branch']);
+        $c2 = $this->makeCategory(['name' => 'Sirf Doosri Branch Ka', 'parent_id' => null]);
+        $p2 = $this->makeProduct($c2, ['name' => 'Doosri Branch Ka Item']);
+        $s2 = $this->makeSale($b2, ['order_type' => 'takeaway', 'business_date' => $this->date,
+            'subtotal' => 7000, 'grand_total' => 7000]);
+        $this->makeSaleLine($s2, $p2, ['unit_price' => 7000, 'line_total' => 7000, 'quantity' => 1]);
+
+        return [$b2, $c2, $p2];
+    }
+
+    /** Us user ko sirf pehli branch do. */
+    private function bindToFirstBranch(User $u): void
+    {
+        DB::connection('tenant')->table('branch_user')->insert([
+            'branch_id' => $this->branchId, 'user_id' => $u->id,
+        ]);
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+    }
+
+    /**
+     * ASAL SHIKAYAT: Tawakkal ka cashier apni parchi par DOOSRE restaurant ka maal parh raha tha
+     * (owner ne Singaporean Rice dekh kar pakra). Ab report sirf apni branch ki honi chahiye.
+     */
+    public function test_a_branch_bound_user_never_sees_another_branch(): void
+    {
+        [, $c2, ] = $this->secondBranchWithASale();
+        $u = $this->permittedUser();
+        $this->bindToFirstBranch($u);
+        Auth::guard('tenant')->login($u);
+
+        $d = $this->controller()->print($this->req(['sections' => PosQuickReportController::SECTIONS]))->getData();
+
+        $names = collect($d['categories'])->map(fn ($c) => ((array) $c)['name'] ?? '')->all();
+        $this->assertNotContains('Sirf Doosri Branch Ka', $names,
+            'apni branch se bahar ki category parchi par aani NAHI chahiye');
+        $this->assertLessThan(7000.0, (float) $d['overview']['net_sales'],
+            'doosri branch ka 7,000 ka bill is jama me nahi aana chahiye');
+    }
+
+    /**
+     * DOOSRA DARWAZA: modal se doosri branch ki id bhej kar hadd paar na ho.
+     *
+     * Chunaav ko apni hadd se KAAT-A jaata hai, rad nahi kiya jaata — cashier ne ghalti nahi ki,
+     * usay apni branch ka jawab milna chahiye.
+     */
+    public function test_asking_for_a_foreign_branch_is_clamped_not_obeyed(): void
+    {
+        [$b2, $c2, ] = $this->secondBranchWithASale();
+        $u = $this->permittedUser();
+        $this->bindToFirstBranch($u);
+        Auth::guard('tenant')->login($u);
+
+        $d = $this->controller()->print($this->req([
+            'sections'   => PosQuickReportController::SECTIONS,
+            'branch_ids' => [$b2],                       // wo branch jo is user ki nahi hai
+        ]))->getData();
+
+        $names = collect($d['categories'])->map(fn ($c) => ((array) $c)['name'] ?? '')->all();
+        $this->assertNotContains('Sirf Doosri Branch Ka', $names,
+            'maangi hui ghair-branch ka data nahi milna chahiye');
+        $this->assertNotEmpty($d['categories'],
+            'aur khali parchi bhi nahi — apni branch ka jawab milna chahiye');
+    }
+
+    /** Jise koi branch assign na ho (jaise Owner) uska jawab pehle jaisa hi — poora tenant. */
+    public function test_an_unbound_user_still_sees_every_branch(): void
+    {
+        [, $c2, ] = $this->secondBranchWithASale();
+        Auth::guard('tenant')->login($this->permittedUser());   // koi branch_user row nahi
+
+        $d = $this->controller()->print($this->req(['sections' => PosQuickReportController::SECTIONS]))->getData();
+
+        $names = collect($d['categories'])->map(fn ($c) => ((array) $c)['name'] ?? '')->all();
+        $this->assertContains('Sirf Doosri Branch Ka', $names,
+            'khali assignment = koi rukawat nahi — poora tenant nazar aana chahiye');
+    }
+
+    /** Apni do branch me se ek chunna chale. */
+    public function test_a_user_with_two_branches_can_pick_one(): void
+    {
+        [$b2, , ] = $this->secondBranchWithASale();
+        $u = $this->permittedUser();
+        DB::connection('tenant')->table('branch_user')->insert([
+            ['branch_id' => $this->branchId, 'user_id' => $u->id],
+            ['branch_id' => $b2,             'user_id' => $u->id],
+        ]);
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+        Auth::guard('tenant')->login($u);
+
+        $both = $this->controller()->print($this->req(['sections' => PosQuickReportController::SECTIONS]))->getData();
+        $one  = $this->controller()->print($this->req([
+            'sections' => PosQuickReportController::SECTIONS, 'branch_ids' => [$b2],
+        ]))->getData();
+
+        $this->assertGreaterThan((float) $one['overview']['net_sales'], (float) $both['overview']['net_sales'],
+            'dono branch ka jama ek branch se zyada hona chahiye');
+        $names = collect($one['categories'])->map(fn ($c) => ((array) $c)['name'] ?? '')->all();
+        $this->assertSame(['Sirf Doosri Branch Ka'], $names, 'chuni hui branch ka hi maal');
     }
 }
