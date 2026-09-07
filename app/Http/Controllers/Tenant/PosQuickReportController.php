@@ -118,7 +118,7 @@ class PosQuickReportController extends Controller
             return response()->json(['ok' => false, 'message' => 'No owner email is configured to send the report to.'], 422);
         }
 
-        $pdf = $this->document->pdf($filters, $sections);
+        $pdf = $this->document->pdf($filters, $sections, withOpen: true);
         Mail::to($recipients)->send(new SalesReportMail(
             $this->businessName(), $date . ' to ' . $date, [], $pdf, 'sales-report-' . $date . '.pdf', $sections
         ));
@@ -132,7 +132,7 @@ class PosQuickReportController extends Controller
         $this->guard();
         [$filters, $sections] = $this->context($request);
 
-        $data = $this->document->data($filters, $sections, false);
+        $data = $this->document->data($filters, $sections, false, withOpen: true);
         $data['mode']  = 'thermal';
         $data['paper'] = in_array($request->input('paper'), ['58mm', '80mm'], true) ? $request->input('paper') : '80mm';
 
@@ -151,7 +151,7 @@ class PosQuickReportController extends Controller
         }
 
         [$filters, $sections, $date] = $this->context($request);
-        $data = $this->document->data($filters, $sections, false);
+        $data = $this->document->data($filters, $sections, false, withOpen: true);
 
         $report = [
             'sections'      => $sections,
