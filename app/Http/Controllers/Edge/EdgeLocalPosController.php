@@ -338,11 +338,81 @@ class EdgeLocalPosController extends Controller
         return response()->json(['shift_id' => $shift->id, 'shift_uuid' => $shift->shift_uuid, 'business_date' => $shift->business_date?->toDateString()], 201);
     }
 
-    /** Close the selected terminal's open shift — the SHARED ShiftService::closeShift operation. */
+    /**
+     * SHIFT parity — what the Online Shift screens show, for this terminal and the branch: the operating
+     * business date (OPERATING-DATE-1: the open shift's business_date, never the wall clock), the open shift
+     * with its tender breakup and cancellations (SHIFT-CANCELLATIONS-1 / SHIFT-RECONCILE), the branch's other
+     * open shifts (terminal lock), and HIDE-AMOUNTS (blind count) decided ONCE by the shared AmountVisibility
+     * rule — figures are STRIPPED here, never merely hidden in the page.
+     */
+    public function shiftSummary(Request $request): JsonResponse
+    {
+        $terminal = $this->selectedTerminal($request);
+        if ($terminal instanceof JsonResponse) {
+            return $terminal;
+        }
+        $branch = Branch::on('tenant')->findOrFail((int) $this->context->requireCurrent()->branch_id);
+        $user = auth('tenant')->user();
+        $maySeeAmounts = app(\App\Support\AmountVisibility::class)->allows($user, $branch);
+        $money = fn ($v) => $maySeeAmounts ? (float) $v : null;
+
+        $open = Shift::on('tenant')->where('terminal_id', $terminal->id)->where('status', 'open')->latest('id')->first();
+        $breakup = null;
+        if ($open) {
+            $cancelled = SalesOrder::on('tenant')->where('shift_id', $open->id)->where('status', 'cancelled')
+                ->selectRaw('COUNT(*) as bills, COALESCE(SUM(grand_total), 0) as amount')->first();
+            $voided = DB::connection('tenant')->table('sales_order_line_cancellations as c')
+                ->join('sales_orders as o', 'o.id', '=', 'c.sales_order_id')
+                ->where('o.shift_id', $open->id)
+                ->selectRaw('COUNT(*) as lines_count, COALESCE(SUM(c.quantity), 0) as units')->first();
+            $breakup = [
+                'opening_cash' => $money($open->opening_cash),
+                'total_sales' => $money($open->total_sales),
+                'cash' => $money($open->total_cash),
+                'card' => $money($open->total_card),
+                'bank' => $money($open->total_bank_transfer),
+                'cheque' => $money($open->total_cheque),
+                'expected_cash' => $money($open->expected_cash),
+                // cancellation COUNTS stay visible to an operator (a bill was thrown away); amounts follow the rule.
+                'cancelled_bills' => (int) ($cancelled->bills ?? 0),
+                'cancelled_amount' => $money($cancelled->amount ?? 0),
+                'voided_lines' => (int) ($voided->lines_count ?? 0),
+                'voided_units' => (float) ($voided->units ?? 0),
+            ];
+        }
+
+        $branchOpen = Shift::on('tenant')->with('terminal:id,name')->where('branch_id', $branch->id)->where('status', 'open')
+            ->orderBy('terminal_id')->get()->map(fn (Shift $s) => [
+                'terminal_id' => (int) $s->terminal_id, 'terminal_name' => $s->terminal?->name,
+                'business_date' => $s->business_date?->toDateString(), 'opened_at' => $s->opened_at?->toIso8601String(),
+                'is_current' => (int) $s->terminal_id === (int) $terminal->id,
+            ])->values();
+
+        return response()->json([
+            'terminal_id' => $terminal->id,
+            'operating_business_date' => app(\App\Support\TenantClock::class)->operatingBusinessDate($branch),
+            'current_business_date' => app(\App\Support\TenantClock::class)->currentBusinessDate($branch),
+            'may_see_amounts' => $maySeeAmounts,
+            'shift' => $open ? [
+                'id' => $open->id, 'shift_uuid' => $open->shift_uuid,
+                'business_date' => $open->business_date?->toDateString(),
+                'opened_at' => $open->opened_at?->toIso8601String(),
+                'zero_drawer' => abs((float) $open->expected_cash) < 0.005, // ZERO-DRAWER-1: nothing to count
+            ] : null,
+            'breakup' => $breakup,
+            'branch_open_shifts' => $branchOpen,
+        ]);
+    }
+
+    /**
+     * Close the selected terminal's open shift — the SHARED ShiftService::closeShift operation.
+     * ZERO-DRAWER-1: an omitted count is passed down as NULL and resolved under the row lock (an
+     * empty drawer closes; a drawer holding cash demands a typed count — 0 must be typed deliberately).
+     */
     public function closeShift(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'counted_cash' => ['required', 'numeric', 'min:0'],
+            'counted_cash' => ['nullable', 'numeric', 'min:0'],
             'closing_notes' => ['nullable', 'string', 'max:1000'],
         ]);
         $terminal = $this->selectedTerminal($request);
@@ -354,7 +424,8 @@ class EdgeLocalPosController extends Controller
             return response()->json(['message' => 'No open shift on this terminal.'], 422);
         }
         try {
-            $closed = $this->shifts->closeShift($open, (int) auth('tenant')->id(), (float) $data['counted_cash'], $data['closing_notes'] ?? null);
+            $counted = $request->filled('counted_cash') ? (float) $data['counted_cash'] : null;
+            $closed = $this->shifts->closeShift($open, (int) auth('tenant')->id(), $counted, $data['closing_notes'] ?? null);
         } catch (ShiftException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
@@ -703,6 +774,29 @@ class EdgeLocalPosController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * Business-friendly sync state for the cashier header ("Pending sync: N"). Deliberately exposes NO
+     * engineering internals (no lease, hash, activation epoch, baseline uuid) — those live on the operator
+     * sync console, not the till.
+     */
+    public function syncSummary(): JsonResponse
+    {
+        $snap = app(\App\Services\Edge\EdgeSyncStatusService::class)->snapshot();
+        $outbox = $snap['outbox'] ?? [];
+        $pending = (int) ($outbox['pending'] ?? 0) + (int) ($outbox['leased'] ?? 0);
+        $attention = (int) ($outbox['failed_permanent'] ?? 0);
+
+        return response()->json([
+            'pending_sales' => $pending,
+            'needs_attention' => $attention,
+            'last_synced_at' => $snap['last_ack_at'] ?? null,
+            'state' => $attention > 0 ? 'attention' : ($pending > 0 ? 'pending' : 'up_to_date'),
+            'message' => $attention > 0
+                ? 'Some sales need attention before they can sync — tell your manager.'
+                : ($pending > 0 ? "{$pending} sale(s) waiting to sync — they are saved here and will sync when the connection returns." : 'All sales synced.'),
+        ]);
     }
 
     // ═══════════════ EDGE-CASHIER-UI-4 — printing: receipt / KOT reprint / Recent Prints / Print Here ═══════════════

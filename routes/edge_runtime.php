@@ -40,6 +40,9 @@ Route::prefix('edge/local')->name('edge.local.')->group(function () {
         Route::get('/terminals', [EdgeLocalPosController::class, 'terminals'])->name('terminals');
         Route::post('/terminal/select', [EdgeLocalPosController::class, 'selectTerminal'])->name('terminal.select');
         Route::get('/shift', [EdgeLocalPosController::class, 'shiftStatus'])->name('shift.status');
+        // EDGE-CASHIER-UI — shift parity (breakup / blind count / operating date / terminal lock) + business-friendly sync state.
+        Route::get('/shift/summary', [EdgeLocalPosController::class, 'shiftSummary'])->name('shift.summary');
+        Route::get('/sync/summary', [EdgeLocalPosController::class, 'syncSummary'])->name('sync.summary');
         Route::post('/shift/open', [EdgeLocalPosController::class, 'openShift'])->name('shift.open');
         Route::post('/shift/close', [EdgeLocalPosController::class, 'closeShift'])->name('shift.close');
         Route::post('/sales', [EdgeLocalPosController::class, 'storeSale'])->name('sales.store');

@@ -132,6 +132,9 @@ class EdgeBranchServerRegistrationTest extends TestCase
             'edge/local/pos/quick-report/view',
             'edge/local/pos/quick-report/network',
             'edge/local/pos/quick-report/email',
+            // Shift parity + business-friendly sync state (deliberately approved).
+            'edge/local/pos/shift/summary',
+            'edge/local/pos/sync/summary',
         ];
 
         $uris = collect(\Illuminate\Support\Facades\Route::getRoutes()->getRoutes())

@@ -167,6 +167,22 @@ class EdgeArtifactTest extends TestCase
         // Sanity: real runtime files are present.
         $this->assertContains('composer.json', $plan);
         $this->assertContains('artisan', $plan);
+        // The ACTUAL cashier product ships in the restricted artifact: the browser cashier page, the Quick
+        // Report front-end + the canonical report engine/thermal Blade it reuses, and the canonical print
+        // documents Print Here renders — while the Cloud report/catering controllers stay physically out.
+        foreach ([
+            'resources/views/edge/pos/index.blade.php', 'resources/views/edge/auth/login.blade.php',
+            'app/Http/Controllers/Edge/EdgeLocalPosController.php', 'app/Http/Controllers/Edge/EdgeQuickReportController.php',
+            'app/Services/Reports/SalesReportEngine.php', 'app/Services/Reports/SalesReportDocumentService.php',
+            'resources/views/tenant/reports/center/print.blade.php',
+            'resources/views/tenant/printing/documents/receipt.blade.php', 'resources/views/tenant/printing/documents/kot.blade.php',
+            'app/Http/Controllers/Tenant/PrintDocumentController.php',
+        ] as $must) {
+            $this->assertContains($must, $plan, "the cashier product must ship: {$must}");
+        }
+        foreach (['app/Http/Controllers/Tenant/Reports/ShiftReportController.php', 'app/Services/Finance/SupplierPayableService.php'] as $never) {
+            $this->assertNotContains($never, $plan, "Cloud-only source must stay out: {$never}");
+        }
         $this->assertTrue((bool) collect($plan)->first(fn ($p) => str_starts_with($p, 'app/')), 'app/ files present');
 
         // Secrets / VCS / dev / dumps / FakePrinter are NOT in the plan.

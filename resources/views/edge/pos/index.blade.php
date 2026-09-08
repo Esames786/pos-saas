@@ -114,6 +114,7 @@
         <label class="who" for="terminal">Terminal</label>
         <select id="terminal" @unless($canChangeTerminal) title="Selling terminal is fixed for your account" @endunless></select>
         <button type="button" class="ghost" id="shift-btn">Shift</button>
+        <span class="chip" id="sync-chip" hidden></span>
         <form method="POST" action="{{ url('/edge/local/logout') }}" style="margin:0">@csrf<button class="ghost">Logout</button></form>
     </header>
 
@@ -458,6 +459,7 @@
                 state.held = null; state.session = null; state.cart = []; state.dirty = false; $('customer-name').value = ''; unlockOrderType(); renderCart();
                 toast('Sale ' + (sale.sale_no || '#' + sale.sale_id) + ' completed · change ' + money(sale.change_amount || 0) + syncNote);
                 autoReceipt(sale.sale_id);
+                refreshSync();
             } catch (e) { showRpErr(e.message); btn.disabled = false; }
         }
         function showRpErr(m) { const e = $('rp-err'); if (e) e.innerHTML = '<div class="err">' + esc(m) + '</div>'; }
@@ -659,19 +661,55 @@
             };
         }
 
+        // ---- Shift: the Online shift screen's truth — operating business date, tender breakup, blind count, zero drawer, terminal lock. ----
         async function shiftAction() {
             try {
-                const s = await api('GET', '/shift');
-                const sh = s.shift;
-                openModal('<h2>Shift</h2><p class="muted">' + (sh ? 'Open since ' + esc(sh.opened_at) + ' · business date ' + esc(sh.business_date) : 'No open shift on this terminal') + '</p>' +
-                    (sh ? '' : '<div class="field"><label>Opening cash</label><input type="number" id="sh-opening" value="0" min="0" step="0.01"></div>') +
-                    (sh ? '<div class="field"><label>Counted cash</label><input type="number" id="sh-counted" min="0" step="0.01"></div>' : '') +
-                    '<div id="sh-err"></div><div class="btn-row"><button class="ghost" onclick="EdgePOS.closeModal()">Close</button>' +
-                    (sh ? '<button class="danger" id="sh-close">Close shift</button>' : '<button class="ok" id="sh-open">Open shift</button>') + '</div>');
+                const s = await api('GET', '/shift/summary');
+                const sh = s.shift, b = s.breakup;
+                const amt = v => v === null || v === undefined ? '*****' : money(v);
+                const row = (k, v) => '<div class="row"><span>' + k + '</span><span>' + v + '</span></div>';
+                let html = '<h2>Shift</h2><p class="muted">Operating business date <strong>' + esc(s.operating_business_date) + '</strong>' + (s.operating_business_date !== s.current_business_date ? ' (clock says ' + esc(s.current_business_date) + ')' : '') + '</p>';
+                if (sh) {
+                    html += '<p class="muted">Open since ' + esc(new Date(sh.opened_at).toLocaleString()) + ' · business date ' + esc(sh.business_date) + '</p>' +
+                        '<div class="totals">' + row('Opening cash', amt(b.opening_cash)) + row('Total sales', amt(b.total_sales)) +
+                        row('Cash', amt(b.cash)) + row('Card', amt(b.card)) + row('Bank', amt(b.bank)) + (Number(b.cheque) ? row('Cheque', amt(b.cheque)) : '') +
+                        row('Cancelled bills', b.cancelled_bills + (b.cancelled_amount === null ? '' : ' · ' + money(b.cancelled_amount))) +
+                        row('Voided lines', b.voided_lines + ' (' + b.voided_units + ' units)') +
+                        '<div class="row grand"><span>Expected cash</span><span>' + amt(b.expected_cash) + '</span></div></div>' +
+                        (s.may_see_amounts ? '' : '<p class="muted">Blind count — amounts are hidden for your role. Count the drawer and enter what you have.</p>') +
+                        (sh.zero_drawer ? '<p class="muted">Empty drawer — nothing to count; you can close without a count.</p>' : '') +
+                        '<div class="field"><label>Counted cash' + (sh.zero_drawer ? ' (optional)' : '') + '</label><input type="number" id="sh-counted" min="0" step="0.01" placeholder="' + (sh.zero_drawer ? '0' : 'type the counted amount') + '"></div>';
+                } else {
+                    html += '<p class="muted">No open shift on this terminal.</p><div class="field"><label>Opening cash</label><input type="number" id="sh-opening" value="0" min="0" step="0.01"></div>';
+                }
+                if (s.branch_open_shifts.length) {
+                    html += '<h3>Open shifts on this branch</h3>' + s.branch_open_shifts.map(x => '<div class="list-row" style="cursor:default"><span>' + esc(x.terminal_name || ('Terminal ' + x.terminal_id)) + (x.is_current ? ' (this counter)' : '') + '</span><span class="muted">' + esc(x.business_date) + '</span></div>').join('');
+                }
+                html += '<div id="sh-err"></div><div class="btn-row"><button class="ghost" onclick="EdgePOS.closeModal()">Close</button>' +
+                    (sh ? '<button class="danger" id="sh-close">Close shift</button>' : '<button class="ok" id="sh-open">Open shift</button>') + '</div>';
+                openModal(html);
                 const o = $('sh-open'), c = $('sh-close');
                 if (o) o.onclick = async () => { try { await api('POST', '/shift/open', { opening_cash: Number($('sh-opening').value || 0) }); toast('Shift opened.'); closeModal(); } catch (e) { $('sh-err').innerHTML = '<div class="err">' + esc(e.message) + '</div>'; } };
-                if (c) c.onclick = async () => { try { const r = await api('POST', '/shift/close', { counted_cash: Number($('sh-counted').value || 0) }); toast('Shift closed · variance ' + money(r.cash_variance)); closeModal(); } catch (e) { $('sh-err').innerHTML = '<div class="err">' + esc(e.message) + '</div>'; } };
+                if (c) c.onclick = async () => {
+                    try {
+                        const v = $('sh-counted').value.trim();
+                        const body = v === '' ? {} : { counted_cash: Number(v) }; // ZERO-DRAWER: no count typed → the server decides under the lock
+                        const r = await api('POST', '/shift/close', body);
+                        toast('Shift closed' + (s.may_see_amounts ? ' · variance ' + money(r.cash_variance) : '.')); closeModal();
+                    } catch (e) { $('sh-err').innerHTML = '<div class="err">' + esc(e.message) + '</div>'; }
+                };
             } catch (e) { toast(e.message); }
+        }
+
+        // ---- Sync state chip: business-friendly only (never leases / hashes / epochs on the till). ----
+        async function refreshSync() {
+            try {
+                const s = await api('GET', '/sync/summary');
+                const c = $('sync-chip'); c.hidden = false;
+                c.textContent = s.state === 'up_to_date' ? 'Synced' : (s.state === 'pending' ? 'Pending sync: ' + s.pending_sales : 'Sync needs attention');
+                c.className = 'chip ' + (s.state === 'up_to_date' ? '' : (s.state === 'pending' ? 'hot' : 'draft'));
+                c.title = s.message;
+            } catch (e) { /* the chip is informational; a failed poll never blocks selling */ }
         }
 
         $('search').addEventListener('input', renderTiles);
@@ -680,6 +718,7 @@
         $('shift-btn').addEventListener('click', shiftAction);
 
         renderOrderTypes(); renderTerminals(); renderTabs(); renderTiles(); renderCart();
+        refreshSync(); setInterval(refreshSync, 60000);
         window.EdgePOS = { closeModal, state, loadHeld, viewTables };
     })();
     </script>
