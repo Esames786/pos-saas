@@ -70,7 +70,21 @@ class BranchOperatingModeService
      */
     public function cloudSaleMutationBlocked(Branch $branch): bool
     {
-        return $this->branchHandedToBranchServer($branch);
+        return $this->branchHandedToBranchServer($branch) || $this->leaseBlocksCloud($branch);
+    }
+
+    /**
+     * P0 BRANCH AUTHORITY LEASE (operating-model lock §5–6): on the CLOUD, a branch whose paired appliance holds
+     * the lease — or whose lease the Cloud can no longer renew — is fenced, whatever the manual mode says. A
+     * branch with no lease row (no paired appliance) is untouched. Never evaluated on a Branch Server.
+     */
+    public function leaseBlocksCloud(Branch $branch): bool
+    {
+        if ($this->isBranchServerInstance()) {
+            return false;
+        }
+
+        return app(EdgeAuthorityLeaseService::class)->blocksCloud($branch);
     }
 
     /** Cloud instance should refuse to mutate this branch's sales. */
@@ -120,7 +134,7 @@ class BranchOperatingModeService
             throw new BranchLocalEdgeException($branch, BranchLocalEdgeException::CODE_BRANCH_SERVER_OFFICIAL_STOCK);
         }
 
-        if ($this->branchHandedToBranchServer($branch)) {
+        if ($this->branchHandedToBranchServer($branch) || $this->leaseBlocksCloud($branch)) {
             // OFFLINE-SYNC-ENGINE-1C: the ONE sanctioned exception — Cloud sync ingestion posts the official
             // stock for an Edge-origin sale of this handed branch, but ONLY inside the in-code ingestion
             // authority scope for THIS branch. Ordinary Cloud requests (no scope) stay fully fenced, and the

@@ -39,6 +39,22 @@ return [
     | OFFLINE-SYNC-ENGINE-1D — Edge -> Cloud sync transport. No secrets in git: the appliance is
     | provisioned with these at runtime (env). TLS verification is ON in the sender and is never disabled.
     */
+    /*
+    | OFFLINE EDGE — P0 BRANCH AUTHORITY LEASE (operating-model lock §5–6). Lease mode is ON only when the
+    | appliance is provisioned with the Cloud authority URLs; without them the manual Local-Mode switch governs.
+    | The Cloud renews its per-branch lease on every accepted heartbeat (Cloud clock, TTL); the appliance may
+    | take over only after last_ack + TTL + skew margin on ITS clock and every readiness gate — never on one
+    | failed request. Pilot posture: a supervisor confirms the takeover.
+    */
+    'authority' => [
+        'heartbeat_url'          => env('EDGE_AUTHORITY_HEARTBEAT_URL'),   // Cloud device-authed: POST heartbeat
+        'handback_url'           => env('EDGE_AUTHORITY_HANDBACK_URL'),    // Cloud device-authed: POST handback
+        'ttl_seconds'            => (int) env('EDGE_AUTHORITY_TTL', 120),
+        'skew_margin_seconds'    => (int) env('EDGE_AUTHORITY_SKEW_MARGIN', 30),
+        'interval_seconds'       => (int) env('EDGE_AUTHORITY_INTERVAL', 20),
+        'require_confirmation'   => filter_var(env('EDGE_AUTHORITY_REQUIRE_CONFIRMATION', true), FILTER_VALIDATE_BOOL),
+    ],
+
     'sync' => [
         'url'             => env('EDGE_SYNC_URL'),            // Cloud device-authed ingestion endpoint
         'reconcile_url'   => env('EDGE_SYNC_RECONCILE_URL'),  // Cloud device-authed READ-ONLY reconciliation status
@@ -192,6 +208,10 @@ return [
         'edge:local:backup', // PRODUCTIZATION: encrypted local appliance backup
         'edge:local:restore', // PRODUCTIZATION: guarded restore of a local appliance backup
         'edge:local:update', // PRODUCTIZATION: apply a signed appliance update
+        'edge:local:authority-heartbeat', // P0 lease: renew the Cloud's lease / record a missed beat
+        'edge:local:authority-status',    // P0 lease: gates + state (read-only)
+        'edge:local:authority-takeover',  // P0 lease: supervised Local Mode activation (fail closed on any gate)
+        'edge:local:authority-handback',  // P0 lease: return authority to the Cloud when sync is clean
         // Framework cache/runtime operations the appliance explicitly needs.
         'config:cache', 'config:clear',
         'route:cache', 'route:clear',

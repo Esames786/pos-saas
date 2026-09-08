@@ -491,8 +491,23 @@ class EdgeLocalPosService
         return ['id' => null, 'name' => null, 'phone' => null];
     }
 
+    /**
+     * P0 BRANCH AUTHORITY: in lease mode the appliance mutates branch state only while it is the writer
+     * (local_active). Without lease mode the manual Local-Mode switch governs (no-op). Called by every
+     * mutation entry point BEFORE any work — a standby appliance fails closed with a business message.
+     */
+    private function requireLocalAuthority(): void
+    {
+        try {
+            app(EdgeAuthorityService::class)->assertLocalMutationAllowed();
+        } catch (RuntimeException $e) {
+            throw ValidationException::withMessages(['authority' => $e->getMessage()]);
+        }
+    }
+
     private function requireActiveTerminal(?int $terminalId, int $branchId): Terminal
     {
+        $this->requireLocalAuthority();
         $terminal = Terminal::on('tenant')->where('id', (int) $terminalId)->where('branch_id', $branchId)->where('status', 'active')->first();
         if (! $terminal) {
             throw ValidationException::withMessages(['terminal_id' => 'Select an active terminal on this branch.']);
@@ -1213,6 +1228,7 @@ class EdgeLocalPosService
         $meta = $this->context->requireCurrent();
         $branchId = (int) $meta->branch_id;
         $this->requireAuthorizedPrincipal($user, $branchId);
+        $this->requireLocalAuthority();
         $terminal = $terminalId !== null ? $this->requireActiveTerminal($terminalId, $branchId) : null;
 
         $sale = SalesOrder::on('tenant')->where('id', $saleId)->where('branch_id', $branchId)->where('status', 'held')->first();
@@ -1401,6 +1417,7 @@ class EdgeLocalPosService
         $meta = $this->context->requireCurrent();
         $branchId = (int) $meta->branch_id;
         $this->requireAuthorizedPrincipal($user, $branchId);
+        $this->requireLocalAuthority();
         if (! in_array($targetStatus, ['closed', 'cancelled'], true)) {
             throw ValidationException::withMessages(['status' => 'A table session can only be closed or cancelled.']);
         }

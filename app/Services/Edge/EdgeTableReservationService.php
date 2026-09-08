@@ -134,6 +134,8 @@ class EdgeTableReservationService
         if (! $branch || ! $this->mode->branchHandedToBranchServer($branch)) {
             throw new RuntimeException('This branch is not under Branch Server authority.');
         }
+        // P0 BRANCH AUTHORITY: in lease mode the appliance touches reservations only while it is the writer.
+        app(EdgeAuthorityService::class)->assertLocalMutationAllowed();
         if (! EdgeUserAuthz::isActive($user) || ! EdgeUserAuthz::isEdgeLoginEligible($user) || ! EdgeUserAuthz::mayOperateBranch($user, $branchId)) {
             throw new RuntimeException('This user is not authorized to manage reservations on this Branch Server.');
         }

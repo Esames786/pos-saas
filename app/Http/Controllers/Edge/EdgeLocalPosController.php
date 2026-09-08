@@ -893,10 +893,15 @@ class EdgeLocalPosController extends Controller
         $pending = (int) ($outbox['pending'] ?? 0) + (int) ($outbox['leased'] ?? 0);
         $attention = (int) ($outbox['failed_permanent'] ?? 0);
 
+        $authority = app(\App\Services\Edge\EdgeAuthorityService::class)->cashierState();
+
         return response()->json([
             'pending_sales' => $pending,
             'needs_attention' => $attention,
             'last_synced_at' => $snap['last_ack_at'] ?? null,
+            // P0 lease: the connection state the cashier should see (ONLINE / INTERNET CONNECTION LOST /
+            // PREPARING LOCAL MODE / LOCAL MODE ACTIVE / RETURNING TO ONLINE) — labels only, no internals.
+            'connection' => $authority['label'],
             'state' => $attention > 0 ? 'attention' : ($pending > 0 ? 'pending' : 'up_to_date'),
             'message' => $attention > 0
                 ? 'Some sales need attention before they can sync — tell your manager.'

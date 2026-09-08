@@ -36,6 +36,12 @@ class EdgeLocalMeta extends Model
         'last_applied_config_revision' => 'integer',
         'last_refreshed_at' => 'datetime',
         'last_schema_upgrade_at' => 'datetime', // EDGE-SCHEMA-UPGRADE-1
+        // P0 BRANCH AUTHORITY LEASE — appliance-clock timestamps compared as instants, never as strings.
+        'authority_last_ack_at' => 'datetime',
+        'authority_last_failure_at' => 'datetime',
+        'authority_takeover_at' => 'datetime',
+        'authority_lease_ttl_seconds' => 'integer',
+        'authority_heartbeat_seq' => 'integer',
     ];
 
     /** Identity fields that become IMMUTABLE once set (fix 5). */

@@ -43,5 +43,10 @@ Route::domain(config('tenancy.central_domain'))
 
             // PRODUCTIZATION GATE 0 — device-authenticated operational-baseline issuance (Cloud official position).
             Route::post('/sync/baseline', [\App\Http\Controllers\Edge\EdgeBaselineApiController::class, 'issue'])->name('edge.api.sync.baseline');
+
+            // P0 BRANCH AUTHORITY LEASE — heartbeat renews the Cloud's per-branch lease (or asserts a local takeover);
+            // handback returns authority when the appliance's sync is clean.
+            Route::post('/authority/heartbeat', [\App\Http\Controllers\Edge\EdgeAuthorityApiController::class, 'heartbeat'])->name('edge.api.authority.heartbeat');
+            Route::post('/authority/handback', [\App\Http\Controllers\Edge\EdgeAuthorityApiController::class, 'handback'])->name('edge.api.authority.handback');
         });
     });
