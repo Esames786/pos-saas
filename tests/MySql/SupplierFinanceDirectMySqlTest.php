@@ -460,6 +460,26 @@ class SupplierFinanceDirectMySqlTest extends MySqlTenantTestCase
             'journal bhi palat gaya — GL aur subledger ek saath');
     }
 
+    public function test_ek_journal_ka_aaina_dobara_chalane_par_do_bar_nahi_chadhta(): void
+    {
+        $entry = $this->manualJournal([
+            ['code' => '5100', 'debit' => 7000, 'credit' => 0],
+            ['code' => '2100', 'debit' => 0, 'credit' => 7000, 'supplier_id' => $this->supplierId],
+        ]);
+        $this->assertSame(57000.0, (float) Supplier::find($this->supplierId)->current_balance);
+
+        // Seedha dobara chalao — jaisa do saath chalte manual journal ke saath ho sakta hai
+        // (JournalService::post() idempotent hai, is liye doosre ko WOHI entry milti hai).
+        $again = app(SupplierPayableService::class)->mirrorApLinesToSupplierLedger($entry, $this->ownerId);
+        app(SupplierPayableService::class)->mirrorApLinesToSupplierLedger($entry, $this->ownerId);
+
+        $this->assertSame(0, $again, 'doosri koshish par koi satar nahi utri');
+        $this->assertSame(1, SupplierLedger::where('reference_type', JournalEntry::class)
+            ->where('reference_id', $entry->id)->count(), 'subledger par theek EK satar');
+        $this->assertSame(57000.0, (float) Supplier::find($this->supplierId)->current_balance,
+            'balance ek hi bar hila — 64,000 nahi');
+    }
+
     // ══════════════════════════════════════════════════════════════════════════════
     // J. REVERSAL
     // ══════════════════════════════════════════════════════════════════════════════
@@ -647,6 +667,56 @@ class SupplierFinanceDirectMySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('lines[__I__][counterparty_type]', $html, 'template row par counterparty');
         $this->assertStringContainsString('AP_ACCOUNT_IDS', $html, 'AP ke ids server se aate hain');
         $this->assertStringContainsString('syncSupplierCell', $html, 'account badalne par picker khulta hai');
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // Tenant isolation — doosre tenant ka supplier
+    // ══════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Doosre tenant ka supplier id yahan chalta hi nahi.
+     *
+     * Is architecture me har tenant ka APNA database hota hai, is liye "foreign tenant ka
+     * supplier" jaisi cheez ka koi address hi nahi banta — jo id aati hai wo isi tenant ke
+     * `suppliers` table par parhi jaati hai. Us structural hifazat ke OOPAR validation ka
+     * `exists:tenant.suppliers,id` hai, aur service ki tahe me `firstOrFail()`.
+     *
+     * Ye guard wohi qabil-e-mushahida bartaao dekhta hai: aisi id jo is tenant me mojood nahi,
+     * rad ho jaati hai aur paisa hilta hi nahi.
+     */
+    public function test_is_tenant_se_bahar_ka_supplier_rad_hota_hai(): void
+    {
+        $foreignId = ((int) Supplier::max('id')) + 5000;   // is DB me mojood nahi
+
+        $res = $this->actingAsOwner()->post('http://' . $this->host . '/supplier-payments', [
+            'supplier_id'          => $foreignId,
+            'branch_id'            => $this->branchId,
+            'cash_bank_account_id' => $this->bankId,
+            'payment_date'         => now()->toDateString(),
+            'amount'               => 1000,
+            'payment_method'       => 'cash',
+        ]);
+
+        $res->assertSessionHasErrors('supplier_id');
+
+        $this->assertSame(0, SupplierPayment::count(), 'koi payment nahi bani');
+        $this->assertSame(0, CashBankAccountTransaction::count(), 'cash/bank chhua bhi nahi gaya');
+        $this->assertSame(0, JournalEntry::where('source_type', 'supplier_payment')->count());
+
+        // Aur manual journal bhi ghair-mojood supplier ko AP par nahi baithne deta.
+        $res2 = $this->actingAsOwner()->post('http://' . $this->host . '/finance/manual-journals', [
+            'entry_date'   => now()->toDateString(),
+            'description'  => 'foreign supplier',
+            'reference_no' => '',
+            'lines'        => [
+                ['account_id' => $this->accId('5100'), 'debit' => 1000, 'credit' => 0],
+                ['account_id' => $this->accId('2100'), 'debit' => 0, 'credit' => 1000,
+                 'counterparty_type' => 'supplier', 'supplier_id' => $foreignId],
+            ],
+        ]);
+
+        $res2->assertSessionHasErrors('lines.1.supplier_id');
+        $this->assertSame(0, JournalEntry::where('source_type', 'manual_journal')->count());
     }
 
     // ══════════════════════════════════════════════════════════════════════════════

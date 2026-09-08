@@ -8,6 +8,7 @@ use App\Models\Tenant\CashBankAccountTransaction;
 use App\Models\Tenant\JournalEntry;
 use App\Models\Tenant\PurchaseBill;
 use App\Models\Tenant\Supplier;
+use App\Models\Tenant\SupplierLedger;
 use App\Models\Tenant\SupplierPayment;
 use App\Services\Purchasing\PurchasingService;
 use Illuminate\Support\Carbon;
@@ -180,6 +181,22 @@ class SupplierPayableService
         $apIds = $this->apAccountIds();
 
         if (! $apIds) {
+            return 0;
+        }
+
+        // Idempotent — ek journal entry ka aaina sirf EK BAR utarta hai.
+        //
+        // Ye zaroori hai kyunke `JournalService::post()` khud idempotent hai: wohi
+        // (source_type, source_id) dobara aane par NAYI entry nahi banata, MOJOODA laut-ta hai.
+        // Aur `ManualJournalController::nextManualJournalId()` = max(source_id) + 1 hai, is liye
+        // do saath chalte manual journal ek hi id ginn sakte hain — doosre ko pehli hi entry
+        // milti, aur bina is guard ke uska subledger DOBARA chadh jata: GL par ek satar, subledger
+        // par do, aur AP control se farq. Wohi drift jo is poore kaam ne rokna tha.
+        $alreadyMirrored = SupplierLedger::where('reference_type', JournalEntry::class)
+            ->where('reference_id', $entry->id)
+            ->exists();
+
+        if ($alreadyMirrored) {
             return 0;
         }
 
