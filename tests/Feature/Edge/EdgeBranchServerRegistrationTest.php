@@ -120,6 +120,18 @@ class EdgeBranchServerRegistrationTest extends TestCase
             'edge/local/pos',
             'edge/local/pos/held-sales/{sale}',
             'edge/local/pos/void-reasons',
+            // EDGE-CASHIER-UI-4 (deliberately approved): printing.
+            'edge/local/pos/sales/{sale}/receipt',
+            'edge/local/pos/sales/{sale}/kot-reprint',
+            'edge/local/pos/print-jobs',
+            'edge/local/pos/print-jobs/{job}/document',
+            'edge/local/pos/print-jobs/{job}/printed',
+            'edge/local/pos/print-jobs/{job}/retry',
+            // EDGE-CASHIER-UI-5 (deliberately approved): Quick Report on the canonical report authority.
+            'edge/local/pos/quick-report/options',
+            'edge/local/pos/quick-report/view',
+            'edge/local/pos/quick-report/network',
+            'edge/local/pos/quick-report/email',
         ];
 
         $uris = collect(\Illuminate\Support\Facades\Route::getRoutes()->getRoutes())

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Edge\EdgeLocalAuthController;
 use App\Http\Controllers\Edge\EdgeLocalPosController;
+use App\Http\Controllers\Edge\EdgeQuickReportController;
 use App\Http\Controllers\Edge\EdgeRuntimeController;
 use Illuminate\Support\Facades\Route;
 
@@ -63,5 +64,19 @@ Route::prefix('edge/local')->name('edge.local.')->group(function () {
         Route::post('/held-sales/{sale}/settle', [EdgeLocalPosController::class, 'settleHeldSale'])->name('held.settle');
         Route::post('/held-sales/{sale}/cancel', [EdgeLocalPosController::class, 'cancelHeldSale'])->name('held.cancel');
         Route::post('/manager-approvals/verify', [EdgeLocalPosController::class, 'verifyManagerApproval'])->name('manager.verify');
+
+        // EDGE-CASHIER-UI-4 — printing: receipt / KOT reprint / Recent Prints / Print Here document / fallback completion / retry.
+        Route::post('/sales/{sale}/receipt', [EdgeLocalPosController::class, 'queueReceipt'])->name('sales.receipt');
+        Route::post('/sales/{sale}/kot-reprint', [EdgeLocalPosController::class, 'reprintKot'])->name('sales.kot-reprint');
+        Route::get('/print-jobs', [EdgeLocalPosController::class, 'printJobs'])->name('print-jobs.index');
+        Route::get('/print-jobs/{job}/document', [EdgeLocalPosController::class, 'printDocument'])->name('print-jobs.document');
+        Route::post('/print-jobs/{job}/printed', [EdgeLocalPosController::class, 'markPrinted'])->name('print-jobs.printed');
+        Route::post('/print-jobs/{job}/retry', [EdgeLocalPosController::class, 'retryPrintJob'])->name('print-jobs.retry');
+
+        // EDGE-CASHIER-UI-5 — Quick Report on the canonical report authority (view / print here / network; email = Internet required).
+        Route::get('/quick-report/options', [EdgeQuickReportController::class, 'options'])->name('quick-report.options');
+        Route::get('/quick-report/view', [EdgeQuickReportController::class, 'view'])->name('quick-report.view');
+        Route::post('/quick-report/network', [EdgeQuickReportController::class, 'network'])->name('quick-report.network');
+        Route::post('/quick-report/email', [EdgeQuickReportController::class, 'email'])->name('quick-report.email');
     });
 });

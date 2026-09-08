@@ -150,6 +150,18 @@ return [
         'edge.local.pos.held.settle',
         'edge.local.pos.held.cancel',
         'edge.local.pos.manager.verify',
+        // EDGE-CASHIER-UI-4 — printing surface.
+        'edge.local.pos.sales.receipt',
+        'edge.local.pos.sales.kot-reprint',
+        'edge.local.pos.print-jobs.index',
+        'edge.local.pos.print-jobs.document',
+        'edge.local.pos.print-jobs.printed',
+        'edge.local.pos.print-jobs.retry',
+        // EDGE-CASHIER-UI-5 — Quick Report surface.
+        'edge.local.pos.quick-report.options',
+        'edge.local.pos.quick-report.view',
+        'edge.local.pos.quick-report.network',
+        'edge.local.pos.quick-report.email',
     ],
 
     /*

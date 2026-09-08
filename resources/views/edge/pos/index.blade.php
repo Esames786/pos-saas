@@ -316,8 +316,8 @@
                 btn('Preview Bill', '', previewBill);
                 btn('Review & Pay', 'primary', reviewAndPay, true);
             }
-            btn('Quick Report', 'ghost', () => toast('Quick Report arrives in the reporting milestone (reuses the canonical report engine).'));
-            btn('Recent Prints', 'ghost', () => toast('Recent Prints arrives with the print milestone.'));
+            btn('Quick Report', 'ghost', quickReport);
+            btn('Recent Prints', 'ghost', recentPrints);
         }
 
         // ---- Preview Bill: authoritative running bill, ZERO mutation. ----
@@ -457,9 +457,56 @@
                 const syncNote = sale.edge_sync_state && sale.edge_sync_state !== 'acknowledged' ? ' · Pending sync' : '';
                 state.held = null; state.session = null; state.cart = []; state.dirty = false; $('customer-name').value = ''; unlockOrderType(); renderCart();
                 toast('Sale ' + (sale.sale_no || '#' + sale.sale_id) + ' completed · change ' + money(sale.change_amount || 0) + syncNote);
+                autoReceipt(sale.sale_id);
             } catch (e) { showRpErr(e.message); btn.disabled = false; }
         }
         function showRpErr(m) { const e = $('rp-err'); if (e) e.innerHTML = '<div class="err">' + esc(m) + '</div>'; }
+
+        // ---- Printing: receipt after payment (ensure-once), Recent Prints, Reprint, Print Here fallback, Retry. ----
+        async function autoReceipt(saleId) {
+            try {
+                const job = await api('POST', '/sales/' + saleId + '/receipt', {});
+                if (job.fallback) { printHere(job); }
+                else { toast('Receipt → ' + job.printer_name); }
+            } catch (e) { toast('Receipt not queued: ' + e.message); }
+        }
+        function printHere(job) {
+            // Print Here / local fallback: the canonical document opens in a print window; the operator confirms it printed.
+            const w = window.open(job.preview_url, '_blank', 'width=420,height=640');
+            if (!w) { toast('Allow pop-ups to print here — or open Recent Prints.'); return; }
+            toast((job.document_type === 'kot' ? 'KOT' : 'Receipt') + ' opened for printing here.');
+        }
+        async function recentPrints() {
+            try {
+                const r = await api('GET', '/print-jobs');
+                let html = '<h2>Recent Prints</h2>';
+                if (!r.jobs.length) html += '<p class="muted">Nothing printed yet.</p>';
+                r.jobs.forEach(j => {
+                    const kind = (j.document_type || '').toUpperCase() + (j.event_type && j.event_type !== 'normal' ? ' · ' + j.event_type : '');
+                    html += '<div class="list-row" style="cursor:default"><div><strong>' + esc(kind) + '</strong> ' + esc(j.reference_no || '') +
+                        '<div class="muted">' + esc(j.printer_name) + ' · ' + esc(j.print_status) + ' · ' + esc(new Date(j.created_at).toLocaleTimeString()) + '</div></div>' +
+                        '<div style="display:flex;gap:.3rem;flex-wrap:wrap;justify-content:flex-end">' +
+                        '<button class="sm" data-open="' + j.id + '">Print here</button>' +
+                        (j.fallback && j.print_status !== 'printed' ? '<button class="sm ok" data-printed="' + j.id + '">Printed</button>' : '') +
+                        (j.reference_id && (j.document_type === 'receipt' || j.document_type === 'kot') ? '<button class="sm" data-reprint="' + j.reference_id + '" data-kind="' + j.document_type + '">Reprint</button>' : '') +
+                        (j.print_status === 'failed' ? '<button class="sm warn" data-retry="' + j.id + '">Retry</button>' : '') +
+                        '</div></div>';
+                });
+                html += '<div class="btn-row"><button class="ghost" onclick="EdgePOS.closeModal()">Close</button></div>';
+                openModal(html);
+                const byJob = id => r.jobs.find(x => x.id === Number(id));
+                document.querySelectorAll('#modal [data-open]').forEach(b => b.onclick = () => printHere(byJob(b.dataset.open)));
+                document.querySelectorAll('#modal [data-printed]').forEach(b => b.onclick = async () => { try { await api('POST', '/print-jobs/' + b.dataset.printed + '/printed', {}); toast('Marked printed.'); recentPrints(); } catch (e) { toast(e.message); } });
+                document.querySelectorAll('#modal [data-retry]').forEach(b => b.onclick = async () => { try { await api('POST', '/print-jobs/' + b.dataset.retry + '/retry', {}); toast('Queued for retry.'); recentPrints(); } catch (e) { toast(e.message); } });
+                document.querySelectorAll('#modal [data-reprint]').forEach(b => b.onclick = async () => {
+                    try {
+                        if (b.dataset.kind === 'kot') { const k = await api('POST', '/sales/' + b.dataset.reprint + '/kot-reprint', {}); toast('KOT reprint → ' + (k.jobs[0]?.printer_name || 'queued')); if (k.jobs[0]?.fallback) printHere(k.jobs[0]); }
+                        else { const j = await api('POST', '/sales/' + b.dataset.reprint + '/receipt', { reprint: true }); toast('Receipt reprint → ' + j.printer_name); if (j.fallback) printHere(j); }
+                        recentPrints();
+                    } catch (e) { toast(e.message); }
+                });
+            } catch (e) { toast(e.message); }
+        }
 
         // ---- Cancel the whole open check (reason required; the server applies the branch approval mode). ----
         async function cancelOrder() {
@@ -572,6 +619,44 @@
                 if (state.session && state.session.id === t.session.id) { state.session = null; unlockOrderType(); renderCart(); }
                 viewTables();
             } catch (e) { toast(e.message); }
+        }
+
+        // ---- Quick Report: the canonical report authority (view / print here / network); email is Internet-required. ----
+        async function quickReport() {
+            let o;
+            try { o = await api('GET', '/quick-report/options'); }
+            catch (e) { toast(e.message.includes('Permission') ? 'Quick Report is not enabled for your account.' : e.message); return; }
+            const secLabel = { overview: 'Overview', categories: 'Categories', items: 'Items', category_items: 'Items by Category', deals: 'Deals', waiters: 'Waiters', order_types: 'Order Types', order_type_combos: 'Order Type × Combos', cancellations: 'Cancellations', cash_bank: 'Cash / Bank' };
+            openModal('<h2>Quick Report</h2>' +
+                '<div class="field"><label>Business date</label><input type="text" id="qr-date" value="' + esc(o.date) + '" placeholder="YYYY-MM-DD"></div>' +
+                '<div class="field"><label>Sections</label><div style="display:flex;flex-wrap:wrap;gap:.4rem">' + o.sections.map(s => '<label class="chip"><input type="checkbox" class="qr-sec" value="' + s + '" checked> ' + esc(secLabel[s] || s) + '</label>').join('') + '</div></div>' +
+                '<div class="field"><label>Categories (blank = all)</label><select id="qr-cats" multiple size="4">' + o.categories.map(c => '<option value="' + c.id + '">' + esc((c.parent_id ? '— ' : '') + c.name) + '</option>').join('') + '</select></div>' +
+                '<div class="field"><label>Paper</label><select id="qr-paper"><option value="80mm">80mm</option><option value="58mm">58mm</option></select></div>' +
+                '<div class="field"><label>Network printer</label><select id="qr-printer"><option value="">—</option>' + o.printers.map(p => '<option value="' + p.id + '">' + esc(p.name) + '</option>').join('') + '</select></div>' +
+                '<p class="muted" id="qr-email-note">Email: ' + esc(o.email.reason) + '</p><div id="qr-err"></div>' +
+                '<div class="btn-row"><button class="ghost" onclick="EdgePOS.closeModal()">Close</button>' +
+                '<button class="ghost" id="qr-email" title="' + esc(o.email.reason) + '">Email (Internet required)</button>' +
+                '<button class="ghost" id="qr-network">Send to network</button>' +
+                '<button class="primary" id="qr-view">View / Print here</button></div>');
+            const params = () => {
+                const secs = Array.from(document.querySelectorAll('.qr-sec:checked')).map(x => x.value);
+                const cats = Array.from($('qr-cats').selectedOptions).map(x => x.value);
+                const p = new URLSearchParams(); p.set('date', $('qr-date').value.trim()); p.set('paper', $('qr-paper').value);
+                secs.forEach(s => p.append('sections[]', s)); cats.forEach(c => p.append('category_ids[]', c));
+                return p;
+            };
+            $('qr-view').onclick = () => { const w = window.open(BASE + '/quick-report/view?' + params().toString(), '_blank', 'width=460,height=760'); if (!w) toast('Allow pop-ups to view the report.'); };
+            $('qr-network').onclick = async () => {
+                const printer = Number($('qr-printer').value || 0); if (!printer) { $('qr-err').innerHTML = '<div class="err">Choose a network printer.</div>'; return; }
+                try {
+                    const p = params(); const body = { printer_id: printer, date: p.get('date'), sections: p.getAll('sections[]'), category_ids: p.getAll('category_ids[]') };
+                    const r = await api('POST', '/quick-report/network', body); toast('Report → ' + r.printer);
+                } catch (e) { $('qr-err').innerHTML = '<div class="err">' + esc(e.message) + '</div>'; }
+            };
+            $('qr-email').onclick = async () => {
+                try { await api('POST', '/quick-report/email', {}); }
+                catch (e) { $('qr-err').innerHTML = '<div class="err">' + esc(e.message) + '</div>'; }
+            };
         }
 
         async function shiftAction() {

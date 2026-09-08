@@ -272,7 +272,7 @@
 <div class="no-print"><button onclick="window.print()">Print</button></div>
 @endunless
 
-<h1>{{ app()->bound('tenant') ? app('tenant')->business_name : 'Bingoo POS' }}</h1>
+<h1>{{ $business_name ?? (app()->bound('tenant') ? app('tenant')->business_name : 'Bingoo POS') }}</h1>
 <div style="text-align:center">
     Sales Report ({{ $mode === 'thermal' ? 'Z / End of Day' : 'Standard' }})<br>
     {{ $filters['date_from'] }} → {{ $filters['date_to'] }}<br>

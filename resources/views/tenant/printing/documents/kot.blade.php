@@ -225,7 +225,7 @@
 <div class="no-print" style="text-align:center;margin:12px 0;display:flex;gap:8px;justify-content:center">
     <button class="print-btn" style="margin:0" onclick="window.print()">🖨 Print KOT</button>
     @if(!empty($job))
-    <form method="POST" action="{{ url('/printing/jobs/' . $job->id . '/mark-printed') }}" style="display:inline">
+    <form method="POST" action="{{ $edgeMarkPrintedUrl ?? url('/printing/jobs/' . $job->id . '/mark-printed') }}" style="display:inline">
         @csrf
         <button type="submit" class="print-btn" style="margin:0;background:#198754;color:#fff;border:none;cursor:pointer">✔ Mark Printed</button>
     </form>
