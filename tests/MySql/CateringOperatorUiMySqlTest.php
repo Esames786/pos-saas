@@ -626,6 +626,30 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
             'the old builder is still the one in use until step 4');
     }
 
+    /**
+     * STACKED-MATERIAL-ROW-1 (step 2) — the OWN/PARTY switch is gone.
+     *
+     * It asked again for something the item already states. Worse, it had to
+     * ZERO the customer shares whenever the operator switched back to OWN — a
+     * fix for a real bug (a hidden number that still billed nothing), but a fix
+     * that only existed because the switch created the hidden state in the first
+     * place.
+     *
+     * Now each material carries its own Party box, open whenever the ITEM allows
+     * party supply. There is no mode, so there is nothing to unwind.
+     */
+    public function test_party_is_decided_by_the_item_not_by_a_switch(): void
+    {
+        $html = $this->render($this->booking());
+
+        $this->assertStringNotContainsString("punch.mode !== 'PARTY' ? 'disabled'", $html,
+            'the Party box must not be gated by a mode switch');
+        $this->assertStringContainsString("if (punch.party) seq.push(r.find('.pm-cust')", $html,
+            'and Tab must reach the box whenever it is on screen');
+        $this->assertStringContainsString("\$('#punch-seg-wrap').addClass('d-none');", $html,
+            'the switch is never shown');
+    }
+
     public function test_an_item_that_does_not_exist_cannot_be_entered(): void
     {
         $html = $this->render($this->booking());

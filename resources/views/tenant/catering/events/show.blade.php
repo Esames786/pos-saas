@@ -1946,9 +1946,12 @@ $(function () {
         clearPunchInstructions();
         $('#punch-unit').text('');
         $('.punch-step').removeClass('d-none');
-        // Product-level rule: no party allowed (or no materials) → the
-        // question never even appears; the customer boxes never render.
-        if (!punch.mats.length || !punch.party) { $('#punch-seg-wrap').addClass('d-none'); }
+        // Step 2: the OWN/PARTY switch is never shown. The item already says
+        // whether the customer may supply, and each material now carries its own
+        // Party box, so the question had nothing left to ask. The markup and
+        // punchSetMode() stay for one more step so this can be reverted in a
+        // single line if the floor disagrees; step 5 removes them.
+        $('#punch-seg-wrap').addClass('d-none');
         punchSetMode('OWN');
         punchRenderMats();
         // Swapping the dish does not mean re-typing how much of it.
@@ -1992,7 +1995,14 @@ $(function () {
                 + '<td class="text-end"><input class="form-control form-control-sm text-end pm-rate" data-i="' + i + '" style="width:90px;display:inline-block" value="' + m.rate + '"></td>'
                 + '<td class="text-end"><input class="form-control form-control-sm text-end pm-own" data-i="' + i + '" style="width:90px;display:inline-block" value="' + punchFmt(m.ownTouched ? m.own : qty * m.ratio) + '"></td>'
                 + (partyCol
-                    ? '<td class="text-end"><input class="form-control form-control-sm text-end pm-cust" data-i="' + i + '" style="width:90px;display:inline-block;border-color:var(--bs-success)" value="' + punchFmt(m.cust || 0) + '" ' + (punch.mode !== 'PARTY' ? 'disabled' : '') + '></td>'
+                    // STACKED-MATERIAL-ROW-1 (step 2): the Party box is open whenever
+                    // the ITEM allows party supply. It used to be gated by an OWN/PARTY
+                    // switch, which asked again for something the item already states —
+                    // and the switch had to zero the customer's shares on the way back,
+                    // because a hidden number that still billed nothing is how a
+                    // quotation goes wrong for a reason nobody can see. With the box
+                    // simply open per material, there is no hidden state to unwind.
+                    ? '<td class="text-end"><input class="form-control form-control-sm text-end pm-cust" data-i="' + i + '" style="width:90px;display:inline-block;border-color:var(--bs-success)" value="' + punchFmt(m.cust || 0) + '"></td>'
                     : '')
                 + '<td class="text-end fw-semibold"><span class="pm-total" data-i="' + i + '">' + punchFmt((m.ownTouched ? m.own : qty * m.ratio) + (m.cust || 0)) + '</span> ' + _.escape(m.unit || '') + '</td>'
                 + '</tr>').join('')
@@ -2171,7 +2181,9 @@ $(function () {
         $('#punch-mats tbody tr').each(function () {
             const r = $(this);
             seq.push(r.find('.pm-rate')[0], r.find('.pm-own')[0]);
-            if (punch.mode === 'PARTY') seq.push(r.find('.pm-cust')[0]);
+            // Step 2: the box is present whenever the item allows party supply,
+            // so the walk follows what is on screen rather than a mode flag.
+            if (punch.party) seq.push(r.find('.pm-cust')[0]);
         });
 
         return seq.filter(Boolean);
