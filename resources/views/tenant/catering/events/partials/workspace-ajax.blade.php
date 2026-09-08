@@ -134,6 +134,42 @@
             credentials: 'same-origin',
             headers: {'X-Requested-With': 'XMLHttpRequest'},
         }).then(function (r) {
+            // SAVE-REJECTION-VISIBLE-1 — a refused save must LOOK refused.
+            //
+            // 422 is the one failure whose body is the answer: it carries the
+            // validation messages. It used to fall into the reload below, which
+            // threw them away and re-rendered the booking from the database —
+            // so a rejected Save Estimate looked exactly like a successful one
+            // that had saved nothing. On 8 September a client punched a whole
+            // quotation, pressed Save, was rejected 422 at 11:43, saw the page
+            // refresh, and reported the work as "saved but gone". It had never
+            // been written at all.
+            //
+            // Now the reason is shown and the page is left ALONE — the punched
+            // rows are still on screen, so the operator can fix the line the
+            // server named instead of typing the whole quotation again.
+            if (r.status === 422) {
+                return r.json().then(function (body) {
+                    var errors = body && body.errors ? body.errors : {};
+                    var first = Object.keys(errors).map(function (k) {
+                        return [].concat(errors[k])[0];
+                    }).filter(Boolean);
+                    showToast(
+                        'Save nahi hui — ' + (first.length
+                            ? first.slice(0, 2).join(' · ')
+                            : (body && body.message) || 'kuch maloomat adhoori hain')
+                        + (first.length > 2 ? ' (+' + (first.length - 2) + ' aur)' : ''),
+                        true
+                    );
+
+                    return null;
+                }).catch(function () {
+                    showToast('Save nahi hui — server ne maloomat qubool nahi kiin.', true);
+
+                    return null;
+                });
+            }
+
             // Only a FOLLOWED REDIRECT may navigate. An error served straight
             // from the action URL (419 session expiry, 500) must never send
             // the browser THERE — a GET on a POST/PUT action is exactly the

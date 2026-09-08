@@ -448,6 +448,67 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
             'free-text lines are a feature — they are only demoted, never removed');
     }
 
+    /**
+     * SAVE-REJECTION-VISIBLE-1 — a refused save must look refused.
+     *
+     * The workspace posts by fetch and used to treat every non-ok response the
+     * same way: reload the booking. For 419 and 500 that is right. For 422 it
+     * threw away the only thing that mattered — the reason — and re-rendered
+     * the booking from the database, so a REJECTED Save Estimate looked exactly
+     * like a successful one that had saved nothing. A client lost a whole
+     * quotation to it on 8 September (POST /catering/estimates/1 → 422, 11:43).
+     *
+     * Two halves, and the JS branch is worthless without the second: the page
+     * must handle 422 separately, and the server must actually answer an XHR
+     * save with a JSON 422 carrying `errors`.
+     */
+    public function test_a_rejected_save_is_shown_to_the_operator_not_reloaded_away(): void
+    {
+        $html = $this->render($this->booking());
+
+        $this->assertStringContainsString('r.status === 422', $html,
+            'a validation refusal must be handled apart from 419/500');
+        $this->assertStringContainsString('body.errors', $html,
+            "and the server's reason is what the operator is told");
+    }
+
+    public function test_the_server_answers_an_ajax_save_with_a_json_422_and_reasons(): void
+    {
+        $event = $this->booking();
+
+        // A line the punch bar can produce when the operator never completes it:
+        // a name, and nothing else.
+        $request = \Illuminate\Http\Request::create(
+            '/catering/estimates/'.$event->currentEstimate->id,
+            'PUT',
+            ['lines' => [['item_name' => 'Chicken Karahi']]]
+        );
+        $request->headers->set('X-Requested-With', 'XMLHttpRequest');
+        // What a browser fetch() actually sends. Request::create() injects a
+        // NAVIGATION Accept header (text/html,…) which no fetch ever sends, and
+        // under that header Laravel redirects instead of answering JSON — so the
+        // page could never read the reason. The production 422 proves the real
+        // request looks like this one.
+        $request->headers->set('Accept', '*/*');
+
+        // This is the condition Laravel uses to answer with JSON 422 instead of
+        // redirecting back — the whole 422 branch in the page depends on it.
+        $this->assertTrue($request->expectsJson(),
+            'an XHR save must be answered in JSON, or the page can never read the reason');
+
+        try {
+            app(\App\Http\Controllers\Tenant\Catering\CateringEstimateController::class)
+                ->update($request, $event->currentEstimate);
+            $this->fail('an incomplete line must not be accepted');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $this->assertSame(422, $e->status);
+            $errors = $e->errors();
+            $this->assertArrayHasKey('lines.0.quantity', $errors,
+                'the operator is told WHICH field, not just that something failed');
+            $this->assertArrayHasKey('lines.0.rate', $errors);
+        }
+    }
+
     public function test_the_workspace_posts_in_place_instead_of_reloading(): void
     {
         $html = $this->render($this->booking());
