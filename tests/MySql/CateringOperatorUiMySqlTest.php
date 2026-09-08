@@ -444,6 +444,58 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
      * must still save, so the server cannot refuse a line without a product
      * without rewriting history.
      */
+    /**
+     * PUNCH-TAB-ORDER-1 — Qty, then the rate, then the note, then the breakdown.
+     *
+     * The Customer rate used to sit almost last in the walk, after every
+     * cost-block material row, so an operator agreeing a price tabbed through
+     * the entire breakdown to reach the one figure they were changing.
+     *
+     * Two orders have to agree or a keyboard screen stops being one: what plain
+     * Tab does (the DOM) and what Enter does (punchSeq). This checks both.
+     */
+    public function test_the_rate_is_reached_straight_after_the_quantity(): void
+    {
+        $html = $this->render($this->booking());
+
+        // The Enter walk.
+        $seq = $this->between($html, 'function punchSeq()', 'return seq.filter(Boolean)');
+        $qty = strpos($seq, "'punch-qty'");
+        $rate = strpos($seq, "'punch-customer-rate'");
+        $note = strpos($seq, "'punch-instr'");
+        $own = strpos($seq, "'punch-own'");
+
+        $this->assertNotFalse($qty);
+        $this->assertNotFalse($rate);
+        $this->assertLessThan($rate, $qty, 'Qty comes first');
+        $this->assertLessThan($note, $rate, 'the rate is reached BEFORE the note');
+        $this->assertLessThan($own, $note, 'and the breakdown comes after both');
+
+        // What plain Tab does — the markup itself, in the same order.
+        $bar = $this->between($html, 'id="punch-bar"', 'id="punch-mats"');
+        $this->assertLessThan(
+            strpos($bar, 'id="punch-customer-rate"'),
+            strpos($bar, 'id="punch-qty"'),
+            'Tab follows the DOM, so the DOM must agree with the Enter walk'
+        );
+        $this->assertLessThan(
+            strpos($bar, 'id="punch-instr"'),
+            strpos($bar, 'id="punch-customer-rate"'),
+            'the rate box sits before the note on screen, not after the breakdown'
+        );
+    }
+
+    /** The slice of $haystack between two markers — for order assertions. */
+    private function between(string $haystack, string $from, string $to): string
+    {
+        $a = strpos($haystack, $from);
+        $b = strpos($haystack, $to, $a === false ? 0 : $a);
+        $this->assertNotFalse($a, "marker not found: {$from}");
+        $this->assertNotFalse($b, "marker not found: {$to}");
+
+        return substr($haystack, $a, $b - $a);
+    }
+
     public function test_an_item_that_does_not_exist_cannot_be_entered(): void
     {
         $html = $this->render($this->booking());
