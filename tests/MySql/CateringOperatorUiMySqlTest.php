@@ -459,7 +459,7 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
         $html = $this->render($this->booking());
 
         // The Enter walk.
-        $seq = $this->between($html, 'function punchSeq()', 'return seq.filter(Boolean)');
+        $seq = $this->between($html, 'function punchSeq()', 'return seq.filter');
         $qty = strpos($seq, "'punch-qty'");
         $rate = strpos($seq, "'punch-customer-rate'");
         $note = strpos($seq, "'punch-instr'");
@@ -550,12 +550,14 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('line-up', $html, 'every row can be moved up');
         $this->assertStringContainsString('line-down', $html, 'and down');
 
-        // BOTH kinds of breakdown. A saved line carries `.cost-details-row`; a
-        // freshly punched one carries `.punch-detail`. The first version of this
-        // guard only named the saved kind, so it happily passed while an unsaved
-        // row left its own breakdown behind — the exact fault it was written for.
-        $this->assertStringContainsString(".next('.cost-details-row, .punch-detail')", $html,
-            "a line's breakdown must move with the line — either kind of it");
+        // A line is no longer one <tr>: its materials stack beneath it and its
+        // breakdown follows them. The first version of this guard NAMED the kinds
+        // of row that travel with a line, and passed while an unsaved row left its
+        // own breakdown behind — the exact fault it was written for. So the code
+        // stopped naming them, and this stopped naming them too: everything up to
+        // the next line row belongs to this line.
+        $this->assertStringContainsString("\$row.nextUntil('tr[data-row]')", $html,
+            "a line's breakdown and its stacked materials must move with the line");
         $this->assertStringContainsString('function renumberLines()', $html,
             'the posted indices are rewritten, so the order is stated rather than inferred');
         $this->assertStringContainsString("'lines[' + position", $html,
@@ -621,9 +623,12 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('a disabled input is not submitted', $html,
             'the reason the zero is posted is written down where it will be read');
 
-        // Step 1 changes nothing the operator sees.
-        $this->assertStringContainsString('punchRowHtml(idx, qty, punchLineCalc(qty))', $html,
-            'the old builder is still the one in use until step 4');
+        // Step 4 hands the screen over. The old builder is not deleted yet — it
+        // still holds one of the three copies counted above — but nothing calls it.
+        $this->assertStringContainsString('punchStackedRowHtml(idx, qty, punchLineCalc(qty))', $html,
+            'the stacked builder is the one in use from step 4');
+        $this->assertSame(0, substr_count($html, 'punchRowHtml(idx, qty, punchLineCalc(qty))'),
+            'and nothing calls the old builder any more');
     }
 
     /**
@@ -678,6 +683,274 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('pm-req', $html);
         $this->assertStringContainsString('this.textContent = punchFmt(qty * punch.mats[+this.dataset.i].ratio)', $html,
             'required moves when the quantity moves');
+    }
+
+    /**
+     * STACKED-MATERIAL-ROW-1 (step 4) — the table is 14 columns wide, and every
+     * row is exactly 14 columns wide.
+     *
+     * This is the step the plan warned could not be split. The header, the saved
+     * rows, the three colspans and the row builder all had to move together: the
+     * moment any one of them moved alone the table was broken, and a broken table
+     * is not a cosmetic fault — cells slide sideways and the operator reads one
+     * dish's meat under another dish's name.
+     *
+     * So the guard does not look for strings. It walks the rendered table and
+     * adds up each row's own cells plus every cell a rowspan carries down into
+     * it. A square table is the only table that survives that sum, and no amount
+     * of agreeing-with-the-code can fake it.
+     *
+     * Two materials on one dish, deliberately: one sits in the line's own row and
+     * the second gets a row beneath it, which is the whole point of the rebuild
+     * and the only case where the rowspan arithmetic can be wrong.
+     */
+    public function test_the_lines_table_is_square_with_the_materials_stacked_in_it(): void
+    {
+        $categoryId = DB::connection('tenant')->table('products')
+            ->where('id', $this->biryaniId)->value('category_id');
+        $riceId = $this->makeProduct($categoryId, [
+            'name' => 'Rice', 'sku' => 'RM-RICE', 'unit_id' => $this->unitId,
+            'product_kind' => 'raw_material', 'is_stock_tracked' => true,
+        ]);
+        CateringMaterialRate::create([
+            'product_id' => $riceId, 'rate' => 40, 'unit_id' => $this->unitId,
+            'effective_from' => now()->subMonth()->toDateString(),
+        ]);
+        CateringProductCostBlock::create([
+            'product_id' => $this->biryaniId, 'label' => 'Rice',
+            'block_type' => CateringProductCostBlock::TYPE_MATERIAL,
+            'material_product_id' => $riceId, 'quantity_per_unit' => 0.4,
+            'unit_id' => $this->unitId, 'rate' => 55,
+            'charge_basis' => CateringProductCostBlock::BASIS_PER_UNIT,
+            'rate_basis' => CateringProductCostBlock::RATE_PER_MATERIAL_UNIT,
+            'sort_order' => 3,
+        ]);
+
+        $event = $this->booking();
+        $this->assertSame(2, $this->blockLine($event)->costBlocks->filter->isMaterial()->count(),
+            'the fixture must actually carry two materials, or this proves nothing');
+
+        $html = $this->render($event);
+
+        // The columns, in the owner's order. Squareness alone would be content
+        // with fourteen columns in any arrangement; the operator would not.
+        $this->assertSame([
+            'Item', 'Urdu Name', 'Qty', 'Unit', 'System Rate', 'Customer Rate',
+            'Material', 'Rate', 'Required Qty', 'Own', 'Party',
+            'Amount', 'Instructions', '',
+        ], $this->linesTableHeadings($html));
+
+        $rows = $this->linesTableRows($html);
+        $this->assertNotEmpty($rows, 'the lines table must render');
+
+        // Row 0 is the header. Every row, header included, must come to 14.
+        $carried = [];
+        foreach ($rows as $r => $cells) {
+            $width = $carried[$r] ?? 0;
+            foreach ($cells as [$colspan, $rowspan]) {
+                $width += $colspan;
+                for ($k = 1; $k < $rowspan; $k++) {
+                    $carried[$r + $k] = ($carried[$r + $k] ?? 0) + $colspan;
+                }
+            }
+            $this->assertSame(14, $width, "row {$r} is {$width} columns wide, not 14");
+        }
+
+        // The stack itself: a second material is a row of its own, and it is not
+        // a line — nothing may treat it as one.
+        $this->assertStringContainsString('class="line-material-row"', $html,
+            "a dish's second material gets its own row under the first");
+        $this->assertSame(0, substr_count($html, 'line-material-row" data-row='),
+            'a material row is not a line — it must not carry data-row');
+
+        // And the point of the whole rebuild: what the line POSTS is untouched.
+        // These are the exact fields a saved row posted before step 4.
+        foreach ([
+            'lines[0][line_uuid]', 'lines[0][product_id]', 'lines[0][item_name]',
+            'lines[0][item_name_ur]', 'lines[0][quantity]', 'lines[0][unit_id]',
+            'lines[0][rate]', 'lines[0][instructions]',
+        ] as $field) {
+            $this->assertStringContainsString('name="'.$field.'"', $html,
+                "the rearrangement must not drop {$field} — the server reads it");
+        }
+    }
+
+    private function linesTableXPath(string $html): \DOMXPath
+    {
+        $doc = new \DOMDocument;
+        $prev = libxml_use_internal_errors(true);
+        $doc->loadHTML('<?xml encoding="utf-8" ?>'.$html);
+        libxml_clear_errors();
+        libxml_use_internal_errors($prev);
+
+        return new \DOMXPath($doc);
+    }
+
+    /** The lines table's column headings, in the order the operator reads them. */
+    private function linesTableHeadings(string $html): array
+    {
+        $xp = $this->linesTableXPath($html);
+        $out = [];
+        foreach ($xp->query('//table[@id="lines-table"]/thead/tr/th') as $th) {
+            $out[] = trim(preg_replace('/\s+/', ' ', $th->textContent));
+        }
+
+        return $out;
+    }
+
+    /**
+     * The DIRECT rows of #lines-table, each as a list of [colspan, rowspan].
+     *
+     * Direct on purpose: a Cost Details cell contains a whole table of its own,
+     * and counting its rows would measure the wrong thing entirely.
+     */
+    private function linesTableRows(string $html): array
+    {
+        $xp = $this->linesTableXPath($html);
+        $table = $xp->query('//table[@id="lines-table"]')->item(0);
+        $this->assertNotNull($table, 'the lines table must be in the page');
+
+        $rows = [];
+        foreach ($xp->query('./thead/tr | ./tbody/tr', $table) as $tr) {
+            $cells = [];
+            foreach ($xp->query('./th | ./td', $tr) as $cell) {
+                $cells[] = [
+                    max(1, (int) ($cell->getAttribute('colspan') ?: 1)),
+                    max(1, (int) ($cell->getAttribute('rowspan') ?: 1)),
+                ];
+            }
+            $rows[] = $cells;
+        }
+
+        return $rows;
+    }
+
+    /**
+     * PUNCH-WALK-VISIBLE-1 — Enter walks what the operator can see.
+     *
+     * The whole punch is a keyboard flow: item → Qty → Customer Rate →
+     * Instructions → each material's Rate, Own and Party → Ctrl+Enter. Every one
+     * of those steps is one Enter, and the walk is a LIST of elements built by
+     * punchSeq(). A list is a memory of what was put on screen, and memories go
+     * stale — step 2 hid the OWN/PARTY switch and left #punch-own in the list.
+     *
+     * focus() on a hidden element does nothing at all. activeElement stayed on
+     * Instructions, the next Enter recomputed the same index and tried the same
+     * hidden button, and the material rows became unreachable by keyboard. A
+     * disabled Party box stalls it in exactly the same way.
+     *
+     * So the walk no longer trusts the list: it asks each element whether it is
+     * on screen and usable. That rule cannot go stale, and it still holds when
+     * step 5 deletes the button outright.
+     */
+    public function test_the_enter_walk_only_visits_fields_the_operator_can_use(): void
+    {
+        $html = $this->render($this->booking());
+
+        $this->assertStringContainsString(
+            'seq.filter(el => el && ! el.disabled && el.offsetParent !== null)', $html,
+            'the walk must skip anything hidden or disabled, or one Enter can trap the operator');
+        $this->assertStringNotContainsString('return seq.filter(Boolean);', $html,
+            'filtering only nulls is what let a HIDDEN button stay in the walk');
+
+        // And the order itself, which is the flow the counter has learned.
+        $walk = $this->between($html, 'function punchSeq()', 'return seq.filter');
+        $order = ['punch-qty', 'punch-customer-rate', 'punch-instr', 'pm-rate', 'pm-own', 'pm-cust'];
+        $at = -1;
+        foreach ($order as $field) {
+            $found = strpos($walk, $field);
+            $this->assertNotFalse($found, "the walk must reach {$field}");
+            $this->assertGreaterThan($at, $found, "{$field} is out of order in the Enter walk");
+            $at = $found;
+        }
+
+        // Every way into the punch bar — picking an item, editing a saved row,
+        // editing an unsaved one — puts the caret on Qty with the number already
+        // selected, ready to be typed over. Three doors, one landing place.
+        $this->assertSame(3, substr_count($html, ".trigger('focus').trigger('select')"),
+            'each way into the punch bar must land on Qty, selected');
+    }
+
+    /**
+     * The unsaved row tells the bar its unit BY NAME, not by counting cells.
+     *
+     * This read `row.find('td').eq(3)`, which was correct right up until the
+     * table gained five material columns. A reader that counts cells does not
+     * fail loudly when a column moves — it quietly returns the wrong cell, and
+     * the operator sees a unit that belongs to something else.
+     */
+    public function test_the_unsaved_row_names_the_cell_it_reads(): void
+    {
+        $html = $this->render($this->booking());
+
+        $this->assertStringContainsString('punch-unit-cell', $html,
+            'the unit cell carries a name the reader can ask for');
+        $this->assertStringContainsString("row.find('.punch-unit-cell')", $html,
+            'and the reader asks for it by that name');
+        $this->assertStringNotContainsString("row.find('td').eq(3)", $html,
+            'nothing may read a cell by counting to it');
+    }
+
+    /**
+     * ROW-DRAG-1 — a row can be picked up, and it moves the way the arrows move it.
+     *
+     * WHAT THIS GUARD CANNOT DO, said plainly: dragging happens in a browser,
+     * and no assertion here can drag anything. What it CAN prove is the thing
+     * that actually matters — that drag is a second way to perform the SAME
+     * move, not a second implementation of it. Both paths move `lineGroup()` and
+     * then call `renumberLines()`; neither works out an order of its own.
+     *
+     * That is not a technicality. The printed quotation reads this order back —
+     * `saveDraftLines` writes `sort_order` from the POSTED sequence — so an
+     * order computed in two places is a customer's paper that can disagree with
+     * the screen it was made on.
+     *
+     * The behaviour itself still needs a person and a mouse before it ships.
+     */
+    public function test_a_row_can_be_dragged_and_it_moves_exactly_as_the_arrows_do(): void
+    {
+        $html = $this->render($this->booking());
+
+        // A handle, not the whole row: a draggable row makes selecting a
+        // quantity impossible.
+        // Both builders carry it. Counting occurrences would count LINES, not
+        // builders — the fixture renders two saved rows — so each is asked for
+        // by name: the server-rendered one, and the one the punch bar writes
+        // (which reaches the page with its quotes still escaped).
+        $this->assertStringContainsString("+ '<span class=\"line-drag", $html,
+            'the row the punch bar builds carries the handle');
+        $this->assertSame(
+            substr_count($html, 'data-row="s') + 1,
+            substr_count($html, 'class="line-drag'),
+            'one handle per saved row, plus the one the punch builder writes'
+        );
+        $this->assertStringContainsString('draggable="true"', $html);
+
+        // Drop is never fired unless dragover cancels the default.
+        $this->assertStringContainsString("\$(document).on('dragover', '#lines-body > tr'", $html);
+        $this->assertMatchesRegularExpression(
+            "/on\('dragover'[\s\S]{0,400}?e\.preventDefault\(\)/", $html,
+            'without preventDefault on dragover the browser never fires a drop at all');
+
+        // The same two authorities the arrows use, and no third one.
+        $drop = $this->between($html, "on('drop', '#lines-body > tr'", "on('dragend'");
+        $this->assertStringContainsString('lineGroup(moving)', $drop,
+            'the whole line moves — its stacked materials and its breakdown with it');
+        $this->assertStringContainsString('renumberLines();', $drop,
+            'and the posted indices are rewritten, exactly as after an arrow');
+        $this->assertStringNotContainsString('sort_order', $drop,
+            'the browser must not invent an order of its own');
+
+        // A punch in flight owns a row INDEX; moving rows under it would leave
+        // punch.editIdx pointing at whatever landed in that place.
+        $start = $this->between($html, "on('dragstart', '.line-drag'", "on('dragover'");
+        $this->assertStringContainsString('if (punch) { e.preventDefault(); return; }', $start,
+            'dragging is refused while a row is being punched or edited');
+
+        // The arrows are an addition's companion, never its casualty: they are
+        // the only way that works on a touch screen or from a keyboard.
+        $this->assertStringContainsString('line-up', $html);
+        $this->assertStringContainsString('line-down', $html);
     }
 
     public function test_an_item_that_does_not_exist_cannot_be_entered(): void

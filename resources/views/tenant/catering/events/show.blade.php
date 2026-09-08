@@ -45,6 +45,10 @@
     .punch-mode #lines-body > tr[data-row] { cursor: pointer; }
     .punch-mode #lines-body > tr[data-row]:hover > td { background: var(--bs-primary-bg-subtle, #e8eefa); }
     .punch-mode #lines-body > tr.punch-detail:hover > td { background: inherit; }
+    /* STACKED-MATERIAL-ROW-1: the materials under a line belong to that line —
+       they are not rows anybody clicks, edits or moves on their own. */
+    .punch-mode #lines-body > tr.line-material-row,
+    .punch-mode #lines-body > tr.punch-row-material { cursor: default; }
     .punch-mode #lines-table .punch-edit,
     .punch-mode #lines-table .punch-edit-unsaved,
     .punch-mode #lines-table .remove-line,
@@ -57,6 +61,13 @@
     /* LINE-ORDER-1: a moved row is briefly marked, so a click that lands
        three rows down the page is still visible to the person who made it. */
     #lines-table tr.line-moved > td { background: var(--bs-warning-bg-subtle, #fff3cd) !important; transition: background .4s; }
+    /* ROW-DRAG-1: the handle, and the line the row would land on. The mark sits
+       on the top or the bottom of the whole line — materials included — because
+       that is what actually moves. */
+    #lines-table .line-drag { cursor: grab; }
+    #lines-table .line-drag:active { cursor: grabbing; }
+    #lines-body > tr.line-drop-before > td { box-shadow: inset 0 3px 0 0 var(--bs-primary, #0d6efd); }
+    #lines-body > tr.line-drop-after > td { box-shadow: inset 0 -3px 0 0 var(--bs-primary, #0d6efd); }
     .punch-mode #lines-table .line-up,
     .punch-mode #lines-table .line-down,
     .punch-mode #lines-table .remove-line:hover,
@@ -140,6 +151,11 @@
                        data-bs-toggle="tooltip" title="اردو — A4 only. Urdu cannot be rendered on a thermal printer.">اردو</a>
                     <a target="_blank" href="{{ url('/catering/documents/estimate/' . $current->id . '?lang=both') }}" class="btn btn-outline-secondary"
                        data-bs-toggle="tooltip" title="English and Urdu on one A4 sheet.">Both</a>
+                    {{-- KASHIF-CATERING-PDF-1: the same document as a file, to
+                         attach or keep. English only — the renderer cannot shape
+                         Nastaliq, and it says so rather than printing nonsense. --}}
+                    <a target="_blank" href="{{ url('/catering/documents/estimate/' . $current->id . '?lang=en&format=pdf') }}" class="btn btn-outline-secondary"
+                       data-bs-toggle="tooltip" title="Downloads the same A4 quotation as a PDF file. English only — for Urdu use the اردو document and your browser's Print → Save as PDF."><i class="ti ti-file-type-pdf me-1"></i>PDF</a>
                 </div>
                 @include('tenant.catering.partials.document-print', [
                     'action' => url('/catering/documents/estimate/' . $current->id . '/print'),
@@ -464,6 +480,14 @@
                                 data-bs-toggle="tooltip" title="System Calculated Rate: what the configured materials and making charges work out to per selling unit.">System Rate</th>
                             <th style="width:115px;" class="text-end"
                                 data-bs-toggle="tooltip" title="Customer Quoted Rate: what the customer actually pays per selling unit. It follows the system rate unless an agreed override is recorded.">Customer Rate</th>
+                            {{-- STACKED-MATERIAL-ROW-1 (step 4): the breakdown moved OUT of a
+                                 collapsed panel and INTO the grid, where the operator works.
+                                 Required is Own + Party by definition, so it is not a field. --}}
+                            <th style="min-width:120px;">Material</th>
+                            <th style="width:90px;" class="text-end">Rate</th>
+                            <th style="width:95px;" class="text-end">Required Qty</th>
+                            <th style="width:85px;" class="text-end">Own</th>
+                            <th style="width:85px;" class="text-end">Party</th>
                             <th style="width:100px;" class="text-end">Amount</th>
                             <th style="min-width:140px;">Instructions</th>
                             <th style="width:36px;"></th>
@@ -479,9 +503,20 @@
                              rightly ignored for block lines, which made the
                              screen lie about what typing in it would do. --}}
                         @foreach($current->lines as $i => $line)
-                        @php $lineBlocks = $line->costBlocks; $lineHasBlocks = $lineBlocks->isNotEmpty(); @endphp
+                        @php
+                            $lineBlocks = $line->costBlocks;
+                            $lineHasBlocks = $lineBlocks->isNotEmpty();
+                            // STACKED-MATERIAL-ROW-1 (step 4): the materials stack DOWNWARD
+                            // under the line and every other cell spans the stack, so the item
+                            // stays one visual block. A dish with no materials still occupies
+                            // one row, which is why the span can never reach zero.
+                            $lineMats = $lineBlocks->filter->isMaterial()->values();
+                            $lineSpan = max(1, $lineMats->count());
+                            // PARTY is the ITEM's answer, never a per-row switch.
+                            $linePartyAllowed = $line->product?->cateringProfile?->allow_party_supply ?? true;
+                        @endphp
                         <tr data-row="s{{ $i }}" @if($lineHasBlocks) data-rate="{{ $line->rate }}" @endif>
-                            <td>
+                            <td rowspan="{{ $lineSpan }}">
                                 <div class="fw-semibold">{{ $line->item_name }}</div>
                                 @if($lineHasBlocks)
                                     <button class="btn btn-link btn-sm p-0 align-baseline d-block fs-12" type="button"
@@ -493,13 +528,13 @@
                                 <input type="hidden" name="lines[{{ $i }}][product_id]" value="{{ $line->product_id }}">
                                 <input type="hidden" name="lines[{{ $i }}][item_name]" value="{{ $line->item_name }}">
                             </td>
-                            <td><input type="text" dir="rtl" lang="ur" class="form-control form-control-sm"
+                            <td rowspan="{{ $lineSpan }}"><input type="text" dir="rtl" lang="ur" class="form-control form-control-sm"
                                        name="lines[{{ $i }}][item_name_ur]" value="{{ $line->item_name_ur }}"></td>
-                            <td><input type="number" step="0.001" min="0.001"
+                            <td rowspan="{{ $lineSpan }}"><input type="number" step="0.001" min="0.001"
                                        class="form-control form-control-sm text-end line-qty"
                                        name="lines[{{ $i }}][quantity]"
                                        value="{{ rtrim(rtrim(number_format($line->quantity, 3, '.', ''), '0'), '.') }}" required></td>
-                            <td>
+                            <td rowspan="{{ $lineSpan }}">
                                 <select class="form-select form-select-sm" name="lines[{{ $i }}][unit_id]">
                                     <option value="">—</option>
                                     @foreach($units as $u)
@@ -507,14 +542,14 @@
                                     @endforeach
                                 </select>
                             </td>
-                            <td class="text-end align-middle">
+                            <td rowspan="{{ $lineSpan }}" class="text-end align-middle">
                                 @if($lineHasBlocks)
                                     {{ number_format($line->calculated_rate ?? 0, 2) }}
                                 @else
                                     <span class="text-muted" title="This line is not priced from cost blocks">—</span>
                                 @endif
                             </td>
-                            <td class="text-end align-middle">
+                            <td rowspan="{{ $lineSpan }}" class="text-end align-middle">
                                 @if($lineHasBlocks)
                                     {{-- KASHIF-CLIENT-MENU-5: the quoted rate is edited RIGHT HERE,
                                          in real time, like the legacy screen — through the same
@@ -557,8 +592,11 @@
                                            name="lines[{{ $i }}][rate]" value="{{ $line->rate }}" required>
                                 @endif
                             </td>
-                            <td class="text-end align-middle line-amount">0.00</td>
-                            <td>
+                            @include('tenant.catering.events.partials.line-material-cells', [
+                                'block' => $lineMats->first(), 'partyAllowed' => $linePartyAllowed,
+                            ])
+                            <td rowspan="{{ $lineSpan }}" class="text-end align-middle line-amount">0.00</td>
+                            <td rowspan="{{ $lineSpan }}">
                                 {{-- KASHIF-CATERING-INSTRUCTIONS-1: managed selections
                                      from the vocabulary + the free note beside them. --}}
                                 @if($activeInstructions->isNotEmpty() || $line->managedInstructions->isNotEmpty())
@@ -582,20 +620,30 @@
                                        name="lines[{{ $i }}][instructions]" value="{{ $line->instructions }}"
                                        placeholder="Additional note">
                             </td>
-                            <td class="align-middle text-nowrap">
+                            <td rowspan="{{ $lineSpan }}" class="align-middle text-nowrap">
                                 {{-- LINE-ORDER-1: the quotation prints in the order
                                      these rows sit in — sort_order follows the posted
                                      order and every document reads it back. So moving
                                      a row here IS moving it on the customer's paper. --}}
+                                {{-- ROW-DRAG-1: a handle, not the whole row — dragging anywhere
+                                     on the row would make selecting a quantity impossible. --}}
+                                <span class="line-drag text-muted me-1" draggable="true" title="Drag to reorder"><i class="ti ti-grip-vertical"></i></span>
                                 <button type="button" class="btn btn-sm btn-link text-muted line-up p-0 me-1" title="Move up"><i class="ti ti-arrow-up"></i></button>
                                 <button type="button" class="btn btn-sm btn-link text-muted line-down p-0 me-1" title="Move down"><i class="ti ti-arrow-down"></i></button>
                                 <button type="button" class="btn btn-sm btn-link text-primary punch-edit p-0 me-1" title="Edit this item"><i class="ti ti-pencil"></i></button>
                                 <button type="button" class="btn btn-sm btn-link text-danger remove-line p-0" title="Remove this item"><i class="ti ti-x"></i></button>
                             </td>
                         </tr>
+                        @foreach($lineMats->slice(1) as $extraMat)
+                        <tr class="line-material-row" data-row-of="s{{ $i }}">
+                            @include('tenant.catering.events.partials.line-material-cells', [
+                                'block' => $extraMat, 'partyAllowed' => $linePartyAllowed,
+                            ])
+                        </tr>
+                        @endforeach
                         @if($lineHasBlocks)
                         <tr class="collapse cost-details-row" id="cost-details-{{ $line->id }}">
-                            <td colspan="9" class="bg-body-secondary">
+                            <td colspan="14" class="bg-body-secondary">
                                 @include('tenant.catering.events.partials.line-cost-details', [
                                     'line' => $line, 'current' => $current, 'event' => $event,
                                 ])
@@ -1583,6 +1631,7 @@ $(function () {
                 <td><select class="form-select form-select-sm line-unit" name="lines[${i}][unit_id]">${unitOptions(line.unit_id)}</select></td>
                 <td class="text-end align-middle text-muted line-calc" title="A block-costed dish prices itself from its Cost Blocks">—</td>
                 <td><input type="number" step="0.01" min="0" class="form-control form-control-sm text-end line-rate" name="lines[${i}][rate]" value="${line.rate || 0}" required></td>
+                <td class="fs-13 text-muted">&mdash;</td><td></td><td></td><td></td><td></td>
                 <td class="text-end align-middle line-amount">0.00</td>
                 <td>
                     ${instructions.length ? `<select class="form-select form-select-sm instr-select" multiple name="lines[${i}][instruction_ids][]" data-placeholder="Kitchen instructions…">${instructionOptions()}</select>` : ''}
@@ -1674,7 +1723,10 @@ $(function () {
 
     function recalc() {
         let subtotal = 0;
-        $('#lines-body tr').not('.cost-details-row').each(function () {
+        // Only the LINE rows carry money. Saying so directly matters now that a
+        // line is a stack: a material row has no quantity and no rate, and the
+        // old 'every tr except one class' reached into nested tables as well.
+        $('#lines-body > tr[data-row]').each(function () {
             const qty = parseFloat($(this).find('.line-qty').val()) || 0;
             // A block-costed line's quoted rate is not an input here — the row
             // carries it as data-rate and it only changes through Cost Details.
@@ -1706,10 +1758,9 @@ $(function () {
     $(document).on('click', '#add-line', () => addRow());
     $(document).on('input change', '.line-qty, .line-rate, .t-input', recalc);
     $(document).on('click', '.remove-line', function () {
-        const tr = $(this).closest('tr');
-        // A block-costed row travels with its Cost Details row.
-        tr.next('.cost-details-row').remove();
-        tr.remove();
+        // A row travels with everything that belongs to it — the materials
+        // stacked under it and its Cost Details.
+        lineGroup($(this).closest('tr[data-row]')).remove();
         recalc();
     });
 
@@ -1892,7 +1943,11 @@ $(function () {
         const profile = productId ? (profiles[productId] || {}) : {};
         punch = {
             productId: productId || null, name: val('item_name'), nameUr: val('item_name_ur') || '',
-            unitId: val('unit_id') || null, unitCode: row.find('td').eq(3).text().trim() || 'KG',
+            unitId: val('unit_id') || null,
+            // Read by NAME, never by counting cells. This was td:eq(3), which
+            // was correct until the table grew five columns — a reader that
+            // counts cells breaks the next time a column moves, and silently.
+            unitCode: row.find('.punch-unit-cell').first().text().trim() || 'KG',
             dishRate: profile.rate || 0,
             blocks: !!profile.blocks,
             currentQuotedRate: parseFloat(val('rate')) || 0,
@@ -2165,9 +2220,13 @@ $(function () {
     // line landed above it. Both kinds travel with their line.
     function lineGroup(row) {
         const $row = $(row);
-        const details = $row.next('.cost-details-row, .punch-detail');
 
-        return details.length ? $row.add(details) : $row;
+        // STACKED-MATERIAL-ROW-1 (step 4): a line is no longer one <tr>. Its
+        // materials stack beneath it and its breakdown follows them, and all of
+        // it belongs to the line. Naming the kinds one by one is what let an
+        // unsaved row's breakdown be left behind once already — so this stops
+        // naming them: everything up to the NEXT line row IS this line.
+        return $row.add($row.nextUntil('tr[data-row]'));
     }
 
     // The indices in `lines[i][...]` are rewritten after every move. PHP would
@@ -2198,9 +2257,103 @@ $(function () {
         }
 
         renumberLines();
+        markMoved(row);
+    });
+
+    /** A moved row is briefly marked — a click that lands three rows down the
+     *  page must still be visible to the person who made it. */
+    function markMoved(row) {
         row.addClass('line-moved');
         setTimeout(() => row.removeClass('line-moved'), 600);
+    }
+
+    /**
+     * ROW-DRAG-1 — the same move, made with the mouse.
+     *
+     * The arrows are NOT replaced. HTML5 drag does not exist on touch screens
+     * and cannot be driven from a keyboard, so on a counter tablet the arrows
+     * are the only way; drag is the faster way on a long list with a mouse.
+     *
+     * Neither path works out an order of its own: both move lineGroup() and
+     * then call renumberLines(). An order computed in two places is an order
+     * that can disagree with itself, and the printed quotation reads that order
+     * back — `saveDraftLines` writes `sort_order` from the POSTED sequence.
+     */
+    let dragRow = null;
+
+    /** The LINE a pointer is over — a material row belongs to the line above it. */
+    function dropTargetRow(el) {
+        const $el = $(el);
+
+        return $el.is('tr[data-row]') ? $el : $el.prevAll('tr[data-row]').first();
+    }
+
+    function clearDropMarks() {
+        $('#lines-body > tr').removeClass('line-drop-before line-drop-after');
+    }
+
+    $(document).on('dragstart', '.line-drag', function (e) {
+        // A punch in flight owns a row INDEX. Moving rows underneath it would
+        // leave punch.editIdx pointing at whatever now sits in that place.
+        if (punch) { e.preventDefault(); return; }
+
+        dragRow = $(this).closest('tr[data-row]').attr('data-row');
+        const dt = e.originalEvent.dataTransfer;
+        dt.effectAllowed = 'move';
+        // Firefox refuses to begin a drag that carries nothing.
+        dt.setData('text/plain', dragRow);
     });
+
+    $(document).on('dragover', '#lines-body > tr', function (e) {
+        if (dragRow === null) return;
+        // Without this the browser never fires a drop at all.
+        e.preventDefault();
+        e.originalEvent.dataTransfer.dropEffect = 'move';
+
+        const target = dropTargetRow(this);
+        clearDropMarks();
+        if (! target.length || target.attr('data-row') === dragRow) return;
+
+        // Above or below the middle of the WHOLE line, materials included.
+        const group = lineGroup(target);
+        const top = group.first()[0].getBoundingClientRect().top;
+        const bottom = group.last()[0].getBoundingClientRect().bottom;
+
+        if (e.originalEvent.clientY > (top + bottom) / 2) {
+            group.last().addClass('line-drop-after');
+        } else {
+            target.addClass('line-drop-before');
+        }
+    });
+
+    $(document).on('drop', '#lines-body > tr', function (e) {
+        if (dragRow === null) return;
+        e.preventDefault();
+
+        const target = dropTargetRow(this);
+        const moving = $('#lines-body > tr[data-row="' + dragRow + '"]');
+        const after = $('#lines-body > tr.line-drop-after').length > 0;
+        clearDropMarks();
+
+        // A row cannot be dropped into itself.
+        if (! target.length || ! moving.length || target.attr('data-row') === dragRow) return;
+
+        const group = lineGroup(moving);
+        if (after) {
+            group.insertAfter(lineGroup(target).last());
+        } else {
+            group.insertBefore(target);
+        }
+
+        renumberLines();
+        markMoved(moving);
+    });
+
+    $(document).on('dragend', '.line-drag', function () {
+        clearDropMarks();
+        dragRow = null;
+    });
+
     function punchSeq() {
         const seq = [
             document.getElementById('punch-qty'),
@@ -2216,7 +2369,17 @@ $(function () {
             if (punch.party) seq.push(r.find('.pm-cust')[0]);
         });
 
-        return seq.filter(Boolean);
+        // PUNCH-WALK-VISIBLE-1 — the walk visits what the operator can SEE and
+        // type into, not what this function remembers putting in the list.
+        //
+        // Step 2 hid the OWN/PARTY switch and left #punch-own here. focus() on a
+        // hidden element does nothing whatsoever: activeElement stayed on
+        // Instructions, the next Enter recomputed the same index and tried the
+        // same hidden button, and the walk could never reach the material rows.
+        // A disabled Party box stalls it the same way. Filtering by what is on
+        // screen is the rule that cannot go stale — including when step 5
+        // deletes the button altogether.
+        return seq.filter(el => el && ! el.disabled && el.offsetParent !== null);
     }
     $(document).on('keydown', '#punch-bar', function (e) {
         if (!punch) return;
@@ -2454,7 +2617,7 @@ $(function () {
                 + '<button type="button" class="btn btn-sm btn-link text-danger p-0 punch-remove" title="Remove">&times;</button>'
             + '</td>'
             + '</tr>'
-            + '<tr class="punch-detail d-none" data-detail="p' + idx + '"><td colspan="9" class="bg-body-tertiary">' + detail + '</td></tr>';
+            + '<tr class="punch-detail d-none" data-detail="p' + idx + '"><td colspan="14" class="bg-body-tertiary">' + detail + '</td></tr>';
     }
 
     /**
@@ -2523,10 +2686,11 @@ $(function () {
             const cust = Math.max(0, m.cust || 0);
             const partyAllowed = punch.party && m.partyAllowed !== false;
 
+            // The same words a SAVED line uses (line-material-cells.blade.php):
+            // the unit under the name, and the party rule stated ONCE — by the
+            // Party cell, which reads an em dash when the item forbids it.
             return '<td class="fs-13">' + esc(punchShort(m.name || m.label))
-                    + '<div class="fs-12 text-muted">' + (partyAllowed
-                        ? '<span class="badge bg-success-subtle text-success-emphasis">PARTY ALLOWED</span>'
-                        : '<span class="badge bg-secondary-subtle text-secondary-emphasis">OWN ONLY</span>') + '</div>'
+                    + '<div class="fs-12 text-muted">' + esc(m.unit || 'KG') + '</div>'
                 + '</td>'
                 + '<td class="text-end fs-13">' + money(Number(m.rate) || 0) + '</td>'
                 + '<td class="text-end fs-13">' + punchFmt(own + cust) + '</td>'
@@ -2540,14 +2704,22 @@ $(function () {
 
         let html = '<tr data-row="p' + idx + '" data-rate="' + agreedRate + '" class="punch-row">'
             + '<td rowspan="' + span + '">'
+                + '<button type="button" class="btn btn-link btn-sm p-0 me-1 punch-expand" title="Cost details">'
+                + '<i class="ti ti-chevron-right"></i></button>'
                 + esc(punch.name)
                 + hidden
                 + '<div class="fs-12 text-muted">not saved yet — Save Estimate</div>'
             + '</td>'
+            // The Urdu column is a document concern — punch mode hides it and
+            // the name posts as a hidden field above. The cell still has to
+            // EXIST, or every column after it slides one to the left.
+            + '<td rowspan="' + span + '"></td>'
             + '<td rowspan="' + span + '"><input type="number" step="0.001" min="0.001" class="form-control form-control-sm text-end line-qty" name="lines[' + idx + '][quantity]" value="' + qty + '" readonly></td>'
-            + '<td rowspan="' + span + '" class="text-end">' + money(calc.rate) + '<div class="fs-12 text-muted">per ' + esc(punch.unitCode || '') + '</div></td>'
+            + '<td rowspan="' + span + '" class="fs-13 punch-unit-cell">' + esc(punch.unitCode || '') + '</td>'
+            + '<td rowspan="' + span + '" class="text-end">' + money(calc.rate) + '</td>'
             + '<td rowspan="' + span + '" class="text-end">' + money(agreedRate) + '</td>'
             + (mats.length ? matCells(mats[0], 0) : blank)
+            + '<td rowspan="' + span + '" class="text-end line-amount">' + money(agreedRate * qty) + '</td>'
             + '<td rowspan="' + span + '" class="fs-12">'
                 + (instrLabels.length || note
                     ? '<span class="badge bg-secondary-subtle text-secondary-emphasis" data-bs-toggle="tooltip" title="'
@@ -2555,8 +2727,8 @@ $(function () {
                         + '<i class="ti ti-note me-1"></i>' + (instrLabels.length + (note ? 1 : 0)) + '</span>'
                     : '')
             + '</td>'
-            + '<td rowspan="' + span + '" class="text-end line-amount">' + money(agreedRate * qty) + '</td>'
             + '<td rowspan="' + span + '" class="text-end text-nowrap">'
+                + '<span class="line-drag text-muted me-1" draggable="true" title="Drag to reorder"><i class="ti ti-grip-vertical"></i></span>'
                 + '<button type="button" class="btn btn-sm btn-link text-muted p-0 me-1 line-up" title="Move up"><i class="ti ti-arrow-up"></i></button>'
                 + '<button type="button" class="btn btn-sm btn-link text-muted p-0 me-1 line-down" title="Move down"><i class="ti ti-arrow-down"></i></button>'
                 + '<button type="button" class="btn btn-sm btn-link text-primary p-0 me-1 punch-edit-unsaved" title="Edit this item"><i class="ti ti-pencil"></i></button>'
@@ -2570,7 +2742,11 @@ $(function () {
             html += '<tr class="punch-row-material" data-row-of="p' + idx + '">' + matCells(mats[j], j) + '</tr>';
         }
 
-        return html;
+        // The full breakdown — making charges and all — stays one click away,
+        // and sits AFTER the stack so lineGroup() carries it with the line.
+        return html + '<tr class="punch-detail d-none" data-detail="p' + idx + '">'
+            + '<td colspan="14" class="bg-body-tertiary">'
+            + punchDetailHtml(mats, qty, punch.dishRate) + '</td></tr>';
     }
     // Row-click EDIT of an unsaved punch row: rebuild it in place.
     function punchCommitEdit() {
@@ -2656,7 +2832,11 @@ $(function () {
             return;
         }
 
-        row.replaceWith(punchRowHtml(idx, qty, punchLineCalc(qty)));
+        // replaceWith() swaps ONE <tr>. The stack and the breakdown that
+        // belonged to the old row have to go with it, or the rebuilt row
+        // inherits somebody else's materials.
+        lineGroup(row).not(row).remove();
+        row.replaceWith(punchStackedRowHtml(idx, qty, punchLineCalc(qty)));
         punchReset();
         recalc();
         setTimeout(() => $('#punch-item').select2('open'), 100);
@@ -2669,7 +2849,7 @@ $(function () {
         if (qty <= 0) { $('#punch-qty').focus(); return; }
 
         const idx = nextRowIndex();
-        $('#lines-body').append(punchRowHtml(idx, qty, punchLineCalc(qty)));
+        $('#lines-body').append(punchStackedRowHtml(idx, qty, punchLineCalc(qty)));
         punchReset();
         recalc();
         // The loop: the item box reopens itself for the next code.
@@ -2677,9 +2857,7 @@ $(function () {
     }
 
     $(document).on('click', '.punch-remove', function () {
-        const tr = $(this).closest('tr');
-        $('[data-detail="' + tr.attr('data-row') + '"]').remove();
-        tr.remove();
+        lineGroup($(this).closest('tr[data-row]')).remove();
         recalc();
     });
 
@@ -2716,8 +2894,10 @@ $(function () {
                 row.find('td').first().prepend(
                     '<button type="button" class="btn btn-link btn-sm p-0 me-1 punch-expand" title="Cost details">'
                     + '<i class="ti ti-chevron-right"></i></button>');
-                row.after('<tr class="punch-detail d-none" data-detail="s' + idx[1] + '">'
-                    + '<td colspan="9" class="bg-body-tertiary">' + punchDetailHtml(mats, qty, dishRate) + '</td></tr>');
+                // AFTER the stacked material rows — row.after() would have put
+                // the breakdown between the line and its own materials.
+                lineGroup(row).last().after('<tr class="punch-detail d-none" data-detail="s' + idx[1] + '">'
+                    + '<td colspan="14" class="bg-body-tertiary">' + punchDetailHtml(mats, qty, dishRate) + '</td></tr>');
             });
         }
 
