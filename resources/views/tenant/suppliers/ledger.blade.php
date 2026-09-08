@@ -11,7 +11,12 @@
             <strong>{{ number_format($supplier->current_balance, 2) }}</strong>
         </p>
     </div>
-    <a href="{{ url('/suppliers/' . $supplier->id) }}" class="btn btn-light">Back</a>
+    <div class="action-toolbar">
+        {{-- Payment ka seedha raasta. Purchase bill ki koi zaroorat nahi — supplier ko uski khuli balance par paisa diya ja sakta hai. --}}
+        <a href="{{ url('/supplier-payments/create') }}?supplier_id={{ $supplier->id }}&from=ledger"
+           class="btn btn-primary">Record Payment</a>
+        <a href="{{ url('/suppliers/' . $supplier->id) }}" class="btn btn-light">Back</a>
+    </div>
 </div>
 
 <div class="card">
@@ -23,6 +28,7 @@
                 <th scope="col">Date</th>
                 <th scope="col">Type</th>
                 <th scope="col">Reference</th>
+                <th scope="col">Description</th>
                 <th scope="col">Debit</th>
                 <th scope="col">Credit</th>
                 <th scope="col">Balance</th>
@@ -35,6 +41,7 @@
                     <td>{{ $ledger->created_at->format('Y-m-d H:i') }}</td>
                     <td>{{ str_replace('_', ' ', ucfirst($ledger->entry_type)) }}</td>
                     <td>{{ $ledger->reference_no ?: '—' }}</td>
+                    <td>{{ \Illuminate\Support\Str::limit($ledger->notes ?: '—', 60) }}</td>
                     <td>{{ $ledger->direction === 'debit'  ? number_format($ledger->amount, 2) : '—' }}</td>
                     <td>{{ $ledger->direction === 'credit' ? number_format($ledger->amount, 2) : '—' }}</td>
                     <td>{{ number_format($ledger->balance_after, 2) }}</td>
@@ -42,7 +49,7 @@
                 </tr>
             @empty
                 <tr>
-                    <td colspan="7" class="text-center text-muted py-4">No ledger entries found.</td>
+                    <td colspan="8" class="text-center text-muted py-4">No ledger entries found.</td>
                 </tr>
             @endforelse
             </tbody>

@@ -702,7 +702,14 @@ class JournalPostingService
                 $return->id,
                 $return->return_no,
                 'Purchase return '.$return->return_no,
-                $this->bookOnReturn($return),
+                // ⚠️ `bookOnReturn()` NAHI — wo SALES return ke liye hai (`SalesReturn` typed, aur
+                // `business_date` parhta hai jo purchase return par mojood hi nahi). GL-BUSINESS-DATE-1
+                // (`6e3e67c`, 6 Sep) me maine yahan bhi wohi helper laga diya tha: nateeja har bar
+                // TypeError, jo neeche `catch (Throwable)` chup-chaap nigal leta tha aur `null` laut-ta —
+                // yani purchase return ka journal KABHI post hi nahi hota, aur AP control subledger se
+                // hat jata. Prod par bacha ye ke chaaron tenants par purchase returns 0 hain.
+                // Ye satar bilkul wohi hai jo us commit se pehle thi.
+                $return->return_date?->toDateString() ?? now()->toDateString(),
                 $lines,
                 $userId
             );

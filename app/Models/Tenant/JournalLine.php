@@ -13,6 +13,8 @@ class JournalLine extends Model
         'journal_entry_id',
         'account_id',
         'branch_id',
+        'counterparty_type',
+        'supplier_id',
         'description',
         'debit',
         'credit',
@@ -40,5 +42,15 @@ class JournalLine extends Model
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    /**
+     * SUPPLIER-FINANCE-DIRECT-1 — jis satar ne Accounts Payable hilaya, wo KIS supplier ka tha.
+     * Purani satrein aur system ke banaye journals par null rehta hai; sirf manual/interactive
+     * AP posting par lazmi hai (ManualJournalController us shart ko lagata hai).
+     */
+    public function supplier(): BelongsTo
+    {
+        return $this->belongsTo(Supplier::class);
     }
 }

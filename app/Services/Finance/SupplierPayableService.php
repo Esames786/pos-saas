@@ -2,13 +2,17 @@
 
 namespace App\Services\Finance;
 
+use App\Models\Tenant\Account;
 use App\Models\Tenant\CashBankAccount;
 use App\Models\Tenant\CashBankAccountTransaction;
+use App\Models\Tenant\JournalEntry;
 use App\Models\Tenant\PurchaseBill;
+use App\Models\Tenant\Supplier;
 use App\Models\Tenant\SupplierPayment;
 use App\Services\Purchasing\PurchasingService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
 /**
  * Supplier payable hardening (FIN-5).
@@ -23,20 +27,38 @@ class SupplierPayableService
 {
     use \App\Services\Concerns\ResolvesBranchIds;
 
+    /** Accounts Payable ka control account. Iski POORI NASL AP mani jaati hai — dekho apAccountIds(). */
+    private const AP_CODE = '2100';
+
     public function __construct(
         private PurchasingService $purchasing,
         private JournalPostingService $journalPosting,
     ) {}
 
     /**
-     * Record a supplier payment end to end:
-     *   1. create the payment row
-     *   2. post supplier ledger + update the bill (existing PurchasingService)
-     *   3. if a cash/bank account was chosen, write the cash/bank transaction
+     * Record a supplier payment end to end — EK transaction mein, sab kuch ya kuch bhi nahi.
+     *
+     * Pehle GL journal is transaction ke BAHAR post hota tha: pehle `DB::transaction()` payment
+     * row + subledger + cash/bank likhta, phir uske BAAD `postSupplierPayment()` chalta. Us
+     * shakl mein GL fail hone par baqi teen pehle se commit ho chuke hote the — yani "supplier
+     * ledger hil gaya, GL nahi". Ab chaaron ek hi transaction ke andar hain:
+     *
+     *   1. payment row
+     *   2. supplier subledger + bill (mojooda PurchasingService — wohi authority)
+     *   3. cash/bank money-out
+     *   4. GL journal (Dr 2100 AP / Cr chuna hua cash-bank)
+     *
+     * GL layer jaan-boojh kar fail-SOFT hai (uska docblock: "returns null and reports the problem
+     * rather than throwing") taake koi gum account operational flow na toray. Wo naram-mizaji
+     * purchase bill ke liye theek hai, magar payment ke liye NAHI: bina GL ke payment ka matlab
+     * hai AP control aur subledger ka farq. Is liye yahan `null` ko NAKAAMI mana jata hai aur
+     * poora transaction palat jata hai.
+     *
+     * Purchase bill / purchase return ka raasta ACHHOOT hai — wahan BUG-044 ka bartaao waisa hi.
      */
     public function recordPayment(array $data, ?int $userId = null): SupplierPayment
     {
-        $payment = DB::connection('tenant')->transaction(function () use ($data, $userId) {
+        return DB::connection('tenant')->transaction(function () use ($data, $userId) {
             $payment = SupplierPayment::create([
                 ...$data,
                 'payment_no'        => $this->purchasing->nextPaymentNo(),
@@ -46,19 +68,166 @@ class SupplierPayableService
             $payment->load('supplier');
 
             // Existing authority: supplier ledger (credit) + bill amount_paid/balance_due/status.
+            // Purchase bill ki zaroorat NAHI — postPayment() bill ko sirf `if ($payment->purchase_bill_id)`
+            // ke andar chhoota hai, is liye khuli balance par seedha payment pehle se chalta hai.
             $this->purchasing->postPayment($payment, $userId);
 
             if (! empty($data['cash_bank_account_id'])) {
                 $this->postCashBankTransaction($payment, $userId);
             }
 
+            // GL — ab ANDAR. null = nakaami, kyunke bina GL ke AP control subledger se hat jata hai.
+            $entry = $this->journalPosting->postSupplierPayment($payment, $userId);
+
+            if (! $entry) {
+                throw new RuntimeException(
+                    'Supplier payment could not be posted to the general ledger, so nothing was saved. '
+                    . 'Choose an active cash/bank account that is mapped to a chart-of-accounts account.'
+                );
+            }
+
+            // Advance/overpayment ka darwaza band — postPayment() ne supplier row par lockForUpdate()
+            // liya hua hai aur wo lock is transaction ke commit tak humare paas rehta hai, is liye ye
+            // padhna race-safe hai: do saath chalte payment dono is shart se guzar nahi sakte.
+            $this->assertNoSupplierAdvance((int) $payment->supplier_id);
+
             return $payment;
         });
+    }
 
-        // GL journal (FIN-7) — only when paid from a cash/bank account. Idempotent + safe.
-        $this->journalPosting->postSupplierPayment($payment, $userId);
+    /**
+     * Supplier advance / overpayment par FAIL CLOSED.
+     *
+     * Is system mein supplier advance ka koi nizam mojood NAHI hai — COA mein `2300 Customer
+     * Advances` hai, magar supplier ke liye koi account nahi, aur poore app mein ek bhi jagah
+     * supplier advance ki logic nahi. Phir bhi `postSupplierLedger()` credit par
+     * `balance - amount` karta hai bina farsh ke, to overpayment chupke se manfi payable bana
+     * deta tha — yani ek accounting jo system mein hai hi nahi.
+     *
+     * Andaze se accounting ijaad karne se behtar hai saaf mana kar dena. Jab owner supplier
+     * advance ka account aur usool tay kar dega, tab ye guard uski jagah chala jayega.
+     *
+     * Ye guard sirf direct payment aur journal adjustment par lagta hai. `postSupplierLedger()`
+     * par NAHI — purchase return bhi credit karta hai, aur wahan guard lagana purchase-return ka
+     * bartaao badal deta.
+     */
+    private function assertNoSupplierAdvance(int $supplierId): void
+    {
+        $balance = (float) Supplier::whereKey($supplierId)->value('current_balance');
 
-        return $payment;
+        // Paisa 4 decimal par rakha jata hai; epsilon rounding ko manfi na parhne de.
+        if ($balance < -0.0001) {
+            throw new RuntimeException(
+                'This would leave the supplier with a negative payable (an advance of '
+                . number_format(abs($balance), 2) . '), and supplier advances are not supported '
+                . 'by the chart of accounts. Nothing was saved. Reduce the amount to the '
+                . 'outstanding balance, or ask the owner to set up a supplier-advance account first.'
+            );
+        }
+    }
+
+    /**
+     * Accounts Payable ke account ids — `2100` aur uski POORI NASL.
+     *
+     * Sirf `2100` par pehchan-na kaafi nahi tha: `accounts` table mein `parent_id` mojood hai,
+     * is liye tenant kal `2100` ke neeche `2101 Local Suppliers` bana sakta hai — aur us par
+     * post karke supplier ki shart se bach jata. Nasl poori li jaati hai.
+     *
+     * @return array<int, int>
+     */
+    public function apAccountIds(): array
+    {
+        $root = Account::where('code', self::AP_CODE)->first(['id']);
+
+        if (! $root) {
+            return [];
+        }
+
+        $ids      = [(int) $root->id];
+        $frontier = $ids;
+
+        // Gehrai mehdood rakhi hai — ek galat parent_id (khud par ishara) warna hamesha ghumata.
+        for ($depth = 0; $depth < 10 && $frontier; $depth++) {
+            $frontier = Account::whereIn('parent_id', $frontier)
+                ->whereNotIn('id', $ids)
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+
+            $ids = array_merge($ids, $frontier);
+        }
+
+        return array_values(array_unique($ids));
+    }
+
+    /**
+     * Manual journal ki AP satrein supplier subledger mein utaro — aaina bilkul barabar.
+     *
+     * AP credit-normal hai aur supplier ka `current_balance` "hum supplier ka kitna dete hain"
+     * ginta hai, is liye aaina ULTA hota hai:
+     *
+     *   journal `Cr 2100`  -> payable barha  -> supplier DEBIT
+     *   journal `Dr 2100`  -> payable ghata  -> supplier CREDIT
+     *
+     * Subledger usi ek choke point se likha jata hai (`PurchasingService::postSupplierLedger`),
+     * jo supplier row par `lockForUpdate()` leta hai — is liye running balance concurrency mein
+     * bhi theek rehta hai (BUG-042). Koi doosra supplier accounting engine nahi banaya.
+     *
+     * @return int kitni satrein utrin
+     */
+    public function mirrorApLinesToSupplierLedger(JournalEntry $entry, ?int $userId = null): int
+    {
+        $apIds = $this->apAccountIds();
+
+        if (! $apIds) {
+            return 0;
+        }
+
+        $entry->loadMissing('lines');
+        $mirrored = 0;
+
+        foreach ($entry->lines as $line) {
+            if ($line->counterparty_type !== 'supplier' || ! $line->supplier_id) {
+                continue;
+            }
+
+            if (! in_array((int) $line->account_id, $apIds, true)) {
+                continue;
+            }
+
+            $debit  = round((float) $line->debit, 4);
+            $credit = round((float) $line->credit, 4);
+
+            $amount    = $credit > 0 ? $credit : $debit;
+            $direction = $credit > 0 ? 'debit' : 'credit';   // aaina — dekho docblock
+
+            if ($amount <= 0) {
+                continue;
+            }
+
+            $supplier = Supplier::whereKey($line->supplier_id)->firstOrFail();
+
+            $this->purchasing->postSupplierLedger(
+                $supplier,
+                $entry->is_reversal ? 'journal_reversal' : 'journal_adjustment',
+                $direction,
+                $amount,
+                JournalEntry::class,
+                (int) $entry->id,
+                (string) $entry->entry_no,
+                $line->description ?: $entry->description,
+                $userId
+            );
+
+            // Journal adjustment bhi advance nahi bana sakta — wohi usool jo payment par hai.
+            if ($direction === 'credit') {
+                $this->assertNoSupplierAdvance((int) $line->supplier_id);
+            }
+
+            $mirrored++;
+        }
+
+        return $mirrored;
     }
 
     /**
