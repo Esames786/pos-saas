@@ -131,6 +131,33 @@ class ProductLookupController extends Controller
         $query->with('barcodes:id,product_id,barcode');
 
         $total = (clone $query)->count();
+
+        // PRODUCT-SEARCH-RELEVANCE-1 — the thing you named comes first.
+        //
+        // The match is a CONTAINS match, which is right, but the order was plain
+        // alphabetical and the page holds 25. On a 909-item catalogue typing
+        // "chicken" therefore opened with Aaloo Gosht Chicken, Aaloo Qorma
+        // Chicken, Achar Gosht Chicken — every dish with the word buried in it —
+        // while the dishes actually CALLED "Chicken …" sat hundreds of rows down,
+        // pages past anything the operator would scroll. The catalogue was whole;
+        // it just could not be reached, and it read as "my products are missing".
+        //
+        // Four bands, alphabetical inside each: the exact name, then names that
+        // BEGIN with the term, then the term as a whole word anywhere, then the
+        // rest. An operator who types what a dish is called now gets that dish.
+        if ($q !== '') {
+            $like = str_replace(['%', '_'], ['\%', '\_'], $q);
+            $query->orderByRaw(
+                'CASE
+                    WHEN products.name = ? THEN 0
+                    WHEN products.name LIKE ? THEN 1
+                    WHEN products.name LIKE ? THEN 2
+                    ELSE 3
+                 END',
+                [$q, $like.'%', '% '.$like.'%']
+            );
+        }
+
         $records = $query->orderBy('name')->orderBy('sku')
             ->forPage($page, self::PER_PAGE)
             ->get();
