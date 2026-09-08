@@ -131,6 +131,41 @@ class ProductLookupController extends Controller
         $query->with('barcodes:id,product_id,barcode');
 
         $total = (clone $query)->count();
+
+        // PRODUCT-SEARCH-RELEVANCE-1 — the thing you named comes first.
+        //
+        // The match is a CONTAINS match, which is right, but the order was plain
+        // alphabetical and the page holds 25. On a 909-item catalogue typing
+        // "chicken" therefore opened with Aaloo Gosht Chicken, Aaloo Qorma
+        // Chicken, Achar Gosht Chicken — every dish with the word buried in it —
+        // while the dishes actually CALLED "Chicken …" sat hundreds of rows down,
+        // pages past anything the operator would scroll. The catalogue was whole;
+        // it just could not be reached, and it read as "my products are missing".
+        //
+        // Five bands, alphabetical inside each: the EXACT CODE first, then the
+        // exact name, then names that BEGIN with the term, then the term as a
+        // whole word anywhere, then the rest.
+        //
+        // The code band is the one an operator feels most sharply, because a
+        // code search is a PREFIX search: typing "51" matches 51, 513, 514, 515,
+        // 517, 518, and alphabetical order put "513 Karahi Chicken Live" above
+        // the "51 Taftan -" that was actually asked for. The operator typed the
+        // exact id of the thing they wanted and it came fifth. Now an exact code
+        // wins outright, and the prefix family follows underneath it.
+        if ($q !== '') {
+            $like = str_replace(['%', '_'], ['\%', '\_'], $q);
+            $query->orderByRaw(
+                'CASE
+                    WHEN products.sku = ? THEN 0
+                    WHEN products.name = ? THEN 1
+                    WHEN products.name LIKE ? THEN 2
+                    WHEN products.name LIKE ? THEN 3
+                    ELSE 4
+                 END',
+                [$q, $q, $like.'%', '% '.$like.'%']
+            );
+        }
+
         $records = $query->orderBy('name')->orderBy('sku')
             ->forPage($page, self::PER_PAGE)
             ->get();

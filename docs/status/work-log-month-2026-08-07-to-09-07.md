@@ -236,6 +236,10 @@ ek waqt me kaam **na** karein.
 
 ### Khatam — hataye ja sakte hain
 
+⚠️ **§7b pehle parhein.** In me se do par aise audit documents thay jo aur kahin
+maujood nahi thay (origin par bhi nahi). Wo ab `docs/audits/` me bahal kar diye gaye hain —
+us ke baad hi hatana be-khatar hai.
+
 `pos-saas-catering-codex` (`audit/catering-e2e-qa-v1`, 13 aage) ·
 `pos-saas-catering-codex-product` (18 aage) ·
 `pos-saas-catering-codex-cert` (17 aage) ·
@@ -258,6 +262,67 @@ aur `pos-saas-catering/.codex-worktrees/` ke teen fix branches
 - `stash@{1}` — `codex-manual-discount-wip`
 
 ---
+
+
+---
+
+## 7b. Parallel tracks — do tasheeh aur ek tafseel
+
+> Ye hissa ek doosri session ne §7 ke oopar jorha (7 Sep). Upar wali table durust hai;
+> neeche do baatein us me nahi thin, aur ek un me se **khatarnaak** hai.
+
+### ⚠️ Do audit documents jo "hataye ja sakte hain" wali list me thay — magar aur kahin thay hi nahi
+
+§7 ki "Khatam" list codex audit worktrees ko hatane ke liye kehti hai. Un par jo **code**
+tha wo waqai prod par pahunch chuka hai (dobara hash badal kar) — magar un ki **reports**
+kahin aur nahi thin, aur do branch **origin par bhi nahi** thin:
+
+| document | branch | origin par? |
+|---|---|---|
+| `catering-independent-architecture-audit-2026-08-20.md` (335 satar) | `audit/catering-e2e-qa-v1` | **NAHI — sirf local** |
+| `catering-product-completeness-2026-08-21.md` (368 satar) | `audit/catering-product-completeness-v1` | **NAHI — sirf local** |
+| `catering-rate-impact-certification-2026-08-20.md` (224 satar) | `audit/catering-rate-impact-cert-v1` | haan, mehfooz |
+
+Yaani un do worktrees ko hatane ka matlab **703 satar ka mustaqil audit hamesha ke liye
+khatam** ho jana tha — kisi remote par uski naql thi hi nahi.
+
+**Ab dono `docs/audits/` me bahal kar di gayi hain**, is liye worktrees hatana ab
+be-khatar hai. `ec09b6a` (detached wala) bhi mehfooz hai — wo main branch ke andar maujood
+hai, is liye us worktree ka jana kuch nahi le jata.
+
+### Edge ki 51 un-merged commit me hai kya (13 Aug → 1 Sep)
+
+§7 me ye ek satar hai. Tafseel, kyunki ye prod se bahar ka sab se bara jism hai:
+
+- **Config refresh & compatibility** (`ddc2a6e`, `7e437d1`) — revisioned, non-destructive
+  config refresh; permission authority; test isolation.
+- **Sync engine** (`2a4ac78`, `d65d8ec`, `9639733`, `e9abc72`, `7e7ea2e`, `7952fc1`) —
+  immutable sale outbox + envelope identity, authenticated HTTP transport, cloud ingestion
+  jo **missing finance postings par fail-closed** hoti hai, aur local outbox ka cloud ki
+  asal ingestion se milaan.
+- **Backup & restore** (`b0170eb`, `09d4cff`, `32b2f08`) — appliance ka backup/restore bina
+  un-synced sales khoye, aur **mari hui appliance ki app key ke baghair** encrypted backup
+  ki bahali.
+- **Artifact hardening** (`42cab7d`, `18038fd`, `6ffd588`, `5f5bde4`) — branch-server build
+  se cloud subsystems **jismani taur par** nikal diye gaye, reproducibility proof, signed
+  updates jo verify ho kar atomically switch hote hain (rollback ke saath).
+- **Restaurant parity** (`bb1bc86`, `fa0f258`, `fff5ebe`, `97612ff`, `ae1b41d`) — table
+  reservations local dine-in me, local mode ke doran cloud reservation mutation **fenced**,
+  chalti bill ka offline preview **zero mutation** ke saath, aur canonical cashier
+  experience branch server se.
+
+"FROZEN + DORMANT" yahan durust istilah hai — matlab **bana hua magar production par
+band** (`APP_ROLE` aur `EDGE_FEATURE_ENABLED` ghair-maujood). Ye "kaam ruk gaya" nahi hai:
+aakhri commit **1 September** ki hai.
+
+### Cloud billing ki 8 commit (14–15 Aug)
+
+`464ab66` admin-editable manual payment directory · `db23f2e` payment-method lifecycle +
+HTTP authorization matrix · `9480515` trial-safe automatic first invoice + deterministic
+activation · `1029f2c` monthly/yearly billing period end to end · `c39c0ae` transactional
+billing email foundation · `9c30ea4` E2E signup lifecycle (throwaway tenants).
+**Ruka hua hai ek aisi cheez par jo code nahi:** payment account.
+
 
 ## 8. Project ke hisab se haalat
 
