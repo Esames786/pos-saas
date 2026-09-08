@@ -425,27 +425,39 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
     }
 
     /**
-     * PUNCH-SEARCH-MATCH-1 — the typed word must not outrank the found dish.
+     * PUNCH-NO-FREE-TEXT-1 — a line may only be a dish that exists.
      *
-     * select2 puts its tag option at the TOP of the results, pre-highlighted, so
-     * typing "chicken" and pressing Enter punched the literal word rather than
-     * any of the five chicken dishes listed underneath it. `insertTag` moves the
-     * tag to the end; `createTag` refuses to offer one for an empty term. Free
-     * text still works — it is simply what you reach when nothing matched.
+     * This assertion is the REVERSE of the one it replaces, and deliberately so.
+     * PUNCH-SEARCH-MATCH-1 demoted the typed term below the real matches, which
+     * stopped it hijacking a search, and that test then pinned free text as a
+     * feature to be kept. It left the door open: typing an id that does not
+     * exist, "5834", still built a line with no product, no unit and rate 0.00.
+     * A quotation line with nothing behind it is worse than a refusal, because
+     * it looks priced and it reaches the customer. The owner's rule replaced the
+     * old one, so the guard replaces it too.
+     *
+     * BOTH doors are checked. The punch bar and the row picker each built the
+     * same unbacked line, and closing one would only move the problem a screen
+     * across.
+     *
+     * It pins markup, which is the honest limit here: existing free-text lines
+     * must still save, so the server cannot refuse a line without a product
+     * without rewriting history.
      */
-    public function test_the_punch_search_offers_free_text_last_not_first(): void
+    public function test_an_item_that_does_not_exist_cannot_be_entered(): void
     {
         $html = $this->render($this->booking());
 
-        $this->assertStringContainsString('insertTag:', $html,
-            'without this the typed term is the first, pre-selected option');
-        $this->assertStringContainsString('results.push(tag)', $html,
-            'the tag belongs after every real match, not before them');
-        $this->assertStringContainsString('createTag:', $html);
-
-        // The bar still accepts a dish that is not in the catalogue.
-        $this->assertStringContainsString('tags: true', $html,
-            'free-text lines are a feature — they are only demoted, never removed');
+        // Exactly ONE tagging select may survive on this page: the CUSTOMER
+        // picker, where typing a name nobody has yet is the entire point. Both
+        // PRODUCT selects must be free of it. Counting is the precise test —
+        // a blanket "not contains" would also forbid the customer picker.
+        $this->assertSame(1, substr_count($html, 'tags: true'),
+            'only the customer picker may create by typing; a product must exist');
+        $this->assertStringNotContainsString('createTag:', $html,
+            'the punch bar must not manufacture an item from what was typed');
+        $this->assertStringNotContainsString('type a custom item', $html,
+            'and the placeholder must not invite what the bar now refuses');
     }
 
     /**

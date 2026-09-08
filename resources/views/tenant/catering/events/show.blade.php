@@ -1583,8 +1583,10 @@ $(function () {
         const select = row.find('.product-select');
         select.select2({
             width: '100%',
-            tags: true, // free-text items allowed (custom menu lines)
-            placeholder: 'Search products or type a custom item…',
+            // PUNCH-NO-FREE-TEXT-1: closed here too. Shutting one door and
+            // leaving the other open would only move the problem one screen
+            // across — this picker built the same unbacked line.
+            placeholder: 'Search products…',
             ajax: {
                 url: '{{ url('/ajax/products') }}',
                 dataType: 'json',
@@ -1755,30 +1757,21 @@ $(function () {
         if (!el.hasClass('select2-hidden-accessible')) {
             el.select2({
                 width: '100%', placeholder: '361 ya biryani…',
-                tags: true, // free-text items punch through the same bar
-                // PUNCH-SEARCH-MATCH-1 — what you TYPED must never outrank what
-                // you FOUND.
+                // PUNCH-NO-FREE-TEXT-1 — a line may only be a dish that exists.
                 //
-                // select2's tag option is inserted at the TOP of the results and
-                // arrives pre-highlighted, so typing "chicken" and pressing Enter
-                // punched the literal word "chicken" — a free-text line with no
-                // product behind it — while five real chicken dishes sat below it
-                // untouched. The operator's hands never left the keyboard, which
-                // is the whole point of this bar, so they never saw it happen.
+                // This bar used to accept free text via select2 tagging. PUNCH-SEARCH-MATCH-1
+                // demoted the typed term below the real matches, which stopped it
+                // hijacking a search — but it left the door open, and typing an id
+                // that does not exist, "5834", still built a line: no product, no
+                // unit, rate 0.00. A quotation line with nothing behind it is worse
+                // than a refusal, because it looks priced and reaches the customer.
                 //
-                // The tag now goes LAST, after every match. Enter therefore takes
-                // the first real dish. Free text still works — it is simply what
-                // you reach when nothing matched, which is the only time anybody
-                // means it.
-                insertTag: (results, tag) => { results.push(tag); },
-                // And a tag is only offered when the catalogue has nothing to
-                // say: no matches, and something actually typed.
-                createTag: params => {
-                    const term = (params.term || '').trim();
-                    if (term === '') { return null; }
-
-                    return { id: term, text: term, newTag: true };
-                },
+                // The owner's rule, and it is the right one: an item or id that does
+                // not exist must not be enterable. select2 now offers nothing when
+                // nothing matches, so Enter does nothing and the operator sees the
+                // catalogue has no such dish. Lines that ALREADY carry free text
+                // (imported before this rule) still display and still save — the
+                // rule stops new ones, it does not rewrite history.
                 // Open the first page immediately while keeping code/name
                 // search available in the same focused control.
                 minimumInputLength: 0,
