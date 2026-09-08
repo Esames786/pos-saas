@@ -507,15 +507,46 @@
                 html += '<div class="btn-row left">' +
                     (held.length ? '' : '<button class="primary" id="ta-new">New check</button><button class="danger" id="ta-close">Close table (empty)</button>') + '</div>';
             } else {
+                const r = t.reservation;
+                if (r) {
+                    // ONLINE-POS PARITY: reserved table — who / when / note, Open (customer carries onto the order), Cancel.
+                    const when = r.reserved_for ? new Date(r.reserved_for).toLocaleString() : 'no time set';
+                    html += '<div class="chip hot" style="display:inline-block;margin-bottom:.4rem">Reserved</div>' +
+                        '<p><strong>' + esc(r.customer_name || 'Walk-in') + '</strong>' + (r.customer_phone ? ' · ' + esc(r.customer_phone) : '') + '<br><span class="muted">' + esc(when) + (r.note ? ' · ' + esc(r.note) : '') + '</span></p>';
+                }
                 html += '<div class="field"><label>Waiter</label><select id="ta-waiter"><option value="">—</option>' + DATA.waiters.map(w => '<option value="' + w.id + '">' + esc(w.name) + '</option>').join('') + '</select></div>' +
                     '<div class="field"><label>Guests</label><input type="number" id="ta-guests" value="' + (t.capacity || 2) + '" min="1" max="100"></div>' +
-                    '<div class="btn-row left"><button class="primary" id="ta-open">Open table</button></div>';
+                    '<div class="btn-row left"><button class="primary" id="ta-open">' + (r ? 'Open reserved table' : 'Open table') + '</button>' +
+                    (r ? '<button class="danger" id="ta-unreserve">Cancel reservation</button>' : '<button class="ghost" id="ta-reserve-toggle">Reserve…</button>') + '</div>' +
+                    (r ? '' : '<div id="ta-reserve-form" hidden><h3>Reserve table ' + esc(t.table_no || t.name) + '</h3>' +
+                        '<div class="field"><label>Customer (blank = walk-in)</label><input type="text" id="rs-name" placeholder="Name"></div>' +
+                        '<div class="field"><label>Phone</label><input type="text" id="rs-phone"></div>' +
+                        '<div class="field"><label>Reserved for</label><input type="datetime-local" id="rs-when"></div>' +
+                        '<div class="field"><label>Note</label><input type="text" id="rs-note" placeholder="e.g. birthday, window seat"></div>' +
+                        '<div id="rs-err"></div><div class="btn-row left"><button class="primary" id="ta-reserve">Reserve</button></div></div>');
             }
             box.innerHTML = html;
             document.querySelectorAll('#table-actions [data-recall]').forEach(r => r.addEventListener('click', () => { closeModal(); loadHeld(Number(r.dataset.recall)); }));
             const openBtn = $('ta-open'); if (openBtn) openBtn.onclick = () => openTable(t);
             const newBtn = $('ta-new'); if (newBtn) newBtn.onclick = () => { closeModal(); startCheckOnSession(t); };
             const closeBtn = $('ta-close'); if (closeBtn) closeBtn.onclick = () => closeEmptyTable(t);
+            const tog = $('ta-reserve-toggle'); if (tog) tog.onclick = () => { $('ta-reserve-form').hidden = false; tog.hidden = true; };
+            const rsv = $('ta-reserve'); if (rsv) rsv.onclick = () => reserveTable(t);
+            const unr = $('ta-unreserve'); if (unr) unr.onclick = () => cancelReservation(t);
+        }
+        // ---- Reservations: Edge-owned authority (survives config refresh + recovery; fenced on Cloud during Local Mode). ----
+        async function reserveTable(t) {
+            try {
+                const payload = { customer_name: $('rs-name').value.trim() || null, customer_phone: $('rs-phone').value.trim() || null, note: $('rs-note').value.trim() || null };
+                const when = $('rs-when').value; if (when) payload.reserved_for = new Date(when).toISOString();
+                await api('POST', '/restaurant/tables/' + t.id + '/reserve', payload);
+                toast('Table ' + (t.table_no || t.name) + ' reserved' + (payload.customer_name ? ' for ' + payload.customer_name : '') + '.');
+                viewTables();
+            } catch (e) { const el = $('rs-err'); if (el) el.innerHTML = '<div class="err">' + esc(e.message) + '</div>'; else toast(e.message); }
+        }
+        async function cancelReservation(t) {
+            try { await api('POST', '/restaurant/tables/' + t.id + '/unreserve', {}); toast('Reservation cancelled.'); viewTables(); }
+            catch (e) { toast(e.message); }
         }
         async function openTable(t) {
             try {

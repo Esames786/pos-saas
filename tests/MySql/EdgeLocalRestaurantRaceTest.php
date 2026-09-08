@@ -214,6 +214,46 @@ class EdgeLocalRestaurantRaceTest extends MySqlTenantTestCase
     }
 
     // ── D. settle-the-last-check vs a NEW hold on the same session (+ shift-close blockers) ──────
+    // ── TABLE-CLOSE-EMPTY-1 (canonical 67cde05): "close the table opened by mistake" races a counter
+    //    that punches a check onto the same session a moment earlier. The server decides under the
+    //    session row lock: EXACTLY one wins; a closed session never carries a live order; a punched
+    //    order is never lost. Independent OS processes, spin-barrier start. ──
+    public function test_race_close_empty_table_vs_new_hold_never_loses_an_order(): void
+    {
+        $this->openShift($this->terminal1);
+        $this->openShift($this->terminal2);
+        $pos = app(EdgeLocalPosService::class);
+        $session = $pos->openTableSession($this->tableId, ['guest_count' => 1], User::on('tenant')->find($this->userId), $this->terminal1);
+
+        [$outA, $outB] = $this->race(
+            ['close_session', $this->userId, $this->terminal1, $session->id],
+            ['hold', $this->userId, $this->terminal2, $session->id, $this->productId, 1],
+        );
+
+        $sessionRow = DB::connection('tenant')->table('restaurant_table_sessions')->where('id', $session->id)->first();
+        $tableRow = DB::connection('tenant')->table('restaurant_tables')->where('id', $this->tableId)->first();
+        $heldCount = DB::connection('tenant')->table('sales_orders')->where('restaurant_table_session_id', $session->id)->where('status', 'held')->count();
+
+        $oks = count(array_filter([$outA, $outB], fn ($o) => str_starts_with($o, 'OK:')));
+        $this->assertSame(1, $oks, "exactly one of close/hold may win (A=$outA B=$outB)");
+        foreach ([$outA, $outB] as $out) {
+            if (! str_starts_with($out, 'OK:')) {
+                $this->assertControlledError($out);
+            }
+        }
+        if (str_starts_with($outA, 'OK:')) {
+            // the close won: the session is closed, the table is free, and NO order exists on it.
+            $this->assertSame('closed', $sessionRow->status);
+            $this->assertSame('available', $tableRow->status);
+            $this->assertSame(0, $heldCount, "a closed session must never carry a live order (A=$outA B=$outB)");
+        } else {
+            // the hold won: the close was REFUSED, the order survives, the table stays occupied.
+            $this->assertSame('open', $sessionRow->status);
+            $this->assertSame('occupied', $tableRow->status);
+            $this->assertSame(1, $heldCount, "the punched order must never be lost (A=$outA B=$outB)");
+        }
+    }
+
     public function test_race_settle_vs_new_hold_never_closes_a_session_with_live_work(): void
     {
         $shift1 = $this->openShift($this->terminal1);

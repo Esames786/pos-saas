@@ -118,6 +118,10 @@ try {
                 ], $user, $terminalId);
                 echo 'OK:settle:' . $sale->id . ':' . $sale->status . "\n";
                 exit(0);
+            case 'close_session': // close_session <user> <terminal> <session_id> — TABLE-CLOSE-EMPTY under the server lock.
+                $closed = $pos->closeTableSession((int) $argv[4], 'closed', $user);
+                echo 'OK:close_session:' . $closed->id . ':' . $closed->status . "\n";
+                exit(0);
         }
     }
 
