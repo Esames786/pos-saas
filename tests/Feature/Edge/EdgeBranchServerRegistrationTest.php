@@ -111,6 +111,15 @@ class EdgeBranchServerRegistrationTest extends TestCase
             'edge/local/pos/held-sales/{sale}/settle',
             'edge/local/pos/held-sales/{sale}/cancel',
             'edge/local/pos/manager-approvals/verify',
+            // ONLINE-POS PARITY (deliberately approved): Preview Bill + table reservations.
+            'edge/local/pos/preview-bill',
+            'edge/local/pos/restaurant/tables/{table}/reservation',
+            'edge/local/pos/restaurant/tables/{table}/reserve',
+            'edge/local/pos/restaurant/tables/{table}/unreserve',
+            // EDGE-CASHIER-UI-1/2 (deliberately approved): the browser cashier page + Recall reads.
+            'edge/local/pos',
+            'edge/local/pos/held-sales/{sale}',
+            'edge/local/pos/void-reasons',
         ];
 
         $uris = collect(\Illuminate\Support\Facades\Route::getRoutes()->getRoutes())

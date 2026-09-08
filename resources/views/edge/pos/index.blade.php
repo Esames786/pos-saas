@@ -1,15 +1,18 @@
 {{--
-  EDGE-CASHIER-UI-1 — Branch-Server browser cashier POS.
+  EDGE-CASHIER-UI — Branch-Server browser cashier POS.
 
   The current Online Bingoo POS is the functional specification (locked product rule): this page presents
   the SAME operator surface — POS header + View Tables, terminal selector, order-type tabs, category/Deals
-  pills, product tiles, cart, customer, totals, Hold/Draft/Review & Pay/Preview Bill, Table Board — but every
-  mutation targets the Edge-local JSON APIs (edge.local.pos.*), never a Cloud posting/finance/inventory route.
+  pills, product tiles, cart, customer, totals, Hold/Draft/Recall, Add Round/KOT, Review & Pay, Preview Bill,
+  Table Board with open/recall/close/reserve actions — but every mutation targets the Edge-local JSON APIs
+  (edge.local.pos.*), never a Cloud posting/finance/inventory route.
 
-  It is intentionally self-contained (inline CSS/JS, no Vite/build assets) so it renders on the appliance with
-  NO Internet. The bootstrap view-model comes from EdgeLocalPosController@screen; all authority (stock, shift,
-  terminal, sale) is re-validated server-side by EdgeLocalPosService. This is milestone 1 (serve the cashier
-  experience + core cash sale); dine-in/reservation/report workflows layer onto the same page.
+  Self-contained (inline CSS/JS, no Vite/build assets) so it renders on the appliance with NO Internet. The
+  bootstrap view-model comes from EdgeLocalPosController@screen; all authority (stock, shift, terminal, sale,
+  KOT sent-pool, table locks) is re-validated server-side by EdgeLocalPosService.
+
+  Milestones: 1 = serve the cashier experience + core cash sale · 2 = Dine-In / Recall / Add Round / KOT /
+  table actions (this revision).
 --}}
 <!doctype html>
 <html lang="en">
@@ -21,24 +24,26 @@
     <style>
         :root { --bg:#0f172a; --panel:#1e293b; --panel2:#172033; --line:#334155; --ink:#e2e8f0; --muted:#94a3b8; --accent:#4f46e5; --ok:#16a34a; --warn:#b45309; --danger:#b91c1c; }
         * { box-sizing:border-box; }
-        body { margin:0; font-family:system-ui,Segoe UI,sans-serif; background:var(--bg); color:var(--ink); height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+        body { margin:0; font-family:system-ui,Segoe UI,sans-serif; background:var(--bg); color:var(--ink); height:100vh; display:flex; flex-direction:column; overflow:hidden; font-size:14px; }
         header { background:var(--panel); border-bottom:1px solid var(--line); padding:.5rem .9rem; display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; }
         header h1 { font-size:1.05rem; margin:0; }
         header .who { color:var(--muted); font-size:.8rem; }
         header .spacer { flex:1; }
         select, input, button { font:inherit; color:var(--ink); }
-        select, input[type=text], input[type=search], input[type=number] { background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:.45rem .6rem; }
+        select, input[type=text], input[type=search], input[type=number], input[type=datetime-local], textarea { background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:.45rem .6rem; }
         button { cursor:pointer; border:1px solid var(--line); background:var(--panel2); border-radius:8px; padding:.5rem .8rem; }
         button.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
         button.ok { background:var(--ok); border-color:var(--ok); color:#fff; }
+        button.warn { background:var(--warn); border-color:var(--warn); color:#fff; }
+        button.danger { background:var(--danger); border-color:var(--danger); color:#fff; }
         button.ghost { background:transparent; }
+        button.sm { padding:.3rem .6rem; font-size:.8rem; }
         button:disabled { opacity:.5; cursor:not-allowed; }
         .pill { border-radius:999px; padding:.35rem .8rem; }
         .pill.active { background:var(--accent); border-color:var(--accent); color:#fff; }
-        main { flex:1; display:grid; grid-template-columns: 1fr 360px; min-height:0; }
+        main { flex:1; display:grid; grid-template-columns: 1fr 380px; min-height:0; }
         .grid-pane { display:flex; flex-direction:column; min-height:0; border-right:1px solid var(--line); }
         .tabs { display:flex; gap:.4rem; padding:.5rem .7rem; flex-wrap:wrap; border-bottom:1px solid var(--line); }
-        .strip { display:flex; gap:.4rem; padding:.5rem .7rem; overflow-x:auto; border-bottom:1px solid var(--line); }
         .toolbar { display:flex; gap:.5rem; padding:.5rem .7rem; }
         .toolbar input { flex:1; }
         .tiles { flex:1; overflow-y:auto; padding:.7rem; display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:.55rem; align-content:start; }
@@ -47,11 +52,14 @@
         .tile .pr { font-size:.82rem; color:var(--muted); margin-top:.35rem; }
         .tile.deal { border-color:var(--accent); }
         .cart-pane { display:flex; flex-direction:column; min-height:0; background:var(--panel2); }
-        .cart-head { padding:.5rem .7rem; border-bottom:1px solid var(--line); display:flex; gap:.5rem; align-items:center; }
+        .cart-head { padding:.5rem .7rem; border-bottom:1px solid var(--line); display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
         .chip { font-size:.78rem; background:var(--panel); border:1px solid var(--line); border-radius:999px; padding:.3rem .6rem; color:var(--muted); }
+        .chip.hot { border-color:var(--accent); color:var(--ink); }
+        .chip.draft { border-color:var(--warn); color:#fcd34d; }
         .lines { flex:1; overflow-y:auto; padding:.4rem .5rem; }
         .line { display:grid; grid-template-columns:1fr auto; gap:.2rem .5rem; padding:.45rem .3rem; border-bottom:1px solid var(--line); }
         .line .ln-nm { font-size:.82rem; }
+        .line .ln-sub { font-size:.72rem; color:var(--muted); }
         .line .ln-ctl { display:flex; align-items:center; gap:.35rem; }
         .line .ln-ctl button { padding:.15rem .5rem; }
         .line .ln-amt { text-align:right; font-size:.82rem; }
@@ -65,16 +73,23 @@
         .banner.offline { background:#3a0d0d; color:#fca5a5; }
         .modal { position:fixed; inset:0; background:rgba(2,6,23,.72); display:none; align-items:center; justify-content:center; z-index:40; }
         .modal.open { display:flex; }
-        .modal .box { background:var(--panel); border:1px solid var(--line); border-radius:12px; width:min(620px,94vw); max-height:88vh; overflow:auto; padding:1rem 1.1rem; }
+        .modal .box { background:var(--panel); border:1px solid var(--line); border-radius:12px; width:min(720px,94vw); max-height:88vh; overflow:auto; padding:1rem 1.1rem; }
         .modal h2 { margin:.1rem 0 .8rem; font-size:1rem; }
-        .modal .close { position:absolute; }
+        .modal h3 { margin:.6rem 0 .3rem; font-size:.85rem; color:var(--muted); }
         .board { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:.5rem; }
-        .tbl { border:1px solid var(--line); border-radius:10px; padding:.6rem; text-align:center; }
-        .tbl.occupied { border-color:var(--warn); }
+        .tbl { border:1px solid var(--line); border-radius:10px; padding:.6rem; text-align:center; background:var(--panel2); cursor:pointer; }
+        .tbl.occupied, .tbl.bill_requested { border-color:var(--warn); }
         .tbl.reserved { border-color:var(--accent); }
+        .tbl.selected { outline:2px solid var(--accent); }
         .muted { color:var(--muted); }
         .err { background:#450a0a; color:#fecaca; padding:.5rem .7rem; border-radius:8px; font-size:.82rem; margin:.5rem 0; }
-        .toast { position:fixed; bottom:1rem; left:50%; transform:translateX(-50%); background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:.6rem 1rem; z-index:60; display:none; }
+        .toast { position:fixed; bottom:1rem; left:50%; transform:translateX(-50%); background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:.6rem 1rem; z-index:60; display:none; max-width:90vw; }
+        .list-row { display:flex; justify-content:space-between; align-items:center; gap:.5rem; padding:.5rem .3rem; border-bottom:1px solid var(--line); cursor:pointer; }
+        .list-row:hover { background:var(--panel2); }
+        .field { display:flex; flex-direction:column; gap:.2rem; margin:.4rem 0; }
+        .field label { font-size:.78rem; color:var(--muted); }
+        .btn-row { display:flex; gap:.5rem; justify-content:flex-end; margin-top:1rem; flex-wrap:wrap; }
+        .btn-row.left { justify-content:flex-start; }
     </style>
 </head>
 <body>
@@ -110,7 +125,6 @@
     <main>
         <section class="grid-pane">
             <div class="tabs" id="category-tabs"></div>
-            <div class="strip" id="child-strip" hidden></div>
             <div class="toolbar">
                 <input type="search" id="search" placeholder="Search products or scan barcode…" autocomplete="off">
             </div>
@@ -120,21 +134,15 @@
         <section class="cart-pane">
             <div class="cart-head">
                 <span class="chip" id="customer-chip">Walk-in</span>
-                <input type="text" id="customer-name" placeholder="Customer (optional)" style="flex:1">
+                <span class="chip" id="check-chip" hidden></span>
+                <input type="text" id="customer-name" placeholder="Customer (optional)" style="flex:1;min-width:120px">
             </div>
             <div class="lines" id="cart-lines"><p class="muted" style="padding:.6rem">Cart is empty.</p></div>
             <div class="totals" id="totals">
                 <div class="row"><span>Items</span><span id="t-items">0</span></div>
                 <div class="row grand"><span>Total</span><span id="t-grand">0.00</span></div>
             </div>
-            <div class="actions">
-                <button type="button" id="hold-btn">Hold</button>
-                <button type="button" id="draft-btn">Draft</button>
-                <button type="button" class="wide" id="preview-btn">Preview Bill</button>
-                <button type="button" class="primary wide" id="pay-btn">Review &amp; Pay</button>
-                <button type="button" class="ghost" id="quick-report-btn">Quick Report</button>
-                <button type="button" class="ghost" id="recent-prints-btn">Recent Prints</button>
-            </div>
+            <div class="actions" id="actions"></div>
         </section>
     </main>
 
@@ -148,8 +156,12 @@
         const CSRF = document.querySelector('meta[name=csrf-token]').content;
         const BASE = '{{ url('/edge/local/pos') }}';
         const money = n => (Math.round((Number(n) || 0) * 100) / 100).toFixed(2);
+        const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-        const state = { orderType: DATA.defaultOrderType, terminalId: null, category: null, cart: [] , clientUuid: null };
+        // ---- state: a plain cart, OR a table session with no check yet, OR a loaded (recalled) open check. ----
+        const state = { orderType: DATA.defaultOrderType, terminalId: null, category: null, cart: [], dirty: false,
+                        session: null,   // {id, table_id, table_no, waiter_name}
+                        held: null };    // {id, sale_no, sale_uuid, is_draft, order_type, session_id, table_no, waiter_name, terminal_id, totals...}
 
         // ---- API helper: all mutations go to the Edge-local POS endpoints only. ----
         async function api(method, path, body) {
@@ -157,22 +169,24 @@
             if (body !== undefined) { opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
             let res;
             try { res = await fetch(BASE + path, opt); }
-            catch (e) { document.getElementById('offline-banner').hidden = false; throw new Error('offline'); }
+            catch (e) { document.getElementById('offline-banner').hidden = false; throw new Error('The branch server did not answer — check the LAN connection.'); }
             document.getElementById('offline-banner').hidden = true;
             const json = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(json.message || ('Request failed (' + res.status + ')'));
+            if (!res.ok) throw new Error(json.message || (json.errors ? Object.values(json.errors).flat().join(' ') : 'Request failed (' + res.status + ')'));
             return json;
         }
-
-        function toast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 2600); }
+        function toast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 3200); }
         function uuid() { return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16); }); }
+        function openModal(html) { document.getElementById('modal-body').innerHTML = html; document.getElementById('modal').classList.add('open'); }
+        function closeModal() { document.getElementById('modal').classList.remove('open'); }
+        document.getElementById('modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
+        const $ = id => document.getElementById(id);
 
         // ---- Terminal selector: default-terminal parity (auto-select assigned, never "first seen"). ----
         function renderTerminals() {
-            const sel = document.getElementById('terminal');
-            sel.innerHTML = '';
+            const sel = $('terminal'); sel.innerHTML = '';
             DATA.terminals.forEach(t => { const o = document.createElement('option'); o.value = t.id; o.textContent = t.name; sel.appendChild(o); });
-            let pick = DATA.defaultTerminalId && DATA.terminals.some(t => t.id === DATA.defaultTerminalId)
+            const pick = DATA.defaultTerminalId && DATA.terminals.some(t => t.id === DATA.defaultTerminalId)
                 ? DATA.defaultTerminalId : (DATA.terminals[0] ? DATA.terminals[0].id : null);
             if (pick) { sel.value = pick; selectTerminal(pick); }
             sel.disabled = !DATA.canChangeTerminal && DATA.terminals.length <= 1;
@@ -180,23 +194,21 @@
         }
         async function selectTerminal(id) {
             state.terminalId = id;
-            try { await api('POST', '/terminal/select', { terminal_id: id }); }
-            catch (e) { toast(e.message); }
+            try { await api('POST', '/terminal/select', { terminal_id: id }); } catch (e) { toast(e.message); }
         }
-
         function renderOrderTypes() {
-            const sel = document.getElementById('order-type');
+            const sel = $('order-type');
             DATA.orderTypes.forEach(t => { const o = document.createElement('option'); o.value = t; o.textContent = DATA.orderTypeLabels[t] || t; sel.appendChild(o); });
             sel.value = state.orderType;
             sel.addEventListener('change', () => { state.orderType = sel.value; });
         }
+        function lockOrderType(type) { state.orderType = type; const sel = $('order-type'); sel.value = type; sel.disabled = true; }
+        function unlockOrderType() { const sel = $('order-type'); sel.disabled = false; }
 
         // ---- Category + Deals tabs (deal tabs are display-only). ----
         function renderTabs() {
-            const tabs = document.getElementById('category-tabs');
-            tabs.innerHTML = '';
-            const all = tabBtn('All', null);
-            tabs.appendChild(all);
+            const tabs = $('category-tabs'); tabs.innerHTML = '';
+            const all = tabBtn('All', null); tabs.appendChild(all);
             DATA.categories.forEach(c => tabs.appendChild(tabBtn(c.name, c.id)));
             if (DATA.combos.length) tabs.appendChild(tabBtn('Deals', 'deals'));
             all.classList.add('active');
@@ -206,17 +218,15 @@
             b.addEventListener('click', () => { state.category = id; document.querySelectorAll('#category-tabs .pill').forEach(x => x.classList.remove('active')); b.classList.add('active'); renderTiles(); });
             return b;
         }
-
         function visibleItems() {
-            const q = document.getElementById('search').value.trim().toLowerCase();
+            const q = $('search').value.trim().toLowerCase();
             let items = [];
             if (state.category === 'deals') {
                 items = DATA.combos.map(c => ({ deal: true, id: c.id, name: c.name, price: c.price }));
             } else {
-                items = DATA.products
-                    .filter(p => state.category == null || p.category_id === state.category)
+                // a `hidden` product (kept only because it sits on an open bill) is never offered on the grid.
+                items = DATA.products.filter(p => !p.hidden && (state.category == null || p.category_id === state.category))
                     .map(p => ({ deal: false, id: p.id, name: p.name, price: p.price }));
-                // Deals also surface under their own category tab.
                 DATA.combos.filter(c => state.category != null && c.category_id === state.category)
                     .forEach(c => items.unshift({ deal: true, id: c.id, name: c.name, price: c.price }));
             }
@@ -224,7 +234,7 @@
             return items;
         }
         function renderTiles() {
-            const wrap = document.getElementById('tiles'); wrap.innerHTML = '';
+            const wrap = $('tiles'); wrap.innerHTML = '';
             const items = visibleItems();
             if (!items.length) { wrap.innerHTML = '<p class="muted">No products found.</p>'; return; }
             items.forEach(i => {
@@ -234,168 +244,327 @@
                 wrap.appendChild(b);
             });
         }
-        function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
-        // ---- Cart (deals not yet sellable through the Edge sale API — kept explicit, not faked). ----
+        // ---- Cart. A carried line (from an open check) keeps its line id + captured price. ----
         function addToCart(item) {
             if (item.deal) { toast('Deal selling arrives in the deal-sale milestone.'); return; }
-            const ex = state.cart.find(l => l.product_id === item.id && !l.deal);
-            if (ex) ex.quantity += 1; else state.cart.push({ product_id: item.id, name: item.name, price: item.price, quantity: 1 });
-            renderCart();
+            const ex = state.cart.find(l => l.product_id === item.id);
+            if (ex) ex.quantity += 1; else state.cart.push({ key: 'p' + item.id, product_id: item.id, name: item.name, price: item.price, quantity: 1, line_id: null, kot_sent_quantity: 0 });
+            state.dirty = true; renderCart();
         }
-        function changeQty(pid, d) {
-            const l = state.cart.find(x => x.product_id === pid); if (!l) return;
-            l.quantity += d; if (l.quantity <= 0) state.cart = state.cart.filter(x => x.product_id !== pid);
-            renderCart();
+        function changeQty(key, d) {
+            const l = state.cart.find(x => x.key === key); if (!l) return;
+            const next = l.quantity + d;
+            if (next < l.kot_sent_quantity) { toast('Already sent to the kitchen — reducing needs a void with a reason.'); return; }
+            l.quantity = next; if (l.quantity <= 0) state.cart = state.cart.filter(x => x.key !== key);
+            state.dirty = true; renderCart();
         }
         function renderCart() {
-            const wrap = document.getElementById('cart-lines');
+            const wrap = $('cart-lines');
             if (!state.cart.length) { wrap.innerHTML = '<p class="muted" style="padding:.6rem">Cart is empty.</p>'; }
             else {
                 wrap.innerHTML = '';
                 state.cart.forEach(l => {
                     const row = document.createElement('div'); row.className = 'line';
-                    row.innerHTML = '<div class="ln-nm">' + esc(l.name) + '</div><div class="ln-amt">' + money(l.price * l.quantity) + '</div>' +
-                        '<div class="ln-ctl"><button data-m="-1">−</button><span>' + l.quantity + '</span><button data-m="1">+</button></div>';
-                    row.querySelector('[data-m="-1"]').addEventListener('click', () => changeQty(l.product_id, -1));
-                    row.querySelector('[data-m="1"]').addEventListener('click', () => changeQty(l.product_id, 1));
+                    const sub = l.kot_sent_quantity > 0 ? '<div class="ln-sub">kitchen has ' + l.kot_sent_quantity + '</div>' : '';
+                    row.innerHTML = '<div><div class="ln-nm">' + esc(l.name) + '</div>' + sub + '</div><div class="ln-amt">' + money(l.price * l.quantity) + '</div>' +
+                        '<div class="ln-ctl"><button data-m="-1">−</button><span>' + l.quantity + '</span><button data-m="1">+</button><span class="muted" style="font-size:.72rem">@ ' + money(l.price) + '</span></div>';
+                    row.querySelector('[data-m="-1"]').addEventListener('click', () => changeQty(l.key, -1));
+                    row.querySelector('[data-m="1"]').addEventListener('click', () => changeQty(l.key, 1));
                     wrap.appendChild(row);
                 });
             }
-            const items = state.cart.reduce((s, l) => s + l.quantity, 0);
-            const grand = state.cart.reduce((s, l) => s + l.price * l.quantity, 0);
-            document.getElementById('t-items').textContent = items;
-            document.getElementById('t-grand').textContent = money(grand);
+            $('t-items').textContent = state.cart.reduce((s, l) => s + l.quantity, 0);
+            $('t-grand').textContent = money(state.held && !state.dirty ? state.held.grand_total : state.cart.reduce((s, l) => s + l.price * l.quantity, 0));
+            renderChips(); renderActions();
         }
-
-        function cartLines() { return state.cart.map(l => ({ product_id: l.product_id, quantity: l.quantity })); }
+        function renderChips() {
+            const c = $('check-chip');
+            if (state.held) {
+                c.hidden = false; c.className = 'chip ' + (state.held.is_draft ? 'draft' : 'hot');
+                c.textContent = (state.held.is_draft ? 'DRAFT ' : 'Held ') + (state.held.table_no ? 'Table ' + state.held.table_no + ' · ' : '') + (state.held.sale_no || '').slice(-8) + (state.held.waiter_name ? ' · ' + state.held.waiter_name : '');
+            } else if (state.session) {
+                c.hidden = false; c.className = 'chip hot';
+                c.textContent = 'Table ' + state.session.table_no + (state.session.waiter_name ? ' · ' + state.session.waiter_name : '') + ' · new check';
+            } else { c.hidden = true; }
+            const cust = state.held?.customer_name || $('customer-name').value.trim();
+            $('customer-chip').textContent = cust || 'Walk-in';
+        }
+        function cartLines() { return state.cart.map(l => Object.assign({ product_id: l.product_id, quantity: l.quantity }, l.line_id ? { sales_order_line_id: l.line_id } : {})); }
         function requireCart() { if (!state.cart.length) { toast('Add at least one item.'); return false; } return true; }
 
-        // ---- Preview Bill: authoritative running bill, ZERO mutation (edge preview endpoint). ----
+        // ---- Contextual action buttons (the Online layout: Hold/Draft/Recall, then KOT/Add Round for a check). ----
+        function renderActions() {
+            const a = $('actions'); a.innerHTML = '';
+            const btn = (label, cls, fn, wide) => { const b = document.createElement('button'); b.textContent = label; b.className = cls + (wide ? ' wide' : ''); b.addEventListener('click', fn); a.appendChild(b); return b; };
+            if (state.held) {
+                btn(state.dirty ? 'Save round' : 'Saved', state.dirty ? 'primary' : '', () => saveRound(false));
+                btn('KOT', 'warn', sendKot);
+                btn('Preview Bill', '', previewBill, true);
+                btn('Review & Pay', 'ok', reviewAndPay, true);
+                btn('Cancel order', 'danger', cancelOrder);
+                btn('Leave check', 'ghost', leaveCheck);
+            } else if (state.session) {
+                btn('Hold (send later)', 'primary', () => holdSale(false));
+                btn('Draft', '', () => holdSale(true));
+                btn('Preview Bill', '', previewBill, true);
+                btn('Leave table', 'ghost', leaveCheck, true);
+            } else {
+                btn('Hold', '', () => holdSale(false));
+                btn('Draft', '', () => holdSale(true));
+                btn('Recall', '', recallList);
+                btn('Preview Bill', '', previewBill);
+                btn('Review & Pay', 'primary', reviewAndPay, true);
+            }
+            btn('Quick Report', 'ghost', () => toast('Quick Report arrives in the reporting milestone (reuses the canonical report engine).'));
+            btn('Recent Prints', 'ghost', () => toast('Recent Prints arrives with the print milestone.'));
+        }
+
+        // ---- Preview Bill: authoritative running bill, ZERO mutation. ----
         async function previewBill() {
             if (!requireCart()) return;
             try {
-                const p = await api('POST', '/preview-bill', { order_type: state.orderType, lines: cartLines() });
-                const t = p.totals || {};
-                openModal('<h2>Preview Bill</h2>' +
-                    '<p class="muted">Running bill — no payment, stock, KOT, or receipt is created.</p>' +
-                    rowsHtml(t) +
-                    '<div style="text-align:right;margin-top:1rem"><button class="ghost" onclick="EdgePOS.closeModal()">Close</button></div>');
+                let t;
+                if (state.held && !state.dirty) { t = state.held; }
+                else { const p = await api('POST', '/preview-bill', { order_type: state.orderType, lines: cartLines() }); t = p.totals || {}; }
+                openModal('<h2>Preview Bill</h2><p class="muted">Running bill — no payment, stock, KOT, or receipt is created.</p>' + rowsHtml(t) +
+                    '<div class="btn-row"><button class="ghost" onclick="EdgePOS.closeModal()">Close</button></div>');
             } catch (e) { toast(e.message); }
         }
         function rowsHtml(t) {
             const r = (k, v) => '<div class="row"><span>' + k + '</span><span>' + money(v) + '</span></div>';
             return '<div class="totals">' + r('Subtotal', t.subtotal ?? t.sub_total ?? 0) +
-                (t.discount_amount ? r('Discount', -t.discount_amount) : '') +
-                (t.tax_amount ? r('Tax', t.tax_amount) : '') +
-                (t.service_charge ? r('Service charge', t.service_charge) : '') +
+                (Number(t.discount_amount) ? r('Discount', -t.discount_amount) : '') +
+                (Number(t.tax_amount) ? r('Tax', t.tax_amount) : '') +
+                (Number(t.service_charge_amount ?? t.service_charge) ? r('Service charge', t.service_charge_amount ?? t.service_charge) : '') +
                 '<div class="row grand"><span>Grand total</span><span>' + money(t.grand_total ?? 0) + '</span></div></div>';
         }
 
-        // ---- Review & Pay: cash settlement through the Edge sale API. ----
+        // ---- Hold / Draft (new check) — on a table session this is Round 1 of a dine-in check. ----
+        async function holdSale(asDraft) {
+            if (!requireCart()) return;
+            const payload = { order_type: state.session ? 'dine_in' : state.orderType, save_as_draft: !!asDraft, lines: cartLines() };
+            if (state.session) payload.restaurant_table_session_id = state.session.id;
+            const nm = $('customer-name').value.trim(); if (nm) payload.customer_name = nm;
+            if (payload.order_type === 'quick_sale') { const q = await askQuickSaleAttribution(); if (!q) return; Object.assign(payload, q); }
+            try {
+                const s = await api('POST', '/held-sales', payload);
+                await loadHeld(s.sale_id);
+                toast(asDraft ? 'Saved as draft ' + s.sale_no : 'Order held ' + s.sale_no + (state.session ? ' — send the KOT when ready.' : ''));
+            } catch (e) { toast(e.message); }
+        }
+        function askQuickSaleAttribution() {
+            return new Promise(resolve => {
+                openModal('<h2>Quick Sale</h2><div class="field"><label>Vehicle #</label><input type="text" id="qs-vehicle"></div>' +
+                    '<div class="field"><label>Waiter</label><select id="qs-waiter">' + DATA.waiters.map(w => '<option value="' + w.id + '">' + esc(w.name) + '</option>').join('') + '</select></div>' +
+                    '<div class="btn-row"><button class="ghost" id="qs-cancel">Cancel</button><button class="primary" id="qs-ok">Continue</button></div>');
+                $('qs-cancel').onclick = () => { closeModal(); resolve(null); };
+                $('qs-ok').onclick = () => { const v = $('qs-vehicle').value.trim(), w = Number($('qs-waiter').value || 0) || null; closeModal(); resolve({ vehicle_number: v, restaurant_waiter_id: w }); };
+            });
+        }
+
+        // ---- Recall: list the open checks, load one into the cart. Never touches the terminal selection. ----
+        async function recallList() {
+            try {
+                const r = await api('GET', '/held-sales');
+                let html = '<h2>Recall</h2>';
+                if (!r.held_sales.length) html += '<p class="muted">No open checks.</p>';
+                r.held_sales.forEach(h => {
+                    html += '<div class="list-row" data-id="' + h.id + '"><div><strong>' + esc(h.sale_no) + '</strong> ' + (h.is_draft ? '<span class="chip draft">DRAFT</span>' : '') +
+                        '<div class="muted">' + esc(DATA.orderTypeLabels[h.order_type] || h.order_type) + (h.table_no ? ' · Table ' + esc(h.table_no) : '') + (h.waiter_name ? ' · ' + esc(h.waiter_name) : '') + (h.customer_name ? ' · ' + esc(h.customer_name) : '') + '</div></div>' +
+                        '<div>' + money(h.grand_total) + '<div class="muted" style="font-size:.72rem">' + h.item_count + ' items</div></div></div>';
+                });
+                html += '<div class="btn-row"><button class="ghost" onclick="EdgePOS.closeModal()">Close</button></div>';
+                openModal(html);
+                document.querySelectorAll('#modal .list-row').forEach(row => row.addEventListener('click', () => { closeModal(); loadHeld(Number(row.dataset.id)); }));
+            } catch (e) { toast(e.message); }
+        }
+        async function loadHeld(id) {
+            const d = await api('GET', '/held-sales/' + id);
+            const h = d.held_sale;
+            state.held = h; state.session = h.restaurant_table_session_id ? { id: h.restaurant_table_session_id, table_no: h.table_no, waiter_name: h.waiter_name } : null;
+            state.cart = h.lines.map(l => ({ key: 'l' + l.id, product_id: l.product_id, name: l.product_name, price: l.unit_price, quantity: l.quantity, line_id: l.id, kot_sent_quantity: l.kot_sent_quantity }));
+            state.dirty = false;
+            lockOrderType(h.order_type);
+            if (h.customer_name) $('customer-name').value = h.customer_name;
+            renderCart();
+        }
+        function leaveCheck() {
+            if (state.dirty && !confirm('Unsaved changes will be discarded. Leave?')) return;
+            state.held = null; state.session = null; state.cart = []; state.dirty = false; $('customer-name').value = ''; unlockOrderType(); renderCart();
+        }
+
+        // ---- Add Round: re-submit carried lines by id + new lines; the server keeps captured prices + KOT-sent state. ----
+        async function saveRound(asDraft) {
+            if (!state.held) return; if (!requireCart()) return;
+            try {
+                const payload = { held_sale_id: state.held.id, order_type: state.held.order_type, save_as_draft: !!asDraft, lines: cartLines() };
+                if (state.held.restaurant_table_session_id) payload.restaurant_table_session_id = state.held.restaurant_table_session_id;
+                if (state.held.order_type === 'quick_sale') { payload.vehicle_number = state.held.vehicle_number || ''; payload.restaurant_waiter_id = state.held.waiter_id; }
+                const s = await api('POST', '/held-sales', payload);
+                await loadHeld(s.sale_id);
+                toast('Round saved on ' + s.sale_no);
+                return true;
+            } catch (e) { toast(e.message); return false; }
+        }
+        // ---- KOT: the unsent delta only (server sent-pool). Saves first when the cart changed. ----
+        async function sendKot() {
+            if (!state.held) return;
+            if (state.dirty && !(await saveRound(state.held.is_draft))) return;
+            try {
+                const k = await api('POST', '/held-sales/' + state.held.id + '/kot');
+                if (!k.batch) { toast(k.message || 'Nothing new for the kitchen.'); }
+                else { toast('KOT #' + k.batch.sequence_no + ' sent · ' + k.batch.lines.length + ' line(s)'); await loadHeld(state.held.id); }
+            } catch (e) { toast(e.message); }
+        }
+
+        // ---- Review & Pay: cash settlement — a new sale, or a held check (its OWN shift takes the cash). ----
         async function reviewAndPay() {
             if (!requireCart()) return;
             if (!state.terminalId) { toast('Select a terminal first.'); return; }
             let totals = {};
-            try { const p = await api('POST', '/preview-bill', { order_type: state.orderType, lines: cartLines() }); totals = p.totals || {}; }
-            catch (e) { toast(e.message); return; }
+            try {
+                if (state.held) { if (state.dirty && !(await saveRound(state.held.is_draft))) return; totals = state.held; }
+                else { const p = await api('POST', '/preview-bill', { order_type: state.orderType, lines: cartLines() }); totals = p.totals || {}; }
+            } catch (e) { toast(e.message); return; }
             const grand = Number(totals.grand_total || 0);
             const cash = DATA.paymentMethods[0];
-            const needsQuickSale = state.orderType === 'quick_sale';
-            openModal('<h2>Review &amp; Pay</h2>' + rowsHtml(totals) +
+            const needsQuickSale = !state.held && state.orderType === 'quick_sale';
+            openModal('<h2>Review &amp; Pay' + (state.held ? ' — ' + esc(state.held.sale_no) : '') + '</h2>' + rowsHtml(totals) +
                 (cash ? '' : '<div class="err">No cash payment method is configured.</div>') +
-                (needsQuickSale ? '<label class="who">Vehicle #</label><input type="text" id="rp-vehicle" style="width:100%">' +
-                    '<label class="who">Waiter</label><select id="rp-waiter" style="width:100%">' + DATA.waiters.map(w => '<option value="' + w.id + '">' + esc(w.name) + '</option>').join('') + '</select>' : '') +
-                '<label class="who">Cash tendered</label><input type="number" id="rp-tendered" style="width:100%" value="' + money(grand) + '" min="' + money(grand) + '" step="0.01">' +
+                (needsQuickSale ? '<div class="field"><label>Vehicle #</label><input type="text" id="rp-vehicle"></div><div class="field"><label>Waiter</label><select id="rp-waiter">' + DATA.waiters.map(w => '<option value="' + w.id + '">' + esc(w.name) + '</option>').join('') + '</select></div>' : '') +
+                '<div class="field"><label>Cash tendered</label><input type="number" id="rp-tendered" value="' + money(grand) + '" min="' + money(grand) + '" step="0.01"></div>' +
                 '<div id="rp-err"></div>' +
-                '<div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem">' +
-                '<button class="ghost" onclick="EdgePOS.closeModal()">Cancel</button>' +
-                '<button class="ok" id="rp-complete"' + (cash ? '' : ' disabled') + '>Complete Sale</button></div>');
-            const btn = document.getElementById('rp-complete');
-            if (btn) btn.addEventListener('click', () => completeSale(grand, cash));
+                '<div class="btn-row"><button class="ghost" onclick="EdgePOS.closeModal()">Cancel</button><button class="ok" id="rp-complete"' + (cash ? '' : ' disabled') + '>Complete Sale</button></div>');
+            const btn = $('rp-complete'); if (btn) btn.addEventListener('click', () => completeSale(grand, cash));
         }
         async function completeSale(grand, cash) {
-            const btn = document.getElementById('rp-complete'); btn.disabled = true;
-            const tendered = Number(document.getElementById('rp-tendered').value || 0);
+            const btn = $('rp-complete'); btn.disabled = true;
+            const tendered = Number($('rp-tendered').value || 0);
             if (tendered < grand) { showRpErr('Cash tendered is less than the total.'); btn.disabled = false; return; }
-            const payload = {
-                order_type: state.orderType, client_uuid: uuid(), lines: cartLines(),
-                payments: [{ payment_method_id: cash.id, amount: grand, tendered_amount: tendered }],
-            };
-            if (state.orderType === 'quick_sale') {
-                payload.vehicle_number = (document.getElementById('rp-vehicle').value || '').trim();
-                payload.restaurant_waiter_id = Number(document.getElementById('rp-waiter').value || 0) || null;
-            }
-            const nm = (document.getElementById('customer-name').value || '').trim();
-            if (nm) payload.customer_name = nm;
+            const payments = [{ payment_method_id: cash.id, amount: grand, tendered_amount: tendered }];
             try {
-                const sale = await api('POST', '/sales', payload);
+                let sale;
+                if (state.held) {
+                    sale = await api('POST', '/held-sales/' + state.held.id + '/settle', { client_uuid: uuid(), payments });
+                } else {
+                    const payload = { order_type: state.orderType, client_uuid: uuid(), lines: cartLines(), payments };
+                    if (state.orderType === 'quick_sale') { payload.vehicle_number = ($('rp-vehicle').value || '').trim(); payload.restaurant_waiter_id = Number($('rp-waiter').value || 0) || null; }
+                    const nm = $('customer-name').value.trim(); if (nm) payload.customer_name = nm;
+                    sale = await api('POST', '/sales', payload);
+                }
                 closeModal();
-                state.cart = []; renderCart();
-                toast('Sale ' + (sale.sale_no || '#' + sale.sale_id) + ' completed · change ' + money(sale.change_amount || 0));
+                const syncNote = sale.edge_sync_state && sale.edge_sync_state !== 'acknowledged' ? ' · Pending sync' : '';
+                state.held = null; state.session = null; state.cart = []; state.dirty = false; $('customer-name').value = ''; unlockOrderType(); renderCart();
+                toast('Sale ' + (sale.sale_no || '#' + sale.sale_id) + ' completed · change ' + money(sale.change_amount || 0) + syncNote);
             } catch (e) { showRpErr(e.message); btn.disabled = false; }
         }
-        function showRpErr(m) { const e = document.getElementById('rp-err'); if (e) e.innerHTML = '<div class="err">' + esc(m) + '</div>'; }
+        function showRpErr(m) { const e = $('rp-err'); if (e) e.innerHTML = '<div class="err">' + esc(m) + '</div>'; }
 
-        // ---- Hold / Draft (Recall list endpoint lands with the dine-in milestone). ----
-        async function holdSale(asDraft) {
-            if (!requireCart()) return;
+        // ---- Cancel the whole open check (reason required; the server applies the branch approval mode). ----
+        async function cancelOrder() {
+            if (!state.held) return;
             try {
-                await api('POST', '/held-sales', { order_type: state.orderType, save_as_draft: !!asDraft, lines: cartLines() });
-                state.cart = []; renderCart();
-                toast(asDraft ? 'Saved as draft.' : 'Order held.');
+                const r = await api('GET', '/void-reasons');
+                if (!r.reasons.length) { toast('No cancellation reasons are configured.'); return; }
+                openModal('<h2>Cancel order ' + esc(state.held.sale_no) + '</h2><div class="field"><label>Reason</label><select id="cx-reason">' + r.reasons.map(x => '<option value="' + x.id + '">' + esc(x.name) + '</option>').join('') + '</select></div>' +
+                    '<div id="cx-err"></div><div class="btn-row"><button class="ghost" onclick="EdgePOS.closeModal()">Back</button><button class="danger" id="cx-ok">Cancel order</button></div>');
+                $('cx-ok').onclick = async () => {
+                    try {
+                        await api('POST', '/held-sales/' + state.held.id + '/cancel', { reason_id: Number($('cx-reason').value) });
+                        closeModal(); toast('Order cancelled — the table is free.');
+                        state.held = null; state.session = null; state.cart = []; state.dirty = false; unlockOrderType(); renderCart();
+                    } catch (e) { $('cx-err').innerHTML = '<div class="err">' + esc(e.message) + '</div>'; }
+                };
             } catch (e) { toast(e.message); }
         }
 
-        // ---- View Tables (read-only board for milestone 1). ----
+        // ---- Table Board: open / recall / new check / close (the server decides under a lock). ----
         async function viewTables() {
             try {
                 const b = await api('GET', '/restaurant/board');
                 let html = '<h2>Table Board</h2>';
                 (b.floors || []).forEach(f => {
-                    html += '<h3 class="muted" style="margin:.6rem 0 .3rem">' + esc(f.name) + '</h3><div class="board">';
+                    html += '<h3>' + esc(f.name) + '</h3><div class="board">';
                     (f.tables || []).forEach(t => {
-                        const cls = t.status === 'occupied' || t.status === 'bill_requested' ? 'occupied' : (t.status === 'reserved' ? 'reserved' : '');
-                        html += '<div class="tbl ' + cls + '"><strong>' + esc(t.table_no || t.name) + '</strong><div class="muted">' + esc(t.status) + '</div></div>';
+                        html += '<div class="tbl ' + esc(t.status) + '" data-table=\'' + esc(JSON.stringify(t)) + '\'><strong>' + esc(t.table_no || t.name) + '</strong><div class="muted">' + esc(t.status.replace('_', ' ')) +
+                            (t.session?.waiter_name ? ' · ' + esc(t.session.waiter_name) : '') + (t.reservation?.customer_name ? ' · ' + esc(t.reservation.customer_name) : '') + '</div></div>';
                     });
                     html += '</div>';
                 });
                 if (!(b.floors || []).length) html += '<p class="muted">No floors configured.</p>';
-                html += '<div style="text-align:right;margin-top:1rem"><button class="ghost" onclick="EdgePOS.closeModal()">Close</button></div>';
+                html += '<div id="table-actions"></div><div class="btn-row"><button class="ghost" onclick="EdgePOS.closeModal()">Close</button></div>';
                 openModal(html);
+                document.querySelectorAll('#modal .tbl').forEach(el => el.addEventListener('click', () => { document.querySelectorAll('#modal .tbl').forEach(x => x.classList.remove('selected')); el.classList.add('selected'); tableActions(JSON.parse(el.dataset.table)); }));
+            } catch (e) { toast(e.message); }
+        }
+        function tableActions(t) {
+            const box = $('table-actions'); let html = '<h3>Table ' + esc(t.table_no || t.name) + '</h3>';
+            if (t.session) {
+                const held = t.session.held_orders || [];
+                html += '<p class="muted">' + esc(t.session.status) + (t.session.waiter_name ? ' · ' + esc(t.session.waiter_name) : '') + ' · ' + t.session.guest_count + ' guests</p>';
+                held.forEach(h => { html += '<div class="list-row" data-recall="' + h.id + '"><span>Open check ' + esc(h.sale_no) + '</span><span>' + money(h.grand_total) + '</span></div>'; });
+                html += '<div class="btn-row left">' +
+                    (held.length ? '' : '<button class="primary" id="ta-new">New check</button><button class="danger" id="ta-close">Close table (empty)</button>') + '</div>';
+            } else {
+                html += '<div class="field"><label>Waiter</label><select id="ta-waiter"><option value="">—</option>' + DATA.waiters.map(w => '<option value="' + w.id + '">' + esc(w.name) + '</option>').join('') + '</select></div>' +
+                    '<div class="field"><label>Guests</label><input type="number" id="ta-guests" value="' + (t.capacity || 2) + '" min="1" max="100"></div>' +
+                    '<div class="btn-row left"><button class="primary" id="ta-open">Open table</button></div>';
+            }
+            box.innerHTML = html;
+            document.querySelectorAll('#table-actions [data-recall]').forEach(r => r.addEventListener('click', () => { closeModal(); loadHeld(Number(r.dataset.recall)); }));
+            const openBtn = $('ta-open'); if (openBtn) openBtn.onclick = () => openTable(t);
+            const newBtn = $('ta-new'); if (newBtn) newBtn.onclick = () => { closeModal(); startCheckOnSession(t); };
+            const closeBtn = $('ta-close'); if (closeBtn) closeBtn.onclick = () => closeEmptyTable(t);
+        }
+        async function openTable(t) {
+            try {
+                const waiter = Number($('ta-waiter').value || 0) || null, guests = Number($('ta-guests').value || 1);
+                const s = await api('POST', '/restaurant/tables/' + t.id + '/open', { restaurant_waiter_id: waiter, guest_count: guests });
+                closeModal();
+                state.held = null; state.cart = []; state.dirty = false;
+                state.session = { id: s.session_id, table_id: t.id, table_no: t.table_no || t.name, waiter_name: waiter ? (DATA.waiters.find(w => w.id === waiter) || {}).name : null };
+                lockOrderType('dine_in'); renderCart();
+                toast('Table ' + (t.table_no || t.name) + ' opened' + (t.reservation?.customer_name ? ' for ' + t.reservation.customer_name : '') + ' — add items, then Hold + KOT.');
+                if (t.reservation?.customer_name) $('customer-name').value = t.reservation.customer_name;
+            } catch (e) { toast(e.message); }
+        }
+        function startCheckOnSession(t) {
+            state.held = null; state.cart = []; state.dirty = false;
+            state.session = { id: t.session.id, table_id: t.id, table_no: t.table_no || t.name, waiter_name: t.session.waiter_name };
+            lockOrderType('dine_in'); renderCart();
+        }
+        async function closeEmptyTable(t) {
+            try {
+                await api('POST', '/restaurant/table-sessions/' + t.session.id + '/close', { status: 'closed' });
+                toast('Table ' + (t.table_no || t.name) + ' closed and freed.');
+                if (state.session && state.session.id === t.session.id) { state.session = null; unlockOrderType(); renderCart(); }
+                viewTables();
             } catch (e) { toast(e.message); }
         }
 
         async function shiftAction() {
             try {
                 const s = await api('GET', '/shift');
-                openModal('<h2>Shift</h2><p class="muted">Terminal shift state: ' + esc(s.status || 'unknown') + '</p>' +
-                    '<div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem">' +
-                    '<button class="ghost" onclick="EdgePOS.closeModal()">Close</button>' +
-                    (s.status === 'open' ? '<button class="ghost" id="sh-close">Close shift</button>' : '<button class="ok" id="sh-open">Open shift</button>') + '</div>');
-                const o = document.getElementById('sh-open'), c = document.getElementById('sh-close');
-                if (o) o.addEventListener('click', async () => { try { await api('POST', '/shift/open', {}); toast('Shift opened.'); closeModal(); } catch (e) { toast(e.message); } });
-                if (c) c.addEventListener('click', async () => { try { await api('POST', '/shift/close', {}); toast('Shift closed.'); closeModal(); } catch (e) { toast(e.message); } });
+                const sh = s.shift;
+                openModal('<h2>Shift</h2><p class="muted">' + (sh ? 'Open since ' + esc(sh.opened_at) + ' · business date ' + esc(sh.business_date) : 'No open shift on this terminal') + '</p>' +
+                    (sh ? '' : '<div class="field"><label>Opening cash</label><input type="number" id="sh-opening" value="0" min="0" step="0.01"></div>') +
+                    (sh ? '<div class="field"><label>Counted cash</label><input type="number" id="sh-counted" min="0" step="0.01"></div>' : '') +
+                    '<div id="sh-err"></div><div class="btn-row"><button class="ghost" onclick="EdgePOS.closeModal()">Close</button>' +
+                    (sh ? '<button class="danger" id="sh-close">Close shift</button>' : '<button class="ok" id="sh-open">Open shift</button>') + '</div>');
+                const o = $('sh-open'), c = $('sh-close');
+                if (o) o.onclick = async () => { try { await api('POST', '/shift/open', { opening_cash: Number($('sh-opening').value || 0) }); toast('Shift opened.'); closeModal(); } catch (e) { $('sh-err').innerHTML = '<div class="err">' + esc(e.message) + '</div>'; } };
+                if (c) c.onclick = async () => { try { const r = await api('POST', '/shift/close', { counted_cash: Number($('sh-counted').value || 0) }); toast('Shift closed · variance ' + money(r.cash_variance)); closeModal(); } catch (e) { $('sh-err').innerHTML = '<div class="err">' + esc(e.message) + '</div>'; } };
             } catch (e) { toast(e.message); }
         }
 
-        function openModal(html) { document.getElementById('modal-body').innerHTML = html; document.getElementById('modal').classList.add('open'); }
-        function closeModal() { document.getElementById('modal').classList.remove('open'); }
-        document.getElementById('modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
-
-        // Wire toolbar
-        document.getElementById('search').addEventListener('input', renderTiles);
-        document.getElementById('preview-btn').addEventListener('click', previewBill);
-        document.getElementById('pay-btn').addEventListener('click', reviewAndPay);
-        document.getElementById('hold-btn').addEventListener('click', () => holdSale(false));
-        document.getElementById('draft-btn').addEventListener('click', () => holdSale(true));
-        document.getElementById('view-tables-btn').addEventListener('click', viewTables);
-        document.getElementById('shift-btn').addEventListener('click', shiftAction);
-        document.getElementById('quick-report-btn').addEventListener('click', () => toast('Quick Report arrives in the reporting milestone (reuses the canonical report engine).'));
-        document.getElementById('recent-prints-btn').addEventListener('click', () => toast('Recent Prints arrives with the print milestone.'));
+        $('search').addEventListener('input', renderTiles);
+        $('customer-name').addEventListener('input', renderChips);
+        $('view-tables-btn').addEventListener('click', viewTables);
+        $('shift-btn').addEventListener('click', shiftAction);
 
         renderOrderTypes(); renderTerminals(); renderTabs(); renderTiles(); renderCart();
-        window.EdgePOS = { closeModal, state };
+        window.EdgePOS = { closeModal, state, loadHeld, viewTables };
     })();
     </script>
 </body>

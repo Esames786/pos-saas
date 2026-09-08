@@ -823,7 +823,7 @@ class EdgeLocalPosService
         $resolved = [];
         foreach ($lines as $l) {
             $oldId = ! empty($l['sales_order_line_id']) ? (int) $l['sales_order_line_id'] : null;
-            $r = $this->resolveLines([$l], $branch)[0];
+            $r = $this->resolveLines([$l], $branch, $oldId !== null)[0];
             if ($oldId !== null) {
                 // The stored captured price belongs to ONE economic identity — a carried line id whose
                 // product/variant/kind differs from the original is refused outright (it could otherwise
@@ -1108,19 +1108,25 @@ class EdgeLocalPosService
         }
     }
 
-    /** Cancel a whole held order (REAL KotCancellationService — permission + branch approval mode + cancel-KOT event). */
-    public function cancelHeldSale(int $saleId, int $reasonId, ?int $managerApprovalId, User $user): array
+    /**
+     * Cancel a whole held order (REAL KotCancellationService — permission + branch approval mode + cancel-KOT
+     * event, which frees the table). POS-CANCEL-TERMINAL-1 parity (canonical 22ad93e): the cancellation
+     * KOT/reminder print where the OPERATOR STANDS — the current cancelling counter — while the order itself
+     * keeps its original terminal_id for reporting (the shared service never rewrites it).
+     */
+    public function cancelHeldSale(int $saleId, int $reasonId, ?int $managerApprovalId, User $user, ?int $terminalId = null): array
     {
         $meta = $this->context->requireCurrent();
         $branchId = (int) $meta->branch_id;
         $this->requireAuthorizedPrincipal($user, $branchId);
+        $terminal = $terminalId !== null ? $this->requireActiveTerminal($terminalId, $branchId) : null;
 
         $sale = SalesOrder::on('tenant')->where('id', $saleId)->where('branch_id', $branchId)->where('status', 'held')->first();
         if (! $sale) {
             throw ValidationException::withMessages(['held_sale_id' => 'No held sale found to cancel.']);
         }
 
-        return $this->kotCancellations->cancelHeldOrder($sale, $reasonId, $managerApprovalId, (int) $user->id);
+        return $this->kotCancellations->cancelHeldOrder($sale, $reasonId, $managerApprovalId, (int) $user->id, $terminal ? (string) $terminal->id : null);
     }
 
     /** Close/cancel a table session with NO remaining open orders (Cloud close semantics) and free the table. */
@@ -1153,13 +1159,20 @@ class EdgeLocalPosService
         });
     }
 
-    /** Server-side line resolution. STANDARD lines NEVER trust request price/tax — resolved from catalog/config. */
-    private function resolveLines(array $lines, Branch $branch): array
+    /**
+     * Server-side line resolution. STANDARD lines NEVER trust request price/tax — resolved from catalog/config.
+     *
+     * HIDDEN-PRODUCT-HELD-BILL-1 parity (canonical cba7e09): a product hidden/deactivated AFTER it landed on
+     * an open bill must keep that bill recallable AND payable. A CARRIED line (named by its existing line id
+     * on Add Round) is therefore re-resolved for identity/tax only and never refused for visibility; a NEW
+     * line still has to be live on the menu.
+     */
+    private function resolveLines(array $lines, Branch $branch, bool $carriedFromOpenBill = false): array
     {
-        return array_map(function ($line) use ($branch) {
+        return array_map(function ($line) use ($branch, $carriedFromOpenBill) {
             $product = Product::on('tenant')->with('unit')->findOrFail($line['product_id']);
             $variant = $this->inventory->resolveVariant($product, $line['product_variant_id'] ?? null);
-            if (! $product->is_sellable || ! $product->is_pos_visible || $product->status !== 'active') {
+            if (! $carriedFromOpenBill && (! $product->is_sellable || ! $product->is_pos_visible || $product->status !== 'active')) {
                 throw new RuntimeException($product->name . ' is not available for POS sale.');
             }
             $qty = (float) $line['quantity'];

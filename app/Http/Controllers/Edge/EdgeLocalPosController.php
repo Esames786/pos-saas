@@ -21,6 +21,7 @@ use App\Services\Security\UserDataScope;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
@@ -84,17 +85,38 @@ class EdgeLocalPosController extends Controller
             $defaultOrderType = $orderTypes[0] ?? 'quick_sale';
         }
 
-        // Grid products: sellable, POS-visible, active — the same visibility truth the Online grid uses
-        // (per-tile availability/variants/modifiers land in a later milestone; the SALE re-validates stock).
-        $products = Product::on('tenant')
-            ->where('status', 'active')->where('is_sellable', true)->where('is_pos_visible', true)
+        // HIDDEN-PRODUCT-HELD-BILL-1 parity (canonical cba7e09): a product hidden AFTER it landed on an open
+        // held/draft bill must still be recallable + payable — Recall reads every line's product out of this
+        // payload, so such products ship flagged `hidden` (never on the grid, always resolvable).
+        $liveOrderProductIds = DB::connection('tenant')->table('sales_order_lines as l')
+            ->join('sales_orders as o', 'o.id', '=', 'l.sales_order_id')
+            ->where('o.branch_id', $branchId)->where('o.status', 'held')
+            ->pluck('l.product_id')->map(fn ($id) => (int) $id)->unique()->values();
+
+        // Grid products: sellable, POS-visible, active and (CATEGORY-BRANCH-SCOPE-1, canonical efe2894) filed
+        // under a category this branch may show — the same visibility truth the Online grid uses. The scope
+        // sits INSIDE the visible branch so the open-bill escape hatch above is never narrowed by it. The SALE
+        // re-validates stock/price; per-tile availability/variants/modifiers land in a later milestone.
+        $products = Product::on('tenant')->with('category:id,branch_id')
+            ->where(function ($q) use ($branchId, $liveOrderProductIds) {
+                $q->where(function ($visible) use ($branchId) {
+                    $visible->where('status', 'active')->where('is_sellable', true)->where('is_pos_visible', true)
+                        ->where(fn ($scope) => $scope->whereNull('category_id')
+                            ->orWhereHas('category', fn ($c) => $c->forBranch($branchId)));
+                });
+                if ($liveOrderProductIds->isNotEmpty()) {
+                    $q->orWhereIn('id', $liveOrderProductIds->all());
+                }
+            })
             ->orderBy('sort_order')->orderBy('name')
-            ->get(['id', 'name', 'category_id', 'default_selling_price'])
+            ->get(['id', 'name', 'category_id', 'default_selling_price', 'status', 'is_sellable', 'is_pos_visible'])
             ->map(fn (Product $p) => [
                 'id' => (int) $p->id,
                 'name' => $p->name,
                 'category_id' => $p->category_id ? (int) $p->category_id : null,
                 'price' => (float) $p->default_selling_price,
+                'hidden' => ! ($p->status === 'active' && $p->is_sellable && $p->is_pos_visible
+                    && ($p->category === null || $p->category->branch_id === null || (int) $p->category->branch_id === $branchId)),
             ])->values();
 
         // DEAL POS TABS parity: combos are display-only tabs; a deal with a header product + components
@@ -114,7 +136,9 @@ class EdgeLocalPosController extends Controller
             ->filter(fn ($c) => $c['component_count'] > 0)
             ->values();
 
+        // CATEGORY-BRANCH-SCOPE-1: a category may belong to one branch (NULL = every branch).
         $categories = Category::on('tenant')->with('children:id,parent_id,name,sort_order')
+            ->forBranch($branchId)
             ->whereNull('parent_id')->where('is_active', true)
             ->orderBy('sort_order')->orderBy('name')
             ->get(['id', 'parent_id', 'name', 'sort_order']);
@@ -408,9 +432,14 @@ class EdgeLocalPosController extends Controller
                     $held = $session ? SalesOrder::on('tenant')->where('restaurant_table_session_id', $session->id)
                         ->where('status', 'held')->get(['id', 'sale_no', 'sale_uuid', 'grand_total']) : collect();
 
+                    // ONLINE-POS PARITY: a free table carrying an ACTIVE Edge reservation shows as reserved
+                    // (reservations live in the Edge-owned table, never on restaurant_tables config).
+                    $reservation = $session ? null : $this->reservations->activeFor((int) $t->id);
+
                     return [
                         'id' => $t->id, 'table_no' => $t->table_no, 'name' => $t->name, 'capacity' => $t->capacity,
-                        'status' => $session ? ($session->status === 'bill_requested' ? 'bill_requested' : 'occupied') : $t->status,
+                        'status' => $session ? ($session->status === 'bill_requested' ? 'bill_requested' : 'occupied') : ($reservation ? 'reserved' : $t->status),
+                        'reservation' => $reservation ? $this->reservationView($reservation) : null,
                         'session' => $session ? [
                             'id' => $session->id, 'session_uuid' => $session->session_uuid, 'session_no' => $session->session_no,
                             'guest_count' => $session->guest_count, 'status' => $session->status,
@@ -568,8 +597,11 @@ class EdgeLocalPosController extends Controller
             'reason_id' => ['required', 'integer'],
             'manager_approval_id' => ['nullable', 'integer'],
         ]);
+        // POS-CANCEL-TERMINAL-1: the cancellation prints at the CURRENT counter (the operator's selected
+        // terminal), while the order keeps its original terminal_id. No selection → no override.
+        $current = (int) $request->session()->get(self::TERMINAL_SESSION_KEY, 0);
         try {
-            $result = $this->pos->cancelHeldSale($sale, (int) $data['reason_id'], isset($data['manager_approval_id']) ? (int) $data['manager_approval_id'] : null, auth('tenant')->user());
+            $result = $this->pos->cancelHeldSale($sale, (int) $data['reason_id'], isset($data['manager_approval_id']) ? (int) $data['manager_approval_id'] : null, auth('tenant')->user(), $current > 0 ? $current : null);
         } catch (RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
@@ -603,6 +635,74 @@ class EdgeLocalPosController extends Controller
     }
 
     /** The session-selected terminal, re-validated against the bound branch on EVERY use. */
+    // ═══════════════════════ EDGE-CASHIER-UI-2 — Recall / Dine-In browser workflow data ═══════════════════════
+
+    /** RECALL parity — the open checks (held + draft) on the bound branch, limited to the order types this operator may run. */
+    public function heldSales(): JsonResponse
+    {
+        $branchId = (int) $this->context->requireCurrent()->branch_id;
+        $allowed = auth('tenant')->user()?->effectiveAllowedOrderTypes() ?? [];
+        $sales = SalesOrder::on('tenant')->with(['restaurantTable:id,table_no,name', 'restaurantWaiter:id,name', 'lines:id,sales_order_id,quantity'])
+            ->where('branch_id', $branchId)->where('status', 'held')
+            ->when($allowed, fn ($q) => $q->whereIn('order_type', $allowed))
+            ->orderByDesc('id')->limit(100)->get();
+
+        return response()->json(['held_sales' => $sales->map(fn (SalesOrder $s) => $this->heldSaleView($s))->values()]);
+    }
+
+    /** One open check with its lines — what Recall / Add Round / Review & Pay load into the cart. */
+    public function heldSale(int $sale): JsonResponse
+    {
+        $branchId = (int) $this->context->requireCurrent()->branch_id;
+        $row = SalesOrder::on('tenant')->with(['restaurantTable:id,table_no,name', 'restaurantWaiter:id,name', 'lines'])
+            ->where('branch_id', $branchId)->where('status', 'held')->find($sale);
+        if (! $row) {
+            return response()->json(['message' => 'No open check found.'], 404);
+        }
+
+        return response()->json(['held_sale' => $this->heldSaleView($row, true)]);
+    }
+
+    /** Active cancellation reasons (the shared VoidReason book) for cancel-order / void flows. */
+    public function voidReasons(): JsonResponse
+    {
+        return response()->json(['reasons' => \App\Models\Tenant\VoidReason::on('tenant')->where('is_active', true)
+            ->orderBy('name')->get(['id', 'name', 'reason_type', 'requires_manager_approval'])]);
+    }
+
+    private function heldSaleView(SalesOrder $s, bool $withLines = false): array
+    {
+        $out = [
+            'id' => (int) $s->id, 'sale_no' => $s->sale_no, 'sale_uuid' => $s->sale_uuid,
+            'order_type' => $s->order_type, 'is_draft' => (bool) $s->is_draft, 'status' => $s->status,
+            'subtotal' => (float) $s->subtotal, 'discount_amount' => (float) $s->discount_amount,
+            'tax_amount' => (float) $s->tax_amount, 'service_charge_amount' => (float) $s->service_charge_amount,
+            'grand_total' => (float) $s->grand_total,
+            'customer_id' => $s->customer_id ? (int) $s->customer_id : null,
+            'customer_name' => $s->customer_name, 'customer_phone' => $s->customer_phone,
+            // The ORIGINAL counter — Recall never rewrites it (POS-RECALL-TERMINAL-1 / POS-CANCEL-TERMINAL-1).
+            'terminal_id' => (int) $s->terminal_id,
+            'vehicle_number' => $s->vehicle_number,
+            'restaurant_table_session_id' => $s->restaurant_table_session_id ? (int) $s->restaurant_table_session_id : null,
+            'table_no' => $s->restaurantTable?->table_no,
+            'waiter_id' => $s->restaurant_waiter_id ? (int) $s->restaurant_waiter_id : null,
+            'waiter_name' => $s->restaurantWaiter?->name,
+            'item_count' => (float) $s->lines->sum('quantity'),
+            'created_at' => $s->created_at?->toIso8601String(),
+        ];
+        if ($withLines) {
+            $out['lines'] = $s->lines->map(fn ($l) => [
+                'id' => (int) $l->id, 'product_id' => (int) $l->product_id,
+                'product_variant_id' => $l->product_variant_id ? (int) $l->product_variant_id : null,
+                'product_name' => $l->product_name, 'quantity' => (float) $l->quantity,
+                'unit_price' => (float) $l->unit_price, 'line_total' => (float) $l->line_total,
+                'kot_sent_quantity' => (float) $l->kot_sent_quantity,
+            ])->values();
+        }
+
+        return $out;
+    }
+
     private function selectedTerminal(Request $request): Terminal|JsonResponse
     {
         $terminalId = (int) $request->session()->get(self::TERMINAL_SESSION_KEY, 0);

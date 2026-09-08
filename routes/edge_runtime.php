@@ -54,6 +54,10 @@ Route::prefix('edge/local')->name('edge.local.')->group(function () {
         Route::post('/restaurant/tables/{table}/reserve', [EdgeLocalPosController::class, 'reserveTable'])->name('restaurant.table.reserve');
         Route::post('/restaurant/tables/{table}/unreserve', [EdgeLocalPosController::class, 'cancelReservation'])->name('restaurant.table.unreserve');
         Route::post('/restaurant/table-sessions/{session}/close', [EdgeLocalPosController::class, 'closeTableSession'])->name('restaurant.session.close');
+        // EDGE-CASHIER-UI-2 — Recall / Dine-In browser workflow reads.
+        Route::get('/held-sales', [EdgeLocalPosController::class, 'heldSales'])->name('held.index');
+        Route::get('/held-sales/{sale}', [EdgeLocalPosController::class, 'heldSale'])->name('held.show');
+        Route::get('/void-reasons', [EdgeLocalPosController::class, 'voidReasons'])->name('void-reasons');
         Route::post('/held-sales', [EdgeLocalPosController::class, 'storeHeldSale'])->name('held.store');
         Route::post('/held-sales/{sale}/kot', [EdgeLocalPosController::class, 'queueKot'])->name('held.kot');
         Route::post('/held-sales/{sale}/settle', [EdgeLocalPosController::class, 'settleHeldSale'])->name('held.settle');
