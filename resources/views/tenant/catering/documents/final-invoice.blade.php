@@ -66,6 +66,8 @@
     table.items thead { display: table-header-group; }
     table.items tr, .totals, .adv, .footer, .meta-box, .paid-stamp { break-inside: avoid; page-break-inside: avoid; }
 </style>
+{{-- Last, so it overrides — and only when a PDF is being drawn. --}}
+@include("tenant.catering.documents.partials.pdf-overrides")
 </head>
 <body>
 <div class="print-bar"><button onclick="window.print()" style="padding: 8px 18px; cursor: pointer;">Print</button></div>

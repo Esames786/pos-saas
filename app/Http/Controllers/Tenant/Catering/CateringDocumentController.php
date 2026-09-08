@@ -10,6 +10,8 @@ use App\Models\Tenant\CateringSetting;
 use App\Models\Tenant\Printer;
 use App\Services\Catering\CateringDocumentPrintService;
 use App\Services\Catering\CateringFinancialPositionService;
+use Dompdf\Dompdf;
+use Dompdf\Options;
 use Illuminate\Http\Request;
 
 /**
@@ -38,7 +40,7 @@ class CateringDocumentController extends Controller
         // asks. There is one settlement formula and this is not a second one.
         $position = app(CateringFinancialPositionService::class)->position($cateringEstimate->event);
 
-        return view('tenant.catering.documents.estimate', [
+        $data = [
             'estimate' => $cateringEstimate,
             'event' => $cateringEstimate->event,
             'lang' => $lang,
@@ -47,7 +49,19 @@ class CateringDocumentController extends Controller
             // what the business actually holds.
             'advanceTotal' => $position['net_received'],
             'businessName' => $this->businessName(),
-        ]);
+        ];
+
+        // KASHIF-CATERING-PDF-1: ?format=pdf hands back the SAME document as a
+        // file. Deliberately a parameter on this route and not a route of its
+        // own: a new route needs a new permission, granted per role on every
+        // tenant, and whoever may read this document on screen may obviously
+        // read it as a file. One authority, not two that can disagree.
+        if ($request->query('format') === 'pdf') {
+            return $this->asPdf('tenant.catering.documents.estimate', $data, $lang,
+                $cateringEstimate->event->event_no.'-Q'.$cateringEstimate->version_no);
+        }
+
+        return view('tenant.catering.documents.estimate', $data);
     }
 
     /** Kitchen/service sheet from a production release — NO commercial prices. */
@@ -69,10 +83,66 @@ class CateringDocumentController extends Controller
         $cateringFinalInvoice->load('event');
         $lang = $this->language($request);
 
-        return view('tenant.catering.documents.final-invoice', [
+        $data = [
             'invoice' => $cateringFinalInvoice,
             'lang' => $lang,
             'businessName' => $this->businessName(),
+        ];
+
+        if ($request->query('format') === 'pdf') {
+            return $this->asPdf('tenant.catering.documents.final-invoice', $data, $lang,
+                $cateringFinalInvoice->invoice_no);
+        }
+
+        return view('tenant.catering.documents.final-invoice', $data);
+    }
+
+    /**
+     * KASHIF-CATERING-PDF-1 — the document, drawn into a file.
+     *
+     * The same Blade the browser gets, with one extra flag the stylesheet reads
+     * to say its layout in CSS 2.1 tables instead of flexbox. Nothing about the
+     * document's CONTENT changes: a PDF that disagreed with the printed sheet
+     * would be worse than no PDF at all.
+     *
+     * English only, and that refusal is the point rather than a shortcoming
+     * being hidden. dompdf has no complex-script shaping engine, so Urdu comes
+     * out as isolated letters running the wrong way — a page that looks like the
+     * feature worked while being unreadable. The house already answers this way
+     * for thermal ("Saying no here is the honest outcome"), and the browser's
+     * own Print → Save as PDF reaches a real Urdu PDF with the real font.
+     */
+    private function asPdf(string $view, array $data, string $lang, string $filename)
+    {
+        if ($lang !== 'en') {
+            return response()->view('tenant.catering.documents.nothing-to-print', [
+                'title' => 'The PDF file is English only',
+                'message' => 'This file is drawn by a renderer with no Nastaliq support, so Urdu '
+                    .'would come out as separated letters in the wrong order — a page that looks '
+                    .'printed and cannot be read. For an Urdu or bilingual file, open the Urdu '
+                    .'document and use your browser\'s own Print → Save as PDF: it uses the real font.',
+                'references' => [],
+                'hint' => 'Nothing was printed, and nothing about the booking was changed.',
+            ], 422);
+        }
+
+        $options = new Options;
+        $options->set('defaultFont', 'DejaVu Sans');
+        $options->set('isRemoteEnabled', false);
+        $options->set('isPhpEnabled', false);
+
+        $pdf = new Dompdf($options);
+        $pdf->setPaper('a4', 'portrait');
+        $pdf->loadHtml(view($view, array_merge($data, ['pdf' => true]))->render(), 'UTF-8');
+        $pdf->render();
+
+        // A document number can carry a slash; a Content-Disposition header
+        // cannot carry whatever it likes.
+        $safe = preg_replace('/[^A-Za-z0-9._-]+/', '-', trim($filename)) ?: 'document';
+
+        return response($pdf->output(), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="'.$safe.'.pdf"',
         ]);
     }
 
