@@ -241,6 +241,10 @@ class TenantResetTransactionsCommand extends Command
         // decision, which is precisely what this command's contract forbids.
         'customer_translations', 'supplier_translations',
         'edge_local_meta', 'edge_local_user_credentials',
+        // P0 BRANCH AUTHORITY LEASE: who may write a branch is authority state, not a
+        // transaction. Wiping it would silently un-fence the Cloud while an appliance
+        // might still be the branch writer — the split brain the lease exists to prevent.
+        'edge_branch_authority_leases',
         // Catering CONFIGURATION, kept for the same reason recipes are: it
         // describes how the business quotes and costs, not what it has sold.
         // The Material Rate Book in particular is a caterer's price list — losing
