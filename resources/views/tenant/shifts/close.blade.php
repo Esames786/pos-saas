@@ -24,15 +24,15 @@
             <div class="row g-3">
                 <div class="col-md-3 col-sm-6">
                     <p class="form-help mb-1">Opening Cash</p>
-                    <strong class="fs-5">{{ number_format($shift->opening_cash, 2) }}</strong>
+                    <strong class="fs-5">{{ $maySeeAmounts ? number_format($shift->opening_cash, 2) : '*****' }}</strong>
                 </div>
                 <div class="col-md-3 col-sm-6">
                     <p class="form-help mb-1">Total Sales</p>
-                    <strong class="fs-5">{{ number_format($shift->total_sales, 2) }}</strong>
+                    <strong class="fs-5">{{ $maySeeAmounts ? number_format($shift->total_sales, 2) : "*****" }}</strong>
                 </div>
                 <div class="col-md-3 col-sm-6">
                     <p class="form-help mb-1">Expected Cash</p>
-                    <strong class="fs-5">{{ number_format($shift->expected_cash, 2) }}</strong>
+                    <strong class="fs-5">{{ $maySeeAmounts ? number_format($shift->expected_cash, 2) : "*****" }}</strong>
                 </div>
                 <div class="col-md-3 col-sm-6">
                     <p class="form-help mb-1">Opened At</p>
@@ -50,16 +50,21 @@
             <div class="row g-3 mt-2">
                 <div class="col-md-4">
                     <label for="counted_cash" class="form-label">Manual Counted Cash</label>
+                    {{-- HIDE-AMOUNTS-1: data-expected is withheld when the figure may not be read,
+                         or the amount would sit in the page source next to the box meant to
+                         verify it. This input was never pre-filled, so nothing else changes. --}}
                     <input type="number" id="counted_cash" name="counted_cash"
                         value="{{ old('counted_cash') }}"
-                        data-expected="{{ (float) $shift->expected_cash }}"
+                        @if($maySeeAmounts) data-expected="{{ (float) $shift->expected_cash }}" @endif
                         class="form-control" min="0" step="0.01"
                         placeholder="Count the drawer">
                     {{-- A blank count no longer closes at 0 — a cashier once closed a 28,400 drawer
                          that way. Either count denominations above or type the total (0 included). --}}
                     <p class="form-help mt-1">Enter the counted total here, or count denominations above — one of the two is required.</p>
                     {{-- CASH-SHORTAGE-1: live difference vs expected --}}
-                    <p id="counted-diff" class="mt-1 mb-0 small text-muted">Expected {{ number_format((float) $shift->expected_cash, 2) }}</p>
+                    <p id="counted-diff" class="mt-1 mb-0 small text-muted">
+                        {{ $maySeeAmounts ? 'Expected ' . number_format((float) $shift->expected_cash, 2) : 'Count the drawer and enter the total.' }}
+                    </p>
                 </div>
 
                 <div class="col-md-8">
@@ -94,6 +99,10 @@
         var input = document.getElementById('counted_cash');
         var out = document.getElementById('counted-diff');
         if (!input || !out) { return; }
+        /* HIDE-AMOUNTS-1: nothing to compare against, so the line keeps its instruction instead of
+           reading a missing data-expected as 0 and announcing an "Over by" that is both wrong and
+           a hint. */
+        if (!input.dataset.expected) { return; }
         var expected = parseFloat(input.dataset.expected || '0') || 0;
         function refresh() {
             if (input.value === '') {

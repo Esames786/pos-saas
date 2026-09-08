@@ -165,9 +165,13 @@ class ReceiptLayoutController extends Controller
             ]);
         }
 
+        // Layout ka preview kisi ASLI print job ki nakal nahi — wo settings dikhata hai. Phir bhi
+        // job ki kunji dena zaroori hai: blade ise parhta hai, aur na dene par safha 500 ho jata
+        // hai. Blade apni taraf se bhi mehfooz hai; do taraf se band, taake phir na tootay.
         return view($view, [
             'salesOrder'     => $salesOrder,
             'layout'         => $layout,
+            'job'            => null,
             'kotLines'       => $salesOrder->lines ?? collect(),
             'lineQuantities' => collect(),
             'isReprint'      => true,

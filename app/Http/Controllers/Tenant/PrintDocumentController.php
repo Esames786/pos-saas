@@ -27,7 +27,7 @@ class PrintDocumentController extends Controller
         }
 
         $salesOrder = SalesOrder::with([
-            'branch', 'createdBy', 'customer',
+            'branch', 'shift', 'createdBy', 'customer',
             'lines.product.category', 'lines.variant',
             'payments.method',
             'restaurantTable.floor',

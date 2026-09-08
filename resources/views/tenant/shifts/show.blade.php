@@ -67,29 +67,31 @@
             <div class="card-body">
                 <dl class="row mb-0">
                     <dt class="col-sm-6">Opening Cash</dt>
-                    <dd class="col-sm-6">{{ number_format($shift->opening_cash, 2) }}</dd>
+                    <dd class="col-sm-6">{{ $maySeeAmounts ? number_format($shift->opening_cash, 2) : '*****' }}</dd>
 
                     <dt class="col-sm-6">Total Sales</dt>
-                    <dd class="col-sm-6">{{ number_format($shift->total_sales, 2) }}</dd>
+                    <dd class="col-sm-6">{{ $maySeeAmounts ? number_format($shift->total_sales, 2) : '*****' }}</dd>
 
                     <dt class="col-sm-6">Total Cash</dt>
-                    <dd class="col-sm-6">{{ number_format($shift->total_cash, 2) }}</dd>
+                    <dd class="col-sm-6">{{ $maySeeAmounts ? number_format($shift->total_cash, 2) : '*****' }}</dd>
 
                     <dt class="col-sm-6">Total Card</dt>
-                    <dd class="col-sm-6">{{ number_format($shift->total_card, 2) }}</dd>
+                    <dd class="col-sm-6">{{ $maySeeAmounts ? number_format($shift->total_card, 2) : '*****' }}</dd>
 
                     <dt class="col-sm-6">Total Refunds</dt>
-                    <dd class="col-sm-6">{{ number_format($shift->total_refunds, 2) }}</dd>
+                    <dd class="col-sm-6">{{ $maySeeAmounts ? number_format($shift->total_refunds, 2) : '*****' }}</dd>
 
                     <dt class="col-sm-6">Expected Cash</dt>
-                    <dd class="col-sm-6"><strong>{{ number_format($shift->expected_cash, 2) }}</strong></dd>
+                    <dd class="col-sm-6"><strong>{{ $maySeeAmounts ? number_format($shift->expected_cash, 2) : '*****' }}</strong></dd>
 
                     <dt class="col-sm-6">Counted Cash</dt>
-                    <dd class="col-sm-6">{{ $shift->counted_cash !== null ? number_format($shift->counted_cash, 2) : '—' }}</dd>
+                    <dd class="col-sm-6">{{ ! $maySeeAmounts ? '*****' : ($shift->counted_cash !== null ? number_format($shift->counted_cash, 2) : '—') }}</dd>
 
                     <dt class="col-sm-6">Cash Variance</dt>
                     <dd class="col-sm-6">
-                        @if($shift->cash_variance !== null)
+                        @if(! $maySeeAmounts)
+                            <span>*****</span>
+                        @elseif($shift->cash_variance !== null)
                             <span class="{{ $shift->cash_variance < 0 ? 'text-danger' : ($shift->cash_variance > 0 ? 'text-warning' : 'text-success') }}">
                                 {{ number_format($shift->cash_variance, 2) }}
                             </span>

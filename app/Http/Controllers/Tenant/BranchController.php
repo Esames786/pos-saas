@@ -145,6 +145,8 @@ class BranchController extends Controller
         // Unchecked checkbox is absent from the request; force an explicit value
         // so turning the setting OFF actually persists false.
         $data['allow_negative_stock'] = $request->boolean('allow_negative_stock');
+        // HIDE-AMOUNTS-1: same reason — without this, unticking the box would leave it ticked.
+        $data['hide_amounts_from_operators'] = $request->boolean('hide_amounts_from_operators');
         $data['delivery_charge_locked'] = $request->boolean('delivery_charge_locked');
         $data['default_delivery_charge'] = (float) ($data['default_delivery_charge'] ?? 0);
         $data['held_kot_cancellation_approval_mode'] = $data['held_kot_cancellation_approval_mode']

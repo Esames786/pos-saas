@@ -128,8 +128,25 @@
 <div class="big">VEHICLE: {{ $salesOrder->vehicle_number }}</div>
 @endif
 
-<div>TIME: {{ now()->format('h:i A') }}</div>
-<div>{{ now()->format('D d-M-Y') }}</div>
+{{-- KOT-TIME-TRUTH-1: wohi waqt jo printer par jaata hai — usi helper se, us hi timezone me.
+     Pehle yahan now() tha aur koi timezone nahi: preview sarwar ka UTC dikhata tha jabke parchi
+     Karachi ka waqt chhapti thi, yani do screenon par do jawab. --}}
+@php
+    $kotTz      = app(\App\Support\TenantClock::class)->normalize($salesOrder->shift?->timezone_name)
+                  ?? app(\App\Support\TenantClock::class)->normalize($salesOrder->branch?->timezone)
+                  ?? \App\Support\TenantClock::DEFAULT_TIMEZONE;
+    // Ye blade TEEN jagah se render hota hai: asli print job ka preview, aur Layout screen ka
+    // live preview jo koi job deta hi nahi (wo settings dikhata hai, kisi parchi ki nakal nahi).
+    // $job ko farz kar lena us screen ko 500 kar deta hai — wohi hua tha.
+    $kotJob     = $job ?? null;
+    $kotOrdered = (\App\Support\KotTicketTime::orderedAt($kotJob, $salesOrder) ?? now())->timezone($kotTz);
+    $kotReprint = \App\Support\KotTicketTime::reprintAt($kotJob);
+@endphp
+<div>TIME: {{ $kotOrdered->format('h:i A') }}</div>
+<div>{{ $kotOrdered->format('D d-M-Y') }}</div>
+@if($kotReprint)
+<div>REPRINT: {{ $kotReprint->timezone($kotTz)->format('d/m/Y h:i A') }}</div>
+@endif
 
 <hr>
 

@@ -320,11 +320,21 @@ class KashifLegacyRebuildSeeder extends Seeder
         foreach (array_chunk($this->csv('legacy-customers'), 500) as $chunk) {
             $insert = [];
             foreach ($chunk as $c) {
+                // KASHIF-LEGACY-PHONE-SPLIT-1: where the old book held two
+                // numbers in one field the extractor now separates them. The
+                // second one has nowhere of its own to live on a customer, so
+                // it rides with the address rather than being dropped.
+                $address = trim((string) $c['address']);
+                $alt = trim((string) ($c['alt_phone'] ?? ''));
+                if ($alt !== '') {
+                    $address = trim($address === '' ? "Alt phone: {$alt}" : $address."\nAlt phone: {$alt}");
+                }
+
                 $insert[] = [
                     'code' => 'C-'.$c['phone'],
                     'name' => mb_substr($c['name'], 0, 190),
                     'phone' => $c['phone'],
-                    'address' => $c['address'] !== '' ? $c['address'] : null,
+                    'address' => $address !== '' ? $address : null,
                     'status' => 'active',
                     'created_at' => now(), 'updated_at' => now(),
                 ];

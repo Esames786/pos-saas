@@ -113,7 +113,18 @@ class CateringTenantResetMySqlTest extends MySqlTenantTestCase
      * This turns the warning into a failing test, so the next catering tranche
      * that adds a table cannot quietly leave it outside the reset contract.
      */
-    public function test_no_catering_table_is_left_unclassified(): void
+    /**
+     * KASHIF-RESET-COVERAGE-2 — the WHOLE schema, not just the catering corner.
+     *
+     * This guard used to filter tables down to the ones prefixed `catering_`,
+     * so it could not see a table outside that prefix however long it sat
+     * unclassified — and two did: customer_translations and
+     * supplier_translations. The command's contract is "every table is a
+     * deliberate wipe or a deliberate keep", and a guard narrower than the
+     * contract it protects will always be quiet about exactly the tables
+     * nobody thought about.
+     */
+    public function test_no_tenant_table_is_left_unclassified(): void
     {
         DB::setDefaultConnection('tenant');
 
@@ -121,9 +132,11 @@ class CateringTenantResetMySqlTest extends MySqlTenantTestCase
             fn ($row) => array_values((array) $row)[0],
             DB::connection('tenant')->select('SHOW TABLES')
         );
-        $catering = array_values(array_filter($all, fn ($t) => str_starts_with($t, 'catering_')));
 
-        $this->assertNotEmpty($catering, 'the catering schema must exist for this test to mean anything');
+        $this->assertNotEmpty(
+            array_filter($all, fn ($t) => str_starts_with($t, 'catering_')),
+            'the catering schema must exist for this test to mean anything'
+        );
 
         $classified = array_merge(
             $this->commandConstant('WIPE_TABLES'),
@@ -131,11 +144,12 @@ class CateringTenantResetMySqlTest extends MySqlTenantTestCase
             $this->commandConstant('KNOWN_KEPT')
         );
 
-        $unclassified = array_values(array_diff($catering, $classified));
+        $unclassified = array_values(array_diff($all, $classified));
 
         $this->assertSame([], $unclassified,
-            'every catering table must be a deliberate wipe or a deliberate keep — '
-            .'an unclassified one is how a reset silently orphans a tenant');
+            'every tenant table must be a deliberate wipe or a deliberate keep — '
+            .'an unclassified one either survives a reset it should not, or is '
+            .'missed by one it should have had');
     }
 
     /** The tables named in the command must actually exist in the schema. */

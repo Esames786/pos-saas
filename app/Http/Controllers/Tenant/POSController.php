@@ -156,8 +156,21 @@ class POSController extends Controller
             // carried it simply vanished and the bill could no longer be recalled or paid — five of
             // them, mid-service, on 30 Aug. Being in a combo was the only thing that used to save a
             // hidden product; an open bill has at least as much claim on it.
-            ->where(function ($q) use ($comboComponentProductIds, $liveOrderProductIds) {
-                $q->where('is_pos_visible', true);
+            //
+            // CATEGORY-BRANCH-SCOPE-1: a category may belong to one branch, and a product follows
+            // its category. The scope sits INSIDE the visible branch on purpose — bolted on as its
+            // own ->where() it would apply to the two escape hatches above as well, and a product
+            // sitting on an open bill would vanish again the moment its category belonged to the
+            // other branch. That is the 30 Aug outage, rebuilt. A NULL branch_id (every category on
+            // every existing tenant) matches every branch, so nothing changes for them.
+            ->where(function ($q) use ($selectedBranchId, $comboComponentProductIds, $liveOrderProductIds) {
+                $q->where(function ($visible) use ($selectedBranchId) {
+                    $visible->where('is_pos_visible', true)
+                        ->where(function ($scope) use ($selectedBranchId) {
+                            $scope->whereNull('category_id')
+                                ->orWhereHas('category', fn ($c) => $c->forBranch($selectedBranchId));
+                        });
+                });
                 if ($comboComponentProductIds->isNotEmpty()) {
                     $q->orWhereIn('id', $comboComponentProductIds->all());
                 }
@@ -402,6 +415,17 @@ class POSController extends Controller
             'waiters'             => $waiters,
             // QUICK-REPORT-SEND-1: network printers for the Quick Report modal's "Send to network"
             // (only loaded for a user who actually holds the permission).
+            // QUICK-REPORT-BRANCH-SCOPE-1: modal me sirf apni branchein. Ek hi assign ho to wohi
+            // ek option (aur wohi chuni hui) — cashier ke saamne koi aisa chunaav hi na aaye jo
+            // server bad me kaat de.
+            'quickReportBranches' => auth('tenant')->user()?->can('tenant.pos.quick-report-send')
+                ? (function () {
+                    $mine = app(\App\Services\Security\UserDataScope::class)->branchIds(auth('tenant')->user());
+                    $q = \App\Models\Tenant\Branch::where('status', 'active')->orderBy('name');
+
+                    return ($mine ? $q->whereIn('id', $mine) : $q)->get(['id', 'name']);
+                })()
+                : collect(),
             'quickReportPrinters' => auth('tenant')->user()?->can('tenant.pos.quick-report-send')
                 ? \App\Models\Tenant\Printer::where('is_active', 1)->where('printer_type', 'network')
                     ->whereNotNull('ip_address')->orderBy('name')->get(['id', 'name', 'paper_size'])
@@ -826,7 +850,8 @@ class POSController extends Controller
         $allowedTypes = auth("tenant")->user()?->effectiveAllowedOrderTypes() ?? [];
         $filterType = (string) $request->input('order_type', '');
 
-        $sales = SalesOrder::with(['customer', 'deliveryRider', 'branch', 'shift', 'restaurantWaiter', 'restaurantTable'])
+        $sales = SalesOrder::with(['customer', 'deliveryChannel', 'deliveryRider', 'branch', 'shift',
+                                   'restaurantWaiter', 'restaurantTable'])
             ->where('status', '!=', 'held')
             ->whereNotNull('sale_no')
             ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
@@ -854,7 +879,11 @@ class POSController extends Controller
                 'status'         => $s->status,
                 'payment_status' => $s->payment_status,
                 'customer'       => $s->customer_name ?: $s->customer?->name ?: 'Walk-in',
-                'rider'          => $s->order_type === 'delivery' ? ($s->deliveryRider?->name ?? 'Unassigned') : null,
+                // Both lists render order meta through one JS helper, so both must feed it the
+                // same keys: which channel took the order, and who is carrying it.
+                'delivery_channel'      => $s->deliveryChannel?->name,
+                'delivery_channel_type' => $s->deliveryChannel?->type,
+                'delivery_rider'        => $s->deliveryRider?->name,
                 // Waiter (quick-sale + dine-in), vehicle (quick-sale), table (dine-in) for the list.
                 'waiter'         => $s->restaurantWaiter?->name,
                 'vehicle_number' => $s->vehicle_number,

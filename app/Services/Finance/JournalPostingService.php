@@ -26,6 +26,39 @@ class JournalPostingService
 {
     public function __construct(private JournalService $journal) {}
 
+    /**
+     * GL-BUSINESS-DATE-1: kisi bhi sale ki khaata-tareekh.
+     *
+     * Pehle teeno jagah `sale_date` ka din liya jaata tha. Aaj tak wo business date ke barabar
+     * nikla hai — 2,713 entries me se SIFAR ka farq — magar sirf ITTEFAQ se: waqt UTC me rakha
+     * jaata hai, Karachi UTC se +5 hai, aur restaurant ka poora din (dopehar 12 se raat 3) ek hi
+     * UTC tareekh ke andar aa jaata hai.
+     *
+     * Ye ittefaq TOOT sakta hai. Jis raat koi shift subah 5 baje (Karachi) se aage chali jaye, UTC
+     * ki tareekh badal jaayegi aur us bill ka GL business date se alag din par baith jaayega —
+     * Kashif par shiftein 3-4 baje tak chalti hain, yani faasla sirf ek ghanta hai.
+     *
+     * Ab tareekh wahin se aati hai jahan se sales report aur daily closing lete hain: shift ka
+     * frozen `business_date`. Fallback bilkul purana bartaao hai, taake jis row par business_date
+     * na ho uska hisab hu-ba-hu wohi rahe jo pehle tha.
+     */
+    private function bookOn(SalesOrder $sale): string
+    {
+        return $sale->business_date?->toDateString()
+            ?? ($sale->sale_date ?? now())->toDateString();
+    }
+
+    /**
+     * Wahi usool return ke liye. `SalesReportService` refund ko us BUSINESS din par ginti hai jis
+     * din ka bill wapas ho raha hai — raat ko punch hua refund apni khuli shift ke din par rehta
+     * hai. GL bhi wahin baithna chahiye, warna report aur khaata ek din alag ho jate.
+     */
+    private function bookOnReturn(SalesReturn $return): string
+    {
+        return $return->business_date?->toDateString()
+            ?? ($return->return_date ?? now())->toDateString();
+    }
+
     /** Dr expense accounts / Cr cash-bank. Returns null if no cash/bank CoA link. */
     public function postExpenseVoucher(ExpenseVoucher $voucher, ?int $userId = null): ?JournalEntry
     {
@@ -318,7 +351,7 @@ class JournalPostingService
                 $sale->id,
                 $sale->sale_no,
                 'Paid sale '.$sale->sale_no,
-                ($sale->sale_date ?? now())->toDateString(),
+                $this->bookOn($sale),
                 $lines,
                 $userId
             );
@@ -354,7 +387,7 @@ class JournalPostingService
                 $sale->id,
                 $sale->sale_no,
                 'Credit sale '.$sale->sale_no,
-                ($sale->sale_date ?? now())->toDateString(),
+                $this->bookOn($sale),
                 $lines,
                 $userId
             );
@@ -456,7 +489,7 @@ class JournalPostingService
                 $return->id,
                 $return->return_no,
                 'Sales return '.$return->return_no,
-                ($return->return_date ?? now())->toDateString(),
+                $this->bookOnReturn($return),
                 $lines,
                 $userId
             );
@@ -509,7 +542,7 @@ class JournalPostingService
 
                     CashBankAccountTransaction::create([
                         'cash_bank_account_id' => $cash->id,
-                        'transaction_date' => ($sale->sale_date ?? now())->toDateString(),
+                        'transaction_date' => $this->bookOn($sale),
                         'direction' => 'in',
                         'amount' => $payment->amount,
                         'balance_after' => $newBalance,
@@ -592,7 +625,7 @@ class JournalPostingService
 
                 CashBankAccountTransaction::create([
                     'cash_bank_account_id' => $cash->id,
-                    'transaction_date' => ($return->return_date ?? now())->toDateString(),
+                    'transaction_date' => $this->bookOnReturn($return),
                     'direction' => 'out',
                     'amount' => $amount,
                     'balance_after' => $newBalance,
@@ -669,7 +702,7 @@ class JournalPostingService
                 $return->id,
                 $return->return_no,
                 'Purchase return '.$return->return_no,
-                $return->return_date?->toDateString() ?? now()->toDateString(),
+                $this->bookOnReturn($return),
                 $lines,
                 $userId
             );

@@ -368,7 +368,6 @@ class SalesOrderController extends Controller
                     // Vehicle number is captured for Quick Sale (drive-through) only — never for
                     // takeaway (client confirmed) and never stale on other types.
                     'vehicle_number'              => (! $tableSession && $orderType === 'quick_sale') ? ($data['vehicle_number'] ?? null) : null,
-                    'sale_date'                   => now(),
                     'business_date'               => $businessDate,
                     'subtotal'                    => $totals['subtotal'],
                     'discount_type'               => $data['discount_type'],
@@ -468,9 +467,16 @@ class SalesOrderController extends Controller
                         'business_date'    => $sale->business_date?->toDateString() ?? $businessDate,
                     ]));
                 } else {
+                    // SALE-DATE-TRUTH-1: order ka waqt SIRF yahan lagta hai — jab order paida hota
+                    // hai. Pehle ye $saleFields me tha, is liye held order recall ho kar pay hone
+                    // par bhi dobara likh diya jaata tha: order ka waqt payment ka waqt ban jaata,
+                    // aur receipt par wohi chhapta. Kashif ke 71% aur Khatri ke 50% orders par ye
+                    // ho chuka hai (waqt khisakta hai, din nahi — is liye kisi report ya GL par
+                    // asar nahi para). Payment ka apna waqt completed_at me alag mehfooz hai.
                     $sale = SalesOrder::create(array_merge($saleFields, $idempotencyFields, [
                         'sale_no'             => $salesService->nextSaleNo(),
                         'status'              => 'draft',
+                        'sale_date'           => now(),
                         'created_by_user_id'  => auth('tenant')->id(),
                     ]));
                 }

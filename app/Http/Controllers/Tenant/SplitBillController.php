@@ -98,7 +98,11 @@ class SplitBillController extends Controller
                     'customer_email'              => $salesOrder->customer_email,
                     'order_source'                => $salesOrder->order_source,
                     'order_type'                  => $salesOrder->order_type,
-                    'sale_date'                   => now(),
+                    // SALE-DATE-TRUTH-1: waqt bhi business date ki tarah PARENT se aata hai.
+                    // Split child wohi check hai — khana tab manga gaya tha jab asal bill
+                    // khula, na ke jab usay taqseem kiya gaya. now() likhne se child ki
+                    // receipt taqseem ka waqt dikhati, jo kabhi kisi ne order nahi kiya.
+                    'sale_date'                   => $salesOrder->sale_date ?? now(),
                     'business_date'               => $businessDate,
                     'subtotal'                    => 0,
                     'discount_type'               => 'none',

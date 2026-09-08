@@ -222,6 +222,28 @@
                     </div>
                 </div>
 
+                {{-- HIDE-AMOUNTS-1 — off by default, exactly like the setting above: a branch keeps
+                     the screen it has today until somebody here decides otherwise. --}}
+                <div class="col-md-6">
+                    <label class="form-label">Cash figures</label>
+                    <div class="form-check">
+                        <input type="hidden" name="hide_amounts_from_operators" value="0">
+                        <input class="form-check-input" type="checkbox" value="1"
+                               id="hide_amounts_from_operators" name="hide_amounts_from_operators"
+                               @checked(old('hide_amounts_from_operators', $branch?->hide_amounts_from_operators))>
+                        <label class="form-check-label" for="hide_amounts_from_operators">
+                            Hide cash figures from counter staff
+                        </label>
+                    </div>
+                    <div class="form-text">
+                        Expected cash, the payment breakup and the dashboard tiles show
+                        <strong>*****</strong>, and the counting box arrives empty — so the drawer is
+                        counted, not confirmed. Anyone holding <code>tenant.shifts.view-amounts</code>
+                        still sees the real figures. The system always knows the expected amount and
+                        still records a shortage.
+                    </div>
+                </div>
+
                 <div class="col-md-8">
                     <label for="receipt_footer" class="form-label">Receipt Footer Text</label>
                     <textarea id="receipt_footer" name="receipt_footer" class="form-control" rows="2"

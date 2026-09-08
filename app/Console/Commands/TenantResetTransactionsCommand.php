@@ -44,6 +44,10 @@ class TenantResetTransactionsCommand extends Command
         'sale_payments', 'sales_order_line_cancellations', 'kot_batch_lines', 'kot_batches',
         'sales_return_lines', 'sales_returns', 'sales_order_rider_assignments', 'sales_order_lines', 'sales_orders',
         'sales_ledgers', 'manager_approvals', 'print_jobs', 'restaurant_table_sessions',
+        // Ping/reboot work items handed to a print agent — transient, exactly like
+        // the print jobs beside them. The paired AGENTS and printers are master
+        // data and are kept; a week-old queued reboot is not.
+        'print_agent_commands',
         // shifts + closings
         'cash_count_lines', 'daily_closings', 'shifts',
         // finance transactions
@@ -225,7 +229,12 @@ class TenantResetTransactionsCommand extends Command
         'manufacturing_boms', 'manufacturing_bom_lines', 'manufacturing_customers',
         'expense_categories', 'cash_bank_accounts', 'branch_user', 'terminal_user',
         'model_has_roles', 'model_has_permissions', 'role_has_permissions',
-        'user_printer_settings', 'print_agents', 'customer_addresses', 'report_schedules',
+        'user_printer_settings', 'pos_quick_report_settings', 'print_agents', 'customer_addresses', 'report_schedules',
+        // Translations of master data are master data: they are kept for the
+        // same reason the customer and supplier rows they name are kept. Both
+        // sat unclassified — surviving a reset by accident rather than by
+        // decision, which is precisely what this command's contract forbids.
+        'customer_translations', 'supplier_translations',
         'edge_local_meta', 'edge_local_user_credentials',
         // Catering CONFIGURATION, kept for the same reason recipes are: it
         // describes how the business quotes and costs, not what it has sold.

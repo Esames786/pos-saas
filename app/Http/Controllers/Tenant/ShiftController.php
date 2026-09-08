@@ -32,6 +32,27 @@ class ShiftController extends Controller
             $query->where('branch_id', $request->branch_id);
         }
 
+        // SHIFT-DATE-FILTER-1: din wohi jo baaqi system ka hai — shift ka FROZEN business_date,
+        // jo khulte waqt tay hota hai. Jin purani rows par wo hai hi nahi (business_date se pehle
+        // khuli thin) unke liye opened_at ki tareekh — warna wo rows kisi bhi din ke filter se
+        // gayab ho jatin. Yehi jorr Daily Closing bhi lagata hai, is liye dono screens ek hi din
+        // dikhati hain. sale_date ya closed_at par filter karna GHALAT hota: raat 1 baje band hui
+        // shift kal ki nahi, apne business date ki hai.
+        $dates = $request->validate([
+            'date_from' => ['nullable', 'date_format:Y-m-d'],
+            'date_to'   => ['nullable', 'date_format:Y-m-d'],
+        ]);
+
+        $onDay = function ($q, string $op, string $date) {
+            $q->where(function ($w) use ($op, $date) {
+                $w->where(fn ($a) => $a->whereNotNull('business_date')->whereDate('business_date', $op, $date))
+                  ->orWhere(fn ($a) => $a->whereNull('business_date')->whereDate('opened_at', $op, $date));
+            });
+        };
+
+        if (! empty($dates['date_from'])) { $onDay($query, '>=', $dates['date_from']); }
+        if (! empty($dates['date_to']))   { $onDay($query, '<=', $dates['date_to']); }
+
         // True open-shift count per branch (not just the current page) so the "Close Branch" action
         // is accurate even when a branch's shifts span pages.
         $openCounts = Shift::where('status', 'open')
@@ -40,10 +61,39 @@ class ShiftController extends Controller
             ->groupBy('branch_id')
             ->pluck('c', 'branch_id');
 
+        $shifts = $query->paginate(15)->withQueryString();
+
+        // HIDE-AMOUNTS-2: list kai branches par phaili ho sakti hai, is liye faisla PER BRANCH
+        // hota hai — ek branch ka masked hona doosre ka masked hona nahi. Jis row ka branch hi na
+        // mile wo masked rehti hai (fail closed), wohi rukh jo AmountVisibility khud apnaata hai.
+        $visibility = app(\App\Support\AmountVisibility::class);
+        $user       = auth('tenant')->user();
+        $maySeeAmounts = collect($shifts->items())
+            ->pluck('branch')->filter()->unique('id')
+            ->mapWithKeys(fn ($branch) => [$branch->id => $visibility->allows($user, $branch)])
+            ->all();
+
+        // OPERATING-DATE-1: "Today" ghadi ka aaj nahi — wo din jis par floor ABHI kaam kar raha hai,
+        // yani khuli shifton ka sab se naya business_date. Raat 12 baje ghadi agle din par chali
+        // jaati hai jabke shift wohi purani khuli hoti hai, is liye ghadi wala "aaj" us waqt ek
+        // khali list kholta tha. Koi shift khuli na ho to purana usool — branch ke timezone ka aaj.
+        // Browser ki tareekh yahan kabhi nahi chalti: sarwar UTC par hai aur tenant Asia/Karachi.
+        $clock  = app(\App\Support\TenantClock::class);
+        $branch = $request->filled('branch_id') ? Branch::find($request->branch_id) : null;
+        $today  = $clock->operatingBusinessDate($branch);
+
+        // Input ka "max" alag cheez hai: agar kisi terminal ne agle din ki shift khol li ho to us
+        // din ko chunna mana nahi hona chahiye. Y-m-d hai, is liye seedha string muqabla kaafi hai.
+        $maxDate = max($today, $clock->currentBusinessDate($branch));
+
         return view('tenant.shifts.index', [
-            'shifts'     => $query->paginate(15)->withQueryString(),
-            'branches'   => Branch::where('status', 'active')->orderBy('name')->get(),
-            'openCounts' => $openCounts,
+            'shifts'        => $shifts,
+            'branches'      => Branch::where('status', 'active')->orderBy('name')->get(),
+            'openCounts'    => $openCounts,
+            'maySeeAmounts' => $maySeeAmounts,
+            'today'         => $today,
+            'maxDate'       => $maxDate,
+            'yesterday'     => \Carbon\Carbon::parse($today)->subDay()->format('Y-m-d'),
         ]);
     }
 
@@ -172,16 +222,40 @@ class ShiftController extends Controller
     {
         $shift->load(['branch', 'terminal', 'openedBy', 'closedBy', 'cashCountLines.denomination']);
 
-        return view('tenant.shifts.show', compact('shift'));
+        // HIDE-AMOUNTS-2: ye screen wohi saat figures dikhati hai jo Close Shift par masked hain —
+        // Expected Cash samet — magar mask yahan lagta hi nahi tha. Chaar operator accounts is
+        // safhe tak pahunch rakhte hain, is liye feature is raaste par be-asar tha.
+        return view('tenant.shifts.show', [
+            'shift'         => $shift,
+            'maySeeAmounts' => app(\App\Support\AmountVisibility::class)
+                ->allows(auth('tenant')->user(), $shift->branch),
+        ]);
     }
 
     public function closeForm(Shift $shift)
     {
         abort_if($shift->status !== 'open', 404);
 
+        $shift->load(['branch', 'terminal']);
+
+        // HIDE-AMOUNTS-1 — see closeBranchForm(). Stripped on the model, not hidden in the Blade,
+        // because this screen also pre-fills and data-attributes the expected cash.
+        $maySeeAmounts = app(\App\Support\AmountVisibility::class)->allows(
+            auth('tenant')->user(), $shift->branch
+        );
+
+        if (! $maySeeAmounts) {
+            foreach (['expected_cash', 'total_sales', 'total_cash', 'total_card',
+                      'total_bank_transfer', 'total_cheque', 'total_discount',
+                      'total_refunds', 'total_tax', 'opening_cash'] as $field) {
+                $shift->setAttribute($field, null);
+            }
+        }
+
         return view('tenant.shifts.close', [
-            'shift'    => $shift->load(['branch', 'terminal']),
-            'currency' => Currency::where('is_default', true)->with('denominations')->first(),
+            'shift'         => $shift,
+            'currency'      => Currency::where('is_default', true)->with('denominations')->first(),
+            'maySeeAmounts' => $maySeeAmounts,
         ]);
     }
 
@@ -220,9 +294,12 @@ class ShiftController extends Controller
             // No count entered at all used to silently close at 0 — recording the whole drawer as
             // missing and raising a full-takings shortage voucher (it happened live: a 28,400
             // shift closed at 0). Typing 0 explicitly is still allowed; defaulting to it is not.
-            if ($countedCash === null) {
-                return back()->withErrors(['counted_cash' => 'Count the drawer first — enter the counted cash (0 must be typed deliberately).'])->withInput();
-            }
+            //
+            // ZERO-DRAWER-1: except when the drawer is EMPTY by arithmetic — Kashif Food's floor
+            // terminal takes orders but never money, so its expected cash is 0 every night, and
+            // demanding a count there asks the cashier to certify nothing. That decision is NOT
+            // made here: a NULL count is passed down and ShiftService resolves it under the row
+            // lock, where expected_cash is the only place it is authoritative.
             $closed = $shiftService->closeShift($shift, (int) auth('tenant')->id(), $countedCash, $data['closing_notes'] ?? null);
         } catch (ShiftException $e) {
             return back()->withErrors(['shift' => $e->getMessage()])->withInput();
@@ -294,8 +371,38 @@ class ShiftController extends Controller
             ->selectRaw('o.shift_id, COUNT(*) as lines_count, COALESCE(SUM(c.quantity), 0) as units')
             ->groupBy('o.shift_id')->get()->keyBy('shift_id') : collect();
 
+        // HIDE-AMOUNTS-1: decided here, once, and the figures are STRIPPED from the models before
+        // they reach the view. A Blade-level @if would not be enough on this screen: the Counted
+        // input is pre-filled with the expected cash and carries data-expected for the live
+        // difference, so the number the operator is meant to verify would still be sitting in the
+        // page — in the very box they type into, and one View Source away.
+        $maySeeAmounts = app(\App\Support\AmountVisibility::class)->allows(
+            $user,
+            $selectedBranchId ? Branch::find($selectedBranchId) : null
+        );
+
+        if (! $maySeeAmounts) {
+            $openShifts = $openShifts->map(function ($shift) {
+                foreach (['expected_cash', 'total_sales', 'total_cash', 'total_card',
+                          'total_bank_transfer', 'total_cheque', 'total_discount',
+                          'total_refunds', 'total_tax', 'opening_cash'] as $field) {
+                    $shift->setAttribute($field, null);
+                }
+
+                return $shift;
+            });
+            // The cancellation COUNTS stay (an operator should know a bill was thrown away);
+            // their amounts do not.
+            $cancelledOrders = $cancelledOrders->map(function ($row) {
+                $row->amount = null;
+
+                return $row;
+            });
+        }
+
         return view('tenant.shifts.close-branch', compact(
-            'branches', 'selectedBranchId', 'openShifts', 'cancelledOrders', 'voidedLines'
+            'branches', 'selectedBranchId', 'openShifts', 'cancelledOrders', 'voidedLines',
+            'maySeeAmounts'
         ));
     }
 
@@ -346,8 +453,19 @@ class ShiftController extends Controller
                     // per_terminal: the entered count for THIS terminal. branch_total: each terminal
                     // closes at its expected (per-terminal variance 0 — drawers weren't counted
                     // separately); the real figure is recorded at branch level on a Daily Closing.
-                    if ($data['mode'] === 'per_terminal'
-                        && (! isset($data['counted'][$locked->id]) || $data['counted'][$locked->id] === '' || $data['counted'][$locked->id] === null)) {
+                    $blank = ! isset($data['counted'][$locked->id])
+                        || $data['counted'][$locked->id] === ''
+                        || $data['counted'][$locked->id] === null;
+
+                    // ZERO-DRAWER-1: a terminal whose expected cash is 0 has nothing to count, so a
+                    // blank box there is not an unanswered question — it is the answer. Without
+                    // this, ONE such terminal fails the whole Close Branch, because all the
+                    // branch's shifts close in a single transaction: Kashif Food could not close
+                    // its four counters because the floor terminal, which never takes money, had
+                    // no figure to type.
+                    $emptyDrawer = abs((float) $locked->expected_cash) < 0.005;
+
+                    if ($data['mode'] === 'per_terminal' && $blank && ! $emptyDrawer) {
                         // A drawer left blank used to close at 0 — the whole terminal's takings
                         // recorded as missing. Every open drawer must be counted (0 typed counts).
                         throw new ShiftException(
@@ -357,7 +475,7 @@ class ShiftController extends Controller
                         );
                     }
                     $counted = $data['mode'] === 'per_terminal'
-                        ? (float) $data['counted'][$locked->id]
+                        ? ($blank ? 0.0 : (float) $data['counted'][$locked->id])
                         : $expected;
 
                     $locked->update([

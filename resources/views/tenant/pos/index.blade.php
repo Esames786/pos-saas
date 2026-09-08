@@ -1406,11 +1406,25 @@
                 <div id="qr-toast" class="alert d-none py-2 small mb-3" role="alert"></div>
 
                 <div class="row g-3 mb-3">
-                    <div class="col-sm-5">
+                    <div class="col-sm-4">
                         <label class="form-label small mb-1">Business date</label>
                         <input type="date" class="form-control form-control-sm" id="qr-date" value="{{ $quickReportDate }}">
                     </div>
-                    <div class="col-sm-7 d-flex align-items-end">
+                    {{-- QUICK-REPORT-BRANCH-SCOPE-1: sirf apni branchein. Ek hi ho to wohi chuni hui
+                         hoti hai aur "All my branches" ka option hi nahi aata — us soorat me chunne
+                         ko kuch nahi hai. Server phir bhi chunaav ko apni hadd se kaat-ta hai. --}}
+                    <div class="col-sm-4">
+                        <label class="form-label small mb-1" for="qr-branch">Branch</label>
+                        <select id="qr-branch" class="form-select form-select-sm">
+                            @if(($quickReportBranches ?? collect())->count() > 1)
+                                <option value="">All my branches</option>
+                            @endif
+                            @foreach(($quickReportBranches ?? collect()) as $qrB)
+                                <option value="{{ $qrB->id }}" @selected(($quickReportBranches ?? collect())->count() === 1)>{{ $qrB->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-sm-4 d-flex align-items-end">
                         <div class="form-check form-switch ms-auto">
                             <input class="form-check-input" type="checkbox" id="qr-save">
                             <label class="form-check-label small" for="qr-save">Save my selection</label>
@@ -1421,8 +1435,12 @@
                 <label class="form-label small text-muted">Sections — tick what to include (whole tenant, all terminals &amp; order types)</label>
                 @php
                     $qrSubFilterable = ['categories','items','waiters','order_types'];
+                    // DEAL-CATEGORY-1: Deals sits beside Items — Items no longer carries them, so
+                    // printing one without the other gives a total that does not reconcile.
                     $qrSections = [
                         'overview' => 'Overview', 'categories' => 'Categories', 'items' => 'Items',
+                        'category_items' => 'Items by Category',
+                        'deals' => 'Deals',
                         'waiters' => 'Waiters', 'order_types' => 'Order Types', 'order_type_combos' => 'Order-Type Combos',
                         'cancellations' => 'Cancellations', 'cash_bank' => 'Cash & Bank',
                     ];
@@ -1590,6 +1608,7 @@
     var collect = function () {
         return {
             date: document.getElementById('qr-date').value,
+            branch_ids: (function () { var v = (document.getElementById('qr-branch') || {}).value; return v ? [v] : []; })(),
             sections: checked('.qr-section'),
             category_ids: checked('.qr-category'),
             waiter_ids: checked('.qr-waiter'),
@@ -1602,14 +1621,14 @@
     var toForm = function (p) {
         var fd = new FormData();
         fd.append('date', p.date); fd.append('all_items', p.all_items); fd.append('printer_id', p.printer_id || '');
-        ['sections','category_ids','waiter_ids','order_types','product_ids'].forEach(function (k) {
+        ['sections','category_ids','waiter_ids','order_types','product_ids','branch_ids'].forEach(function (k) {
             (p[k] || []).forEach(function (v) { fd.append(k + '[]', v); });
         });
         return fd;
     };
     var toQuery = function (p) {
         var q = ['date=' + encodeURIComponent(p.date), 'all_items=' + p.all_items];
-        ['sections','category_ids','waiter_ids','order_types','product_ids'].forEach(function (k) {
+        ['sections','category_ids','waiter_ids','order_types','product_ids','branch_ids'].forEach(function (k) {
             (p[k] || []).forEach(function (v) { q.push(k + '[]=' + encodeURIComponent(v)); });
         });
         return q.join('&');
@@ -4827,12 +4846,25 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    // Compact sub-line for the Held/Recent lists: whichever of table / waiter / vehicle applies.
+    // Compact sub-line for the Held/Recent lists: whichever of table / waiter / vehicle applies,
+    // plus — on a delivery order — the channel that took it and the rider carrying it. An
+    // aggregator (Foodpanda) sends its own rider, so no rider is expected or shown there;
+    // an own-delivery order with nobody attached yet says so, because the counter needs to know.
     function posOrderMeta(s) {
         var bits = [];
         if (s.table) bits.push('<i class="ti ti-armchair-2 me-1"></i>Table ' + escapeHtml(s.table));
         if (s.waiter) bits.push('<i class="ti ti-user me-1"></i>' + escapeHtml(s.waiter));
         if (s.vehicle_number) bits.push('<i class="ti ti-car me-1"></i>' + escapeHtml(s.vehicle_number));
+        if (s.delivery_channel) {
+            bits.push('<i class="ti ti-truck-delivery me-1"></i>' + escapeHtml(s.delivery_channel));
+        }
+        if (s.order_type === 'delivery' && s.delivery_channel_type !== 'aggregator') {
+            bits.push(s.delivery_rider
+                ? '<i class="ti ti-motorbike me-1"></i>' + escapeHtml(s.delivery_rider)
+                : '<i class="ti ti-motorbike me-1"></i><span class="text-warning-emphasis">Unassigned</span>');
+        } else if (s.delivery_rider) {
+            bits.push('<i class="ti ti-motorbike me-1"></i>' + escapeHtml(s.delivery_rider));
+        }
         return bits.length ? '<div class="text-muted small">' + bits.join(' · ') + '</div>' : '';
     }
 
@@ -5512,9 +5544,8 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             const rows = sales.map(function (s) {
                 var printStatus = '';
-                var riderStatus = s.order_type === 'delivery'
-                    ? '<div class="small text-muted mt-1"><i class="ti ti-motorbike me-1"></i>' + escapeHtml(s.rider || 'Unassigned') + '</div>'
-                    : '';
+                // The rider now rides in posOrderMeta() alongside the channel, so it is not
+                // rendered twice here — one helper, one truth, for both lists.
                 var orderAction = s.order_type === 'delivery'
                     ? '<a href="{{ url('/sales-orders') }}/' + Number(s.id) + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="View or change rider"><i class="ti ti-motorbike me-1"></i>Rider</a>'
                     : '<a href="{{ url('/sales-orders') }}/' + Number(s.id) + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary" title="View order"><i class="ti ti-eye"></i></a>';
@@ -5523,7 +5554,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
                 return '<tr>' +
                     '<td><strong>' + escapeHtml(s.sale_no) + '</strong><div class="text-muted small">' + escapeHtml(s.time || s.ago || '') + '</div>' + printStatus + '</td>' +
-                    '<td>' + escapeHtml(s.customer || 'Walk-in') + '<div class="text-muted small text-capitalize">' + escapeHtml(String(s.order_type || '').replace(/_/g, ' ')) + '</div>' + posOrderMeta(s) + riderStatus + '</td>' +
+                    '<td>' + escapeHtml(s.customer || 'Walk-in') + '<div class="text-muted small text-capitalize">' + escapeHtml(String(s.order_type || '').replace(/_/g, ' ')) + '</div>' + posOrderMeta(s) + '</td>' +
                     '<td class="text-end fw-semibold">' + escapeHtml(s.total) + '</td>' +
                     '<td class="text-end text-nowrap">' +
                         '<button type="button" class="btn btn-sm btn-outline-primary me-1" data-reprint-receipt="' + Number(s.id) + '"><i class="ti ti-printer me-1"></i>Receipt</button>' +
@@ -6675,6 +6706,22 @@ document.addEventListener('DOMContentLoaded', function () {
             // the address just typed is the one this order goes to — select it straight away
             const justAdded = document.querySelector('#addr-' + CSS.escape(String(data.address.id)));
             if (justAdded) justAdded.checked = true;
+
+            // ADDRESS-ATTACH-1: sirf select kar dena kaafi nahi tha — order ka apna khaana
+            // (#delivery_address) khali reh jata tha, aur wo tab bharta tha jab cashier "Attach to
+            // Order" bhi daba de. Screen teen taraf se keh rahi hoti thi ke kaam ho gaya ("Address
+            // saved", tick, aur customer ka chip pehle se juda) — is liye kisi ko shak hi nahi
+            // hota tha. Owner ke apne orders: address HOLD se 11 second pehle save hua, phir bhi
+            // us held order par nahi tha; baad me attach dabate hi paid bill par aa gaya.
+            //
+            // Delivery ki shart lazmi hai: non-delivery order par address bharna un chaar hifazaton
+            // ko tor deta hai jo naya order / recall / type-switch / chip-clear par ise saaf rakhti
+            // hain. Modal band NAHI karte — cashier shayad rider ya kuch aur bhi chunna chahe.
+            if (isDelivery()) {
+                const orderAddr = $id('delivery_address');
+                if (orderAddr) { orderAddr.value = data.address.address || ''; }
+                renderChip();
+            }
             notify('success', 'Address saved');
         })
         .catch(function () { notify('error', 'Could not save the address.'); })

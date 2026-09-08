@@ -80,13 +80,18 @@
                                         <td>
                                             {{ $shift->terminal?->name ?? ('Terminal #' . $shift->terminal_id) }}
                                             @php
+                                                // HIDE-AMOUNTS-1: the breakup is not built at all when it may
+                                                // not be read. The controller has already nulled the fields, so
+                                                // this is belt and braces rather than the only guard.
                                                 $bits = [];
-                                                if ((float) $shift->total_cash != 0.0)          { $bits[] = 'cash ' . number_format((float) $shift->total_cash, 2); }
-                                                if ((float) $shift->total_card != 0.0)          { $bits[] = 'card ' . number_format((float) $shift->total_card, 2); }
-                                                if ((float) $shift->total_bank_transfer != 0.0) { $bits[] = 'bank ' . number_format((float) $shift->total_bank_transfer, 2); }
-                                                if ((float) $shift->total_cheque != 0.0)        { $bits[] = 'cheque ' . number_format((float) $shift->total_cheque, 2); }
-                                                if ((float) $shift->total_refunds != 0.0)       { $bits[] = 'refunds −' . number_format((float) $shift->total_refunds, 2); }
-                                                if ((float) $shift->total_discount != 0.0)      { $bits[] = 'discount ' . number_format((float) $shift->total_discount, 2); }
+                                                if ($maySeeAmounts) {
+                                                    if ((float) $shift->total_cash != 0.0)          { $bits[] = 'cash ' . number_format((float) $shift->total_cash, 2); }
+                                                    if ((float) $shift->total_card != 0.0)          { $bits[] = 'card ' . number_format((float) $shift->total_card, 2); }
+                                                    if ((float) $shift->total_bank_transfer != 0.0) { $bits[] = 'bank ' . number_format((float) $shift->total_bank_transfer, 2); }
+                                                    if ((float) $shift->total_cheque != 0.0)        { $bits[] = 'cheque ' . number_format((float) $shift->total_cheque, 2); }
+                                                    if ((float) $shift->total_refunds != 0.0)       { $bits[] = 'refunds −' . number_format((float) $shift->total_refunds, 2); }
+                                                    if ((float) $shift->total_discount != 0.0)      { $bits[] = 'discount ' . number_format((float) $shift->total_discount, 2); }
+                                                }
                                                 $c = $cancelledOrders[$shift->id] ?? null;
                                                 $v = $voidedLines[$shift->id] ?? null;
                                             @endphp
@@ -102,7 +107,9 @@
                                                     // past it and left the @if unclosed.
                                                     $parts = [];
                                                     if ($c) {
-                                                        $parts[] = number_format((float) $c->amount, 2)
+                                                        // The COUNT stays — an operator should know a bill was
+                                                        // thrown away. Its value is money, so it follows the flag.
+                                                        $parts[] = ($maySeeAmounts ? number_format((float) $c->amount, 2) : '*****')
                                                             . ' (' . (int) $c->bills . ' bill' . ((int) $c->bills === 1 ? '' : 's') . ')';
                                                     }
                                                     if ($v) {
@@ -115,14 +122,22 @@
                                                 </div>
                                             @endif
                                         </td>
-                                        <td class="text-end">{{ number_format((float) $shift->opening_cash, 2) }}</td>
-                                        <td class="text-end">{{ number_format((float) $shift->total_sales, 2) }}</td>
-                                        <td class="text-end">{{ number_format((float) $shift->expected_cash, 2) }}</td>
+                                        <td class="text-end">{{ $maySeeAmounts ? number_format((float) $shift->opening_cash, 2) : '*****' }}</td>
+                                        <td class="text-end">{{ $maySeeAmounts ? number_format((float) $shift->total_sales, 2) : '*****' }}</td>
+                                        <td class="text-end">{{ $maySeeAmounts ? number_format((float) $shift->expected_cash, 2) : '*****' }}</td>
                                         <td class="text-end col-counted">
+                                            {{-- HIDE-AMOUNTS-1: no data-expected and no pre-fill when the figure
+                                                 may not be read. Either one would hand the operator the amount
+                                                 they are supposed to be counting — one of them inside the very
+                                                 box they type into. Blind, the box starts empty. --}}
                                             <input type="number" min="0" step="0.01" class="form-control form-control-sm text-end cash-counted"
-                                                data-expected="{{ (float) $shift->expected_cash }}"
+                                                @if($maySeeAmounts) data-expected="{{ (float) $shift->expected_cash }}" @endif
                                                 name="counted[{{ $shift->id }}]"
-                                                value="{{ old('counted.' . $shift->id, number_format((float) $shift->expected_cash, 2, '.', '')) }}">
+                                                @if($maySeeAmounts)
+                                                    value="{{ old('counted.' . $shift->id, number_format((float) $shift->expected_cash, 2, '.', '')) }}"
+                                                @else
+                                                    value="{{ old('counted.' . $shift->id) }}" placeholder="Count the drawer"
+                                                @endif>
                                         </td>
                                         {{-- CASH-SHORTAGE-1: live difference so the cashier sees the shortage before closing --}}
                                         <td class="text-end col-counted cash-diff small text-muted">—</td>
@@ -132,13 +147,18 @@
                             <tfoot>
                                 <tr class="fw-semibold">
                                     <td>Total</td>
-                                    <td class="text-end">{{ number_format($sumOpening, 2) }}</td>
-                                    <td class="text-end">{{ number_format($sumSales, 2) }}</td>
-                                    <td class="text-end">{{ number_format($sumExpected, 2) }}</td>
+                                    <td class="text-end">{{ $maySeeAmounts ? number_format($sumOpening, 2) : '*****' }}</td>
+                                    <td class="text-end">{{ $maySeeAmounts ? number_format($sumSales, 2) : '*****' }}</td>
+                                    <td class="text-end">{{ $maySeeAmounts ? number_format($sumExpected, 2) : '*****' }}</td>
                                     <td class="text-end col-branch-total" style="display:none">
                                         <input type="number" min="0" step="0.01" class="form-control form-control-sm text-end cash-counted"
-                                            data-expected="{{ (float) $sumExpected }}"
-                                            name="branch_counted_cash" value="{{ old('branch_counted_cash', number_format($sumExpected, 2, '.', '')) }}">
+                                            @if($maySeeAmounts) data-expected="{{ (float) $sumExpected }}" @endif
+                                            name="branch_counted_cash"
+                                            @if($maySeeAmounts)
+                                                value="{{ old('branch_counted_cash', number_format($sumExpected, 2, '.', '')) }}"
+                                            @else
+                                                value="{{ old('branch_counted_cash') }}" placeholder="Count the drawer"
+                                            @endif>
                                     </td>
                                     <td class="text-end col-branch-total cash-diff small" style="display:none">—</td>
                                     <td class="text-end col-counted"></td>
@@ -203,7 +223,13 @@
                     cell.className = cell.className.replace(/\btext-(danger|success|muted)\b/g, '') + ' text-success fw-semibold';
                 }
             }
+            /* HIDE-AMOUNTS-1: with the expected amount withheld there is nothing to compare against.
+               Left running it would read a missing data-expected as 0 and announce "Over by 6,680",
+               which is both wrong and a hint. So the difference column simply stays quiet. */
+            var showAmounts = @json($maySeeAmounts);
+
             function refreshDiffs() {
+                if (!showAmounts) { return; }
                 var perTerminalTotal = 0;
                 document.querySelectorAll('tbody input.cash-counted').forEach(function (input) {
                     var expected = parseFloat(input.dataset.expected || '0') || 0;

@@ -109,6 +109,7 @@
 @php
     $sectionLabels = array_intersect_key([
         'overview' => 'Overview', 'categories' => 'Categories', 'items' => 'Items',
+        'category_items' => 'Items by Category', 'deals' => 'Deals',
         'waiters' => 'Waiters', 'order_types' => 'Order Types', 'order_type_combos' => 'By Order Type',
         'cancellations' => 'Cancellations', 'detailed' => 'Details (CSV only)', 'cash_bank' => 'Cash & Bank',
     ], array_flip($allowedSections));
@@ -213,7 +214,7 @@
 
 {{-- ── tabs (permission-filtered; Departments rides the Order Types grant) ── --}}
 <ul class="nav nav-tabs mb-3 flex-nowrap overflow-auto">
-    @foreach(['overview' => 'Overview', 'categories' => 'Categories', 'items' => 'Items', 'waiters' => 'Waiters', 'order_types' => 'Order Types', 'order_type_combos' => 'By Order Type', 'departments' => 'Departments', 'cancellations' => 'Cancellations', 'detailed' => 'Details', 'cash_bank' => 'Cash & Bank'] as $key => $label)
+    @foreach(['overview' => 'Overview', 'categories' => 'Categories', 'items' => 'Items', 'category_items' => 'Items by Category', 'deals' => 'Deals', 'waiters' => 'Waiters', 'order_types' => 'Order Types', 'order_type_combos' => 'By Order Type', 'departments' => 'Departments', 'cancellations' => 'Cancellations', 'detailed' => 'Details', 'cash_bank' => 'Cash & Bank'] as $key => $label)
         @continue(! in_array($key === 'departments' ? 'order_types' : $key, $allowedSections, true))
         <li class="nav-item"><a class="nav-link @if($tab === $key) active @endif" href="{{ url('/reports/center?' . $qs(['tab' => $key, 'preset' => null])) }}">{{ $label }}</a></li>
     @endforeach
@@ -292,6 +293,115 @@
                 <tr><td>{{ $r->item }}</td><td>{{ $r->variant }}</td><td>{{ $r->category }}</td><td class="text-end">{{ $fmt($r->sold_qty) }}</td><td class="text-end">{{ $fmt($r->returned_qty) }}</td><td class="text-end">{{ $fmt($r->net_qty) }}</td><td class="text-end">{{ $fmt($r->net) }}</td><td class="text-end text-danger">{{ $fmt($r->returns_amount) }}</td><td class="text-end fw-semibold">{{ $fmt($r->net_value) }}</td></tr>
             @endforeach
             </tbody>
+        </table>
+    </div></div>
+@endif
+
+{{-- ITEMS BY CATEGORY — ITEMS-BY-CATEGORY-1. The same rows as Items, filed under their category
+     heads with a subtotal each, the way the client's old software prints its item report. The
+     head is the ROOT category, so every subtotal reconciles against the Categories section; a
+     sub-head appears only where that root really has children with sales. --}}
+@if(isset($data['category_items']))
+    @php $ci = collect($data['category_items']); @endphp
+    <div class="card mb-3"><div class="card-body table-responsive">
+        <p class="form-text mb-2">The same items as the Items section, under their category heads — two views of one set of rows, so ticking both counts nothing twice. Deals are not here; they have their own section.</p>
+        <table class="table table-sm">
+            <thead><tr><th>Category / Item</th><th class="text-end">Sold Qty</th><th class="text-end">Ret Qty</th><th class="text-end">Net Qty</th><th class="text-end">Sold Value</th><th class="text-end">Returns</th><th class="text-end">Net Value</th></tr></thead>
+            <tbody>
+            @forelse($ci as $head)
+                <tr class="table-light">
+                    <th>{{ $head['head'] }}</th>
+                    <th class="text-end">{{ $fmt($head['sold_qty']) }}</th>
+                    <th class="text-end">{{ $fmt($head['returned_qty']) }}</th>
+                    <th class="text-end">{{ $fmt($head['net_qty']) }}</th>
+                    <th class="text-end">{{ $fmt($head['net']) }}</th>
+                    <th class="text-end">{{ $fmt($head['returns_amount']) }}</th>
+                    <th class="text-end">{{ $fmt($head['net_value']) }}</th>
+                </tr>
+                @foreach($head['groups'] as $group)
+                    @if($head['nested'])
+                        <tr>
+                            <td class="ps-4 fw-semibold">{{ $group['name'] }}</td>
+                            <td class="text-end">{{ $fmt($group['sold_qty']) }}</td>
+                            <td class="text-end">{{ $fmt($group['returned_qty']) }}</td>
+                            <td class="text-end">{{ $fmt($group['net_qty']) }}</td>
+                            <td class="text-end">{{ $fmt($group['net']) }}</td>
+                            <td class="text-end">{{ $fmt($group['returns_amount']) }}</td>
+                            <td class="text-end fw-semibold">{{ $fmt($group['net_value']) }}</td>
+                        </tr>
+                    @endif
+                    @foreach($group['items'] as $item)
+                        <tr>
+                            <td class="{{ $head['nested'] ? 'ps-5' : 'ps-4' }}">{{ $item['item'] }}@if($item['variant']) <span class="text-muted">({{ $item['variant'] }})</span>@endif</td>
+                            <td class="text-end">{{ $fmt($item['sold_qty']) }}</td>
+                            <td class="text-end">{{ $fmt($item['returned_qty']) }}</td>
+                            <td class="text-end">{{ $fmt($item['net_qty']) }}</td>
+                            <td class="text-end">{{ $fmt($item['net']) }}</td>
+                            <td class="text-end text-danger">{{ $fmt($item['returns_amount']) }}</td>
+                            <td class="text-end">{{ $fmt($item['net_value']) }}</td>
+                        </tr>
+                    @endforeach
+                @endforeach
+            @empty
+                <tr><td colspan="7" class="text-muted">No items sold in this period.</td></tr>
+            @endforelse
+            </tbody>
+            @if($ci->isNotEmpty())
+                <tfoot><tr class="fw-semibold">
+                    <td>Total</td>
+                    <td class="text-end">{{ $fmt($ci->sum('sold_qty')) }}</td>
+                    <td class="text-end">{{ $fmt($ci->sum('returned_qty')) }}</td>
+                    <td class="text-end">{{ $fmt($ci->sum('net_qty')) }}</td>
+                    <td class="text-end">{{ $fmt($ci->sum('net')) }}</td>
+                    <td class="text-end">{{ $fmt($ci->sum('returns_amount')) }}</td>
+                    <td class="text-end">{{ $fmt($ci->sum('net_value')) }}</td>
+                </tr></tfoot>
+            @endif
+        </table>
+    </div></div>
+@endif
+
+{{-- DEALS — DEAL-CATEGORY-1. One row per deal under its own head, the way the client's old
+     software prints DEALS / MIDNIGHT DEAL 1 / CLASSIC PLATTER. Items above no longer carries
+     them, so the two sections together are the whole of the trading and neither double-counts. --}}
+@if(isset($data['deals']))
+    <div class="card mb-3"><div class="card-body table-responsive">
+        <p class="form-text mb-2">Deals are listed here, not in Items — printing both would count the same money twice.</p>
+        <table class="table table-sm">
+            <thead><tr><th>Deal</th><th class="text-end">Orders</th><th class="text-end">Sold Qty</th><th class="text-end">Ret Qty</th><th class="text-end">Net Qty</th><th class="text-end">Sold Value</th><th class="text-end">Returns</th><th class="text-end">Net Value</th></tr></thead>
+            <tbody>
+            @php $currentHead = null; @endphp
+            @forelse($data['deals'] as $r)
+                @if($r['head'] !== $currentHead)
+                    @php $currentHead = $r['head']; @endphp
+                    <tr class="table-light"><th colspan="8">{{ $currentHead }}</th></tr>
+                @endif
+                <tr>
+                    <td class="ps-4">{{ $r['deal'] }}</td>
+                    <td class="text-end">{{ $r['orders'] }}</td>
+                    <td class="text-end">{{ $fmt($r['sold_qty']) }}</td>
+                    <td class="text-end">{{ $fmt($r['returned_qty']) }}</td>
+                    <td class="text-end">{{ $fmt($r['net_qty']) }}</td>
+                    <td class="text-end">{{ $fmt($r['net']) }}</td>
+                    <td class="text-end text-danger">{{ $fmt($r['returns_amount']) }}</td>
+                    <td class="text-end fw-semibold">{{ $fmt($r['net_value']) }}</td>
+                </tr>
+            @empty
+                <tr><td colspan="8" class="text-muted">No deals sold in this period.</td></tr>
+            @endforelse
+            </tbody>
+            @if(count($data['deals']))
+                <tfoot><tr class="fw-semibold">
+                    <td>Total</td>
+                    <td class="text-end"></td>
+                    <td class="text-end">{{ $fmt(collect($data['deals'])->sum('sold_qty')) }}</td>
+                    <td class="text-end">{{ $fmt(collect($data['deals'])->sum('returned_qty')) }}</td>
+                    <td class="text-end">{{ $fmt(collect($data['deals'])->sum('net_qty')) }}</td>
+                    <td class="text-end">{{ $fmt(collect($data['deals'])->sum('net')) }}</td>
+                    <td class="text-end">{{ $fmt(collect($data['deals'])->sum('returns_amount')) }}</td>
+                    <td class="text-end">{{ $fmt(collect($data['deals'])->sum('net_value')) }}</td>
+                </tr></tfoot>
+            @endif
         </table>
     </div></div>
 @endif

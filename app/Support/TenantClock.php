@@ -168,6 +168,46 @@ class TenantClock
             ->all();
     }
 
+    /**
+     * OPERATING-DATE-1: wo business date jis par floor ABHI kaam kar raha hai.
+     *
+     * Ghadi aur kaam ek cheez nahi. POS har bill par shift ka FROZEN business_date likhta hai, is
+     * liye 5 September ko khuli shift par raat 12:16 baje punch hua bill bhi 5 September ka hai.
+     * Lekin us waqt Karachi me 6 September ho chuka hota hai, aur currentBusinessDate() sirf ghadi
+     * dekhta hai — to dashboard us din ko dhoondta tha jis par abhi ek bhi bill nahi. Har raat
+     * baarah baje tiles 0.00 par chali jaati thin jabke chaar shiftein khuli hoti thin.
+     *
+     * MAX() jaan-boojh kar: Kashif par ek shift teen din khuli reh gayi thi. Sab se PURANI khuli
+     * shift lete to wo bhooli hui shift dashboard ko teen din peeche kheench leti.
+     *
+     * Ye currentBusinessDate() ki jagah NAHI leta — wo abhi bhi wohi hai jo bill stamp karta hai
+     * aur jise Daily Closing, reports aur Shifts ka date filter parhte hain.
+     */
+    public function operatingBusinessDate(?Branch $branch = null): string
+    {
+        $open = Shift::where('status', 'open')
+            ->when($branch, fn ($q) => $q->where('branch_id', $branch->id))
+            ->whereNotNull('business_date')
+            ->max('business_date');
+
+        return $open
+            ? Carbon::parse($open)->toDateString()
+            : $this->currentBusinessDate($branch);
+    }
+
+    /**
+     * Wohi faisla har active branch ke liye. Jis branch par koi shift khuli na ho wo apne timezone
+     * ke aaj par gir jaati hai — do branchein alag din par ho sakti hain aur ye theek hai.
+     *
+     * @return array<int,string> branch_id => Y-m-d
+     */
+    public function operatingBusinessDatesByBranch(): array
+    {
+        return Branch::where('status', 'active')->get()
+            ->mapWithKeys(fn (Branch $b) => [$b->id => $this->operatingBusinessDate($b)])
+            ->all();
+    }
+
     /** True if the given string is a valid IANA timezone identifier (rejects numeric offsets). */
     public function normalize(?string $timezone): ?string
     {

@@ -4,7 +4,7 @@
 
 @section('content')
         <div class="page-header">
-            <div class="page-title"><h4>Sales by Channel</h4><h6>Paid delivery orders grouped by fulfilment channel</h6></div>
+            <div class="page-title"><h4>Sales by Channel</h4><h6>Delivery orders grouped by fulfilment channel — returns shown separately</h6></div>
             <div class="page-btn">
                 <a href="{{ url('/reports/sales/riders') }}" class="btn btn-outline-secondary btn-sm">Rider Report</a>
                 <a href="{{ url('/reports/sales/summary') }}" class="btn btn-outline-secondary btn-sm">Summary</a>
@@ -58,7 +58,10 @@
                             <th scope="col">Channel</th>
                             <th scope="col">Type</th>
                             <th scope="col" class="text-end">Orders</th>
+                            <th scope="col" class="text-end">Returned</th>
                             <th scope="col" class="text-end">Gross Amount</th>
+                            <th scope="col" class="text-end">Returns</th>
+                            <th scope="col" class="text-end">Net of Returns</th>
                             <th scope="col" class="text-end">Commission %</th>
                             <th scope="col" class="text-end">Commission</th>
                             <th scope="col" class="text-end">Net After Commission</th>
@@ -78,13 +81,16 @@
                                 @endif
                             </td>
                             <td class="text-end">{{ number_format($row->order_count) }}</td>
+                            <td class="text-end">{{ $row->returned_count > 0 ? number_format($row->returned_count) : '-' }}</td>
                             <td class="text-end">{{ number_format($row->gross_amount, 2) }}</td>
+                            <td class="text-end text-danger">{{ $row->returns_amount > 0 ? number_format($row->returns_amount, 2) : '-' }}</td>
+                            <td class="text-end fw-semibold">{{ number_format($row->net_amount, 2) }}</td>
                             <td class="text-end">{{ number_format($row->commission_percent, 2) }}</td>
                             <td class="text-end text-danger">{{ number_format($row->commission_amount, 2) }}</td>
                             <td class="text-end fw-semibold">{{ number_format($row->gross_amount - $row->commission_amount, 2) }}</td>
                         </tr>
                         @empty
-                        <tr><td colspan="7" class="text-center text-muted py-4">No paid delivery orders in the selected range.</td></tr>
+                        <tr><td colspan="10" class="text-center text-muted py-4">No delivery orders in the selected range.</td></tr>
                         @endforelse
                     </tbody>
                     @if($rows->isNotEmpty())
@@ -92,7 +98,10 @@
                         <tr>
                             <td colspan="2">Total</td>
                             <td class="text-end">{{ number_format($rows->sum('order_count')) }}</td>
+                            <td class="text-end">{{ number_format($rows->sum('returned_count')) }}</td>
                             <td class="text-end">{{ number_format($rows->sum('gross_amount'), 2) }}</td>
+                            <td class="text-end text-danger">{{ number_format($rows->sum('returns_amount'), 2) }}</td>
+                            <td class="text-end">{{ number_format($rows->sum('net_amount'), 2) }}</td>
                             <td></td>
                             <td class="text-end">{{ number_format($rows->sum('commission_amount'), 2) }}</td>
                             <td class="text-end">{{ number_format($rows->sum('gross_amount') - $rows->sum('commission_amount'), 2) }}</td>
@@ -104,7 +113,9 @@
         </div>
 
         <p class="text-muted small mt-2 mb-0">
-            Commission is estimated at each channel's <em>current</em> commission rate - it is a visibility figure,
-            not a settlement amount. Reconcile against the aggregator's statement before paying out.
+            Commission is estimated at each channel's <em>current</em> commission rate, on the GROSS amount - a
+            returned order is not deducted from it, because whether an aggregator refunds its commission is
+            settled in their statement, not here. It is a visibility figure, not a settlement amount.
+            Reconcile against the aggregator's statement before paying out.
         </p>
 @endsection

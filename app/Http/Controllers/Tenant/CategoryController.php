@@ -3,16 +3,18 @@
 namespace App\Http\Controllers\Tenant;
 
 use App\Http\Controllers\Controller;
+use App\Models\Tenant\Branch;
 use App\Models\Tenant\Category;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class CategoryController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Category::with('parent')->orderBy('sort_order')->orderBy('name');
+        $query = Category::with(['parent', 'branch'])->orderBy('sort_order')->orderBy('name');
 
         if ($request->filled('search')) {
             $search = trim($request->search);
@@ -33,6 +35,7 @@ class CategoryController extends Controller
             'category' => null,
             'title'    => 'Create Category',
             'parents'  => Category::where('is_active', true)->orderBy('name')->get(),
+            'branches' => Branch::orderBy('name')->get(['id', 'name']),
         ]);
     }
 
@@ -55,6 +58,7 @@ class CategoryController extends Controller
             'category' => $category,
             'title'    => 'Edit Category',
             'parents'  => Category::where('id', '!=', $category->id)->where('is_active', true)->orderBy('name')->get(),
+            'branches' => Branch::orderBy('name')->get(['id', 'name']),
         ]);
     }
 
@@ -86,12 +90,28 @@ class CategoryController extends Controller
     {
         $data = $request->validate([
             'parent_id'  => ['nullable', 'exists:categories,id'],
+            // CATEGORY-BRANCH-SCOPE-1: blank = every branch, which is what every existing row is.
+            'branch_id'  => ['nullable', 'exists:branches,id'],
             'code'       => ['nullable', 'string', 'max:50', Rule::unique('categories', 'code')->ignore($category?->id)],
             'name'       => ['required', 'string', 'max:190'],
             'description'=> ['nullable', 'string'],
             'sort_order' => ['nullable', 'integer', 'min:0'],
             'is_active'  => ['nullable', 'boolean'],
         ]);
+
+        $data['branch_id'] = $data['branch_id'] ?? null;
+
+        // A child may sit under a shared parent, or under a parent of its own branch — never under
+        // a parent belonging to a DIFFERENT branch. Otherwise the POS would show a child whose tab
+        // its branch never renders, and the Edge snapshot would ship a child without its parent.
+        if (! empty($data['parent_id'])) {
+            $parentBranchId = Category::whereKey($data['parent_id'])->value('branch_id');
+            if ($parentBranchId !== null && (int) $parentBranchId !== (int) ($data['branch_id'] ?? 0)) {
+                throw ValidationException::withMessages([
+                    'branch_id' => 'This parent category belongs to another branch. Choose that branch, or a parent shared by all branches.',
+                ]);
+            }
+        }
 
         $slugBase = Str::slug($data['name']);
         $slug = $slugBase;
@@ -107,6 +127,7 @@ class CategoryController extends Controller
 
         return [
             'parent_id'  => $data['parent_id'] ?? null,
+            'branch_id'  => $data['branch_id'],
             'code'       => $data['code'] ? strtoupper($data['code']) : null,
             'name'       => $data['name'],
             'slug'       => $slug,

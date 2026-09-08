@@ -116,8 +116,15 @@ class CateringLegacyRebuildMySqlTest extends MySqlTenantTestCase
         $this->assertSame(105, $stats['needs_setup']);
         $this->assertSame(804, CateringProductProfile::where('catering_enabled', true)->count());
 
-        // Every customer the order book knows.
-        $this->assertSame(4848, Customer::count());
+        // Every customer the order book knows — 4,785, not the 4,848 this once
+        // asserted. KASHIF-LEGACY-PHONE-SPLIT-1: the old software kept two
+        // numbers in one field, and stripping the punctuation fused them into a
+        // 22-digit string that then became the customer's IDENTITY. So the same
+        // person, recorded once with one number and once with two, arrived as
+        // two customers — and the fused one was unreachable. The extractor now
+        // separates them, and 63 of those false identities collapse into the
+        // real ones. The drop is the fix, not a loss.
+        $this->assertSame(4785, Customer::count());
 
         // And a catalogue rebuild is not a financial event.
         $this->assertSame($before, $this->ledgers());
@@ -131,7 +138,7 @@ class CateringLegacyRebuildMySqlTest extends MySqlTenantTestCase
 
         $this->assertSame(909, Product::where('product_kind', 'sale_item')->count(),
             'a rebuild replaces the catalogue — it never layers a second copy on it');
-        $this->assertSame(4848, Customer::count());
+        $this->assertSame(4785, Customer::count());
         $this->assertSame(2650.0, app(CateringCostBlockService::class)
             ->rateFor(Product::where('sku', '361')->value('id')));
     }

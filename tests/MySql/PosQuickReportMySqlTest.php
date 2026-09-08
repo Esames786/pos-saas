@@ -200,4 +200,227 @@ class PosQuickReportMySqlTest extends MySqlTenantTestCase
         $this->assertSame([$this->prodA], $out['settings']['product_ids']);
         $this->assertFalse($out['settings']['all_items']);
     }
+    /* -- QUICK-REPORT-OPEN-BILLS-1 ------------------------------------------------------------- */
+
+    private function twoOpenBills(): void
+    {
+        $h = $this->makeSale($this->branchId, ['status' => 'held', 'order_type' => 'dine_in',
+            'business_date' => $this->date, 'subtotal' => 500, 'grand_total' => 500]);
+        $this->makeSaleLine($h, $this->prodA, ['unit_price' => 500, 'line_total' => 500, 'quantity' => 1]);
+
+        $d = $this->makeSale($this->branchId, ['status' => 'draft', 'order_type' => 'takeaway',
+            'business_date' => $this->date, 'subtotal' => 300, 'grand_total' => 300]);
+        $this->makeSaleLine($d, $this->prodB, ['unit_price' => 300, 'line_total' => 300, 'quantity' => 1]);
+    }
+
+    private function reportCentreData(): array
+    {
+        $eng = app(\App\Services\Reports\SalesReportEngine::class);
+
+        return app(\App\Services\Reports\SalesReportDocumentService::class)->data(
+            $eng->normalizeFilters([
+                'date_from' => $this->date, 'date_to' => $this->date, 'branch_ids' => [$this->branchId],
+            ]),
+            PosQuickReportController::SECTIONS,
+        );
+    }
+
+    /**
+     * SAB SE EHEM TEST -- poore feature ki hifazat isi par hai.
+     *
+     * Quick Report ke hindse ab jaan-boojh kar barhte hain, is liye "kuch na hile" wali shart
+     * REPORT CENTER par hai. Wo include_open bhejta hi nahi, aur salesBase() default par purani
+     * population leta hai. Gyarah hisse milaye jate hain, ek nahi.
+     */
+    public function test_report_center_is_untouched_by_open_bills(): void
+    {
+        Auth::guard('tenant')->login($this->permittedUser());
+        $before = $this->reportCentreData();
+
+        $this->twoOpenBills();
+        $after = $this->reportCentreData();
+
+        foreach (['overview', 'categories', 'items', 'categoryItems', 'deals', 'waiters',
+                  'orderTypes', 'combos', 'cancellations', 'cashBank', 'bridge'] as $s) {
+            $this->assertEquals($before[$s], $after[$s],
+                "Report Center ka [{$s}] khule bills se hilna NAHI chahiye");
+        }
+    }
+
+    /** Quick Report me khule bills HAR section me aayein -- jama, categories, items, sab. */
+    public function test_quick_report_counts_open_bills_in_every_section(): void
+    {
+        Auth::guard('tenant')->login($this->permittedUser());
+        $plain = $this->controller()->print($this->req(['sections' => PosQuickReportController::SECTIONS]))->getData();
+
+        $this->twoOpenBills();
+        $open = $this->controller()->print($this->req(['sections' => PosQuickReportController::SECTIONS]))->getData();
+
+        $this->assertSame($plain['overview']['orders'] + 2, $open['overview']['orders'],
+            'khule bills orders ki ginti me aane chahiye');
+        $this->assertEqualsWithDelta((float) $plain['overview']['net_sales'] + 800.0,
+            (float) $open['overview']['net_sales'], 0.01, 'NET SALES me 500 + 300 aane chahiye');
+
+        $catAmt = fn (array $d) => collect($d['categories'])->sum(fn ($c) => (float) ((array) $c)['net']);
+        $this->assertEqualsWithDelta($catAmt($plain) + 800.0, $catAmt($open), 0.01,
+            'Categories me bhi khule bills ka maal aana chahiye');
+
+        $itemQty = fn (array $d) => collect($d['items'])->sum(fn ($i) => (float) ((array) $i)['net_qty']);
+        $this->assertEqualsWithDelta($itemQty($plain) + 2.0, $itemQty($open), 0.01,
+            'Items ki ginti me khule bills ke items aane chahiye');
+
+        $this->assertNotEmpty($open['categoryItems'], 'Items by Category bhi bharna chahiye');
+        $this->assertNotEmpty($open['orderTypes'], 'Order Types bhi bharna chahiye');
+    }
+
+    /** Cancelled bill na khula hai na paid -- kisi jama me nahi aa sakta. */
+    public function test_a_cancelled_bill_is_never_counted(): void
+    {
+        Auth::guard('tenant')->login($this->permittedUser());
+        $plain = $this->controller()->print($this->req(['sections' => PosQuickReportController::SECTIONS]))->getData();
+
+        $c = $this->makeSale($this->branchId, ['status' => 'cancelled', 'order_type' => 'dine_in',
+            'business_date' => $this->date, 'subtotal' => 9999, 'grand_total' => 9999]);
+        $this->makeSaleLine($c, $this->prodA, ['unit_price' => 9999, 'line_total' => 9999, 'quantity' => 1]);
+
+        $after = $this->controller()->print($this->req(['sections' => PosQuickReportController::SECTIONS]))->getData();
+
+        $this->assertSame($plain['overview']['orders'], $after['overview']['orders']);
+        $this->assertEqualsWithDelta((float) $plain['overview']['net_sales'],
+            (float) $after['overview']['net_sales'], 0.01);
+    }
+
+    /** Cash/Bank khule bills se NAHI barhta -- un par payment row hoti hi nahi. */
+    public function test_cash_bank_never_grows_with_open_bills(): void
+    {
+        Auth::guard('tenant')->login($this->permittedUser());
+        $plain = $this->controller()->print($this->req(['sections' => PosQuickReportController::SECTIONS]))->getData();
+
+        $this->twoOpenBills();
+        $after = $this->controller()->print($this->req(['sections' => PosQuickReportController::SECTIONS]))->getData();
+
+        $this->assertEquals($plain['cashBank'], $after['cashBank'],
+            'khule bill ka paisa aya nahi -- cash/bank ko usay ginna nahi chahiye');
+    }
+
+    /** Khule bills bhi wohi filters mante hain jo baaqi report mante hai. */
+    public function test_open_bills_honour_the_same_filters(): void
+    {
+        Auth::guard('tenant')->login($this->permittedUser());
+        $this->twoOpenBills();
+
+        $catA = $this->controller()->print($this->req([
+            'sections' => PosQuickReportController::SECTIONS, 'category_ids' => [$this->catA],
+        ]))->getData();
+
+        $names = collect($catA['categories'])->map(fn ($c) => ((array) $c)['name'] ?? '')->all();
+        $this->assertCount(1, $catA['categories'], 'sirf chuni hui category');
+        $this->assertEqualsWithDelta(600.0,
+            (float) ((array) $catA['categories'][0])['net'], 0.01,
+            'catA: paid 100 + khula 500');
+    }
+    /* -- QUICK-REPORT-BRANCH-SCOPE-1 ------------------------------------------------------------ */
+
+    /** Doosri branch, uski apni category aur us par ek paid bill. */
+    private function secondBranchWithASale(): array
+    {
+        $b2 = $this->makeBranch(['status' => 'active', 'name' => 'Doosri Branch']);
+        $c2 = $this->makeCategory(['name' => 'Sirf Doosri Branch Ka', 'parent_id' => null]);
+        $p2 = $this->makeProduct($c2, ['name' => 'Doosri Branch Ka Item']);
+        $s2 = $this->makeSale($b2, ['order_type' => 'takeaway', 'business_date' => $this->date,
+            'subtotal' => 7000, 'grand_total' => 7000]);
+        $this->makeSaleLine($s2, $p2, ['unit_price' => 7000, 'line_total' => 7000, 'quantity' => 1]);
+
+        return [$b2, $c2, $p2];
+    }
+
+    /** Us user ko sirf pehli branch do. */
+    private function bindToFirstBranch(User $u): void
+    {
+        DB::connection('tenant')->table('branch_user')->insert([
+            'branch_id' => $this->branchId, 'user_id' => $u->id,
+        ]);
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+    }
+
+    /**
+     * ASAL SHIKAYAT: Tawakkal ka cashier apni parchi par DOOSRE restaurant ka maal parh raha tha
+     * (owner ne Singaporean Rice dekh kar pakra). Ab report sirf apni branch ki honi chahiye.
+     */
+    public function test_a_branch_bound_user_never_sees_another_branch(): void
+    {
+        [, $c2, ] = $this->secondBranchWithASale();
+        $u = $this->permittedUser();
+        $this->bindToFirstBranch($u);
+        Auth::guard('tenant')->login($u);
+
+        $d = $this->controller()->print($this->req(['sections' => PosQuickReportController::SECTIONS]))->getData();
+
+        $names = collect($d['categories'])->map(fn ($c) => ((array) $c)['name'] ?? '')->all();
+        $this->assertNotContains('Sirf Doosri Branch Ka', $names,
+            'apni branch se bahar ki category parchi par aani NAHI chahiye');
+        $this->assertLessThan(7000.0, (float) $d['overview']['net_sales'],
+            'doosri branch ka 7,000 ka bill is jama me nahi aana chahiye');
+    }
+
+    /**
+     * DOOSRA DARWAZA: modal se doosri branch ki id bhej kar hadd paar na ho.
+     *
+     * Chunaav ko apni hadd se KAAT-A jaata hai, rad nahi kiya jaata — cashier ne ghalti nahi ki,
+     * usay apni branch ka jawab milna chahiye.
+     */
+    public function test_asking_for_a_foreign_branch_is_clamped_not_obeyed(): void
+    {
+        [$b2, $c2, ] = $this->secondBranchWithASale();
+        $u = $this->permittedUser();
+        $this->bindToFirstBranch($u);
+        Auth::guard('tenant')->login($u);
+
+        $d = $this->controller()->print($this->req([
+            'sections'   => PosQuickReportController::SECTIONS,
+            'branch_ids' => [$b2],                       // wo branch jo is user ki nahi hai
+        ]))->getData();
+
+        $names = collect($d['categories'])->map(fn ($c) => ((array) $c)['name'] ?? '')->all();
+        $this->assertNotContains('Sirf Doosri Branch Ka', $names,
+            'maangi hui ghair-branch ka data nahi milna chahiye');
+        $this->assertNotEmpty($d['categories'],
+            'aur khali parchi bhi nahi — apni branch ka jawab milna chahiye');
+    }
+
+    /** Jise koi branch assign na ho (jaise Owner) uska jawab pehle jaisa hi — poora tenant. */
+    public function test_an_unbound_user_still_sees_every_branch(): void
+    {
+        [, $c2, ] = $this->secondBranchWithASale();
+        Auth::guard('tenant')->login($this->permittedUser());   // koi branch_user row nahi
+
+        $d = $this->controller()->print($this->req(['sections' => PosQuickReportController::SECTIONS]))->getData();
+
+        $names = collect($d['categories'])->map(fn ($c) => ((array) $c)['name'] ?? '')->all();
+        $this->assertContains('Sirf Doosri Branch Ka', $names,
+            'khali assignment = koi rukawat nahi — poora tenant nazar aana chahiye');
+    }
+
+    /** Apni do branch me se ek chunna chale. */
+    public function test_a_user_with_two_branches_can_pick_one(): void
+    {
+        [$b2, , ] = $this->secondBranchWithASale();
+        $u = $this->permittedUser();
+        DB::connection('tenant')->table('branch_user')->insert([
+            ['branch_id' => $this->branchId, 'user_id' => $u->id],
+            ['branch_id' => $b2,             'user_id' => $u->id],
+        ]);
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+        Auth::guard('tenant')->login($u);
+
+        $both = $this->controller()->print($this->req(['sections' => PosQuickReportController::SECTIONS]))->getData();
+        $one  = $this->controller()->print($this->req([
+            'sections' => PosQuickReportController::SECTIONS, 'branch_ids' => [$b2],
+        ]))->getData();
+
+        $this->assertGreaterThan((float) $one['overview']['net_sales'], (float) $both['overview']['net_sales'],
+            'dono branch ka jama ek branch se zyada hona chahiye');
+        $names = collect($one['categories'])->map(fn ($c) => ((array) $c)['name'] ?? '')->all();
+        $this->assertSame(['Sirf Doosri Branch Ka'], $names, 'chuni hui branch ka hi maal');
+    }
 }

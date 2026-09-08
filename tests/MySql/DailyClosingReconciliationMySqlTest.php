@@ -138,11 +138,17 @@ class DailyClosingReconciliationMySqlTest extends MySqlTenantTestCase
         $userId = $this->actingAsTenant();
         $branchId = $this->makeBranch();
         $terminalId = $this->makeTerminal($branchId);
+
+        // ZERO-DRAWER-1: this drawer is opened with MONEY in it. It used to be opened at 0, which
+        // made the fixture quietly disagree with the test's own name: it proved that a blank count
+        // is refused, using a drawer that had nothing to count. That is now a legitimate close (an
+        // empty drawer closes on a blank box — test_an_empty_drawer_closes_without_a_typed_count),
+        // so the money the incident was about had to be put back into the fixture.
         $shiftId = app(ShiftService::class)->open(
             \App\Models\Tenant\Branch::on('tenant')->findOrFail($branchId),
             \App\Models\Tenant\Terminal::on('tenant')->findOrFail($terminalId),
             $userId,
-            0.0
+            5000.0
         )->id;
 
         $controller = app(ShiftController::class);
@@ -167,5 +173,38 @@ class DailyClosingReconciliationMySqlTest extends MySqlTenantTestCase
         $closed = Shift::on('tenant')->find($shiftId);
         $this->assertSame('closed', $closed->status);
         $this->assertSame(0.0, (float) $closed->counted_cash);
+        $this->assertSame(-5000.0, (float) $closed->cash_variance,
+            'a deliberate zero on a drawer that held 5,000 records the whole shortage');
+    }
+
+    /**
+     * ZERO-DRAWER-1 — the other half of the rule, kept beside it so the two cannot drift: a drawer
+     * with nothing in it closes on a blank box, because there is nothing to certify. Kashif Food's
+     * floor terminal takes orders but never money, so its expected cash is 0 every night; the
+     * workaround for the old refusal was a cashier typing 1, and the drawer closed a rupee over.
+     */
+    public function test_an_empty_drawer_closes_on_a_blank_count(): void
+    {
+        $userId = $this->actingAsTenant();
+        $branchId = $this->makeBranch();
+        $terminalId = $this->makeTerminal($branchId);
+        $shiftId = app(ShiftService::class)->open(
+            \App\Models\Tenant\Branch::on('tenant')->findOrFail($branchId),
+            \App\Models\Tenant\Terminal::on('tenant')->findOrFail($terminalId),
+            $userId,
+            0.0
+        )->id;
+
+        $response = app(ShiftController::class)->close(
+            Request::create('/shifts/' . $shiftId . '/close', 'POST', ['denominations' => ['1' => '', '2' => '']]),
+            Shift::on('tenant')->findOrFail($shiftId),
+            app(ShiftService::class)
+        );
+
+        $this->assertSame(302, $response->getStatusCode());
+        $closed = Shift::on('tenant')->find($shiftId);
+        $this->assertSame('closed', $closed->status, 'an empty drawer needs no typed count');
+        $this->assertSame(0.0, (float) $closed->counted_cash);
+        $this->assertSame(0.0, (float) $closed->cash_variance, 'and nothing is missing from it');
     }
 }
