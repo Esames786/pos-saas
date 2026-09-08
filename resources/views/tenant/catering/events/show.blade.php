@@ -1756,6 +1756,29 @@ $(function () {
             el.select2({
                 width: '100%', placeholder: '361 ya biryani…',
                 tags: true, // free-text items punch through the same bar
+                // PUNCH-SEARCH-MATCH-1 — what you TYPED must never outrank what
+                // you FOUND.
+                //
+                // select2's tag option is inserted at the TOP of the results and
+                // arrives pre-highlighted, so typing "chicken" and pressing Enter
+                // punched the literal word "chicken" — a free-text line with no
+                // product behind it — while five real chicken dishes sat below it
+                // untouched. The operator's hands never left the keyboard, which
+                // is the whole point of this bar, so they never saw it happen.
+                //
+                // The tag now goes LAST, after every match. Enter therefore takes
+                // the first real dish. Free text still works — it is simply what
+                // you reach when nothing matched, which is the only time anybody
+                // means it.
+                insertTag: (results, tag) => { results.push(tag); },
+                // And a tag is only offered when the catalogue has nothing to
+                // say: no matches, and something actually typed.
+                createTag: params => {
+                    const term = (params.term || '').trim();
+                    if (term === '') { return null; }
+
+                    return { id: term, text: term, newTag: true };
+                },
                 // Open the first page immediately while keeping code/name
                 // search available in the same focused control.
                 minimumInputLength: 0,

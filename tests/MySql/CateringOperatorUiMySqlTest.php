@@ -10,11 +10,11 @@ use App\Models\Tenant\CateringProductProfile;
 use App\Services\Catering\CateringEstimateService;
 use App\Services\Catering\CateringFinancialPositionService;
 use App\Services\Catering\CateringLineCostBlockService;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\View;
-use Illuminate\Http\Request;
 use RuntimeException;
 use Tests\MySql\Support\TenantFixtures;
 
@@ -197,7 +197,7 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
             'fresh rows follow system rate until an operator deliberately overrides it');
         $this->assertStringContainsString("h('item_name_ur', punch.nameUr", $html,
             'punched rows preserve the product Urdu name for customer and kitchen documents');
-        $this->assertStringContainsString("this.select();", $html,
+        $this->assertStringContainsString('this.select();', $html,
             'customer rate focus selects the existing number for one-keystroke replacement');
         $this->assertStringContainsString('event-booking-details', $html,
             'customer and event detail is compact and expandable');
@@ -422,6 +422,30 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
         } catch (RuntimeException) {
             $this->assertTrue(true);
         }
+    }
+
+    /**
+     * PUNCH-SEARCH-MATCH-1 — the typed word must not outrank the found dish.
+     *
+     * select2 puts its tag option at the TOP of the results, pre-highlighted, so
+     * typing "chicken" and pressing Enter punched the literal word rather than
+     * any of the five chicken dishes listed underneath it. `insertTag` moves the
+     * tag to the end; `createTag` refuses to offer one for an empty term. Free
+     * text still works — it is simply what you reach when nothing matched.
+     */
+    public function test_the_punch_search_offers_free_text_last_not_first(): void
+    {
+        $html = $this->render($this->booking());
+
+        $this->assertStringContainsString('insertTag:', $html,
+            'without this the typed term is the first, pre-selected option');
+        $this->assertStringContainsString('results.push(tag)', $html,
+            'the tag belongs after every real match, not before them');
+        $this->assertStringContainsString('createTag:', $html);
+
+        // The bar still accepts a dish that is not in the catalogue.
+        $this->assertStringContainsString('tags: true', $html,
+            'free-text lines are a feature — they are only demoted, never removed');
     }
 
     public function test_the_workspace_posts_in_place_instead_of_reloading(): void

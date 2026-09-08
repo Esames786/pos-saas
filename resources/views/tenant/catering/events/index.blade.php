@@ -93,7 +93,14 @@
         </form>
     </div>
     <div class="card-body p-0">
-        <div class="table-responsive">
+        {{-- KASHIF-EVENT-ACTIONS-2: `.table-responsive` is `overflow-x: auto`,
+             which clips anything that leaves the box — including a dropdown. On
+             a one-row list the box is barely taller than its row, so the Actions
+             menu opened into nothing and the operator had to scroll the page to
+             read it. The floor gives a short list room to breathe; the menu
+             itself escapes the scroller via `data-bs-strategy="fixed"` below,
+             so it stays readable however many rows there are. --}}
+        <div class="table-responsive" style="min-height: 320px;">
             <table class="table table-hover mb-0">
                 <thead>
                     <tr>
@@ -205,7 +212,7 @@
                             <div class="btn-group">
                                 <a href="{{ url('/catering/events/' . $event->id) }}" class="btn btn-sm btn-light">Open</a>
                                 <button type="button" class="btn btn-sm btn-light dropdown-toggle dropdown-toggle-split"
-                                        data-bs-toggle="dropdown" aria-expanded="false" title="Actions">
+                                        data-bs-toggle="dropdown" data-bs-strategy="fixed" aria-expanded="false" title="Actions">
                                     <span class="visually-hidden">Actions</span>
                                 </button>
                                 <ul class="dropdown-menu dropdown-menu-end">

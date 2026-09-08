@@ -207,6 +207,30 @@ class CateringEventActionsMySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString($release->release_no, $html);
     }
 
+    /**
+     * KASHIF-EVENT-ACTIONS-2 — the menu must not be trapped in the scroller.
+     *
+     * `.table-responsive` is `overflow-x: auto`, which clips whatever leaves the
+     * box. On a one-row list the box is barely taller than its row, so the
+     * Actions menu opened into nothing and the operator had to scroll the page
+     * to read their own options. This asserts the two things that fix it — a
+     * floor on the container, and a dropdown that escapes it.
+     *
+     * It pins MARKUP, not behaviour: only a browser can prove the menu is
+     * visible. What it can prove is that neither guard is quietly removed.
+     */
+    public function test_the_actions_menu_is_not_clipped_by_the_table_scroller(): void
+    {
+        $this->booking();
+
+        $html = $this->listHtml();
+
+        $this->assertStringContainsString('data-bs-strategy="fixed"', $html,
+            'the dropdown must escape the overflow container it is drawn inside');
+        $this->assertMatchesRegularExpression('/table-responsive"[^>]*min-height:\s*\d+px/', $html,
+            'a short list still needs room for the menu it opens');
+    }
+
     public function test_a_cancelled_booking_offers_no_lifecycle_action(): void
     {
         $event = $this->booking();
