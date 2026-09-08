@@ -47,3 +47,28 @@ FINANCIAL_PARITY_PLAN = return-event outbox -> Cloud return ingestion (finance-g
 **Rule:** do not implement offline return/refund/card finance until this sequence is designed and gated the
 same way sale ingestion is (exactly-once, finance-complete-or-refuse). This is a separate tranche after
 operational parity.
+
+## Supplier finance (SUPPLIER-FINANCE-DIRECT-1) — classified 8 Sep 2026
+
+A separate Main Finance session is building **direct supplier payment, supplier-ledger payment and a
+supplier-aware General Journal** on `feat/supplier-finance-direct-v1` (`1e69481`, 8 Sep). As of the Edge
+final catch-up it is **NOT on canonical** (`origin/feat/14d-2-plan-upgrade-requests` @ `e44eb01`).
+
+```
+SUPPLIER_FINANCE_OFFLINE_PARITY = FINANCIAL_PARITY_PENDING
+```
+
+Why: it is Cloud AP/GL posting (`SupplierPayableService::recordPayment`, `JournalPostingService::
+postSupplierPayment`, `JournalService::post`, manual AP journal lines carrying a supplier dimension). The
+restricted Edge artifact physically excludes `SupplierPayableService` and the supplier views on purpose,
+and **no official offline financial-event ingestion exists yet** — so the appliance must not invent a
+local AP/GL posting path. Nothing is omitted: the eventual financial-parity phase must carry this contract
+too, as a Cloud-ingested financial event, exactly like returns/refunds.
+
+Contract the future phase must honour (from the commit): payment + subledger + cash/bank + GL post in ONE
+transaction with a null GL result treated as failure; a cash/bank account is mandatory; manual AP journal
+lines require `counterparty_type=supplier` + a real supplier (mirrored into the subledger); AP is identified
+by the whole `2100` account family (parent_id), not one code; supplier overpayment fails closed (no supplier
+advance account exists); `supplier_ledgers.entry_type` gains `journal_adjustment` / `journal_reversal`.
+It also carries a Cloud-side fix (purchase-return GL never posting after GL-BUSINESS-DATE-1) that Edge inherits
+through the shared `JournalPostingService` once the branch merges into canonical — no Edge action.

@@ -68,12 +68,28 @@ trait EdgeLocalRuntimeFixture
      */
     protected function seedEdgeCredential(int $userId, int $branchId, int $activationEpoch = 1, string $password = 'CashierPass1'): int
     {
+        // COMPLETE SALE PERMISSION parity: every seeded cashier holds the synced `tenant.pos.store` grant (the
+        // effective per-user set the Cloud exports) — a test that models a restricted operator revokes it.
+        $this->grantEdgePermission($userId, 'tenant.pos.store');
+
         return (int) DB::connection('tenant')->table('edge_local_user_credentials')->insertGetId([
             'user_id' => $userId, 'branch_id' => $branchId, 'activation_epoch' => $activationEpoch,
             'credential_hash' => password_hash($password, PASSWORD_ARGON2ID),
             'credential_type' => 'password', 'credential_version' => 1, 'status' => 'active',
             'enrolled_at' => now(), 'created_at' => now(), 'updated_at' => now(),
         ]);
+    }
+
+    /** Grant a synced (spatie, tenant guard) permission directly to a user — idempotent across tests. */
+    protected function grantEdgePermission(int $userId, string $permission): void
+    {
+        $conn = DB::connection('tenant');
+        $permId = (int) ($conn->table('permissions')->where('name', $permission)->where('guard_name', 'tenant')->value('id')
+            ?: $conn->table('permissions')->insertGetId(['name' => $permission, 'guard_name' => 'tenant', 'created_at' => now(), 'updated_at' => now()]));
+        $conn->table('model_has_permissions')->insertOrIgnore([
+            'permission_id' => $permId, 'model_type' => \App\Models\Tenant\User::class, 'model_id' => $userId,
+        ]);
+        app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
     }
 
     /** Accept a TEST operational-stock baseline for the current binding. $items: [[product_id, variant, qty]]. */

@@ -100,6 +100,7 @@
             'orderTypes' => $orderTypes, 'defaultOrderType' => $defaultOrderType, 'orderTypeLabels' => $orderTypeLabels,
             'categories' => $categories, 'products' => $products, 'combos' => $combos, 'waiters' => $waiters,
             'paymentMethods' => $paymentMethods, 'operationalStockReady' => $operationalStockReady,
+            'canCompleteSale' => $canCompleteSale,
         ];
     @endphp
     <script id="edge-pos-data" type="application/json">@json($vm)</script>
@@ -434,9 +435,13 @@
             openModal('<h2>Review &amp; Pay' + (state.held ? ' — ' + esc(state.held.sale_no) : '') + '</h2>' + rowsHtml(totals) +
                 (cash ? '' : '<div class="err">No cash payment method is configured.</div>') +
                 (needsQuickSale ? '<div class="field"><label>Vehicle #</label><input type="text" id="rp-vehicle"></div><div class="field"><label>Waiter</label><select id="rp-waiter">' + DATA.waiters.map(w => '<option value="' + w.id + '">' + esc(w.name) + '</option>').join('') + '</select></div>' : '') +
-                '<div class="field"><label>Cash tendered</label><input type="number" id="rp-tendered" value="' + money(grand) + '" min="' + money(grand) + '" step="0.01"></div>' +
+                (DATA.canCompleteSale ? '<div class="field"><label>Cash tendered</label><input type="number" id="rp-tendered" value="' + money(grand) + '" min="' + money(grand) + '" step="0.01"></div>' : '') +
                 '<div id="rp-err"></div>' +
-                '<div class="btn-row"><button class="ghost" onclick="EdgePOS.closeModal()">Cancel</button><button class="ok" id="rp-complete"' + (cash ? '' : ' disabled') + '>Complete Sale</button></div>');
+                // COMPLETE SALE PERMISSION parity (Online f12f1fc): Review & Pay opens for everyone (preview, discount later);
+                // taking the payment is gated on tenant.pos.store — the button is absent and the Online hint shows instead.
+                '<div class="btn-row"><button class="ghost" onclick="EdgePOS.closeModal()">Cancel</button>' +
+                (DATA.canCompleteSale ? '<button class="ok" id="rp-complete"' + (cash ? '' : ' disabled') + '>Complete Sale</button>'
+                    : '<span class="muted" style="align-self:center">Apply the discount, then <strong>Hold</strong> — a counter will close the bill.</span>') + '</div>');
             const btn = $('rp-complete'); if (btn) btn.addEventListener('click', () => completeSale(grand, cash));
         }
         async function completeSale(grand, cash) {

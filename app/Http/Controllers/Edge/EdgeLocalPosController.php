@@ -166,6 +166,8 @@ class EdgeLocalPosController extends Controller
             'paymentMethods' => PaymentMethod::on('tenant')->where('is_active', true)
                 ->where('method_type', 'cash')->orderBy('name')->get(['id', 'code', 'name']),
             'operationalStockReady' => $this->baselines->currentAccepted() !== null,
+            // COMPLETE SALE PERMISSION parity: the button follows tenant.pos.store; the server enforces it too.
+            'canCompleteSale' => (bool) $user?->can('tenant.pos.store'),
         ]);
     }
 
@@ -465,6 +467,9 @@ class EdgeLocalPosController extends Controller
         if ($terminal instanceof JsonResponse) {
             return $terminal;
         }
+        if ($denied = $this->denyUnlessMayCompleteSale()) {
+            return $denied;
+        }
 
         try {
             $sale = $this->pos->completePaidSale($data, auth('tenant')->user(), $terminal->id);
@@ -645,6 +650,9 @@ class EdgeLocalPosController extends Controller
         $terminal = $this->selectedTerminal($request);
         if ($terminal instanceof JsonResponse) {
             return $terminal;
+        }
+        if ($denied = $this->denyUnlessMayCompleteSale()) {
+            return $denied;
         }
         try {
             $settled = $this->pos->settleHeldSale($sale, $data, auth('tenant')->user(), $terminal->id);
@@ -922,6 +930,20 @@ class EdgeLocalPosController extends Controller
             'preview_url' => url('/edge/local/pos/print-jobs/' . $j->id . '/document'),
             'created_at' => $j->created_at?->toIso8601String(),
         ];
+    }
+
+    /**
+     * COMPLETE SALE PERMISSION parity (canonical f12f1fc): taking payment is gated on `tenant.pos.store`,
+     * separately from discount/approval permissions. The page hides the button; the SERVER refuses regardless.
+     * `User::can()` resolves from the synced per-user effective permission set (EDGE_OFFLINE_PERMISSION_AUTHORITY).
+     */
+    private function denyUnlessMayCompleteSale(): ?JsonResponse
+    {
+        if (auth('tenant')->user()?->can('tenant.pos.store')) {
+            return null;
+        }
+
+        return response()->json(['message' => 'Taking payment needs the Complete Sale permission — apply any discount, then Hold; a counter will close the bill.'], 403);
     }
 
     private function selectedTerminal(Request $request): Terminal|JsonResponse

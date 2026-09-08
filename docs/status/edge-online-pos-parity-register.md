@@ -1,88 +1,92 @@
 # Edge ↔ Online POS parity register
 
-Goal (locked): **Offline Edge should give the same operator experience and business semantics as the current
-online POS for every workflow that can safely operate offline.** Functional/behavioral parity — not code
-copying. Internet-required actions are never faked: they are `ONLINE_REQUIRED`, `QUEUED_FOR_ONLINE`, or an
-explicit unavailable state with a truthful message. Cloud-authoritative accounting is never given a second
-local authority.
+Goal (locked): **the current Online Bingoo POS is the functional specification for Edge.** Online defines WHAT the
+operator sees and does; Edge defines HOW the same workflow executes safely without Internet. No "Offline Lite",
+no API-only parity: a workflow counts only when the cashier can run it from the Branch Server **browser page** and
+the proof executes the real route → middleware → controller → services → Blade. Every shared workflow ends as one
+of **FULL_OFFLINE_PARITY / ONLINE_REQUIRED / FINANCIAL_PARITY_PENDING**. Internet-required actions are never faked.
 
-Canonical reviewed: `origin/feat/14d-2-plan-upgrade-requests` @ `15afd50` (18–28 Aug 2026 shared POS work).
-Every shared workflow ends as one of: **FULL_OFFLINE_PARITY / ONLINE_REQUIRED / FINANCIAL_PARITY_PENDING**.
+Canonical reviewed: `origin/feat/14d-2-plan-upgrade-requests` @ `e44eb01` (7 Sep 2026) — merged into the Edge
+branch with **0 shared POS commits missing** (reconciles 1–3: `ffcd390`, `958883a`, `3f6cff5`).
+Cashier product: `GET /edge/local/pos` → `EdgeLocalPosController@screen` → `resources/views/edge/pos/index.blade.php`
+(self-contained, renders with no Internet; every mutation → `edge.local.pos.*`, never a Cloud posting route).
 
-## The dominant finding — the Edge cashier UI is a first-class gap
+## Register — executable through the Branch Server cashier page
 
-`EdgeLocalPosController` is a **JSON API** (28 json responses, 0 views); the only Edge Blade is
-`resources/views/edge/auth/login.blade.php`. **Edge has no local browser cashier UI.** So every *screen-level*
-parity item (POS tiles, View Tables header, Preview Bill modal, Quick Report screen, payment modal) is gapped
-at the UI layer — not cosmetic, not "productization-only". The **business behavior** for those workflows can
-exist offline at the API/service layer (and reservations now do), but an operator cannot yet *run* the cashier
-workflow in a browser the way they do online.
+Status is what the proof executes today (test class in the last column; all real HTTP on a branch_server-booted app).
+
+| # | Online branch-POS workflow | Edge UI | Edge business logic | Print / report | Recovery | STATUS | Proof |
+|---|---|---|---|---|---|---|---|
+| 1 | Cashier login / session freshness | Edge login page | Edge credential, epoch, branch authz | — | census/restore | **FULL_OFFLINE_PARITY** | EdgeLocalAuth*, EdgeLocalPosHttp (freshness) |
+| 2 | Default terminal (land on assigned) | ✓ auto-select | `default_terminal_id` | — | — | **FULL_OFFLINE_PARITY** | EdgeCashierScreenRenders |
+| 3 | Terminal-switch authority (pinned operator sees only his) | ✓ | `tenant.pos.change-terminal` | — | — | **FULL_OFFLINE_PARITY** | EdgeCashierScreenRenders |
+| 4 | Order-type selector (effective allowed types) | ✓ | `effectiveAllowedOrderTypes` + server refusal | — | — | **FULL_OFFLINE_PARITY** | EdgeLocalPosHttp (order-type restriction) |
+| 5 | Category / Deals tabs (hierarchy, branch scope) | ✓ display | CATEGORY-BRANCH-SCOPE-1 | — | — | **FULL_OFFLINE_PARITY** | EdgeCashierScreenRenders, DineIn (payload) |
+| 6 | Product tiles + search + hidden-product handling | ✓ | grid truth = Online's | — | — | **FULL_OFFLINE_PARITY** | EdgeCashierScreenRenders, DineIn |
+| 7 | Takeaway cash sale | ✓ Review & Pay | `EdgeLocalPosService::completePaidSale` | receipt (row 21) | outbox | **FULL_OFFLINE_PARITY** | EdgeLocalPosHttp, Printing, ShiftAndNetworkDown |
+| 8 | Quick Sale cash (vehicle + waiter rule) | ✓ prompt | same `required_if` as Online | receipt | outbox | **FULL_OFFLINE_PARITY** | EdgeLocalPosHttp |
+| 9 | Dine-In: View Tables → open table (waiter, guests) | ✓ board | session lock order, frozen business_date | — | census | **FULL_OFFLINE_PARITY** | DineIn, LocalRestaurantHttp |
+| 10 | Hold | ✓ | held check, one open check per session | — | census | **FULL_OFFLINE_PARITY** | DineIn |
+| 11 | Draft (no KOT until held normally) | ✓ | `is_draft`, server-enforced | — | census | **FULL_OFFLINE_PARITY** | DineIn |
+| 12 | Recall (never hijacks the operator's terminal) | ✓ list + board | GET /held-sales, detail | — | — | **FULL_OFFLINE_PARITY** | DineIn |
+| 13 | Add Round (captured price, sent-state carry) | ✓ Save round | `reviseHeldSale` | — | — | **FULL_OFFLINE_PARITY** | DineIn, LocalRestaurantHttp |
+| 14 | KOT round 1 / round 2 = only the new quantity (sent pool) | ✓ KOT | shared `PrintJobService::queueKot` + bookkeeping | KOT event + job | — | **FULL_OFFLINE_PARITY** | DineIn |
+| 15 | Preview Bill (zero mutation) | ✓ modal | `previewBill` | — | — | **FULL_OFFLINE_PARITY** | EdgePreviewBill, page wiring |
+| 16 | Review & Pay → cash settlement (direct + held; own shift takes the cash) | ✓ | `settleHeldSale` / `completePaidSale` | receipt | outbox | **FULL_OFFLINE_PARITY** | DineIn, LocalRestaurantHttp |
+| 17 | Complete Sale permission split from discount permission | ✓ button gated | `tenant.pos.store` on POST sales / settle | — | — | **FULL_OFFLINE_PARITY** | EdgeCashierPermission (see note A) |
+| 18 | Table Board actions: recall / new check / close EMPTY table (+ race) | ✓ | `closeTableSession` under row lock | — | — | **FULL_OFFLINE_PARITY** | DineIn, LocalRestaurantRace (close vs hold) |
+| 19 | Reservations: reserve / details / cancel / open reserved → customer carries | ✓ board | Edge-owned authority; Cloud fence; handback | — | census + recovery | **FULL_OFFLINE_PARITY** | Reservation, TableReservation, ReservationRace, Handback, CloudFence |
+| 20 | Whole-order cancel frees the table; prints at the CURRENT counter; original terminal kept | ✓ reason + manager | shared `KotCancellationService` + terminal override | cancel KOT | — | **FULL_OFFLINE_PARITY** | DineIn |
+| 21 | Hidden/deactivated product already on Hold/Draft stays recallable + payable | ✓ | carried-line resolution | — | — | **FULL_OFFLINE_PARITY** | DineIn (real route) |
+| 22 | Receipt: auto after payment (ensure-once), reprint, current-counter routing, network print, Print Here fallback | ✓ Recent Prints | shared `queueReceipt` + `PrintRoutingService` | Edge print authority claims stored bytes | — | **FULL_OFFLINE_PARITY** | Printing |
+| 23 | KOT reprint + historical stored-copy fallback (KOT-REPRINT-BLANK-1); deal name on KOT | ✓ | shared path | canonical renderer/EscPos | — | **FULL_OFFLINE_PARITY** | Printing (line churn) |
+| 24 | Recent Prints / mark printed / retry failed delivery; per-printer isolation | ✓ | Edge delivery service | — | — | **FULL_OFFLINE_PARITY** | Printing, LocalPrintRace, LocalPrintDelivery |
+| 25 | Quick Report VIEW (business_date, NET SALES, Sold/Ret/Net, deal components not counted, deal identity, items-by-category, charge breakup, GRAND TOTAL, **open bills**, **branch scope**) | ✓ modal | canonical `SalesReportEngine` + `SalesReportDocumentService` — zero Edge math | canonical thermal Blade | — | **FULL_OFFLINE_PARITY** | QuickReport (engine is the oracle) |
+| 26 | Quick Report THERMAL (print here) | ✓ | same | same Blade, browser print | — | **FULL_OFFLINE_PARITY** | QuickReport |
+| 27 | Quick Report NETWORK | ✓ | same | `buildReport` bytes on Edge print authority | — | **FULL_OFFLINE_PARITY** | QuickReport (claimable job) |
+| 28 | Shift: open, terminal lock, zero-drawer close, typed count + variance | ✓ modal | shared `ShiftService` | — | census | **FULL_OFFLINE_PARITY** | ShiftAndNetworkDown |
+| 29 | Shift breakup (cash/card/bank/cancellations) + blind count (HIDE-AMOUNTS) | ✓ | shared `AmountVisibility`, figures stripped server-side | — | — | **FULL_OFFLINE_PARITY** | ShiftAndNetworkDown |
+| 30 | Operating business date / business_date parity (OPERATING-DATE, shift-frozen dates) | ✓ | `TenantClock::operatingBusinessDate` | — | — | **FULL_OFFLINE_PARITY** | ShiftAndNetworkDown |
+| 31 | SALE-DATE-TRUTH (payment never rewrites order time); KOT-TIME-TRUTH (shared `KotTicketTime` renderer) | ✓ | shared code paths | canonical KOT Blade/EscPos | — | **FULL_OFFLINE_PARITY** | DineIn (sale_date), Printing (renderer) |
+| 32 | Network-down cash sale + business-friendly "Pending sync" (no internals on the till) | ✓ chip | outbox 1B–1E | local print | outbox | **FULL_OFFLINE_PARITY** | ShiftAndNetworkDown, LocalPosHttp (master dead) |
+| 33 | Deal (combo) SELLING | tabs only | `assertNoComboSelling` refuses | — | — | **ONLINE_REQUIRED** (not inherent — next Edge build item) | — |
+| 34 | Manual discount / promo on a sale | — | `assertNoDiscountOrPromo` refuses | — | — | **ONLINE_REQUIRED** (not inherent — next Edge build item) | — |
+| 35 | Split bill | — | Cloud `SplitBillController` only | — | — | **ONLINE_REQUIRED** (not inherent) | — |
+| 36 | Delivery orders: channel/rider, address book, ADDRESS-ATTACH-1 | — | Edge sale authority = quick_sale/takeaway/dine_in | — | — | **ONLINE_REQUIRED** | — |
+| 37 | Card / provider-authorised payment | — | refused offline (never faked) | — | — | **ONLINE_REQUIRED** | EdgeLocalPos (card refused) |
+| 38 | Quick Report EMAIL | truthful 422 | — | — | — | **ONLINE_REQUIRED** | QuickReport |
+| 39 | Scheduled owner email report / tenant backups / agent shelf / admin | — | Cloud | — | — | **ONLINE_REQUIRED (Cloud)** | — |
+| 40 | Returns / refunds / item void after payment / RETURN-MANAGER-APPROVAL | — | no offline financial event ingestion yet | — | — | **FINANCIAL_PARITY_PENDING** | see `edge-online-financial-parity-gap.md` |
+| 41 | Supplier finance (SUPPLIER-FINANCE-DIRECT-1 — not yet on canonical) | — | Cloud AP/GL; artifact excludes it | — | — | **FINANCIAL_PARITY_PENDING** | see gap doc |
+
+Note A — row 17: the Complete-Sale gate is the last enumerated behaviour landed in this tranche (server 403 on
+POST sales / settle without `tenant.pos.store`, button hidden with the Online hint); its proof class is listed in the
+final report for the tranche.
+
+## Percentages — computed from this register (no estimate)
 
 ```
-EDGE_CASHIER_UI = PARITY_GAP  (major workstream: build the offline browser cashier surface on the Edge stack;
-                               until then, screen-level parity for tiles/preview/report/payment is UI-gapped)
+FULL_OFFLINE_PARITY        = 32   (rows 1–32)
+ONLINE_REQUIRED            =  7   (rows 33–39; 33–35 are NOT inherent — they are the next Edge build items)
+FINANCIAL_PARITY_PENDING   =  2   (rows 40–41)
+
+NORMAL_OPERATOR_POS_PARITY_PERCENT = 32 / 39 = 82%
+   (denominator = every workflow a normal branch operator runs on the Online POS: rows 1–38 + returns (40);
+    excludes Cloud-only admin row 39 and supplier finance 41)
+FULL_OFFLINE_PARITY_PERCENT        = 32 / 41 = 78%
+   (denominator = every shared workflow in the register)
 ```
 
-## Register
+What moves the numbers next: deal selling (33), discounts/promo (34), split bill (35) are Edge build items, not
+Internet-bound; delivery (36) needs the address/rider workflow; returns (40) and supplier finance (41) belong to the
+dedicated financial-parity phase (return-event outbox reusing sync 1B–1E, Cloud-ingested, finance-gated).
 
-| Online POS workflow | Class | Edge status |
-|---|---|---|
-| **Table Reservations** (reserve/view/cancel + customer carry-over) | **BUSINESS_LAYER_IMPLEMENTED** (not yet FULL_OFFLINE_PARITY) / UI-gapped | DONE at the service+API layer — `EdgeTableReservationService`, `edge.local.pos.restaurant.table.reserve/reservation/unreserve`; Local-Mode authority; backup census + cross-DB recovery; **true concurrency CERTIFIED** (reserve↔reserve / reserve↔open / cancel↔open, independent processes). **Still pending before FULL_OFFLINE_PARITY:** (a) the reciprocal Cloud-side reservation fence and (b) the Local-Mode→Cloud handback — both depend on the canonical reservation Cloud controller + `restaurant_tables.reserved_*` columns, which are NOT on this Edge branch (merge-base `8799749`). See "Structural note" below. |
-| **Review & Pay → Preview Bill** (running bill, no mutation) | FULL_OFFLINE_PARITY (business) / **UI-gapped** | The totals math exists offline (`SaleTotalsService`); a no-mutation preview endpoint is a small add. The modal itself needs the Edge cashier UI. **Next.** |
-| **Payment modal / wider layout** | **UI-gapped** | Pure UI; needs the Edge cashier UI. |
-| **POS-HEADER / POS-TILE / POS-WINDOW** (`15afd50`,`9e93a4b`,`d2ab907`,`441c3a9`) | **UI-gapped** | Cloud POS Blade/CSS layout; equivalent behavior belongs in the (missing) Edge cashier UI. |
-| **KOT/receipt presentation** (variant/divider/tail-feed) | **PORT (small)** | Edge reuses the shared `EscPosPayloadService`; the cosmetic changes port there. **Next.** |
-| **POS Quick Report** (view/thermal/network/email) | **MIXED** | Local report facts + thermal/network via the Edge print authority are offline-buildable (business layer, UI-gapped for the screen); **email = ONLINE_REQUIRED** (never faked). **Next.** |
-| **Recent Prints / local-USB fallback** | ALREADY_STRUCTURALLY_EQUIVALENT / UI-gapped | Edge owns local printing (`EdgeLocalPrintDeliveryService`, per-printer isolation). Operator "recent prints" listing needs the Edge UI. |
-| **RETURN-UX** (`bff2e8d`, unit-aware stepper) | **FINANCIAL_PARITY_PENDING** | Returns touch stock+COGS+GL — see `edge-online-financial-parity-gap.md`. Not in this tranche. |
-| Draft / Draft→Hold KOT suppression | ALREADY_EQUIVALENT | Edge held/draft (`status=held`,`is_draft`); draft parked without a kitchen ticket. |
-| Recall must not switch active terminal | ALREADY_EQUIVALENT | Edge settle stamps the operator's own per-session terminal (server-authoritative). |
-| business_date on returns/voids | ALREADY_EQUIVALENT | Edge migration present; write-path identical. |
-| Product stock/non-stock consumption guard | ALREADY_EQUIVALENT | `is_stock_tracked`-guarded consumption; catalog guard ported. |
-| Collision-safe print-job numbering | ALREADY_EQUIVALENT | Shared PrintJobService numbering. |
-| Printer per-printer isolation | ALREADY_EQUIVALENT | `edge_local_print_deliveries` per-printer FIFO + backoff. |
-| Cloud scheduled tenant DB backup | CLOUD_ONLY | Edge has its own encrypted appliance backup. |
-| Scheduled owner email report | ONLINE_REQUIRED | Needs internet SMTP; never faked offline. |
-| Printer agent shelf / manager health UI | CLOUD_ONLY (manager UI) | Edge runtime already isolates printers. |
-| Kashif onboarding / catalog rebuild, supplier-opening GL, tenant admin/billing | CLOUD_ONLY | Not Edge runtime. |
+## Release gates (real path only)
 
-## Summary
-```
-ONLINE_POS_CHANGES_REVIEWED = 18–28 Aug shared POS + reservation P1/2/2b
-ALREADY_EQUIVALENT          = draft, recall-terminal, business_date, product contract, print-job numbering, printer isolation
-MUST_PORT (business layer)  = Table Reservations (DONE), Preview Bill endpoint (next), KOT/receipt EscPos parity (next), Quick Report facts (next)
-INTERNET_REQUIRED           = Quick Report email, scheduled owner report
-CLOUD_ONLY                  = tenant scheduled backup, agent shelf/manager UI, onboarding, supplier GL, tenant admin/billing
-REQUIRES_FINANCIAL_DESIGN   = returns/refunds/void/card  (see edge-online-financial-parity-gap.md)
-UI_GAP (dominant)           = Edge has no local browser cashier UI — screen-level parity is blocked until it is built
-
-NORMAL_OPERATOR_POS_PARITY_PERCENT ≈ business/API layer ~85% (reservations, dine-in, held/draft, sales, print, business_date) ;
-                                     screen/UI layer ~15% (login only) — the cashier UI is the gating gap.
-FULL_OFFLINE_PARITY_PERCENT ≈ 70% (financial return/refund/card parity + the cashier UI are the remaining majority)
-```
-
-## Structural note — the Edge branch is far behind canonical's POS front-end
-
-`feat/edge-config-refresh-v1` branched at `8799749` (before the current POS front-end + the reservation
-feature). Three of the requested closures therefore depend on canonical code/schema **not present on this
-branch**, and cannot be honestly built here without first bringing that code across:
-
-- **Cloud-side reservation fence** — the canonical `RestaurantTableController::reserve/unreserve` (the thing to
-  fence when Local Mode owns the branch) does not exist on this branch; `RestaurantTableController` here has no
-  reserve method. The fence belongs on that controller and lands when reservations merge into the Edge line.
-- **Local-Mode → Cloud handback** — projecting active Edge reservations into `restaurant_tables.reserved_*`
-  requires those columns, which are **not** on this branch. Implementing/testing handback needs the canonical
-  reservation migration brought across (the Cloud DB is the projection target).
-- **Cashier UI parity** — the online cashier surface (`resources/views/tenant/pos/index.blade.php` + its JS/CSS)
-  has evolved substantially on canonical since `8799749`; matching it (the owner's rule: "do not invent a new
-  visual workflow") means porting/extracting that front-end or reconciling the branch — a major front-end
-  workstream, not a small endpoint.
-
-**Recommended sequence decision (needs owner steer):** either (1) reconcile `feat/edge-config-refresh-v1` with
-current canonical POS front-end + reservation controller/migrations (a deliberate merge), then build the Edge
-cashier UI + Cloud fence + handback on that aligned base; or (2) port the specific canonical POS view/controller/
-migration pieces onto the Edge branch. Building a from-scratch Edge cashier UI would violate the "no new visual
-workflow" rule and is not done here.
-
-**Acceptance rule (locked):** a shared online cashier action must either work the same offline, or the software
-must explicitly say Internet is required. A missing button / hidden behavior is not parity.
+- `EdgeCashierScreenRendersHttpMySqlTest` — REAL HTTP GET of the cashier page on a branch_server-booted app.
+- `EdgeBladeCompileGateTest` — every Edge Blade compiles and the generated PHP passes `php -l`.
+- `EdgeArtifactBootTest` — the BUILT restricted artifact registers the cashier page, recall, board, receipt, print
+  document, Quick Report, shift summary and sync summary routes; `EdgeArtifactTest` — the plan ships the cashier
+  page, Quick Report controller, canonical report engine/thermal Blade and print documents, and keeps Cloud
+  report/AP source physically out.
+- `EdgeBranchServerRegistrationTest` — the route census: every branch-server URI is deliberately approved.

@@ -822,16 +822,6 @@
                 </div>
                 <div class="row g-2">
                     <div class="col">
-                        {{-- POS-DRAFT-1: park the order WITHOUT sending the KOT. Same as Hold otherwise
-                             (recall, edit, preview, cancel); a later Hold prints the KOT and clears draft. --}}
-                        <button type="button" class="btn btn-outline-warning btn-lg w-100 fw-semibold" id="save-draft-btn"
-                                title="Save as Draft — parks the order without sending the KOT to the kitchen">
-                            <i class="ti ti-file-pencil me-1"></i>Save as Draft
-                        </button>
-                    </div>
-                </div>
-                <div class="row g-2">
-                    <div class="col">
                         <button type="button" class="btn btn-outline-secondary btn-lg w-100" id="bill-preview-btn"
                                 title="Show / print the current bill (preview — not a tax receipt)">
                             <i class="ti ti-file-text me-1"></i>Bill / Preview
