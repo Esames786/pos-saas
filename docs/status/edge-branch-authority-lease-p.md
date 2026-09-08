@@ -85,6 +85,14 @@ Result: 3 tests, 97 assertions, green. The partition test found and fixed one de
 meta model lacked datetime casts for the authority timestamps, so the cashier connection label threw once a
 failure and a later ack both existed.
 
+Authoritative full MySQL suite at 615ff20 (P + reconcile 5 + the two findings below), run alone: 1432 tests,
+1430 passed, 2 red = the known canonical Dompdf/A4-PDF debt (PosQuickReport email, ReportSchedule), byte-identical
+to canonical. New Edge regressions: 0. Two findings the full suite surfaced were fixed in 615ff20: the new lease
+table had to be classified (KEPT) in the tenant transaction reset, and DELIVERY-CHARGE-1's "Edge refuses a delivery
+charge" pin was superseded by the Phase A delivery parity (a non-delivery offline sale ignores the field as Online
+does). Fast Feature+Unit suite: the two stale canonical SQLite unit tests (EscPosReportPayloadTest two-decimal money,
+DeliveryRiderReassignmentRegressionTest text-grep) remain red, as before, and are canonical debt.
+
 ## Release-blocker status after P
 
 | Blocker | Status |
