@@ -88,6 +88,7 @@ class ProductSearchRelevanceMySqlTest extends MySqlTenantTestCase
         $this->assertSame('Taftan -', $this->search('51')[0] ?? null,
             'the operator typed an exact id — that is not a guess to be ranked');
     }
+
     public function test_an_exact_name_wins_outright(): void
     {
         $this->product('Raita Onion Fried', 'R1');
