@@ -139,7 +139,7 @@ class EdgeLocalPrintDeliveryService
                 'ip' => (string) $job->printer->ip_address,
                 'port' => (int) ($job->printer->port ?: 9100),
             ];
-        });
+        }, 3); // MySQL 1213 deadlock between two workers claiming at once → retry, never a raw leak (proven under full-suite load)
     }
 
     /** TRUE = this (current) lease completed the job. FALSE = stale token: NOTHING was mutated. */

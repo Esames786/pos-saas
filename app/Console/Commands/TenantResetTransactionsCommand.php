@@ -44,6 +44,11 @@ class TenantResetTransactionsCommand extends Command
         'sale_payments', 'sales_order_line_cancellations', 'kot_batch_lines', 'kot_batches',
         'sales_return_lines', 'sales_returns', 'sales_order_rider_assignments', 'sales_order_lines', 'sales_orders',
         'sales_ledgers', 'manager_approvals', 'print_jobs', 'restaurant_table_sessions',
+        // OFFLINE EDGE (Cloud side): the exactly-once registry of Branch-Server sales applied into the
+        // sales tables above. It belongs WITH those sales — kept alone it would make a replayed Edge
+        // sale read as "already applied" and silently vanish after a reset. Absent on tenants that
+        // never received an Edge sale (hasTable guard above).
+        'edge_inbound_sale_ingestions',
         // Ping/reboot work items handed to a print agent — transient, exactly like
         // the print jobs beside them. The paired AGENTS and printers are master
         // data and are kept; a week-old queued reboot is not.
