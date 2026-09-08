@@ -34,7 +34,9 @@ use App\Models\Tenant\CateringEstimateLine;
 use App\Models\Tenant\CateringEstimateLineCostBlock;
 use App\Models\Tenant\CateringEvent;
 use App\Services\Catering\CateringCommercialRateImpactService;
+use App\Services\Catering\CateringAdvanceService;
 use App\Services\Catering\CateringEstimateService;
+use App\Services\Catering\CateringFinalInvoiceService;
 use App\Services\Catering\CateringLineCostBlockService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -115,6 +117,23 @@ try {
             $event = CateringEvent::findOrFail((int) $argv[2]);
             echo 'OK:cancel:'.app(CateringEstimateService::class)
                 ->cancelEvent($event, 'Race test cancellation')->status;
+            break;
+
+        case 'advance':
+            $event = CateringEvent::findOrFail((int) $argv[2]);
+            $advance = app(CateringAdvanceService::class)->record($event, [
+                'amount' => (float) $argv[3],
+                'received_date' => now()->toDateString(),
+                'payment_method_id' => (int) $argv[4],
+                'reference' => 'CODEX-RACE-ADVANCE',
+            ]);
+            echo 'OK:advance:'.$advance->posting_type.':'.$advance->id;
+            break;
+
+        case 'final-invoice':
+            $event = CateringEvent::findOrFail((int) $argv[2]);
+            $invoice = app(CateringFinalInvoiceService::class)->issue($event);
+            echo 'OK:final-invoice:'.$invoice->id.':'.$invoice->advance_total.':'.$invoice->advance_applied;
             break;
 
             // ── Ordinary draft writers ────────────────────────────────────────
