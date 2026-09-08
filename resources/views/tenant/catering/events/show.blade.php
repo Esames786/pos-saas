@@ -389,30 +389,6 @@
                         <label class="form-label fs-12 text-muted mb-1">Qty <span id="punch-unit" class="text-uppercase"></span></label>
                         <input id="punch-qty" type="number" step="0.001" min="0.001" class="form-control text-end" style="width:110px" value="10">
                     </div>
-                    <div class="d-none punch-step" id="punch-seg-wrap">
-                        <span class="form-label fs-12 text-muted mb-1 d-block">Supply split — <kbd>O</kbd>/<kbd>P</kbd> phir <kbd>Enter</kbd></span>
-                        {{-- Checkbox-shaped, so the chosen state is obvious at a
-                             glance; Enter/Space on the focused one selects it. --}}
-                        <div class="btn-group" id="punch-seg">
-                            <button type="button" class="btn btn-primary" id="punch-own" tabindex="0">
-                                <i class="ti ti-square-check me-1 punch-tick"></i>OWN · ہم
-                            </button>
-                            <button type="button" class="btn btn-outline-success" id="punch-party" tabindex="0">
-                                <i class="ti ti-square me-1 punch-tick"></i>PARTY · گاہک
-                            </button>
-                        </div>
-                    </div>
-                    <div class="d-none punch-step" style="min-width:240px;flex:1;max-width:420px">
-                        <label class="form-label fs-12 text-muted mb-1">Kitchen instructions</label>
-                        {{-- The managed vocabulary, right in the punch — the same
-                             list the line carries afterwards. --}}
-                        <select id="punch-instr-ids" class="form-select" multiple data-placeholder="Kitchen instructions…">
-                            @foreach($activeInstructions as $instr)
-                                <option value="{{ $instr->id }}">{{ $instr->label }}</option>
-                            @endforeach
-                        </select>
-                        <input id="punch-instr" type="text" class="form-control mt-1" placeholder="Additional note (optional)">
-                    </div>
                     {{-- KASHIF-EVENT-FORM-3: the customer rate is EDITABLE right
                          here, for every item — including one with no cost blocks
                          (Cream Cocktail's 1,200 was read-only, so the operator
@@ -434,6 +410,30 @@
                         <div class="d-flex justify-content-between gap-3 fw-bold mt-1">
                             <span>Line amount</span>
                             <span id="punch-live-amount">0.00</span>
+                        </div>
+                    </div>
+                    <div class="d-none punch-step" style="min-width:240px;flex:1;max-width:420px">
+                        <label class="form-label fs-12 text-muted mb-1">Kitchen instructions</label>
+                        {{-- The managed vocabulary, right in the punch — the same
+                             list the line carries afterwards. --}}
+                        <select id="punch-instr-ids" class="form-select" multiple data-placeholder="Kitchen instructions…">
+                            @foreach($activeInstructions as $instr)
+                                <option value="{{ $instr->id }}">{{ $instr->label }}</option>
+                            @endforeach
+                        </select>
+                        <input id="punch-instr" type="text" class="form-control mt-1" placeholder="Additional note (optional)">
+                    </div>
+                    <div class="d-none punch-step" id="punch-seg-wrap">
+                        <span class="form-label fs-12 text-muted mb-1 d-block">Supply split — <kbd>O</kbd>/<kbd>P</kbd> phir <kbd>Enter</kbd></span>
+                        {{-- Checkbox-shaped, so the chosen state is obvious at a
+                             glance; Enter/Space on the focused one selects it. --}}
+                        <div class="btn-group" id="punch-seg">
+                            <button type="button" class="btn btn-primary" id="punch-own" tabindex="0">
+                                <i class="ti ti-square-check me-1 punch-tick"></i>OWN · ہم
+                            </button>
+                            <button type="button" class="btn btn-outline-success" id="punch-party" tabindex="0">
+                                <i class="ti ti-square me-1 punch-tick"></i>PARTY · گاہک
+                            </button>
                         </div>
                     </div>
                     <button type="button" class="btn btn-warning fw-bold d-none punch-step" id="punch-commit">Row save <span class="fs-12 opacity-75">(Ctrl+Enter)</span></button>
@@ -1583,8 +1583,10 @@ $(function () {
         const select = row.find('.product-select');
         select.select2({
             width: '100%',
-            tags: true, // free-text items allowed (custom menu lines)
-            placeholder: 'Search products or type a custom item…',
+            // PUNCH-NO-FREE-TEXT-1: closed here too. Shutting one door and
+            // leaving the other open would only move the problem one screen
+            // across — this picker built the same unbacked line.
+            placeholder: 'Search products…',
             ajax: {
                 url: '{{ url('/ajax/products') }}',
                 dataType: 'json',
@@ -1755,30 +1757,21 @@ $(function () {
         if (!el.hasClass('select2-hidden-accessible')) {
             el.select2({
                 width: '100%', placeholder: '361 ya biryani…',
-                tags: true, // free-text items punch through the same bar
-                // PUNCH-SEARCH-MATCH-1 — what you TYPED must never outrank what
-                // you FOUND.
+                // PUNCH-NO-FREE-TEXT-1 — a line may only be a dish that exists.
                 //
-                // select2's tag option is inserted at the TOP of the results and
-                // arrives pre-highlighted, so typing "chicken" and pressing Enter
-                // punched the literal word "chicken" — a free-text line with no
-                // product behind it — while five real chicken dishes sat below it
-                // untouched. The operator's hands never left the keyboard, which
-                // is the whole point of this bar, so they never saw it happen.
+                // This bar used to accept free text via select2 tagging. PUNCH-SEARCH-MATCH-1
+                // demoted the typed term below the real matches, which stopped it
+                // hijacking a search — but it left the door open, and typing an id
+                // that does not exist, "5834", still built a line: no product, no
+                // unit, rate 0.00. A quotation line with nothing behind it is worse
+                // than a refusal, because it looks priced and reaches the customer.
                 //
-                // The tag now goes LAST, after every match. Enter therefore takes
-                // the first real dish. Free text still works — it is simply what
-                // you reach when nothing matched, which is the only time anybody
-                // means it.
-                insertTag: (results, tag) => { results.push(tag); },
-                // And a tag is only offered when the catalogue has nothing to
-                // say: no matches, and something actually typed.
-                createTag: params => {
-                    const term = (params.term || '').trim();
-                    if (term === '') { return null; }
-
-                    return { id: term, text: term, newTag: true };
-                },
+                // The owner's rule, and it is the right one: an item or id that does
+                // not exist must not be enterable. select2 now offers nothing when
+                // nothing matches, so Enter does nothing and the operator sees the
+                // catalogue has no such dish. Lines that ALREADY carry free text
+                // (imported before this rule) still display and still save — the
+                // rule stops new ones, it does not rewrite history.
                 // Open the first page immediately while keeping code/name
                 // search available in the same focused control.
                 minimumInputLength: 0,
@@ -2035,17 +2028,33 @@ $(function () {
     });
 
     // Enter ki qatar: qty → (O/P) → rate→kg→(گاہک) per material → commit.
+    /**
+     * PUNCH-TAB-ORDER-1 — the walk follows the order the operator asked for:
+     * Qty → Customer rate → note → supply split → the material rows.
+     *
+     * The rate used to sit almost LAST, after every cost-block row, so an
+     * operator agreeing a price had to tab through the whole breakdown to reach
+     * the one figure they were changing. The markup above was reordered to
+     * match, so plain Tab and this Enter walk agree — two orders that disagree
+     * is how a keyboard screen stops being a keyboard screen.
+     *
+     * Committing is unaffected: plain Enter only walks, Ctrl+Enter saves the row
+     * from anywhere in the bar. (The note being last no longer commits anything;
+     * that comment described an older behaviour.)
+     */
     function punchSeq() {
-        const seq = [document.getElementById('punch-qty')];
+        const seq = [
+            document.getElementById('punch-qty'),
+            document.getElementById('punch-customer-rate'),
+            document.getElementById('punch-instr'),
+        ];
         if (punch && punch.mats.length) seq.push(document.getElementById('punch-own'));
         $('#punch-mats tbody tr').each(function () {
             const r = $(this);
             seq.push(r.find('.pm-rate')[0], r.find('.pm-own')[0]);
             if (punch.mode === 'PARTY') seq.push(r.find('.pm-cust')[0]);
         });
-        // The note is the LAST field — only its Enter commits the row.
-        seq.push(document.getElementById('punch-customer-rate'));
-        seq.push(document.getElementById('punch-instr'));
+
         return seq.filter(Boolean);
     }
     $(document).on('keydown', '#punch-bar', function (e) {
