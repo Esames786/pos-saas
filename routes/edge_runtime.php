@@ -62,10 +62,14 @@ Route::prefix('edge/local')->name('edge.local.')->group(function () {
         Route::get('/held-sales', [EdgeLocalPosController::class, 'heldSales'])->name('held.index');
         Route::get('/held-sales/{sale}', [EdgeLocalPosController::class, 'heldSale'])->name('held.show');
         Route::get('/void-reasons', [EdgeLocalPosController::class, 'voidReasons'])->name('void-reasons');
+        // CUSTOMER-UX parity — on-demand lookup in the synced customer book (delivery / attach customer / addresses).
+        Route::get('/customers', [EdgeLocalPosController::class, 'customers'])->name('customers.search');
         Route::post('/held-sales', [EdgeLocalPosController::class, 'storeHeldSale'])->name('held.store');
         Route::post('/held-sales/{sale}/kot', [EdgeLocalPosController::class, 'queueKot'])->name('held.kot');
         Route::post('/held-sales/{sale}/settle', [EdgeLocalPosController::class, 'settleHeldSale'])->name('held.settle');
         Route::post('/held-sales/{sale}/cancel', [EdgeLocalPosController::class, 'cancelHeldSale'])->name('held.cancel');
+        // ONLINE-POS PARITY — Split Bill (a new held check on the same table; each pays on its own).
+        Route::post('/held-sales/{sale}/split', [EdgeLocalPosController::class, 'splitHeldSale'])->name('held.split');
         Route::post('/manager-approvals/verify', [EdgeLocalPosController::class, 'verifyManagerApproval'])->name('manager.verify');
 
         // EDGE-CASHIER-UI-4 — printing: receipt / KOT reprint / Recent Prints / Print Here document / fallback completion / retry.

@@ -168,6 +168,13 @@ class EdgeLocalPosController extends Controller
             'operationalStockReady' => $this->baselines->currentAccepted() !== null,
             // COMPLETE SALE PERMISSION parity: the button follows tenant.pos.store; the server enforces it too.
             'canCompleteSale' => (bool) $user?->can('tenant.pos.store'),
+            // DELIVERY / DISCOUNT parity data (synced): channels, riders, the branch charge lock, approval mode.
+            'deliveryChannels' => \App\Models\Tenant\DeliveryChannel::on('tenant')->where('is_active', true)->orderBy('sort_order')->orderBy('name')->get(['id', 'name', 'type']),
+            'deliveryRiders' => \App\Models\Tenant\DeliveryRider::on('tenant')->where('status', 'active')
+                ->where(fn ($q) => $q->whereNull('branch_id')->orWhere('branch_id', $branchId))->orderBy('name')->get(['id', 'name']),
+            'deliveryChargeLocked' => (bool) $branch->delivery_charge_locked,
+            'defaultDeliveryCharge' => (float) ($branch->default_delivery_charge ?? 0),
+            'manualDiscountNeedsManager' => ($branch->manual_discount_approval_mode ?? Branch::MANUAL_DISCOUNT_MANAGER_REQUIRED) !== Branch::MANUAL_DISCOUNT_AUTO_APPROVE,
         ]);
     }
 
@@ -179,8 +186,17 @@ class EdgeLocalPosController extends Controller
             'discount_type' => ['nullable', 'string'],
             'discount_value' => ['nullable', 'numeric'],
             'promo_code' => ['nullable', 'string'],
+            'manager_approval_id' => ['nullable', 'integer'],
+            'customer_id' => ['nullable', 'integer'],
+            'customer_name' => ['nullable', 'string', 'max:190'],
+            'customer_phone' => ['nullable', 'string', 'max:50'],
+            'delivery_channel_id' => ['nullable', 'integer'],
+            'delivery_rider_id' => ['nullable', 'integer'],
+            'delivery_address' => ['nullable', 'string', 'max:500'],
+            'delivery_charge_amount' => ['nullable', 'numeric', 'min:0', 'max:99999'],
             'lines' => ['required', 'array', 'min:1'],
-            'lines.*.product_id' => ['required', 'integer'],
+            'lines.*.product_id' => ['required_without:lines.*.combo_id', 'nullable', 'integer'],
+            'lines.*.combo_id' => ['nullable', 'integer'],
             'lines.*.quantity' => ['required', 'numeric', 'min:0.001'],
         ]);
         $terminal = $this->selectedTerminal($request);
@@ -450,8 +466,17 @@ class EdgeLocalPosController extends Controller
             'discount_type' => ['nullable', 'string'],
             'discount_value' => ['nullable', 'numeric'],
             'promo_code' => ['nullable', 'string'],
+            'manager_approval_id' => ['nullable', 'integer'],
+            'customer_id' => ['nullable', 'integer'],
+            'customer_name' => ['nullable', 'string', 'max:190'],
+            'customer_phone' => ['nullable', 'string', 'max:50'],
+            'delivery_channel_id' => ['nullable', 'integer'],
+            'delivery_rider_id' => ['nullable', 'integer'],
+            'delivery_address' => ['nullable', 'string', 'max:500'],
+            'delivery_charge_amount' => ['nullable', 'numeric', 'min:0', 'max:99999'],
             'lines' => ['required', 'array', 'min:1'],
-            'lines.*.product_id' => ['required', 'integer'],
+            'lines.*.product_id' => ['required_without:lines.*.combo_id', 'nullable', 'integer'],
+            'lines.*.combo_id' => ['nullable', 'integer'],
             'lines.*.product_variant_id' => ['nullable', 'integer'],
             'lines.*.quantity' => ['required', 'numeric', 'gt:0'],
             'lines.*.modifiers' => ['nullable', 'array'],
@@ -578,13 +603,25 @@ class EdgeLocalPosController extends Controller
             'order_type' => ['required', 'string'],
             'restaurant_table_session_id' => ['nullable', 'integer'],
             'notes' => ['nullable', 'string', 'max:1000'],
+            'discount_type' => ['nullable', 'string'],
+            'discount_value' => ['nullable', 'numeric'],
+            'promo_code' => ['nullable', 'string'],
+            'manager_approval_id' => ['nullable', 'integer'],
+            'customer_id' => ['nullable', 'integer'],
+            'customer_name' => ['nullable', 'string', 'max:190'],
+            'customer_phone' => ['nullable', 'string', 'max:50'],
+            'delivery_channel_id' => ['nullable', 'integer'],
+            'delivery_rider_id' => ['nullable', 'integer'],
+            'delivery_address' => ['nullable', 'string', 'max:500'],
+            'delivery_charge_amount' => ['nullable', 'numeric', 'min:0', 'max:99999'],
             // POS-DRAFT-1 + PHASE 2b parity (offline): park as draft; quick-sale vehicle + waiter attribution.
             'save_as_draft' => ['nullable', 'boolean'],
             'vehicle_number' => ['nullable', 'string', 'max:50', 'required_if:order_type,quick_sale'],
             'restaurant_waiter_id' => ['nullable', 'integer', 'required_if:order_type,quick_sale'],
             'lines' => ['required', 'array', 'min:1'],
             'lines.*.sales_order_line_id' => ['nullable', 'integer'],
-            'lines.*.product_id' => ['required', 'integer'],
+            'lines.*.product_id' => ['required_without:lines.*.combo_id', 'nullable', 'integer'],
+            'lines.*.combo_id' => ['nullable', 'integer'],
             'lines.*.product_variant_id' => ['nullable', 'integer'],
             'lines.*.quantity' => ['required', 'numeric', 'gt:0'],
             'lines.*.modifiers' => ['nullable', 'array'],
@@ -716,6 +753,33 @@ class EdgeLocalPosController extends Controller
     }
 
     /** The session-selected terminal, re-validated against the bound branch on EVERY use. */
+    /** SPLIT BILL parity — move selected quantities onto a new held check on the same table (each pays on its own). */
+    public function splitHeldSale(Request $request, int $sale): JsonResponse
+    {
+        $data = $request->validate([
+            'notes' => ['nullable', 'string', 'max:500'],
+            'lines' => ['required', 'array', 'min:1'],
+            'lines.*.sales_order_line_id' => ['required', 'integer'],
+            'lines.*.quantity' => ['required', 'numeric', 'gt:0'],
+        ]);
+        $terminal = $this->selectedTerminal($request);
+        if ($terminal instanceof JsonResponse) {
+            return $terminal;
+        }
+        try {
+            $result = $this->pos->splitHeldSale($sale, $data['lines'], auth('tenant')->user(), $terminal->id, $data['notes'] ?? null);
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+        $parent = $result['parent']->load(['restaurantTable:id,table_no,name', 'restaurantWaiter:id,name', 'lines']);
+        $child = $result['child']->load(['restaurantTable:id,table_no,name', 'restaurantWaiter:id,name', 'lines']);
+
+        return response()->json([
+            'child' => $this->heldSaleView($child, true),
+            'parent' => $parent->status === 'held' ? $this->heldSaleView($parent, true) : ['id' => (int) $parent->id, 'status' => $parent->status],
+        ], 201);
+    }
+
     // ═══════════════════════ EDGE-CASHIER-UI-2 — Recall / Dine-In browser workflow data ═══════════════════════
 
     /** RECALL parity — the open checks (held + draft) on the bound branch, limited to the order types this operator may run. */
@@ -742,6 +806,28 @@ class EdgeLocalPosController extends Controller
         }
 
         return response()->json(['held_sale' => $this->heldSaleView($row, true)]);
+    }
+
+    /**
+     * CUSTOMER-UX parity: customers are looked up on demand (never the whole book in the page) from the SYNCED
+     * customer book, with their saved addresses (ADDRESS-ATTACH: picking one attaches it to the order).
+     */
+    public function customers(Request $request): JsonResponse
+    {
+        $q = trim((string) $request->input('q', ''));
+        if (mb_strlen($q) < 2) {
+            return response()->json(['customers' => []]);
+        }
+        $rows = \App\Models\Tenant\Customer::on('tenant')->where('status', 'active')
+            ->where(fn ($w) => $w->where('name', 'like', "%{$q}%")->orWhere('phone', 'like', "%{$q}%")->orWhere('code', 'like', "%{$q}%"))
+            ->orderBy('name')->limit(20)->get(['id', 'name', 'phone', 'address']);
+        $addresses = \App\Models\Tenant\CustomerAddress::on('tenant')->whereIn('customer_id', $rows->pluck('id'))
+            ->orderByDesc('is_default')->orderBy('id')->get(['id', 'customer_id', 'label', 'address', 'is_default'])->groupBy('customer_id');
+
+        return response()->json(['customers' => $rows->map(fn ($c) => [
+            'id' => (int) $c->id, 'name' => $c->name, 'phone' => $c->phone, 'address' => $c->address,
+            'addresses' => ($addresses->get($c->id) ?? collect())->map(fn ($a) => ['id' => (int) $a->id, 'label' => $a->label, 'address' => $a->address, 'is_default' => (bool) $a->is_default])->values(),
+        ])->values()]);
     }
 
     /** Active cancellation reasons (the shared VoidReason book) for cancel-order / void flows. */
@@ -778,7 +864,18 @@ class EdgeLocalPosController extends Controller
                 'product_name' => $l->product_name, 'quantity' => (float) $l->quantity,
                 'unit_price' => (float) $l->unit_price, 'line_total' => (float) $l->line_total,
                 'kot_sent_quantity' => (float) $l->kot_sent_quantity,
+                // DEAL parity: the page rebuilds a deal as ONE cart row from its header; components ride underneath.
+                'line_kind' => (string) ($l->line_kind ?? 'standard'),
+                'combo_id' => $l->combo_id ? (int) $l->combo_id : null,
+                'parent_line_id' => $l->parent_sales_order_line_id ? (int) $l->parent_sales_order_line_id : null,
             ])->values();
+            $out['discount_type'] = (string) ($s->discount_type ?? 'none');
+            $out['discount_value'] = (float) $s->discount_value;
+            $out['promo_code'] = $s->promo_code;
+            $out['delivery_channel_id'] = $s->delivery_channel_id ? (int) $s->delivery_channel_id : null;
+            $out['delivery_rider_id'] = $s->delivery_rider_id ? (int) $s->delivery_rider_id : null;
+            $out['delivery_address'] = $s->delivery_address;
+            $out['delivery_charge_amount'] = (float) ($s->delivery_charge_amount ?? 0);
         }
 
         return $out;

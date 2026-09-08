@@ -47,7 +47,7 @@ use Throwable;
 class EdgeInboundSaleIngestionService
 {
     private const SUPPORTED_ENVELOPE_SCHEMA = 'edge-sale-envelope-v1';
-    private const SUPPORTED_ORDER_TYPES = ['quick_sale', 'takeaway', 'dine_in'];
+    private const SUPPORTED_ORDER_TYPES = ['quick_sale', 'takeaway', 'dine_in', 'delivery'];
     private const SUPPORTED_METHOD_TYPES = ['cash'];
 
     public function __construct(
@@ -278,11 +278,18 @@ class EdgeInboundSaleIngestionService
             'sale_date' => $envelope['sale_date'] ?? now(),
             'business_date' => $envelope['business_date'] ?? null,
             'subtotal' => (float) ($totals['subtotal'] ?? 0),
-            'discount_type' => 'none',
-            'discount_value' => 0,
+            // DISCOUNT/PROMO/DELIVERY parity: the till's attribution is projected as-is (older envelopes lack the
+            // keys and keep the previous defaults). The money itself is unchanged — frozen totals, never repriced.
+            'discount_type' => in_array((string) ($totals['discount_type'] ?? 'none'), ['none', 'fixed', 'percent'], true) ? (string) ($totals['discount_type'] ?? 'none') : 'none',
+            'discount_value' => (float) ($totals['discount_value'] ?? 0),
             'discount_amount' => (float) ($totals['discount_amount'] ?? 0),
+            'promo_code' => $totals['promo_code'] ?? null,
             'tax_amount' => (float) ($totals['tax_amount'] ?? 0),
             'service_charge_amount' => (float) ($totals['service_charge_amount'] ?? 0),
+            'delivery_charge_amount' => (float) ($totals['delivery_charge_amount'] ?? 0),
+            'delivery_channel_id' => $envelope['delivery']['delivery_channel_id'] ?? null,
+            'delivery_rider_id' => $envelope['delivery']['delivery_rider_id'] ?? null,
+            'delivery_address' => $envelope['delivery']['delivery_address'] ?? null,
             'tip_amount' => (float) ($totals['tip_amount'] ?? 0),
             'grand_total' => (float) ($totals['grand_total'] ?? 0),
             'paid_amount' => (float) ($totals['paid_amount'] ?? 0),
@@ -334,12 +341,18 @@ class EdgeInboundSaleIngestionService
 
             // Official COGS/stock authority (Cloud FEFO) — never the Edge provisional movement.
             $method = $product->inventory_consumption_method ?? 'stock_item';
+            if (($line['line_kind'] ?? 'standard') === 'combo_header') {
+                // DEAL parity (Cloud SalesService::finalize): the header row is the priced bundle, never stock/COGS.
+                $method = 'none';
+            }
             if ($method === 'recipe') {
                 $cost = $this->recipes->consumeForSalesOrderLine($sale, $newLine, $branch);
                 if ($cost > 0) {
                     $newLine->update(['unit_cost' => $qty > 0 ? round($cost / $qty, 4) : 0, 'cost_total' => round($cost, 4)]);
                 }
-            } elseif ($method === 'stock_item' && $product->is_stock_tracked) {
+            } elseif ($method === 'stock_item' && $product->is_stock_tracked && (($line['line_kind'] ?? 'standard') !== 'combo_header')) {
+                // DEAL parity (Cloud SalesService::finalize): the header row is the priced bundle, never stock —
+                // its components are the ordinary lines that consume official stock and carry COGS.
                 try {
                     $ledgers = $this->inventory->postOutFefo(
                         branch: $branch,

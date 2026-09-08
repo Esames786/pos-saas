@@ -110,6 +110,7 @@ class EdgeBranchServerRegistrationTest extends TestCase
             'edge/local/pos/held-sales/{sale}/kot',
             'edge/local/pos/held-sales/{sale}/settle',
             'edge/local/pos/held-sales/{sale}/cancel',
+            'edge/local/pos/held-sales/{sale}/split',
             'edge/local/pos/manager-approvals/verify',
             // ONLINE-POS PARITY (deliberately approved): Preview Bill + table reservations.
             'edge/local/pos/preview-bill',
@@ -120,6 +121,7 @@ class EdgeBranchServerRegistrationTest extends TestCase
             'edge/local/pos',
             'edge/local/pos/held-sales/{sale}',
             'edge/local/pos/void-reasons',
+            'edge/local/pos/customers',
             // EDGE-CASHIER-UI-4 (deliberately approved): printing.
             'edge/local/pos/sales/{sale}/receipt',
             'edge/local/pos/sales/{sale}/kot-reprint',

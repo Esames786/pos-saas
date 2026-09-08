@@ -178,25 +178,31 @@ class EdgeLocalPosMySqlTest extends MySqlTenantTestCase
         $this->complete(['order_type' => 'dine_in']);
     }
 
-    public function test_discount_is_refused(): void
+    /** DISCOUNT parity: the branch default (manager_required) refuses a manual discount without a consumed approval. */
+    public function test_manual_discount_without_manager_approval_is_refused(): void
     {
         $this->openShift();
         $this->expectException(ValidationException::class);
         $this->complete(['discount_type' => 'fixed', 'discount_value' => 50]);
     }
 
-    public function test_promo_is_refused(): void
+    /** PROMO parity: an unknown code resolves to no promotion (shared PromotionService) — the sale completes undiscounted. */
+    public function test_unknown_promo_code_applies_no_discount(): void
     {
         $this->openShift();
-        $this->expectException(ValidationException::class);
-        $this->complete(['promo_code' => 'SAVE10']);
+        $sale = $this->complete(['promo_code' => 'NOPE-404']);
+        $this->assertSame('paid', $sale->status);
+        $this->assertSame(0.0, (float) $sale->discount_amount);
+        $this->assertNull($sale->promo_code);
     }
 
-    public function test_combo_line_is_refused(): void
+    /** DEAL parity: a client-supplied line_kind is never trusted — without a combo_id the line is a standard product. */
+    public function test_client_supplied_combo_topology_is_ignored(): void
     {
         $this->openShift();
-        $this->expectException(ValidationException::class);
-        $this->complete(['lines' => [['product_id' => $this->productId, 'quantity' => 1, 'line_kind' => 'combo_header']]]);
+        $sale = $this->complete(['lines' => [['product_id' => $this->productId, 'quantity' => 1, 'line_kind' => 'combo_header', 'unit_price' => 1]]]);
+        $this->assertSame('standard', $sale->lines()->first()->line_kind);
+        $this->assertSame(100.0, (float) $sale->lines()->first()->unit_price, 'the server priced the product, not the client');
     }
 
     public function test_cross_branch_terminal_is_refused(): void

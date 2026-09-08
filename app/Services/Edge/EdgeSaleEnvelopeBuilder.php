@@ -34,7 +34,7 @@ class EdgeSaleEnvelopeBuilder
     public const SCHEMA_VERSION = 'edge-sale-envelope-v1';
 
     /** V1 offline-supported commercial shape (mirrors the EdgeLocalPosService gates). */
-    private const SUPPORTED_ORDER_TYPES = ['quick_sale', 'takeaway', 'dine_in'];
+    private const SUPPORTED_ORDER_TYPES = ['quick_sale', 'takeaway', 'dine_in', 'delivery'];
     private const SUPPORTED_METHOD_TYPES = ['cash'];
 
     /** Same never-ship discipline as the bootstrap importer. */
@@ -120,13 +120,24 @@ class EdgeSaleEnvelopeBuilder
             'totals' => [
                 'subtotal' => round((float) $sale->subtotal, 2),
                 'discount_amount' => round((float) $sale->discount_amount, 2),
+                // DISCOUNT/PROMO parity: how the discount was reached travels with the money (frozen, never repriced).
+                'discount_type' => (string) ($sale->discount_type ?? 'none'),
+                'discount_value' => round((float) ($sale->discount_value ?? 0), 2),
+                'promo_code' => $sale->promo_code !== null && $sale->promo_code !== '' ? (string) $sale->promo_code : null,
                 'tax_amount' => round((float) $sale->tax_amount, 2),
                 'service_charge_amount' => round((float) ($sale->service_charge_amount ?? 0), 2),
+                'delivery_charge_amount' => round((float) ($sale->delivery_charge_amount ?? 0), 2),
                 'tip_amount' => round((float) ($sale->tip_amount ?? 0), 2),
                 'grand_total' => round((float) $sale->grand_total, 2),
                 'paid_amount' => round((float) $sale->paid_amount, 2),
                 'change_amount' => round((float) $sale->change_amount, 2),
             ],
+            // DELIVERY parity: channel / rider / address as attributed at the till (ids are the synced Cloud ids).
+            'delivery' => (string) $sale->order_type === 'delivery' ? [
+                'delivery_channel_id' => $sale->delivery_channel_id !== null ? (int) $sale->delivery_channel_id : null,
+                'delivery_rider_id' => $sale->delivery_rider_id !== null ? (int) $sale->delivery_rider_id : null,
+                'delivery_address' => $sale->delivery_address !== null && $sale->delivery_address !== '' ? (string) $sale->delivery_address : null,
+            ] : null,
 
             'lines' => $sale->lines->map(fn ($line) => [
                 'line_uuid' => (string) $line->line_uuid,
@@ -226,8 +237,11 @@ class EdgeSaleEnvelopeBuilder
         if (! EdgeIdentity::isValid((string) $sale->sale_uuid, EdgeIdentity::FORMAT_ULID)) {
             throw new RuntimeException('ENVELOPE_UNSUPPORTED: the sale is missing its canonical sale_uuid.');
         }
-        if ((float) $sale->discount_amount > 0 || $sale->promotion_id !== null || $sale->promo_code !== null) {
-            throw new RuntimeException('ENVELOPE_UNSUPPORTED: discounts/promotions are not supported offline (defense in depth).');
+        // DISCOUNT/PROMO parity: a manual discount / promotion is a legitimate offline outcome now (shared totals
+        // service + branch approval mode); the envelope carries how it was reached. A discount must still be
+        // coherent with its type — money without a stated reason is refused.
+        if ((float) $sale->discount_amount > 0 && (string) ($sale->discount_type ?? 'none') === 'none' && $sale->promotion_id === null) {
+            throw new RuntimeException('ENVELOPE_UNSUPPORTED: a discount without a discount type or promotion is not syncable.');
         }
         if ((float) ($sale->tip_amount ?? 0) > 0) {
             throw new RuntimeException('ENVELOPE_UNSUPPORTED: tips are not supported offline (defense in depth).');
@@ -237,9 +251,23 @@ class EdgeSaleEnvelopeBuilder
         if ($sale->lines->isEmpty() || $sale->payments->isEmpty()) {
             throw new RuntimeException('ENVELOPE_UNSUPPORTED: a syncable sale needs persisted lines and payments.');
         }
+        // DEAL parity: header/component rows are syncable exactly as Cloud writes them. Coherence is enforced:
+        // a standard line never carries a combo_id; a deal row always does; every component belongs to a header
+        // of the same deal on this sale (a stray component would otherwise price at 0 with nothing paying for it).
+        $headerCombos = $sale->lines->where('line_kind', 'combo_header')->pluck('combo_id')->filter()->map(fn ($v) => (int) $v)->all();
         foreach ($sale->lines as $line) {
-            if (($line->line_kind ?? 'standard') !== 'standard' || $line->combo_id !== null) {
-                throw new RuntimeException('ENVELOPE_UNSUPPORTED: combo selling is not supported offline (defense in depth).');
+            $kind = (string) ($line->line_kind ?? 'standard');
+            if (! in_array($kind, ['standard', 'combo_header', 'component'], true)) {
+                throw new RuntimeException("ENVELOPE_UNSUPPORTED: line kind [{$kind}] is not offline-syncable.");
+            }
+            if ($kind === 'standard' && $line->combo_id !== null) {
+                throw new RuntimeException('ENVELOPE_UNSUPPORTED: a standard line must not carry a combo_id.');
+            }
+            if ($kind !== 'standard' && $line->combo_id === null) {
+                throw new RuntimeException('ENVELOPE_UNSUPPORTED: a deal row must name its combo.');
+            }
+            if ($kind === 'component' && ! in_array((int) $line->combo_id, $headerCombos, true)) {
+                throw new RuntimeException('ENVELOPE_UNSUPPORTED: a deal component without its header on the same sale is not syncable.');
             }
         }
         foreach ($sale->payments as $payment) {

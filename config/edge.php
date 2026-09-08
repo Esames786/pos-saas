@@ -23,7 +23,7 @@ return [
     'app_version'             => env('EDGE_APP_VERSION', '0.1.0-edge'),
     'git_commit'              => env('EDGE_GIT_COMMIT'), // stamped into a built artifact's manifest
     'artifact_format_version' => '1',
-    'bootstrap_schema'        => EdgeBootstrapService::SCHEMA_VERSION,        // edge-bootstrap-v5
+    'bootstrap_schema'        => EdgeBootstrapService::SCHEMA_VERSION,        // edge-bootstrap-v6
     'config_schema'           => EdgeBootstrapService::CONFIG_SCHEMA_VERSION, // edge-config-v1
     'sync_protocol'           => 'edge-sync-v0', // placeholder ONLY — offline sync is not built yet
     'min_php'                 => '8.2.0',
@@ -147,10 +147,12 @@ return [
         'edge.local.pos.held.index',
         'edge.local.pos.held.show',
         'edge.local.pos.void-reasons',
+        'edge.local.pos.customers.search',
         'edge.local.pos.held.store',
         'edge.local.pos.held.kot',
         'edge.local.pos.held.settle',
         'edge.local.pos.held.cancel',
+        'edge.local.pos.held.split',
         'edge.local.pos.manager.verify',
         // EDGE-CASHIER-UI-4 — printing surface.
         'edge.local.pos.sales.receipt',

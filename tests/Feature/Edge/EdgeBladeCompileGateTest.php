@@ -16,6 +16,38 @@ use Tests\TestCase;
  */
 class EdgeBladeCompileGateTest extends TestCase
 {
+    /**
+     * The cashier page is ONE inline script. `php -l` proves the PHP the Blade compiles to, never the JavaScript
+     * the browser runs — a stray brace there breaks every workflow on the till with no server error at all. When a
+     * Node runtime is available (Laragon ships one), the extracted script must pass `node --check`.
+     */
+    public function test_the_cashier_page_script_parses_as_javascript(): void
+    {
+        $candidates = array_filter(array_merge(
+            glob('D:/laragon2/bin/nodejs/*/node.exe') ?: [],
+            glob('/usr/bin/node') ?: [],
+            glob('/usr/local/bin/node') ?: [],
+        ));
+        $node = $candidates ? reset($candidates) : ((new \Symfony\Component\Process\ExecutableFinder())->find('node') ?: null);
+        if (! $node) {
+            $this->markTestSkipped('no Node runtime available to syntax-check the cashier script');
+        }
+
+        $html = file_get_contents(resource_path('views/edge/pos/index.blade.php'));
+        $start = strpos($html, "<script>\n    (function");
+        $end = strrpos($html, '</script>');
+        $this->assertNotFalse($start, 'the cashier page must carry its inline script');
+        $js = preg_replace('/\{\{[\s\S]*?\}\}/', 'X', substr($html, $start + 8, $end - $start - 8));
+
+        $tmp = tempnam(sys_get_temp_dir(), 'edge_pos_js_') . '.js';
+        file_put_contents($tmp, $js);
+        $out = [];
+        $code = 0;
+        exec(escapeshellarg($node) . ' --check ' . escapeshellarg($tmp) . ' 2>&1', $out, $code);
+        @unlink($tmp);
+        $this->assertSame(0, $code, "the cashier page script does not parse as JavaScript:\n" . implode("\n", $out));
+    }
+
     public function test_every_edge_blade_view_compiles_and_the_generated_php_lints(): void
     {
         $views = glob(resource_path('views/edge') . '/**/*.blade.php');

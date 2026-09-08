@@ -101,6 +101,9 @@
             'categories' => $categories, 'products' => $products, 'combos' => $combos, 'waiters' => $waiters,
             'paymentMethods' => $paymentMethods, 'operationalStockReady' => $operationalStockReady,
             'canCompleteSale' => $canCompleteSale,
+            'deliveryChannels' => $deliveryChannels, 'deliveryRiders' => $deliveryRiders,
+            'deliveryChargeLocked' => $deliveryChargeLocked, 'defaultDeliveryCharge' => $defaultDeliveryCharge,
+            'manualDiscountNeedsManager' => $manualDiscountNeedsManager,
         ];
     @endphp
     <script id="edge-pos-data" type="application/json">@json($vm)</script>
@@ -163,7 +166,12 @@
         // ---- state: a plain cart, OR a table session with no check yet, OR a loaded (recalled) open check. ----
         const state = { orderType: DATA.defaultOrderType, terminalId: null, category: null, cart: [], dirty: false,
                         session: null,   // {id, table_id, table_no, waiter_name}
-                        held: null };    // {id, sale_no, sale_uuid, is_draft, order_type, session_id, table_no, waiter_name, terminal_id, totals...}
+                        held: null,      // {id, sale_no, sale_uuid, is_draft, order_type, session_id, table_no, waiter_name, terminal_id, totals...}
+                        customer: null,  // {id, name, phone, addresses[]} picked from the synced book
+                        pendingClientUuid: null,
+                        // Commercial intent — the same fields the Online Review & Pay carries (discount, promo, delivery).
+                        commercial: { discount_type: 'none', discount_value: 0, promo_code: '', manager_approval_id: null,
+                                      delivery_channel_id: null, delivery_rider_id: null, delivery_address: '', delivery_charge_amount: DATA.defaultDeliveryCharge } };
 
         // ---- API helper: all mutations go to the Edge-local POS endpoints only. ----
         async function api(method, path, body) {
@@ -249,9 +257,14 @@
 
         // ---- Cart. A carried line (from an open check) keeps its line id + captured price. ----
         function addToCart(item) {
-            if (item.deal) { toast('Deal selling arrives in the deal-sale milestone.'); return; }
-            const ex = state.cart.find(l => l.product_id === item.id);
-            if (ex) ex.quantity += 1; else state.cart.push({ key: 'p' + item.id, product_id: item.id, name: item.name, price: item.price, quantity: 1, line_id: null, kot_sent_quantity: 0 });
+            if (item.deal) {
+                // DEAL parity: the client names the deal + quantity only; the server expands the synced combo book.
+                const ex = state.cart.find(l => l.combo_id === item.id && !l.line_id);
+                if (ex) ex.quantity += 1; else state.cart.push({ key: 'd' + item.id, combo_id: item.id, product_id: null, name: item.name, price: item.price, quantity: 1, line_id: null, kot_sent_quantity: 0, deal: true, components: [], component_lines: [] });
+            } else {
+                const ex = state.cart.find(l => l.product_id === item.id && !l.combo_id);
+                if (ex) ex.quantity += 1; else state.cart.push({ key: 'p' + item.id, product_id: item.id, name: item.name, price: item.price, quantity: 1, line_id: null, kot_sent_quantity: 0 });
+            }
             state.dirty = true; renderCart();
         }
         function changeQty(key, d) {
@@ -268,8 +281,9 @@
                 wrap.innerHTML = '';
                 state.cart.forEach(l => {
                     const row = document.createElement('div'); row.className = 'line';
-                    const sub = l.kot_sent_quantity > 0 ? '<div class="ln-sub">kitchen has ' + l.kot_sent_quantity + '</div>' : '';
-                    row.innerHTML = '<div><div class="ln-nm">' + esc(l.name) + '</div>' + sub + '</div><div class="ln-amt">' + money(l.price * l.quantity) + '</div>' +
+                    const sub = (l.kot_sent_quantity > 0 ? '<div class="ln-sub">kitchen has ' + l.kot_sent_quantity + '</div>' : '') +
+                        (l.components && l.components.length ? '<div class="ln-sub">' + esc(l.components.join(' · ')) + '</div>' : '');
+                    row.innerHTML = '<div><div class="ln-nm">' + esc(l.name) + (l.deal ? ' <span class="chip hot" style="padding:.05rem .4rem">Deal</span>' : '') + '</div>' + sub + '</div><div class="ln-amt">' + money(l.price * l.quantity) + '</div>' +
                         '<div class="ln-ctl"><button data-m="-1">−</button><span>' + l.quantity + '</span><button data-m="1">+</button><span class="muted" style="font-size:.72rem">@ ' + money(l.price) + '</span></div>';
                     row.querySelector('[data-m="-1"]').addEventListener('click', () => changeQty(l.key, -1));
                     row.querySelector('[data-m="1"]').addEventListener('click', () => changeQty(l.key, 1));
@@ -289,10 +303,26 @@
                 c.hidden = false; c.className = 'chip hot';
                 c.textContent = 'Table ' + state.session.table_no + (state.session.waiter_name ? ' · ' + state.session.waiter_name : '') + ' · new check';
             } else { c.hidden = true; }
-            const cust = state.held?.customer_name || $('customer-name').value.trim();
+            const cust = state.customer?.name || state.held?.customer_name || $('customer-name').value.trim();
             $('customer-chip').textContent = cust || 'Walk-in';
         }
-        function cartLines() { return state.cart.map(l => Object.assign({ product_id: l.product_id, quantity: l.quantity }, l.line_id ? { sales_order_line_id: l.line_id } : {})); }
+        function cartLines() { return state.cart.map(l => Object.assign(l.combo_id ? { combo_id: l.combo_id, quantity: l.quantity } : { product_id: l.product_id, quantity: l.quantity }, l.line_id ? { sales_order_line_id: l.line_id } : {})); }
+        // The commercial intent that travels with hold, preview and payment — the same fields as Online's Review & Pay.
+        function commercial() {
+            const c = state.commercial, out = {};
+            if (c.discount_type && c.discount_type !== 'none') { out.discount_type = c.discount_type; out.discount_value = Number(c.discount_value || 0); }
+            if (c.promo_code) out.promo_code = c.promo_code;
+            if (c.manager_approval_id) out.manager_approval_id = c.manager_approval_id;
+            if (state.customer) { out.customer_id = state.customer.id; out.customer_name = state.customer.name; out.customer_phone = state.customer.phone || null; }
+            else { const nm = $('customer-name').value.trim(); if (nm) out.customer_name = nm; }
+            if (state.orderType === 'delivery' && !state.session) {
+                if (c.delivery_channel_id) out.delivery_channel_id = Number(c.delivery_channel_id);
+                if (c.delivery_rider_id) out.delivery_rider_id = Number(c.delivery_rider_id);
+                if (c.delivery_address) out.delivery_address = c.delivery_address;
+                if (!DATA.deliveryChargeLocked) out.delivery_charge_amount = Number(c.delivery_charge_amount || 0);
+            }
+            return out;
+        }
         function requireCart() { if (!state.cart.length) { toast('Add at least one item.'); return false; } return true; }
 
         // ---- Contextual action buttons (the Online layout: Hold/Draft/Recall, then KOT/Add Round for a check). ----
@@ -302,7 +332,8 @@
             if (state.held) {
                 btn(state.dirty ? 'Save round' : 'Saved', state.dirty ? 'primary' : '', () => saveRound(false));
                 btn('KOT', 'warn', sendKot);
-                btn('Preview Bill', '', previewBill, true);
+                btn('Preview Bill', '', previewBill);
+                btn('Split Bill', '', splitBill);
                 btn('Review & Pay', 'ok', reviewAndPay, true);
                 btn('Cancel order', 'danger', cancelOrder);
                 btn('Leave check', 'ghost', leaveCheck);
@@ -328,7 +359,7 @@
             try {
                 let t;
                 if (state.held && !state.dirty) { t = state.held; }
-                else { const p = await api('POST', '/preview-bill', { order_type: state.orderType, lines: cartLines() }); t = p.totals || {}; }
+                else { const p = await api('POST', '/preview-bill', Object.assign({ order_type: state.orderType, lines: cartLines() }, commercial())); t = p.totals || {}; }
                 openModal('<h2>Preview Bill</h2><p class="muted">Running bill — no payment, stock, KOT, or receipt is created.</p>' + rowsHtml(t) +
                     '<div class="btn-row"><button class="ghost" onclick="EdgePOS.closeModal()">Close</button></div>');
             } catch (e) { toast(e.message); }
@@ -336,18 +367,83 @@
         function rowsHtml(t) {
             const r = (k, v) => '<div class="row"><span>' + k + '</span><span>' + money(v) + '</span></div>';
             return '<div class="totals">' + r('Subtotal', t.subtotal ?? t.sub_total ?? 0) +
-                (Number(t.discount_amount) ? r('Discount', -t.discount_amount) : '') +
+                (Number(t.discount_amount) ? r('Discount' + (t.promo_code ? ' (' + esc(t.promo_code) + ')' : ''), -t.discount_amount) : '') +
                 (Number(t.tax_amount) ? r('Tax', t.tax_amount) : '') +
                 (Number(t.service_charge_amount ?? t.service_charge) ? r('Service charge', t.service_charge_amount ?? t.service_charge) : '') +
+                (Number(t.delivery_charge_amount) ? r('Delivery charge', t.delivery_charge_amount) : '') +
                 '<div class="row grand"><span>Grand total</span><span>' + money(t.grand_total ?? 0) + '</span></div></div>';
+        }
+
+        // ---- Commercial panel (Online Review & Pay parity): promo code, manual discount, delivery details, customer. ----
+        function commercialPanelHtml() {
+            const c = state.commercial, isDelivery = state.orderType === 'delivery' && !state.session && !state.held;
+            let html = '<details ' + ((c.discount_type !== 'none' || c.promo_code || isDelivery) ? 'open' : '') + '><summary class="muted">Discount · Promo · Customer' + (isDelivery ? ' · Delivery' : '') + '</summary>' +
+                '<div class="field"><label>Promo code</label><div style="display:flex;gap:.4rem"><input type="text" id="cm-promo" value="' + esc(c.promo_code || '') + '" placeholder="Promo code" style="flex:1;text-transform:uppercase"></div></div>' +
+                '<div class="field"><label>Manual discount' + (DATA.manualDiscountNeedsManager ? ' (manager approval required)' : '') + '</label><div style="display:flex;gap:.4rem">' +
+                '<select id="cm-disc-type"><option value="none"' + (c.discount_type === 'none' ? ' selected' : '') + '>None</option><option value="fixed"' + (c.discount_type === 'fixed' ? ' selected' : '') + '>Rs</option><option value="percent"' + (c.discount_type === 'percent' ? ' selected' : '') + '>%</option></select>' +
+                '<input type="number" id="cm-disc-value" min="0" step="0.01" value="' + esc(c.discount_value || 0) + '" style="flex:1"></div></div>' +
+                '<div class="field"><label>Customer</label><div style="display:flex;gap:.4rem"><input type="search" id="cm-cust-q" placeholder="Search name / phone…" style="flex:1"><button type="button" class="sm ghost" id="cm-cust-clear">Walk-in</button></div>' +
+                '<div id="cm-cust-results"></div><div class="muted" id="cm-cust-picked">' + (state.customer ? esc(state.customer.name) + (state.customer.phone ? ' · ' + esc(state.customer.phone) : '') : 'Walk-in') + '</div></div>';
+            if (isDelivery) {
+                html += '<div class="field"><label>Delivery channel</label><select id="cm-channel"><option value="">—</option>' + DATA.deliveryChannels.map(ch => '<option value="' + ch.id + '"' + (Number(c.delivery_channel_id) === ch.id ? ' selected' : '') + '>' + esc(ch.name) + (ch.type === 'aggregator' ? ' (aggregator)' : '') + '</option>').join('') + '</select></div>' +
+                    '<div class="field"><label>Rider</label><select id="cm-rider"><option value="">—</option>' + DATA.deliveryRiders.map(r => '<option value="' + r.id + '"' + (Number(c.delivery_rider_id) === r.id ? ' selected' : '') + '>' + esc(r.name) + '</option>').join('') + '</select></div>' +
+                    '<div class="field"><label>Address</label>' + (state.customer && state.customer.addresses && state.customer.addresses.length ? '<select id="cm-addr-pick"><option value="">Saved addresses…</option>' + state.customer.addresses.map(a => '<option value="' + esc(a.address) + '">' + esc((a.label ? a.label + ': ' : '') + a.address) + '</option>').join('') + '</select>' : '') +
+                    '<input type="text" id="cm-address" value="' + esc(c.delivery_address || '') + '" placeholder="Delivery address"></div>' +
+                    '<div class="field"><label>Delivery charge' + (DATA.deliveryChargeLocked ? ' (fixed by the branch)' : '') + '</label><input type="number" id="cm-charge" min="0" step="1" value="' + esc(DATA.deliveryChargeLocked ? DATA.defaultDeliveryCharge : (c.delivery_charge_amount ?? 0)) + '"' + (DATA.deliveryChargeLocked ? ' disabled' : '') + '></div>';
+            }
+            html += '<div class="btn-row left"><button type="button" class="sm" id="cm-apply">Apply &amp; recalculate</button></div></details>';
+            return html;
+        }
+        function readCommercialPanel() {
+            const c = state.commercial;
+            c.promo_code = ($('cm-promo')?.value || '').trim().toUpperCase();
+            c.discount_type = $('cm-disc-type')?.value || 'none';
+            c.discount_value = Number($('cm-disc-value')?.value || 0);
+            if ($('cm-channel')) c.delivery_channel_id = $('cm-channel').value || null;
+            if ($('cm-rider')) c.delivery_rider_id = $('cm-rider').value || null;
+            if ($('cm-address')) c.delivery_address = $('cm-address').value.trim();
+            if ($('cm-charge') && !DATA.deliveryChargeLocked) c.delivery_charge_amount = Number($('cm-charge').value || 0);
+            c.manager_approval_id = null; // a changed discount needs a fresh approval
+        }
+        function wireCommercialPanel(onChange) {
+            $('cm-apply')?.addEventListener('click', () => { readCommercialPanel(); state.dirty = true; onChange(); });
+            $('cm-addr-pick')?.addEventListener('change', e => { if (e.target.value) $('cm-address').value = e.target.value; });
+            $('cm-cust-clear')?.addEventListener('click', () => { state.customer = null; readCommercialPanel(); state.dirty = true; onChange(); });
+            let timer = null;
+            $('cm-cust-q')?.addEventListener('input', e => {
+                clearTimeout(timer); const q = e.target.value.trim(); if (q.length < 2) { $('cm-cust-results').innerHTML = ''; return; }
+                timer = setTimeout(async () => {
+                    try {
+                        const r = await api('GET', '/customers?q=' + encodeURIComponent(q));
+                        $('cm-cust-results').innerHTML = r.customers.map(cu => '<div class="list-row" data-cid="' + cu.id + '"><span>' + esc(cu.name) + '</span><span class="muted">' + esc(cu.phone || '') + '</span></div>').join('') || '<div class="muted">No customer found in the book. Adding a new customer needs the Online POS.</div>';
+                        document.querySelectorAll('#cm-cust-results [data-cid]').forEach(row => row.addEventListener('click', () => {
+                            state.customer = r.customers.find(cu => cu.id === Number(row.dataset.cid)); readCommercialPanel(); state.dirty = true; renderChips(); onChange();
+                        }));
+                    } catch (err) { toast(err.message); }
+                }, 250);
+            });
+        }
+        // Manager approval for a manual discount — the manager authenticates with THEIR OWN Edge credential.
+        function askManagerApproval(payload) {
+            return new Promise(resolve => {
+                openModal('<h2>Manager approval — manual discount</h2><p class="muted">Discount ' + esc(payload.discount_type) + ' ' + esc(payload.discount_value) + ' (' + money(payload.discount_amount) + ') needs a manager.</p>' +
+                    '<div class="field"><label>Manager employee code</label><input type="text" id="ma-code" autocomplete="off"></div><div class="field"><label>Manager Edge credential</label><input type="password" id="ma-cred" autocomplete="off"></div><div id="ma-err"></div>' +
+                    '<div class="btn-row"><button class="ghost" id="ma-cancel">Cancel</button><button class="ok" id="ma-ok">Approve</button></div>');
+                $('ma-cancel').onclick = () => { closeModal(); resolve(null); };
+                $('ma-ok').onclick = async () => {
+                    try {
+                        const r = await api('POST', '/manager-approvals/verify', { manager_employee_code: $('ma-code').value.trim(), manager_credential: $('ma-cred').value, action_type: 'manual_discount', payload });
+                        closeModal(); resolve(r.approval_id);
+                    } catch (e) { $('ma-err').innerHTML = '<div class="err">' + esc(e.message) + '</div>'; }
+                };
+            });
         }
 
         // ---- Hold / Draft (new check) — on a table session this is Round 1 of a dine-in check. ----
         async function holdSale(asDraft) {
             if (!requireCart()) return;
-            const payload = { order_type: state.session ? 'dine_in' : state.orderType, save_as_draft: !!asDraft, lines: cartLines() };
+            const payload = Object.assign({ order_type: state.session ? 'dine_in' : state.orderType, save_as_draft: !!asDraft, lines: cartLines() }, commercial());
             if (state.session) payload.restaurant_table_session_id = state.session.id;
-            const nm = $('customer-name').value.trim(); if (nm) payload.customer_name = nm;
             if (payload.order_type === 'quick_sale') { const q = await askQuickSaleAttribution(); if (!q) return; Object.assign(payload, q); }
             try {
                 const s = await api('POST', '/held-sales', payload);
@@ -385,7 +481,15 @@
             const d = await api('GET', '/held-sales/' + id);
             const h = d.held_sale;
             state.held = h; state.session = h.restaurant_table_session_id ? { id: h.restaurant_table_session_id, table_no: h.table_no, waiter_name: h.waiter_name } : null;
-            state.cart = h.lines.map(l => ({ key: 'l' + l.id, product_id: l.product_id, name: l.product_name, price: l.unit_price, quantity: l.quantity, line_id: l.id, kot_sent_quantity: l.kot_sent_quantity }));
+            // A deal is ONE cart row (its header); its components ride underneath for display + split.
+            state.cart = h.lines.filter(l => l.line_kind !== 'component').map(l => l.line_kind === 'combo_header'
+                ? { key: 'l' + l.id, combo_id: l.combo_id, product_id: null, name: l.product_name, price: l.unit_price, quantity: l.quantity, line_id: l.id, kot_sent_quantity: 0, deal: true,
+                    components: h.lines.filter(c => c.parent_line_id === l.id).map(c => c.quantity + ' × ' + c.product_name),
+                    component_lines: h.lines.filter(c => c.parent_line_id === l.id).map(c => ({ id: c.id, per_unit: l.quantity > 0 ? c.quantity / l.quantity : c.quantity })) }
+                : { key: 'l' + l.id, product_id: l.product_id, name: l.product_name, price: l.unit_price, quantity: l.quantity, line_id: l.id, kot_sent_quantity: l.kot_sent_quantity });
+            state.commercial = Object.assign({}, state.commercial, { discount_type: h.discount_type || 'none', discount_value: h.discount_value || 0, promo_code: h.promo_code || '', manager_approval_id: null,
+                delivery_channel_id: h.delivery_channel_id, delivery_rider_id: h.delivery_rider_id, delivery_address: h.delivery_address || '', delivery_charge_amount: h.delivery_charge_amount ?? DATA.defaultDeliveryCharge });
+            state.customer = h.customer_id ? { id: h.customer_id, name: h.customer_name, phone: h.customer_phone, addresses: [] } : null;
             state.dirty = false;
             lockOrderType(h.order_type);
             if (h.customer_name) $('customer-name').value = h.customer_name;
@@ -400,7 +504,7 @@
         async function saveRound(asDraft) {
             if (!state.held) return; if (!requireCart()) return;
             try {
-                const payload = { held_sale_id: state.held.id, order_type: state.held.order_type, save_as_draft: !!asDraft, lines: cartLines() };
+                const payload = Object.assign({ held_sale_id: state.held.id, order_type: state.held.order_type, save_as_draft: !!asDraft, lines: cartLines() }, commercial());
                 if (state.held.restaurant_table_session_id) payload.restaurant_table_session_id = state.held.restaurant_table_session_id;
                 if (state.held.order_type === 'quick_sale') { payload.vehicle_number = state.held.vehicle_number || ''; payload.restaurant_waiter_id = state.held.waiter_id; }
                 const s = await api('POST', '/held-sales', payload);
@@ -424,15 +528,17 @@
         async function reviewAndPay() {
             if (!requireCart()) return;
             if (!state.terminalId) { toast('Select a terminal first.'); return; }
+            if (!state.pendingClientUuid) state.pendingClientUuid = uuid(); // one identity per payment attempt (approval binding + idempotent retry)
             let totals = {};
             try {
                 if (state.held) { if (state.dirty && !(await saveRound(state.held.is_draft))) return; totals = state.held; }
-                else { const p = await api('POST', '/preview-bill', { order_type: state.orderType, lines: cartLines() }); totals = p.totals || {}; }
+                else { const p = await api('POST', '/preview-bill', Object.assign({ order_type: state.orderType, lines: cartLines() }, commercial())); totals = p.totals || {}; }
             } catch (e) { toast(e.message); return; }
+            state.lastTotals = totals;
             const grand = Number(totals.grand_total || 0);
             const cash = DATA.paymentMethods[0];
             const needsQuickSale = !state.held && state.orderType === 'quick_sale';
-            openModal('<h2>Review &amp; Pay' + (state.held ? ' — ' + esc(state.held.sale_no) : '') + '</h2>' + rowsHtml(totals) +
+            openModal('<h2>Review &amp; Pay' + (state.held ? ' — ' + esc(state.held.sale_no) : '') + '</h2>' + rowsHtml(totals) + commercialPanelHtml() +
                 (cash ? '' : '<div class="err">No cash payment method is configured.</div>') +
                 (needsQuickSale ? '<div class="field"><label>Vehicle #</label><input type="text" id="rp-vehicle"></div><div class="field"><label>Waiter</label><select id="rp-waiter">' + DATA.waiters.map(w => '<option value="' + w.id + '">' + esc(w.name) + '</option>').join('') + '</select></div>' : '') +
                 (DATA.canCompleteSale ? '<div class="field"><label>Cash tendered</label><input type="number" id="rp-tendered" value="' + money(grand) + '" min="' + money(grand) + '" step="0.01"></div>' : '') +
@@ -443,6 +549,7 @@
                 (DATA.canCompleteSale ? '<button class="ok" id="rp-complete"' + (cash ? '' : ' disabled') + '>Complete Sale</button>'
                     : '<span class="muted" style="align-self:center">Apply the discount, then <strong>Hold</strong> — a counter will close the bill.</span>') + '</div>');
             const btn = $('rp-complete'); if (btn) btn.addEventListener('click', () => completeSale(grand, cash));
+            wireCommercialPanel(reviewAndPay); // Apply & recalculate re-opens the modal on the server's new totals
         }
         async function completeSale(grand, cash) {
             const btn = $('rp-complete'); btn.disabled = true;
@@ -452,20 +559,31 @@
             try {
                 let sale;
                 if (state.held) {
-                    sale = await api('POST', '/held-sales/' + state.held.id + '/settle', { client_uuid: uuid(), payments });
+                    sale = await api('POST', '/held-sales/' + state.held.id + '/settle', { client_uuid: state.pendingClientUuid, payments });
                 } else {
-                    const payload = { order_type: state.orderType, client_uuid: uuid(), lines: cartLines(), payments };
+                    const payload = Object.assign({ order_type: state.orderType, client_uuid: state.pendingClientUuid, lines: cartLines(), payments }, commercial());
                     if (state.orderType === 'quick_sale') { payload.vehicle_number = ($('rp-vehicle').value || '').trim(); payload.restaurant_waiter_id = Number($('rp-waiter').value || 0) || null; }
-                    const nm = $('customer-name').value.trim(); if (nm) payload.customer_name = nm;
                     sale = await api('POST', '/sales', payload);
                 }
                 closeModal();
                 const syncNote = sale.edge_sync_state && sale.edge_sync_state !== 'acknowledged' ? ' · Pending sync' : '';
-                state.held = null; state.session = null; state.cart = []; state.dirty = false; $('customer-name').value = ''; unlockOrderType(); renderCart();
+                state.held = null; state.session = null; state.cart = []; state.dirty = false; state.customer = null; state.pendingClientUuid = null;
+                state.commercial = Object.assign({}, state.commercial, { discount_type: 'none', discount_value: 0, promo_code: '', manager_approval_id: null, delivery_address: '', delivery_rider_id: null, delivery_channel_id: null });
+                $('customer-name').value = ''; unlockOrderType(); renderCart();
                 toast('Sale ' + (sale.sale_no || '#' + sale.sale_id) + ' completed · change ' + money(sale.change_amount || 0) + syncNote);
                 autoReceipt(sale.sale_id);
                 refreshSync();
-            } catch (e) { showRpErr(e.message); btn.disabled = false; }
+            } catch (e) {
+                // DISCOUNT parity: the server demands a manager for this discount → the manager approves with their own credential.
+                if (/manager approval/i.test(e.message) && !state.commercial.manager_approval_id) {
+                    const t = state.lastTotals || {};
+                    const approvalId = await askManagerApproval({ sales_order_id: state.held ? state.held.id : 0, branch_id: DATA.branchId, client_uuid: state.held ? '' : state.pendingClientUuid,
+                        discount_type: state.commercial.discount_type, discount_value: Number(state.commercial.discount_value || 0), discount_amount: Number(t.manual_discount_amount ?? t.discount_amount ?? 0) });
+                    if (approvalId) { state.commercial.manager_approval_id = approvalId; if (state.held) state.dirty = true; reviewAndPay(); return; }
+                    reviewAndPay(); return;
+                }
+                showRpErr(e.message); btn.disabled = false;
+            }
         }
         function showRpErr(m) { const e = $('rp-err'); if (e) e.innerHTML = '<div class="err">' + esc(m) + '</div>'; }
 
@@ -513,6 +631,34 @@
                     } catch (e) { toast(e.message); }
                 });
             } catch (e) { toast(e.message); }
+        }
+
+        // ---- Split Bill (Online parity): move quantities onto a new held check on the same table; each pays on its own. ----
+        async function splitBill() {
+            if (!state.held) return;
+            if (state.dirty && !(await saveRound(state.held.is_draft))) return;
+            const rows = state.cart.filter(l => l.line_id);
+            openModal('<h2>Split Bill — ' + esc(state.held.sale_no) + '</h2><p class="muted">Choose how much of each item moves to the new check. The kitchen is not told again.</p>' +
+                rows.map(l => '<div class="line"><div><div class="ln-nm">' + esc(l.name) + (l.deal ? ' <span class="chip hot" style="padding:.05rem .4rem">Deal</span>' : '') + '</div><div class="ln-sub">' + l.quantity + ' on this check @ ' + money(l.price) + '</div></div>' +
+                    '<div class="ln-ctl"><input type="number" class="sb-qty" data-key="' + esc(l.key) + '" min="0" max="' + l.quantity + '" step="1" value="0" style="width:5rem"></div></div>').join('') +
+                '<div id="sb-err"></div><div class="btn-row"><button class="ghost" onclick="EdgePOS.closeModal()">Cancel</button><button class="primary" id="sb-ok">Split</button></div>');
+            $('sb-ok').onclick = async () => {
+                const lines = [];
+                document.querySelectorAll('.sb-qty').forEach(inp => {
+                    const q = Number(inp.value || 0); if (q <= 0) return;
+                    const l = state.cart.find(x => x.key === inp.dataset.key); if (!l) return;
+                    lines.push({ sales_order_line_id: l.line_id, quantity: q });
+                    // a deal moves with its components (per-unit quantities × deals moved)
+                    (l.component_lines || []).forEach(c => lines.push({ sales_order_line_id: c.id, quantity: +(c.per_unit * q).toFixed(3) }));
+                });
+                if (!lines.length) { $('sb-err').innerHTML = '<div class="err">Choose at least one quantity to split.</div>'; return; }
+                try {
+                    const r = await api('POST', '/held-sales/' + state.held.id + '/split', { lines });
+                    closeModal();
+                    toast('Split into ' + r.child.sale_no + ' — pay each check from Recall or the Table Board.');
+                    await loadHeld(r.parent.status === 'held' ? r.parent.id : r.child.id);
+                } catch (e) { $('sb-err').innerHTML = '<div class="err">' + esc(e.message) + '</div>'; }
+            };
         }
 
         // ---- Cancel the whole open check (reason required; the server applies the branch approval mode). ----

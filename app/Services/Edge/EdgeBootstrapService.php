@@ -32,7 +32,7 @@ class EdgeBootstrapService
     // of the manifest hash), so ONE package format serves the initial bootstrap AND every subsequent
     // config refresh. No real appliance consumes v4 yet (EDGE_FEATURE_ENABLED=false, none deployed),
     // so this is a clean forward bump, not a compat break.
-    public const SCHEMA_VERSION = 'edge-bootstrap-v5';
+    public const SCHEMA_VERSION = 'edge-bootstrap-v6'; // v6: + promotions, promotion_targets, customers, customer_addresses (a v5 export lacks them and must be refused)
 
     // EDGE-CONFIG-REFRESH-1: the CONFIG payload contract (which sections exist, their column sets, and
     // the upsert/tombstone semantics the refresh applier applies). Versioned separately from the wire
@@ -44,7 +44,7 @@ class EdgeBootstrapService
     private const BUILD_WAITS   = 25;
 
     private const PHASE1_PAYMENT_TYPES  = ['cash'];
-    private const OFFLINE_DELIVERY_TYPES = ['own'];
+    private const OFFLINE_DELIVERY_TYPES = ['own', 'aggregator']; // AGGREGATOR-CUSTOMER-OPTIONAL parity needs the aggregator channels offline too
 
     public function __construct(
         private readonly OfflineEdgeEntitlementService $entitlement,
@@ -472,6 +472,8 @@ class EdgeBootstrapService
         $add('restaurant_waiters', 'branch_id'); $add('delivery_channels'); $add('delivery_riders', 'branch_id');
         $add('printers', 'branch_id'); $add('receipt_layout_settings', 'branch_id'); $add('category_printer_mappings', 'branch_id');
         $add('service_charge_settings', 'branch_id'); $add('void_reasons'); $add('roles'); $add('permissions');
+        // ONLINE-POS PARITY: promo codes and the customer book (delivery / attach customer) are synced config.
+        $add('promotions', 'branch_id'); $add('promotion_targets'); $add('customers'); $add('customer_addresses');
         $add('branch_user', 'branch_id');
         // EDGE-LOCAL-RUNTIME-1 (K): recipe config is now part of the snapshot, so a recipe edit must
         // change the revision and trigger a fresh bootstrap.
@@ -633,6 +635,16 @@ class EdgeBootstrapService
             'terminal_printer_settings' => $rows($conn->table('terminal_printer_settings')->whereIn('terminal_id', $terminalIds ?: [0]), ['id', 'terminal_id', 'receipt_printer_id', 'kot_printer_id', 'auto_print_receipt', 'auto_print_kot']),
             'service_charge_settings' => $rows($conn->table('service_charge_settings')->where('branch_id', $b), ['id', 'branch_id', 'charge_type', 'charge_value', 'order_types', 'is_taxable', 'is_active']),
             'void_reasons' => $rows($conn->table('void_reasons')->where('is_active', 1), ['id', 'name', 'reason_type', 'requires_manager_approval', 'is_active']),
+            // ONLINE-POS PARITY: promotions the shared PromotionService resolves offline (branch or tenant-wide),
+            // and the customer book so delivery / attach-customer work from the same synced identities.
+            'promotions' => $rows($conn->table('promotions')->where('status', 'active')->where(fn ($q) => $q->where('branch_id', $b)->orWhereNull('branch_id')),
+                ['id', 'branch_id', 'name', 'code', 'promotion_type', 'discount_type', 'discount_value', 'max_discount_amount', 'min_order_amount', 'order_types', 'requires_code', 'usage_limit', 'used_count', 'starts_at', 'ends_at', 'status', 'priority', 'notes']),
+            'promotion_targets' => $rows($conn->table('promotion_targets')->whereIn('promotion_id', $conn->table('promotions')->where('status', 'active')->where(fn ($q) => $q->where('branch_id', $b)->orWhereNull('branch_id'))->select('id')),
+                ['id', 'promotion_id', 'target_type', 'target_id']),
+            'customers' => $rows($conn->table('customers')->where('status', 'active'),
+                ['id', 'customer_uuid', 'code', 'name', 'phone', 'email', 'address', 'tax_number', 'date_of_birth', 'gender', 'status']),
+            'customer_addresses' => $rows($conn->table('customer_addresses')->whereIn('customer_id', $conn->table('customers')->where('status', 'active')->select('id')),
+                ['id', 'customer_id', 'label', 'address', 'is_default']),
             // EDGE-LOCAL-RUNTIME-1 (Section K) — recipe CONFIG (no stock execution this sprint).
             'recipes' => $recipeRows->map(fn ($r) => (array) $r)->all(),
             'recipe_ingredients' => $ingredientRows->map(fn ($r) => (array) $r)->all(),

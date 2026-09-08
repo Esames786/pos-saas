@@ -87,6 +87,10 @@ class EdgeLocalConfigRefreshApplier
         'terminal_printer_settings' => ['delete'],
         'service_charge_settings' => ['flag', 'is_active', 0],
         'void_reasons' => ['flag', 'is_active', 0],
+        'promotions' => ['flag', 'status', 'inactive'],
+        'promotion_targets' => ['delete'],
+        'customers' => ['flag', 'status', 'inactive'],   // sales/reservations keep resolving; a retired customer is never offered
+        'customer_addresses' => ['delete'],
         'recipes' => ['flag', 'is_active', 0],
         'recipe_ingredients' => ['delete'],
         'unit_conversions' => ['delete'],

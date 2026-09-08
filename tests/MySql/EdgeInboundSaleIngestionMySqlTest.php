@@ -326,7 +326,7 @@ class EdgeInboundSaleIngestionMySqlTest extends MySqlTenantTestCase
             'DEVICE_UNKNOWN' => fn ($e) => tap($e, fn (&$x) => $x['device_public_uuid'] = 'no-such-device'),
             'STALE_ACTIVATION' => fn ($e) => tap($e, fn (&$x) => $x['activation_epoch'] = self::EPOCH - 1),
             'SCHEMA_UNSUPPORTED' => fn ($e) => tap($e, fn (&$x) => $x['envelope_schema_version'] = 'edge-sale-envelope-v9'),
-            'ORDER_TYPE_UNSUPPORTED' => fn ($e) => tap($e, fn (&$x) => $x['order_type'] = 'delivery'),
+            'ORDER_TYPE_UNSUPPORTED' => fn ($e) => tap($e, fn (&$x) => $x['order_type'] = 'catering'), // delivery is offline-syncable since the DELIVERY parity tranche
             'PAYMENT_UNSUPPORTED' => fn ($e) => tap($e, fn (&$x) => $x['payments'][0]['method_type'] = 'card'),
         ];
         foreach ($cases as $expected => $mutate) {

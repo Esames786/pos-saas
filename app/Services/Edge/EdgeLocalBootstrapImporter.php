@@ -75,6 +75,11 @@ class EdgeLocalBootstrapImporter
         ['terminal_printer_settings', 'terminal_printer_settings', false],
         ['service_charge_settings', 'service_charge_settings', true],
         ['void_reasons', 'void_reasons', false],
+        // ONLINE-POS PARITY (warm standby): promotions + the customer book ride the same revisioned refresh.
+        ['promotions', 'promotions', true],
+        ['promotion_targets', 'promotion_targets', false],
+        ['customers', 'customers', false],
+        ['customer_addresses', 'customer_addresses', false],
         ['recipes', 'recipes', false],
         ['recipe_ingredients', 'recipe_ingredients', false],
         ['unit_conversions', 'unit_conversions', false],
