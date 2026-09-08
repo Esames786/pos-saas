@@ -75,6 +75,19 @@ class ProductSearchRelevanceMySqlTest extends MySqlTenantTestCase
             'a contains-match must never be dropped, only ranked');
     }
 
+    public function test_an_exact_code_wins_outright(): void
+    {
+        // A code search is a PREFIX search, so "51" also matches 513, 514, 517…
+        // and alphabetical order buried the very item whose id was typed.
+        $this->product('Karahi Chicken Live', '513');
+        $this->product('Karahi Mutton Live', '517');
+        $this->product('Malai Kofta Chicken', '515');
+        $this->product('Taftan -', '51');
+        $this->product('Yakhni Pulaow Beef', '518');
+
+        $this->assertSame('Taftan -', $this->search('51')[0] ?? null,
+            'the operator typed an exact id — that is not a guess to be ranked');
+    }
     public function test_an_exact_name_wins_outright(): void
     {
         $this->product('Raita Onion Fried', 'R1');
