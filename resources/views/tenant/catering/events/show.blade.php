@@ -2118,9 +2118,14 @@ $(function () {
     // A block-costed line is followed by its own Cost Details row. Moving the
     // line without it would leave the breakdown behind, attached to whatever row
     // happened to land above it, so the pair moves together.
+    // A line can be followed by its breakdown, and there are TWO kinds: a
+    // SAVED line carries `.cost-details-row`, a freshly punched one carries
+    // `.punch-detail`. The first version of this only knew about the saved kind,
+    // so moving an unsaved row left its own breakdown sitting under whichever
+    // line landed above it. Both kinds travel with their line.
     function lineGroup(row) {
         const $row = $(row);
-        const details = $row.next('.cost-details-row');
+        const details = $row.next('.cost-details-row, .punch-detail');
 
         return details.length ? $row.add(details) : $row;
     }
@@ -2410,6 +2415,121 @@ $(function () {
             + '<tr class="punch-detail d-none" data-detail="p' + idx + '"><td colspan="9" class="bg-body-tertiary">' + detail + '</td></tr>';
     }
 
+    /**
+     * STACKED-MATERIAL-ROW-1 (step 1 of 5) — the owner's layout.
+     *
+     * The item, its quantity, its rates, its note and its actions stay ONE
+     * visual block via rowspan; only the Material Breakdown grows downward, so a
+     * dish with two materials shows the second directly beneath the first, under
+     * the same Material / Rate / Required / CAT / PAR columns.
+     *
+     * The critical thing this shares with punchRowHtml is what it POSTS. Every
+     * hidden input is identical — lines[i][materials][j][label|kg|rate|cust] and
+     * the line's own fields — because the server, the block authorities, the
+     * costing and the documents must not be able to tell which builder drew the
+     * row. This is a change to how a line is ENTERED, and nothing else.
+     *
+     * Nothing calls this yet. punchRowHtml stays in charge until step 4, so the
+     * old path keeps working while this one is checked.
+     */
+    function punchStackedRowHtml(idx, qty, calc) {
+        const esc = s => _.escape(String(s == null ? '' : s));
+        const h = (f, v) => '<input type="hidden" name="lines[' + idx + '][' + f + ']" value="' + esc(v) + '">';
+        const money = n => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const instrIds = ($('#punch-instr-ids').val() || []);
+        const instrLabels = $('#punch-instr-ids option:selected').map(function () { return $(this).text(); }).get();
+        const note = $('#punch-instr').val();
+
+        const mats = punch.mats || [];
+        // A dish with no materials still occupies one row of the breakdown, so
+        // the rowspan arithmetic below never reaches zero.
+        const span = Math.max(1, mats.length);
+
+        const agreedRate = punchAgreedRate(calc.rate);
+        const rateIntent = punchRateIntent(calc.rate);
+        const rateAuthority = rateIntent
+            ? h('rate_action', rateIntent)
+                + (rateIntent === 'override' ? h('rate_override_reason', 'Customer agreed rate entered in order punch') : '')
+            : '';
+
+        // Everything the server reads, gathered in the first cell exactly as the
+        // old builder gathered it.
+        let hidden = (punch.productId ? h('product_id', punch.productId) : '')
+            + h('item_name', punch.name) + h('item_name_ur', punch.nameUr || '')
+            + h('rate', agreedRate) + rateAuthority
+            + (punch.unitId ? h('unit_id', punch.unitId) : '')
+            + (note ? h('instructions', note) : '')
+            + instrIds.map(id => '<input type="hidden" name="lines[' + idx + '][instruction_ids][]" value="' + esc(id) + '">').join('');
+
+        mats.forEach((m, j) => {
+            const own = Math.max(0, m.ownTouched ? m.own : qty * m.ratio);
+            const cust = Math.max(0, m.cust || 0);
+            const p = 'lines[' + idx + '][materials][' + j + ']';
+            hidden += '<input type="hidden" name="' + p + '[label]" value="' + esc(m.label) + '">'
+                + '<input type="hidden" name="' + p + '[kg]" value="' + esc(own + cust) + '">'
+                + '<input type="hidden" name="' + p + '[rate]" value="' + esc(m.rate) + '">'
+                // PARTY is decided by the ITEM, not by a switch. A material the
+                // dish may not take from the customer still posts its zero —
+                // a disabled input is not submitted, and a missing one would
+                // leave whatever the server held before.
+                + '<input type="hidden" name="' + p + '[cust]" value="' + esc(cust) + '">';
+        });
+
+        // The material cells, one line of the stack each.
+        const matCells = (m, j) => {
+            const own = Math.max(0, m.ownTouched ? m.own : qty * m.ratio);
+            const cust = Math.max(0, m.cust || 0);
+            const partyAllowed = punch.party && m.partyAllowed !== false;
+
+            return '<td class="fs-13">' + esc(punchShort(m.name || m.label))
+                    + '<div class="fs-12 text-muted">' + (partyAllowed
+                        ? '<span class="badge bg-success-subtle text-success-emphasis">PARTY ALLOWED</span>'
+                        : '<span class="badge bg-secondary-subtle text-secondary-emphasis">OWN ONLY</span>') + '</div>'
+                + '</td>'
+                + '<td class="text-end fs-13">' + money(Number(m.rate) || 0) + '</td>'
+                + '<td class="text-end fs-13">' + punchFmt(own + cust) + '</td>'
+                + '<td class="text-end fs-13">' + punchFmt(own) + '</td>'
+                + '<td class="text-end fs-13' + (partyAllowed ? '' : ' text-muted') + '">'
+                    + (partyAllowed ? punchFmt(cust) : '—')
+                + '</td>';
+        };
+
+        const blank = '<td class="fs-13 text-muted">—</td><td></td><td></td><td></td><td></td>';
+
+        let html = '<tr data-row="p' + idx + '" data-rate="' + agreedRate + '" class="punch-row">'
+            + '<td rowspan="' + span + '">'
+                + esc(punch.name)
+                + hidden
+                + '<div class="fs-12 text-muted">not saved yet — Save Estimate</div>'
+            + '</td>'
+            + '<td rowspan="' + span + '"><input type="number" step="0.001" min="0.001" class="form-control form-control-sm text-end line-qty" name="lines[' + idx + '][quantity]" value="' + qty + '" readonly></td>'
+            + '<td rowspan="' + span + '" class="text-end">' + money(calc.rate) + '<div class="fs-12 text-muted">per ' + esc(punch.unitCode || '') + '</div></td>'
+            + '<td rowspan="' + span + '" class="text-end">' + money(agreedRate) + '</td>'
+            + (mats.length ? matCells(mats[0], 0) : blank)
+            + '<td rowspan="' + span + '" class="fs-12">'
+                + (instrLabels.length || note
+                    ? '<span class="badge bg-secondary-subtle text-secondary-emphasis" data-bs-toggle="tooltip" title="'
+                        + esc(instrLabels.concat(note ? [note] : []).join(' · ')) + '">'
+                        + '<i class="ti ti-note me-1"></i>' + (instrLabels.length + (note ? 1 : 0)) + '</span>'
+                    : '')
+            + '</td>'
+            + '<td rowspan="' + span + '" class="text-end line-amount">' + money(agreedRate * qty) + '</td>'
+            + '<td rowspan="' + span + '" class="text-end text-nowrap">'
+                + '<button type="button" class="btn btn-sm btn-link text-muted p-0 me-1 line-up" title="Move up"><i class="ti ti-arrow-up"></i></button>'
+                + '<button type="button" class="btn btn-sm btn-link text-muted p-0 me-1 line-down" title="Move down"><i class="ti ti-arrow-down"></i></button>'
+                + '<button type="button" class="btn btn-sm btn-link text-primary p-0 me-1 punch-edit-unsaved" title="Edit this item"><i class="ti ti-pencil"></i></button>'
+                + '<button type="button" class="btn btn-sm btn-link text-danger p-0 punch-remove" title="Remove">&times;</button>'
+            + '</td>'
+            + '</tr>';
+
+        // Every material after the first is its own row carrying ONLY the
+        // breakdown cells — the block above spans down over it.
+        for (let j = 1; j < mats.length; j++) {
+            html += '<tr class="punch-row-material" data-row-of="p' + idx + '">' + matCells(mats[j], j) + '</tr>';
+        }
+
+        return html;
+    }
     // Row-click EDIT of an unsaved punch row: rebuild it in place.
     function punchCommitEdit() {
         const qty = parseFloat($('#punch-qty').val()) || 0;

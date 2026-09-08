@@ -550,8 +550,12 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('line-up', $html, 'every row can be moved up');
         $this->assertStringContainsString('line-down', $html, 'and down');
 
-        $this->assertStringContainsString(".next('.cost-details-row')", $html,
-            "a line's breakdown must move with the line, not stay behind");
+        // BOTH kinds of breakdown. A saved line carries `.cost-details-row`; a
+        // freshly punched one carries `.punch-detail`. The first version of this
+        // guard only named the saved kind, so it happily passed while an unsaved
+        // row left its own breakdown behind — the exact fault it was written for.
+        $this->assertStringContainsString(".next('.cost-details-row, .punch-detail')", $html,
+            "a line's breakdown must move with the line — either kind of it");
         $this->assertStringContainsString('function renumberLines()', $html,
             'the posted indices are rewritten, so the order is stated rather than inferred');
         $this->assertStringContainsString("'lines[' + position", $html,
@@ -579,6 +583,47 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('.punch-staged', $html);
         $this->assertMatchesRegularExpression('/addEventListener\(\s*.submit.,[\s\S]{0,2000}?\}, true\);/', $html,
             'capture phase, or the ajax pipeline posts before the warning can stop it');
+    }
+
+    /**
+     * STACKED-MATERIAL-ROW-1 (step 1) — the new builder exists and posts the
+     * SAME thing as the old one.
+     *
+     * The whole safety of this rebuild rests on one claim: it changes how a line
+     * is ENTERED and nothing else. The server, the block authorities, the
+     * costing and the documents must not be able to tell which builder drew the
+     * row. So what is pinned here is the PAYLOAD, not the appearance.
+     *
+     * Step 1 deliberately does not switch anything over. punchRowHtml is still
+     * the builder in use, so this can ship without changing what anyone sees.
+     */
+    public function test_the_stacked_builder_posts_exactly_what_the_old_one_posts(): void
+    {
+        $html = $this->render($this->booking());
+
+        $this->assertStringContainsString('function punchStackedRowHtml(', $html);
+
+        // The material payload, field for field. THREE places build it — the
+        // old row builder, this new one, and punchCommitEdit which stages the
+        // same fields onto a saved row. That duplication is itself worth pinning:
+        // a fourth copy appearing unnoticed is exactly how the shape drifts.
+        foreach (['[label]', '[kg]', '[rate]', '[cust]'] as $field) {
+            $this->assertSame(
+                3,
+                substr_count($html, "+ p + '".$field.'"'),
+                "all three builders must post materials{$field} — the server cannot be able to tell them apart"
+            );
+        }
+
+        // A material the dish may not take from the customer still posts its
+        // zero: a disabled input is never submitted, and a missing one leaves
+        // whatever the server held before.
+        $this->assertStringContainsString('a disabled input is not submitted', $html,
+            'the reason the zero is posted is written down where it will be read');
+
+        // Step 1 changes nothing the operator sees.
+        $this->assertStringContainsString('punchRowHtml(idx, qty, punchLineCalc(qty))', $html,
+            'the old builder is still the one in use until step 4');
     }
 
     public function test_an_item_that_does_not_exist_cannot_be_entered(): void
