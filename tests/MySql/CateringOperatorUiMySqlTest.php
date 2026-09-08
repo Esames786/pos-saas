@@ -496,6 +496,91 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
         return substr($haystack, $a, $b - $a);
     }
 
+    /**
+     * PUNCH-EDIT-SWAP-1 — editing a row and changing its dish REPLACES that row.
+     *
+     * It used to add a second one and leave the first alone: three identical
+     * Chicken Karahi Shanwari lines reached a live quotation that way. Two
+     * separate faults, and fixing only the first would have been worse than the
+     * duplicate — the row would have kept the old NAME while wearing the new
+     * dish's costing.
+     *
+     *   punchPick        rebuilt the punch from nothing, losing editRow, so
+     *                    punchCommit took the "new row" path.
+     *   punchCommitEdit  staged quantity, materials and instructions on a saved
+     *                    row but never the dish itself.
+     */
+    public function test_changing_the_dish_while_editing_replaces_the_row(): void
+    {
+        $html = $this->render($this->booking());
+
+        // The edit survives the pick.
+        $this->assertStringContainsString('const editing = punch && punch.editRow ? punch : null', $html,
+            'picking a product mid-edit must not forget which row is being edited');
+        $this->assertStringContainsString('editRow: editing ? editing.editRow : null', $html,
+            'the row identity is carried onto the new punch');
+
+        // And the row is told what it now is.
+        $this->assertStringContainsString('if (punch.productChanged) {', $html);
+        $this->assertMatchesRegularExpression('/\[product_id\]"\]\'\)\.val\(punch\.productId/', $html,
+            'a swapped row must write the NEW product id, or the name and the costing disagree');
+        $this->assertStringContainsString('.val(punch.name)', $html,
+            'and the new name');
+    }
+
+    /**
+     * LINE-ORDER-1 — the operator arranges the quotation and the paper follows.
+     *
+     * This is not a display nicety. `saveDraftLines` writes
+     * `sort_order = $index` from the order the lines are POSTED in, and every
+     * document reads them back with `orderBy('sort_order')`. So the order of
+     * these rows already decided the order on the customer's quotation and the
+     * kitchen sheet — there was simply no way to change it.
+     *
+     * Two things have to be true for that to work, and both are pinned here:
+     * a block-costed line's Cost Details row must travel WITH it, or the
+     * breakdown ends up under somebody else's dish; and the `lines[i]` indices
+     * must be rewritten after a move, because an order that depends on how the
+     * browser serialises a form is a promise nobody wrote down.
+     */
+    public function test_a_row_can_be_moved_and_its_breakdown_moves_with_it(): void
+    {
+        $html = $this->render($this->booking());
+
+        $this->assertStringContainsString('line-up', $html, 'every row can be moved up');
+        $this->assertStringContainsString('line-down', $html, 'and down');
+
+        $this->assertStringContainsString(".next('.cost-details-row')", $html,
+            "a line's breakdown must move with the line, not stay behind");
+        $this->assertStringContainsString('function renumberLines()', $html,
+            'the posted indices are rewritten, so the order is stated rather than inferred');
+        $this->assertStringContainsString("'lines[' + position", $html,
+            'renumbering rewrites the index each row posts under');
+    }
+
+    /**
+     * RECALC-ASKS-TO-SAVE-1 — Recalculate must not swallow unsaved work.
+     *
+     * It recomputes from the SAVED quotation and the workspace is then redrawn
+     * from the server's answer, so anything punched but not yet saved simply
+     * vanished — no warning, no trace, minutes of typing gone.
+     *
+     * The listener is registered in the CAPTURE phase on purpose: the ajax
+     * pipeline also listens for submit on the document, and this has to be able
+     * to stop it before it posts. A bubbling listener would run too late.
+     */
+    public function test_recalculate_warns_before_it_discards_unsaved_rows(): void
+    {
+        $html = $this->render($this->booking());
+
+        $this->assertStringContainsString('data-reprice', $html,
+            'the reprice form is marked so the guard can find it');
+        $this->assertStringContainsString('tr.punch-row', $html);
+        $this->assertStringContainsString('.punch-staged', $html);
+        $this->assertMatchesRegularExpression('/addEventListener\(\s*.submit.,[\s\S]{0,2000}?\}, true\);/', $html,
+            'capture phase, or the ajax pipeline posts before the warning can stop it');
+    }
+
     public function test_an_item_that_does_not_exist_cannot_be_entered(): void
     {
         $html = $this->render($this->booking());

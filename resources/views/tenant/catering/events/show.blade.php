@@ -54,6 +54,11 @@
     }
     .punch-mode #lines-table .punch-edit:hover,
     .punch-mode #lines-table .punch-edit-unsaved:hover { background: var(--bs-primary-bg-subtle, #e8eefa); }
+    /* LINE-ORDER-1: a moved row is briefly marked, so a click that lands
+       three rows down the page is still visible to the person who made it. */
+    #lines-table tr.line-moved > td { background: var(--bs-warning-bg-subtle, #fff3cd) !important; transition: background .4s; }
+    .punch-mode #lines-table .line-up,
+    .punch-mode #lines-table .line-down,
     .punch-mode #lines-table .remove-line:hover,
     .punch-mode #lines-table .punch-remove:hover { background: var(--bs-danger-bg-subtle, #fbe4e4); }
     /* The Urdu name is a document concern, not a punching one — the column goes
@@ -311,7 +316,12 @@
         <div class="d-flex gap-2">
             @if($isDraft && $event->isOpen())
                 @can('tenant.catering.estimates.reprice')
-                    <form method="POST" action="{{ url('/catering/estimates/' . $current->id . '/reprice') }}">
+                    {{-- RECALC-ASKS-TO-SAVE-1: this posts to the server and the
+                         workspace is re-rendered from what the server HAS. Rows
+                         punched but not yet saved are not there, so they are
+                         swept away by the redraw. The handler below stops that
+                         happening silently. --}}
+                    <form method="POST" data-reprice action="{{ url('/catering/estimates/' . $current->id . '/reprice') }}">
                         @csrf
                         <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="tooltip"
                                 title="Recomputes the internal material cost from each dish's recipe and the Material Rate Book. Changes no customer price, moves no stock, posts nothing to finance.">
@@ -573,6 +583,12 @@
                                        placeholder="Additional note">
                             </td>
                             <td class="align-middle text-nowrap">
+                                {{-- LINE-ORDER-1: the quotation prints in the order
+                                     these rows sit in — sort_order follows the posted
+                                     order and every document reads it back. So moving
+                                     a row here IS moving it on the customer's paper. --}}
+                                <button type="button" class="btn btn-sm btn-link text-muted line-up p-0 me-1" title="Move up"><i class="ti ti-arrow-up"></i></button>
+                                <button type="button" class="btn btn-sm btn-link text-muted line-down p-0 me-1" title="Move down"><i class="ti ti-arrow-down"></i></button>
                                 <button type="button" class="btn btn-sm btn-link text-primary punch-edit p-0 me-1" title="Edit this item"><i class="ti ti-pencil"></i></button>
                                 <button type="button" class="btn btn-sm btn-link text-danger remove-line p-0" title="Remove this item"><i class="ti ti-x"></i></button>
                             </td>
@@ -1904,6 +1920,14 @@ $(function () {
         const id = e.params.data.id;
         const name = (e.params.data.text || '').replace(/^[^—]*—\s*/, '');
         const p = profiles[id] || {};
+        // PUNCH-EDIT-SWAP-1 — a product picked WHILE EDITING is still an edit.
+        //
+        // This rebuilt `punch` from nothing on every pick, so the row being
+        // edited was forgotten and punchCommit took the "new row" path: the row
+        // was left untouched and a second one appeared at the bottom. Three
+        // identical Chicken Karahi Shanwari lines on a live quotation came from
+        // exactly this.
+        const editing = punch && punch.editRow ? punch : null;
         punch = {
             productId: /^\d+$/.test(String(id)) ? id : null,
             name, nameUr: p.name_ur || '', unitId: p.unit_id || null, mode: 'OWN',
@@ -1913,6 +1937,11 @@ $(function () {
             unitCode: p.unit_code || '—',
             mats: (p.mats || []).map(m => ({ ...m, own: null, cust: 0, ownTouched: false, origRate: m.rate })),
             customerRateTouched: false,
+            // Carried, so the row keeps its place instead of being duplicated.
+            editRow: editing ? editing.editRow : null,
+            editIdx: editing ? editing.editIdx : null,
+            editSaved: editing ? editing.editSaved : false,
+            productChanged: editing ? true : false,
         };
         clearPunchInstructions();
         $('#punch-unit').text('');
@@ -1922,7 +1951,9 @@ $(function () {
         if (!punch.mats.length || !punch.party) { $('#punch-seg-wrap').addClass('d-none'); }
         punchSetMode('OWN');
         punchRenderMats();
-        $('#punch-qty').val(10).trigger('focus').trigger('select');
+        // Swapping the dish does not mean re-typing how much of it.
+        $('#punch-qty').val(editing ? (parseFloat($('#punch-qty').val()) || 10) : 10)
+            .trigger('focus').trigger('select');
         punchLive();
     }
 
@@ -2042,6 +2073,89 @@ $(function () {
      * from anywhere in the bar. (The note being last no longer commits anything;
      * that comment described an older behaviour.)
      */
+    // RECALC-ASKS-TO-SAVE-1 — Recalculate must not swallow unsaved work.
+    //
+    // Recalculate Cost recomputes from the SAVED quotation and the workspace is
+    // then redrawn from the server's answer. Anything punched but not yet saved
+    // is not in that answer, so it vanished — no warning, no trace, and the
+    // operator had just spent minutes typing it.
+    //
+    // Capture phase on purpose: the ajax pipeline listens for submit on the
+    // document too, and this has to be able to stop it before it posts.
+    document.addEventListener('submit', function (e) {
+        const form = e.target;
+        if (! (form instanceof HTMLFormElement) || ! form.hasAttribute('data-reprice')) return;
+
+        const fresh = document.querySelectorAll('#lines-body tr.punch-row').length;
+        const edited = document.querySelectorAll('.punch-staged').length;
+        if (! fresh && ! edited) return;
+
+        const what = [
+            fresh ? fresh + ' nayi row' : null,
+            edited ? edited + ' edit ki hui row' : null,
+        ].filter(Boolean).join(' aur ');
+
+        const proceed = window.confirm(
+            what + ' abhi tak save nahi hui.\n\n'
+            + 'Recalculate Cost save-shuda quotation se chalta hai aur screen dobara '
+            + 'server se banti hai — ye rows us me nahi hongi, is liye zaya ho jayengi.\n\n'
+            + 'Pehle Save Estimate (Ctrl+S) karein, phir Recalculate.\n\n'
+            + 'Phir bhi jari rakhna hai?'
+        );
+
+        if (! proceed) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    }, true);
+    // LINE-ORDER-1 — the operator arranges the quotation, and the paper follows.
+    //
+    // `saveDraftLines` writes `sort_order = $index` from the order the lines are
+    // POSTED in, and every document reads them back with `orderBy('sort_order')`.
+    // So the order of these rows already decides the order on the customer's
+    // quotation and the kitchen sheet — it simply could not be changed.
+    //
+    // A block-costed line is followed by its own Cost Details row. Moving the
+    // line without it would leave the breakdown behind, attached to whatever row
+    // happened to land above it, so the pair moves together.
+    function lineGroup(row) {
+        const $row = $(row);
+        const details = $row.next('.cost-details-row');
+
+        return details.length ? $row.add(details) : $row;
+    }
+
+    // The indices in `lines[i][...]` are rewritten after every move. PHP would
+    // honour the posted order anyway, but an order that depends on how the
+    // browser happens to serialise a form is a promise nobody wrote down.
+    function renumberLines() {
+        $('#lines-body > tr[data-row]').each(function (position) {
+            $(this).find('[name^="lines["]').each(function () {
+                this.name = this.name.replace(/^lines\[\d+\]/, 'lines[' + position + ']');
+            });
+        });
+    }
+
+    $(document).on('click', '.line-up, .line-down', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const row = $(this).closest('tr[data-row]');
+        const group = lineGroup(row);
+
+        if ($(this).hasClass('line-up')) {
+            const above = row.prevAll('tr[data-row]').first();
+            if (! above.length) return;
+            group.insertBefore(above);
+        } else {
+            const below = row.nextAll('tr[data-row]').first();
+            if (! below.length) return;
+            group.insertAfter(lineGroup(below).last());
+        }
+
+        renumberLines();
+        row.addClass('line-moved');
+        setTimeout(() => row.removeClass('line-moved'), 600);
+    });
     function punchSeq() {
         const seq = [
             document.getElementById('punch-qty'),
@@ -2287,6 +2401,8 @@ $(function () {
                     : '')
             + '</td>'
             + '<td class="text-end text-nowrap">'
+                + '<button type="button" class="btn btn-sm btn-link text-muted p-0 me-1 line-up" title="Move up"><i class="ti ti-arrow-up"></i></button>'
+                + '<button type="button" class="btn btn-sm btn-link text-muted p-0 me-1 line-down" title="Move down"><i class="ti ti-arrow-down"></i></button>'
                 + '<button type="button" class="btn btn-sm btn-link text-primary p-0 me-1 punch-edit-unsaved" title="Edit this item"><i class="ti ti-pencil"></i></button>'
                 + '<button type="button" class="btn btn-sm btn-link text-danger p-0 punch-remove" title="Remove">&times;</button>'
             + '</td>'
@@ -2306,6 +2422,27 @@ $(function () {
         if (punch.editSaved) {
             row.find('[name*="[materials]["]').remove();
             const esc = s => _.escape(String(s == null ? '' : s));
+
+            // PUNCH-EDIT-SWAP-1: this branch staged quantity, materials and
+            // instructions but never the DISH. Carrying the edit forward without
+            // this would have been worse than the duplicate it replaces — the row
+            // would keep the old name while wearing the new dish's costing.
+            //
+            // The server already understands the swap: "A row whose product
+            // changed is a different dish. Its old costing explains nothing about
+            // the new one, so it starts again."
+            if (punch.productChanged) {
+                row.find('[name="lines[' + idx + '][product_id]"]').val(punch.productId || '');
+                row.find('[name="lines[' + idx + '][item_name]"]').val(punch.name);
+                row.find('[name="lines[' + idx + '][item_name_ur]"]').val(punch.nameUr || '');
+                row.find('td').first().find('.fw-semibold').first().text(punch.name);
+                if (punch.unitId) {
+                    row.find('[name="lines[' + idx + '][unit_id]"]').val(punch.unitId).trigger('change');
+                }
+                // The old dish's breakdown belongs to the old dish.
+                row.find('[name*="[instruction_ids]"]').remove();
+                row.find('.quoted-live, .cost-details, [id^="cost-details-"]').remove();
+            }
             let html = '';
             punch.mats.forEach((m, j) => {
                 const own = Math.max(0, m.ownTouched ? m.own : qty * m.ratio);

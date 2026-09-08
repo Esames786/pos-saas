@@ -16,15 +16,15 @@
         $name = trim((string) ($m['name'] ?? ''));
 
         if (($m['supply'] ?? 'ours') === 'customer') {
-            return $name.' '.$qty.' ('.$t('customer', 'گاہک').')';
+            return $name.' '.$qty.' ('.$t('PAR', 'گاہک').')';
         }
 
         if (($m['supply'] ?? 'ours') === 'split') {
-            return $name.' '.$qty.' ('.$t('us', 'ہم').' '.$fmtQty($m['ours'] ?? 0)
-                .', '.$t('customer', 'گاہک').' '.$fmtQty($m['customer'] ?? 0).')';
+            return $name.' '.$qty.' ('.$t('CAT', 'ہم').' '.$fmtQty($m['ours'] ?? 0)
+                .', '.$t('PAR', 'گاہک').' '.$fmtQty($m['customer'] ?? 0).')';
         }
 
-        return $name.' '.$qty.' ('.$t('us', 'ہم').')';
+        return $name.' '.$qty.' ('.$t('CAT', 'ہم').')';
     })->filter()->implode(' · ');
 @endphp
 @if($matLine !== '')
