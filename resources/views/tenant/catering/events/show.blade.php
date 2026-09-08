@@ -1978,42 +1978,72 @@ $(function () {
     }
     function punchNote(t) { $('#punch-live').html('<span class="text-warning-emphasis">' + _.escape(t) + '</span>'); }
 
+    /**
+     * STACKED-MATERIAL-ROW-1 (step 3) — the owner's columns.
+     *
+     * Material · Rate · Required Qty · Own · Party, stacked so a dish with two
+     * materials shows the second directly beneath the first under the same
+     * headings. Required is what the recipe asks for at this quantity; Own is
+     * what we supply, and starts there; Party is what the customer brings.
+     *
+     * The input CLASSES are unchanged on purpose — pm-rate, pm-own, pm-cust.
+     * Every handler, the Enter walk and the totals already speak to those, so
+     * this is a rearrangement of what the operator sees and nothing else. That
+     * is the whole promise of this rebuild, and keeping the classes is how it
+     * is kept rather than merely stated.
+     */
     function punchRenderMats() {
         if (!punch.mats.length) { $('#punch-mats').empty(); return; }
         const qty = parseFloat($('#punch-qty').val()) || 0;
         const partyCol = punch.party;
-        $('#punch-mats').html('<table class="table table-sm mb-0" style="max-width:760px"><thead><tr>'
-            + '<th>Linked material</th><th class="text-end">Rate (latest)</th>'
-            + '<th class="text-end">Hum denge</th>'
-            + (partyCol ? '<th class="text-end text-success">Party dega</th>' : '')
-            + '<th class="text-end">Total kitchen</th>'
+        const esc = s => _.escape(String(s == null ? '' : s));
+
+        $('#punch-mats').html('<table class="table table-sm mb-0 align-middle" style="max-width:900px">'
+            + '<thead class="table-light"><tr>'
+            + '<th>Material</th>'
+            + '<th class="text-end">Rate</th>'
+            + '<th class="text-end">Required Qty</th>'
+            + '<th class="text-end">Own</th>'
+            + (partyCol ? '<th class="text-end text-success">Party</th>' : '')
             + '</tr></thead><tbody>'
-            + punch.mats.map((m, i) => '<tr>'
-                + '<td title="' + _.escape(m.label || m.name) + '">' + _.escape(punchShort(m.name || m.label))
-                    + (punch.editRow ? '' : ' <span class="fs-12 text-muted">recipe ' + m.ratio + ' ' + _.escape(m.unit) + '</span>')
-                + '</td>'
-                + '<td class="text-end"><input class="form-control form-control-sm text-end pm-rate" data-i="' + i + '" style="width:90px;display:inline-block" value="' + m.rate + '"></td>'
-                + '<td class="text-end"><input class="form-control form-control-sm text-end pm-own" data-i="' + i + '" style="width:90px;display:inline-block" value="' + punchFmt(m.ownTouched ? m.own : qty * m.ratio) + '"></td>'
-                + (partyCol
-                    // STACKED-MATERIAL-ROW-1 (step 2): the Party box is open whenever
-                    // the ITEM allows party supply. It used to be gated by an OWN/PARTY
-                    // switch, which asked again for something the item already states —
-                    // and the switch had to zero the customer's shares on the way back,
-                    // because a hidden number that still billed nothing is how a
-                    // quotation goes wrong for a reason nobody can see. With the box
-                    // simply open per material, there is no hidden state to unwind.
-                    ? '<td class="text-end"><input class="form-control form-control-sm text-end pm-cust" data-i="' + i + '" style="width:90px;display:inline-block;border-color:var(--bs-success)" value="' + punchFmt(m.cust || 0) + '"></td>'
-                    : '')
-                + '<td class="text-end fw-semibold"><span class="pm-total" data-i="' + i + '">' + punchFmt((m.ownTouched ? m.own : qty * m.ratio) + (m.cust || 0)) + '</span> ' + _.escape(m.unit || '') + '</td>'
-                + '</tr>').join('')
-            + '</tbody></table>');
-    }
-    $(document).on('input', '#punch-qty', function () {
+            + punch.mats.map((m, i) => {
+                const required = qty * m.ratio;
+                const own = m.ownTouched ? m.own : required;
+
+                return '<tr>'
+                    + '<td title="' + esc(m.label || m.name) + '">'
+                        + '<span class="badge bg-secondary-subtle text-secondary-emphasis me-1">' + (i + 1) + '</span>'
+                        + esc(punchShort(m.name || m.label))
+                        + '<div class="fs-12 text-muted">'
+                            + (partyCol
+                                ? '<span class="badge bg-success-subtle text-success-emphasis">PARTY ALLOWED</span>'
+                                : '<span class="badge bg-secondary-subtle text-secondary-emphasis">OWN ONLY</span>')
+                            + (punch.editRow ? '' : ' <span class="ms-1">recipe ' + esc(m.ratio) + ' ' + esc(m.unit) + '</span>')
+                        + '</div>'
+                    + '</td>'
+                    + '<td class="text-end"><input class="form-control form-control-sm text-end pm-rate" data-i="' + i + '" style="width:90px;display:inline-block" value="' + m.rate + '"></td>'
+                    // Required is the recipe's answer, not a field: it moves when
+                    // the quantity moves, and typing over it would only hide the
+                    // difference between what the dish needs and what we send.
+                    + '<td class="text-end fw-semibold"><span class="pm-req" data-i="' + i + '">' + punchFmt(required) + '</span> <span class="fs-12 text-muted">' + esc(m.unit || '') + '</span></td>'
+                    + '<td class="text-end"><input class="form-control form-control-sm text-end pm-own" data-i="' + i + '" style="width:90px;display:inline-block" value="' + punchFmt(own) + '"></td>'
+                    + (partyCol
+                        ? '<td class="text-end"><input class="form-control form-control-sm text-end pm-cust" data-i="' + i + '" style="width:90px;display:inline-block;border-color:var(--bs-success)" value="' + punchFmt(m.cust || 0) + '"></td>'
+                        : '')
+                    + '</tr>';
+            }).join('')
+            + '</tbody></table>'
+            + '<div class="fs-12 text-muted mt-1">Total kitchen draw = Own + Party, per material.</div>');
+    }    $(document).on('input', '#punch-qty', function () {
         if (!punch) return;
         const qty = parseFloat(this.value) || 0;
         $('#punch-mats .pm-own').each(function () {
             const i = +this.dataset.i;
             if (!punch.mats[i].ownTouched) this.value = punchFmt(qty * punch.mats[i].ratio);
+        });
+        // Required is the recipe's answer at THIS quantity, so it moves with it.
+        $('#punch-mats .pm-req').each(function () {
+            this.textContent = punchFmt(qty * punch.mats[+this.dataset.i].ratio);
         });
         punchRefreshTotals();
         punchLive();

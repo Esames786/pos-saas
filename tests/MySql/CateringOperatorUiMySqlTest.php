@@ -650,6 +650,36 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
             'the switch is never shown');
     }
 
+    /**
+     * STACKED-MATERIAL-ROW-1 (step 3) — the owner's columns, and the classes kept.
+     *
+     * Material · Rate · Required Qty · Own · Party. Required is the recipe's
+     * answer at this quantity and is NOT a field: typing over it would only hide
+     * the difference between what the dish needs and what we actually send.
+     *
+     * The input classes are unchanged, and that is the load-bearing part. Every
+     * handler, the Enter walk and the totals already speak to pm-rate, pm-own
+     * and pm-cust, so keeping them is what makes this a rearrangement of what is
+     * seen rather than a rewrite of what happens.
+     */
+    public function test_the_material_columns_match_the_owners_layout(): void
+    {
+        $html = $this->render($this->booking());
+
+        foreach (['>Material<', '>Rate<', '>Required Qty<', '>Own<'] as $heading) {
+            $this->assertStringContainsString($heading, $html, "the breakdown is headed {$heading}");
+        }
+
+        foreach (['pm-rate', 'pm-own', 'pm-cust'] as $class) {
+            $this->assertStringContainsString($class, $html,
+                "{$class} must survive the rearrangement — every handler speaks to it");
+        }
+
+        $this->assertStringContainsString('pm-req', $html);
+        $this->assertStringContainsString('this.textContent = punchFmt(qty * punch.mats[+this.dataset.i].ratio)', $html,
+            'required moves when the quantity moves');
+    }
+
     public function test_an_item_that_does_not_exist_cannot_be_entered(): void
     {
         $html = $this->render($this->booking());
