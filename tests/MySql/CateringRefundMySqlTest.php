@@ -241,14 +241,23 @@ class CateringRefundMySqlTest extends MySqlTenantTestCase
             'the drawer must not have moved');
     }
 
-    /** Money that is covering an unpaid bill is not the customer's to take back. */
-    public function test_an_underpaid_booking_has_nothing_to_refund(): void
+    /**
+     * Money that is covering an unpaid bill is not the customer's to take back
+     * — not, at least, without someone who is allowed to decide it.
+     *
+     * CATERING-REFUND-BEYOND-CREDIT-1 changed this from a flat impossibility
+     * into an authority. The refusal is the same for anyone who does not hold
+     * it, and the message now has to say WHY rather than claim there is
+     * nothing there — because there is: 30,000 was received, and with the
+     * authority it can go back (proved in CateringFinanceMySqlTest).
+     */
+    public function test_an_underpaid_booking_needs_authority_to_refund(): void
     {
         $event = $this->bookingQuotedAt(100000);
         $this->receive($event, 30000);
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessageMatches('/nothing to refund/i');
+        $this->expectExceptionMessageMatches('/authority/i');
 
         $this->refund($event, 1000);
     }
@@ -301,14 +310,18 @@ class CateringRefundMySqlTest extends MySqlTenantTestCase
         $this->assertSame(2, CateringRefund::count());
     }
 
-    /** A third refund of the same credit has nothing left to draw on. */
+    /**
+     * A third refund of the same credit has nothing left to draw on — the
+     * credit is spent, so anything further is reaching into money that is
+     * covering the bill, and that needs the authority nobody here holds.
+     */
     public function test_the_credit_cannot_be_refunded_twice_over(): void
     {
         $event = $this->bookingInCredit();
         $this->refund($event, 34250);
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessageMatches('/nothing to refund/i');
+        $this->expectExceptionMessageMatches('/authority/i');
 
         $this->refund($event, 0.01);
     }

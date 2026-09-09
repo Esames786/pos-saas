@@ -232,6 +232,7 @@ class CateringEntitlementMySqlTest extends MySqlTenantTestCase
             'Manage Material Rates',
             'Print / Reprint',
             'Record Advance',
+            'Refund Beyond Credit',
             'Refund Customer',
             'Release Production',
             'Send / Revise Quote',

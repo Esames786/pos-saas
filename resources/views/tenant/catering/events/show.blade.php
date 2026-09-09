@@ -882,7 +882,7 @@
                                     title="Posts the payment to the general ledger and increases the selected cash/bank balance.">Record Advance</button>
                         @endcan
                     @endif
-                    @if($position['refundable'] > 0)
+                    @if($position['refund_ceiling'] > 0)
                         @can('tenant.catering.refunds.store')
                             <button class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#refundModal"
                                     title="Pays the customer back what they are owed. Posts to the general ledger and reduces the selected cash/bank balance.">
@@ -1143,7 +1143,7 @@
 
 <div class="modal fade" id="advanceModal" tabindex="-1">
     <div class="modal-dialog">
-        <form method="POST" action="{{ url('/catering/events/' . $event->id . '/advances') }}" class="modal-content">
+        <form method="POST" action="{{ url('/catering/events/' . $event->id . '/advances') }}" class="modal-content" id="advance-form">
             @csrf
             <div class="modal-header">
                 <h5 class="modal-title">Record Advance — {{ $event->event_no }}</h5>
@@ -1176,21 +1176,14 @@
                         <label class="form-label">Notes</label>
                         <input type="text" name="notes" class="form-control">
                     </div>
-                    @can('tenant.catering.advances.overpay')
-                    {{-- CATERING-OVERPAYMENT-1 §4 — taking more than the bill is a
-                         DECISION, so it is made here, once, on purpose. The excess
-                         is held as money owed back to the customer; it is never
-                         revenue, whatever the drawer says. --}}
-                    <div class="col-12">
-                        <div class="form-check">
-                            <input type="checkbox" value="1" name="allow_overpayment" id="adv-overpay" class="form-check-input">
-                            <label class="form-check-label fs-13" for="adv-overpay">
-                                Take more than the {{ number_format($position['balance_due'], 2) }} due —
-                                <span class="text-warning-emphasis">the extra is held as the customer's money, not income</span>
-                            </label>
-                        </div>
-                    </div>
-                    @endcan
+                    {{-- CATERING-OVERPAYMENT-1 §4 (revised) — taking more than the
+                         bill is still a DECISION, but it is no longer a box ticked
+                         in advance. Money arrives in instalments: three payments of
+                         100,000 against a 250,000 bill cross the total on the
+                         third, and nobody knew that when they opened this form. So
+                         the system does the arithmetic and asks at the moment it
+                         becomes true. The hidden field carries the answer. --}}
+                    <input type="hidden" name="allow_overpayment" id="adv-overpay" value="0">
                     {{-- §4b — the same box takes a MINUS to hand credit back, and
                          anything other than a plain payment has to say why. --}}
                     <div class="col-12 d-none" id="adv-reason-wrap">
@@ -1227,10 +1220,10 @@
      is precisely when someone needs their money back, so the one action that
      settles it must still be reachable there. --}}
 @can('tenant.catering.refunds.store')
-@if($position['refundable'] > 0)
+@if($position['refund_ceiling'] > 0)
 <div class="modal fade" id="refundModal" tabindex="-1">
     <div class="modal-dialog">
-        <form method="POST" action="{{ url('/catering/events/' . $event->id . '/refunds') }}" class="modal-content">
+        <form method="POST" action="{{ url('/catering/events/' . $event->id . '/refunds') }}" class="modal-content" id="refund-form">
             @csrf
             <div class="modal-header">
                 <h5 class="modal-title">Refund Customer — {{ $event->event_no }}</h5>
@@ -1239,7 +1232,13 @@
             <div class="modal-body">
                 <div class="alert alert-warning">
                     <i class="ti ti-alert-triangle me-1"></i>
-                    This booking owes the customer <strong>{{ number_format($position['refundable'], 2) }}</strong>.
+                    @if($position['refundable'] > 0)
+                        This booking owes the customer <strong>{{ number_format($position['refundable'], 2) }}</strong>,
+                        out of <strong>{{ number_format($position['refund_ceiling'], 2) }}</strong> received.
+                    @else
+                        <strong>{{ number_format($position['refund_ceiling'], 2) }}</strong> has been received on this
+                        booking and <strong>none of it is credit</strong> — every rupee is covering the bill.
+                    @endif
                     <span class="d-block mt-1 fs-12">
                         This pays real money out: it posts to the general ledger and reduces the selected
                         cash/bank balance. The original receipts are never altered — this is recorded
@@ -1249,9 +1248,20 @@
                 <div class="row g-3">
                     <div class="col-6">
                         <label class="form-label">Amount <span class="text-danger">*</span></label>
-                        <input type="number" step="0.01" min="0.01" max="{{ $position['refundable'] }}"
-                               name="amount" class="form-control" value="{{ $position['refundable'] }}" required>
-                        <div class="form-text">At most {{ number_format($position['refundable'], 2) }}. Part of it is fine.</div>
+                        {{-- The ceiling that never moves: money that never arrived
+                             cannot be handed back, whatever anyone is allowed to do.
+                             Going past the CREDIT is a different matter — allowed,
+                             with authority and a reason — so the box accepts it and
+                             the confirm below is what asks. --}}
+                        <input type="number" step="0.01" min="0.01" max="{{ $position['refund_ceiling'] }}"
+                               name="amount" class="form-control" id="refund-amount"
+                               value="{{ $position['refundable'] > 0 ? $position['refundable'] : '' }}" required>
+                        <div class="form-text">
+                            At most {{ number_format($position['refund_ceiling'], 2) }} — everything received.
+                            @if($position['refundable'] > 0)
+                                Up to {{ number_format($position['refundable'], 2) }} is the customer's own credit.
+                            @endif
+                        </div>
                     </div>
                     <div class="col-6">
                         <label class="form-label">Refund Date <span class="text-danger">*</span></label>
@@ -1598,26 +1608,150 @@ $(document).on('click', '.js-rate-toggle', function () {
     $(this).addClass('d-none');
 });
 
-// CATERING-OVERPAYMENT-1 §4/§4b — the Reason box appears exactly when a reason
-// is owed: when the operator decides to take more than the bill, or types a
-// MINUS to hand credit back. Asking for it unconditionally would train people
-// to fill it with nothing.
+// CATERING-OVERPAYMENT-1 §4/§4b (revised) — the arithmetic decides, and it
+// asks at the moment the answer changes.
+//
+// This used to be a checkbox ticked before the amount was typed, which had the
+// operator deciding something they could not yet know. Money arrives in
+// instalments: 100,000 three times against a 250,000 bill crosses the total on
+// the third payment, and nothing about the first two announced it. So the
+// screen compares what is being taken against what is still due, reveals the
+// Reason box the moment it goes past, and asks out loud on submit.
 (function () {
+    const form = document.getElementById('advance-form');
     const amount = document.querySelector('#advanceModal [name=amount]');
-    const overpay = document.getElementById('adv-overpay');
+    const flag = document.getElementById('adv-overpay');
     const wrap = document.getElementById('adv-reason-wrap');
-    if (! amount || ! wrap) return;
+    if (! form || ! amount || ! wrap) return;
 
+    // The figures the decision is made against, taken from the same position()
+    // the controller will use — not recomputed here, where it could drift.
+    const due = {{ (float) $position['balance_due'] }};
+    const canOverpay = @json(auth()->user()?->can('tenant.catering.advances.overpay') ?? false);
+
+    const typed = () => Math.round((parseFloat(amount.value) || 0) * 100) / 100;
+    const overpaying = () => typed() > due;
+
+    // A reason is owed for any departure from a plain payment: money taken
+    // beyond the bill, or money going back. Asking unconditionally would train
+    // people to fill it with nothing.
     const sync = function () {
-        const owed = (parseFloat(amount.value) || 0) < 0 || (overpay && overpay.checked);
+        const owed = typed() < 0 || overpaying();
         wrap.classList.toggle('d-none', ! owed);
         const box = wrap.querySelector('input');
         if (box) box.required = owed;
+        if (! overpaying()) flag.value = '0';
     };
 
     amount.addEventListener('input', sync);
-    if (overpay) overpay.addEventListener('change', sync);
     sync();
+
+    let answered = false;
+
+    form.addEventListener('submit', function (e) {
+        if (! overpaying() || answered) return;
+
+        e.preventDefault();
+
+        // Refused on the screen as well as at the controller. The controller is
+        // the authority — it drops the flag for anyone without the permission —
+        // but being told plainly beats submitting into a refusal.
+        if (! canOverpay) {
+            Swal.fire({
+                title: 'Not allowed',
+                html: 'This is more than the <b>' + due.toLocaleString(undefined, {minimumFractionDigits: 2}) + '</b> still due, '
+                    + 'and you do not have permission to take more than the bill.',
+                icon: 'error',
+            });
+            return;
+        }
+
+        const extra = (typed() - due).toLocaleString(undefined, {minimumFractionDigits: 2});
+
+        Swal.fire({
+            title: 'More than the amount due',
+            html: 'Only <b>' + due.toLocaleString(undefined, {minimumFractionDigits: 2}) + '</b> is still due on this booking.<br>'
+                + 'The extra <b>' + extra + '</b> will be held as the customer\'s money — <b>not income</b> — '
+                + 'and stays owed back to them until it is used or refunded.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, take the full amount',
+            cancelButtonText: 'Cancel',
+            confirmButtonColor: '#0d6efd',
+        }).then(function (r) {
+            if (! r.isConfirmed) return;
+            flag.value = '1';
+            answered = true;
+            if (form.requestSubmit) { form.requestSubmit(); } else { form.submit(); }
+        });
+    });
+})();
+
+// CATERING-REFUND-BEYOND-CREDIT-1 — money going OUT gets the same treatment as
+// money coming in: the screen compares what is being handed back against what
+// is actually the customer's, and asks out loud when it goes further.
+//
+// Refunding within the credit returns money the business was merely holding.
+// Refunding past it returns money that was PAYING A BILL — the balance due goes
+// straight back up by the difference — and that is a different act, not a
+// larger one. Whoever is doing it should be told so in those words before it
+// happens, not discover it on the statement afterwards.
+(function () {
+    const form = document.getElementById('refund-form');
+    const amount = document.getElementById('refund-amount');
+    if (! form || ! amount) return;
+
+    const credit = {{ (float) $position['refundable'] }};
+    const ceiling = {{ (float) $position['refund_ceiling'] }};
+    const canGoBeyond = @json(auth()->user()?->can('tenant.catering.refunds.beyond-credit') ?? false);
+
+    const money = (n) => n.toLocaleString(undefined, {minimumFractionDigits: 2});
+    const typed = () => Math.round((parseFloat(amount.value) || 0) * 100) / 100;
+
+    let answered = false;
+
+    form.addEventListener('submit', function (e) {
+        if (typed() <= credit || answered) return;
+
+        e.preventDefault();
+
+        // Refused on the screen as well as at the model guard. The guard is the
+        // authority — it holds for every caller, including a hand-written post —
+        // but being told plainly beats submitting into a refusal.
+        if (! canGoBeyond) {
+            Swal.fire({
+                title: 'Not allowed',
+                html: credit > 0
+                    ? 'Only <b>' + money(credit) + '</b> of this booking is the customer\'s own credit. '
+                      + 'Handing back more than that returns money which is covering the bill, '
+                      + 'and you do not have permission to do it.'
+                    : 'None of the <b>' + money(ceiling) + '</b> received is credit — every rupee is covering '
+                      + 'the bill — and you do not have permission to hand back money that is paying for the booking.',
+                icon: 'error',
+            });
+            return;
+        }
+
+        const beyond = typed() - credit;
+
+        Swal.fire({
+            title: 'This goes past the customer\'s credit',
+            html: (credit > 0
+                    ? 'Only <b>' + money(credit) + '</b> is the customer\'s own credit.<br>'
+                    : 'None of this is the customer\'s credit.<br>')
+                + 'The other <b>' + money(beyond) + '</b> is money that is <b>covering the bill</b> — '
+                + 'handing it back puts the balance due straight back up by that amount.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, pay it back anyway',
+            cancelButtonText: 'Cancel',
+            confirmButtonColor: '#d9534f',
+        }).then(function (r) {
+            if (! r.isConfirmed) return;
+            answered = true;
+            if (form.requestSubmit) { form.requestSubmit(); } else { form.submit(); }
+        });
+    });
 })();
 
 // KASHIF-ORDER-PUNCH §B: the old software's keyboard, on this screen.

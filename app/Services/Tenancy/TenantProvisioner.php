@@ -285,6 +285,7 @@ class TenantProvisioner
             // run, so the grant inside those migrations finds no Owner to give
             // it to. This list is the only path a new tenant has.
             'tenant.catering.advances.overpay',
+            'tenant.catering.refunds.beyond-credit',
 
             'tenant.users.index',
             'tenant.users.create',

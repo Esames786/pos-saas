@@ -891,6 +891,95 @@ class JournalPostingService
     }
 
     /**
+     * A2b. Refund that reaches past the customer's credit
+     * (CATERING-REFUND-BEYOND-CREDIT-1).
+     *
+     * The plain refund below says "Always 2300, because credit can only ever be
+     * sitting there". Once money that is COVERING A BILL may be handed back that
+     * sentence stops being true, and following it would quietly corrupt two
+     * accounts at once: issuing the invoice already cleared 2300 by
+     * `advance_applied`, so debiting it again drives a LIABILITY into a debit
+     * balance, and the receivable the customer owes again never comes back.
+     *
+     * So the refund is posted as the two different things it is:
+     *
+     *   Dr  2300 Customer Advances     money that was never applied to a bill
+     *   Dr  1300 Accounts Receivable   money that WAS — the debt returns
+     *       Cr  cash/bank              the whole payment out
+     *
+     * 4160 is not touched and must never be. Handing money back is not a loss of
+     * revenue: the revenue either was earned or never was, and a refund does not
+     * decide that.
+     *
+     * Only for the case that actually splits. When the whole refund comes out of
+     * credit there is nothing to divide, and postCateringRefund posts it.
+     */
+    public function postCateringSplitRefund(
+        \App\Models\Tenant\CateringRefund $refund,
+        float $fromAdvance,
+        float $fromReceivable,
+        ?int $userId = null
+    ): JournalEntry {
+        $amount = round((float) $refund->amount, 2);
+        $fromAdvance = round($fromAdvance, 2);
+        $fromReceivable = round($fromReceivable, 2);
+
+        // The two parts ARE the refund. If they are not, something upstream has
+        // worked out the split wrongly and the safe answer is to post nothing.
+        if ($fromAdvance < 0 || $fromReceivable <= 0 || round($fromAdvance + $fromReceivable, 2) !== $amount) {
+            throw new \RuntimeException(
+                'Refusing to split catering refund '.($refund->refund_no ?? '#'.$refund->id).': '
+                .number_format($fromAdvance, 2).' + '.number_format($fromReceivable, 2)
+                .' does not make '.number_format($amount, 2)
+                .' — a refund must be posted whole or not at all.'
+            );
+        }
+
+        if ($existing = $this->assertReplayMatches('catering_split_refund', $refund->id, $amount)) {
+            return $existing;
+        }
+
+        $branchId = $refund->event?->branch_id;
+        $reference = 'Catering refund '.$refund->refund_no.' ('.($refund->event?->event_no ?? '').')';
+
+        $creditAccountId = $refund->cash_bank_account_id
+            ? $this->cashBankCoaId($refund->cash_bank_account_id)
+            : null;
+
+        // No fallback, exactly as in the plain refund: money leaving has to name
+        // where it left from, and a system that cannot name it has no business
+        // paying it out.
+        if (! $creditAccountId) {
+            throw new \RuntimeException(
+                'Refusing to post catering refund '.($refund->refund_no ?? '#'.$refund->id)
+                .': no cash or bank account is mapped for it. Money out must name the account it left from.'
+            );
+        }
+
+        $lines = [];
+
+        // A refund can be entirely out of billed money — a booking with no credit
+        // at all, where the whole deposit is being returned. Then there is no
+        // advance line to write.
+        if ($fromAdvance > 0) {
+            $lines[] = ['account_code' => '2300', 'branch_id' => $branchId, 'description' => 'Customer Advances refunded', 'debit' => $fromAdvance, 'credit' => 0];
+        }
+
+        $lines[] = ['account_code' => '1300', 'branch_id' => $branchId, 'description' => 'Accounts Receivable (refunded past the credit)', 'debit' => $fromReceivable, 'credit' => 0];
+        $lines[] = ['account_id' => $creditAccountId, 'branch_id' => $branchId, 'description' => $reference, 'debit' => 0, 'credit' => $amount];
+
+        return $this->journal->post(
+            'catering_split_refund',
+            $refund->id,
+            $refund->refund_no,
+            $reference,
+            $refund->refund_date?->toDateString() ?? now()->toDateString(),
+            $lines,
+            $userId
+        );
+    }
+
+    /**
      * A2. Refund of customer credit (KASHIF-CATERING-CUSTOMER-CREDIT-1):
      * Dr 2300 Customer Advances / Cr the mapped cash or bank it left from.
      *

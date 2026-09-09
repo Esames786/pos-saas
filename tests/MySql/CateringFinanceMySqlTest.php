@@ -7,6 +7,7 @@ use App\Models\Tenant\CateringEvent;
 use App\Services\Catering\CateringAdvanceService;
 use App\Services\Catering\CateringEstimateService;
 use App\Services\Catering\CateringFinalInvoiceService;
+use App\Services\Catering\CateringFinancialPositionService;
 use App\Services\Finance\JournalPostingService;
 use Database\Seeders\Tenant\DefaultChartOfAccountsSeeder;
 use Illuminate\Support\Facades\DB;
@@ -580,6 +581,189 @@ class CateringFinanceMySqlTest extends MySqlTenantTestCase
 
         $this->assertStringContainsString("'tenant.catering.advances.overpay',", $provisioner,
             'a newly provisioned tenant must not have to wait for someone to notice this by hand');
+    }
+
+    /**
+     * CATERING-REFUND-BEYOND-CREDIT-1 — the deposit on a live booking goes back,
+     * and it comes out of 2300 because that is where it is sitting.
+     *
+     * This is the owner's own case: 5,000 taken against a booking that is still
+     * going ahead, then handed back "without cancelling the order". Before this
+     * change the only way out was to cancel the booking, which made the
+     * quotation stop being the bill.
+     *
+     * No invoice exists, so the GL has applied nothing: every rupee received is
+     * in 2300 regardless of what the quotation says is owed. 1300 must not be
+     * touched at all — this booking has no receivable yet.
+     */
+    public function test_a_deposit_can_go_back_without_cancelling_the_booking(): void
+    {
+        $event = $this->confirmedEvent();          // 100,000 quoted, no invoice
+        $this->advances->record($event->refresh(), [
+            'amount' => 5000,
+            'received_date' => now()->toDateString(),
+            'payment_method_id' => $this->paymentMethodId,
+        ]);
+
+        $before = app(CateringFinancialPositionService::class)->position($event->refresh());
+        $this->assertEqualsWithDelta(0.0, $before['refundable'], 0.01,
+            'none of it is credit — it is all covering the bill');
+        $this->assertEqualsWithDelta(5000.0, $before['refund_ceiling'], 0.01,
+            'but all of it was received, so all of it can go back');
+
+        $revenueBefore = $this->accountNet('4160');
+
+        app(\App\Services\Catering\CateringRefundService::class)->record($event->refresh(), [
+            'amount' => 5000,
+            'refund_date' => now()->toDateString(),
+            'payment_method_id' => $this->paymentMethodId,
+            'reason' => 'Customer asked for the deposit back, booking still on',
+            'allow_beyond_credit' => true,
+        ]);
+
+        $this->assertEqualsWithDelta(0.0, $this->accountNet('2300'), 0.01,
+            'the liability the deposit created is discharged');
+        $this->assertEqualsWithDelta(0.0, $this->accountNet('1300'), 0.01,
+            'and a booking with no invoice has no receivable to disturb');
+        $this->assertEqualsWithDelta($revenueBefore, $this->accountNet('4160'), 0.01,
+            'handing money back is not a loss of revenue');
+
+        $after = app(CateringFinancialPositionService::class)->position($event->refresh());
+        $this->assertEqualsWithDelta(100000.0, $after['balance_due'], 0.01,
+            'the whole bill is owed again, which is exactly what happened');
+        $this->assertEqualsWithDelta(0.0, $after['refund_ceiling'], 0.01,
+            'and there is nothing left to hand back');
+    }
+
+    /**
+     * The posting that this whole change exists for.
+     *
+     * Once the invoice is issued, `advance_applied` has already moved the
+     * deposit out of 2300 and into 1300. A refund that reaches past the credit
+     * must therefore split: the part that was never applied comes out of 2300,
+     * and the part that WAS covering the bill goes back onto 1300, because the
+     * customer owes it again.
+     *
+     * Posting the whole thing to 2300 — which is what the plain refund does, and
+     * what its comment says is "always" right — would drive a liability into a
+     * debit balance AND leave the receivable understated. Both wrong, both
+     * silent.
+     */
+    public function test_refunding_past_the_credit_puts_the_receivable_back(): void
+    {
+        $event = $this->confirmedEvent();          // 100,000 billed
+        $this->invoices->issue($event->refresh());
+
+        $this->advances->record($event->refresh(), [
+            'amount' => 150000,                    // settles 100,000, holds 50,000
+            'received_date' => now()->toDateString(),
+            'payment_method_id' => $this->paymentMethodId,
+            'allow_overpayment' => true,
+            'overpayment_reason' => 'Paid ahead',
+        ]);
+
+        $this->assertEqualsWithDelta(-50000.0, $this->accountNet('2300'), 0.01,
+            'the excess is a liability');
+        $this->assertEqualsWithDelta(0.0, $this->accountNet('1300'), 0.01,
+            'and the bill is settled');
+
+        $revenueBefore = $this->accountNet('4160');
+
+        // 50,000 of this is the customer's own credit; 20,000 is money that
+        // settled the bill.
+        app(\App\Services\Catering\CateringRefundService::class)->record($event->refresh(), [
+            'amount' => 70000,
+            'refund_date' => now()->toDateString(),
+            'payment_method_id' => $this->paymentMethodId,
+            'reason' => 'Customer wanted most of it back',
+            'allow_beyond_credit' => true,
+        ]);
+
+        $this->assertEqualsWithDelta(0.0, $this->accountNet('2300'), 0.01,
+            'the credit is gone, and 2300 must never be left in debit');
+        $this->assertEqualsWithDelta(20000.0, $this->accountNet('1300'), 0.01,
+            'the 20,000 that had settled the bill is owed again');
+        $this->assertEqualsWithDelta($revenueBefore, $this->accountNet('4160'), 0.01,
+            'revenue was earned or it was not — a refund does not decide that');
+
+        $position = app(CateringFinancialPositionService::class)->position($event->refresh());
+        $this->assertEqualsWithDelta(20000.0, $position['balance_due'], 0.01,
+            'and the booking agrees with the ledger to the rupee');
+        $this->assertEqualsWithDelta(0.0, $position['customer_credit'], 0.01);
+    }
+
+    /**
+     * The ceiling that never moves. No permission reaches past it, because there
+     * is nothing behind it.
+     */
+    public function test_more_than_was_ever_received_cannot_be_handed_back(): void
+    {
+        $event = $this->confirmedEvent();
+        $this->advances->record($event->refresh(), [
+            'amount' => 5000,
+            'received_date' => now()->toDateString(),
+            'payment_method_id' => $this->paymentMethodId,
+        ]);
+
+        $before = $this->tenant()->table('journal_entries')->count();
+
+        try {
+            app(\App\Services\Catering\CateringRefundService::class)->record($event->refresh(), [
+                'amount' => 6000,
+                'refund_date' => now()->toDateString(),
+                'payment_method_id' => $this->paymentMethodId,
+                'reason' => 'Trying to give back more than arrived',
+                'allow_beyond_credit' => true,          // even WITH the authority
+            ]);
+            $this->fail('refunding more than was received must be refused');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('never arrived', $e->getMessage());
+        }
+
+        $this->assertSame($before, $this->tenant()->table('journal_entries')->count(),
+            'a refused refund leaves the ledger exactly as it was');
+        $this->assertSame(0, $this->tenant()->table('catering_refunds')->count());
+    }
+
+    /**
+     * Without the authority, the old refusal still stands — and it must refuse
+     * in the SERVICE, not merely on the screen, because a form post can be
+     * written by hand.
+     */
+    public function test_going_past_the_credit_needs_the_authority(): void
+    {
+        $event = $this->confirmedEvent();
+        $this->invoices->issue($event->refresh());
+        $this->advances->record($event->refresh(), [
+            'amount' => 150000,
+            'received_date' => now()->toDateString(),
+            'payment_method_id' => $this->paymentMethodId,
+            'allow_overpayment' => true,
+            'overpayment_reason' => 'Paid ahead',
+        ]);
+
+        $before = $this->tenant()->table('journal_entries')->count();
+
+        try {
+            app(\App\Services\Catering\CateringRefundService::class)->record($event->refresh(), [
+                'amount' => 70000,
+                'refund_date' => now()->toDateString(),
+                'payment_method_id' => $this->paymentMethodId,
+                'reason' => 'No authority for this',
+                // allow_beyond_credit deliberately absent
+            ]);
+            $this->fail('going past the credit without the authority must be refused');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('authority', $e->getMessage());
+        }
+
+        $this->assertSame($before, $this->tenant()->table('journal_entries')->count());
+
+        $position = app(CateringFinancialPositionService::class)->position($event->refresh());
+        $this->assertEqualsWithDelta(50000.0, $position['customer_credit'], 0.01,
+            'the credit is untouched');
+        $this->assertEqualsWithDelta(0.0, $position['balance_due'], 0.01,
+            'and the bill is still settled');
     }
 
     /** A receipt is posted whole or not at all. */
