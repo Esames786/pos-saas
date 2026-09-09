@@ -23,8 +23,12 @@
     $tones = [
         'overdue'   => ['bg' => '#F8E3E0', 'fg' => '#8E2E24', 'label' => 'Date passed, still open'],
         'confirmed' => ['bg' => '#E3F0E8', 'fg' => '#22684C', 'label' => 'Confirmed'],
-        'quoted'    => ['bg' => '#E4EDF6', 'fg' => '#245278', 'label' => 'Quoted, awaiting reply'],
-        'draft'     => ['bg' => '#EFEFEC', 'fg' => '#5C5F60', 'label' => 'Draft'],
+        // CAL-LEGEND-FILTER-1: the two words the owner asked for. They are not a
+        // new idea — a booking is DRAFT until its quotation is finalized and sent,
+        // and QUOTED from that moment (CateringEstimateService::send). The chips
+        // simply never said which stage they meant.
+        'quoted'    => ['bg' => '#E4EDF6', 'fg' => '#245278', 'label' => 'Quotation sent — awaiting reply'],
+        'draft'     => ['bg' => '#EFEFEC', 'fg' => '#5C5F60', 'label' => 'Estimate — not yet sent'],
         'done'      => ['bg' => '#E6E4EE', 'fg' => '#4A4470', 'label' => 'Completed / closed'],
         'cancelled' => ['bg' => '#F2F2F0', 'fg' => '#9A9A96', 'label' => 'Cancelled'],
     ];
@@ -36,7 +40,7 @@
         <div>
             <h5 class="mb-0"><i class="ti ti-calendar-event me-1"></i>Booking Calendar</h5>
             <div class="text-muted fs-12">
-                A date shows how many bookings it holds — click it for the list.
+                A date shows how many bookings it holds — click it for the list. Click a status below to show only those.
             </div>
         </div>
         <div class="d-flex align-items-center gap-3 flex-wrap">
@@ -83,14 +87,20 @@
             </button>
         </div>
 
-        {{-- ── legend ───────────────────────────────────────────────────── --}}
-        <div class="d-flex flex-wrap gap-2 mb-3">
+        {{-- ── legend, which is also the filter ──────────────────────────
+             CAL-LEGEND-FILTER-1: these used to explain the colours and do
+             nothing. Clicking one now shows only that status; clicking it again
+             puts it back. Several can be on at once. --}}
+        <div class="d-flex flex-wrap gap-2 mb-3 align-items-center cal-legend">
             @foreach($tones as $key => $t)
-                <span class="badge fw-normal fs-12"
-                      style="background:{{ $t['bg'] }};color:{{ $t['fg'] }};border:1px solid {{ $t['fg'] }}33">
+                <button type="button" class="badge fw-normal fs-12 border-0 cal-tone" data-tone="{{ $key }}"
+                        aria-pressed="false" title="Sirf {{ $t['label'] }} dikhayein"
+                        style="background:{{ $t['bg'] }};color:{{ $t['fg'] }};box-shadow:inset 0 0 0 1px {{ $t['fg'] }}33;cursor:pointer">
                     {{ $t['label'] }}
-                </span>
+                </button>
             @endforeach
+            <button type="button" class="btn btn-link btn-sm p-0 fs-12 text-muted d-none" id="cal-clear-tones">sab dikhayein</button>
+            <span class="fs-12 text-muted d-none" id="cal-filter-note"></span>
         </div>
 
         {{-- ── the months ───────────────────────────────────────────────── --}}
@@ -216,6 +226,86 @@
 <script>
 (function () {
     var card = document.getElementById('catering-calendar-card');
+
+    // CAL-LEGEND-FILTER-1 — which statuses are being shown. Empty means all of
+    // them, which is what the calendar has always done.
+    var CAL_TONES = @json(collect($tones)->map(fn ($t) => ['bg' => $t['bg'], 'fg' => $t['fg'], 'label' => $t['label']]));
+    var TONE_ORDER = ['overdue', 'confirmed', 'quoted', 'draft', 'done', 'cancelled'];
+    var activeTones = [];
+
+    function eventsOf(btn) {
+        try { return JSON.parse(btn.getAttribute('data-events')) || []; } catch (e) { return []; }
+    }
+
+    /**
+     * Re-draw every day from the bookings it already carries.
+     *
+     * Run again after a month is fetched: that request replaces the whole body,
+     * so the chips and the counts come back unfiltered unless this is re-applied.
+     */
+    function applyTones() {
+        var body = document.getElementById('catering-calendar-body');
+        if (! body) return;
+
+        body.querySelectorAll('.cal-tone').forEach(function (chip) {
+            var on = activeTones.indexOf(chip.getAttribute('data-tone')) > -1;
+            chip.setAttribute('aria-pressed', on ? 'true' : 'false');
+            chip.style.opacity = (activeTones.length && ! on) ? '.35' : '1';
+            chip.style.boxShadow = on
+                ? 'inset 0 0 0 2px currentColor'
+                : chip.style.boxShadow.replace('inset 0 0 0 2px currentColor', '');
+        });
+
+        var clear = document.getElementById('cal-clear-tones');
+        if (clear) clear.classList.toggle('d-none', activeTones.length === 0);
+
+        var kept = 0, hidden = 0;
+
+        body.querySelectorAll('.cal-day-count').forEach(function (btn) {
+            var all = eventsOf(btn);
+            var shown = activeTones.length
+                ? all.filter(function (ev) { return activeTones.indexOf(ev.tone) > -1; })
+                : all;
+
+            // The modal reads THIS, so the list it opens always matches the
+            // number on the badge.
+            btn.setAttribute('data-filtered', JSON.stringify(shown));
+
+            if (! shown.length) { btn.classList.add('d-none'); hidden += all.length; return; }
+            kept += shown.length;
+            btn.classList.remove('d-none');
+            btn.textContent = '\u2022 ' + shown.length;
+
+            var tone = TONE_ORDER.find(function (t) {
+                return shown.some(function (ev) { return ev.tone === t; });
+            }) || 'draft';
+            var palette = CAL_TONES[tone] || CAL_TONES.draft;
+            if (palette) { btn.style.background = palette.bg; btn.style.color = palette.fg; }
+
+            var word = shown.length === 1 ? 'booking' : 'bookings';
+            btn.title = shown.length + ' ' + word;
+            btn.setAttribute('aria-label', shown.length + ' ' + word);
+        });
+
+        var note = document.getElementById('cal-filter-note');
+        if (note) {
+            note.classList.toggle('d-none', activeTones.length === 0);
+            note.textContent = activeTones.length ? (kept + ' dikha rahe hain · ' + hidden + ' chhupi hain') : '';
+        }
+    }
+
+    card.addEventListener('click', function (e) {
+        var chip = e.target.closest('.cal-tone');
+        if (chip) {
+            var tone = chip.getAttribute('data-tone');
+            var at = activeTones.indexOf(tone);
+            if (at > -1) { activeTones.splice(at, 1); } else { activeTones.push(tone); }
+            applyTones();
+
+            return;
+        }
+        if (e.target.closest('#cal-clear-tones')) { activeTones = []; applyTones(); }
+    });
     if (!card) return;
 
     // Fill the day dialog from the count pill that was clicked. All the data is
@@ -225,8 +315,13 @@
         var btn = e.relatedTarget;
         if (!btn) return;
 
+        // What the badge counted — the filtered list when a filter is on, and
+        // the day's own list when it is not. Reading data-events here would open
+        // a list that disagrees with the number that was clicked.
         var events;
-        try { events = JSON.parse(btn.getAttribute('data-events')); } catch (err) { return; }
+        try {
+            events = JSON.parse(btn.getAttribute('data-filtered') || btn.getAttribute('data-events'));
+        } catch (err) { return; }
 
         var title = document.getElementById('cal-day-title');
         if (title) {
@@ -283,7 +378,11 @@
         body.style.opacity = '.5';
         fetch(url, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
             .then(function (r) { return r.ok ? r.text() : Promise.reject(r.status); })
-            .then(function (html) { body.innerHTML = html; })
+            .then(function (html) {
+                body.innerHTML = html;
+                // The fetch replaced the chips and the counts; put the filter back.
+                applyTones();
+            })
             .catch(function () { body.style.opacity = '1'; })
             .finally(function () { body.style.opacity = '1'; });
     });

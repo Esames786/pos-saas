@@ -213,6 +213,71 @@ class CateringCalendarMySqlTest extends MySqlTenantTestCase
             'the legend must explain the colour that matters most');
     }
 
+    /**
+     * CAL-LEGEND-FILTER-1 — the legend is a filter, and it says which stage it
+     * means.
+     *
+     * The owner circled the status chips: "these buttons should be clickable or
+     * filterable", and separately asked how a QUOTATION is told apart from an
+     * ESTIMATE. Both answers were already in the data and neither was on screen.
+     *
+     * A booking is `draft` until its quotation is finalized and sent, and
+     * `quoted` from that moment — CateringEstimateService::send() moves the
+     * estimate to `sent` and the event to `quoted` in the same transaction. The
+     * calendar has always coloured by that. The chips simply never said which
+     * stage each colour meant, and could not be clicked.
+     *
+     * Filtering is done in the page from the bookings each day already carries,
+     * so there is no new route and no new permission to grant.
+     */
+    public function test_the_legend_filters_and_names_the_document_stage(): void
+    {
+        View::share('errors', new \Illuminate\Support\ViewErrorBag);
+
+        $date = CarbonImmutable::today()->addDays(3);
+        $this->event($date->toDateString(), CateringEvent::STATUS_QUOTED, 900);
+
+        $html = View::make('tenant.partials.catering-calendar', [
+            'cateringCalendar' => $this->service()->window($date),
+            'selectedBranch' => null,
+        ])->render();
+
+        // The chips say which document stage they mean.
+        $this->assertStringContainsString('Estimate — not yet sent', $html,
+            'a booking with no quotation sent is still at estimate stage, and should say so');
+        $this->assertStringContainsString('Quotation sent — awaiting reply', $html);
+
+        // And they are buttons, one per tone, each carrying its own key.
+        $this->assertSame(6, substr_count($html, 'class="badge fw-normal fs-12 border-0 cal-tone"'),
+            'every status in the legend is clickable');
+        foreach (['overdue', 'confirmed', 'quoted', 'draft', 'done', 'cancelled'] as $tone) {
+            $this->assertStringContainsString('data-tone="'.$tone.'"', $html);
+        }
+        $this->assertStringContainsString('aria-pressed="false"', $html,
+            'a filter chip is a toggle, and says so to a screen reader');
+
+        // The BEHAVIOUR lives in @push('scripts'), which the layout collects and
+        // a bare View::make of this partial never emits — so it is read from the
+        // source rather than pretended to be in the render above.
+        $source = file_get_contents(
+            dirname(__DIR__, 2).'/resources/views/tenant/partials/catering-calendar.blade.php'
+        );
+
+        // The filter reads the bookings each day already carries — no request.
+        $this->assertStringContainsString('function applyTones()', $source);
+        $this->assertStringContainsString("btn.setAttribute('data-filtered'", $source,
+            'the day badge records what it counted');
+        $this->assertStringContainsString("btn.getAttribute('data-filtered') || btn.getAttribute('data-events')", $source,
+            'the day list must open exactly what the badge counted, or the two disagree');
+
+        // Fetching another month replaces the whole body, so the filter has to be
+        // put back — otherwise it silently lapses the first time a month changes.
+        $afterFetch = strpos($source, 'body.innerHTML = html;');
+        $this->assertNotFalse($afterFetch);
+        $this->assertStringContainsString('applyTones();', substr($source, $afterFetch, 220),
+            'a newly fetched month must come back filtered');
+    }
+
     /** @return array<int, array> */
     private function allEvents(array $window): array
     {
