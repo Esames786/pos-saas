@@ -35,7 +35,6 @@
     @foreach($releases as $release)
         @php
             $snapshot = $release->event_snapshot;
-            $byStation = $release->lines->groupBy(fn ($line) => $line->production_station ?: '');
             $requirements = $release->requirements_snapshot['requirements'] ?? [];
         @endphp
         <div class="bulk-doc">

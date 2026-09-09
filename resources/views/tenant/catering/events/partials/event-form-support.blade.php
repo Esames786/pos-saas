@@ -205,15 +205,104 @@
         // KASHIF-EVENT-FORM-1 — dates remain keyboard-friendly; service time
         // is deliberately selection-only so arbitrary text cannot be entered.
         // Native date/time fields remain the fallback when Flatpickr is absent.
+        // EVENT-FORM-KEYBOARD-1 — what an operator actually types.
+        //
+        // The boxes already allowed typing, but only in the shape flatpickr
+        // prints — "Wed, 09 Sep 2026" — which nobody types. This reads the
+        // shapes people use instead. DAY FIRST, because that is how the date is
+        // written and said here: 9/10 is the ninth of October.
+        //
+        // Anything not clearly recognised falls through to the browser's own
+        // parse, and anything it cannot read either is REFUSED rather than
+        // guessed at. A silently wrong event date is worse than a retype.
+        const typedDate = function (str) {
+            const s = String(str || '').trim().toLowerCase();
+            if (! s) return undefined;
+
+            const midnight = d => { d.setHours(0, 0, 0, 0); return d; };
+            // A real day, or nothing. JavaScript's Date carries overflow
+            // forward — new Date(2026, 98, 99) is a valid object in June 2034 —
+            // so 99/99 would have become a date instead of a refusal.
+            const made = (y, m, d) => {
+                if (! (y >= 2000 && y <= 2100) || ! (m >= 1 && m <= 12) || ! (d >= 1 && d <= 31)) return undefined;
+                const made = midnight(new Date(y, m - 1, d));
+
+                return (made.getFullYear() === y && made.getMonth() === m - 1 && made.getDate() === d)
+                    ? made : undefined;
+            };
+            if (s === 't' || s === 'today' || s === 'aaj') return midnight(new Date());
+            if (s === 'kal' || s === 'tomorrow') { const d = new Date(); d.setDate(d.getDate() + 1); return midnight(d); }
+
+            // +7 / -3 — days from today, the way a booking is usually described.
+            const rel = s.match(/^([+-])\s*(\d{1,3})$/);
+            if (rel) {
+                const d = new Date();
+                d.setDate(d.getDate() + (rel[1] === '-' ? -1 : 1) * parseInt(rel[2], 10));
+                return midnight(d);
+            }
+
+            // 2026-10-09 — the canonical value flatpickr itself stores.
+            const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+            if (iso) return made(+iso[1], +iso[2], +iso[3]);
+
+            // 9/10, 9-10-26, 9.10.2026
+            const dmy = s.match(/^(\d{1,2})[\/\-. ](\d{1,2})(?:[\/\-. ](\d{2}|\d{4}))?$/);
+            if (dmy) {
+                const now = new Date();
+                let y = dmy[3] === undefined ? now.getFullYear() : parseInt(dmy[3], 10);
+                if (y < 100) y += 2000;
+
+                return made(y, +dmy[2], +dmy[1]);
+            }
+
+            // 091026 / 09102026 — typed straight off the number pad.
+            const run = s.match(/^(\d{2})(\d{2})(\d{2}|\d{4})$/);
+            if (run) {
+                let y = parseInt(run[3], 10);
+                if (y < 100) y += 2000;
+
+                return made(y, +run[2], +run[1]);
+            }
+
+            const native = new Date(str);
+
+            return isNaN(native.getTime()) ? undefined : midnight(native);
+        };
+
         if (window.flatpickr) {
             root.querySelectorAll('input[type=date]').forEach(function (el) {
                 if (el._flatpickr) return;
                 window.flatpickr(el, {
                     dateFormat: 'Y-m-d', altInput: true, altFormat: 'D, d M Y',
                     allowInput: true, disableMobile: true,
+                    parseDate: typedDate,
                     // The hint and the clash warning listen for 'change' — say it
                     // out loud rather than trusting the library to.
                     onChange: function () { el.dispatchEvent(new Event('change', { bubbles: true })); },
+                    onReady: function (dates, value, fp) {
+                        if (! fp.altInput) return;
+                        fp.altInput.setAttribute('placeholder', '9/10 · 9-10-26 · +7 · today');
+                        // Enter accepts what was typed and MOVES ON; the calendar
+                        // must not sit open swallowing the next Tab. Escape closes
+                        // it and leaves the date alone.
+                        fp.altInput.addEventListener('keydown', function (e) {
+                            if (e.key === 'Enter') {
+                                e.preventDefault();
+                                const parsed = typedDate(fp.altInput.value);
+                                if (parsed) fp.setDate(parsed, true);
+                                fp.close();
+                                const fields = [...root.querySelectorAll('input, select, textarea, button')]
+                                    .filter(f => ! f.disabled && f.type !== 'hidden' && f.offsetParent !== null);
+                                const at = fields.indexOf(fp.altInput);
+                                if (at > -1 && at < fields.length - 1) fields[at + 1].focus();
+                                return;
+                            }
+                            if (e.key === 'Escape') { fp.close(); }
+                        });
+                        // Typing over the box should REPLACE the date, not append
+                        // to "Wed, 09 Sep 2026".
+                        fp.altInput.addEventListener('focus', function () { fp.altInput.select(); });
+                    },
                 });
             });
             root.querySelectorAll('input[type=time]').forEach(function (el) {

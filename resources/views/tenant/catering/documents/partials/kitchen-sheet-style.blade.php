@@ -29,7 +29,6 @@
     .head .label { font-size: 11px; text-transform: uppercase; color: #6b7280; letter-spacing: 1px; }
     .badge-row { display: flex; gap: 18px; margin-top: 6px; flex-wrap: wrap; }
     .doc-meta { display: flex; justify-content: space-between; margin: 8px 2px; color: #6b7280; font-size: 12px; }
-    h3.station { background: #111827; color: #fff; padding: 6px 12px; border-radius: 4px; margin: 16px 0 0; font-size: 15px; }
     table.items { width: 100%; border-collapse: collapse; }
     table.items th { text-align: {{ $isUr ? 'right' : 'left' }}; border-bottom: 2px solid #111827; padding: 8px; font-size: 12px; text-transform: uppercase; color: #374151; }
     table.items th.num, table.items td.num { text-align: {{ $isUr ? 'left' : 'right' }}; }
@@ -50,8 +49,8 @@
     /* Sits in the grey gutter beside the sheet; it used to overlap the header. */
     .print-bar { position: fixed; top: 10px; {{ $isUr ? 'left' : 'right' }}: 10px; z-index: 10; }
     @media print { .print-bar { display: none; } }
-    /* A station's rows must not split mid-dish across a page break. */
+    /* Rows must not split mid-dish across a page break, and the header repeats
+       on every continuation page. */
     table.items thead, table.req-table thead { display: table-header-group; }
     table.items tr, table.req-table tr, .head { break-inside: avoid; page-break-inside: avoid; }
-    h3.station { break-after: avoid; page-break-after: avoid; }
 </style>
