@@ -60,6 +60,11 @@ class CateringAdvanceController extends Controller
                     'payment_method_id' => $data['payment_method_id'] ?? null,
                     'reference' => $data['reference'] ?? null,
                     'reason' => $data['overpayment_reason'],
+                    // CATERING-REFUND-BEYOND-CREDIT-1 — the authority to hand
+                    // back money that is covering a bill. Taken from the
+                    // user, never from the request: the screen can be told
+                    // anything, and a form post can be written by hand.
+                    'allow_beyond_credit' => $request->user()?->can('tenant.catering.refunds.beyond-credit'),
                 ], $request->user()?->id);
             } catch (\RuntimeException $e) {
                 return back()->withErrors(['advance' => $e->getMessage()])->withInput();

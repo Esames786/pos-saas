@@ -94,9 +94,28 @@ class CateringFinancialPositionService
             'balance_due' => $balanceDue,
             'customer_credit' => $customerCredit,
 
-            // Only money that is not covering a bill may be handed back. Refunding
-            // out of an unpaid booking would simply recreate the balance due.
+            // Money the customer may have back with nobody's permission: what was
+            // taken beyond the bill. Refunding past THIS recreates the balance
+            // due, which is why going further is a separate authority rather
+            // than a bigger number.
             'refundable' => $customerCredit,
+
+            // CATERING-REFUND-BEYOND-CREDIT-1 — what account 2300 is actually
+            // carrying for this booking.
+            //
+            // This is NOT `refundable`, and the difference is the whole reason a
+            // refund can no longer assume 2300. The GL only applies an advance
+            // when the INVOICE is issued, so before that every rupee received is
+            // sitting in 2300 no matter what the quotation says is owed. After
+            // the invoice, `advance_applied` has cleared 2300 down to exactly the
+            // credit taken beyond the bill.
+            'held_as_advance' => $source === self::SOURCE_INVOICE
+                ? $customerCredit
+                : $netReceived,
+
+            // The ceiling that never moves, whatever anybody is allowed to do.
+            // Money that never arrived cannot be handed back.
+            'refund_ceiling' => $netReceived,
         ];
     }
 

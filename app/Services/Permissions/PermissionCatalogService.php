@@ -38,7 +38,7 @@ class PermissionCatalogService
         'reprint-reminder', 'confirm-reminders', 'export', 'generate', 'revoke', 'activate',
         'deactivate', 'regenerate-token', 'default', 'verify', 'reset-password', 'manager-pin',
         'bulk-import', 'test-print', 'pairing-code', 'download-windows', 'sync', 'void-kot-item',
-        'handovers', 'local-mode', 'reprint', 'overpay',
+        'handovers', 'local-mode', 'reprint', 'overpay', 'beyond-credit',
     ];
 
     /**
@@ -107,6 +107,10 @@ class PermissionCatalogService
         // Money OUT is its own grant. Whoever may take a payment does not
         // automatically get to hand one back.
         'tenant.catering.refunds.store' => 'Refund Customer',
+        // Returning a customer's OWN credit is one thing; returning money
+        // that is covering a bill — which puts the balance due back up — is
+        // another, and must not arrive free with the first.
+        'tenant.catering.refunds.beyond-credit' => 'Refund Beyond Credit',
         'tenant.catering.production-releases.store' => 'Release Production',
         'tenant.catering.production-releases.show' => 'Release Production',
         'tenant.catering.production-releases.print' => 'Print / Reprint',

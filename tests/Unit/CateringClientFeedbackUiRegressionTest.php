@@ -156,8 +156,17 @@ class CateringClientFeedbackUiRegressionTest extends TestCase
         $this->assertStringNotContainsString("'amount' => \$amount,", $controller,
             'a negative amount must never be written onto a receipt row');
 
-        // The screen still hides what the operator may not do.
-        $this->assertStringContainsString("@can('tenant.catering.advances.overpay')", $modal);
+        // The screen asks before it does it, and asks only when the arithmetic
+        // says the bill has been crossed. The checkbox this replaced made the
+        // operator decide before typing the amount — impossible to answer
+        // honestly when money arrives in instalments and the third one is what
+        // crosses the total.
+        $this->assertStringNotContainsString('type="checkbox" value="1" name="allow_overpayment"', $modal,
+            'the decision is no longer taken before the amount is known');
+        $this->assertStringContainsString("auth()->user()?->can('tenant.catering.advances.overpay')", $modal,
+            'and the screen still respects the permission it can no longer hide a box behind');
+        $this->assertStringContainsString('Yes, take the full amount', $modal,
+            'the confirm names what is being agreed to');
         $this->assertStringContainsString('id="adv-reason-wrap"', $modal);
     }
 
@@ -191,10 +200,16 @@ class CateringClientFeedbackUiRegressionTest extends TestCase
         // this assertion is what says the box may constrain them again.
         $this->assertStringContainsString("'amount' => ['required', 'numeric', 'not_in:0']", $controller);
 
-        // The refund modal is a different box with a different job: it spends a
-        // known credit, so it keeps both its floor and its ceiling.
-        $this->assertStringContainsString('max="{{ $position[\'refundable\'] }}"', $modal,
-            'the separate Refund box still cannot exceed the credit held');
+        // The refund modal is a different box with a different job: money goes
+        // OUT of it, so it keeps a floor and a ceiling. The ceiling used to be
+        // the credit; since CATERING-REFUND-BEYOND-CREDIT-1 it is everything
+        // RECEIVED, because money covering a bill may now be handed back by
+        // someone allowed to decide it. What can never move is that ceiling:
+        // money that never arrived cannot go back, whatever anyone holds.
+        $this->assertStringContainsString('max="{{ $position[\'refund_ceiling\'] }}"', $modal,
+            'the Refund box still cannot exceed what was actually received');
+        $this->assertStringContainsString('Yes, pay it back anyway', $modal,
+            'and going past the credit is asked out loud, not assumed');
     }
 
     /**
