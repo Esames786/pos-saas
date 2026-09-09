@@ -766,6 +766,111 @@ class CateringFinanceMySqlTest extends MySqlTenantTestCase
             'and the bill is still settled');
     }
 
+    /**
+     * Money survives a change of status, untouched — and the ledger does not
+     * move a single rupee when a booking is cancelled.
+     *
+     * Receipts, refunds, invoices and journal entries are not part of a History
+     * snapshot and no status transition writes to them. What DOES change is what
+     * the system says the money is FOR: with no invoice, cancelling makes the
+     * quotation stop being the bill, so a deposit that was covering a bill
+     * becomes credit owed back to the customer. The rows are identical; their
+     * meaning is not.
+     */
+    public function test_cancelling_a_booking_leaves_every_payment_exactly_as_it_was(): void
+    {
+        $event = $this->confirmedEvent();          // 100,000 quoted, no invoice
+        $this->advances->record($event->refresh(), [
+            'amount' => 30000,
+            'received_date' => now()->toDateString(),
+            'payment_method_id' => $this->paymentMethodId,
+        ]);
+
+        $rowsBefore = $this->tenant()->table('catering_advances')
+            ->orderBy('id')->get()->map(fn ($r) => (array) $r)->all();
+        $entriesBefore = $this->tenant()->table('journal_entries')->count();
+        $linesBefore = $this->tenant()->table('journal_lines')->count();
+        $cashBefore = $this->accountNet('2300');
+
+        $before = app(CateringFinancialPositionService::class)->position($event->refresh());
+        $this->assertEqualsWithDelta(70000.0, $before['balance_due'], 0.01);
+        $this->assertEqualsWithDelta(0.0, $before['customer_credit'], 0.01,
+            'while the booking stands, the deposit is covering the bill');
+
+        app(CateringEstimateService::class)->cancelEvent($event->refresh(), 'Customer called it off');
+
+        // The rows themselves: byte for byte what they were.
+        $this->assertEquals($rowsBefore, $this->tenant()->table('catering_advances')
+            ->orderBy('id')->get()->map(fn ($r) => (array) $r)->all(),
+            'a cancellation must not edit a receipt that already happened');
+        $this->assertSame($entriesBefore, $this->tenant()->table('journal_entries')->count(),
+            'and it must not post, reverse or delete a journal entry');
+        $this->assertSame($linesBefore, $this->tenant()->table('journal_lines')->count());
+        $this->assertEqualsWithDelta($cashBefore, $this->accountNet('2300'), 0.01,
+            'the liability still stands — the business is still holding the money');
+        $this->assertSame(0, $this->tenant()->table('catering_refunds')->count(),
+            'cancelling is NOT refunding; the money does not walk out on its own');
+
+        // What changed is the MEANING, and only because there is no invoice: the
+        // quotation stopped being the bill, so the deposit is now the customer's.
+        $after = app(CateringFinancialPositionService::class)->position($event->refresh());
+        $this->assertEqualsWithDelta(30000.0, $after['gross_received'], 0.01,
+            'the same money');
+        $this->assertEqualsWithDelta(0.0, $after['balance_due'], 0.01);
+        $this->assertEqualsWithDelta(30000.0, $after['customer_credit'], 0.01,
+            'now owed back to the customer, and refundable without any special authority');
+        $this->assertEqualsWithDelta(30000.0, $after['refundable'], 0.01);
+    }
+
+    /**
+     * …and an INVOICED booking cannot be cancelled at all, which is a stronger
+     * protection than reinterpreting it would have been.
+     *
+     * Issuing the final invoice completes the event, and cancelEvent() refuses
+     * `completed` and `closed` outright. So the cheapest imaginable attack on
+     * the till — cancel an invoiced booking, watch billed() fall to zero, and
+     * refund the whole settled amount as "credit" — cannot even be attempted.
+     * The door is shut one step earlier than the arithmetic.
+     */
+    public function test_an_invoiced_booking_cannot_be_cancelled_at_all(): void
+    {
+        $event = $this->confirmedEvent();
+        $this->invoices->issue($event->refresh());
+        $this->advances->record($event->refresh(), [
+            'amount' => 100000,                    // settles it exactly
+            'received_date' => now()->toDateString(),
+            'payment_method_id' => $this->paymentMethodId,
+        ]);
+
+        $entriesBefore = $this->tenant()->table('journal_entries')->count();
+        $arBefore = $this->accountNet('1300');
+        $revenueBefore = $this->accountNet('4160');
+        $advancesBefore = $this->tenant()->table('catering_advances')
+            ->orderBy('id')->get()->map(fn ($r) => (array) $r)->all();
+
+        try {
+            app(CateringEstimateService::class)->cancelEvent($event->refresh(), 'Trying to unbill a settled booking');
+            $this->fail('an invoiced booking must not be cancellable');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('cannot be cancelled', $e->getMessage());
+        }
+
+        $after = app(CateringFinancialPositionService::class)->position($event->refresh());
+        $this->assertEqualsWithDelta(100000.0, $after['billed'], 0.01,
+            'the invoice is still the bill');
+        $this->assertEqualsWithDelta(0.0, $after['customer_credit'], 0.01,
+            'settled money stays settled and is NOT suddenly refundable');
+        $this->assertEqualsWithDelta(0.0, $after['refund_ceiling'] - 100000.0, 0.01,
+            'it can still be refunded deliberately, with the authority — but as a refund, not as credit');
+
+        $this->assertEquals($advancesBefore, $this->tenant()->table('catering_advances')
+            ->orderBy('id')->get()->map(fn ($r) => (array) $r)->all());
+        $this->assertSame($entriesBefore, $this->tenant()->table('journal_entries')->count());
+        $this->assertEqualsWithDelta($arBefore, $this->accountNet('1300'), 0.01);
+        $this->assertEqualsWithDelta($revenueBefore, $this->accountNet('4160'), 0.01,
+            'and revenue already earned is not un-earned by a refused cancellation');
+    }
+
     /** A receipt is posted whole or not at all. */
     public function test_a_split_that_does_not_add_up_is_refused(): void
     {
