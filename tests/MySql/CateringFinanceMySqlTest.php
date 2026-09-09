@@ -485,6 +485,103 @@ class CateringFinanceMySqlTest extends MySqlTenantTestCase
             'and the reason it was taken travels with it');
     }
 
+    /**
+     * CATERING-OVERPAYMENT-1 (step 4, correction) — the Owner can actually
+     * REACH the authority the migration creates.
+     *
+     * This guard exists because the thing it checks failed on production. The
+     * permission is synthetic: no route carries its name. Both `deploy.sh` step
+     * [5] and TenantOpsService::syncTenant() build the Owner's grant from the
+     * master `route_catalogs` table, so neither of them can ever see it — a fact
+     * I had written the OPPOSITE of in the migration's own docblock. Deployed on
+     * 2026-09-09 the live Owner answered `can=no`, the checkbox rendered for
+     * nobody, and a feature shipped dead.
+     *
+     * The migration is executed directly rather than through the migrator,
+     * because in a freshly-migrated test tenant the roles do not exist yet —
+     * which is the very condition that makes this easy to get wrong.
+     */
+    public function test_the_owner_can_reach_the_overpayment_authority(): void
+    {
+        $conn = $this->tenant();
+        $permission = 'tenant.catering.advances.overpay';
+
+        // Two roles, so the test can tell "granted to the Owner" apart from
+        // "granted to everybody" — 000002's whole point was that this is not
+        // handed out by default.
+        //
+        // Reused rather than inserted outright: setUp()'s cleanTenant() list does
+        // not include `roles`, so an Owner left behind by an earlier test in the
+        // suite is still present, and the table is unique on (name, guard_name).
+        // Written as a bare insert this passed alone and errored inside the suite.
+        $made = [];
+        $roleId = function (string $name) use ($conn, &$made): int {
+            $id = $conn->table('roles')->where('name', $name)->where('guard_name', 'tenant')->value('id');
+            if ($id) {
+                return (int) $id;
+            }
+            $made[] = $id = $conn->table('roles')->insertGetId([
+                'name' => $name, 'guard_name' => 'tenant', 'created_at' => now(), 'updated_at' => now(),
+            ]);
+
+            return (int) $id;
+        };
+
+        $ownerId = $roleId('Owner');
+        $cashierId = $roleId('OverpayGuardCashier');
+
+        $permissionId = $conn->table('permissions')->where('name', $permission)
+            ->where('guard_name', 'tenant')->value('id');
+        $this->assertNotNull($permissionId, 'migration 000002 must have created the permission');
+
+        // Start from the state prod was actually in: the row exists, nobody holds it.
+        $conn->table('role_has_permissions')->where('permission_id', $permissionId)->delete();
+
+        $migration = require dirname(__DIR__, 2)
+            .'/database/migrations/tenant/2026_09_09_000003_grant_catering_overpay_to_owner.php';
+        $migration->up();
+
+        $holders = $conn->table('role_has_permissions')
+            ->join('roles', 'roles.id', '=', 'role_has_permissions.role_id')
+            ->where('role_has_permissions.permission_id', $permissionId)
+            ->pluck('roles.name')->all();
+
+        $this->assertContains('Owner', $holders,
+            'the Owner must be able to take more than the bill — deploy.sh cannot grant a routeless permission');
+        $this->assertNotContains('OverpayGuardCashier', $holders,
+            'and nobody else may get it merely by existing');
+
+        // Running twice must not double-insert: deploys re-run migrations.
+        $migration->up();
+        $this->assertSame(1, $conn->table('role_has_permissions')
+            ->where('permission_id', $permissionId)->where('role_id', $ownerId)->count());
+
+        // Only what this test made — a pre-existing Owner belongs to whoever
+        // put it there.
+        $conn->table('role_has_permissions')->where('permission_id', $permissionId)
+            ->whereIn('role_id', [$ownerId, $cashierId])->delete();
+        if ($made) {
+            $conn->table('roles')->whereIn('id', $made)->delete();
+        }
+    }
+
+    /**
+     * The other half of the same defect: a tenant provisioned tomorrow builds
+     * its Owner from a hardcoded list, NOT from what the migrations granted —
+     * its roles are created after the migrations have already run. So the name
+     * has to appear in that list too, or every future tenant repeats today's
+     * bug on its first day.
+     */
+    public function test_a_new_tenant_is_provisioned_with_the_overpayment_authority(): void
+    {
+        $provisioner = file_get_contents(
+            dirname(__DIR__, 2).'/app/Services/Tenancy/TenantProvisioner.php'
+        );
+
+        $this->assertStringContainsString("'tenant.catering.advances.overpay',", $provisioner,
+            'a newly provisioned tenant must not have to wait for someone to notice this by hand');
+    }
+
     /** A receipt is posted whole or not at all. */
     public function test_a_split_that_does_not_add_up_is_refused(): void
     {

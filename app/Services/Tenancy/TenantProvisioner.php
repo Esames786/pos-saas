@@ -278,6 +278,14 @@ class TenantProvisioner
         $tenantPermissions = [
             'tenant.dashboard',
 
+            // Synthetic (routeless) permissions. These cannot arrive the way
+            // every other name here does: deploy.sh and TenantOpsService build
+            // the Owner's grant from `route_catalogs`, which only holds real
+            // routes. A tenant's roles are also created AFTER its migrations
+            // run, so the grant inside those migrations finds no Owner to give
+            // it to. This list is the only path a new tenant has.
+            'tenant.catering.advances.overpay',
+
             'tenant.users.index',
             'tenant.users.create',
             'tenant.users.store',

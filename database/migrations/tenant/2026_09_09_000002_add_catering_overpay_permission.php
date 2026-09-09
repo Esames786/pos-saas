@@ -20,9 +20,14 @@ use Illuminate\Support\Facades\DB;
  * and handing that to every role the moment it deploys is not a default anybody
  * chose.
  *
- * `deploy.sh` step [5] grants the Owner every tenant permission, so the Owner
- * will have it after the next deploy. Every other role must be granted it
- * deliberately, by someone who decided:
+ * NOT EVEN THE OWNER, and that part was a mistake — see 000003, which fixes it.
+ * This docblock originally claimed "deploy.sh step [5] grants the Owner every
+ * tenant permission, so the Owner will have it after the next deploy". That is
+ * false for a routeless permission: deploy.sh AND TenantOpsService::syncTenant()
+ * both build the Owner's grant from `route_catalogs`, which only ever contains
+ * real routes. Deployed on 2026-09-09 the live Owner reported `can=no` and the
+ * checkbox rendered for nobody. 000003 grants the Owner; every OTHER role must
+ * still be granted it deliberately, by someone who decided:
  *
  *   php artisan tinker
  *   >>> Role::findByName('Manager', 'tenant')->givePermissionTo('tenant.catering.advances.overpay');
