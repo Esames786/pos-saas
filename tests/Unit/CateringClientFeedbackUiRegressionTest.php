@@ -117,6 +117,50 @@ class CateringClientFeedbackUiRegressionTest extends TestCase
             'a typo is shown while the caret is still in the box');
     }
 
+    /**
+     * CATERING-OVERPAYMENT-1 (step 4) — the authority to create a liability is
+     * checked in the CONTROLLER, not merely hidden on the screen.
+     *
+     * Hiding the checkbox behind @can stops an honest operator and nobody else:
+     * the field is a form post, and a form post can be written by hand. So the
+     * flag is dropped server-side for anyone who has not been granted
+     * `tenant.catering.advances.overpay`, and the receipt then meets the same
+     * refusal every other path meets.
+     *
+     * Read from the source because that is where the decision is: this is a
+     * contract about the shape of the code, like the parseDate rules above.
+     */
+    public function test_the_overpayment_authority_is_enforced_server_side(): void
+    {
+        $controller = file_get_contents(
+            dirname(__DIR__, 2).'/app/Http/Controllers/Tenant/Catering/CateringAdvanceController.php'
+        );
+        $modal = file_get_contents(
+            dirname(__DIR__, 2).'/resources/views/tenant/catering/events/show.blade.php'
+        );
+
+        // The flag survives only for someone who holds the permission.
+        $this->assertStringContainsString(
+            "\$request->user()?->can('tenant.catering.advances.overpay')", $controller,
+            'the permission is checked where the decision is made, not only where the box is drawn');
+        $this->assertStringContainsString("\$data['allow_overpayment'] = \$request->boolean('allow_overpayment')", $controller,
+            'and the posted value is replaced rather than trusted');
+
+        // Any departure from a plain payment must say why — both directions.
+        $this->assertStringContainsString('needs a reason recorded against it', $controller);
+        $this->assertStringContainsString("'amount' => ['required', 'numeric', 'not_in:0']", $controller,
+            'a minus hands money back; only zero means nothing at all');
+
+        // Money out is a refund, never a negative receipt.
+        $this->assertStringContainsString('CateringRefundService::class)->record(', $controller);
+        $this->assertStringNotContainsString("'amount' => \$amount,", $controller,
+            'a negative amount must never be written onto a receipt row');
+
+        // The screen still hides what the operator may not do.
+        $this->assertStringContainsString("@can('tenant.catering.advances.overpay')", $modal);
+        $this->assertStringContainsString('id="adv-reason-wrap"', $modal);
+    }
+
     public function test_punch_uses_additive_supply_and_clears_instruction_state(): void
     {
         $source = file_get_contents(
