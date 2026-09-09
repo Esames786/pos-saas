@@ -1153,7 +1153,7 @@
                 <div class="row g-3">
                     <div class="col-6">
                         <label class="form-label">Amount <span class="text-danger">*</span></label>
-                        <input type="number" step="0.01" min="0.01" name="amount" class="form-control" required>
+                        <input type="number" step="0.01" name="amount" class="form-control" required>
                     </div>
                     <div class="col-6">
                         <label class="form-label">Received Date <span class="text-danger">*</span></label>
@@ -1526,16 +1526,17 @@
 
 @push('scripts')
 <script>
-// KASHIF-LEGACY-ALIGN-6 (revised): the event WORKSPACE goes full-width like
-// the POS — but the operator's own choice WINS and is remembered. Delegated,
-// because the header (and its toggle) lives inside the swapped workspace.
-if (localStorage.getItem('cateringSidebar') !== 'show') {
-    document.body.classList.remove('mini-sidebar', 'expand-menu');
-    document.body.classList.add('nosidebar');
-}
+// KASHIF-LEGACY-ALIGN-6: the event WORKSPACE goes full-width like the POS.
+// It starts collapsed EVERY visit. A revision once remembered the operator's
+// last choice in localStorage, which meant a single click months ago left the
+// navigation open on this screen forever after — reported from the floor on
+// 2026-09-09. The button still opens it, for as long as you are on the page.
+// Delegated, because the header (and its toggle) lives inside the swapped
+// workspace.
+document.body.classList.remove('mini-sidebar', 'expand-menu');
+document.body.classList.add('nosidebar');
 $(document).on('click', '#catering-sidebar-toggle', function () {
     const hidden = document.body.classList.toggle('nosidebar');
-    localStorage.setItem('cateringSidebar', hidden ? 'hide' : 'show');
     $(this).find('i').attr('class', hidden ? 'ti ti-layout-sidebar-left-expand' : 'ti ti-layout-sidebar-left-collapse');
     $(this).attr('title', hidden ? 'Show navigation' : 'Hide navigation');
 });
