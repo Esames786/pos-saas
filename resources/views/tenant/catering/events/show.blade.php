@@ -405,26 +405,18 @@
                     </form>
                 @endcan
             @endunless
-            {{-- KASHIF-NO-REVISION-BUTTON-1 — "Create Revision" is not offered.
-
-                 The owner keeps the booking's story in History, which records an
-                 append-only snapshot of the WHOLE operational state on every
-                 meaningful save — header, lines, rates, supply splits,
-                 instructions, charges — and can revert to any of them. Beside
-                 that, the Q1 → Q2 → Q3 chain was a second memory of the same
-                 events, and reading two of them is worse than reading one.
-
-                 The mechanism behind it is deliberately LEFT IN PLACE: the
-                 route, the permission, CateringEstimateService::revise() and the
-                 version model all still work, because
-                 CateringEventHistoryService::revertTo() calls revise() to get a
-                 writable document when the current quotation is immutable.
-                 Taking the button away is safe; taking the mechanism away would
-                 break "restore this version", which is the half being kept.
-
-                 Retiring versions for good means letting a SENT quotation fall
-                 back to draft so it can be edited in place — a workflow change
-                 with its own plan, not a hidden button. --}}
+            @if(! $isDraft && $event->isOpen())
+                @can('tenant.catering.estimates.revise')
+                    <form method="POST" action="{{ url('/catering/estimates/' . $current->id . '/revise') }}">
+                        @csrf
+                        <button class="btn btn-sm btn-outline-primary" data-bs-toggle="tooltip"
+                                title="Opens Q{{ $current->version_no + 1 }} as a fresh editable draft and marks Q{{ $current->version_no }} superseded. The old quotation is kept for your records, never deleted."
+                                onclick="return confirm('Create revision Q{{ $current->version_no + 1 }} as a new draft?')">
+                            Create Revision
+                        </button>
+                    </form>
+                @endcan
+            @endif
         </div>
     </div>
 
