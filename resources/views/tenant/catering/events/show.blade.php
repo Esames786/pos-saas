@@ -228,6 +228,18 @@
                     Cancel Booking
                 </button>
             @endcan
+            {{-- CATERING-STATUS-ROLLBACK-1 — one step back, or restore a
+                 cancelled booking. Shown only when the SERVICE says there is
+                 somewhere to go, so the screen can never offer a step the
+                 POST would refuse. --}}
+            @can('tenant.catering.events.move-back')
+                @if(! empty($backTarget))
+                    <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#moveBackModal"
+                            title="Take this booking back to {{ str_replace('_', ' ', $backTarget) }}. Payments, invoices and stock are untouched.">
+                        <i class="ti ti-arrow-back-up me-1"></i>{{ $event->isCancelled() ? 'Restore Booking' : 'Move Back' }}
+                    </button>
+                @endif
+            @endcan
         @endif
     </div>
 </div>
@@ -1134,6 +1146,61 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-light" data-bs-dismiss="modal">Keep booking</button>
                 <button type="submit" class="btn btn-danger">Cancel this booking</button>
+            </div>
+        </form>
+    </div>
+</div>
+@endif
+@endcan
+
+{{-- CATERING-STATUS-ROLLBACK-1 — the confirm for moving a booking back.
+
+     Says plainly what is NOT affected, because that is the question an operator
+     actually has: cancelling never refunded anything, and neither does this. --}}
+@can('tenant.catering.events.move-back')
+@if(! empty($backTarget))
+<div class="modal fade" id="moveBackModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form method="POST" action="{{ url('/catering/events/' . $event->id . '/move-back') }}" class="modal-content">
+            @csrf
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    {{ $event->isCancelled() ? 'Restore' : 'Move back' }} — {{ $event->event_no }}
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-secondary">
+                    This booking goes from <strong>{{ str_replace('_', ' ', $event->status) }}</strong>
+                    back to <strong>{{ str_replace('_', ' ', $backTarget) }}</strong>.
+                    <span class="d-block mt-1 fs-12">
+                        Payments, invoices and stock are <strong>not</strong> affected — nothing is refunded,
+                        reversed or deleted. Only the booking's stage changes.
+                    </span>
+                    @if($backTargetIsAssumed)
+                        <span class="d-block mt-1 fs-12 text-warning-emphasis">
+                            This booking was cancelled before the system recorded where it came from,
+                            so it returns to <strong>draft</strong> rather than a guess.
+                        </span>
+                    @endif
+                    @if($event->status === 'quoted')
+                        <span class="d-block mt-1 fs-12 text-warning-emphasis">
+                            The quotation becomes editable again — the copy the customer already has
+                            will no longer match what the system holds. Use <em>Create Revision</em> instead
+                            if they should be given new paper.
+                        </span>
+                    @endif
+                </div>
+                <label class="form-label">Why? <span class="text-danger">*</span></label>
+                <input type="text" name="reason" class="form-control" required minlength="3" maxlength="2000"
+                       placeholder="e.g. customer wants to change the menu">
+                <div class="form-text">Kept on the booking's history permanently.</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                <button type="submit" class="btn btn-secondary">
+                    {{ $event->isCancelled() ? 'Restore booking' : 'Move it back' }}
+                </button>
             </div>
         </form>
     </div>

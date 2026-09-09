@@ -86,7 +86,18 @@ class CateringEventController extends Controller
                 ->count(),
         ];
 
-        return view('tenant.catering.events.index', compact('events', 'buckets', 'filter', 'status', 'q'));
+        // CATERING-STATUS-ROLLBACK-1 — worked out once per row by the service
+        // that enforces it, keyed by id. The list must never decide for itself
+        // which step is legal; that is how a menu and a screen drift apart.
+        $statusService = app(\App\Services\Catering\CateringEventStatusService::class);
+        $backTargets = [];
+        foreach ($events as $row) {
+            $backTargets[$row->id] = $statusService->canMoveBack($row)
+                ? $statusService->backwardTarget($row)
+                : null;
+        }
+
+        return view('tenant.catering.events.index', compact('events', 'buckets', 'filter', 'status', 'q', 'backTargets'));
     }
 
     public function create()
@@ -294,6 +305,15 @@ class CateringEventController extends Controller
             'costingReadiness' => $costingReadiness,
             'printers' => $printers,
             'position' => $finance->position($cateringEvent),
+            // CATERING-STATUS-ROLLBACK-1: worked out once, by the service that
+            // enforces it, so the button can never offer a step the POST would
+            // refuse.
+            'backTarget' => app(\App\Services\Catering\CateringEventStatusService::class)
+                ->canMoveBack($cateringEvent)
+                    ? app(\App\Services\Catering\CateringEventStatusService::class)->backwardTarget($cateringEvent)
+                    : null,
+            'backTargetIsAssumed' => app(\App\Services\Catering\CateringEventStatusService::class)
+                ->restoreTargetIsAssumed($cateringEvent),
             'headline' => $finance->headline($cateringEvent),
             'ledger' => $finance->ledger($cateringEvent),
             // KASHIF-EVENT-HISTORY-1: the unified timeline + every quotation
@@ -388,6 +408,52 @@ class CateringEventController extends Controller
         $message = "Booking {$cateringEvent->event_no} confirmed.";
         if ($emailResult === 'sent') {
             $message .= ' Confirmation emailed to the customer.';
+        }
+
+        return back()->with('status', $message);
+    }
+
+    /**
+     * CATERING-STATUS-ROLLBACK-1 — take a booking one step back, or restore a
+     * cancelled one.
+     *
+     * Both screens POST here: the booking screen and the Actions menu on the
+     * events list. Neither of them decides anything — the target and every
+     * refusal come from CateringEventStatusService, so the list can never
+     * disagree with the booking screen about what is allowed.
+     */
+    public function moveBack(Request $request, CateringEvent $cateringEvent)
+    {
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'min:3', 'max:2000'],
+        ], [
+            'reason.required' => 'Please say why this booking is being moved back — it becomes part of the record.',
+            'reason.min' => 'Give a real reason, not a placeholder.',
+        ]);
+
+        $status = app(\App\Services\Catering\CateringEventStatusService::class);
+        $wasCancelled = $cateringEvent->isCancelled();
+        $from = $cateringEvent->status;
+
+        try {
+            $status->moveBack($cateringEvent, $data['reason'], $request->user()?->id);
+        } catch (RuntimeException $e) {
+            return back()->withErrors(['event' => $e->getMessage()]);
+        }
+
+        app(\App\Services\Catering\CateringEventHistoryService::class)
+            ->record($cateringEvent->refresh(), 'status_moved_back', $request->user()?->id);
+
+        $message = $wasCancelled
+            ? "Event {$cateringEvent->event_no} restored to {$cateringEvent->status}."
+            : "Event {$cateringEvent->event_no} moved back from {$from} to {$cateringEvent->status}.";
+
+        // The operator should not have to infer that the money stayed put, nor
+        // that a sent quotation has just become editable again.
+        $message .= ' Payments, invoices and stock are untouched.';
+
+        if ($from === CateringEvent::STATUS_QUOTED && $cateringEvent->status === CateringEvent::STATUS_DRAFT) {
+            $message .= ' The quotation is editable again — the copy the customer already has will no longer match.';
         }
 
         return back()->with('status', $message);
