@@ -38,6 +38,10 @@ class CateringEventHistoryService
         'lines_saved' => 'Items / rates saved',
         'finalized' => 'Quotation finalized',
         'version_restored' => 'Old quotation version restored',
+        // CATERING-STATUS-ROLLBACK-1 — a booking walked backwards. Worth its
+        // own line on the timeline: it is the one action that makes a document
+        // the customer already has editable again.
+        'status_moved_back' => 'Booking moved back a stage',
         'reverted' => 'Reverted to an earlier state',
     ];
 
@@ -237,6 +241,7 @@ class CateringEventHistoryService
                 $newBlock = $afterBlocks->get($label);
                 if ($oldBlock === null || $newBlock === null) {
                     $changes[] = $this->change('Material: '.$label, $oldBlock ? 'Present' : null, $newBlock ? 'Present' : null);
+
                     continue;
                 }
                 if (($oldBlock['event_material_qty'] ?? null) != ($newBlock['event_material_qty'] ?? null)) {

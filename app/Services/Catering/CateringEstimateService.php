@@ -385,6 +385,10 @@ class CateringEstimateService
                 'cancel_reason' => $reason,
                 'cancelled_at' => now(),
                 'cancelled_by_user_id' => $userId,
+                // CATERING-STATUS-ROLLBACK-1: where it was, so un-cancelling
+                // can put it back rather than guess. `cancelled_at` says WHEN
+                // a booking was cancelled and nothing has ever said FROM WHAT.
+                'status_before_cancel' => $event->status,
             ])->save();
 
             return $event;
