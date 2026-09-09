@@ -30,7 +30,6 @@ class EdgeAuthorityPartitionTest extends MySqlTenantTestCase
     use TenantFixtures;
     use EdgeLocalRuntimeFixture;
 
-    private const EDGE_DB = 'pos_test_edge_authority_edge';
     private const DEVICE = 'partition-device-0001';
     private const TTL = 20;
     private const SKEW = 8;
@@ -40,11 +39,14 @@ class EdgeAuthorityPartitionTest extends MySqlTenantTestCase
     private int $cloudBranchId;
     private int $cloudOtherBranchId;
     private string $cloudDb;
+    /** PLATFORM TEST-ISOLATION: the appliance DB name comes from the one resolver (per-worktree), never a literal. */
+    private string $edgeDb;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->cloudDb = (string) config('database.connections.tenant.database');
+        $this->edgeDb = \Tests\MySql\Support\EdgeTestDatabases::local('authority');
         DB::setDefaultConnection('tenant');
         $this->ensureEdgeSchema();
         $this->cleanTenant(['edge_branch_authority_leases', 'terminals', 'branches', 'users']);
@@ -66,14 +68,14 @@ class EdgeAuthorityPartitionTest extends MySqlTenantTestCase
         $c = config('database.connections.tenant');
         $pdo = new PDO("mysql:host={$c['host']};port={$c['port']};charset=utf8mb4", $c['username'], $c['password'] ?? '', [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
         if (! self::$provisioned) {
-            $pdo->exec('DROP DATABASE IF EXISTS `' . self::EDGE_DB . '`');
-            $pdo->exec('CREATE DATABASE `' . self::EDGE_DB . '` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
-            $this->useDb(self::EDGE_DB);
+            $pdo->exec('DROP DATABASE IF EXISTS `' . $this->edgeDb . '`');
+            $pdo->exec('CREATE DATABASE `' . $this->edgeDb . '` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+            $this->useDb($this->edgeDb);
             Artisan::call('migrate', ['--database' => 'tenant', '--path' => 'database/migrations/tenant', '--force' => true]);
             Artisan::call('migrate', ['--database' => 'tenant', '--path' => 'database/migrations/edge', '--force' => true]);
             self::$provisioned = true;
         }
-        $this->useDb(self::EDGE_DB);
+        $this->useDb($this->edgeDb);
         config(['app.role' => 'branch_server']);
         $this->cleanTenant(['edge_operational_stock_movements', 'edge_operational_stock_balances', 'edge_operational_stock_baselines', 'edge_local_user_credentials', 'edge_local_meta', 'products', 'categories', 'terminals', 'branches', 'users']);
         $branch = $this->makeBranch(['name' => 'Appliance Branch']);
@@ -126,7 +128,7 @@ class EdgeAuthorityPartitionTest extends MySqlTenantTestCase
 
     private function edge(array $args): string
     {
-        return $this->side('branch_server', self::EDGE_DB, $args);
+        return $this->side('branch_server', $this->edgeDb, $args);
     }
 
     private function assertRefused(string $out, string $why): void
@@ -219,7 +221,7 @@ class EdgeAuthorityPartitionTest extends MySqlTenantTestCase
 
         // ── 7. HANDBACK. The appliance's own handback over a dead wire: stays fenced on BOTH sides, never flips to standby. ──
         $this->assertRefused($this->edge(['edge:handback']), 'handback without the Cloud acknowledgement must fail');
-        $this->useDb(self::EDGE_DB);
+        $this->useDb($this->edgeDb);
         $this->assertSame('handing_back', (string) DB::table('edge_local_meta')->value('authority_state'), 'the appliance is fenced (handing_back) until the Cloud acknowledges');
         $this->useDb($this->cloudDb);
         $this->assertRefused($this->edge(['edge:sale-check']), 'no local writes while handing back');
@@ -230,7 +232,7 @@ class EdgeAuthorityPartitionTest extends MySqlTenantTestCase
         $this->assertSame('OK:holder=cloud', $this->cloud(['cloud:handback', $b, self::DEVICE, 0, 0]));
         $this->assertSame('OK:cloud-write-allowed', $this->cloud(['cloud:fence', $b]));
         // The wire carries the acknowledgement to the appliance (what EdgeAuthorityService::handback records on a 200):
-        $this->useDb(self::EDGE_DB);
+        $this->useDb($this->edgeDb);
         DB::table('edge_local_meta')->update(['authority_state' => 'standby', 'authority_last_ack_at' => now(), 'authority_state_reason' => 'handed back to Cloud (test wire)']);
         $this->useDb($this->cloudDb);
         $this->assertRefused($this->edge(['edge:sale-check']), 'back in standby the appliance refuses local mutation again');
