@@ -80,6 +80,30 @@ class CateringEventStatusService
     }
 
     /**
+     * What a SCREEN should ask before drawing the button.
+     *
+     * backwardTarget() is the status map alone, and the map is not the whole
+     * rule: a confirmed booking with a production release passes it and is
+     * then refused by assertNothingPosted(). Correct on the server, but it
+     * would put a button on the screen whose only possible outcome is an
+     * error message. This is the question the screens actually have.
+     *
+     * Kept separate rather than folded into backwardTarget() because the
+     * belt-and-braces layer has to stay independently testable — a guard
+     * that can only be reached through the map is a guard that proves
+     * nothing, which this feature has already learned once.
+     */
+    public function canMoveBack(CateringEvent $event): bool
+    {
+        if ($this->backwardTarget($event) === null) {
+            return false;
+        }
+
+        return ! $event->finalInvoice()->exists()
+            && ! $event->productionReleases()->exists();
+    }
+
+    /**
      * Where an un-cancel would land. The status the booking held when it was
      * cancelled, or `draft` when that was never recorded — every booking
      * cancelled before this feature shipped, where `cancelled_at` says when but

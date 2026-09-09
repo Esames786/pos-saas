@@ -86,7 +86,18 @@ class CateringEventController extends Controller
                 ->count(),
         ];
 
-        return view('tenant.catering.events.index', compact('events', 'buckets', 'filter', 'status', 'q'));
+        // CATERING-STATUS-ROLLBACK-1 — worked out once per row by the service
+        // that enforces it, keyed by id. The list must never decide for itself
+        // which step is legal; that is how a menu and a screen drift apart.
+        $statusService = app(\App\Services\Catering\CateringEventStatusService::class);
+        $backTargets = [];
+        foreach ($events as $row) {
+            $backTargets[$row->id] = $statusService->canMoveBack($row)
+                ? $statusService->backwardTarget($row)
+                : null;
+        }
+
+        return view('tenant.catering.events.index', compact('events', 'buckets', 'filter', 'status', 'q', 'backTargets'));
     }
 
     public function create()
@@ -294,6 +305,15 @@ class CateringEventController extends Controller
             'costingReadiness' => $costingReadiness,
             'printers' => $printers,
             'position' => $finance->position($cateringEvent),
+            // CATERING-STATUS-ROLLBACK-1: worked out once, by the service that
+            // enforces it, so the button can never offer a step the POST would
+            // refuse.
+            'backTarget' => app(\App\Services\Catering\CateringEventStatusService::class)
+                ->canMoveBack($cateringEvent)
+                    ? app(\App\Services\Catering\CateringEventStatusService::class)->backwardTarget($cateringEvent)
+                    : null,
+            'backTargetIsAssumed' => app(\App\Services\Catering\CateringEventStatusService::class)
+                ->restoreTargetIsAssumed($cateringEvent),
             'headline' => $finance->headline($cateringEvent),
             'ledger' => $finance->ledger($cateringEvent),
             // KASHIF-EVENT-HISTORY-1: the unified timeline + every quotation
