@@ -809,6 +809,88 @@ class JournalPostingService
     }
 
     /**
+     * A3. A receipt that covers the bill AND leaves credit behind
+     * (CATERING-OVERPAYMENT-1).
+     *
+     * The reason this method has to exist: a receipt taken after an invoice
+     * exists posts entirely to 1300 Accounts Receivable. That is right while the
+     * money is paying a bill and WRONG the moment it exceeds one — 20,000
+     * against a 10,000 invoice would leave Accounts Receivable at MINUS 10,000,
+     * and a negative receivable says the customer owes us less than nothing,
+     * which is not a fact about anything.
+     *
+     * The money is two different things and is posted as two:
+     *
+     *   Dr  cash/bank (or 1500 Undeposited)      the whole receipt
+     *       Cr  1300 Accounts Receivable         what was actually owed
+     *       Cr  2300 Customer Advances           the rest — a debt we now carry
+     *
+     * The excess is a LIABILITY, never revenue. 4160 is not touched here and
+     * must never be: money the business has not billed for has not been earned,
+     * whatever the bank balance says.
+     *
+     * Before an invoice exists there is nothing to split — the whole receipt is
+     * already a customer advance — so this is only for the post-invoice case.
+     */
+    public function postCateringSplitReceipt(
+        \App\Models\Tenant\CateringAdvance $advance,
+        float $settled,
+        float $credit,
+        ?int $userId = null
+    ): JournalEntry {
+        $amount = round((float) $advance->amount, 2);
+        $settled = round($settled, 2);
+        $credit = round($credit, 2);
+
+        // The two parts ARE the receipt. If they are not, something upstream has
+        // worked out the split wrongly and the safe answer is to post nothing.
+        if ($settled < 0 || $credit <= 0 || round($settled + $credit, 2) !== $amount) {
+            throw new \RuntimeException(
+                'Refusing to split catering receipt #'.$advance->id.': '
+                .number_format($settled, 2).' + '.number_format($credit, 2)
+                .' does not make '.number_format($amount, 2)
+                .' — a receipt must be posted whole or not at all.'
+            );
+        }
+
+        if ($existing = $this->assertReplayMatches('catering_split_receipt', $advance->id, $amount)) {
+            return $existing;
+        }
+
+        $branchId = $advance->event?->branch_id;
+        $reference = 'Catering receipt '.($advance->reference ?: ('ADV-'.$advance->id))
+            .' ('.($advance->event?->event_no ?? '').')';
+
+        $cashAccountId = $advance->cash_bank_account_id
+            ? $this->cashBankCoaId($advance->cash_bank_account_id)
+            : null;
+
+        $debit = $cashAccountId
+            ? ['account_id' => $cashAccountId, 'branch_id' => $branchId, 'description' => $reference, 'debit' => $amount, 'credit' => 0]
+            : ['account_code' => '1500', 'branch_id' => $branchId, 'description' => $reference.' (undeposited)', 'debit' => $amount, 'credit' => 0];
+
+        $lines = [$debit];
+
+        // A receipt can be entirely credit — an invoice already settled in full,
+        // and the customer pays more anyway. Then there is no AR line to write.
+        if ($settled > 0) {
+            $lines[] = ['account_code' => '1300', 'branch_id' => $branchId, 'description' => 'Accounts Receivable', 'debit' => 0, 'credit' => $settled];
+        }
+
+        $lines[] = ['account_code' => '2300', 'branch_id' => $branchId, 'description' => 'Customer Advances (received beyond the bill)', 'debit' => 0, 'credit' => $credit];
+
+        return $this->journal->post(
+            'catering_split_receipt',
+            $advance->id,
+            $advance->advance_uuid,
+            $reference,
+            $advance->received_date?->toDateString() ?? now()->toDateString(),
+            $lines,
+            $userId
+        );
+    }
+
+    /**
      * A2. Refund of customer credit (KASHIF-CATERING-CUSTOMER-CREDIT-1):
      * Dr 2300 Customer Advances / Cr the mapped cash or bank it left from.
      *

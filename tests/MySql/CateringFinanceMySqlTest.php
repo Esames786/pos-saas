@@ -97,6 +97,35 @@ class CateringFinanceMySqlTest extends MySqlTenantTestCase
         return $event->refresh();
     }
 
+    /**
+     * A receipt row written straight to the table.
+     *
+     * CATERING-OVERPAYMENT-1 step 2 is about the POSTING, and the model still
+     * refuses an amount beyond the balance — that door opens in step 3. Going
+     * through CateringAdvance::create() here would be testing the guard, which
+     * is a different question with its own tests.
+     */
+    private function receiptRow(CateringEvent $event, float $amount, float $credit, string $postingType): \App\Models\Tenant\CateringAdvance
+    {
+        $id = $this->tenant()->table('catering_advances')->insertGetId([
+            'advance_uuid' => (string) \Illuminate\Support\Str::ulid(),
+            'catering_event_id' => $event->id,
+            'amount' => $amount,
+            'credit_portion' => $credit,
+            'received_date' => now()->toDateString(),
+            'payment_method_id' => $this->paymentMethodId,
+            'cash_bank_account_id' => $this->cashAccountId,
+            'posting_type' => $postingType,
+            'overpayment_reason' => 'Customer paid the next booking forward',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $advance = \App\Models\Tenant\CateringAdvance::findOrFail($id);
+        $advance->setRelation('event', $event);
+
+        return $advance;
+    }
+
     /** Net GL movement for an account code: debits − credits. */
     private function accountNet(string $code): float
     {
@@ -182,6 +211,206 @@ class CateringFinanceMySqlTest extends MySqlTenantTestCase
         foreach (['sales_orders', 'sale_payments', 'shifts', 'stock_ledgers'] as $table) {
             $this->assertSame(0, (int) $this->tenant()->table($table)->count());
         }
+    }
+
+    /**
+     * CATERING-OVERPAYMENT-1 (steps 1-2) — a receipt that pays a bill AND leaves
+     * credit is posted as the two different things it is.
+     *
+     * Why this method has to exist at all: a receipt taken after an invoice
+     * exists posts entirely to 1300 Accounts Receivable. That is correct while
+     * the money is paying a bill and wrong the moment it exceeds one — 20,000
+     * against a 10,000 invoice would leave Accounts Receivable at MINUS 10,000,
+     * and a negative receivable states that the customer owes less than nothing.
+     *
+     * The excess is a LIABILITY. The single most important assertion here is the
+     * one about 4160: money the business has not billed for has not been earned,
+     * whatever the bank balance says.
+     *
+     * Nothing calls this yet — the model still refuses overpayment — so this
+     * posts through the service directly, which is the real path the caller will
+     * take when the door opens.
+     */
+    public function test_a_receipt_beyond_the_bill_splits_between_receivable_and_liability(): void
+    {
+        $event = $this->confirmedEvent();                 // 100,000 billed
+        $invoice = $this->invoices->issue($event);
+        $this->assertEqualsWithDelta(100000.0, (float) $invoice->balance_due, 0.01);
+
+        $revenueBefore = $this->accountNet('4160');
+
+        // The operator takes 150,000 against a 100,000 bill.
+        $advance = $this->receiptRow($event, 150000, 50000, \App\Models\Tenant\CateringAdvance::POSTING_SETTLEMENT);
+
+        $entry = app(JournalPostingService::class)->postCateringSplitReceipt($advance, 100000, 50000);
+
+        // The whole receipt reached the drawer, once.
+        $this->assertEqualsWithDelta(150000.0, (float) $entry->total_debit, 0.01);
+
+        // What was owed is now settled — and NOT a rupee more.
+        $this->assertEqualsWithDelta(0.0, $this->accountNet('1300'), 0.01,
+            'Accounts Receivable must land exactly on zero, never below it');
+
+        // The rest is a debt the business now carries.
+        $this->assertEqualsWithDelta(-50000.0, $this->accountNet('2300'), 0.01,
+            'the excess sits in Customer Advances as money owed back');
+
+        // THE assertion. Taking more money is not earning more money.
+        $this->assertEqualsWithDelta($revenueBefore, $this->accountNet('4160'), 0.01,
+            'revenue must not move when a customer overpays');
+    }
+
+    /**
+     * CATERING-OVERPAYMENT-1 (step 3) — the door is shut by default, and opening
+     * it takes two deliberate acts.
+     *
+     * The refusal is not a technical limit, it is a position: a receipt is the
+     * wrong instrument for money the business has not billed for. So it stays
+     * the default, and stepping past it requires BOTH a caller that meant to and
+     * a reason recorded against the money. A flag on its own would let a stray
+     * call through; a reason on its own could be filled in by a form post that
+     * never meant it.
+     */
+    public function test_overpayment_is_refused_unless_it_is_deliberate_and_explained(): void
+    {
+        $event = $this->confirmedEvent();          // 100,000 billed
+        $this->invoices->issue($event->refresh());
+
+        // 1 — the plain path still refuses, exactly as before.
+        try {
+            $this->advances->record($event->refresh(), [
+                'amount' => 150000, 'received_date' => now()->toDateString(),
+                'payment_method_id' => $this->paymentMethodId,
+            ]);
+            $this->fail('a receipt beyond the balance must be refused by default');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('exceeds the outstanding balance', $e->getMessage());
+        }
+
+        // 2 — deciding without saying why is not deciding.
+        try {
+            $this->advances->record($event->refresh(), [
+                'amount' => 150000, 'received_date' => now()->toDateString(),
+                'payment_method_id' => $this->paymentMethodId,
+                'allow_overpayment' => true,
+            ]);
+            $this->fail('overpayment without a reason must be refused');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('needs a reason recorded against it', $e->getMessage());
+        }
+
+        $this->assertSame(0, $this->tenant()->table('catering_advances')->count(),
+            'neither refusal may leave a receipt behind');
+    }
+
+    /**
+     * CATERING-OVERPAYMENT-1 (step 3) — a deliberate overpayment, end to end.
+     *
+     * This is the whole feature in one test: the money arrives once, the bill is
+     * settled exactly, the excess becomes a debt the business carries, and
+     * REVENUE DOES NOT MOVE. Taking more money is not earning more money.
+     */
+    public function test_a_deliberate_overpayment_settles_the_bill_and_holds_the_rest(): void
+    {
+        $event = $this->confirmedEvent();          // 100,000 billed
+        $this->invoices->issue($event->refresh());
+        $revenueBefore = $this->accountNet('4160');
+
+        $advance = $this->advances->record($event->refresh(), [
+            'amount' => 150000,
+            'received_date' => now()->toDateString(),
+            'payment_method_id' => $this->paymentMethodId,
+            'allow_overpayment' => true,
+            'overpayment_reason' => 'Customer paid the next booking forward',
+        ]);
+
+        $this->assertEqualsWithDelta(50000.0, (float) $advance->credit_portion, 0.01,
+            'the receipt records how much of itself was never a payment');
+
+        $this->assertEqualsWithDelta(0.0, $this->accountNet('1300'), 0.01,
+            'Accounts Receivable lands on zero, never below it');
+        $this->assertEqualsWithDelta(-50000.0, $this->accountNet('2300'), 0.01,
+            'the excess is a debt the business now carries');
+        $this->assertEqualsWithDelta($revenueBefore, $this->accountNet('4160'), 0.01,
+            'revenue must not move when a customer overpays');
+
+        // The one authority every screen reads agrees.
+        $position = app(\App\Services\Catering\CateringFinancialPositionService::class)->position($event->refresh());
+        $this->assertEqualsWithDelta(0.0, $position['balance_due'], 0.01);
+        $this->assertEqualsWithDelta(50000.0, $position['customer_credit'], 0.01);
+        $this->assertEqualsWithDelta(50000.0, $position['refundable'], 0.01,
+            'and only the credit may be handed back');
+    }
+
+    /**
+     * Paying the bill exactly still behaves exactly as it always did — the door
+     * changes nothing for the ordinary case.
+     */
+    public function test_paying_the_bill_exactly_is_untouched_by_the_new_door(): void
+    {
+        $event = $this->confirmedEvent();
+        $this->invoices->issue($event->refresh());
+
+        $advance = $this->advances->record($event->refresh(), [
+            'amount' => 100000, 'received_date' => now()->toDateString(),
+            'payment_method_id' => $this->paymentMethodId,
+        ]);
+
+        $this->assertEqualsWithDelta(0.0, (float) $advance->credit_portion, 0.01,
+            'nothing was held back, so nothing is recorded as held');
+        $this->assertSame('settlement', $advance->posting_type);
+        $this->assertEqualsWithDelta(0.0, $this->accountNet('1300'), 0.01);
+        $this->assertEqualsWithDelta(0.0, $this->accountNet('2300'), 0.01,
+            'an exact payment leaves no customer advance behind');
+    }
+
+    /** A receipt is posted whole or not at all. */
+    public function test_a_split_that_does_not_add_up_is_refused(): void
+    {
+        $event = $this->confirmedEvent();
+        $this->invoices->issue($event);
+
+        $advance = $this->receiptRow($event, 150000, 50000, \App\Models\Tenant\CateringAdvance::POSTING_SETTLEMENT);
+
+        $before = $this->tenant()->table('journal_entries')->count();
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('must be posted whole or not at all');
+
+        try {
+            // 100,000 + 40,000 is not 150,000.
+            app(JournalPostingService::class)->postCateringSplitReceipt($advance, 100000, 40000);
+        } finally {
+            $this->assertSame($before, $this->tenant()->table('journal_entries')->count(),
+                'a refused split must leave the ledger exactly as it was');
+        }
+    }
+
+    /**
+     * An invoice already settled in full, and the customer pays anyway: every
+     * rupee is credit and there is no receivable line to write.
+     */
+    public function test_a_receipt_against_a_settled_invoice_is_all_credit(): void
+    {
+        $event = $this->confirmedEvent();
+        $this->invoices->issue($event);
+        $this->advances->record($event, [
+            'amount' => 100000, 'received_date' => now()->toDateString(),
+            'payment_method_id' => $this->paymentMethodId,
+        ]);
+
+        $receivableBefore = $this->accountNet('1300');
+        $revenueBefore = $this->accountNet('4160');
+
+        $advance = $this->receiptRow($event, 25000, 25000, \App\Models\Tenant\CateringAdvance::POSTING_ADVANCE);
+
+        $entry = app(JournalPostingService::class)->postCateringSplitReceipt($advance, 0, 25000);
+
+        $this->assertSame(2, $entry->lines()->count(),
+            'with nothing owed there is no Accounts Receivable line to write');
+        $this->assertEqualsWithDelta($receivableBefore, $this->accountNet('1300'), 0.01,
+            'a settled receivable must not move');
+        $this->assertEqualsWithDelta($revenueBefore, $this->accountNet('4160'), 0.01);
     }
 
     public function test_conflicting_replay_refuses_and_unmapped_method_uses_undeposited_funds(): void

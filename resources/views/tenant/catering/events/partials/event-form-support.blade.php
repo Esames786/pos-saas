@@ -313,6 +313,91 @@
             return d;
         };
 
+        /**
+         * EVENT-FORM-KEYBOARD-4 — refuse the keystroke, not the value.
+         *
+         * `allow` is asked whether the value WOULD still be on its way to
+         * something valid; if not, the character never lands. `shape` then
+         * formats what is there — but only while the caret is at the end, so
+         * editing in the middle is never fought over.
+         */
+        const restrictTyping = function (input, allow, shape) {
+            input.addEventListener('beforeinput', function (e) {
+                // Deleting is always allowed; so is anything the browser is
+                // doing on its own behalf.
+                if (e.data === null || e.data === undefined) return;
+
+                const start = input.selectionStart ?? input.value.length;
+                const end = input.selectionEnd ?? input.value.length;
+                const next = input.value.slice(0, start) + e.data + input.value.slice(end);
+
+                if (! allow(next)) e.preventDefault();
+            });
+
+            input.addEventListener('input', function () {
+                if (input.selectionStart !== input.value.length) return;
+                const shaped = shape(input.value);
+                if (shaped === input.value) return;
+                input.value = shaped;
+                input.setSelectionRange(shaped.length, shaped.length);
+            });
+        };
+
+        // Every word the date box understands. A letter is only ever accepted
+        // while the value is still walking towards one of these.
+        const DATE_WORDS = ['today', 'aaj', 'kal', 'tomorrow', 't'];
+
+        const dateAllows = function (value) {
+            const s = String(value).trim().toLowerCase();
+            if (s === '') return true;
+            if (/^[+-]\d{0,3}$/.test(s)) return true;                                  // +7, -3
+            if (/^\d{0,2}([\/\-. ]\d{0,2}([\/\-. ]\d{0,4})?)?$/.test(s)) return true;   // 9/10/26
+            if (/^\d{0,8}$/.test(s)) return true;                                      // 09102026
+            // The mask's own half-finished output — 10-11-2026 on its way in.
+            if (/^[\d-]*$/.test(s) && s.replace(/\D/g, '').length <= 8) return true;
+            return DATE_WORDS.some(function (w) { return w.startsWith(s); });
+        };
+
+        const dateMasked = function (digits) {
+            const d = digits.slice(0, 8);
+            if (d.length <= 2) return d;
+            if (d.length <= 4) return d.slice(0, 2) + '-' + d.slice(2);
+
+            return d.slice(0, 2) + '-' + d.slice(2, 4) + '-' + d.slice(4);
+        };
+
+        const dateShape = function (value) {
+            // Anything carrying a slash, a dot, a space or a letter is the
+            // operator's own way of writing it — 9/10, 9.10.26, today — and is
+            // never rewritten.
+            if (! /^[\d-]*$/.test(value)) return value;
+
+            // The mask puts its dashes after the day and after the month, and
+            // nowhere else. A date punctuated by hand — 9-10-26 — has them
+            // somewhere else, and reshaping it on digit count would turn it into
+            // 91-02-6. So only the mask's own dash positions are reshaped.
+            for (let i = 0; i < value.length; i++) {
+                if (value[i] === '-' && i !== 2 && i !== 5) return value;
+            }
+
+            return dateMasked(value.replace(/-/g, ''));
+        };
+
+        const timeAllows = function (value) {
+            const s = String(value).trim().toLowerCase().replace(/\s+/g, '');
+            if (s === '') return true;
+
+            return /^\d{0,2}(:\d{0,2})?(a|p|am|pm)?$/.test(s) || /^\d{0,4}$/.test(s);
+        };
+
+        const timeShape = function (value) {
+            if (! /^\d+$/.test(value)) return value;                                   // 10pm keeps its own shape
+            const d = value.slice(0, 4);
+            if (d.length <= 2) return d;
+
+            return d.slice(0, 2) + ':' + d.slice(2);
+        };
+
         if (window.flatpickr) {
             root.querySelectorAll('input[type=date]').forEach(function (el) {
                 if (el._flatpickr) return;
@@ -328,7 +413,8 @@
                     },
                     onReady: function (dates, value, fp) {
                         if (! fp.altInput) return;
-                        fp.altInput.setAttribute('placeholder', '9/10 · 9-10-26 · +7 · today');
+                        fp.altInput.setAttribute('placeholder', '10-11-2026 · 9/10 · +7 · today');
+                        restrictTyping(fp.altInput, dateAllows, dateShape);
                         // Enter accepts what was typed and MOVES ON; the calendar
                         // must not sit open swallowing the next Tab. Escape closes
                         // it and leaves the date alone.
@@ -398,7 +484,8 @@
                     onReady: function (dates, value, instance) {
                         if (! instance.altInput) return;
                         instance.altInput.autocomplete = 'off';
-                        instance.altInput.setAttribute('placeholder', '10pm · 22:00 · 2230 · 7');
+                        instance.altInput.setAttribute('placeholder', '22:00 · 10pm · 7');
+                        restrictTyping(instance.altInput, timeAllows, timeShape);
                         instance.altInput.setAttribute('aria-label', 'Service time — type or pick');
                         instance.altInput.addEventListener('focus', function () { instance.altInput.select(); });
                         instance.altInput.addEventListener('input', function () {
