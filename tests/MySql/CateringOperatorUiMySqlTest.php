@@ -941,11 +941,29 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
         $this->assertStringNotContainsString('sort_order', $drop,
             'the browser must not invent an order of its own');
 
-        // A punch in flight owns a row INDEX; moving rows under it would leave
-        // punch.editIdx pointing at whatever landed in that place.
+        // ROW-DRAG-2 — this used to assert the OPPOSITE, and the assertion was
+        // wrong in the same way the code was. dragstart refused whenever `punch`
+        // was set; the punch bar stays open until a commit or Escape, so that was
+        // nearly always, and a cancelled dragstart does not end the gesture — the
+        // browser turns it into a text selection. The owner's screenshot showed
+        // exactly that: rows unmoved and a streak of highlighted text.
         $start = $this->between($html, "on('dragstart', '.line-drag'", "on('dragover'");
-        $this->assertStringContainsString('if (punch) { e.preventDefault(); return; }', $start,
-            'dragging is refused while a row is being punched or edited');
+        $this->assertStringNotContainsString('if (punch) { e.preventDefault(); return; }', $start,
+            'a drag must never be refused — a cancelled dragstart becomes a text selection');
+
+        // What that refusal was protecting is real, and is protected properly
+        // now: an edit in flight remembers its row by index as well as by
+        // data-row, and reordering rewrites the indices. Repairing it inside
+        // renumberLines covers the ARROWS too, where it was never guarded.
+        $renumber = $this->between($html, 'function renumberLines()', "\$(document).on('click', '.line-up, .line-down'");
+        $this->assertStringContainsString('if (punch && punch.editRow)', $renumber,
+            'an edit in flight must have its row index repaired after any move');
+        $this->assertStringContainsString('punch.editIdx = at[1]', $renumber);
+
+        // A handle the browser can treat as text is a handle that starts a
+        // selection instead of a drag.
+        $this->assertStringContainsString('user-select: none', $html,
+            'the handle must not be selectable as text');
 
         // The arrows are an addition's companion, never its casualty: they are
         // the only way that works on a touch screen or from a keyboard.

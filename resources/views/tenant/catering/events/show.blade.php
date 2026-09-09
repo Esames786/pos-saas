@@ -64,7 +64,13 @@
     /* ROW-DRAG-1: the handle, and the line the row would land on. The mark sits
        on the top or the bottom of the whole line — materials included — because
        that is what actually moves. */
-    #lines-table .line-drag { cursor: grab; }
+    #lines-table .line-drag {
+        cursor: grab; user-select: none; -webkit-user-select: none;
+        display: inline-block; padding: 2px 4px; font-size: 17px; line-height: 1;
+    }
+    /* While a row is being carried, nothing else on the grid is selectable —
+       a half-started drag used to leave a trail of highlighted text. */
+    #lines-body.lines-dragging { user-select: none; -webkit-user-select: none; }
     #lines-table .line-drag:active { cursor: grabbing; }
     #lines-body > tr.line-drop-before > td { box-shadow: inset 0 3px 0 0 var(--bs-primary, #0d6efd); }
     #lines-body > tr.line-drop-after > td { box-shadow: inset 0 -3px 0 0 var(--bs-primary, #0d6efd); }
@@ -1909,9 +1915,14 @@ $(function () {
         $('.punch-step').removeClass('d-none');
         if (! mats.length || ! punch.party) $('#punch-seg-wrap').addClass('d-none');
         punchSetMode(punch.mode);
+        // The quantity FIRST. punchRenderMats() reads #punch-qty to work out
+        // each material's Required figure, so rendering before setting it
+        // answered for the PREVIOUS quantity — the live screen showed
+        // "Required 15 KG" beside an Own of 42 on a 28 KG dish.
+        $('#punch-qty').val(qty);
         punchRenderMats();
         $('#punch-customer-rate').val(punch.currentQuotedRate);
-        $('#punch-qty').val(qty).trigger('focus').trigger('select');
+        $('#punch-qty').trigger('focus').trigger('select');
         punchLive();
     });
 
@@ -1965,9 +1976,14 @@ $(function () {
         $('.punch-step').removeClass('d-none');
         if (!mats.length || !punch.party) $('#punch-seg-wrap').addClass('d-none');
         punchSetMode(punch.mode);
+        // The quantity FIRST. punchRenderMats() reads #punch-qty to work out
+        // each material's Required figure, so rendering before setting it
+        // answered for the PREVIOUS quantity — the live screen showed
+        // "Required 15 KG" beside an Own of 42 on a 28 KG dish.
+        $('#punch-qty').val(qty);
         punchRenderMats();
         $('#punch-customer-rate').val(punch.currentQuotedRate);
-        $('#punch-qty').val(qty).trigger('focus').trigger('select');
+        $('#punch-qty').trigger('focus').trigger('select');
         punchLive();
     });
 
@@ -2238,6 +2254,19 @@ $(function () {
                 this.name = this.name.replace(/^lines\[\d+\]/, 'lines[' + position + ']');
             });
         });
+
+        // ROW-DRAG-2: an edit in flight remembers its row TWICE — by data-row,
+        // which never changes, and by index, which is exactly what was just
+        // rewritten. Left stale, the edit would be written into whichever line
+        // now sits at the old position. Repaired here, once, so every way a row
+        // can move is covered — the arrows have carried this hazard unguarded
+        // since LINE-ORDER-1.
+        if (punch && punch.editRow) {
+            const name = $('#lines-body > tr[data-row="' + punch.editRow + '"]')
+                .find('[name^="lines["]').first().attr('name') || '';
+            const at = name.match(/^lines\[(\d+)\]/);
+            if (at) punch.editIdx = at[1];
+        }
     }
 
     $(document).on('click', '.line-up, .line-down', function (e) {
@@ -2293,11 +2322,16 @@ $(function () {
     }
 
     $(document).on('dragstart', '.line-drag', function (e) {
-        // A punch in flight owns a row INDEX. Moving rows underneath it would
-        // leave punch.editIdx pointing at whatever now sits in that place.
-        if (punch) { e.preventDefault(); return; }
-
+        // This used to refuse the drag whenever `punch` was set. The punch bar
+        // stays open until a commit or Escape, so that was nearly always — and
+        // a cancelled dragstart does not end the gesture, it hands it back to
+        // the browser as a text selection. The row never moved and the table
+        // filled with highlighted text instead.
+        //
+        // The index that guard was protecting is repaired in renumberLines()
+        // now, for the arrows as well, so there is nothing left to refuse.
         dragRow = $(this).closest('tr[data-row]').attr('data-row');
+        $('#lines-body').addClass('lines-dragging');
         const dt = e.originalEvent.dataTransfer;
         dt.effectAllowed = 'move';
         // Firefox refuses to begin a drag that carries nothing.
@@ -2351,6 +2385,7 @@ $(function () {
 
     $(document).on('dragend', '.line-drag', function () {
         clearDropMarks();
+        $('#lines-body').removeClass('lines-dragging');
         dragRow = null;
     });
 
