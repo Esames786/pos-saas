@@ -74,16 +74,22 @@
     #lines-table .line-drag:active { cursor: grabbing; }
     #lines-body > tr.line-drop-before > td { box-shadow: inset 0 3px 0 0 var(--bs-primary, #0d6efd); }
     #lines-body > tr.line-drop-after > td { box-shadow: inset 0 -3px 0 0 var(--bs-primary, #0d6efd); }
+    /* The line being carried fades, so the operator sees WHAT is moving as well
+       as where it will land. */
+    #lines-body > tr.line-being-dragged > td { opacity: .4; }
     .punch-mode #lines-table .line-up,
     .punch-mode #lines-table .line-down,
     .punch-mode #lines-table .remove-line:hover,
     .punch-mode #lines-table .punch-remove:hover { background: var(--bs-danger-bg-subtle, #fbe4e4); }
-    /* The Urdu name is a document concern, not a punching one — the column goes
-       (its input still submits, hidden, so nothing typed is ever lost).
-       CHILD selectors only: a descendant rule reached inside the breakdown
-       table nested in a row and silently ate ITS second column. */
-    .punch-mode #lines-table > thead > tr > th:nth-child(2),
-    .punch-mode #lines-table > tbody > tr[data-row] > td:nth-child(2) { display: none; }
+    /* INLINE-EDITOR-1 (step 2): the rule that hid column 2 is GONE. It existed to
+       hide the Urdu name, and column 2 is the quantity now — leaving it would have
+       hidden the one number the operator types most. The Urdu value moved to a
+       hidden input instead, which is a stronger statement of the same intent. */
+
+    /* The Material Breakdown reads as one section of the grid without becoming a
+       second table: a quiet tint on its header, and separators only INSIDE it. */
+    #lines-table th.mat-group-head { background: var(--bs-success-bg-subtle, #e8f3ec); font-weight: 600; letter-spacing: .02em; }
+    #lines-table th.mat-col { background: var(--bs-tertiary-bg, #f6f7f9); font-weight: 500; }
 
     /* In punch mode the old editable Cost Details panel steps aside: editing
        happens in the bar, and every row shows the SAME compact breakdown. */
@@ -477,26 +483,31 @@
             <div class="table-responsive">
                 <table class="table mb-0" id="lines-table">
                     <thead>
+                        {{-- INLINE-EDITOR-1 (step 2): TWO header rows.
+                             Material Breakdown is ONE grouped section. A dish with a
+                             second material grows DOWNWARD under these same five
+                             columns — it never opens five more columns sideways,
+                             because a material is not a quotation line. It is a
+                             child of one. --}}
                         <tr>
-                            <th style="min-width:170px;">Item</th>
-                            <th style="min-width:110px;">Urdu Name</th>
-                            <th style="width:80px;" class="text-end">Qty</th>
-                            <th style="width:85px;">Unit</th>
-                            <th style="width:100px;" class="text-end"
+                            <th rowspan="2" style="min-width:190px;">Item</th>
+                            <th rowspan="2" style="width:95px;" class="text-end">Qty</th>
+                            <th rowspan="2" style="width:105px;" class="text-end"
                                 data-bs-toggle="tooltip" title="System Calculated Rate: what the configured materials and making charges work out to per selling unit.">System Rate</th>
-                            <th style="width:115px;" class="text-end"
+                            <th rowspan="2" style="width:115px;" class="text-end"
                                 data-bs-toggle="tooltip" title="Customer Quoted Rate: what the customer actually pays per selling unit. It follows the system rate unless an agreed override is recorded.">Customer Rate</th>
-                            {{-- STACKED-MATERIAL-ROW-1 (step 4): the breakdown moved OUT of a
-                                 collapsed panel and INTO the grid, where the operator works.
-                                 Required is Own + Party by definition, so it is not a field. --}}
-                            <th style="min-width:120px;">Material</th>
-                            <th style="width:90px;" class="text-end">Rate</th>
-                            <th style="width:95px;" class="text-end">Required Qty</th>
-                            <th style="width:85px;" class="text-end">Own</th>
-                            <th style="width:85px;" class="text-end">Party</th>
-                            <th style="width:100px;" class="text-end">Amount</th>
-                            <th style="min-width:140px;">Instructions</th>
-                            <th style="width:36px;"></th>
+                            <th colspan="5" class="text-center mat-group-head">Material Breakdown</th>
+                            <th rowspan="2" style="min-width:150px;">Kitchen Instructions</th>
+                            <th rowspan="2" style="min-width:140px;">Additional Note</th>
+                            <th rowspan="2" style="width:105px;" class="text-end">Amount</th>
+                            <th rowspan="2" style="width:120px;">Action</th>
+                        </tr>
+                        <tr>
+                            <th class="mat-col" style="min-width:120px;">Material</th>
+                            <th class="mat-col text-end" style="width:90px;">Rate</th>
+                            <th class="mat-col text-end" style="width:95px;">Required Qty</th>
+                            <th class="mat-col text-end" style="width:85px;">Own</th>
+                            <th class="mat-col text-end" style="width:85px;">Party</th>
                         </tr>
                     </thead>
                     <tbody id="lines-body">
@@ -533,15 +544,20 @@
                                 <input type="hidden" name="lines[{{ $i }}][line_uuid]" value="{{ $line->line_uuid }}">
                                 <input type="hidden" name="lines[{{ $i }}][product_id]" value="{{ $line->product_id }}">
                                 <input type="hidden" name="lines[{{ $i }}][item_name]" value="{{ $line->item_name }}">
+                                {{-- INLINE-EDITOR-1 (step 2): the Urdu name has no column of
+                                     its own any more — punch mode already hid it — but the
+                                     VALUE still posts, so the quotation and the kitchen
+                                     sheet print exactly what they printed before. A
+                                     refactor of the screen must not lose a field. --}}
+                                <input type="hidden" name="lines[{{ $i }}][item_name_ur]" value="{{ $line->item_name_ur }}">
                             </td>
-                            <td rowspan="{{ $lineSpan }}"><input type="text" dir="rtl" lang="ur" class="form-control form-control-sm"
-                                       name="lines[{{ $i }}][item_name_ur]" value="{{ $line->item_name_ur }}"></td>
                             <td rowspan="{{ $lineSpan }}"><input type="number" step="0.001" min="0.001"
                                        class="form-control form-control-sm text-end line-qty"
                                        name="lines[{{ $i }}][quantity]"
-                                       value="{{ rtrim(rtrim(number_format($line->quantity, 3, '.', ''), '0'), '.') }}" required></td>
-                            <td rowspan="{{ $lineSpan }}">
-                                <select class="form-select form-select-sm" name="lines[{{ $i }}][unit_id]">
+                                       value="{{ rtrim(rtrim(number_format($line->quantity, 3, '.', ''), '0'), '.') }}" required>
+                                {{-- The unit keeps its control — it is editable and it posts —
+                                     but it no longer needs a column of its own. --}}
+                                <select class="form-select form-select-sm mt-1 line-unit" name="lines[{{ $i }}][unit_id]">
                                     <option value="">—</option>
                                     @foreach($units as $u)
                                         <option value="{{ $u->id }}" @selected((string) $line->unit_id === (string) $u->id)>{{ $u->code }}</option>
@@ -554,6 +570,7 @@
                                 @else
                                     <span class="text-muted" title="This line is not priced from cost blocks">—</span>
                                 @endif
+                                @if($line->unit_code)<div class="fs-12 text-muted">per {{ $line->unit_code }}</div>@endif
                             </td>
                             <td rowspan="{{ $lineSpan }}" class="text-end align-middle">
                                 @if($lineHasBlocks)
@@ -601,10 +618,11 @@
                             @include('tenant.catering.events.partials.line-material-cells', [
                                 'block' => $lineMats->first(), 'partyAllowed' => $linePartyAllowed,
                             ])
-                            <td rowspan="{{ $lineSpan }}" class="text-end align-middle line-amount">0.00</td>
+                            {{-- KASHIF-CATERING-INSTRUCTIONS-1: the managed vocabulary.
+                                 INLINE-EDITOR-1 (step 2): the free note now has a column of
+                                 its own beside it — they are two different things and were
+                                 only ever stacked in one cell for want of room. --}}
                             <td rowspan="{{ $lineSpan }}">
-                                {{-- KASHIF-CATERING-INSTRUCTIONS-1: managed selections
-                                     from the vocabulary + the free note beside them. --}}
                                 @if($activeInstructions->isNotEmpty() || $line->managedInstructions->isNotEmpty())
                                     <select class="form-select form-select-sm instr-select" multiple
                                             name="lines[{{ $i }}][instruction_ids][]"
@@ -622,10 +640,13 @@
                                 @else
                                     <input type="hidden" name="lines[{{ $i }}][instruction_ids]" value="">
                                 @endif
-                                <input type="text" class="form-control form-control-sm mt-1"
+                            </td>
+                            <td rowspan="{{ $lineSpan }}">
+                                <input type="text" class="form-control form-control-sm line-note"
                                        name="lines[{{ $i }}][instructions]" value="{{ $line->instructions }}"
                                        placeholder="Additional note">
                             </td>
+                            <td rowspan="{{ $lineSpan }}" class="text-end align-middle line-amount">0.00</td>
                             <td rowspan="{{ $lineSpan }}" class="align-middle text-nowrap">
                                 {{-- LINE-ORDER-1: the quotation prints in the order
                                      these rows sit in — sort_order follows the posted
@@ -649,7 +670,7 @@
                         @endforeach
                         @if($lineHasBlocks)
                         <tr class="collapse cost-details-row" id="cost-details-{{ $line->id }}">
-                            <td colspan="14" class="bg-body-secondary">
+                            <td colspan="13" class="bg-body-secondary">
                                 @include('tenant.catering.events.partials.line-cost-details', [
                                     'line' => $line, 'current' => $current, 'event' => $event,
                                 ])
@@ -1632,17 +1653,17 @@ $(function () {
                     <input type="hidden" name="lines[${i}][item_name]" class="line-name" value="${_.escape(line.item_name || '')}">
                     <input type="hidden" name="lines[${i}][line_uuid]" value="${_.escape(line.line_uuid || '')}">
                 </td>
-                <td><input type="text" dir="rtl" lang="ur" class="form-control form-control-sm line-name-ur" name="lines[${i}][item_name_ur]" value="${_.escape(line.item_name_ur || '')}"></td>
-                <td><input type="number" step="0.001" min="0.001" class="form-control form-control-sm text-end line-qty" name="lines[${i}][quantity]" value="${line.quantity || defaultPax || 1}" required></td>
-                <td><select class="form-select form-select-sm line-unit" name="lines[${i}][unit_id]">${unitOptions(line.unit_id)}</select></td>
+                <td>
+                    <input type="number" step="0.001" min="0.001" class="form-control form-control-sm text-end line-qty" name="lines[${i}][quantity]" value="${line.quantity || defaultPax || 1}" required>
+                    <select class="form-select form-select-sm mt-1 line-unit" name="lines[${i}][unit_id]">${unitOptions(line.unit_id)}</select>
+                    <input type="hidden" class="line-name-ur" name="lines[${i}][item_name_ur]" value="${_.escape(line.item_name_ur || '')}">
+                </td>
                 <td class="text-end align-middle text-muted line-calc" title="A block-costed dish prices itself from its Cost Blocks">—</td>
                 <td><input type="number" step="0.01" min="0" class="form-control form-control-sm text-end line-rate" name="lines[${i}][rate]" value="${line.rate || 0}" required></td>
                 <td class="fs-13 text-muted">&mdash;</td><td></td><td></td><td></td><td></td>
+                <td>${instructions.length ? `<select class="form-select form-select-sm instr-select" multiple name="lines[${i}][instruction_ids][]" data-placeholder="Kitchen instructions…">${instructionOptions()}</select>` : ''}</td>
+                <td><input type="text" class="form-control form-control-sm line-note" name="lines[${i}][instructions]" value="${_.escape(line.instructions || '')}" placeholder="Additional note"></td>
                 <td class="text-end align-middle line-amount">0.00</td>
-                <td>
-                    ${instructions.length ? `<select class="form-select form-select-sm instr-select" multiple name="lines[${i}][instruction_ids][]" data-placeholder="Kitchen instructions…">${instructionOptions()}</select>` : ''}
-                    <input type="text" class="form-control form-control-sm mt-1" name="lines[${i}][instructions]" value="${_.escape(line.instructions || '')}" placeholder="Additional note">
-                </td>
                 <td class="align-middle text-nowrap">
                     <button type="button" class="btn btn-sm btn-link text-primary punch-edit p-0 me-1" title="Edit this item"><i class="ti ti-pencil"></i></button>
                     <button type="button" class="btn btn-sm btn-link text-danger remove-line p-0" title="Remove this item"><i class="ti ti-x"></i></button>
@@ -1892,22 +1913,18 @@ $(function () {
         const panel = lineId ? $('#cost-details-' + lineId) : $();
         const qty = parseFloat(row.find('.line-qty').val() || row.find('[name$="[quantity]"]').val()) || 0;
 
-        const mats = punchMatsFromRow(row, idx, qty);
-        const productId = row.find('[name="lines[' + idx + '][product_id]"]').val();
-        const profile = productId ? (profiles[productId] || {}) : {};
+        const st = lineStateFromRow(row);
+        if (! st) return;
+        const mats = st.mats;
         punch = {
-            productId: productId || null,
-            name: row.find('.fw-semibold').first().text().trim() || row.find('.line-name').val() || '',
-            nameUr: row.find('[name="lines[' + idx + '][item_name_ur]"]').val() || '',
-            unitId: row.find('[name$="[unit_id]"]').val() || null,
-            unitCode: row.find('[name$="[unit_id]"] option:selected').text().trim() || 'KG',
-            dishRate: profile.rate || (parseFloat(row.data('rate')) || 0),
-            blocks: row.find('.quoted-live').length > 0,
-            currentQuotedRate: parseFloat(row.find('[name="lines[' + idx + '][rate]"]').val()) || 0,
-            currentOverridden: row.find('.quoted-live').attr('data-overridden') === '1',
-            party: profile.party !== false,
+            productId: st.productId, name: st.name, nameUr: st.nameUr,
+            unitId: st.unitId, unitCode: st.unitCode,
+            dishRate: st.dishRate, blocks: st.blocks,
+            currentQuotedRate: st.quotedRate,
+            currentOverridden: st.overridden,
+            party: st.party,
             mode: mats.some(m => m.cust > 0) ? 'PARTY' : 'OWN',
-            mats, editRow: row.attr('data-row'), editIdx: idx, editSaved: true,
+            mats: mats, editRow: st.row, editIdx: st.idx, editSaved: true,
             customerRateTouched: true,
         };
         $('#punch-item').empty().append(new Option('EDIT — ' + punch.name, 'edit', true, true)).trigger('change');
@@ -1933,39 +1950,20 @@ $(function () {
         e.stopPropagation();
         const row = $(this).closest('tr');
         const idx = (row.find('[name^="lines["]').first().attr('name').match(/lines\[(\d+)\]/) || [])[1];
+        const st = lineStateFromRow(row);
+        if (! st) return;
         const val = f => row.find('[name="lines[' + idx + '][' + f + ']"]').val();
-        const qty = parseFloat(row.find('.line-qty').val()) || 0;
-
-        const mats = [];
-        row.find('[name*="[materials]["][name$="[label]"]').each(function () {
-            const j = (this.name.match(/\[materials\]\[(\d+)\]/) || [])[1];
-            const g = k => row.find('[name="lines[' + idx + '][materials][' + j + '][' + k + ']"]').val();
-            const total = parseFloat(g('kg')) || 0;
-            const cust = Math.min(parseFloat(g('cust')) || 0, total);
-            mats.push({
-                label: this.value, name: this.value, unit: 'KG',
-                ratio: qty > 0 ? total / qty : 0,
-                rate: parseFloat(g('rate')) || 0, origRate: parseFloat(g('rate')) || 0,
-                own: Math.max(0, total - cust), ownTouched: true, cust,
-            });
-        });
-
-        const productId = val('product_id');
-        const profile = productId ? (profiles[productId] || {}) : {};
+        const qty = st.qty;
+        const mats = st.mats;
         punch = {
-            productId: productId || null, name: val('item_name'), nameUr: val('item_name_ur') || '',
-            unitId: val('unit_id') || null,
-            // Read by NAME, never by counting cells. This was td:eq(3), which
-            // was correct until the table grew five columns — a reader that
-            // counts cells breaks the next time a column moves, and silently.
-            unitCode: row.find('.punch-unit-cell').first().text().trim() || 'KG',
-            dishRate: profile.rate || 0,
-            blocks: !!profile.blocks,
-            currentQuotedRate: parseFloat(val('rate')) || 0,
-            currentOverridden: val('rate_action') === 'override',
-            party: profile.party !== false,
+            productId: st.productId, name: st.name, nameUr: st.nameUr,
+            unitId: st.unitId, unitCode: st.unitCode,
+            dishRate: st.dishRate, blocks: st.blocks,
+            currentQuotedRate: st.quotedRate,
+            currentOverridden: st.overridden,
+            party: st.party,
             mode: mats.some(m => m.cust > 0) ? 'PARTY' : 'OWN',
-            mats, editRow: row.attr('data-row'), editIdx: idx,
+            mats: mats, editRow: st.row, editIdx: st.idx,
             customerRateTouched: true,
         };
 
@@ -2234,6 +2232,62 @@ $(function () {
     // `.punch-detail`. The first version of this only knew about the saved kind,
     // so moving an unsaved row left its own breakdown sitting under whichever
     // line landed above it. Both kinds travel with their line.
+    /**
+     * INLINE-EDITOR-1 — read ONE line out of the DOM, in one place.
+     *
+     * Two handlers used to do this separately, each with its own idea of where
+     * a value lives: the saved-row editor read the name from .fw-semibold and
+     * the unit from the unit <select>, while the unsaved-row editor read the
+     * name from a hidden input and the unit by COUNTING CELLS. Two readers of
+     * one thing is how they drift, and one of them had already drifted.
+     *
+     * Every fallback below is written so that a saved row and a punched row
+     * each reach the value the way they always did — this reads the same, it
+     * does not read differently.
+     */
+    function lineStateFromRow(row) {
+        const $row = $(row);
+        const at = ($row.find('[name^="lines["]').first().attr('name') || '').match(/lines\[(\d+)\]/);
+        if (! at) return null;
+
+        const i = at[1];
+        const val = f => $row.find('[name="lines[' + i + '][' + f + ']"]').val();
+        const unsaved = $row.hasClass('punch-row');
+        const qty = parseFloat($row.find('.line-qty').val() || val('quantity')) || 0;
+        const productId = val('product_id') || null;
+        const profile = productId ? (profiles[productId] || {}) : {};
+
+        return {
+            idx: i,
+            row: $row.attr('data-row'),
+            unsaved: unsaved,
+            productId: productId,
+            name: $row.find('.fw-semibold').first().text().trim() || val('item_name') || '',
+            nameUr: val('item_name_ur') || '',
+            unitId: val('unit_id') || null,
+            unitCode: $row.find('.punch-unit-cell').first().text().trim()
+                || $row.find('[name$="[unit_id]"] option:selected').text().trim() || 'KG',
+            qty: qty,
+            quotedRate: parseFloat(val('rate')) || 0,
+            // A SAVED row's data-rate is the dish's rate; a PUNCHED row's is the
+            // agreed rate. Only the first may stand in for dishRate — the second
+            // would make punchLineCalc invent a making charge out of it.
+            dishRate: unsaved ? (profile.rate || 0) : (profile.rate || (parseFloat($row.data('rate')) || 0)),
+            // A punched row knows from the product profile; a saved one knows
+            // because the server drew it a live-rate box. Kept apart on purpose:
+            // merging them would change which lines can record an agreed rate.
+            blocks: unsaved ? !! profile.blocks : $row.find('.quoted-live').length > 0,
+            overridden: unsaved
+                ? val('rate_action') === 'override'
+                : $row.find('.quoted-live').attr('data-overridden') === '1',
+            party: profile.party !== false,
+            mats: punchMatsFromRow($row, i, qty),
+            instructionIds: $row.find('[name="lines[' + i + '][instruction_ids][]"]')
+                .map(function () { return String(this.value); }).get(),
+            note: val('instructions') || '',
+        };
+    }
+
     function lineGroup(row) {
         const $row = $(row);
 
@@ -2321,6 +2375,7 @@ $(function () {
         $('#lines-body > tr').removeClass('line-drop-before line-drop-after');
     }
 
+
     $(document).on('dragstart', '.line-drag', function (e) {
         // This used to refuse the drag whenever `punch` was set. The punch bar
         // stays open until a commit or Escape, so that was nearly always — and
@@ -2330,8 +2385,10 @@ $(function () {
         //
         // The index that guard was protecting is repaired in renumberLines()
         // now, for the arrows as well, so there is nothing left to refuse.
-        dragRow = $(this).closest('tr[data-row]').attr('data-row');
+        const $src = $(this).closest('tr[data-row]');
+        dragRow = $src.attr('data-row');
         $('#lines-body').addClass('lines-dragging');
+        lineGroup($src).addClass('line-being-dragged');
         const dt = e.originalEvent.dataTransfer;
         dt.effectAllowed = 'move';
         // Firefox refuses to begin a drag that carries nothing.
@@ -2348,15 +2405,23 @@ $(function () {
         clearDropMarks();
         if (! target.length || target.attr('data-row') === dragRow) return;
 
-        // Above or below the middle of the WHOLE line, materials included.
-        const group = lineGroup(target);
-        const top = group.first()[0].getBoundingClientRect().top;
-        const bottom = group.last()[0].getBoundingClientRect().bottom;
+        // ROW-DRAG-3 — only rows the operator can SEE define where a line begins
+        // and ends. A block-costed line's group ends with its COLLAPSED Cost
+        // Details row, and that row broke this twice over: its bounding rect is
+        // all zeros, so the midpoint test answered "below" almost always, and
+        // the marker was then painted onto a row nobody can see. Lines with no
+        // cost blocks have no hidden row, which is why the indicator appeared to
+        // work on some rows and vanish on others.
+        const visible = lineGroup(target).filter(function () { return this.offsetParent !== null; });
+        const first = visible.length ? visible.first() : target;
+        const last = visible.length ? visible.last() : target;
+        const top = first[0].getBoundingClientRect().top;
+        const bottom = last[0].getBoundingClientRect().bottom;
 
         if (e.originalEvent.clientY > (top + bottom) / 2) {
-            group.last().addClass('line-drop-after');
+            last.addClass('line-drop-after');
         } else {
-            target.addClass('line-drop-before');
+            first.addClass('line-drop-before');
         }
     });
 
@@ -2386,6 +2451,7 @@ $(function () {
     $(document).on('dragend', '.line-drag', function () {
         clearDropMarks();
         $('#lines-body').removeClass('lines-dragging');
+        $('#lines-body > tr').removeClass('line-being-dragged');
         dragRow = null;
     });
 
@@ -2652,7 +2718,7 @@ $(function () {
                 + '<button type="button" class="btn btn-sm btn-link text-danger p-0 punch-remove" title="Remove">&times;</button>'
             + '</td>'
             + '</tr>'
-            + '<tr class="punch-detail d-none" data-detail="p' + idx + '"><td colspan="14" class="bg-body-tertiary">' + detail + '</td></tr>';
+            + '<tr class="punch-detail d-none" data-detail="p' + idx + '"><td colspan="13" class="bg-body-tertiary">' + detail + '</td></tr>';
     }
 
     /**
@@ -2672,6 +2738,42 @@ $(function () {
      * Nothing calls this yet. punchRowHtml stays in charge until step 4, so the
      * old path keeps working while this one is checked.
      */
+    /**
+     * INLINE-EDITOR-1 — the five Material Breakdown cells of ONE material.
+     *
+     * ONE renderer, because a saved line and a punched line sit in the same
+     * table and must say the same thing in the same words. (The server-rendered
+     * half lives in line-material-cells.blade.php; a guard holds the two to the
+     * same shape.)
+     *
+     *   Required = Own + Party. It is a definition, never a field: a box over a
+     *   definition only invites the two to drift.
+     *
+     *   Party reads an em dash when the item does not allow customer supply.
+     *   That is the whole statement of the rule — there is no second badge
+     *   repeating it, and no mode switch anywhere.
+     */
+    function renderMaterialCells(m, o) {
+        const esc = s => _.escape(String(s == null ? '' : s));
+        const money = n => (+n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const own = Math.max(0, m.ownTouched ? m.own : (o.qty || 0) * m.ratio);
+        const cust = Math.max(0, m.cust || 0);
+        // party_allowed is the ITEM's answer today. The shape here is already
+        // per-material so that the day it becomes a per-material column, only
+        // this line changes.
+        const partyAllowed = o.party !== false && m.partyAllowed !== false;
+
+        return '<td class="fs-13">' + esc(punchShort(m.name || m.label))
+                + '<div class="fs-12 text-muted">' + esc(m.unit || 'KG') + '</div>'
+            + '</td>'
+            + '<td class="text-end fs-13">' + money(Number(m.rate) || 0) + '</td>'
+            + '<td class="text-end fs-13">' + punchFmt(own + cust) + '</td>'
+            + '<td class="text-end fs-13">' + punchFmt(own) + '</td>'
+            + '<td class="text-end fs-13' + (partyAllowed ? '' : ' text-muted') + '">'
+                + (partyAllowed ? punchFmt(cust) : '—')
+            + '</td>';
+    }
+
     function punchStackedRowHtml(idx, qty, calc) {
         const esc = s => _.escape(String(s == null ? '' : s));
         const h = (f, v) => '<input type="hidden" name="lines[' + idx + '][' + f + ']" value="' + esc(v) + '">';
@@ -2715,25 +2817,7 @@ $(function () {
                 + '<input type="hidden" name="' + p + '[cust]" value="' + esc(cust) + '">';
         });
 
-        // The material cells, one line of the stack each.
-        const matCells = (m, j) => {
-            const own = Math.max(0, m.ownTouched ? m.own : qty * m.ratio);
-            const cust = Math.max(0, m.cust || 0);
-            const partyAllowed = punch.party && m.partyAllowed !== false;
-
-            // The same words a SAVED line uses (line-material-cells.blade.php):
-            // the unit under the name, and the party rule stated ONCE — by the
-            // Party cell, which reads an em dash when the item forbids it.
-            return '<td class="fs-13">' + esc(punchShort(m.name || m.label))
-                    + '<div class="fs-12 text-muted">' + esc(m.unit || 'KG') + '</div>'
-                + '</td>'
-                + '<td class="text-end fs-13">' + money(Number(m.rate) || 0) + '</td>'
-                + '<td class="text-end fs-13">' + punchFmt(own + cust) + '</td>'
-                + '<td class="text-end fs-13">' + punchFmt(own) + '</td>'
-                + '<td class="text-end fs-13' + (partyAllowed ? '' : ' text-muted') + '">'
-                    + (partyAllowed ? punchFmt(cust) : '—')
-                + '</td>';
-        };
+        const matCells = (m, j) => renderMaterialCells(m, { qty: qty, party: punch.party });
 
         const blank = '<td class="fs-13 text-muted">—</td><td></td><td></td><td></td><td></td>';
 
@@ -2745,23 +2829,28 @@ $(function () {
                 + hidden
                 + '<div class="fs-12 text-muted">not saved yet — Save Estimate</div>'
             + '</td>'
-            // The Urdu column is a document concern — punch mode hides it and
-            // the name posts as a hidden field above. The cell still has to
-            // EXIST, or every column after it slides one to the left.
-            + '<td rowspan="' + span + '"></td>'
-            + '<td rowspan="' + span + '"><input type="number" step="0.001" min="0.001" class="form-control form-control-sm text-end line-qty" name="lines[' + idx + '][quantity]" value="' + qty + '" readonly></td>'
-            + '<td rowspan="' + span + '" class="fs-13 punch-unit-cell">' + esc(punch.unitCode || '') + '</td>'
-            + '<td rowspan="' + span + '" class="text-end">' + money(calc.rate) + '</td>'
+            // Qty carries the unit beneath it — the unit lost its column, never
+            // its value. punch-unit-cell stays as the NAME the reader asks for.
+            + '<td rowspan="' + span + '" class="text-end">'
+                + '<input type="number" step="0.001" min="0.001" class="form-control form-control-sm text-end line-qty" name="lines[' + idx + '][quantity]" value="' + qty + '" readonly>'
+                + '<div class="fs-12 text-muted punch-unit-cell">' + esc(punch.unitCode || '') + '</div>'
+            + '</td>'
+            + '<td rowspan="' + span + '" class="text-end">' + money(calc.rate)
+                + (punch.unitCode ? '<div class="fs-12 text-muted">per ' + esc(punch.unitCode) + '</div>' : '')
+            + '</td>'
             + '<td rowspan="' + span + '" class="text-end">' + money(agreedRate) + '</td>'
             + (mats.length ? matCells(mats[0], 0) : blank)
-            + '<td rowspan="' + span + '" class="text-end line-amount">' + money(agreedRate * qty) + '</td>'
+            // Kitchen Instructions and the Additional Note are two different
+            // things and now have two columns, in the header's order.
             + '<td rowspan="' + span + '" class="fs-12">'
-                + (instrLabels.length || note
+                + (instrLabels.length
                     ? '<span class="badge bg-secondary-subtle text-secondary-emphasis" data-bs-toggle="tooltip" title="'
-                        + esc(instrLabels.concat(note ? [note] : []).join(' · ')) + '">'
-                        + '<i class="ti ti-note me-1"></i>' + (instrLabels.length + (note ? 1 : 0)) + '</span>'
+                        + esc(instrLabels.join(' · ')) + '">'
+                        + '<i class="ti ti-note me-1"></i>' + instrLabels.length + '</span>'
                     : '')
             + '</td>'
+            + '<td rowspan="' + span + '" class="fs-12 text-muted">' + esc(note || '') + '</td>'
+            + '<td rowspan="' + span + '" class="text-end line-amount">' + money(agreedRate * qty) + '</td>'
             + '<td rowspan="' + span + '" class="text-end text-nowrap">'
                 + '<span class="line-drag text-muted me-1" draggable="true" title="Drag to reorder"><i class="ti ti-grip-vertical"></i></span>'
                 + '<button type="button" class="btn btn-sm btn-link text-muted p-0 me-1 line-up" title="Move up"><i class="ti ti-arrow-up"></i></button>'
@@ -2780,7 +2869,7 @@ $(function () {
         // The full breakdown — making charges and all — stays one click away,
         // and sits AFTER the stack so lineGroup() carries it with the line.
         return html + '<tr class="punch-detail d-none" data-detail="p' + idx + '">'
-            + '<td colspan="14" class="bg-body-tertiary">'
+            + '<td colspan="13" class="bg-body-tertiary">'
             + punchDetailHtml(mats, qty, punch.dishRate) + '</td></tr>';
     }
     // Row-click EDIT of an unsaved punch row: rebuild it in place.
@@ -2932,7 +3021,7 @@ $(function () {
                 // AFTER the stacked material rows — row.after() would have put
                 // the breakdown between the line and its own materials.
                 lineGroup(row).last().after('<tr class="punch-detail d-none" data-detail="s' + idx[1] + '">'
-                    + '<td colspan="14" class="bg-body-tertiary">' + punchDetailHtml(mats, qty, dishRate) + '</td></tr>');
+                    + '<td colspan="13" class="bg-body-tertiary">' + punchDetailHtml(mats, qty, dishRate) + '</td></tr>');
             });
         }
 

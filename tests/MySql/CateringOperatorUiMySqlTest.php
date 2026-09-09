@@ -732,13 +732,28 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
 
         $html = $this->render($event);
 
-        // The columns, in the owner's order. Squareness alone would be content
-        // with fourteen columns in any arrangement; the operator would not.
+        // The columns, in the owner's order — BOTH header rows, in document
+        // order. Squareness alone would be content with thirteen columns in any
+        // arrangement; the operator would not.
+        //
+        // Material Breakdown is one grouped heading spanning five, and the five
+        // sit beneath it. That grouping is the whole point of the layout: a
+        // material is a CHILD of a quotation line, not a line of its own.
         $this->assertSame([
-            'Item', 'Urdu Name', 'Qty', 'Unit', 'System Rate', 'Customer Rate',
+            'Item', 'Qty', 'System Rate', 'Customer Rate', 'Material Breakdown',
+            'Kitchen Instructions', 'Additional Note', 'Amount', 'Action',
             'Material', 'Rate', 'Required Qty', 'Own', 'Party',
-            'Amount', 'Instructions', '',
         ], $this->linesTableHeadings($html));
+
+        // The grouped header really does span the five, and the eight
+        // product-level headers really do span both rows — the arithmetic below
+        // would pass on a table that merely had the right words in it.
+        $xp = $this->linesTableXPath($html);
+        $group = $xp->query('//table[@id="lines-table"]/thead/tr[1]/th[@colspan="5"]')->item(0);
+        $this->assertNotNull($group, 'Material Breakdown must span exactly five columns');
+        $this->assertSame('Material Breakdown', trim($group->textContent));
+        $this->assertSame(8, $xp->query('//table[@id="lines-table"]/thead/tr[1]/th[@rowspan="2"]')->length,
+            'every product-level heading spans both header rows');
 
         $rows = $this->linesTableRows($html);
         $this->assertNotEmpty($rows, 'the lines table must render');
@@ -753,7 +768,7 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
                     $carried[$r + $k] = ($carried[$r + $k] ?? 0) + $colspan;
                 }
             }
-            $this->assertSame(14, $width, "row {$r} is {$width} columns wide, not 14");
+            $this->assertSame(13, $width, "row {$r} is {$width} columns wide, not 13");
         }
 
         // The stack itself: a second material is a row of its own, and it is not
@@ -764,7 +779,11 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
             'a material row is not a line — it must not carry data-row');
 
         // And the point of the whole rebuild: what the line POSTS is untouched.
-        // These are the exact fields a saved row posted before step 4.
+        // These are the exact fields a saved row posted before the redesign —
+        // item_name_ur and unit_id included, which is the part worth stating
+        // twice: BOTH lost their column in the new layout and NEITHER lost its
+        // value. A screen refactor that quietly drops a field from the payload
+        // is a data loss dressed as a design change.
         foreach ([
             'lines[0][line_uuid]', 'lines[0][product_id]', 'lines[0][item_name]',
             'lines[0][item_name_ur]', 'lines[0][quantity]', 'lines[0][unit_id]',
@@ -960,6 +979,18 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
             'an edit in flight must have its row index repaired after any move');
         $this->assertStringContainsString('punch.editIdx = at[1]', $renumber);
 
+        // ROW-DRAG-3 — the drop indicator must follow the pointer all the way.
+        // It stopped after a row or two because a block-costed line's group ends
+        // with its COLLAPSED Cost Details row: that row's bounding rect is all
+        // zeros, so the midpoint test answered "below" almost always, and the
+        // marker was then painted onto a row nobody can see. Lines with no cost
+        // blocks have no hidden row, which is why it seemed to work on some.
+        $over = $this->between($html, "on('dragover', '#lines-body > tr'", "on('drop'");
+        $this->assertStringContainsString('filter(function () { return this.offsetParent !== null; })', $over,
+            'only rows the operator can see may define where a line begins and ends');
+        $this->assertStringNotContainsString('group.last()[0].getBoundingClientRect()', $over,
+            'measuring the group\x27s hidden last row is what broke the indicator');
+
         // A handle the browser can treat as text is a handle that starts a
         // selection instead of a drag.
         $this->assertStringContainsString('user-select: none', $html,
@@ -969,6 +1000,51 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
         // the only way that works on a touch screen or from a keyboard.
         $this->assertStringContainsString('line-up', $html);
         $this->assertStringContainsString('line-down', $html);
+    }
+
+    /**
+     * INLINE-EDITOR-1 (step 1) — one reader, one material renderer.
+     *
+     * The screen is about to be rebuilt around an editor that lives inside the
+     * table. Before any of that, the two things every part of it will need have
+     * to exist exactly once: a way to read a line out of the DOM, and a way to
+     * draw one material's five cells.
+     *
+     * Both already existed — twice each, which is the point. The saved-row
+     * editor read a line one way and the unsaved-row editor another, and one of
+     * them had already drifted far enough to read its unit by counting cells.
+     * Two readers of one thing do not stay equal; they only look equal until
+     * something moves.
+     *
+     * Step 1 changes NOTHING the operator sees. That is deliberate: the
+     * foundation is checked while the screen is still the one on the counter.
+     */
+    public function test_one_reader_and_one_material_renderer_serve_the_whole_screen(): void
+    {
+        $html = $this->render($this->booking());
+
+        // Defined once, and asked twice — by the saved-row editor and the
+        // unsaved-row editor, which used to read the row themselves.
+        $this->assertSame(1, substr_count($html, 'function lineStateFromRow(row)'),
+            'the reader is defined exactly once');
+        $this->assertSame(2, substr_count($html, 'lineStateFromRow(row);'),
+            'both editors read the line through it — nobody reads the row by hand');
+
+        $this->assertSame(1, substr_count($html, 'function renderMaterialCells(m, o)'),
+            'the material renderer is defined exactly once');
+        $this->assertStringContainsString('renderMaterialCells(m, { qty: qty, party: punch.party })', $html,
+            'and the row builder draws its materials through it');
+
+        // A punched row's data-rate is the AGREED rate; a saved row's is the
+        // dish's. Standing one in for the other would make punchLineCalc invent
+        // a making charge, so the reader keeps them apart.
+        $this->assertStringContainsString(
+            'dishRate: unsaved ? (profile.rate || 0) : (profile.rate || (parseFloat($row.data(\'rate\')) || 0)),',
+            $html,
+            'the two kinds of row reach dishRate the way each always did');
+
+        // The definition that must never become a field.
+        $this->assertStringContainsString('Required = Own + Party', $html);
     }
 
     public function test_an_item_that_does_not_exist_cannot_be_entered(): void
