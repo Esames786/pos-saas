@@ -161,6 +161,62 @@ class CateringClientFeedbackUiRegressionTest extends TestCase
         $this->assertStringContainsString('id="adv-reason-wrap"', $modal);
     }
 
+    /**
+     * CATERING-OVERPAYMENT-1 §4b — the SCREEN must accept everything the
+     * controller accepts.
+     *
+     * Reported from the floor the day it shipped: typing -5000 produced
+     * "Value must be greater than or equal to 0.01" and the form never
+     * submitted. The controller had moved to `not_in:0` so that a minus could
+     * hand credit back; the input kept `min="0.01"` from before, so the browser
+     * refused the keystroke and the whole path was unreachable. Nothing was
+     * broken server-side, which is exactly why no other guard noticed.
+     */
+    public function test_the_amount_box_accepts_what_the_controller_accepts(): void
+    {
+        $modal = file_get_contents(
+            dirname(__DIR__, 2).'/resources/views/tenant/catering/events/show.blade.php'
+        );
+        $controller = file_get_contents(
+            dirname(__DIR__, 2).'/app/Http/Controllers/Tenant/Catering/CateringAdvanceController.php'
+        );
+
+        $this->assertMatchesRegularExpression(
+            '/<input type="number" step="0\.01" name="amount"/', $modal,
+            'the receipt Amount box must not carry a min — the browser would refuse the minus '
+            .'that hands credit back, before the controller ever saw it');
+
+        // The pairing is the point: a floor is only wrong relative to the rule
+        // behind it. If the controller ever goes back to refusing negatives,
+        // this assertion is what says the box may constrain them again.
+        $this->assertStringContainsString("'amount' => ['required', 'numeric', 'not_in:0']", $controller);
+
+        // The refund modal is a different box with a different job: it spends a
+        // known credit, so it keeps both its floor and its ceiling.
+        $this->assertStringContainsString('max="{{ $position[\'refundable\'] }}"', $modal,
+            'the separate Refund box still cannot exceed the credit held');
+    }
+
+    /**
+     * The event screen is a full-width working screen: the navigation starts
+     * collapsed every visit.
+     *
+     * A revision once remembered the last choice in localStorage, so a single
+     * click left the sidebar open on every later visit — reported 2026-09-09.
+     */
+    public function test_the_event_screen_starts_with_the_sidebar_collapsed(): void
+    {
+        $view = file_get_contents(
+            dirname(__DIR__, 2).'/resources/views/tenant/catering/events/show.blade.php'
+        );
+
+        $this->assertStringContainsString("document.body.classList.add('nosidebar');", $view);
+        $this->assertStringNotContainsString("localStorage.getItem('cateringSidebar')", $view,
+            'the collapsed state must not be gated on a choice made in some earlier session');
+        $this->assertStringNotContainsString("localStorage.setItem('cateringSidebar'", $view,
+            'and nothing should be written that nothing reads');
+    }
+
     public function test_punch_uses_additive_supply_and_clears_instruction_state(): void
     {
         $source = file_get_contents(
