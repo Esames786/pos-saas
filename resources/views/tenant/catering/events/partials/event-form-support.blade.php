@@ -269,6 +269,50 @@
             return isNaN(native.getTime()) ? undefined : midnight(native);
         };
 
+        /**
+         * EVENT-FORM-KEYBOARD-3 — a typed service time, or nothing.
+         *
+         * Bare numbers are read as a 24-HOUR clock: 10 is ten in the morning,
+         * 22 is ten at night. Guessing that a caterer "probably meant evening"
+         * is how a booking ends up twelve hours out, and the box prints back
+         * "10:00 PM" either way, so the operator sees what they got.
+         *
+         * Anything that is not a real time returns undefined, and flatpickr then
+         * keeps the value it already had — which is the whole answer to why this
+         * field was locked in the first place.
+         */
+        const typedTime = function (str) {
+            const s = String(str || '').trim().toLowerCase().replace(/\s+/g, '');
+            if (! s) return undefined;
+
+            const m = s.match(/^(\d{1,2})(?::?(\d{2}))?(am|pm|a|p)?$/);
+            if (! m) return undefined;
+
+            let hours = parseInt(m[1], 10);
+            let minutes = m[2] === undefined ? 0 : parseInt(m[2], 10);
+
+            // 1030 / 2215 — typed straight off the number pad.
+            if (m[2] === undefined && m[1].length > 2) {
+                if (m[1].length !== 4) return undefined;
+                hours = parseInt(m[1].slice(0, 2), 10);
+                minutes = parseInt(m[1].slice(2), 10);
+            }
+
+            const suffix = m[3] ? m[3][0] : null;
+            if (suffix) {
+                if (hours < 1 || hours > 12) return undefined;
+                hours = hours % 12;
+                if (suffix === 'p') hours += 12;
+            }
+
+            if (! (hours >= 0 && hours <= 23) || ! (minutes >= 0 && minutes <= 59)) return undefined;
+
+            const d = new Date();
+            d.setHours(hours, minutes, 0, 0);
+
+            return d;
+        };
+
         if (window.flatpickr) {
             root.querySelectorAll('input[type=date]').forEach(function (el) {
                 if (el._flatpickr) return;
@@ -278,7 +322,10 @@
                     parseDate: typedDate,
                     // The hint and the clash warning listen for 'change' — say it
                     // out loud rather than trusting the library to.
-                    onChange: function () { el.dispatchEvent(new Event('change', { bubbles: true })); },
+                    onChange: function (dates, value, fp) {
+                        if (fp.altInput) fp.altInput.classList.remove('is-invalid');
+                        el.dispatchEvent(new Event('change', { bubbles: true }));
+                    },
                     onReady: function (dates, value, fp) {
                         if (! fp.altInput) return;
                         fp.altInput.setAttribute('placeholder', '9/10 · 9-10-26 · +7 · today');
@@ -302,6 +349,36 @@
                         // Typing over the box should REPLACE the date, not append
                         // to "Wed, 09 Sep 2026".
                         fp.altInput.addEventListener('focus', function () { fp.altInput.select(); });
+
+                        // EVENT-FORM-KEYBOARD-2 — the calendar follows the typing.
+                        //
+                        // 09-10-2026 was understood the moment it was typed, but
+                        // nothing on screen said so: the calendar stayed on the old
+                        // month until Enter, which reads as "it did not work".
+                        //
+                        // jumpToDate only — NOT setDate. setDate rewrites the box
+                        // into "Fri, 09 Oct 2026" mid-word and throws the caret to
+                        // the end, so the next keystroke lands in the wrong place.
+                        // The month heading changing is the whole confirmation
+                        // needed; Enter or Tab still commits.
+                        fp.altInput.addEventListener('input', function () {
+                            const raw = fp.altInput.value.trim();
+                            if (! raw) { fp.altInput.classList.remove('is-invalid'); return; }
+
+                            const parsed = typedDate(raw);
+                            if (parsed) {
+                                fp.altInput.classList.remove('is-invalid');
+                                fp.jumpToDate(parsed);
+                            } else {
+                                // Say it while the caret is still in the box, not
+                                // after the operator has moved on and the value has
+                                // quietly reverted to the old date.
+                                fp.altInput.classList.add('is-invalid');
+                            }
+                        });
+                        fp.altInput.addEventListener('blur', function () {
+                            if (typedDate(fp.altInput.value.trim())) fp.altInput.classList.remove('is-invalid');
+                        });
                     },
                 });
             });
@@ -310,17 +387,34 @@
                 window.flatpickr(el, {
                     enableTime: true, noCalendar: true, dateFormat: 'H:i',
                     altInput: true, altFormat: 'h:i K', time_24hr: false,
-                    // Selection-only: use the professional clock, AM/PM toggle,
-                    // or a house preset. Arbitrary letters cannot remain in the
-                    // visible field or reach the canonical H:i value.
-                    allowInput: false, disableMobile: true, minuteIncrement: 15,
+                    // EVENT-FORM-KEYBOARD-3: typeable again. The lock existed to
+                    // keep arbitrary letters out of the canonical H:i value; the
+                    // parser above refuses them instead, which keeps the value
+                    // safe AND lets the operator type. The clock, the AM/PM
+                    // toggle and the house presets all still work.
+                    allowInput: true, disableMobile: true, minuteIncrement: 15,
                     clickOpens: true,
+                    parseDate: typedTime,
                     onReady: function (dates, value, instance) {
                         if (! instance.altInput) return;
-                        instance.altInput.readOnly = true;
-                        instance.altInput.inputMode = 'none';
                         instance.altInput.autocomplete = 'off';
-                        instance.altInput.setAttribute('aria-label', 'Select service time');
+                        instance.altInput.setAttribute('placeholder', '10pm · 22:00 · 2230 · 7');
+                        instance.altInput.setAttribute('aria-label', 'Service time — type or pick');
+                        instance.altInput.addEventListener('focus', function () { instance.altInput.select(); });
+                        instance.altInput.addEventListener('input', function () {
+                            const raw = instance.altInput.value.trim();
+                            instance.altInput.classList.toggle('is-invalid', !! raw && ! typedTime(raw));
+                        });
+                        instance.altInput.addEventListener('keydown', function (e) {
+                            if (e.key !== 'Enter') return;
+                            e.preventDefault();
+                            const parsed = typedTime(instance.altInput.value);
+                            if (parsed) instance.setDate(parsed, true);
+                            instance.close();
+                        });
+                        instance.altInput.addEventListener('blur', function () {
+                            if (typedTime(instance.altInput.value.trim())) instance.altInput.classList.remove('is-invalid');
+                        });
                     },
                     onChange: function (dates, value) {
                         root.querySelectorAll('[data-time]').forEach(function (button) {

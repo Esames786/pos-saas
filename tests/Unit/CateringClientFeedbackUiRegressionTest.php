@@ -20,8 +20,23 @@ class CateringClientFeedbackUiRegressionTest extends TestCase
         $this->assertIsString($source);
         $this->assertStringContainsString('templateResult', $source);
         $this->assertStringContainsString('templateSelection', $source);
-        $this->assertStringContainsString('allowInput: false', $source);
-        $this->assertStringContainsString('instance.altInput.readOnly = true', $source);
+        // EVENT-FORM-KEYBOARD-3 — this used to pin `allowInput: false` and a
+        // read-only box. That lock existed for a real reason: arbitrary letters
+        // once reached the canonical H:i value. But a box nobody can type in is
+        // only one way to keep bad data out, and it cost the counter its rhythm.
+        //
+        // The reason is answered directly now — a parser that returns nothing
+        // for anything that is not a real time, so flatpickr keeps the value it
+        // had rather than storing rubbish. What is pinned is the REFUSAL, which
+        // is the thing that actually mattered.
+        $this->assertStringContainsString('const typedTime = function (str)', $source);
+        $this->assertStringContainsString('parseDate: typedTime', $source);
+        $this->assertStringContainsString('if (! m) return undefined;', $source,
+            'anything that is not a time must be refused, not guessed at');
+        $this->assertStringContainsString('hours >= 0 && hours <= 23', $source);
+        $this->assertStringContainsString('minutes >= 0 && minutes <= 59', $source);
+        $this->assertStringNotContainsString('instance.altInput.readOnly = true', $source,
+            'the service time can be typed again');
         $this->assertStringContainsString('data-open-service-time', file_get_contents(
             dirname(__DIR__, 2).'/resources/views/tenant/catering/events/partials/event-form-fields.blade.php'
         ));
@@ -87,6 +102,19 @@ class CateringClientFeedbackUiRegressionTest extends TestCase
         // Enter accepts and moves on; the calendar must not swallow the next Tab.
         $this->assertStringContainsString("if (e.key === 'Enter')", $support);
         $this->assertStringContainsString('fp.close();', $support);
+
+        // EVENT-FORM-KEYBOARD-2 — the calendar follows the typing. 09-10-2026 was
+        // understood on the keystroke, but the month underneath stayed put until
+        // Enter, and an operator reads that as "manual entry does not work".
+        //
+        // jumpToDate, never setDate: setDate rewrites the box mid-word and throws
+        // the caret to the end, so the next keystroke lands in the wrong place.
+        $this->assertStringContainsString('fp.jumpToDate(parsed);', $support,
+            'the calendar must move to the month being typed');
+        $this->assertStringNotContainsString('fp.setDate(parsed, false)', $support,
+            'committing mid-word would rewrite the box under the caret');
+        $this->assertStringContainsString("classList.add('is-invalid')", $support,
+            'a typo is shown while the caret is still in the box');
     }
 
     public function test_punch_uses_additive_supply_and_clears_instruction_state(): void
@@ -98,7 +126,10 @@ class CateringClientFeedbackUiRegressionTest extends TestCase
         $this->assertIsString($source);
         $this->assertStringContainsString('pm-own', $source);
         $this->assertStringContainsString('pm-cust', $source);
-        $this->assertStringContainsString('pm-total', $source);
+        // PUNCH-ENTRY-TABLE-1: the running total column is gone. Required Qty
+        // is the recipe's answer and Own + Party is checked against it, so a
+        // third number saying the same thing had nothing left to add.
+        $this->assertStringContainsString('pm-req', $source);
         $this->assertStringContainsString('clearPunchInstructions()', $source);
         $this->assertStringContainsString('loadPunchInstructions(row, idx)', $source);
         $this->assertStringContainsString("unitCode: p.unit_code || '—'", $source);
