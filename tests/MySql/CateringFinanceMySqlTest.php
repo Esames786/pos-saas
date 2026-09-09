@@ -364,6 +364,127 @@ class CateringFinanceMySqlTest extends MySqlTenantTestCase
             'an exact payment leaves no customer advance behind');
     }
 
+    /**
+     * CATERING-OVERPAYMENT-1 (step 6) — a MINUS on the receipt box hands credit
+     * back, and it does it by recording a REFUND.
+     *
+     * The owner asked for one door: "I take 20k and a few days later I put
+     * -10,000 through the same screen." What must NOT happen underneath is a
+     * negative CateringAdvance row. position() SUMS advances, so a minus row
+     * would quietly redefine what "received" means, and it would slip past the
+     * refundable cap — the cap that stops the business handing back money which
+     * is covering a bill.
+     */
+    public function test_a_minus_amount_hands_credit_back_as_a_refund(): void
+    {
+        $event = $this->confirmedEvent();          // 100,000 billed
+        $this->invoices->issue($event->refresh());
+
+        $this->advances->record($event->refresh(), [
+            'amount' => 150000,
+            'received_date' => now()->toDateString(),
+            'payment_method_id' => $this->paymentMethodId,
+            'allow_overpayment' => true,
+            'overpayment_reason' => 'Paid the next booking forward',
+        ]);
+
+        $revenueBefore = $this->accountNet('4160');
+
+        // The minus goes through the refund service — the same thing the screen
+        // does with a negative amount.
+        $refund = app(\App\Services\Catering\CateringRefundService::class)->record($event->refresh(), [
+            'amount' => 50000,
+            'refund_date' => now()->toDateString(),
+            'payment_method_id' => $this->paymentMethodId,
+            'reason' => 'Customer asked for the extra back',
+        ]);
+
+        $this->assertNotNull($refund->refund_no);
+        $this->assertSame(0, $this->tenant()->table('catering_advances')->where('amount', '<', 0)->count(),
+            'money out is a refund, never a negative receipt');
+
+        $this->assertEqualsWithDelta(0.0, $this->accountNet('2300'), 0.01,
+            'the credit the business was holding is gone');
+        $this->assertEqualsWithDelta(0.0, $this->accountNet('1300'), 0.01,
+            'and the settled bill is left alone');
+        $this->assertEqualsWithDelta($revenueBefore, $this->accountNet('4160'), 0.01,
+            'handing money back is not a loss of revenue either');
+
+        $position = app(\App\Services\Catering\CateringFinancialPositionService::class)->position($event->refresh());
+        $this->assertEqualsWithDelta(0.0, $position['customer_credit'], 0.01);
+        $this->assertEqualsWithDelta(0.0, $position['balance_due'], 0.01,
+            'giving back only the credit must never recreate a balance due');
+    }
+
+    /**
+     * The cap is the whole protection: only money that is not covering a bill
+     * may be handed back. Refunding past it would recreate the balance due and
+     * leave the booking looking paid.
+     */
+    public function test_more_than_the_credit_cannot_be_handed_back(): void
+    {
+        $event = $this->confirmedEvent();
+        $this->invoices->issue($event->refresh());
+
+        $this->advances->record($event->refresh(), [
+            'amount' => 150000,
+            'received_date' => now()->toDateString(),
+            'payment_method_id' => $this->paymentMethodId,
+            'allow_overpayment' => true,
+            'overpayment_reason' => 'Paid ahead',
+        ]);
+
+        $before = $this->tenant()->table('journal_entries')->count();
+
+        try {
+            app(\App\Services\Catering\CateringRefundService::class)->record($event->refresh(), [
+                'amount' => 75000,                 // 25,000 of this is the bill's
+                'refund_date' => now()->toDateString(),
+                'payment_method_id' => $this->paymentMethodId,
+                'reason' => 'Too much',
+            ]);
+            $this->fail('refunding past the credit must be refused');
+        } catch (RuntimeException $e) {
+            $this->assertSame($before, $this->tenant()->table('journal_entries')->count(),
+                'a refused refund must leave the ledger exactly as it was');
+        }
+
+        $position = app(\App\Services\Catering\CateringFinancialPositionService::class)->position($event->refresh());
+        $this->assertEqualsWithDelta(50000.0, $position['customer_credit'], 0.01,
+            'the credit is untouched');
+        $this->assertEqualsWithDelta(0.0, $position['balance_due'], 0.01,
+            'and the bill is still settled');
+    }
+
+    /**
+     * CATERING-OVERPAYMENT-1 (step 5) — the statement says how much of a receipt
+     * was never a payment.
+     *
+     * Money the business is holding must not be legible only as a bigger number
+     * in the Money in column.
+     */
+    public function test_the_statement_says_how_much_of_a_receipt_is_held_as_credit(): void
+    {
+        $event = $this->confirmedEvent();
+        $this->invoices->issue($event->refresh());
+
+        $this->advances->record($event->refresh(), [
+            'amount' => 150000,
+            'received_date' => now()->toDateString(),
+            'payment_method_id' => $this->paymentMethodId,
+            'allow_overpayment' => true,
+            'overpayment_reason' => 'Paid the next booking forward',
+        ]);
+
+        $ledger = app(\App\Services\Catering\CateringFinancialPositionService::class)->ledger($event->refresh());
+        $receipt = collect($ledger)->firstWhere('money_in', 150000.0);
+
+        $this->assertNotNull($receipt, 'the receipt must appear on the statement');
+        $this->assertStringContainsString('of which 50,000.00 held as credit', (string) $receipt['note']);
+        $this->assertStringContainsString('Paid the next booking forward', (string) $receipt['note'],
+            'and the reason it was taken travels with it');
+    }
+
     /** A receipt is posted whole or not at all. */
     public function test_a_split_that_does_not_add_up_is_refused(): void
     {

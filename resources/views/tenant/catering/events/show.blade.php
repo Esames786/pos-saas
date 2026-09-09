@@ -1176,13 +1176,40 @@
                         <label class="form-label">Notes</label>
                         <input type="text" name="notes" class="form-control">
                     </div>
+                    @can('tenant.catering.advances.overpay')
+                    {{-- CATERING-OVERPAYMENT-1 §4 — taking more than the bill is a
+                         DECISION, so it is made here, once, on purpose. The excess
+                         is held as money owed back to the customer; it is never
+                         revenue, whatever the drawer says. --}}
+                    <div class="col-12">
+                        <div class="form-check">
+                            <input type="checkbox" value="1" name="allow_overpayment" id="adv-overpay" class="form-check-input">
+                            <label class="form-check-label fs-13" for="adv-overpay">
+                                Take more than the {{ number_format($position['balance_due'], 2) }} due —
+                                <span class="text-warning-emphasis">the extra is held as the customer's money, not income</span>
+                            </label>
+                        </div>
+                    </div>
+                    @endcan
+                    {{-- §4b — the same box takes a MINUS to hand credit back, and
+                         anything other than a plain payment has to say why. --}}
+                    <div class="col-12 d-none" id="adv-reason-wrap">
+                        <label class="form-label">Reason <span class="text-danger">*</span></label>
+                        <input type="text" name="overpayment_reason" class="form-control" maxlength="255"
+                               placeholder="Why more than the bill, or why money is going back">
+                    </div>
                 </div>
                 {{-- This line used to claim the opposite of what the action does:
                      it said no GL or cash-bank posting happened, while the very
                      same submit posts a journal entry and moves the drawer. --}}
                 <div class="text-muted fs-12 mt-2">
                     Posts to the general ledger and increases the selected cash/bank balance.
-                    Nothing may be taken beyond {{ number_format($position['balance_due'], 2) }}, the amount still due.
+                    Amount still due: {{ number_format($position['balance_due'], 2) }}.
+                    @if($position['refundable'] > 0)
+                        Credit held: {{ number_format($position['refundable'], 2) }} — a MINUS amount hands it back.
+                    @else
+                        A minus amount hands credit back, once there is any.
+                    @endif
                 </div>
             </div>
             <div class="modal-footer">
@@ -1569,6 +1596,28 @@ $(document).on('click', '.js-rate-toggle', function () {
     $(this).prev('.rate-edit').removeClass('d-none').find('input').trigger('focus');
     $(this).addClass('d-none');
 });
+
+// CATERING-OVERPAYMENT-1 §4/§4b — the Reason box appears exactly when a reason
+// is owed: when the operator decides to take more than the bill, or types a
+// MINUS to hand credit back. Asking for it unconditionally would train people
+// to fill it with nothing.
+(function () {
+    const amount = document.querySelector('#advanceModal [name=amount]');
+    const overpay = document.getElementById('adv-overpay');
+    const wrap = document.getElementById('adv-reason-wrap');
+    if (! amount || ! wrap) return;
+
+    const sync = function () {
+        const owed = (parseFloat(amount.value) || 0) < 0 || (overpay && overpay.checked);
+        wrap.classList.toggle('d-none', ! owed);
+        const box = wrap.querySelector('input');
+        if (box) box.required = owed;
+    };
+
+    amount.addEventListener('input', sync);
+    if (overpay) overpay.addEventListener('change', sync);
+    sync();
+})();
 
 // KASHIF-ORDER-PUNCH §B: the old software's keyboard, on this screen.
 // '/' focuses the item picker; Ctrl+S saves the estimate (not the browser

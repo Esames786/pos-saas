@@ -236,6 +236,7 @@ class CateringEntitlementMySqlTest extends MySqlTenantTestCase
             'Release Production',
             'Send / Revise Quote',
             'Store Issue',
+            'Take More Than Due',
             'View Catering',
         ];
 

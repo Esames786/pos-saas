@@ -131,7 +131,17 @@ class CateringFinancialPositionService
                 'date' => $advance->received_date?->format('d M Y') ?? '—',
                 'type' => $advance->posting_type === 'settlement' ? 'Payment received' : 'Advance received',
                 'reference' => $advance->reference,
-                'note' => $advance->paymentMethod?->name,
+                // CATERING-OVERPAYMENT-1 (step 5): a receipt that went past the
+                // bill says so on the statement, in the same row, with the
+                // reason it was taken. Money the business is holding must not be
+                // legible only as a bigger number in the Money in column.
+                'note' => collect([
+                    $advance->paymentMethod?->name,
+                    (float) $advance->credit_portion > 0
+                        ? 'of which '.number_format((float) $advance->credit_portion, 2).' held as credit'
+                        : null,
+                    (float) $advance->credit_portion > 0 ? $advance->overpayment_reason : null,
+                ])->filter()->implode(' · '),
                 'money_in' => round((float) $advance->amount, 2),
                 'money_out' => 0.0,
                 'charged' => 0.0,

@@ -38,7 +38,7 @@ class PermissionCatalogService
         'reprint-reminder', 'confirm-reminders', 'export', 'generate', 'revoke', 'activate',
         'deactivate', 'regenerate-token', 'default', 'verify', 'reset-password', 'manager-pin',
         'bulk-import', 'test-print', 'pairing-code', 'download-windows', 'sync', 'void-kot-item',
-        'handovers', 'local-mode', 'reprint',
+        'handovers', 'local-mode', 'reprint', 'overpay',
     ];
 
     /**
@@ -98,6 +98,12 @@ class PermissionCatalogService
         'tenant.catering.rate-impact.index' => 'Manage Material Rates',
         'tenant.catering.rate-impact.apply' => 'Manage Material Rates',
         'tenant.catering.advances.store' => 'Record Advance',
+        // Taking MORE than the bill is its own grant, deliberately apart from
+        // 'Record Advance'. Folding it in would mean that granting someone the
+        // right to receipt a payment also granted them the right to create a
+        // liability the business owes back — which is the one thing this
+        // permission exists to keep separate.
+        'tenant.catering.advances.overpay' => 'Take More Than Due',
         // Money OUT is its own grant. Whoever may take a payment does not
         // automatically get to hand one back.
         'tenant.catering.refunds.store' => 'Refund Customer',
