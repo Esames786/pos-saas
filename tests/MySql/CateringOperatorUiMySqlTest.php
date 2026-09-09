@@ -190,7 +190,10 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
         // item, Qty, the Party-ya-Own question, and the material stepper mount.
         $this->assertStringContainsString('punch-bar', $html);
         $this->assertStringContainsString('punch-item', $html);
-        $this->assertStringContainsString('Supply split', $html);
+        $this->assertStringContainsString('Material Breakdown', $html,
+            'the entry block carries the material section');
+        $this->assertStringContainsString('>Own<', $html);
+        $this->assertStringContainsString('>Party<', $html);
         $this->assertStringContainsString('punch-live-rate', $html, 'price per selling unit is visible before row save');
         $this->assertStringContainsString('punch-live-amount', $html, 'line amount is visible before row save');
         $this->assertStringContainsString('customerRateTouched', $html,
@@ -458,21 +461,24 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
     {
         $html = $this->render($this->booking());
 
-        // The Enter walk.
+        // The Enter walk. PUNCH-ENTRY-TABLE-1 moved the note to the END: it used
+        // to sit before the materials, so the operator wrote a note about a dish
+        // whose quantities they had not entered yet.
         $seq = $this->between($html, 'function punchSeq()', 'return seq.filter');
         $qty = strpos($seq, "'punch-qty'");
         $rate = strpos($seq, "'punch-customer-rate'");
+        $mats = strpos($seq, '.pm-rate');
         $note = strpos($seq, "'punch-instr'");
-        $own = strpos($seq, "'punch-own'");
 
         $this->assertNotFalse($qty);
         $this->assertNotFalse($rate);
+        $this->assertNotFalse($mats, 'the walk must reach the material rows');
         $this->assertLessThan($rate, $qty, 'Qty comes first');
-        $this->assertLessThan($note, $rate, 'the rate is reached BEFORE the note');
-        $this->assertLessThan($own, $note, 'and the breakdown comes after both');
+        $this->assertLessThan($mats, $rate, 'the rate is reached BEFORE the breakdown');
+        $this->assertLessThan($note, $mats, 'and the note comes last, after the materials');
 
         // What plain Tab does — the markup itself, in the same order.
-        $bar = $this->between($html, 'id="punch-bar"', 'id="punch-mats"');
+        $bar = $this->between($html, 'id="punch-bar"', 'id="lines-table"');
         $this->assertLessThan(
             strpos($bar, 'id="punch-customer-rate"'),
             strpos($bar, 'id="punch-qty"'),
@@ -645,10 +651,24 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
 
         $this->assertStringNotContainsString("punch.mode !== 'PARTY' ? 'disabled'", $html,
             'the Party box must not be gated by a mode switch');
-        $this->assertStringContainsString("if (punch.party) seq.push(r.find('.pm-cust')", $html,
-            'and Tab must reach the box whenever it is on screen');
-        $this->assertStringContainsString("\$('#punch-seg-wrap').addClass('d-none');", $html,
-            'the switch is never shown');
+        // The walk used to consult punch.party to decide whether to visit the
+        // Party box. It does not ask any more: the box is disabled when the item
+        // forbids party supply, and the walk already skips anything disabled or
+        // off screen. One rule, applied everywhere, instead of a second opinion.
+        $this->assertStringContainsString('seq.push(', $html);
+        $this->assertStringContainsString('.pm-cust[data-i=', $html,
+            'the walk reaches each material\'s own Party box');
+        $this->assertStringContainsString("' disabled title=", $html,
+            'a material that may not be party-supplied has its box disabled, and the walk skips it');
+        // PUNCH-ENTRY-TABLE-1 — it is not hidden any more, it is GONE. Hiding
+        // it left #punch-own in the Enter walk, and focus() on a hidden element
+        // does nothing: the caret was trapped on Instructions and the material
+        // rows became unreachable by keyboard. A control that no longer has a
+        // question to ask should not be left lying in the page.
+        $this->assertStringNotContainsString('punch-seg', $html,
+            'the supply-mode switch is removed, not hidden');
+        $this->assertStringNotContainsString('function punchSetMode', $html,
+            'and so is the mode it set — the boxes are the only answer now');
     }
 
     /**
@@ -804,6 +824,95 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
         // the only way that works on a touch screen or from a keyboard.
         $this->assertStringContainsString('line-up', $html);
         $this->assertStringContainsString('line-down', $html);
+    }
+
+    /**
+     * PUNCH-ENTRY-TABLE-1 — the entry area is one block, and the materials in it
+     * grow DOWNWARD.
+     *
+     * The product's fields and the Material Breakdown belong to the same line, so
+     * they are one table row with the product cells spanning however many
+     * materials there are. A second material starts again at the Material column
+     * — it never opens a second group of five columns sideways, because a
+     * material is a CHILD of the line being punched, not a line of its own.
+     */
+    public function test_the_entry_area_is_one_block_with_the_materials_stacked(): void
+    {
+        $html = $this->render($this->booking());
+
+        $xp = $this->linesTableXPath($html);
+
+        $group = $xp->query('//table[@id="punch-table"]/thead/tr[1]/th[@colspan="5"]')->item(0);
+        $this->assertNotNull($group, 'Material Breakdown must span exactly five columns');
+        $this->assertSame('Material Breakdown', trim($group->textContent));
+
+        $this->assertSame(8, $xp->query('//table[@id="punch-table"]/thead/tr[1]/th[@rowspan="2"]')->length,
+            'the eight product-level headings span both header rows; the ninth is the group');
+
+        $heads = [];
+        foreach ($xp->query('//table[@id="punch-table"]/thead/tr/th') as $th) {
+            $heads[] = trim(preg_replace('/\s+/', ' ', $th->textContent));
+        }
+        $this->assertSame([
+            'Item', 'Qty', 'System Rate', 'Customer Rate', 'Material Breakdown',
+            'Kitchen Instructions', 'Additional Note', 'Line Amount', 'Action',
+            'Material', 'Rate', 'Required Qty', 'Own', 'Party',
+        ], $heads);
+
+        // The product cells are rendered ONCE, in Blade, and never rebuilt: the
+        // item picker is a select2 and redrawing it would tear out the control
+        // the operator is typing into. Only the material cells are redrawn.
+        $this->assertStringContainsString('id="punch-entry-row"', $html,
+            'the entry row is server-rendered, not built by JS');
+        $render = $this->between($html, 'function punchRenderMats()', 'function punchValidate()');
+        $this->assertStringContainsString("\$row.find('.punch-mat-cell').remove()", $render,
+            'only the material cells are cleared');
+        $this->assertStringContainsString("\$row.find('.punch-span').attr('rowspan'", $render,
+            "and the product cells' span is adjusted to match");
+        $this->assertStringNotContainsString('punch-item', $render,
+            'the item picker is never re-rendered');
+    }
+
+    /**
+     * The MAIN quotation table is not part of this work, and this guard exists
+     * because it once was.
+     *
+     * The redesign was asked for in the ENTRY area. I applied it to the
+     * quotation list as well — new columns, a grouped header, rowspan on saved
+     * rows — and it had to be taken back out. What follows pins the list's own
+     * columns so that a change to the entry block can never quietly reach them
+     * again.
+     */
+    public function test_the_main_quotation_table_keeps_its_own_columns(): void
+    {
+        $html = $this->render($this->booking());
+
+        $heads = [];
+        foreach ($this->linesTableXPath($html)->query('//table[@id="lines-table"]/thead/tr/th') as $th) {
+            $heads[] = trim(preg_replace('/\s+/', ' ', $th->textContent));
+        }
+
+        $this->assertSame([
+            'Item', 'Urdu Name', 'Qty', 'Unit', 'System Rate', 'Customer Rate',
+            'Amount', 'Instructions', '',
+        ], $heads, 'the quotation list keeps the columns it has always had');
+
+        $this->assertSame(0, substr_count($html, '<table id="lines-table"><thead><tr><th colspan'),
+            'the list has ONE header row');
+        $this->assertStringNotContainsString('line-material-row', $html,
+            'no material subrows in the quotation list');
+    }
+
+    /** One parser, so two guards cannot read different documents. */
+    private function linesTableXPath(string $html): \DOMXPath
+    {
+        $doc = new \DOMDocument;
+        $prev = libxml_use_internal_errors(true);
+        $doc->loadHTML('<?xml encoding="utf-8" ?>'.$html);
+        libxml_clear_errors();
+        libxml_use_internal_errors($prev);
+
+        return new \DOMXPath($doc);
     }
 
     public function test_an_item_that_does_not_exist_cannot_be_entered(): void

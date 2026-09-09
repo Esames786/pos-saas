@@ -16,6 +16,27 @@
     .cost-details-row .table { font-size: 13px; }
     .cost-details-row .table th, .cost-details-row .table td { padding: .4rem .5rem; }
 
+    /* PUNCH-ENTRY-TABLE-1 — the entry block: an ERP grid, not a card. Thin
+       borders, compact controls, and the Material Breakdown identifiable
+       without becoming a second table. */
+    #punch-table { background: #fff; }
+    #punch-table th, #punch-table td { padding: .35rem .5rem; vertical-align: middle; }
+    #punch-table thead th {
+        background: var(--bs-tertiary-bg, #f6f7f9); font-size: 12px; font-weight: 600;
+        letter-spacing: .01em; color: var(--bs-secondary-color, #5b6470); white-space: nowrap;
+    }
+    #punch-table thead th.punch-mat-group { background: var(--bs-success-bg-subtle, #e8f3ec); color: var(--bs-success-text-emphasis, #17624a); }
+    #punch-table thead th.punch-mat-col { background: var(--bs-success-bg-subtle, #eef6f1); }
+    #punch-table .form-control, #punch-table .form-select { min-height: 34px; font-size: 13px; }
+    /* The Material Breakdown reads as one section — a hairline down each side,
+       and only a dotted rule BETWEEN materials so the product cells beside them
+       are never cut through. */
+    #punch-body td.punch-mat-cell { background: var(--bs-body-bg, #fff); }
+    #punch-body tr.punch-mat-row td.punch-mat-cell { border-top: 1px dashed var(--bs-border-color, #dee2e6); }
+    #punch-body td.pm-ok { background: var(--bs-success-bg-subtle, #eef7f1); }
+    #punch-body td.pm-differs { background: var(--bs-warning-bg-subtle, #fff8e6); }
+    #punch-body td.punch-span { background: #fff; }
+
     /* KASHIF-ORDER-PUNCH: dense rows, old-software grid height — the punch
        bar is where typing happens; landed rows read compact. */
     #lines-table .form-control, #lines-table .form-select {
@@ -409,66 +430,93 @@
                  row) → final Enter saves the row and applies every adjustment
                  through the SAME block authorities. Making stays background. --}}
             <div class="p-3 border-bottom" id="punch-bar" style="background:var(--bs-tertiary-bg,#f8f9fa)">
-                <div class="d-flex gap-3 flex-wrap align-items-end">
-                    <div style="min-width:300px;flex:1;max-width:480px">
-                        <label class="form-label fs-12 text-muted mb-1">Item — code ya naam → <kbd>Enter</kbd></label>
-                        <select id="punch-item" class="form-select" data-placeholder="361 ya biryani…"></select>
-                    </div>
-                    <div class="d-none punch-step" id="punch-qty-wrap">
-                        <label class="form-label fs-12 text-muted mb-1">Qty <span id="punch-unit" class="text-uppercase"></span></label>
-                        <input id="punch-qty" type="number" step="0.001" min="0.001" class="form-control text-end" style="width:110px" value="10">
-                    </div>
-                    {{-- KASHIF-EVENT-FORM-3: the customer rate is EDITABLE right
-                         here, for every item — including one with no cost blocks
-                         (Cream Cocktail's 1,200 was read-only, so the operator
-                         could not agree a different price while punching). Left
-                         alone it follows the system rate; typed over, it becomes
-                         this line's agreed rate through the same override
-                         authority the panel uses. --}}
-                    <div class="d-none punch-step border rounded px-3 py-2 bg-body" id="punch-price" style="min-width:250px">
-                        <div class="d-flex justify-content-between align-items-center gap-2 fs-12 text-muted">
-                            <span>System rate / <span id="punch-price-unit">unit</span></span>
-                            <strong class="text-body" id="punch-live-rate">0.00</strong>
-                        </div>
-                        <div class="d-flex justify-content-between align-items-center gap-2 mt-1">
-                            <label class="fs-12 text-muted mb-0" for="punch-customer-rate">Customer rate</label>
-                            <input id="punch-customer-rate" type="number" step="0.01" min="0"
-                                   class="form-control form-control-sm text-end" style="width:110px"
-                                   placeholder="system">
-                        </div>
-                        <div class="d-flex justify-content-between gap-3 fw-bold mt-1">
-                            <span>Line amount</span>
-                            <span id="punch-live-amount">0.00</span>
-                        </div>
-                    </div>
-                    <div class="d-none punch-step" style="min-width:240px;flex:1;max-width:420px">
-                        <label class="form-label fs-12 text-muted mb-1">Kitchen instructions</label>
-                        {{-- The managed vocabulary, right in the punch — the same
-                             list the line carries afterwards. --}}
-                        <select id="punch-instr-ids" class="form-select" multiple data-placeholder="Kitchen instructions…">
-                            @foreach($activeInstructions as $instr)
-                                <option value="{{ $instr->id }}">{{ $instr->label }}</option>
-                            @endforeach
-                        </select>
-                        <input id="punch-instr" type="text" class="form-control mt-1" placeholder="Additional note (optional)">
-                    </div>
-                    <div class="d-none punch-step" id="punch-seg-wrap">
-                        <span class="form-label fs-12 text-muted mb-1 d-block">Supply split — <kbd>O</kbd>/<kbd>P</kbd> phir <kbd>Enter</kbd></span>
-                        {{-- Checkbox-shaped, so the chosen state is obvious at a
-                             glance; Enter/Space on the focused one selects it. --}}
-                        <div class="btn-group" id="punch-seg">
-                            <button type="button" class="btn btn-primary" id="punch-own" tabindex="0">
-                                <i class="ti ti-square-check me-1 punch-tick"></i>OWN · ہم
-                            </button>
-                            <button type="button" class="btn btn-outline-success" id="punch-party" tabindex="0">
-                                <i class="ti ti-square me-1 punch-tick"></i>PARTY · گاہک
-                            </button>
-                        </div>
-                    </div>
-                    <button type="button" class="btn btn-warning fw-bold d-none punch-step" id="punch-commit">Row save <span class="fs-12 opacity-75">(Ctrl+Enter)</span></button>
-                    <button type="button" class="btn btn-link btn-sm text-muted d-none punch-step" id="punch-cancel">Esc — cancel</button>
+                {{-- PUNCH-ENTRY-TABLE-1 — the punch area as ONE block.
+                     Product fields on the outside, Material Breakdown grouped in
+                     the middle. A dish with two materials shows the second
+                     DIRECTLY BELOW the first, under the same five columns —
+                     never a second group of five columns sideways, because a
+                     material belongs to the line being punched.
+                     The main quotation table below is untouched. --}}
+                <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap mb-2">
+                    <span class="fs-12 text-muted">Item chunein — uske material neeche ki taraf, unhi columns me barhte hain.</span>
+                    <span class="fs-12 text-muted"><kbd>Enter</kbd> next · <kbd>Ctrl</kbd>+<kbd>Enter</kbd> save · <kbd>Esc</kbd> cancel</span>
                 </div>
-                <div id="punch-mats" class="mt-2 table-responsive"></div>
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0 align-middle" id="punch-table">
+                        <thead>
+                            <tr>
+                                <th rowspan="2" style="min-width:250px;">Item</th>
+                                <th rowspan="2" style="width:95px;" class="text-end">Qty</th>
+                                <th rowspan="2" style="width:105px;" class="text-end">System Rate</th>
+                                <th rowspan="2" style="width:115px;" class="text-end">Customer Rate</th>
+                                <th colspan="5" class="text-center punch-mat-group">Material Breakdown</th>
+                                <th rowspan="2" style="min-width:170px;">Kitchen Instructions</th>
+                                <th rowspan="2" style="min-width:160px;">Additional Note</th>
+                                <th rowspan="2" style="width:110px;" class="text-end">Line Amount</th>
+                                <th rowspan="2" style="width:130px;">Action</th>
+                            </tr>
+                            <tr>
+                                <th class="punch-mat-col" style="min-width:160px;">Material</th>
+                                <th class="punch-mat-col text-end" style="width:95px;">Rate</th>
+                                <th class="punch-mat-col text-end" style="width:105px;">Required Qty</th>
+                                <th class="punch-mat-col text-end" style="width:95px;">Own</th>
+                                <th class="punch-mat-col text-end" style="width:95px;">Party</th>
+                            </tr>
+                        </thead>
+                        <tbody id="punch-body">
+                            {{-- The product cells are rendered ONCE and never rebuilt: the
+                                 item picker is a select2, and re-rendering it would tear
+                                 out the very control the operator is typing into. Only the
+                                 material cells are redrawn, and the rowspan on these cells
+                                 is adjusted to match how many there are. --}}
+                            <tr id="punch-entry-row">
+                                <td class="punch-span">
+                                    <select id="punch-item" class="form-select form-select-sm" data-placeholder="361 ya biryani…"></select>
+                                </td>
+                                <td class="punch-span text-end">
+                                    <input id="punch-qty" type="number" step="0.001" min="0.001"
+                                           class="form-control form-control-sm text-end d-none punch-step" value="10">
+                                    <div class="fs-12 text-muted text-uppercase mt-1" id="punch-unit"></div>
+                                </td>
+                                {{-- KASHIF-EVENT-FORM-3: the customer rate is EDITABLE right
+                                     here, for every item — including one with no cost blocks.
+                                     Left alone it follows the system rate; typed over, it
+                                     becomes this line's agreed rate through the same override
+                                     authority the Cost Details panel uses. --}}
+                                <td class="punch-span text-end">
+                                    <strong id="punch-live-rate" class="d-none punch-step">0.00</strong>
+                                    <div class="fs-12 text-muted d-none punch-step">per <span id="punch-price-unit">unit</span></div>
+                                </td>
+                                <td class="punch-span text-end">
+                                    <input id="punch-customer-rate" type="number" step="0.01" min="0"
+                                           class="form-control form-control-sm text-end d-none punch-step" placeholder="system">
+                                </td>
+                                <td class="punch-mat-cell text-muted fs-12" colspan="5">Item chunte hi is ke material yahan aa jayenge.</td>
+                                <td class="punch-span">
+                                    {{-- The managed vocabulary, right in the punch — the same
+                                         list the line carries afterwards. --}}
+                                    <select id="punch-instr-ids" class="form-select form-select-sm d-none punch-step" multiple
+                                            data-placeholder="Select / type instruction…">
+                                        @foreach($activeInstructions as $instr)
+                                            <option value="{{ $instr->id }}">{{ $instr->label }}</option>
+                                        @endforeach
+                                    </select>
+                                </td>
+                                <td class="punch-span">
+                                    <input id="punch-instr" type="text" class="form-control form-control-sm d-none punch-step"
+                                           placeholder="Select / type note…">
+                                </td>
+                                <td class="punch-span text-end">
+                                    <strong id="punch-live-amount" class="d-none punch-step">0.00</strong>
+                                </td>
+                                <td class="punch-span text-nowrap">
+                                    <button type="button" class="btn btn-warning btn-sm fw-bold d-none punch-step" id="punch-commit">Save Row</button>
+                                    <button type="button" class="btn btn-link btn-sm text-muted p-0 ms-2 d-none punch-step" id="punch-cancel">Esc</button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
                 <div id="punch-live" class="fs-13 text-muted mt-2"></div>
             </div>
             <div class="table-responsive">
@@ -1880,8 +1928,6 @@ $(function () {
         $('#punch-item').empty().append(new Option('EDIT — ' + punch.name, 'edit', true, true)).trigger('change');
         loadPunchInstructions(row, idx);
         $('.punch-step').removeClass('d-none');
-        if (! mats.length || ! punch.party) $('#punch-seg-wrap').addClass('d-none');
-        punchSetMode(punch.mode);
         // PUNCH-REQUIRED-QTY-1 — the quantity FIRST. punchRenderMats() reads
         // #punch-qty to work out each material's Required figure, so rendering
         // before setting it answered for the PREVIOUS quantity: the live screen
@@ -1937,8 +1983,6 @@ $(function () {
         const ids = row.find('[name="lines[' + idx + '][instruction_ids][]"]').map(function () { return this.value; }).get();
         $('#punch-instr-ids').val(ids).trigger('change');
         $('.punch-step').removeClass('d-none');
-        if (!mats.length || !punch.party) $('#punch-seg-wrap').addClass('d-none');
-        punchSetMode(punch.mode);
         // PUNCH-REQUIRED-QTY-1 — the quantity FIRST. punchRenderMats() reads
         // #punch-qty to work out each material's Required figure, so rendering
         // before setting it answered for the PREVIOUS quantity: the live screen
@@ -1980,13 +2024,10 @@ $(function () {
         clearPunchInstructions();
         $('#punch-unit').text('');
         $('.punch-step').removeClass('d-none');
-        // Step 2: the OWN/PARTY switch is never shown. The item already says
-        // whether the customer may supply, and each material now carries its own
-        // Party box, so the question had nothing left to ask. The markup and
-        // punchSetMode() stay for one more step so this can be reverted in a
-        // single line if the floor disagrees; step 5 removes them.
-        $('#punch-seg-wrap').addClass('d-none');
-        punchSetMode('OWN');
+        // PUNCH-ENTRY-TABLE-1: there is no supply MODE any more. The item says
+        // whether the customer may supply at all, and each material carries its
+        // own Own and Party boxes — so the question the switch asked had nothing
+        // left to ask, and a mode that could disagree with the boxes is gone.
         punchRenderMats();
         // Swapping the dish does not mean re-typing how much of it.
         $('#punch-qty').val(editing ? (parseFloat($('#punch-qty').val()) || 10) : 10)
@@ -1994,22 +2035,6 @@ $(function () {
         punchLive();
     }
 
-    function punchSetMode(m) {
-        if (m === 'PARTY' && !punch.party) { punchNote('Is item par Party OFF hai (Catering Products se on hota hai)'); m = 'OWN'; }
-        // BUG FIX: coming back to OWN must ZERO the customer's shares, not just
-        // grey the boxes — a hidden number that still billed nothing is exactly
-        // how a quotation ends up wrong for a reason nobody can see.
-        if (m === 'OWN' && punch.mats && punch.mats.some(x => (x.cust || 0) > 0)) {
-            punch.mats.forEach(x => { x.cust = 0; });
-            setTimeout(function () { punchRenderMats(); punchLive(); }, 0);
-        }
-        punch.mode = m;
-        $('#punch-own').toggleClass('btn-primary', m === 'OWN').toggleClass('btn-outline-primary', m !== 'OWN')
-            .find('.punch-tick').attr('class', 'ti me-1 punch-tick ' + (m === 'OWN' ? 'ti-square-check' : 'ti-square'));
-        $('#punch-party').toggleClass('btn-success', m === 'PARTY').toggleClass('btn-outline-success', m !== 'PARTY')
-            .find('.punch-tick').attr('class', 'ti me-1 punch-tick ' + (m === 'PARTY' ? 'ti-square-check' : 'ti-square'));
-        $('#punch-mats .pm-cust').prop('disabled', m !== 'PARTY');
-    }
     function punchNote(t) { $('#punch-live').html('<span class="text-warning-emphasis">' + _.escape(t) + '</span>'); }
 
     /**
@@ -2026,63 +2051,151 @@ $(function () {
      * is the whole promise of this rebuild, and keeping the classes is how it
      * is kept rather than merely stated.
      */
-    function punchRenderMats() {
-        if (!punch.mats.length) { $('#punch-mats').empty(); return; }
-        const qty = parseFloat($('#punch-qty').val()) || 0;
-        const partyCol = punch.party;
+    /**
+     * PUNCH-ENTRY-TABLE-1 — the five Material Breakdown cells of ONE material.
+     *
+     * Required Qty is the RECIPE's answer at this quantity and is read-only: it
+     * is what the dish asks for. Own is what we will actually send and Party
+     * what the customer brings, and those two are the operator's to set. When
+     * their sum leaves the recipe — 42 KG of beef on a 28 KG dish — that is a
+     * deliberate decision, so it is SHOWN rather than corrected.
+     *
+     * The classes pm-rate / pm-req / pm-own / pm-cust are unchanged. Every
+     * handler, the Enter walk and the totals already speak to them, and keeping
+     * them is what makes this a rearrangement of what is seen rather than a
+     * rewrite of what happens.
+     */
+    function punchMatCells(m, i, qty) {
         const esc = s => _.escape(String(s == null ? '' : s));
+        const required = qty * m.ratio;
+        const own = m.ownTouched ? m.own : required;
+        // party_allowed is the ITEM's answer today. Asked per material here, so
+        // that the day it becomes a per-material column only this line changes.
+        const partyAllowed = m.partyAllowed !== undefined
+            ? m.partyAllowed !== false
+            : punch.party !== false;
 
-        $('#punch-mats').html('<table class="table table-sm mb-0 align-middle" style="max-width:900px">'
-            + '<thead class="table-light"><tr>'
-            + '<th>Material</th>'
-            + '<th class="text-end">Rate</th>'
-            + '<th class="text-end">Required Qty</th>'
-            + '<th class="text-end">Own</th>'
-            + (partyCol ? '<th class="text-end text-success">Party</th>' : '')
-            + '</tr></thead><tbody>'
-            + punch.mats.map((m, i) => {
-                const required = qty * m.ratio;
-                const own = m.ownTouched ? m.own : required;
+        return '<td class="punch-mat-cell" data-i="' + i + '">'
+                + '<span class="badge bg-secondary-subtle text-secondary-emphasis me-1">' + (i + 1) + '</span>'
+                + '<span class="fw-semibold">' + esc(punchShort(m.name || m.label)) + '</span>'
+                + '<div class="fs-12 text-muted mt-1">'
+                    + (m.sku ? '<span class="me-1">' + esc(m.sku) + '</span>' : '')
+                    + (partyAllowed
+                        ? '<span class="badge bg-success-subtle text-success-emphasis">PARTY ALLOWED</span>'
+                        : '<span class="badge bg-secondary-subtle text-secondary-emphasis">OWN ONLY</span>')
+                + '</div>'
+            + '</td>'
+            + '<td class="punch-mat-cell text-end" data-i="' + i + '">'
+                + '<input class="form-control form-control-sm text-end pm-rate" data-i="' + i + '" value="' + esc(m.rate) + '">'
+            + '</td>'
+            + '<td class="punch-mat-cell text-end" data-i="' + i + '">'
+                + '<span class="pm-req fw-semibold" data-i="' + i + '">' + punchFmt(required) + '</span>'
+                + ' <span class="fs-12 text-muted">' + esc(m.unit || '') + '</span>'
+            + '</td>'
+            + '<td class="punch-mat-cell text-end" data-i="' + i + '">'
+                + '<input class="form-control form-control-sm text-end pm-own" data-i="' + i + '" value="' + punchFmt(own) + '">'
+            + '</td>'
+            + '<td class="punch-mat-cell text-end" data-i="' + i + '">'
+                + '<input class="form-control form-control-sm text-end pm-cust" data-i="' + i + '" value="' + punchFmt(m.cust || 0) + '"'
+                + (partyAllowed ? '' : ' disabled title="Is item par party supply band hai"') + '>'
+            + '</td>';
+    }
 
-                return '<tr>'
-                    + '<td title="' + esc(m.label || m.name) + '">'
-                        + '<span class="badge bg-secondary-subtle text-secondary-emphasis me-1">' + (i + 1) + '</span>'
-                        + esc(punchShort(m.name || m.label))
-                        + '<div class="fs-12 text-muted">'
-                            + (partyCol
-                                ? '<span class="badge bg-success-subtle text-success-emphasis">PARTY ALLOWED</span>'
-                                : '<span class="badge bg-secondary-subtle text-secondary-emphasis">OWN ONLY</span>')
-                            + (punch.editRow ? '' : ' <span class="ms-1">recipe ' + esc(m.ratio) + ' ' + esc(m.unit) + '</span>')
-                        + '</div>'
-                    + '</td>'
-                    + '<td class="text-end"><input class="form-control form-control-sm text-end pm-rate" data-i="' + i + '" style="width:90px;display:inline-block" value="' + m.rate + '"></td>'
-                    // Required is the recipe's answer, not a field: it moves when
-                    // the quantity moves, and typing over it would only hide the
-                    // difference between what the dish needs and what we send.
-                    + '<td class="text-end fw-semibold"><span class="pm-req" data-i="' + i + '">' + punchFmt(required) + '</span> <span class="fs-12 text-muted">' + esc(m.unit || '') + '</span></td>'
-                    + '<td class="text-end"><input class="form-control form-control-sm text-end pm-own" data-i="' + i + '" style="width:90px;display:inline-block" value="' + punchFmt(own) + '"></td>'
-                    + (partyCol
-                        ? '<td class="text-end"><input class="form-control form-control-sm text-end pm-cust" data-i="' + i + '" style="width:90px;display:inline-block;border-color:var(--bs-success)" value="' + punchFmt(m.cust || 0) + '"></td>'
-                        : '')
-                    + '</tr>';
-            }).join('')
-            + '</tbody></table>'
-            + '<div class="fs-12 text-muted mt-1">Total kitchen draw = Own + Party, per material.</div>');
-    }    $(document).on('input', '#punch-qty', function () {
+    /**
+     * Draw the selected item's materials into the entry block.
+     *
+     * ONLY the material cells are redrawn. The product cells — the item picker
+     * above all — are rendered once and left alone: rebuilding them would tear
+     * out the select2 the operator is typing into. What changes here is their
+     * rowspan, so the block stays one visual line however many materials it has.
+     */
+    function punchRenderMats() {
+        const $row = $('#punch-entry-row');
+        if (! $row.length) return;
+
+        $('#punch-body .punch-mat-row').remove();
+        $row.find('.punch-mat-cell').remove();
+
+        const mats = (punch && punch.mats) || [];
+        const anchor = $row.find('#punch-customer-rate').closest('td');
+        $row.find('.punch-span').attr('rowspan', Math.max(1, mats.length));
+
+        if (! mats.length) {
+            anchor.after('<td class="punch-mat-cell text-muted fs-12" colspan="5">'
+                + (punch ? 'Is item ka koi linked material nahi — rate seedha item ka hai.'
+                         : 'Item chunte hi is ke material yahan aa jayenge.') + '</td>');
+            punchValidate();
+
+            return;
+        }
+
+        const qty = parseFloat($('#punch-qty').val()) || 0;
+        anchor.after(punchMatCells(mats[0], 0, qty));
+
+        // Inserted in reverse so each lands directly under the entry row and the
+        // finished order reads 1, 2, 3 downward.
+        for (let j = mats.length - 1; j >= 1; j--) {
+            $row.after('<tr class="punch-mat-row">' + punchMatCells(mats[j], j, qty) + '</tr>');
+        }
+
+        punchValidate();
+    }
+
+    /**
+     * Own + Party against what the recipe asked for — quietly.
+     *
+     * A material whose split matches the recipe is marked valid; one that does
+     * not is marked as a DIFFERENCE, not an error, because the difference is
+     * usually the point (28 KG of biryani carrying 42 KG of beef). The status
+     * line says the same thing in words, and neither shouts.
+     */
+    function punchValidate() {
+        if (! punch) { $('#punch-live').empty(); return; }
+
+        const qty = parseFloat($('#punch-qty').val()) || 0;
+        const mats = punch.mats || [];
+        let matched = 0;
+
+        mats.forEach((m, i) => {
+            const required = qty * m.ratio;
+            const own = Math.max(0, m.ownTouched ? m.own : required);
+            const cust = Math.max(0, m.cust || 0);
+            const ok = Math.abs((own + cust) - required) < 0.0005;
+            if (ok) matched++;
+            $('#punch-body .punch-mat-cell[data-i="' + i + '"]')
+                .toggleClass('pm-ok', ok)
+                .toggleClass('pm-differs', ! ok);
+        });
+
+        if (! mats.length) {
+            $('#punch-live').html('<span class="text-muted">Material rows: 0 — is item ki qeemat seedhi hai.</span>');
+
+            return;
+        }
+
+        const verdict = matched === mats.length
+            ? '<span class="text-success-emphasis fw-semibold">OK — har material ka split recipe se mel khata hai</span>'
+            : '<span class="text-warning-emphasis fw-semibold">' + (mats.length - matched)
+                + ' material recipe se mukhtalif hain</span> <span class="text-muted">(jaan boojh kar ho to theek hai)</span>';
+
+        $('#punch-live').html('<span class="text-muted">Material rows:</span> <b>' + mats.length + '</b>'
+            + ' <span class="text-muted ms-2">Supply validation:</span> ' + verdict);
+    }
+   $(document).on('input', '#punch-qty', function () {
         if (!punch) return;
         const qty = parseFloat(this.value) || 0;
-        $('#punch-mats .pm-own').each(function () {
+        $('#punch-body .pm-own').each(function () {
             const i = +this.dataset.i;
             if (!punch.mats[i].ownTouched) this.value = punchFmt(qty * punch.mats[i].ratio);
         });
         // Required is the recipe's answer at THIS quantity, so it moves with it.
-        $('#punch-mats .pm-req').each(function () {
+        $('#punch-body .pm-req').each(function () {
             this.textContent = punchFmt(qty * punch.mats[+this.dataset.i].ratio);
         });
         punchRefreshTotals();
         punchLive();
     });
-    $(document).on('input', '#punch-mats input', function () {
+    $(document).on('input', '#punch-body input.pm-rate, #punch-body input.pm-own, #punch-body input.pm-cust', function () {
         const i = +this.dataset.i, m = punch.mats[i];
         if (this.classList.contains('pm-own')) { m.ownTouched = true; m.own = parseFloat(this.value) || 0; }
         if (this.classList.contains('pm-rate')) { m.rate = parseFloat(this.value) || 0; }
@@ -2090,25 +2203,18 @@ $(function () {
         punchRefreshTotals();
         punchLive();
     });
+    /** Kept its name and its callers; the total column is gone, so what it
+     *  refreshes now is whether each split still matches the recipe. */
     function punchRefreshTotals() {
-        const qty = parseFloat($('#punch-qty').val()) || 0;
-        $('#punch-mats .pm-total').each(function () {
-            const m = punch.mats[+this.dataset.i];
-            const own = m.ownTouched ? m.own : qty * m.ratio;
-            this.textContent = punchFmt(Math.max(0, own || 0) + Math.max(0, m.cust || 0));
-        });
+        punchValidate();
     }
     function punchLive() {
         if (!punch) return;
         const qty = parseFloat($('#punch-qty').val()) || 0;
-        let txt = punch.mats.map((m, i) => {
-            const own = Math.max(0, m.ownTouched ? m.own : qty * m.ratio);
-            const cust = Math.max(0, m.cust || 0);
-            return _.escape(m.name) + ': hum <b>' + punchFmt(own) + '</b>'
-                + (cust > 0 ? ' · party <b>' + punchFmt(cust) + '</b>' : '')
-                + ' · total <b>' + punchFmt(own + cust) + '</b> ' + _.escape(m.unit || '');
-        }).join(' · ');
-        $('#punch-live').html(txt || (punch.name ? _.escape(punch.name) + ' — Enter se save' : ''));
+        // The status line belongs to punchValidate() now — it says the same
+        // thing the columns already show, and says whether the splits still
+        // match the recipe.
+        punchValidate();
         const calc = punchLineCalc(qty);
         const money = n => (+n || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
         $('#punch-price-unit').text(punch.unitCode || 'unit');
@@ -2360,28 +2466,42 @@ $(function () {
         dragRow = null;
     });
 
+    /**
+     * The Enter walk, in the order the owner punches:
+     *
+     *   Qty → Customer Rate → (each material) Rate → Own → Party
+     *        → Kitchen Instructions → Additional Note
+     *
+     * PUNCH-ENTRY-TABLE-1 moved the note to the END. It used to sit before the
+     * materials, which meant the operator typed a note about a dish whose
+     * quantities they had not entered yet.
+     *
+     * PUNCH-WALK-VISIBLE-1 — the walk visits what the operator can SEE and type
+     * into, not what this function remembers putting in the list. focus() on a
+     * hidden element does nothing at all: leaving one in trapped the caret and
+     * made the material rows unreachable by keyboard. A disabled Party box
+     * stalls it the same way, which is exactly what an OWN ONLY material has.
+     */
     function punchSeq() {
         const seq = [
             document.getElementById('punch-qty'),
             document.getElementById('punch-customer-rate'),
-            document.getElementById('punch-instr'),
         ];
-        if (punch && punch.mats.length) seq.push(document.getElementById('punch-own'));
-        $('#punch-mats tbody tr').each(function () {
-            const r = $(this);
-            seq.push(r.find('.pm-rate')[0], r.find('.pm-own')[0]);
-            // Step 2: the box is present whenever the item allows party supply,
-            // so the walk follows what is on screen rather than a mode flag.
-            if (punch.party) seq.push(r.find('.pm-cust')[0]);
+
+        $('#punch-body .pm-rate').each(function () {
+            const i = this.dataset.i;
+            seq.push(
+                this,
+                document.querySelector('#punch-body .pm-own[data-i="' + i + '"]'),
+                document.querySelector('#punch-body .pm-cust[data-i="' + i + '"]')
+            );
         });
 
-        // PUNCH-WALK-VISIBLE-1 — the walk visits what the operator can SEE and
-        // type into, not what this function remembers putting in the list.
-        //
-        // Hiding the OWN/PARTY switch while leaving #punch-own here trapped the
-        // caret on Instructions: focus() on a hidden element does nothing, the
-        // next Enter recomputed the same index, and the material rows became
-        // unreachable by keyboard. A disabled Party box stalls it the same way.
+        seq.push(
+            document.getElementById('punch-instr-ids'),
+            document.getElementById('punch-instr')
+        );
+
         return seq.filter(el => el && ! el.disabled && el.offsetParent !== null);
     }
     $(document).on('keydown', '#punch-bar', function (e) {
@@ -2392,34 +2512,23 @@ $(function () {
         // to the next field, so a stray Enter can never punch a half-typed line.
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); punchCommit(); return; }
 
-        const onOwn = document.activeElement === document.getElementById('punch-own');
-        const onParty = document.activeElement === document.getElementById('punch-party');
-        if (onOwn || onParty) {
-            // Enter/Space TICKS the one you are standing on — like a checkbox.
-            if (e.key === 'Enter' || e.key === ' ') { punchSetMode(onOwn ? 'OWN' : 'PARTY'); e.preventDefault(); return; }
-            if (e.key.toLowerCase() === 'o') { punchSetMode('OWN'); document.getElementById('punch-own').focus(); e.preventDefault(); return; }
-            if (e.key.toLowerCase() === 'p') { punchSetMode('PARTY'); document.getElementById('punch-party').focus(); e.preventDefault(); return; }
-            if (e.key === 'ArrowLeft') { document.getElementById('punch-own').focus(); e.preventDefault(); return; }
-            if (e.key === 'ArrowRight') { document.getElementById('punch-party').focus(); e.preventDefault(); return; }
-            if (e.key === 'Tab' && !e.shiftKey) { return; } // Tab moves on normally
-        }
-
         if (e.key !== 'Enter') return;
         e.preventDefault();
         const seq = punchSeq(), at = seq.indexOf(document.activeElement);
         if (at > -1 && at < seq.length - 1) { seq[at + 1].focus(); seq[at + 1].select && seq[at + 1].select(); }
     });
-    $(document).on('click', '#punch-own', () => punchSetMode('OWN'));
-    $(document).on('click', '#punch-party', () => punchSetMode('PARTY'));
     $(document).on('click', '#punch-cancel', punchReset);
     $(document).on('click', '#punch-commit', punchCommit);
     function punchReset() {
         punch = null;
         $('#punch-item').val(null).trigger('change');
         $('.punch-step').addClass('d-none');
-        $('#punch-mats,#punch-live').empty();
+        $('#punch-live').empty();
         $('#punch-customer-rate').val('');
+        $('#punch-unit').text('');
         clearPunchInstructions();
+        // The entry block goes back to one row and its waiting line.
+        punchRenderMats();
     }
 
     function clearPunchInstructions() {

@@ -208,6 +208,10 @@ class CateringEventController extends Controller
             ->map(fn ($b) => [
                 'label' => $b->label,
                 'name' => $b->material?->name ?? $b->label,
+                // PUNCH-ENTRY-TABLE-1: the material code, shown under its name in the
+                // entry block. A read-only field on a view payload — the costing
+                // authorities neither read it nor care.
+                'sku' => $b->material?->sku,
                 'ratio' => (float) ($b->quantity_per_unit ?? 0),
                 'rate' => (float) $b->rate,
                 'unit' => $b->unit?->code ?? 'KG',
