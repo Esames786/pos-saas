@@ -915,6 +915,52 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
         return new \DOMXPath($doc);
     }
 
+    /**
+     * PUNCH-COMMIT-ANYWHERE-1 — Ctrl+Enter belongs to the screen, not to the bar.
+     *
+     * The owner reported it "not working", then "working now, I don't know which
+     * box I entered". Driven in a real browser from every place the caret can
+     * honestly be, it worked from six and did nothing from three: with either
+     * select2 dropdown open — that list is appended to <body>, outside the bar,
+     * and select2 stops Enter propagating because it uses the key to pick the
+     * highlighted row — and after a click on the page background.
+     *
+     * A shortcut that works six times out of nine is worse than one that does
+     * not exist. The operator stops trusting it and reaches for the mouse.
+     *
+     * Plain Enter deliberately did NOT move: it only ever walks to the next
+     * field, and a stray Enter elsewhere on the page must never punch a
+     * half-typed line.
+     */
+    public function test_ctrl_enter_saves_the_row_from_anywhere_on_the_screen(): void
+    {
+        $html = $this->render($this->booking());
+
+        // On the document, in the CAPTURE phase — select2 never gets to swallow it.
+        $this->assertMatchesRegularExpression(
+            "/document\.addEventListener\('keydown', function \(e\) \{[\s\S]{0,600}?punchCommit\(\);[\s\S]{0,80}?\}, true\);/",
+            $html,
+            'Ctrl+Enter must be captured on the document, or an open select2 eats it');
+
+        // Several keydown listeners live on this page; name THIS one by its
+        // own marker rather than by its shape.
+        $capture = $this->between($html, 'PUNCH-COMMIT-ANYWHERE-1', '}, true);');
+        $this->assertStringContainsString("if (e.key !== 'Enter' || ! (e.ctrlKey || e.metaKey)) return;", $capture);
+        $this->assertStringContainsString('if (! punch) return;', $capture,
+            'with no punch in flight the key belongs to whatever else wants it');
+        $this->assertStringContainsString(".closest('.modal.show, .offcanvas.show')", $capture,
+            'a dialog on top keeps its own keys');
+
+        // The bar handler no longer answers Ctrl+Enter — one owner, not two.
+        $bar = $this->between($html, "\$(document).on('keydown', '#punch-bar'", 'punchSeq(), at =');
+        $this->assertStringNotContainsString('ctrlKey', $bar,
+            'the bar must not answer Ctrl+Enter as well — two owners can disagree');
+
+        // Plain Enter stays local: it walks, and only inside the bar.
+        $this->assertStringContainsString("\$(document).on('keydown', '#punch-bar'", $html);
+        $this->assertStringContainsString("if (e.key !== 'Enter') return;", $bar);
+    }
+
     public function test_an_item_that_does_not_exist_cannot_be_entered(): void
     {
         $html = $this->render($this->booking());

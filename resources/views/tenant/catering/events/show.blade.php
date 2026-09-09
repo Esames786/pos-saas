@@ -25,16 +25,18 @@
         background: var(--bs-tertiary-bg, #f6f7f9); font-size: 12px; font-weight: 600;
         letter-spacing: .01em; color: var(--bs-secondary-color, #5b6470); white-space: nowrap;
     }
-    #punch-table thead th.punch-mat-group { background: var(--bs-success-bg-subtle, #e8f3ec); color: var(--bs-success-text-emphasis, #17624a); }
-    #punch-table thead th.punch-mat-col { background: var(--bs-success-bg-subtle, #eef6f1); }
+    /* A quiet tint — enough to say "this is the material section", not enough
+       to make the operator look at it before the item. */
+    #punch-table thead th.punch-mat-group { background: #f0f8f3; color: #2b7a5b; }
+    #punch-table thead th.punch-mat-col { background: #f7fbf9; }
     #punch-table .form-control, #punch-table .form-select { min-height: 34px; font-size: 13px; }
     /* The Material Breakdown reads as one section — a hairline down each side,
        and only a dotted rule BETWEEN materials so the product cells beside them
        are never cut through. */
     #punch-body td.punch-mat-cell { background: var(--bs-body-bg, #fff); }
     #punch-body tr.punch-mat-row td.punch-mat-cell { border-top: 1px dashed var(--bs-border-color, #dee2e6); }
-    #punch-body td.pm-ok { background: var(--bs-success-bg-subtle, #eef7f1); }
-    #punch-body td.pm-differs { background: var(--bs-warning-bg-subtle, #fff8e6); }
+    #punch-body td.pm-ok { background: #f8fcfa; }
+    #punch-body td.pm-differs { background: #fffcf3; }
     #punch-body td.punch-span { background: #fff; }
 
     /* KASHIF-ORDER-PUNCH: dense rows, old-software grid height — the punch
@@ -2504,13 +2506,35 @@ $(function () {
 
         return seq.filter(el => el && ! el.disabled && el.offsetParent !== null);
     }
+    /**
+     * PUNCH-COMMIT-ANYWHERE-1 — Ctrl+Enter belongs to the SCREEN, not to the bar.
+     *
+     * It used to be delegated on #punch-bar and so did nothing in three places
+     * the caret honestly lands: with either select2 dropdown open (that list is
+     * appended to <body>, outside the bar) and after a click on the page. The
+     * operator's report was exactly that — "sometimes it works" — which is worse
+     * than a missing shortcut, because it teaches them not to trust it.
+     *
+     * CAPTURE phase on purpose: select2 stops Enter from propagating, since it
+     * uses the key to choose the highlighted option. Capture runs first.
+     *
+     * A dialog on top keeps its own keys. And plain Enter is NOT moved here — it
+     * only ever walks to the next field, and a stray Enter somewhere else on the
+     * page must never punch a half-typed line.
+     */
+    document.addEventListener('keydown', function (e) {
+        if (! punch) return;
+        if (e.key !== 'Enter' || ! (e.ctrlKey || e.metaKey)) return;
+        if (e.target && e.target.closest && e.target.closest('.modal.show, .offcanvas.show')) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+        punchCommit();
+    }, true);
+
     $(document).on('keydown', '#punch-bar', function (e) {
         if (!punch) return;
         if (e.key === 'Escape') { punchReset(); return; }
-
-        // Ctrl+Enter ANYWHERE in the bar = add the row. Plain Enter only walks
-        // to the next field, so a stray Enter can never punch a half-typed line.
-        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); punchCommit(); return; }
 
         if (e.key !== 'Enter') return;
         e.preventDefault();
