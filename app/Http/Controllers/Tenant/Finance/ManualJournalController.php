@@ -8,7 +8,9 @@ use App\Models\Tenant\Branch;
 use App\Models\Tenant\CashBankAccount;
 use App\Models\Tenant\CashBankAccountTransaction;
 use App\Models\Tenant\JournalEntry;
+use App\Models\Tenant\Supplier;
 use App\Services\Finance\JournalService;
+use App\Services\Finance\SupplierPayableService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -28,7 +30,10 @@ use Throwable;
  */
 class ManualJournalController extends Controller
 {
-    public function __construct(private JournalService $journal) {}
+    public function __construct(
+        private JournalService $journal,
+        private SupplierPayableService $supplierPayable,
+    ) {}
 
     public function index(Request $request)
     {
@@ -73,7 +78,11 @@ class ManualJournalController extends Controller
                 $entry = $this->journal->post(
                     sourceType:  'manual_journal',
                     sourceId:    $this->nextManualJournalId(),
-                    sourceNo:    $data['reference_no'] ?: null,
+                    // `reference_no` validation me nullable hai, aur Laravel ka validate()
+                    // sirf mojood keys laut-ta hai — form hamesha khali string bhejta hai,
+                    // is liye ye aaj tak nahi phata; koi programmatic caller isay chhor de
+                    // to "Undefined array key" ban jata tha.
+                    sourceNo:    ($data['reference_no'] ?? null) ?: null,
                     description: $data['description'],
                     entryDate:   $data['entry_date'],
                     lines:       $lines,
@@ -82,6 +91,12 @@ class ManualJournalController extends Controller
 
                 // Update cash/bank operational balances for any cash/bank-linked lines.
                 $this->syncCashBankLines($entry, $data['lines'], $data['entry_date'], Auth::guard('tenant')->id());
+
+                // SUPPLIER-FINANCE-DIRECT-1 — jo satar Accounts Payable ko hilati hai, wo supplier
+                // subledger mein bhi utar-ti hai, USI transaction ke andar. Aaina ulta hota hai
+                // (Cr AP = supplier debit) — tafseel SupplierPayableService::mirrorApLinesToSupplierLedger
+                // ke docblock mein. Ek hi authority likhti hai; koi doosra engine nahi.
+                $this->supplierPayable->mirrorApLinesToSupplierLedger($entry, Auth::guard('tenant')->id());
 
                 return $entry;
             });
@@ -134,6 +149,11 @@ class ManualJournalController extends Controller
                 // Reverse the cash/bank operational movements too.
                 $this->reverseCashBankLines($manualJournal, Auth::guard('tenant')->id());
 
+                // Supplier subledger bhi palte. JournalService::reverse() counterparty ko reversal
+                // ki satrein par saath le jata hai, is liye yahan wohi aaina ulta chal jata hai:
+                // asal Cr AP (supplier debit) ka reversal Dr AP hai (supplier credit).
+                $this->supplierPayable->mirrorApLinesToSupplierLedger($reversal, Auth::guard('tenant')->id());
+
                 return $reversal;
             });
         } catch (Throwable $e) {
@@ -156,6 +176,8 @@ class ManualJournalController extends Controller
             'lines'                          => ['required', 'array', 'min:2'],
             'lines.*.account_id'             => ['required', 'integer', 'exists:accounts,id'],
             'lines.*.cash_bank_account_id'   => ['nullable', 'integer', 'exists:cash_bank_accounts,id'],
+            'lines.*.counterparty_type'      => ['nullable', 'string', 'in:supplier'],
+            'lines.*.supplier_id'            => ['nullable', 'integer', 'exists:tenant.suppliers,id'],
             'lines.*.description'            => ['nullable', 'string', 'max:255'],
             'lines.*.debit'                  => ['nullable', 'numeric', 'min:0'],
             'lines.*.credit'                 => ['nullable', 'numeric', 'min:0'],
@@ -172,6 +194,41 @@ class ManualJournalController extends Controller
             }
         }
 
+        // SUPPLIER-FINANCE-DIRECT-1 — koi bhi MANUAL Accounts Payable posting be-shanakht nahi.
+        //
+        // Pehle ye form 2100 par credit/debit kar sakta tha bina batae ke kis supplier ka. Nateeja:
+        // AP control hil jata aur supplier subledger ko pata bhi nahi chalta — yani wohi drift jo
+        // requirement K mana karti hai, aur wo bhi bilkul us screen se jo isay theek karne ke liye
+        // banayi gayi thi.
+        //
+        // Shart sirf IS raaste par hai (source_type = manual_journal). System ke banaye journals —
+        // purchase bill, purchase return, supplier opening balance, sale, catering — sab pehle jaise
+        // chalte hain; unke liye ye validation chalti hi nahi.
+        $apIds = $this->supplierPayable->apAccountIds();
+
+        if ($apIds) {
+            foreach ($data['lines'] as $i => $line) {
+                $debit  = (float) ($line['debit']  ?? 0);
+                $credit = (float) ($line['credit'] ?? 0);
+
+                // Khali satar par shart nahi — JournalService bhi usay chhor deta hai.
+                if ($debit <= 0 && $credit <= 0) {
+                    continue;
+                }
+
+                if (! in_array((int) ($line['account_id'] ?? 0), $apIds, true)) {
+                    continue;
+                }
+
+                if (($line['counterparty_type'] ?? null) !== 'supplier' || empty($line['supplier_id'])) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        "lines.$i.supplier_id" => 'This line posts to Accounts Payable, so it must name the supplier '
+                            . 'it belongs to — otherwise the supplier ledger and the AP control account drift apart.',
+                    ]);
+                }
+            }
+        }
+
         return $data;
     }
 
@@ -185,11 +242,16 @@ class ManualJournalController extends Controller
                 continue;
             }
             $normalized[] = [
-                'account_id'  => (int) $line['account_id'],
-                'branch_id'   => ! empty($line['branch_id']) ? (int) $line['branch_id'] : null,
-                'description' => $line['description'] ?? null,
-                'debit'       => $debit,
-                'credit'      => $credit,
+                'account_id'        => (int) $line['account_id'],
+                'branch_id'         => ! empty($line['branch_id']) ? (int) $line['branch_id'] : null,
+                // Counterparty JournalService tak jata hai, jo isay journal_lines par likhta hai;
+                // aaina usi likhi hui satar se padha jata hai, form se nahi — is liye jo GL mein
+                // baitha hai aur jo subledger mein utra hai, wo ek hi cheez hai.
+                'counterparty_type' => $line['counterparty_type'] ?? null,
+                'supplier_id'       => ! empty($line['supplier_id']) ? (int) $line['supplier_id'] : null,
+                'description'       => $line['description'] ?? null,
+                'debit'             => $debit,
+                'credit'            => $credit,
             ];
         }
         return $normalized;
@@ -304,6 +366,10 @@ class ManualJournalController extends Controller
             'accounts'        => Account::where('is_active', true)->orderBy('sort_order')->orderBy('code')->get(['id', 'code', 'name', 'type']),
             'cashBankAccounts'=> CashBankAccount::where('is_active', true)->orderBy('code')->get(['id', 'code', 'name', 'account_type']),
             'branches'        => Branch::orderBy('name')->get(['id', 'name']),
+            // AP ki satar par supplier chunna lazmi hai; form ko dono cheezein chahiye —
+            // supplier ki list, aur kaunse account AP hain (taake picker sirf tab khule).
+            'suppliers'       => Supplier::where('status', 'active')->orderBy('name')->get(['id', 'name', 'code']),
+            'apAccountIds'    => $this->supplierPayable->apAccountIds(),
         ];
     }
 }
