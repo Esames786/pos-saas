@@ -59,6 +59,9 @@ regression guard, 70d24c1 HTTP guards). The Online functionality Edge must event
 - **Supplier Ledger → Record Payment** — `tenant.suppliers.ledger` with the payment entry point.
 - **Supplier-aware General Journal / AP entry** — manual journal lines carrying `counterparty_type=supplier` mirrored
   into the supplier subledger; AP identified by the whole 2100 family.
+- **Rules that travel with it:** a cash/bank account is REQUIRED on the payment (no cash/bank → no GL entry); the
+  Purchase Bill is OPTIONAL (direct payment on account); the Purchase Return GL fix (cd6a75e: Dr 2100 / Cr 1400 with
+  a regression guard) is part of the same live release. Live production/canonical head at the Q final gate: af6755d.
 
 Classification: **SUPPLIER_FINANCE_OFFLINE_PARITY = FINANCIAL_PARITY_PENDING.** Edge still has no official offline
 supplier-finance ingestion/authority; it must NOT invent local AP/GL posting. This is not "missing" and not

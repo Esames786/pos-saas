@@ -95,3 +95,17 @@ the P suites unchanged and green.
   SQLite unit tests red as before. New Edge regressions: 0.
 - Supplier finance became canonical in this delta (70d24c1): classified FINANCIAL_PARITY_PENDING — see
   edge-online-financial-parity-gap.md.
+
+## Final Q gate re-ground (10 Sep 2026, `git fetch --all --prune`)
+
+- CURRENT_CANONICAL_AT_FINAL_GATE = af6755d (live production/canonical Online head: Supplier Finance release + Catering
+  customer-credit / negative-payment release).
+- SHARED_BRANCH_POS_DELTA_REVIEWED = yes. Delta 70d24c1..af6755d: 2 commits, 11 files — 8 catering, plus a catering
+  permission label (PermissionCatalogService), a catering sidebar link and a catering route. Zero shared normal
+  branch-POS behavior changed → nothing to replicate on Edge. Reconcile 7 merged clean (c9ad004; rollback tag
+  edge-pre-reconcile7-30ba958).
+- Catering stays physically excluded from the restricted Edge artifact (EdgeArtifactTest green after the merge; the new
+  `CateringCustomerCreditController` falls under the existing `app/Http/Controllers/Tenant/Catering` exclusion). It is
+  not part of the normal Branch POS Edge scope and is not pulled in for parity.
+- Supplier finance: SUPPLIER_FINANCE_OFFLINE_PARITY = FINANCIAL_PARITY_PENDING (register + gap document carry the live
+  workflow list and rules).
