@@ -83,3 +83,15 @@ the P suites unchanged and green.
 - Warm-standby freshness covers config (all bootstrap sections, incl. tables/reservation columns, users, permissions,
   terminals, printer mappings, promotions, customers) and official stock. Business-date / shift state stays Online-owned
   until handback (open shifts are an explicit handback blocker).
+
+## Gates at the final head (10 Sep 2026)
+
+- Focused Q + P + supervision: 28 tests, 545+ assertions, green (each class also green alone; the two-process partition
+  proofs green).
+- Full MySQL suite at 910f885 (Q): 1450 tests, 1448 passed, 2 red = known canonical Dompdf/A4-PDF debt.
+- Reconcile 6: canonical 1b10a62..70d24c1 merged clean (086f21b; rollback tag edge-pre-reconcile6-910f885). Full
+  MySQL suite at 086f21b: 1532 tests, 1527 passed, 5 red = the same Dompdf debt plus three NEW canonical catering PDF
+  tests that also need Dompdf (byte-identical to canonical). Fast Feature+Unit: 225 tests, the two stale canonical
+  SQLite unit tests red as before. New Edge regressions: 0.
+- Supplier finance became canonical in this delta (70d24c1): classified FINANCIAL_PARITY_PENDING — see
+  edge-online-financial-parity-gap.md.
