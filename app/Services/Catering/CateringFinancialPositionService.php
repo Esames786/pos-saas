@@ -66,6 +66,67 @@ class CateringFinancialPositionService
      *   refundable: float
      * }
      */
+    /**
+     * Every booking that is holding money belonging to the customer.
+     *
+     * Exists because nothing else asks. A cancelled booking with a deposit on it
+     * is a live liability — the money is real, sitting in 2300, and the customer
+     * is entitled to it — but cancel does not refund and a cancelled booking
+     * never reaches close(), which is the only place that currently refuses to
+     * let credit go quiet.
+     *
+     * TWO PASSES, deliberately. position() is not a query; it reads advances,
+     * refunds, the invoice and the estimate for one booking, so running it over
+     * every event would be a handful of queries per row for a screen that is
+     * almost always empty. The first pass is one grouped query that finds the
+     * only bookings that could POSSIBLY be in credit — those where money has
+     * actually been received — and position() then runs on that short list.
+     *
+     * The filter is deliberately loose: "received more than nothing", not
+     * "received more than billed". Working out what is billed is exactly the
+     * judgement position() exists to make (invoice, else estimate, else zero if
+     * cancelled), and duplicating that in SQL would be a second authority on the
+     * same question — the kind that drifts.
+     *
+     * @return \Illuminate\Support\Collection<int, array{event: CateringEvent, credit: float, days: int}>
+     */
+    public function owedToCustomers(): \Illuminate\Support\Collection
+    {
+        // One query, no joins. Joining advances AND refunds would multiply the
+        // rows together and any SUM across that product would be wrong; a first
+        // draft here reached for SUM(DISTINCT amount) to paper over it, which
+        // silently swallows two receipts of the same value. A booking that has
+        // ever received anything is candidate enough — position() decides the
+        // rest.
+        $received = \Illuminate\Support\Facades\DB::connection('tenant')
+            ->table('catering_advances')
+            ->distinct()
+            ->pluck('catering_event_id');
+
+        if ($received->isEmpty()) {
+            return collect();
+        }
+
+        return CateringEvent::whereIn('id', $received)
+            ->orderBy('event_date')
+            ->get()
+            ->map(function (CateringEvent $event) {
+                $position = $this->position($event);
+
+                return [
+                    'event' => $event,
+                    'credit' => (float) $position['customer_credit'],
+                    // How long it has been owed. The AGE is the column that
+                    // matters: a liability three months old is a different
+                    // problem from one from this morning.
+                    'days' => (int) abs(($event->cancelled_at ?? $event->updated_at)?->diffInDays(now()) ?? 0),
+                ];
+            })
+            ->filter(fn (array $row) => $row['credit'] > 0)
+            ->sortByDesc('days')
+            ->values();
+    }
+
     public function position(CateringEvent $event): array
     {
         $grossReceived = round((float) $event->advances()->sum('amount'), 2);

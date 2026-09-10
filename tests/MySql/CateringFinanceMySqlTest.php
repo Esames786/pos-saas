@@ -871,6 +871,86 @@ class CateringFinanceMySqlTest extends MySqlTenantTestCase
             'and revenue already earned is not un-earned by a refused cancellation');
     }
 
+    /**
+     * CATERING-CUSTOMER-CREDIT-WORKLIST-1 — the cancelled booking that is
+     * quietly holding somebody's money shows up.
+     *
+     * This is the whole reason the screen exists. close() already refuses to
+     * finish a booking that still owes the customer, but a CANCELLED booking
+     * never reaches close(), so that liability had nowhere to appear. Until
+     * this list, the only way to find it was to already know it was there.
+     */
+    public function test_a_cancelled_booking_holding_money_appears_on_the_worklist(): void
+    {
+        $event = $this->confirmedEvent();          // 100,000 quoted
+        $this->advances->record($event->refresh(), [
+            'amount' => 30000,
+            'received_date' => now()->toDateString(),
+            'payment_method_id' => $this->paymentMethodId,
+        ]);
+
+        $position = app(CateringFinancialPositionService::class);
+
+        // While the booking stands, the deposit is covering the bill — nothing
+        // is owed back, and the list must not cry wolf.
+        $this->assertCount(0, $position->owedToCustomers(),
+            'a deposit on a live booking is not money owed back');
+
+        app(CateringEstimateService::class)->cancelEvent($event->refresh(), 'Customer called it off');
+
+        $rows = $position->owedToCustomers();
+        $this->assertCount(1, $rows, 'the cancelled booking is holding 30,000 that belongs to the customer');
+        $this->assertSame($event->id, $rows->first()['event']->id);
+        $this->assertEqualsWithDelta(30000.0, $rows->first()['credit'], 0.01);
+        $this->assertIsInt($rows->first()['days'], 'and how long it has been waiting');
+    }
+
+    /** Money handed back leaves the list — it is a worklist, not a log. */
+    public function test_refunding_clears_the_booking_off_the_worklist(): void
+    {
+        $event = $this->confirmedEvent();
+        $this->advances->record($event->refresh(), [
+            'amount' => 30000,
+            'received_date' => now()->toDateString(),
+            'payment_method_id' => $this->paymentMethodId,
+        ]);
+        app(CateringEstimateService::class)->cancelEvent($event->refresh(), 'Cancelled');
+
+        $position = app(CateringFinancialPositionService::class);
+        $this->assertCount(1, $position->owedToCustomers());
+
+        app(\App\Services\Catering\CateringRefundService::class)->record($event->refresh(), [
+            'amount' => 30000,
+            'refund_date' => now()->toDateString(),
+            'payment_method_id' => $this->paymentMethodId,
+            'reason' => 'Deposit returned',
+        ]);
+
+        $this->assertCount(0, $position->owedToCustomers(),
+            'once the money is back with the customer there is nothing left to chase');
+    }
+
+    /**
+     * A booking that never took a payment must not cost a single query beyond
+     * the first. The list is almost always empty, and an empty screen should not
+     * be the most expensive one in the system.
+     */
+    public function test_the_worklist_does_not_walk_every_booking(): void
+    {
+        $this->confirmedEvent();
+        $this->confirmedEvent();
+        $this->confirmedEvent();
+
+        \Illuminate\Support\Facades\DB::connection('tenant')->enableQueryLog();
+        $rows = app(CateringFinancialPositionService::class)->owedToCustomers();
+        $queries = count(\Illuminate\Support\Facades\DB::connection('tenant')->getQueryLog());
+        \Illuminate\Support\Facades\DB::connection('tenant')->disableQueryLog();
+
+        $this->assertCount(0, $rows);
+        $this->assertSame(1, $queries,
+            'with no money received anywhere, one query must answer the whole question');
+    }
+
     /** A receipt is posted whole or not at all. */
     public function test_a_split_that_does_not_add_up_is_refused(): void
     {
