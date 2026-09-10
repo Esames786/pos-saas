@@ -922,6 +922,8 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                     // KASHIF-CATERING-CUSTOMER-CREDIT-1: the one catering action that
                     // pays money OUT, behind its own permission for that reason.
                     Route::post('/catering/events/{cateringEvent}/refunds', [\App\Http\Controllers\Tenant\Catering\CateringRefundController::class, 'store'])->name('tenant.catering.refunds.store');
+                    // CATERING-CUSTOMER-CREDIT-WORKLIST-1: who we owe money to, and for how long.
+                    Route::get('/catering/customer-credits', [\App\Http\Controllers\Tenant\Catering\CateringCustomerCreditController::class, 'index'])->name('tenant.catering.customer-credits.index');
 
                     Route::post('/catering/events/{cateringEvent}/production-releases', [\App\Http\Controllers\Tenant\Catering\CateringProductionReleaseController::class, 'store'])->name('tenant.catering.production-releases.store');
                     Route::get('/catering/production-releases/{cateringProductionRelease}', [\App\Http\Controllers\Tenant\Catering\CateringProductionReleaseController::class, 'show'])->name('tenant.catering.production-releases.show');

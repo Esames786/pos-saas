@@ -232,6 +232,41 @@ class CateringClientFeedbackUiRegressionTest extends TestCase
             'and nothing should be written that nothing reads');
     }
 
+    /**
+     * CATERING-NEGATIVE-PAYMENT-1 §5 — the operator sees the whole picture
+     * before confirming, and works none of it out.
+     *
+     * A confirm that says only "this goes past the credit" leaves the person
+     * holding the money to do the arithmetic that decides whether they are about
+     * to reopen a debt. Every figure the decision rests on is named.
+     */
+    public function test_the_refund_confirm_shows_the_whole_position(): void
+    {
+        $modal = file_get_contents(
+            dirname(__DIR__, 2).'/resources/views/tenant/catering/events/show.blade.php'
+        );
+
+        foreach ([
+            'Invoice / bill',
+            'Total received',
+            'Applied to the bill',
+            'Customer credit available',
+            'taken from credit',
+            'reopens as money owed to you',
+            'Balance due afterwards',
+            'Credit left afterwards',
+        ] as $line) {
+            $this->assertStringContainsString($line, $modal,
+                "the refund confirm must state '{$line}' rather than leave it to be worked out");
+        }
+
+        // Drawn from position(), not recomputed on the screen where it could drift.
+        foreach (['billed', 'gross_received', 'applied', 'balance_due', 'refundable', 'refund_ceiling'] as $key) {
+            $this->assertStringContainsString("\$position['{$key}']", $modal,
+                "the confirm must take {$key} from the one authority");
+        }
+    }
+
     public function test_punch_uses_additive_supply_and_clears_instruction_state(): void
     {
         $source = file_get_contents(
