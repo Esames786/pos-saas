@@ -120,7 +120,9 @@ PHP;
         // The ACTUAL cashier product boots from the artifact: the browser cashier page, its dine-in/recall,
         // printing and Quick Report surfaces all register on the artifact's own routes.
         foreach (['edge.local.pos.screen', 'edge.local.pos.held.index', 'edge.local.pos.restaurant.board', 'edge.local.pos.sales.receipt',
-            'edge.local.pos.print-jobs.document', 'edge.local.pos.quick-report.view', 'edge.local.pos.shift.summary', 'edge.local.pos.sync.summary'] as $must) {
+            'edge.local.pos.print-jobs.document', 'edge.local.pos.quick-report.view', 'edge.local.pos.shift.summary', 'edge.local.pos.sync.summary',
+            // F1 — the offline sales-return UI boots from the artifact.
+            'edge.local.pos.returns.search', 'edge.local.pos.returns.sale', 'edge.local.pos.returns.store', 'edge.local.pos.returns.show'] as $must) {
             $this->assertContains($must, $names, "the built artifact must register {$must}");
         }
         // ...and the Cloud groups (device API ingestion/reconcile/baseline) are NOT registered on the appliance.

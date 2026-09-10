@@ -79,6 +79,9 @@ class EdgeAuthorityService
             'standby_config_revision_seen' => isset($ack['cloud_config_revision']) ? (int) $ack['cloud_config_revision'] : $meta->standby_config_revision_seen,
             'standby_stock_watermark_seen' => isset($ack['stock_watermark']) ? (string) $ack['stock_watermark'] : $meta->standby_stock_watermark_seen,
             'standby_stock_as_of_seen' => isset($ack['stock_as_of']) ? \Illuminate\Support\Carbon::parse($ack['stock_as_of']) : $meta->standby_stock_as_of_seen,
+            // F1 — the returnable-sale watermark the Cloud advertised (the return cache's freshness target).
+            'standby_returnable_watermark_seen' => isset($ack['returnable_watermark']) ? (string) $ack['returnable_watermark'] : $meta->standby_returnable_watermark_seen,
+            'standby_returnable_as_of_seen' => isset($ack['returnable_as_of']) ? \Illuminate\Support\Carbon::parse($ack['returnable_as_of']) : $meta->standby_returnable_as_of_seen,
         ])->save();
 
         return [
@@ -190,6 +193,11 @@ class EdgeAuthorityService
                     'stale_reason' => $staleAccepted ? trim((string) $staleReason) : null,
                     'confirmed_by' => $by,
                     'reasons' => $freshness['reasons'],
+                    // F1 — RETURN_CACHE_WATERMARK at takeover: which returnable-sale truth offline returns validate against.
+                    'return_cache_watermark' => $meta->returnable_cache_watermark,
+                    'return_cache_as_of' => $meta->returnable_cache_as_of ? \Illuminate\Support\Carbon::parse($meta->returnable_cache_as_of)->toIso8601String() : null,
+                    'return_cache_advertised' => $meta->standby_returnable_watermark_seen,
+                    'return_cache_fresh' => app(EdgeReturnableSaleCacheService::class)->freshness()['ok'],
                 ] + $freshness['facts']),
             ])->save();
 

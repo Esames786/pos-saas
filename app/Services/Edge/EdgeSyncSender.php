@@ -32,6 +32,10 @@ class EdgeSyncSender
         'STALE_ACTIVATION', 'SCHEMA_UNSUPPORTED', 'ORDER_TYPE_UNSUPPORTED', 'PAYMENT_UNSUPPORTED',
         'SALE_UUID_INVALID', 'HASH_INVALID', 'ENVELOPE_INVALID', 'CUSTOMER_INVALID', 'CUSTOMER_UNKNOWN',
         'PRODUCT_UNRESOLVED',
+        // F1 return events — terminal verdicts (a retry of the identical immutable envelope can never succeed).
+        // ORIGINAL_SALE_NOT_INGESTED is deliberately NOT here: the sale may still be in flight → retry.
+        'RETURN_UUID_INVALID', 'RETURN_INVALID', 'ORIGINAL_SALE_UNKNOWN', 'RETURN_LINE_UNKNOWN', 'RETURN_REFUSED',
+        'REFUND_METHOD_UNSUPPORTED', 'ACTOR_UNKNOWN', 'APPROVAL_REQUIRED', 'APPROVER_UNAUTHORIZED',
     ];
 
     public function __construct(private readonly EdgeSyncOutboxService $outbox)
@@ -55,9 +59,11 @@ class EdgeSyncSender
 
     private function transport(EdgeSyncOutbox $row): string
     {
-        $url = (string) config('edge.sync.url');
+        // F1: a return event travels the same outbox to the Cloud's RETURN ingestion; a sale to the sale ingestion.
+        $isReturn = (string) $row->envelope_schema_version === EdgeReturnEnvelopeBuilder::SCHEMA;
+        $url = (string) config($isReturn ? 'edge.sync.returns_url' : 'edge.sync.url');
         if ($url === '') {
-            $this->outbox->releaseLease($row, 'EDGE_SYNC_URL not configured');
+            $this->outbox->releaseLease($row, ($isReturn ? 'EDGE_SYNC_RETURNS_URL' : 'EDGE_SYNC_URL') . ' not configured');
 
             return 'retry';
         }

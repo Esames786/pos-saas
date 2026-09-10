@@ -49,6 +49,9 @@ class TenantResetTransactionsCommand extends Command
         // sale read as "already applied" and silently vanish after a reset. Absent on tenants that
         // never received an Edge sale (hasTable guard above).
         'edge_inbound_sale_ingestions',
+        'edge_inbound_return_ingestions',  // F1: Edge return-event registry (transactional)
+        'edge_returnable_sales',           // F1: appliance returnable-sale cache (transactional shadows)
+        'edge_returnable_sale_lines',
         // Ping/reboot work items handed to a print agent — transient, exactly like
         // the print jobs beside them. The paired AGENTS and printers are master
         // data and are kept; a week-old queued reboot is not.

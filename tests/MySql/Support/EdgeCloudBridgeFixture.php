@@ -135,6 +135,8 @@ trait EdgeCloudBridgeFixture
             'edge.sync.reconcile_url' => $base . '/sync/reconcile',
             'edge.sync.baseline_url' => $base . '/sync/baseline',
             'edge.standby.config_refresh_url' => $base . '/config/refresh',
+            'edge.standby.returnable_refresh_url' => $base . '/returnable/refresh',   // F1
+            'edge.sync.returns_url' => $base . '/sync/returns',                        // F1
             'edge.sync.device_id' => $this->cloudDeviceUuid,
             'edge.sync.device_secret' => $this->cloudDeviceSecret,
             'edge.sync.connect_timeout' => 2, 'edge.sync.timeout' => 5,

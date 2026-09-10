@@ -58,7 +58,13 @@ class EdgeBackupService
         'edge_operational_stock_balances',
         'edge_operational_stock_movements',
         'edge_baseline_cutovers',
-        'edge_sync_outbox',                // pending/leased/acknowledged/failed_permanent
+        'edge_sync_outbox',                // pending/leased/acknowledged/failed_permanent (sales AND F1 return events)
+        // F1 SALES RETURNS: the local return documents (money + returned_quantity truth), and the returnable-sale
+        // warm cache (shadow Cloud sales the appliance may still be returning against).
+        'sales_returns',
+        'sales_return_lines',
+        'edge_returnable_sales',
+        'edge_returnable_sale_lines',
     ];
 
     public function __construct(private readonly EdgeBackupKeyProvider $keys)

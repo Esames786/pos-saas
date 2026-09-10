@@ -30,6 +30,8 @@ class EdgeStandbyFreshnessService
         private readonly EdgeBaselineClient $baselineClient,
         private readonly EdgeBaselineCutoverService $cutover,
         private readonly EdgeOperationalBaselineService $baselines,
+        private readonly EdgeReturnableCacheClient $returnableClient,
+        private readonly EdgeReturnableSaleCacheService $returnableCache,
     ) {
     }
 
@@ -63,7 +65,29 @@ class EdgeStandbyFreshnessService
             $stock = 'error:' . mb_substr($e->getMessage(), 0, 160);
         }
 
-        return ['config' => $config, 'stock' => $stock];
+        // F1 — the returnable-sale cache follows the Cloud's returnable position (sales made online stay returnable offline).
+        $returnable = 'current';
+        try {
+            $returnable = $this->refreshReturnableIfBehind();
+        } catch (Throwable $e) {
+            $returnable = 'error:' . mb_substr($e->getMessage(), 0, 160);
+        }
+
+        return ['config' => $config, 'stock' => $stock, 'returnable' => $returnable];
+    }
+
+    /** Pull the returnable-sale projection when the Cloud advertised a watermark the cache does not equal. */
+    public function refreshReturnableIfBehind(): string
+    {
+        $meta = $this->context->requireCurrent();
+        $seen = $meta->standby_returnable_watermark_seen !== null ? (string) $meta->standby_returnable_watermark_seen : null;
+        $cached = $meta->returnable_cache_watermark !== null ? (string) $meta->returnable_cache_watermark : null;
+        if ($seen === null || $seen === $cached) {
+            return 'current';
+        }
+        $stats = $this->returnableCache->apply($this->returnableClient->fetchPackage());
+
+        return 'refreshed:' . $stats['sales'] . '-sales';
     }
 
     /** Pull and apply the current config refresh package (fail-closed applier). */

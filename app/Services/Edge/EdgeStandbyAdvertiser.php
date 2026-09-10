@@ -22,24 +22,29 @@ class EdgeStandbyAdvertiser
     public function __construct(
         private readonly EdgeBootstrapService $bootstrap,
         private readonly EdgeBaselineIssuanceService $baselines,
+        private readonly EdgeReturnableSaleProjectionService $returnable,
     ) {
     }
 
-    /** @return array{cloud_config_revision:?int, cloud_config_watermark:?string, stock_watermark:?string, stock_as_of:?string} */
+    /** @return array{cloud_config_revision:?int, cloud_config_watermark:?string, stock_watermark:?string, stock_as_of:?string, returnable_watermark:?string, returnable_as_of:?string} */
     public function forDevice(EdgeDevice $device, Tenant $tenant): array
     {
         $branch = Branch::on('tenant')->find((int) $device->branch_id);
         if (! $branch) {
-            return ['cloud_config_revision' => null, 'cloud_config_watermark' => null, 'stock_watermark' => null, 'stock_as_of' => null];
+            return ['cloud_config_revision' => null, 'cloud_config_watermark' => null, 'stock_watermark' => null, 'stock_as_of' => null, 'returnable_watermark' => null, 'returnable_as_of' => null];
         }
         $config = $this->bootstrap->currentConfigRevision($tenant, $branch);
         $stock = $this->baselines->stockWatermark((int) $branch->id);
+        $returnable = $this->returnable->watermark((int) $branch->id);
 
         return [
             'cloud_config_revision' => (int) $config['revision'],
             'cloud_config_watermark' => (string) $config['watermark'],
             'stock_watermark' => (string) $stock['stock_watermark'],
             'stock_as_of' => (string) $stock['as_of'],
+            // F1 — the returnable-sale position (sales, returned quantities, posted returns) the standby must mirror.
+            'returnable_watermark' => (string) $returnable['watermark'],
+            'returnable_as_of' => (string) $returnable['as_of'],
         ];
     }
 }

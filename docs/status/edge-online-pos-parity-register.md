@@ -44,19 +44,19 @@ last column). `NORMAL_BRANCH_POS_GAPS = 0` except the explicitly classified ONLI
 | Quick Report EMAIL | truthful 422 | — | — | — | **ONLINE_REQUIRED** | QuickReport |
 | Shift workflow (open, lock, zero drawer, count, breakup, blind count, operating date) | ✓ modal | shared `ShiftService` / `AmountVisibility` | — | — | **FULL_OFFLINE_PARITY** | ShiftAndNetworkDown |
 | Network-down cash sale + Pending sync | ✓ chip | outbox 1B–1E | local | outbox | **FULL_OFFLINE_PARITY** | ShiftAndNetworkDown |
-| Returns / refunds / void after payment (+ RETURN-MANAGER-APPROVAL) | — | no offline financial event ingestion | — | — | **FINANCIAL_PARITY_PENDING** | gap doc |
+| Returns / refunds / post-settlement void (+ RETURN-MANAGER-APPROVAL) — F1 | ✓ Returns entry, unit-aware stepper, partial/full, refund breakdown, approval prompt | canonical `SalesReturnService::computeReturn`; Online sales returnable from the fresh warm cache; cash refund out of the till once; immutable return event → Cloud OFFICIAL return exactly once | return view (Online has no thermal return document) | `edge-return-envelope-v1` in the sale outbox | **FULL_OFFLINE_PARITY** (cash refund; sales inside the cache window) · card/bank/provider refund = ONLINE_REQUIRED | ReturnAuthority, ReturnSyncHttp, ReturnRace, ReturnBackupRecovery, CashierReturnHttp |
 | Supplier finance (SUPPLIER-FINANCE-DIRECT-1, live on canonical since 70d24c1: direct supplier payment without a purchase bill · Supplier Ledger → Record Payment · supplier-aware General Journal / AP dimension · cash/bank account required · Purchase Bill optional · Purchase Return GL fix) | — | Cloud AP/GL (`postSupplierPayment`, Dr 2100 / Cr cash-bank); no safe official local supplier AP/GL event authority yet — no local GL posting is ever faked | — | — | **FINANCIAL_PARITY_PENDING** (SUPPLIER_FINANCE_OFFLINE_PARITY — not permanently Online-only; the financial Edge tranche must include it) | gap doc |
 | Catering (customer-credit worklist, overpayment, refund within / beyond credit, split refund posting, explicit negative-payment path) | — | Cloud Catering module — NOT part of the normal Branch POS Edge product scope; physically excluded from the restricted artifact (`config/edge.php` exclude: `Catering*`, `app/Http/Controllers/Tenant/Catering`, `app/Services/Catering`) | — | — | **OUT OF EDGE SCOPE** (Cloud-only unless the owner requests Offline Catering) | EdgeArtifactTest |
 | Cloud admin: scheduled email reports, tenant backups, agent shelf | — | Cloud | — | — | **ONLINE_REQUIRED (Cloud)** | — |
 
 ```
 NORMAL_BRANCH_POS_GAPS      = 0     (every normal branch-POS workflow is FULL, or explicitly ONLINE_REQUIRED / FINANCIAL_PARITY_PENDING)
-FULL_OFFLINE_PARITY         = 23 rows        ONLINE_REQUIRED = 4 (new-customer creation offline*, card, QR email, Cloud admin)
-FINANCIAL_PARITY_PENDING    = 2 (returns/refunds/void, supplier finance)
+FULL_OFFLINE_PARITY         = 24 rows        ONLINE_REQUIRED = 4 (new-customer creation offline*, card payment/refund, QR email, Cloud admin)
+FINANCIAL_PARITY_PENDING    = 1 (supplier finance — F2)          F1 sales returns / cash refunds: FULL (11 Sep 2026)
 * not inherent — next Edge build item (till-created customers need a Cloud ingestion contract)
 
-NORMAL_OPERATOR_POS_PARITY_PERCENT = 23 / 27 = 85%   (all rows a branch operator runs: 23 FULL + card + QR email + new-customer + returns; Cloud admin and supplier finance excluded)
-FULL_OFFLINE_PARITY_PERCENT        = 23 / 29 = 79%   (every row in the matrix)
+NORMAL_OPERATOR_POS_PARITY_PERCENT = 24 / 27 = 89%   (all rows a branch operator runs: 24 FULL + card + QR email + new-customer; Cloud admin and supplier finance excluded)
+FULL_OFFLINE_PARITY_PERCENT        = 24 / 29 = 83%   (every row in the matrix)
 ```
 
 ## Release gates (real path only)

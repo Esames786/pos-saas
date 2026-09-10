@@ -55,6 +55,24 @@ class EdgeSyncOutboxService
     }
 
     /**
+     * F1 — queue an immutable SALES-RETURN event in the SAME append-only outbox (same lease / hash / ACK / lost-ACK
+     * reconciliation machinery). The row's `sale_uuid` carries the return_uuid; the schema version tells the sender and
+     * the Cloud which authority applies. Must be called INSIDE the local return transaction.
+     */
+    public function createForReturn(array $envelope): EdgeSyncOutbox
+    {
+        return EdgeSyncOutbox::create([
+            'sale_uuid' => (string) $envelope['return_uuid'],
+            'envelope_schema_version' => (string) $envelope['envelope_schema_version'],
+            'config_revision' => (int) $envelope['config_revision'],
+            'activation_epoch' => (int) $envelope['activation_epoch'],
+            'envelope' => app(EdgeReturnEnvelopeBuilder::class)->canonicalEnvelopeJson($envelope),
+            'content_hash' => (string) $envelope['content_hash'],
+            'state' => EdgeSyncOutbox::STATE_PENDING,
+        ]);
+    }
+
+    /**
      * Atomically lease the oldest eligible outbox row (pending, or leased with an EXPIRED lease) for
      * one sender. Single-statement claim: two racing workers can never own the same row. Returns the
      * claimed row or null when nothing is eligible. attempts increments on every claim;

@@ -48,7 +48,16 @@ FINANCIAL_PARITY_PLAN = return-event outbox -> Cloud return ingestion (finance-g
 same way sale ingestion is (exactly-once, finance-complete-or-refuse). This is a separate tranche after
 operational parity.
 
-## Supplier finance (SUPPLIER-FINANCE-DIRECT-1) — classified 8 Sep 2026; CANONICAL since 70d24c1 (10 Sep 2026)
+## F1 — Sales returns + cash refunds: CLOSED 11 Sep 2026 (see `edge-f1-sales-returns.md`)
+
+Full and partial returns, unit-aware quantities, the Online arithmetic (`SalesReturnService::computeReturn`), returns of
+ONLINE sales from the fresh warm cache, cash refund out of the local till exactly once, manager approval parity, the
+immutable return event on the proven outbox/ACK/reconciliation model, and the Cloud's OFFICIAL return (stock, COGS,
+GL, cash/bank, ledger, document) exactly once — proven end to end with a lost ACK, races, backup recovery and the real
+cashier page. Remaining in this area: card / bank / provider refunds (ONLINE_REQUIRED), sales older than the cache
+window (ONLINE_REQUIRED), and any generic customer-credit settlement (not Catering's) as a later event.
+
+## Supplier finance (SUPPLIER-FINANCE-DIRECT-1) — classified 8 Sep 2026; CANONICAL since 70d24c1 (10 Sep 2026); F2 NEXT
 
 **Update 10 Sep 2026 — now canonical.** The workflow merged into `origin/feat/14d-2-plan-upgrade-requests` at
 `70d24c1` (1e69481 SUPPLIER-FINANCE-DIRECT-1, 49381a1 idempotency + foreign-supplier guard, cd6a75e purchase-return GL
@@ -68,12 +77,12 @@ supplier-finance ingestion/authority; it must NOT invent local AP/GL posting. Th
 permanently Online-only: the financial-parity phase must include this newly-canonical workflow (Edge-originated
 supplier-payment events → Cloud ingestion posting AP/GL exactly once, the same contract shape as sale ingestion).
 
-A separate Main Finance session is building **direct supplier payment, supplier-ledger payment and a
-supplier-aware General Journal** on `feat/supplier-finance-direct-v1` (`1e69481`, 8 Sep). As of the Edge
-final catch-up it is **NOT on canonical** (`origin/feat/14d-2-plan-upgrade-requests` @ `e44eb01`).
+History (superseded): the workflow was first built on `feat/supplier-finance-direct-v1` (`1e69481`, 8 Sep) and was
+not yet canonical at the Edge catch-up of that day (`e44eb01`); it is canonical and live now (see above). The
+classification did not change with the merge:
 
 ```
-SUPPLIER_FINANCE_OFFLINE_PARITY = FINANCIAL_PARITY_PENDING
+SUPPLIER_FINANCE_OFFLINE_PARITY = FINANCIAL_PARITY_PENDING   (F2 — after the F1 sales-return financial-event pattern)
 ```
 
 Why: it is Cloud AP/GL posting (`SupplierPayableService::recordPayment`, `JournalPostingService::

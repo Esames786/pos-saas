@@ -52,5 +52,10 @@ Route::domain(config('tenancy.central_domain'))
             // Q — WARM STANDBY FRESHNESS: the current config refresh package for the device's branch (pulled when the
             // heartbeat advertises a newer config revision than the appliance has applied).
             Route::post('/config/refresh', [\App\Http\Controllers\Edge\EdgeConfigRefreshApiController::class, 'package'])->name('edge.api.config.refresh');
+
+            // F1 — SALES RETURNS: the returnable-sale projection the standby mirrors, and the exactly-once ingestion of
+            // Edge-originated return events through the OFFICIAL return authority.
+            Route::post('/returnable/refresh', [\App\Http\Controllers\Edge\EdgeReturnableCacheApiController::class, 'package'])->name('edge.api.returnable.refresh');
+            Route::post('/sync/returns', [\App\Http\Controllers\Edge\EdgeInboundReturnApiController::class, 'store'])->name('edge.api.sync.returns');
         });
     });

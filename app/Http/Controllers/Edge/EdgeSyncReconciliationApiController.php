@@ -70,6 +70,30 @@ class EdgeSyncReconciliationApiController extends Controller
             foreach ($query->get() as $row) {
                 $statuses[(string) $row->sale_uuid] = $this->safeStatus($row);
             }
+            // F1 — return events share the outbox: their registry rows reconcile under the same uuid key.
+            $returns = \App\Models\Tenant\EdgeInboundReturnIngestion::query()
+                ->where('device_public_uuid', (string) $device->public_uuid)
+                ->where('branch_id', (int) $device->branch_id);
+            if ($saleUuids !== []) {
+                $returns->whereIn('return_uuid', array_values(array_unique($saleUuids)));
+            } else {
+                $returns->orderByDesc('id')->limit(min($recent, self::MAX_ROWS));
+            }
+            foreach ($returns->get() as $row) {
+                $statuses[(string) $row->return_uuid] = [
+                    'sale_uuid' => (string) $row->return_uuid,
+                    'return_uuid' => (string) $row->return_uuid,
+                    'status' => (string) $row->status,
+                    'content_hash' => (string) $row->content_hash,
+                    'failure_code' => $row->failure_code,
+                    'ingestion_uuid' => $row->ingestion_uuid,
+                    'official_return_no' => $row->official_return_no,
+                    'activation_epoch' => $row->activation_epoch !== null ? (int) $row->activation_epoch : null,
+                    'config_revision' => $row->config_revision !== null ? (int) $row->config_revision : null,
+                    'branch_id' => (int) $row->branch_id,
+                    'ingested_at' => $row->ingested_at?->toIso8601String(),
+                ];
+            }
         } finally {
             $this->tenancy->deactivate();
         }

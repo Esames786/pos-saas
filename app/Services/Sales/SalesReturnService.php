@@ -19,6 +19,129 @@ class SalesReturnService
         private readonly JournalPostingService $journalPosting,
     ) {}
 
+    /**
+     * THE return arithmetic, with no side effects (F1: one formula for Online posting AND the offline appliance).
+     *
+     * $salesOrder must carry its lines with ['product', 'variant', 'returnLines'] loaded (locked by the caller when
+     * the result is about to be posted). Returns the per-line result plus the totals exactly as processReturn posts
+     * them, including the delivery-charge rule (given back only when this return leaves nothing of the order behind).
+     *
+     * @param  array<int,array{sales_order_line_id:int|string, quantity:float|string}>  $lines
+     * @return array{
+     *   lines: array<int, array{order_line: SalesOrderLine, quantity: float, subtotal: float, discount: float, tax: float, line_total: float, final: bool}>,
+     *   subtotal: float, discount: float, tax: float, delivery_refund: float, grand_total: float, completes: bool, already_refunded_delivery: float
+     * }
+     */
+    public function computeReturn(SalesOrder $salesOrder, array $lines): array
+    {
+        $result = [];
+        $subtotal = 0;
+        $discount = 0;
+        $tax = 0;
+        $requested = []; // order line id => qty this return takes (for the completion check)
+
+        foreach ($lines as $lineData) {
+            $orderLine = $salesOrder->lines->firstWhere('id', $lineData['sales_order_line_id']);
+
+            if (!$orderLine) {
+                throw new \RuntimeException('A selected return line does not belong to this sale.');
+            }
+
+            if (in_array($orderLine->line_kind, ['component', 'modifier'], true)) {
+                throw new \RuntimeException('Component and modifier rows cannot be returned separately. Return their parent sale item.');
+            }
+
+            // BUG-011 FIX: cap against remaining returnable qty, not original qty.
+            $alreadyReturned = (float) $orderLine->returned_quantity;
+            $returnable      = (float) $orderLine->quantity - $alreadyReturned;
+
+            if ($returnable <= 0) {
+                continue; // fully returned already
+            }
+
+            $qty = min((float) $lineData['quantity'], $returnable);
+            if ($qty <= 0) {
+                continue;
+            }
+
+            $lineSubtotal = round($qty * (float) $orderLine->unit_price, 2);
+            $allocation = $this->originalLineAllocation($salesOrder, $orderLine);
+            $finalQuantity = $qty + 0.000001 >= $returnable;
+            $remainingDiscount = max($allocation['discount'] - (float) $orderLine->returnLines->sum('discount_amount'), 0);
+            $remainingTax = max($allocation['tax'] - (float) $orderLine->returnLines->sum('tax_amount'), 0);
+            $lineDiscount = $finalQuantity
+                ? round($remainingDiscount, 2)
+                : min(round(($remainingDiscount / $returnable) * $qty, 2), round($remainingDiscount, 2));
+            $lineTax = $finalQuantity
+                ? round($remainingTax, 2)
+                : min(round(($remainingTax / $returnable) * $qty, 2), round($remainingTax, 2));
+            $lineTotal = round($lineSubtotal - $lineDiscount + $lineTax, 2);
+
+            $result[] = [
+                'order_line' => $orderLine,
+                'quantity' => $qty,
+                'subtotal' => $lineSubtotal,
+                'discount' => $lineDiscount,
+                'tax' => $lineTax,
+                'line_total' => $lineTotal,
+                'final' => $finalQuantity,
+            ];
+            $requested[(int) $orderLine->id] = ((float) ($requested[(int) $orderLine->id] ?? 0)) + $qty;
+
+            $subtotal += $lineSubtotal;
+            $discount += $lineDiscount;
+            $tax      += $lineTax;
+        }
+
+        if ($result === []) {
+            throw new \RuntimeException('Select at least one returnable sale item.');
+        }
+
+        $subtotal = round($subtotal, 2);
+        $discount = round($discount, 2);
+        $tax = round($tax, 2);
+
+        // THE WHOLE ORDER COMING BACK MUST GIVE BACK THE WHOLE CHARGE.
+        //
+        // Returns used to stop at subtotal − discount + tax, so the delivery charge could
+        // never be refunded. When a customer sent an entire order back the counter handed over
+        // the full amount, but the system recorded less money leaving than actually did — at
+        // Khatri that stranded 350 as "delivery income" the shop had already given back, and
+        // the close screen expected 350 more cash than the drawer held.
+        //
+        // A PARTIAL return keeps the charge: the rider still made that trip for the items the
+        // customer kept. It is only refunded when nothing of the order remains.
+        $completes = true;
+        foreach ($salesOrder->lines as $line) {
+            if (in_array($line->line_kind, ['component', 'modifier'], true)) {
+                continue;   // not customer-facing; they follow their parent
+            }
+            $after = (float) $line->returned_quantity + (float) ($requested[(int) $line->id] ?? 0);
+            if ($after + 0.000001 < (float) $line->quantity) {
+                $completes = false;
+                break;
+            }
+        }
+        // ('cloud_mirror' exists only on an appliance's mirrored Cloud returns; on the Cloud this is the posted set.)
+        $alreadyRefundedDelivery = (float) $salesOrder->returns()
+            ->whereIn('status', ['posted', 'cloud_mirror'])
+            ->sum('delivery_charge_amount');
+        $deliveryRefund = $completes
+            ? max(round((float) $salesOrder->delivery_charge_amount - $alreadyRefundedDelivery, 2), 0)
+            : 0.0;
+
+        return [
+            'lines' => $result,
+            'subtotal' => $subtotal,
+            'discount' => $discount,
+            'tax' => $tax,
+            'delivery_refund' => $deliveryRefund,
+            'grand_total' => round($subtotal - $discount + $tax + $deliveryRefund, 2),
+            'completes' => $completes,
+            'already_refunded_delivery' => $alreadyRefundedDelivery,
+        ];
+    }
+
     public function processReturn(
         SalesOrder $salesOrder,
         array $lines,
@@ -48,6 +171,8 @@ class SalesReturnService
                 ->lockForUpdate()
                 ->get());
 
+            $computed = $this->computeReturn($salesOrder, $lines);
+
             $salesReturn = SalesReturn::create([
                 'return_no'          => $this->salesService->nextReturnNo(),
                 'sales_order_id'     => $salesOrder->id,
@@ -68,48 +193,10 @@ class SalesReturnService
                 'reason'             => $reason,
             ]);
 
-            $subtotal = 0;
-            $discount = 0;
-            $tax      = 0;
-            $processedLines = 0;
-
-            foreach ($lines as $lineData) {
-                $orderLine = $salesOrder->lines->firstWhere('id', $lineData['sales_order_line_id']);
-
-                if (!$orderLine) {
-                    throw new \RuntimeException('A selected return line does not belong to this sale.');
-                }
-
-                if (in_array($orderLine->line_kind, ['component', 'modifier'], true)) {
-                    throw new \RuntimeException('Component and modifier rows cannot be returned separately. Return their parent sale item.');
-                }
-
-                // BUG-011 FIX: cap against remaining returnable qty, not original qty.
-                $alreadyReturned = (float) $orderLine->returned_quantity;
-                $returnable      = (float) $orderLine->quantity - $alreadyReturned;
-
-                if ($returnable <= 0) {
-                    continue; // fully returned already
-                }
-
-                $qty = min((float) $lineData['quantity'], $returnable);
-                if ($qty <= 0) {
-                    continue;
-                }
-
+            foreach ($computed['lines'] as $item) {
+                $orderLine = $item['order_line'];
+                $qty = $item['quantity'];
                 $originalQty = (float) $orderLine->quantity;
-                $lineSubtotal = round($qty * (float) $orderLine->unit_price, 2);
-                $allocation = $this->originalLineAllocation($salesOrder, $orderLine);
-                $finalQuantity = $qty + 0.000001 >= $returnable;
-                $remainingDiscount = max($allocation['discount'] - (float) $orderLine->returnLines->sum('discount_amount'), 0);
-                $remainingTax = max($allocation['tax'] - (float) $orderLine->returnLines->sum('tax_amount'), 0);
-                $lineDiscount = $finalQuantity
-                    ? round($remainingDiscount, 2)
-                    : min(round(($remainingDiscount / $returnable) * $qty, 2), round($remainingDiscount, 2));
-                $lineTax = $finalQuantity
-                    ? round($remainingTax, 2)
-                    : min(round(($remainingTax / $returnable) * $qty, 2), round($remainingTax, 2));
-                $lineTotal = round($lineSubtotal - $lineDiscount + $lineTax, 2);
 
                 $salesReturn->lines()->create([
                     'sales_order_line_id' => $orderLine->id,
@@ -117,9 +204,9 @@ class SalesReturnService
                     'product_variant_id'  => $orderLine->product_variant_id,
                     'quantity'            => $qty,
                     'unit_price'          => $orderLine->unit_price,
-                    'discount_amount'     => $lineDiscount,
-                    'tax_amount'          => $lineTax,
-                    'line_total'          => $lineTotal,
+                    'discount_amount'     => $item['discount'],
+                    'tax_amount'          => $item['tax'],
+                    'line_total'          => $item['line_total'],
                 ]);
 
                 $orderLine->increment('returned_quantity', $qty);
@@ -136,44 +223,13 @@ class SalesReturnService
                 } else {
                     $this->restoreStock($salesOrder, $salesReturn, $orderLine, $qty, $userId);
                 }
-
-                $subtotal += $lineSubtotal;
-                $discount += $lineDiscount;
-                $tax      += $lineTax;
-                $processedLines++;
             }
 
-            if ($processedLines === 0) {
-                throw new \RuntimeException('Select at least one returnable sale item.');
-            }
-
-            $subtotal = round($subtotal, 2);
-            $discount = round($discount, 2);
-            $tax = round($tax, 2);
-
-            // THE WHOLE ORDER COMING BACK MUST GIVE BACK THE WHOLE CHARGE.
-            //
-            // Returns used to stop at subtotal − discount + tax, so the delivery charge could
-            // never be refunded. When a customer sent an entire order back the counter handed over
-            // the full amount, but the system recorded less money leaving than actually did — at
-            // Khatri that stranded 350 as "delivery income" the shop had already given back, and
-            // the close screen expected 350 more cash than the drawer held.
-            //
-            // A PARTIAL return keeps the charge: the rider still made that trip for the items the
-            // customer kept. It is only refunded when nothing of the order remains.
-            $deliveryRefund = 0.0;
-            $alreadyRefundedDelivery = (float) $salesOrder->returns()
-                ->where('status', 'posted')->where('id', '!=', $salesReturn->id)
-                ->sum('delivery_charge_amount');
-
-            if ($this->returnCompletesOrder($salesOrder)) {
-                $deliveryRefund = max(
-                    round((float) $salesOrder->delivery_charge_amount - $alreadyRefundedDelivery, 2),
-                    0
-                );
-            }
-
-            $grandTotal = round($subtotal - $discount + $tax + $deliveryRefund, 2);
+            $subtotal = $computed['subtotal'];
+            $discount = $computed['discount'];
+            $tax = $computed['tax'];
+            $deliveryRefund = $computed['delivery_refund'];
+            $grandTotal = $computed['grand_total'];
 
             if ($refundMethod && $refundAmount !== null && abs($refundAmount - $grandTotal) > 0.01) {
                 throw new \RuntimeException('Refund amount must match the calculated refund of ' . number_format($grandTotal, 2) . '.');
@@ -220,32 +276,6 @@ class SalesReturnService
         $this->journalPosting->postSalesReturnCashBankMovement($salesReturn, $userId);
 
         return $salesReturn;
-    }
-
-    /**
-     * Does this return leave nothing of the order behind?
-     *
-     * Compares what has ALREADY been returned plus what this return takes against the original
-     * quantities. Only then is the delivery charge given back — a partial return keeps it, because
-     * the rider still made the trip for the items the customer kept.
-     */
-    private function returnCompletesOrder(SalesOrder $salesOrder): bool
-    {
-        // Called AFTER the line loop, which has already incremented returned_quantity on each
-        // line it processed (increment() syncs the in-memory attribute as well as the row), so
-        // this return's own quantities are counted here — adding them again would make a half
-        // return look complete and refund the delivery charge early.
-        foreach ($salesOrder->lines as $line) {
-            if (in_array($line->line_kind, ['component', 'modifier'], true)) {
-                continue;   // not customer-facing; they follow their parent
-            }
-
-            if ((float) $line->returned_quantity + 0.000001 < (float) $line->quantity) {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     /**

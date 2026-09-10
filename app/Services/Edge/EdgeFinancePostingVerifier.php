@@ -38,6 +38,67 @@ class EdgeFinancePostingVerifier
     }
 
     /**
+     * F1 — FINANCE-COMPLETE OR REFUSE for an ingested SALES RETURN: the official return document, its sales-ledger
+     * entry, the GL reversal (balanced, non-empty), the cash/bank refund movement (for cash / bank refunds a mappable
+     * account MUST exist — a refund that never leaves the books is not a refund), and the FEFO stock reversal for every
+     * stock-tracked returned product. Anything missing → IngestionRefusal → the whole ingestion rolls back.
+     */
+    public function verifyPostedReturn(\App\Models\Tenant\SalesReturn $return): void
+    {
+        $conn = DB::connection(self::CONN);
+        if ((string) $return->status !== 'posted' || (float) $return->grand_total <= 0) {
+            throw new IngestionRefusal('RETURN_DOCUMENT_INVALID', "sales return {$return->id} is not a posted document with a positive total");
+        }
+        if (! $conn->table('sales_ledgers')->where('entry_type', 'sale_return')->where('reference_no', (string) $return->return_no)->exists()) {
+            throw new IngestionRefusal('RETURN_LEDGER_MISSING', "sales return {$return->id} has no sales-ledger entry");
+        }
+        $journal = $conn->table('journal_entries')->where('source_type', 'sales_return')->where('source_id', (int) $return->id)->where('status', 'posted')->where('is_reversal', 0)->first();
+        if (! $journal) {
+            throw new IngestionRefusal('FINANCE_GL_MISSING', "the required sales_return journal for return {$return->id} was not posted");
+        }
+        $lines = $conn->table('journal_lines')->where('journal_entry_id', (int) $journal->id)->get();
+        if ($lines->isEmpty()) {
+            throw new IngestionRefusal('FINANCE_GL_EMPTY', "the sales_return journal for return {$return->id} has no monetary lines");
+        }
+        $debit = round((float) $lines->sum('debit'), 2);
+        $credit = round((float) $lines->sum('credit'), 2);
+        if (abs($debit - $credit) > 0.01) {
+            throw new IngestionRefusal('FINANCE_GL_UNBALANCED', "the sales_return journal for return {$return->id} is unbalanced (debit {$debit} != credit {$credit})");
+        }
+        if (in_array((string) $return->refund_method, ['cash', 'bank_transfer'], true)) {
+            $movement = $conn->table('cash_bank_account_transactions')->where('reference_type', 'sales_return')->where('reference_id', (int) $return->id)->where('transaction_type', 'sales_return_refund')->get();
+            if ($movement->count() !== 1) {
+                throw new IngestionRefusal('FINANCE_CASHBANK_MISSING', "return {$return->id} refunds by {$return->refund_method} but has {$movement->count()} cash/bank refund movements (a mappable cash/bank account is required)");
+            }
+            $m = $movement->first();
+            if ((string) $m->direction !== 'out' || abs((float) $m->amount - (float) $return->grand_total) > 0.01) {
+                throw new IngestionRefusal('FINANCE_CASHBANK_INVALID', "return {$return->id} cash/bank refund movement is malformed (direction/amount mismatch)");
+            }
+        }
+        $return->loadMissing('lines.orderLine.product', 'order.lines.product');
+        foreach ($return->lines as $rl) {
+            $orderLine = $rl->orderLine;
+            $stockProducts = [];
+            if ($orderLine && ($orderLine->line_kind ?? 'standard') === 'combo_header' && $return->order) {
+                foreach ($return->order->lines->where('parent_sales_order_line_id', $orderLine->id) as $child) {
+                    if ($child->product?->is_stock_tracked) {
+                        $stockProducts[] = (int) $child->product_id;
+                    }
+                }
+            } elseif ($orderLine?->product?->is_stock_tracked) {
+                $stockProducts[] = (int) $orderLine->product_id;
+            }
+            foreach ($stockProducts as $productId) {
+                $has = $conn->table('stock_ledgers')->where('reference_type', 'sales_return')->where('reference_id', (int) $return->id)
+                    ->where('product_id', $productId)->where('movement_type', 'sale_return')->where('direction', 'in')->exists();
+                if (! $has) {
+                    throw new IngestionRefusal('RETURN_STOCK_MISSING', "return {$return->id} restocks product {$productId} but no official stock reversal was posted");
+                }
+            }
+        }
+    }
+
+    /**
      * A positive fully-paid sale MUST carry a posted, non-reversal `sales_order_paid` journal for THIS
      * Cloud sales_order, and its lines MUST balance (sum debit == sum credit) and be non-zero. This is the
      * exact journal postPaidSale posts when grand_total > 0 and the sale is fully paid — which every

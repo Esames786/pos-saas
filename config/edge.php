@@ -73,10 +73,24 @@ return [
     'standby' => [
         'config_refresh_url'     => env('EDGE_STANDBY_CONFIG_REFRESH_URL'), // Cloud device-authed: POST config refresh package
         'max_stock_age_seconds'  => (int) env('EDGE_STANDBY_MAX_STOCK_AGE', 300),
+        // F1 — RETURNABLE-SALE WARM CACHE: the Cloud's returnable sales for the branch (window below), pulled when the
+        // advertised returnable watermark moved, so a sale made ONLINE can be returned offline.
+        'returnable_refresh_url' => env('EDGE_STANDBY_RETURNABLE_REFRESH_URL'),
+    ],
+
+    /*
+    | F1 — SALES RETURNS. The appliance returns only what it can PROVE: local sales it made, and Cloud sales whose
+    | returnable projection is fresh (cache watermark = advertised, or refreshed after the last acknowledged heartbeat).
+    | Offline refunds are CASH only (the local till); card / bank / provider refunds need the Online POS.
+    */
+    'returns' => [
+        'cache_window_days'      => (int) env('EDGE_RETURNS_CACHE_WINDOW_DAYS', 14),  // returnable Cloud sales mirrored to the appliance
+        'offline_refund_methods' => ['cash'],
     ],
 
     'sync' => [
-        'url'             => env('EDGE_SYNC_URL'),            // Cloud device-authed ingestion endpoint
+        'url'             => env('EDGE_SYNC_URL'),            // Cloud device-authed ingestion endpoint (sales)
+        'returns_url'     => env('EDGE_SYNC_RETURNS_URL'),    // F1: Cloud device-authed ingestion endpoint (sales returns)
         'reconcile_url'   => env('EDGE_SYNC_RECONCILE_URL'),  // Cloud device-authed READ-ONLY reconciliation status
         'baseline_url'    => env('EDGE_SYNC_BASELINE_URL'),   // Cloud device-authed operational-baseline issuance
         'device_id'       => env('EDGE_SYNC_DEVICE_ID'),      // this appliance public_uuid
@@ -184,6 +198,10 @@ return [
         'edge.local.pos.held.show',
         'edge.local.pos.void-reasons',
         'edge.local.pos.customers.search',
+        'edge.local.pos.returns.search',   // F1 sales returns
+        'edge.local.pos.returns.sale',
+        'edge.local.pos.returns.store',
+        'edge.local.pos.returns.show',
         'edge.local.pos.held.store',
         'edge.local.pos.held.kot',
         'edge.local.pos.held.settle',

@@ -1039,6 +1039,8 @@ class EdgeLocalPosService
         'void_kot_item' => 'tenant.pos.void-kot-item',
         'void_kot_items' => 'tenant.pos.void-kot-item',
         'cancel_held_order' => 'tenant.pos.void-kot-item',
+        // F1 RETURN-MANAGER-APPROVAL parity: the same branch-manager marker approves a return (Online: any manager-PIN holder).
+        'sales_return' => 'tenant.pos.void-kot-item',
     ];
 
     /**

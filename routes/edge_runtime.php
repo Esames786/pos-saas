@@ -48,6 +48,12 @@ Route::prefix('edge/local')->name('edge.local.')->group(function () {
         Route::post('/sales', [EdgeLocalPosController::class, 'storeSale'])->name('sales.store');
         // ONLINE-POS PARITY — Preview Bill (zero-mutation running bill).
         Route::post('/preview-bill', [EdgeLocalPosController::class, 'previewBill'])->name('preview.bill');
+        // F1 — SALES RETURNS (post-settlement void = return): find a returnable sale (local or mirrored Online), the
+        // return screen data, post the return (cash refund out of this till), and the posted document.
+        Route::get('/returns/search', [EdgeLocalPosController::class, 'returnsSearch'])->name('returns.search');
+        Route::get('/returns/sales/{sale}', [EdgeLocalPosController::class, 'returnableSale'])->name('returns.sale');
+        Route::post('/returns', [EdgeLocalPosController::class, 'storeReturn'])->name('returns.store');
+        Route::get('/returns/{return}', [EdgeLocalPosController::class, 'showReturn'])->name('returns.show');
 
         // Restaurant layer: dine-in table sessions, held orders (Add Round), KOT business events,
         // settle/cancel, manager re-auth. Same authority envelope (EdgeLocalPosService); NO print transport.

@@ -86,6 +86,59 @@ class EdgeOperationalStockService
         }
     }
 
+    /**
+     * F1 — LOCAL_OPERATIONAL_RETURN: a physically returned item becomes sellable again on the appliance. Quantity
+     * only (no COGS/FEFO/GL — the Cloud's OFFICIAL reversal happens once, at ingestion). Bound to the immutable
+     * return event (return_uuid + return_line_uuid) and IDEMPOTENT: the same pair is never applied twice. Stock-tracked
+     * stock items only — recipe/none products restore nothing here (mirrors the Online rule: is_stock_tracked).
+     */
+    public function returnIn(string $returnUuid, string $returnLineUuid, Product $product, ?ProductVariant $variant, float $qty): bool
+    {
+        if ($qty <= 0 || ! $product->is_stock_tracked || ($product->inventory_consumption_method ?? 'stock_item') !== 'stock_item') {
+            return false;
+        }
+        $baseline = $this->baselines->currentAccepted();
+        if ($baseline === null) {
+            throw new RuntimeException('No accepted operational stock baseline — this Branch Server cannot take returns yet.');
+        }
+        $conn = DB::connection('tenant');
+        $already = $conn->table('edge_operational_stock_movements')
+            ->where('sale_uuid', $returnUuid)->where('line_uuid', $returnLineUuid)->where('movement_type', 'sale_return')->lockForUpdate()->exists();
+        if ($already) {
+            return false; // idempotent: the event already put this line back
+        }
+        $variantId = $variant?->id;
+        $balanceKey = $baseline->id . '-' . $product->id . '-' . ($variantId ?: 0);
+        $balance = $conn->table('edge_operational_stock_balances')->where('balance_key', $balanceKey)->lockForUpdate()->first();
+        if (! $balance) {
+            $conn->table('edge_operational_stock_balances')->insert([
+                'balance_key' => $balanceKey, 'baseline_id' => $baseline->id, 'branch_id' => $baseline->branch_id,
+                'product_id' => $product->id, 'product_variant_id' => $variantId, 'quantity_on_hand' => 0,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+            $balance = $conn->table('edge_operational_stock_balances')->where('balance_key', $balanceKey)->lockForUpdate()->first();
+        }
+        $newQty = (float) $balance->quantity_on_hand + $qty;
+        $conn->table('edge_operational_stock_balances')->where('id', $balance->id)->update(['quantity_on_hand' => $newQty, 'updated_at' => now()]);
+        $conn->table('edge_operational_stock_movements')->insert([
+            'movement_uuid' => (string) Str::ulid(),
+            'baseline_id' => $baseline->id,
+            'sale_uuid' => $returnUuid,       // the RETURN event identity (cross-system)
+            'line_uuid' => $returnLineUuid,   // the return line identity
+            'product_id' => $product->id,
+            'product_variant_id' => $variantId,
+            'movement_type' => 'sale_return',
+            'direction' => 'in',
+            'quantity' => $qty,
+            'balance_after' => $newQty,
+            'activation_epoch' => (int) $baseline->activation_epoch,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return true;
+    }
+
     /** Recipe consumption — mirrors RecipeConsumptionService quantities exactly, operational only. */
     private function consumeRecipe(object $baseline, SalesOrder $sale, SalesOrderLine $line, bool $allowNegative): void
     {
