@@ -99,3 +99,12 @@ no thermal return document, so there is no return print to mirror (RETURN_PRINT 
 - Customer credit: normal Branch POS has no generic customer-credit settlement flow in the canonical POS; Catering's
   customer-credit / advance / refund module stays out of the Edge artifact — classified separately for a later event.
 - SUPPLIER_FINANCE_OFFLINE_PARITY: FINANCIAL_PARITY_PENDING (F2 uses this proven financial-event pattern).
+
+## Gates at the F1 head (11 Sep 2026)
+
+- Focused F1 + adjacent sync / backup / Q suites: 56 tests, 605 assertions, green.
+- Full MySQL suite at a39c90e (run alone): 1556 tests, 1551 passed, 5 red = the known canonical Dompdf/A4-PDF debt
+  (PosQuickReport email, ReportSchedule, three CateringDocumentPdf tests). New Edge regressions: 0.
+- Fast Feature+Unit: 226 tests; the two stale canonical SQLite unit tests red as before. Feature Edge gates (route census,
+  Blade compile + generated PHP lint + JS syntax, runtime boundary, artifact build/boot incl. the return routes): green.
+- `git diff --check`: clean. Canonical at the F1 gate: af6755d (unchanged since the Q re-ground; nothing to reconcile).
