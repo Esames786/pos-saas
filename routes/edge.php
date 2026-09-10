@@ -48,5 +48,9 @@ Route::domain(config('tenancy.central_domain'))
             // handback returns authority when the appliance's sync is clean.
             Route::post('/authority/heartbeat', [\App\Http\Controllers\Edge\EdgeAuthorityApiController::class, 'heartbeat'])->name('edge.api.authority.heartbeat');
             Route::post('/authority/handback', [\App\Http\Controllers\Edge\EdgeAuthorityApiController::class, 'handback'])->name('edge.api.authority.handback');
+
+            // Q — WARM STANDBY FRESHNESS: the current config refresh package for the device's branch (pulled when the
+            // heartbeat advertises a newer config revision than the appliance has applied).
+            Route::post('/config/refresh', [\App\Http\Controllers\Edge\EdgeConfigRefreshApiController::class, 'package'])->name('edge.api.config.refresh');
         });
     });

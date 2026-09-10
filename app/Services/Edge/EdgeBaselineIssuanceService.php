@@ -52,13 +52,45 @@ class EdgeBaselineIssuanceService
 
         // A stable position hash over the authoritative snapshot (evidence for the cutover audit).
         $positionHash = hash('sha256', json_encode(EdgeOperationalBaselineService::canonicalizeItems($items)) . '|' . $branchId . '|' . $sourceRevision);
+        $asOf = now()->toIso8601String();
 
         return EdgeBaselineCutoverService::buildPackage(
             $branchId,
             $activationEpoch,
             $sourceRevision,
             $items,
-            ['as_of' => now()->toIso8601String(), 'hash' => $positionHash],
+            // Q — the revision-independent official-stock WATERMARK the heartbeat advertises: the appliance can prove
+            // its accepted baseline equals the Cloud position the Cloud last told it about.
+            ['as_of' => $asOf, 'hash' => $positionHash, 'stock_watermark' => self::stockWatermarkFor($items)],
         );
+    }
+
+    /**
+     * Q — WARM STANDBY FRESHNESS: the branch's official-stock watermark = a content hash of the authoritative sellable
+     * position (product/variant → on-hand). Any official movement changes it; equality proves the standby is current.
+     *
+     * @return array{stock_watermark:string, as_of:string}
+     */
+    public function stockWatermark(int $branchId): array
+    {
+        $rows = DB::connection('tenant')->table('stock_balances')
+            ->where('branch_id', $branchId)
+            ->selectRaw('product_id, product_variant_id, SUM(quantity_on_hand) as qty')
+            ->groupBy('product_id', 'product_variant_id')
+            ->get();
+        $items = [];
+        foreach ($rows as $r) {
+            if ((float) $r->qty <= 0) {
+                continue;
+            }
+            $items[] = ['product_id' => (int) $r->product_id, 'product_variant_id' => $r->product_variant_id !== null ? (int) $r->product_variant_id : null, 'quantity' => (float) $r->qty];
+        }
+
+        return ['stock_watermark' => self::stockWatermarkFor($items), 'as_of' => now()->toIso8601String()];
+    }
+
+    public static function stockWatermarkFor(array $items): string
+    {
+        return 'sw:' . substr(hash('sha256', json_encode(EdgeOperationalBaselineService::canonicalizeItems($items))), 0, 40);
     }
 }

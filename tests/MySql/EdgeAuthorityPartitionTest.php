@@ -86,6 +86,9 @@ class EdgeAuthorityPartitionTest extends MySqlTenantTestCase
         // A real import stamps the schema the box speaks; the readiness gates compare it to this build.
         DB::table('edge_local_meta')->update(['bootstrap_schema' => config('edge.bootstrap_schema'), 'config_schema_version' => config('edge.config_schema')]);
         $this->acceptTestBaseline([['product_id' => $product, 'product_variant_id' => null, 'quantity' => 10]]);
+        // Q: a warm standby is provably fresh — its accepted baseline equals the watermark the Cloud advertises (the
+        // freshness worker's work, carried by hand here; the real pull is proven in EdgeStandbyFreshnessHttpMySqlTest).
+        DB::table('edge_operational_stock_baselines')->where('status', 'accepted')->update(['stock_watermark' => 'sw:cloud-1', 'cloud_as_of' => now()]);
         $this->seedEdgeCredential($user, $branch, 1);
         config(['app.role' => 'cloud']);
         $this->useDb($this->cloudDb);
@@ -163,7 +166,7 @@ class EdgeAuthorityPartitionTest extends MySqlTenantTestCase
         // ── 1. CLOUD HEALTHY: heartbeat accepted → Cloud holds; Cloud writes, the appliance cannot. ──
         $this->assertStringStartsWith('OK:holder=cloud:fenced=0', $this->cloud(['cloud:heartbeat', $b, self::DEVICE, 1, 'standby']));
         $this->assertSame('OK:cloud-write-allowed', $this->cloud(['cloud:fence', $b]));
-        $this->assertStringStartsWith('OK:acked', $this->edge(['edge:ack', self::TTL]));   // the wire delivered the ack (with the Cloud's TTL)
+        $this->assertStringStartsWith('OK:acked', $this->edge(['edge:ack', self::TTL, 'cloud', 1, 'sw:cloud-1']));   // the wire delivered the ack (with the Cloud's TTL)
         $this->assertRefused($this->edge(['edge:sale-check']), 'STANDBY appliance must refuse local mutation while the Cloud holds the lease');
         // A recent ack (the clock-skew shape: the Cloud lease is still live on the appliance's own clock) → takeover fails closed even when confirmed.
         $this->assertRefused($this->edge(['edge:takeover', 'confirm']), 'takeover with a live lease must fail closed');
@@ -176,7 +179,7 @@ class EdgeAuthorityPartitionTest extends MySqlTenantTestCase
         // The last heartbeat that got through (the Cloud's lease clock and the appliance's ack clock start here).
         $heartbeatAt = microtime(true);
         $this->assertStringStartsWith('OK:holder=cloud:fenced=0', $this->cloud(['cloud:heartbeat', $b, self::DEVICE, 2, 'standby']));
-        $this->assertStringStartsWith('OK:acked', $this->edge(['edge:ack', self::TTL]));
+        $this->assertStringStartsWith('OK:acked', $this->edge(['edge:ack', self::TTL, 'cloud', 1, 'sw:cloud-1']));
 
         // ── 2. PARTITION BEGINS: the appliance's heartbeat cannot reach the Cloud (real transport, unreachable). ──
         $this->assertStringStartsWith('OK:failure-recorded:state=standby', $this->edge(['edge:heartbeat-fail']), 'one failed request is recorded, never a takeover');
@@ -202,7 +205,7 @@ class EdgeAuthorityPartitionTest extends MySqlTenantTestCase
         $this->assertTrue($gates['can'], 'all gates pass after the safe boundary: ' . json_encode($gates));
         $this->assertRefused($this->edge(['edge:takeover']), 'pilot posture: no takeover without supervisor confirmation');
         $this->assertRefused($this->edge(['edge:sale-check']), 'still standby until the takeover');
-        $this->assertSame('OK:state=local_active', $this->edge(['edge:takeover', 'confirm']));
+        $this->assertSame('OK:state=local_active:stale_accepted=0', $this->edge(['edge:takeover', 'confirm']), 'takeover from a provably fresh standby — nothing stale accepted');
         $this->assertSame('OK:edge-write-allowed', $this->edge(['edge:sale-check']));
         $this->assertSame('LOCAL MODE ACTIVE', json_decode(substr($this->edge(['edge:state']), 3), true)['label']);
 

@@ -52,6 +52,7 @@ class EdgeSupervisionMySqlTest extends MySqlTenantTestCase
         $this->assertContains('edge:local:print-worker', $commands);
         $this->assertContains('edge:local:sync-send', $commands);
         $this->assertContains('edge:local:backup', $commands);
+        $this->assertContains('edge:local:authority-worker', $commands, 'Q: the heartbeat/state-machine/freshness worker is a supervised appliance responsibility');
         foreach ($commands as $c) {
             $this->assertTrue(\App\Support\EdgeConsoleBoundary::isAllowed($c), "{$c} must be Edge-allowlisted");
         }
@@ -84,6 +85,10 @@ class EdgeSupervisionMySqlTest extends MySqlTenantTestCase
         $this->assertSame(2, $byName['BingooEdgeSyncSender']['repeat_minutes']);
         $this->assertSame(60, $byName['BingooEdgeBackup']['repeat_minutes']);
         $this->assertSame('continuous', $byName['BingooEdgePrintWorker']['kind']);
+        // Q — ONE logical authority worker: continuous, single instance, no overlapping runs.
+        $this->assertSame(EdgeSupervisionPlan::SINGLETON_AUTHORITY_WORKER, $byName['BingooEdgeAuthorityWorker']['singleton']);
+        $this->assertSame('continuous', $byName['BingooEdgeAuthorityWorker']['kind']);
+        $this->assertCount(1, array_filter($this->plan(), fn ($t) => $t['artisan_command'] === 'edge:local:authority-worker'), 'exactly one heartbeat schedule');
     }
 
     public function test_no_secret_ever_appears_on_a_command_line(): void

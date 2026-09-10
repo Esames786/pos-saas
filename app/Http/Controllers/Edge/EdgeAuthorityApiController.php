@@ -39,13 +39,16 @@ class EdgeAuthorityApiController extends Controller
         $this->tenancy->activate($tenant);
         try {
             $lease = $this->leases->heartbeat($device, (int) $data['seq'], (string) $data['edge_state']);
+            // Q — WARM STANDBY FRESHNESS: every accepted heartbeat tells the appliance where the Cloud stands
+            // (config revision + official-stock watermark) so the standby can prove, and keep, its freshness.
+            $advertised = app(\App\Services\Edge\EdgeStandbyAdvertiser::class)->forDevice($device, $tenant);
         } catch (RuntimeException $e) {
             return response()->json(['status' => 'refused', 'failure_code' => $e->getMessage()], 409);
         } finally {
             $this->tenancy->deactivate();
         }
 
-        return response()->json(['status' => 'ok'] + $lease);
+        return response()->json(['status' => 'ok'] + $lease + $advertised);
     }
 
     public function handback(Request $request): JsonResponse

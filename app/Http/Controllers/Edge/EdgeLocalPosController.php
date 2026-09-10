@@ -899,8 +899,9 @@ class EdgeLocalPosController extends Controller
             'pending_sales' => $pending,
             'needs_attention' => $attention,
             'last_synced_at' => $snap['last_ack_at'] ?? null,
-            // P0 lease: the connection state the cashier should see (ONLINE / INTERNET CONNECTION LOST /
-            // PREPARING LOCAL MODE / LOCAL MODE ACTIVE / RETURNING TO ONLINE) — labels only, no internals.
+            // P0 lease + Q state machine: the connection state the cashier should see (ONLINE / INTERNET CONNECTION
+            // UNSTABLE / INTERNET CONNECTION LOST / PREPARING LOCAL MODE / LOCAL MODE ACTIVE / CONNECTION RESTORED /
+            // SYNCHRONIZING / RETURNING TO ONLINE) — labels only, no internals.
             'connection' => $authority['label'],
             'state' => $attention > 0 ? 'attention' : ($pending > 0 ? 'pending' : 'up_to_date'),
             'message' => $attention > 0

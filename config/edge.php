@@ -53,6 +53,26 @@ return [
         'skew_margin_seconds'    => (int) env('EDGE_AUTHORITY_SKEW_MARGIN', 30),
         'interval_seconds'       => (int) env('EDGE_AUTHORITY_INTERVAL', 20),
         'require_confirmation'   => filter_var(env('EDGE_AUTHORITY_REQUIRE_CONFIRMATION', true), FILTER_VALIDATE_BOOL),
+        // Q — connection state machine thresholds (consecutive failed heartbeats). ONE failure is a blip: the
+        // cashier still sees ONLINE; the lease alone decides authority (TTL + skew margin), never a counter.
+        'unstable_after_failures' => (int) env('EDGE_AUTHORITY_UNSTABLE_AFTER', 2),
+        'lost_after_failures'     => (int) env('EDGE_AUTHORITY_LOST_AFTER', 4),
+        // Q — handback needs a STABLE connection: this many consecutive acknowledged heartbeats first.
+        'handback_min_consecutive_acks' => (int) env('EDGE_AUTHORITY_HANDBACK_MIN_ACKS', 2),
+        // Q — how many outbox envelopes one worker tick may drain while local (bounded work per tick).
+        'drain_batch'             => (int) env('EDGE_AUTHORITY_DRAIN_BATCH', 25),
+    ],
+
+    /*
+    | Q — WARM STANDBY FRESHNESS. While the Cloud is the writer the appliance keeps ITSELF current: every accepted
+    | heartbeat carries the Cloud's config revision and official-stock watermark; the worker pulls a config refresh
+    | when the revision moved and a fresh stock baseline when the watermark moved. At takeover the accepted baseline
+    | must EQUAL the last advertised watermark (or be no older than max_stock_age relative to the last ack) and the
+    | applied config revision must equal the last advertised revision — otherwise STANDBY_FRESH_ENOUGH fails closed.
+    */
+    'standby' => [
+        'config_refresh_url'     => env('EDGE_STANDBY_CONFIG_REFRESH_URL'), // Cloud device-authed: POST config refresh package
+        'max_stock_age_seconds'  => (int) env('EDGE_STANDBY_MAX_STOCK_AGE', 300),
     ],
 
     'sync' => [
@@ -212,6 +232,7 @@ return [
         'edge:local:authority-status',    // P0 lease: gates + state (read-only)
         'edge:local:authority-takeover',  // P0 lease: supervised Local Mode activation (fail closed on any gate)
         'edge:local:authority-handback',  // P0 lease: return authority to the Cloud when sync is clean
+        'edge:local:authority-worker',    // Q: the ONE supervised heartbeat / state-machine / standby-freshness worker
         // Framework cache/runtime operations the appliance explicitly needs.
         'config:cache', 'config:clear',
         'route:cache', 'route:clear',

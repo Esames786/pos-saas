@@ -42,6 +42,15 @@ class EdgeLocalMeta extends Model
         'authority_takeover_at' => 'datetime',
         'authority_lease_ttl_seconds' => 'integer',
         'authority_heartbeat_seq' => 'integer',
+        // Q — connection state machine + warm standby freshness bookkeeping.
+        'connection_state_since' => 'datetime',
+        'heartbeat_consecutive_failures' => 'integer',
+        'heartbeat_consecutive_acks' => 'integer',
+        'standby_config_revision_seen' => 'integer',
+        'standby_stock_as_of_seen' => 'datetime',
+        'standby_config_refreshed_at' => 'datetime',
+        'standby_stock_refreshed_at' => 'datetime',
+        'reconcile_clean_at' => 'datetime',
     ];
 
     /** Identity fields that become IMMUTABLE once set (fix 5). */

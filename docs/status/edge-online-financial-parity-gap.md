@@ -48,7 +48,22 @@ FINANCIAL_PARITY_PLAN = return-event outbox -> Cloud return ingestion (finance-g
 same way sale ingestion is (exactly-once, finance-complete-or-refuse). This is a separate tranche after
 operational parity.
 
-## Supplier finance (SUPPLIER-FINANCE-DIRECT-1) — classified 8 Sep 2026
+## Supplier finance (SUPPLIER-FINANCE-DIRECT-1) — classified 8 Sep 2026; CANONICAL since 70d24c1 (10 Sep 2026)
+
+**Update 10 Sep 2026 — now canonical.** The workflow merged into `origin/feat/14d-2-plan-upgrade-requests` at
+`70d24c1` (1e69481 SUPPLIER-FINANCE-DIRECT-1, 49381a1 idempotency + foreign-supplier guard, cd6a75e purchase-return GL
+regression guard, 70d24c1 HTTP guards). The Online functionality Edge must eventually match:
+
+- **Direct Supplier Payment without a Purchase Bill** — `SupplierPaymentController` (index/create/store/show),
+  `JournalPostingService::postSupplierPayment` (Dr 2100 Accounts Payable / Cr cash-bank), supplier ledger entry.
+- **Supplier Ledger → Record Payment** — `tenant.suppliers.ledger` with the payment entry point.
+- **Supplier-aware General Journal / AP entry** — manual journal lines carrying `counterparty_type=supplier` mirrored
+  into the supplier subledger; AP identified by the whole 2100 family.
+
+Classification: **SUPPLIER_FINANCE_OFFLINE_PARITY = FINANCIAL_PARITY_PENDING.** Edge still has no official offline
+supplier-finance ingestion/authority; it must NOT invent local AP/GL posting. This is not "missing" and not
+permanently Online-only: the financial-parity phase must include this newly-canonical workflow (Edge-originated
+supplier-payment events → Cloud ingestion posting AP/GL exactly once, the same contract shape as sale ingestion).
 
 A separate Main Finance session is building **direct supplier payment, supplier-ledger payment and a
 supplier-aware General Journal** on `feat/supplier-finance-direct-v1` (`1e69481`, 8 Sep). As of the Edge

@@ -33,6 +33,7 @@ class EdgeAuthorityService
         private readonly EdgeLocalReadiness $readiness,
         private readonly EdgeOperationalBaselineService $baselines,
         private readonly EdgeSyncStatusService $sync,
+        private readonly EdgeStandbyFreshnessService $freshness,
     ) {
     }
 
@@ -56,17 +57,35 @@ class EdgeAuthorityService
         try {
             $ack = $this->client->heartbeat($seq, $this->state());
         } catch (RuntimeException $e) {
-            $meta->forceFill(['authority_last_failure_at' => now()])->save();
+            // Q: a failure is RECORDED (counters drive the connection state), never acted on. A lost connection also
+            // invalidates any earlier "reconciliation clean" — it must be re-proven once the Cloud answers again.
+            $meta->forceFill([
+                'authority_last_failure_at' => now(),
+                'heartbeat_consecutive_failures' => (int) $meta->heartbeat_consecutive_failures + 1,
+                'heartbeat_consecutive_acks' => 0,
+                'reconcile_clean_at' => null,
+            ])->save();
 
-            return ['ok' => false, 'reason' => $e->getMessage(), 'state' => $this->state()];
+            return ['ok' => false, 'reason' => $e->getMessage(), 'state' => $this->state(), 'consecutive_failures' => (int) $meta->heartbeat_consecutive_failures];
         }
         $meta->forceFill([
             'authority_heartbeat_seq' => $seq,
             'authority_last_ack_at' => now(),                       // APPLIANCE clock, deliberately
             'authority_lease_ttl_seconds' => (int) ($ack['lease_ttl_seconds'] ?? config('edge.authority.ttl_seconds', 120)),
+            'heartbeat_consecutive_failures' => 0,
+            'heartbeat_consecutive_acks' => (int) $meta->heartbeat_consecutive_acks + 1,
+            'authority_cloud_holder_seen' => isset($ack['holder']) ? (string) $ack['holder'] : $meta->authority_cloud_holder_seen,
+            // Q — WARM STANDBY FRESHNESS: what the Cloud advertised on this beat (the appliance's freshness targets).
+            'standby_config_revision_seen' => isset($ack['cloud_config_revision']) ? (int) $ack['cloud_config_revision'] : $meta->standby_config_revision_seen,
+            'standby_stock_watermark_seen' => isset($ack['stock_watermark']) ? (string) $ack['stock_watermark'] : $meta->standby_stock_watermark_seen,
+            'standby_stock_as_of_seen' => isset($ack['stock_as_of']) ? \Illuminate\Support\Carbon::parse($ack['stock_as_of']) : $meta->standby_stock_as_of_seen,
         ])->save();
 
-        return ['ok' => true, 'holder' => $ack['holder'] ?? null, 'cloud_edge_state' => $ack['edge_state'] ?? null, 'state' => $this->state(), 'seq' => $seq];
+        return [
+            'ok' => true, 'holder' => $ack['holder'] ?? null, 'cloud_edge_state' => $ack['edge_state'] ?? null, 'state' => $this->state(), 'seq' => $seq,
+            'consecutive_acks' => (int) $meta->heartbeat_consecutive_acks,
+            'advertised' => ['config_revision' => $ack['cloud_config_revision'] ?? null, 'stock_watermark' => $ack['stock_watermark'] ?? null, 'stock_as_of' => $ack['stock_as_of'] ?? null],
+        ];
     }
 
     /** The Cloud lease has lapsed on the appliance's own clock (TTL + skew margin after the last acknowledged beat). */
@@ -106,7 +125,16 @@ class EdgeAuthorityService
             'STOCK_AUTHORITY_READY' => $this->baselines->currentAccepted() !== null,
             'ENTITLEMENT_VALID' => $this->leaseModeEnabled() && trim((string) config('edge.sync.device_id', '')) !== '' && $meta !== null && $meta->authority_last_ack_at !== null,
             'AUTHORITY_TAKEOVER_SAFE' => $this->cloudLeaseLapsedLocally(),
+            // Q — WARM STANDBY FRESHNESS: the standby provably equals the Cloud's last advertised config revision and
+            // official-stock position (or holds a baseline issued after the last acknowledged heartbeat).
+            'STANDBY_FRESH_ENOUGH' => $this->freshness->freshEnough()['ok'],
         ];
+    }
+
+    /** The freshness proof behind the STANDBY_FRESH_ENOUGH gate (facts + reasons), for the supervisor and the audit. */
+    public function freshness(): array
+    {
+        return $this->freshness->freshEnough();
     }
 
     public function canTakeOver(): bool
@@ -118,7 +146,7 @@ class EdgeAuthorityService
      * Assume LOCAL authority. Pilot posture: a supervisor must confirm (config edge.authority.require_confirmation).
      * Fails closed on any gate; idempotent when already local_active.
      */
-    public function takeOver(bool $confirmed, ?string $by = null): array
+    public function takeOver(bool $confirmed, ?string $by = null, bool $acceptStale = false, ?string $staleReason = null): array
     {
         if (! EdgeRuntime::isBranchServer()) {
             throw new RuntimeException('Local authority can only be assumed on a Branch Server.');
@@ -129,29 +157,56 @@ class EdgeAuthorityService
         if ((bool) config('edge.authority.require_confirmation', true) && ! $confirmed) {
             throw new RuntimeException('Supervisor confirmation is required to activate Local Mode.');
         }
+        if ($acceptStale && trim((string) $staleReason) === '') {
+            throw new RuntimeException('Accepting a stale standby requires a supervisor reason (audited).');
+        }
 
-        return DB::connection('tenant')->transaction(function () use ($by) {
+        $result = DB::connection('tenant')->transaction(function () use ($by, $acceptStale, $staleReason) {
             $meta = EdgeLocalMeta::on('tenant')->where('id', EdgeLocalMeta::SINGLETON)->lockForUpdate()->firstOrFail();
             if ((string) $meta->authority_state === self::LOCAL_ACTIVE) {
                 return ['state' => self::LOCAL_ACTIVE, 'gates' => $this->gates(), 'already' => true];
             }
             $gates = $this->gates();
+            $freshness = $this->freshness->freshEnough();
             $failed = array_keys(array_filter($gates, fn ($ok) => ! $ok));
+            // Q — freshness is the ONE gate a supervisor may consciously override (audited reason), never the others.
+            $staleAccepted = false;
+            if ($failed === ['STANDBY_FRESH_ENOUGH'] && $acceptStale) {
+                $failed = [];
+                $staleAccepted = true;
+            }
             if ($failed !== []) {
-                throw new RuntimeException('Local Mode cannot start — failing gates: ' . implode(', ', $failed));
+                $detail = in_array('STANDBY_FRESH_ENOUGH', $failed, true) && $freshness['reasons'] !== [] ? ' [' . implode('; ', $freshness['reasons']) . ']' : '';
+                throw new RuntimeException('Local Mode cannot start — failing gates: ' . implode(', ', $failed) . $detail);
             }
             $meta->forceFill([
                 'authority_state' => self::LOCAL_ACTIVE,
                 'authority_takeover_at' => now(),
-                'authority_state_reason' => mb_substr('Cloud lease lapsed; local readiness verified' . ($by ? "; confirmed by {$by}" : ''), 0, 255),
+                'authority_state_reason' => mb_substr('Cloud lease lapsed; local readiness verified' . ($by ? "; confirmed by {$by}" : '') . ($staleAccepted ? '; STALE STANDBY ACCEPTED: ' . trim((string) $staleReason) : ''), 0, 255),
+                // The provable freshness at the moment of takeover — what the local selling position is based on.
+                'authority_takeover_freshness' => json_encode([
+                    'fresh' => $freshness['ok'],
+                    'stale_accepted' => $staleAccepted,
+                    'stale_reason' => $staleAccepted ? trim((string) $staleReason) : null,
+                    'confirmed_by' => $by,
+                    'reasons' => $freshness['reasons'],
+                ] + $freshness['facts']),
             ])->save();
 
-            return ['state' => self::LOCAL_ACTIVE, 'gates' => $gates, 'already' => false];
+            return ['state' => self::LOCAL_ACTIVE, 'gates' => $gates, 'already' => false, 'freshness' => $freshness, 'stale_accepted' => $staleAccepted];
         });
+        // Q: an authority change is persisted as a connection-state transition at once (restart-safe, audited).
+        app(EdgeConnectionStateMachine::class)->evaluate();
+
+        return $result;
     }
 
-    /** Return authority to the Cloud — only with a clean outbox, only through the Cloud's acknowledgement. */
-    public function handback(?string $by = null): array
+    /**
+     * Return authority to the Cloud — only with a clean outbox, only through the Cloud's acknowledgement.
+     * $afterFence runs once the appliance has fenced itself (handing_back) and BEFORE the Cloud is asked — the Q
+     * orchestrator uses it to persist/audit the HANDING_BACK connection state while both sides are fenced.
+     */
+    public function handback(?string $by = null, ?callable $afterFence = null): array
     {
         $meta = $this->context->requireCurrent();
         if ((string) $meta->authority_state !== self::LOCAL_ACTIVE && (string) $meta->authority_state !== self::HANDING_BACK) {
@@ -164,6 +219,9 @@ class EdgeAuthorityService
             throw new RuntimeException("Handback refused — sync is not clean (pending {$pending}, needs attention {$failed}).");
         }
         $meta->forceFill(['authority_state' => self::HANDING_BACK, 'authority_state_reason' => 'handback in progress'])->save();
+        if ($afterFence !== null) {
+            $afterFence();
+        }
         try {
             $ack = $this->client->handback($pending, $failed);
         } catch (RuntimeException $e) {
@@ -176,8 +234,12 @@ class EdgeAuthorityService
         $meta->forceFill([
             'authority_state' => self::STANDBY,
             'authority_last_ack_at' => now(),
+            'authority_cloud_holder_seen' => 'cloud',
+            'reconcile_clean_at' => null,
+            'handback_blocked_reason' => null,
             'authority_state_reason' => mb_substr('handed back to Cloud' . ($by ? " by {$by}" : ''), 0, 255),
         ])->save();
+        app(EdgeConnectionStateMachine::class)->evaluate();
 
         return ['state' => self::STANDBY, 'cloud' => $ack];
     }
@@ -196,24 +258,17 @@ class EdgeAuthorityService
         }
     }
 
-    /** Business-friendly state for the till: what the cashier should see. */
+    /**
+     * Business-friendly state for the till: what the cashier should see. Q: derived by the connection state machine
+     * from the persisted facts (no internals: no timestamps, uuids, hashes, epochs, baseline identifiers).
+     */
     public function cashierState(): array
     {
         if (! $this->leaseModeEnabled()) {
-            return ['label' => 'ONLINE', 'mode' => 'manual', 'state' => $this->state()];
+            return ['label' => 'ONLINE', 'mode' => 'manual', 'state' => $this->state(), 'connection' => EdgeConnectionStateMachine::ONLINE];
         }
-        $state = $this->state();
-        if ($state === self::LOCAL_ACTIVE) {
-            return ['label' => 'LOCAL MODE ACTIVE', 'mode' => 'lease', 'state' => $state];
-        }
-        if ($state === self::HANDING_BACK) {
-            return ['label' => 'RETURNING TO ONLINE', 'mode' => 'lease', 'state' => $state];
-        }
-        $meta = $this->context->current();
-        if ($meta && $meta->authority_last_failure_at !== null && ($meta->authority_last_ack_at === null || $meta->authority_last_failure_at->gt($meta->authority_last_ack_at))) {
-            return ['label' => $this->cloudLeaseLapsedLocally() ? 'PREPARING LOCAL MODE' : 'INTERNET CONNECTION LOST', 'mode' => 'lease', 'state' => $state];
-        }
+        $derived = app(EdgeConnectionStateMachine::class)->derive();
 
-        return ['label' => 'ONLINE', 'mode' => 'lease', 'state' => $state];
+        return ['label' => EdgeConnectionStateMachine::label($derived['state']), 'mode' => 'lease', 'state' => $this->state(), 'connection' => $derived['state'], 'pending' => $derived['pending']];
     }
 }

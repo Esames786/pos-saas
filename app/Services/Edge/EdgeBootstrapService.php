@@ -449,6 +449,117 @@ class EdgeBootstrapService
 
     // Protected (not private) for the same reason as buildSections: the watermark behaviour is
     // pinned by executable tests (EdgeConfigWatermarkMySqlTest) through a test-only subclass.
+    /**
+     * Q — WARM STANDBY FRESHNESS: the branch's CURRENT config watermark and its monotonic revision, advertised to the
+     * appliance on every accepted heartbeat. Allocation is idempotent (same watermark → same revision), so the
+     * heartbeat path mints a new revision exactly when the config content changed. Tenant must be active.
+     *
+     * @return array{watermark:string, revision:int}
+     */
+    public function currentConfigRevision(Tenant $tenant, Branch $branch): array
+    {
+        $watermark = $this->sourceRevision($branch);
+        $revision = app(EdgeConfigRevisionService::class)->allocateForWatermark((int) $tenant->id, (int) $branch->id, $watermark);
+
+        return ['watermark' => $watermark, 'revision' => $revision];
+    }
+
+    /**
+     * Q — WARM STANDBY FRESHNESS: the config REFRESH package for a paired device at the branch's current watermark —
+     * the same real sections a bootstrap ships (EDGE-CONFIG-REFRESH-1 upsert/tombstone contract), stamped with the
+     * monotonic config revision the appliance orders refreshes by. Deterministic identity per revision: the same
+     * revision always yields the same manifest (one revision = one content), so a re-pull can never conflict.
+     *
+     * Fails closed: contract (entitlement/pairing) as for bootstrap; the device must be the branch's CURRENT
+     * activation (a superseded device never receives config). Sections are read at one consistent point in time
+     * and published only if the watermark did not move during the read.
+     *
+     * @return array{manifest:array, sections:array}
+     */
+    public function refreshPackage(EdgeDevice $device): array
+    {
+        try {
+            [$tenant, $branch] = $this->refreshContract($device);
+            $epochs = app(EdgeActivationEpochService::class);
+            $activation = $epochs->currentActivation((int) $tenant->id, (int) $branch->id);
+            if (! $activation || (string) $activation->device_public_uuid !== (string) $device->public_uuid) {
+                throw EdgeBootstrapException::of(EdgeBootstrapException::NOT_ALLOWED);
+            }
+            $epoch = (int) $activation->generation;
+            $claim = $this->currentConfigRevision($tenant, $branch);
+            [$sections, $txnWatermark] = DB::connection('tenant')->transaction(function () use ($tenant, $branch) {
+                return [$this->buildSections($tenant, $branch), $this->sourceRevision($branch)];
+            });
+            if (! hash_equals($claim['watermark'], $txnWatermark)) {
+                throw EdgeBootstrapException::of(EdgeBootstrapException::SOURCE_CHANGED);
+            }
+            $summary = [];
+            foreach ($sections as $name => $rows) {
+                $summary[$name] = ['hash' => hash('sha256', $this->canonicalJson($rows)), 'count' => is_array($rows) ? count($rows) : 0];
+            }
+            $revision = (int) $claim['revision'];
+            $snapshotUuid = 'refresh-' . $revision . '-' . substr(hash('sha256', implode('|', [(int) $tenant->id, (int) $branch->id, (string) $device->public_uuid, $epoch, $revision])), 0, 24);
+            $manifest = [
+                'schema_version' => self::SCHEMA_VERSION,
+                'snapshot_uuid' => $snapshotUuid,
+                'tenant_code' => (string) $tenant->tenant_code,
+                'tenant_id' => (int) $tenant->id,
+                'branch_id' => (int) $branch->id,
+                'device_public_uuid' => (string) $device->public_uuid,
+                'activation_epoch' => $epoch,
+                'config_revision' => $revision,
+                'config_schema_version' => self::CONFIG_SCHEMA_VERSION,
+                'source_revision' => $claim['watermark'],
+                'sections' => $summary,
+                'generated_at' => now()->toIso8601String(),
+            ];
+            $manifest['manifest_hash'] = $this->computeManifestHash(
+                self::SCHEMA_VERSION, $snapshotUuid, (int) $tenant->id, (int) $branch->id, (string) $device->public_uuid,
+                $epoch, $revision, self::CONFIG_SCHEMA_VERSION, $summary
+            );
+
+            return ['manifest' => $manifest, 'sections' => $sections];
+        } finally {
+            $this->tenancy->deactivate();
+        }
+    }
+
+    /**
+     * Q — the contract for a config REFRESH: a paired, un-revoked device in the branch's active slot that is READY or
+     * ACTIVE (a running appliance is exactly the warm standby that refreshes), the tenant entitled and the feature on,
+     * the branch existing. Unlike the bootstrap contract it does NOT gate on the manual Local-Mode branch status: the
+     * lease decides authority; a standby must stay fresh whatever that switch says. Activates the tenant.
+     *
+     * @return array{0: Tenant, 1: Branch}
+     */
+    protected function refreshContract(EdgeDevice $device): array
+    {
+        $tenant = Tenant::find($device->tenant_id);
+        if (! $tenant) {
+            throw EdgeBootstrapException::of(EdgeBootstrapException::NOT_ALLOWED);
+        }
+        $this->tenancy->activate($tenant);
+        if ($device->isRevoked() || $device->active_slot !== EdgeDevice::ACTIVE_SLOT) {
+            throw EdgeBootstrapException::of(EdgeBootstrapException::DEVICE_REVOKED);
+        }
+        if (! in_array($device->status, [EdgeDevice::STATUS_READY, EdgeDevice::STATUS_ACTIVE], true)) {
+            throw EdgeBootstrapException::of(EdgeBootstrapException::NOT_ALLOWED);
+        }
+        $current = EdgeDevice::active()->where('tenant_id', $device->tenant_id)->where('branch_id', $device->branch_id)->first();
+        if (! $current || (int) $current->id !== (int) $device->id) {
+            throw EdgeBootstrapException::of(EdgeBootstrapException::DEVICE_REVOKED);
+        }
+        if (! $this->entitlement->featureIsEnabled() || ! $this->entitlement->tenantHasOfflineEdgeAccess()) {
+            throw EdgeBootstrapException::of(EdgeBootstrapException::NOT_ALLOWED);
+        }
+        $branch = Branch::find($device->branch_id);
+        if (! $branch) {
+            throw EdgeBootstrapException::of(EdgeBootstrapException::NOT_ALLOWED);
+        }
+
+        return [$tenant, $branch];
+    }
+
     protected function sourceRevision(Branch $branch): string
     {
         $conn = DB::connection('tenant');

@@ -28,6 +28,7 @@ class EdgeSupervisionPlan
     public const SINGLETON_HEARTBEAT = 'singleton_heartbeat';   // print worker (EdgeLocalPrintWorkerSupervisor)
     public const SINGLETON_OUTBOX_LEASE = 'outbox_lease';       // sync sender (SKIP LOCKED)
     public const SINGLETON_BACKUP_LOCK = 'backup_lock';         // backup (flock)
+    public const SINGLETON_AUTHORITY_WORKER = 'authority_worker_heartbeat'; // Q authority worker (DB singleton + liveness heartbeat)
 
     private const SERVICE_ACCOUNT = 'NT AUTHORITY\\LOCAL SERVICE';
 
@@ -48,6 +49,12 @@ class EdgeSupervisionPlan
             ]),
             $this->task('BingooEdgeSyncSender', 'edge:local:sync-send', $phpPath, $artisan, $appRoot, [
                 'trigger' => 'at_startup', 'kind' => 'periodic', 'repeat_minutes' => 2, 'singleton' => self::SINGLETON_OUTBOX_LEASE,
+            ]),
+            // Q — the ONE authority worker: heartbeat at the configured interval, connection state machine, warm
+            // standby freshness, outbox drain + reconciliation while local. Continuous, single instance (DB singleton
+            // with liveness heartbeat), cooperative stop, secrets from config only.
+            $this->task('BingooEdgeAuthorityWorker', 'edge:local:authority-worker', $phpPath, $artisan, $appRoot, [
+                'trigger' => 'at_startup', 'kind' => 'continuous', 'singleton' => self::SINGLETON_AUTHORITY_WORKER,
             ]),
             $this->task('BingooEdgeBackup', 'edge:local:backup', $phpPath, $artisan, $appRoot, [
                 'trigger' => 'at_startup', 'kind' => 'periodic', 'repeat_minutes' => 60, 'singleton' => self::SINGLETON_BACKUP_LOCK,

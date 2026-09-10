@@ -72,10 +72,38 @@ try {
             exit(0);
 
         // ── Appliance side ─────────────────────────────────────────────────────────────────────────
-        case 'edge:ack': // edge:ack <ttl>  — the appliance records an acknowledged heartbeat (what a successful wire delivers)
+        case 'edge:ack': // edge:ack <ttl> [holder] [config_revision] [stock_watermark] — the appliance records an acknowledged heartbeat (what a successful wire delivers)
             $meta = app(\App\Services\Edge\EdgeBranchContext::class)->requireCurrent();
-            $meta->forceFill(['authority_heartbeat_seq' => (int) $meta->authority_heartbeat_seq + 1, 'authority_last_ack_at' => now(), 'authority_lease_ttl_seconds' => (int) $argv[2]])->save();
-            echo 'OK:acked:seq=' . $meta->authority_heartbeat_seq . "\n";
+            $fill = [
+                'authority_heartbeat_seq' => (int) $meta->authority_heartbeat_seq + 1, 'authority_last_ack_at' => now(), 'authority_lease_ttl_seconds' => (int) $argv[2],
+                'heartbeat_consecutive_failures' => 0, 'heartbeat_consecutive_acks' => (int) $meta->heartbeat_consecutive_acks + 1,
+            ];
+            if (isset($argv[3]) && $argv[3] !== '-') { $fill['authority_cloud_holder_seen'] = (string) $argv[3]; }
+            if (isset($argv[4]) && $argv[4] !== '-') { $fill['standby_config_revision_seen'] = (int) $argv[4]; }
+            if (isset($argv[5]) && $argv[5] !== '-') { $fill['standby_stock_watermark_seen'] = (string) $argv[5]; $fill['standby_stock_as_of_seen'] = now(); }
+            $meta->forceFill($fill)->save();
+            $st = app(\App\Services\Edge\EdgeConnectionStateMachine::class)->evaluate();
+            echo 'OK:acked:seq=' . $meta->authority_heartbeat_seq . ':acks=' . $meta->heartbeat_consecutive_acks . ':conn=' . $st['state'] . "\n";
+            exit(0);
+        case 'edge:tick': // one REAL worker tick (heartbeat over the real transport → state machine → freshness/drain)
+            $r = app(\App\Services\Edge\EdgeAuthorityTick::class)->run('partition-worker');
+            echo 'OK:' . json_encode(['hb' => $r['heartbeat']['ok'], 'conn' => $r['state']['state'], 'label' => $r['state']['label'], 'work' => $r['work']['kind'] ?? null, 'failures' => $r['heartbeat']['consecutive_failures'] ?? 0]) . "\n";
+            exit(0);
+        case 'edge:connection': // the persisted + derived connection state (what survived a restart, and what the facts say now)
+            $sm = app(\App\Services\Edge\EdgeConnectionStateMachine::class);
+            echo 'OK:' . json_encode(['persisted' => $sm->persisted()['state'], 'derived' => $sm->derive()['state'], 'label' => $sm->evaluate()['label']]) . "\n";
+            exit(0);
+        case 'edge:mark-reconciled': // test wire: the worker's reconciliation pass came back clean
+            app(\App\Services\Edge\EdgeBranchContext::class)->requireCurrent()->forceFill(['reconcile_clean_at' => now()])->save();
+            echo "OK:reconciled\n";
+            exit(0);
+        case 'edge:handback-assess':
+            $a = app(\App\Services\Edge\EdgeHandbackOrchestrator::class)->assess();
+            echo 'OK:' . json_encode(['ready' => $a['ready'], 'blockers' => array_column($a['blockers'], 'code')]) . "\n";
+            exit(0);
+        case 'edge:handback-run':
+            $r = app(\App\Services\Edge\EdgeHandbackOrchestrator::class)->run('supervisor');
+            echo 'OK:' . json_encode(['status' => $r['status'], 'blockers' => array_column($r['blockers'] ?? [], 'code'), 'error' => $r['error'] ?? null, 'authority_state' => app(\App\Services\Edge\EdgeAuthorityService::class)->state()]) . "\n";
             exit(0);
         case 'edge:heartbeat-fail': // the real transport against an unreachable Cloud — must record a failure, never throw, never change state
             $r = app(EdgeAuthorityService::class)->heartbeat();
@@ -85,9 +113,10 @@ try {
             $svc = app(EdgeAuthorityService::class);
             echo 'OK:' . json_encode(['gates' => $svc->gates(), 'can' => $svc->canTakeOver(), 'lapsed' => $svc->cloudLeaseLapsedLocally()]) . "\n";
             exit(0);
-        case 'edge:takeover': // edge:takeover [confirm]
-            $r = app(EdgeAuthorityService::class)->takeOver(($argv[2] ?? '') === 'confirm', 'supervisor');
-            echo 'OK:state=' . $r['state'] . "\n";
+        case 'edge:takeover': // edge:takeover [confirm] [accept-stale <reason>]
+            $acceptStale = ($argv[3] ?? '') === 'accept-stale';
+            $r = app(EdgeAuthorityService::class)->takeOver(($argv[2] ?? '') === 'confirm', 'supervisor', $acceptStale, $acceptStale ? (string) ($argv[4] ?? '') : null);
+            echo 'OK:state=' . $r['state'] . ':stale_accepted=' . (($r['stale_accepted'] ?? false) ? 1 : 0) . "\n";
             exit(0);
         case 'edge:sale-check': // what a local cashier mutation meets
             app(EdgeAuthorityService::class)->assertLocalMutationAllowed();

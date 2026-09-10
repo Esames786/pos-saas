@@ -84,6 +84,9 @@ class EdgeArtifactBootTest extends TestCase
         $this->assertSame(0, $list->exitCode(), 'command discovery failed (a pruned class broke autoload?): ' . $list->errorOutput());
         $this->assertStringContainsString('edge:local:sync-send', $list->output());
         $this->assertStringContainsString('edge:local:backup', $list->output());
+        // Q — the supervised authority worker (heartbeat + state machine + warm standby freshness) ships in the artifact.
+        $this->assertStringContainsString('edge:local:authority-worker', $list->output());
+        $this->assertStringContainsString('edge:local:authority-handback', $list->output());
     }
 
     public function test_the_booted_artifact_registers_only_the_edge_runtime_routes(): void

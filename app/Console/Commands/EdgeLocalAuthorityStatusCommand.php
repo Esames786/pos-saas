@@ -8,7 +8,7 @@ class EdgeLocalAuthorityStatusCommand extends EdgeLocalAuthorityCommand
 {
     protected $signature = 'edge:local:authority-status';
 
-    protected $description = 'P0 branch authority lease — appliance state, readiness gates and the cashier-facing label';
+    protected $description = 'P0/Q branch authority — authority state, connection state, readiness gates, freshness proof, handback blockers, cashier label';
 
     public function handle(EdgeAuthorityService $authority): int
     {

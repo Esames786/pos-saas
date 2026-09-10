@@ -222,6 +222,10 @@ class EdgeBaselineCutoverService
                 'generation' => $newGeneration,
                 'source_revision' => $currentRevision,
                 'content_hash' => $computedHash,
+                // Q — the Cloud official-stock watermark this baseline EQUALS (provable freshness at takeover).
+                'stock_watermark' => $cloudPosition['stock_watermark'] ?? null,
+                'cloud_as_of' => isset($cloudPosition['as_of']) ? \Illuminate\Support\Carbon::parse($cloudPosition['as_of']) : null,
+                'freshness_kind' => 'cutover',
                 'status' => 'accepted',
                 'active_binding_key' => EdgeOperationalBaselineService::bindingKey($branchId, $deviceUuid, $epoch),
                 'accepted_at' => now(),
@@ -278,6 +282,128 @@ class EdgeBaselineCutoverService
      * only stamps the canonical integrity hash so issuance and acceptance agree byte-for-byte. It never
      * reads Edge provisional balances.
      */
+    /**
+     * Q — WARM STANDBY FRESHNESS: accept a fresher baseline at the SAME config revision (a new generation) while the
+     * appliance is STANDBY. Safe because the standby is not the writer and its outbox is drained: the Cloud position
+     * already accounts for every sale this appliance ever made, so superseding the selling balances loses nothing.
+     * Same binding/integrity rules as a cutover; idempotent for the same package; audited as a cutover row with
+     * reason 'standby refresh'. Fails closed when the appliance is the writer, when anything is un-drained, or when
+     * no accepted baseline exists at the current revision (use the initial acceptance / cutover instead).
+     */
+    public function acceptStandbyRefresh(array $package, string $performedBy): object
+    {
+        if (! EdgeRuntime::isBranchServer()) {
+            throw new RuntimeException('STANDBY_REFRESH_NOT_BRANCH_SERVER: baseline refresh exists only on a Branch Server.');
+        }
+        $startedAt = now();
+        $meta = $this->context->requireCurrent();
+        if ((string) $meta->authority_state !== 'standby') {
+            throw new RuntimeException('STANDBY_REFRESH_NOT_STANDBY: the appliance is the branch writer — its own baseline is the truth until handback.');
+        }
+        $branchId = (int) $meta->branch_id;
+        $deviceUuid = (string) $meta->device_uuid;
+        $epoch = (int) $meta->activation_epoch;
+        $currentRevision = (string) $meta->source_revision;
+        if ((int) ($package['branch_id'] ?? 0) !== $branchId) {
+            throw new RuntimeException('STANDBY_REFRESH_WRONG_BRANCH: the baseline package is not for this branch.');
+        }
+        if ((int) ($package['activation_epoch'] ?? 0) !== $epoch) {
+            throw new RuntimeException('STANDBY_REFRESH_WRONG_EPOCH: the baseline package is not for this activation epoch.');
+        }
+        if ((string) ($package['source_revision'] ?? '') !== $currentRevision || $currentRevision === '') {
+            throw new RuntimeException('STANDBY_REFRESH_REVISION_MISMATCH: a standby refresh must be issued at the current config revision.');
+        }
+        $baselineUuid = (string) ($package['baseline_uuid'] ?? '');
+        if ($baselineUuid === '') {
+            throw new RuntimeException('STANDBY_REFRESH_PACKAGE_INVALID: a baseline_uuid is required.');
+        }
+        $items = $package['items'] ?? [];
+        $computedHash = EdgeOperationalBaselineService::canonicalHash($items);
+        if (! hash_equals($computedHash, (string) ($package['content_hash'] ?? ''))) {
+            throw new RuntimeException('STANDBY_REFRESH_INTEGRITY: the baseline package content hash does not match its items.');
+        }
+        $canonical = EdgeOperationalBaselineService::canonicalizeItems($items);
+        $drain = $this->drainSummary($branchId);
+        if (! $drain['drained']) {
+            throw new RuntimeException('STANDBY_REFRESH_NOT_DRAINED: ' . $drain['blocking'] . ' sale(s) are not yet acknowledged by the Cloud.');
+        }
+        $cloudPosition = $package['cloud_position'] ?? [];
+
+        return DB::connection('tenant')->transaction(function () use ($branchId, $deviceUuid, $epoch, $currentRevision, $baselineUuid, $computedHash, $canonical, $drain, $cloudPosition, $performedBy, $startedAt) {
+            $accepted = $this->acceptedBaseline($branchId, $deviceUuid, $epoch, lock: true);
+            if ($accepted === null || (string) $accepted->source_revision !== $currentRevision) {
+                throw new RuntimeException('STANDBY_REFRESH_NO_BASELINE: no accepted baseline at the current revision — use initial acceptance or cutover.');
+            }
+            if ((string) $accepted->baseline_uuid === $baselineUuid) {
+                if (hash_equals((string) $accepted->content_hash, $computedHash)) {
+                    return $accepted; // idempotent replay
+                }
+                throw new RuntimeException('STANDBY_REFRESH_CONFLICT: the same baseline identity was already accepted with a different payload.');
+            }
+            $oldId = (int) $accepted->id;
+            DB::connection('tenant')->table('edge_operational_stock_baselines')->where('id', $oldId)->update([
+                'status' => 'superseded', 'active_binding_key' => null, 'superseded_at' => now(), 'updated_at' => now(),
+            ]);
+            DB::connection('tenant')->table('edge_operational_stock_balances')->where('baseline_id', $oldId)->delete();
+            $newGeneration = (int) $accepted->generation + 1;
+            $newBaselineId = DB::connection('tenant')->table('edge_operational_stock_baselines')->insertGetId([
+                'baseline_uuid' => $baselineUuid,
+                'branch_id' => $branchId,
+                'device_uuid' => $deviceUuid,
+                'activation_epoch' => $epoch,
+                'generation' => $newGeneration,
+                'source_revision' => $currentRevision,
+                'content_hash' => $computedHash,
+                'stock_watermark' => $cloudPosition['stock_watermark'] ?? null,
+                'cloud_as_of' => isset($cloudPosition['as_of']) ? \Illuminate\Support\Carbon::parse($cloudPosition['as_of']) : null,
+                'freshness_kind' => 'standby_refresh',
+                'status' => 'accepted',
+                'active_binding_key' => EdgeOperationalBaselineService::bindingKey($branchId, $deviceUuid, $epoch),
+                'accepted_at' => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            foreach ($canonical as $item) {
+                DB::connection('tenant')->table('edge_operational_stock_balances')->insert([
+                    'balance_key' => $newBaselineId . '-' . $item['product_id'] . '-' . ($item['product_variant_id'] ?: 0),
+                    'baseline_id' => $newBaselineId,
+                    'branch_id' => $branchId,
+                    'product_id' => $item['product_id'],
+                    'product_variant_id' => $item['product_variant_id'],
+                    'quantity_on_hand' => $item['quantity'],
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+            DB::connection('tenant')->table('edge_baseline_cutovers')->insert([
+                'cutover_uuid' => (string) Str::ulid(),
+                'branch_id' => $branchId,
+                'device_uuid' => $deviceUuid,
+                'activation_epoch' => $epoch,
+                'old_baseline_id' => $oldId,
+                'old_baseline_uuid' => (string) $accepted->baseline_uuid,
+                'old_source_revision' => (string) $accepted->source_revision,
+                'old_generation' => (int) $accepted->generation,
+                'new_baseline_id' => $newBaselineId,
+                'new_baseline_uuid' => $baselineUuid,
+                'new_source_revision' => $currentRevision,
+                'new_generation' => $newGeneration,
+                'new_content_hash' => $computedHash,
+                'cloud_position_as_of' => $cloudPosition['as_of'] ?? null,
+                'cloud_position_hash' => $cloudPosition['hash'] ?? null,
+                'drain_evidence' => json_encode($drain),
+                'performed_by' => $performedBy,
+                'reason' => 'standby refresh: Cloud official-stock position moved while the Cloud is the writer',
+                'started_at' => $startedAt,
+                'completed_at' => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            return DB::connection('tenant')->table('edge_operational_stock_baselines')->where('id', $newBaselineId)->first();
+        });
+    }
+
     public static function buildPackage(int $branchId, int $activationEpoch, string $sourceRevision, array $items, array $cloudPosition = []): array
     {
         return [
