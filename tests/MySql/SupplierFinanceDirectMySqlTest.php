@@ -720,6 +720,80 @@ class SupplierFinanceDirectMySqlTest extends MySqlTenantTestCase
     }
 
     // ══════════════════════════════════════════════════════════════════════════════
+    // ASLI HTTP par form ki shartein
+    // ══════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Cash/bank ka khaana LAZMI hai — aur ye guard uska pehra hai.
+     *
+     * Wajah sirf "form ki shart" nahi. Bina cash/bank account ke
+     * `JournalPostingService::postSupplierPayment()` `null` laut-ta hai, aur `recordPayment()`
+     * us `null` ko NAKAAMI mante hue poora transaction palat deta hai. Yani ye rule agar kabhi
+     * wapas `nullable` ho jaye to har aisi payment 500 degi — ya us se bura, agar kal koi
+     * atomicity narm kar de, to subledger me AP ghat jayega aur GL me nahi: wohi drift jo ye
+     * poora kaam rokne ke liye tha.
+     *
+     * Controller me rule mojood tha magar usay koi guard NAHI dekh raha tha.
+     */
+    public function test_cash_bank_ke_baghair_payment_form_par_rad_hoti_hai(): void
+    {
+        $res = $this->actingAsOwner()->post('http://' . $this->host . '/supplier-payments', [
+            'supplier_id'    => $this->supplierId,
+            'branch_id'      => $this->branchId,
+            'payment_date'   => now()->toDateString(),
+            'amount'         => 1000,
+            'payment_method' => 'cash',
+            // cash_bank_account_id JAAN-BOOJH kar nahi bheja
+        ]);
+
+        $res->assertSessionHasErrors('cash_bank_account_id');
+
+        $this->assertSame(0, SupplierPayment::count(), 'koi payment nahi bani');
+        $this->assertSame(0, CashBankAccountTransaction::count(), 'cash/bank chhua bhi nahi gaya');
+        $this->assertSame(0, JournalEntry::where('source_type', 'supplier_payment')->count());
+        $this->assertSame(50000.0, (float) Supplier::find($this->supplierId)->current_balance,
+            'supplier ka balance hila hi nahi');
+    }
+
+    /**
+     * ASLI HTTP se: purchase bill ke baghair payment poori tarah chal jaati hai.
+     *
+     * Baqi guards service par ye sabit karte hain; ye wohi baat us raaste se dekhta hai jo
+     * cashier ka browser leta hai — kyunke shart controller ki validation me bhi ho sakti thi
+     * (`purchase_bill_id` ko `required` likh dena ek lafz ka kaam hai).
+     */
+    public function test_http_se_bill_ke_baghair_payment_ho_jaati_hai(): void
+    {
+        $res = $this->actingAsOwner()->post('http://' . $this->host . '/supplier-payments', [
+            'supplier_id'          => $this->supplierId,
+            'branch_id'            => $this->branchId,
+            'cash_bank_account_id' => $this->bankId,
+            'payment_date'         => now()->toDateString(),
+            'amount'               => 12000,
+            'payment_method'       => 'cash',
+            'notes'                => 'no bill, straight against the balance',
+            // purchase_bill_id NAHI
+        ]);
+
+        $res->assertSessionHasNoErrors();
+        $res->assertRedirect();
+
+        $payment = SupplierPayment::sole();
+        $this->assertNull($payment->purchase_bill_id, 'payment kisi bill se nahi bandhi');
+        $this->assertSame(0, PurchaseBill::count(), 'koi purchase bill NAHI bani');
+
+        // Aur teeno jagah theek utna hila.
+        $this->assertSame(38000.0, (float) Supplier::find($this->supplierId)->current_balance);
+        $this->assertSame(1, CashBankAccountTransaction::where('reference_type', 'supplier_payment')
+            ->where('reference_id', $payment->id)->count(), 'cash/bank OUT theek ek bar');
+        $this->assertSame(1, JournalEntry::where('source_type', 'supplier_payment')
+            ->where('source_id', $payment->id)->count(), 'ek GL entry');
+
+        // Aur stock ko chhoota bhi nahi.
+        $this->assertSame(0, StockLedger::count(), 'liability chukane se maal ka hisab nahi badalta');
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════
     // L. PERMISSIONS
     // ══════════════════════════════════════════════════════════════════════════════
 
