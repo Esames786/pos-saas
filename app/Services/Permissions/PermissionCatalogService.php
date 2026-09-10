@@ -111,6 +111,9 @@ class PermissionCatalogService
         // Money OUT is its own grant. Whoever may take a payment does not
         // automatically get to hand one back.
         'tenant.catering.refunds.store' => 'Refund Customer',
+        // Seeing who is owed money is not the right to hand it back, so it
+        // lives with viewing rather than with refunding.
+        'tenant.catering.customer-credits.index' => 'View Catering',
         // Returning a customer's OWN credit is one thing; returning money
         // that is covering a bill — which puts the balance due back up — is
         // another, and must not arrive free with the first.

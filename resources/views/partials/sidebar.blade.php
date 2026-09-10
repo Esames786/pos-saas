@@ -659,7 +659,7 @@
                 {{-- A role granted only Store Issue or only Commercial Rates used
                      to see no Catering menu at all — the parent gate never listed
                      them, so the screens existed and were unreachable. --}}
-                @canany(['tenant.catering.events.index','tenant.catering.profiles.index','tenant.catering.material-rates.index','tenant.catering.instructions.index','tenant.catering.commercial-rates.index','tenant.catering.rate-impact.index','tenant.catering.making-adjustment.index','tenant.catering.store-issues.index','tenant.catering.printer-mappings.index','tenant.catering.settings.index'])
+                @canany(['tenant.catering.events.index','tenant.catering.profiles.index','tenant.catering.material-rates.index','tenant.catering.instructions.index','tenant.catering.commercial-rates.index','tenant.catering.rate-impact.index','tenant.catering.making-adjustment.index','tenant.catering.store-issues.index','tenant.catering.printer-mappings.index','tenant.catering.settings.index','tenant.catering.customer-credits.index'])
                 <li class="submenu">
                     <a href="javascript:void(0);">
                         <i class="ti ti-chef-hat fs-16 me-2"></i>
@@ -672,6 +672,18 @@
                             <li class="{{ $a ? 'active' : '' }}">
                                 <a href="{{ url('/catering/events') }}" class="{{ $a ? 'active' : '' }}">
                                     <i class="ti ti-calendar-event fs-16 me-2"></i><span>Events &amp; Estimates</span>
+                                </a>
+                            </li>
+                        @endcan
+                        {{-- CATERING-CUSTOMER-CREDIT-WORKLIST-1 — money we are
+                             holding that belongs to customers. Sits next to the
+                             bookings because that is where it comes from and
+                             where it is handed back. --}}
+                        @can('tenant.catering.customer-credits.index')
+                            @php $a = $isIn('catering/customer-credits*'); @endphp
+                            <li class="{{ $a ? 'active' : '' }}">
+                                <a href="{{ url('/catering/customer-credits') }}" class="{{ $a ? 'active' : '' }}">
+                                    <i class="ti ti-cash-banknote fs-16 me-2"></i><span>Money Owed to Customers</span>
                                 </a>
                             </li>
                         @endcan

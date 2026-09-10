@@ -41,6 +41,22 @@ class CateringAdvance extends Model
     protected static function booted(): void
     {
         static::creating(function (CateringAdvance $advance) {
+            // A receipt is money coming IN. Money going out is a refund — its
+            // own document, with its own number, authority and reason — and
+            // never a minus on this one. position() SUMS advances, so a
+            // negative row here would quietly redefine what "received" means
+            // for every screen that asks.
+            //
+            // Refused here rather than at the ledger, which already refuses it
+            // with "Journal line amounts cannot be negative" — true, atomic,
+            // and about the wrong thing: it names a journal line instead of
+            // what the caller actually did.
+            if (round((float) $advance->amount, 2) <= 0) {
+                throw new RuntimeException(
+                    'A receipt must be for a positive amount. Money going back to the customer is a refund.'
+                );
+            }
+
             $event = CateringEvent::with('currentEstimate')->find($advance->catering_event_id);
             $estimate = $event?->currentEstimate;
 
