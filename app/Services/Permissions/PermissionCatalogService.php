@@ -38,7 +38,7 @@ class PermissionCatalogService
         'reprint-reminder', 'confirm-reminders', 'export', 'generate', 'revoke', 'activate',
         'deactivate', 'regenerate-token', 'default', 'verify', 'reset-password', 'manager-pin',
         'bulk-import', 'test-print', 'pairing-code', 'download-windows', 'sync', 'void-kot-item',
-        'handovers', 'local-mode', 'reprint',
+        'handovers', 'local-mode', 'reprint', 'overpay', 'beyond-credit', 'move-back',
     ];
 
     /**
@@ -84,6 +84,10 @@ class PermissionCatalogService
         'tenant.catering.estimates.revise' => 'Send / Revise Quote',
         'tenant.catering.events.confirm' => 'Confirm Booking',
         'tenant.catering.events.cancel' => 'Confirm Booking',
+        // Walking a booking BACKWARDS is its own grant. Whoever may confirm or
+        // cancel does not automatically get to un-confirm, un-cancel, or reopen
+        // a quotation the customer has already been sent.
+        'tenant.catering.events.move-back' => 'Move Booking Back',
         'tenant.catering.material-rates.index' => 'Manage Material Rates',
         'tenant.catering.material-rates.store' => 'Manage Material Rates',
         // What materials are CHARGED at, kept as its own grant: seeing the house
@@ -98,9 +102,19 @@ class PermissionCatalogService
         'tenant.catering.rate-impact.index' => 'Manage Material Rates',
         'tenant.catering.rate-impact.apply' => 'Manage Material Rates',
         'tenant.catering.advances.store' => 'Record Advance',
+        // Taking MORE than the bill is its own grant, deliberately apart from
+        // 'Record Advance'. Folding it in would mean that granting someone the
+        // right to receipt a payment also granted them the right to create a
+        // liability the business owes back — which is the one thing this
+        // permission exists to keep separate.
+        'tenant.catering.advances.overpay' => 'Take More Than Due',
         // Money OUT is its own grant. Whoever may take a payment does not
         // automatically get to hand one back.
         'tenant.catering.refunds.store' => 'Refund Customer',
+        // Returning a customer's OWN credit is one thing; returning money
+        // that is covering a bill — which puts the balance due back up — is
+        // another, and must not arrive free with the first.
+        'tenant.catering.refunds.beyond-credit' => 'Refund Beyond Credit',
         'tenant.catering.production-releases.store' => 'Release Production',
         'tenant.catering.production-releases.show' => 'Release Production',
         'tenant.catering.production-releases.print' => 'Print / Reprint',

@@ -28,6 +28,16 @@ class CateringRefund extends Model
 
     protected string $canonicalIdentityColumn = 'refund_uuid';
 
+    /**
+     * CATERING-REFUND-BEYOND-CREDIT-1 — permission to hand back money that is
+     * covering a bill, decided by the caller and never by the request.
+     *
+     * A plain property on purpose: not a column, not fillable, nothing a form
+     * post can set. It exists for the length of one save and then it is gone,
+     * so the authority cannot be smuggled in as a field.
+     */
+    public bool $allowBeyondCredit = false;
+
     protected static function booted(): void
     {
         static::creating(function (CateringRefund $refund) {
@@ -44,20 +54,47 @@ class CateringRefund extends Model
 
             $position = app(CateringFinancialPositionService::class)->position($event);
             $refundable = round((float) $position['refundable'], 2);
+            $ceiling = round((float) $position['refund_ceiling'], 2);
 
-            if ($refundable <= 0) {
+            // The ceiling that never moves. No permission reaches past it,
+            // because there is nothing behind it: the business cannot hand back
+            // money it never received.
+            if ($ceiling <= 0) {
                 throw new RuntimeException(
-                    "There is nothing to refund on {$event->event_no} — the customer is not in credit. "
-                    .'Money that is covering the bill cannot be handed back while the bill stands.'
+                    "Nothing has been received on {$event->event_no}, so there is nothing to hand back."
                 );
             }
 
-            if ($amount > $refundable) {
+            if ($amount > $ceiling) {
                 throw new RuntimeException(
-                    'Refund of '.number_format($amount, 2).' exceeds the '
-                    .number_format($refundable, 2)." credit owed on {$event->event_no}. "
-                    .'Only money the customer has paid beyond their bill can be refunded.'
+                    'Refund of '.number_format($amount, 2).' is more than the '
+                    .number_format($ceiling, 2)." ever received on {$event->event_no}. "
+                    .'Money that never arrived cannot be handed back.'
                 );
+            }
+
+            // Beyond the credit is a DIFFERENT act, not a larger one. Up to the
+            // credit the business is returning money it was merely holding;
+            // past it, it is returning money that was paying a bill, and the
+            // balance due comes back. That is legitimate — a deposit on a
+            // booking that is still going ahead is the owner's to return — but
+            // it needs someone who is allowed to decide it, and a reason on the
+            // record saying why.
+            if ($amount > $refundable) {
+                if (! $refund->allowBeyondCredit) {
+                    throw new RuntimeException(
+                        'Refund of '.number_format($amount, 2).' exceeds the '
+                        .number_format($refundable, 2)." credit owed on {$event->event_no}. "
+                        .'Handing back money that is covering the bill needs the authority to do so — '
+                        .'the balance due will go back up by the difference.'
+                    );
+                }
+
+                if (trim((string) $refund->reason) === '') {
+                    throw new RuntimeException(
+                        'Handing back money that is covering the bill needs a reason recorded against it.'
+                    );
+                }
             }
         });
 

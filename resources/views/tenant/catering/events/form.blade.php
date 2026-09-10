@@ -29,7 +29,12 @@
 
     @include('tenant.catering.events.partials.event-form-fields')
 
-    <button type="submit" class="btn btn-primary">{{ $event ? 'Save Changes' : 'Create Event' }}</button>
+    {{-- EVENT-FORM-KEYBOARD-1: the key is PRINTED on the button. A shortcut
+         nobody is told about is a shortcut nobody uses. --}}
+    <button type="submit" class="btn btn-primary" id="event-save">
+        {{ $event ? 'Save Changes' : 'Create Event' }}
+        <span class="fs-12 opacity-75 ms-1">(Ctrl+S)</span>
+    </button>
 </form>
 
 @include('tenant.catering.events.partials.event-form-support')
@@ -40,6 +45,20 @@
 // KASHIF-LEGACY-ALIGN-6 (revised): the CREATE/EDIT form keeps the sidebar —
 // a vanished menu on a small form reads as breakage, not focus. The toggle
 // still offers full-width for whoever wants it.
+// EVENT-FORM-KEYBOARD-1 — Ctrl+S saves the BOOKING, not the browser page.
+// The event screen has had this key for a while; the form that creates the
+// booking did not, so the operator had to reach for the mouse exactly once per
+// booking. requestSubmit() rather than submit(): it runs the browser's own
+// validation and fires the submit event the ajax pipeline listens for, where
+// submit() would skip both.
+document.addEventListener('keydown', function (e) {
+    if (! (e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 's') return;
+    const form = document.querySelector('form[data-event-ajax]');
+    if (! form) return;
+    e.preventDefault();
+    if (form.requestSubmit) { form.requestSubmit(); } else { form.submit(); }
+});
+
 document.getElementById('catering-sidebar-toggle')?.addEventListener('click', function () {
     const hidden = document.body.classList.toggle('nosidebar');
     this.querySelector('i').className = hidden ? 'ti ti-layout-sidebar-left-expand' : 'ti ti-layout-sidebar-left-collapse';

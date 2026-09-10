@@ -702,7 +702,14 @@ class JournalPostingService
                 $return->id,
                 $return->return_no,
                 'Purchase return '.$return->return_no,
-                $this->bookOnReturn($return),
+                // ⚠️ `bookOnReturn()` NAHI — wo SALES return ke liye hai (`SalesReturn` typed, aur
+                // `business_date` parhta hai jo purchase return par mojood hi nahi). GL-BUSINESS-DATE-1
+                // (`6e3e67c`, 6 Sep) me maine yahan bhi wohi helper laga diya tha: nateeja har bar
+                // TypeError, jo neeche `catch (Throwable)` chup-chaap nigal leta tha aur `null` laut-ta —
+                // yani purchase return ka journal KABHI post hi nahi hota, aur AP control subledger se
+                // hat jata. Prod par bacha ye ke chaaron tenants par purchase returns 0 hain.
+                // Ye satar bilkul wohi hai jo us commit se pehle thi.
+                $return->return_date?->toDateString() ?? now()->toDateString(),
                 $lines,
                 $userId
             );
@@ -804,6 +811,177 @@ class JournalPostingService
                 $debit,
                 ['account_code' => $creditCode, 'branch_id' => $branchId, 'description' => $creditLabel, 'debit' => 0, 'credit' => $amount],
             ],
+            $userId
+        );
+    }
+
+    /**
+     * A3. A receipt that covers the bill AND leaves credit behind
+     * (CATERING-OVERPAYMENT-1).
+     *
+     * The reason this method has to exist: a receipt taken after an invoice
+     * exists posts entirely to 1300 Accounts Receivable. That is right while the
+     * money is paying a bill and WRONG the moment it exceeds one — 20,000
+     * against a 10,000 invoice would leave Accounts Receivable at MINUS 10,000,
+     * and a negative receivable says the customer owes us less than nothing,
+     * which is not a fact about anything.
+     *
+     * The money is two different things and is posted as two:
+     *
+     *   Dr  cash/bank (or 1500 Undeposited)      the whole receipt
+     *       Cr  1300 Accounts Receivable         what was actually owed
+     *       Cr  2300 Customer Advances           the rest — a debt we now carry
+     *
+     * The excess is a LIABILITY, never revenue. 4160 is not touched here and
+     * must never be: money the business has not billed for has not been earned,
+     * whatever the bank balance says.
+     *
+     * Before an invoice exists there is nothing to split — the whole receipt is
+     * already a customer advance — so this is only for the post-invoice case.
+     */
+    public function postCateringSplitReceipt(
+        \App\Models\Tenant\CateringAdvance $advance,
+        float $settled,
+        float $credit,
+        ?int $userId = null
+    ): JournalEntry {
+        $amount = round((float) $advance->amount, 2);
+        $settled = round($settled, 2);
+        $credit = round($credit, 2);
+
+        // The two parts ARE the receipt. If they are not, something upstream has
+        // worked out the split wrongly and the safe answer is to post nothing.
+        if ($settled < 0 || $credit <= 0 || round($settled + $credit, 2) !== $amount) {
+            throw new \RuntimeException(
+                'Refusing to split catering receipt #'.$advance->id.': '
+                .number_format($settled, 2).' + '.number_format($credit, 2)
+                .' does not make '.number_format($amount, 2)
+                .' — a receipt must be posted whole or not at all.'
+            );
+        }
+
+        if ($existing = $this->assertReplayMatches('catering_split_receipt', $advance->id, $amount)) {
+            return $existing;
+        }
+
+        $branchId = $advance->event?->branch_id;
+        $reference = 'Catering receipt '.($advance->reference ?: ('ADV-'.$advance->id))
+            .' ('.($advance->event?->event_no ?? '').')';
+
+        $cashAccountId = $advance->cash_bank_account_id
+            ? $this->cashBankCoaId($advance->cash_bank_account_id)
+            : null;
+
+        $debit = $cashAccountId
+            ? ['account_id' => $cashAccountId, 'branch_id' => $branchId, 'description' => $reference, 'debit' => $amount, 'credit' => 0]
+            : ['account_code' => '1500', 'branch_id' => $branchId, 'description' => $reference.' (undeposited)', 'debit' => $amount, 'credit' => 0];
+
+        $lines = [$debit];
+
+        // A receipt can be entirely credit — an invoice already settled in full,
+        // and the customer pays more anyway. Then there is no AR line to write.
+        if ($settled > 0) {
+            $lines[] = ['account_code' => '1300', 'branch_id' => $branchId, 'description' => 'Accounts Receivable', 'debit' => 0, 'credit' => $settled];
+        }
+
+        $lines[] = ['account_code' => '2300', 'branch_id' => $branchId, 'description' => 'Customer Advances (received beyond the bill)', 'debit' => 0, 'credit' => $credit];
+
+        return $this->journal->post(
+            'catering_split_receipt',
+            $advance->id,
+            $advance->advance_uuid,
+            $reference,
+            $advance->received_date?->toDateString() ?? now()->toDateString(),
+            $lines,
+            $userId
+        );
+    }
+
+    /**
+     * A2b. Refund that reaches past the customer's credit
+     * (CATERING-REFUND-BEYOND-CREDIT-1).
+     *
+     * The plain refund below says "Always 2300, because credit can only ever be
+     * sitting there". Once money that is COVERING A BILL may be handed back that
+     * sentence stops being true, and following it would quietly corrupt two
+     * accounts at once: issuing the invoice already cleared 2300 by
+     * `advance_applied`, so debiting it again drives a LIABILITY into a debit
+     * balance, and the receivable the customer owes again never comes back.
+     *
+     * So the refund is posted as the two different things it is:
+     *
+     *   Dr  2300 Customer Advances     money that was never applied to a bill
+     *   Dr  1300 Accounts Receivable   money that WAS — the debt returns
+     *       Cr  cash/bank              the whole payment out
+     *
+     * 4160 is not touched and must never be. Handing money back is not a loss of
+     * revenue: the revenue either was earned or never was, and a refund does not
+     * decide that.
+     *
+     * Only for the case that actually splits. When the whole refund comes out of
+     * credit there is nothing to divide, and postCateringRefund posts it.
+     */
+    public function postCateringSplitRefund(
+        \App\Models\Tenant\CateringRefund $refund,
+        float $fromAdvance,
+        float $fromReceivable,
+        ?int $userId = null
+    ): JournalEntry {
+        $amount = round((float) $refund->amount, 2);
+        $fromAdvance = round($fromAdvance, 2);
+        $fromReceivable = round($fromReceivable, 2);
+
+        // The two parts ARE the refund. If they are not, something upstream has
+        // worked out the split wrongly and the safe answer is to post nothing.
+        if ($fromAdvance < 0 || $fromReceivable <= 0 || round($fromAdvance + $fromReceivable, 2) !== $amount) {
+            throw new \RuntimeException(
+                'Refusing to split catering refund '.($refund->refund_no ?? '#'.$refund->id).': '
+                .number_format($fromAdvance, 2).' + '.number_format($fromReceivable, 2)
+                .' does not make '.number_format($amount, 2)
+                .' — a refund must be posted whole or not at all.'
+            );
+        }
+
+        if ($existing = $this->assertReplayMatches('catering_split_refund', $refund->id, $amount)) {
+            return $existing;
+        }
+
+        $branchId = $refund->event?->branch_id;
+        $reference = 'Catering refund '.$refund->refund_no.' ('.($refund->event?->event_no ?? '').')';
+
+        $creditAccountId = $refund->cash_bank_account_id
+            ? $this->cashBankCoaId($refund->cash_bank_account_id)
+            : null;
+
+        // No fallback, exactly as in the plain refund: money leaving has to name
+        // where it left from, and a system that cannot name it has no business
+        // paying it out.
+        if (! $creditAccountId) {
+            throw new \RuntimeException(
+                'Refusing to post catering refund '.($refund->refund_no ?? '#'.$refund->id)
+                .': no cash or bank account is mapped for it. Money out must name the account it left from.'
+            );
+        }
+
+        $lines = [];
+
+        // A refund can be entirely out of billed money — a booking with no credit
+        // at all, where the whole deposit is being returned. Then there is no
+        // advance line to write.
+        if ($fromAdvance > 0) {
+            $lines[] = ['account_code' => '2300', 'branch_id' => $branchId, 'description' => 'Customer Advances refunded', 'debit' => $fromAdvance, 'credit' => 0];
+        }
+
+        $lines[] = ['account_code' => '1300', 'branch_id' => $branchId, 'description' => 'Accounts Receivable (refunded past the credit)', 'debit' => $fromReceivable, 'credit' => 0];
+        $lines[] = ['account_id' => $creditAccountId, 'branch_id' => $branchId, 'description' => $reference, 'debit' => 0, 'credit' => $amount];
+
+        return $this->journal->post(
+            'catering_split_refund',
+            $refund->id,
+            $refund->refund_no,
+            $reference,
+            $refund->refund_date?->toDateString() ?? now()->toDateString(),
+            $lines,
             $userId
         );
     }

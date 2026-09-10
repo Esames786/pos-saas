@@ -64,23 +64,39 @@ class CateringRefundService
             $account = $this->resolveMoneyOutAccount($data['payment_method_id'] ?? null);
             $cashBankAccountId = $account->id;
 
-            // The refundable-amount cap fires inside create() (model guard), so
-            // it holds for every caller, not just this one.
-            $refund = CateringRefund::create([
+            // CATERING-REFUND-BEYOND-CREDIT-1 — how much of this refund is money
+            // the business was merely holding, and how much was paying a bill.
+            // Asked BEFORE the row exists, because the row itself changes the
+            // answer: position() subtracts refunds from what was received.
+            $amount = round((float) $data['amount'], 2);
+            $position = app(CateringFinancialPositionService::class)->position($event);
+            $fromAdvance = round(min($amount, (float) $position['held_as_advance']), 2);
+            $fromReceivable = round($amount - $fromAdvance, 2);
+
+            // The cap fires inside the model guard, so it holds for every caller,
+            // not just this one. `new` rather than `create` so the authority is
+            // set BEFORE `creating` runs and the guard can actually see it.
+            $refund = new CateringRefund([
                 'refund_no' => $this->numbers->nextRefundNo(),
                 'catering_event_id' => $event->id,
-                'amount' => $data['amount'],
+                'amount' => $amount,
                 'refund_date' => $data['refund_date'],
                 'payment_method_id' => $data['payment_method_id'] ?? null,
                 'cash_bank_account_id' => $cashBankAccountId,
                 'reference' => $data['reference'] ?? null,
                 'reason' => $data['reason'],
-                'refunded_by_user_id' => $userId,
             ]);
+            $refund->allowBeyondCredit = (bool) ($data['allow_beyond_credit'] ?? false);
+            $refund->forceFill(['refunded_by_user_id' => $userId])->save();
             $refund->setRelation('event', $event);
 
-            // GL — throws on failure/conflict, rolling the refund row back.
-            $entry = $this->journalPosting->postCateringRefund($refund, $userId);
+            // GL — throws on failure/conflict, rolling the refund row back. A
+            // refund that stays inside the credit is the plain one-line posting
+            // it always was; one that reaches past it has to put the receivable
+            // back, and says so in its own entry.
+            $entry = $fromReceivable > 0
+                ? $this->journalPosting->postCateringSplitRefund($refund, $fromAdvance, $fromReceivable, $userId)
+                : $this->journalPosting->postCateringRefund($refund, $userId);
             $refund->forceFill(['journal_entry_id' => $entry->id, 'gl_posted_at' => now()])->save();
 
             // Unconditional. This is what makes the invariant structural rather

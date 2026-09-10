@@ -11,6 +11,8 @@
 <meta charset="utf-8">
 <title>{{ $event->event_no }} / Q{{ $estimate->version_no }} — Estimate</title>
 @include("tenant.catering.documents.partials.estimate-style")
+{{-- Last, so it overrides — and only when a PDF is being drawn. --}}
+@include("tenant.catering.documents.partials.pdf-overrides")
 </head>
 <body>
     @include("tenant.catering.documents.partials.estimate-body")

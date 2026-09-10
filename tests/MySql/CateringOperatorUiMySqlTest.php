@@ -190,7 +190,10 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
         // item, Qty, the Party-ya-Own question, and the material stepper mount.
         $this->assertStringContainsString('punch-bar', $html);
         $this->assertStringContainsString('punch-item', $html);
-        $this->assertStringContainsString('Supply split', $html);
+        $this->assertStringContainsString('Material Breakdown', $html,
+            'the entry block carries the material section');
+        $this->assertStringContainsString('>Own<', $html);
+        $this->assertStringContainsString('>Party<', $html);
         $this->assertStringContainsString('punch-live-rate', $html, 'price per selling unit is visible before row save');
         $this->assertStringContainsString('punch-live-amount', $html, 'line amount is visible before row save');
         $this->assertStringContainsString('customerRateTouched', $html,
@@ -458,21 +461,24 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
     {
         $html = $this->render($this->booking());
 
-        // The Enter walk.
-        $seq = $this->between($html, 'function punchSeq()', 'return seq.filter(Boolean)');
+        // The Enter walk. PUNCH-ENTRY-TABLE-1 moved the note to the END: it used
+        // to sit before the materials, so the operator wrote a note about a dish
+        // whose quantities they had not entered yet.
+        $seq = $this->between($html, 'function punchSeq()', 'return seq.filter');
         $qty = strpos($seq, "'punch-qty'");
         $rate = strpos($seq, "'punch-customer-rate'");
+        $mats = strpos($seq, '.pm-rate');
         $note = strpos($seq, "'punch-instr'");
-        $own = strpos($seq, "'punch-own'");
 
         $this->assertNotFalse($qty);
         $this->assertNotFalse($rate);
+        $this->assertNotFalse($mats, 'the walk must reach the material rows');
         $this->assertLessThan($rate, $qty, 'Qty comes first');
-        $this->assertLessThan($note, $rate, 'the rate is reached BEFORE the note');
-        $this->assertLessThan($own, $note, 'and the breakdown comes after both');
+        $this->assertLessThan($mats, $rate, 'the rate is reached BEFORE the breakdown');
+        $this->assertLessThan($note, $mats, 'and the note comes last, after the materials');
 
         // What plain Tab does — the markup itself, in the same order.
-        $bar = $this->between($html, 'id="punch-bar"', 'id="punch-mats"');
+        $bar = $this->between($html, 'id="punch-bar"', 'id="lines-table"');
         $this->assertLessThan(
             strpos($bar, 'id="punch-customer-rate"'),
             strpos($bar, 'id="punch-qty"'),
@@ -494,6 +500,465 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
         $this->assertNotFalse($b, "marker not found: {$to}");
 
         return substr($haystack, $a, $b - $a);
+    }
+
+    /**
+     * PUNCH-EDIT-SWAP-1 — editing a row and changing its dish REPLACES that row.
+     *
+     * It used to add a second one and leave the first alone: three identical
+     * Chicken Karahi Shanwari lines reached a live quotation that way. Two
+     * separate faults, and fixing only the first would have been worse than the
+     * duplicate — the row would have kept the old NAME while wearing the new
+     * dish's costing.
+     *
+     *   punchPick        rebuilt the punch from nothing, losing editRow, so
+     *                    punchCommit took the "new row" path.
+     *   punchCommitEdit  staged quantity, materials and instructions on a saved
+     *                    row but never the dish itself.
+     */
+    public function test_changing_the_dish_while_editing_replaces_the_row(): void
+    {
+        $html = $this->render($this->booking());
+
+        // The edit survives the pick.
+        $this->assertStringContainsString('const editing = punch && punch.editRow ? punch : null', $html,
+            'picking a product mid-edit must not forget which row is being edited');
+        $this->assertStringContainsString('editRow: editing ? editing.editRow : null', $html,
+            'the row identity is carried onto the new punch');
+
+        // And the row is told what it now is.
+        $this->assertStringContainsString('if (punch.productChanged) {', $html);
+        $this->assertMatchesRegularExpression('/\[product_id\]"\]\'\)\.val\(punch\.productId/', $html,
+            'a swapped row must write the NEW product id, or the name and the costing disagree');
+        $this->assertStringContainsString('.val(punch.name)', $html,
+            'and the new name');
+    }
+
+    /**
+     * LINE-ORDER-1 — the operator arranges the quotation and the paper follows.
+     *
+     * This is not a display nicety. `saveDraftLines` writes
+     * `sort_order = $index` from the order the lines are POSTED in, and every
+     * document reads them back with `orderBy('sort_order')`. So the order of
+     * these rows already decided the order on the customer's quotation and the
+     * kitchen sheet — there was simply no way to change it.
+     *
+     * Two things have to be true for that to work, and both are pinned here:
+     * a block-costed line's Cost Details row must travel WITH it, or the
+     * breakdown ends up under somebody else's dish; and the `lines[i]` indices
+     * must be rewritten after a move, because an order that depends on how the
+     * browser serialises a form is a promise nobody wrote down.
+     */
+    public function test_a_row_can_be_moved_and_its_breakdown_moves_with_it(): void
+    {
+        $html = $this->render($this->booking());
+
+        $this->assertStringContainsString('line-up', $html, 'every row can be moved up');
+        $this->assertStringContainsString('line-down', $html, 'and down');
+
+        // The first version of this guard NAMED the kinds of row that travel
+        // with a line, and passed while an unsaved row left its own breakdown
+        // behind — the exact fault it was written for. So the code stopped
+        // naming them, and this stopped naming them too: everything up to the
+        // next line row belongs to this line.
+        $this->assertStringContainsString('$row.nextUntil(\'tr[data-row]\')', $html,
+            "a line's breakdown must move with the line — whatever kind it is");
+        $this->assertStringContainsString('function renumberLines()', $html,
+            'the posted indices are rewritten, so the order is stated rather than inferred');
+        $this->assertStringContainsString("'lines[' + position", $html,
+            'renumbering rewrites the index each row posts under');
+    }
+
+    /**
+     * RECALC-ASKS-TO-SAVE-1 — Recalculate must not swallow unsaved work.
+     *
+     * It recomputes from the SAVED quotation and the workspace is then redrawn
+     * from the server's answer, so anything punched but not yet saved simply
+     * vanished — no warning, no trace, minutes of typing gone.
+     *
+     * The listener is registered in the CAPTURE phase on purpose: the ajax
+     * pipeline also listens for submit on the document, and this has to be able
+     * to stop it before it posts. A bubbling listener would run too late.
+     */
+    public function test_recalculate_warns_before_it_discards_unsaved_rows(): void
+    {
+        $html = $this->render($this->booking());
+
+        $this->assertStringContainsString('data-reprice', $html,
+            'the reprice form is marked so the guard can find it');
+        $this->assertStringContainsString('tr.punch-row', $html);
+        $this->assertStringContainsString('.punch-staged', $html);
+        $this->assertMatchesRegularExpression('/addEventListener\(\s*.submit.,[\s\S]{0,2000}?\}, true\);/', $html,
+            'capture phase, or the ajax pipeline posts before the warning can stop it');
+    }
+
+    /**
+     * STACKED-MATERIAL-ROW-1 (step 1) — the new builder exists and posts the
+     * SAME thing as the old one.
+     *
+     * The whole safety of this rebuild rests on one claim: it changes how a line
+     * is ENTERED and nothing else. The server, the block authorities, the
+     * costing and the documents must not be able to tell which builder drew the
+     * row. So what is pinned here is the PAYLOAD, not the appearance.
+     *
+     * Step 1 deliberately does not switch anything over. punchRowHtml is still
+     * the builder in use, so this can ship without changing what anyone sees.
+     */
+    public function test_the_stacked_builder_posts_exactly_what_the_old_one_posts(): void
+    {
+        $html = $this->render($this->booking());
+
+        $this->assertStringContainsString('function punchStackedRowHtml(', $html);
+
+        // The material payload, field for field. THREE places build it — the
+        // old row builder, this new one, and punchCommitEdit which stages the
+        // same fields onto a saved row. That duplication is itself worth pinning:
+        // a fourth copy appearing unnoticed is exactly how the shape drifts.
+        foreach (['[label]', '[kg]', '[rate]', '[cust]'] as $field) {
+            $this->assertSame(
+                3,
+                substr_count($html, "+ p + '".$field.'"'),
+                "all three builders must post materials{$field} — the server cannot be able to tell them apart"
+            );
+        }
+
+        // A material the dish may not take from the customer still posts its
+        // zero: a disabled input is never submitted, and a missing one leaves
+        // whatever the server held before.
+        $this->assertStringContainsString('a disabled input is not submitted', $html,
+            'the reason the zero is posted is written down where it will be read');
+
+        // Step 1 changes nothing the operator sees.
+        $this->assertStringContainsString('punchRowHtml(idx, qty, punchLineCalc(qty))', $html,
+            'the old builder is still the one in use until step 4');
+    }
+
+    /**
+     * STACKED-MATERIAL-ROW-1 (step 2) — the OWN/PARTY switch is gone.
+     *
+     * It asked again for something the item already states. Worse, it had to
+     * ZERO the customer shares whenever the operator switched back to OWN — a
+     * fix for a real bug (a hidden number that still billed nothing), but a fix
+     * that only existed because the switch created the hidden state in the first
+     * place.
+     *
+     * Now each material carries its own Party box, open whenever the ITEM allows
+     * party supply. There is no mode, so there is nothing to unwind.
+     */
+    public function test_party_is_decided_by_the_item_not_by_a_switch(): void
+    {
+        $html = $this->render($this->booking());
+
+        $this->assertStringNotContainsString("punch.mode !== 'PARTY' ? 'disabled'", $html,
+            'the Party box must not be gated by a mode switch');
+        // The walk used to consult punch.party to decide whether to visit the
+        // Party box. It does not ask any more: the box is disabled when the item
+        // forbids party supply, and the walk already skips anything disabled or
+        // off screen. One rule, applied everywhere, instead of a second opinion.
+        $this->assertStringContainsString('seq.push(', $html);
+        $this->assertStringContainsString('.pm-cust[data-i=', $html,
+            'the walk reaches each material\'s own Party box');
+        $this->assertStringContainsString("' disabled title=", $html,
+            'a material that may not be party-supplied has its box disabled, and the walk skips it');
+        // PUNCH-ENTRY-TABLE-1 — it is not hidden any more, it is GONE. Hiding
+        // it left #punch-own in the Enter walk, and focus() on a hidden element
+        // does nothing: the caret was trapped on Instructions and the material
+        // rows became unreachable by keyboard. A control that no longer has a
+        // question to ask should not be left lying in the page.
+        $this->assertStringNotContainsString('punch-seg', $html,
+            'the supply-mode switch is removed, not hidden');
+        $this->assertStringNotContainsString('function punchSetMode', $html,
+            'and so is the mode it set — the boxes are the only answer now');
+    }
+
+    /**
+     * STACKED-MATERIAL-ROW-1 (step 3) — the owner's columns, and the classes kept.
+     *
+     * Material · Rate · Required Qty · Own · Party. Required is the recipe's
+     * answer at this quantity and is NOT a field: typing over it would only hide
+     * the difference between what the dish needs and what we actually send.
+     *
+     * The input classes are unchanged, and that is the load-bearing part. Every
+     * handler, the Enter walk and the totals already speak to pm-rate, pm-own
+     * and pm-cust, so keeping them is what makes this a rearrangement of what is
+     * seen rather than a rewrite of what happens.
+     */
+    public function test_the_material_columns_match_the_owners_layout(): void
+    {
+        $html = $this->render($this->booking());
+
+        foreach (['>Material<', '>Rate<', '>Required Qty<', '>Own<'] as $heading) {
+            $this->assertStringContainsString($heading, $html, "the breakdown is headed {$heading}");
+        }
+
+        foreach (['pm-rate', 'pm-own', 'pm-cust'] as $class) {
+            $this->assertStringContainsString($class, $html,
+                "{$class} must survive the rearrangement — every handler speaks to it");
+        }
+
+        $this->assertStringContainsString('pm-req', $html);
+        $this->assertStringContainsString('this.textContent = punchFmt(qty * punch.mats[+this.dataset.i].ratio)', $html,
+            'required moves when the quantity moves');
+    }
+
+    /**
+     * PUNCH-WALK-VISIBLE-1 — Enter walks what the operator can see.
+     *
+     * The punch is a keyboard flow, and the walk is a LIST of elements built by
+     * punchSeq(). A list is a memory of what was put on screen, and memories go
+     * stale: hiding the OWN/PARTY switch while leaving #punch-own in the list
+     * trapped the caret on Instructions. focus() on a hidden element does
+     * nothing at all — activeElement never moved, the next Enter recomputed the
+     * same index and tried the same hidden button, and the material rows became
+     * unreachable by keyboard. A disabled Party box stalls it the same way.
+     *
+     * So the walk stopped trusting the list and started asking each element
+     * whether it is on screen and usable. That rule cannot go stale.
+     */
+    public function test_the_enter_walk_only_visits_fields_the_operator_can_use(): void
+    {
+        $html = $this->render($this->booking());
+
+        $this->assertStringContainsString(
+            'seq.filter(el => el && ! el.disabled && el.offsetParent !== null)', $html,
+            'the walk must skip anything hidden or disabled, or one Enter can trap the operator');
+        $this->assertStringNotContainsString('return seq.filter(Boolean);', $html,
+            'filtering only nulls is what let a HIDDEN button stay in the walk');
+
+        // Every way into the punch bar — picking an item, editing a saved row,
+        // editing an unsaved one — lands on Qty with the number selected.
+        $this->assertSame(3, substr_count($html, ".trigger('focus').trigger('select')"),
+            'each way into the punch bar must land on Qty, selected');
+    }
+
+    /**
+     * PUNCH-REQUIRED-QTY-1 — Required Qty is the answer for THIS quantity.
+     *
+     * punchRenderMats() reads #punch-qty to work out each material's Required
+     * figure, and both edit paths set the quantity AFTER rendering — so the live
+     * screen showed "Required 15 KG" beside an Own of 42 on a 28 KG dish: the
+     * previous quantity's answer, sitting under the current one's numbers.
+     */
+    public function test_required_quantity_is_rendered_after_the_quantity_is_known(): void
+    {
+        $html = $this->render($this->booking());
+
+        $this->assertSame(2, substr_count($html, "\$('#punch-qty').val(qty);\n        punchRenderMats();"),
+            'both edit paths must set the quantity before the materials render');
+        $this->assertSame(0, substr_count($html, "punchRenderMats();\n        \$('#punch-customer-rate').val(punch.currentQuotedRate);\n        \$('#punch-qty').val(qty).trigger"),
+            'nothing may render the materials and then set the quantity');
+    }
+
+    /**
+     * ROW-DRAG-1/2/3 — a row can be picked up, and it moves the way the arrows
+     * move it.
+     *
+     * WHAT THIS GUARD CANNOT DO, said plainly: dragging happens in a browser,
+     * and no assertion here can drag anything. What it CAN prove is the thing
+     * that matters — that drag is a second way to perform the SAME move, not a
+     * second implementation of it. Both paths move `lineGroup()` and then call
+     * `renumberLines()`.
+     *
+     * That is not a technicality. The printed quotation reads this order back —
+     * `sort_order` follows the POSTED sequence — so an order computed in two
+     * places is a customer's paper that can disagree with the screen.
+     *
+     * Two live faults are pinned here because both shipped:
+     *   ROW-DRAG-2  dragstart refused whenever a punch was open, and a cancelled
+     *               dragstart becomes a text selection — the row never moved.
+     *   ROW-DRAG-3  the drop indicator was painted onto a line's COLLAPSED Cost
+     *               Details row, whose bounding rect is all zeros.
+     */
+    public function test_a_row_can_be_dragged_and_it_moves_exactly_as_the_arrows_do(): void
+    {
+        $html = $this->render($this->booking());
+
+        $this->assertStringContainsString("+ '<span class=\"line-drag", $html,
+            'the row the punch bar builds carries the handle');
+        $this->assertSame(
+            substr_count($html, 'data-row="s') + 1,
+            substr_count($html, 'class="line-drag'),
+            'one handle per saved row, plus the one the punch builder writes'
+        );
+        $this->assertStringContainsString('draggable="true"', $html);
+
+        // Drop never fires unless dragover cancels the default.
+        $this->assertStringContainsString("\$(document).on('dragover', '#lines-body > tr'", $html);
+        $this->assertMatchesRegularExpression(
+            "/on\('dragover'[\s\S]{0,400}?e\.preventDefault\(\)/", $html,
+            'without preventDefault on dragover the browser never fires a drop at all');
+
+        // ROW-DRAG-2 — never refuse the drag.
+        $start = $this->between($html, "on('dragstart', '.line-drag'", "on('dragover'");
+        $this->assertStringNotContainsString('if (punch) { e.preventDefault(); return; }', $start,
+            'a drag must never be refused — a cancelled dragstart becomes a text selection');
+
+        // ROW-DRAG-3 — the indicator follows only what can be seen.
+        $over = $this->between($html, "on('dragover', '#lines-body > tr'", "on('drop'");
+        $this->assertStringContainsString('filter(function () { return this.offsetParent !== null; })', $over,
+            'only rows the operator can see may define where a line begins and ends');
+        $this->assertStringNotContainsString('group.last()[0].getBoundingClientRect()', $over,
+            "measuring the group's hidden last row is what broke the indicator");
+
+        // The same two authorities the arrows use, and no third one.
+        $drop = $this->between($html, "on('drop', '#lines-body > tr'", "on('dragend'");
+        $this->assertStringContainsString('lineGroup(moving)', $drop,
+            'the whole line moves — its breakdown with it');
+        $this->assertStringContainsString('renumberLines();', $drop,
+            'and the posted indices are rewritten, exactly as after an arrow');
+        $this->assertStringNotContainsString('sort_order', $drop,
+            'the browser must not invent an order of its own');
+
+        // The index an edit is holding is repaired after EVERY move — which
+        // covers the arrows, where the hazard was never guarded.
+        $renumber = $this->between($html, 'function renumberLines()', "\$(document).on('click', '.line-up, .line-down'");
+        $this->assertStringContainsString('if (punch && punch.editRow)', $renumber,
+            'an edit in flight must have its row index repaired after any move');
+        $this->assertStringContainsString('punch.editIdx = at[1]', $renumber);
+
+        // A handle the browser can treat as text starts a selection, not a drag.
+        $this->assertStringContainsString('user-select: none', $html,
+            'the handle must not be selectable as text');
+
+        // The arrows are the addition's companion, never its casualty: they are
+        // the only way that works on a touch screen or from a keyboard.
+        $this->assertStringContainsString('line-up', $html);
+        $this->assertStringContainsString('line-down', $html);
+    }
+
+    /**
+     * PUNCH-ENTRY-TABLE-1 — the entry area is one block, and the materials in it
+     * grow DOWNWARD.
+     *
+     * The product's fields and the Material Breakdown belong to the same line, so
+     * they are one table row with the product cells spanning however many
+     * materials there are. A second material starts again at the Material column
+     * — it never opens a second group of five columns sideways, because a
+     * material is a CHILD of the line being punched, not a line of its own.
+     */
+    public function test_the_entry_area_is_one_block_with_the_materials_stacked(): void
+    {
+        $html = $this->render($this->booking());
+
+        $xp = $this->linesTableXPath($html);
+
+        $group = $xp->query('//table[@id="punch-table"]/thead/tr[1]/th[@colspan="5"]')->item(0);
+        $this->assertNotNull($group, 'Material Breakdown must span exactly five columns');
+        $this->assertSame('Material Breakdown', trim($group->textContent));
+
+        $this->assertSame(8, $xp->query('//table[@id="punch-table"]/thead/tr[1]/th[@rowspan="2"]')->length,
+            'the eight product-level headings span both header rows; the ninth is the group');
+
+        $heads = [];
+        foreach ($xp->query('//table[@id="punch-table"]/thead/tr/th') as $th) {
+            $heads[] = trim(preg_replace('/\s+/', ' ', $th->textContent));
+        }
+        $this->assertSame([
+            'Item', 'Qty', 'System Rate', 'Customer Rate', 'Material Breakdown',
+            'Kitchen Instructions', 'Additional Note', 'Line Amount', 'Action',
+            'Material', 'Rate', 'Required Qty', 'Own', 'Party',
+        ], $heads);
+
+        // The product cells are rendered ONCE, in Blade, and never rebuilt: the
+        // item picker is a select2 and redrawing it would tear out the control
+        // the operator is typing into. Only the material cells are redrawn.
+        $this->assertStringContainsString('id="punch-entry-row"', $html,
+            'the entry row is server-rendered, not built by JS');
+        $render = $this->between($html, 'function punchRenderMats()', 'function punchValidate()');
+        $this->assertStringContainsString("\$row.find('.punch-mat-cell').remove()", $render,
+            'only the material cells are cleared');
+        $this->assertStringContainsString("\$row.find('.punch-span').attr('rowspan'", $render,
+            "and the product cells' span is adjusted to match");
+        $this->assertStringNotContainsString('punch-item', $render,
+            'the item picker is never re-rendered');
+    }
+
+    /**
+     * The MAIN quotation table is not part of this work, and this guard exists
+     * because it once was.
+     *
+     * The redesign was asked for in the ENTRY area. I applied it to the
+     * quotation list as well — new columns, a grouped header, rowspan on saved
+     * rows — and it had to be taken back out. What follows pins the list's own
+     * columns so that a change to the entry block can never quietly reach them
+     * again.
+     */
+    public function test_the_main_quotation_table_keeps_its_own_columns(): void
+    {
+        $html = $this->render($this->booking());
+
+        $heads = [];
+        foreach ($this->linesTableXPath($html)->query('//table[@id="lines-table"]/thead/tr/th') as $th) {
+            $heads[] = trim(preg_replace('/\s+/', ' ', $th->textContent));
+        }
+
+        $this->assertSame([
+            'Item', 'Urdu Name', 'Qty', 'Unit', 'System Rate', 'Customer Rate',
+            'Amount', 'Instructions', '',
+        ], $heads, 'the quotation list keeps the columns it has always had');
+
+        $this->assertSame(0, substr_count($html, '<table id="lines-table"><thead><tr><th colspan'),
+            'the list has ONE header row');
+        $this->assertStringNotContainsString('line-material-row', $html,
+            'no material subrows in the quotation list');
+    }
+
+    /** One parser, so two guards cannot read different documents. */
+    private function linesTableXPath(string $html): \DOMXPath
+    {
+        $doc = new \DOMDocument;
+        $prev = libxml_use_internal_errors(true);
+        $doc->loadHTML('<?xml encoding="utf-8" ?>'.$html);
+        libxml_clear_errors();
+        libxml_use_internal_errors($prev);
+
+        return new \DOMXPath($doc);
+    }
+
+    /**
+     * PUNCH-COMMIT-ANYWHERE-1 — Ctrl+Enter belongs to the screen, not to the bar.
+     *
+     * The owner reported it "not working", then "working now, I don't know which
+     * box I entered". Driven in a real browser from every place the caret can
+     * honestly be, it worked from six and did nothing from three: with either
+     * select2 dropdown open — that list is appended to <body>, outside the bar,
+     * and select2 stops Enter propagating because it uses the key to pick the
+     * highlighted row — and after a click on the page background.
+     *
+     * A shortcut that works six times out of nine is worse than one that does
+     * not exist. The operator stops trusting it and reaches for the mouse.
+     *
+     * Plain Enter deliberately did NOT move: it only ever walks to the next
+     * field, and a stray Enter elsewhere on the page must never punch a
+     * half-typed line.
+     */
+    public function test_ctrl_enter_saves_the_row_from_anywhere_on_the_screen(): void
+    {
+        $html = $this->render($this->booking());
+
+        // On the document, in the CAPTURE phase — select2 never gets to swallow it.
+        $this->assertMatchesRegularExpression(
+            "/document\.addEventListener\('keydown', function \(e\) \{[\s\S]{0,600}?punchCommit\(\);[\s\S]{0,80}?\}, true\);/",
+            $html,
+            'Ctrl+Enter must be captured on the document, or an open select2 eats it');
+
+        // Several keydown listeners live on this page; name THIS one by its
+        // own marker rather than by its shape.
+        $capture = $this->between($html, 'PUNCH-COMMIT-ANYWHERE-1', '}, true);');
+        $this->assertStringContainsString("if (e.key !== 'Enter' || ! (e.ctrlKey || e.metaKey)) return;", $capture);
+        $this->assertStringContainsString('if (! punch) return;', $capture,
+            'with no punch in flight the key belongs to whatever else wants it');
+        $this->assertStringContainsString(".closest('.modal.show, .offcanvas.show')", $capture,
+            'a dialog on top keeps its own keys');
+
+        // The bar handler no longer answers Ctrl+Enter — one owner, not two.
+        $bar = $this->between($html, "\$(document).on('keydown', '#punch-bar'", 'punchSeq(), at =');
+        $this->assertStringNotContainsString('ctrlKey', $bar,
+            'the bar must not answer Ctrl+Enter as well — two owners can disagree');
+
+        // Plain Enter stays local: it walks, and only inside the bar.
+        $this->assertStringContainsString("\$(document).on('keydown', '#punch-bar'", $html);
+        $this->assertStringContainsString("if (e.key !== 'Enter') return;", $bar);
     }
 
     public function test_an_item_that_does_not_exist_cannot_be_entered(): void

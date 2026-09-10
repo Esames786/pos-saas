@@ -5,7 +5,6 @@
     $isBoth = $lang === 'both';
     $t = function (string $en, string $ur) use ($isUr) { return $isUr ? $ur : $en; };
     $snapshot = $release->event_snapshot;
-    $byStation = $release->lines->groupBy(fn ($line) => $line->production_station ?: '');
     $requirements = $release->requirements_snapshot['requirements'] ?? [];
 @endphp
 <!DOCTYPE html>

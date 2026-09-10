@@ -231,6 +231,32 @@ class CateringEventActionsMySqlTest extends MySqlTenantTestCase
             'a short list still needs room for the menu it opens');
     }
 
+    /**
+     * KASHIF-PRINT-CAT-PAR-1 — the paper says CAT and PAR.
+     *
+     * "us" and "customer" were the words on both the quotation and the kitchen
+     * sheet. The house calls them CAT (catering — ours) and PAR (party — the
+     * customer's), and the paper the customer holds should use the words the
+     * business uses. One partial feeds both documents, so both change together.
+     */
+    public function test_the_documents_name_the_supplier_the_way_the_house_does(): void
+    {
+        $event = $this->splitSupplyBooking();
+        $this->estimates->markSent($event->currentEstimate);
+
+        $quotation = View::make('tenant.catering.documents.estimate', [
+            'estimate' => $event->refresh()->currentEstimate->load('lines.costBlocks'),
+            'event' => $event,
+            'lang' => 'en',
+            'businessName' => 'Kashif Kitchen',
+            'position' => app(\App\Services\Catering\CateringFinancialPositionService::class)->position($event),
+        ])->render();
+
+        $this->assertStringContainsString('Chicken 5 KG (CAT 3, PAR 2)', $quotation,
+            'ours is CAT, the customer is PAR');
+        $this->assertStringNotContainsString('(us 3, customer 2)', $quotation);
+    }
+
     public function test_a_cancelled_booking_offers_no_lifecycle_action(): void
     {
         $event = $this->booking();
@@ -307,7 +333,9 @@ class CateringEventActionsMySqlTest extends MySqlTenantTestCase
             'position' => app(\App\Services\Catering\CateringFinancialPositionService::class)->position($event),
         ])->render();
 
-        $sentence = 'Chicken 5 KG (us 3, customer 2)';
+        // KASHIF-PRINT-CAT-PAR-1 changed the words, not the arithmetic: the
+        // house calls them CAT (ours) and PAR (the party's).
+        $sentence = 'Chicken 5 KG (CAT 3, PAR 2)';
 
         $this->assertStringContainsString($sentence, $quotation,
             "the customer's copy already said this");

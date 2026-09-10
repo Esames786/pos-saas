@@ -16,6 +16,29 @@
     .cost-details-row .table { font-size: 13px; }
     .cost-details-row .table th, .cost-details-row .table td { padding: .4rem .5rem; }
 
+    /* PUNCH-ENTRY-TABLE-1 — the entry block: an ERP grid, not a card. Thin
+       borders, compact controls, and the Material Breakdown identifiable
+       without becoming a second table. */
+    #punch-table { background: #fff; }
+    #punch-table th, #punch-table td { padding: .35rem .5rem; vertical-align: middle; }
+    #punch-table thead th {
+        background: var(--bs-tertiary-bg, #f6f7f9); font-size: 12px; font-weight: 600;
+        letter-spacing: .01em; color: var(--bs-secondary-color, #5b6470); white-space: nowrap;
+    }
+    /* A quiet tint — enough to say "this is the material section", not enough
+       to make the operator look at it before the item. */
+    #punch-table thead th.punch-mat-group { background: #f0f8f3; color: #2b7a5b; }
+    #punch-table thead th.punch-mat-col { background: #f7fbf9; }
+    #punch-table .form-control, #punch-table .form-select { min-height: 34px; font-size: 13px; }
+    /* The Material Breakdown reads as one section — a hairline down each side,
+       and only a dotted rule BETWEEN materials so the product cells beside them
+       are never cut through. */
+    #punch-body td.punch-mat-cell { background: var(--bs-body-bg, #fff); }
+    #punch-body tr.punch-mat-row td.punch-mat-cell { border-top: 1px dashed var(--bs-border-color, #dee2e6); }
+    #punch-body td.pm-ok { background: #f8fcfa; }
+    #punch-body td.pm-differs { background: #fffcf3; }
+    #punch-body td.punch-span { background: #fff; }
+
     /* KASHIF-ORDER-PUNCH: dense rows, old-software grid height — the punch
        bar is where typing happens; landed rows read compact. */
     #lines-table .form-control, #lines-table .form-select {
@@ -54,6 +77,25 @@
     }
     .punch-mode #lines-table .punch-edit:hover,
     .punch-mode #lines-table .punch-edit-unsaved:hover { background: var(--bs-primary-bg-subtle, #e8eefa); }
+    /* LINE-ORDER-1: a moved row is briefly marked, so a click that lands
+       three rows down the page is still visible to the person who made it. */
+    #lines-table tr.line-moved > td { background: var(--bs-warning-bg-subtle, #fff3cd) !important; transition: background .4s; }
+    /* ROW-DRAG-1: a handle, not the whole row — a draggable row makes selecting
+       a quantity impossible. It must not be selectable as text either, or a
+       half-started gesture leaves a trail of highlight behind it. */
+    #lines-table .line-drag {
+        cursor: grab; user-select: none; -webkit-user-select: none;
+        display: inline-block; padding: 2px 4px; font-size: 17px; line-height: 1;
+    }
+    #lines-table .line-drag:active { cursor: grabbing; }
+    #lines-body.lines-dragging { user-select: none; -webkit-user-select: none; }
+    /* Where the line would land — on the top or the bottom of the whole line. */
+    #lines-body > tr.line-drop-before > td { box-shadow: inset 0 3px 0 0 var(--bs-primary, #0d6efd); }
+    #lines-body > tr.line-drop-after > td { box-shadow: inset 0 -3px 0 0 var(--bs-primary, #0d6efd); }
+    /* The line being carried fades, so WHAT is moving is as visible as where. */
+    #lines-body > tr.line-being-dragged > td { opacity: .4; }
+    .punch-mode #lines-table .line-up,
+    .punch-mode #lines-table .line-down,
     .punch-mode #lines-table .remove-line:hover,
     .punch-mode #lines-table .punch-remove:hover { background: var(--bs-danger-bg-subtle, #fbe4e4); }
     /* The Urdu name is a document concern, not a punching one — the column goes
@@ -135,6 +177,11 @@
                        data-bs-toggle="tooltip" title="اردو — A4 only. Urdu cannot be rendered on a thermal printer.">اردو</a>
                     <a target="_blank" href="{{ url('/catering/documents/estimate/' . $current->id . '?lang=both') }}" class="btn btn-outline-secondary"
                        data-bs-toggle="tooltip" title="English and Urdu on one A4 sheet.">Both</a>
+                    {{-- KASHIF-CATERING-PDF-1: the same document as a file, to
+                         attach or keep. English only — the renderer cannot shape
+                         Nastaliq, and it says so rather than printing nonsense. --}}
+                    <a target="_blank" href="{{ url('/catering/documents/estimate/' . $current->id . '?lang=en&format=pdf') }}" class="btn btn-outline-secondary"
+                       data-bs-toggle="tooltip" title="Downloads the same A4 quotation as a PDF file. English only — for Urdu use the اردو document and your browser's Print → Save as PDF."><i class="ti ti-file-type-pdf me-1"></i>PDF</a>
                 </div>
                 @include('tenant.catering.partials.document-print', [
                     'action' => url('/catering/documents/estimate/' . $current->id . '/print'),
@@ -180,6 +227,18 @@
                         title="Closes the booking permanently and records why. Any advance already received stays on the ledger.">
                     Cancel Booking
                 </button>
+            @endcan
+            {{-- CATERING-STATUS-ROLLBACK-1 — one step back, or restore a
+                 cancelled booking. Shown only when the SERVICE says there is
+                 somewhere to go, so the screen can never offer a step the
+                 POST would refuse. --}}
+            @can('tenant.catering.events.move-back')
+                @if(! empty($backTarget))
+                    <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#moveBackModal"
+                            title="Take this booking back to {{ str_replace('_', ' ', $backTarget) }}. Payments, invoices and stock are untouched.">
+                        <i class="ti ti-arrow-back-up me-1"></i>{{ $event->isCancelled() ? 'Restore Booking' : 'Move Back' }}
+                    </button>
+                @endif
             @endcan
         @endif
     </div>
@@ -311,7 +370,12 @@
         <div class="d-flex gap-2">
             @if($isDraft && $event->isOpen())
                 @can('tenant.catering.estimates.reprice')
-                    <form method="POST" action="{{ url('/catering/estimates/' . $current->id . '/reprice') }}">
+                    {{-- RECALC-ASKS-TO-SAVE-1: this posts to the server and the
+                         workspace is re-rendered from what the server HAS. Rows
+                         punched but not yet saved are not there, so they are
+                         swept away by the redraw. The handler below stops that
+                         happening silently. --}}
+                    <form method="POST" data-reprice action="{{ url('/catering/estimates/' . $current->id . '/reprice') }}">
                         @csrf
                         <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="tooltip"
                                 title="Recomputes the internal material cost from each dish's recipe and the Material Rate Book. Changes no customer price, moves no stock, posts nothing to finance.">
@@ -380,66 +444,93 @@
                  row) → final Enter saves the row and applies every adjustment
                  through the SAME block authorities. Making stays background. --}}
             <div class="p-3 border-bottom" id="punch-bar" style="background:var(--bs-tertiary-bg,#f8f9fa)">
-                <div class="d-flex gap-3 flex-wrap align-items-end">
-                    <div style="min-width:300px;flex:1;max-width:480px">
-                        <label class="form-label fs-12 text-muted mb-1">Item — code ya naam → <kbd>Enter</kbd></label>
-                        <select id="punch-item" class="form-select" data-placeholder="361 ya biryani…"></select>
-                    </div>
-                    <div class="d-none punch-step" id="punch-qty-wrap">
-                        <label class="form-label fs-12 text-muted mb-1">Qty <span id="punch-unit" class="text-uppercase"></span></label>
-                        <input id="punch-qty" type="number" step="0.001" min="0.001" class="form-control text-end" style="width:110px" value="10">
-                    </div>
-                    {{-- KASHIF-EVENT-FORM-3: the customer rate is EDITABLE right
-                         here, for every item — including one with no cost blocks
-                         (Cream Cocktail's 1,200 was read-only, so the operator
-                         could not agree a different price while punching). Left
-                         alone it follows the system rate; typed over, it becomes
-                         this line's agreed rate through the same override
-                         authority the panel uses. --}}
-                    <div class="d-none punch-step border rounded px-3 py-2 bg-body" id="punch-price" style="min-width:250px">
-                        <div class="d-flex justify-content-between align-items-center gap-2 fs-12 text-muted">
-                            <span>System rate / <span id="punch-price-unit">unit</span></span>
-                            <strong class="text-body" id="punch-live-rate">0.00</strong>
-                        </div>
-                        <div class="d-flex justify-content-between align-items-center gap-2 mt-1">
-                            <label class="fs-12 text-muted mb-0" for="punch-customer-rate">Customer rate</label>
-                            <input id="punch-customer-rate" type="number" step="0.01" min="0"
-                                   class="form-control form-control-sm text-end" style="width:110px"
-                                   placeholder="system">
-                        </div>
-                        <div class="d-flex justify-content-between gap-3 fw-bold mt-1">
-                            <span>Line amount</span>
-                            <span id="punch-live-amount">0.00</span>
-                        </div>
-                    </div>
-                    <div class="d-none punch-step" style="min-width:240px;flex:1;max-width:420px">
-                        <label class="form-label fs-12 text-muted mb-1">Kitchen instructions</label>
-                        {{-- The managed vocabulary, right in the punch — the same
-                             list the line carries afterwards. --}}
-                        <select id="punch-instr-ids" class="form-select" multiple data-placeholder="Kitchen instructions…">
-                            @foreach($activeInstructions as $instr)
-                                <option value="{{ $instr->id }}">{{ $instr->label }}</option>
-                            @endforeach
-                        </select>
-                        <input id="punch-instr" type="text" class="form-control mt-1" placeholder="Additional note (optional)">
-                    </div>
-                    <div class="d-none punch-step" id="punch-seg-wrap">
-                        <span class="form-label fs-12 text-muted mb-1 d-block">Supply split — <kbd>O</kbd>/<kbd>P</kbd> phir <kbd>Enter</kbd></span>
-                        {{-- Checkbox-shaped, so the chosen state is obvious at a
-                             glance; Enter/Space on the focused one selects it. --}}
-                        <div class="btn-group" id="punch-seg">
-                            <button type="button" class="btn btn-primary" id="punch-own" tabindex="0">
-                                <i class="ti ti-square-check me-1 punch-tick"></i>OWN · ہم
-                            </button>
-                            <button type="button" class="btn btn-outline-success" id="punch-party" tabindex="0">
-                                <i class="ti ti-square me-1 punch-tick"></i>PARTY · گاہک
-                            </button>
-                        </div>
-                    </div>
-                    <button type="button" class="btn btn-warning fw-bold d-none punch-step" id="punch-commit">Row save <span class="fs-12 opacity-75">(Ctrl+Enter)</span></button>
-                    <button type="button" class="btn btn-link btn-sm text-muted d-none punch-step" id="punch-cancel">Esc — cancel</button>
+                {{-- PUNCH-ENTRY-TABLE-1 — the punch area as ONE block.
+                     Product fields on the outside, Material Breakdown grouped in
+                     the middle. A dish with two materials shows the second
+                     DIRECTLY BELOW the first, under the same five columns —
+                     never a second group of five columns sideways, because a
+                     material belongs to the line being punched.
+                     The main quotation table below is untouched. --}}
+                <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap mb-2">
+                    <span class="fs-12 text-muted">Item chunein — uske material neeche ki taraf, unhi columns me barhte hain.</span>
+                    <span class="fs-12 text-muted"><kbd>Enter</kbd> next · <kbd>Ctrl</kbd>+<kbd>Enter</kbd> save · <kbd>Esc</kbd> cancel</span>
                 </div>
-                <div id="punch-mats" class="mt-2 table-responsive"></div>
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0 align-middle" id="punch-table">
+                        <thead>
+                            <tr>
+                                <th rowspan="2" style="min-width:250px;">Item</th>
+                                <th rowspan="2" style="width:95px;" class="text-end">Qty</th>
+                                <th rowspan="2" style="width:105px;" class="text-end">System Rate</th>
+                                <th rowspan="2" style="width:115px;" class="text-end">Customer Rate</th>
+                                <th colspan="5" class="text-center punch-mat-group">Material Breakdown</th>
+                                <th rowspan="2" style="min-width:170px;">Kitchen Instructions</th>
+                                <th rowspan="2" style="min-width:160px;">Additional Note</th>
+                                <th rowspan="2" style="width:110px;" class="text-end">Line Amount</th>
+                                <th rowspan="2" style="width:130px;">Action</th>
+                            </tr>
+                            <tr>
+                                <th class="punch-mat-col" style="min-width:160px;">Material</th>
+                                <th class="punch-mat-col text-end" style="width:95px;">Rate</th>
+                                <th class="punch-mat-col text-end" style="width:105px;">Required Qty</th>
+                                <th class="punch-mat-col text-end" style="width:95px;">Own</th>
+                                <th class="punch-mat-col text-end" style="width:95px;">Party</th>
+                            </tr>
+                        </thead>
+                        <tbody id="punch-body">
+                            {{-- The product cells are rendered ONCE and never rebuilt: the
+                                 item picker is a select2, and re-rendering it would tear
+                                 out the very control the operator is typing into. Only the
+                                 material cells are redrawn, and the rowspan on these cells
+                                 is adjusted to match how many there are. --}}
+                            <tr id="punch-entry-row">
+                                <td class="punch-span">
+                                    <select id="punch-item" class="form-select form-select-sm" data-placeholder="361 ya biryani…"></select>
+                                </td>
+                                <td class="punch-span text-end">
+                                    <input id="punch-qty" type="number" step="0.001" min="0.001"
+                                           class="form-control form-control-sm text-end d-none punch-step" value="10">
+                                    <div class="fs-12 text-muted text-uppercase mt-1" id="punch-unit"></div>
+                                </td>
+                                {{-- KASHIF-EVENT-FORM-3: the customer rate is EDITABLE right
+                                     here, for every item — including one with no cost blocks.
+                                     Left alone it follows the system rate; typed over, it
+                                     becomes this line's agreed rate through the same override
+                                     authority the Cost Details panel uses. --}}
+                                <td class="punch-span text-end">
+                                    <strong id="punch-live-rate" class="d-none punch-step">0.00</strong>
+                                    <div class="fs-12 text-muted d-none punch-step">per <span id="punch-price-unit">unit</span></div>
+                                </td>
+                                <td class="punch-span text-end">
+                                    <input id="punch-customer-rate" type="number" step="0.01" min="0"
+                                           class="form-control form-control-sm text-end d-none punch-step" placeholder="system">
+                                </td>
+                                <td class="punch-mat-cell text-muted fs-12" colspan="5">Item chunte hi is ke material yahan aa jayenge.</td>
+                                <td class="punch-span">
+                                    {{-- The managed vocabulary, right in the punch — the same
+                                         list the line carries afterwards. --}}
+                                    <select id="punch-instr-ids" class="form-select form-select-sm d-none punch-step" multiple
+                                            data-placeholder="Select / type instruction…">
+                                        @foreach($activeInstructions as $instr)
+                                            <option value="{{ $instr->id }}">{{ $instr->label }}</option>
+                                        @endforeach
+                                    </select>
+                                </td>
+                                <td class="punch-span">
+                                    <input id="punch-instr" type="text" class="form-control form-control-sm d-none punch-step"
+                                           placeholder="Select / type note…">
+                                </td>
+                                <td class="punch-span text-end">
+                                    <strong id="punch-live-amount" class="d-none punch-step">0.00</strong>
+                                </td>
+                                <td class="punch-span text-nowrap">
+                                    <button type="button" class="btn btn-warning btn-sm fw-bold d-none punch-step" id="punch-commit">Save Row</button>
+                                    <button type="button" class="btn btn-link btn-sm text-muted p-0 ms-2 d-none punch-step" id="punch-cancel">Esc</button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
                 <div id="punch-live" class="fs-13 text-muted mt-2"></div>
             </div>
             <div class="table-responsive">
@@ -573,6 +664,15 @@
                                        placeholder="Additional note">
                             </td>
                             <td class="align-middle text-nowrap">
+                                {{-- LINE-ORDER-1: the quotation prints in the order
+                                     these rows sit in — sort_order follows the posted
+                                     order and every document reads it back. So moving
+                                     a row here IS moving it on the customer's paper. --}}
+                                {{-- ROW-DRAG-1: a handle, not the whole row — dragging anywhere
+                                     on the row would make selecting a quantity impossible. --}}
+                                <span class="line-drag text-muted me-1" draggable="true" title="Drag to reorder"><i class="ti ti-grip-vertical"></i></span>
+                                <button type="button" class="btn btn-sm btn-link text-muted line-up p-0 me-1" title="Move up"><i class="ti ti-arrow-up"></i></button>
+                                <button type="button" class="btn btn-sm btn-link text-muted line-down p-0 me-1" title="Move down"><i class="ti ti-arrow-down"></i></button>
                                 <button type="button" class="btn btn-sm btn-link text-primary punch-edit p-0 me-1" title="Edit this item"><i class="ti ti-pencil"></i></button>
                                 <button type="button" class="btn btn-sm btn-link text-danger remove-line p-0" title="Remove this item"><i class="ti ti-x"></i></button>
                             </td>
@@ -794,7 +894,7 @@
                                     title="Posts the payment to the general ledger and increases the selected cash/bank balance.">Record Advance</button>
                         @endcan
                     @endif
-                    @if($position['refundable'] > 0)
+                    @if($position['refund_ceiling'] > 0)
                         @can('tenant.catering.refunds.store')
                             <button class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#refundModal"
                                     title="Pays the customer back what they are owed. Posts to the general ledger and reduces the selected cash/bank balance.">
@@ -1053,9 +1153,64 @@
 @endif
 @endcan
 
+{{-- CATERING-STATUS-ROLLBACK-1 — the confirm for moving a booking back.
+
+     Says plainly what is NOT affected, because that is the question an operator
+     actually has: cancelling never refunded anything, and neither does this. --}}
+@can('tenant.catering.events.move-back')
+@if(! empty($backTarget))
+<div class="modal fade" id="moveBackModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form method="POST" action="{{ url('/catering/events/' . $event->id . '/move-back') }}" class="modal-content">
+            @csrf
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    {{ $event->isCancelled() ? 'Restore' : 'Move back' }} — {{ $event->event_no }}
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-secondary">
+                    This booking goes from <strong>{{ str_replace('_', ' ', $event->status) }}</strong>
+                    back to <strong>{{ str_replace('_', ' ', $backTarget) }}</strong>.
+                    <span class="d-block mt-1 fs-12">
+                        Payments, invoices and stock are <strong>not</strong> affected — nothing is refunded,
+                        reversed or deleted. Only the booking's stage changes.
+                    </span>
+                    @if($backTargetIsAssumed)
+                        <span class="d-block mt-1 fs-12 text-warning-emphasis">
+                            This booking was cancelled before the system recorded where it came from,
+                            so it returns to <strong>draft</strong> rather than a guess.
+                        </span>
+                    @endif
+                    @if($event->status === 'quoted')
+                        <span class="d-block mt-1 fs-12 text-warning-emphasis">
+                            The quotation becomes editable again — the copy the customer already has
+                            will no longer match what the system holds. Use <em>Create Revision</em> instead
+                            if they should be given new paper.
+                        </span>
+                    @endif
+                </div>
+                <label class="form-label">Why? <span class="text-danger">*</span></label>
+                <input type="text" name="reason" class="form-control" required minlength="3" maxlength="2000"
+                       placeholder="e.g. customer wants to change the menu">
+                <div class="form-text">Kept on the booking's history permanently.</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                <button type="submit" class="btn btn-secondary">
+                    {{ $event->isCancelled() ? 'Restore booking' : 'Move it back' }}
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+@endif
+@endcan
+
 <div class="modal fade" id="advanceModal" tabindex="-1">
     <div class="modal-dialog">
-        <form method="POST" action="{{ url('/catering/events/' . $event->id . '/advances') }}" class="modal-content">
+        <form method="POST" action="{{ url('/catering/events/' . $event->id . '/advances') }}" class="modal-content" id="advance-form">
             @csrf
             <div class="modal-header">
                 <h5 class="modal-title">Record Advance — {{ $event->event_no }}</h5>
@@ -1065,7 +1220,7 @@
                 <div class="row g-3">
                     <div class="col-6">
                         <label class="form-label">Amount <span class="text-danger">*</span></label>
-                        <input type="number" step="0.01" min="0.01" name="amount" class="form-control" required>
+                        <input type="number" step="0.01" name="amount" class="form-control" required>
                     </div>
                     <div class="col-6">
                         <label class="form-label">Received Date <span class="text-danger">*</span></label>
@@ -1088,13 +1243,33 @@
                         <label class="form-label">Notes</label>
                         <input type="text" name="notes" class="form-control">
                     </div>
+                    {{-- CATERING-OVERPAYMENT-1 §4 (revised) — taking more than the
+                         bill is still a DECISION, but it is no longer a box ticked
+                         in advance. Money arrives in instalments: three payments of
+                         100,000 against a 250,000 bill cross the total on the
+                         third, and nobody knew that when they opened this form. So
+                         the system does the arithmetic and asks at the moment it
+                         becomes true. The hidden field carries the answer. --}}
+                    <input type="hidden" name="allow_overpayment" id="adv-overpay" value="0">
+                    {{-- §4b — the same box takes a MINUS to hand credit back, and
+                         anything other than a plain payment has to say why. --}}
+                    <div class="col-12 d-none" id="adv-reason-wrap">
+                        <label class="form-label">Reason <span class="text-danger">*</span></label>
+                        <input type="text" name="overpayment_reason" class="form-control" maxlength="255"
+                               placeholder="Why more than the bill, or why money is going back">
+                    </div>
                 </div>
                 {{-- This line used to claim the opposite of what the action does:
                      it said no GL or cash-bank posting happened, while the very
                      same submit posts a journal entry and moves the drawer. --}}
                 <div class="text-muted fs-12 mt-2">
                     Posts to the general ledger and increases the selected cash/bank balance.
-                    Nothing may be taken beyond {{ number_format($position['balance_due'], 2) }}, the amount still due.
+                    Amount still due: {{ number_format($position['balance_due'], 2) }}.
+                    @if($position['refundable'] > 0)
+                        Credit held: {{ number_format($position['refundable'], 2) }} — a MINUS amount hands it back.
+                    @else
+                        A minus amount hands credit back, once there is any.
+                    @endif
                 </div>
             </div>
             <div class="modal-footer">
@@ -1112,10 +1287,10 @@
      is precisely when someone needs their money back, so the one action that
      settles it must still be reachable there. --}}
 @can('tenant.catering.refunds.store')
-@if($position['refundable'] > 0)
+@if($position['refund_ceiling'] > 0)
 <div class="modal fade" id="refundModal" tabindex="-1">
     <div class="modal-dialog">
-        <form method="POST" action="{{ url('/catering/events/' . $event->id . '/refunds') }}" class="modal-content">
+        <form method="POST" action="{{ url('/catering/events/' . $event->id . '/refunds') }}" class="modal-content" id="refund-form">
             @csrf
             <div class="modal-header">
                 <h5 class="modal-title">Refund Customer — {{ $event->event_no }}</h5>
@@ -1124,7 +1299,13 @@
             <div class="modal-body">
                 <div class="alert alert-warning">
                     <i class="ti ti-alert-triangle me-1"></i>
-                    This booking owes the customer <strong>{{ number_format($position['refundable'], 2) }}</strong>.
+                    @if($position['refundable'] > 0)
+                        This booking owes the customer <strong>{{ number_format($position['refundable'], 2) }}</strong>,
+                        out of <strong>{{ number_format($position['refund_ceiling'], 2) }}</strong> received.
+                    @else
+                        <strong>{{ number_format($position['refund_ceiling'], 2) }}</strong> has been received on this
+                        booking and <strong>none of it is credit</strong> — every rupee is covering the bill.
+                    @endif
                     <span class="d-block mt-1 fs-12">
                         This pays real money out: it posts to the general ledger and reduces the selected
                         cash/bank balance. The original receipts are never altered — this is recorded
@@ -1134,9 +1315,20 @@
                 <div class="row g-3">
                     <div class="col-6">
                         <label class="form-label">Amount <span class="text-danger">*</span></label>
-                        <input type="number" step="0.01" min="0.01" max="{{ $position['refundable'] }}"
-                               name="amount" class="form-control" value="{{ $position['refundable'] }}" required>
-                        <div class="form-text">At most {{ number_format($position['refundable'], 2) }}. Part of it is fine.</div>
+                        {{-- The ceiling that never moves: money that never arrived
+                             cannot be handed back, whatever anyone is allowed to do.
+                             Going past the CREDIT is a different matter — allowed,
+                             with authority and a reason — so the box accepts it and
+                             the confirm below is what asks. --}}
+                        <input type="number" step="0.01" min="0.01" max="{{ $position['refund_ceiling'] }}"
+                               name="amount" class="form-control" id="refund-amount"
+                               value="{{ $position['refundable'] > 0 ? $position['refundable'] : '' }}" required>
+                        <div class="form-text">
+                            At most {{ number_format($position['refund_ceiling'], 2) }} — everything received.
+                            @if($position['refundable'] > 0)
+                                Up to {{ number_format($position['refundable'], 2) }} is the customer's own credit.
+                            @endif
+                        </div>
                     </div>
                     <div class="col-6">
                         <label class="form-label">Refund Date <span class="text-danger">*</span></label>
@@ -1411,16 +1603,17 @@
 
 @push('scripts')
 <script>
-// KASHIF-LEGACY-ALIGN-6 (revised): the event WORKSPACE goes full-width like
-// the POS — but the operator's own choice WINS and is remembered. Delegated,
-// because the header (and its toggle) lives inside the swapped workspace.
-if (localStorage.getItem('cateringSidebar') !== 'show') {
-    document.body.classList.remove('mini-sidebar', 'expand-menu');
-    document.body.classList.add('nosidebar');
-}
+// KASHIF-LEGACY-ALIGN-6: the event WORKSPACE goes full-width like the POS.
+// It starts collapsed EVERY visit. A revision once remembered the operator's
+// last choice in localStorage, which meant a single click months ago left the
+// navigation open on this screen forever after — reported from the floor on
+// 2026-09-09. The button still opens it, for as long as you are on the page.
+// Delegated, because the header (and its toggle) lives inside the swapped
+// workspace.
+document.body.classList.remove('mini-sidebar', 'expand-menu');
+document.body.classList.add('nosidebar');
 $(document).on('click', '#catering-sidebar-toggle', function () {
     const hidden = document.body.classList.toggle('nosidebar');
-    localStorage.setItem('cateringSidebar', hidden ? 'hide' : 'show');
     $(this).find('i').attr('class', hidden ? 'ti ti-layout-sidebar-left-expand' : 'ti ti-layout-sidebar-left-collapse');
     $(this).attr('title', hidden ? 'Show navigation' : 'Hide navigation');
 });
@@ -1481,6 +1674,152 @@ $(document).on('click', '.js-rate-toggle', function () {
     $(this).prev('.rate-edit').removeClass('d-none').find('input').trigger('focus');
     $(this).addClass('d-none');
 });
+
+// CATERING-OVERPAYMENT-1 §4/§4b (revised) — the arithmetic decides, and it
+// asks at the moment the answer changes.
+//
+// This used to be a checkbox ticked before the amount was typed, which had the
+// operator deciding something they could not yet know. Money arrives in
+// instalments: 100,000 three times against a 250,000 bill crosses the total on
+// the third payment, and nothing about the first two announced it. So the
+// screen compares what is being taken against what is still due, reveals the
+// Reason box the moment it goes past, and asks out loud on submit.
+(function () {
+    const form = document.getElementById('advance-form');
+    const amount = document.querySelector('#advanceModal [name=amount]');
+    const flag = document.getElementById('adv-overpay');
+    const wrap = document.getElementById('adv-reason-wrap');
+    if (! form || ! amount || ! wrap) return;
+
+    // The figures the decision is made against, taken from the same position()
+    // the controller will use — not recomputed here, where it could drift.
+    const due = {{ (float) $position['balance_due'] }};
+    const canOverpay = @json(auth()->user()?->can('tenant.catering.advances.overpay') ?? false);
+
+    const typed = () => Math.round((parseFloat(amount.value) || 0) * 100) / 100;
+    const overpaying = () => typed() > due;
+
+    // A reason is owed for any departure from a plain payment: money taken
+    // beyond the bill, or money going back. Asking unconditionally would train
+    // people to fill it with nothing.
+    const sync = function () {
+        const owed = typed() < 0 || overpaying();
+        wrap.classList.toggle('d-none', ! owed);
+        const box = wrap.querySelector('input');
+        if (box) box.required = owed;
+        if (! overpaying()) flag.value = '0';
+    };
+
+    amount.addEventListener('input', sync);
+    sync();
+
+    let answered = false;
+
+    form.addEventListener('submit', function (e) {
+        if (! overpaying() || answered) return;
+
+        e.preventDefault();
+
+        // Refused on the screen as well as at the controller. The controller is
+        // the authority — it drops the flag for anyone without the permission —
+        // but being told plainly beats submitting into a refusal.
+        if (! canOverpay) {
+            Swal.fire({
+                title: 'Not allowed',
+                html: 'This is more than the <b>' + due.toLocaleString(undefined, {minimumFractionDigits: 2}) + '</b> still due, '
+                    + 'and you do not have permission to take more than the bill.',
+                icon: 'error',
+            });
+            return;
+        }
+
+        const extra = (typed() - due).toLocaleString(undefined, {minimumFractionDigits: 2});
+
+        Swal.fire({
+            title: 'More than the amount due',
+            html: 'Only <b>' + due.toLocaleString(undefined, {minimumFractionDigits: 2}) + '</b> is still due on this booking.<br>'
+                + 'The extra <b>' + extra + '</b> will be held as the customer\'s money — <b>not income</b> — '
+                + 'and stays owed back to them until it is used or refunded.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, take the full amount',
+            cancelButtonText: 'Cancel',
+            confirmButtonColor: '#0d6efd',
+        }).then(function (r) {
+            if (! r.isConfirmed) return;
+            flag.value = '1';
+            answered = true;
+            if (form.requestSubmit) { form.requestSubmit(); } else { form.submit(); }
+        });
+    });
+})();
+
+// CATERING-REFUND-BEYOND-CREDIT-1 — money going OUT gets the same treatment as
+// money coming in: the screen compares what is being handed back against what
+// is actually the customer's, and asks out loud when it goes further.
+//
+// Refunding within the credit returns money the business was merely holding.
+// Refunding past it returns money that was PAYING A BILL — the balance due goes
+// straight back up by the difference — and that is a different act, not a
+// larger one. Whoever is doing it should be told so in those words before it
+// happens, not discover it on the statement afterwards.
+(function () {
+    const form = document.getElementById('refund-form');
+    const amount = document.getElementById('refund-amount');
+    if (! form || ! amount) return;
+
+    const credit = {{ (float) $position['refundable'] }};
+    const ceiling = {{ (float) $position['refund_ceiling'] }};
+    const canGoBeyond = @json(auth()->user()?->can('tenant.catering.refunds.beyond-credit') ?? false);
+
+    const money = (n) => n.toLocaleString(undefined, {minimumFractionDigits: 2});
+    const typed = () => Math.round((parseFloat(amount.value) || 0) * 100) / 100;
+
+    let answered = false;
+
+    form.addEventListener('submit', function (e) {
+        if (typed() <= credit || answered) return;
+
+        e.preventDefault();
+
+        // Refused on the screen as well as at the model guard. The guard is the
+        // authority — it holds for every caller, including a hand-written post —
+        // but being told plainly beats submitting into a refusal.
+        if (! canGoBeyond) {
+            Swal.fire({
+                title: 'Not allowed',
+                html: credit > 0
+                    ? 'Only <b>' + money(credit) + '</b> of this booking is the customer\'s own credit. '
+                      + 'Handing back more than that returns money which is covering the bill, '
+                      + 'and you do not have permission to do it.'
+                    : 'None of the <b>' + money(ceiling) + '</b> received is credit — every rupee is covering '
+                      + 'the bill — and you do not have permission to hand back money that is paying for the booking.',
+                icon: 'error',
+            });
+            return;
+        }
+
+        const beyond = typed() - credit;
+
+        Swal.fire({
+            title: 'This goes past the customer\'s credit',
+            html: (credit > 0
+                    ? 'Only <b>' + money(credit) + '</b> is the customer\'s own credit.<br>'
+                    : 'None of this is the customer\'s credit.<br>')
+                + 'The other <b>' + money(beyond) + '</b> is money that is <b>covering the bill</b> — '
+                + 'handing it back puts the balance due straight back up by that amount.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, pay it back anyway',
+            cancelButtonText: 'Cancel',
+            confirmButtonColor: '#d9534f',
+        }).then(function (r) {
+            if (! r.isConfirmed) return;
+            answered = true;
+            if (form.requestSubmit) { form.requestSubmit(); } else { form.submit(); }
+        });
+    });
+})();
 
 // KASHIF-ORDER-PUNCH §B: the old software's keyboard, on this screen.
 // '/' focuses the item picker; Ctrl+S saves the estimate (not the browser
@@ -1658,7 +1997,10 @@ $(function () {
 
     function recalc() {
         let subtotal = 0;
-        $('#lines-body tr').not('.cost-details-row').each(function () {
+        // Only LINE rows carry money. Saying so directly matters: the old
+        // 'every tr except one class' also reached into the tables nested
+        // inside a row's breakdown.
+        $('#lines-body > tr[data-row]').each(function () {
             const qty = parseFloat($(this).find('.line-qty').val()) || 0;
             // A block-costed line's quoted rate is not an input here — the row
             // carries it as data-rate and it only changes through Cost Details.
@@ -1690,10 +2032,9 @@ $(function () {
     $(document).on('click', '#add-line', () => addRow());
     $(document).on('input change', '.line-qty, .line-rate, .t-input', recalc);
     $(document).on('click', '.remove-line', function () {
-        const tr = $(this).closest('tr');
-        // A block-costed row travels with its Cost Details row.
-        tr.next('.cost-details-row').remove();
-        tr.remove();
+        // A row travels with everything that belongs to it — its breakdown
+        // included.
+        lineGroup($(this).closest('tr[data-row]')).remove();
         recalc();
     });
 
@@ -1840,11 +2181,14 @@ $(function () {
         $('#punch-item').empty().append(new Option('EDIT — ' + punch.name, 'edit', true, true)).trigger('change');
         loadPunchInstructions(row, idx);
         $('.punch-step').removeClass('d-none');
-        if (! mats.length || ! punch.party) $('#punch-seg-wrap').addClass('d-none');
-        punchSetMode(punch.mode);
+        // PUNCH-REQUIRED-QTY-1 — the quantity FIRST. punchRenderMats() reads
+        // #punch-qty to work out each material's Required figure, so rendering
+        // before setting it answered for the PREVIOUS quantity: the live screen
+        // showed "Required 15 KG" beside an Own of 42 on a 28 KG dish.
+        $('#punch-qty').val(qty);
         punchRenderMats();
         $('#punch-customer-rate').val(punch.currentQuotedRate);
-        $('#punch-qty').val(qty).trigger('focus').trigger('select');
+        $('#punch-qty').trigger('focus').trigger('select');
         punchLive();
     });
 
@@ -1892,11 +2236,14 @@ $(function () {
         const ids = row.find('[name="lines[' + idx + '][instruction_ids][]"]').map(function () { return this.value; }).get();
         $('#punch-instr-ids').val(ids).trigger('change');
         $('.punch-step').removeClass('d-none');
-        if (!mats.length || !punch.party) $('#punch-seg-wrap').addClass('d-none');
-        punchSetMode(punch.mode);
+        // PUNCH-REQUIRED-QTY-1 — the quantity FIRST. punchRenderMats() reads
+        // #punch-qty to work out each material's Required figure, so rendering
+        // before setting it answered for the PREVIOUS quantity: the live screen
+        // showed "Required 15 KG" beside an Own of 42 on a 28 KG dish.
+        $('#punch-qty').val(qty);
         punchRenderMats();
         $('#punch-customer-rate').val(punch.currentQuotedRate);
-        $('#punch-qty').val(qty).trigger('focus').trigger('select');
+        $('#punch-qty').trigger('focus').trigger('select');
         punchLive();
     });
 
@@ -1904,6 +2251,14 @@ $(function () {
         const id = e.params.data.id;
         const name = (e.params.data.text || '').replace(/^[^—]*—\s*/, '');
         const p = profiles[id] || {};
+        // PUNCH-EDIT-SWAP-1 — a product picked WHILE EDITING is still an edit.
+        //
+        // This rebuilt `punch` from nothing on every pick, so the row being
+        // edited was forgotten and punchCommit took the "new row" path: the row
+        // was left untouched and a second one appeared at the bottom. Three
+        // identical Chicken Karahi Shanwari lines on a live quotation came from
+        // exactly this.
+        const editing = punch && punch.editRow ? punch : null;
         punch = {
             productId: /^\d+$/.test(String(id)) ? id : null,
             name, nameUr: p.name_ur || '', unitId: p.unit_id || null, mode: 'OWN',
@@ -1913,71 +2268,187 @@ $(function () {
             unitCode: p.unit_code || '—',
             mats: (p.mats || []).map(m => ({ ...m, own: null, cust: 0, ownTouched: false, origRate: m.rate })),
             customerRateTouched: false,
+            // Carried, so the row keeps its place instead of being duplicated.
+            editRow: editing ? editing.editRow : null,
+            editIdx: editing ? editing.editIdx : null,
+            editSaved: editing ? editing.editSaved : false,
+            productChanged: editing ? true : false,
         };
         clearPunchInstructions();
         $('#punch-unit').text('');
         $('.punch-step').removeClass('d-none');
-        // Product-level rule: no party allowed (or no materials) → the
-        // question never even appears; the customer boxes never render.
-        if (!punch.mats.length || !punch.party) { $('#punch-seg-wrap').addClass('d-none'); }
-        punchSetMode('OWN');
+        // PUNCH-ENTRY-TABLE-1: there is no supply MODE any more. The item says
+        // whether the customer may supply at all, and each material carries its
+        // own Own and Party boxes — so the question the switch asked had nothing
+        // left to ask, and a mode that could disagree with the boxes is gone.
         punchRenderMats();
-        $('#punch-qty').val(10).trigger('focus').trigger('select');
+        // Swapping the dish does not mean re-typing how much of it.
+        $('#punch-qty').val(editing ? (parseFloat($('#punch-qty').val()) || 10) : 10)
+            .trigger('focus').trigger('select');
         punchLive();
     }
 
-    function punchSetMode(m) {
-        if (m === 'PARTY' && !punch.party) { punchNote('Is item par Party OFF hai (Catering Products se on hota hai)'); m = 'OWN'; }
-        // BUG FIX: coming back to OWN must ZERO the customer's shares, not just
-        // grey the boxes — a hidden number that still billed nothing is exactly
-        // how a quotation ends up wrong for a reason nobody can see.
-        if (m === 'OWN' && punch.mats && punch.mats.some(x => (x.cust || 0) > 0)) {
-            punch.mats.forEach(x => { x.cust = 0; });
-            setTimeout(function () { punchRenderMats(); punchLive(); }, 0);
-        }
-        punch.mode = m;
-        $('#punch-own').toggleClass('btn-primary', m === 'OWN').toggleClass('btn-outline-primary', m !== 'OWN')
-            .find('.punch-tick').attr('class', 'ti me-1 punch-tick ' + (m === 'OWN' ? 'ti-square-check' : 'ti-square'));
-        $('#punch-party').toggleClass('btn-success', m === 'PARTY').toggleClass('btn-outline-success', m !== 'PARTY')
-            .find('.punch-tick').attr('class', 'ti me-1 punch-tick ' + (m === 'PARTY' ? 'ti-square-check' : 'ti-square'));
-        $('#punch-mats .pm-cust').prop('disabled', m !== 'PARTY');
-    }
     function punchNote(t) { $('#punch-live').html('<span class="text-warning-emphasis">' + _.escape(t) + '</span>'); }
 
-    function punchRenderMats() {
-        if (!punch.mats.length) { $('#punch-mats').empty(); return; }
-        const qty = parseFloat($('#punch-qty').val()) || 0;
-        const partyCol = punch.party;
-        $('#punch-mats').html('<table class="table table-sm mb-0" style="max-width:760px"><thead><tr>'
-            + '<th>Linked material</th><th class="text-end">Rate (latest)</th>'
-            + '<th class="text-end">Hum denge</th>'
-            + (partyCol ? '<th class="text-end text-success">Party dega</th>' : '')
-            + '<th class="text-end">Total kitchen</th>'
-            + '</tr></thead><tbody>'
-            + punch.mats.map((m, i) => '<tr>'
-                + '<td title="' + _.escape(m.label || m.name) + '">' + _.escape(punchShort(m.name || m.label))
-                    + (punch.editRow ? '' : ' <span class="fs-12 text-muted">recipe ' + m.ratio + ' ' + _.escape(m.unit) + '</span>')
-                + '</td>'
-                + '<td class="text-end"><input class="form-control form-control-sm text-end pm-rate" data-i="' + i + '" style="width:90px;display:inline-block" value="' + m.rate + '"></td>'
-                + '<td class="text-end"><input class="form-control form-control-sm text-end pm-own" data-i="' + i + '" style="width:90px;display:inline-block" value="' + punchFmt(m.ownTouched ? m.own : qty * m.ratio) + '"></td>'
-                + (partyCol
-                    ? '<td class="text-end"><input class="form-control form-control-sm text-end pm-cust" data-i="' + i + '" style="width:90px;display:inline-block;border-color:var(--bs-success)" value="' + punchFmt(m.cust || 0) + '" ' + (punch.mode !== 'PARTY' ? 'disabled' : '') + '></td>'
-                    : '')
-                + '<td class="text-end fw-semibold"><span class="pm-total" data-i="' + i + '">' + punchFmt((m.ownTouched ? m.own : qty * m.ratio) + (m.cust || 0)) + '</span> ' + _.escape(m.unit || '') + '</td>'
-                + '</tr>').join('')
-            + '</tbody></table>');
+    /**
+     * STACKED-MATERIAL-ROW-1 (step 3) — the owner's columns.
+     *
+     * Material · Rate · Required Qty · Own · Party, stacked so a dish with two
+     * materials shows the second directly beneath the first under the same
+     * headings. Required is what the recipe asks for at this quantity; Own is
+     * what we supply, and starts there; Party is what the customer brings.
+     *
+     * The input CLASSES are unchanged on purpose — pm-rate, pm-own, pm-cust.
+     * Every handler, the Enter walk and the totals already speak to those, so
+     * this is a rearrangement of what the operator sees and nothing else. That
+     * is the whole promise of this rebuild, and keeping the classes is how it
+     * is kept rather than merely stated.
+     */
+    /**
+     * PUNCH-ENTRY-TABLE-1 — the five Material Breakdown cells of ONE material.
+     *
+     * Required Qty is the RECIPE's answer at this quantity and is read-only: it
+     * is what the dish asks for. Own is what we will actually send and Party
+     * what the customer brings, and those two are the operator's to set. When
+     * their sum leaves the recipe — 42 KG of beef on a 28 KG dish — that is a
+     * deliberate decision, so it is SHOWN rather than corrected.
+     *
+     * The classes pm-rate / pm-req / pm-own / pm-cust are unchanged. Every
+     * handler, the Enter walk and the totals already speak to them, and keeping
+     * them is what makes this a rearrangement of what is seen rather than a
+     * rewrite of what happens.
+     */
+    function punchMatCells(m, i, qty) {
+        const esc = s => _.escape(String(s == null ? '' : s));
+        const required = qty * m.ratio;
+        const own = m.ownTouched ? m.own : required;
+        // party_allowed is the ITEM's answer today. Asked per material here, so
+        // that the day it becomes a per-material column only this line changes.
+        const partyAllowed = m.partyAllowed !== undefined
+            ? m.partyAllowed !== false
+            : punch.party !== false;
+
+        return '<td class="punch-mat-cell" data-i="' + i + '">'
+                + '<span class="badge bg-secondary-subtle text-secondary-emphasis me-1">' + (i + 1) + '</span>'
+                + '<span class="fw-semibold">' + esc(punchShort(m.name || m.label)) + '</span>'
+                + '<div class="fs-12 text-muted mt-1">'
+                    + (m.sku ? '<span class="me-1">' + esc(m.sku) + '</span>' : '')
+                    + (partyAllowed
+                        ? '<span class="badge bg-success-subtle text-success-emphasis">PARTY ALLOWED</span>'
+                        : '<span class="badge bg-secondary-subtle text-secondary-emphasis">OWN ONLY</span>')
+                + '</div>'
+            + '</td>'
+            + '<td class="punch-mat-cell text-end" data-i="' + i + '">'
+                + '<input class="form-control form-control-sm text-end pm-rate" data-i="' + i + '" value="' + esc(m.rate) + '">'
+            + '</td>'
+            + '<td class="punch-mat-cell text-end" data-i="' + i + '">'
+                + '<span class="pm-req fw-semibold" data-i="' + i + '">' + punchFmt(required) + '</span>'
+                + ' <span class="fs-12 text-muted">' + esc(m.unit || '') + '</span>'
+            + '</td>'
+            + '<td class="punch-mat-cell text-end" data-i="' + i + '">'
+                + '<input class="form-control form-control-sm text-end pm-own" data-i="' + i + '" value="' + punchFmt(own) + '">'
+            + '</td>'
+            + '<td class="punch-mat-cell text-end" data-i="' + i + '">'
+                + '<input class="form-control form-control-sm text-end pm-cust" data-i="' + i + '" value="' + punchFmt(m.cust || 0) + '"'
+                + (partyAllowed ? '' : ' disabled title="Is item par party supply band hai"') + '>'
+            + '</td>';
     }
-    $(document).on('input', '#punch-qty', function () {
+
+    /**
+     * Draw the selected item's materials into the entry block.
+     *
+     * ONLY the material cells are redrawn. The product cells — the item picker
+     * above all — are rendered once and left alone: rebuilding them would tear
+     * out the select2 the operator is typing into. What changes here is their
+     * rowspan, so the block stays one visual line however many materials it has.
+     */
+    function punchRenderMats() {
+        const $row = $('#punch-entry-row');
+        if (! $row.length) return;
+
+        $('#punch-body .punch-mat-row').remove();
+        $row.find('.punch-mat-cell').remove();
+
+        const mats = (punch && punch.mats) || [];
+        const anchor = $row.find('#punch-customer-rate').closest('td');
+        $row.find('.punch-span').attr('rowspan', Math.max(1, mats.length));
+
+        if (! mats.length) {
+            anchor.after('<td class="punch-mat-cell text-muted fs-12" colspan="5">'
+                + (punch ? 'Is item ka koi linked material nahi — rate seedha item ka hai.'
+                         : 'Item chunte hi is ke material yahan aa jayenge.') + '</td>');
+            punchValidate();
+
+            return;
+        }
+
+        const qty = parseFloat($('#punch-qty').val()) || 0;
+        anchor.after(punchMatCells(mats[0], 0, qty));
+
+        // Inserted in reverse so each lands directly under the entry row and the
+        // finished order reads 1, 2, 3 downward.
+        for (let j = mats.length - 1; j >= 1; j--) {
+            $row.after('<tr class="punch-mat-row">' + punchMatCells(mats[j], j, qty) + '</tr>');
+        }
+
+        punchValidate();
+    }
+
+    /**
+     * Own + Party against what the recipe asked for — quietly.
+     *
+     * A material whose split matches the recipe is marked valid; one that does
+     * not is marked as a DIFFERENCE, not an error, because the difference is
+     * usually the point (28 KG of biryani carrying 42 KG of beef). The status
+     * line says the same thing in words, and neither shouts.
+     */
+    function punchValidate() {
+        if (! punch) { $('#punch-live').empty(); return; }
+
+        const qty = parseFloat($('#punch-qty').val()) || 0;
+        const mats = punch.mats || [];
+        let matched = 0;
+
+        mats.forEach((m, i) => {
+            const required = qty * m.ratio;
+            const own = Math.max(0, m.ownTouched ? m.own : required);
+            const cust = Math.max(0, m.cust || 0);
+            const ok = Math.abs((own + cust) - required) < 0.0005;
+            if (ok) matched++;
+            $('#punch-body .punch-mat-cell[data-i="' + i + '"]')
+                .toggleClass('pm-ok', ok)
+                .toggleClass('pm-differs', ! ok);
+        });
+
+        if (! mats.length) {
+            $('#punch-live').html('<span class="text-muted">Material rows: 0 — is item ki qeemat seedhi hai.</span>');
+
+            return;
+        }
+
+        const verdict = matched === mats.length
+            ? '<span class="text-success-emphasis fw-semibold">OK — har material ka split recipe se mel khata hai</span>'
+            : '<span class="text-warning-emphasis fw-semibold">' + (mats.length - matched)
+                + ' material recipe se mukhtalif hain</span> <span class="text-muted">(jaan boojh kar ho to theek hai)</span>';
+
+        $('#punch-live').html('<span class="text-muted">Material rows:</span> <b>' + mats.length + '</b>'
+            + ' <span class="text-muted ms-2">Supply validation:</span> ' + verdict);
+    }
+   $(document).on('input', '#punch-qty', function () {
         if (!punch) return;
         const qty = parseFloat(this.value) || 0;
-        $('#punch-mats .pm-own').each(function () {
+        $('#punch-body .pm-own').each(function () {
             const i = +this.dataset.i;
             if (!punch.mats[i].ownTouched) this.value = punchFmt(qty * punch.mats[i].ratio);
+        });
+        // Required is the recipe's answer at THIS quantity, so it moves with it.
+        $('#punch-body .pm-req').each(function () {
+            this.textContent = punchFmt(qty * punch.mats[+this.dataset.i].ratio);
         });
         punchRefreshTotals();
         punchLive();
     });
-    $(document).on('input', '#punch-mats input', function () {
+    $(document).on('input', '#punch-body input.pm-rate, #punch-body input.pm-own, #punch-body input.pm-cust', function () {
         const i = +this.dataset.i, m = punch.mats[i];
         if (this.classList.contains('pm-own')) { m.ownTouched = true; m.own = parseFloat(this.value) || 0; }
         if (this.classList.contains('pm-rate')) { m.rate = parseFloat(this.value) || 0; }
@@ -1985,25 +2456,18 @@ $(function () {
         punchRefreshTotals();
         punchLive();
     });
+    /** Kept its name and its callers; the total column is gone, so what it
+     *  refreshes now is whether each split still matches the recipe. */
     function punchRefreshTotals() {
-        const qty = parseFloat($('#punch-qty').val()) || 0;
-        $('#punch-mats .pm-total').each(function () {
-            const m = punch.mats[+this.dataset.i];
-            const own = m.ownTouched ? m.own : qty * m.ratio;
-            this.textContent = punchFmt(Math.max(0, own || 0) + Math.max(0, m.cust || 0));
-        });
+        punchValidate();
     }
     function punchLive() {
         if (!punch) return;
         const qty = parseFloat($('#punch-qty').val()) || 0;
-        let txt = punch.mats.map((m, i) => {
-            const own = Math.max(0, m.ownTouched ? m.own : qty * m.ratio);
-            const cust = Math.max(0, m.cust || 0);
-            return _.escape(m.name) + ': hum <b>' + punchFmt(own) + '</b>'
-                + (cust > 0 ? ' · party <b>' + punchFmt(cust) + '</b>' : '')
-                + ' · total <b>' + punchFmt(own + cust) + '</b> ' + _.escape(m.unit || '');
-        }).join(' · ');
-        $('#punch-live').html(txt || (punch.name ? _.escape(punch.name) + ' — Enter se save' : ''));
+        // The status line belongs to punchValidate() now — it says the same
+        // thing the columns already show, and says whether the splits still
+        // match the recipe.
+        punchValidate();
         const calc = punchLineCalc(qty);
         const money = n => (+n || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
         $('#punch-price-unit').text(punch.unitCode || 'unit');
@@ -2042,57 +2506,304 @@ $(function () {
      * from anywhere in the bar. (The note being last no longer commits anything;
      * that comment described an older behaviour.)
      */
+    // RECALC-ASKS-TO-SAVE-1 — Recalculate must not swallow unsaved work.
+    //
+    // Recalculate Cost recomputes from the SAVED quotation and the workspace is
+    // then redrawn from the server's answer. Anything punched but not yet saved
+    // is not in that answer, so it vanished — no warning, no trace, and the
+    // operator had just spent minutes typing it.
+    //
+    // Capture phase on purpose: the ajax pipeline listens for submit on the
+    // document too, and this has to be able to stop it before it posts.
+    document.addEventListener('submit', function (e) {
+        const form = e.target;
+        if (! (form instanceof HTMLFormElement) || ! form.hasAttribute('data-reprice')) return;
+
+        const fresh = document.querySelectorAll('#lines-body tr.punch-row').length;
+        const edited = document.querySelectorAll('.punch-staged').length;
+        if (! fresh && ! edited) return;
+
+        const what = [
+            fresh ? fresh + ' nayi row' : null,
+            edited ? edited + ' edit ki hui row' : null,
+        ].filter(Boolean).join(' aur ');
+
+        const proceed = window.confirm(
+            what + ' abhi tak save nahi hui.\n\n'
+            + 'Recalculate Cost save-shuda quotation se chalta hai aur screen dobara '
+            + 'server se banti hai — ye rows us me nahi hongi, is liye zaya ho jayengi.\n\n'
+            + 'Pehle Save Estimate (Ctrl+S) karein, phir Recalculate.\n\n'
+            + 'Phir bhi jari rakhna hai?'
+        );
+
+        if (! proceed) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    }, true);
+    // LINE-ORDER-1 — the operator arranges the quotation, and the paper follows.
+    //
+    // `saveDraftLines` writes `sort_order = $index` from the order the lines are
+    // POSTED in, and every document reads them back with `orderBy('sort_order')`.
+    // So the order of these rows already decides the order on the customer's
+    // quotation and the kitchen sheet — it simply could not be changed.
+    //
+    // A block-costed line is followed by its own Cost Details row. Moving the
+    // line without it would leave the breakdown behind, attached to whatever row
+    // happened to land above it, so the pair moves together.
+    // A line can be followed by its breakdown, and there are TWO kinds: a
+    // SAVED line carries `.cost-details-row`, a freshly punched one carries
+    // `.punch-detail`. The first version of this only knew about the saved kind,
+    // so moving an unsaved row left its own breakdown sitting under whichever
+    // line landed above it. Both kinds travel with their line.
+    function lineGroup(row) {
+        const $row = $(row);
+
+        // A line is not always one <tr>: a block-costed one carries its Cost
+        // Details row and a freshly punched one its breakdown row. Naming the
+        // kinds one by one is what once left an unsaved row's breakdown behind,
+        // so this stops naming them — everything up to the NEXT line row belongs
+        // to this line.
+        return $row.add($row.nextUntil('tr[data-row]'));
+    }
+
+    // The indices in `lines[i][...]` are rewritten after every move. PHP would
+    // honour the posted order anyway, but an order that depends on how the
+    // browser happens to serialise a form is a promise nobody wrote down.
+    function renumberLines() {
+        $('#lines-body > tr[data-row]').each(function (position) {
+            $(this).find('[name^="lines["]').each(function () {
+                this.name = this.name.replace(/^lines\[\d+\]/, 'lines[' + position + ']');
+            });
+        });
+
+        // ROW-DRAG-2: an edit in flight remembers its row TWICE — by data-row,
+        // which never changes, and by index, which is exactly what was just
+        // rewritten. Left stale, the edit would be written into whichever line
+        // now sits at the old position. Repaired here, once, so every way a row
+        // can move is covered — the ARROWS carried this hazard unguarded from
+        // the day they shipped.
+        if (punch && punch.editRow) {
+            const name = $('#lines-body > tr[data-row="' + punch.editRow + '"]')
+                .find('[name^="lines["]').first().attr('name') || '';
+            const at = name.match(/^lines\[(\d+)\]/);
+            if (at) punch.editIdx = at[1];
+        }
+    }
+
+    $(document).on('click', '.line-up, .line-down', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const row = $(this).closest('tr[data-row]');
+        const group = lineGroup(row);
+
+        if ($(this).hasClass('line-up')) {
+            const above = row.prevAll('tr[data-row]').first();
+            if (! above.length) return;
+            group.insertBefore(above);
+        } else {
+            const below = row.nextAll('tr[data-row]').first();
+            if (! below.length) return;
+            group.insertAfter(lineGroup(below).last());
+        }
+
+        renumberLines();
+        markMoved(row);
+    });
+
+    /** A moved row is briefly marked, so a click that lands three rows down the
+     *  page is still visible to the person who made it. */
+    function markMoved(row) {
+        row.addClass('line-moved');
+        setTimeout(() => row.removeClass('line-moved'), 600);
+    }
+
+    /**
+     * ROW-DRAG-1 — the same move, made with the mouse.
+     *
+     * The arrows are NOT replaced: HTML5 drag exists on neither a touch screen
+     * nor a keyboard, so on a counter tablet they remain the only way.
+     *
+     * Neither path works out an order of its own — both move lineGroup() and
+     * then call renumberLines(). The printed quotation reads this order back
+     * (`sort_order` follows the POSTED sequence), so an order computed in two
+     * places is a customer's paper that can disagree with the screen it was
+     * made on.
+     */
+    let dragRow = null;
+
+    /** The LINE a pointer is over — a breakdown row belongs to the line above. */
+    function dropTargetRow(el) {
+        const $el = $(el);
+
+        return $el.is('tr[data-row]') ? $el : $el.prevAll('tr[data-row]').first();
+    }
+
+    function clearDropMarks() {
+        $('#lines-body > tr').removeClass('line-drop-before line-drop-after');
+    }
+
+    $(document).on('dragstart', '.line-drag', function (e) {
+        // ROW-DRAG-2: this once refused the drag whenever a punch was open, and
+        // the punch bar stays open until a commit or Escape — so it was nearly
+        // always. A cancelled dragstart does not end the gesture; the browser
+        // turns it into a text selection, and the row never moved. The index
+        // that guard protected is repaired in renumberLines() instead.
+        const $src = $(this).closest('tr[data-row]');
+        dragRow = $src.attr('data-row');
+        const dt = e.originalEvent.dataTransfer;
+        dt.effectAllowed = 'move';
+        // Firefox refuses to begin a drag that carries nothing.
+        dt.setData('text/plain', dragRow);
+        $('#lines-body').addClass('lines-dragging');
+        lineGroup($src).addClass('line-being-dragged');
+    });
+
+    $(document).on('dragover', '#lines-body > tr', function (e) {
+        if (dragRow === null) return;
+        // Without this the browser never fires a drop at all.
+        e.preventDefault();
+        e.originalEvent.dataTransfer.dropEffect = 'move';
+
+        const target = dropTargetRow(this);
+        clearDropMarks();
+        if (! target.length || target.attr('data-row') === dragRow) return;
+
+        // ROW-DRAG-3 — only rows the operator can SEE define where a line begins
+        // and ends. A block-costed line's group ends with its COLLAPSED Cost
+        // Details row, and that row broke this twice: its bounding rect is all
+        // zeros, so the midpoint test answered "below" almost always, and the
+        // marker was then painted onto a row nobody can see. Lines with no cost
+        // blocks have no hidden row, which is why the indicator appeared to work
+        // on some rows and vanish on others.
+        const visible = lineGroup(target).filter(function () { return this.offsetParent !== null; });
+        const first = visible.length ? visible.first() : target;
+        const last = visible.length ? visible.last() : target;
+        const top = first[0].getBoundingClientRect().top;
+        const bottom = last[0].getBoundingClientRect().bottom;
+
+        if (e.originalEvent.clientY > (top + bottom) / 2) {
+            last.addClass('line-drop-after');
+        } else {
+            first.addClass('line-drop-before');
+        }
+    });
+
+    $(document).on('drop', '#lines-body > tr', function (e) {
+        if (dragRow === null) return;
+        e.preventDefault();
+
+        const target = dropTargetRow(this);
+        const moving = $('#lines-body > tr[data-row="' + dragRow + '"]');
+        const after = $('#lines-body > tr.line-drop-after').length > 0;
+        clearDropMarks();
+
+        // A row cannot be dropped into itself.
+        if (! target.length || ! moving.length || target.attr('data-row') === dragRow) return;
+
+        const group = lineGroup(moving);
+        if (after) {
+            group.insertAfter(lineGroup(target).last());
+        } else {
+            group.insertBefore(target);
+        }
+
+        renumberLines();
+        markMoved(moving);
+    });
+
+    $(document).on('dragend', '.line-drag', function () {
+        clearDropMarks();
+        $('#lines-body').removeClass('lines-dragging');
+        $('#lines-body > tr').removeClass('line-being-dragged');
+        dragRow = null;
+    });
+
+    /**
+     * The Enter walk, in the order the owner punches:
+     *
+     *   Qty → Customer Rate → (each material) Rate → Own → Party
+     *        → Kitchen Instructions → Additional Note
+     *
+     * PUNCH-ENTRY-TABLE-1 moved the note to the END. It used to sit before the
+     * materials, which meant the operator typed a note about a dish whose
+     * quantities they had not entered yet.
+     *
+     * PUNCH-WALK-VISIBLE-1 — the walk visits what the operator can SEE and type
+     * into, not what this function remembers putting in the list. focus() on a
+     * hidden element does nothing at all: leaving one in trapped the caret and
+     * made the material rows unreachable by keyboard. A disabled Party box
+     * stalls it the same way, which is exactly what an OWN ONLY material has.
+     */
     function punchSeq() {
         const seq = [
             document.getElementById('punch-qty'),
             document.getElementById('punch-customer-rate'),
-            document.getElementById('punch-instr'),
         ];
-        if (punch && punch.mats.length) seq.push(document.getElementById('punch-own'));
-        $('#punch-mats tbody tr').each(function () {
-            const r = $(this);
-            seq.push(r.find('.pm-rate')[0], r.find('.pm-own')[0]);
-            if (punch.mode === 'PARTY') seq.push(r.find('.pm-cust')[0]);
+
+        $('#punch-body .pm-rate').each(function () {
+            const i = this.dataset.i;
+            seq.push(
+                this,
+                document.querySelector('#punch-body .pm-own[data-i="' + i + '"]'),
+                document.querySelector('#punch-body .pm-cust[data-i="' + i + '"]')
+            );
         });
 
-        return seq.filter(Boolean);
+        seq.push(
+            document.getElementById('punch-instr-ids'),
+            document.getElementById('punch-instr')
+        );
+
+        return seq.filter(el => el && ! el.disabled && el.offsetParent !== null);
     }
+    /**
+     * PUNCH-COMMIT-ANYWHERE-1 — Ctrl+Enter belongs to the SCREEN, not to the bar.
+     *
+     * It used to be delegated on #punch-bar and so did nothing in three places
+     * the caret honestly lands: with either select2 dropdown open (that list is
+     * appended to <body>, outside the bar) and after a click on the page. The
+     * operator's report was exactly that — "sometimes it works" — which is worse
+     * than a missing shortcut, because it teaches them not to trust it.
+     *
+     * CAPTURE phase on purpose: select2 stops Enter from propagating, since it
+     * uses the key to choose the highlighted option. Capture runs first.
+     *
+     * A dialog on top keeps its own keys. And plain Enter is NOT moved here — it
+     * only ever walks to the next field, and a stray Enter somewhere else on the
+     * page must never punch a half-typed line.
+     */
+    document.addEventListener('keydown', function (e) {
+        if (! punch) return;
+        if (e.key !== 'Enter' || ! (e.ctrlKey || e.metaKey)) return;
+        if (e.target && e.target.closest && e.target.closest('.modal.show, .offcanvas.show')) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+        punchCommit();
+    }, true);
+
     $(document).on('keydown', '#punch-bar', function (e) {
         if (!punch) return;
         if (e.key === 'Escape') { punchReset(); return; }
-
-        // Ctrl+Enter ANYWHERE in the bar = add the row. Plain Enter only walks
-        // to the next field, so a stray Enter can never punch a half-typed line.
-        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); punchCommit(); return; }
-
-        const onOwn = document.activeElement === document.getElementById('punch-own');
-        const onParty = document.activeElement === document.getElementById('punch-party');
-        if (onOwn || onParty) {
-            // Enter/Space TICKS the one you are standing on — like a checkbox.
-            if (e.key === 'Enter' || e.key === ' ') { punchSetMode(onOwn ? 'OWN' : 'PARTY'); e.preventDefault(); return; }
-            if (e.key.toLowerCase() === 'o') { punchSetMode('OWN'); document.getElementById('punch-own').focus(); e.preventDefault(); return; }
-            if (e.key.toLowerCase() === 'p') { punchSetMode('PARTY'); document.getElementById('punch-party').focus(); e.preventDefault(); return; }
-            if (e.key === 'ArrowLeft') { document.getElementById('punch-own').focus(); e.preventDefault(); return; }
-            if (e.key === 'ArrowRight') { document.getElementById('punch-party').focus(); e.preventDefault(); return; }
-            if (e.key === 'Tab' && !e.shiftKey) { return; } // Tab moves on normally
-        }
 
         if (e.key !== 'Enter') return;
         e.preventDefault();
         const seq = punchSeq(), at = seq.indexOf(document.activeElement);
         if (at > -1 && at < seq.length - 1) { seq[at + 1].focus(); seq[at + 1].select && seq[at + 1].select(); }
     });
-    $(document).on('click', '#punch-own', () => punchSetMode('OWN'));
-    $(document).on('click', '#punch-party', () => punchSetMode('PARTY'));
     $(document).on('click', '#punch-cancel', punchReset);
     $(document).on('click', '#punch-commit', punchCommit);
     function punchReset() {
         punch = null;
         $('#punch-item').val(null).trigger('change');
         $('.punch-step').addClass('d-none');
-        $('#punch-mats,#punch-live').empty();
+        $('#punch-live').empty();
         $('#punch-customer-rate').val('');
+        $('#punch-unit').text('');
         clearPunchInstructions();
+        // The entry block goes back to one row and its waiting line.
+        punchRenderMats();
     }
 
     function clearPunchInstructions() {
@@ -2287,6 +2998,9 @@ $(function () {
                     : '')
             + '</td>'
             + '<td class="text-end text-nowrap">'
+                + '<span class="line-drag text-muted me-1" draggable="true" title="Drag to reorder"><i class="ti ti-grip-vertical"></i></span>'
+                + '<button type="button" class="btn btn-sm btn-link text-muted p-0 me-1 line-up" title="Move up"><i class="ti ti-arrow-up"></i></button>'
+                + '<button type="button" class="btn btn-sm btn-link text-muted p-0 me-1 line-down" title="Move down"><i class="ti ti-arrow-down"></i></button>'
                 + '<button type="button" class="btn btn-sm btn-link text-primary p-0 me-1 punch-edit-unsaved" title="Edit this item"><i class="ti ti-pencil"></i></button>'
                 + '<button type="button" class="btn btn-sm btn-link text-danger p-0 punch-remove" title="Remove">&times;</button>'
             + '</td>'
@@ -2294,6 +3008,121 @@ $(function () {
             + '<tr class="punch-detail d-none" data-detail="p' + idx + '"><td colspan="9" class="bg-body-tertiary">' + detail + '</td></tr>';
     }
 
+    /**
+     * STACKED-MATERIAL-ROW-1 (step 1 of 5) — the owner's layout.
+     *
+     * The item, its quantity, its rates, its note and its actions stay ONE
+     * visual block via rowspan; only the Material Breakdown grows downward, so a
+     * dish with two materials shows the second directly beneath the first, under
+     * the same Material / Rate / Required / CAT / PAR columns.
+     *
+     * The critical thing this shares with punchRowHtml is what it POSTS. Every
+     * hidden input is identical — lines[i][materials][j][label|kg|rate|cust] and
+     * the line's own fields — because the server, the block authorities, the
+     * costing and the documents must not be able to tell which builder drew the
+     * row. This is a change to how a line is ENTERED, and nothing else.
+     *
+     * Nothing calls this yet. punchRowHtml stays in charge until step 4, so the
+     * old path keeps working while this one is checked.
+     */
+    function punchStackedRowHtml(idx, qty, calc) {
+        const esc = s => _.escape(String(s == null ? '' : s));
+        const h = (f, v) => '<input type="hidden" name="lines[' + idx + '][' + f + ']" value="' + esc(v) + '">';
+        const money = n => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const instrIds = ($('#punch-instr-ids').val() || []);
+        const instrLabels = $('#punch-instr-ids option:selected').map(function () { return $(this).text(); }).get();
+        const note = $('#punch-instr').val();
+
+        const mats = punch.mats || [];
+        // A dish with no materials still occupies one row of the breakdown, so
+        // the rowspan arithmetic below never reaches zero.
+        const span = Math.max(1, mats.length);
+
+        const agreedRate = punchAgreedRate(calc.rate);
+        const rateIntent = punchRateIntent(calc.rate);
+        const rateAuthority = rateIntent
+            ? h('rate_action', rateIntent)
+                + (rateIntent === 'override' ? h('rate_override_reason', 'Customer agreed rate entered in order punch') : '')
+            : '';
+
+        // Everything the server reads, gathered in the first cell exactly as the
+        // old builder gathered it.
+        let hidden = (punch.productId ? h('product_id', punch.productId) : '')
+            + h('item_name', punch.name) + h('item_name_ur', punch.nameUr || '')
+            + h('rate', agreedRate) + rateAuthority
+            + (punch.unitId ? h('unit_id', punch.unitId) : '')
+            + (note ? h('instructions', note) : '')
+            + instrIds.map(id => '<input type="hidden" name="lines[' + idx + '][instruction_ids][]" value="' + esc(id) + '">').join('');
+
+        mats.forEach((m, j) => {
+            const own = Math.max(0, m.ownTouched ? m.own : qty * m.ratio);
+            const cust = Math.max(0, m.cust || 0);
+            const p = 'lines[' + idx + '][materials][' + j + ']';
+            hidden += '<input type="hidden" name="' + p + '[label]" value="' + esc(m.label) + '">'
+                + '<input type="hidden" name="' + p + '[kg]" value="' + esc(own + cust) + '">'
+                + '<input type="hidden" name="' + p + '[rate]" value="' + esc(m.rate) + '">'
+                // PARTY is decided by the ITEM, not by a switch. A material the
+                // dish may not take from the customer still posts its zero —
+                // a disabled input is not submitted, and a missing one would
+                // leave whatever the server held before.
+                + '<input type="hidden" name="' + p + '[cust]" value="' + esc(cust) + '">';
+        });
+
+        // The material cells, one line of the stack each.
+        const matCells = (m, j) => {
+            const own = Math.max(0, m.ownTouched ? m.own : qty * m.ratio);
+            const cust = Math.max(0, m.cust || 0);
+            const partyAllowed = punch.party && m.partyAllowed !== false;
+
+            return '<td class="fs-13">' + esc(punchShort(m.name || m.label))
+                    + '<div class="fs-12 text-muted">' + (partyAllowed
+                        ? '<span class="badge bg-success-subtle text-success-emphasis">PARTY ALLOWED</span>'
+                        : '<span class="badge bg-secondary-subtle text-secondary-emphasis">OWN ONLY</span>') + '</div>'
+                + '</td>'
+                + '<td class="text-end fs-13">' + money(Number(m.rate) || 0) + '</td>'
+                + '<td class="text-end fs-13">' + punchFmt(own + cust) + '</td>'
+                + '<td class="text-end fs-13">' + punchFmt(own) + '</td>'
+                + '<td class="text-end fs-13' + (partyAllowed ? '' : ' text-muted') + '">'
+                    + (partyAllowed ? punchFmt(cust) : '—')
+                + '</td>';
+        };
+
+        const blank = '<td class="fs-13 text-muted">—</td><td></td><td></td><td></td><td></td>';
+
+        let html = '<tr data-row="p' + idx + '" data-rate="' + agreedRate + '" class="punch-row">'
+            + '<td rowspan="' + span + '">'
+                + esc(punch.name)
+                + hidden
+                + '<div class="fs-12 text-muted">not saved yet — Save Estimate</div>'
+            + '</td>'
+            + '<td rowspan="' + span + '"><input type="number" step="0.001" min="0.001" class="form-control form-control-sm text-end line-qty" name="lines[' + idx + '][quantity]" value="' + qty + '" readonly></td>'
+            + '<td rowspan="' + span + '" class="text-end">' + money(calc.rate) + '<div class="fs-12 text-muted">per ' + esc(punch.unitCode || '') + '</div></td>'
+            + '<td rowspan="' + span + '" class="text-end">' + money(agreedRate) + '</td>'
+            + (mats.length ? matCells(mats[0], 0) : blank)
+            + '<td rowspan="' + span + '" class="fs-12">'
+                + (instrLabels.length || note
+                    ? '<span class="badge bg-secondary-subtle text-secondary-emphasis" data-bs-toggle="tooltip" title="'
+                        + esc(instrLabels.concat(note ? [note] : []).join(' · ')) + '">'
+                        + '<i class="ti ti-note me-1"></i>' + (instrLabels.length + (note ? 1 : 0)) + '</span>'
+                    : '')
+            + '</td>'
+            + '<td rowspan="' + span + '" class="text-end line-amount">' + money(agreedRate * qty) + '</td>'
+            + '<td rowspan="' + span + '" class="text-end text-nowrap">'
+                + '<button type="button" class="btn btn-sm btn-link text-muted p-0 me-1 line-up" title="Move up"><i class="ti ti-arrow-up"></i></button>'
+                + '<button type="button" class="btn btn-sm btn-link text-muted p-0 me-1 line-down" title="Move down"><i class="ti ti-arrow-down"></i></button>'
+                + '<button type="button" class="btn btn-sm btn-link text-primary p-0 me-1 punch-edit-unsaved" title="Edit this item"><i class="ti ti-pencil"></i></button>'
+                + '<button type="button" class="btn btn-sm btn-link text-danger p-0 punch-remove" title="Remove">&times;</button>'
+            + '</td>'
+            + '</tr>';
+
+        // Every material after the first is its own row carrying ONLY the
+        // breakdown cells — the block above spans down over it.
+        for (let j = 1; j < mats.length; j++) {
+            html += '<tr class="punch-row-material" data-row-of="p' + idx + '">' + matCells(mats[j], j) + '</tr>';
+        }
+
+        return html;
+    }
     // Row-click EDIT of an unsaved punch row: rebuild it in place.
     function punchCommitEdit() {
         const qty = parseFloat($('#punch-qty').val()) || 0;
@@ -2306,6 +3135,27 @@ $(function () {
         if (punch.editSaved) {
             row.find('[name*="[materials]["]').remove();
             const esc = s => _.escape(String(s == null ? '' : s));
+
+            // PUNCH-EDIT-SWAP-1: this branch staged quantity, materials and
+            // instructions but never the DISH. Carrying the edit forward without
+            // this would have been worse than the duplicate it replaces — the row
+            // would keep the old name while wearing the new dish's costing.
+            //
+            // The server already understands the swap: "A row whose product
+            // changed is a different dish. Its old costing explains nothing about
+            // the new one, so it starts again."
+            if (punch.productChanged) {
+                row.find('[name="lines[' + idx + '][product_id]"]').val(punch.productId || '');
+                row.find('[name="lines[' + idx + '][item_name]"]').val(punch.name);
+                row.find('[name="lines[' + idx + '][item_name_ur]"]').val(punch.nameUr || '');
+                row.find('td').first().find('.fw-semibold').first().text(punch.name);
+                if (punch.unitId) {
+                    row.find('[name="lines[' + idx + '][unit_id]"]').val(punch.unitId).trigger('change');
+                }
+                // The old dish's breakdown belongs to the old dish.
+                row.find('[name*="[instruction_ids]"]').remove();
+                row.find('.quoted-live, .cost-details, [id^="cost-details-"]').remove();
+            }
             let html = '';
             punch.mats.forEach((m, j) => {
                 const own = Math.max(0, m.ownTouched ? m.own : qty * m.ratio);
@@ -2357,6 +3207,9 @@ $(function () {
             return;
         }
 
+        // replaceWith() swaps ONE <tr>. The breakdown that belonged to the old
+        // row has to go with it, or two rows answer to the same data-detail.
+        lineGroup(row).not(row).remove();
         row.replaceWith(punchRowHtml(idx, qty, punchLineCalc(qty)));
         punchReset();
         recalc();
@@ -2378,9 +3231,7 @@ $(function () {
     }
 
     $(document).on('click', '.punch-remove', function () {
-        const tr = $(this).closest('tr');
-        $('[data-detail="' + tr.attr('data-row') + '"]').remove();
-        tr.remove();
+        lineGroup($(this).closest('tr[data-row]')).remove();
         recalc();
     });
 
@@ -2417,7 +3268,7 @@ $(function () {
                 row.find('td').first().prepend(
                     '<button type="button" class="btn btn-link btn-sm p-0 me-1 punch-expand" title="Cost details">'
                     + '<i class="ti ti-chevron-right"></i></button>');
-                row.after('<tr class="punch-detail d-none" data-detail="s' + idx[1] + '">'
+                lineGroup(row).last().after('<tr class="punch-detail d-none" data-detail="s' + idx[1] + '">'
                     + '<td colspan="9" class="bg-body-tertiary">' + punchDetailHtml(mats, qty, dishRate) + '</td></tr>');
             });
         }

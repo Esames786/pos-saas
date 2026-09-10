@@ -217,6 +217,44 @@ class CateringOperationsClosureMySqlTest extends MySqlTenantTestCase
             'and the sheet must say who is bringing it, or the kitchen will chase our store for it');
     }
 
+    /**
+     * KITCHEN-SHEET-NO-STATIONS-1 — the sheet prints ONE list of dishes.
+     *
+     * It used to group the lines by production_station and head each group with
+     * a black bar. The owner sent a photo of the printed sheet and asked for the
+     * bars to go. The GROUPING went with them: several tables each repeating the
+     * same Qty/Item/Instructions/Done header, for a reason no longer printed
+     * anywhere, reads worse than the bars did.
+     *
+     * production_station is untouched on the line. This is a change to one
+     * printed document, not to what a line knows about itself.
+     */
+    public function test_the_kitchen_sheet_prints_one_list_without_station_headings(): void
+    {
+        $estimate = $this->booking('No stations');
+        $release = $this->release($estimate);
+
+        $html = View::make('tenant.catering.documents.kitchen-sheet', [
+            'release' => $release->fresh(['lines', 'event']),
+            'event' => $release->event,
+            'lang' => 'en',
+            'businessName' => 'Test Caterer',
+        ])->render();
+
+        $this->assertStringNotContainsString('class="station"', $html,
+            'no station bar on the printed sheet');
+        $this->assertStringNotContainsString('Station:', $html);
+
+        // ONE items table, so the header is printed once.
+        $this->assertSame(1, substr_count($html, '<table class="items">'),
+            'the dishes belong to one list, not one list per station');
+
+        // The dishes themselves are still all there — the guard must be able to
+        // tell "no headings" apart from "no sheet".
+        $this->assertStringContainsString('Rice', $html);
+        $this->assertStringContainsString('Chicken', $html);
+    }
+
     public function test_the_release_screen_shows_both_figures(): void
     {
         $estimate = $this->booking('Supplied screen');

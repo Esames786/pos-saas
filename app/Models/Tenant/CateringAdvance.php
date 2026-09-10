@@ -28,6 +28,16 @@ class CateringAdvance extends Model
 
     protected string $canonicalIdentityColumn = 'advance_uuid';
 
+    /**
+     * CATERING-OVERPAYMENT-1: the caller has decided, deliberately, to take more
+     * than the booking is short by.
+     *
+     * A plain property on purpose — not a column and not fillable, so no form
+     * post and no mass assignment can ever switch it on. Only code that means to
+     * set it can set it, and it must also record a reason.
+     */
+    public bool $allowOverpayment = false;
+
     protected static function booted(): void
     {
         static::creating(function (CateringAdvance $advance) {
@@ -47,6 +57,20 @@ class CateringAdvance extends Model
             $amount = round((float) $advance->amount, 2);
 
             if ($amount <= $outstanding) {
+                return;
+            }
+
+            // CATERING-OVERPAYMENT-1 — the door. Both halves are required: the
+            // caller must have decided, and must have said why. The excess
+            // becomes customer credit (2300), never revenue.
+            if ($advance->allowOverpayment) {
+                if (trim((string) $advance->overpayment_reason) === '') {
+                    throw new RuntimeException(
+                        'Taking more than the booking is short by needs a reason recorded against it — '
+                        .'money the business has not billed for is a debt, and a debt has to say where it came from.'
+                    );
+                }
+
                 return;
             }
 
@@ -82,6 +106,8 @@ class CateringAdvance extends Model
         'payment_method_id',
         'reference',
         'notes',
+        'credit_portion',
+        'overpayment_reason',
         'recorded_by_user_id',
         'posting_type',
         'cash_bank_account_id',

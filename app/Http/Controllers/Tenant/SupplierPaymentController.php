@@ -56,7 +56,23 @@ class SupplierPaymentController extends Controller
 
         $cashBankAccounts = CashBankAccount::where('is_active', true)->orderBy('code')->get();
 
-        return view('tenant.supplier-payments.create', compact('branches', 'suppliers', 'bills', 'bill', 'cashBankAccounts'));
+        // SUPPLIER-FINANCE-DIRECT-1 — Supplier Ledger ke "Record Payment" se aane par supplier
+        // pehle se chuna hua hota hai. Bill ki koi zaroorat nahi: payment khuli balance par
+        // seedha lagta hai (dekho SupplierPayableService::recordPayment ka docblock).
+        // ⚠️ Naam `$supplierPreset` hai, `$supplier` NAHI — view me `@foreach($suppliers as $supplier)`
+        // chalta hai aur wo loop variable is naam ko dhak deta, to preset chup-chaap gum ho jata.
+        $supplierPreset = $request->filled('supplier_id')
+            ? Supplier::find($request->integer('supplier_id'))
+            : ($bill?->supplier);
+
+        // Wapsi ka pata: ledger se aaye to ledger par lauto, warna payments ki list par.
+        $returnTo = $request->input('from') === 'ledger' && $supplierPreset
+            ? url('/suppliers/' . $supplierPreset->id . '/ledger')
+            : url('/supplier-payments');
+
+        return view('tenant.supplier-payments.create', compact(
+            'branches', 'suppliers', 'bills', 'bill', 'cashBankAccounts', 'supplierPreset', 'returnTo'
+        ));
     }
 
     public function store(Request $request)
@@ -64,7 +80,12 @@ class SupplierPaymentController extends Controller
         $data = $request->validate([
             'supplier_id'          => 'required|exists:tenant.suppliers,id',
             'branch_id'            => 'required|exists:tenant.branches,id',
-            'cash_bank_account_id' => ['nullable', Rule::exists('tenant.cash_bank_accounts', 'id')->where('is_active', true)],
+            // LAZMI, nullable nahi. Bina cash/bank account ke JournalPostingService::postSupplierPayment()
+            // null laut-ta hai — yani subledger mein AP ghat jata aur GL mein waisa ka waisa reh jata.
+            // Wohi farq jo requirement K mana karti hai. Ab recordPayment() us soorat mein poora
+            // transaction palat deta hai, is liye shart yahan bhi saaf rakhi hai taake operator ko
+            // form par sada jawab mile, 500 nahi.
+            'cash_bank_account_id' => ['required', Rule::exists('tenant.cash_bank_accounts', 'id')->where('is_active', true)],
             'purchase_bill_id'     => 'nullable|exists:tenant.purchase_bills,id',
             'payment_date'         => 'required|date',
             'amount'               => 'required|numeric|min:0.01',
@@ -78,11 +99,28 @@ class SupplierPaymentController extends Controller
             'notes'                => 'nullable|string|max:1000',
         ]);
 
-        // recordPayment posts the supplier ledger + bill (existing behavior) and, when a
-        // cash/bank account is selected, also writes the cash/bank money-out transaction.
-        $this->supplierPayable->recordPayment($data, auth('tenant')->id());
+        // return_to sirf redirect ke liye hai, payment ka hissa nahi — is liye validate ke
+        // BAAD alag padha jata hai aur $data me nahi jata (warna SupplierPayment::create()
+        // use fillable samajh kar chhorta, aur ek chupa hua column-mismatch banta).
 
-        return redirect(url('/supplier-payments'))->with('status', 'Payment posted.');
+
+        // recordPayment EK transaction mein payment row + supplier subledger + bill (agar diya ho)
+        // + cash/bank + GL journal, sab likhta hai. Purchase bill ki zaroorat NAHI.
+        // Jo bhi hissa fail ho, poora palat jata hai — is liye yahan pakadna zaroori hai warna
+        // operator ko 500 milta.
+        try {
+            $payment = $this->supplierPayable->recordPayment($data, auth('tenant')->id());
+        } catch (\RuntimeException $e) {
+            return back()->withInput()->withErrors(['amount' => $e->getMessage()]);
+        }
+
+        // Ledger se aaye the to wahin lauto — operator ko apni satar foran nazar aani chahiye.
+        $back = $request->input('return_to');
+        $target = ($back && str_starts_with((string) $back, url('/suppliers/')))
+            ? $back
+            : url('/supplier-payments');
+
+        return redirect($target)->with('status', 'Payment ' . $payment->payment_no . ' posted.');
     }
 
     public function show(SupplierPayment $supplierPayment)

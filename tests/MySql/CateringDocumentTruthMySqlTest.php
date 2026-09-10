@@ -201,8 +201,8 @@ class CateringDocumentTruthMySqlTest extends MySqlTenantTestCase
 
         // ONE quiet line under the item — smaller than it, never a box of its
         // own, and in the DOCUMENT's language (this copy is English).
-        $this->assertStringContainsString('Beef 120 KG (customer)', $html);
-        $this->assertStringContainsString('Basmati Rice 80 KG (us)', $html);
+        $this->assertStringContainsString('Beef 120 KG (PAR)', $html);
+        $this->assertStringContainsString('Basmati Rice 80 KG (CAT)', $html);
         $this->assertStringNotContainsString('سامان', $html, 'no Urdu is forced onto an English document');
 
         // And the margin's ingredients still never reach the customer.
@@ -235,7 +235,7 @@ class CateringDocumentTruthMySqlTest extends MySqlTenantTestCase
         $html = $this->render($estimate->refresh());
 
         // The split, spelled out inline: whose share is whose.
-        $this->assertStringContainsString('Beef 120 KG (us 80, customer 40)', $html);
+        $this->assertStringContainsString('Beef 120 KG (CAT 80, PAR 40)', $html);
     }
 
     /**

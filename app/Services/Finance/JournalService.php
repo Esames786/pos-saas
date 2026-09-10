@@ -111,12 +111,17 @@ class JournalService
             $sort = 0;
             foreach ($entry->lines as $line) {
                 $reversal->lines()->create([
-                    'account_id'  => $line->account_id,
-                    'branch_id'   => $line->branch_id,
-                    'description' => 'Reversal: ' . ($line->description ?? ''),
-                    'debit'       => $line->credit,   // flipped
-                    'credit'      => $line->debit,     // flipped
-                    'sort_order'  => $sort++,
+                    'account_id'        => $line->account_id,
+                    'branch_id'         => $line->branch_id,
+                    // Counterparty reversal par SAATH chalta hai. Warna asal entry ki AP satar
+                    // supplier ke naam hoti aur uska ulta be-shanakht — AP control supplier ke
+                    // hisab se jama karne par wo farq nazar aata.
+                    'counterparty_type' => $line->counterparty_type,
+                    'supplier_id'       => $line->supplier_id,
+                    'description'       => 'Reversal: ' . ($line->description ?? ''),
+                    'debit'             => $line->credit,   // flipped
+                    'credit'            => $line->debit,     // flipped
+                    'sort_order'        => $sort++,
                 ]);
             }
 
@@ -190,11 +195,16 @@ class JournalService
             }
 
             $normalized[] = [
-                'account_id'  => (int) $accountId,
-                'branch_id'   => $line['branch_id'] ?? null,
-                'description' => $line['description'] ?? null,
-                'debit'       => $debit,
-                'credit'      => $credit,
+                'account_id'        => (int) $accountId,
+                'branch_id'         => $line['branch_id'] ?? null,
+                // SUPPLIER-FINANCE-DIRECT-1 — counterparty ka dimension yahan se guzarta hai.
+                // Default null: jo caller ise nahi bhejta (sale, purchase bill, opening balance,
+                // catering — yani aaj ke saare callers) uske liye kuch nahi badla.
+                'counterparty_type' => $line['counterparty_type'] ?? null,
+                'supplier_id'       => isset($line['supplier_id']) ? (int) $line['supplier_id'] : null,
+                'description'       => $line['description'] ?? null,
+                'debit'             => $debit,
+                'credit'            => $credit,
             ];
         }
 
@@ -221,12 +231,14 @@ class JournalService
         $sort = 0;
         foreach ($normalized as $line) {
             $entry->lines()->create([
-                'account_id'  => $line['account_id'],
-                'branch_id'   => $line['branch_id'],
-                'description' => $line['description'],
-                'debit'       => $line['debit'],
-                'credit'      => $line['credit'],
-                'sort_order'  => $sort++,
+                'account_id'        => $line['account_id'],
+                'branch_id'         => $line['branch_id'],
+                'counterparty_type' => $line['counterparty_type'] ?? null,
+                'supplier_id'       => $line['supplier_id'] ?? null,
+                'description'       => $line['description'],
+                'debit'             => $line['debit'],
+                'credit'            => $line['credit'],
+                'sort_order'        => $sort++,
             ]);
         }
     }

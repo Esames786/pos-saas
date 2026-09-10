@@ -205,15 +205,267 @@
         // KASHIF-EVENT-FORM-1 — dates remain keyboard-friendly; service time
         // is deliberately selection-only so arbitrary text cannot be entered.
         // Native date/time fields remain the fallback when Flatpickr is absent.
+        // EVENT-FORM-KEYBOARD-1 — what an operator actually types.
+        //
+        // The boxes already allowed typing, but only in the shape flatpickr
+        // prints — "Wed, 09 Sep 2026" — which nobody types. This reads the
+        // shapes people use instead. DAY FIRST, because that is how the date is
+        // written and said here: 9/10 is the ninth of October.
+        //
+        // Anything not clearly recognised falls through to the browser's own
+        // parse, and anything it cannot read either is REFUSED rather than
+        // guessed at. A silently wrong event date is worse than a retype.
+        const typedDate = function (str) {
+            const s = String(str || '').trim().toLowerCase();
+            if (! s) return undefined;
+
+            const midnight = d => { d.setHours(0, 0, 0, 0); return d; };
+            // A real day, or nothing. JavaScript's Date carries overflow
+            // forward — new Date(2026, 98, 99) is a valid object in June 2034 —
+            // so 99/99 would have become a date instead of a refusal.
+            const made = (y, m, d) => {
+                if (! (y >= 2000 && y <= 2100) || ! (m >= 1 && m <= 12) || ! (d >= 1 && d <= 31)) return undefined;
+                const made = midnight(new Date(y, m - 1, d));
+
+                return (made.getFullYear() === y && made.getMonth() === m - 1 && made.getDate() === d)
+                    ? made : undefined;
+            };
+            if (s === 't' || s === 'today' || s === 'aaj') return midnight(new Date());
+            if (s === 'kal' || s === 'tomorrow') { const d = new Date(); d.setDate(d.getDate() + 1); return midnight(d); }
+
+            // +7 / -3 — days from today, the way a booking is usually described.
+            const rel = s.match(/^([+-])\s*(\d{1,3})$/);
+            if (rel) {
+                const d = new Date();
+                d.setDate(d.getDate() + (rel[1] === '-' ? -1 : 1) * parseInt(rel[2], 10));
+                return midnight(d);
+            }
+
+            // 2026-10-09 — the canonical value flatpickr itself stores.
+            const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+            if (iso) return made(+iso[1], +iso[2], +iso[3]);
+
+            // 9/10, 9-10-26, 9.10.2026
+            const dmy = s.match(/^(\d{1,2})[\/\-. ](\d{1,2})(?:[\/\-. ](\d{2}|\d{4}))?$/);
+            if (dmy) {
+                const now = new Date();
+                let y = dmy[3] === undefined ? now.getFullYear() : parseInt(dmy[3], 10);
+                if (y < 100) y += 2000;
+
+                return made(y, +dmy[2], +dmy[1]);
+            }
+
+            // 091026 / 09102026 — typed straight off the number pad.
+            const run = s.match(/^(\d{2})(\d{2})(\d{2}|\d{4})$/);
+            if (run) {
+                let y = parseInt(run[3], 10);
+                if (y < 100) y += 2000;
+
+                return made(y, +run[2], +run[1]);
+            }
+
+            const native = new Date(str);
+
+            return isNaN(native.getTime()) ? undefined : midnight(native);
+        };
+
+        /**
+         * EVENT-FORM-KEYBOARD-3 — a typed service time, or nothing.
+         *
+         * Bare numbers are read as a 24-HOUR clock: 10 is ten in the morning,
+         * 22 is ten at night. Guessing that a caterer "probably meant evening"
+         * is how a booking ends up twelve hours out, and the box prints back
+         * "10:00 PM" either way, so the operator sees what they got.
+         *
+         * Anything that is not a real time returns undefined, and flatpickr then
+         * keeps the value it already had — which is the whole answer to why this
+         * field was locked in the first place.
+         */
+        const typedTime = function (str) {
+            const s = String(str || '').trim().toLowerCase().replace(/\s+/g, '');
+            if (! s) return undefined;
+
+            const m = s.match(/^(\d{1,2})(?::?(\d{2}))?(am|pm|a|p)?$/);
+            if (! m) return undefined;
+
+            let hours = parseInt(m[1], 10);
+            let minutes = m[2] === undefined ? 0 : parseInt(m[2], 10);
+
+            // 1030 / 2215 — typed straight off the number pad.
+            if (m[2] === undefined && m[1].length > 2) {
+                if (m[1].length !== 4) return undefined;
+                hours = parseInt(m[1].slice(0, 2), 10);
+                minutes = parseInt(m[1].slice(2), 10);
+            }
+
+            const suffix = m[3] ? m[3][0] : null;
+            if (suffix) {
+                if (hours < 1 || hours > 12) return undefined;
+                hours = hours % 12;
+                if (suffix === 'p') hours += 12;
+            }
+
+            if (! (hours >= 0 && hours <= 23) || ! (minutes >= 0 && minutes <= 59)) return undefined;
+
+            const d = new Date();
+            d.setHours(hours, minutes, 0, 0);
+
+            return d;
+        };
+
+        /**
+         * EVENT-FORM-KEYBOARD-4 — refuse the keystroke, not the value.
+         *
+         * `allow` is asked whether the value WOULD still be on its way to
+         * something valid; if not, the character never lands. `shape` then
+         * formats what is there — but only while the caret is at the end, so
+         * editing in the middle is never fought over.
+         */
+        const restrictTyping = function (input, allow, shape) {
+            input.addEventListener('beforeinput', function (e) {
+                // Deleting is always allowed; so is anything the browser is
+                // doing on its own behalf.
+                if (e.data === null || e.data === undefined) return;
+
+                const start = input.selectionStart ?? input.value.length;
+                const end = input.selectionEnd ?? input.value.length;
+                const next = input.value.slice(0, start) + e.data + input.value.slice(end);
+
+                if (! allow(next)) e.preventDefault();
+            });
+
+            input.addEventListener('input', function () {
+                if (input.selectionStart !== input.value.length) return;
+                const shaped = shape(input.value);
+                if (shaped === input.value) return;
+                input.value = shaped;
+                input.setSelectionRange(shaped.length, shaped.length);
+            });
+        };
+
+        // Every word the date box understands. A letter is only ever accepted
+        // while the value is still walking towards one of these.
+        const DATE_WORDS = ['today', 'aaj', 'kal', 'tomorrow', 't'];
+
+        const dateAllows = function (value) {
+            const s = String(value).trim().toLowerCase();
+            if (s === '') return true;
+            if (/^[+-]\d{0,3}$/.test(s)) return true;                                  // +7, -3
+            if (/^\d{0,2}([\/\-. ]\d{0,2}([\/\-. ]\d{0,4})?)?$/.test(s)) return true;   // 9/10/26
+            if (/^\d{0,8}$/.test(s)) return true;                                      // 09102026
+            // The mask's own half-finished output — 10-11-2026 on its way in.
+            if (/^[\d-]*$/.test(s) && s.replace(/\D/g, '').length <= 8) return true;
+            return DATE_WORDS.some(function (w) { return w.startsWith(s); });
+        };
+
+        const dateMasked = function (digits) {
+            const d = digits.slice(0, 8);
+            if (d.length <= 2) return d;
+            if (d.length <= 4) return d.slice(0, 2) + '-' + d.slice(2);
+
+            return d.slice(0, 2) + '-' + d.slice(2, 4) + '-' + d.slice(4);
+        };
+
+        const dateShape = function (value) {
+            // Anything carrying a slash, a dot, a space or a letter is the
+            // operator's own way of writing it — 9/10, 9.10.26, today — and is
+            // never rewritten.
+            if (! /^[\d-]*$/.test(value)) return value;
+
+            // The mask puts its dashes after the day and after the month, and
+            // nowhere else. A date punctuated by hand — 9-10-26 — has them
+            // somewhere else, and reshaping it on digit count would turn it into
+            // 91-02-6. So only the mask's own dash positions are reshaped.
+            for (let i = 0; i < value.length; i++) {
+                if (value[i] === '-' && i !== 2 && i !== 5) return value;
+            }
+
+            return dateMasked(value.replace(/-/g, ''));
+        };
+
+        const timeAllows = function (value) {
+            const s = String(value).trim().toLowerCase().replace(/\s+/g, '');
+            if (s === '') return true;
+
+            return /^\d{0,2}(:\d{0,2})?(a|p|am|pm)?$/.test(s) || /^\d{0,4}$/.test(s);
+        };
+
+        const timeShape = function (value) {
+            if (! /^\d+$/.test(value)) return value;                                   // 10pm keeps its own shape
+            const d = value.slice(0, 4);
+            if (d.length <= 2) return d;
+
+            return d.slice(0, 2) + ':' + d.slice(2);
+        };
+
         if (window.flatpickr) {
             root.querySelectorAll('input[type=date]').forEach(function (el) {
                 if (el._flatpickr) return;
                 window.flatpickr(el, {
                     dateFormat: 'Y-m-d', altInput: true, altFormat: 'D, d M Y',
                     allowInput: true, disableMobile: true,
+                    parseDate: typedDate,
                     // The hint and the clash warning listen for 'change' — say it
                     // out loud rather than trusting the library to.
-                    onChange: function () { el.dispatchEvent(new Event('change', { bubbles: true })); },
+                    onChange: function (dates, value, fp) {
+                        if (fp.altInput) fp.altInput.classList.remove('is-invalid');
+                        el.dispatchEvent(new Event('change', { bubbles: true }));
+                    },
+                    onReady: function (dates, value, fp) {
+                        if (! fp.altInput) return;
+                        fp.altInput.setAttribute('placeholder', '10-11-2026 · 9/10 · +7 · today');
+                        restrictTyping(fp.altInput, dateAllows, dateShape);
+                        // Enter accepts what was typed and MOVES ON; the calendar
+                        // must not sit open swallowing the next Tab. Escape closes
+                        // it and leaves the date alone.
+                        fp.altInput.addEventListener('keydown', function (e) {
+                            if (e.key === 'Enter') {
+                                e.preventDefault();
+                                const parsed = typedDate(fp.altInput.value);
+                                if (parsed) fp.setDate(parsed, true);
+                                fp.close();
+                                const fields = [...root.querySelectorAll('input, select, textarea, button')]
+                                    .filter(f => ! f.disabled && f.type !== 'hidden' && f.offsetParent !== null);
+                                const at = fields.indexOf(fp.altInput);
+                                if (at > -1 && at < fields.length - 1) fields[at + 1].focus();
+                                return;
+                            }
+                            if (e.key === 'Escape') { fp.close(); }
+                        });
+                        // Typing over the box should REPLACE the date, not append
+                        // to "Wed, 09 Sep 2026".
+                        fp.altInput.addEventListener('focus', function () { fp.altInput.select(); });
+
+                        // EVENT-FORM-KEYBOARD-2 — the calendar follows the typing.
+                        //
+                        // 09-10-2026 was understood the moment it was typed, but
+                        // nothing on screen said so: the calendar stayed on the old
+                        // month until Enter, which reads as "it did not work".
+                        //
+                        // jumpToDate only — NOT setDate. setDate rewrites the box
+                        // into "Fri, 09 Oct 2026" mid-word and throws the caret to
+                        // the end, so the next keystroke lands in the wrong place.
+                        // The month heading changing is the whole confirmation
+                        // needed; Enter or Tab still commits.
+                        fp.altInput.addEventListener('input', function () {
+                            const raw = fp.altInput.value.trim();
+                            if (! raw) { fp.altInput.classList.remove('is-invalid'); return; }
+
+                            const parsed = typedDate(raw);
+                            if (parsed) {
+                                fp.altInput.classList.remove('is-invalid');
+                                fp.jumpToDate(parsed);
+                            } else {
+                                // Say it while the caret is still in the box, not
+                                // after the operator has moved on and the value has
+                                // quietly reverted to the old date.
+                                fp.altInput.classList.add('is-invalid');
+                            }
+                        });
+                        fp.altInput.addEventListener('blur', function () {
+                            if (typedDate(fp.altInput.value.trim())) fp.altInput.classList.remove('is-invalid');
+                        });
+                    },
                 });
             });
             root.querySelectorAll('input[type=time]').forEach(function (el) {
@@ -221,17 +473,35 @@
                 window.flatpickr(el, {
                     enableTime: true, noCalendar: true, dateFormat: 'H:i',
                     altInput: true, altFormat: 'h:i K', time_24hr: false,
-                    // Selection-only: use the professional clock, AM/PM toggle,
-                    // or a house preset. Arbitrary letters cannot remain in the
-                    // visible field or reach the canonical H:i value.
-                    allowInput: false, disableMobile: true, minuteIncrement: 15,
+                    // EVENT-FORM-KEYBOARD-3: typeable again. The lock existed to
+                    // keep arbitrary letters out of the canonical H:i value; the
+                    // parser above refuses them instead, which keeps the value
+                    // safe AND lets the operator type. The clock, the AM/PM
+                    // toggle and the house presets all still work.
+                    allowInput: true, disableMobile: true, minuteIncrement: 15,
                     clickOpens: true,
+                    parseDate: typedTime,
                     onReady: function (dates, value, instance) {
                         if (! instance.altInput) return;
-                        instance.altInput.readOnly = true;
-                        instance.altInput.inputMode = 'none';
                         instance.altInput.autocomplete = 'off';
-                        instance.altInput.setAttribute('aria-label', 'Select service time');
+                        instance.altInput.setAttribute('placeholder', '22:00 · 10pm · 7');
+                        restrictTyping(instance.altInput, timeAllows, timeShape);
+                        instance.altInput.setAttribute('aria-label', 'Service time — type or pick');
+                        instance.altInput.addEventListener('focus', function () { instance.altInput.select(); });
+                        instance.altInput.addEventListener('input', function () {
+                            const raw = instance.altInput.value.trim();
+                            instance.altInput.classList.toggle('is-invalid', !! raw && ! typedTime(raw));
+                        });
+                        instance.altInput.addEventListener('keydown', function (e) {
+                            if (e.key !== 'Enter') return;
+                            e.preventDefault();
+                            const parsed = typedTime(instance.altInput.value);
+                            if (parsed) instance.setDate(parsed, true);
+                            instance.close();
+                        });
+                        instance.altInput.addEventListener('blur', function () {
+                            if (typedTime(instance.altInput.value.trim())) instance.altInput.classList.remove('is-invalid');
+                        });
                     },
                     onChange: function (dates, value) {
                         root.querySelectorAll('[data-time]').forEach(function (button) {

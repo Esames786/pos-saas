@@ -45,12 +45,12 @@
     </div>
 </div>
 
-@foreach($byStation as $station => $lines)
-    @if($station !== '')
-        <h3 class="station">{{ $t('Station', 'اسٹیشن') }}: {{ $station }}</h3>
-    @elseif($byStation->count() > 1)
-        <h3 class="station">{{ $t('General', 'عمومی') }}</h3>
-    @endif
+{{-- KITCHEN-SHEET-NO-STATIONS-1: ONE table, the lines in their own order.
+     This used to group by production_station and head each group with a black
+     bar. The owner asked for the bars to go, and the grouping goes with them —
+     several tables each repeating the same header for no stated reason reads
+     worse than the bars did. The station is still recorded on the line; it is
+     simply not this sheet's business. --}}
     <table class="items">
         <thead>
             <tr>
@@ -61,7 +61,7 @@
             </tr>
         </thead>
         <tbody>
-            @foreach($lines as $line)
+            @foreach($release->lines as $line)
             <tr>
                 <td class="num"><span class="qty">{{ rtrim(rtrim(number_format($line->quantity, 3), '0'), '.') }} {{ $line->unit_code }}</span></td>
                 <td>
@@ -88,7 +88,6 @@
             @endforeach
         </tbody>
     </table>
-@endforeach
 
 @if(!empty($requirements))
 <div class="req">

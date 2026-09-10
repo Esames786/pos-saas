@@ -230,12 +230,15 @@ class CateringEntitlementMySqlTest extends MySqlTenantTestCase
             'Finalise Event',
             'Issue Materials',
             'Manage Material Rates',
+            'Move Booking Back',
             'Print / Reprint',
             'Record Advance',
+            'Refund Beyond Credit',
             'Refund Customer',
             'Release Production',
             'Send / Revise Quote',
             'Store Issue',
+            'Take More Than Due',
             'View Catering',
         ];
 

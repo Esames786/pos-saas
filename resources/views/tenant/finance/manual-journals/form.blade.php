@@ -89,11 +89,14 @@
                         <caption class="visually-hidden">Journal lines</caption>
                         <thead class="thead-light">
                             <tr>
-                                <th scope="col" style="width:28%">Account <span class="text-danger">*</span></th>
-                                <th scope="col" style="width:20%">Cash/Bank Account <small class="text-muted">(opt)</small></th>
+                                <th scope="col" style="width:24%">Account <span class="text-danger">*</span></th>
+                                <th scope="col" style="width:16%">Cash/Bank Account <small class="text-muted">(opt)</small></th>
+                                {{-- SUPPLIER-FINANCE-DIRECT-1 — Accounts Payable ki satar be-shanakht nahi ho sakti.
+                                     Ye khaana sirf tab zinda hota hai jab satar ka account AP (ya uski nasl) ho. --}}
+                                <th scope="col" style="width:18%">Supplier <small class="text-muted">(AP lines)</small></th>
                                 <th scope="col">Description</th>
-                                <th scope="col" style="width:12%">Debit</th>
-                                <th scope="col" style="width:12%">Credit</th>
+                                <th scope="col" style="width:11%">Debit</th>
+                                <th scope="col" style="width:11%">Credit</th>
                                 <th scope="col" style="width:4%"></th>
                             </tr>
                         </thead>
@@ -123,6 +126,23 @@
                                             </option>
                                         @endforeach
                                     </select>
+                                </td>
+                                <td>
+                                    {{-- counterparty_type select ke saath hidden input se jata hai: AP ki satar par
+                                         dono zinda, warna dono disabled — aur disabled control submit hi nahi hota,
+                                         is liye ghair-AP satar par koi awara counterparty nahi chipakta. --}}
+                                    <input type="hidden" name="lines[{{ $i }}][counterparty_type]" value="supplier"
+                                        class="mj-cpt" @disabled(! in_array((int) ($row['account_id'] ?? 0), $apAccountIds ?? [], true))>
+                                    <select name="lines[{{ $i }}][supplier_id]" class="form-select form-select-sm mj-supplier"
+                                        @disabled(! in_array((int) ($row['account_id'] ?? 0), $apAccountIds ?? [], true))>
+                                        <option value="">— Supplier —</option>
+                                        @foreach($suppliers as $sup)
+                                            <option value="{{ $sup->id }}" {{ (int) ($row['supplier_id'] ?? 0) === $sup->id ? 'selected' : '' }}>
+                                                {{ $sup->name }}
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                    @error("lines.$i.supplier_id") <div class="text-danger small mt-1">{{ $message }}</div> @enderror
                                 </td>
                                 <td>
                                     <input type="text" name="lines[{{ $i }}][description]" class="form-control form-control-sm"
@@ -200,6 +220,15 @@
                     @endforeach
                 </select>
             </td>
+            <td>
+                <input type="hidden" name="lines[__I__][counterparty_type]" value="supplier" class="mj-cpt" disabled>
+                <select name="lines[__I__][supplier_id]" class="form-select form-select-sm mj-supplier" disabled>
+                    <option value="">— Supplier —</option>
+                    @foreach($suppliers as $sup)
+                        <option value="{{ $sup->id }}">{{ $sup->name }}</option>
+                    @endforeach
+                </select>
+            </td>
             <td><input type="text" name="lines[__I__][description]" class="form-control form-control-sm" placeholder="Optional note"></td>
             <td><input type="number" step="0.0001" min="0" name="lines[__I__][debit]"  class="form-control form-control-sm text-end mj-debit"  placeholder="0.00"></td>
             <td><input type="number" step="0.0001" min="0" name="lines[__I__][credit]" class="form-control form-control-sm text-end mj-credit" placeholder="0.00"></td>
@@ -215,6 +244,31 @@ document.addEventListener('DOMContentLoaded', function () {
     var tpl     = document.getElementById('rowTemplate');
     var addBtn  = document.getElementById('addRow');
     var idx     = {{ count($rows) }};
+
+    // SUPPLIER-FINANCE-DIRECT-1 — kaunse account Accounts Payable hain (2100 aur uski poori
+    // nasl; server se aate hain, yahan hard-code nahi). Backend par bhi wohi shart lagti hai —
+    // ye sirf operator ki suhoolat hai, hifazat nahi.
+    var AP_ACCOUNT_IDS = @json($apAccountIds ?? []);
+
+    // Ek satar par supplier ka khaana kholo/band karo. Band hone par control DISABLED hota hai,
+    // is liye wo submit hi nahi hota — ghair-AP satar par koi awara counterparty nahi jata.
+    function syncSupplierCell(tr) {
+        var acc = tr.querySelector('select[name*="[account_id]"]');
+        var sup = tr.querySelector('.mj-supplier');
+        var cpt = tr.querySelector('.mj-cpt');
+        if (!acc || !sup) return;
+
+        var isAp = AP_ACCOUNT_IDS.indexOf(parseInt(acc.value, 10)) !== -1;
+
+        sup.disabled = !isAp;
+        sup.required = isAp;
+        if (cpt) { cpt.disabled = !isAp; }
+        if (!isAp) { sup.value = ''; }
+    }
+
+    function syncAllSupplierCells() {
+        rows.querySelectorAll('tr').forEach(syncSupplierCell);
+    }
 
     function recalc() {
         var d = 0, c = 0;
@@ -234,6 +288,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     addBtn.addEventListener('click', function () {
         rows.insertAdjacentHTML('beforeend', tpl.innerHTML.replace(/__I__/g, idx++));
+        syncAllSupplierCells();
         recalc();
     });
 
@@ -251,6 +306,18 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
+    // Account badalte hi usi satar ka supplier khaana khulta/band hota hai. Delegated hai taake
+    // "Add line" se bani rows par bhi chale — wo rows baad me aati hain, is liye seedha bind
+    // karna kaam nahi karta.
+    rows.addEventListener('change', function (e) {
+        if (e.target.name && e.target.name.indexOf('[account_id]') !== -1) {
+            syncSupplierCell(e.target.closest('tr'));
+        }
+    });
+
+    // Load par ek bar: validation fail hone ke baad form purani qeematein wapas dikhata hai,
+    // aur us soorat me AP wali satar ka picker pehle se khula hona chahiye.
+    syncAllSupplierCells();
     recalc();
 });
 </script>

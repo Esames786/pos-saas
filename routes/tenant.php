@@ -851,6 +851,8 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                     Route::put('/catering/events/{cateringEvent}', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'update'])->name('tenant.catering.events.update');
                     Route::post('/catering/events/{cateringEvent}/confirm', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'confirm'])->name('tenant.catering.events.confirm');
                     Route::post('/catering/events/{cateringEvent}/cancel', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'cancel'])->name('tenant.catering.events.cancel');
+                    // CATERING-STATUS-ROLLBACK-1: one step back, or restore a cancelled booking.
+                    Route::post('/catering/events/{cateringEvent}/move-back', [\App\Http\Controllers\Tenant\Catering\CateringEventController::class, 'moveBack'])->name('tenant.catering.events.move-back');
 
                     Route::put('/catering/estimates/{cateringEstimate}', [\App\Http\Controllers\Tenant\Catering\CateringEstimateController::class, 'update'])->name('tenant.catering.estimates.update');
                     Route::post('/catering/estimates/{cateringEstimate}/send', [\App\Http\Controllers\Tenant\Catering\CateringEstimateController::class, 'send'])->name('tenant.catering.estimates.send');

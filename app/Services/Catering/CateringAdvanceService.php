@@ -43,24 +43,45 @@ class CateringAdvanceService
 
             $isSettlement = $event->finalInvoice()->exists();
 
-            // The §4 overpayment cap fires inside create() (model guard).
-            $advance = CateringAdvance::create([
+            // CATERING-OVERPAYMENT-1 — how much of this receipt is paying a bill
+            // and how much the business is simply holding. Asked BEFORE the row
+            // exists, from the one authority every screen shares.
+            $amount = round((float) $data['amount'], 2);
+            $outstanding = round((float) app(CateringFinancialPositionService::class)->position($event)['balance_due'], 2);
+            $credit = round(max($amount - $outstanding, 0), 2);
+            $settled = round($amount - $credit, 2);
+
+            // The overpayment cap fires inside create() (model guard) unless the
+            // caller has deliberately opened the door and recorded a reason.
+            $advance = new CateringAdvance([
                 'catering_event_id' => $event->id,
-                'amount' => $data['amount'],
+                'amount' => $amount,
                 'received_date' => $data['received_date'],
                 'payment_method_id' => $data['payment_method_id'] ?? null,
                 'reference' => $data['reference'] ?? null,
                 'notes' => $data['notes'] ?? null,
+                'credit_portion' => $credit,
+                'overpayment_reason' => $data['overpayment_reason'] ?? null,
+            ]);
+            $advance->allowOverpayment = (bool) ($data['allow_overpayment'] ?? false);
+            $advance->forceFill([
                 'recorded_by_user_id' => $userId,
                 'posting_type' => $isSettlement ? CateringAdvance::POSTING_SETTLEMENT : CateringAdvance::POSTING_ADVANCE,
                 'cash_bank_account_id' => $cashBankAccountId,
-            ]);
+            ])->save();
             $advance->setRelation('event', $event);
 
             // GL — throws on failure/conflict, rolling back the operational row.
-            $entry = $isSettlement
-                ? $this->journalPosting->postCateringSettlement($advance, $userId)
-                : $this->journalPosting->postCateringAdvance($advance, $userId);
+            //
+            // A receipt that both settles a bill and leaves credit has to be
+            // posted as the two different things it is. Before an invoice exists
+            // there is nothing to split: the whole receipt is already a customer
+            // advance sitting in 2300.
+            $entry = match (true) {
+                $isSettlement && $credit > 0 => $this->journalPosting->postCateringSplitReceipt($advance, $settled, $credit, $userId),
+                $isSettlement => $this->journalPosting->postCateringSettlement($advance, $userId),
+                default => $this->journalPosting->postCateringAdvance($advance, $userId),
+            };
 
             $advance->forceFill(['journal_entry_id' => $entry->id, 'gl_posted_at' => now()])->save();
 

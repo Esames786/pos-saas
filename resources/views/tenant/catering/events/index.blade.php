@@ -273,6 +273,25 @@
                                         @endif
                                     @endcan
 
+                                    {{-- CATERING-STATUS-ROLLBACK-1 — the same authority the
+                                         booking screen POSTs to. This menu has never written a
+                                         status itself and does not start here: whether the step
+                                         is offered comes from the service, so the list and the
+                                         booking screen can never disagree. --}}
+                                    @can('tenant.catering.events.move-back')
+                                        @if($backTargets[$event->id] ?? null)
+                                            <li>
+                                                <button type="button" class="dropdown-item js-event-action"
+                                                        data-url="{{ url('/catering/events/' . $event->id . '/move-back') }}"
+                                                        data-reason-field="reason"
+                                                        data-ask-reason="Move {{ $event->event_no }} back to {{ str_replace('_', ' ', $backTargets[$event->id]) }}? Payments, invoices and stock are untouched. Why is it being moved back?">
+                                                    <i class="ti ti-arrow-back-up me-2"></i>{{ $event->isCancelled() ? 'Restore Booking' : 'Move Back' }}
+                                                    <span class="text-muted fs-12">to {{ str_replace('_', ' ', $backTargets[$event->id]) }}</span>
+                                                </button>
+                                            </li>
+                                        @endif
+                                    @endcan
+
                                     @can('tenant.catering.events.close')
                                         {{-- Closure is offered only where the finance authority would
                                              actually grant it: invoiced, and nothing left owing in
@@ -390,7 +409,11 @@
         if (reason !== null) {
             var input = document.createElement('input');
             input.type = 'hidden';
-            input.name = 'cancel_reason';
+            // Cancel calls it cancel_reason; move-back calls it reason. The
+            // field name travels with the button rather than being assumed,
+            // so a second action asking for a reason does not silently post
+            // it under the first one's name and fail validation.
+            input.name = btn.dataset.reasonField || 'cancel_reason';
             input.value = reason.trim();
             form.appendChild(input);
         }

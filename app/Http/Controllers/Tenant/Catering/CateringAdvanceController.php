@@ -22,13 +22,63 @@ class CateringAdvanceController extends Controller
             return back()->withErrors(['advance' => 'Cancelled events cannot receive advances.']);
         }
 
+        // CATERING-OVERPAYMENT-1 §4b: a NEGATIVE amount on this one box hands
+        // money back. `not_in:0` rather than a minimum, because zero is the only
+        // figure that means nothing at all.
         $data = $request->validate([
-            'amount' => ['required', 'numeric', 'min:0.01'],
+            'amount' => ['required', 'numeric', 'not_in:0'],
             'received_date' => ['required', 'date'],
             'payment_method_id' => ['nullable', 'exists:payment_methods,id'],
             'reference' => ['nullable', 'string', 'max:255'],
             'notes' => ['nullable', 'string', 'max:255'],
+            'allow_overpayment' => ['nullable', 'boolean'],
+            'overpayment_reason' => ['nullable', 'string', 'max:255'],
         ]);
+
+        $amount = round((float) $data['amount'], 2);
+
+        // Any departure from "a plain payment of what is owed" has to say why:
+        // taking money the business has not billed for, or giving money back.
+        if (($amount < 0 || $request->boolean('allow_overpayment')) && trim((string) ($data['overpayment_reason'] ?? '')) === '') {
+            return back()->withErrors([
+                'advance' => $amount < 0
+                    ? 'Returning money needs a reason recorded against it.'
+                    : 'Taking more than the amount due needs a reason recorded against it.',
+            ])->withInput();
+        }
+
+        // §4b — money out is a REFUND, not a negative receipt. A negative
+        // CateringAdvance would break the one authority every screen reads:
+        // position() SUMS advances, so a minus row would quietly redefine
+        // "received", and it would slip past the refundable cap that stops us
+        // handing back money which is covering a bill.
+        if ($amount < 0) {
+            try {
+                $refund = app(\App\Services\Catering\CateringRefundService::class)->record($cateringEvent, [
+                    'amount' => abs($amount),
+                    'refund_date' => $data['received_date'],
+                    'payment_method_id' => $data['payment_method_id'] ?? null,
+                    'reference' => $data['reference'] ?? null,
+                    'reason' => $data['overpayment_reason'],
+                    // CATERING-REFUND-BEYOND-CREDIT-1 — the authority to hand
+                    // back money that is covering a bill. Taken from the
+                    // user, never from the request: the screen can be told
+                    // anything, and a form post can be written by hand.
+                    'allow_beyond_credit' => $request->user()?->can('tenant.catering.refunds.beyond-credit'),
+                ], $request->user()?->id);
+            } catch (\RuntimeException $e) {
+                return back()->withErrors(['advance' => $e->getMessage()])->withInput();
+            }
+
+            return back()->with('status', 'Refund of '.number_format((float) $refund->amount, 2)
+                .' recorded ('.$refund->refund_no.') — taken out of the credit held for this booking.');
+        }
+
+        // The authority to create a liability is not the authority to record a
+        // payment. A crafted post cannot borrow it: the flag is dropped here for
+        // anyone who has not been granted it.
+        $data['allow_overpayment'] = $request->boolean('allow_overpayment')
+            && $request->user()?->can('tenant.catering.advances.overpay');
 
         try {
             // GO-LIVE §5: ONE atomic operation — operational advance + cash/bank

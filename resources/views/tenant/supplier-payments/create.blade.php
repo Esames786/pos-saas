@@ -18,6 +18,7 @@
             A <strong>Supplier Payment</strong> reduces the supplier's payable balance and updates the supplier ledger.
             Choose <strong>Pay From (Cash/Bank)</strong> only if money actually leaves that account.
             <div class="text-muted mt-1">Flow: PO → GRN → Purchase Bill → <strong>Supplier Payment</strong>.</div>
+            <div class="text-muted">A purchase bill is <strong>not</strong> required — a supplier can be paid straight against their outstanding balance.</div>
         </div>
     </div>
 </div>
@@ -42,6 +43,8 @@
 </div>
 
 <form method="POST" action="{{ url('/supplier-payments') }}" novalidate>
+    {{-- Supplier Ledger ke Record Payment se aaye to wahin lauto. Ye khaana payment ka hissa nahi — controller isay validate ke BAAD alag padhta hai. --}}
+    <input type="hidden" name="return_to" value="{{ $returnTo ?? '' }}">
     @csrf
 
     <div class="card">
@@ -54,7 +57,7 @@
                     @foreach($suppliers as $supplier)
                         <option value="{{ $supplier->id }}"
                                 data-balance="{{ (float) $supplier->current_balance }}"
-                                @selected(old('supplier_id', $bill?->supplier_id) == $supplier->id)>
+                                @selected(old('supplier_id', ($supplierPreset ?? null)?->id ?? $bill?->supplier_id) == $supplier->id)>
                             {{ $supplier->name }}
                             (Balance: {{ number_format($supplier->current_balance, 2) }})
                         </option>
@@ -64,7 +67,7 @@
             </div>
 
             <div class="col-md-4">
-                <label for="purchase_bill_id" class="form-label">Against Bill</label>
+                <label for="purchase_bill_id" class="form-label">Against Bill <span class="text-muted fw-normal">(optional)</span></label>
                 <select id="purchase_bill_id" name="purchase_bill_id"
                         class="form-select @error('purchase_bill_id') is-invalid @enderror">
                     <option value="">No specific bill (general payment)</option>
@@ -104,9 +107,9 @@
             </div>
 
             <div class="col-md-3">
-                <label for="cash_bank_account_id" class="form-label">Pay From (Cash/Bank)</label>
+                <label for="cash_bank_account_id" class="form-label required">Pay From (Cash/Bank)</label>
                 <select id="cash_bank_account_id" name="cash_bank_account_id"
-                        class="form-select @error('cash_bank_account_id') is-invalid @enderror">
+                        class="form-select @error('cash_bank_account_id') is-invalid @enderror" required>
                     <option value="">— None (no cash/bank effect) —</option>
                     @foreach($cashBankAccounts as $cba)
                         <option value="{{ $cba->id }}" @selected(old('cash_bank_account_id') == $cba->id)>
