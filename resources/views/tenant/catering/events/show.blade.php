@@ -1770,6 +1770,10 @@ $(document).on('click', '.js-rate-toggle', function () {
 
     const credit = {{ (float) $position['refundable'] }};
     const ceiling = {{ (float) $position['refund_ceiling'] }};
+    const billed = {{ (float) $position['billed'] }};
+    const received = {{ (float) $position['gross_received'] }};
+    const applied = {{ (float) $position['applied'] }};
+    const dueNow = {{ (float) $position['balance_due'] }};
     const canGoBeyond = @json(auth()->user()?->can('tenant.catering.refunds.beyond-credit') ?? false);
 
     const money = (n) => n.toLocaleString(undefined, {minimumFractionDigits: 2});
@@ -1800,14 +1804,36 @@ $(document).on('click', '.js-rate-toggle', function () {
         }
 
         const beyond = typed() - credit;
+        const fromCredit = Math.min(typed(), credit);
+
+        // §5 — every figure the decision rests on, so nothing has to be
+        // worked out in the operator's head. The two highlighted rows are
+        // the ones that change: what comes out of the customer's own money,
+        // and what reopens as a debt they owe again.
+        const row = (label, value, tone) =>
+            '<tr><td style="text-align:left;padding:2px 10px 2px 0">' + label + '</td>'
+            + '<td style="text-align:right;padding:2px 0;white-space:nowrap"'
+            + (tone ? ' class="' + tone + '"><b>' : '>') + money(value)
+            + (tone ? '</b>' : '') + '</td></tr>';
 
         Swal.fire({
             title: 'This goes past the customer\'s credit',
-            html: (credit > 0
-                    ? 'Only <b>' + money(credit) + '</b> is the customer\'s own credit.<br>'
-                    : 'None of this is the customer\'s credit.<br>')
-                + 'The other <b>' + money(beyond) + '</b> is money that is <b>covering the bill</b> — '
-                + 'handing it back puts the balance due straight back up by that amount.',
+            html: '<table style="margin:0 auto;font-size:13px">'
+                + row('Invoice / bill', billed)
+                + row('Total received', received)
+                + row('Applied to the bill', applied)
+                + row('Customer credit available', credit)
+                + '<tr><td colspan="2"><hr style="margin:6px 0"></td></tr>'
+                + row('Refunding', typed())
+                + row('&nbsp;&nbsp;taken from credit', fromCredit)
+                + row('&nbsp;&nbsp;reopens as money owed to you', beyond, 'text-danger')
+                + '<tr><td colspan="2"><hr style="margin:6px 0"></td></tr>'
+                + row('Balance due afterwards', dueNow + beyond, 'text-danger')
+                + row('Credit left afterwards', credit - fromCredit)
+                + '</table>'
+                + '<p style="margin:10px 0 0;font-size:12px">The <b>' + money(beyond) + '</b> beyond the credit '
+                + 'is money that is <b>covering the bill</b> — handing it back puts the balance due '
+                + 'straight back up by that amount.</p>',
             icon: 'warning',
             showCancelButton: true,
             confirmButtonText: 'Yes, pay it back anyway',
