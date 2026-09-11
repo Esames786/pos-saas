@@ -55,6 +55,17 @@ Route::prefix('edge/local')->name('edge.local.')->group(function () {
         Route::post('/returns', [EdgeLocalPosController::class, 'storeReturn'])->name('returns.store');
         Route::get('/returns/{return}', [EdgeLocalPosController::class, 'showReturn'])->name('returns.show');
 
+        // F2 — SUPPLIER FINANCE: Suppliers → Supplier Ledger → Record Payment, and the General Journal with the supplier/AP
+        // dimension. Read-only warm projection + immutable local events the Cloud posts officially, exactly once.
+        Route::get('/suppliers', [\App\Http\Controllers\Edge\EdgeLocalSupplierFinanceController::class, 'suppliersScreen'])->name('suppliers.screen');
+        Route::get('/suppliers/options', [\App\Http\Controllers\Edge\EdgeLocalSupplierFinanceController::class, 'options'])->name('suppliers.options');
+        Route::get('/suppliers/{supplier}/ledger', [\App\Http\Controllers\Edge\EdgeLocalSupplierFinanceController::class, 'ledger'])->name('suppliers.ledger');
+        Route::post('/suppliers/payments', [\App\Http\Controllers\Edge\EdgeLocalSupplierFinanceController::class, 'storePayment'])->name('suppliers.payments.store');
+        Route::get('/finance/events/{event}', [\App\Http\Controllers\Edge\EdgeLocalSupplierFinanceController::class, 'showEvent'])->name('finance.events.show');
+        Route::get('/finance/journal', [\App\Http\Controllers\Edge\EdgeLocalSupplierFinanceController::class, 'journalScreen'])->name('finance.journal.screen');
+        Route::get('/finance/journal/options', [\App\Http\Controllers\Edge\EdgeLocalSupplierFinanceController::class, 'journalOptions'])->name('finance.journal.options');
+        Route::post('/finance/journal', [\App\Http\Controllers\Edge\EdgeLocalSupplierFinanceController::class, 'storeJournal'])->name('finance.journal.store');
+
         // Restaurant layer: dine-in table sessions, held orders (Add Round), KOT business events,
         // settle/cancel, manager re-auth. Same authority envelope (EdgeLocalPosService); NO print transport.
         Route::get('/restaurant/board', [EdgeLocalPosController::class, 'restaurantBoard'])->name('restaurant.board');

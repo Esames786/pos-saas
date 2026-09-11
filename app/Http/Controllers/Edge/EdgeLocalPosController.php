@@ -168,6 +168,9 @@ class EdgeLocalPosController extends Controller
             'operationalStockReady' => $this->baselines->currentAccepted() !== null,
             // COMPLETE SALE PERMISSION parity: the button follows tenant.pos.store; the server enforces it too.
             'canCompleteSale' => (bool) $user?->can('tenant.pos.store'),
+            // F2 SUPPLIER FINANCE parity: the header entry points follow the Online permissions; the server enforces them too.
+            'canSupplierFinance' => (bool) ($user?->can(\App\Services\Edge\EdgeLocalSupplierFinanceService::PERM_LEDGER) || $user?->can(\App\Services\Edge\EdgeLocalSupplierFinanceService::PERM_PAYMENT)),
+            'canManualJournal' => (bool) $user?->can(\App\Services\Edge\EdgeLocalSupplierFinanceService::PERM_JOURNAL),
             // DELIVERY / DISCOUNT parity data (synced): channels, riders, the branch charge lock, approval mode.
             'deliveryChannels' => \App\Models\Tenant\DeliveryChannel::on('tenant')->where('is_active', true)->orderBy('sort_order')->orderBy('name')->get(['id', 'name', 'type']),
             'deliveryRiders' => \App\Models\Tenant\DeliveryRider::on('tenant')->where('status', 'active')

@@ -57,7 +57,23 @@ GL, cash/bank, ledger, document) exactly once — proven end to end with a lost 
 cashier page. Remaining in this area: card / bank / provider refunds (ONLINE_REQUIRED), sales older than the cache
 window (ONLINE_REQUIRED), and any generic customer-credit settlement (not Catering's) as a later event.
 
-## Supplier finance (SUPPLIER-FINANCE-DIRECT-1) — classified 8 Sep 2026; CANONICAL since 70d24c1 (10 Sep 2026); F2 NEXT
+## F2 — Supplier finance: CLOSED 12 Sep 2026 (see `edge-f2-supplier-finance.md`)
+
+Direct Supplier Payment with or without a Purchase Bill, Supplier Ledger → Record Payment, and the supplier-aware General Journal
+(AP lines name their supplier) run on the Branch Server from a FRESH warm projection of the Cloud's supplier finance; the appliance
+records provisional, PENDING SYNC events (no local AP / GL / cash-bank posting, ever) and the Cloud posts the OFFICIAL transaction
+exactly once through its existing authorities (`SupplierPayableService::recordPayment`, `ManualJournalService::post`), verified
+finance-complete or refused. Cash/Bank required, ledger-only payment impossible, supplier advance unsupported (fail closed, row
+locked across terminals), stale projection fails closed, lost ACK / replay / conflict / backup / handback / convergence proven.
+Remaining: card payment to a supplier (ONLINE_REQUIRED), Purchase Returns offline (FINANCIAL_PARITY_PENDING — Purchasing not
+expanded), and the sale / return ingestion refusal-ACK classification observation recorded in the F2 status doc.
+
+```
+SUPPLIER_FINANCE_OFFLINE_PARITY = FULL_OFFLINE_PARITY   (F2, 12 Sep 2026)
+PURCHASE_RETURN_OFFLINE_PARITY  = FINANCIAL_PARITY_PENDING
+```
+
+## Supplier finance (SUPPLIER-FINANCE-DIRECT-1) — classified 8 Sep 2026; CANONICAL since 70d24c1 (10 Sep 2026); implemented by F2 above (history)
 
 **Update 10 Sep 2026 — now canonical.** The workflow merged into `origin/feat/14d-2-plan-upgrade-requests` at
 `70d24c1` (1e69481 SUPPLIER-FINANCE-DIRECT-1, 49381a1 idempotency + foreign-supplier guard, cd6a75e purchase-return GL

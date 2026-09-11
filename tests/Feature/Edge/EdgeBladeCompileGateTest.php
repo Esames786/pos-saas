@@ -33,19 +33,26 @@ class EdgeBladeCompileGateTest extends TestCase
             $this->markTestSkipped('no Node runtime available to syntax-check the cashier script');
         }
 
-        $html = file_get_contents(resource_path('views/edge/pos/index.blade.php'));
-        $start = strpos($html, "<script>\n    (function");
-        $end = strrpos($html, '</script>');
-        $this->assertNotFalse($start, 'the cashier page must carry its inline script');
-        $js = preg_replace('/\{\{[\s\S]*?\}\}/', 'X', substr($html, $start + 8, $end - $start - 8));
+        // The cashier page plus every other Edge operator page built on the same single-inline-script convention
+        // (F2: the Suppliers / Supplier Ledger / Record Payment page and the General Journal page).
+        $pages = ['views/edge/pos/index.blade.php', 'views/edge/finance/suppliers.blade.php', 'views/edge/finance/journal.blade.php'];
+        foreach ($pages as $page) {
+            $html = file_get_contents(resource_path($page));
+            $start = strpos($html, "<script>\n    (function");
+            $end = strrpos($html, '</script>');
+            $this->assertNotFalse($start, "{$page} must carry its inline script");
+            $js = substr($html, $start + 8, $end - $start - 8);
+            $js = preg_replace('/@json\(.*\);/', 'null;', $js);            // server-injected JSON literal → a JS literal
+            $js = preg_replace('/\{\{[\s\S]*?\}\}/', 'X', $js);
 
-        $tmp = tempnam(sys_get_temp_dir(), 'edge_pos_js_') . '.js';
-        file_put_contents($tmp, $js);
-        $out = [];
-        $code = 0;
-        exec(escapeshellarg($node) . ' --check ' . escapeshellarg($tmp) . ' 2>&1', $out, $code);
-        @unlink($tmp);
-        $this->assertSame(0, $code, "the cashier page script does not parse as JavaScript:\n" . implode("\n", $out));
+            $tmp = tempnam(sys_get_temp_dir(), 'edge_pos_js_') . '.js';
+            file_put_contents($tmp, $js);
+            $out = [];
+            $code = 0;
+            exec(escapeshellarg($node) . ' --check ' . escapeshellarg($tmp) . ' 2>&1', $out, $code);
+            @unlink($tmp);
+            $this->assertSame(0, $code, "{$page} script does not parse as JavaScript:\n" . implode("\n", $out));
+        }
     }
 
     public function test_every_edge_blade_view_compiles_and_the_generated_php_lints(): void

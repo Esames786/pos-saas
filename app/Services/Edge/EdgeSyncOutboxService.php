@@ -78,6 +78,24 @@ class EdgeSyncOutboxService
      * claimed row or null when nothing is eligible. attempts increments on every claim;
      * first_sent_at records the FIRST lease-for-sending.
      */
+    /**
+     * OFFLINE EDGE F2 — queue an immutable supplier-finance event (supplier payment / supplier AP journal) in the SAME
+     * append-only outbox: sale_uuid carries the event_uuid; the schema version routes the sender to the Cloud's
+     * supplier-finance ingestion; lease / hash / verified-ACK / reconciliation are shared unchanged.
+     */
+    public function createForFinanceEvent(array $envelope): EdgeSyncOutbox
+    {
+        return EdgeSyncOutbox::create([
+            'sale_uuid' => (string) $envelope['event_uuid'],
+            'envelope_schema_version' => (string) $envelope['envelope_schema_version'],
+            'config_revision' => (int) $envelope['config_revision'],
+            'activation_epoch' => (int) $envelope['activation_epoch'],
+            'envelope' => app(EdgeSupplierFinanceEnvelopeBuilder::class)->canonicalEnvelopeJson($envelope),
+            'content_hash' => (string) $envelope['content_hash'],
+            'state' => EdgeSyncOutbox::STATE_PENDING,
+        ]);
+    }
+
     public function lease(string $owner, int $leaseSeconds = self::DEFAULT_LEASE_SECONDS): ?EdgeSyncOutbox
     {
         $token = $owner . ':' . (string) Str::ulid();     // unique per claim → unambiguous readback

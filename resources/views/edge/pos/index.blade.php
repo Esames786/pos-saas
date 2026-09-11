@@ -29,6 +29,7 @@
         header h1 { font-size:1.05rem; margin:0; }
         header .who { color:var(--muted); font-size:.8rem; }
         header .spacer { flex:1; }
+        header a.navbtn { color:var(--ink); text-decoration:none; border:1px solid var(--line); border-radius:8px; padding:.5rem .8rem; font-size:.9rem; }
         select, input, button { font:inherit; color:var(--ink); }
         select, input[type=text], input[type=search], input[type=number], input[type=datetime-local], textarea { background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:.45rem .6rem; }
         button { cursor:pointer; border:1px solid var(--line); background:var(--panel2); border-radius:8px; padding:.5rem .8rem; }
@@ -119,6 +120,12 @@
         <select id="terminal" @unless($canChangeTerminal) title="Selling terminal is fixed for your account" @endunless></select>
         <button type="button" class="ghost" id="shift-btn">Shift</button>
         <button type="button" class="ghost" id="returns-btn">Returns</button>
+        @if($canSupplierFinance ?? false)
+            <a class="navbtn" id="suppliers-link" href="{{ url('/edge/local/pos/suppliers') }}">Suppliers</a>
+        @endif
+        @if($canManualJournal ?? false)
+            <a class="navbtn" id="journal-link" href="{{ url('/edge/local/pos/finance/journal') }}">Journal</a>
+        @endif
         <span class="chip" id="sync-chip" hidden></span>
         <form method="POST" action="{{ url('/edge/local/logout') }}" style="margin:0">@csrf<button class="ghost">Logout</button></form>
     </header>

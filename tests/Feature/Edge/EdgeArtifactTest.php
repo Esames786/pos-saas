@@ -180,7 +180,12 @@ class EdgeArtifactTest extends TestCase
         ] as $must) {
             $this->assertContains($must, $plan, "the cashier product must ship: {$must}");
         }
-        foreach (['app/Http/Controllers/Tenant/Reports/ShiftReportController.php', 'app/Services/Finance/SupplierPayableService.php'] as $never) {
+        // F2 — the operator pages of the supplier-finance surface ship with the cashier product.
+        foreach (['resources/views/edge/finance/suppliers.blade.php', 'resources/views/edge/finance/journal.blade.php'] as $must) {
+            $this->assertContains($must, $plan, "the supplier-finance surface must ship: {$must}");
+        }
+        foreach (['app/Http/Controllers/Tenant/Reports/ShiftReportController.php', 'app/Services/Finance/SupplierPayableService.php',
+            'app/Services/Finance/ManualJournalService.php', 'app/Services/Edge/EdgeInboundSupplierFinanceIngestionService.php', 'resources/views/tenant/supplier-payments/create.blade.php'] as $never) {
             $this->assertNotContains($never, $plan, "Cloud-only source must stay out: {$never}");
         }
         $this->assertTrue((bool) collect($plan)->first(fn ($p) => str_starts_with($p, 'app/')), 'app/ files present');
@@ -277,6 +282,11 @@ class EdgeArtifactTest extends TestCase
             'app/Http/Controllers/Tenant/PurchaseOrderController.php', 'app/Http/Controllers/Tenant/SupplierController.php',
             'app/Models/Master/Subscription.php', 'app/Http/Controllers/Tenant/TenantBillingController.php',
             'app/Console/Commands/DispatchCateringRemindersCommand.php',
+            // F2 — Cloud supplier-finance authority, projection and ingestion never ship.
+            'app/Services/Finance/ManualJournalService.php', 'app/Services/Edge/EdgeSupplierFinanceProjectionService.php',
+            'app/Services/Edge/EdgeInboundSupplierFinanceIngestionService.php', 'app/Http/Controllers/Edge/EdgeInboundSupplierFinanceApiController.php',
+            'app/Http/Controllers/Edge/EdgeSupplierFinanceCacheApiController.php', 'app/Models/Tenant/EdgeInboundSupplierFinanceIngestion.php',
+            'app/Http/Controllers/Tenant/Finance/ManualJournalController.php',
         ];
         foreach ($absent as $rel) {
             $this->assertFileDoesNotExist($dest . '/' . $rel, "Cloud-only path must be excluded: {$rel}");
@@ -289,6 +299,7 @@ class EdgeArtifactTest extends TestCase
             'app/Services/Edge/EdgeRestoreService.php', 'app/Services/Edge/EdgeLocalPosService.php',
             'app/Services/Edge/EdgeBootstrapService.php',        // KEPT: config reads its SCHEMA_VERSION constant
             'app/Services/Finance/JournalPostingService.php',    // KEPT: shared finance primitive
+            'app/Services/Edge/EdgeSupplierFinanceCacheService.php', 'app/Services/Edge/EdgeLocalSupplierFinanceService.php',   // F2 appliance side
         ];
         foreach ($present as $rel) {
             $this->assertFileExists($dest . '/' . $rel, "Edge runtime must ship: {$rel}");
@@ -324,6 +335,8 @@ class EdgeArtifactTest extends TestCase
         $this->assertSame(0, $count('app/Services/Purchasing'), 'PURCHASING_FILES');
         $this->assertSame(0, $count('app/Http/Controllers/Central'), 'CLOUD_ADMIN_FILES');
         $this->assertFileDoesNotExist($dest . '/app/Services/Edge/EdgeInboundSaleIngestionService.php', 'CLOUD_INGESTION_FILES');
+        $this->assertFileDoesNotExist($dest . '/app/Services/Edge/EdgeInboundSupplierFinanceIngestionService.php', 'CLOUD_SUPPLIER_FINANCE_INGESTION_FILES');
+        $this->assertFileDoesNotExist($dest . '/app/Services/Finance/SupplierPayableService.php', 'CLOUD_SUPPLIER_FINANCE_AUTHORITY_FILES');
     }
 
     public function test_branch_server_allows_the_productization_commands_and_denies_cloud_ones(): void

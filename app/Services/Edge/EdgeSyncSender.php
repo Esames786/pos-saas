@@ -36,6 +36,13 @@ class EdgeSyncSender
         // ORIGINAL_SALE_NOT_INGESTED is deliberately NOT here: the sale may still be in flight → retry.
         'RETURN_UUID_INVALID', 'RETURN_INVALID', 'ORIGINAL_SALE_UNKNOWN', 'RETURN_LINE_UNKNOWN', 'RETURN_REFUSED',
         'REFUND_METHOD_UNSUPPORTED', 'ACTOR_UNKNOWN', 'APPROVAL_REQUIRED', 'APPROVER_UNAUTHORIZED',
+        // F2 supplier-finance events — terminal verdicts from the canonical authority (the immutable envelope can
+        // never become acceptable: unknown/inactive supplier or account, the payment would create a supplier
+        // advance, an AP line without its supplier, an operator the Cloud does not permit). FINANCE_* verifier
+        // refusals are NOT here: the transaction rolled back, the next attempt may complete.
+        'EVENT_UUID_INVALID', 'EVENT_INVALID', 'SUPPLIER_UNKNOWN', 'SUPPLIER_INACTIVE', 'CASH_BANK_REQUIRED', 'CASH_BANK_UNKNOWN',
+        'CASH_BANK_INACTIVE', 'CASH_BANK_UNMAPPED', 'BILL_UNKNOWN', 'BILL_MISMATCH', 'PAYMENT_INVALID', 'PAYMENT_REFUSED',
+        'JOURNAL_INVALID', 'JOURNAL_REFUSED', 'ACCOUNT_UNKNOWN', 'ACCOUNT_MISMATCH', 'ACCOUNT_INACTIVE', 'AP_SUPPLIER_REQUIRED', 'ACTOR_UNAUTHORIZED',
     ];
 
     public function __construct(private readonly EdgeSyncOutboxService $outbox)
@@ -60,10 +67,16 @@ class EdgeSyncSender
     private function transport(EdgeSyncOutbox $row): string
     {
         // F1: a return event travels the same outbox to the Cloud's RETURN ingestion; a sale to the sale ingestion.
-        $isReturn = (string) $row->envelope_schema_version === EdgeReturnEnvelopeBuilder::SCHEMA;
-        $url = (string) config($isReturn ? 'edge.sync.returns_url' : 'edge.sync.url');
+        // F2: a supplier-finance event (payment / AP journal) travels the same outbox to the Cloud's supplier-finance ingestion.
+        $schema = (string) $row->envelope_schema_version;
+        [$urlKey, $envName] = match (true) {
+            $schema === EdgeReturnEnvelopeBuilder::SCHEMA => ['edge.sync.returns_url', 'EDGE_SYNC_RETURNS_URL'],
+            EdgeSupplierFinanceEnvelopeBuilder::isFinanceSchema($schema) => ['edge.sync.supplier_finance_url', 'EDGE_SYNC_SUPPLIER_FINANCE_URL'],
+            default => ['edge.sync.url', 'EDGE_SYNC_URL'],
+        };
+        $url = (string) config($urlKey);
         if ($url === '') {
-            $this->outbox->releaseLease($row, ($isReturn ? 'EDGE_SYNC_RETURNS_URL' : 'EDGE_SYNC_URL') . ' not configured');
+            $this->outbox->releaseLease($row, $envName . ' not configured');
 
             return 'retry';
         }

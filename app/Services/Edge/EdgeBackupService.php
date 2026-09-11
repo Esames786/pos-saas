@@ -65,6 +65,15 @@ class EdgeBackupService
         'sales_return_lines',
         'edge_returnable_sales',
         'edge_returnable_sale_lines',
+        // F2 — the supplier-finance projection and the appliance's pending supplier-finance events (exact bytes / hash).
+        'edge_supplier_finance_suppliers',
+        'edge_supplier_finance_bills',
+        'edge_supplier_finance_cash_bank_accounts',
+        'edge_supplier_finance_accounts',
+        'edge_supplier_finance_ledger_entries',
+        'edge_supplier_finance_applied_events',
+        'edge_local_supplier_finance_events',
+        'edge_local_supplier_finance_effects',
     ];
 
     public function __construct(private readonly EdgeBackupKeyProvider $keys)

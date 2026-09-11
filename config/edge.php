@@ -76,6 +76,7 @@ return [
         // F1 — RETURNABLE-SALE WARM CACHE: the Cloud's returnable sales for the branch (window below), pulled when the
         // advertised returnable watermark moved, so a sale made ONLINE can be returned offline.
         'returnable_refresh_url' => env('EDGE_STANDBY_RETURNABLE_REFRESH_URL'),
+        'supplier_finance_refresh_url' => env('EDGE_STANDBY_SUPPLIER_FINANCE_REFRESH_URL'), // F2: POST supplier-finance projection
     ],
 
     /*
@@ -88,9 +89,25 @@ return [
         'offline_refund_methods' => ['cash'],
     ],
 
+    /*
+    | F2 — SUPPLIER FINANCE PARITY. The appliance holds a READ-ONLY warm projection of the Cloud's supplier finance
+    | (suppliers + authoritative payable, open purchase bills, cash/bank accounts, chart + AP family, recent ledger
+    | rows, the Edge events the Cloud already applied). It never posts AP / GL / cash-bank itself: it queues
+    | immutable SUPPLIER_PAYMENT / SUPPLIER_AP_JOURNAL_ADJUSTMENT events the Cloud posts exactly once.
+    */
+    'supplier_finance' => [
+        'ledger_window_days' => (int) env('EDGE_SUPPLIER_FINANCE_LEDGER_WINDOW_DAYS', 30),        // recent official ledger rows mirrored
+        'ledger_max_rows_per_supplier' => (int) env('EDGE_SUPPLIER_FINANCE_LEDGER_MAX_ROWS', 100),
+        'applied_window_days' => (int) env('EDGE_SUPPLIER_FINANCE_APPLIED_WINDOW_DAYS', 45),      // applied Edge events listed for exact pending math
+        // Offline a supplier payment is internal bookkeeping (cash from the safe / a recorded bank transfer / a cheque);
+        // 'card' needs a provider authorisation the appliance cannot perform → ONLINE_REQUIRED.
+        'offline_payment_methods' => ['cash', 'bank_transfer', 'cheque', 'other'],
+    ],
+
     'sync' => [
         'url'             => env('EDGE_SYNC_URL'),            // Cloud device-authed ingestion endpoint (sales)
         'returns_url'     => env('EDGE_SYNC_RETURNS_URL'),    // F1: Cloud device-authed ingestion endpoint (sales returns)
+        'supplier_finance_url' => env('EDGE_SYNC_SUPPLIER_FINANCE_URL'), // F2: Cloud device-authed ingestion endpoint (supplier payments / AP journals)
         'reconcile_url'   => env('EDGE_SYNC_RECONCILE_URL'),  // Cloud device-authed READ-ONLY reconciliation status
         'baseline_url'    => env('EDGE_SYNC_BASELINE_URL'),   // Cloud device-authed operational-baseline issuance
         'device_id'       => env('EDGE_SYNC_DEVICE_ID'),      // this appliance public_uuid
@@ -202,6 +219,14 @@ return [
         'edge.local.pos.returns.sale',
         'edge.local.pos.returns.store',
         'edge.local.pos.returns.show',
+        'edge.local.pos.suppliers.screen',  // F2 supplier finance (Suppliers → Supplier Ledger → Record Payment; General Journal)
+        'edge.local.pos.suppliers.options',
+        'edge.local.pos.suppliers.ledger',
+        'edge.local.pos.suppliers.payments.store',
+        'edge.local.pos.finance.events.show',
+        'edge.local.pos.finance.journal.screen',
+        'edge.local.pos.finance.journal.options',
+        'edge.local.pos.finance.journal.store',
         'edge.local.pos.held.store',
         'edge.local.pos.held.kot',
         'edge.local.pos.held.settle',
@@ -321,6 +346,15 @@ return [
             'app/Models/Tenant/EdgeInboundSaleIngestion.php',
             // Cloud AP posting — sits beside the KEPT JournalPostingService, so excluded by exact path only.
             'app/Services/Finance/SupplierPayableService.php',
+            // F2 — Cloud supplier-finance authority stays physically out of the appliance artifact.
+            'app/Services/Finance/ManualJournalService.php',
+            'app/Services/Edge/EdgeSupplierFinanceProjectionService.php',
+            'app/Services/Edge/EdgeInboundSupplierFinanceIngestionService.php',
+            'app/Http/Controllers/Edge/EdgeSupplierFinanceCacheApiController.php',
+            'app/Http/Controllers/Edge/EdgeInboundSupplierFinanceApiController.php',
+            'app/Models/Tenant/EdgeInboundSupplierFinanceIngestion.php',
+            'app/Http/Controllers/Tenant/Finance/ManualJournalController.php',
+            'resources/views/tenant/finance/manual-journals',
 
             // POST-RECONCILIATION — the canonical merge brought the full Cloud business domains into the dev
             // branch. The Branch Server never executes Catering / manufacturing / purchasing-AP / SaaS billing,

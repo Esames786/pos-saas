@@ -70,6 +70,18 @@ class EdgeHandbackOrchestrator
         if ($failed > 0) {
             $block('PERMANENT_SYNC_FAILURE', "{$failed} sale(s) need attention before the Cloud can take the branch back");
         }
+        // F2 — supplier-finance events are money the Cloud has not yet posted officially: a pending supplier payment or
+        // manual AP journal, a permanently failed one, or a local/Cloud divergence all block the handback explicitly.
+        $finance = app(EdgeSupplierFinanceCacheService::class)->handbackFindings();
+        if ($finance['pending'] > 0) {
+            $block('SUPPLIER_FINANCE_PENDING', "{$finance['pending']} supplier payment / AP journal event(s) still syncing to the Cloud");
+        }
+        if ($finance['failed'] > 0) {
+            $block('SUPPLIER_FINANCE_PERMANENT_FAILURE', "{$finance['failed']} supplier-finance event(s) were refused by the Cloud and need a supervisor");
+        }
+        if ($finance['divergent'] > 0) {
+            $block('SUPPLIER_FINANCE_DIVERGENCE', "{$finance['divergent']} supplier-finance event(s) do not reconcile with the Cloud (" . implode('; ', $finance['details']) . ')');
+        }
         // 4 reconciliation clean since the connection was restored
         if ($meta->reconcile_clean_at === null) {
             $block('RECONCILIATION_NOT_CLEAN', 'the last reconciliation with the Cloud is not clean (or has not run since the connection returned)');
@@ -103,6 +115,7 @@ class EdgeHandbackOrchestrator
             'blockers' => $blockers,
             'facts' => [
                 'pending' => $pending, 'failed_permanent' => $failed, 'open_tables' => $openTables, 'held_checks' => $heldChecks, 'open_shifts' => $openShifts,
+                'supplier_finance_pending' => $finance['pending'], 'supplier_finance_failed' => $finance['failed'], 'supplier_finance_divergent' => $finance['divergent'],
                 'active_reservations' => $activeReservations->count(), 'consecutive_acks' => (int) $meta->heartbeat_consecutive_acks,
                 'reconcile_clean_at' => $meta->reconcile_clean_at?->toIso8601String(), 'cloud_holder_seen' => $meta->authority_cloud_holder_seen,
             ],

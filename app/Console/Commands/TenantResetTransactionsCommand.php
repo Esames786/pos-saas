@@ -52,6 +52,7 @@ class TenantResetTransactionsCommand extends Command
         'edge_inbound_return_ingestions',  // F1: Edge return-event registry (transactional)
         'edge_returnable_sales',           // F1: appliance returnable-sale cache (transactional shadows)
         'edge_returnable_sale_lines',
+        'edge_inbound_supplier_finance_ingestions',
         // Ping/reboot work items handed to a print agent — transient, exactly like
         // the print jobs beside them. The paired AGENTS and printers are master
         // data and are kept; a week-old queued reboot is not.

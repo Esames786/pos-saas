@@ -51,6 +51,13 @@ class EdgeLocalMeta extends Model
         'standby_config_refreshed_at' => 'datetime',
         'standby_stock_refreshed_at' => 'datetime',
         'reconcile_clean_at' => 'datetime',
+        // F1 / F2 — warm cache freshness stamps.
+        'returnable_cache_as_of' => 'datetime',
+        'returnable_cache_refreshed_at' => 'datetime',
+        'standby_returnable_as_of_seen' => 'datetime',
+        'supplier_finance_cache_as_of' => 'datetime',
+        'supplier_finance_cache_refreshed_at' => 'datetime',
+        'standby_supplier_finance_as_of_seen' => 'datetime',
     ];
 
     /** Identity fields that become IMMUTABLE once set (fix 5). */

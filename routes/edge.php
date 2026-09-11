@@ -57,5 +57,8 @@ Route::domain(config('tenancy.central_domain'))
             // Edge-originated return events through the OFFICIAL return authority.
             Route::post('/returnable/refresh', [\App\Http\Controllers\Edge\EdgeReturnableCacheApiController::class, 'package'])->name('edge.api.returnable.refresh');
             Route::post('/sync/returns', [\App\Http\Controllers\Edge\EdgeInboundReturnApiController::class, 'store'])->name('edge.api.sync.returns');
+            // F2 — supplier finance: the warm projection the standby pulls, and the ingestion of supplier payments / AP journals.
+            Route::post('/supplier-finance/refresh', [\App\Http\Controllers\Edge\EdgeSupplierFinanceCacheApiController::class, 'package'])->name('edge.api.supplier-finance.refresh');
+            Route::post('/sync/supplier-finance', [\App\Http\Controllers\Edge\EdgeInboundSupplierFinanceApiController::class, 'store'])->name('edge.api.sync.supplier-finance');
         });
     });

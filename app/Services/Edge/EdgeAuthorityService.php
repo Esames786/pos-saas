@@ -82,6 +82,9 @@ class EdgeAuthorityService
             // F1 — the returnable-sale watermark the Cloud advertised (the return cache's freshness target).
             'standby_returnable_watermark_seen' => isset($ack['returnable_watermark']) ? (string) $ack['returnable_watermark'] : $meta->standby_returnable_watermark_seen,
             'standby_returnable_as_of_seen' => isset($ack['returnable_as_of']) ? \Illuminate\Support\Carbon::parse($ack['returnable_as_of']) : $meta->standby_returnable_as_of_seen,
+            // F2 — the supplier-finance watermark the Cloud advertised (the supplier-finance projection's freshness target).
+            'standby_supplier_finance_watermark_seen' => isset($ack['supplier_finance_watermark']) ? (string) $ack['supplier_finance_watermark'] : $meta->standby_supplier_finance_watermark_seen,
+            'standby_supplier_finance_as_of_seen' => isset($ack['supplier_finance_as_of']) ? \Illuminate\Support\Carbon::parse($ack['supplier_finance_as_of']) : $meta->standby_supplier_finance_as_of_seen,
         ])->save();
 
         return [
@@ -198,6 +201,12 @@ class EdgeAuthorityService
                     'return_cache_as_of' => $meta->returnable_cache_as_of ? \Illuminate\Support\Carbon::parse($meta->returnable_cache_as_of)->toIso8601String() : null,
                     'return_cache_advertised' => $meta->standby_returnable_watermark_seen,
                     'return_cache_fresh' => app(EdgeReturnableSaleCacheService::class)->freshness()['ok'],
+                    // F2 — SUPPLIER_FINANCE_CACHE_CURRENT at takeover: which supplier-finance truth offline payments / AP journals
+                    // validate against. Stale or unknown → those actions fail closed (selling is not held hostage).
+                    'supplier_finance_cache_watermark' => $meta->supplier_finance_cache_watermark,
+                    'supplier_finance_cache_as_of' => $meta->supplier_finance_cache_as_of ? \Illuminate\Support\Carbon::parse($meta->supplier_finance_cache_as_of)->toIso8601String() : null,
+                    'supplier_finance_cache_advertised' => $meta->standby_supplier_finance_watermark_seen,
+                    'supplier_finance_cache_current' => app(EdgeSupplierFinanceCacheService::class)->freshness()['ok'],
                 ] + $freshness['facts']),
             ])->save();
 
