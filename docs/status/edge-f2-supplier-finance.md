@@ -119,6 +119,23 @@ as the subledger did (AP_CONTROL_RECONCILIATION).
 - Cloud-side supplier finance is never fenced by the branch lease (a supplier's payable is tenant-wide): an Online payment during a
   partition can make an Edge payment unpostable; the Cloud then refuses it (terminal, nothing saved) and the supervisor resolves it.
 
+## Gates at the F2 head (12 Sep 2026)
+
+- Code head `d04dc44` (F2 build `7cb36d0` → reconcile 8 merged canonical `1ce55c7` = PRINT-AUTOCLOSE-STUCK-1 only, clean, tag
+  `edge-pre-reconcile8-7cb36d0` → test-isolation fix `d04dc44`). Canonical re-ground for the contract: `af6755d` (supplier finance
+  code unchanged through `1ce55c7`).
+- Focused F2: 18 tests green (Authority 10, SyncHttp 3, Race 1, BackupRecovery 1, Http 3) + canonical `SupplierFinanceDirectMySqlTest` 29/29.
+- Full authoritative MySQL suite at `d04dc44`, run ALONE: 1582 tests, 1576 passed, 4 errored, 2 failed, 0 skipped, 0 risky.
+  Reds = the known canonical Dompdf/A4-PDF debt (three CateringDocumentPdf, PosQuickReport email, ReportSchedule) + one
+  wall-clock-timed P lease lifecycle test (`EdgeAuthorityLeaseHttpMySqlTest`) that passed in the two preceding full runs on the
+  same code and passes alone (2/2) → timing flake under a loaded server, not an Edge regression. NEW_EDGE_REGRESSIONS = 0.
+  (Two earlier full runs on `03b95c3` showed the F2 backup-recovery test red only in the full ordering: its setUp did not clean
+  the operational tables the backup captures, so the restore's reference-integrity precheck rightly refused stale rows —
+  a test-isolation defect fixed in `d04dc44`, proven in the exact preceding class order.)
+- FAST (Feature incl. the 109 Edge gates + Unit) on the merged tree: 226 tests, the two stale canonical SQLite unit tests red as
+  before (EscPosReportPayload two-decimal money, DeliveryRiderReassignment text-grep). Blade compile + generated PHP lint + JS parse
+  for the cashier page AND both F2 pages: green. `git diff --check`: clean. PHP lint of every changed file: clean.
+
 ## Observation carried forward (not changed in F2)
 
 The canonical sale ingestion and the F1 return ingestion answer refusals without `content_hash` and record in-transaction refusals as
