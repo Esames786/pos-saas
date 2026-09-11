@@ -45,6 +45,23 @@ if (\App\Support\EdgeRuntime::isCloudSafe()) {
     // never double-send. Cloud-only (Edge CLI boundary default-denies the command anyway).
     Schedule::command('reports:dispatch-scheduled')->everyFifteenMinutes()->withoutOverlapping();
 
+    // PRINT-AUTOCLOSE-STUCK-1 — jo parchi ek ghante se atki rahe, khud band ho jaye.
+    //
+    // Zaroorat: The Kashif Foods par teen Report Center ki parchiyan galti se DOOSRI branch
+    // ki printer par bhej di gayi thin. Wahan se pahunch hi nahi sakti thin, aur defer
+    // jaan-boojh kar "kabhi haar na maano" par chalta hai — to har ~45 second par agent 16
+    // second us gum printer par atka rehta aur usi dauran banne wali har receipt/KOT 12-17
+    // second intezar karti. Ek parchi do din se ghoom rahi thi.
+    //
+    // Hadd 60 MINUTE hai, 30 nahi — Pakistan me bijli chali jaye to printer/PC der tak band
+    // reh sakta hai aur parchi ko us se bach jana chahiye. Us se purani parchi bemani ho
+    // chuki hoti hai; phir bhi wo GUM nahi hoti — `cancelled` ho kar sabab ke saath screen
+    // par rehti hai aur Retry se wapas queue me aa jaati hai.
+    //
+    // Har 15 minute par chalna mehfooz hai: kaam idempotent hai (jo band ho gayi wo phir
+    // `queued|failed` nahi rehti, is liye dobara nahi uthti).
+    Schedule::command('printing:autoclose-stuck')->everyFifteenMinutes()->withoutOverlapping();
+
     // CATERING-SLICE-3 — upcoming-event reminders (D-7/D-3/D-1/same-day). Safe at any
     // cadence: each (event, offset) is claimed idempotently before sending, so retries
     // and overlaps never double-send. Only tenants entitled to the catering module run.
