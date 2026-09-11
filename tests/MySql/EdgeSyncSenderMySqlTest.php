@@ -145,6 +145,61 @@ class EdgeSyncSenderMySqlTest extends MySqlTenantTestCase
         $this->assertNull($row->fresh()->acknowledged_at);
     }
 
+    // ── RELIABILITY (post-F2): terminal verdicts carry the envelope identity; the sender parks, never guesses ──
+
+    public function test_a_real_cloud_conflict_names_the_refused_envelope_by_its_incoming_hash_and_is_terminal(): void
+    {
+        // The Cloud's conflict ACK carries the FIRST accepted truth in content_hash (different by definition) and the
+        // envelope it refused in incoming_content_hash — that is the identity proof for THIS row.
+        $row = $this->seedRow();
+        Http::fake([$this->url => Http::response(['status' => 'conflict', 'failure_code' => 'ENVELOPE_CONFLICT', 'sale_uuid' => $row->sale_uuid,
+            'content_hash' => str_repeat('a', 64), 'incoming_content_hash' => $row->content_hash], 409)]);
+        $this->assertSame('terminal', $this->sender()->sendNext('worker-1'));
+        $this->assertSame('failed_permanent', $row->fresh()->state);
+        $this->assertNull($row->fresh()->acknowledged_at);
+    }
+
+    public function test_a_conflict_that_names_some_other_envelope_is_rejected_not_parked(): void
+    {
+        $row = $this->seedRow();
+        Http::fake([$this->url => Http::response(['status' => 'conflict', 'failure_code' => 'ENVELOPE_CONFLICT', 'sale_uuid' => $row->sale_uuid,
+            'content_hash' => str_repeat('a', 64), 'incoming_content_hash' => str_repeat('b', 64)], 409)]);
+        $this->assertSame('reject', $this->sender()->sendNext('worker-1'));
+        $this->assertSame('pending', $row->fresh()->state, 'a verdict about a different envelope never decides this row');
+    }
+
+    public function test_a_terminal_refusal_with_the_envelope_identity_is_parked_as_failed_permanent(): void
+    {
+        $row = $this->seedRow();
+        Http::fake([$this->url => Http::response(['status' => 'refused', 'failure_code' => 'PRODUCT_UNRESOLVED', 'sale_uuid' => $row->sale_uuid, 'content_hash' => $row->content_hash, 'message' => 'no such product'], 422)]);
+        $this->assertSame('terminal', $this->sender()->sendNext('worker-1'));
+        $fresh = $row->fresh();
+        $this->assertSame('failed_permanent', $fresh->state);
+        $this->assertNull($fresh->acknowledged_at);
+        $this->assertStringContainsString('PRODUCT_UNRESOLVED', (string) $fresh->last_error);
+        // Nothing is re-sent afterwards: the parked row is not leasable.
+        Http::fake([$this->url => Http::response(['status' => 'applied'], 201)]);
+        $this->assertSame('idle', $this->sender()->sendNext('worker-1'));
+        $this->assertSame('failed_permanent', $row->fresh()->state);
+    }
+
+    public function test_a_terminal_refusal_without_the_envelope_identity_never_parks_or_acks(): void
+    {
+        $row = $this->seedRow();
+        Http::fake([$this->url => Http::response(['status' => 'refused', 'failure_code' => 'PRODUCT_UNRESOLVED', 'sale_uuid' => $row->sale_uuid, 'message' => 'no such product'], 422)]);
+        $this->assertSame('reject', $this->sender()->sendNext('worker-1'));
+        $this->assertSame('pending', $row->fresh()->state, 'without the content hash the verdict cannot be proven to be about this envelope');
+    }
+
+    public function test_a_refusal_with_a_retryable_code_stays_retryable(): void
+    {
+        $row = $this->seedRow();
+        Http::fake([$this->url => Http::response(['status' => 'refused', 'failure_code' => 'FINANCE_GL_MISSING', 'sale_uuid' => $row->sale_uuid, 'content_hash' => $row->content_hash], 422)]);
+        $this->assertSame('retry', $this->sender()->sendNext('worker-1'));
+        $this->assertSame('pending', $row->fresh()->state);
+        $this->assertStringContainsString('FINANCE_GL_MISSING', (string) $row->fresh()->last_error);
+    }
+
     public function test_a_deterministic_exception_is_retryable_but_not_a_hot_loop_or_ack(): void
     {
         $row = $this->seedRow();

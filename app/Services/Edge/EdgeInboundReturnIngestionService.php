@@ -134,6 +134,13 @@ class EdgeInboundReturnIngestionService
 
             return $this->recordException($envelope, $contentHash, 'DB_ERROR', $e->getMessage());
         } catch (IngestionRefusal $e) {
+            // RELIABILITY (post-F2): a TERMINAL business refusal answers `refused` (422) with the envelope identity → the
+            // appliance parks the row as failed_permanent; retryable verdicts (ORIGINAL_SALE_NOT_INGESTED, FINANCE_*) stay
+            // `exception` (500 → bounded retry).
+            if (EdgeIngestionVerdicts::isTerminal($e->refusalCode)) {
+                return $this->refuse($envelope, $e->refusalCode, $e->getMessage());
+            }
+
             return $this->recordException($envelope, $contentHash, $e->refusalCode, $e->getMessage());
         } catch (Throwable $e) {
             return $this->recordException($envelope, $contentHash, 'INGEST_FAILED', $e->getMessage());
@@ -316,7 +323,7 @@ class EdgeInboundReturnIngestionService
 
     private function refuse(array $envelope, string $code, string $message): array
     {
-        $ack = ['status' => 'refused', 'failure_code' => $code, 'sale_uuid' => (string) ($envelope['return_uuid'] ?? ''), 'return_uuid' => (string) ($envelope['return_uuid'] ?? ''), 'message' => $message];
+        $ack = ['status' => 'refused', 'failure_code' => $code, 'sale_uuid' => (string) ($envelope['return_uuid'] ?? ''), 'return_uuid' => (string) ($envelope['return_uuid'] ?? ''), 'content_hash' => (string) ($envelope['content_hash'] ?? ''), 'message' => $message];
         $this->persistTerminal($envelope, (string) ($envelope['content_hash'] ?? ''), EdgeInboundReturnIngestion::STATUS_REFUSED, $code, $message, $ack);
 
         return $ack;
@@ -324,7 +331,7 @@ class EdgeInboundReturnIngestionService
 
     private function recordException(array $envelope, string $contentHash, string $code, string $message): array
     {
-        $ack = ['status' => 'exception', 'failure_code' => $code, 'sale_uuid' => (string) ($envelope['return_uuid'] ?? ''), 'return_uuid' => (string) ($envelope['return_uuid'] ?? ''), 'message' => $message];
+        $ack = ['status' => 'exception', 'failure_code' => $code, 'sale_uuid' => (string) ($envelope['return_uuid'] ?? ''), 'return_uuid' => (string) ($envelope['return_uuid'] ?? ''), 'content_hash' => $contentHash, 'message' => $message];
         $this->persistTerminal($envelope, $contentHash, EdgeInboundReturnIngestion::STATUS_EXCEPTION, $code, $message, $ack);
 
         return $ack;

@@ -106,6 +106,12 @@ class EdgeAuthorityLeaseHttpMySqlTest extends MySqlTenantTestCase
 
     public function test_lease_lifecycle_heartbeat_takeover_flap_handback_expiry_release(): void
     {
+        // CONTROLLED CLOCK: every `now()` below (a heartbeat's `expires_at`, the fence check) reads this frozen instant, so the
+        // proof never depends on how long the server takes between two requests (the whole-second `expires_at` column rounds
+        // fractions, and a slow full-suite run once pushed a real-time base past the +59 s boundary). Starting on an exact
+        // second keeps +59 / +61 unambiguous. Production lease semantics are untouched — only the test owns the clock.
+        Carbon::setTestNow(Carbon::now()->startOfSecond());
+
         // Unauthenticated / wrong secret → refused before anything.
         $this->postJson($this->heartbeatUri, ['seq' => 1, 'edge_state' => 'standby'])->assertStatus(401);
         $this->postJson($this->heartbeatUri, ['seq' => 1, 'edge_state' => 'standby'], $this->headers('wrong'))->assertStatus(401);
@@ -141,9 +147,9 @@ class EdgeAuthorityLeaseHttpMySqlTest extends MySqlTenantTestCase
 
         // EXPIRY: heartbeats stop; once the lease lapses on the Cloud clock the Cloud fences ITSELF (no Edge call needed).
         $this->postJson($this->heartbeatUri, ['seq' => 5, 'edge_state' => 'standby'], $this->headers())->assertOk()->assertJsonPath('holder', 'cloud');
-        Carbon::setTestNow(now()->addSeconds(59));
+        Carbon::setTestNow(Carbon::getTestNow()->copy()->addSeconds(59));
         $this->assertFalse($this->cloudFenced($this->branchId), 'still inside the lease');
-        Carbon::setTestNow(now()->addSeconds(2));
+        Carbon::setTestNow(Carbon::getTestNow()->copy()->addSeconds(2));
         $this->assertTrue($this->cloudFenced($this->branchId), 'lease lapsed → Cloud refuses this branch');
         $this->assertFalse($this->cloudFenced($this->otherBranchId));
         DB::setDefaultConnection('tenant');
@@ -155,7 +161,7 @@ class EdgeAuthorityLeaseHttpMySqlTest extends MySqlTenantTestCase
         $this->assertFalse($this->cloudFenced($this->branchId));
 
         // DEAD APPLIANCE: lapse again, then an operator releases the lease (audited) — the Cloud writes again.
-        Carbon::setTestNow(now()->addSeconds(120));
+        Carbon::setTestNow(Carbon::getTestNow()->copy()->addSeconds(120));
         $this->assertTrue($this->cloudFenced($this->branchId));
         DB::setDefaultConnection('tenant');
         $released = app(\App\Services\Edge\EdgeAuthorityLeaseService::class)->release($this->branchId, 'appliance destroyed in fire', 'owner');

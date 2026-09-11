@@ -168,8 +168,14 @@ class EdgeInboundSaleIngestionService
             }
             return $this->recordException($envelope, $contentHash, 'DB_ERROR', $e->getMessage());
         } catch (IngestionRefusal $e) {
-            // A domain refusal raised mid-posting (e.g. insufficient stock) — the transaction already rolled
-            // back; record a deterministic exception result (no sale/GL/stock/payment partials survive).
+            // A domain refusal raised mid-posting — the transaction already rolled back (no sale/GL/stock/payment partials
+            // survive). RELIABILITY (post-F2): a TERMINAL verdict (the identical immutable envelope can never be accepted)
+            // answers `refused` WITH the envelope identity so the appliance parks the row as failed_permanent instead of
+            // retrying forever; a retryable verdict (INSUFFICIENT_STOCK — 1E-gated) stays a deterministic `exception`.
+            if (EdgeIngestionVerdicts::isTerminal($e->refusalCode)) {
+                return $this->refuse($envelope, $e->refusalCode, $e->getMessage());
+            }
+
             return $this->recordException($envelope, $contentHash, $e->refusalCode, $e->getMessage());
         } catch (Throwable $e) {
             return $this->recordException($envelope, $contentHash, 'INGEST_FAILED', $e->getMessage());
@@ -453,6 +459,7 @@ class EdgeInboundSaleIngestionService
             'status' => 'refused',
             'failure_code' => $code,
             'sale_uuid' => (string) ($envelope['sale_uuid'] ?? ''),
+            'content_hash' => (string) ($envelope['content_hash'] ?? ''),   // the envelope this verdict answers — the sender's identity proof
             'message' => $message,
         ];
         $this->persistTerminal($envelope, (string) ($envelope['content_hash'] ?? ''), EdgeInboundSaleIngestion::STATUS_REFUSED, $code, $message, $ack);
@@ -467,6 +474,7 @@ class EdgeInboundSaleIngestionService
             'status' => 'exception',
             'failure_code' => $code,
             'sale_uuid' => (string) ($envelope['sale_uuid'] ?? ''),
+            'content_hash' => $contentHash,
             'message' => $message,
         ];
         $this->persistTerminal($envelope, $contentHash, EdgeInboundSaleIngestion::STATUS_EXCEPTION, $code, $message, $ack);
