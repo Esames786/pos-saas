@@ -35,8 +35,15 @@ class EdgeSupplierFinanceBackupRecoveryMySqlTest extends MySqlTenantTestCase
         parent::setUp();
         DB::setDefaultConnection('tenant');
         $this->ensureEdgeSchema();
+        // The backup captures EVERY table in the appliance census — clean the operational tables earlier classes may have
+        // left behind (sales, shifts, table sessions, KOT, prints, stock, reservations), or the restore's reference-integrity
+        // precheck rightly refuses rows pointing at branches / users this test never seeded.
         $this->cleanTenant(array_merge(['edge_local_backups'], self::SF_EDGE_TABLES, self::SF_TABLES, [
-            'edge_sync_outbox', 'edge_auth_audit', 'edge_local_user_credentials', 'edge_local_meta', 'model_has_permissions', 'permissions', 'terminals', 'branches', 'users',
+            'edge_sync_outbox', 'edge_local_print_deliveries', 'print_jobs', 'kot_batch_lines', 'kot_batches', 'sales_return_lines', 'sales_returns', 'sales_ledgers',
+            'sale_payments', 'sales_order_lines', 'sales_orders', 'restaurant_table_sessions', 'edge_local_table_reservations', 'shifts', 'manager_approvals',
+            'edge_operational_stock_movements', 'edge_operational_stock_balances', 'edge_operational_stock_baselines', 'edge_baseline_cutovers',
+            'edge_returnable_sale_lines', 'edge_returnable_sales',
+            'edge_auth_audit', 'edge_local_user_credentials', 'edge_local_meta', 'model_has_permissions', 'permissions', 'terminals', 'branches', 'users',
         ]));
         $this->branchId = $this->makeBranch(['name' => 'Backup Branch']);
         $this->userId = $this->makeUser(['default_branch_id' => $this->branchId, 'employee_code' => 'SFB' . Str::random(4)]);
