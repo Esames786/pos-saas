@@ -70,8 +70,22 @@ expanded), and the sale / return ingestion refusal-ACK classification observatio
 
 ```
 SUPPLIER_FINANCE_OFFLINE_PARITY = FULL_OFFLINE_PARITY   (F2, 12 Sep 2026)
-PURCHASE_RETURN_OFFLINE_PARITY  = FINANCIAL_PARITY_PENDING
+PURCHASE_RETURN_OFFLINE_PARITY  = FULL_OFFLINE_PARITY   (F3, 12 Sep 2026 — GRN-sourced; no-source-receipt return = ONLINE_REQUIRED)
 ```
+
+## F3 — Purchase returns: CLOSED 12 Sep 2026 (see `edge-f3-purchase-returns.md`)
+
+Goods go back to the supplier against the source goods receipt from a FRESH warm projection (received / official-returned quantities,
+unit costs); the appliance reduces its operational stock exactly once, shows the provisional supplier effect and queues the immutable
+`purchase_return` event; the Cloud posts the OFFICIAL return exactly once through `PurchaseReturnService` (FEFO stock OUT, subledger
+credit, Dr 2100 / Cr 1400 with the production-fixed GL path), verified finance-complete or refused. Lost ACK / replay / conflict / race /
+backup / handback / convergence proven. Not expanded: purchase ordering, GRN creation, supplier advance, arbitrary purchasing adjustments.
+
+## Post-F2 reliability closure (12 Sep 2026)
+
+Terminal refusals of SALE and SALES-RETURN events now carry the envelope identity and answer `refused`, so the appliance parks them as
+`failed_permanent` instead of retrying forever (shared verdict list `EdgeIngestionVerdicts`); retryable verdicts unchanged; a conflict proves
+itself through the incoming hash. The lease lifecycle test runs on a controlled clock (production untouched).
 
 ## Supplier finance (SUPPLIER-FINANCE-DIRECT-1) — classified 8 Sep 2026; CANONICAL since 70d24c1 (10 Sep 2026); implemented by F2 above (history)
 

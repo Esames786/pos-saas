@@ -92,6 +92,20 @@ derived, so a restart changes nothing.
 | `EdgePurchaseReturnHttpMySqlTest` (3, real HTTP) | the page carries the Online UX; the operator returns goods through the real routes (reason required, 201 pending, returnable 3, over-return 422, event view); a cashier gets 403 everywhere and no header entry point; a store-only user may look but gets 403 on post |
 | gates | `EdgeArtifactBootTest` (F3 routes register; Cloud purchase-return authority / projection / ingestion absent; appliance runtime ships), `EdgeArtifactTest`, `EdgeBranchServerRegistrationTest` census, `EdgeBladeCompileGateTest` (page compiles, lints, parses as JavaScript) |
 
+## Gates at the F3 head (12 Sep 2026)
+
+- Code head `ac5e919` (reliability closure `84a9a31` → F3 `ac5e919`); canonical at the gate `1ce55c7` (no shared-POS drift since the F2 merge).
+- Reliability gate (part A, full MySQL alone at `84a9a31`): 1589 tests, 1584 passed, 4 errored, 1 failed = the five known Dompdf reds →
+  P1_RELIABILITY_OPEN = 0. Focused: EdgeTerminalRefusalIdentityMySqlTest 2/2, EdgeSyncSenderMySqlTest 15/15, sale ingestion suite, F1
+  return sync 2/2, F2 supplier-finance sync 3/3, lease lifecycle 2/2 ×3 consecutive.
+- Focused F3: 14 green (Authority 6, SyncHttp 3, Race 1, BackupRecovery 1, Http 3). Reliability regression on the F3 tree
+  (sender, terminal identity, F1/F2 sync, lease, handback orchestrator, standby freshness): 31/31.
+- Full authoritative MySQL suite at `ac5e919`, run ALONE: 1603 tests, 1598 passed, 4 errored, 1 failed, 0 skipped, 0 risky — the reds are
+  the known canonical Dompdf/A4-PDF debt (three CateringDocumentPdf, PosQuickReport email, ReportSchedule). NEW_EDGE_REGRESSIONS = 0.
+- FAST (Feature incl. the 109 Edge gates + Unit): 226, the two stale canonical SQLite unit tests red as before. Blade compile + generated PHP
+  lint + JavaScript parse for all four Edge pages: green. `git diff --check`: clean. PHP lint of every changed file: clean. Artifact: the F3
+  routes register from the built artifact; PurchaseReturnService, the projection, ingestion and controllers are physically absent.
+
 ## Classification
 
 - PURCHASE_RETURN_OFFLINE_PARITY: **FULL_OFFLINE_PARITY** for returns against a source goods receipt within the projection window
