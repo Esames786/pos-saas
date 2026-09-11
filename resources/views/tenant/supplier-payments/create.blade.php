@@ -110,14 +110,22 @@
                 <label for="cash_bank_account_id" class="form-label required">Pay From (Cash/Bank)</label>
                 <select id="cash_bank_account_id" name="cash_bank_account_id"
                         class="form-select @error('cash_bank_account_id') is-invalid @enderror" required>
-                    <option value="">— None (no cash/bank effect) —</option>
+                    {{-- Chuna NAHI ja sakta: `required` ke liye khali pehli option zaroori hai, warna
+                         browser pehla asli account khud chun leta. Pehle yahan "None (no cash/bank
+                         effect)" tha — wo option operator se jhoot bol raha tha, kyunke server ledger-only
+                         payment qabool hi nahi karta (validation `required`, aur GL null par poora
+                         transaction palat jata hai). --}}
+                    {{-- `selected` sirf jab koi purani qeemat na ho: validation fail hone ke baad
+                         old() wala asli option chuna hua aana chahiye, warna operator ka chunaav
+                         gum ho jata. --}}
+                    <option value="" disabled hidden @selected(! old('cash_bank_account_id'))>— Cash/bank account chunein —</option>
                     @foreach($cashBankAccounts as $cba)
                         <option value="{{ $cba->id }}" @selected(old('cash_bank_account_id') == $cba->id)>
                             {{ $cba->code }} — {{ $cba->name }}
                         </option>
                     @endforeach
                 </select>
-                <small class="text-muted">Select to deduct this payment from a cash/bank balance.</small>
+                <small class="text-muted">Lazmi — supplier payment ka khaata <strong>Dr Accounts Payable / Cr chuna hua cash&nbsp;/&nbsp;bank</strong> hota hai, is liye paisa kis khaate se nikla ye batana zaroori hai.</small>
                 @error('cash_bank_account_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
             </div>
 

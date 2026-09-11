@@ -794,6 +794,107 @@ class SupplierFinanceDirectMySqlTest extends MySqlTenantTestCase
     }
 
     // ══════════════════════════════════════════════════════════════════════════════
+    // UI CONTRACTS — asli safhe par, asli render
+    // ══════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Cash/bank ka koi CHUNNE LAYAQ khali option na ho.
+     *
+     * Pehle wahan `— None (no cash/bank effect) —` tha. Wo option operator se JHOOT bol raha
+     * tha: server ledger-only payment qabool hi nahi karta — validation `required` hai, aur us
+     * ke oopar `recordPayment()` me GL `null` de to poora transaction palat jata hai. Yani wo
+     * option chunne par kaam hota hi nahi, magar screen us ka wada kar rahi thi.
+     *
+     * Placeholder ab bhi ek KHALI option hai — wo `required` ke liye zaroori hai, warna browser
+     * pehla asli account khud chun leta aur operator ko pata bhi na chalta ke paisa kis khaate
+     * se gaya. Farq ye hai ke wo `disabled` hai, is liye chuna nahi ja sakta.
+     */
+    public function test_cash_bank_par_koi_chunne_layaq_khali_option_nahi(): void
+    {
+        $res = $this->actingAsOwner()->get('http://' . $this->host . '/supplier-payments/create');
+        $res->assertOk();
+        $html = $res->getContent();
+
+        // Wo jhoota option gaya.
+        $this->assertStringNotContainsString('no cash/bank effect', $html,
+            'ledger-only ka wada screen par ab nahi hai');
+        $this->assertStringNotContainsString('None (no cash', $html);
+
+        // Aur jo khali option bacha hai wo chuna nahi ja sakta.
+        $select = $this->sliceSelect($html, 'cash_bank_account_id');
+        $this->assertMatchesRegularExpression('/<option value=""[^>]*\bdisabled\b/', $select,
+            'khali option disabled hai — chuna nahi ja sakta');
+
+        // `required` bhi qaayam ho, warna browser khali chhorne de deta.
+        $this->assertMatchesRegularExpression('/<select[^>]*id="cash_bank_account_id"[^>]*\brequired\b/s', $html,
+            'select par required hai');
+
+        // Aur neeche ka paighaam asli khaata bataye, "optional" ka gumaan na de.
+        $this->assertStringContainsString('Accounts Payable', $html, 'paighaam asli khaata batata hai');
+        $this->assertStringNotContainsString('Select to deduct', $html, 'purana ikhtiyari lehja gaya');
+    }
+
+    /** Against Bill IKHTIYARI hi rahe — bill na ho to on-account payment jaiz hai. */
+    public function test_against_bill_ikhtiyari_hi_rehta_hai(): void
+    {
+        $res = $this->actingAsOwner()->get('http://' . $this->host . '/supplier-payments/create');
+        $res->assertOk();
+        $html = $res->getContent();
+
+        $this->assertStringContainsString('(optional)', $html, 'Against Bill par optional likha hai');
+
+        $bill = $this->sliceSelect($html, 'purchase_bill_id');
+        $this->assertDoesNotMatchRegularExpression('/<select[^>]*\brequired\b/', $bill,
+            'bill ka select required NAHI hai');
+    }
+
+    /**
+     * Manual journal par supplier ka khaana: ghair-AP satar par BAND, AP satar par KHULA.
+     *
+     * Ye render ki shakl dekhta hai (jo browser ko milti hai). Us ke saath server ki shart ka
+     * apna guard bhi mojood hai (`test_ap_ki_satar_bina_supplier_ke_rad_hoti_hai`) — screen
+     * asaani ke liye hai, hifazat server par hai.
+     */
+    public function test_ghair_ap_satar_par_supplier_ka_khaana_band_hota_hai(): void
+    {
+        $res = $this->actingAsOwner()->get('http://' . $this->host . '/finance/manual-journals/create');
+        $res->assertOk();
+        $html = $res->getContent();
+
+        // Khali form ki har satar ka account chuna hua nahi hai → koi AP nahi → dono control band.
+        $this->assertMatchesRegularExpression(
+            '/<input[^>]*name="lines\[0\]\[counterparty_type\]"[^>]*\bdisabled\b/', $html,
+            'counterparty band hai');
+        $this->assertMatchesRegularExpression(
+            '/<select[^>]*name="lines\[0\]\[supplier_id\]"[^>]*\bdisabled\b/', $html,
+            'supplier ka select band hai');
+
+        // Aur toggle ka poora nizam safhe par mojood ho — warna khulega hi nahi.
+        $this->assertStringContainsString('AP_ACCOUNT_IDS', $html, 'AP ke ids server se aaye');
+        $this->assertStringContainsString('syncSupplierCell', $html, 'toggle ka function mojood');
+        $this->assertStringContainsString("indexOf('[account_id]')", $html,
+            'account badalne par toggle chalta hai (delegated listener)');
+
+        // ⚠️ Supplier SIRF satar ka hissa hai — koi doosra top-level field na bane.
+        $this->assertDoesNotMatchRegularExpression('/name="supplier_id"/', $html,
+            'top-level supplier field nahi hai — supplier AP ki SATAR ka hissa hai');
+    }
+
+    /** `<select id="X">…</select>` ka tukra — poore safhe par regex chalane se behtar. */
+    private function sliceSelect(string $html, string $id): string
+    {
+        $start = strpos($html, 'id="' . $id . '"');
+        if ($start === false) {
+            $start = strpos($html, 'name="' . $id . '"');
+        }
+        $this->assertNotFalse($start, "[{$id}] ka select safhe par mila");
+        $open = strrpos(substr($html, 0, $start), '<select');
+        $end  = strpos($html, '</select>', $start);
+
+        return substr($html, $open, $end - $open + 9);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════
     // L. PERMISSIONS
     // ══════════════════════════════════════════════════════════════════════════════
 
