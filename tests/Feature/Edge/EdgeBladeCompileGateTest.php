@@ -35,7 +35,7 @@ class EdgeBladeCompileGateTest extends TestCase
 
         // The cashier page plus every other Edge operator page built on the same single-inline-script convention
         // (F2: the Suppliers / Supplier Ledger / Record Payment page and the General Journal page).
-        $pages = ['views/edge/pos/index.blade.php', 'views/edge/finance/suppliers.blade.php', 'views/edge/finance/journal.blade.php'];
+        $pages = ['views/edge/pos/index.blade.php', 'views/edge/finance/suppliers.blade.php', 'views/edge/finance/journal.blade.php', 'views/edge/finance/purchase-returns.blade.php'];
         foreach ($pages as $page) {
             $html = file_get_contents(resource_path($page));
             $start = strpos($html, "<script>\n    (function");

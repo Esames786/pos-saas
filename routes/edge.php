@@ -60,5 +60,8 @@ Route::domain(config('tenancy.central_domain'))
             // F2 — supplier finance: the warm projection the standby pulls, and the ingestion of supplier payments / AP journals.
             Route::post('/supplier-finance/refresh', [\App\Http\Controllers\Edge\EdgeSupplierFinanceCacheApiController::class, 'package'])->name('edge.api.supplier-finance.refresh');
             Route::post('/sync/supplier-finance', [\App\Http\Controllers\Edge\EdgeInboundSupplierFinanceApiController::class, 'store'])->name('edge.api.sync.supplier-finance');
+            // F3 — purchase returns: the warm projection the standby pulls, and the ingestion of purchase-return events.
+            Route::post('/purchase-returns/refresh', [\App\Http\Controllers\Edge\EdgePurchaseReturnCacheApiController::class, 'package'])->name('edge.api.purchase-returns.refresh');
+            Route::post('/sync/purchase-returns', [\App\Http\Controllers\Edge\EdgeInboundPurchaseReturnApiController::class, 'store'])->name('edge.api.sync.purchase-returns');
         });
     });

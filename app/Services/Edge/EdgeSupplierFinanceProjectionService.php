@@ -90,6 +90,8 @@ class EdgeSupplierFinanceProjectionService
             ->where('status', EdgeInboundSupplierFinanceIngestion::STATUS_APPLIED)
             ->selectRaw('COUNT(*) c, COALESCE(MAX(id),0) mi')->first();
         $parts[] = 'app:' . $r->c . ':' . $r->mi;
+        $pr = $conn->table('edge_inbound_purchase_return_ingestions')->where('branch_id', $branchId)->where('status', 'applied')->selectRaw('COUNT(*) c, COALESCE(MAX(id),0) mi')->first();
+        $parts[] = 'prapp:' . $pr->c . ':' . $pr->mi;
 
         return ['watermark' => 'sf:' . substr(hash('sha256', implode('|', $parts) . '|' . $branchId), 0, 40), 'as_of' => now()->toIso8601String()];
     }
@@ -200,6 +202,13 @@ class EdgeSupplierFinanceProjectionService
             ];
         }
 
+        // F3 purchase returns credit the supplier through the same subledger: their applied events belong to this set too, so
+        // the appliance stops subtracting a pending purchase return exactly when the Cloud payable includes it.
+        $appliedPurchaseReturns = \App\Models\Tenant\EdgeInboundPurchaseReturnIngestion::query()
+            ->where('branch_id', $branchId)->where('status', \App\Models\Tenant\EdgeInboundPurchaseReturnIngestion::STATUS_APPLIED)
+            ->where('ingested_at', '>=', $this->appliedWindowStart())
+            ->orderBy('id')->get(['event_uuid', 'official_return_no', 'ingested_at'])
+            ->map(fn ($r) => ['event_uuid' => (string) $r->event_uuid, 'event_type' => 'purchase_return', 'official_reference_no' => $r->official_return_no, 'applied_at' => $r->ingested_at?->toIso8601String()])->values()->all();
         $applied = EdgeInboundSupplierFinanceIngestion::query()
             ->where('branch_id', $branchId)->where('status', EdgeInboundSupplierFinanceIngestion::STATUS_APPLIED)
             ->where('ingested_at', '>=', $this->appliedWindowStart())
@@ -225,7 +234,7 @@ class EdgeSupplierFinanceProjectionService
             'cash_bank_accounts' => $cashBank,
             'accounts' => $accounts,
             'ledger_entries' => $ledger,
-            'applied_events' => $applied,
+            'applied_events' => array_merge($applied, $appliedPurchaseReturns),
         ];
     }
 }

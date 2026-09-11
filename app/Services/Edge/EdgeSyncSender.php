@@ -57,6 +57,7 @@ class EdgeSyncSender
         [$urlKey, $envName] = match (true) {
             $schema === EdgeReturnEnvelopeBuilder::SCHEMA => ['edge.sync.returns_url', 'EDGE_SYNC_RETURNS_URL'],
             EdgeSupplierFinanceEnvelopeBuilder::isFinanceSchema($schema) => ['edge.sync.supplier_finance_url', 'EDGE_SYNC_SUPPLIER_FINANCE_URL'],
+            $schema === EdgePurchaseReturnEnvelopeBuilder::SCHEMA => ['edge.sync.purchase_returns_url', 'EDGE_SYNC_PURCHASE_RETURNS_URL'],
             default => ['edge.sync.url', 'EDGE_SYNC_URL'],
         };
         $url = (string) config($urlKey);

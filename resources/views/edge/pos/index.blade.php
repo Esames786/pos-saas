@@ -126,6 +126,9 @@
         @if($canManualJournal ?? false)
             <a class="navbtn" id="journal-link" href="{{ url('/edge/local/pos/finance/journal') }}">Journal</a>
         @endif
+        @if($canPurchaseReturn ?? false)
+            <a class="navbtn" id="purchase-returns-link" href="{{ url('/edge/local/pos/purchase-returns') }}">Purchase Returns</a>
+        @endif
         <span class="chip" id="sync-chip" hidden></span>
         <form method="POST" action="{{ url('/edge/local/logout') }}" style="margin:0">@csrf<button class="ghost">Logout</button></form>
     </header>

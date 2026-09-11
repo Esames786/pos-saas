@@ -119,6 +119,31 @@ class EdgeSyncReconciliationApiController extends Controller
                     'ingested_at' => $row->ingested_at?->toIso8601String(),
                 ];
             }
+            // F3 — purchase-return events share the transport identity space too (lost-ACK recovery reads this).
+            $purchase = \App\Models\Tenant\EdgeInboundPurchaseReturnIngestion::query()
+                ->where('device_public_uuid', (string) $device->public_uuid)
+                ->where('branch_id', (int) $device->branch_id);
+            if ($saleUuids !== []) {
+                $purchase->whereIn('event_uuid', array_values(array_unique($saleUuids)));
+            } else {
+                $purchase->orderByDesc('id')->limit(min($recent, self::MAX_ROWS));
+            }
+            foreach ($purchase->get() as $row) {
+                $statuses[(string) $row->event_uuid] = [
+                    'sale_uuid' => (string) $row->event_uuid,
+                    'event_uuid' => (string) $row->event_uuid,
+                    'event_type' => 'purchase_return',
+                    'status' => (string) $row->status,
+                    'content_hash' => (string) $row->content_hash,
+                    'failure_code' => $row->failure_code,
+                    'ingestion_uuid' => $row->ingestion_uuid,
+                    'official_reference_no' => $row->official_return_no,
+                    'activation_epoch' => $row->activation_epoch !== null ? (int) $row->activation_epoch : null,
+                    'config_revision' => $row->config_revision !== null ? (int) $row->config_revision : null,
+                    'branch_id' => (int) $row->branch_id,
+                    'ingested_at' => $row->ingested_at?->toIso8601String(),
+                ];
+            }
         } finally {
             $this->tenancy->deactivate();
         }

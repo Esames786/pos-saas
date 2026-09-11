@@ -18,6 +18,7 @@ class EdgeStandbyAdvertiser
         private readonly EdgeBaselineIssuanceService $baselines,
         private readonly EdgeReturnableSaleProjectionService $returnable,
         private readonly EdgeSupplierFinanceProjectionService $supplierFinance,
+        private readonly EdgePurchaseReturnProjectionService $purchaseReturns,
     ) {
     }
 
@@ -28,12 +29,14 @@ class EdgeStandbyAdvertiser
             return [
                 'cloud_config_revision' => null, 'cloud_config_watermark' => null, 'stock_watermark' => null, 'stock_as_of' => null,
                 'returnable_watermark' => null, 'returnable_as_of' => null, 'supplier_finance_watermark' => null, 'supplier_finance_as_of' => null,
+                'purchase_return_watermark' => null, 'purchase_return_as_of' => null,
             ];
         }
         $config = $this->bootstrap->currentConfigRevision($tenant, $branch);
         $stock = $this->baselines->stockWatermark((int) $branch->id);
         $returnable = $this->returnable->watermark((int) $branch->id);
         $finance = $this->supplierFinance->watermark((int) $branch->id);
+        $purchase = $this->purchaseReturns->watermark((int) $branch->id);
 
         return [
             'cloud_config_revision' => (int) $config['revision'],
@@ -44,6 +47,8 @@ class EdgeStandbyAdvertiser
             'returnable_as_of' => (string) $returnable['as_of'],
             'supplier_finance_watermark' => (string) $finance['watermark'],
             'supplier_finance_as_of' => (string) $finance['as_of'],
+            'purchase_return_watermark' => (string) $purchase['watermark'],
+            'purchase_return_as_of' => (string) $purchase['as_of'],
         ];
     }
 }

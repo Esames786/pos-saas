@@ -125,7 +125,9 @@ PHP;
             'edge.local.pos.returns.search', 'edge.local.pos.returns.sale', 'edge.local.pos.returns.store', 'edge.local.pos.returns.show',
             // F2 — the offline supplier-finance UI (Suppliers / Supplier Ledger / Record Payment / General Journal) boots from the artifact.
             'edge.local.pos.suppliers.screen', 'edge.local.pos.suppliers.ledger', 'edge.local.pos.suppliers.payments.store',
-            'edge.local.pos.finance.journal.screen', 'edge.local.pos.finance.journal.store', 'edge.local.pos.finance.events.show'] as $must) {
+            'edge.local.pos.finance.journal.screen', 'edge.local.pos.finance.journal.store', 'edge.local.pos.finance.events.show',
+            // F3 — the offline purchase-return UI boots from the artifact.
+            'edge.local.pos.purchase-returns.screen', 'edge.local.pos.purchase-returns.grn', 'edge.local.pos.purchase-returns.store'] as $must) {
             $this->assertContains($must, $names, "the built artifact must register {$must}");
         }
         // ...and the Cloud groups (device API ingestion/reconcile/baseline) are NOT registered on the appliance.
@@ -134,6 +136,7 @@ PHP;
         $this->assertNotContains('edge.api.sync.baseline', $names);
         $this->assertNotContains('edge.api.sync.supplier-finance', $names);   // F2 Cloud ingestion never registers on the appliance
         $this->assertNotContains('edge.api.supplier-finance.refresh', $names);
+        $this->assertNotContains('edge.api.sync.purchase-returns', $names);   // F3 Cloud ingestion never registers on the appliance
     }
 
     public function test_the_built_artifact_physically_lacks_cloud_source(): void
@@ -149,6 +152,9 @@ PHP;
             'app/Services/Edge/EdgeInboundSupplierFinanceIngestionService.php', 'app/Http/Controllers/Edge/EdgeInboundSupplierFinanceApiController.php',
             'app/Http/Controllers/Edge/EdgeSupplierFinanceCacheApiController.php', 'app/Models/Tenant/EdgeInboundSupplierFinanceIngestion.php',
             'app/Http/Controllers/Tenant/Finance/ManualJournalController.php', 'app/Models/Tenant/Supplier.php', 'app/Models/Tenant/SupplierPayment.php',
+            // F3 — the Cloud purchase-return authority, projection and ingestion are physically absent from the appliance.
+            'app/Services/Purchasing/PurchaseReturnService.php', 'app/Services/Edge/EdgePurchaseReturnProjectionService.php', 'app/Services/Edge/EdgeInboundPurchaseReturnIngestionService.php',
+            'app/Http/Controllers/Edge/EdgeInboundPurchaseReturnApiController.php', 'app/Models/Tenant/EdgeInboundPurchaseReturnIngestion.php', 'app/Models/Tenant/PurchaseReturn.php',
         ] as $rel) {
             $this->assertFileDoesNotExist($dest . '/' . $rel);
         }
@@ -157,7 +163,8 @@ PHP;
         $this->assertFileExists($dest . '/app/Services/Finance/JournalPostingService.php');
         // F2 — the appliance-side supplier-finance runtime ships (projection cache + local authority + envelope builder).
         foreach (['app/Services/Edge/EdgeSupplierFinanceCacheService.php', 'app/Services/Edge/EdgeLocalSupplierFinanceService.php',
-            'app/Services/Edge/EdgeSupplierFinanceEnvelopeBuilder.php', 'app/Http/Controllers/Edge/EdgeLocalSupplierFinanceController.php'] as $rel) {
+            'app/Services/Edge/EdgeSupplierFinanceEnvelopeBuilder.php', 'app/Http/Controllers/Edge/EdgeLocalSupplierFinanceController.php',
+            'app/Services/Edge/EdgePurchaseReturnCacheService.php', 'app/Services/Edge/EdgeLocalPurchaseReturnService.php', 'app/Http/Controllers/Edge/EdgeLocalPurchaseReturnController.php'] as $rel) {
             $this->assertFileExists($dest . '/' . $rel, "the appliance runtime must ship {$rel}");
         }
     }

@@ -181,7 +181,7 @@ class EdgeArtifactTest extends TestCase
             $this->assertContains($must, $plan, "the cashier product must ship: {$must}");
         }
         // F2 — the operator pages of the supplier-finance surface ship with the cashier product.
-        foreach (['resources/views/edge/finance/suppliers.blade.php', 'resources/views/edge/finance/journal.blade.php'] as $must) {
+        foreach (['resources/views/edge/finance/suppliers.blade.php', 'resources/views/edge/finance/journal.blade.php', 'resources/views/edge/finance/purchase-returns.blade.php'] as $must) {
             $this->assertContains($must, $plan, "the supplier-finance surface must ship: {$must}");
         }
         foreach (['app/Http/Controllers/Tenant/Reports/ShiftReportController.php', 'app/Services/Finance/SupplierPayableService.php',
@@ -287,6 +287,10 @@ class EdgeArtifactTest extends TestCase
             'app/Services/Edge/EdgeInboundSupplierFinanceIngestionService.php', 'app/Http/Controllers/Edge/EdgeInboundSupplierFinanceApiController.php',
             'app/Http/Controllers/Edge/EdgeSupplierFinanceCacheApiController.php', 'app/Models/Tenant/EdgeInboundSupplierFinanceIngestion.php',
             'app/Http/Controllers/Tenant/Finance/ManualJournalController.php',
+            // F3 — Cloud purchase-return authority / projection / ingestion never ship.
+            'app/Services/Edge/EdgePurchaseReturnProjectionService.php', 'app/Services/Edge/EdgeInboundPurchaseReturnIngestionService.php',
+            'app/Http/Controllers/Edge/EdgeInboundPurchaseReturnApiController.php', 'app/Http/Controllers/Edge/EdgePurchaseReturnCacheApiController.php',
+            'app/Models/Tenant/EdgeInboundPurchaseReturnIngestion.php',
         ];
         foreach ($absent as $rel) {
             $this->assertFileDoesNotExist($dest . '/' . $rel, "Cloud-only path must be excluded: {$rel}");

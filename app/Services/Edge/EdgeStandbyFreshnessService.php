@@ -28,6 +28,8 @@ class EdgeStandbyFreshnessService
         private readonly EdgeReturnableSaleCacheService $returnableCache,
         private readonly EdgeSupplierFinanceCacheClient $supplierFinanceClient,
         private readonly EdgeSupplierFinanceCacheService $supplierFinanceCache,
+        private readonly EdgePurchaseReturnCacheClient $purchaseReturnClient,
+        private readonly EdgePurchaseReturnCacheService $purchaseReturnCache,
     ) {
     }
 
@@ -68,7 +70,28 @@ class EdgeStandbyFreshnessService
             $supplierFinance = 'error:' . mb_substr($e->getMessage(), 0, 160);
         }
 
-        return ['config' => $config, 'stock' => $stock, 'returnable' => $returnable, 'supplier_finance' => $supplierFinance];
+        $purchaseReturn = 'current';
+        try {
+            $purchaseReturn = $this->refreshPurchaseReturnIfBehind();
+        } catch (Throwable $e) {
+            $purchaseReturn = 'error:' . mb_substr($e->getMessage(), 0, 160);
+        }
+
+        return ['config' => $config, 'stock' => $stock, 'returnable' => $returnable, 'supplier_finance' => $supplierFinance, 'purchase_return' => $purchaseReturn];
+    }
+
+    /** F3 — pull the purchase-return projection when the Cloud advertised a watermark we do not hold. */
+    public function refreshPurchaseReturnIfBehind(): string
+    {
+        $meta = $this->context->requireCurrent();
+        $seen = $meta->standby_purchase_return_watermark_seen !== null ? (string) $meta->standby_purchase_return_watermark_seen : null;
+        $cached = $meta->purchase_return_cache_watermark !== null && $meta->purchase_return_cache_watermark !== '' ? (string) $meta->purchase_return_cache_watermark : null;
+        if ($seen === null || $seen === $cached) {
+            return 'current';
+        }
+        $stats = $this->purchaseReturnCache->apply($this->purchaseReturnClient->fetchPackage());
+
+        return 'refreshed:' . ($stats['grns'] ?? 0) . '-grns';
     }
 
     /** F1 — pull the returnable-sale projection when the Cloud advertised a watermark we do not hold. */

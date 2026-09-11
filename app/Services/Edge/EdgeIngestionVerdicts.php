@@ -26,6 +26,8 @@ final class EdgeIngestionVerdicts
         'EVENT_UUID_INVALID', 'EVENT_INVALID', 'SUPPLIER_UNKNOWN', 'SUPPLIER_INACTIVE', 'CASH_BANK_REQUIRED', 'CASH_BANK_UNKNOWN',
         'CASH_BANK_INACTIVE', 'CASH_BANK_UNMAPPED', 'BILL_UNKNOWN', 'BILL_MISMATCH', 'PAYMENT_INVALID', 'PAYMENT_REFUSED',
         'JOURNAL_INVALID', 'JOURNAL_REFUSED', 'ACCOUNT_UNKNOWN', 'ACCOUNT_MISMATCH', 'ACCOUNT_INACTIVE', 'AP_SUPPLIER_REQUIRED', 'ACTOR_UNAUTHORIZED',
+        // F3 purchase returns — the canonical authority refused (over-return / official stock no longer covers it) or an identity does not resolve.
+        'GRN_UNKNOWN', 'GRN_MISMATCH', 'GRN_LINE_UNKNOWN', 'PURCHASE_RETURN_INVALID', 'PURCHASE_RETURN_REFUSED',
     ];
 
     public static function isTerminal(?string $code): bool

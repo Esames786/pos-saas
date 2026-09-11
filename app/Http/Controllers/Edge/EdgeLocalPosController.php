@@ -171,6 +171,8 @@ class EdgeLocalPosController extends Controller
             // F2 SUPPLIER FINANCE parity: the header entry points follow the Online permissions; the server enforces them too.
             'canSupplierFinance' => (bool) ($user?->can(\App\Services\Edge\EdgeLocalSupplierFinanceService::PERM_LEDGER) || $user?->can(\App\Services\Edge\EdgeLocalSupplierFinanceService::PERM_PAYMENT)),
             'canManualJournal' => (bool) $user?->can(\App\Services\Edge\EdgeLocalSupplierFinanceService::PERM_JOURNAL),
+            // F3 PURCHASE RETURN parity: the header entry point follows the Online permissions; the server enforces them too.
+            'canPurchaseReturn' => (bool) ($user?->can(\App\Services\Edge\EdgeLocalPurchaseReturnService::PERM_STORE) || $user?->can(\App\Services\Edge\EdgeLocalPurchaseReturnService::PERM_POST)),
             // DELIVERY / DISCOUNT parity data (synced): channels, riders, the branch charge lock, approval mode.
             'deliveryChannels' => \App\Models\Tenant\DeliveryChannel::on('tenant')->where('is_active', true)->orderBy('sort_order')->orderBy('name')->get(['id', 'name', 'type']),
             'deliveryRiders' => \App\Models\Tenant\DeliveryRider::on('tenant')->where('status', 'active')

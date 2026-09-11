@@ -85,6 +85,9 @@ class EdgeAuthorityService
             // F2 — the supplier-finance watermark the Cloud advertised (the supplier-finance projection's freshness target).
             'standby_supplier_finance_watermark_seen' => isset($ack['supplier_finance_watermark']) ? (string) $ack['supplier_finance_watermark'] : $meta->standby_supplier_finance_watermark_seen,
             'standby_supplier_finance_as_of_seen' => isset($ack['supplier_finance_as_of']) ? \Illuminate\Support\Carbon::parse($ack['supplier_finance_as_of']) : $meta->standby_supplier_finance_as_of_seen,
+            // F3 — the purchase-return watermark the Cloud advertised (the purchase-return projection's freshness target).
+            'standby_purchase_return_watermark_seen' => isset($ack['purchase_return_watermark']) ? (string) $ack['purchase_return_watermark'] : $meta->standby_purchase_return_watermark_seen,
+            'standby_purchase_return_as_of_seen' => isset($ack['purchase_return_as_of']) ? \Illuminate\Support\Carbon::parse($ack['purchase_return_as_of']) : $meta->standby_purchase_return_as_of_seen,
         ])->save();
 
         return [
@@ -207,6 +210,10 @@ class EdgeAuthorityService
                     'supplier_finance_cache_as_of' => $meta->supplier_finance_cache_as_of ? \Illuminate\Support\Carbon::parse($meta->supplier_finance_cache_as_of)->toIso8601String() : null,
                     'supplier_finance_cache_advertised' => $meta->standby_supplier_finance_watermark_seen,
                     'supplier_finance_cache_current' => app(EdgeSupplierFinanceCacheService::class)->freshness()['ok'],
+                    // F3 — PURCHASE_RETURN_CACHE_CURRENT at takeover: stale → offline purchase returns fail closed.
+                    'purchase_return_cache_watermark' => $meta->purchase_return_cache_watermark,
+                    'purchase_return_cache_advertised' => $meta->standby_purchase_return_watermark_seen,
+                    'purchase_return_cache_current' => app(EdgePurchaseReturnCacheService::class)->freshness()['ok'],
                 ] + $freshness['facts']),
             ])->save();
 

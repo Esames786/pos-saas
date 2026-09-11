@@ -73,6 +73,16 @@ class EdgeHandbackOrchestrator
         // F2 — supplier-finance events are money the Cloud has not yet posted officially: a pending supplier payment or
         // manual AP journal, a permanently failed one, or a local/Cloud divergence all block the handback explicitly.
         $finance = app(EdgeSupplierFinanceCacheService::class)->handbackFindings();
+        $purchase = app(EdgePurchaseReturnCacheService::class)->handbackFindings();
+        if ($purchase['pending'] > 0) {
+            $block('PURCHASE_RETURN_PENDING', "{$purchase['pending']} purchase return(s) still syncing to the Cloud");
+        }
+        if ($purchase['failed'] > 0) {
+            $block('PURCHASE_RETURN_PERMANENT_FAILURE', "{$purchase['failed']} purchase return(s) were refused by the Cloud and need a supervisor");
+        }
+        if ($purchase['divergent'] > 0) {
+            $block('PURCHASE_RETURN_DIVERGENCE', "{$purchase['divergent']} purchase return(s) do not reconcile with the Cloud (" . implode('; ', $purchase['details']) . ')');
+        }
         if ($finance['pending'] > 0) {
             $block('SUPPLIER_FINANCE_PENDING', "{$finance['pending']} supplier payment / AP journal event(s) still syncing to the Cloud");
         }
@@ -116,6 +126,7 @@ class EdgeHandbackOrchestrator
             'facts' => [
                 'pending' => $pending, 'failed_permanent' => $failed, 'open_tables' => $openTables, 'held_checks' => $heldChecks, 'open_shifts' => $openShifts,
                 'supplier_finance_pending' => $finance['pending'], 'supplier_finance_failed' => $finance['failed'], 'supplier_finance_divergent' => $finance['divergent'],
+                'purchase_return_pending' => $purchase['pending'], 'purchase_return_failed' => $purchase['failed'], 'purchase_return_divergent' => $purchase['divergent'],
                 'active_reservations' => $activeReservations->count(), 'consecutive_acks' => (int) $meta->heartbeat_consecutive_acks,
                 'reconcile_clean_at' => $meta->reconcile_clean_at?->toIso8601String(), 'cloud_holder_seen' => $meta->authority_cloud_holder_seen,
             ],

@@ -243,6 +243,62 @@ class EdgeFinancePostingVerifier
      * @param array $expectedLines normalized lines [account_id, debit, credit, supplier_id, counterparty_type, ...]
      * @param array<int,int> $apAccountIds
      */
+    /**
+     * F3 — the OFFICIAL purchase return the Cloud just posted through PurchaseReturnService must be complete: posted document
+     * with its GL entry (Dr 2100 Accounts Payable / Cr 1400 Inventory Asset = grand total, balanced, linked by journal_entry_id),
+     * exactly ONE supplier-subledger credit for the total, and official stock OUT movements equal to the returned quantities.
+     *
+     * @param array $expectedLines [{product_id, quantity, unit_cost}] as sent to the authority
+     */
+    public function verifyPostedPurchaseReturn(\App\Models\Tenant\PurchaseReturn $return, array $expectedLines): void
+    {
+        $conn = DB::connection(self::CONN);
+        $total = round((float) $return->grand_total, 2);
+        $expectedTotal = round(array_sum(array_map(fn ($l) => (float) $l['quantity'] * (float) $l['unit_cost'], $expectedLines)), 2);
+        if ((string) $return->status !== 'posted' || $return->posted_at === null || $total <= 0) {
+            throw new IngestionRefusal('PURCHASE_RETURN_DOCUMENT_INVALID', "purchase return {$return->id} is not a posted document with a positive total");
+        }
+        if (abs($total - $expectedTotal) > 0.01) {
+            throw new IngestionRefusal('PURCHASE_RETURN_TOTAL_MISMATCH', "purchase return {$return->id} total {$total} differs from the event lines {$expectedTotal}");
+        }
+        if ((int) $conn->table('purchase_return_lines')->where('purchase_return_id', (int) $return->id)->count() !== count($expectedLines)) {
+            throw new IngestionRefusal('PURCHASE_RETURN_LINES_MISMATCH', "purchase return {$return->id} line count differs from the event");
+        }
+        $journal = $conn->table('journal_entries')->where('source_type', 'purchase_return')->where('source_id', (int) $return->id)->where('status', 'posted')->where('is_reversal', 0)->get();
+        if ($journal->count() !== 1 || (int) $return->journal_entry_id !== (int) $journal->first()->id) {
+            throw new IngestionRefusal('FINANCE_GL_MISSING', "purchase return {$return->id} has {$journal->count()} posted journals / journal_entry_id " . var_export($return->journal_entry_id, true));
+        }
+        $lines = $conn->table('journal_lines')->where('journal_entry_id', (int) $journal->first()->id)->get();
+        $debit = round((float) $lines->sum('debit'), 2);
+        $credit = round((float) $lines->sum('credit'), 2);
+        if ($lines->isEmpty() || abs($debit - $credit) > 0.01) {
+            throw new IngestionRefusal('FINANCE_GL_UNBALANCED', "the purchase_return journal for return {$return->id} is empty or unbalanced");
+        }
+        $ap = (int) $conn->table('accounts')->where('code', '2100')->value('id');
+        $inventory = (int) $conn->table('accounts')->where('code', '1400')->value('id');
+        if (abs(round((float) $lines->where('account_id', $ap)->sum('debit'), 2) - $total) > 0.01 || abs(round((float) $lines->where('account_id', $inventory)->sum('credit'), 2) - $total) > 0.01) {
+            throw new IngestionRefusal('FINANCE_AP_CONTROL_INVALID', "the purchase_return journal for return {$return->id} is not Dr 2100 / Cr 1400 for {$total}");
+        }
+        $ledger = $conn->table('supplier_ledgers')->where('reference_type', \App\Models\Tenant\PurchaseReturn::class)->where('reference_id', (int) $return->id)->get();
+        if ($ledger->count() !== 1) {
+            throw new IngestionRefusal('FINANCE_SUBLEDGER_MISSING', "purchase return {$return->id} has {$ledger->count()} supplier-ledger rows (exactly one expected)");
+        }
+        $l = $ledger->first();
+        if ((string) $l->entry_type !== 'purchase_return' || (string) $l->direction !== 'credit' || abs(round((float) $l->amount, 2) - $total) > 0.01 || (int) $l->supplier_id !== (int) $return->supplier_id) {
+            throw new IngestionRefusal('FINANCE_SUBLEDGER_INVALID', "purchase return {$return->id} subledger row is malformed");
+        }
+        $out = $conn->table('stock_ledgers')->where('reference_type', 'purchase_return')->where('reference_id', (int) $return->id)->where('movement_type', 'purchase_return')->where('direction', 'out')->get();
+        $expectedByProduct = [];
+        foreach ($expectedLines as $el) {
+            $expectedByProduct[(int) $el['product_id']] = round(($expectedByProduct[(int) $el['product_id']] ?? 0) + (float) $el['quantity'], 3);
+        }
+        foreach ($expectedByProduct as $productId => $qty) {
+            if (abs(round((float) $out->where('product_id', $productId)->sum('quantity'), 3) - $qty) > 0.0005) {
+                throw new IngestionRefusal('PURCHASE_RETURN_STOCK_MISSING', "purchase return {$return->id}: official stock OUT for product {$productId} does not equal {$qty}");
+            }
+        }
+    }
+
     public function verifyPostedManualJournal(\App\Models\Tenant\JournalEntry $entry, array $expectedLines, array $apAccountIds): void
     {
         $conn = DB::connection(self::CONN);

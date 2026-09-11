@@ -92,6 +92,47 @@ class EdgeOperationalStockService
      * return event (return_uuid + return_line_uuid) and IDEMPOTENT: the same pair is never applied twice. Stock-tracked
      * stock items only — recipe/none products restore nothing here (mirrors the Online rule: is_stock_tracked).
      */
+    /**
+     * F3 — the goods physically leave the branch back to the supplier: LOCAL OPERATIONAL stock OUT, exactly once (idempotent on
+     * event + line), never below what the branch holds (canonical PurchaseReturnService semantics: official stock must cover the
+     * return). Quantity only — no valuation; the Cloud posts the official FEFO movement and the GL.
+     */
+    public function purchaseReturnOut(string $eventUuid, string $lineUuid, Product $product, ?ProductVariant $variant, float $qty): bool
+    {
+        if ($qty <= 0) {
+            return false;
+        }
+        if (! $product->is_stock_tracked || ($product->inventory_consumption_method ?? 'stock_item') !== 'stock_item') {
+            throw new RuntimeException($product->name . ' is not a stock-tracked item — returning it to the supplier needs the Online POS.');
+        }
+        $baseline = $this->baselines->currentAccepted();
+        if ($baseline === null) {
+            throw new RuntimeException('No accepted operational stock baseline — this Branch Server cannot return goods yet.');
+        }
+        $conn = DB::connection('tenant');
+        $already = $conn->table('edge_operational_stock_movements')
+            ->where('sale_uuid', $eventUuid)->where('line_uuid', $lineUuid)->where('movement_type', 'purchase_return')->lockForUpdate()->exists();
+        if ($already) {
+            return false; // idempotent: the event already took this line out
+        }
+        $variantId = $variant?->id;
+        $balanceKey = $baseline->id . '-' . $product->id . '-' . ($variantId ?: 0);
+        $balance = $conn->table('edge_operational_stock_balances')->where('balance_key', $balanceKey)->lockForUpdate()->first();
+        $onHand = $balance ? (float) $balance->quantity_on_hand : 0.0;
+        if ($qty > $onHand + 0.0005) {
+            throw new RuntimeException('Insufficient branch stock to return ' . $product->name . ': on hand ' . number_format($onHand, 3) . ', returning ' . number_format($qty, 3) . '. Stock may already be sold or transferred.');
+        }
+        $newQty = round($onHand - $qty, 3);
+        $conn->table('edge_operational_stock_balances')->where('id', $balance->id)->update(['quantity_on_hand' => $newQty, 'updated_at' => now()]);
+        $conn->table('edge_operational_stock_movements')->insert([
+            'movement_uuid' => (string) Str::ulid(), 'baseline_id' => $baseline->id, 'sale_uuid' => $eventUuid, 'line_uuid' => $lineUuid,
+            'product_id' => $product->id, 'product_variant_id' => $variantId, 'movement_type' => 'purchase_return', 'direction' => 'out',
+            'quantity' => $qty, 'balance_after' => $newQty, 'activation_epoch' => (int) $baseline->activation_epoch, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        return true;
+    }
+
     public function returnIn(string $returnUuid, string $returnLineUuid, Product $product, ?ProductVariant $variant, float $qty): bool
     {
         if ($qty <= 0 || ! $product->is_stock_tracked || ($product->inventory_consumption_method ?? 'stock_item') !== 'stock_item') {

@@ -133,6 +133,10 @@ class EdgeBranchServerRegistrationTest extends TestCase
             'edge/local/pos/finance/events/{event}',
             'edge/local/pos/finance/journal',     // F2 General Journal (supplier / AP dimension)
             'edge/local/pos/finance/journal/options',
+            'edge/local/pos/purchase-returns',        // F3 purchase returns
+            'edge/local/pos/purchase-returns/options',
+            'edge/local/pos/purchase-returns/grns/{grn}',
+            'edge/local/pos/purchase-returns/{event}',
             // EDGE-CASHIER-UI-4 (deliberately approved): printing.
             'edge/local/pos/sales/{sale}/receipt',
             'edge/local/pos/sales/{sale}/kot-reprint',

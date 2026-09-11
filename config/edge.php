@@ -77,6 +77,7 @@ return [
         // advertised returnable watermark moved, so a sale made ONLINE can be returned offline.
         'returnable_refresh_url' => env('EDGE_STANDBY_RETURNABLE_REFRESH_URL'),
         'supplier_finance_refresh_url' => env('EDGE_STANDBY_SUPPLIER_FINANCE_REFRESH_URL'), // F2: POST supplier-finance projection
+        'purchase_return_refresh_url' => env('EDGE_STANDBY_PURCHASE_RETURN_REFRESH_URL'),   // F3: POST purchase-return projection
     ],
 
     /*
@@ -95,6 +96,15 @@ return [
     | rows, the Edge events the Cloud already applied). It never posts AP / GL / cash-bank itself: it queues
     | immutable SUPPLIER_PAYMENT / SUPPLIER_AP_JOURNAL_ADJUSTMENT events the Cloud posts exactly once.
     */
+    /*
+    | F3 — PURCHASE RETURN PARITY. Read-only warm projection of the branch's goods receipts (received / returned
+    | quantities, unit costs), the applied Edge events; immutable PURCHASE_RETURN events the Cloud posts exactly once.
+    */
+    'purchase_returns' => [
+        'grn_window_days' => (int) env('EDGE_PURCHASE_RETURNS_GRN_WINDOW_DAYS', 90),
+        'applied_window_days' => (int) env('EDGE_PURCHASE_RETURNS_APPLIED_WINDOW_DAYS', 45),
+    ],
+
     'supplier_finance' => [
         'ledger_window_days' => (int) env('EDGE_SUPPLIER_FINANCE_LEDGER_WINDOW_DAYS', 30),        // recent official ledger rows mirrored
         'ledger_max_rows_per_supplier' => (int) env('EDGE_SUPPLIER_FINANCE_LEDGER_MAX_ROWS', 100),
@@ -108,6 +118,7 @@ return [
         'url'             => env('EDGE_SYNC_URL'),            // Cloud device-authed ingestion endpoint (sales)
         'returns_url'     => env('EDGE_SYNC_RETURNS_URL'),    // F1: Cloud device-authed ingestion endpoint (sales returns)
         'supplier_finance_url' => env('EDGE_SYNC_SUPPLIER_FINANCE_URL'), // F2: Cloud device-authed ingestion endpoint (supplier payments / AP journals)
+        'purchase_returns_url' => env('EDGE_SYNC_PURCHASE_RETURNS_URL'),   // F3: Cloud device-authed ingestion endpoint (purchase returns)
         'reconcile_url'   => env('EDGE_SYNC_RECONCILE_URL'),  // Cloud device-authed READ-ONLY reconciliation status
         'baseline_url'    => env('EDGE_SYNC_BASELINE_URL'),   // Cloud device-authed operational-baseline issuance
         'device_id'       => env('EDGE_SYNC_DEVICE_ID'),      // this appliance public_uuid
@@ -227,6 +238,11 @@ return [
         'edge.local.pos.finance.journal.screen',
         'edge.local.pos.finance.journal.options',
         'edge.local.pos.finance.journal.store',
+        'edge.local.pos.purchase-returns.screen',  // F3 purchase returns (source GRN → received lines → post)
+        'edge.local.pos.purchase-returns.options',
+        'edge.local.pos.purchase-returns.grn',
+        'edge.local.pos.purchase-returns.store',
+        'edge.local.pos.purchase-returns.show',
         'edge.local.pos.held.store',
         'edge.local.pos.held.kot',
         'edge.local.pos.held.settle',
@@ -353,6 +369,12 @@ return [
             'app/Http/Controllers/Edge/EdgeSupplierFinanceCacheApiController.php',
             'app/Http/Controllers/Edge/EdgeInboundSupplierFinanceApiController.php',
             'app/Models/Tenant/EdgeInboundSupplierFinanceIngestion.php',
+            // F3 — Cloud purchase-return authority, projection and ingestion stay out of the appliance.
+            'app/Services/Edge/EdgePurchaseReturnProjectionService.php',
+            'app/Services/Edge/EdgeInboundPurchaseReturnIngestionService.php',
+            'app/Http/Controllers/Edge/EdgeInboundPurchaseReturnApiController.php',
+            'app/Http/Controllers/Edge/EdgePurchaseReturnCacheApiController.php',
+            'app/Models/Tenant/EdgeInboundPurchaseReturnIngestion.php',
             'app/Http/Controllers/Tenant/Finance/ManualJournalController.php',
             'resources/views/tenant/finance/manual-journals',
 

@@ -139,6 +139,8 @@ trait EdgeCloudBridgeFixture
             'edge.sync.returns_url' => $base . '/sync/returns',                        // F1
             'edge.standby.supplier_finance_refresh_url' => $base . '/supplier-finance/refresh',   // F2
             'edge.sync.supplier_finance_url' => $base . '/sync/supplier-finance',                 // F2
+            'edge.standby.purchase_return_refresh_url' => $base . '/purchase-returns/refresh',   // F3
+            'edge.sync.purchase_returns_url' => $base . '/sync/purchase-returns',                 // F3
             'edge.sync.device_id' => $this->cloudDeviceUuid,
             'edge.sync.device_secret' => $this->cloudDeviceSecret,
             'edge.sync.connect_timeout' => 2, 'edge.sync.timeout' => 5,

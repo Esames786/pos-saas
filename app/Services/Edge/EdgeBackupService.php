@@ -74,6 +74,12 @@ class EdgeBackupService
         'edge_supplier_finance_applied_events',
         'edge_local_supplier_finance_events',
         'edge_local_supplier_finance_effects',
+        // F3 — the purchase-return projection and the appliance's pending purchase-return events.
+        'edge_purchase_return_grns',
+        'edge_purchase_return_grn_lines',
+        'edge_purchase_return_applied_events',
+        'edge_local_purchase_return_events',
+        'edge_local_purchase_return_lines',
     ];
 
     public function __construct(private readonly EdgeBackupKeyProvider $keys)

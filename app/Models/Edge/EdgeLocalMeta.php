@@ -58,6 +58,9 @@ class EdgeLocalMeta extends Model
         'supplier_finance_cache_as_of' => 'datetime',
         'supplier_finance_cache_refreshed_at' => 'datetime',
         'standby_supplier_finance_as_of_seen' => 'datetime',
+        'purchase_return_cache_as_of' => 'datetime',
+        'purchase_return_cache_refreshed_at' => 'datetime',
+        'standby_purchase_return_as_of_seen' => 'datetime',
     ];
 
     /** Identity fields that become IMMUTABLE once set (fix 5). */

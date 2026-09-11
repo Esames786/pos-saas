@@ -66,6 +66,13 @@ Route::prefix('edge/local')->name('edge.local.')->group(function () {
         Route::get('/finance/journal/options', [\App\Http\Controllers\Edge\EdgeLocalSupplierFinanceController::class, 'journalOptions'])->name('finance.journal.options');
         Route::post('/finance/journal', [\App\Http\Controllers\Edge\EdgeLocalSupplierFinanceController::class, 'storeJournal'])->name('finance.journal.store');
 
+        // F3 — PURCHASE RETURNS: pick the source goods receipt, return received lines, post (pending sync); the Cloud posts the official return.
+        Route::get('/purchase-returns', [\App\Http\Controllers\Edge\EdgeLocalPurchaseReturnController::class, 'screen'])->name('purchase-returns.screen');
+        Route::get('/purchase-returns/options', [\App\Http\Controllers\Edge\EdgeLocalPurchaseReturnController::class, 'options'])->name('purchase-returns.options');
+        Route::get('/purchase-returns/grns/{grn}', [\App\Http\Controllers\Edge\EdgeLocalPurchaseReturnController::class, 'grn'])->name('purchase-returns.grn');
+        Route::post('/purchase-returns', [\App\Http\Controllers\Edge\EdgeLocalPurchaseReturnController::class, 'store'])->name('purchase-returns.store');
+        Route::get('/purchase-returns/{event}', [\App\Http\Controllers\Edge\EdgeLocalPurchaseReturnController::class, 'show'])->name('purchase-returns.show');
+
         // Restaurant layer: dine-in table sessions, held orders (Add Round), KOT business events,
         // settle/cancel, manager re-auth. Same authority envelope (EdgeLocalPosService); NO print transport.
         Route::get('/restaurant/board', [EdgeLocalPosController::class, 'restaurantBoard'])->name('restaurant.board');
