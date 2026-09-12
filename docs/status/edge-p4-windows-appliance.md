@@ -191,7 +191,7 @@ LOCAL_MODE_ACTIVATED=no                 PRODUCTION_MUTATED=no                   
 ```
 START_EDGE_HEAD=cfba4cc (F3 code ac5e919)      CURRENT_CANONICAL=8740f51 (unchanged during P4)      CANONICAL_RECONCILED=yes (merge 910ecdf, tag edge-pre-reconcile9-cfba4cc)
 CANONICAL_AT_START=8740f51   CANONICAL_AT_PACKAGE_GATE=8740f51
-FINAL_EDGE_HEAD=<code commit>   ORIGIN_EDGE_HEAD=<pushed head>       (see git log)
+FINAL_EDGE_HEAD=67d5b73 (P4 code) / 628e0f1 (docs)   ORIGIN_EDGE_HEAD=628e0f1 (+ this heads-only docs follow-up)
 WINDOWS_PACKAGE=built (edge:build-package: edge-package-v1, manifest + boundary audit + signed update; PHP/nginx bundled when given)
 CLEAN_MACHINE_INSTALL=yes — non-elevated equivalent: fresh install root + data root + fresh DB from the package, real php -S Cloud over HTTP, launcher-driven commands, TLS gateway + cashier login (EdgeCleanMachineInstallMySqlTest, 127 assertions, 3m19s)
 EDGE_WEB_SERVICE=BingooEdgeWeb1..N (edge:local:serve, loopback) + BingooEdgeGateway (nginx TLS)   EDGE_SYNC_SERVICE=BingooEdgeSyncSender (+ drain inside the authority worker while local)
