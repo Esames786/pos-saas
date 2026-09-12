@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\Edge\EdgeSyncStatusService;
+use App\Support\EdgeLocalDatabase;
 use App\Support\EdgeRuntime;
 use Illuminate\Console\Command;
 
@@ -28,6 +29,8 @@ class EdgeLocalSyncStatusCommand extends Command
 
             return self::FAILURE;
         }
+        // THE APPLIANCE DB PATH (P4): map the tenant connection to the Edge-local DB — a Branch Server has no Cloud tenant DB.
+        EdgeLocalDatabase::useAsTenantConnection();
 
         $snapshot = $status->snapshot();
         $queueLimit = (int) $this->option('queue');

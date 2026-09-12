@@ -251,6 +251,22 @@ class EdgeArtifactTest extends TestCase
             'app/Services/Edge/EdgeRestoreService.php',
             'app/Console/Commands/EdgeLocalBackupCommand.php',
             'app/Console/Commands/EdgeLocalRestoreCommand.php',
+            // P4 — the Windows appliance runtime: web backend, service plan, health, first-boot pairing/bootstrap, scripts.
+            'app/Services/Edge/EdgeSupervisionPlan.php',
+            'app/Services/Edge/EdgeApplianceHealthService.php',
+            'app/Console/Commands/EdgeLocalServeCommand.php',
+            'app/Console/Commands/EdgeLocalServicePlanCommand.php',
+            'app/Console/Commands/EdgeLocalHealthCommand.php',
+            'app/Console/Commands/EdgeLocalPairCommand.php',
+            'app/Console/Commands/EdgeLocalBootstrapPullCommand.php',
+            'app/Console/Commands/EdgeLocalGatewayCertCommand.php',
+            'app/Console/Commands/EdgeLocalUninstallDataCommand.php',
+            'scripts/edge/Install-EdgeAppliance.ps1',
+            'scripts/edge/Register-EdgeServices.ps1',
+            'scripts/edge/Update-EdgeAppliance.ps1',
+            'scripts/edge/Uninstall-EdgeAppliance.ps1',
+            'scripts/edge/appliance/edge-launcher.php',
+            'scripts/edge/appliance/appliance.env.template',
         ] as $required) {
             $this->assertContains($required, $plan, "the Edge artifact must ship {$required}");
         }
@@ -346,11 +362,16 @@ class EdgeArtifactTest extends TestCase
     public function test_branch_server_allows_the_productization_commands_and_denies_cloud_ones(): void
     {
         config(['app.role' => 'branch_server']);
-        foreach (['edge:local:backup', 'edge:local:restore', 'edge:local:sync-send', 'edge:local:sync-status'] as $cmd) {
+        foreach (['edge:local:backup', 'edge:local:restore', 'edge:local:sync-send', 'edge:local:sync-status',
+            // P4 — packaging / install / operate commands run on the appliance …
+            'edge:local:serve', 'edge:local:service-plan', 'edge:local:health', 'edge:local:pair', 'edge:local:bootstrap-pull', 'edge:local:gateway-cert', 'edge:local:uninstall-data'] as $cmd) {
             $this->assertTrue(\App\Support\EdgeConsoleBoundary::isAllowed($cmd), "{$cmd} must run on a Branch Server");
         }
         // A Cloud-only command stays denied on the appliance.
         $this->assertFalse(\App\Support\EdgeConsoleBoundary::isAllowed('migrate:fresh'), 'a destructive Cloud command must be denied');
+        // … while the BUILD-HOST commands never run on an appliance.
+        $this->assertFalse(\App\Support\EdgeConsoleBoundary::isAllowed('edge:build-package'));
+        $this->assertFalse(\App\Support\EdgeConsoleBoundary::isAllowed('edge:build-artifact'));
         config(['app.role' => null]);
     }
 

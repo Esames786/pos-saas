@@ -145,6 +145,8 @@ class EdgeBranchServerRegistrationTest extends TestCase
             'edge/local/pos/print-jobs/{job}/printed',
             'edge/local/pos/print-jobs/{job}/retry',
             // EDGE-CASHIER-UI-5 (deliberately approved): Quick Report on the canonical report authority.
+            // P4 (deliberately approved): the ONE operator/admin health page.
+            'edge/local/pos/health',
             'edge/local/pos/quick-report/options',
             'edge/local/pos/quick-report/view',
             'edge/local/pos/quick-report/network',

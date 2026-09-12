@@ -171,6 +171,33 @@ class EdgeUpdaterMySqlTest extends MySqlTenantTestCase
         $this->installer()->install($this->package($art, ['schema_generation' => 'some-foreign-schema']), $art, 'supervisor:test');
     }
 
+    /** P4 §9 — a package PINNED to another branch / device / tenant is refused before any mutation; a pin naming THIS appliance passes. */
+    public function test_a_package_pinned_to_another_branch_or_device_is_refused_and_a_matching_pin_installs(): void
+    {
+        $art = $this->makeArtifact();
+        foreach ([
+            ['target_branch_id' => 99, 'code' => 'UPDATE_WRONG_TARGET'],
+            ['target_device_uuid' => 'some-other-device', 'code' => 'UPDATE_WRONG_TARGET'],
+            ['target_tenant_code' => 'not-this-tenant', 'code' => 'UPDATE_WRONG_TARGET'],
+        ] as $case) {
+            $code = $case['code'];
+            unset($case['code']);
+            try {
+                $this->installer()->install($this->package($art, $case), $art, 'supervisor:test');
+                $this->fail('a pinned package for another appliance must be refused: ' . json_encode($case));
+            } catch (\RuntimeException $e) {
+                $this->assertStringStartsWith($code, $e->getMessage());
+            }
+            $this->assertNull($this->currentVersion(), 'nothing was staged or switched');
+            $this->assertSame('refused', DB::connection('tenant')->table('edge_local_updates')->orderByDesc('id')->value('result'));
+            $this->assertSame('UPDATE_WRONG_TARGET', DB::connection('tenant')->table('edge_local_updates')->orderByDesc('id')->value('failure_code'));
+        }
+        // The pin that names THIS appliance (tenant edgepos / branch 7 / device test-device-uuid from bindEdgeLocalMeta) installs.
+        $result = $this->installer()->install($this->package($art, ['target_tenant_code' => 'edgepos', 'target_branch_id' => 7, 'target_device_uuid' => 'test-device-uuid']), $art, 'supervisor:test');
+        $this->assertSame('applied', $result['result']);
+        $this->assertSame('0.2.0-edge', $this->currentVersion());
+    }
+
     public function test_a_downgrade_is_refused(): void
     {
         $art = $this->makeArtifact();

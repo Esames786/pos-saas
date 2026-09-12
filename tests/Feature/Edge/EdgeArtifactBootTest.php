@@ -127,7 +127,8 @@ PHP;
             'edge.local.pos.suppliers.screen', 'edge.local.pos.suppliers.ledger', 'edge.local.pos.suppliers.payments.store',
             'edge.local.pos.finance.journal.screen', 'edge.local.pos.finance.journal.store', 'edge.local.pos.finance.events.show',
             // F3 — the offline purchase-return UI boots from the artifact.
-            'edge.local.pos.purchase-returns.screen', 'edge.local.pos.purchase-returns.grn', 'edge.local.pos.purchase-returns.store'] as $must) {
+            'edge.local.pos.purchase-returns.screen', 'edge.local.pos.purchase-returns.grn', 'edge.local.pos.purchase-returns.store',
+            'edge.local.pos.health.view'] as $must) {
             $this->assertContains($must, $names, "the built artifact must register {$must}");
         }
         // ...and the Cloud groups (device API ingestion/reconcile/baseline) are NOT registered on the appliance.
@@ -147,6 +148,11 @@ PHP;
         foreach ([
             'app/Services/Saas', 'app/Services/Manufacturing', 'app/Http/Controllers/Central',
             'app/Services/Edge/EdgeInboundSaleIngestionService.php', 'app/Services/Finance/SupplierPayableService.php',
+            // F1 / P4 — the Cloud return ingestion, returnable projection and heartbeat API are physically absent too.
+            'app/Services/Edge/EdgeInboundReturnIngestionService.php', 'app/Services/Edge/EdgeReturnableSaleProjectionService.php',
+            'app/Services/Edge/EdgeStandbyAdvertiser.php', 'app/Http/Controllers/Edge/EdgeInboundReturnApiController.php',
+            'app/Http/Controllers/Edge/EdgeReturnableCacheApiController.php', 'app/Http/Controllers/Edge/EdgeAuthorityApiController.php',
+            'app/Models/Tenant/EdgeInboundReturnIngestion.php',
             // F2 — the Cloud supplier-finance authority and ingestion are physically absent from the appliance.
             'app/Services/Finance/ManualJournalService.php', 'app/Services/Edge/EdgeSupplierFinanceProjectionService.php',
             'app/Services/Edge/EdgeInboundSupplierFinanceIngestionService.php', 'app/Http/Controllers/Edge/EdgeInboundSupplierFinanceApiController.php',

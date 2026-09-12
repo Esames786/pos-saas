@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Services\Edge\EdgeUpdateInstaller;
 use App\Services\Edge\EdgeUpdatePackageService;
+use App\Support\EdgeLocalDatabase;
 use App\Support\EdgeRuntime;
 use Illuminate\Console\Command;
 
@@ -29,6 +30,8 @@ class EdgeLocalUpdateCommand extends Command
 
             return self::FAILURE;
         }
+        // THE APPLIANCE DB PATH (P4): map the tenant connection to the Edge-local DB — a Branch Server has no Cloud tenant DB.
+        EdgeLocalDatabase::useAsTenantConnection();
 
         $package = json_decode((string) file_get_contents((string) $this->argument('package')), true);
         if (! is_array($package)) {

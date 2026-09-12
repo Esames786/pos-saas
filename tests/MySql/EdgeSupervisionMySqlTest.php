@@ -53,6 +53,7 @@ class EdgeSupervisionMySqlTest extends MySqlTenantTestCase
         $this->assertContains('edge:local:sync-send', $commands);
         $this->assertContains('edge:local:backup', $commands);
         $this->assertContains('edge:local:authority-worker', $commands, 'Q: the heartbeat/state-machine/freshness worker is a supervised appliance responsibility');
+        $this->assertContains('edge:local:serve', $commands, 'P4: the web runtime is a supervised appliance responsibility');
         foreach ($commands as $c) {
             $this->assertTrue(\App\Support\EdgeConsoleBoundary::isAllowed($c), "{$c} must be Edge-allowlisted");
         }
@@ -89,6 +90,74 @@ class EdgeSupervisionMySqlTest extends MySqlTenantTestCase
         $this->assertSame(EdgeSupervisionPlan::SINGLETON_AUTHORITY_WORKER, $byName['BingooEdgeAuthorityWorker']['singleton']);
         $this->assertSame('continuous', $byName['BingooEdgeAuthorityWorker']['kind']);
         $this->assertCount(1, array_filter($this->plan(), fn ($t) => $t['artisan_command'] === 'edge:local:authority-worker'), 'exactly one heartbeat schedule');
+        $this->assertCount(1, array_filter($this->plan(), fn ($t) => $t['artisan_command'] === 'edge:local:print-worker'), 'exactly one print worker (never two agents on one printer)');
+    }
+
+    /** P4 §2 — the web runtime: N loopback backends, one listen port each, fronted by the ONE non-artisan gateway process. */
+    public function test_p4_web_backends_are_loopback_only_one_port_each_and_the_gateway_owns_the_lan_listener(): void
+    {
+        config(['edge.web.workers' => 2, 'edge.web.port_base' => 8090, 'edge.gateway.https_port' => 443, 'edge.gateway.http_port' => 80]);
+        $web = array_values(array_filter($this->plan(), fn ($t) => $t['artisan_command'] === 'edge:local:serve'));
+        $this->assertCount(2, $web);
+        $this->assertSame(['BingooEdgeWeb1', 'BingooEdgeWeb2'], array_column($web, 'name'));
+        $this->assertSame(['127.0.0.1:8090', '127.0.0.1:8091'], array_column($web, 'listen'), 'backends bind LOOPBACK only');
+        $this->assertCount(2, array_unique(array_column($web, 'listen')), 'one port per backend — the OS makes it a singleton');
+        foreach ($web as $i => $t) {
+            $this->assertSame(EdgeSupervisionPlan::SINGLETON_LISTEN_PORT, $t['singleton']);
+            $this->assertSame('continuous', $t['kind']);
+            $this->assertStringContainsString('--worker=' . ($i + 1), $t['arguments']);
+            $this->assertSame('NT AUTHORITY\\LOCAL SERVICE', $t['principal']);
+        }
+        $plan = app(EdgeSupervisionPlan::class);
+        $gw = $plan->gateway('C:\\Program Files\\Bingoo Edge\\gateway\\nginx.exe', 'C:\\ProgramData\\BingooEdge');
+        $this->assertSame(EdgeSupervisionPlan::GATEWAY_TASK, $gw['name']);
+        $this->assertSame('gateway', $gw['kind_of_process']);
+        $this->assertSame('0.0.0.0:443', $gw['listen'], 'the gateway is the ONLY LAN listener');
+        $this->assertSame('0.0.0.0:80', $gw['redirect_listen']);
+        $this->assertSame('NT AUTHORITY\\LOCAL SERVICE', $gw['principal']);
+        $this->assertSame('limited', $gw['run_level']);
+        $this->assertSame(999, $gw['restart_count']);
+        $this->assertStringContainsString('nginx.conf', $gw['arguments']);
+        $this->assertStringNotContainsString('secret', strtolower($gw['arguments']));
+        // The rendered gateway config: TLS with the data-root certificate, proxy to every backend, 80 → 443 only.
+        $conf = $plan->renderGatewayConfig('C:\\ProgramData\\BingooEdge', 'C:\\Program Files\\Bingoo Edge');
+        $this->assertStringContainsString('listen 443 ssl http2;', $conf);
+        $this->assertStringContainsString('return 301 https://', $conf);
+        $this->assertStringContainsString('server 127.0.0.1:8090', $conf);
+        $this->assertStringContainsString('server 127.0.0.1:8091', $conf);
+        $this->assertStringContainsString('ssl_certificate     "C:/ProgramData/BingooEdge/certs/server.crt"', $conf);
+        $this->assertStringContainsString('X-Forwarded-Proto https', $conf);
+        $this->assertStringNotContainsString('listen 8090', $conf, 'the gateway never exposes a backend port on the LAN');
+        // Every task is an artisan task; the gateway is the ONE exception and is described separately.
+        foreach ($this->plan() as $t) {
+            $this->assertSame('artisan', $t['kind_of_process']);
+        }
+    }
+
+    /** P4 §2 — the serve command refuses a LAN bind (plain HTTP is never the normal mode) and resolves ports from the plan. */
+    public function test_p4_serve_command_binds_loopback_only_and_refuses_a_lan_bind(): void
+    {
+        config(['edge.web.port_base' => 8090, 'app.key' => config('app.key') ?: 'base64:' . base64_encode(random_bytes(32))]);
+        $this->artisan('edge:local:serve', ['--worker' => 2, '--check' => true])->expectsOutputToContain('http://127.0.0.1:8091')->assertExitCode(0);
+        $this->artisan('edge:local:serve', ['--worker' => 1, '--host' => '0.0.0.0', '--check' => true])->expectsOutputToContain('Refusing a non-loopback bind')->assertExitCode(1);
+    }
+
+    /** P4 §2 — the installer consumes the plan as JSON; a Cloud host gets nothing. */
+    public function test_p4_service_plan_command_emits_the_plan_and_renders_the_gateway_config(): void
+    {
+        $dataRoot = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'edge-plan-' . uniqid();
+        $this->artisan('edge:local:service-plan', ['--php' => $this->php, '--app-root' => $this->root, '--data-root' => $dataRoot, '--write-gateway-config' => true, '--json' => true])->assertExitCode(0);
+        $this->assertFileExists($dataRoot . DIRECTORY_SEPARATOR . 'gateway' . DIRECTORY_SEPARATOR . 'nginx.conf');
+        $this->assertDirectoryExists($dataRoot . DIRECTORY_SEPARATOR . 'gateway' . DIRECTORY_SEPARATOR . 'logs');
+        config(['app.role' => null]);
+        $this->artisan('edge:local:service-plan', ['--data-root' => $dataRoot, '--json' => true])->assertExitCode(1);
+        config(['app.role' => 'branch_server']);
+        @unlink($dataRoot . '/gateway/nginx.conf');
+        foreach (['logs', 'temp', 'client_body_temp', 'proxy_temp', 'fastcgi_temp', 'uwsgi_temp', 'scgi_temp'] as $d) {
+            @rmdir($dataRoot . '/gateway/' . $d);
+        }
+        @rmdir($dataRoot . '/gateway');
+        @rmdir($dataRoot);
     }
 
     public function test_no_secret_ever_appears_on_a_command_line(): void
@@ -111,7 +180,7 @@ class EdgeSupervisionMySqlTest extends MySqlTenantTestCase
 
     public function test_generated_task_installers_refuse_system_and_carry_no_secret(): void
     {
-        foreach (['Install-EdgePrintWorkerTask.ps1', 'Install-EdgeSyncSenderTask.ps1', 'Install-EdgeBackupTask.ps1'] as $script) {
+        foreach (['Install-EdgePrintWorkerTask.ps1', 'Install-EdgeSyncSenderTask.ps1', 'Install-EdgeBackupTask.ps1', 'Register-EdgeServices.ps1'] as $script) {
             $body = (string) file_get_contents(base_path('scripts/edge/' . $script));
             $this->assertStringContainsString('Refusing to register', $body, "{$script} must refuse SYSTEM");
             $this->assertStringContainsString('SYSTEM', $body, "{$script} must guard against the SYSTEM principal");

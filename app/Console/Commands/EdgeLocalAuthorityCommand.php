@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Services\Edge\EdgeAuthorityService;
 use App\Services\Edge\EdgeConnectionStateMachine;
 use App\Services\Edge\EdgeHandbackOrchestrator;
+use App\Support\EdgeLocalDatabase;
 use App\Support\EdgeRuntime;
 use Illuminate\Console\Command;
 use RuntimeException;
@@ -38,6 +39,8 @@ class EdgeLocalAuthorityCommand extends Command
 
             return self::FAILURE;
         }
+        // THE APPLIANCE DB PATH (P4): map the tenant connection to the Edge-local DB — a Branch Server has no Cloud tenant DB.
+        EdgeLocalDatabase::useAsTenantConnection();
         try {
             switch ($action) {
                 case 'heartbeat':

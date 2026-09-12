@@ -161,6 +161,11 @@ class EdgeUpdateInstaller
         foreach ($it as $item) {
             $rel = substr($item->getPathname(), $srcLen);
             $target = $dst . DIRECTORY_SEPARATOR . $rel;
+            // A staged runtime never carries a link: a symlink / Windows junction (a dev package's shared vendor closure) is
+            // neither followed nor copied — the operator tooling re-links it; a release artifact ships real files only.
+            if ($item->isLink() || $this->isReparsePoint($item->getPathname())) {
+                continue;
+            }
             if ($item->isDir()) {
                 if (! is_dir($target)) {
                     @mkdir($target, 0775, true);
@@ -175,6 +180,21 @@ class EdgeUpdateInstaller
                 }
             }
         }
+    }
+
+    /** Windows junction / mount point detection (PHP reports some reparse points as directories, not links). */
+    private function isReparsePoint(string $path): bool
+    {
+        if (DIRECTORY_SEPARATOR !== '\\') {
+            return false;
+        }
+        $real = @realpath($path);
+        if ($real === false) {
+            return false;
+        }
+        $norm = fn (string $p) => strtolower(rtrim(str_replace('/', '\\', $p), '\\'));
+
+        return $norm($real) !== $norm($path);
     }
 
     /** Forward-only schema upgrade; returns the schema generation after. Test-overridable seam. */

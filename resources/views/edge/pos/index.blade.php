@@ -129,6 +129,7 @@
         @if($canPurchaseReturn ?? false)
             <a class="navbtn" id="purchase-returns-link" href="{{ url('/edge/local/pos/purchase-returns') }}">Purchase Returns</a>
         @endif
+        <a class="navbtn" id="health-link" href="{{ url('/edge/local/pos/health') }}">Status</a>
         <span class="chip" id="sync-chip" hidden></span>
         <form method="POST" action="{{ url('/edge/local/logout') }}" style="margin:0">@csrf<button class="ghost">Logout</button></form>
     </header>

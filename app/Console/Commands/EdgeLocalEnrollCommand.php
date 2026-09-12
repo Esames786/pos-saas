@@ -21,6 +21,7 @@ class EdgeLocalEnrollCommand extends Command
 {
     protected $signature = 'edge:local:enroll {assertion : Path to the signed enrollment assertion JSON}
                             {--credential= : The new Edge credential (prompted secretly if omitted)}
+                            {--credential-file= : Read the credential from this file (read then deleted) — installer use; never argv}
                             {--type=password : password|pin}';
 
     protected $description = 'Consume a Cloud enrollment assertion and set a local Edge credential (config only, no selling).';
@@ -54,6 +55,12 @@ class EdgeLocalEnrollCommand extends Command
         EdgeLocalDatabase::useAsTenantConnection();
 
         $credential = (string) ($this->option('credential') ?? '');
+        $credentialFile = (string) ($this->option('credential-file') ?? '');
+        if ($credential === '' && $credentialFile !== '' && is_file($credentialFile)) {
+            $credential = rtrim((string) file_get_contents($credentialFile), "
+");
+            @unlink($credentialFile); // one-time: the installer's temp file never lingers
+        }
         if ($credential === '') {
             $credential = (string) $this->secret('Choose the Edge credential for this user');
         }

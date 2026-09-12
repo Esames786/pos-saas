@@ -11,6 +11,8 @@ use RuntimeException;
  * valid Ed25519 signature against the appliance's PUBLIC key; the artifact on disk matches the signed
  * manifest hash (tamper); the version transition is permitted (no downgrade unless explicitly allowed; the
  * current version is new enough); the schema generation is compatible (equal or forward, never older/unknown).
+ * P4: when the package is PINNED to a tenant/branch/device (target_tenant_code / target_branch_id / target_device_uuid),
+ * it must match THIS appliance's binding — a package built for another branch or device is refused.
  */
 class EdgeUpdateVerifier
 {
@@ -63,6 +65,31 @@ class EdgeUpdateVerifier
         $pkgSchema = (string) ($payload['schema_generation'] ?? '');
         if ($pkgSchema !== '' && $currentSchema !== '' && ! $this->schemaCompatible($currentSchema, $pkgSchema)) {
             throw new RuntimeException("UPDATE_SCHEMA_INCOMPATIBLE: package schema [{$pkgSchema}] is not a forward transition from [{$currentSchema}].");
+        }
+        // P4 — a pinned package must name THIS appliance (tenant / branch / device); an unpinned package is generic.
+        $this->assertTargetBinding($payload);
+    }
+
+    private function assertTargetBinding(array $payload): void
+    {
+        $tenant = isset($payload['target_tenant_code']) ? trim((string) $payload['target_tenant_code']) : '';
+        $branch = isset($payload['target_branch_id']) && $payload['target_branch_id'] !== null && $payload['target_branch_id'] !== '' ? (int) $payload['target_branch_id'] : null;
+        $device = isset($payload['target_device_uuid']) ? trim((string) $payload['target_device_uuid']) : '';
+        if ($tenant === '' && $branch === null && $device === '') {
+            return;
+        }
+        $meta = app(EdgeBranchContext::class)->tryCurrent();
+        if (! $meta) {
+            throw new RuntimeException('UPDATE_WRONG_TARGET: the package is pinned to a branch but this appliance is not bound.');
+        }
+        if ($tenant !== '' && ! hash_equals($tenant, (string) $meta->tenant_code)) {
+            throw new RuntimeException('UPDATE_WRONG_TARGET: the package targets another tenant.');
+        }
+        if ($branch !== null && $branch !== (int) $meta->branch_id) {
+            throw new RuntimeException('UPDATE_WRONG_TARGET: the package targets another branch.');
+        }
+        if ($device !== '' && ! hash_equals($device, (string) $meta->device_uuid)) {
+            throw new RuntimeException('UPDATE_WRONG_TARGET: the package targets another device.');
         }
     }
 

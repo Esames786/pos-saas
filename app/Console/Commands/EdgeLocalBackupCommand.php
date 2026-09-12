@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\Edge\EdgeBackupService;
+use App\Support\EdgeLocalDatabase;
 use App\Support\EdgeRuntime;
 use Illuminate\Console\Command;
 
@@ -26,6 +27,8 @@ class EdgeLocalBackupCommand extends Command
 
             return self::FAILURE;
         }
+        // THE APPLIANCE DB PATH (P4): map the tenant connection to the Edge-local DB — a Branch Server has no Cloud tenant DB.
+        EdgeLocalDatabase::useAsTenantConnection();
 
         // Boot ordering: tolerate MariaDB not being ready yet (bounded wait; the task restarts otherwise).
         if (! \App\Services\Edge\EdgeWorkerBootstrap::awaitDatabase((int) env('EDGE_WORKER_DB_WAIT_TRIES', 30))) {

@@ -12,7 +12,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 
-return Application::configure(basePath: dirname(__DIR__))
+$app = Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
         commands: __DIR__.'/../routes/console.php',
@@ -63,6 +63,13 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->redirectGuestsTo('/login');
+        // P4 — on a Branch Server the LAN listener is the loopback TLS gateway (nginx → 127.0.0.1 PHP backends):
+        // trust ONLY loopback so X-Forwarded-Proto=https is honoured. A Cloud host never enables this.
+        if (env('APP_ROLE') === 'branch_server') {
+            $middleware->trustProxies(at: ['127.0.0.1', '::1'], headers: \Illuminate\Http\Request::HEADER_X_FORWARDED_FOR
+                | \Illuminate\Http\Request::HEADER_X_FORWARDED_HOST | \Illuminate\Http\Request::HEADER_X_FORWARDED_PORT
+                | \Illuminate\Http\Request::HEADER_X_FORWARDED_PROTO);
+        }
 
         $middleware->alias([
             'central.only' => CentralOnly::class,
@@ -84,3 +91,15 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withExceptions(function (Exceptions $exceptions) {
         //
     })->create();
+
+// P4 WINDOWS APPLIANCE — configuration storage OUTSIDE the versioned runtime. The appliance launcher (and the
+// serve command for its web children) exports BINGOO_EDGE_ENV_DIR=<data-root>/config; the runtime then loads
+// <data-root>/config/appliance.env instead of a .env inside the install dir, so updates never touch secrets and
+// uninstall never deletes them silently. A Cloud host never sets the variable: nothing changes there.
+$edgeEnvDir = getenv('BINGOO_EDGE_ENV_DIR');
+if (is_string($edgeEnvDir) && $edgeEnvDir !== '' && is_dir($edgeEnvDir)) {
+    $app->useEnvironmentPath(rtrim($edgeEnvDir, "/\\"));
+    $app->loadEnvironmentFrom('appliance.env');
+}
+
+return $app;

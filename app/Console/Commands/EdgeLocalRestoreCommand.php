@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Services\Edge\EdgeBranchContext;
 use App\Services\Edge\EdgeRestoreService;
+use App\Support\EdgeLocalDatabase;
 use App\Support\EdgeRuntime;
 use Illuminate\Console\Command;
 
@@ -28,6 +29,8 @@ class EdgeLocalRestoreCommand extends Command
 
             return self::FAILURE;
         }
+        // THE APPLIANCE DB PATH (P4): map the tenant connection to the Edge-local DB — a Branch Server has no Cloud tenant DB.
+        EdgeLocalDatabase::useAsTenantConnection();
 
         $branch = $this->option('branch') !== null ? (int) $this->option('branch') : $context->boundBranchId();
         if (! $branch) {

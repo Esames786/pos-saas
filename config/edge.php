@@ -20,7 +20,10 @@ return [
     | consumed by the future signed updater to decide "can this build accept schema X / speak
     | protocol Y"). Bootstrap schema is reused from the existing bootstrap service — single source.
     */
-    'app_version'             => env('EDGE_APP_VERSION', '0.1.0-edge'),
+    // The installed appliance reports the version of the runtime it actually runs (edge-build-manifest.json written by
+    // the artifact builder); EDGE_APP_VERSION overrides only on a build host / dev tree. Never a stale hard-coded value
+    // after an update.
+    'app_version'             => env('EDGE_APP_VERSION') ?: (\App\Support\EdgeRuntime::artifactVersion() ?? '0.1.0-edge'),
     'git_commit'              => env('EDGE_GIT_COMMIT'), // stamped into a built artifact's manifest
     'artifact_format_version' => '1',
     'bootstrap_schema'        => EdgeBootstrapService::SCHEMA_VERSION,        // edge-bootstrap-v6
@@ -261,6 +264,8 @@ return [
         'edge.local.pos.quick-report.view',
         'edge.local.pos.quick-report.network',
         'edge.local.pos.quick-report.email',
+        // P4 — the ONE operator/admin health page (non-secret).
+        'edge.local.pos.health.view',
     ],
 
     /*
@@ -292,6 +297,14 @@ return [
         'edge:local:authority-takeover',  // P0 lease: supervised Local Mode activation (fail closed on any gate)
         'edge:local:authority-handback',  // P0 lease: return authority to the Cloud when sync is clean
         'edge:local:authority-worker',    // Q: the ONE supervised heartbeat / state-machine / standby-freshness worker
+        // P4 WINDOWS APPLIANCE — packaging / install / operate (no business features).
+        'edge:local:serve',          // loopback PHP web backend (one per BingooEdgeWebN task; the TLS gateway fronts them)
+        'edge:local:service-plan',   // the deterministic Windows service plan + rendered gateway config (JSON for the installer)
+        'edge:local:health',         // the ONE operator health command (non-secret)
+        'edge:local:pair',           // first-boot: exchange a one-time pairing code for the device identity (secret → env file, never argv)
+        'edge:local:bootstrap-pull', // first-boot: pull + verify + import the Cloud bootstrap snapshot, then acknowledge
+        'edge:local:gateway-cert',   // import the LAN TLS certificate (PFX → PEM files under the data root) for the gateway
+        'edge:local:uninstall-data', // EXPLICIT data removal at uninstall (typed confirmation; refuses while events are unsynced)
         // Framework cache/runtime operations the appliance explicitly needs.
         'config:cache', 'config:clear',
         'route:cache', 'route:clear',
@@ -362,6 +375,15 @@ return [
             'app/Models/Tenant/EdgeInboundSaleIngestion.php',
             // Cloud AP posting — sits beside the KEPT JournalPostingService, so excluded by exact path only.
             'app/Services/Finance/SupplierPayableService.php',
+            // F1 / P4 boundary gate — the Cloud return ingestion + returnable projection + the Cloud heartbeat API
+            // (with its standby advertiser) are hosted by the Cloud only; the appliance SENDS to them.
+            'app/Services/Edge/EdgeInboundReturnIngestionService.php',
+            'app/Services/Edge/EdgeReturnableSaleProjectionService.php',
+            'app/Services/Edge/EdgeStandbyAdvertiser.php',
+            'app/Http/Controllers/Edge/EdgeInboundReturnApiController.php',
+            'app/Http/Controllers/Edge/EdgeReturnableCacheApiController.php',
+            'app/Http/Controllers/Edge/EdgeAuthorityApiController.php',
+            'app/Models/Tenant/EdgeInboundReturnIngestion.php',
             // F2 — Cloud supplier-finance authority stays physically out of the appliance artifact.
             'app/Services/Finance/ManualJournalService.php',
             'app/Services/Edge/EdgeSupplierFinanceProjectionService.php',
@@ -457,6 +479,56 @@ return [
     | Windows LAN, so the PILOT mechanism is a DHCP-reserved IP + a hosts-file/router-DNS entry. The
     | certificate SAN (see scripts/edge) must cover BOTH the hostname and the reserved IP.
     */
+    /*
+    | P4 WINDOWS APPLIANCE — web runtime + TLS gateway + configuration storage + print architecture lock.
+    |
+    | The PHP web backends (edge:local:serve, one per supervised BingooEdgeWebN task) bind LOOPBACK ONLY. The LAN
+    | listener is the TLS gateway (nginx) that terminates HTTPS with the branch-CA server certificate and proxies to
+    | the loopback backends; port 80 only redirects. Plain HTTP on the LAN is never the normal mode (locked contract).
+    */
+    'web' => [
+        'bind'      => env('EDGE_WEB_BIND', '127.0.0.1'),
+        'port_base' => (int) env('EDGE_WEB_PORT_BASE', 8090),
+        'workers'   => max(1, min(8, (int) env('EDGE_WEB_WORKERS', 2))),
+    ],
+    'gateway' => [
+        'kind'       => 'nginx',
+        'https_port' => (int) env('EDGE_GATEWAY_HTTPS_PORT', 443),
+        'http_port'  => (int) env('EDGE_GATEWAY_HTTP_PORT', 80), // redirect-only listener
+    ],
+    /*
+    | Where the appliance keeps its state OUTSIDE the versioned runtime (survives updates; excluded from uninstall
+    | unless data removal is explicitly chosen): <data_root>/config/appliance.env (the ONLY secrets file),
+    | <data_root>/certs, <data_root>/logs, <data_root>/backups, <data_root>/runtime (pointer + versions).
+    */
+    'appliance' => [
+        'data_root' => env('EDGE_DATA_ROOT'),
+        'env_file'  => 'appliance.env',
+    ],
+    /*
+    | PRINT ARCHITECTURE LOCK (P4 §3). Network (LAN) printers: Online = the Cloud print path; Local Mode = the
+    | appliance prints DIRECTLY to the printer IP through its supervised local print worker. There is never a
+    | second Edge agent for a network printer, and never two agents on one printer. USB printers are served by
+    | the ONE Bingoo Print Agent per host, which is Cloud-only today → USB printing is ONLINE_REQUIRED for the
+    | pilot until the dual-mode agent exists.
+    */
+    'print_architecture' => [
+        'network_printer_edge_direct'           => true,
+        'second_edge_agent_for_network_printer' => false,
+        'usb_dual_mode_agent'                   => 'not_built',
+        'usb_status_for_pilot'                  => 'ONLINE_REQUIRED',
+    ],
+
+    /*
+    | TEST-ONLY seams. Every key here is inert unless APP_ENV=testing; production reads false. The in-process
+    | MySQL proofs flip the fail_after_* keys through config(); the cross-process clean-machine install proof
+    | (a real Cloud `php -S` + a real installed appliance) needs assume_entitled from the environment because a
+    | separate process cannot swap the entitlement service instance.
+    */
+    'testing' => [
+        'assume_entitled' => env('APP_ENV') === 'testing' && filter_var(env('EDGE_TESTING_ASSUME_ENTITLED', false), FILTER_VALIDATE_BOOL),
+    ],
+
     'lan' => [
         'hostname'       => env('EDGE_LAN_HOSTNAME', 'bingoo-edge.local'),
         'reserved_ip'    => env('EDGE_LAN_IP'), // DHCP-reserved; set per branch

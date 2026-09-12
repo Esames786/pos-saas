@@ -109,5 +109,7 @@ Route::prefix('edge/local')->name('edge.local.')->group(function () {
         Route::get('/quick-report/view', [EdgeQuickReportController::class, 'view'])->name('quick-report.view');
         Route::post('/quick-report/network', [EdgeQuickReportController::class, 'network'])->name('quick-report.network');
         Route::post('/quick-report/email', [EdgeQuickReportController::class, 'email'])->name('quick-report.email');
+        // P4 §11 — the ONE operator/admin health page (non-secret; same report as edge:local:health).
+        Route::get('/health', [\App\Http\Controllers\Edge\EdgeLocalHealthController::class, 'view'])->name('health.view');
     });
 });

@@ -58,6 +58,19 @@ return [
             'ignore_exceptions' => false,
         ],
 
+        // P4 WINDOWS APPLIANCE — the Branch Server's log channel: daily files under the appliance data root
+        // (EDGE_LOG_PATH, e.g. C:\ProgramData\BingooEdge\logsdge.log), 30 days. Selected by LOG_CHANNEL=edge in
+        // appliance.env; a Cloud host never selects it. Records: authority transitions, heartbeat, takeover/handback,
+        // sync family + uuid, terminal refusals, lost-ACK recovery, print jobs, backup/update, restarts — never a
+        // password, token, device secret, recovery key or card secret (EdgeLogHygieneTest scans for that).
+        'edge' => [
+            'driver' => 'daily',
+            'path' => env('EDGE_LOG_PATH') ?: storage_path('logs/edge.log'),
+            'level' => env('LOG_LEVEL', 'info'),
+            'days' => (int) env('EDGE_LOG_DAYS', 30),
+            'replace_placeholders' => true,
+        ],
+
         'single' => [
             'driver' => 'single',
             'path' => storage_path('logs/laravel.log'),
