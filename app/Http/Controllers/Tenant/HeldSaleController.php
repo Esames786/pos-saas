@@ -417,10 +417,29 @@ class HeldSaleController extends Controller
 
         $tableSession = null;
         if (!empty($data['restaurant_table_session_id'])) {
+            // ⚠️ Status ki shart yahan LAZMI hai — wohi jo 6 satar neeche doosre branch me hai.
+            // Iske baghair BAND session par bill hold ho jata tha aur phir KABHI pay nahi hota,
+            // kyunke Pay ka raasta khuli session maangta hai. Kashif Food, 12 Sep 2026: session
+            // 22:08:03 par band hui, bill 22:08:28 par us se chipak gaya, Rs 2,465 phans gaye.
+            // Validation is ko nahi rok sakti — rule `exists:` hai, aur band session bhi "mojood" hai.
+            // docs/plans/held-sale-dead-session-2026-09-12.md
             $tableSession = RestaurantTableSession::with('table')
                 ->where('branch_id', $data['branch_id'])
+                ->whereIn('status', ['open', 'bill_requested'])
                 ->lockForUpdate()
                 ->find($data['restaurant_table_session_id']);
+
+            if (! $tableSession) {
+                // Yahan CHUP-CHAAP us table ki maujooda khuli session par switch MAT karna: wahan
+                // naye mehmaan baithe ho sakte hain aur do alag customers ka bill ek check me mil
+                // jayega — ye masle se bura hoga. Saaf inkaar karo; cashier table dobara khol kar
+                // 10 second me save kar lega.
+                throw ValidationException::withMessages([
+                    'restaurant_table_session_id' =>
+                        'This table session is closed. Reopen the table or pick another one, then save the order.',
+                ]);
+            }
+
             $data['order_type'] = 'dine_in';
         } elseif (!empty($data['restaurant_table_id'])) {
             $tableSession = RestaurantTableSession::with('table')
