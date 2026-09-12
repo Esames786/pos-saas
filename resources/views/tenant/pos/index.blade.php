@@ -1208,6 +1208,149 @@
     </div>
 </div>
 
+{{-- HELD-SALE-DEAD-SESSION-1 / P5 — anaath bill ka nikaas.
+     Cashier ne aisa bill recall kiya jis ki table session band ho chuki hai. Pay ka raasta band
+     session qabool nahi karta, is liye yahin faisla lena parta hai: wohi table dobara kholein, ya
+     koi KHALI table chunein. Picker me sirf khali tables hain — occupied par bhejna do alag
+     customers ka bill ek check me mila deta hai. --}}
+@if (! empty($deadSession))
+<div class="modal fade" id="deadSessionModal" tabindex="-1" data-bs-backdrop="static"
+     aria-labelledby="deadSessionModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deadSessionModalLabel">
+                    <i class="ti ti-alert-triangle me-2 text-warning"></i>This table is closed
+                </h5>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <div class="fw-semibold fs-5">
+                        Table {{ $deadSession['table_no'] ?? '—' }}
+                    </div>
+                    <div class="text-muted small">
+                        @if (! empty($deadSession['closed_by']))
+                            Closed by <strong>{{ $deadSession['closed_by'] }}</strong>
+                        @endif
+                        @if (! empty($deadSession['closed_at']))
+                            &middot; {{ $deadSession['closed_at'] }}
+                        @endif
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-between border-top border-bottom py-2 mb-3">
+                    <span class="text-muted">{{ $deadSession['sale_no'] }}</span>
+                    <span class="fw-bold">Rs {{ number_format($deadSession['total'], 2) }}</span>
+                </div>
+
+                <div class="alert alert-secondary py-2 px-3 small mb-3">
+                    The kitchen ticket already printed with the old table
+                    ({{ $deadSession['table_no'] ?? '—' }}). Moving this bill does <strong>not</strong>
+                    reprint it — the food is already made.
+                </div>
+
+                <div class="d-grid gap-2">
+                    @if (! empty($deadSession['can_reopen']) && ! empty($deadSession['table_id']))
+                        <button type="button" class="btn btn-primary" id="dead-reopen"
+                                data-table-id="{{ $deadSession['table_id'] }}">
+                            <i class="ti ti-rotate me-1"></i>
+                            Reopen table {{ $deadSession['table_no'] }}
+                        </button>
+                    @else
+                        <div class="alert alert-warning py-2 px-3 small mb-0">
+                            Table {{ $deadSession['table_no'] ?? '—' }} has new guests on it now, so this
+                            bill cannot go back there. Pick a free table below.
+                        </div>
+                    @endif
+
+                    <div class="input-group">
+                        <select class="form-select" id="dead-table-pick">
+                            <option value="" selected disabled hidden>— Pick a free table —</option>
+                            @foreach ($floors as $floor)
+                                @php $freeOnes = $floor->tables->filter(fn ($t) => ! $t->openSession); @endphp
+                                @if ($freeOnes->isNotEmpty())
+                                    <optgroup label="{{ $floor->name }}">
+                                        @foreach ($freeOnes as $t)
+                                            <option value="{{ $t->id }}">Table {{ $t->table_no }}</option>
+                                        @endforeach
+                                    </optgroup>
+                                @endif
+                            @endforeach
+                        </select>
+                        <button class="btn btn-outline-primary" type="button" id="dead-move">Move here</button>
+                    </div>
+
+                    <button type="button" class="btn btn-link text-muted" data-bs-dismiss="modal">Not now</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@push('scripts')
+<script>
+(function () {
+    var info = @json($deadSession);
+    var el   = document.getElementById('deadSessionModal');
+    if (! info || ! el || ! window.bootstrap) { return; }
+
+    bootstrap.Modal.getOrCreateInstance(el).show();
+
+    function terminalId() {
+        var sel = document.getElementById('terminal_id') || document.querySelector('[name="terminal_id"]');
+        return sel ? sel.value : '';
+    }
+
+    function move(tableId, btn) {
+        if (! tableId) { return; }
+        if (btn) { btn.disabled = true; }
+
+        fetch('{{ url('/held-sales') }}/' + info.sale_id + '/reattach-table', {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+            },
+            body: JSON.stringify({ restaurant_table_id: tableId, terminal_id: terminalId() }),
+        })
+        .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
+        .then(function (res) {
+            if (! res.ok) {
+                // Server ka faisla hi aakhri hai: ho sakta hai is lamhe tak wo table le li gayi ho.
+                var msg = (res.body && (res.body.message
+                    || (res.body.errors && Object.values(res.body.errors).flat().join(' ')))) || 'Could not move the bill.';
+                if (btn) { btn.disabled = false; }
+                if (window.Swal) { Swal.fire({ icon: 'error', title: 'Cannot move', text: msg }); }
+                else { alert(msg); }
+                return;
+            }
+            // Us table par dobara load karo — ab bill zinda session par hai aur pay ho sakta hai.
+            window.location = '{{ url('/pos') }}?held_sale_id=' + info.sale_id
+                + '&table_session_id=' + res.body.restaurant_table_session_id
+                + '&mode=dine_in&branch_id={{ $selectedBranchId }}';
+        })
+        .catch(function () {
+            if (btn) { btn.disabled = false; }
+            alert('Network error — could not move the bill.');
+        });
+    }
+
+    var reopen = document.getElementById('dead-reopen');
+    if (reopen) {
+        reopen.addEventListener('click', function () { move(reopen.dataset.tableId, reopen); });
+    }
+
+    var moveBtn = document.getElementById('dead-move');
+    if (moveBtn) {
+        moveBtn.addEventListener('click', function () {
+            move(document.getElementById('dead-table-pick').value, moveBtn);
+        });
+    }
+})();
+</script>
+@endpush
+@endif
 {{-- Recent Prints Modal --}}
 <div class="modal fade" id="lastPrintModal" tabindex="-1" aria-labelledby="lastPrintModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-fullscreen-lg-down modal-dialog-scrollable">

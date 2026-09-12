@@ -47,6 +47,10 @@ class POSController extends Controller
                     'customer',
                     'restaurantTableSession.table.floor',
                     'restaurantTableSession.waiter',
+                    // P5: popup ko batana hai ke table KIS NE band ki. Ye relation pehle se
+                    // mojood hai aur `restaurantTableSession` yahan bina status filter ke
+                    // load hota hai, is liye BAND session bhi poori mil jati hai.
+                    'restaurantTableSession.closedBy',
                     'restaurantTable',
                     'restaurantWaiter',
                 ])
@@ -68,6 +72,37 @@ class POSController extends Controller
             $tableSession = RestaurantTableSession::with(['table.floor', 'waiter', 'salesOrders' => fn ($query) => $query->where('status', 'held')])
                 ->whereIn('status', ['open', 'bill_requested'])
                 ->find($heldSale->restaurant_table_session_id);
+        }
+
+        // HELD-SALE-DEAD-SESSION-1 / P5 — anaath bill ki pehchan.
+        //
+        // Bill kehta hai "meri table hai" (column bhara hua) magar koi ZINDA session mili nahi —
+        // yani us ki session band ho chuki hai. Ye bilkul wohi soorat hai jis me 12 Sep ko Rs 2,465
+        // ka bill phansa tha. Koi extra query nahi chahiye: `restaurantTableSession` upar bina status
+        // filter ke eager-load ho chuka hai.
+        $deadSession = null;
+        if ($heldSale && $heldSale->restaurant_table_session_id && ! $tableSession) {
+            $dead        = $heldSale->restaurantTableSession;
+            $deadTableId = (int) ($dead?->restaurant_table_id ?? 0);
+
+            // "Wohi table dobara kholein" SIRF tab offer hota hai jab wo table is waqt khali ho.
+            // 12 Sep ko table 9 par naye mehmaan baith chuke thay — un ke check me purane logon ka
+            // bill mil jana is masle se kahin bura hota.
+            $canReopen = $deadTableId > 0 && ! RestaurantTableSession::where('restaurant_table_id', $deadTableId)
+                ->whereIn('status', ['open', 'bill_requested'])
+                ->exists();
+
+            $deadSession = [
+                'sale_id'    => (int) $heldSale->id,
+                'sale_no'    => $heldSale->sale_no,
+                'total'      => (float) $heldSale->grand_total,
+                'table_id'   => $deadTableId ?: null,
+                'table_no'   => $dead?->table?->table_no,
+                'session_no' => $dead?->session_no,
+                'closed_by'  => $dead?->closedBy?->name,
+                'closed_at'  => $dead?->closed_at?->format('d M, h:i A'),
+                'can_reopen' => $canReopen,
+            ];
         }
 
         $requestedMode = $tableSession || $heldSale?->restaurant_table_session_id
@@ -382,6 +417,7 @@ class POSController extends Controller
             ->all();
 
         return view('tenant.pos.index', [
+            'deadSession'      => $deadSession,
             'branches'         => $branches,
             'selectedBranchId' => $selectedBranchId,
             // POS-TERMINAL-PIN-1: a pinned operator is offered ONLY his own terminal. He may be BOUND
