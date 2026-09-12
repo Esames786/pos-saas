@@ -567,6 +567,11 @@ Route::domain('{subdomain}.'.config('tenancy.tenant_base_domain'))
                 Route::get('/held-sales/create', [HeldSaleController::class, 'create'])->name('tenant.held-sales.create');
                 Route::post('/held-sales', [HeldSaleController::class, 'store'])->name('tenant.held-sales.store');
                 Route::post('/held-sales/{salesOrder}/cancel', [HeldSaleController::class, 'cancel'])->name('tenant.held-sales.cancel');
+                // HELD-SALE-DEAD-SESSION-1: anaath bill (jis ki table session band ho chuki ho) ko
+                // kisi KHALI table par le jane ka raasta. ⚠️ NAYA ROUTE = NAYA PERMISSION — deploy.sh
+                // ye sirf Owner ko deta hai; cashier roles ko additive givePermissionTo chahiye warna
+                // unhen wohi 403 milega jis se bachne ke liye ye bana hai.
+                Route::post('/held-sales/{salesOrder}/reattach-table', [HeldSaleController::class, 'reattachTable'])->name('tenant.held-sales.reattach-table');
                 Route::get('/api/pos/held-sales', [HeldSaleController::class, 'ajaxList'])->name('tenant.api.pos.held-sales');
                 Route::get('/api/pos/table-sessions', [HeldSaleController::class, 'ajaxTableSessions'])->name('tenant.api.pos.table-sessions');
                 Route::get('/api/pos/print-jobs/{saleId}', [PrintJobController::class, 'ajaxForSale'])->name('tenant.api.pos.print-jobs');
