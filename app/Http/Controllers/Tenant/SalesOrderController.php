@@ -305,7 +305,17 @@ class SalesOrderController extends Controller
                         ->where('branch_id', $branch->id)
                         ->whereIn('status', ['open', 'bill_requested'])
                         ->lockForUpdate()
-                        ->findOrFail($data['restaurant_table_session_id']);
+                        ->find($data['restaurant_table_session_id']);
+
+                    // `findOrFail` yahan cashier ko Laravel ka andruni paighaam dikhata tha:
+                    // "No query results for model [RestaurantTableSession] 2147". Us se cashier ko
+                    // na sabab pata chalta tha na agla qadam. (12 Sep 2026, Kashif Food table 9.)
+                    if (! $tableSession) {
+                        throw ValidationException::withMessages([
+                            'restaurant_table_session_id' =>
+                                'This table session is closed — payment cannot be completed. Reopen the table, or move this bill to an open table.',
+                        ]);
+                    }
                 } elseif (!empty($data['held_sale_id'])) {
                     // If the held sale already has a session (auto-created on hold), inherit it
                     $heldForSession = SalesOrder::find($data['held_sale_id']);

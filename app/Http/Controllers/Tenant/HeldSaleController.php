@@ -417,10 +417,29 @@ class HeldSaleController extends Controller
 
         $tableSession = null;
         if (!empty($data['restaurant_table_session_id'])) {
+            // ⚠️ Status ki shart yahan LAZMI hai — wohi jo 6 satar neeche doosre branch me hai.
+            // Iske baghair BAND session par bill hold ho jata tha aur phir KABHI pay nahi hota,
+            // kyunke Pay ka raasta khuli session maangta hai. Kashif Food, 12 Sep 2026: session
+            // 22:08:03 par band hui, bill 22:08:28 par us se chipak gaya, Rs 2,465 phans gaye.
+            // Validation is ko nahi rok sakti — rule `exists:` hai, aur band session bhi "mojood" hai.
+            // docs/plans/held-sale-dead-session-2026-09-12.md
             $tableSession = RestaurantTableSession::with('table')
                 ->where('branch_id', $data['branch_id'])
+                ->whereIn('status', ['open', 'bill_requested'])
                 ->lockForUpdate()
                 ->find($data['restaurant_table_session_id']);
+
+            if (! $tableSession) {
+                // Yahan CHUP-CHAAP us table ki maujooda khuli session par switch MAT karna: wahan
+                // naye mehmaan baithe ho sakte hain aur do alag customers ka bill ek check me mil
+                // jayega — ye masle se bura hoga. Saaf inkaar karo; cashier table dobara khol kar
+                // 10 second me save kar lega.
+                throw ValidationException::withMessages([
+                    'restaurant_table_session_id' =>
+                        'This table session is closed. Reopen the table or pick another one, then save the order.',
+                ]);
+            }
+
             $data['order_type'] = 'dine_in';
         } elseif (!empty($data['restaurant_table_id'])) {
             $tableSession = RestaurantTableSession::with('table')
@@ -876,6 +895,149 @@ class HeldSaleController extends Controller
             ->get()
             ->map(fn ($sale) => $this->openOrderPayload($sale, $tableSession))
             ->values();
+    }
+
+    /**
+     * HELD-SALE-DEAD-SESSION-1 / P3 — anaath bill ko kisi KHALI table par le jao.
+     *
+     * P1 bimari rokta hai (band session par bill banega hi nahi). Ye uska ILAJ hai: jo bill pehle se
+     * anaath hain — ya kisi aur wajah se ho jayen — un ke liye cashier ka nikalne ka raasta. Warna
+     * wohi hota hai jo hua: 7 Sep ko Rs 4,300 ka bill CANCEL karna para, 12 Sep ko Rs 2,465 ke liye
+     * database me jana para.
+     *
+     * Dhaancha `RestaurantTableSessionController::merge()` se liya gaya — wo pehle se yehi kaam prod
+     * par kar raha hai. Us se teen cheezein li gayi hain: (a) faisla transaction ke ANDAR lock par,
+     * screen ki maloomat par nahi, (b) sirf `held` chalta hai — paid fiscal history apni jagah rehti
+     * hai, (c) audit `notes` me.
+     *
+     * ⚠️ SAB SE BARA KHATRA: bill kisi OCCUPIED table par chala jaye. Tab do alag customers ka bill
+     * ek check me mil jata hai — ye asal masle se kahin bura hai. Isi liye target table ka faisla
+     * `lockForUpdate` ke andar us lamhe ki haalat par hota hai, na ke us par jo screen ne dekha tha.
+     *
+     * docs/plans/held-sale-dead-session-2026-09-12.md
+     */
+    public function reattachTable(Request $request, SalesOrder $salesOrder)
+    {
+        abort_unless(
+            auth('tenant')->user()?->allowsOrderType('dine_in'),
+            403,
+            'Your account is not allowed to use Dine In orders.'
+        );
+
+        app(UserDataScope::class)->assertPosSelection(
+            auth('tenant')->user(),
+            (int) $salesOrder->branch_id,
+            null,
+        );
+
+        app(\App\Services\Edge\BranchOperatingModeService::class)
+            ->assertSaleMutationAllowed(Branch::findOrFail($salesOrder->branch_id));
+
+        $data = $request->validate([
+            'restaurant_table_id' => ['required', 'exists:restaurant_tables,id'],
+            'terminal_id'         => ['required', 'exists:terminals,id'],
+        ]);
+
+        if ($salesOrder->status !== 'held') {
+            // Paid bill kabhi na hile — merge ka wohi usool: "paid fiscal history stays".
+            throw ValidationException::withMessages([
+                'sale' => 'Only an open (held) bill can be moved to another table.',
+            ]);
+        }
+
+        if ($salesOrder->order_type !== 'dine_in') {
+            throw ValidationException::withMessages([
+                'sale' => 'Only a dine-in bill belongs to a table.',
+            ]);
+        }
+
+        $deadSession = $salesOrder->restaurant_table_session_id
+            ? RestaurantTableSession::find($salesOrder->restaurant_table_session_id)
+            : null;
+
+        // Zinda session wala bill yahan se NAHI guzarta — us ke liye table board par Move hai, jo
+        // dono taraf ke guards lagata hai. Ye raasta sirf MARI HUI session ke liye hai.
+        if ($deadSession && in_array($deadSession->status, ['open', 'bill_requested'], true)) {
+            throw ValidationException::withMessages([
+                'sale' => 'This bill is still on a live table — use Move on the table board instead.',
+            ]);
+        }
+
+        try {
+            $session = DB::connection('tenant')->transaction(function () use ($salesOrder, $data, $deadSession) {
+                $terminal = Terminal::where('branch_id', $salesOrder->branch_id)->find($data['terminal_id']);
+                $shift    = app(ShiftService::class)->lockOpenShiftForTerminal($terminal);
+
+                $table = RestaurantTable::where('branch_id', $salesOrder->branch_id)
+                    ->lockForUpdate()
+                    ->find($data['restaurant_table_id']);
+
+                if (! $table) {
+                    throw new \RuntimeException('That table does not belong to this branch.');
+                }
+
+                // ⚠️ Ye faisla YAHIN hota hai. Screen ki list tab bani thi jab table khali thi; click
+                // tak kisi doosre counter ne wahan mehmaan bitha diye ho sakte hain.
+                $occupied = RestaurantTableSession::where('restaurant_table_id', $table->id)
+                    ->whereIn('status', ['open', 'bill_requested'])
+                    ->lockForUpdate()
+                    ->exists();
+
+                if ($occupied) {
+                    throw new \RuntimeException('That table is occupied now. Refresh the list and pick another one.');
+                }
+
+                $sale = SalesOrder::whereKey($salesOrder->id)->lockForUpdate()->first();
+
+                if (! $sale || $sale->status !== 'held') {
+                    throw new \RuntimeException('This bill changed while you were looking at it. Refresh and try again.');
+                }
+
+                // NAYI session banti hai, purani ZINDA nahi ki jati.
+                //
+                // Sirf safai ki baat nahi: `openSession()` us table ki sab se BARE id wali zinda
+                // session dhoondta hai. Purani session ka id chhota hota hai, to agar us table par
+                // koi naye id wali band session pari ho to board us bill ko dikhata hi nahi — ye
+                // 12 Sep ki raat live hua. Nayi session ka id hamesha sab se bara hota hai.
+                $session = RestaurantTableSession::create([
+                    'session_no'          => 'TS-' . now()->format('YmdHis') . '-' . random_int(100, 999),
+                    'branch_id'           => $sale->branch_id,
+                    'restaurant_table_id' => $table->id,
+                    'opened_by_user_id'   => Auth::id(),
+                    'opened_shift_id'     => $shift->id,
+                    'business_date'       => $shift->business_date->toDateString(),
+                    'guest_count'         => 1,
+                    'status'              => 'open',
+                    'opened_at'           => now(),
+                    'notes'               => 'Bill ' . $sale->sale_no . ' moved here from a closed session ('
+                        . ($deadSession?->session_no ?? 'unknown') . ').',
+                ]);
+
+                // merge() ki tarah floor bhi sath jata hai — bill floor bhi carry karta hai.
+                $sale->update([
+                    'restaurant_floor_id'         => $table->restaurant_floor_id,
+                    'restaurant_table_id'         => $table->id,
+                    'restaurant_table_session_id' => $session->id,
+                ]);
+
+                $table->update(['status' => 'occupied']);
+
+                return $session->load('table');
+            });
+        } catch (ShiftException $e) {
+            throw ValidationException::withMessages(['terminal_id' => $e->getMessage()]);
+        } catch (\RuntimeException $e) {
+            throw ValidationException::withMessages(['restaurant_table_id' => $e->getMessage()]);
+        }
+
+        return response()->json([
+            'ok'                          => true,
+            'sale_id'                     => (int) $salesOrder->id,
+            'restaurant_table_session_id' => (int) $session->id,
+            'restaurant_table_id'         => (int) $session->restaurant_table_id,
+            'table_no'                    => $session->table?->table_no,
+            'message'                     => 'Bill moved to table ' . ($session->table?->table_no ?? '') . '.',
+        ]);
     }
 
     public function cancel(Request $request, SalesOrder $salesOrder, KotCancellationService $cancellationService)
