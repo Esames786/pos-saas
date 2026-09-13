@@ -182,7 +182,7 @@ class SalesAnalyticsMySqlTest extends MySqlTenantTestCase
 
         $res->assertOk();
         $this->assertSame(0.0, (float) $res->viewData('totals')['net_sales']);
-        $res->assertSee('koi sale nahi', false);
+        $res->assertSee('No sales in this period', false);
     }
 
     /** Lamba daur ho to chart mahine par chala jaye — 180 nuqte parhe nahi jaate. */
