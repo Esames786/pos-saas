@@ -30,7 +30,7 @@
 <div class="page-header">
     <div class="page-title">
         <h4>Sales Analytics</h4>
-        <h6>Sales aur growth — {{ $from }} se {{ $to }} ({{ $days }} din)</h6>
+        <h6>Sales and growth — {{ $from }} to {{ $to }} ({{ $days }} days)</h6>
     </div>
 </div>
 
@@ -110,8 +110,8 @@
 @unless ($hasData)
     {{-- Khali daur ka sharif jawab — khali charts se behtar hai ke saaf likh diya jaye. --}}
     <div class="alert alert-secondary" role="status">
-        <strong>Is daur me koi sale nahi.</strong>
-        {{ $from }} se {{ $to }} tak koi bill nahi bana. Koi doosra daur chunein.
+        <strong>No sales in this period.</strong>
+        No bill was created between {{ $from }} and {{ $to }}. Try a different range.
     </div>
 @else
 
@@ -128,9 +128,9 @@
             <div class="small {{ $netCls }}">
                 @if ($growth['comparable'])
                     @if ($netIcon)<i class="ti {{ $netIcon }}"></i>@endif {{ $netTxt }}
-                    <span class="text-muted">vs pichle {{ $days }} din ({{ $money($growth['prev_net']) }})</span>
+                    <span class="text-muted">vs previous {{ $days }} days ({{ $money($growth['prev_net']) }})</span>
                 @else
-                    <span class="text-muted">Pichle daur ka data nahi — moqabala mumkin nahi</span>
+                    <span class="text-muted">No data for the previous period — nothing to compare</span>
                 @endif
             </div>
         </div></div>
@@ -145,7 +145,7 @@
                     @if ($ordIcon)<i class="ti {{ $ordIcon }}"></i>@endif {{ $ordTxt }}
                     <span class="text-muted">vs {{ number_format($growth['prev_ord']) }}</span>
                 @else
-                    <span class="text-muted">Moqabale ka data nahi</span>
+                    <span class="text-muted">Nothing to compare</span>
                 @endif
             </div>
         </div></div>
@@ -156,7 +156,7 @@
             <div class="text-muted small">Average Order Value</div>
             <div class="fw-bold fs-3">{{ $money($totals['aov']) }}</div>
             <div class="small text-muted">
-                Returns is daur me: {{ $money($overview['returns_amount'] ?? 0) }}
+                Returns in this period: {{ $money($overview['returns_amount'] ?? 0) }}
             </div>
         </div></div>
     </div>
@@ -166,9 +166,9 @@
 <div class="row g-3">
     <div class="col-12">
         <div class="card border-0 shadow-sm"><div class="card-body">
-            <h6 class="mb-1">Sales ka rujhan</h6>
+            <h6 class="mb-1">Sales trend</h6>
             <div class="text-muted small mb-2">
-                Net sales {{ $granularity === 'month' ? 'har mahine' : 'har din' }} — returns ghata kar
+                Net sales {{ $granularity === 'month' ? 'per month' : 'per day' }} — returns deducted
             </div>
             <div id="an-trend" style="min-height:300px"></div>
         </div></div>
@@ -177,19 +177,19 @@
     <div class="col-lg-6">
         <div class="card border-0 shadow-sm h-100"><div class="card-body">
             <h6 class="mb-1">Orders</h6>
-            <div class="text-muted small mb-2">Kitne bill bane</div>
+            <div class="text-muted small mb-2">Bills created</div>
             <div id="an-orders" style="min-height:280px"></div>
         </div></div>
     </div>
 
     <div class="col-lg-6">
         <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <h6 class="mb-1">Is daur vs pichla daur</h6>
+            <h6 class="mb-1">This period vs previous</h6>
             <div class="text-muted small mb-2">
                 @if ($growth['comparable'])
-                    {{ $from }} – {{ $to }} ka moqabala {{ $prevFrom }} – {{ $prevTo }} se
+                    {{ $from }} – {{ $to }} compared with {{ $prevFrom }} – {{ $prevTo }}
                 @else
-                    Pichle daur ka data nahi
+                    No previous-period data
                 @endif
             </div>
             <div id="an-compare" style="min-height:280px"></div>
@@ -199,7 +199,7 @@
     <div class="col-lg-6">
         <div class="card border-0 shadow-sm h-100"><div class="card-body">
             <h6 class="mb-1">Category</h6>
-            <div class="text-muted small mb-2">Sab se ziyada bikne wale aath heads</div>
+            <div class="text-muted small mb-2">Top eight heads by sales</div>
             <div id="an-category" style="min-height:300px"></div>
         </div></div>
     </div>
@@ -215,7 +215,7 @@
     <div class="col-lg-3 col-sm-6">
         <div class="card border-0 shadow-sm h-100"><div class="card-body">
             <h6 class="mb-1">Payment</h6>
-            <div class="text-muted small mb-2">Paisa kis shakl me aaya</div>
+            <div class="text-muted small mb-2">How the money came in</div>
             <div id="an-payment" style="min-height:280px"></div>
         </div></div>
     </div>
@@ -268,7 +268,7 @@
         var node = document.querySelector(el);
         if (!node) { return; }
         try { new ApexCharts(node, opts).render(); }
-        catch (e) { node.innerHTML = '<div class="text-muted small p-3">Chart nahi bana.</div>'; }
+        catch (e) { node.innerHTML = '<div class="text-muted small p-3">Chart could not be drawn.</div>'; }
     }
 
     // 1. Sales ka rujhan
@@ -301,11 +301,11 @@
     draw('#an-compare', Object.assign({}, base, {
         chart:  Object.assign({}, base.chart, { type: 'line', height: 280 }),
         series: [
-            { name: 'Is daur', data: net },
-            { name: 'Pichla daur', data: (cmpPrev || []).map(function (v) { return Math.round(v); }) },
+            { name: 'This period', data: net },
+            { name: 'Previous period', data: (cmpPrev || []).map(function (v) { return Math.round(v); }) },
         ],
         stroke: { curve: 'smooth', width: [2, 2], dashArray: [0, 4] },
-        xaxis:  { categories: labels.map(function (_, i) { return 'Din ' + (i + 1); }),
+        xaxis:  { categories: labels.map(function (_, i) { return 'Day ' + (i + 1); }),
                   labels: { hideOverlappingLabels: true } },
         yaxis:  { labels: { formatter: function (v) { return money(Math.round(v)); } } },
         legend: { position: 'top', horizontalAlign: 'left' },
@@ -324,7 +324,7 @@
         var keys = Object.keys(obj || {});
         if (! keys.length) {
             var n = document.querySelector(el);
-            if (n) { n.innerHTML = '<div class="text-muted small p-3">Is daur me kuch nahi.</div>'; }
+            if (n) { n.innerHTML = '<div class="text-muted small p-3">Nothing in this period.</div>'; }
             return;
         }
         draw(el, Object.assign({}, base, {
