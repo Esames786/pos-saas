@@ -420,7 +420,10 @@ class SalesReportService
         string $from,
         string $to,
         ?int $branchId = null,
-        ?\App\Models\Tenant\User $scopeUser = null
+        ?\App\Models\Tenant\User $scopeUser = null,
+        // SALES-ANALYTICS-1: ek order type par chaan-bin. `null` = sab (pehle jaisa) — is liye
+        // dashboard ka "Last 7 Days" card is se bilkul bhi nahi badla.
+        ?string $orderType = null
     ): array {
         $scope = app(\App\Services\Security\UserDataScope::class);
         $day   = $this->businessDayExpr();
@@ -428,6 +431,7 @@ class SalesReportService
         $sales = SalesOrder::query()
             ->whereIn('status', SalesReportEngine::POPULATION)
             ->when($branchId, fn ($q, $v) => $q->where('branch_id', $v))
+            ->when($orderType, fn ($q, $v) => $q->where('order_type', $v))
             ->whereRaw("$day >= ?", [$from])
             ->whereRaw("$day <= ?", [$to]);
         $scope->applyToSales($sales, $scopeUser);
@@ -447,6 +451,13 @@ class SalesReportService
         // A return's order type / terminal live on its originating sales order, so scope through it.
         if ($scope->isScoped($scopeUser)) {
             $returnQuery->whereHas('order', fn ($so) => $scope->applyToSales($so, $scopeUser));
+        }
+
+        // ⚠️ Return ka apna `order_type` khaana nahi hota — wo us ke ASAL bill par hota hai. Agar ye
+        // shart yahan na lagti to "sirf Delivery" chunne par sale to delivery ki aati, magar returns
+        // HAR order type ke ghata diye jate — aur net sales kam dikhta.
+        if ($orderType) {
+            $returnQuery->whereHas('order', fn ($so) => $so->where('order_type', $orderType));
         }
 
         $returns = $returnQuery

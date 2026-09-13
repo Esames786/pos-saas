@@ -42,15 +42,40 @@
              blade bhi isi wajah se `url()` istemal karta hai. --}}
         <form method="GET" action="{{ url('/reports/analytics') }}" class="row g-2 align-items-end">
             <div class="col-12">
-                <div class="d-flex flex-wrap gap-1 mb-2">
-                    @foreach ($presets as $key => $label)
-                        <a class="btn btn-sm {{ $preset === $key ? 'btn-primary' : 'btn-outline-secondary' }}"
-                           href="{{ url('/reports/analytics?' . http_build_query(array_filter(['preset' => $key, 'branch_id' => $selectedBranch]))) }}">
-                            {{ $label }}
-                        </a>
-                    @endforeach
+                <div class="d-flex flex-wrap gap-2 align-items-center justify-content-between mb-2">
+                    <div class="d-flex flex-wrap gap-1">
+                        @foreach ($presets as $key => $label)
+                            {{-- Preset badalne par order type aur branch SATH chalte hain, warna har
+                                 click par filter wapas "All" par gir jata. --}}
+                            <a class="btn btn-sm {{ $preset === $key ? 'btn-primary' : 'btn-outline-secondary' }}"
+                               href="{{ url('/reports/analytics?' . http_build_query(array_filter([
+                                   'preset' => $key, 'branch_id' => $selectedBranch, 'order_type' => $orderType,
+                               ]))) }}">
+                                {{ $label }}
+                            </a>
+                        @endforeach
+                    </div>
+
+                    {{-- Order type — ALL ya koi ek. Sirf wohi types jo ye operator chala sakta hai. --}}
+                    <div class="d-flex flex-wrap gap-1">
+                        <a class="btn btn-sm {{ $orderType === null ? 'btn-dark' : 'btn-outline-dark' }}"
+                           href="{{ url('/reports/analytics?' . http_build_query(array_filter([
+                               'preset' => $preset, 'from' => $from, 'to' => $to, 'branch_id' => $selectedBranch,
+                           ]))) }}">All</a>
+
+                        @foreach ($orderTypeList as $key => $label)
+                            <a class="btn btn-sm {{ $orderType === $key ? 'btn-dark' : 'btn-outline-dark' }}"
+                               href="{{ url('/reports/analytics?' . http_build_query(array_filter([
+                                   'preset' => $preset, 'from' => $from, 'to' => $to,
+                                   'branch_id' => $selectedBranch, 'order_type' => $key,
+                               ]))) }}">{{ $label }}</a>
+                        @endforeach
+                    </div>
                 </div>
             </div>
+
+            {{-- Custom range ke sath order type bhi jaye. --}}
+            <input type="hidden" name="order_type" value="{{ $orderType }}">
 
             <input type="hidden" name="preset" value="custom">
 
@@ -212,9 +237,20 @@
     var cats     = @json($categories);
     var oTypes   = @json($orderTypes);
     var payments = @json($payments);
-    var labels   = Object.keys(D);
-    var net      = labels.map(function (k) { return Math.round(D[k].net_sales); });
-    var orders   = labels.map(function (k) { return D[k].orders; });
+    var keys   = Object.keys(D);
+    var net    = keys.map(function (k) { return Math.round(D[k].net_sales); });
+    var orders = keys.map(function (k) { return D[k].orders; });
+
+    // Axis par "Thu 04 Sep" — sirf tareekh se hafte ki tarteeb nazar nahi aati, aur restaurant ka
+    // karobar usi tarteeb par chalta hai (jumma/hafta bhaari, peer halka).
+    var labels = keys.map(function (k) { return D[k].label || k; });
+    // Tooltip me poora din: "Thursday, 04 Sep 2026".
+    var full   = keys.map(function (k) { return D[k].full || k; });
+
+    var titleFormatter = function (val, opts) {
+        var i = opts && opts.dataPointIndex;
+        return (typeof i === 'number' && full[i]) ? full[i] : val;
+    };
 
     // Ek hi rang-tarteeb har chart par — taake ek cheez har jagah ek hi rang me nazar aaye.
     var PALETTE = ['#1B3A5C', '#B0842F', '#1E7A57', '#A33226', '#5C6A7A', '#7FA3C7', '#D6A94A', '#8FB8A4'];
@@ -243,6 +279,7 @@
         yaxis:  { labels: { formatter: function (v) { return money(Math.round(v)); } } },
         stroke: { curve: 'smooth', width: 2 },
         fill:   { type: 'gradient', gradient: { opacityFrom: 0.35, opacityTo: 0.02 } },
+        tooltip: { x: { formatter: titleFormatter }, y: { formatter: function (v) { return money(v); } } },
     }));
 
     // 2. Orders — ALAG chart, jaan-boojh kar. Sales aur orders ke paimane alag hain; dono ko ek
@@ -253,7 +290,10 @@
         colors: [PALETTE[1]],
         xaxis:  { categories: labels, labels: { rotate: -45, hideOverlappingLabels: true } },
         plotOptions: { bar: { borderRadius: 3, columnWidth: '60%' } },
-        tooltip: { y: { formatter: function (v) { return Number(v).toLocaleString() + ' orders'; } } },
+        tooltip: {
+            x: { formatter: titleFormatter },
+            y: { formatter: function (v) { return Number(v).toLocaleString() + ' orders'; } },
+        },
     }));
 
     // 3. Is daur vs pichla — dono ko "Din 1..N" par rakha hai, taake alag tareekhen aamne saamne aayen.
