@@ -17,15 +17,29 @@
                 </p>
             </div>
 
-            {{-- Branch filter --}}
-            <form method="GET" action="{{ url('/dashboard') }}" class="d-flex gap-2 align-items-center">
-                <select name="branch_id" class="form-select form-select-sm" style="min-width:160px" onchange="this.form.submit()">
-                    <option value="">All Branches</option>
-                    @foreach($branches as $b)
-                        <option value="{{ $b->id }}" {{ $selectedBranch == $b->id ? 'selected' : '' }}>{{ $b->name }}</option>
-                    @endforeach
-                </select>
-            </form>
+            <div class="d-flex gap-2 align-items-center flex-wrap">
+                {{-- SALES-ANALYTICS-1 — link SIRF us ko jis ke paas us route ki ijazat ho. Abhi wo
+                     sirf Owner hai (deploy.sh naye route ki permission sirf Owner ko deta hai, aur
+                     koi additive grant nahi chalaya gaya). @can route ke NAAM par hai, kisi alag
+                     jhande par nahi — is liye jis din owner kisi aur role ko de, button khud ba khud
+                     us ke saamne aa jayega. --}}
+                @can('tenant.reports.analytics')
+                    {{-- `url()`, `route()` nahi — tenant routes {subdomain} group me hain. --}}
+                    <a href="{{ url('/reports/analytics') }}" class="btn btn-sm btn-outline-primary">
+                        <i class="ti ti-chart-line me-1"></i>Analytics
+                    </a>
+                @endcan
+
+                {{-- Branch filter --}}
+                <form method="GET" action="{{ url('/dashboard') }}" class="d-flex gap-2 align-items-center">
+                    <select name="branch_id" class="form-select form-select-sm" style="min-width:160px" onchange="this.form.submit()">
+                        <option value="">All Branches</option>
+                        @foreach($branches as $b)
+                            <option value="{{ $b->id }}" {{ $selectedBranch == $b->id ? 'selected' : '' }}>{{ $b->name }}</option>
+                        @endforeach
+                    </select>
+                </form>
+            </div>
         </div>
 
         {{-- Alerts --}}
