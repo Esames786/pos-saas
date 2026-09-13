@@ -153,6 +153,12 @@ class EdgeUpdateInstaller
         if (! is_dir($dst) && ! @mkdir($dst, 0775, true) && ! is_dir($dst)) {
             throw new RuntimeException('UPDATE_STAGE_DIR: could not create ' . $dst);
         }
+        // P5: a release artifact is ~10k files; PHP copy() manages ~20 files/s on a Windows appliance disk. Windows ships
+        // robocopy — use it for the bulk copy (never following junctions: /XJ) and fall back to the PHP loop elsewhere.
+        // The signed-manifest check after staging still verifies every listed byte, whichever path copied them.
+        if (DIRECTORY_SEPARATOR === '\\' && $this->robocopy($src, $dst)) {
+            return;
+        }
         $it = new \RecursiveIteratorIterator(
             new \RecursiveDirectoryIterator($src, \FilesystemIterator::SKIP_DOTS),
             \RecursiveIteratorIterator::SELF_FIRST
@@ -180,6 +186,24 @@ class EdgeUpdateInstaller
                 }
             }
         }
+    }
+
+    /** robocopy /E /XJ; exit codes 0-7 = success. Returns false when robocopy is unavailable so the PHP loop runs. */
+    private function robocopy(string $src, string $dst): bool
+    {
+        $exe = getenv('SystemRoot') ? getenv('SystemRoot') . '\\System32\\robocopy.exe' : 'robocopy.exe';
+        if (! is_file($exe)) {
+            return false;
+        }
+        $cmd = '"' . $exe . '" "' . rtrim($src, '/\\') . '" "' . rtrim($dst, '/\\') . '" /E /XJ /NFL /NDL /NJH /NJS /NP /R:2 /W:1';
+        $out = [];
+        $code = 1;
+        @exec($cmd . ' 2>&1', $out, $code);
+        if ($code >= 8) {
+            throw new RuntimeException('UPDATE_STAGE_COPY_FAILED: robocopy exit ' . $code . ' ' . mb_substr(implode(' ', $out), 0, 200));
+        }
+
+        return true;
     }
 
     /** Windows junction / mount point detection (PHP reports some reparse points as directories, not links). */

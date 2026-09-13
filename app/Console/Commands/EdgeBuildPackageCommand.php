@@ -28,6 +28,7 @@ class EdgeBuildPackageCommand extends Command
         {--allow-dirty : DEV/TEST only — permit a dirty tree + --git-commit override}
         {--git-commit= : (dev only) override the stamped commit}
         {--vendor-junction= : (dev/test only) build app/ without vendor and junction this vendor dir into it}
+        {--vendor-from= : RELEASE: the vendor closure from a separate `composer install --no-dev` tree (its composer.lock must equal this tree composer.lock)}
         {--force : Delete a non-empty prior PACKAGE at dest first}';
 
     protected $description = 'Build the restricted Bingoo Edge Windows appliance package from the accepted artifact (boundary-audited).';
@@ -75,6 +76,32 @@ class EdgeBuildPackageCommand extends Command
         $artifactConfig['runtime_dirs'] = ['bootstrap/cache', 'storage/framework/cache/data', 'storage/framework/views', 'storage/framework/sessions', 'storage/logs', 'storage/app'];
         if ($this->option('vendor-junction')) {
             $artifactConfig['include'] = array_values(array_diff((array) $artifactConfig['include'], ['vendor']));
+        }
+        $vendorFrom = rtrim(str_replace('\\', '/', (string) ($this->option('vendor-from') ?? '')), '/');
+        if ($vendorFrom !== '') {
+            // The no-dev closure must be the one this lock file describes — and must really be a no-dev install.
+            if (! is_file($vendorFrom . '/autoload.php') || ! is_file($vendorFrom . '/composer/installed.json')) {
+                $this->error("--vendor-from [$vendorFrom] is not a Composer vendor directory (autoload.php / composer/installed.json missing).");
+
+                return self::FAILURE;
+            }
+            $lockBeside = dirname($vendorFrom) . '/composer.lock';
+            if (! is_file($lockBeside) || hash_file('sha256', $lockBeside) !== hash_file('sha256', base_path('composer.lock'))) {
+                $this->error('--vendor-from: the composer.lock beside that vendor does not match this tree\'s composer.lock — rebuild the closure from THIS lock file.');
+
+                return self::FAILURE;
+            }
+            $installed = json_decode((string) file_get_contents($vendorFrom . '/composer/installed.json'), true);
+            if (! is_array($installed) || ($installed['dev'] ?? true) !== false) {
+                $this->error('--vendor-from: that closure was not installed with --no-dev (composer/installed.json reports dev=true).');
+
+                return self::FAILURE;
+            }
+            $artifactConfig['vendor_source'] = $vendorFrom;
+        } elseif ($release) {
+            $this->error('A release package needs --vendor-from=<no-dev vendor closure> (the developer vendor carries dev packages). Use --allow-dirty for a dev/test package.');
+
+            return self::FAILURE;
         }
         $meta = [
             'git_commit' => $commit,

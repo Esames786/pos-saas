@@ -19,9 +19,6 @@ class EdgePurchaseReturnEnvelopeBuilder
     public const SCHEMA = 'edge-purchase-return-envelope-v1';
     public const EVENT = 'purchase_return';
 
-    public function __construct(private readonly EdgeBootstrapService $canonical)
-    {
-    }
 
     /**
      * @param array $return cloud_grn_id, grn_no, cloud_supplier_id, supplier_code, supplier_name, return_date (Y-m-d), reason_code,
@@ -74,13 +71,13 @@ class EdgePurchaseReturnEnvelopeBuilder
             'freshness' => ['purchase_return_watermark' => $freshness['watermark'] ?? null, 'purchase_return_as_of' => $freshness['as_of'] ?? null],
             'created_at' => now()->toIso8601String(),
         ];
-        $envelope['content_hash'] = hash('sha256', $this->canonical->canonicalJson($envelope));
+        $envelope['content_hash'] = hash('sha256', EdgeCanonicalJson::encode($envelope));
 
         return $envelope;
     }
 
     public function canonicalEnvelopeJson(array $envelope): string
     {
-        return $this->canonical->canonicalJson($envelope);
+        return EdgeCanonicalJson::encode($envelope);
     }
 }

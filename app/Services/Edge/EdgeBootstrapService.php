@@ -825,20 +825,10 @@ class EdgeBootstrapService
 
     public function canonicalJson(mixed $data): string
     {
-        return json_encode($this->canonicalize($data), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        return EdgeCanonicalJson::encode($data); // P5: the dependency-free shared strategy (appliance classes use it directly)
     }
 
-    private function canonicalize(mixed $v): mixed
-    {
-        if (is_array($v)) {
-            if (array_is_list($v)) {
-                return array_map(fn ($x) => $this->canonicalize($x), $v);
-            }
-            ksort($v);
-            return array_map(fn ($x) => $this->canonicalize($x), $v);
-        }
-        return $v;
-    }
+    // canonicalize() moved to EdgeCanonicalJson (P5).
 
     private function manifestHash(EdgeBootstrapSnapshot $snapshot, array $summary): string
     {
@@ -872,15 +862,7 @@ class EdgeBootstrapService
         string $configSchemaVersion,
         array $sectionSummary,
     ): string {
-        return hash('sha256', $this->canonicalJson([
-            'schema_version' => $schemaVersion, 'snapshot_uuid' => $snapshotUuid,
-            'tenant_id' => $tenantId, 'branch_id' => $branchId,
-            'device_public_uuid' => $deviceUuid,
-            'activation_epoch' => $activationEpoch,
-            'config_revision' => $configRevision,
-            'config_schema_version' => $configSchemaVersion,
-            'sections' => $sectionSummary,
-        ]));
+        return EdgeCanonicalJson::manifestHash($schemaVersion, $snapshotUuid, $tenantId, $branchId, $deviceUuid, $activationEpoch, $configRevision, $configSchemaVersion, $sectionSummary);
     }
 
     public function audit(string $event, EdgeBootstrapSnapshot $snapshot): void

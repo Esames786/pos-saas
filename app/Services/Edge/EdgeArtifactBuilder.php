@@ -27,6 +27,21 @@ class EdgeArtifactBuilder
         return new self((array) config('edge.artifact'));
     }
 
+    /**
+     * P5 RELEASE SHAPE — the vendor closure of a release artifact comes from a SEPARATE `composer install --no-dev`
+     * tree (config `vendor_source`), never from the developer worktree's vendor (dev packages, tests, scratch).
+     * Planning, copying and hashing all read `vendor/*` from that tree; every other include reads from $root.
+     */
+    private function sourceFor(string $root, string $rel): string
+    {
+        $vendorSource = rtrim(str_replace('\\', '/', (string) ($this->config['vendor_source'] ?? '')), '/');
+        if ($vendorSource !== '' && ($rel === 'vendor' || str_starts_with($rel, 'vendor/'))) {
+            return $vendorSource . substr($rel, strlen('vendor'));
+        }
+
+        return $root . '/' . $rel;
+    }
+
     /** Relative file paths (POSIX slashes) the artifact would contain, deterministic (sorted). */
     public function plan(string $root): array
     {
@@ -34,7 +49,7 @@ class EdgeArtifactBuilder
         $files = [];
 
         foreach ((array) ($this->config['include'] ?? []) as $entry) {
-            $abs = $root . '/' . $entry;
+            $abs = $this->sourceFor($root, $entry);
             if (is_file($abs)) {
                 if (! $this->isExcluded($entry)) {
                     $files[$entry] = true;
@@ -43,7 +58,7 @@ class EdgeArtifactBuilder
             }
             if (is_dir($abs)) {
                 foreach ($this->walk($abs) as $absFile) {
-                    $rel = ltrim(substr(str_replace('\\', '/', $absFile), strlen($root) + 1), '/');
+                    $rel = $entry . '/' . ltrim(substr(str_replace('\\', '/', $absFile), strlen(str_replace('\\', '/', $abs)) + 1), '/');
                     if (! $this->isExcluded($rel)) {
                         $files[$rel] = true;
                     }
@@ -130,6 +145,9 @@ class EdgeArtifactBuilder
             'min_db'                  => (string) config('edge.min_db'),
             'capabilities'            => array_values((array) config('edge.capabilities', [])),
             'runtime_mode_supported'  => 'branch_server',
+            // P5: which vendor closure this artifact carries — the lock file hash binds it to the source tree's composer.lock.
+            'vendor_source'           => (string) ($this->config['vendor_source'] ?? '') !== '' ? 'separate_no_dev_closure' : 'root_tree',
+            'vendor_lock_sha256'      => $fileHashes['composer.lock'] ?? null,
             'file_count'              => count($fileHashes),
             'manifest_hash'           => $manifestHash,
             'files'                   => $fileHashes,
@@ -157,7 +175,7 @@ class EdgeArtifactBuilder
         $root = rtrim(str_replace('\\', '/', $root), '/');
         $dest = rtrim(str_replace('\\', '/', $dest), '/');
         foreach ($plan as $rel) {
-            $src = $root . '/' . $rel;
+            $src = $this->sourceFor($root, $rel);
             $out = $dest . '/' . $rel;
             if (! is_file($src)) {
                 continue;
@@ -202,6 +220,9 @@ class EdgeArtifactBuilder
 
     private function isExcluded(string $rel): bool
     {
+        if (in_array($rel, (array) ($this->config['keep'] ?? []), true)) {
+            return false; // explicitly kept: a canonical migration needs it (P5)
+        }
         foreach ((array) ($this->config['exclude'] ?? []) as $pat) {
             if (fnmatch($pat, $rel)) {
                 return true;
@@ -211,7 +232,14 @@ class EdgeArtifactBuilder
                 return true;
             }
             if (str_contains($pat, '*') && fnmatch($pat, basename($rel))) {
-                return true;
+                // A Cloud-MODULE basename glob (starts with a class-name letter: 'Catering*', 'Wip*', 'Supplier*' …) prunes
+                // this application's own source only — never a framework/library file under vendor/. Extension and
+                // dot-file globs ('*.pem', '.env.*', 'id_rsa.*') keep applying everywhere.
+                $isModuleGlob = preg_match('/^[A-Z]/', $pat) === 1;
+                $isLibraryPath = str_starts_with($rel, 'vendor/') || $rel === 'vendor';
+                if (! ($isModuleGlob && $isLibraryPath)) {
+                    return true;
+                }
             }
         }
 

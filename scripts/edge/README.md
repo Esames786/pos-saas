@@ -77,6 +77,9 @@ The installer work listed as "later" is now here (see `appliance/README-INSTALL.
 | `New-EdgeServerCertificate.ps1 -ExportPfx` | issues the server cert EXPORTABLE and writes a PFX for `edge:local:gateway-cert` (PEM files for the nginx gateway) |
 | `appliance/edge-launcher.php` | installed as `<InstallRoot>\artisan`: resolves the active runtime version + the appliance env dir |
 | `appliance/appliance.env.template` | keys only — never a value |
+| `Invoke-EdgeCertification.ps1` (P5) | lab certification evidence kit (admin): tasks, crash restarts, reboot auto-start, LAN-without-WAN, security/ACL inspection, health, report |
+| `Test-EdgeCashierTrust.ps1` (P5) | cashier-PC branch-CA trust proof over HTTPS with full validation |
+| `appliance/include-probe.php` (P5) | auto-prepend probe: which files a runtime process executed (release = only the installed package) |
 
 The web listener choice is made: **nginx TLS gateway → loopback PHP backends** (`edge:local:serve`). Still physical
 certification (not provable on a non-elevated dev box): task registration under the service account, reboot

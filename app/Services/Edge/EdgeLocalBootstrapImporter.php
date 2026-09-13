@@ -88,7 +88,6 @@ class EdgeLocalBootstrapImporter
     ];
 
     public function __construct(
-        private readonly EdgeBootstrapService $bootstrap,
         private readonly EdgeLocalConfigRefreshApplier $refresh,
     ) {
     }
@@ -194,7 +193,7 @@ class EdgeLocalBootstrapImporter
             if ($rows === null) {
                 throw new RuntimeException("Missing section payload for [{$name}].");
             }
-            $liveHash = hash('sha256', $this->bootstrap->canonicalJson($rows));
+            $liveHash = EdgeCanonicalJson::hash($rows);
             if (! hash_equals((string) ($meta['hash'] ?? ''), $liveHash)) {
                 throw new RuntimeException("SECTION_HASH_MISMATCH: section [{$name}] failed integrity verification.");
             }
@@ -203,7 +202,7 @@ class EdgeLocalBootstrapImporter
             }
         }
 
-        $recomputed = $this->bootstrap->computeManifestHash(
+        $recomputed = EdgeCanonicalJson::manifestHash(
             (string) $manifest['schema_version'],
             (string) $manifest['snapshot_uuid'],
             (int) $manifest['tenant_id'],

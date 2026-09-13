@@ -18,9 +18,6 @@ class EdgeReturnEnvelopeBuilder
 {
     public const SCHEMA = 'edge-return-envelope-v1';
 
-    public function __construct(private readonly EdgeBootstrapService $canonical)
-    {
-    }
 
     /**
      * @param  array{kind:string, cloud_sales_order_id:?int, sale_uuid:?string}  $origin
@@ -80,13 +77,13 @@ class EdgeReturnEnvelopeBuilder
             ],
             'created_at' => now()->toIso8601String(),
         ];
-        $envelope['content_hash'] = hash('sha256', $this->canonical->canonicalJson($envelope));
+        $envelope['content_hash'] = hash('sha256', EdgeCanonicalJson::encode($envelope));
 
         return $envelope;
     }
 
     public function canonicalEnvelopeJson(array $envelope): string
     {
-        return $this->canonical->canonicalJson($envelope);
+        return EdgeCanonicalJson::encode($envelope);
     }
 }

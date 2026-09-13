@@ -20,6 +20,28 @@ WAN restored → the appliance REMAINS the writer → sync/reconcile → control
 | `templates/` | `appliance.env.template` (keys only), `edge-launcher.php`, `mime.types`, this file |
 | `update/edge-update-<v>.json` | the **signed** update package for this same artifact |
 
+## Building a RELEASE package (build host, never an appliance)
+
+1. Export the accepted commit and build the no-dev vendor closure beside its lock file:
+   `git archive --format=tar <commit> | tar -x -C D:\build\edge-src` then, in that directory,
+   `composer install --no-dev --prefer-dist --optimize-autoloader`.
+2. Mint (once) the update-signing keypair on the build host: `php artisan edge:update:keygen --private-out=D:\secure\edge-update-signing.key`.
+   The private key goes into release-signing custody (offline/HSM-backed store or the CI secret store) — never git,
+   never an appliance. The printed PUBLIC key is every appliance's `EDGE_UPDATE_PUBLIC_KEY` (`-UpdatePublicKey`).
+3. From the clean, committed worktree: `php artisan edge:build-package D:\out\BingooEdge-<v> --vendor-from=D:\build\edge-src\vendor
+   --php-runtime=<php dir> --gateway=<nginx.exe> --signing-key-file=D:\secure\edge-update-signing.key`.
+   A release build refuses a dirty tree, a missing `--vendor-from`, a closure whose `composer.lock` differs, or a closure
+   installed with dev packages. `edge:audit-package` verifies the result; the manifest records `vendor_source`.
+
+## Certifying a lab appliance (Administrator)
+
+`Invoke-EdgeCertification.ps1 -Phase Preflight|Tasks|Crash|PreReboot|PostReboot|Lan|Security|Health|Report -InstallRoot … -EvidenceDir …`
+collects the certification evidence (task definitions, supervisor restarts, reboot auto-start timings, LAN-without-WAN
+reachability, secret/ACL inspection, health) into JSON; `Test-EdgeCashierTrust.ps1` runs on the cashier PC and proves
+the branch-CA trust chain with full certificate validation. `scripts/edge/appliance/include-probe.php` (auto-prepended
+via `PHP_INI_SCAN_DIR`) proves a runtime executes only files from the installed package. See
+`docs/status/edge-p5-physical-certification.md`.
+
 ## Windows service model
 
 Every process is a **Windows Scheduled Task**: boot start, restart 999× every minute, a restricted service account

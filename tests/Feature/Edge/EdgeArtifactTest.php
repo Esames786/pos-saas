@@ -251,6 +251,8 @@ class EdgeArtifactTest extends TestCase
             'app/Services/Edge/EdgeRestoreService.php',
             'app/Console/Commands/EdgeLocalBackupCommand.php',
             'app/Console/Commands/EdgeLocalRestoreCommand.php',
+            // P5 — a canonical tenant migration RUNS this seeder: db-init on a fresh appliance needs it (release-shape finding).
+            'database/seeders/Tenant/CateringServiceTimePresetSeeder.php',
             // P4 — the Windows appliance runtime: web backend, service plan, health, first-boot pairing/bootstrap, scripts.
             'app/Services/Edge/EdgeSupervisionPlan.php',
             'app/Services/Edge/EdgeApplianceHealthService.php',
@@ -357,6 +359,35 @@ class EdgeArtifactTest extends TestCase
         $this->assertFileDoesNotExist($dest . '/app/Services/Edge/EdgeInboundSaleIngestionService.php', 'CLOUD_INGESTION_FILES');
         $this->assertFileDoesNotExist($dest . '/app/Services/Edge/EdgeInboundSupplierFinanceIngestionService.php', 'CLOUD_SUPPLIER_FINANCE_INGESTION_FILES');
         $this->assertFileDoesNotExist($dest . '/app/Services/Finance/SupplierPayableService.php', 'CLOUD_SUPPLIER_FINANCE_AUTHORITY_FILES');
+    }
+
+    /** P5 release-shape finding: a canonical tenant migration RUNS a seeder — the artifact must ship it and the models it loads. */
+    public function test_every_seeder_a_migration_runs_ships_with_the_models_it_loads(): void
+    {
+        $plan = array_flip(EdgeArtifactBuilder::fromConfig()->plan(base_path()));
+        $referenced = [];
+        foreach (array_merge(glob(base_path('database/migrations/tenant/*.php')) ?: [], glob(base_path('database/migrations/edge/*.php')) ?: []) as $migration) {
+            if (preg_match_all('/Database\\\\Seeders\\\\([A-Za-z0-9_\\\\]+)/', (string) file_get_contents($migration), $m)) {
+                foreach ($m[1] as $class) {
+                    $referenced[$class] = basename($migration);
+                }
+            }
+        }
+        $this->assertNotEmpty($referenced, 'the guard expects at least one migration-run seeder (the catering presets)');
+        foreach ($referenced as $class => $migration) {
+            $seederRel = 'database/seeders/' . str_replace('\\', '/', $class) . '.php';
+            $this->assertArrayHasKey($seederRel, $plan, "{$migration} runs {$class}: the artifact must ship {$seederRel} or db-init dies on a fresh appliance");
+            if (preg_match_all('/^use (App\\\\Models\\\\[A-Za-z0-9_\\\\]+);/m', (string) file_get_contents(base_path($seederRel)), $uses)) {
+                foreach ($uses[1] as $model) {
+                    $modelRel = str_replace('\\', '/', preg_replace('/^App\\\\/', 'app/', $model)) . '.php';
+                    $this->assertArrayHasKey($modelRel, $plan, "{$class} loads {$model}: the artifact must ship {$modelRel}");
+                }
+            }
+        }
+        // …and the keep list stays minimal: Catering RUNTIME is still physically excluded.
+        $this->assertArrayNotHasKey('app/Services/Catering/CateringEstimateService.php', $plan);
+        $this->assertArrayNotHasKey('database/seeders/Tenant/KashifClientMenuSeeder.php', $plan);
+        $this->assertArrayNotHasKey('database/seeders/MasterSeeder.php', $plan);
     }
 
     public function test_branch_server_allows_the_productization_commands_and_denies_cloud_ones(): void

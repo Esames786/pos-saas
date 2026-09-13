@@ -164,6 +164,50 @@ class EdgePackageBuilderTest extends TestCase
         }
     }
 
+    /** P5 — a RELEASE artifact takes its vendor closure from a separate no-dev tree and hashes it into the manifest. */
+    public function test_a_release_build_takes_vendor_from_the_separate_no_dev_closure_and_hashes_it(): void
+    {
+        $closure = $this->tmp();
+        mkdir($closure . '/vendor/acme/lib', 0775, true);
+        mkdir($closure . '/vendor/composer', 0775, true);
+        file_put_contents($closure . '/vendor/autoload.php', '<?php // release closure');
+        file_put_contents($closure . '/vendor/composer/installed.json', json_encode(['dev' => false, 'packages' => []]));
+        file_put_contents($closure . '/vendor/acme/lib/Lib.php', '<?php // acme');
+        mkdir($closure . '/vendor/acme/lib/tests', 0775, true);
+        file_put_contents($closure . '/vendor/acme/lib/tests/LibTest.php', '<?php // dev cruft that the exclude list drops');
+        // Framework files whose basenames collide with the Cloud-MODULE globs ('Wip*', 'Purchase*', 'Supplier*') MUST ship:
+        // the release runtime could not boot without Illuminate's WipeCommand (P5 finding).
+        mkdir($closure . '/vendor/acme/lib/Console', 0775, true);
+        file_put_contents($closure . '/vendor/acme/lib/Console/WipeCommand.php', '<?php // Illuminate\\Database\\Console\\WipeCommand look-alike');
+        file_put_contents($closure . '/vendor/acme/lib/Console/PurchaseGateway.php', '<?php // a payment library class');
+        file_put_contents($closure . '/vendor/acme/lib/secret.pem', '-----BEGIN PRIVATE KEY-----');
+        copy(base_path('composer.lock'), $closure . '/composer.lock');
+        $cfg = (array) config('edge.artifact');
+        $cfg['include'] = ['artisan', 'composer.json', 'composer.lock', 'vendor', 'scripts/edge'];
+        $cfg['vendor_source'] = $closure . '/vendor';
+        $dest = $this->tmp();
+        $summary = (new EdgeArtifactBuilder($cfg))->build(base_path(), $dest, ['git_commit' => 'rel']);
+        $this->assertSame('separate_no_dev_closure', $summary['vendor_source']);
+        $this->assertSame(hash_file('sha256', base_path('composer.lock')), $summary['vendor_lock_sha256']);
+        $this->assertFileExists($dest . '/vendor/autoload.php');
+        $this->assertFileExists($dest . '/vendor/acme/lib/Lib.php');
+        $this->assertFileDoesNotExist($dest . '/vendor/acme/lib/tests/LibTest.php', 'the artifact exclude list still applies to the closure');
+        $this->assertFileDoesNotExist($dest . '/vendor/laravel', 'nothing from the developer worktree vendor');
+        $this->assertFileExists($dest . '/vendor/acme/lib/Console/WipeCommand.php', 'module basename globs never prune vendor code');
+        $this->assertFileExists($dest . '/vendor/acme/lib/Console/PurchaseGateway.php');
+        $this->assertFileDoesNotExist($dest . '/vendor/acme/lib/secret.pem', 'extension globs still apply under vendor');
+        $manifest = json_decode((string) file_get_contents($dest . '/edge-build-manifest.json'), true);
+        $this->assertSame(hash_file('sha256', $closure . '/vendor/autoload.php'), $manifest['files']['vendor/autoload.php'], 'closure files are hashed into the signed manifest');
+        // The build command refuses a closure whose lock file differs, or that was installed WITH dev packages.
+        file_put_contents($closure . '/composer.lock', '{"changed": true}');
+        $this->artisan('edge:build-package', ['dest' => $this->tmp(), '--allow-dirty' => true, '--no-sign' => true, '--vendor-from' => $closure . '/vendor'])
+            ->expectsOutputToContain('does not match')->assertExitCode(1);
+        copy(base_path('composer.lock'), $closure . '/composer.lock');
+        file_put_contents($closure . '/vendor/composer/installed.json', json_encode(['dev' => true, 'packages' => []]));
+        $this->artisan('edge:build-package', ['dest' => $this->tmp(), '--allow-dirty' => true, '--no-sign' => true, '--vendor-from' => $closure . '/vendor'])
+            ->expectsOutputToContain('--no-dev')->assertExitCode(1);
+    }
+
     public function test_the_release_command_refuses_a_dirty_tree_and_the_audit_command_reports(): void
     {
         // The build command is a BUILD-HOST command: it is not allowlisted on a Branch Server.

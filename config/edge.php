@@ -330,6 +330,9 @@ return [
             'bootstrap',
             'config',
             'database/migrations',
+            // P5: a canonical tenant migration RUNS a seeder (schema coherence on a fresh appliance) — ship EXACTLY that seeder
+            // and the model it needs (see 'keep' below); never a whole seeders directory, never master/demo seeders.
+            'database/seeders/Tenant/CateringServiceTimePresetSeeder.php',
             'lang',
             'public',
             'resources',
@@ -343,6 +346,16 @@ return [
             'artisan',
             'composer.json',
             'composer.lock',
+        ],
+        /*
+        | KEEP — files the exclude globs would prune but a canonical tenant MIGRATION needs to apply the schema on a fresh
+        | appliance (P5 release-shape finding: 2026_08_24_000002_create_catering_service_time_presets runs this seeder, which
+        | loads this model). Data-preset classes only — no Catering runtime logic. EdgeArtifactTest derives the list from the
+        | migrations and fails when a new migration references a seeder that is not kept.
+        */
+        'keep' => [
+            'database/seeders/Tenant/CateringServiceTimePresetSeeder.php',
+            'app/Models/Tenant/CateringServiceTimePreset.php',
         ],
         'exclude' => [
             '.git', '.git/*',

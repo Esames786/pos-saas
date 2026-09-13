@@ -165,9 +165,19 @@ class EdgeCleanMachineInstallMySqlTest extends MySqlTenantTestCase
         // 1. Packages: A = 0.1.0-edge (install), B = 0.2.0-edge (signed update). Real `edge:build-package` runs.
         $keyFile = $this->scratch . '\\update-signing.key';
         file_put_contents($keyFile, $this->updateKeys['secret']);
-        $this->assertSame(0, Artisan::call('edge:build-package', ['dest' => $this->pkgA, '--allow-dirty' => true, '--git-commit' => 'clean-install-proof', '--signing-key-file' => $keyFile, '--vendor-junction' => base_path('vendor')]), Artisan::output());
+        $vendorFrom = (string) (getenv('EDGE_PROOF_VENDOR_FROM') ?: '');
+        $vendorOpt = $vendorFrom !== '' ? ['--vendor-from' => $vendorFrom] : ['--vendor-junction' => base_path('vendor')];
+        $this->report['RELEASE_VENDOR_REAL_FILES'] = $vendorFrom !== '' ? 'yes (--vendor-from ' . $vendorFrom . ')' : 'no (dev junction — set EDGE_PROOF_VENDOR_FROM for the release shape)';
+        $this->assertSame(0, Artisan::call('edge:build-package', ['dest' => $this->pkgA, '--allow-dirty' => true, '--git-commit' => 'clean-install-proof', '--signing-key-file' => $keyFile] + $vendorOpt), Artisan::output());
         config(['edge.app_version' => '0.2.0-edge']);
-        $this->assertSame(0, Artisan::call('edge:build-package', ['dest' => $this->pkgB, '--allow-dirty' => true, '--git-commit' => 'clean-install-proof-2', '--signing-key-file' => $keyFile, '--vendor-junction' => base_path('vendor')]), Artisan::output());
+        $this->assertSame(0, Artisan::call('edge:build-package', ['dest' => $this->pkgB, '--allow-dirty' => true, '--git-commit' => 'clean-install-proof-2', '--signing-key-file' => $keyFile] + $vendorOpt), Artisan::output());
+        if ($vendorFrom !== '') {
+            $this->assertFileExists($this->pkgA . '\\app\\vendor\\autoload.php', 'release shape: a REAL vendor closure inside the package');
+            $this->assertFalse(is_link($this->pkgA . '\\app\\vendor'));
+            $this->assertSame('separate_no_dev_closure', json_decode((string) file_get_contents($this->pkgA . '\\app\\edge-build-manifest.json'), true)['vendor_source'] ?? null);
+            $this->assertDirectoryDoesNotExist($this->pkgA . '\\app\\vendor\\phpunit', 'no dev packages in the release closure');
+            $this->assertDirectoryDoesNotExist($this->pkgA . '\\app\\vendor\\mockery');
+        }
         config(['edge.app_version' => env('EDGE_APP_VERSION', '0.1.0-edge')]);
         @unlink($keyFile);
         $manifestA = json_decode((string) file_get_contents($this->pkgA . '\\package-manifest.json'), true);
@@ -286,7 +296,30 @@ class EdgeCleanMachineInstallMySqlTest extends MySqlTenantTestCase
         $this->report['FIRST_WARM_SYNC'] = 'stock ' . json_encode($health['freshness']['stock']['ok']) . ', config ' . json_encode($health['freshness']['config']['ok']) . ', last ack ' . $health['authority']['last_heartbeat_ack_at'];
         $this->report['STANDBY_READY'] = $health['status'] . ' (' . implode('; ', $health['problems']) . ')';
 
+        // 6b. EXECUTES ONLY PACKAGE FILES: every PHP file the installed runtime includes lies under the installed version
+        //     directory (release shape) — a dev junction would resolve vendor to the shared tree and is reported as such.
+        $versionDir = $this->installRoot . '\\runtime\\versions\\0.1.0-edge';
+        $probeOut = $this->scratch . '\\include-probe-cli.jsonl';
+        [$code, $out] = $this->edge(['edge:local:health', '--json', '--no-interaction'], ['EDGE_INCLUDE_PROBE_OUT' => $probeOut, 'PHP_INI_SCAN_DIR' => $this->probeIniDir($versionDir)]);
+        $this->assertSame(0, $code, $out);
+        $this->assertIncludedFilesUnder($probeOut, $versionDir, $vendorFrom !== '', 'edge:local:health via the launcher');
+
         // 7. The installed runtime SERVES: loopback web backend (edge:local:serve) + the TLS gateway fronting it.
+        // 7a. Web-side include probe: the SAME loopback server command the serve task spawns, with a one-line router wrapper
+        //     (test scaffolding) that includes the INSTALLED probe first — the built-in server ignores auto_prepend for routers.
+        $probeWeb = $this->scratch . '\\include-probe-web.jsonl';
+        $router = $this->scratch . '\\probe-router.php';
+        $v = str_replace('\\', '/', $versionDir);
+        file_put_contents($router, "<?php\nrequire '{$v}/scripts/edge/appliance/include-probe.php';\nrequire '{$v}/public/index.php';\n");
+        $this->startProcess([PHP_BINARY, '-S', '127.0.0.1:' . $this->webPort, '-t', $versionDir . '\\public', $router], $versionDir, 'webprobe',
+            array_merge($this->applianceEnv(), ['BINGOO_EDGE_ENV_DIR' => $this->dataRoot . '\\config', 'EDGE_INCLUDE_PROBE_OUT' => $probeWeb]));
+        $this->waitPort($this->webPort, 30, 'web probe backend');
+        $this->assertSame(200, $this->http('GET', 'http://127.0.0.1:' . $this->webPort . '/edge/local/health')['status']);
+        $this->assertSame(200, $this->http('GET', 'http://127.0.0.1:' . $this->webPort . '/edge/local/login')['status']);
+        $this->stopProcess('webprobe');
+        $this->assertIncludedFilesUnder($probeWeb, $versionDir, $vendorFrom !== '', 'the web backend (health + login requests)', [$router]);
+        $this->report['RUNS_ONLY_PACKAGE_FILES'] = $vendorFrom !== '' ? 'yes (CLI + web include probe: every file under runtime\\versions\\0.1.0-edge)' : 'app/bootstrap/config/routes only (dev junction resolves vendor to the shared tree)';
+
         $this->startEdge(['edge:local:serve', '--worker=1', '--no-interaction'], 'web1');
         $this->waitPort($this->webPort, 30, 'web backend');
         $direct = $this->http('GET', 'http://127.0.0.1:' . $this->webPort . '/edge/local/health');
@@ -381,6 +414,10 @@ class EdgeCleanMachineInstallMySqlTest extends MySqlTenantTestCase
         $this->assertSame('0.2.0-edge', $health2['update']['active_version_pointer']);
         $this->assertSame('0.2.0-edge', $health2['runtime']['edge_app_version'], 'the launcher now boots the 0.2.0 runtime, which knows its own version');
         $this->assertTrue($health2['binding']['bound'], 'binding preserved across the update');
+        $probeOut2 = $this->scratch . '\\include-probe-cli-020.jsonl';
+        [$code, $out] = $this->edge(['edge:local:status', '--json', '--no-interaction'], ['EDGE_INCLUDE_PROBE_OUT' => $probeOut2, 'PHP_INI_SCAN_DIR' => $this->probeIniDir($this->installRoot . '\\runtime\\versions\\0.2.0-edge')]);
+        $this->assertSame(0, $code, $out);
+        $this->assertIncludedFilesUnder($probeOut2, $this->installRoot . '\\runtime\\versions\\0.2.0-edge', $vendorFrom !== '', 'the updated 0.2.0 runtime');
         $this->report['SIGNED_UPDATE'] = '0.1.0-edge → 0.2.0-edge via Update-EdgeAppliance.ps1 (pre-update backup, pointer switch, outbox kept)';
         $this->report['TAMPERED_UPDATE_REFUSED'] = 'yes (package hash mismatch, pointer unchanged)';
 
@@ -441,9 +478,49 @@ class EdgeCleanMachineInstallMySqlTest extends MySqlTenantTestCase
         $this->procs[] = ['proc' => $proc, 'pid' => (int) $status['pid'], 'name' => $name];
     }
 
-    private function startEdge(array $args, string $name): void
+    private function startEdge(array $args, string $name, array $extraEnv = []): void
     {
-        $this->startProcess(array_merge([PHP_BINARY, $this->installRoot . '\\artisan'], $args), $this->installRoot, $name, $this->applianceEnv());
+        $this->startProcess(array_merge([PHP_BINARY, $this->installRoot . '\\artisan'], $args), $this->installRoot, $name, array_merge($this->applianceEnv(), $extraEnv));
+    }
+
+    /** An ini scan dir that prepends the INSTALLED probe (scripts/edge/appliance/include-probe.php of the running version). */
+    private function probeIniDir(string $versionDir): string
+    {
+        $dir = $this->scratch . '\\probe-ini';
+        if (! is_dir($dir)) {
+            mkdir($dir, 0775, true);
+        }
+        file_put_contents($dir . '\\zz-edge-probe.ini', 'auto_prepend_file="' . str_replace('\\', '/', $versionDir) . '/scripts/edge/appliance/include-probe.php"' . "\n");
+
+        return $dir;
+    }
+
+    /** Every included file of every probed process lies under $versionDir (release) — or, for a dev junction, under it or the shared developer tree. */
+    private function assertIncludedFilesUnder(string $probeFile, string $versionDir, bool $strict, string $what, array $alsoAllowed = []): void
+    {
+        $this->assertFileExists($probeFile, "include probe wrote nothing for {$what}");
+        $norm = fn (string $p) => strtolower(str_replace('/', '\\', $p));
+        $prefix = $norm(rtrim($versionDir, '\\/')) . '\\';
+        $launcher = $norm($this->installRoot . '\\artisan');
+        $allowed = array_map($norm, $alsoAllowed);
+        $outside = [];
+        $total = 0;
+        foreach (array_filter(preg_split('/\r?\n/', (string) file_get_contents($probeFile))) as $line) {
+            $report = json_decode($line, true);
+            foreach ((array) ($report['files'] ?? []) as $file) {
+                $total++;
+                $n = $norm($file);
+                if (str_starts_with($n, $prefix) || $n === $launcher || in_array($n, $allowed, true)) {
+                    continue; // the installed runtime version, or the installed launcher that hands off to it
+                }
+                if (! $strict && str_starts_with($n, $norm(rtrim(base_path(), '\\/')) . '\\')) {
+                    continue; // dev junction: vendor AND App\ classes resolve to the shared developer tree (documented caveat)
+                }
+                $outside[$file] = true;
+            }
+        }
+        $this->assertGreaterThan(50, $total, "the probe saw too few files for {$what}");
+        $this->assertSame([], array_keys($outside), "{$what} executed files OUTSIDE the installed runtime:\n" . implode("\n", array_slice(array_keys($outside), 0, 20)));
     }
 
     private function stopProcess(string $name, ?array $gracefulCmd = null): void

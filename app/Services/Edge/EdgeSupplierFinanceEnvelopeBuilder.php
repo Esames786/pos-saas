@@ -26,9 +26,6 @@ class EdgeSupplierFinanceEnvelopeBuilder
     public const EVENT_PAYMENT = 'supplier_payment';
     public const EVENT_AP_JOURNAL = 'supplier_ap_journal_adjustment';
 
-    public function __construct(private readonly EdgeBootstrapService $canonical)
-    {
-    }
 
     public static function isFinanceSchema(?string $schema): bool
     {
@@ -71,7 +68,7 @@ class EdgeSupplierFinanceEnvelopeBuilder
             'freshness' => $this->freshness($freshness),
             'created_at' => now()->toIso8601String(),
         ];
-        $envelope['content_hash'] = hash('sha256', $this->canonical->canonicalJson($envelope));
+        $envelope['content_hash'] = hash('sha256', EdgeCanonicalJson::encode($envelope));
 
         return $envelope;
     }
@@ -108,14 +105,14 @@ class EdgeSupplierFinanceEnvelopeBuilder
             'freshness' => $this->freshness($freshness),
             'created_at' => now()->toIso8601String(),
         ];
-        $envelope['content_hash'] = hash('sha256', $this->canonical->canonicalJson($envelope));
+        $envelope['content_hash'] = hash('sha256', EdgeCanonicalJson::encode($envelope));
 
         return $envelope;
     }
 
     public function canonicalEnvelopeJson(array $envelope): string
     {
-        return $this->canonical->canonicalJson($envelope);
+        return EdgeCanonicalJson::encode($envelope);
     }
 
     private function header(EdgeLocalMeta $meta, string $schema, string $eventType, string $eventUuid): array

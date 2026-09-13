@@ -41,7 +41,6 @@ class EdgeSaleEnvelopeBuilder
     private const SECRET_FIELDS = ['password', 'password_hash', 'remember_token', 'pin', 'pin_hash', 'manager_pin', 'device_secret', 'device_secret_hash', 'secret', 'credential_hash'];
 
     public function __construct(
-        private readonly EdgeBootstrapService $canonical,
         private readonly EdgeOperationalBaselineService $baselines,
     ) {
     }
@@ -183,7 +182,7 @@ class EdgeSaleEnvelopeBuilder
 
         $this->assertNoSecretFields($envelope);
 
-        $envelope['content_hash'] = hash('sha256', $this->canonical->canonicalJson($envelope));
+        $envelope['content_hash'] = hash('sha256', EdgeCanonicalJson::encode($envelope));
 
         return $envelope;
     }
@@ -191,7 +190,7 @@ class EdgeSaleEnvelopeBuilder
     /** The canonical JSON string of a built envelope — the exact immutable bytes the outbox stores. */
     public function canonicalEnvelopeJson(array $envelope): string
     {
-        return $this->canonical->canonicalJson($envelope);
+        return EdgeCanonicalJson::encode($envelope);
     }
 
     /**
