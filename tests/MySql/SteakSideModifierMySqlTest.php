@@ -39,6 +39,7 @@ class SteakSideModifierMySqlTest extends MySqlTenantTestCase
 
     private const STEAK_PRICE = 2650.0;   // Tarragon Steak (Beef)
     private const SIDE_DELTA  = 300.0;    // French Fries (Steak Side)
+    private const RICE_DELTA  = 400.0;    // Vegetable Rice (Steak Side)
 
     private string $host;
     private int $tenantId;
@@ -50,6 +51,8 @@ class SteakSideModifierMySqlTest extends MySqlTenantTestCase
     private int $sideProductId;
     private int $groupId;
     private int $modifierId;
+    private int $riceModifierId;
+    private int $riceProductId;
     private int $paymentMethodId;
 
     protected function setUp(): void
@@ -104,6 +107,112 @@ class SteakSideModifierMySqlTest extends MySqlTenantTestCase
             number_format((float) $sale->grand_total, 2, '.', ''),
             'sale ka total steak + modifier hona chahiye'
         );
+    }
+
+    /**
+     * ⚠️ SAB SE AHEM ROZMARRA SOORAT — modifier liya hi NAHI.
+     *
+     * Zyada tar customer sirf steak lete hain. Un se steak ka apna rate hi lena chahiye, ek rupya
+     * ziyada nahi. Agar kabhi kisi option par `is_default` on ho jaye, ya POS ka JS sum galat kare,
+     * to har saada steak par chup-chaap 300 chad jayega aur customer se ziyada wasool hoga.
+     *
+     * Ye guard mere pehle set me NAHI tha — owner ne poocha "modifier na lein to?" aur tab pata
+     * chala ke maine sirf modifier WALA case test kiya tha. Yehi wo sawal hai jo rozana sab se
+     * ziyada bar chalega.
+     */
+    public function test_modifier_na_lein_to_steak_ka_apna_rate_hi_lagta_hai(): void
+    {
+        $res = $this->punchAndPay(withModifier: false);
+
+        $this->assertContains($res->getStatusCode(), [200, 201],
+            'saada steak ki sale ban'."'".'ni chahiye; mila ' . $res->getStatusCode() . ' — ' . $this->kyun($res));
+
+        $sale = SalesOrder::on('tenant')->latest('id')->first();
+
+        $this->assertSame(
+            number_format(self::STEAK_PRICE, 2, '.', ''),
+            number_format((float) $sale->grand_total, 2, '.', ''),
+            'modifier ke baghair sirf steak ka rate lena chahiye — ek rupya ziyada nahi'
+        );
+
+        $line = DB::connection('tenant')->table('sales_order_lines')->latest('id')->first();
+        $this->assertSame([], json_decode($line->modifiers ?? '[]', true),
+            'koi modifier chuna hi nahi, to line par bhi koi na ho');
+    }
+
+    /**
+     * Dono sides ek sath — group `max_select = 2` hai, is liye ye jaiz hai aur dono ka paisa lagna
+     * chahiye. (Aaj bhi ye alag products hain, to customer dono le sakta hai; wo azadi na chhine.)
+     */
+    public function test_dono_sides_ek_sath_lein_to_dono_ka_paisa_lagta_hai(): void
+    {
+        $total = self::STEAK_PRICE + self::SIDE_DELTA + self::RICE_DELTA;
+
+        $res = $this->actingAs(User::on('tenant')->find($this->ownerId), 'tenant')
+            ->postJson('http://' . $this->host . '/sales-orders', [
+                'branch_id'     => $this->branchId,
+                'terminal_id'   => $this->terminalId,
+                'order_type'    => 'takeaway',
+                'discount_type' => 'none',
+                'lines'         => [[
+                    'product_id' => $this->steakId,
+                    'quantity'   => 1,
+                    'unit_price' => $total,
+                    'modifiers'  => json_encode([
+                        [
+                            'modifier_group_id'   => $this->groupId,
+                            'modifier_group_name' => 'Steak Side',
+                            'modifier_id'         => $this->modifierId,
+                            'name'                => 'French Fries (Steak Side)',
+                            'price_delta'         => self::SIDE_DELTA,
+                        ],
+                        [
+                            'modifier_group_id'   => $this->groupId,
+                            'modifier_group_name' => 'Steak Side',
+                            'modifier_id'         => $this->riceModifierId,
+                            'name'                => 'Vegetable Rice (Steak Side)',
+                            'price_delta'         => self::RICE_DELTA,
+                        ],
+                    ]),
+                ]],
+                'payments' => [[
+                    'payment_method_id' => $this->paymentMethodId,
+                    'amount'            => $total,
+                    'tendered_amount'   => $total,
+                ]],
+            ]);
+
+        $this->assertContains($res->getStatusCode(), [200, 201],
+            'dono sides ke sath sale ban'."'".'ni chahiye; mila ' . $res->getStatusCode() . ' — ' . $this->kyun($res));
+
+        $sale = SalesOrder::on('tenant')->latest('id')->first();
+        $this->assertSame(
+            number_format($total, 2, '.', ''),
+            number_format((float) $sale->grand_total, 2, '.', ''),
+            'steak + 300 + 400 = 3350 lena chahiye'
+        );
+    }
+
+    /**
+     * Koi bhi option `is_default` na ho.
+     *
+     * Agar `is_default` on ho to POS us side ko KHUD chun kar cart me daal deta hai, aur jo customer
+     * sirf steak chahta tha us se bhi 300 wasool ho jata. Ye wohi soorat hai jo test-1 rokta hai —
+     * ye us ki jarr par pehra deta hai.
+     */
+    public function test_koi_side_khud_ba_khud_nahi_chunta(): void
+    {
+        $defaults = DB::connection('tenant')->table('modifiers')
+            ->where('modifier_group_id', $this->groupId)->where('is_default', 1)->count();
+
+        $this->assertSame(0, $defaults,
+            'koi bhi side default na ho — warna saada steak lene wale se bhi extra charge ho jayega');
+
+        $group = DB::connection('tenant')->table('modifier_groups')->find($this->groupId);
+        $this->assertSame(0, (int) $group->is_required,
+            'side lazmi na ho — customer sirf steak bhi le sakta hai');
+        $this->assertSame(0, (int) $group->min_select,
+            'min_select 0 rahe, warna POS side chune baghair aage nahi jane dega');
     }
 
     /** Modifier ka snapshot line par mehfooz rahe — report baad me isi se banayi ja sakti hai. */
@@ -237,35 +346,48 @@ class SteakSideModifierMySqlTest extends MySqlTenantTestCase
     // Madadgar
     // ══════════════════════════════════════════════════════════════════════════
 
-    /** POS jaisa hi payload: unit_price me delta SHAMIL, aur modifiers ka snapshot sath. */
-    private function punchAndPay()
+    /**
+     * POS jaisa hi payload.
+     *
+     * `withModifier = false` wo rozmarra soorat hai jahan customer sirf steak leta hai: POS ka JS
+     * tab koi delta nahi jorRta, is liye `unit_price` steak ka apna rate hota hai aur `modifiers`
+     * khali jata hai.
+     */
+    private function punchAndPay(bool $withModifier = true)
     {
+        $price = $withModifier ? self::STEAK_PRICE + self::SIDE_DELTA : self::STEAK_PRICE;
+
+        $line = [
+            'product_id' => $this->steakId,
+            'quantity'   => 1,
+            // POS ka JS delta ko unit_price me jorR kar bhejta hai — bilkul yehi shakl.
+            'unit_price' => $price,
+        ];
+
+        if ($withModifier) {
+            // ⚠️ Validation `nullable|string` hai — POS modifiers ko JSON STRING bhejta hai, array
+            // nahi. Pehli koshish me array bheja aur 422 mila:
+            // "The lines.0.modifiers field must be a string."
+            $line['modifiers'] = json_encode([[
+                'modifier_group_id'   => $this->groupId,
+                'modifier_group_name' => 'Steak Side',
+                'modifier_id'         => $this->modifierId,
+                'name'                => 'French Fries (Steak Side)',
+                'price_delta'         => self::SIDE_DELTA,
+            ]]);
+        }
+
         return $this->actingAs(User::on('tenant')->find($this->ownerId), 'tenant')
             ->postJson('http://' . $this->host . '/sales-orders', [
                 'branch_id'     => $this->branchId,
                 'terminal_id'   => $this->terminalId,
                 'order_type'    => 'takeaway',
                 'discount_type' => 'none',
-                'lines'         => [[
-                    'product_id' => $this->steakId,
-                    'quantity'   => 1,
-                    // POS ka JS delta ko unit_price me jorR kar bhejta hai — bilkul yehi shakl.
-                    'unit_price' => self::STEAK_PRICE + self::SIDE_DELTA,
-                    // ⚠️ Validation `nullable|string` hai — POS modifiers ko JSON STRING bhejta hai,
-                    // array nahi. Pehli koshish me array bheja aur 422 mila:
-                    // "The lines.0.modifiers field must be a string."
-                    'modifiers'  => json_encode([[
-                        'modifier_group_id'   => $this->groupId,
-                        'modifier_group_name' => 'Steak Side',
-                        'modifier_id'         => $this->modifierId,
-                        'name'                => 'French Fries (Steak Side)',
-                        'price_delta'         => self::SIDE_DELTA,
-                    ]]),
-                ]],
-                'payments' => [[
+                'lines'         => [$line],
+                'payments'      => [[
                     'payment_method_id' => $this->paymentMethodId,
-                    'amount'            => self::STEAK_PRICE + self::SIDE_DELTA,
-                    'tendered_amount'   => self::STEAK_PRICE + self::SIDE_DELTA,
+                    'amount'            => $price,
+                    'tendered_amount'   => $price,
                 ]],
             ]);
     }
@@ -436,6 +558,28 @@ class SteakSideModifierMySqlTest extends MySqlTenantTestCase
             'consume_stock'     => 0,     // stock ko chhuna maqsad nahi
             'is_default'        => 0,
             'sort_order'        => 0,
+            'status'            => 'active',
+            'created_at'        => now(), 'updated_at' => now(),
+        ]);
+
+        // Doosra option — prod par bhi group me dono hain (max_select = 2).
+        $this->riceProductId = $this->makeProduct($steaks, [
+            'name'                  => 'Vegetable Rice (Steak Side)',
+            'default_selling_price' => 0,
+            'is_pos_visible'        => 0,
+            'is_sellable'           => 1,
+            'is_stock_tracked'      => 0,
+            'status'                => 'active',
+        ]);
+
+        $this->riceModifierId = $c->table('modifiers')->insertGetId([
+            'modifier_group_id' => $this->groupId,
+            'name'              => 'Vegetable Rice (Steak Side)',
+            'price_delta'       => self::RICE_DELTA,
+            'linked_product_id' => $this->riceProductId,
+            'consume_stock'     => 0,
+            'is_default'        => 0,
+            'sort_order'        => 1,
             'status'            => 'active',
             'created_at'        => now(), 'updated_at' => now(),
         ]);
