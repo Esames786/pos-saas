@@ -16,6 +16,7 @@ STEAK-SIDE-MODIFIER-1 guards) and was reconciled (merge `c84f8cd`, tag `edge-pre
 | `RestaurantTable::openSession` — the status filter moves INSIDE `ofMany()` (a newer CLOSED session no longer hides the open one on the board) | **shared runtime** — the Edge Table Board uses the same relation | merged (no Edge code change needed) |
 | `HeldSaleController` / `POSController` / `SalesOrderController` — dead-session guard on Pay + the "orphan bill" recovery popup, `deadSession` view model | Cloud controllers (Online recovery UI for a Cloud-side hold defect) | merged; **Edge already guards it**: `EdgeLocalPosService` only accepts an explicit `restaurant_table_session_id` whose status is `open`/`bill_requested` (lock-first) and settle re-checks the session — no orphan bill can be created offline. Recorded in the parity register as CONSISTENT (no Edge action). |
 | `SteakSideModifierMySqlTest`, `HeldSale*MySqlTest` | canonical tests only | merged |
+| SALES-ANALYTICS-1 (`8e78b4d`, landed while P5 ran): Owner-only sales/growth graphs page (`Tenant/Reports/SalesAnalyticsController`, `routes/tenant.php`, dashboard + analytics views) | Cloud-only — the Reports controllers and tenant routes are physically excluded from the artifact; no Branch POS / finance / printing / Edge contract change | assessed, not merged (reconcile at the next Edge tranche) |
 
 ## 1. What this box could and could not do
 
@@ -148,8 +149,8 @@ and after the update is non-secret (see the proof and the P4 status doc).
 ## FINAL REPORT (P5)
 
 ```
-START_EDGE_HEAD=17b1333   CURRENT_CANONICAL=5dc13d3 (moved from 8740f51; reconciled c84f8cd, tag edge-pre-reconcile10-17b1333)
-FINAL_EDGE_HEAD=a159700 (P5 code) / this docs commit (docs)   ORIGIN_EDGE_HEAD=this docs commit
+START_EDGE_HEAD=17b1333   CURRENT_CANONICAL=8e78b4d (8740f51 → 5dc13d3 reconciled as c84f8cd, tag edge-pre-reconcile10-17b1333; 5dc13d3 → 8e78b4d = SALES-ANALYTICS-1, an Owner-only Cloud reports page under app/Http/Controllers/Tenant/Reports + routes/tenant.php + views — physically excluded from the artifact, no Edge contract → assessed, NOT merged)
+FINAL_EDGE_HEAD=a159700 (P5 code) / 4eef6a4 (docs) + this heads follow-up   ORIGIN_EDGE_HEAD=the pushed head of feat/edge-config-refresh-v1 (see git log)
 
 PHYSICAL_MACHINE=developer laptop Dell Precision 3560 (non-admin) — NOT a clean lab machine
 WINDOWS_VERSION=Windows 11 Pro 10.0.26200
