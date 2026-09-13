@@ -61,6 +61,16 @@ NORMAL_OPERATOR_POS_PARITY_PERCENT = 26 / 29 = 90%   (all rows a branch operator
 FULL_OFFLINE_PARITY_PERCENT        = 26 / 30 = 87%   (every row in the matrix)
 ```
 
+## Canonical drift notes
+
+- **HELD-SALE-DEAD-SESSION-1 (canonical 5dc13d3, 13 Sep 2026):** Online could hold a bill onto an already-CLOSED table
+  session (the Hold path accepted an explicit session id without a status check) and then never pay it; the fix adds the
+  Pay guard, a recovery popup and the `RestaurantTable::openSession` relation correction. **Edge status: CONSISTENT, no
+  action** — `EdgeLocalPosService::holdOrReviseSale` only accepts an explicit `restaurant_table_session_id` whose status is
+  `open`/`bill_requested` (locked first) and `settleHeldSale` re-checks the session, so an orphan bill cannot be created
+  offline; the shared relation fix reaches the Edge Table Board through the P5 reconcile merge (`c84f8cd`).
+- **STEAK-SIDE-MODIFIER-1 (canonical, 13 Sep 2026):** canonical tests only (modifier guards) — no Edge runtime change.
+
 ## Release gates (real path only)
 
 - `EdgeCashierScreenRendersHttpMySqlTest` — REAL HTTP GET of the cashier page on a branch_server-booted app.
