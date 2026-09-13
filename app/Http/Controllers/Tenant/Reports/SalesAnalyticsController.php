@@ -44,8 +44,15 @@ class SalesAnalyticsController extends Controller
         $prevTo   = date('Y-m-d', strtotime($from . ' -1 day'));
         $prevFrom = date('Y-m-d', strtotime($prevTo . ' -' . ($days - 1) . ' day'));
 
-        $series     = $sales->dailyStats($from, $to, $selectedBranch, $scopeUser);
-        $prevSeries = $sales->dailyStats($prevFrom, $prevTo, $selectedBranch, $scopeUser);
+        // Order type ka filter. Khali = sab.
+        // ⚠️ Operator ko sirf wohi types offer hoti hain jo wo khud chala sakta hai — warna ek
+        // scoped user filter se wo hissa dekh leta jo baqi safhe us se chhupate hain.
+        $allowedTypes = $scopeUser?->effectiveAllowedOrderTypes() ?: array_keys(\App\Models\Tenant\User::ORDER_TYPES);
+        $orderType    = (string) $request->input('order_type', '');
+        $orderType    = in_array($orderType, $allowedTypes, true) ? $orderType : null;
+
+        $series     = $sales->dailyStats($from, $to, $selectedBranch, $scopeUser, $orderType);
+        $prevSeries = $sales->dailyStats($prevFrom, $prevTo, $selectedBranch, $scopeUser, $orderType);
 
         // Har din ki qatar banao — jin dinon sale nahi hui wo bhi 0 par nazar aayen, warna chart
         // ka waqt ka paimana jhoot bolta hai (do door ke din barabar faasle par dikhte hain).
@@ -55,6 +62,9 @@ class SalesAnalyticsController extends Controller
             'date_from'  => $from,
             'date_to'    => $to,
             'branch_ids' => $selectedBranch ? [$selectedBranch] : [],
+            // Wohi filter engine ko bhi — warna upar ke tiles ek daur ginte aur neeche ke
+            // category/payment charts doosra.
+            'order_type' => $orderType,
         ]);
 
         $overview = $engine->overview($filters);
@@ -67,6 +77,8 @@ class SalesAnalyticsController extends Controller
         return view('tenant.reports.analytics', [
             'branches'       => $branches,
             'selectedBranch' => $selectedBranch,
+            'orderType'      => $orderType,
+            'orderTypeList'  => array_intersect_key(\App\Models\Tenant\User::ORDER_TYPES, array_flip($allowedTypes)),
             'preset'         => $preset,
             'from'           => $from,
             'to'             => $to,
@@ -181,6 +193,10 @@ class SalesAnalyticsController extends Controller
                 'orders'    => (int) ($row['orders'] ?? 0),
                 'net_sales' => (float) ($row['net_sales'] ?? 0),
                 'returns'   => (float) ($row['returns_amount'] ?? 0),
+                // Din ka naam — restaurant ka karobar HAFTE ke din se chalta hai (jumma/hafta bhaari,
+                // peer halka). Sirf tareekh dekh kar wo tarteeb nazar hi nahi aati.
+                'label'     => date('D d M', strtotime($d)),
+                'full'      => date('l, d M Y', strtotime($d)),
             ];
         }
 
@@ -193,7 +209,11 @@ class SalesAnalyticsController extends Controller
         $out = [];
         foreach ($series as $date => $row) {
             $key = substr((string) $date, 0, 7);
-            $out[$key] ??= ['orders' => 0, 'net_sales' => 0.0, 'returns' => 0.0];
+            $out[$key] ??= [
+                'orders' => 0, 'net_sales' => 0.0, 'returns' => 0.0,
+                'label'  => date('M Y', strtotime($date)),
+                'full'   => date('F Y', strtotime($date)),
+            ];
             $out[$key]['orders']    += (int) $row['orders'];
             $out[$key]['net_sales'] += (float) $row['net_sales'];
             $out[$key]['returns']   += (float) $row['returns_amount'];

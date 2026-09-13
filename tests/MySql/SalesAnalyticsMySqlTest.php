@@ -220,6 +220,50 @@ class SalesAnalyticsMySqlTest extends MySqlTenantTestCase
             'from hamesha to se pehle hona chahiye');
     }
 
+    // ══════════════════════════════════════════════════════════════════════════
+    // 5. ORDER TYPE ka filter
+    // ══════════════════════════════════════════════════════════════════════════
+
+    /** Filter lagne par sirf usi type ka hisaab. */
+    public function test_order_type_ka_filter_sirf_usi_type_ka_hisaab_deta_hai(): void
+    {
+        $this->sale(0, 1000, null, 'delivery');
+        $this->sale(0, 3000, null, 'dine_in');
+
+        $all      = $this->page('preset=30d')->viewData('totals');
+        $delivery = $this->page('preset=30d&order_type=delivery')->viewData('totals');
+
+        $this->assertSame('4000.00', number_format((float) $all['net_sales'], 2, '.', ''),
+            'bina filter ke dono shamil');
+        $this->assertSame('1000.00', number_format((float) $delivery['net_sales'], 2, '.', ''),
+            'delivery chunne par sirf delivery ka hisaab');
+    }
+
+    /**
+     * ⚠️ RETURNS bhi usi type ke ghatein.
+     *
+     * `sales_returns` par apna `order_type` khaana hota hi nahi — wo us ke ASAL bill par hai. Agar
+     * filter sirf sale par lagta aur return par nahi, to "sirf Delivery" chunne par delivery ki sale
+     * to theek aati magar HAR type ke returns ghata diye jate, aur net sales kam dikhta. Ye guard
+     * theek us soorat par girta hai.
+     */
+    public function test_filter_lagne_par_doosre_type_ke_returns_nahi_ghatte(): void
+    {
+        $delivery = $this->sale(0, 1000, null, 'delivery');
+        $dineIn   = $this->sale(0, 3000, null, 'dine_in');
+
+        $this->postedReturn($dineIn, 500);      // sirf DINE IN ka return
+
+        $onlyDelivery = $this->page('preset=30d&order_type=delivery')->viewData('totals');
+
+        $this->assertSame('1000.00', number_format((float) $onlyDelivery['net_sales'], 2, '.', ''),
+            'dine-in ka return delivery ke hisaab se nahi ghatna chahiye');
+
+        $all = $this->page('preset=30d')->viewData('totals');
+        $this->assertSame('3500.00', number_format((float) $all['net_sales'], 2, '.', ''),
+            'bina filter ke wo return ghatna chahiye: 4000 - 500');
+    }
+
     /** Doosri branch ka data is branch ke chart me na aaye. */
     public function test_doosri_branch_ka_data_nahi_milta(): void
     {
@@ -243,13 +287,13 @@ class SalesAnalyticsMySqlTest extends MySqlTenantTestCase
     }
 
     /** Ek paid sale, `$daysAgo` din pehle ki business date par. */
-    private function sale(int $daysAgo, float $total, ?int $branchId = null): int
+    private function sale(int $daysAgo, float $total, ?int $branchId = null, string $orderType = 'takeaway'): int
     {
         $date = now()->subDays($daysAgo)->toDateString();
 
         $id = $this->makeSale($branchId ?? $this->branchId, [
             'status'        => 'paid',
-            'order_type'    => 'takeaway',
+            'order_type'    => $orderType,
             'grand_total'   => $total,
             'subtotal'      => $total,
             'business_date' => $date,
