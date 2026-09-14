@@ -55,12 +55,15 @@
                             {{ $isSelectedSession ? 'Selected / Continue' : 'Continue Table' }}
                         </button>
                         @can('tenant.restaurant.table-sessions.bill-preview')
-                            {{-- HIDDEN by the owner's request (31 Aug): the Table Workspace card was
-                                 crowded and this duplicates the Bill / Preview available once the
-                                 table is continued. Hidden in the UI ONLY — the permission is
-                                 deliberately left in place, so nobody's access was changed and this
-                                 comes back by deleting the d-none below. --}}
-                            <button type="button" class="btn btn-sm btn-dark w-100 mb-1 d-none"
+                            {{-- BILL-PREVIEW-UNHIDE-1 (14 Sep) — back on the card, and safe now.
+                                 Hidden on 31 Aug because of the print-target bug: the modal
+                                 previewed THIS table, but Print / Send-to-network still fired the
+                                 cart order attached in the background. BILL-PREVIEW-WRONG-PRINT-1
+                                 fixed that at the source — the modal now carries its own mode and
+                                 held_sale_ids, so the button prints what it is showing. The
+                                 permission was never removed, so nobody's access changed either
+                                 way; re-hiding is one word (d-none) on the class below. --}}
+                            <button type="button" class="btn btn-sm btn-dark w-100 mb-1"
                                     data-table-bill-preview="{{ $session->id }}">Bill Preview</button>
                         @endcan
                         {{-- TABLE-CLOSE-EMPTY-1 — free a table that was opened by mistake.
