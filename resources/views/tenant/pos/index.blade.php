@@ -5863,7 +5863,18 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(function (response) { return response.json().then(function (data) { if (!response.ok || !data.ok) throw new Error(data.message || 'Unable to load table bill.'); return data; }); })
             .then(function (data) {
                 document.getElementById('billPreviewModalLabel').textContent = 'Table Bill Preview';
-                document.getElementById('bill-preview-modal-body').innerHTML = data.html;
+                /* TABLE-BILL-PREVIEW-PARITY-1 — ab server wohi receipt DOCUMENT bhejta hai jo cart
+                   preview bhejta hai (poora <!DOCTYPE html> apne @page aur apni CSS ke sath), is
+                   liye ise cart ki tarah IFRAME me daalna lazmi hai: seedha innerHTML karne par us
+                   document ki CSS POS ke poore page par lag jati.
+
+                   Frame ka id wohi `bill-preview-frame` hai jo cart use karta hai — is se "Print
+                   here" bina kisi tabdeeli ke theek chal jata hai, kyunki wo pehle yehi id dhoondta
+                   hai aur mil jane par usi frame ko print karta hai (neeche
+                   #print-bill-preview-btn dekhein). */
+                var previewBody = document.getElementById('bill-preview-modal-body');
+                previewBody.innerHTML = '<iframe id="bill-preview-frame" title="Table bill preview" class="w-100 border-0" style="min-height:560px"></iframe>';
+                previewBody.querySelector('iframe').srcdoc = data.html;
                 markPreviewMode('session', data.held_sale_ids);
                 showModalAfterWorkspace(document.getElementById('billPreviewModal'));
             }).catch(function (error) { toast('error', error.message); });

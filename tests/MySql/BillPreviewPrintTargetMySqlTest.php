@@ -199,6 +199,137 @@ class BillPreviewPrintTargetMySqlTest extends MySqlTenantTestCase
     }
 
     // ══════════════════════════════════════════════════════════════════════════
+    // TABLE-BILL-PREVIEW-PARITY-1 — table ka bill ab wohi document hai jo cart ka hai
+    //
+    // Maalik: "why both preview are different… Current Cart Preview is recommended for any
+    // preview". Wajah koi design faisla nahi tha: 11 Aug ka BILL-PREVIEW-PARITY-1 sirf cart
+    // wale raaste par laga tha, table wala apne alag haath se likhe partial par reh gaya tha.
+    //
+    // Doc: docs/plans/table-bill-preview-parity-2026-09-14.md
+    // ══════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Table ka bill asli RECEIPT template se aaye — wohi jo cart preview aur asli parchi hai.
+     *
+     * Purana partial `TABLE BILL` likhta tha, poora HTML document nahi bhejta tha, aur Rate ka
+     * column hi nahi rakhta tha. Ye teenon nishaniyan yahan pakri jati hain.
+     */
+    public function test_table_ka_bill_ab_wohi_receipt_document_hai_jo_cart_preview_ka_hai(): void
+    {
+        $session = $this->openSession();
+        $this->orderOn($session, 'held', 450);
+
+        $html = $this->preview($session)->assertOk()->json('html');
+
+        $this->assertStringContainsString('<!DOCTYPE html', $html,
+            'cart ki tarah poora document aana chahiye, sirf ek div nahi');
+        $this->assertStringContainsString('BILL PREVIEW', $html,
+            'receipt template ka preview unwaan');
+        $this->assertStringContainsString('Rate', $html,
+            'Rate ka column — purane partial me ye tha hi nahi');
+        $this->assertStringNotContainsString('TABLE BILL', $html,
+            'purana alag partial ab is raaste par nahi chalna chahiye');
+    }
+
+    /** Kai round ek hi bill me jama hon — teen alag block nahi. */
+    public function test_kai_round_ek_hi_bill_me_jama_hote_hain(): void
+    {
+        $session = $this->openSession();
+        $this->orderOn($session, 'held', 500);
+        $this->orderOn($session, 'held', 300);
+
+        $html = $this->preview($session)->assertOk()->json('html');
+
+        $this->assertSame(1, substr_count($html, '<!DOCTYPE html'),
+            'do round ka matlab do document nahi — ek jama shuda bill');
+        $this->assertStringContainsString('800', $html,
+            '500 + 300 ka jama total bill par hona chahiye');
+        $this->assertStringContainsString('Rounds (2)', $html,
+            'cashier ko dikhna chahiye ke ye bill kin rounds se bana');
+    }
+
+    /**
+     * 🚨 PAISA — jo round ada ho chuka wo bill me DOBARA na jure.
+     *
+     * Agar ye tootay to preview grahak se ada shuda round ke paise dobara maange. Isi liye
+     * `renderTableBillReceipt()` sirf `held` jama karta hai aur paid ko alag fehrist me rakhta hai.
+     */
+    public function test_ada_shuda_round_bill_ke_total_me_dobara_nahi_jurta(): void
+    {
+        $session = $this->openSession();
+        $this->orderOn($session, 'paid', 1000);
+        $this->orderOn($session, 'held', 300);
+
+        $html = $this->preview($session)->assertOk()->json('html');
+
+        $this->assertStringContainsString('Total:', $html);
+        $this->assertStringNotContainsString('1,300', $html,
+            'ada shuda 1000 khule 300 ke sath JAM gaya — grahak se dobara paise maange jayenge');
+        $this->assertStringContainsString('300', $html, 'sirf khula round bill par aaye');
+        $this->assertStringContainsString('Previously paid (1)', $html,
+            'ada shuda round alag se, jama kiye baghair, nazar aana chahiye');
+    }
+
+    /** Ek bhi khula round na ho to bill khali na dikhe — saaf lafzon me bataye. */
+    public function test_khula_round_na_ho_to_bill_saaf_lafzon_me_batata_hai(): void
+    {
+        $session = $this->openSession();
+        $this->orderOn($session, 'paid', 1000);
+
+        $html = $this->preview($session)->assertOk()->json('html');
+
+        $this->assertStringContainsString('No open rounds on this table.', $html);
+        $this->assertSame([], $this->preview($session)->json('held_sale_ids'),
+            'koi khula round nahi to bhejne ko bhi kuch nahi');
+    }
+
+    /**
+     * 🚨 ASLI PARCHI BE-HARKAT — `@isset($tableBill)` block sirf isi raaste par chalta hai.
+     *
+     * receipt.blade.php wohi template hai jo chaar chalti hui businesses ki har parchi chhapta
+     * hai. Us me kuch bhi jorne ka matlab hai ke sabit karna paray ke normal parchi ka output
+     * bilkul nahi badla. Yahan wohi sale BINA `tableBill` ke render hoti hai.
+     */
+    public function test_asli_receipt_ka_output_is_naye_block_se_nahi_badla(): void
+    {
+        $session = $this->openSession();
+        $saleId = $this->orderOn($session, 'held', 450);
+
+        $sale = \App\Models\Tenant\SalesOrder::on('tenant')
+            ->with(['lines.product', 'branch', 'payments', 'createdBy', 'restaurantTable', 'shift'])
+            ->findOrFail($saleId);
+
+        $html = view('tenant.printing.documents.receipt', [
+            'job' => null, 'salesOrder' => $sale, 'layout' => null, 'isPreview' => false,
+        ])->render();
+
+        foreach (['Rounds (', 'Previously paid (', 'Already settled', 'No open rounds on this table.'] as $needle) {
+            $this->assertStringNotContainsString($needle, $html,
+                "asli parchi par [{$needle}] kabhi nahi chhapna chahiye — ye block sirf table bill ka hai");
+        }
+    }
+
+    /**
+     * Modal me document IFRAME me jaye, aur us ka id wohi ho jo cart use karta hai.
+     *
+     * Do wajahein: (1) receipt poora document hai apni CSS ke sath — seedha innerHTML karne par
+     * wo CSS POS ke poore safhe par lag jati; (2) "Print here" pehle `bill-preview-frame`
+     * dhoondta hai, is liye wohi id rakhne se browser print bina tabdeeli ke theek chalta hai.
+     */
+    public function test_table_ka_bill_cart_wale_hi_iframe_me_jata_hai(): void
+    {
+        $body = $this->extractFunction($this->pos(), 'showTableBillPreview(sessionId)');
+        $body = preg_replace('#^\s*//.*$#m', '', $body);
+
+        $this->assertStringContainsString('id="bill-preview-frame"', $body,
+            'table ka bill usi frame id par jaye jise "Print here" dhoondta hai');
+        $this->assertStringContainsString('srcdoc', $body,
+            'document srcdoc se jana chahiye, innerHTML se nahi');
+        $this->assertStringNotContainsString("getElementById('bill-preview-modal-body').innerHTML = data.html", $body,
+            'purana seedha innerHTML wala raasta hat jana chahiye');
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
     // Madadgar
     // ══════════════════════════════════════════════════════════════════════════
 
