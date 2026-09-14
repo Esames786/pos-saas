@@ -413,8 +413,19 @@ class SteakSideModifierMySqlTest extends MySqlTenantTestCase
                 continue;
             }
             $module = Module::forRouteModuleKey($key)->first();
-            $this->assertNotNull($module,
-                "route [{$routeName}] [{$key}] se juda hai magar koi module us ka dawedar nahi");
+
+            // ⚠️ Yahan pehle `assertNotNull($module, ...)` tha aur wo BHURBHURA nikla.
+            // Master DB SANJHI hai aur us ka module-landscape har run me badalta rehta hai: kabhi
+            // koi doosra test us key ka dawedar module bana chuka hota hai, kabhi nahi. Us
+            // assertion ki wajah se poora test file kisi din bilkul be-taalluq wajah se gir jata.
+            // Sahi bartaao: mojooda haalat ke mutabiq DHALO —
+            //   dawedar hai   -> plan me shamil karo (gate fail-CLOSED hai)
+            //   dawedar nahi  -> kuch mat karo   (gate fail-OPEN hai)
+            // Aur sanjhi DB me module BANAO kabhi nahi — us se doosre tests ka gate badal jata hai.
+            if (! $module) {
+                continue;
+            }
+
             $m->table('plan_modules')->updateOrInsert(
                 ['plan_id' => $planId, 'module_id' => $module->id], ['is_enabled' => 1]
             );

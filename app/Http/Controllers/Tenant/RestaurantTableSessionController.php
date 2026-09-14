@@ -315,6 +315,16 @@ class RestaurantTableSessionController extends Controller
                     'session' => $restaurantTableSession,
                     'layout'  => $layout,
                 ])->render(),
+                // BILL-PREVIEW-WRONG-PRINT-1 — preview ke sath ye BATANA lazmi hai ke ye bill kin
+                // orders ka hai. Pehle sirf `html` jata tha, is liye modal ka "Send to network"
+                // ke paas koi sale id hoti hi nahi thi aur wo CART ka order bhej deta tha: screen
+                // par table 9 ka bill, printer par table 5 ki parchi.
+                //
+                // Sirf `held` — jo ada ho chuke un ki parchi dobara bhejne ka koi matlab nahi.
+                'held_sale_ids' => $restaurantTableSession->salesOrders
+                    ->where('status', 'held')
+                    ->pluck('id')
+                    ->values(),
             ]);
         }
 
