@@ -63,5 +63,9 @@ Route::domain(config('tenancy.central_domain'))
             // F3 — purchase returns: the warm projection the standby pulls, and the ingestion of purchase-return events.
             Route::post('/purchase-returns/refresh', [\App\Http\Controllers\Edge\EdgePurchaseReturnCacheApiController::class, 'package'])->name('edge.api.purchase-returns.refresh');
             Route::post('/sync/purchase-returns', [\App\Http\Controllers\Edge\EdgeInboundPurchaseReturnApiController::class, 'store'])->name('edge.api.sync.purchase-returns');
+            // P5B §3 — the Cloud backup recovery authority: the device's OWN branch material (current + retired keys), audited;
+            // tighter per-device throttle with its own limiter prefix; the response is never cacheable.
+            Route::post('/backup/recovery-keys', [\App\Http\Controllers\Edge\EdgeBackupRecoveryApiController::class, 'material'])
+                ->middleware('throttle:6,1,edge-recovery')->name('edge.api.backup.recovery_keys');
         });
     });

@@ -3,7 +3,9 @@
 namespace App\Console\Commands;
 
 use App\Services\Edge\EdgeBranchContext;
+use App\Services\Edge\EdgeRecoveryKeyProvisioner;
 use App\Services\Edge\EdgeRestoreService;
+use App\Support\EdgeApplianceLayout;
 use App\Support\EdgeLocalDatabase;
 use App\Support\EdgeRuntime;
 use Illuminate\Console\Command;
@@ -18,11 +20,13 @@ use Illuminate\Console\Command;
  */
 class EdgeLocalRestoreCommand extends Command
 {
-    protected $signature = 'edge:local:restore {path : path to the .enc backup} {--branch= : branch id being recovered}';
+    protected $signature = 'edge:local:restore {path : path to the .enc backup} {--branch= : branch id being recovered}
+        {--pull-recovery-key : replacement machine: fetch this branch backup recovery material from the Cloud recovery authority first}
+        {--cloud-url= : Cloud base URL for --pull-recovery-key (default EDGE_CLOUD_BASE_URL)}';
 
     protected $description = 'Restore the appliance local state from an encrypted backup (guarded, atomic).';
 
-    public function handle(EdgeRestoreService $restore, EdgeBranchContext $context): int
+    public function handle(EdgeRestoreService $restore, EdgeBranchContext $context, EdgeRecoveryKeyProvisioner $provisioner): int
     {
         if (! EdgeRuntime::isBranchServer()) {
             $this->error('edge:local:restore only runs on a Branch Server (APP_ROLE=branch_server).');
@@ -39,6 +43,22 @@ class EdgeLocalRestoreCommand extends Command
             return self::FAILURE;
         }
 
+        if ($this->option('pull-recovery-key')) {
+            // P5B §3 — a dead appliance is never the only holder of its backup key: the paired replacement pulls the
+            // branch material (current + retired keys) from the Cloud recovery authority into appliance.env first.
+            $cloud = rtrim((string) ($this->option('cloud-url') ?: env('EDGE_CLOUD_BASE_URL', '')), '/');
+            if ($cloud === '') {
+                $this->error('--pull-recovery-key needs a Cloud base URL (--cloud-url or EDGE_CLOUD_BASE_URL).');
+                return self::FAILURE;
+            }
+            try {
+                $keys = $provisioner->pull($cloud, EdgeApplianceLayout::envFilePath());
+            } catch (\Throwable $e) {
+                $this->error('Recovery-key provisioning refused: ' . $e->getMessage());
+                return self::FAILURE;
+            }
+            $this->line('Recovery material provisioned from the Cloud authority: current key id ' . $keys['key_id'] . ', retired keys ' . count($keys['retired_key_ids']));
+        }
         try {
             $result = $restore->restore((string) $this->argument('path'), $branch);
         } catch (\Throwable $e) {
@@ -48,6 +68,9 @@ class EdgeLocalRestoreCommand extends Command
         }
 
         $this->info('Restored branch ' . $branch . ' from backup taken ' . ($result['created_at'] ?? 'unknown'));
+        if (! empty($result['device_rebound'])) {
+            $this->line('  local binding re-pointed to THIS appliance\'s paired device identity (replacement machine; the dead device stays revoked at the Cloud)');
+        }
         foreach ($result['restored'] as $table => $count) {
             $this->line(sprintf('  %-40s %d rows', $table, $count));
         }

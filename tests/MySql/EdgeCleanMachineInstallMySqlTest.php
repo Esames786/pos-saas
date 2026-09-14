@@ -9,7 +9,9 @@ use App\Models\Tenant\User;
 use App\Services\Edge\EdgeEnrollmentCrypto;
 use App\Services\Edge\EdgeEnrollmentIssuer;
 use App\Services\Edge\EdgePairingService;
+use App\Services\Edge\EdgeSigningKeyStore;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use PDO;
@@ -163,14 +165,21 @@ class EdgeCleanMachineInstallMySqlTest extends MySqlTenantTestCase
     public function test_a_fresh_machine_installs_from_the_package_binds_to_the_cloud_serves_the_cashier_backs_up_updates_and_uninstalls_safely(): void
     {
         // 1. Packages: A = 0.1.0-edge (install), B = 0.2.0-edge (signed update). Real `edge:build-package` runs.
-        $keyFile = $this->scratch . '\\update-signing.key';
-        file_put_contents($keyFile, $this->updateKeys['secret']);
+        // P5B §2 — the packages are signed from an ENCRYPTED custody keystore (never a plaintext key file): the same
+        // `edge:update:keygen` + `--signing-keystore` path the pilot release uses.
+        $keystore = $this->scratch . '\\custody\\edge-update-signing.keystore.json';
+        $passFile = $this->scratch . '\\custody\\edge-update-signing.passphrase';
+        @mkdir(dirname($keystore), 0700, true);
+        file_put_contents($passFile, 'clean-install-proof-passphrase-' . Str::random(16) . PHP_EOL);
+        $this->assertSame(0, Artisan::call('edge:update:keygen', ['--keystore' => $keystore, '--passphrase-file' => $passFile, '--label' => 'clean-install-proof']), Artisan::output());
+        $this->updateKeys = ['public' => EdgeSigningKeyStore::describe($keystore)['public_key']];
+        $signing = ['--signing-keystore' => $keystore, '--signing-passphrase-file' => $passFile];
         $vendorFrom = (string) (getenv('EDGE_PROOF_VENDOR_FROM') ?: '');
         $vendorOpt = $vendorFrom !== '' ? ['--vendor-from' => $vendorFrom] : ['--vendor-junction' => base_path('vendor')];
         $this->report['RELEASE_VENDOR_REAL_FILES'] = $vendorFrom !== '' ? 'yes (--vendor-from ' . $vendorFrom . ')' : 'no (dev junction — set EDGE_PROOF_VENDOR_FROM for the release shape)';
-        $this->assertSame(0, Artisan::call('edge:build-package', ['dest' => $this->pkgA, '--allow-dirty' => true, '--git-commit' => 'clean-install-proof', '--signing-key-file' => $keyFile] + $vendorOpt), Artisan::output());
+        $this->assertSame(0, Artisan::call('edge:build-package', ['dest' => $this->pkgA, '--allow-dirty' => true, '--git-commit' => 'clean-install-proof'] + $signing + $vendorOpt), Artisan::output());
         config(['edge.app_version' => '0.2.0-edge']);
-        $this->assertSame(0, Artisan::call('edge:build-package', ['dest' => $this->pkgB, '--allow-dirty' => true, '--git-commit' => 'clean-install-proof-2', '--signing-key-file' => $keyFile] + $vendorOpt), Artisan::output());
+        $this->assertSame(0, Artisan::call('edge:build-package', ['dest' => $this->pkgB, '--allow-dirty' => true, '--git-commit' => 'clean-install-proof-2'] + $signing + $vendorOpt), Artisan::output());
         if ($vendorFrom !== '') {
             $this->assertFileExists($this->pkgA . '\\app\\vendor\\autoload.php', 'release shape: a REAL vendor closure inside the package');
             $this->assertFalse(is_link($this->pkgA . '\\app\\vendor'));
@@ -179,13 +188,18 @@ class EdgeCleanMachineInstallMySqlTest extends MySqlTenantTestCase
             $this->assertDirectoryDoesNotExist($this->pkgA . '\\app\\vendor\\mockery');
         }
         config(['edge.app_version' => env('EDGE_APP_VERSION', '0.1.0-edge')]);
-        @unlink($keyFile);
+        foreach ([$this->pkgA, $this->pkgB] as $pkg) {
+            $custody = array_filter($this->walkFiles($pkg), fn ($p) => (bool) preg_match('/keystore|passphrase/i', basename($p)));
+            $this->assertSame([], array_values($custody), 'no custody material (keystore / passphrase) inside a package');
+        }
         $manifestA = json_decode((string) file_get_contents($this->pkgA . '\\package-manifest.json'), true);
         $manifestB = json_decode((string) file_get_contents($this->pkgB . '\\package-manifest.json'), true);
         $this->assertSame('0.1.0-edge', $manifestA['edge_app_version']);
         $this->assertSame('0.2.0-edge', $manifestB['edge_app_version']);
         $this->assertTrue($manifestA['boundary_audit']['ok'] && $manifestB['boundary_audit']['ok']);
         $this->assertTrue($manifestB['components']['update']['signed']);
+        $this->assertSame(EdgeSigningKeyStore::describe($keystore)['key_id'], $manifestB['components']['update']['signing_key_id'], 'the manifest records the custody key id');
+        $this->report['SIGNING_KEY_CUSTODY'] = 'encrypted keystore (Argon2id + secretbox) opened in the build process only; key id ' . $manifestB['components']['update']['signing_key_id'];
         $this->report['WINDOWS_PACKAGE'] = 'built (dev provenance; boundary audit ok; signed update ' . $manifestB['components']['update']['file'] . ')';
 
         // 2. The Cloud: a REAL php -S over the master + tenant test databases.
@@ -198,8 +212,6 @@ class EdgeCleanMachineInstallMySqlTest extends MySqlTenantTestCase
         $codeFile = $this->scratch . '\\pairing-code.txt';
         $dbPwFile = $this->scratch . '\\dbpw.txt';
         file_put_contents($dbPwFile, (string) (config('database.connections.tenant.password') ?? ''));
-        $recoveryFile = $this->scratch . '\\recovery.key';
-        file_put_contents($recoveryFile, $this->recoveryKey);
 
         // 4. INSTALL from the package (first-boot flow) — -NoServices: task registration is admin-only on this box.
         $c = config('database.connections.tenant');
@@ -207,7 +219,7 @@ class EdgeCleanMachineInstallMySqlTest extends MySqlTenantTestCase
             '-PackageRoot', $this->pkgA, '-InstallRoot', $this->installRoot, '-DataRoot', $this->dataRoot, '-PhpPath', PHP_BINARY,
             '-DbHost', (string) $c['host'], '-DbPort', (string) $c['port'], '-DbName', $this->installDb, '-DbUser', (string) $c['username'], '-DbPasswordFile', $dbPwFile,
             '-CloudUrl', 'http://127.0.0.1:' . $this->cloudPort, '-AllowHttpCloud', '-PairingCodeFile', $codeFile, '-DeviceName', 'clean-install-proof',
-            '-EnrollmentPublicKey', $this->enrollKeys['public'], '-UpdatePublicKey', $this->updateKeys['public'], '-RecoveryKeyFile', $recoveryFile,
+            '-EnrollmentPublicKey', $this->enrollKeys['public'], '-UpdatePublicKey', $this->updateKeys['public'],
             '-LanHostname', 'bingoo-edge.test', '-LanIp', '127.0.0.1', '-SelfSignedCert', '-HttpsPort', (string) $this->httpsPort, '-HttpPort', (string) $this->httpPort,
             '-WebWorkers', '1', '-WebPortBase', (string) $this->webPort, '-NoServices',
         ];
@@ -224,9 +236,7 @@ class EdgeCleanMachineInstallMySqlTest extends MySqlTenantTestCase
         [$code, $out] = $this->waitProcess('installer', 20 * 60);
         $this->assertSame(0, $code, "Install-EdgeAppliance.ps1 failed:\n" . $out . "\n" . $this->applianceLogTail());
         $this->assertStringContainsString('INSTALL COMPLETE', $out);
-        $this->assertStringNotContainsString($this->recoveryKey, $out, 'the installer never prints a secret');
         $this->assertFileDoesNotExist($codeFile, 'the one-time pairing code file is consumed');
-        $this->assertFileDoesNotExist($recoveryFile, 'the recovery key file is consumed');
         // Layout: launcher, layout file, versioned runtime + pointer, data root with the ONLY secrets file, certs, gateway config + plan.
         $this->assertFileExists($this->installRoot . '\\artisan');
         $this->assertFileExists($this->installRoot . '\\appliance.json');
@@ -238,7 +248,17 @@ class EdgeCleanMachineInstallMySqlTest extends MySqlTenantTestCase
         $this->assertMatchesRegularExpression('/^EDGE_SYNC_DEVICE_ID=[0-9a-f-]{36}$/m', $env, 'pairing persisted the device identity');
         $this->assertMatchesRegularExpression('/^EDGE_SYNC_DEVICE_SECRET=[0-9a-f]{64}$/m', $env, 'the locally generated device secret lives ONLY in appliance.env');
         $this->assertMatchesRegularExpression('/^EDGE_LOCAL_APP_KEY=base64:/m', $env);
-        $this->assertStringContainsString('EDGE_BACKUP_RECOVERY_KEY=' . $this->recoveryKey, $env);
+        // P5B §3 — the recovery key was ISSUED AND ESCROWED by the Cloud recovery authority during step 7 — nobody typed it.
+        $this->assertMatchesRegularExpression('/^EDGE_BACKUP_RECOVERY_KEY_ID=["\']?(brk_[a-z0-9]{26})["\']?$/m', $env, 'appliance.env holds a Cloud-issued key id');
+        preg_match('/^EDGE_BACKUP_RECOVERY_KEY_ID=["\']?(brk_[a-z0-9]{26})["\']?$/m', $env, $mk);
+        $escrow = DB::connection('master')->table('edge_backup_recovery_keys')->where('key_id', $mk[1])->first();
+        $this->assertNotNull($escrow, 'the key id is escrowed in the master DB');
+        $this->assertSame([$this->cloudTenantId, $this->branchId, 'active'], [(int) $escrow->tenant_id, (int) $escrow->branch_id, $escrow->status]);
+        $this->recoveryKey = Crypt::decryptString($escrow->key_ciphertext);
+        $this->assertMatchesRegularExpression('/^EDGE_BACKUP_RECOVERY_KEY=["\']?' . preg_quote($this->recoveryKey, '/') . '["\']?$/m', $env, 'the appliance holds the escrowed material');
+        $this->assertStringNotContainsString($this->recoveryKey, $out, 'the installer never prints the recovery material');
+        $this->assertSame(1, DB::connection('master')->table('edge_backup_recovery_audits')->where('branch_id', $this->branchId)->where('action', 'retrieved')->count(), 'the retrieval is audited');
+        $this->report['RECOVERY_KEY_PROVIDER'] = 'Cloud recovery authority issued ' . $mk[1] . ' to the paired device (escrowed under the Cloud APP_KEY; retrieval audited)';
         $this->assertFileExists($this->dataRoot . '\\certs\\server.crt');
         $this->assertFileExists($this->dataRoot . '\\certs\\server.key');
         $this->assertFileExists($this->dataRoot . '\\gateway\\nginx.conf');
@@ -377,17 +397,30 @@ class EdgeCleanMachineInstallMySqlTest extends MySqlTenantTestCase
         // BEFORE the local state is restored — the restore precheck refuses dangling references otherwise.
         [$code, $out] = $this->edge(['edge:local:bootstrap-pull', '--cloud-url=http://127.0.0.1:' . $this->cloudPort, '--no-interaction'], $dbB);
         $this->assertSame(0, $code, 'config bootstrap on the fresh machine: ' . $out);
+        // P5B §3 — DEAD APPLIANCE: the replacement holds NO usable recovery material (its process env carries a foreign key
+        // id and no retired keys) → the restore fails closed until the paired device pulls the branch material from the
+        // Cloud recovery authority (--pull-recovery-key), which the real installed package does over HTTP.
+        $noKeys = $dbB + ['EDGE_BACKUP_RECOVERY_KEY_ID' => 'dead-appliance-no-material', 'EDGE_BACKUP_RETIRED_KEYS' => '{}'];
+        [$code, $out] = $this->edge(['edge:local:restore', $backupPath, '--branch=' . $this->branchId, '--no-interaction'], $noKeys);
+        $this->assertSame(1, $code, 'a replacement without recovery material must refuse: ' . $out);
+        $this->assertStringContainsString('BACKUP_KEY_UNKNOWN', $out);
         [$code, $out] = $this->edge(['edge:local:restore', $backupPath, '--branch=999', '--no-interaction'], $dbB);
         $this->assertSame(1, $code, 'a backup of another branch must be refused');
         $this->assertStringContainsString('RESTORE_WRONG_IDENTITY', $out);
-        [$code, $out] = $this->edge(['edge:local:restore', $backupPath, '--branch=' . $this->branchId, '--no-interaction'], $dbB);
+        [$code, $out] = $this->edge(['edge:local:restore', $backupPath, '--branch=' . $this->branchId, '--pull-recovery-key', '--cloud-url=http://127.0.0.1:' . $this->cloudPort, '--no-interaction'], $noKeys);
         $this->assertSame(0, $code, $out);
+        $this->assertStringContainsString('Recovery material provisioned from the Cloud authority', $out);
+        $this->assertStringNotContainsString($this->recoveryKey, $out, 'the restore never prints the material');
+        $this->assertGreaterThanOrEqual(2, DB::connection('master')->table('edge_backup_recovery_audits')->where('branch_id', $this->branchId)->where('action', 'retrieved')->count());
         $pdoB = $this->pdo($this->installDb2);
         $this->assertSame('bootstrapped', (string) $pdoB->query('select runtime_state from edge_local_meta where singleton_guard = 1')->fetchColumn());
         $this->assertSame($device->public_uuid, (string) $pdoB->query('select device_uuid from edge_local_meta where singleton_guard = 1')->fetchColumn());
         $this->assertSame(1, (int) $pdoB->query('select count(*) from edge_local_user_credentials where status = \'active\'')->fetchColumn(), 'local users restored');
         $this->assertSame(1, (int) $pdoB->query("select count(*) from edge_sync_outbox where state = 'pending'")->fetchColumn(), 'the pending event survives into the fresh machine');
-        $this->report['FRESH_MACHINE_RESTORE'] = 'DB-A → DB-B with the recovery key; wrong branch refused; pending event preserved';
+        $rowA = $pdo->query("select sale_uuid, envelope, content_hash, state from edge_sync_outbox where state = 'pending'")->fetch(PDO::FETCH_ASSOC);
+        $rowB = $pdoB->query("select sale_uuid, envelope, content_hash, state from edge_sync_outbox where state = 'pending'")->fetch(PDO::FETCH_ASSOC);
+        $this->assertSame($rowA, $rowB, 'the pending outbox event is byte-identical after the replacement restore');
+        $this->report['FRESH_MACHINE_RESTORE'] = 'DB-A → DB-B: without material refused (BACKUP_KEY_UNKNOWN); recovered via the Cloud recovery authority (--pull-recovery-key); wrong branch refused; pending outbox byte-identical';
 
         // 9. SIGNED UPDATE to 0.2.0-edge: a tampered package is refused first; then the real update switches the pointer.
         $tamperFile = $this->pkgB . '\\app\\routes\\edge_runtime.php';
@@ -727,6 +760,19 @@ class EdgeCleanMachineInstallMySqlTest extends MySqlTenantTestCase
         $out = '';
         foreach (glob($this->scratch . '\\proc-*.log') ?: [] as $f) {
             $out .= "\n--- " . basename($f) . "\n" . substr((string) file_get_contents($f), -2000);
+        }
+
+        return $out;
+    }
+
+    /** Every regular file under $dir (absolute paths). */
+    private function walkFiles(string $dir): array
+    {
+        $out = [];
+        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS)) as $file) {
+            if ($file->isFile()) {
+                $out[] = $file->getPathname();
+            }
         }
 
         return $out;

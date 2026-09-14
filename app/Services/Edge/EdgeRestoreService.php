@@ -102,8 +102,22 @@ class EdgeRestoreService
             $conn->statement('SET FOREIGN_KEY_CHECKS=1');
         }
 
+        // P5B §3 — IDENTITY FOLLOWS THE PAIRED DEVICE, STATE FOLLOWS THE BACKUP: a replacement machine restoring a dead
+        // appliance's backup keeps its own (newly paired) device identity in the local binding; the dead device stays
+        // revoked at the Cloud. Same device → no change.
+        $deviceRebound = false;
+        $currentDevice = (string) config('edge.sync.device_id', '');
+        if ($currentDevice !== '' && $this->has('edge_local_meta')) {
+            $meta = $conn->table('edge_local_meta')->where('singleton_guard', 1)->first(['device_uuid']);
+            if ($meta && (string) $meta->device_uuid !== $currentDevice) {
+                $conn->table('edge_local_meta')->where('singleton_guard', 1)->update(['device_uuid' => $currentDevice, 'updated_at' => now()]);
+                $deviceRebound = true;
+            }
+        }
+
         return [
             'restored' => $restored,
+            'device_rebound' => $deviceRebound,
             'binding' => $payload['binding'] ?? [],
             'created_at' => $payload['created_at'] ?? null,
             'software_version' => $payload['software_version'] ?? null,

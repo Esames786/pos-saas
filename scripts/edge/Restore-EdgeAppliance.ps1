@@ -1,9 +1,11 @@
 # P4 WINDOWS APPLIANCE - restore the local appliance state from an encrypted backup (fresh machine or recovery).
 #
 # Prerequisites on the target machine: the appliance installed (Install-EdgeAppliance.ps1 with -SkipWarmSync is fine),
-# appliance.env holding the SAME device identity and the SAME branch recovery key (EDGE_BACKUP_RECOVERY_KEY / _ID) that
-# sealed the backup, and the Cloud CONFIG present locally (-PullConfig runs edge:local:bootstrap-pull first: products,
-# users, printers ... must exist before the local state is restored). The restore refuses a backup of another branch
+# a PAIRED device identity for the same branch (a replacement machine pairs anew after the dead device is revoked), and
+# the Cloud CONFIG present locally (-PullConfig runs edge:local:bootstrap-pull first: products, users, printers ... must
+# exist before the local state is restored). -PullConfig / -PullRecoveryKey then fetch the branch backup recovery
+# material (current + retired keys) from the Cloud recovery authority, so the key that sealed the backup is available
+# even though the dead appliance is gone (P5B). The restore refuses a backup of another branch
 # (RESTORE_WRONG_IDENTITY), an incompatible schema, or unresolved references; pending outbox events are preserved.
 #   .\Restore-EdgeAppliance.ps1 -InstallRoot "C:\Program Files\Bingoo Edge" -BackupFile D:\recover\edge-....enc -Branch 12
 param(
@@ -11,6 +13,7 @@ param(
     [Parameter(Mandatory = $true)][string]$BackupFile,
     [int]$Branch,
     [switch]$PullConfig,
+    [switch]$PullRecoveryKey,
     [switch]$NoServices
 )
 $ErrorActionPreference = 'Stop'
@@ -24,6 +27,12 @@ if (-not $NoServices -and (Test-Path $planFile)) { & (Join-Path $scriptDir 'Regi
 if ($PullConfig) {
     & $php $launcher edge:local:bootstrap-pull --no-interaction
     if ($LASTEXITCODE -ne 0) { Write-Host 'Config bootstrap failed - the restore needs the Cloud configuration present first.' -ForegroundColor Red; exit 1 }
+}
+if ($PullConfig -or $PullRecoveryKey) {
+    # P5B: the dead appliance is never the only holder of its backup key - the paired replacement pulls the branch
+    # material (current + retired keys) from the Cloud recovery authority into appliance.env (ids printed, never material).
+    & $php $launcher edge:local:recovery-key --no-interaction
+    if ($LASTEXITCODE -ne 0) { Write-Host 'Recovery-key provisioning failed - the Cloud recovery authority must release this branch material to this paired device.' -ForegroundColor Red; exit 1 }
 }
 $args = @('edge:local:restore', $BackupFile, '--no-interaction')
 if ($Branch) { $args += "--branch=$Branch" }

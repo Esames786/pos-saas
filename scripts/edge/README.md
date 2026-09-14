@@ -87,3 +87,13 @@ auto-start, crash restart by the Task Scheduler, terminal CA distribution at a r
 
 **Never commit generated certificates or private keys.** These scripts write outputs to an
 operator-chosen directory outside the repository.
+
+## P5B — release custody + backup recovery authority (14 Sep 2026)
+
+- `edge:update:keygen --keystore --passphrase-file` mints the release-signing key into an ENCRYPTED keystore on the release
+  authority; `edge:build-package --signing-keystore --signing-passphrase-file` signs a release from it (plaintext key files are
+  dev/test only). Keystore and passphrase files are forbidden in every artifact/package.
+- Installer step 7 now runs `edge:local:recovery-key`: the branch backup recovery key is issued + escrowed by the Cloud recovery
+  authority and pulled by the paired device (never typed in, never the appliance's secret alone). `Restore-EdgeAppliance.ps1
+  -PullConfig` (or `-PullRecoveryKey`) pulls it on a replacement machine; `edge:local:restore --pull-recovery-key` is the CLI form.
+- Cloud admins: `php artisan edge:recovery-key status|rotate --tenant=<code> --branch=<id> --reason=...` (ids + audit, never material).

@@ -38,6 +38,8 @@ class EdgePackageBuilder
         '#(^|/)\.psysh_history$#',
         '#(^|/)appliance\.env$#',      // a provisioned env file must never ride in a package
         '#(^|/)appliance\.json$#',     // the per-install layout file is written by the installer only
+        '#keystore[^/]*\.json$#i',      // P5B §2: a release-signing keystore never rides in a package
+        '#\.(keystore|passphrase)$#i',  // P5B §2: nor its passphrase file
     ];
 
     /** Cloud-only sentinels that must be physically ABSENT from app/ (mirror of the artifact exclude analysis). */
@@ -48,6 +50,7 @@ class EdgePackageBuilder
         'app/Services/Edge/EdgeInboundReturnIngestionService.php',
         'app/Services/Edge/EdgeInboundSupplierFinanceIngestionService.php',
         'app/Services/Edge/EdgeInboundPurchaseReturnIngestionService.php',
+        'app/Services/Edge/EdgeBackupRecoveryAuthority.php',
         'app/Http/Controllers/Tenant/SupplierPaymentController.php',
         'app/Http/Controllers/Tenant/Finance/ManualJournalController.php',
     ];
@@ -149,7 +152,7 @@ class EdgePackageBuilder
                 @mkdir($dest . '/update', 0755, true);
                 $file = 'edge-update-' . preg_replace('/[^A-Za-z0-9._+-]/', '_', (string) $pkg['payload']['edge_app_version']) . '.json';
                 file_put_contents($dest . '/update/' . $file, json_encode($pkg, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-                $components['update'] = ['signed' => true, 'file' => 'update/' . $file, 'edge_app_version' => $pkg['payload']['edge_app_version'], 'artifact_manifest_hash' => $pkg['payload']['artifact_manifest_hash']];
+                $components['update'] = ['signed' => true, 'signing_key_id' => ($opts['signing_key_id'] ?? null), 'file' => 'update/' . $file, 'edge_app_version' => $pkg['payload']['edge_app_version'], 'artifact_manifest_hash' => $pkg['payload']['artifact_manifest_hash']];
             } else {
                 $components['update'] = ['signed' => false, 'note' => 'no signing key given — release builds must be signed (EDGE_UPDATE_SIGNING_KEY on the build host only)'];
             }

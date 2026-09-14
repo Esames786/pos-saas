@@ -2,28 +2,29 @@
 
 namespace App\Console\Commands;
 
-use App\Services\Edge\EdgeEnrollmentCrypto;
+use App\Services\Edge\EdgeSigningKeyStore;
 use App\Support\EdgeRuntime;
 use Illuminate\Console\Command;
 
 /**
- * P5 KEY CUSTODY — mint the Ed25519 update-signing keypair on the BUILD HOST (never on an appliance).
+ * P5B §2 — mint the Ed25519 update-signing keypair INTO AN ENCRYPTED KEYSTORE on the release authority.
  *
- *   php artisan edge:update:keygen --private-out=D:\secure\edge-update-signing.key
+ *   php artisan edge:update:keygen --keystore=D:\edge-release\keystore\edge-update-signing-v1.keystore.json \
+ *       --passphrase-file=D:\edge-release\passphrase\edge-update-signing-v1.passphrase --label="pilot release key"
  *
- * The PRIVATE key is written to the given file only (0600; the operator moves it into the release-signing custody:
- * an offline/HSM-backed store or the CI secret store — never the repository, never an appliance, never a chat). The
- * PUBLIC key is printed: it goes into every appliance's appliance.env as EDGE_UPDATE_PUBLIC_KEY (the installer's
- * -UpdatePublicKey). Rotation = mint a new pair, ship the new public key to appliances through a signed update whose
- * payload the OLD key still signs, then retire the old private key. Refuses to run on a Branch Server.
+ * The private key is never printed and never written in plaintext: the keystore holds it sealed under the passphrase
+ * (Argon2id + XSalsa20-Poly1305). Refuses on a Branch Server, refuses a keystore path inside the source tree, refuses to
+ * overwrite. Prints the PUBLIC key (for EDGE_UPDATE_PUBLIC_KEY on appliances) and the key id / fingerprint.
  */
 class EdgeUpdateKeygenCommand extends Command
 {
     protected $signature = 'edge:update:keygen
-        {--private-out= : File to receive the base64 PRIVATE signing key (created 0600; refuses to overwrite)}
-        {--json : Emit the public key as JSON}';
+        {--keystore= : Path of the NEW encrypted keystore file (release authority custody; refuses to overwrite)}
+        {--passphrase-file= : File holding the keystore passphrase (>= 16 chars; never argv, never printed)}
+        {--label= : Custody label recorded in the keystore (public metadata)}
+        {--json : Emit the public facts as JSON}';
 
-    protected $description = 'Mint the Ed25519 update-signing keypair on the build host (private key to a file, public key printed).';
+    protected $description = 'Mint the Ed25519 update-signing keypair into an encrypted keystore on the release authority (public key printed, private key never).';
 
     public function handle(): int
     {
@@ -32,46 +33,44 @@ class EdgeUpdateKeygenCommand extends Command
 
             return self::FAILURE;
         }
-        if (! EdgeEnrollmentCrypto::available()) {
-            $this->error('libsodium is required to mint an Ed25519 keypair.');
+        $store = (string) ($this->option('keystore') ?? '');
+        $passFile = (string) ($this->option('passphrase-file') ?? '');
+        if ($store === '' || $passFile === '') {
+            $this->error('--keystore=<new file> and --passphrase-file=<file> are both required: the private key lives only sealed in the keystore.');
 
             return self::FAILURE;
         }
-        $out = (string) ($this->option('private-out') ?? '');
-        if ($out === '') {
-            $this->error('--private-out is required: the private key is written to a file, never printed.');
+        $storeDir = strtolower(str_replace('\\', '/', rtrim((string) (realpath(dirname($store)) ?: dirname($store)), '\\/'))) . '/';
+        $tree = strtolower(str_replace('\\', '/', rtrim(base_path(), '\\/'))) . '/';
+        if (str_starts_with($storeDir, $tree)) {
+            $this->error('Refusing: the keystore must live OUTSIDE the source tree (never git, never a package).');
 
             return self::FAILURE;
         }
-        if (file_exists($out)) {
-            $this->error('Refusing to overwrite an existing key file: ' . $out);
+        $passphrase = null;
+        try {
+            $passphrase = EdgeSigningKeyStore::readPassphraseFile($passFile);
+            $facts = EdgeSigningKeyStore::create($store, $passphrase, ['label' => (string) ($this->option('label') ?? '')]);
+        } catch (\Throwable $e) {
+            $this->error('Keygen refused: ' . $e->getMessage());
 
             return self::FAILURE;
+        } finally {
+            if (is_string($passphrase)) {
+                sodium_memzero($passphrase);
+            }
         }
-        $dir = dirname($out);
-        if (! is_dir($dir) && ! @mkdir($dir, 0700, true) && ! is_dir($dir)) {
-            $this->error('Cannot create ' . $dir);
-
-            return self::FAILURE;
-        }
-        $kp = EdgeEnrollmentCrypto::generateKeypair();
-        if (file_put_contents($out, $kp['secret'] . PHP_EOL, LOCK_EX) === false) {
-            $this->error('Cannot write ' . $out);
-
-            return self::FAILURE;
-        }
-        @chmod($out, 0600);
-        $fingerprint = substr(hash('sha256', base64_decode($kp['public'], true) ?: $kp['public']), 0, 16);
         if ($this->option('json')) {
-            $this->line(json_encode(['public_key' => $kp['public'], 'fingerprint' => $fingerprint, 'private_key_file' => $out], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            $this->line(json_encode(['public_key' => $facts['public_key'], 'key_id' => $facts['key_id'], 'keystore' => $facts['path']], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
             return self::SUCCESS;
         }
-        $this->info('Update-signing keypair minted.');
-        $this->line('  private key : ' . $out . '  (move into release-signing custody; never an appliance, never git)');
-        $this->line('  public key  : ' . $kp['public']);
-        $this->line('  fingerprint : ' . $fingerprint);
+        $this->info('Update-signing keypair minted into the encrypted keystore.');
+        $this->line('  keystore    : ' . $facts['path'] . '  (release authority custody; needs its passphrase to sign; never an appliance, never git)');
+        $this->line('  public key  : ' . $facts['public_key']);
+        $this->line('  key id      : ' . $facts['key_id']);
         $this->line('  appliances  : EDGE_UPDATE_PUBLIC_KEY=<public key>  (Install-EdgeAppliance.ps1 -UpdatePublicKey)');
+        $this->line('  sign with   : edge:build-package --signing-keystore=<keystore> --signing-passphrase-file=<file>');
 
         return self::SUCCESS;
     }

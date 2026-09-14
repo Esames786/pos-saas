@@ -25,11 +25,17 @@ WAN restored → the appliance REMAINS the writer → sync/reconcile → control
 1. Export the accepted commit and build the no-dev vendor closure beside its lock file:
    `git archive --format=tar <commit> | tar -x -C D:\build\edge-src` then, in that directory,
    `composer install --no-dev --prefer-dist --optimize-autoloader`.
-2. Mint (once) the update-signing keypair on the build host: `php artisan edge:update:keygen --private-out=D:\secure\edge-update-signing.key`.
-   The private key goes into release-signing custody (offline/HSM-backed store or the CI secret store) — never git,
-   never an appliance. The printed PUBLIC key is every appliance's `EDGE_UPDATE_PUBLIC_KEY` (`-UpdatePublicKey`).
+2. Mint (once) the update-signing keypair INTO THE ENCRYPTED CUSTODY KEYSTORE on the release authority (P5B §2):
+   `php artisan edge:update:keygen --keystore=<custody>\keystore\edge-update-signing-v1.keystore.json --passphrase-file=<custody>\passphrase\v1.passphrase --label="..."`.
+   The keystore seals the private key under the passphrase (Argon2id + XSalsa20-Poly1305); the command refuses a Branch
+   Server, a path inside the source tree, and overwriting. Custody = the keystore file + its passphrase file, both under a
+   user-only ACL on the release workstation, never git, never a package (`*.keystore.json` / `*.passphrase` are forbidden
+   patterns), never an appliance. The printed PUBLIC key is every appliance's `EDGE_UPDATE_PUBLIC_KEY` (`-UpdatePublicKey`);
+   the key id is recorded in the custody register (docs/status/edge-p5b-release-operations.md). This is NOT an HSM/KMS.
 3. From the clean, committed worktree: `php artisan edge:build-package D:\out\BingooEdge-<v> --vendor-from=D:\build\edge-src\vendor
-   --php-runtime=<php dir> --gateway=<nginx.exe> --signing-key-file=D:\secure\edge-update-signing.key`.
+   --php-runtime=<php dir> --gateway=<nginx.exe> --signing-keystore=<keystore> --signing-passphrase-file=<passphrase file>`.
+   The private key exists only in the memory of that build process; the package manifest records `signing_key_id`.
+   A release build refuses a plaintext `--signing-key-file` (dev/test only).
    A release build refuses a dirty tree, a missing `--vendor-from`, a closure whose `composer.lock` differs, or a closure
    installed with dev packages. `edge:audit-package` verifies the result; the manifest records `vendor_source`.
 
@@ -125,18 +131,35 @@ another branch/device is refused), **pre-update backup**, atomic stage + `curren
 upgrade, pointer rollback on failure. The outbox and every local table are preserved. Then services start and
 health prints.
 
-## Recover on a fresh machine
+## Backup recovery authority (P5B §3)
 
-Install the package on the new machine with the **same** `appliance.env` (device identity, `EDGE_BACKUP_RECOVERY_KEY` /
-`_ID`), let `db-init` create the fresh database, then restore with `-PullConfig` (the Cloud configuration — products,
-users, printers — must be present before the local state comes back):
+Every backup is sealed under a per-branch 32-byte recovery key that the **Cloud recovery authority** issues and escrows
+(master DB, encrypted under the Cloud APP_KEY) — the appliance is never the only holder. Installer step 7 runs
+`edge:local:recovery-key`, which fetches the branch material (current + retired keys) over the device-authenticated API
+`POST /api/edge/backup/recovery-keys` into `appliance.env` (`EDGE_BACKUP_RECOVERY_KEY` / `_ID` / `EDGE_BACKUP_RETIRED_KEYS`).
+Scope comes from the paired device row (tenant + branch); another branch's key id is refused; every issue / retrieval /
+rotation / refusal is audited (key ids only, never material). Revoking a device rotates the branch key (the old key is
+RETIRED, never deleted, so older backups stay recoverable). Cloud admins use `php artisan edge:recovery-key status|rotate
+--tenant=<code> --branch=<id>`; the cashier/operator UI never sees material. A `-RecoveryKeyFile` given to the installer is
+a LOCAL, unescrowed key (lab only) — the Cloud-issued key replaces it as current when pairing succeeds.
+
+## Recover on a replacement machine (dead appliance)
+
+1. On the Cloud Offline Edge page: revoke the dead device (this also rotates the branch recovery key) and generate a NEW
+   one-time pairing code for the same branch.
+2. Install the package on the replacement machine (fresh `appliance.env`; `db-init` creates the fresh database; pairing
+   gives it its OWN device identity; step 7 provisions the Cloud config and the branch recovery material).
+3. Restore the last backup (a copy of `<DataRoot>\backups\*.enc` kept off the dead machine — e.g. the hourly copy on the
+   branch NAS/USB per the pilot runbook) with `-PullConfig` (config first, then the recovery material, then the state):
 
 ```powershell
 .\scripts\Restore-EdgeAppliance.ps1 -InstallRoot "C:\Program Files\Bingoo Edge" -BackupFile D:\recover\<backup>.enc -Branch <id> -PullConfig
 ```
 
-The restore refuses a backup of another branch (`RESTORE_WRONG_IDENTITY`), an incompatible schema, or unresolved
-references; pending outbox events are preserved and sync after reconnect.
+Without the Cloud material the restore fails closed (`BACKUP_KEY_UNKNOWN`). It refuses a backup of another branch
+(`RESTORE_WRONG_IDENTITY`), an incompatible schema, or unresolved references; pending outbox events come back
+byte-identical and sync after reconnect; the local binding is re-pointed to the replacement's paired device identity
+(the dead device stays revoked at the Cloud).
 
 ## Uninstall (safe by default)
 

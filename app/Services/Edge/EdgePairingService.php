@@ -381,6 +381,16 @@ class EdgePairingService
         // if this fails the security revocation stays committed and we log reconciliation-required.
         $this->reconcileBranch($tenant, $device->branch_id, $userId, 'edge_device_revoked');
 
+        // P5B §3 — the revoked device may hold the branch backup recovery key: rotate it at the Cloud recovery authority
+        // (retire, never delete — the next authorized device still opens the older backups). Never a 500.
+        try {
+            app(\App\Services\Edge\EdgeBackupRecoveryAuthority::class)->rotate((int) $tenant->id, (int) $device->branch_id, 'user:' . $userId, 'device_revoked:' . $device->public_uuid);
+        } catch (\Throwable $e) {
+            Log::warning('[edge-pairing-audit] recovery-key rotation deferred after device revocation', [
+                'tenant_id' => $tenant->id, 'branch_id' => $device->branch_id, 'device_uuid' => $device->public_uuid, 'error' => $e->getMessage(),
+            ]);
+        }
+
         $this->audit('edge.device.revoked', [
             'tenant_id' => $tenant->id, 'branch_id' => $device->branch_id,
             'device_uuid' => $device->public_uuid, 'user_id' => $userId,

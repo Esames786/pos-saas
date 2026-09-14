@@ -9,6 +9,7 @@
 #   5  edge:local:db-init            local schema on a fresh loopback Edge database
 #   6  edge:local:pair               one-time pairing code -> device identity (secret generated locally, persisted)
 #   7  edge:local:bootstrap-pull     Cloud bootstrap snapshot: config, users/permissions, terminals, printers, ...
+#      edge:local:recovery-key       the branch backup recovery material, escrowed by the Cloud recovery authority (P5B)
 #   8  edge:local:enroll             the first local user's credential from a Cloud-signed assertion
 #   9  edge:local:gateway-cert       LAN TLS certificate (PFX from the branch CA, or -SelfSignedCert for a lab)
 #  10  edge:local:service-plan       render nginx.conf + the service plan JSON
@@ -194,7 +195,7 @@ if ($null -eq $dbPassword) {
     $dbPassword = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec))
 }
 $recoveryKey = Read-SecretFile $RecoveryKeyFile 'recovery key'
-if (-not $recoveryKey) { Write-Warning 'No backup recovery key given: backups cannot be sealed until EDGE_BACKUP_RECOVERY_KEY is provisioned.' }
+if ($recoveryKey) { Write-Warning 'A LOCAL -RecoveryKeyFile was given: that key is NOT escrowed by the Cloud. When pairing succeeds the Cloud-issued key becomes current (the local key is kept as a retired key).' }
 if ($DbName -notmatch '^(bingoo_edge_|edge_local_)' -and $DbName -notmatch 'edge.*test|test.*edge') { Fail "DbName [$DbName] must be a dedicated Edge database (bingoo_edge_* / edge_local_*)" }
 $template = Get-Content -Path (Join-Path $PackageRoot 'templates\appliance.env.template') -Raw
 $values = @{
@@ -266,9 +267,10 @@ if ($PairingCodeFile -and $CloudUrl) {
 
 # ---- 7. bootstrap ----------------------------------------------------------------------------------------------
 if ($PairingCodeFile -and $CloudUrl) {
-    Step 7 'edge:local:bootstrap-pull'
+    Step 7 'edge:local:bootstrap-pull + edge:local:recovery-key (Cloud-escrowed backup recovery material)'
     if ((Invoke-Edge @('edge:local:bootstrap-pull', "--cloud-url=$CloudUrl", '--no-interaction')) -ne 0) { Fail 'bootstrap pull failed' }
-} else { Step 7 'edge:local:bootstrap-pull skipped' }
+    if ((Invoke-Edge @('edge:local:recovery-key', "--cloud-url=$CloudUrl", '--no-interaction')) -ne 0) { Fail 'recovery-key provisioning failed (the Cloud recovery authority issues the branch backup key to the paired device)' }
+} else { Step 7 'edge:local:bootstrap-pull / recovery-key skipped' }
 
 # ---- 8. first local user ---------------------------------------------------------------------------------------
 if ($EnrollmentAssertionFile) {
@@ -331,6 +333,6 @@ Write-Host ''
 if ($health.status -eq 'NOT_BOUND') { Fail 'the appliance is not bound (pairing / bootstrap incomplete)' }
 Write-Host "INSTALL COMPLETE - status $($health.status): $($health.status_label)" -ForegroundColor Green
 Write-Host "  install root : $InstallRoot"
-Write-Host "  data root    : $DataRoot  (config\appliance.env holds the secrets; back up the recovery key separately)"
+Write-Host "  data root    : $DataRoot  (config\appliance.env holds the secrets; the backup recovery key is escrowed by the Cloud recovery authority)"
 Write-Host "  next         : distribute the branch CA public cert to terminals; point terminals at https://$LanHostname"
 exit 0

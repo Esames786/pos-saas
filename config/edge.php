@@ -291,6 +291,7 @@ return [
         'edge:local:sync-status', // OFFLINE-SYNC-ENGINE-1E: read-only sync/exception/cutover status
         'edge:local:backup', // PRODUCTIZATION: encrypted local appliance backup
         'edge:local:restore', // PRODUCTIZATION: guarded restore of a local appliance backup
+        'edge:local:recovery-key', // P5B §3: Cloud-escrowed backup recovery material → appliance.env (ids printed, never material)
         'edge:local:update', // PRODUCTIZATION: apply a signed appliance update
         'edge:local:authority-heartbeat', // P0 lease: renew the Cloud's lease / record a missed beat
         'edge:local:authority-status',    // P0 lease: gates + state (read-only)
@@ -410,6 +411,13 @@ return [
             'app/Http/Controllers/Edge/EdgeInboundPurchaseReturnApiController.php',
             'app/Http/Controllers/Edge/EdgePurchaseReturnCacheApiController.php',
             'app/Models/Tenant/EdgeInboundPurchaseReturnIngestion.php',
+            // P5B §3 — the Cloud BACKUP RECOVERY AUTHORITY (escrow, retrieval, rotation, audit) is hosted by the Cloud
+            // only; the appliance carries the client + provisioner + edge:local:recovery-key and never the escrow.
+            'app/Services/Edge/EdgeBackupRecoveryAuthority.php',
+            'app/Http/Controllers/Edge/EdgeBackupRecoveryApiController.php',
+            'app/Console/Commands/EdgeRecoveryKeyCommand.php',
+            'app/Models/Master/EdgeBackupRecoveryKey.php',
+            'app/Models/Master/EdgeBackupRecoveryAudit.php',
             'app/Http/Controllers/Tenant/Finance/ManualJournalController.php',
             'resources/views/tenant/finance/manual-journals',
 
@@ -484,6 +492,9 @@ return [
             '#(^|/)storage/app/backups/(?!\.gitkeep$).#',
             '#FakePrinter\.exe$#i',
             '#(^|/)\.psysh_history$#',
+            // P5B §2 — release-signing custody: neither the keystore nor its passphrase may ever be in an artifact.
+            '#keystore[^/]*\.json$#i',
+            '#\.(keystore|passphrase)$#i',
         ],
     ],
 
