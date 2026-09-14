@@ -189,7 +189,8 @@ class EdgeCleanMachineInstallMySqlTest extends MySqlTenantTestCase
         }
         config(['edge.app_version' => env('EDGE_APP_VERSION', '0.1.0-edge')]);
         foreach ([$this->pkgA, $this->pkgB] as $pkg) {
-            $custody = array_filter($this->walkFiles($pkg), fn ($p) => (bool) preg_match('/keystore|passphrase/i', basename($p)));
+            // custody FILES (keystore JSON / .keystore / .passphrase) — the EdgeSigningKeyStore class source is code, not a key.
+            $custody = array_filter($this->walkFiles($pkg), fn ($p) => (bool) preg_match('/(keystore[^\\\\\/]*\.json|\.(keystore|passphrase))$/i', basename($p)));
             $this->assertSame([], array_values($custody), 'no custody material (keystore / passphrase) inside a package');
         }
         $manifestA = json_decode((string) file_get_contents($this->pkgA . '\\package-manifest.json'), true);
@@ -257,7 +258,7 @@ class EdgeCleanMachineInstallMySqlTest extends MySqlTenantTestCase
         $this->recoveryKey = Crypt::decryptString($escrow->key_ciphertext);
         $this->assertMatchesRegularExpression('/^EDGE_BACKUP_RECOVERY_KEY=["\']?' . preg_quote($this->recoveryKey, '/') . '["\']?$/m', $env, 'the appliance holds the escrowed material');
         $this->assertStringNotContainsString($this->recoveryKey, $out, 'the installer never prints the recovery material');
-        $this->assertSame(1, DB::connection('master')->table('edge_backup_recovery_audits')->where('branch_id', $this->branchId)->where('action', 'retrieved')->count(), 'the retrieval is audited');
+        $this->assertSame(1, DB::connection('master')->table('edge_backup_recovery_audits')->where('tenant_id', $this->cloudTenantId)->where('branch_id', $this->branchId)->where('action', 'retrieved')->count(), 'the retrieval is audited');
         $this->report['RECOVERY_KEY_PROVIDER'] = 'Cloud recovery authority issued ' . $mk[1] . ' to the paired device (escrowed under the Cloud APP_KEY; retrieval audited)';
         $this->assertFileExists($this->dataRoot . '\\certs\\server.crt');
         $this->assertFileExists($this->dataRoot . '\\certs\\server.key');
@@ -411,7 +412,7 @@ class EdgeCleanMachineInstallMySqlTest extends MySqlTenantTestCase
         $this->assertSame(0, $code, $out);
         $this->assertStringContainsString('Recovery material provisioned from the Cloud authority', $out);
         $this->assertStringNotContainsString($this->recoveryKey, $out, 'the restore never prints the material');
-        $this->assertGreaterThanOrEqual(2, DB::connection('master')->table('edge_backup_recovery_audits')->where('branch_id', $this->branchId)->where('action', 'retrieved')->count());
+        $this->assertGreaterThanOrEqual(2, DB::connection('master')->table('edge_backup_recovery_audits')->where('tenant_id', $this->cloudTenantId)->where('branch_id', $this->branchId)->where('action', 'retrieved')->count());
         $pdoB = $this->pdo($this->installDb2);
         $this->assertSame('bootstrapped', (string) $pdoB->query('select runtime_state from edge_local_meta where singleton_guard = 1')->fetchColumn());
         $this->assertSame($device->public_uuid, (string) $pdoB->query('select device_uuid from edge_local_meta where singleton_guard = 1')->fetchColumn());
@@ -730,6 +731,11 @@ class EdgeCleanMachineInstallMySqlTest extends MySqlTenantTestCase
 
     private function cleanupMasterEdgeRows(): void
     {
+        if (isset($this->cloudTenantId)) {
+            // P5B — the recovery authority's escrow + audit rows of THIS proof tenant (the master test DB persists across runs).
+            DB::connection('master')->table('edge_backup_recovery_audits')->where('tenant_id', $this->cloudTenantId)->delete();
+            DB::connection('master')->table('edge_backup_recovery_keys')->where('tenant_id', $this->cloudTenantId)->delete();
+        }
         try {
             $m = DB::connection('master');
             $snapshots = $m->table('edge_bootstrap_snapshots')->where('tenant_id', $this->cloudTenantId)->pluck('id')->all();

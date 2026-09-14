@@ -161,6 +161,7 @@ RELEASE_VENDOR_REAL_FILES=yes   DEV_VENDOR_JUNCTION_USED=no (release mode; the i
 
 REAL_SIGNING_KEY_CUSTODY=procedure_defined_custody_not_established (edge:update:keygen on the build host; no vault/HSM/CI secret store yet)
 REAL_RECOVERY_KEY_PROVIDER=not_available (ConfigEdgeBackupKeyProvider = env-file key only; no Cloud recovery authority)
+  → both fields CLOSED by P5B (14 Sep 2026): see docs/status/edge-p5b-release-operations.md §2 (encrypted release keystore custody) and §3 (Cloud backup recovery authority).
 
 INSTALL_AS_ADMIN=no (non-admin equivalent proven: fresh install root + data root + fresh DB from the release package through the launcher)
 TASKS_REGISTERED=no — Register-ScheduledTask denied; plan JSON + Register-EdgeServices.ps1 + Invoke-EdgeCertification.ps1 -Phase Tasks ready for the lab
