@@ -5774,6 +5774,10 @@ document.addEventListener('DOMContentLoaded', function () {
         const body = document.getElementById('bill-preview-modal-body');
         body.innerHTML = '<div class="text-center text-muted py-4">Building bill preview…</div>';
         document.getElementById('billPreviewModalLabel').textContent = 'Current Cart Preview';
+        // ⚠️ Modal SANJHA hai. Ye satar us soorat ko rokti hai jahan pehle kisi table ka bill dekha
+        // gaya ho aur wo nishan chipka reh jaye — phir cart ka preview khulta aur "Send to network"
+        // us PURANI table ki parchi bhej deta. Yani wohi bug, ulti taraf se.
+        markPreviewMode('cart');
         bootstrap.Modal.getOrCreateInstance(document.getElementById('billPreviewModal')).show();
 
         const payload = {
@@ -5828,12 +5832,30 @@ document.addEventListener('DOMContentLoaded', function () {
         })
         .finally(function () { setButtonBusy(previewBtn, false); });
     }
+    /* BILL-PREVIEW-WRONG-PRINT-1 — modal SANJHA hai (table session ka bill bhi, cart ka preview
+       bhi), is liye usay yaad rehna chahiye ke is waqt wo KIS CHEEZ ka bill dikha raha hai.
+
+       Pehle yaad nahi rakhta tha — sirf HTML andar daal deta tha. Footer ka "Send to network"
+       `currentReprintSaleId()` yani CART ka order bhej deta tha: screen par table 9 ka bill,
+       printer par table 5 ki parchi. Owner ne isi wajah se 31 Aug (75dc5cf) ko wo button
+       chhupwaya tha — magar wo bug ka ilaj nahi tha, sirf ek darwaza band karna tha.
+
+       ⚠️ Cart wale raaste par bhi ye NISHAN lagana lazmi hai, warna pichli haalat chipak jayegi
+       aur wohi bug ulta ho kar wapas aa jayega. */
+    function markPreviewMode(mode, heldSaleIds) {
+        var modal = document.getElementById('billPreviewModal');
+        if (!modal) { return; }
+        modal.dataset.mode        = mode;
+        modal.dataset.heldSaleIds = mode === 'session' ? JSON.stringify(heldSaleIds || []) : '';
+    }
+
     function showTableBillPreview(sessionId) {
         fetch('{{ url('/restaurant/table-sessions') }}/' + sessionId + '/bill-preview', { headers: { 'Accept': 'application/json' } })
             .then(function (response) { return response.json().then(function (data) { if (!response.ok || !data.ok) throw new Error(data.message || 'Unable to load table bill.'); return data; }); })
             .then(function (data) {
                 document.getElementById('billPreviewModalLabel').textContent = 'Table Bill Preview';
                 document.getElementById('bill-preview-modal-body').innerHTML = data.html;
+                markPreviewMode('session', data.held_sale_ids);
                 showModalAfterWorkspace(document.getElementById('billPreviewModal'));
             }).catch(function (error) { toast('error', error.message); });
     }
@@ -5845,6 +5867,51 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('send-network-receipt-btn')?.addEventListener('click', function () {
         const btn = this;
         if (buttonIsBusy(btn)) return;
+
+        const terminalId = (document.getElementById('terminal_id') || {}).value || '';
+        const q = '?reprint=1' + (terminalId ? '&terminal_id=' + encodeURIComponent(terminalId) : '');
+        const queueReceipt = function (id) {
+            return fetch('{{ url('/printing/jobs/receipt') }}/' + id + q, {
+                method: 'POST', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
+            }).then(function (res) { return res.json(); });
+        };
+
+        /* BILL-PREVIEW-WRONG-PRINT-1 — jo SCREEN par hai wohi bhejo.
+           Modal sanjha hai: table session ka bill bhi isi me khulta hai aur cart ka preview bhi.
+           Pehle ye button dono surton me `currentReprintSaleId()` (cart ka order) bhejta tha, is
+           liye table ka bill dekh kar bhejne par PICHLE customer ki parchi nikalti thi. */
+        const modal = document.getElementById('billPreviewModal');
+
+        if (modal && modal.dataset.mode === 'session') {
+            let ids = [];
+            try { ids = JSON.parse(modal.dataset.heldSaleIds || '[]'); } catch (e) { ids = []; }
+
+            if (!ids.length) {
+                toast('warning', 'This table has no unpaid order to send.');
+                return;
+            }
+
+            // Har round apna asli sale hai, is liye har ek ki apni parchi jaati hai — ek jama
+            // bill nahi. Kisi EK ko chun kar bhejna sab se bura hota: operator ko pata bhi na
+            // chalta ke aadha bill chhapa hai.
+            setButtonBusy(btn, true, 'Sending');
+            Promise.all(ids.map(queueReceipt))
+                .then(function (all) {
+                    const fell = all.filter(function (d) { return d && d.fallback; });
+                    if (fell.length) {
+                        toast('warning', 'No network receipt printer is mapped — opening a browser preview instead.');
+                        fell.forEach(openFallbackPreviews);
+                        return;
+                    }
+                    toast('success', ids.length === 1
+                        ? 'Receipt sent to the network printer.'
+                        : ids.length + ' receipts sent to the network printer (one per round).');
+                })
+                .catch(function () { toast('error', 'Could not send to the network printer.'); })
+                .finally(function () { setButtonBusy(btn, false); });
+            return;
+        }
+
         // WRONG-BILL FIX: never fall back to the sticky _lastSaleId while a new unsaved cart is
         // on screen — that reprinted the previous customer's saved order (e.g. #63) instead.
         const saleId = currentReprintSaleId();
@@ -5852,13 +5919,8 @@ document.addEventListener('DOMContentLoaded', function () {
             warnNoReprintable('sending to a network printer');
             return;
         }
-        const terminalId = (document.getElementById('terminal_id') || {}).value || '';
-        const q = '?reprint=1' + (terminalId ? '&terminal_id=' + encodeURIComponent(terminalId) : '');
         setButtonBusy(btn, true, 'Sending');
-        fetch('{{ url('/printing/jobs/receipt') }}/' + saleId + q, {
-            method: 'POST', headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json' },
-        })
-        .then(function (res) { return res.json(); })
+        queueReceipt(saleId)
         .then(function (data) {
             if (data.fallback) {
                 toast('warning', 'No network receipt printer is mapped — opening a browser preview instead.');
