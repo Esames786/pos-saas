@@ -1,7 +1,7 @@
 # TABLE-BILL-PREVIEW-PARITY-1 — Table Bill Preview ko Cart Preview jaisa banana
 
 **Tareekh:** 2026-09-14
-**Halat:** RESEARCH + PLAN — koi code nahi badla, koi deploy nahi hua
+**Halat:** ✅ **LIVE** — prod `22c9a03` (2026-09-14). Plan jyun ka tyun laga, sift (a) raasta chuna gaya.
 **Maalik ka mutalba:** "why both preview are different… Current Cart Preview is recommended for
 any preview… or transform table preview exactly like cart whatever is easy"
 
