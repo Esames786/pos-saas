@@ -131,6 +131,15 @@
         padding-right: .25rem;
     }
 
+    /* TABLE-WORKSPACE-WIDTH-1 — ye POS ka sab se bhara modal hai: ek floor par 20+ table cards,
+       aur har card par ab Bill Preview / Split / Held / Move ke button bhi. `modal-xl` 1140px par
+       ruk jata hai, is liye counter ki chaurhi screen par aadhi jagah khali rehti thi aur cards
+       5 column me sikur kar lamba scroll bana dete the. Sirf bade screen par chaurha kiya ja raha
+       hai — 992px se neeche `modal-fullscreen-lg-down` pehle hi poori screen le leta hai, is liye
+       tablet aur chhote counter par ek pixel nahi badalta. */
+    @media (min-width: 992px) {
+        .modal-dialog.table-workspace-dialog { max-width: min(1720px, 96vw); }
+    }
     .table-workspace-panel { min-height: 420px; }
     .table-workspace-panel .restaurant-board-grid {
         grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
@@ -1017,7 +1026,7 @@
 
 {{-- Open Table Modal --}}
 <div class="modal fade" id="tableWorkspaceModal" tabindex="-1" aria-labelledby="tableWorkspaceModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-fullscreen-lg-down modal-dialog-scrollable">
+    <div class="modal-dialog modal-xl table-workspace-dialog modal-fullscreen-lg-down modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
                 <div>
