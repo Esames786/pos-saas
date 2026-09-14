@@ -43,6 +43,33 @@ class PosFrontendRegressionTest extends TestCase
         $this->assertStringNotContainsString('data-table-merge', $board);
     }
 
+    /**
+     * BILL-PREVIEW-UNHIDE-1. The card's Bill Preview button was hidden on 31 Aug
+     * because Print / Send-to-network fired the order attached in the background
+     * instead of the session being previewed. It is visible again only because
+     * BILL-PREVIEW-WRONG-PRINT-1 fixed that, so this guard ties the two together:
+     * the button may not be visible unless the modal still carries its own mode.
+     * If the print target ever regresses, this test names the button to re-hide.
+     */
+    public function test_card_bill_preview_is_visible_and_the_print_target_fix_is_still_in_place(): void
+    {
+        $board = file_get_contents(resource_path('views/tenant/pos/partials/table-board.blade.php'));
+        $view = file_get_contents(resource_path('views/tenant/pos/index.blade.php'));
+
+        preg_match('/<button[^>]*data-table-bill-preview[^>]*>/s', $board, $button);
+        $this->assertNotEmpty($button, 'The card Bill Preview button could not be located.');
+        $this->assertStringNotContainsString(
+            'd-none',
+            $button[0],
+            'The card Bill Preview button is hidden again — see BILL-PREVIEW-UNHIDE-1.'
+        );
+
+        // The button is only safe while the modal knows which source it is showing.
+        $this->assertStringContainsString("markPreviewMode('session', data.held_sale_ids)", $view);
+        $this->assertStringContainsString("markPreviewMode('cart')", $view);
+        $this->assertStringContainsString("modal.dataset.mode === 'session'", $view);
+    }
+
     public function test_desktop_workspace_uses_internal_product_and_cart_scrollers(): void
     {
         $view = file_get_contents(resource_path('views/tenant/pos/index.blade.php'));
