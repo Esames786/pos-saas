@@ -326,6 +326,115 @@ class CateringStatusRollbackMySqlTest extends MySqlTenantTestCase
         $this->status->moveBack($event->refresh(), '   ');
     }
 
+    // ── CATERING-REVISION-MONEY-1 ──────────────────────────────────────────
+
+    /**
+     * A revision takes the booking back to draft, because a confirmation is
+     * agreement to SPECIFIC NUMBERS and those numbers have just been replaced.
+     *
+     * The state this prevents is one confirmEvent() would itself refuse to
+     * create: a booking reading "Confirmed" on top of an unfinalised draft. The
+     * system would not knowingly build it — it drifted into it, because revise()
+     * never looked at the booking at all.
+     */
+    public function test_revising_takes_a_confirmed_booking_back_to_draft(): void
+    {
+        $event = $this->quotedEvent();
+        $this->estimates->confirmEvent($event->refresh());
+        $this->assertSame(CateringEvent::STATUS_CONFIRMED, $event->refresh()->status);
+        $this->assertNotNull($event->confirmed_at);
+
+        $revision = $this->estimates->revise($event->refresh()->currentEstimate);
+
+        $event->refresh();
+        $this->assertSame(CateringEvent::STATUS_DRAFT, $event->status,
+            'the booking follows the paper back — it no longer claims an agreement to replaced figures');
+        $this->assertNull($event->confirmed_at,
+            'and the confirmation timestamp goes with it');
+
+        $this->assertTrue($revision->isDraft());
+        $this->assertSame(2, $revision->version_no);
+
+        // The road forward is the normal one: finalise promotes it to quoted,
+        // and someone confirms the NEW numbers on purpose.
+        $this->estimates->markSent($revision->refresh());
+        $this->assertSame(CateringEvent::STATUS_QUOTED, $event->refresh()->status);
+
+        $this->estimates->confirmEvent($event->refresh());
+        $this->assertSame(CateringEvent::STATUS_CONFIRMED, $event->refresh()->status);
+    }
+
+    /**
+     * MONEY IS NOT TOUCHED by a revision — only what the booking is billed FOR.
+     *
+     * This is the case the owner asked about: 90% paid, then a revision. The
+     * receipt stays exactly as posted and no journal moves; the balance changes
+     * because position() re-reads a different quotation, which is the correct
+     * answer and the reason the screen now says so before it happens.
+     */
+    public function test_revising_moves_no_money_but_does_move_the_balance(): void
+    {
+        $event = $this->quotedEvent();
+        $this->estimates->confirmEvent($event->refresh());
+
+        // 100,000 quoted; the customer pays 90,000 of it.
+        app(CateringAdvanceService::class)->record($event->refresh(), [
+            'amount' => 90000,
+            'received_date' => now()->toDateString(),
+            'payment_method_id' => $this->paymentMethodId,
+        ]);
+
+        $position = app(CateringFinancialPositionService::class);
+        $before = $position->position($event->refresh());
+        $this->assertEqualsWithDelta(100000.0, $before['billed'], 0.01);
+        $this->assertEqualsWithDelta(10000.0, $before['balance_due'], 0.01);
+
+        $advanceRows = $this->tenant()->table('catering_advances')
+            ->orderBy('id')->get()->map(fn ($r) => (array) $r)->all();
+        $entries = $this->tenant()->table('journal_entries')->count();
+
+        // Revise, and cut the booking down to 60,000.
+        $revision = $this->estimates->revise($event->refresh()->currentEstimate);
+        $this->estimates->saveDraftLines($revision->refresh(), [
+            ['product_id' => $revision->lines()->first()->product_id,
+                'item_name' => 'Test Dish', 'quantity' => 60, 'rate' => 1000],
+        ]);
+
+        // Not one rupee has moved.
+        $this->assertEquals($advanceRows, $this->tenant()->table('catering_advances')
+            ->orderBy('id')->get()->map(fn ($r) => (array) $r)->all(),
+            'a revision must never edit a receipt that already happened');
+        $this->assertSame($entries, $this->tenant()->table('journal_entries')->count(),
+            'nor post, reverse or delete a journal entry');
+        $this->assertSame(0, $this->tenant()->table('catering_refunds')->count());
+
+        // But the customer is now in CREDIT, because the bill shrank below what
+        // they had already paid. That is the truth, and it is why the screen
+        // warns before the revision is created.
+        $after = $position->position($event->refresh());
+        $this->assertEqualsWithDelta(60000.0, $after['billed'], 0.01);
+        $this->assertEqualsWithDelta(90000.0, $after['gross_received'], 0.01, 'the same money');
+        $this->assertEqualsWithDelta(0.0, $after['balance_due'], 0.01);
+        $this->assertEqualsWithDelta(30000.0, $after['customer_credit'], 0.01,
+            'the difference is owed back to the customer');
+    }
+
+    /** A released booking keeps its status — its kitchen sheet has already gone out. */
+    public function test_revising_does_not_rewrite_a_released_booking(): void
+    {
+        $event = $this->quotedEvent();
+        $this->estimates->confirmEvent($event->refresh());
+        app(\App\Services\Catering\CateringProductionReleaseService::class)
+            ->release($event->refresh(), null);
+
+        $this->assertSame(CateringEvent::STATUS_RELEASED, $event->refresh()->status);
+
+        $this->estimates->revise($event->refresh()->currentEstimate);
+
+        $this->assertSame(CateringEvent::STATUS_RELEASED, $event->refresh()->status,
+            'a release that exists must not be denied by a status rewrite');
+    }
+
     // ── fixtures ───────────────────────────────────────────────────────────
 
     private function draftEvent(): CateringEvent

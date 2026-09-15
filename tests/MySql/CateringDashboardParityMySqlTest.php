@@ -124,9 +124,15 @@ class CateringDashboardParityMySqlTest extends MySqlTenantTestCase
         $this->estimates->markSent($event->currentEstimate);
         $this->assertSame('Awaiting Customer Acceptance', $this->calendar->nextAction($event->fresh()));
 
+        // CATERING-ACCEPT-CONFIRMS-1: acceptance carries the booking with it, so
+        // "Booking Confirmation Pending" is no longer a stage anyone waits in.
+        // The walk is one step shorter, and that is the point being pinned.
         $this->estimates->markAccepted($event->currentEstimate->refresh());
-        $this->assertSame('Booking Confirmation Pending', $this->calendar->nextAction($event->fresh()));
+        $this->assertSame(\App\Models\Tenant\CateringEvent::STATUS_CONFIRMED, $event->fresh()->status,
+            'the customer said yes, so the booking is on');
+        $this->assertSame('Production Pending', $this->calendar->nextAction($event->fresh()));
 
+        // And pressing Confirm Booking anyway is harmless.
         $this->estimates->confirmEvent($event->refresh());
         $this->assertSame('Production Pending', $this->calendar->nextAction($event->fresh()));
 

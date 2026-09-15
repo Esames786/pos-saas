@@ -376,14 +376,23 @@ class CateringOperatorUiMySqlTest extends MySqlTenantTestCase
         }
         $this->assertSame(CateringEvent::STATUS_DRAFT, $event->refresh()->status);
 
-        // Finalize → accept → confirm is the sanctioned road, and it works.
+        // Finalize → accept is now the whole road: CATERING-ACCEPT-CONFIRMS-1
+        // means the customer's yes confirms the booking, so the operator never
+        // has to press a second button to record the same fact twice.
         $estimate = $event->currentEstimate;
         $this->estimates->markSent($estimate);
         $this->estimates->markAccepted($estimate->refresh());
 
-        $html = $this->render($event->refresh());
-        $this->assertStringContainsString('>Confirm Booking</button>', $html);
+        $this->assertSame(CateringEvent::STATUS_CONFIRMED, $event->refresh()->status,
+            'acceptance carries the booking with it');
 
+        // …and the button is gone, because there is nothing left to confirm.
+        $html = $this->render($event->refresh());
+        $this->assertStringNotContainsString('>Confirm Booking</button>', $html,
+            'a button whose work is already done should not be on the screen');
+
+        // Pressing it anyway - a stale page, a double submit - is a no-op, not
+        // an error.
         $this->estimates->confirmEvent($event->refresh());
         $this->assertSame(CateringEvent::STATUS_CONFIRMED, $event->refresh()->status);
     }
