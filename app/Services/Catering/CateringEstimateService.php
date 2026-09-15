@@ -426,6 +426,38 @@ class CateringEstimateService
                 'superseded_at' => now(),
             ])->save();
 
+            // CATERING-REVISION-MONEY-1 — the booking follows the paper back.
+            //
+            // A confirmation is agreement to SPECIFIC NUMBERS, and those numbers
+            // have just been superseded. Leaving the booking on `confirmed`
+            // while its quotation is an unfinalised draft made the screen say
+            // the customer had agreed to figures that no longer existed — and
+            // it is a state confirmEvent() REFUSES to create, since it demands
+            // a non-draft estimate. The system would not knowingly build it,
+            // but it drifted into it.
+            //
+            // So the booking returns to `draft`, and the normal road carries it
+            // forward again: finalising the revision promotes it to `quoted`
+            // (markSent), and someone confirms the NEW numbers deliberately.
+            //
+            // MONEY IS NOT TOUCHED. Advances, refunds, invoices and journal
+            // entries are left exactly as posted; only what the booking is
+            // billed FOR changes, and position() re-reads that on its own.
+            //
+            // Only these two statuses move. A `released` booking keeps its
+            // status because its kitchen sheet has already gone out, and
+            // rewriting that to `draft` would deny a release that exists.
+            $event = $estimate->event;
+            if ($event && in_array($event->status, [
+                CateringEvent::STATUS_QUOTED,
+                CateringEvent::STATUS_CONFIRMED,
+            ], true)) {
+                $event->forceFill([
+                    'status' => CateringEvent::STATUS_DRAFT,
+                    'confirmed_at' => null,
+                ])->save();
+            }
+
             return $revision;
         });
     }

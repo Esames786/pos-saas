@@ -384,11 +384,15 @@
                     </form>
                 @endcan
                 @can('tenant.catering.estimates.send')
-                    <form method="POST" action="{{ url('/catering/estimates/' . $current->id . '/send') }}">
+                    {{-- CATERING-REVISION-MONEY-1 — finalising a REVISION is the
+                         moment the new figure becomes what the customer owes.
+                         The confirm shows the move rather than announcing it
+                         afterwards on the statement. --}}
+                    <form method="POST" action="{{ url('/catering/estimates/' . $current->id . '/send') }}" id="finalize-form">
                         @csrf
                         <button class="btn btn-sm btn-primary" data-bs-toggle="tooltip"
                                 title="Validates the costing, freezes this quotation so the customer's copy can never change underneath them, and emails it if the customer has an address."
-                                onclick="return confirm('Finalize this quotation? Finalizing freezes it — changes afterwards require a new revision.')">
+                                id="finalize-btn">
                             Finalize Quotation
                         </button>
                     </form>
@@ -419,11 +423,16 @@
             @endunless
             @if(! $isDraft && $event->isOpen())
                 @can('tenant.catering.estimates.revise')
-                    <form method="POST" action="{{ url('/catering/estimates/' . $current->id . '/revise') }}">
+                    {{-- CATERING-REVISION-MONEY-1 — a revision is a FINANCIAL act
+                         once money has been received, because what the customer
+                         owes is read from whichever quotation is current. The
+                         confirm says so rather than leaving it to be discovered
+                         from a balance that quietly changed. --}}
+                    <form method="POST" action="{{ url('/catering/estimates/' . $current->id . '/revise') }}" id="revise-form">
                         @csrf
                         <button class="btn btn-sm btn-outline-primary" data-bs-toggle="tooltip"
                                 title="Opens Q{{ $current->version_no + 1 }} as a fresh editable draft and marks Q{{ $current->version_no }} superseded. The old quotation is kept for your records, never deleted."
-                                onclick="return confirm('Create revision Q{{ $current->version_no + 1 }} as a new draft?')">
+                                id="revise-btn">
                             Create Revision
                         </button>
                     </form>
@@ -1845,6 +1854,155 @@ $(document).on('click', '.js-rate-toggle', function () {
             if (form.requestSubmit) { form.requestSubmit(); } else { form.submit(); }
         });
     });
+})();
+
+// CATERING-REVISION-MONEY-1 — revising and finalising are FINANCIAL acts once
+// money has been received, and the screen now says so.
+//
+// Nothing the system calculated was ever wrong. What it never did was mention
+// that what the customer owes is read from whichever quotation is current — so
+// replacing that quotation moves the balance, and the operator found out by
+// noticing it afterwards. Both figures come from position(), the same authority
+// the controller uses; none of this is recomputed in the browser.
+(function () {
+    const money = (n) => Number(n).toLocaleString(undefined, {minimumFractionDigits: 2});
+
+    const received = {{ (float) $position['gross_received'] }};
+    const billed = {{ (float) $position['billed'] }};
+    const dueNow = {{ (float) $position['balance_due'] }};
+    const creditNow = {{ (float) $position['customer_credit'] }};
+
+    // ── Create Revision ────────────────────────────────────────────────────
+    const reviseForm = document.getElementById('revise-form');
+    const reviseBtn = document.getElementById('revise-btn');
+
+    if (reviseForm && reviseBtn) {
+        let answered = false;
+
+        reviseForm.addEventListener('submit', function (e) {
+            if (answered) return;
+            e.preventDefault();
+
+            const go = function () { answered = true; reviseForm.submit(); };
+
+            // No money on the booking: this is an ordinary document decision.
+            if (received <= 0) {
+                Swal.fire({
+                    title: 'Create revision Q{{ $current->version_no + 1 }}?',
+                    html: 'Q{{ $current->version_no }} is kept and marked superseded — it is never deleted.<br>'
+                        + 'The booking goes back to <b>draft</b> so the new figures can be agreed deliberately.',
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonText: 'Create revision',
+                    cancelButtonText: 'Cancel',
+                    confirmButtonColor: '#0d6efd',
+                }).then(r => { if (r.isConfirmed) go(); });
+
+                return;
+            }
+
+            // Money HAS been received. Say what that means before anything moves.
+            Swal.fire({
+                title: 'This booking is holding money',
+                html: '<table style="margin:0 auto;font-size:13px">'
+                    + '<tr><td style="text-align:left;padding:2px 10px 2px 0">Quoted (Q{{ $current->version_no }})</td>'
+                    + '<td style="text-align:right;padding:2px 0">' + money(billed) + '</td></tr>'
+                    + '<tr><td style="text-align:left;padding:2px 10px 2px 0">Already received</td>'
+                    + '<td style="text-align:right;padding:2px 0"><b>' + money(received) + '</b></td></tr>'
+                    + (dueNow > 0
+                        ? '<tr><td style="text-align:left;padding:2px 10px 2px 0">Still due</td>'
+                          + '<td style="text-align:right;padding:2px 0">' + money(dueNow) + '</td></tr>'
+                        : '')
+                    + (creditNow > 0
+                        ? '<tr><td style="text-align:left;padding:2px 10px 2px 0">Held as credit</td>'
+                          + '<td style="text-align:right;padding:2px 0">' + money(creditNow) + '</td></tr>'
+                        : '')
+                    + '</table>'
+                    + '<p style="margin:10px 0 0;font-size:12px">What the customer owes is read from the '
+                    + '<b>current</b> quotation. Changing the items on Q{{ $current->version_no + 1 }} will '
+                    + '<b>change the balance</b> — no payment is moved, refunded or reversed.</p>'
+                    + '<p style="margin:6px 0 0;font-size:12px">The booking also returns to <b>draft</b>, '
+                    + 'so someone must confirm the new figures.</p>',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Yes, create Q{{ $current->version_no + 1 }}',
+                cancelButtonText: 'Cancel',
+                confirmButtonColor: '#0d6efd',
+            }).then(r => { if (r.isConfirmed) go(); });
+        });
+    }
+
+    // ── Finalize ───────────────────────────────────────────────────────────
+    const finalizeForm = document.getElementById('finalize-form');
+
+    if (finalizeForm) {
+        // The version this one replaced, so the move can be shown rather than
+        // described. Null on a first quotation — nothing has been replaced.
+        @php
+            $previous = collect($versions ?? [])
+                ->where('version_no', '<', $current->version_no)
+                ->sortByDesc('version_no')
+                ->first();
+        @endphp
+        const previousTotal = {{ $previous ? (float) $previous->grand_total : 'null' }};
+        const newTotal = {{ (float) $current->grand_total }};
+
+        let answered = false;
+
+        finalizeForm.addEventListener('submit', function (e) {
+            if (answered) return;
+            e.preventDefault();
+
+            const go = function () { answered = true; finalizeForm.submit(); };
+
+            // A first quotation with no money on it is the plain case.
+            if (previousTotal === null && received <= 0) {
+                Swal.fire({
+                    title: 'Finalize this quotation?',
+                    text: 'Finalizing freezes it — changes afterwards require a new revision.',
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonText: 'Finalize',
+                    cancelButtonText: 'Cancel',
+                    confirmButtonColor: '#0d6efd',
+                }).then(r => { if (r.isConfirmed) go(); });
+
+                return;
+            }
+
+            const dueAfter = Math.max(newTotal - received, 0);
+            const creditAfter = Math.max(received - newTotal, 0);
+            const row = (label, value, tone) =>
+                '<tr><td style="text-align:left;padding:2px 10px 2px 0">' + label + '</td>'
+                + '<td style="text-align:right;padding:2px 0;white-space:nowrap"'
+                + (tone ? ' class="' + tone + '"><b>' : '>') + money(value)
+                + (tone ? '</b>' : '') + '</td></tr>';
+
+            Swal.fire({
+                title: 'Finalize Q{{ $current->version_no }}?',
+                html: '<table style="margin:0 auto;font-size:13px">'
+                    + (previousTotal !== null ? row('Previous quotation', previousTotal) : '')
+                    + row('This quotation', newTotal)
+                    + row('Already received', received)
+                    + '<tr><td colspan="2"><hr style="margin:6px 0"></td></tr>'
+                    + (creditAfter > 0
+                        ? row('Owed back to the customer', creditAfter, 'text-warning-emphasis')
+                        : row('Balance due afterwards', dueAfter, dueAfter > 0 ? 'text-danger' : ''))
+                    + '</table>'
+                    + '<p style="margin:10px 0 0;font-size:12px">Finalizing freezes this quotation — '
+                    + 'changes afterwards require a new revision.</p>'
+                    + (creditAfter > 0
+                        ? '<p style="margin:6px 0 0;font-size:12px">The customer has paid <b>more</b> than this '
+                          + 'quotation. The difference becomes money owed back to them.</p>'
+                        : ''),
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'Finalize',
+                cancelButtonText: 'Cancel',
+                confirmButtonColor: '#0d6efd',
+            }).then(r => { if (r.isConfirmed) go(); });
+        });
+    }
 })();
 
 // KASHIF-ORDER-PUNCH §B: the old software's keyboard, on this screen.
