@@ -81,6 +81,7 @@
                     const typed = (data.text || '').trim();
                     set('customer_name', typed);
                     ['customer_phone', 'customer_email', 'customer_address'].forEach(n => set(n, ''));
+                    renderAddressChoices([]);
                     $root.find('[name=customer_phone]').trigger('focus');
 
                     return;
@@ -93,13 +94,72 @@
                 set('customer_name', c.name || '');
                 set('customer_phone', c.phone || '');
                 set('customer_email', c.email || '');
+                // addresses[0] IS the default: CustomerLookupController eager-loads
+                // them orderByDesc('is_default'). The common case needs no thought.
                 const addr = (c.addresses && c.addresses.length) ? c.addresses[0].address : c.legacy_address;
                 set('customer_address', addr || '');
+
+                // CATERING-ADDRESS-PICKER-1: offer the rest only when there ARE
+                // others. A link promising a choice that does not exist is noise.
+                renderAddressChoices(c.addresses || []);
             });
 
             // Clearing means CLEARING: the search box AND everything it filled.
             // Leaving the fields behind is how a booking ends up carrying the
             // wrong customer's phone under the right customer's name.
+            /**
+             * CATERING-ADDRESS-PICKER-1 — the customer's OTHER saved addresses.
+             *
+             * The default one is already in the box. This exists for the booking
+             * that is not at the usual place: a regular whose function is at a
+             * marquee. Without it the operator has to know the second address by
+             * heart and retype it.
+             *
+             * Picking only fills the field. The address belongs to THIS booking —
+             * catering never writes to the customer's address book, which is why
+             * a different venue for one function cannot overwrite someone's home.
+             */
+            function renderAddressChoices(addresses) {
+                const link = document.getElementById('addr-more');
+                const list = document.getElementById('addr-list');
+                const count = document.getElementById('addr-more-count');
+                if (! link || ! list) return;
+
+                const rows = (addresses || []).filter(a => (a.address || '').trim() !== '');
+
+                // One address is not a choice, and a link offering one is noise.
+                if (rows.length < 2) {
+                    link.classList.add('d-none');
+                    list.innerHTML = '';
+
+                    return;
+                }
+
+                count.textContent = rows.length + ' saved addresses';
+                link.classList.remove('d-none');
+
+                list.innerHTML = rows.map((a, i) =>
+                    '<button type="button" class="list-group-item list-group-item-action js-addr-pick"'
+                    + ' data-address="' + $('<div>').text(a.address).html().replace(/"/g, '&quot;') + '">'
+                    + '<div class="d-flex justify-content-between align-items-start gap-2">'
+                    + '<span>' + $('<div>').text(a.address).html() + '</span>'
+                    + (a.is_default ? '<span class="badge bg-secondary flex-shrink-0">usual</span>' : '')
+                    + '</div>'
+                    + (a.label ? '<span class="d-block text-muted fs-12">' + $('<div>').text(a.label).html() + '</span>' : '')
+                    + '</button>'
+                ).join('');
+            }
+
+            $root.on('click', '#addr-more', function (e) {
+                e.preventDefault();
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('addrModal')).show();
+            });
+
+            $(document).on('click', '.js-addr-pick', function () {
+                $root.find('[name=customer_address]').val(this.dataset.address || '');
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('addrModal')).hide();
+            });
+
             function clearCustomer() {
                 $customer.val(null).trigger('change');
                 ['customer_name', 'customer_name_ur', 'customer_phone', 'customer_email', 'customer_address']

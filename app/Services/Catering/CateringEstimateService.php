@@ -303,6 +303,35 @@ class CateringEstimateService
 
             $estimate->forceFill(['status' => CateringEstimate::STATUS_ACCEPTED, 'accepted_at' => now()])->save();
 
+            // CATERING-ACCEPT-CONFIRMS-1 — the booking follows the customer's
+            // yes.
+            //
+            // Acceptance used to move only this document, while the calendar
+            // and every other screen read the BOOKING — so a customer could
+            // agree and the calendar would still say "quoted" until somebody
+            // remembered to press Confirm Booking. Two status machines
+            // disagreeing where everyone could see it.
+            //
+            // Confirmation is NOT forced. confirmEvent() has its own guards —
+            // the costing must be complete — and they stay in charge. If it
+            // refuses, the acceptance still stands: recording that the customer
+            // said yes must never depend on the kitchen's arithmetic being
+            // finished. The booking simply waits at `quoted`, and the caller
+            // reads the event's own status to see which happened rather than
+            // being told a second time by this method.
+            $event = $estimate->event;
+            if ($event) {
+                try {
+                    $this->confirmEvent($event->refresh());
+                } catch (RuntimeException $e) {
+                    // Deliberately swallowed, and ONLY here: the acceptance is
+                    // the operator's action and it succeeded. Why the booking
+                    // could not follow is visible on the screen that shows the
+                    // costing, and pressing Confirm Booking will say it again
+                    // in full.
+                }
+            }
+
             return $estimate;
         });
     }
@@ -317,6 +346,17 @@ class CateringEstimateService
             // cannot be halfway through changing those numbers while readiness is
             // being judged on them.
             $this->locks->refreshEvent($event);
+
+            // Already confirmed is not an error. cancelEvent() has always
+            // returned quietly when the booking was already cancelled, and
+            // since CATERING-ACCEPT-CONFIRMS-1 a booking can arrive here
+            // already confirmed by the customer's acceptance — with the
+            // Confirm Booking button still on screen, and an operator who has
+            // always pressed it. Refusing would punish a habit the system
+            // itself just made redundant.
+            if ($event->status === CateringEvent::STATUS_CONFIRMED) {
+                return $event;
+            }
 
             if (! in_array($event->status, [CateringEvent::STATUS_QUOTED, CateringEvent::STATUS_DRAFT], true)) {
                 throw new RuntimeException("Event {$event->event_no} cannot be confirmed from status {$event->status}.");

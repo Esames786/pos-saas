@@ -21,7 +21,32 @@
         <div class="brand-sub">{{ $t('Catering & Events', 'کیٹرنگ اینڈ ایونٹس') }}</div>
     </div>
     <div class="doc-title">
-        <h2>{{ $estimate->isDraft() ? $t('DRAFT ESTIMATE', 'مسودہ تخمینہ') : $t('ESTIMATE', 'تخمینہ') }}</h2>
+        {{-- CATERING-DOC-KIND-1 — the paper says what it actually IS.
+
+             Three jobs, one document: an internal working copy, an offer, and
+             the record of an agreed booking. It used to tell apart only the
+             first, so a confirmed booking still printed "ESTIMATE" and the
+             customer was handed a quotation for something already agreed.
+
+             BOTH status machines are consulted, because this is the one place
+             a customer ever sees them together: the quotation says whether it
+             is still being written or has been agreed, and the booking says
+             whether the business has committed to it. Either is enough. --}}
+        @php($docKind = $estimate->isDraft() ? 'draft' : ((
+            $estimate->status === \App\Models\Tenant\CateringEstimate::STATUS_ACCEPTED
+            || in_array($event->status, [
+                \App\Models\Tenant\CateringEvent::STATUS_CONFIRMED,
+                \App\Models\Tenant\CateringEvent::STATUS_PRODUCTION_READY,
+                \App\Models\Tenant\CateringEvent::STATUS_RELEASED,
+                \App\Models\Tenant\CateringEvent::STATUS_COMPLETED,
+                \App\Models\Tenant\CateringEvent::STATUS_CLOSED,
+            ], true)
+        ) ? 'booking' : 'quotation'))
+        <h2>@switch($docKind)
+            @case('draft'){{ $t('DRAFT ESTIMATE', 'مسودہ تخمینہ') }}@break
+            @case('booking'){{ $t('BOOKING CONFIRMATION', 'بکنگ کنفرمیشن') }}@break
+            @default{{ $t('QUOTATION', 'کوٹیشن') }}
+        @endswitch</h2>
         <div><strong>{{ $event->event_no }} / Q{{ $estimate->version_no }}</strong></div>
         {{-- Formatted through TenantClock: timestamps are stored UTC, and a Karachi
      caterer's paper must carry Karachi's date, not one five hours adrift. --}}

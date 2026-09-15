@@ -145,6 +145,7 @@ class CateringEstimateController extends Controller
 
             if ($action === 'calculated') {
                 $blocks->useCalculatedRate($savedLine);
+
                 continue;
             }
 
@@ -237,7 +238,16 @@ class CateringEstimateController extends Controller
             return back()->withErrors(['estimate' => $e->getMessage()]);
         }
 
-        return back()->with('status', "Estimate {$cateringEstimate->displayNo()} accepted.");
+        // CATERING-ACCEPT-CONFIRMS-1: acceptance now carries the booking with
+        // it when the costing allows. Read the event's OWN status rather than
+        // assuming either outcome — the service deliberately does not force it.
+        $event = $cateringEstimate->event?->refresh();
+        $confirmed = $event && $event->status === \App\Models\Tenant\CateringEvent::STATUS_CONFIRMED;
+
+        return back()->with('status', $confirmed
+            ? "Estimate {$cateringEstimate->displayNo()} accepted — booking {$event->event_no} is now confirmed."
+            : "Estimate {$cateringEstimate->displayNo()} accepted. The booking could not be confirmed automatically — "
+                .'finish the costing, then press Confirm Booking.');
     }
 
     public function revise(Request $request, CateringEstimate $cateringEstimate)

@@ -139,7 +139,15 @@ class CateringDocumentTruthMySqlTest extends MySqlTenantTestCase
 
         $this->assertStringNotContainsString('DRAFT', $html,
             'once it is issued it is the quotation, and a draft warning would undermine it');
-        $this->assertStringContainsString('ESTIMATE', $html);
+
+        // CATERING-DOC-KIND-1: a sent, unaccepted quotation calls itself a
+        // QUOTATION. It used to say ESTIMATE whatever had happened since —
+        // including after the customer agreed and the booking was confirmed,
+        // which is what the client reported.
+        $this->assertStringContainsString('QUOTATION', $html,
+            'an offer names itself an offer');
+        $this->assertStringNotContainsString('BOOKING CONFIRMATION', $html,
+            'and nothing has been agreed yet');
     }
 
     public function test_a_superseded_version_is_marked_as_superseded(): void

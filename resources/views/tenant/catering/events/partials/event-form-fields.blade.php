@@ -68,7 +68,16 @@
                      it simply could not be SEEN, which is what the client was
                      looking at when they said it was incomplete. --}}
                 <div class="col-md-8">
-                    <label class="form-label">Address</label>
+                    <label class="form-label d-flex justify-content-between align-items-center">
+                        <span>Address</span>
+                        {{-- CATERING-ADDRESS-PICKER-1 — shown ONLY when the customer
+                             actually has more than one saved address. The default is
+                             already filled; this is for the booking that is not at
+                             the usual place. --}}
+                        <a href="#" id="addr-more" class="fs-12 d-none">
+                            <i class="ti ti-map-pin me-1"></i><span id="addr-more-count"></span>
+                        </a>
+                    </label>
                     <textarea name="customer_address" class="form-control" rows="2"
                               placeholder="House / street, area, city"
                               >{{ old('customer_address', $event?->customer_address) }}</textarea>
@@ -165,6 +174,27 @@
                     <label class="form-label">Notes</label>
                     <textarea name="notes" class="form-control" rows="2">{{ old('notes', $event?->notes) }}</textarea>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{-- CATERING-ADDRESS-PICKER-1 — the customer's saved addresses, to pick from.
+     Picking only FILLS the box: the address belongs to this booking, and the
+     customer's address book is never written to from here. --}}
+<div class="modal fade" id="addrModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Saved addresses</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="text-muted fs-12 mb-2">
+                    Choosing one fills the Address box for <strong>this booking only</strong> —
+                    the customer's saved addresses are not changed.
+                </div>
+                <div id="addr-list" class="list-group"></div>
             </div>
         </div>
     </div>
