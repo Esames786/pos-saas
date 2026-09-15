@@ -62,10 +62,16 @@
                     <input type="email" name="customer_email" class="form-control"
                            value="{{ old('customer_email', $event?->customer_email) }}">
                 </div>
-                <div class="col-md-4">
+                {{-- A real address does not fit on one line at a third of the
+                     width. The column is TEXT and the customer record holds up
+                     to 500 characters, so nothing was ever being truncated —
+                     it simply could not be SEEN, which is what the client was
+                     looking at when they said it was incomplete. --}}
+                <div class="col-md-8">
                     <label class="form-label">Address</label>
-                    <input type="text" name="customer_address" class="form-control"
-                           value="{{ old('customer_address', $event?->customer_address) }}">
+                    <textarea name="customer_address" class="form-control" rows="2"
+                              placeholder="House / street, area, city"
+                              >{{ old('customer_address', $event?->customer_address) }}</textarea>
                 </div>
             </div>
         </div>
