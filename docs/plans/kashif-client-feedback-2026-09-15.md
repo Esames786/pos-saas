@@ -162,6 +162,24 @@ warna kitchen sheet purani release par khali rahega.
 
 ## 4. "Address complete nahi araha … pura fill address show ho"
 
+> ### ⚠️ TASHEEH (2026-09-16) — is section ka nisf hissa GHALAT tha
+>
+> Neeche (a) me likha hai ke form ghalat pata uthata hai. **Wo ghalat hai.**
+> `CustomerLookupController:20` addresses ko `orderByDesc(is_default)` ke
+> saath eager-load karta hai, is liye `addresses[0]` **pehle se default hi
+> hai** — form tak pahunchne se pehle. Maine `Customer::addresses()` par
+> ordering na hone se natija nikala (jo sach hai) aur wo endpoint parha hi
+> nahi jo data deta hai.
+>
+> Client ne kaha tha **"show"**, "ghalat" nahi — aur wo theek keh rahe the.
+> Asli masla sirf (b) tha: single-line box. `9d370fb` me theek ho gaya.
+>
+> Us ki jagah owner ki apni tajweez bani: **ek se zyada pate hon to chhota
+> modal** jis se pata chun kar booking par lagaya ja sake
+> (CATERING-ADDRESS-PICKER-1, `2b06799`).
+
+
+
 Ye sab se dilchasp nikla — **do alag masle, dono asli.**
 
 ### (a) Ghalat pata uthaya jata hai 🔴
