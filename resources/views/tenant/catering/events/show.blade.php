@@ -1724,10 +1724,48 @@ $(document).on('click', '.js-rate-toggle', function () {
 
     let answered = false;
 
+    // One press, one receipt. Money leaving or arriving twice because a
+    // response was slow is the worst kind of bug: it looks like nothing
+    // happened, so the operator helps by pressing again.
+    const lockSubmit = function (theForm) {
+        theForm.querySelectorAll('button[type=submit], button:not([type])').forEach(function (b) {
+            b.disabled = true;
+            b.dataset.wasLabel = b.innerHTML;
+            b.innerHTML = 'Saving…';
+        });
+    };
+
+    // Every submit that actually leaves — overpayment or not — locks first.
+    form.addEventListener('submit', function () {
+        if (overpaying() && ! answered) return;   // the confirm path locks itself
+        if (form.checkValidity && ! form.checkValidity()) return;
+        lockSubmit(form);
+    });
+
     form.addEventListener('submit', function (e) {
         if (! overpaying() || answered) return;
 
         e.preventDefault();
+
+        // The reason is mandatory, and the browser's own way of saying so is
+        // useless here: `required` blocks the submit BEFORE this handler runs,
+        // and its bubble appears against a field that is often below the fold.
+        // The operator sees a button that does nothing. So it is said out loud
+        // and the cursor is put in the box.
+        const reasonBox = wrap.querySelector('input');
+        if (reasonBox && reasonBox.value.trim() === '') {
+            Swal.fire({
+                title: 'A reason is needed',
+                html: 'This is <b>' + money(typed() - due) + '</b> more than the '
+                    + money(due) + ' due. Say why in one line — it is kept on the receipt.',
+                icon: 'info',
+            }).then(function () {
+                wrap.classList.remove('d-none');
+                reasonBox.focus();
+            });
+
+            return;
+        }
 
         // Refused on the screen as well as at the controller. The controller is
         // the authority — it drops the flag for anyone without the permission —
@@ -1758,6 +1796,7 @@ $(document).on('click', '.js-rate-toggle', function () {
             if (! r.isConfirmed) return;
             flag.value = '1';
             answered = true;
+            lockSubmit(form);
             if (form.requestSubmit) { form.requestSubmit(); } else { form.submit(); }
         });
     });
