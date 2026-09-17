@@ -207,7 +207,8 @@
     <div class="col-lg-3 col-sm-6">
         <div class="card border-0 shadow-sm h-100"><div class="card-body">
             <h6 class="mb-1">Order type</h6>
-            <div class="text-muted small mb-2">Dine in / Takeaway / Delivery</div>
+            {{-- ORDER-TYPE-PERCENT-1: yahan % net SALES ka hissa hai, order ki ginti ka nahi. --}}
+            <div class="text-muted small mb-2">Share of net sales</div>
             <div id="an-ordertype" style="min-height:280px"></div>
         </div></div>
     </div>
@@ -320,23 +321,64 @@
     }));
 
     // 5 + 6. Donuts
-    function donut(el, obj) {
+    //
+    // ORDER-TYPE-PERCENT-1 — maalik ka mutalba: "is mai % show karwado … sirf is wale pe".
+    // `withPercent` sirf Order type wale donut par `true` hai; Payment wala jyun ka tyun rehta hai.
+    function donut(el, obj, withPercent) {
         var keys = Object.keys(obj || {});
         if (! keys.length) {
             var n = document.querySelector(el);
             if (n) { n.innerHTML = '<div class="text-muted small p-3">Nothing in this period.</div>'; }
             return;
         }
-        draw(el, Object.assign({}, base, {
+
+        var series = keys.map(function (k) { return Math.round(obj[k]); });
+        var opts = Object.assign({}, base, {
             chart:  Object.assign({}, base.chart, { type: 'donut', height: 280 }),
-            series: keys.map(function (k) { return Math.round(obj[k]); }),
+            series: series,
             labels: keys,
             legend: { position: 'bottom' },
             plotOptions: { pie: { donut: { size: '62%' } } },
-        }));
+        });
+
+        if (withPercent) {
+            // ⚠️ Ye hissa NET SALES ka hai, order ki ginti ka NAHI — donut ki series khud net_sales
+            // hai (SalesAnalyticsController::cleanDimension). Card ka subtitle bhi yehi kehta hai,
+            // warna maalik ise "kitne order" samajh kar ghalat natija nikal le.
+            var total = series.reduce(function (a, b) { return a + b; }, 0);
+            var share = function (v) { return total > 0 ? (v * 100 / total) : 0; };
+
+            // Slice par sirf utna bara label jo slice me samaa jaye. Quick Sale jaisi patli lakeer
+            // (aksar 1% se kam) par label slice se bahar nikal kar bagal wale par charh jata hai —
+            // is liye 5% se choti slice ka number slice par nahi, legend me parha jayega.
+            opts.dataLabels = {
+                enabled: true,
+                formatter: function (val) { return val >= 5 ? val.toFixed(1) + '%' : ''; },
+                style: { fontSize: '12px', fontWeight: 600 },
+                dropShadow: { enabled: false },
+            };
+
+            // Har slice ka hissa legend me BHI — chhoti slice ka number sirf yahan nazar aata hai.
+            opts.legend = {
+                position: 'bottom',
+                formatter: function (name, o) {
+                    var v = o.w.globals.series[o.seriesIndex];
+                    return name + ' — ' + share(v).toFixed(1) + '%';
+                },
+            };
+
+            // Tooltip me paisa AUR hissa dono.
+            opts.tooltip = {
+                y: {
+                    formatter: function (v) { return money(v) + ' (' + share(v).toFixed(1) + '%)'; },
+                },
+            };
+        }
+
+        draw(el, opts);
     }
 
-    donut('#an-ordertype', oTypes);
+    donut('#an-ordertype', oTypes, true);
     donut('#an-payment', payments);
 })();
 </script>

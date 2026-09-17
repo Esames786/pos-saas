@@ -277,6 +277,68 @@ class SalesAnalyticsMySqlTest extends MySqlTenantTestCase
     }
 
     // ══════════════════════════════════════════════════════════════════════════
+    // ORDER-TYPE-PERCENT-1 — % SIRF Order type wale donut par
+    //
+    // Maalik: "is mai % show karwado dashboard pe jo y graph ara hai SIRF IS WALE PE".
+    // Dono donut (Order type + Payment) EK hi `donut()` helper se bante hain, is liye ye
+    // guard dono baaton par pehra deta hai: Order type par % lage, Payment par NA lage.
+    // ══════════════════════════════════════════════════════════════════════════
+
+    public function test_percent_sirf_order_type_wale_donut_par_lagta_hai(): void
+    {
+        $this->sale(3, 1000, null, 'takeaway');
+        $this->sale(3, 500, null, 'dine_in');
+
+        $html = $this->page('preset=30d')->assertOk()->getContent();
+
+        $this->assertStringContainsString("donut('#an-ordertype', oTypes, true)", $html,
+            'Order type wale donut ko percent ka flag milna chahiye');
+        $this->assertStringContainsString("donut('#an-payment', payments)", $html,
+            'Payment wala donut bina flag rehna chahiye — maalik ne sirf ek chart maanga tha');
+        $this->assertStringNotContainsString("donut('#an-payment', payments, true)", $html,
+            'Payment wale donut par percent NAHI lagna chahiye');
+    }
+
+    /**
+     * Patli slice ka number slice par nahi, legend me parha jaye.
+     *
+     * Quick Sale ka hissa aksar 1% se kam hota hai; us par label slice se bahar nikal kar bagal
+     * wale par charh jata hai. Is liye dataLabels par hadd hai aur legend har slice ka hissa
+     * likhta hai — warna chhota number parha hi nahi ja sakega.
+     */
+    public function test_choti_slice_ka_hissa_legend_me_parha_ja_sakta_hai(): void
+    {
+        $this->sale(3, 100000, null, 'takeaway');
+        $this->sale(3, 100, null, 'quick_sale');
+
+        $html = $this->page('preset=30d')->assertOk()->getContent();
+
+        $this->assertStringContainsString("val >= 5 ? val.toFixed(1) + '%' : ''", $html,
+            'patli slice par label na chhape — wo bagal wali slice par charh jata hai');
+        $this->assertStringContainsString("share(v).toFixed(1) + '%'", $html,
+            'legend me har slice ka hissa likha ho, chhoti slice ke liye yehi ek jagah hai');
+    }
+
+    /**
+     * Subtitle sach bole: ye hissa NET SALES ka hai, order ki ginti ka nahi.
+     *
+     * Donut ki series `cleanDimension()` se aati hai jo net_sales bharti hai. Purana subtitle
+     * "Dine in / Takeaway / Delivery" tha — us par % lag jane se maalik ise "kitne order" samajh
+     * kar ghalat natija nikal sakta tha.
+     */
+    public function test_subtitle_batata_hai_ke_hissa_sales_ka_hai(): void
+    {
+        // ⚠️ Sale ZAROORI hai: bina data ke safha `@unless ($hasData)` wala "No sales in this
+        // period" dikhata hai aur ek bhi chart render nahi hota — to guard jhoota RED de deta.
+        $this->sale(3, 1000, null, 'takeaway');
+
+        $html = $this->page('preset=30d')->assertOk()->getContent();
+
+        $this->assertStringContainsString('Share of net sales', $html,
+            '% kis cheez ka hissa hai, safhe par likha hona chahiye');
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
     // Madadgar
     // ══════════════════════════════════════════════════════════════════════════
 
