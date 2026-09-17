@@ -25,6 +25,7 @@ class CateringSetting extends Model
     protected $fillable = [
         'branch_id',
         'reminder_recipient_email',
+        'send_customer_emails',
         'default_service_charge_percent',
         'print_language_profile',
         'reminder_offsets',
@@ -33,6 +34,7 @@ class CateringSetting extends Model
     protected function casts(): array
     {
         return [
+            'send_customer_emails' => 'boolean',
             'default_service_charge_percent' => 'decimal:4',
             'reminder_offsets' => 'array',
         ];
@@ -43,7 +45,15 @@ class CateringSetting extends Model
     {
         return static::query()->firstOrCreate(
             ['branch_id' => null],
-            ['reminder_offsets' => self::DEFAULT_REMINDER_OFFSETS]
+            [
+                'reminder_offsets' => self::DEFAULT_REMINDER_OFFSETS,
+                // Stated here as well as on the column. firstOrCreate does not
+                // read a database default back into the model it returns, so a
+                // freshly created row answered NULL to send_customer_emails and
+                // every customer email was skipped as "disabled" on a brand-new
+                // tenant - the opposite of what the column says.
+                'send_customer_emails' => true,
+            ]
         );
     }
 }

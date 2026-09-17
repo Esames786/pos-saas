@@ -124,7 +124,18 @@
                            value="{{ old('event_date', $event?->event_date?->format('Y-m-d')) }}">
                     {{-- Filled by JS: weekday, days away, and any clashing booking. --}}
                     <div class="form-text event-date-hint"></div>
-                    <div class="d-flex flex-wrap gap-1 mt-2 date-chips">
+                    {{-- KASHIF-DATE-CHIPS-OFF-1 — the client asked for these four
+                         off (17 Sep, "ye 4ro htana h"). A caterer types a real
+                         date; Today / Tomorrow / This weekend / In a month were
+                         never the dates a booking lands on.
+
+                         HIDDEN rather than deleted, because "abhe" means for
+                         now. The handler in event-form-support binds to
+                         '.date-chips [data-days]' and simply finds nothing, so
+                         nothing breaks either way. Bringing them back is one
+                         attribute; if they stay gone, the wiring goes with them
+                         in a later pass rather than being half-removed now. --}}
+                    <div class="d-flex flex-wrap gap-1 mt-2 date-chips d-none">
                         <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 fs-12" data-days="0">Today</button>
                         <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 fs-12" data-days="1">Tomorrow</button>
                         <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 fs-12" data-weekend="1">This weekend</button>
