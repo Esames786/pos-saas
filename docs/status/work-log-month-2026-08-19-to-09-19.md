@@ -9,6 +9,30 @@ aur us ke saath overlap karti hai — wo 7 Aug se 7 Sep tha, ye 19 Aug se 19 Sep
 
 ---
 
+## 0. Kaun si file kis cheez ki maalik hai, aur kis par bharosa pehle
+
+Is mahine ke teen snapshot hain. **Teenon apni jagah rehte hain — ek doosre ki naql nahi.**
+
+| file | kya hai | kahan |
+|---|---|---|
+| **ye file** | **tafseeli bayaniya** — kya hua, kyun hua, kis commit par | `docs/status/work-log-month-2026-08-19-to-09-19.md` (canonical repo) |
+| `project_month_2026_08_19_to_09_19.md` | canonical session ki **project memory** — live halat aur khule kaam | `…\d--laragon2-www-pos-saas\memory\` |
+| `all-sessions-month-2026-08-19-to-09-19.md` | **milkiyat / index naqsha** — kaun sa worktree kis session ka, Edge ki tranche ladder | `…\d--laragon2-www-pos-saas-edge\memory\` |
+
+### Source priority — ikhtilaf ki soorat me tarteeb
+
+1. **Taza `git` / zinda prod tasdeeq** — sab se upar
+2. **`docs/status/work-log-month-2026-08-19-to-09-19.md`** (yehi file)
+3. Track-makhsoos status docs (Edge tranche docs, catering status)
+4. Cross-session memory index (`all-sessions-…`)
+5. Purani memory entries
+
+> **Purani memory kisi naye, tasdeeq-shuda work log ko kabhi rad nahi kar sakti.**
+> Agar koi purana note is file se takrae, to ye file jeetti hai — jab tak taza `git` ya prod
+> census us ko bhi na jhutla de.
+
+---
+
 ## 1. Aankre (canonical branch)
 
 | | |
@@ -100,8 +124,13 @@ Har data change par `tb_diff = 0.00` tasdeeq hua.
 
 ## 4. Worktree aur branch ka naqsha — **kya kahan hai, aur kya khatre me hai**
 
-14 worktrees. Har ek me `git status` chalaya aur `git ls-remote --heads origin` se tasdeeq ki —
-**merged hona untracked files ya unpushed branches ka koi saboot nahi.**
+**15 worktrees** (`git worktree list`, taza ginti 19 Sep). Har ek me `git status` chalaya aur
+`git ls-remote --heads origin` se tasdeeq ki — **merged hona untracked files ya unpushed branches
+ka koi saboot nahi.**
+
+> **Tasheeh (19 Sep):** is file ne pehle **14** likha tha. Wo ghalat tha — meri ginti
+> `pos-saas-catering/.codex-worktrees/` ke teen worktrees chhod gayi thi. Cross-session index ka
+> **15** durust hai. Branch-only ref worktree nahi ginti jati.
 
 ### ✅ Mehfooz — canonical me shamil, origin par maujood
 
@@ -175,8 +204,17 @@ September me jo hua:
 Un ke apne docs me gate numbers bhi hain (full MySQL 1616/1611 at P4, 1603/1598 at F3,
 1582/1576 at F2) aur ek **eemandaar** faisla: `READY_FOR_WAN_UNPLUG_PILOT = no`.
 
-**Durust jumla:** "prod me switch off hai" — **matrook nahi.** Prod `cloud` hi rehta hai
-(`APP_ROLE` aur `EDGE_FEATURE_ENABLED` ghair-maujood).
+**Durust jumla (tay shuda):** Edge ek **zinda development track** hai jo **production-disabled** hai
+aur **physical/admin-lab certification ka muntazir** hai. "dormant", "abandoned" ya "finished" —
+teenon ghalat hain. Prod `cloud` hi rehta hai (`APP_ROLE` aur `EDGE_FEATURE_ENABLED` ghair-maujood).
+
+| | |
+|---|---|
+| `EDGE_HEAD` | **`ecf4694`** |
+| P5B | mukammal |
+| `READY_FOR_WAN_UNPLUG_PILOT` | **no** (ADMIN_LAB_BLOCKED) |
+| P6 | **shuru nahi hua** |
+| kabhi production par deploy hua? | **nahi** |
 
 ---
 
@@ -211,8 +249,18 @@ ke, backlog nahi).
   Singaporean Sauce ka koi kitchen printer nahi; un ke KOT counter par jate hain (ek din 466 me se
   302 parchiyan). 32 duplicate category→printer mappings bhi.
 - **Foodpanda rates** The Kashif Foods (cat18/19) — base price barhne se faasla kam ho gaya
-- **Kashif Kitchen** ke 14 suppliers ka **Σ6.49M cr / Σ4.49M dr** — abhi bhi rokka hua, GL posting
-  darkar. **Post NAHI karna jab tak maalik na kahe.**
+- **Kashif Kitchen ke supplier openings** — do alag cheezein hain, unhein mila kar mat parhna:
+  - **237** = system me maujood supplier records (sirf master data: naam, kuch phone; NTN/tax/terms
+    khali). Ye zinda hain.
+  - **0** = un me se kitne ke paas system me koi opening balance hai. **19 Sep par read-only
+    tasdeeq:** `suppliers.opening_balance` aur `.current_balance` **saare 237 par sifar**, aur
+    `opening_balance_lines` / `opening_balance_batches` / `supplier_ledgers` **teenon khali**.
+  - **Σ6.49M cr / Σ4.49M dr** = ye aankre **sirf source workbook me hain**, system me aaye hi
+    nahi — jaan-boojh kar rokke gaye. **Post NAHI karna jab tak maalik na kahe.**
+
+  ⚠️ Mere apne purane do notes workbook ki **rows** ki ginti par ikhtilaf karte hain (7 banaam 14).
+  Wo source-document ka sawaal hai, ghair-tasdeeq shuda, aur **system par is ka koi asar nahi** —
+  system me in me se kuch bhi maujood nahi.
 - **Kashif Kitchen** reports/analytics 403 — us ke `kashif-catering` plan me `reports` module nahi
   (commercial faisla)
 
