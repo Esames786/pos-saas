@@ -205,3 +205,67 @@ VM with a reboot), (2) one second Windows PC for the cashier browser, (3) one th
 on a DHCP-reserved IP, (4) a router where Internet can be disabled while the LAN stays up. With those four, the P5/P5B
 kit runs §5–§16 unchanged (`Invoke-EdgeCertification.ps1`, `Test-EdgeCashierTrust.ps1`, the pilot package, the recovery
 runbook), and P5B can be re-gated. STOP. P6 was not started.
+
+---
+
+## P5B RESUME — physical certification only (19 Sep 2026)
+
+Directive: "EDGE — RESUME FROM P5B / PHYSICAL CERTIFICATION ONLY". No business features. If the LAB equipment is absent: do not
+invent software work, return the missing physical requirements and STOP.
+
+### §1 Re-ground
+
+```
+EDGE_START_HEAD=ecf4694 (= origin/feat/edge-config-refresh-v1, clean)
+CURRENT_CANONICAL=be07a5a   (moved from fd0f61c: 27 commits / 19 non-merge, 14–19 Sep. Production was verified by the canonical
+                             session at acf33a8 on 19 Sep; be07a5a is one docs-only commit above it, not deployed.)
+```
+
+| Delta file that SHIPS in the Edge artifact | Edge relevance | Action |
+|---|---|---|
+| `resources/views/tenant/printing/documents/receipt.blade.php` (+45) | additive `@isset($tableBill)` block; only `RestaurantTableSessionController::renderTableBillReceipt` passes `tableBill`; Edge renders receipts via `PrintDocumentController::preview` → Edge output byte-identical | assessed, not merged |
+| `app/Http/Controllers/Tenant/RestaurantTableSessionController.php` (+110) | not referenced by `routes/edge_runtime.php` (Cloud table workspace only) | not merged |
+| `resources/views/tenant/pos/index.blade.php` (+98), `pos/partials/table-board.blade.php` | canonical cashier page; Edge serves its own `resources/views/edge/pos/index.blade.php`; the fixed bug class (shared preview modal printing the CART order) does not exist on Edge (JSON `previewBill`, per-job printing) | not merged; UX drift registered in `edge-online-pos-parity-register.md` |
+| `app/Http/Controllers/Tenant/DashboardController.php`, `resources/views/tenant/dashboard.blade.php` | Cloud dashboard; never routed on a Branch Server | not merged |
+| everything else (Catering mail queue / settings / estimate, analytics view, docs, tests) | physically excluded from the artifact | not merged |
+
+`git merge-tree HEAD origin/feat/14d-2-plan-upgrade-requests` = 0 conflicts, so a reconcile stays cheap when a later tranche needs one.
+Nothing in the delta changes what the appliance executes: the Edge code head stays 623f887 = the source of pilot release 0.6.0-edge
+(package_hash 681238fe…), which therefore remains the package to certify.
+
+### §2 LAB environment (re-probed 19 Sep on the only machine available)
+
+| Requirement | Status |
+|---|---|
+| Administrator-capable Windows LAB machine | Only this developer laptop (DESKTOP-0024EPM, Windows 11 Pro). The account is a member of local Administrators, but the session token is UAC-filtered (`EnableLUA=1`, `ConsentPromptBehaviorAdmin=5`): elevation needs an interactive consent click no agent session can provide, and the owner rule stands — the LAB is not faked on the developer laptop. No Hyper-V / VirtualBox / VMware. |
+| Second Windows cashier/client machine | None. LAN sweep 192.168.1.0/24: 3 alive hosts = router `.1`, an HTTP-only device `.2` (MAC 4c-d0-dd-c3-dc-9f; port 80 open; 9100/631/515/443/8080/23 closed), this laptop `.6`. |
+| LAN router/switch, WAN disable with LAN alive | 192.168.1.1 Wi-Fi router; no admin access recorded; no separate switch. |
+| Real network thermal printer, raw TCP 9100, reserved IP | None — `RAW9100_HOSTS=none`; the only printer is an HP Laser MFP over WSD. |
+
+→ `ADMIN_LAB_BLOCKED=yes`. §3–§10 were NOT executed and nothing was simulated. Everything they need is unchanged since P5B: the
+pilot package `BingooEdge-0.6.0-edge`, `Invoke-EdgeCertification.ps1`, `Test-EdgeCashierTrust.ps1`, `Register-EdgeServices.ps1`,
+`Install-EdgeAppliance.ps1`, the README-INSTALL runbooks, and the custody/recovery contracts above.
+
+### §11 Final (19 Sep 2026)
+
+```
+EDGE_START_HEAD=ecf4694   CURRENT_CANONICAL=be07a5a (assessed, not merged; production = acf33a8)
+FINAL_EDGE_HEAD=this docs commit (code head unchanged 623f887)   ORIGIN_EDGE_HEAD=this docs commit (pushed)
+ADMIN_INSTALL=not_run (no LAB machine)   TASKS_REGISTERED=not_run   SERVICE_ACCOUNT=NT AUTHORITY\LOCAL SERVICE (plan; unverified physically)
+SECRET_FILE_ACLS=not_run
+REBOOT_AUTO_START=not_run   REBOOT_STANDBY_RECOVERY=not_run
+WEB_CRASH_RESTART=not_run   GATEWAY_CRASH_RESTART=not_run   AUTHORITY_CRASH_RESTART=not_run   SYNC_CRASH_RESTART=not_run   PRINT_CRASH_RESTART=not_run
+SECOND_CASHIER_PC=absent   TLS_TRUST=not_run   REAL_CASHIER_EDGE_POS=not_run
+REAL_NETWORK_PRINTER=absent   RAW_TCP_9100=none_on_LAN   PHYSICAL_KOT=not_run   PHYSICAL_RECEIPT=not_run
+DUPLICATE_PRINT_FROM_CLOUD_SYNC=0 in software (EdgeNoDuplicatePrintAfterSyncMySqlTest); physical run pending
+LAN_WITH_WAN_DISABLED=not_run   CASHIER_TO_EDGE_LAN=not_run   EDGE_TO_PRINTER_LAN=not_run   CLOUD_UNREACHABLE=not_run
+SECRETS_IN_PROCESS_LIST=no (by construction; physical inspection pending)   SECRETS_IN_TASK_COMMANDS=no (plan)   SECRETS_IN_LOGS=no (gate)
+P0_OPEN=0   P1_OPEN=0   P2_RELEASE_BLOCKERS=0 software; 1 operational (LAB hardware)
+READY_FOR_WAN_UNPLUG_PILOT=no
+AUTO_FAILOVER_ENABLED=no   LOCAL_MODE_ACTIVATED=no   PRODUCTION_MUTATED=no   P6_NOT_STARTED=yes
+```
+
+Missing physical requirements (unchanged from 14 Sep): (1) an Administrator-capable Windows 10/11 LAB machine that is not the
+developer laptop (or the owner's explicit decision to run the kit elevated on it), (2) a second Windows PC for the cashier browser,
+(3) a thermal network printer with raw TCP 9100 on a DHCP-reserved IP, (4) a router where Internet can be disabled while the LAN stays
+up. STOP.
