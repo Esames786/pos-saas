@@ -174,17 +174,28 @@ class DashboardController extends Controller
                 ->get();
         }
 
-        // Last 7 business days net sales (window anchored to the current business date, not UTC now)
+        // Net sales history (window anchored to the current business date, not UTC now)
         $todayBusinessDate = $clock->operatingBusinessDate(
             $selectedBranch ? \App\Models\Tenant\Branch::find($selectedBranch) : null
         );
-        $windowStart = \Illuminate\Support\Carbon::parse($todayBusinessDate)->subDays(6)->toDateString();
+
+        // DASHBOARD-8DAY-1 — maalik: "yaha last 7 days nhi, last 8 days ana chahye". Wajah amli
+        // hai: aaj ka din ADHOORA hota hai (17 Sep par 106 order jab baaqi dinon par ~400), is
+        // liye 7 ka window sirf 6 MUKAMMAL din deta tha — aur hafte ka wohi din, jis se maalik
+        // moqabla karta hai, window se bahar gir jata tha.
+        //
+        // ⚠️ Ye ginti EK jagah rehni chahiye. Neeche ka comment khud batata hai ke label ka
+        // window data ke window se alag ho jane par card "—" chhapne laga tha; is liye start
+        // date AUR labels dono isi constant se nikalte hain, do jagah likhe hue 8 se nahi.
+        $windowDays  = 8;
+        $windowStart = \Illuminate\Support\Carbon::parse($todayBusinessDate)
+            ->subDays($windowDays - 1)->toDateString();
 
         // The row labels come from the SAME window as the data. They used to be built in the Blade
         // from `now()`, which is the UTC calendar date — so between midnight in Karachi and
         // midnight UTC the table asked for keys the query had never produced and printed "—" for
         // the day that was actually trading.
-        $last7DayKeys = collect(range(6, 0))
+        $salesWindowKeys = collect(range($windowDays - 1, 0))
             ->map(fn ($back) => \Illuminate\Support\Carbon::parse($todayBusinessDate)->subDays($back)->toDateString())
             ->all();
         // DASHBOARD-7DAY-POPULATION-1: ask the same authority the tile above asks, instead of
@@ -192,9 +203,9 @@ class DashboardController extends Controller
         // returns, so a returned bill disappeared from it while the tile still counted it —
         // "Orders Today 295" over a row reading 291 for the same day, and, on a day with a
         // PARTIAL return, real kept revenue missing from the history as well.
-        $last7Days = collect();
+        $salesWindowRows = collect();
         if ($maySeeDetails) {
-            $last7Days = collect($salesService->dailyStats($windowStart, $todayBusinessDate, $selectedBranch, $scopeUser))
+            $salesWindowRows = collect($salesService->dailyStats($windowStart, $todayBusinessDate, $selectedBranch, $scopeUser))
                 ->map(fn (array $row) => (object) $row)
                 ->sortKeys();
         }
@@ -228,7 +239,7 @@ class DashboardController extends Controller
         return view('tenant.dashboard', compact(
             'branches', 'selectedBranch', 'today',
             'cashToday', 'cardToday', 'openShifts', 'failedPrints',
-            'lowStockCount', 'expiryCount', 'topProducts', 'last7Days', 'last7DayKeys',
+            'lowStockCount', 'expiryCount', 'topProducts', 'salesWindowRows', 'salesWindowKeys', 'windowDays',
             'todayBusinessDate', 'openBills',
             'cateringCalendar', 'cateringKpis', 'cateringNextSeven',
             'maySeeAmounts'

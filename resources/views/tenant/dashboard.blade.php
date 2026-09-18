@@ -275,11 +275,14 @@
             <div class="col-lg-7">
                 <div class="card border-0 shadow-sm h-100">
                     <div class="card-header bg-white border-0 pb-0">
-                        <h6 class="mb-0">Last 7 Days — Net Sales</h6>
+                        {{-- DASHBOARD-8DAY-1: unwaan bhi USI constant se banta hai jis se window
+                             banti hai. Warna yahan likha "7" aur neeche ginn kar 8 qatarein —
+                             wohi purana rog, ke card ka lafz apne hi data se ikhtilaf kare. --}}
+                        <h6 class="mb-0">Last {{ $windowDays }} Days — Net Sales</h6>
                     </div>
                     <div class="card-body p-0">
                         <table class="table table-sm mb-0">
-                            <caption class="visually-hidden">Sales summary for last 7 days</caption>
+                            <caption class="visually-hidden">Sales summary for last {{ $windowDays }} days</caption>
                             <thead class="table-light">
                                 <tr>
                                     <th scope="col">Date</th>
@@ -292,8 +295,8 @@
                                      now(): the UTC calendar date and the Karachi business date are
                                      different things between midnight there and midnight UTC, and this
                                      table used to ask for keys the query had never produced. --}}
-                                @foreach($last7DayKeys as $day)
-                                    @php $row = $last7Days[$day] ?? null; @endphp
+                                @foreach($salesWindowKeys as $day)
+                                    @php $row = $salesWindowRows[$day] ?? null; @endphp
                                     <tr @if($day === $todayBusinessDate) class="table-primary" @endif>
                                         <td>{{ \Carbon\Carbon::parse($day)->format('D, d M') }}</td>
                                         <td class="text-end">{{ $row ? $fig($row->orders, 0) : "—" }}</td>

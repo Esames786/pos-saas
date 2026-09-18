@@ -98,7 +98,7 @@ class DashboardOperatingBusinessDateMySqlTest extends MySqlTenantTestCase
         ]);
     }
 
-    /** Sirf "Net Sales Today" tile ka hissa — 7-din wali table is se bahar reh jaati hai. */
+    /** Sirf "Net Sales Today" tile ka hissa — history wali table is se bahar reh jaati hai. */
     private function netSalesTile(): string
     {
         $html = $this->dashboard()->assertOk()->getContent();
@@ -106,6 +106,29 @@ class DashboardOperatingBusinessDateMySqlTest extends MySqlTenantTestCase
         $this->assertNotFalse($at, "Net Sales Today tile safhe par honi chahiye");
 
         return substr($html, $at, 400);
+    }
+
+    /**
+     * Sirf "Last N Days — Net Sales" wali table — unwaan se us ke `</table>` tak.
+     *
+     * Poore safhe par assert karna be-maani hota: wohi tareekhein doosri tiles aur open-bills
+     * wale hisse me bhi chhapti hain, to "mil gaya" ka matlab kuch na hota.
+     */
+    private function historyCard(): string
+    {
+        $html = $this->dashboard()->assertOk()->getContent();
+        $at   = strpos($html, "Days — Net Sales");
+        $this->assertNotFalse($at, "net sales history card safhe par honi chahiye");
+
+        // Unwaan me ginti "Days" se PEHLE aati hai ("Last 8 Days"), is liye us <h6> tak peeche
+        // jaana zaroori hai — warna wo ginti is hisse se bahar reh jaati hai jise hum parhte hain.
+        $head = strrpos(substr($html, 0, $at), "<h6");
+        $this->assertNotFalse($head, "card ka unwaan <h6> me hona chahiye");
+
+        $end = strpos($html, "</table>", $at);
+        $this->assertNotFalse($end, "card ki table band honi chahiye");
+
+        return substr($html, $head, $end - $head);
     }
 
     private function bizToday(): string
@@ -160,6 +183,73 @@ class DashboardOperatingBusinessDateMySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString("1,000.00", $tile);
         $this->assertStringNotContainsString("7,777.00", $tile);
     }
+
+    /* ── DASHBOARD-8DAY-1 — history ka window AATH din ka ─────────────────────
+     *
+     * Maalik: "yaha last 7 days nhi, last 8 days ana chahye".
+     *
+     * Wajah amli hai: aaj ka din ADHOORA hota hai (17 Sep par 106 order jab baaqi dinon par
+     * ~400), is liye 7 ka window sirf 6 MUKAMMAL din deta tha — aur hafte ka wohi din, jis se
+     * maalik moqabla karta hai, window se bahar gir jata tha.
+     * ─────────────────────────────────────────────────────────────────────── */
+
+    /**
+     * Aaj se saat din peeche ka din window ke ANDAR ho, aur aathwan din bahar.
+     *
+     * Ye asal guard hai: purane 7-din wale window par -7 wala din bahar tha, is liye ye test
+     * us par RED hota hai. Tareekh ke sath us din ka PAISA bhi check hota hai — sirf label mil
+     * jana kaafi nahi, qatar ko data bhi milna chahiye (aur wohi purani kharabi thi, jahan
+     * label ka window data ke window se alag ho kar "—" chhapta tha).
+     */
+    public function test_saat_din_peeche_ka_din_bhi_window_me_hai(): void
+    {
+        $today = $this->bizToday();
+        $this->openShiftOn($today);
+
+        $inside  = \Illuminate\Support\Carbon::parse($today)->subDays(7)->toDateString();
+        $outside = \Illuminate\Support\Carbon::parse($today)->subDays(8)->toDateString();
+
+        $this->sale($inside, 4321);
+        $this->sale($outside, 9876);
+
+        $card = $this->historyCard();
+
+        $this->assertStringContainsString("Last 8 Days", $card,
+            "card ka unwaan bhi aath kehna chahiye");
+        $this->assertStringContainsString(
+            \Illuminate\Support\Carbon::parse($inside)->format("D, d M"),
+            $card,
+            "aaj se 7 din peeche ka din window me hona chahiye"
+        );
+        $this->assertStringContainsString("4,321.00", $card,
+            "us din ki qatar ko DATA bhi milna chahiye, sirf tareekh nahi");
+        $this->assertStringNotContainsString("9,876.00", $card,
+            "aaj se 8 din peeche ka din window se BAHAR rehna chahiye — warna window barhta hi jayega");
+    }
+
+    /**
+     * Theek AATH qatarein — na kam, na zyada.
+     *
+     * Har din ka apna label maujood ho. Ye us soorat ko pakarta hai jahan start date badal di
+     * jaye magar labels ki ginti purani reh jaye (ya ulta) — dono alag jagah se banti thin,
+     * aur isi wajah se card ek din par "—" chhapta tha.
+     */
+    public function test_window_me_theek_aath_din_ke_labels_hote_hain(): void
+    {
+        $today = $this->bizToday();
+        $this->openShiftOn($today);
+
+        $card = $this->historyCard();
+
+        for ($back = 7; $back >= 0; $back--) {
+            $label = \Illuminate\Support\Carbon::parse($today)->subDays($back)->format("D, d M");
+            $this->assertStringContainsString($label, $card, "din -{$back} ki qatar honi chahiye");
+        }
+
+        $ninth = \Illuminate\Support\Carbon::parse($today)->subDays(8)->format("D, d M");
+        $this->assertStringNotContainsString($ninth, $card, "nauwan din window se bahar");
+    }
+
     private function seedMaster(): void
     {
         DB::setDefaultConnection(config('tenancy.master_connection', 'master'));
