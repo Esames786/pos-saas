@@ -155,26 +155,51 @@ class KotCancellationService
             }
 
             if ($this->requiresManager($sale->branch, 'line')) {
-                if (count($resolved) === 1) {
-                    $item = $resolved[0];
-                    $approval = $this->consumeApproval(
-                        $item['manager_approval_id'],
-                        'void_kot_item',
-                        $requestingUserId,
-                        [
-                            'sales_order_id' => $sale->id,
-                            'sales_order_line_id' => $item['line']->id,
-                            'quantity' => $item['quantity'],
-                        ]
-                    );
-                    $resolved[0]['approval'] = $approval;
-                } else {
-                    $approvalIds = collect($resolved)->pluck('manager_approval_id')->filter()->unique()->values();
-                    if ($approvalIds->count() !== 1) {
-                        throw ValidationException::withMessages([
-                            'manager_approval_id' => 'One manager approval is required for this grouped cancellation.',
-                        ]);
-                    }
+                /*
+                 * MANAGER-APPROVAL-COMBO-VOID-1 (2026-09-19)
+                 *
+                 * Faisla ab GINTI par nahi, approval ki APNI SHAKL par hota hai.
+                 *
+                 * Pehle yahan `count($resolved) === 1` chalta tha: ek line ho to `void_kot_item`
+                 * (wahid) maanga jata tha, warna `void_kot_items` (jama). Magar POS ka faisla ek
+                 * ALAG sawaal par hai — "ye combo hai?" — aur combo par wo HAMESHA jama wala
+                 * approval banwata hai (pos/index.blade.php, requestComboQuantity). To jis combo me
+                 * sirf EK line cancel hoti thi, dono ka jawab alag ho jata tha aur consume() ki
+                 * pehli shart par hi "Manager approval does not authorize this action" aa jata tha.
+                 *
+                 * Kashif Food par ye 30 Aug se chal raha tha: `void_kot_items` jin ke payload me
+                 * ek line thi — 29 me se 29 rad, sifar istisna. Jin me do ya zyada thin, sab
+                 * kaamyab. 18 Sep ko manager ne aath baar PIN daala aur aakhir cashier ko poora
+                 * order cancel karna para.
+                 *
+                 * Client ko theek karna hal NAHI tha: browser server ki ginti ka andaza laga hi
+                 * nahi sakta. `$resolved` yahan LOCK ke andar asli `kot_sent_quantity` se dobara
+                 * gina jata hai — doosre counter par ek second pehle kuch punch ho jaye aur ginti
+                 * badal jaye. Dono taraf ka ek number par pahunchna kabhi yaqeeni tha hi nahi,
+                 * is liye wo shart hata di gayi. Server par karne ka ek aur faida: jin counters
+                 * par purana safha khula hai wo bhi bina Ctrl+F5 theek ho jate hain.
+                 *
+                 * ⚠️ BANDISH KAMZOR NAHI HOTI. Dono shaklein bilkul wohi cheez pin karti hain —
+                 * order + theek wohi line(s) + theek wohi quantity — aur consume() ki chaaron
+                 * baaqi zamanat (single-use, 10 minute, wohi cashier, payload ka pura milna)
+                 * jyun ki tyun hain. Jama shakl me ek line ka payload wahid shakl jitni hi tang
+                 * hai: ek hi line_id, ek hi quantity.
+                 */
+                $approvalIds = collect($resolved)->pluck('manager_approval_id')->filter()->unique()->values();
+                if ($approvalIds->count() !== 1) {
+                    throw ValidationException::withMessages([
+                        'manager_approval_id' => count($resolved) === 1
+                            ? 'Manager approval is required for this cancellation.'
+                            : 'One manager approval is required for this grouped cancellation.',
+                    ]);
+                }
+                $approvalId = (int) $approvalIds->first();
+
+                // Approval khud batata hai ke usay kis shakl me manzoor kiya gaya tha.
+                $suppliedType = ManagerApproval::whereKey($approvalId)->value('action_type');
+
+                if ($suppliedType === 'void_kot_items') {
+                    // JAMA shakl — chahe is me ek hi line ho.
                     $approvalPayload = collect($resolved)
                         ->map(fn ($item) => [
                             'line_id' => (int) $item['line']->id,
@@ -184,7 +209,7 @@ class KotCancellationService
                         ->values()
                         ->all();
                     $approval = $this->consumeApproval(
-                        (int) $approvalIds->first(),
+                        $approvalId,
                         'void_kot_items',
                         $requestingUserId,
                         [
@@ -192,11 +217,32 @@ class KotCancellationService
                             'cancellations' => $approvalPayload,
                         ]
                     );
-                    foreach ($resolved as &$item) {
-                        $item['approval'] = $approval;
+                } else {
+                    // WAHID shakl — sirf tab jaiz jab waqai EK hi line cancel ho rahi ho.
+                    // Kai lines par wahid approval qubool karna manzoori ko kamzor kar deta:
+                    // manager ne ek line dekhi hoti, cancel kai hotin.
+                    if (count($resolved) !== 1) {
+                        throw ValidationException::withMessages([
+                            'manager_approval_id' => 'One manager approval is required for this grouped cancellation.',
+                        ]);
                     }
-                    unset($item);
+                    $item = $resolved[0];
+                    $approval = $this->consumeApproval(
+                        $approvalId,
+                        'void_kot_item',
+                        $requestingUserId,
+                        [
+                            'sales_order_id' => $sale->id,
+                            'sales_order_line_id' => $item['line']->id,
+                            'quantity' => $item['quantity'],
+                        ]
+                    );
                 }
+
+                foreach ($resolved as &$item) {
+                    $item['approval'] = $approval;
+                }
+                unset($item);
             } else {
                 foreach ($resolved as &$item) {
                     $item['approval'] = null;
