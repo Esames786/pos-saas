@@ -42,6 +42,10 @@ class EdgeAuthorityApiController extends Controller
             // Q — WARM STANDBY FRESHNESS: every accepted heartbeat tells the appliance where the Cloud stands
             // (config revision + official-stock watermark) so the standby can prove, and keep, its freshness.
             $advertised = app(\App\Services\Edge\EdgeStandbyAdvertiser::class)->forDevice($device, $tenant);
+        } catch (\App\Exceptions\EdgeStaleHeartbeatException $e) {
+            // P5C — tell the appliance where the Cloud stands so it can resync its sequence (restore from an older backup,
+            // a replacement machine) instead of missing forever.
+            return response()->json(['status' => 'refused', 'failure_code' => $e->getMessage(), 'seq' => $e->cloudSeq], 409);
         } catch (RuntimeException $e) {
             return response()->json(['status' => 'refused', 'failure_code' => $e->getMessage()], 409);
         } finally {

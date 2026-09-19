@@ -3,6 +3,7 @@
 namespace App\Services\Edge;
 
 use Illuminate\Support\Facades\Http;
+use App\Exceptions\EdgeAuthorityRefusedException;
 use RuntimeException;
 
 /**
@@ -41,7 +42,7 @@ class EdgeAuthorityLeaseClient
         }
         $json = $response->json();
         if (! $response->successful() || ! is_array($json)) {
-            throw new RuntimeException('AUTHORITY_REFUSED: HTTP ' . $response->status() . ' ' . (string) ($json['failure_code'] ?? $json['message'] ?? ''));
+            throw new EdgeAuthorityRefusedException('AUTHORITY_REFUSED: HTTP ' . $response->status() . ' ' . (string) ($json['failure_code'] ?? $json['message'] ?? ''), (int) $response->status(), is_array($json) ? $json : []);
         }
 
         return $json;

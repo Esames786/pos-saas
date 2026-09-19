@@ -6,6 +6,7 @@ use App\Models\Master\EdgeDevice;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\EdgeBranchAuthorityLease;
 use Illuminate\Support\Facades\DB;
+use App\Exceptions\EdgeStaleHeartbeatException;
 use RuntimeException;
 
 /**
@@ -45,8 +46,18 @@ class EdgeAuthorityLeaseService
             $lease = $this->lockedLease((int) $device->branch_id, (string) $device->public_uuid);
 
             // A replayed or out-of-order beat can never extend or move authority.
-            if ($seq <= (int) $lease->heartbeat_seq && $lease->last_heartbeat_at !== null) {
-                throw new RuntimeException('STALE_HEARTBEAT');
+            $current = (int) $lease->heartbeat_seq;
+            if ($lease->last_heartbeat_at !== null && $seq < $current) {
+                throw new EdgeStaleHeartbeatException($current);
+            }
+            if ($lease->last_heartbeat_at !== null && $seq === $current) {
+                // P5C HOME LAB (19 Sep 2026) — LOST ACK: the appliance sent THIS beat, the Cloud applied it, the answer never
+                // arrived (single-threaded lab Cloud under load; a WAN blip does the same), so the appliance re-sends the same
+                // sequence forever and every refusal counted as a lost Cloud — a healthy Cloud reported as CONNECTION_LOST and
+                // the supervisor invited to a needless takeover. Re-acknowledge the SAME beat idempotently: nothing extended
+                // (timestamps untouched), nothing moved (holder/state untouched) — the appliance just learns the ack it missed
+                // and advances. A LOWER sequence is still refused above.
+                return $this->view($lease);
             }
             // Another device cannot heartbeat this branch's lease (the active slot is the only device the Cloud pairs).
             if ($lease->device_public_uuid !== (string) $device->public_uuid) {

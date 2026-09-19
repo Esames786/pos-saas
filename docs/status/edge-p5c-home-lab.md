@@ -127,3 +127,95 @@ HOME_LAB_BLOCKERS=cashier device + LAB CA trust on it; inbound firewall rule (el
 PHYSICAL_CERTIFICATION_REMAINING=admin install + LOCAL SERVICE tasks + ACLs, reboot, crash restarts, second Windows cashier PC, real raw-9100 thermal printer, WAN-down with Edge observing Cloud loss, signed update on the LAB box, replacement restore
 READY_FOR_FULL_PHYSICAL_CERTIFICATION=no   READY_FOR_P6=no
 ```
+
+---
+
+## P5C — CASHIER LAN + TLS phase (owner directive 20 Sep 2026; CASHIER_DEVICE=second Windows laptop, firewall approved in principle)
+
+### §1 Re-ground of the running LAB (no reinstall, no rebuild, no reset, no re-pairing)
+
+7/7 plan workers alive (gateway, web 1–2, print worker, sync sender, authority worker, backup); LAB Cloud answering (`/up` 200,
+unauthenticated heartbeat 401 in ~1 s); FakePrinter listening 127.0.0.1:9100; LAB Edge DB healthy; binding `edgehomelab` #1,
+device `210c73f8…`; sync outbox 0/0/0. Nothing was restarted. Edge head `f9ff9d0` at the start of this phase.
+
+### DEFECT FOUND BY THE HOME LAB — heartbeat lost-ACK desync (genuine, fixed)
+
+| | |
+|---|---|
+| Symptom | at 20:47 UTC the appliance began missing every heartbeat although the LAB Cloud stayed healthy; after 4 misses the connection state machine walked ONLINE → CONNECTION_UNSTABLE → CONNECTION_LOST → **PREPARING_LOCAL** ("Cloud lease lapsed on the appliance clock — readiness gates decide; supervisor confirmation required") and stayed there for 30 minutes (73 consecutive misses). `authority_state` stayed **standby**, `takeover_at` null, `auto_failover=false` — the supervised gate held, **no Local Mode**. |
+| Root cause | appliance `authority_heartbeat_seq=297`, Cloud lease `heartbeat_seq=298`: the Cloud applied beat 298 but its answer never reached the appliance (the single-threaded LAB `php -S` under load exceeded the 20 s client timeout — a WAN blip does the same). The appliance only advances its sequence on an ack, so it re-sent **298 forever**; `EdgeAuthorityLeaseService::heartbeat()` refused `seq <= current` as `STALE_HEARTBEAT` (409). Reproduced with the exact request: `{"sent_seq":298,"http":409,"failure_code":"STALE_HEARTBEAT"}`. The same class hits a replacement/restored appliance whose sequence comes from an older backup. |
+| Consequence in production | a healthy Cloud reported as lost and the supervisor invited to a needless takeover; if approved, the lease protocol still fences the Cloud (no split brain), but the branch would run offline for no reason and every standby freshness signal would stop. |
+| Fix (this tranche, small) | **Cloud** — `EdgeAuthorityLeaseService`: a beat with the SAME sequence as the lease is re-acknowledged idempotently (same view; lease row byte-identical: nothing extended, nothing moved); a LOWER sequence is refused as before, now via `EdgeStaleHeartbeatException`, and the 409 body carries the Cloud's `seq`. **Appliance** — `EdgeAuthorityLeaseClient` throws the typed `EdgeAuthorityRefusedException` (status + body); `EdgeAuthorityService::heartbeat()` adopts the Cloud's sequence on a `STALE_HEARTBEAT` that names one, so the next beat is acceptable (the refused beat still counts as a failure — the counters, not this code, drive the state machine). |
+| Proof | `EdgeAuthorityLeaseHttpMySqlTest` (equal-seq replay → 200 with an identical lease row; lower seq → 409 carrying `seq`), `EdgeConnectionStateMachineMySqlTest::test_a_stale_heartbeat_refusal_resyncs_the_sequence_from_the_cloud_and_the_next_beat_acks`, plus the existing partition / worker-lifecycle / cashier-connection-state suites (all green: lease HTTP 2, partition 1, worker lifecycle 3, cashier connection-state 2, connection state machine 6 incl. the new resync test; fast Edge suite 130 tests green). **Live LAB proof:** the LAB Cloud serves the worktree, so the Cloud half was live immediately — the appliance (still the untouched 0.6.0-edge package, not restarted) acked at tick 385, connection state returned to **online** at 21:19:16 UTC, health `STANDBY_READY`, both sides at sequence 300. |
+| Release impact | the appliance half rides only in the NEXT release build (0.6.0-edge is unchanged); the Cloud half heals old appliances on its own. |
+
+### §2/§3 Cashier laptop baseline (owner-measured) and Edge gateway baseline
+
+| | Cashier laptop (Windows 10 19045) | Edge laptop |
+|---|---|---|
+| SSID | SMS5G (owner) | SMS5G, profile Public |
+| IPv4 / mask / gateway | **192.168.1.18** / 255.255.255.0 / 192.168.1.1 | **192.168.1.6** / 24 / 192.168.1.1 (re-measured, unchanged) |
+| Same LAN | yes — 192.168.1.0/24 behind the extender; the Edge laptop holds an ARP entry for .18 (a4-c3-f0-77-61-90) |
+| `ping 192.168.1.6` from the cashier | **timed out — expected**: the Edge laptop's inbound "Echo Request (ICMPv4-In)" rules are disabled on the Public profile, so ping is not a valid reachability test here (`Test-NetConnection` / `Resolve-DnsName` were also typed into CMD, not PowerShell) |
+| Gateway | `nginx.exe` from **InstallRoot** (`…\install\BingooEdge\gateway\nginx.exe`) listening **0.0.0.0:8443** and :8081 |
+| Second-device access | **PROVEN by the owner's screenshot**: the cashier laptop opened `https://desktop-0024epm.local:8443/edge/local/login` — mDNS resolved the name, TCP 8443 reached the InstallRoot nginx, the Bingoo Edge login page rendered. The browser shows "Not secure" only because the LAB CA is not yet trusted on that PC (step §5). |
+
+### §4 Firewall — no new rule needed
+
+Windows already holds inbound allow rules for the LAB gateway path: `nginx.exe` (TCP, any port, Public) and `nginx.exe` (UDP, any
+port, Public) for `C:\users\dell\bingooedgelab\install\bingooedge\gateway\nginx.exe`. They were created by Windows' own
+"Security Alert" prompt when the packaged nginx first listened — an owner consent on the desktop, not an agent action. Per the
+directive: reachable → **no additional rule was created**, nothing elevated was run by this session. The auto-created rules are
+broader than the LAB needs; an OPTIONAL narrowing (the owner's elevated decision, not required for P5C):
+
+```
+# narrow: keep only TCP 8443 from the local subnet on the LAB gateway path; disable the UDP twin
+Get-NetFirewallRule -DisplayName "nginx.exe" | Where-Object { ($_ | Get-NetFirewallApplicationFilter).Program -like "*BingooEdgeLab*" -and ($_ | Get-NetFirewallPortFilter).Protocol -eq "TCP" } | Set-NetFirewallRule -LocalPort 8443 -RemoteAddress LocalSubnet -Profile Public
+Get-NetFirewallRule -DisplayName "nginx.exe" | Where-Object { ($_ | Get-NetFirewallApplicationFilter).Program -like "*BingooEdgeLab*" -and ($_ | Get-NetFirewallPortFilter).Protocol -eq "UDP" } | Disable-NetFirewallRule
+# rollback (remove both; Windows prompts again on the next listen)
+Get-NetFirewallRule -DisplayName "nginx.exe" | Where-Object { ($_ | Get-NetFirewallApplicationFilter).Program -like "*BingooEdgeLab*" } | Remove-NetFirewallRule
+```
+`RemoteAddress LocalSubnet` follows the laptop's current subnet, so it survives the 192.168.1.x → 192.168.2.x flip at the cable pull.
+
+### §5 Cashier TLS trust — prepared, awaiting the owner's approval to trust the LAB CA on the cashier PC
+
+Transfer ONLY `C:\Users\Dell\BingooEdgeLab\evidence\lab-ca.crt` (public CA certificate, 1266 bytes). Never the CA key, server key,
+PFX password, device secret, APP_KEY, recovery key or cashier credential file.
+
+```
+file sha256      : ada029a6283b7458eac4b005d2f96a9645b92e76babef0f8276e07c9401e595a
+cert SHA-256     : 8C:49:0C:63:37:B4:99:63:02:DB:B7:F3:4C:20:C7:77:17:2F:8B:E2:53:86:7A:86:A6:92:5E:86:8E:DE:C4:48
+cert SHA-1 ("Thumbprint" in Windows) : F7D3946939F77EBA74780AEDA3C9E3CE52F38A01
+subject          : CN=Bingoo Edge HOME LAB CA, O=Bingoo Edge LAB (not production)   valid 2026-09-19 → 2028-12-22
+served chain     : the gateway serves leaf + this CA (openssl verify against it = 0)
+```
+On the cashier PC (PowerShell): verify, then install per-user (no admin; Windows asks for confirmation) — or machine-wide from an
+elevated shell:
+```
+Get-FileHash .\lab-ca.crt -Algorithm SHA256                      # must print ADA029A6…E595A
+(New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 ".\lab-ca.crt").Thumbprint   # F7D3946939F77EBA74780AEDA3C9E3CE52F38A01
+Import-Certificate -FilePath .\lab-ca.crt -CertStoreLocation Cert:\CurrentUser\Root      # per-user (or Cert:\LocalMachine\Root elevated)
+# rollback after the LAB:
+Get-ChildItem Cert:\CurrentUser\Root | Where-Object Thumbprint -eq "F7D3946939F77EBA74780AEDA3C9E3CE52F38A01" | Remove-Item
+```
+Kit alternative (import + hostname/IP HTTPS checks with FULL validation + evidence JSON): copy `scripts\Test-EdgeCashierTrust.ps1`
+from the package and run
+`.\Test-EdgeCashierTrust.ps1 -EdgeHost DESKTOP-0024EPM.local -EdgeIp 192.168.1.6 -CaCertPath .\lab-ca.crt -HttpsPort 8443 -EvidenceDir C:\EdgeLabEvidence`.
+Then `https://DESKTOP-0024EPM.local:8443/edge/local/login` must show a valid padlock; log in with employee code `LAB2C5D` and the LAB
+cashier credential kept in `C:\Users\Dell\BingooEdgeLab\secrets\cashier.pass` on the Edge laptop (never printed here); the POS page
+must load. No TLS verification is disabled anywhere.
+
+### §7 Yellow cable stays CONNECTED — no WAN disconnect requested in this phase.
+
+```
+LAB_CLOUD=running (127.0.0.1:9701, /up 200)   EDGE_GATEWAY=InstallRoot nginx 0.0.0.0:8443 + :8081   EDGE_WORKERS=7/7 alive (hidden user processes)
+WARM_STANDBY=STANDBY_READY, authority standby/online (recovered 21:19:16 UTC after the heartbeat fix)
+EDGE_ONLINE_IP=192.168.1.6   CASHIER_IP=192.168.1.18/24 gw 192.168.1.1   CASHIER_SSID=SMS5G (owner)   SAME_LAN=yes (192.168.1.0/24)
+GATEWAY_8443_LISTENING=yes (0.0.0.0)   CASHIER_TCP_8443=yes (login page rendered on the cashier laptop; ICMP ping blocked by design)
+FIREWALL_RULE_REQUIRED=no (Windows-prompt rules for the LAB gateway path already present)   EXACT_FIREWALL_COMMAND=none required (optional narrowing above)
+ROLLBACK_COMMAND=Remove-NetFirewallRule (above)   FIREWALL_OWNER_APPROVED=in principle (not needed)   FIREWALL_RULE_APPLIED=none by this session
+LAB_CA_FINGERPRINT_MATCH=recorded (SHA-256 8C:49…C4:48 / SHA-1 F7D3…8A01); verification on the cashier PC pending
+CASHIER_CA_TRUST=pending owner approval   CASHIER_HOSTNAME_RESOLUTION=yes (mDNS: desktop-0024epm.local → login page)   CASHIER_HTTPS_VALID=not yet (CA untrusted → "Not secure")
+CASHIER_LOGIN=pending   CASHIER_POS_PAGE=pending
+YELLOW_CABLE=connected   WAN_DISCONNECT_PERFORMED=no   LOCAL_MODE_ACTIVATED=no   PRODUCTION_MUTATED=no   P6_STARTED=no
+```

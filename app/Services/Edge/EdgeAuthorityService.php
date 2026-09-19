@@ -2,6 +2,7 @@
 
 namespace App\Services\Edge;
 
+use App\Exceptions\EdgeAuthorityRefusedException;
 use App\Models\Edge\EdgeLocalMeta;
 use App\Support\EdgeRuntime;
 use Illuminate\Support\Facades\DB;
@@ -59,14 +60,24 @@ class EdgeAuthorityService
         } catch (RuntimeException $e) {
             // Q: a failure is RECORDED (counters drive the connection state), never acted on. A lost connection also
             // invalidates any earlier "reconciliation clean" — it must be re-proven once the Cloud answers again.
-            $meta->forceFill([
+            $fill = [
                 'authority_last_failure_at' => now(),
                 'heartbeat_consecutive_failures' => (int) $meta->heartbeat_consecutive_failures + 1,
                 'heartbeat_consecutive_acks' => 0,
                 'reconcile_clean_at' => null,
-            ])->save();
+            ];
+            // P5C HOME LAB (19 Sep 2026) — SEQUENCE RESYNC: the Cloud is AHEAD of us (a beat whose ack we never saw, or this
+            // appliance was restored from an older backup / is a replacement machine). Adopt the Cloud's sequence so the next
+            // beat is acceptable; this beat stays a recorded failure — the counters, not this code, drive the connection state.
+            $resynced = null;
+            if ($e instanceof EdgeAuthorityRefusedException && $e->failureCode() === 'STALE_HEARTBEAT'
+                && is_numeric($e->body['seq'] ?? null) && (int) $e->body['seq'] >= $seq) {
+                $resynced = (int) $e->body['seq'];
+                $fill['authority_heartbeat_seq'] = $resynced;
+            }
+            $meta->forceFill($fill)->save();
 
-            return ['ok' => false, 'reason' => $e->getMessage(), 'state' => $this->state(), 'consecutive_failures' => (int) $meta->heartbeat_consecutive_failures];
+            return ['ok' => false, 'reason' => $e->getMessage(), 'state' => $this->state(), 'consecutive_failures' => (int) $meta->heartbeat_consecutive_failures, 'resynced_seq' => $resynced];
         }
         $meta->forceFill([
             'authority_heartbeat_seq' => $seq,

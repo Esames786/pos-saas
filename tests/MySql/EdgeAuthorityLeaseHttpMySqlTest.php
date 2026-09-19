@@ -124,8 +124,13 @@ class EdgeAuthorityLeaseHttpMySqlTest extends MySqlTenantTestCase
         $this->assertFalse($this->cloudFenced($this->branchId));
         $this->assertFalse($this->cloudFenced($this->otherBranchId));
 
-        // A stale / replayed beat can never extend or move authority.
-        $this->postJson($this->heartbeatUri, ['seq' => 1, 'edge_state' => 'standby'], $this->headers())->assertStatus(409)->assertJsonPath('failure_code', 'STALE_HEARTBEAT');
+        // LOST ACK (P5C): re-sending the SAME beat is re-acknowledged idempotently — but it can never extend or move authority
+        // (the lease row is byte-identical afterwards). A LOWER sequence is stale and the refusal names the Cloud's sequence.
+        $before = (array) DB::connection('tenant')->table('edge_branch_authority_leases')->where('branch_id', $this->branchId)->first();
+        Carbon::setTestNow(Carbon::getTestNow()->copy()->addSeconds(5));
+        $this->postJson($this->heartbeatUri, ['seq' => 1, 'edge_state' => 'standby'], $this->headers())->assertOk()->assertJsonPath('holder', 'cloud')->assertJsonPath('seq', 1);
+        $this->assertSame($before, (array) DB::connection('tenant')->table('edge_branch_authority_leases')->where('branch_id', $this->branchId)->first(), 'a replayed beat extends nothing and moves nothing');
+        Carbon::setTestNow(Carbon::getTestNow()->copy()->subSeconds(5));
 
         // The appliance took over (after ITS safe lapse): holder → edge; the Cloud is fenced for THIS branch only.
         $this->postJson($this->heartbeatUri, ['seq' => 2, 'edge_state' => 'local_active'], $this->headers())->assertOk()->assertJsonPath('holder', 'edge')->assertJsonPath('fenced', true);
@@ -136,6 +141,9 @@ class EdgeAuthorityLeaseHttpMySqlTest extends MySqlTenantTestCase
         $this->postJson($this->heartbeatUri, ['seq' => 3, 'edge_state' => 'local_active'], $this->headers())->assertOk()->assertJsonPath('holder', 'edge');
         $this->postJson($this->heartbeatUri, ['seq' => 4, 'edge_state' => 'standby'], $this->headers())->assertOk()->assertJsonPath('holder', 'edge');
         $this->assertTrue($this->cloudFenced($this->branchId));
+        // A LOWER (out-of-order) beat is refused and the refusal carries the Cloud's sequence; authority untouched.
+        $this->postJson($this->heartbeatUri, ['seq' => 2, 'edge_state' => 'standby'], $this->headers())->assertStatus(409)->assertJsonPath('failure_code', 'STALE_HEARTBEAT')->assertJsonPath('seq', 4);
+        $this->assertTrue($this->cloudFenced($this->branchId), 'a stale beat never moves authority');
 
         // HANDBACK: refused unless the appliance certifies a clean sync; then the Cloud is the writer again.
         $this->postJson($this->handbackUri, ['outbox_pending' => 2, 'failed_permanent' => 0], $this->headers())->assertStatus(422)->assertJsonPath('failure_code', 'HANDBACK_NOT_CLEAN');

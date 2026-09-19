@@ -98,6 +98,37 @@ class EdgeConnectionStateMachineMySqlTest extends MySqlTenantTestCase
         }
     }
 
+    /** P5C HOME LAB (19 Sep 2026): a lost heartbeat ack left the appliance re-sending the same sequence forever (STALE on every beat,
+     *  a healthy Cloud reported as lost). The refusal now names the Cloud sequence and the appliance adopts it. */
+    public function test_a_stale_heartbeat_refusal_resyncs_the_sequence_from_the_cloud_and_the_next_beat_acks(): void
+    {
+        $this->ack();
+        $this->ack();
+        $this->assertSame(2, (int) $this->meta()->authority_heartbeat_seq);
+        // The Cloud is ahead (it applied a beat whose answer we never saw): our next beat (3) is refused as STALE, Cloud seq = 57.
+        // ONE response sequence for the URL (Http::fake stubs accumulate — a later fake for the same URL never wins over the first).
+        \Illuminate\Support\Facades\Http::fake([config('edge.authority.heartbeat_url') => \Illuminate\Support\Facades\Http::sequence()
+            ->push(['status' => 'refused', 'failure_code' => 'STALE_HEARTBEAT', 'seq' => 57], 409)
+            ->push(['status' => 'ok', 'holder' => 'cloud', 'edge_state' => 'standby', 'lease_ttl_seconds' => 60, 'seq' => 58], 200)
+            ->push(['status' => 'refused', 'failure_code' => 'STALE_HEARTBEAT'], 409)]);
+        $r = $this->authority()->heartbeat();
+        $this->assertFalse($r['ok'], 'the refused beat is still a recorded failure');
+        $this->assertSame(57, $r['resynced_seq']);
+        $this->assertSame(57, (int) $this->meta()->authority_heartbeat_seq, 'the appliance adopted the Cloud sequence');
+        $this->assertSame(1, (int) $this->meta()->heartbeat_consecutive_failures);
+        // The next beat goes out as 58 and is acknowledged.
+        $r = $this->authority()->heartbeat();
+        $this->assertTrue($r['ok'], 'reason: ' . json_encode($r));
+        \Illuminate\Support\Facades\Http::assertSent(fn ($request) => (int) $request['seq'] === 58);
+        $this->assertSame(58, (int) $this->meta()->authority_heartbeat_seq);
+        $this->assertSame(0, (int) $this->meta()->heartbeat_consecutive_failures);
+        // A STALE refusal WITHOUT a Cloud sequence (older Cloud) changes nothing but the failure counter.
+        $r = $this->authority()->heartbeat();
+        $this->assertFalse($r['ok']);
+        $this->assertNull($r['resynced_seq']);
+        $this->assertSame(58, (int) $this->meta()->authority_heartbeat_seq);
+    }
+
     public function test_online_to_preparing_local_is_deterministic_and_one_failure_is_a_blip(): void
     {
         $this->ack('cloud', 1, 'sw:cloud-1');
