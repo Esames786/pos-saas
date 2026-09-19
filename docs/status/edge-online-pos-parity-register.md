@@ -51,7 +51,7 @@ last column). `NORMAL_BRANCH_POS_GAPS = 0` except the explicitly classified ONLI
 | Cloud admin: scheduled email reports, tenant backups, agent shelf | — | Cloud | — | — | **ONLINE_REQUIRED (Cloud)** | — |
 
 ```
-NORMAL_BRANCH_POS_GAPS      = 0     (every normal branch-POS workflow is FULL, or explicitly ONLINE_REQUIRED / FINANCIAL_PARITY_PENDING)
+NORMAL_BRANCH_POS_GAPS      = 8     (20 Sep 2026: the owner's screen comparison exposed rows this matrix never had — see "Rows missing until 20 Sep 2026" below; the 26 rows above stay FULL)
 FULL_OFFLINE_PARITY         = 26 rows        ONLINE_REQUIRED = 4 (new-customer creation offline*, card payment/refund, QR email, Cloud admin)
 FINANCIAL_PARITY_PENDING    = 0 rows
 F1 sales returns / cash refunds: FULL (11 Sep 2026) · F2 supplier finance: FULL (12 Sep 2026) · F3 purchase returns: FULL (12 Sep 2026)
@@ -60,6 +60,26 @@ F1 sales returns / cash refunds: FULL (11 Sep 2026) · F2 supplier finance: FULL
 NORMAL_OPERATOR_POS_PARITY_PERCENT = 26 / 29 = 90%   (all rows a branch operator runs: 26 FULL + card + QR email + new-customer; Cloud admin excluded)
 FULL_OFFLINE_PARITY_PERCENT        = 26 / 30 = 87%   (every row in the matrix)
 ```
+
+## Rows missing until 20 Sep 2026 (owner UI comparison; verified in code — docs/status/edge-cashier-architecture-clarification-2026-09-20.md)
+
+The Phase C matrix was built from the owner's workflow list; the cashier page's own note ("per-tile availability / variants /
+modifiers land in a later milestone") never became register rows, so the matrix over-stated completeness. Status is what the
+code does today; none of these rows has a browser-executable proof.
+
+| Workflow | Live POS | Edge today | STATUS |
+|---|---|---|---|
+| Modifiers (groups, price deltas, linked-product stock; LIVE for the steak/side menu) | modifier modal | data synced; `lines.*.modifiers` accepted server-side; **no picker on the screen** | **NOT_IMPLEMENTED (UI)** — P6 blocker |
+| Product variants (sizes) | variant picker | `product_variant_id` resolved server-side; **one tile per product, no picker** | **NOT_IMPLEMENTED (UI)** — blocker if the branch sells variants |
+| KOT Reminder document (Kashif Food: reminder → punching counter) | `document_type=reminder` | no request path | **NOT_IMPLEMENTED** — P6 blocker for Kashif Food |
+| Tip | `tip_amount` | not accepted by `storeSale`, no input | **NOT_IMPLEMENTED** |
+| Table Move (check to another table) | `table-sessions/{s}/move` | no route / service | **NOT_IMPLEMENTED** |
+| Per-line kitchen notes | yes | `kitchen_note` carried server-side; **not enterable on the screen** | **NOT_IMPLEMENTED (UI)** |
+| Barcode search | SKU/barcode match | name-only filter; placeholder says "scan barcode" | **NOT_IMPLEMENTED** (P2; wording misleading) |
+| Combo single-line void with manager approval | fixed 19 Sep (MANAGER-APPROVAL-COMBO-VOID-1) | Edge executes the pre-fix `KotCancellationService` | **PENDING_RECONCILE** (243e01d) |
+
+Closing these is "Cashier Parity Milestone 6" (build + browser-executable proofs) — not started; it gates P6, not the P5C
+connectivity proof.
 
 ## Canonical drift notes
 
