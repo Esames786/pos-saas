@@ -214,8 +214,50 @@ EDGE_ONLINE_IP=192.168.1.6   CASHIER_IP=192.168.1.18/24 gw 192.168.1.1   CASHIER
 GATEWAY_8443_LISTENING=yes (0.0.0.0)   CASHIER_TCP_8443=yes (login page rendered on the cashier laptop; ICMP ping blocked by design)
 FIREWALL_RULE_REQUIRED=no (Windows-prompt rules for the LAB gateway path already present)   EXACT_FIREWALL_COMMAND=none required (optional narrowing above)
 ROLLBACK_COMMAND=Remove-NetFirewallRule (above)   FIREWALL_OWNER_APPROVED=in principle (not needed)   FIREWALL_RULE_APPLIED=none by this session
-LAB_CA_FINGERPRINT_MATCH=recorded (SHA-256 8C:49…C4:48 / SHA-1 F7D3…8A01); verification on the cashier PC pending
-CASHIER_CA_TRUST=pending owner approval   CASHIER_HOSTNAME_RESOLUTION=yes (mDNS: desktop-0024epm.local → login page)   CASHIER_HTTPS_VALID=not yet (CA untrusted → "Not secure")
-CASHIER_LOGIN=pending   CASHIER_POS_PAGE=pending
+LAB_CA_FINGERPRINT_MATCH=yes — verified on the cashier PC (20 Sep 02:35 local): lab-ca.crt 1266 bytes, SHA-256 ADA029A6…E595A, thumbprint F7D3946939F77EBA74780AEDA3C9E3CE52F38A01 all equal to the Edge laptop copy
+CASHIER_CA_TRUST=yes — owner imported lab-ca.crt into Cert:CurrentUserRoot on the cashier laptop (20 Sep 02:3x local; thumbprint F7D3…8A01, subject CN=Bingoo Edge HOME LAB CA); rollback recorded   CASHIER_HOSTNAME_RESOLUTION=yes (mDNS: desktop-0024epm.local → login page)   CASHIER_HTTPS_VALID=yes — after the CA import Chrome on the cashier laptop shows a clean connection indicator for desktop-0024epm.local:8443 (no "Not secure", no interstitial)
+CASHIER_LOGIN=yes — /edge/local/status from the cashier laptop: authenticated=true, runtime_mode=branch_server, user LAB2C5D "Lab Cashier", branch 1, epoch 1, 4 permissions, order types dine_in/takeaway/quick_sale/delivery   CASHIER_POS_PAGE=yes — https://desktop-0024epm.local:8443/edge/local/pos rendered on the cashier laptop: "Bingoo Edge — Cashier POS", Home Lab Branch · Lab Cashier, Dine In, Lab Counter 1, Shift / Returns / Status / Synced / Logout, Lab Burger 100 · Lab Cola 30 · Lab Fries 50, Hold / Draft / Recall / Preview Bill / Review & Pay / Quick Report / Recent Prints (nothing punched or paid)
 YELLOW_CABLE=connected   WAN_DISCONNECT_PERFORMED=no   LOCAL_MODE_ACTIVATED=no   PRODUCTION_MUTATED=no   P6_STARTED=no
 ```
+
+### §6 result — cashier access proven end-to-end (20 Sep 2026, ~02:35–02:50 local)
+
+1. LAB CA verified on the cashier laptop (length 1266, SHA-256 `ADA029A6…E595A`, thumbprint `F7D3…8A01`) and imported by the owner
+   into `Cert:\CurrentUser\Root` (Windows Security Warning accepted = the owner's approval of this LAB-only trust).
+2. Chrome on the cashier laptop: `https://desktop-0024epm.local:8443` shows a clean connection indicator — no "Not secure", no
+   interstitial; TLS verification was never disabled anywhere.
+3. `/edge/local/status` from the cashier laptop after login: `authenticated=true`, `runtime_mode=branch_server`, user `LAB2C5D`
+   "Lab Cashier", branch 1, activation epoch 1, 4 permissions, order types dine_in / takeaway / quick_sale / delivery.
+4. `/edge/local/pos` rendered the actual Bingoo Edge cashier screen (Home Lab Branch · Lab Cashier, Lab Counter 1, the three LAB
+   products, Hold / Draft / Recall / Preview Bill / Review & Pay, Quick Report, Recent Prints, "Synced" badge). **Nothing was
+   punched, held or paid** — the LAB stays in warm standby with the Cloud as writer.
+
+### Online LAN baseline (recorded before any cable step) — `C:\Users\Dell\BingooEdgeLab\evidence\online-lan-baseline.json`
+
+```
+yellow cable      : connected            internet (8.8.8.8) : reachable from the Edge laptop
+Edge laptop       : Wi-Fi SMS5G, 192.168.1.6/24, gw 192.168.1.1, DNS 192.168.1.1, profile Public, gateway listening 0.0.0.0:8443
+cashier laptop    : Wi-Fi SMS5G, 192.168.1.18/24, gw 192.168.1.1; LAB CA trusted (CurrentUser\Root F7D3…8A01)
+cashier -> Edge   : https://DESKTOP-0024EPM.local:8443 by mDNS name — valid TLS, login OK, POS page OK
+appliance health  : STANDBY_READY; authority standby / connection online; 61 consecutive acks; takeover_at null; outbox 0/0/0;
+                    print worker running; 2 web backends; problems []
+Cloud lease       : holder cloud, edge_state standby, heartbeat_seq 384 (appliance and Cloud in step after the heartbeat fix)
+```
+
+### FINAL REPORT — CASHIER LAN + TLS phase
+
+```
+EDGE_HEAD=99b3afa (code: heartbeat fix) / this docs commit   LAB_CLOUD=running   EDGE_GATEWAY=InstallRoot nginx 0.0.0.0:8443 + :8081
+EDGE_WORKERS=7/7 alive   WARM_STANDBY=STANDBY_READY (standby/online, 61 acks)
+EDGE_ONLINE_IP=192.168.1.6   CASHIER_IP=192.168.1.18   CASHIER_SSID=SMS5G   SAME_LAN=yes
+GATEWAY_8443_LISTENING=yes   CASHIER_TCP_8443=yes
+FIREWALL_RULE_REQUIRED=no   EXACT_FIREWALL_COMMAND=none required (optional narrowing recorded)   ROLLBACK_COMMAND=recorded   FIREWALL_OWNER_APPROVED=in principle (unused)   FIREWALL_RULE_APPLIED=none by this session
+LAB_CA_FINGERPRINT_MATCH=yes   CASHIER_CA_TRUST=yes (CurrentUser\Root, rollback recorded)   CASHIER_HOSTNAME_RESOLUTION=yes (mDNS)   CASHIER_HTTPS_VALID=yes
+CASHIER_LOGIN=yes   CASHIER_POS_PAGE=yes
+YELLOW_CABLE=connected   WAN_DISCONNECT_PERFORMED=no   LOCAL_MODE_ACTIVATED=no   PRODUCTION_MUTATED=no   P6_STARTED=no
+```
+
+STOP. The yellow-cable disconnect is NOT requested here: it needs the owner's separate approval to enter the WAN-disconnect
+phase (connectivity tests only — no Local Mode, no offline sales). Known limitation for that phase: the LAB Cloud sits on the Edge
+laptop's loopback, so the Edge process will keep acking heartbeats while the cable is out; "Cloud unreachable" can only be shown
+against the real Internet, not against the LAB Cloud, unless the owner separately approves stopping the LAB Cloud process.
