@@ -7,13 +7,18 @@
 //      actually exist in the live DOM after the page booted (present / equivalent / partial rows), incl. inside the
 //      dialogs it opens (View Tables, Shift, Returns, Quick Report, Recent Prints, Review & Pay, Preview Bill);
 //   2. paired-viewport screenshots (1366×768 desktop, 1024×768 tablet, 800×600 small) of the main page and each dialog;
-//   3. a JSON report with counts and denominators (never a percentage).
+//   3. a JSON report with counts and denominators (never a percentage), every server refusal the page toasted, and
+//      every step that could not be completed (with the reason) — silence is never reported as success.
+//
+// Read-only by default. With --allow-mutations (dev instance / LAB data ONLY, never a live tenant) it also walks the
+// deeper operator flows that create disposable local records — open the shift, open a table, Hold on the table (a held
+// check → KOT / Split / Cancel dialogs), a delivery-mode Review & Pay, the Quick Sale prompt, a manual discount that
+// summons the manager prompt — and censuses/screenshots each. It NEVER completes a payment and never prints.
 //
 // Usage (secrets NEVER on the command line — the credential is read from an environment variable):
 //   set EDGE_PROOF_PASS_ENV=EDGE_LAB_CASHIER_PASS   (name of the variable holding the password)
-//   node edge-pos-proof.mjs --base-url https://desktop-0024epm.local:8443 --user LAB2C5D [--ignore-tls] [--channel msedge|chrome]
+//   node edge-pos-proof.mjs --base-url https://desktop-0024epm.local:8443 --user LAB2C5D [--ignore-tls] [--channel msedge|chrome] [--allow-mutations]
 //
-// Runs against the LAB appliance (after the owner-approved signed update) or a dev Edge instance — NEVER a live tenant.
 // Output: ./evidence/<timestamp>/…png + report.json
 import { chromium } from 'playwright';
 import fs from 'node:fs';
@@ -21,12 +26,20 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const args = Object.fromEntries(process.argv.slice(2).map((a, i, all) => a.startsWith('--') ? [a.slice(2), all[i + 1] && !all[i + 1].startsWith('--') ? all[i + 1] : true] : []).filter(Boolean));
+const argv = process.argv.slice(2);
+const args = {};
+for (let i = 0; i < argv.length; i++) {
+  if (!argv[i].startsWith('--')) continue;
+  const key = argv[i].slice(2);
+  const next = argv[i + 1];
+  if (next && !next.startsWith('--')) { args[key] = next; i++; } else { args[key] = true; }
+}
 const baseUrl = String(args['base-url'] || '').replace(/\/$/, '');
 const user = String(args.user || '');
 const passEnv = process.env.EDGE_PROOF_PASS_ENV || 'EDGE_PROOF_PASS';
 const pass = process.env[passEnv] || '';
 const channel = String(args.channel || 'msedge');
+const allowMutations = args['allow-mutations'] === true;
 if (!baseUrl || !user || !pass) {
   console.error('need --base-url, --user and the password in the env var named by EDGE_PROOF_PASS_ENV (default EDGE_PROOF_PASS)');
   process.exit(2);
@@ -48,7 +61,7 @@ const stamp = new Date().toISOString().replace(/[:.]/g, '-');
 const outDir = path.join(here, 'evidence', stamp);
 fs.mkdirSync(outDir, { recursive: true });
 const viewports = [{ name: 'desktop-1366x768', width: 1366, height: 768 }, { name: 'tablet-1024x768', width: 1024, height: 768 }, { name: 'small-800x600', width: 800, height: 600 }];
-const report = { base_url: baseUrl, user, started_at: new Date().toISOString(), viewports: {}, dom_census: {}, dialogs: {}, console_errors: [] };
+const report = { base_url: baseUrl, user, allow_mutations: allowMutations, started_at: new Date().toISOString(), viewports: {}, dom_census: {}, steps: {}, toasts: [], refusals: [], console_errors: [], skipped: [] };
 
 const browser = await chromium.launch({ channel, headless: true });
 try {
@@ -56,67 +69,236 @@ try {
   const page = await context.newPage();
   page.on('console', m => { if (m.type() === 'error') report.console_errors.push(m.text()); });
   page.on('pageerror', e => report.console_errors.push('pageerror: ' + e.message));
+  page.on('dialog', d => d.accept()); // the page's confirm() on "leave check" — always accept in the proof
+  page.on('response', async res => { // every server refusal the page received, with its business message
+    const st = res.status();
+    if (st < 400 || !res.url().includes('/edge/local/')) return;
+    let body = null;
+    try { body = (await res.text()).slice(0, 400); } catch { /* body already consumed / navigation */ }
+    report.refusals.push({ url: res.url().replace(baseUrl, ''), status: st, body });
+  });
 
-  // login — the Edge local login form (employee code + credential)
-  await page.goto(baseUrl + '/edge/local/login', { waitUntil: 'domcontentloaded' });
-  await page.fill('input[name=employee_code], input[name=username], input[name=login]', user).catch(() => {});
-  await page.fill('input[type=password]', pass);
-  await page.click('button[type=submit], button:has-text("Log in"), button:has-text("Login")');
-  await page.waitForURL(/edge\/local\/pos/, { timeout: 15000 }).catch(() => {});
-  await page.goto(baseUrl + '/edge/local/pos', { waitUntil: 'networkidle' });
-  await page.waitForSelector('#tiles .tile, #tiles p', { timeout: 15000 });
-
+  const posUrl = baseUrl + '/edge/local/pos';
   const seen = new Set();
-  const collect = async (label) => {
+  const censusNow = async (label, extra = {}) => {
     const found = await page.evaluate(ids => ids.filter(id => document.getElementById(id) !== null), [...idSelectors]);
     found.forEach(id => seen.add(id));
-    report.dialogs[label] = { dom_ids_found: found.length };
+    report.steps[label] = { ...(report.steps[label] || {}), dom_ids_found: found.length, ...extra };
+    return found;
+  };
+  const shot = (name) => page.screenshot({ path: path.join(outDir, `${name}.png`), fullPage: false });
+  const heading = () => page.locator('#modal-body h2').first().textContent().catch(() => null);
+  const toastText = async () => { // the page toasts every server refusal for ~3 s — capture whatever is showing
+    const t = page.locator('#toast');
+    if (await t.count() === 0) return null;
+    const visible = await t.evaluate(el => el.style.display === 'block' && el.textContent.trim() !== '').catch(() => false);
+    if (!visible) return null;
+    const text = (await t.textContent()).trim();
+    report.toasts.push(text);
+    return text;
+  };
+  const modalOpen = () => page.locator('#modal.open').count().then(n => n > 0);
+  const closeModal = async () => { await page.evaluate(() => window.EdgePOS && window.EdgePOS.closeModal()); await page.waitForTimeout(150); };
+  const resetPage = async () => { // a clean cart between deep steps (the page has no Clear Cart — audit A37)
+    await page.goto(posUrl, { waitUntil: 'networkidle' });
+    await page.waitForSelector('#tiles .tile, #tiles p', { timeout: 15000 });
+  };
+  const step = async (label, fn) => {
+    try { await fn(); } catch (e) { report.steps[label] = { ...(report.steps[label] || {}), error: String(e.message || e).split('\n')[0] }; report.skipped.push(`${label}: ${String(e.message || e).split('\n')[0]}`); }
+  };
+  const openDialog = async (label, trigger) => {
+    if (await page.locator(trigger).count() === 0) { report.steps[label] = { trigger_missing: trigger }; return false; }
+    if (await modalOpen()) await closeModal();
+    await page.click(trigger);
+    await page.waitForSelector('#modal.open', { timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(600);
+    await censusNow(label, { heading: await heading(), toast: await toastText() });
+    await shot(`dialog-${label}`);
+    return true;
+  };
+  const addFirstTile = async () => { if (await modalOpen()) await closeModal(); await page.locator('#tiles .tile').first().click(); await page.waitForTimeout(150); };
+  const setOrderType = async (type) => {
+    if (await page.locator(`#order-type option[value=${type}]`).count() === 0) return false;
+    if (await page.locator('#order-type').isDisabled()) return false;
+    await page.selectOption('#order-type', type);
+    return true;
   };
 
-  // main page at each viewport
+  // ── login — the Edge local login form (employee code + credential) ──────────────────────────────────────
+  await page.goto(baseUrl + '/edge/local/login', { waitUntil: 'domcontentloaded' });
+  await page.fill('input[name=employee_code]', user);
+  await page.fill('input[type=password]', pass);
+  await page.click('button[type=submit]');
+  await page.waitForURL(/edge\/local\/pos/, { timeout: 15000 }).catch(() => {});
+  await resetPage();
+
+  // ── main page at each viewport ──────────────────────────────────────────────────────────────────────────
   for (const vp of viewports) {
     await page.setViewportSize({ width: vp.width, height: vp.height });
     await page.waitForTimeout(250);
     const hasHorizontalScroll = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
     const tile = await page.locator('#tiles .tile').first().boundingBox().catch(() => null);
     report.viewports[vp.name] = { horizontal_overflow: hasHorizontalScroll, first_tile_px: tile ? { w: Math.round(tile.width), h: Math.round(tile.height) } : null };
-    await page.screenshot({ path: path.join(outDir, `pos-main-${vp.name}.png`), fullPage: false });
+    await shot(`pos-main-${vp.name}`);
   }
   await page.setViewportSize(viewports[0]);
-  await collect('main');
+  await censusNow('main', { order_type_default: await page.locator('#order-type').inputValue().catch(() => null), terminal: await page.locator('#terminal option:checked').textContent().catch(() => null) });
 
-  // dialogs the operator reaches from the main page (each is opened, censused, shot, closed)
-  const dialogs = [
-    ['view-tables', '#view-tables-btn'], ['shift', '#shift-btn'], ['returns', '#returns-btn'],
-    ['quick-report', '#quick-report-btn'], ['recent-prints', '#recent-prints-btn'],
-  ];
-  for (const [label, trigger] of dialogs) {
-    if (await page.locator(trigger).count() === 0) { report.dialogs[label] = { trigger_missing: trigger }; continue; }
-    await page.click(trigger);
-    await page.waitForSelector('#modal.open', { timeout: 10000 }).catch(() => {});
-    await page.waitForTimeout(600);
-    await collect(label);
-    report.dialogs[label].heading = await page.locator('#modal-body h2').first().textContent().catch(() => null);
-    await page.screenshot({ path: path.join(outDir, `dialog-${label}.png`) });
-    await page.evaluate(() => window.EdgePOS && window.EdgePOS.closeModal());
+  // ── read-only dialogs ───────────────────────────────────────────────────────────────────────────────────
+  for (const [label, trigger] of [['view-tables', '#view-tables-btn'], ['shift', '#shift-btn'], ['returns', '#returns-btn'], ['quick-report', '#quick-report-btn'], ['recent-prints', '#recent-prints-btn']]) {
+    await step(label, async () => { if (await openDialog(label, trigger)) await closeModal(); });
   }
-  // Review & Pay + Preview Bill need a cart line: add the first tile, open each, then leave the cart untouched (no sale).
-  if (await page.locator('#tiles .tile').count() > 0) {
-    await page.locator('#tiles .tile').first().click();
-    for (const [label, trigger] of [['preview-bill', '#preview-bill-btn'], ['review-pay', '#review-pay-btn']]) {
-      if (await page.locator(trigger).count() === 0) { report.dialogs[label] = { trigger_missing: trigger }; continue; }
-      await page.click(trigger);
-      await page.waitForSelector('#modal.open', { timeout: 10000 }).catch(() => {});
-      await page.waitForTimeout(600);
-      await collect(label);
-      report.dialogs[label].heading = await page.locator('#modal-body h2').first().textContent().catch(() => null);
-      await page.screenshot({ path: path.join(outDir, `dialog-${label}.png`) });
-      await page.evaluate(() => window.EdgePOS && window.EdgePOS.closeModal());
+  // table actions + reserve form are reachable without mutating anything: select a free table on the board
+  await step('table-actions', async () => {
+    if (!(await openDialog('view-tables-select', '#view-tables-btn'))) return;
+    const free = page.locator('#modal .tbl.available').first();
+    if (await free.count() === 0) { report.skipped.push('table-actions: no free table on the board'); await closeModal(); return; }
+    await free.click();
+    await page.waitForTimeout(400);
+    await censusNow('table-actions', { table: await free.locator('strong').textContent().catch(() => null) });
+    await shot('dialog-table-actions');
+    if (await page.locator('#ta-reserve-toggle').count()) {
+      await page.click('#ta-reserve-toggle');
+      await page.waitForTimeout(200);
+      await censusNow('reserve-form');
+      await shot('dialog-reserve-form');
     }
-    // NO payment is ever taken by this script.
+    await closeModal();
+  });
+  // Preview Bill + Review & Pay need a cart line: add the first tile (no sale is made)
+  await step('preview-and-pay', async () => {
+    await addFirstTile();
+    for (const [label, trigger] of [['preview-bill', '#preview-bill-btn'], ['review-pay', '#review-pay-btn']]) {
+      if (await openDialog(label, trigger)) await closeModal();
+    }
+    if (await setOrderType('delivery')) { // delivery-mode Review & Pay shows the delivery panel (still no sale)
+      if (await openDialog('review-pay-delivery', '#review-pay-btn')) await closeModal();
+    } else report.skipped.push('review-pay-delivery: operator has no delivery order type');
+  });
+
+  // ── deeper flows that create disposable local records (dev instance / LAB only) ─────────────────────────
+  if (allowMutations) {
+    await step('shift-open', async () => { // every sale/table action needs an open shift on the selected terminal
+      await resetPage();
+      if (!(await openDialog('shift-before', '#shift-btn'))) return;
+      if (await page.locator('#sh-open').count()) {
+        await page.click('#sh-open');
+        for (let i = 0; i < 40 && (await modalOpen()); i++) { // closes on success; stays open with an inline error on refusal
+          if ((await page.locator('#sh-err').textContent().catch(() => '')).trim()) break;
+          await page.waitForTimeout(250);
+        }
+        report.steps['shift-open'] = { opened: !(await modalOpen()), inline_error: (await page.locator('#sh-err').textContent().catch(() => '')).trim() || null, toast: await toastText() };
+      } else report.steps['shift-open'] = { opened: false, already_open: await page.locator('#sh-close').count() > 0 };
+      if (await modalOpen()) await closeModal();
+    });
+
+    await step('quick-sale-prompt', async () => { // Hold on a quick_sale cart asks vehicle + waiter; we cancel → nothing is held
+      await resetPage();
+      if (!(await setOrderType('quick_sale'))) { report.skipped.push('quick-sale-prompt: operator has no quick_sale order type'); return; }
+      await addFirstTile();
+      await page.click('#hold-sale-btn');
+      await page.waitForSelector('#qs-vehicle', { timeout: 5000 }).catch(() => {});
+      await censusNow('quick-sale-prompt', { heading: await heading(), toast: await toastText() });
+      await shot('dialog-quick-sale-prompt');
+      if (await page.locator('#qs-cancel').count()) await page.click('#qs-cancel');
+    });
+
+    await step('manager-prompt', async () => { // a manual discount the branch wants approved → Complete Sale refused → manager dialog
+      await resetPage();
+      if (!(await setOrderType('takeaway'))) report.skipped.push('manager-prompt: no takeaway order type — using the default');
+      await addFirstTile();
+      if (!(await openDialog('review-pay-discount', '#review-pay-btn'))) return;
+      if (await page.locator('#cm-disc-type').count() === 0 || await page.locator('#rp-complete').count() === 0) {
+        report.skipped.push('manager-prompt: no discount control or no Complete Sale button for this operator'); await closeModal(); return;
+      }
+      await page.locator('#modal-body details').first().evaluate(d => { d.open = true; });
+      await page.selectOption('#cm-disc-type', 'fixed');
+      await page.fill('#cm-disc-value', '10');
+      await page.click('#cm-apply');
+      await page.waitForTimeout(800);
+      await page.click('#rp-complete');
+      await page.waitForSelector('#ma-cred', { timeout: 8000 }).catch(() => {});
+      const err = await page.locator('#rp-err').textContent().catch(() => '');
+      await censusNow('manager-prompt', { heading: await heading(), inline_error: (err || '').trim() || null, toast: await toastText() });
+      await shot('dialog-manager-prompt');
+      if (await page.locator('#ma-cancel').count()) await page.click('#ma-cancel'); // NO approval, NO payment
+      await page.waitForTimeout(400);
+      if (await modalOpen()) await closeModal();
+    });
+
+    await step('table-open-hold', async () => { // open a free table → hold a round → held-check actions (KOT / Split / Cancel dialogs)
+      await resetPage();
+      if (!(await openDialog('view-tables-open', '#view-tables-btn'))) return;
+      const free = page.locator('#modal .tbl.available').first();
+      if (await free.count() === 0) { report.skipped.push('table-open: no free table'); await closeModal(); return; }
+      await free.click();
+      await page.waitForTimeout(300);
+      if (await page.locator('#ta-open').count() === 0) { report.skipped.push('table-open: no Open table button'); await closeModal(); return; }
+      await page.click('#ta-open');
+      // the built-in dev server answers one request at a time — wait until the modal closed (success) or a toast showed (refusal)
+      for (let i = 0; i < 40; i++) {
+        if (!(await modalOpen())) break;
+        if (await page.locator('#toast').evaluate(el => el.style.display === 'block').catch(() => false)) break;
+        await page.waitForTimeout(250);
+      }
+      const stillOpen = await modalOpen();
+      await censusNow('table-opened', { modal_still_open: stillOpen, toast: await toastText(), check_chip: await page.locator('#check-chip').textContent().catch(() => null) });
+      await shot('pos-table-opened');
+      if (stillOpen) { report.skipped.push('table-open: the server refused (see toast)'); await closeModal(); return; }
+      await addFirstTile();
+      await page.click('#hold-sale-btn');
+      await page.waitForSelector('#kot-btn', { timeout: 10000 }).catch(() => {});
+      await censusNow('held-check', { toast: await toastText(), check_chip: await page.locator('#check-chip').textContent().catch(() => null) });
+      await shot('pos-held-check');
+      if (await page.locator('#kot-btn').count() === 0) { report.skipped.push('held-check: Hold did not produce a held check (see toast)'); return; }
+      if (await openDialog('split-bill', '#split-bill-btn')) await closeModal();
+      if (await openDialog('cancel-order', '#cancel-order-btn')) await closeModal(); // dialog only — the order stays
+      if (await page.locator('#leave-check-btn').count()) await page.click('#leave-check-btn');
+    });
+
+    await step('reserve-and-details', async () => { // reserve a free table → the board shows it reserved → its details + cancel-reservation controls
+      await resetPage();
+      if (!(await openDialog('view-tables-reserve', '#view-tables-btn'))) return;
+      const free = page.locator('#modal .tbl.available').first();
+      if (await free.count() === 0) { report.skipped.push('reserve: no free table'); await closeModal(); return; }
+      await free.click();
+      await page.waitForTimeout(300);
+      if (await page.locator('#ta-reserve-toggle').count() === 0) { report.skipped.push('reserve: no Reserve… toggle'); await closeModal(); return; }
+      await page.click('#ta-reserve-toggle');
+      await page.fill('#rs-name', 'Proof Reservation');
+      await page.fill('#rs-note', 'browser proof — disposable');
+      await page.click('#ta-reserve');
+      await page.waitForTimeout(1200); // the board re-renders after the reservation
+      const reserved = page.locator('#modal .tbl.reserved').first();
+      if (await reserved.count() === 0) { report.skipped.push('reserve: the board shows no reserved table after reserving (see refusals)'); await closeModal(); return; }
+      await reserved.click();
+      await page.waitForTimeout(300);
+      await censusNow('reservation-details', { toast: await toastText(), table: await reserved.locator('strong').textContent().catch(() => null) });
+      await shot('dialog-reservation-details');
+      await closeModal();
+    });
+
+    await step('customer-address-pick', async () => { // a delivery order with a book customer who has saved addresses → the address picker
+      await resetPage();
+      if (!(await setOrderType('delivery'))) { report.skipped.push('customer-address-pick: no delivery order type'); return; }
+      await addFirstTile();
+      if (!(await openDialog('review-pay-customer', '#review-pay-btn'))) return;
+      if (await page.locator('#cm-cust-q').count() === 0) { report.skipped.push('customer-address-pick: no customer search in Review & Pay'); await closeModal(); return; }
+      await page.locator('#modal-body details').first().evaluate(d => { d.open = true; });
+      await page.fill('#cm-cust-q', 'Ah');
+      await page.waitForSelector('#cm-cust-results [data-cid]', { timeout: 8000 }).catch(() => {});
+      if (await page.locator('#cm-cust-results [data-cid]').count() === 0) { report.skipped.push('customer-address-pick: no customer matched "Ah" in the synced book'); await closeModal(); return; }
+      await page.locator('#cm-cust-results [data-cid]').first().click();
+      await page.waitForTimeout(900); // Review & Pay re-opens on the server's new totals with the customer attached
+      await censusNow('customer-attached', { picked: await page.locator('#cm-cust-picked').textContent().catch(() => null), address_picker: await page.locator('#cm-addr-pick').count() > 0 });
+      await shot('dialog-review-pay-customer-attached');
+      await closeModal();
+    });
+  } else {
+    report.skipped.push('deeper flows (shift open, quick-sale prompt, manager prompt, table open, held check, split, cancel) need --allow-mutations');
   }
 
-  // DOM census: per census row, did every '#id' counterpart appear somewhere we looked?
+  // ── DOM census: per census row, did every '#id' counterpart appear somewhere we looked? ─────────────────
   const byState = {};
   for (const [id, row] of Object.entries(rows)) {
     const idSels = row.edge.filter(s => s.startsWith('#')).map(s => s.slice(1));
@@ -133,4 +315,4 @@ try {
   await browser.close();
 }
 fs.writeFileSync(path.join(outDir, 'report.json'), JSON.stringify(report, null, 2));
-console.log(JSON.stringify({ evidence: outDir, viewports: report.viewports, dom_census: report.dom_census.by_state, console_errors: report.console_errors.length }, null, 2));
+console.log(JSON.stringify({ evidence: outDir, viewports: report.viewports, dom_census: report.dom_census.by_state, not_seen: (report.dom_census.not_seen || []).map(x => x.id), toasts: report.toasts, refusals: report.refusals, skipped: report.skipped, console_errors: report.console_errors.length }, null, 2));

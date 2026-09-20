@@ -1,7 +1,13 @@
 <?php
 
 use App\Http\Controllers\Edge\EdgeLocalAuthController;
+use App\Http\Controllers\Edge\EdgeLocalHeldSalesController;
+use App\Http\Controllers\Edge\EdgeLocalManagerApprovalController;
 use App\Http\Controllers\Edge\EdgeLocalPosController;
+use App\Http\Controllers\Edge\EdgeLocalPrintJobController;
+use App\Http\Controllers\Edge\EdgeLocalRestaurantController;
+use App\Http\Controllers\Edge\EdgeLocalReturnController;
+use App\Http\Controllers\Edge\EdgeLocalShiftController;
 use App\Http\Controllers\Edge\EdgeQuickReportController;
 use App\Http\Controllers\Edge\EdgeRuntimeController;
 use Illuminate\Support\Facades\Route;
@@ -39,21 +45,21 @@ Route::prefix('edge/local')->name('edge.local.')->group(function () {
         Route::get('/', [EdgeLocalPosController::class, 'screen'])->name('screen');
         Route::get('/terminals', [EdgeLocalPosController::class, 'terminals'])->name('terminals');
         Route::post('/terminal/select', [EdgeLocalPosController::class, 'selectTerminal'])->name('terminal.select');
-        Route::get('/shift', [EdgeLocalPosController::class, 'shiftStatus'])->name('shift.status');
+        Route::get('/shift', [EdgeLocalShiftController::class, 'shiftStatus'])->name('shift.status');
         // EDGE-CASHIER-UI — shift parity (breakup / blind count / operating date / terminal lock) + business-friendly sync state.
-        Route::get('/shift/summary', [EdgeLocalPosController::class, 'shiftSummary'])->name('shift.summary');
+        Route::get('/shift/summary', [EdgeLocalShiftController::class, 'shiftSummary'])->name('shift.summary');
         Route::get('/sync/summary', [EdgeLocalPosController::class, 'syncSummary'])->name('sync.summary');
-        Route::post('/shift/open', [EdgeLocalPosController::class, 'openShift'])->name('shift.open');
-        Route::post('/shift/close', [EdgeLocalPosController::class, 'closeShift'])->name('shift.close');
+        Route::post('/shift/open', [EdgeLocalShiftController::class, 'openShift'])->name('shift.open');
+        Route::post('/shift/close', [EdgeLocalShiftController::class, 'closeShift'])->name('shift.close');
         Route::post('/sales', [EdgeLocalPosController::class, 'storeSale'])->name('sales.store');
         // ONLINE-POS PARITY — Preview Bill (zero-mutation running bill).
         Route::post('/preview-bill', [EdgeLocalPosController::class, 'previewBill'])->name('preview.bill');
         // F1 — SALES RETURNS (post-settlement void = return): find a returnable sale (local or mirrored Online), the
         // return screen data, post the return (cash refund out of this till), and the posted document.
-        Route::get('/returns/search', [EdgeLocalPosController::class, 'returnsSearch'])->name('returns.search');
-        Route::get('/returns/sales/{sale}', [EdgeLocalPosController::class, 'returnableSale'])->name('returns.sale');
-        Route::post('/returns', [EdgeLocalPosController::class, 'storeReturn'])->name('returns.store');
-        Route::get('/returns/{return}', [EdgeLocalPosController::class, 'showReturn'])->name('returns.show');
+        Route::get('/returns/search', [EdgeLocalReturnController::class, 'returnsSearch'])->name('returns.search');
+        Route::get('/returns/sales/{sale}', [EdgeLocalReturnController::class, 'returnableSale'])->name('returns.sale');
+        Route::post('/returns', [EdgeLocalReturnController::class, 'storeReturn'])->name('returns.store');
+        Route::get('/returns/{return}', [EdgeLocalReturnController::class, 'showReturn'])->name('returns.show');
 
         // F2 — SUPPLIER FINANCE: Suppliers → Supplier Ledger → Record Payment, and the General Journal with the supplier/AP
         // dimension. Read-only warm projection + immutable local events the Cloud posts officially, exactly once.
@@ -75,34 +81,34 @@ Route::prefix('edge/local')->name('edge.local.')->group(function () {
 
         // Restaurant layer: dine-in table sessions, held orders (Add Round), KOT business events,
         // settle/cancel, manager re-auth. Same authority envelope (EdgeLocalPosService); NO print transport.
-        Route::get('/restaurant/board', [EdgeLocalPosController::class, 'restaurantBoard'])->name('restaurant.board');
-        Route::post('/restaurant/tables/{table}/open', [EdgeLocalPosController::class, 'openTable'])->name('restaurant.table.open');
+        Route::get('/restaurant/board', [EdgeLocalRestaurantController::class, 'restaurantBoard'])->name('restaurant.board');
+        Route::post('/restaurant/tables/{table}/open', [EdgeLocalRestaurantController::class, 'openTable'])->name('restaurant.table.open');
         // ONLINE-POS PARITY — table reservations (reserve / view / cancel).
-        Route::get('/restaurant/tables/{table}/reservation', [EdgeLocalPosController::class, 'tableReservation'])->name('restaurant.table.reservation');
-        Route::post('/restaurant/tables/{table}/reserve', [EdgeLocalPosController::class, 'reserveTable'])->name('restaurant.table.reserve');
-        Route::post('/restaurant/tables/{table}/unreserve', [EdgeLocalPosController::class, 'cancelReservation'])->name('restaurant.table.unreserve');
-        Route::post('/restaurant/table-sessions/{session}/close', [EdgeLocalPosController::class, 'closeTableSession'])->name('restaurant.session.close');
+        Route::get('/restaurant/tables/{table}/reservation', [EdgeLocalRestaurantController::class, 'tableReservation'])->name('restaurant.table.reservation');
+        Route::post('/restaurant/tables/{table}/reserve', [EdgeLocalRestaurantController::class, 'reserveTable'])->name('restaurant.table.reserve');
+        Route::post('/restaurant/tables/{table}/unreserve', [EdgeLocalRestaurantController::class, 'cancelReservation'])->name('restaurant.table.unreserve');
+        Route::post('/restaurant/table-sessions/{session}/close', [EdgeLocalRestaurantController::class, 'closeTableSession'])->name('restaurant.session.close');
         // EDGE-CASHIER-UI-2 — Recall / Dine-In browser workflow reads.
-        Route::get('/held-sales', [EdgeLocalPosController::class, 'heldSales'])->name('held.index');
-        Route::get('/held-sales/{sale}', [EdgeLocalPosController::class, 'heldSale'])->name('held.show');
-        Route::get('/void-reasons', [EdgeLocalPosController::class, 'voidReasons'])->name('void-reasons');
+        Route::get('/held-sales', [EdgeLocalHeldSalesController::class, 'heldSales'])->name('held.index');
+        Route::get('/held-sales/{sale}', [EdgeLocalHeldSalesController::class, 'heldSale'])->name('held.show');
+        Route::get('/void-reasons', [EdgeLocalHeldSalesController::class, 'voidReasons'])->name('void-reasons');
         // CUSTOMER-UX parity — on-demand lookup in the synced customer book (delivery / attach customer / addresses).
         Route::get('/customers', [EdgeLocalPosController::class, 'customers'])->name('customers.search');
-        Route::post('/held-sales', [EdgeLocalPosController::class, 'storeHeldSale'])->name('held.store');
-        Route::post('/held-sales/{sale}/kot', [EdgeLocalPosController::class, 'queueKot'])->name('held.kot');
-        Route::post('/held-sales/{sale}/settle', [EdgeLocalPosController::class, 'settleHeldSale'])->name('held.settle');
-        Route::post('/held-sales/{sale}/cancel', [EdgeLocalPosController::class, 'cancelHeldSale'])->name('held.cancel');
+        Route::post('/held-sales', [EdgeLocalHeldSalesController::class, 'storeHeldSale'])->name('held.store');
+        Route::post('/held-sales/{sale}/kot', [EdgeLocalHeldSalesController::class, 'queueKot'])->name('held.kot');
+        Route::post('/held-sales/{sale}/settle', [EdgeLocalHeldSalesController::class, 'settleHeldSale'])->name('held.settle');
+        Route::post('/held-sales/{sale}/cancel', [EdgeLocalHeldSalesController::class, 'cancelHeldSale'])->name('held.cancel');
         // ONLINE-POS PARITY — Split Bill (a new held check on the same table; each pays on its own).
-        Route::post('/held-sales/{sale}/split', [EdgeLocalPosController::class, 'splitHeldSale'])->name('held.split');
-        Route::post('/manager-approvals/verify', [EdgeLocalPosController::class, 'verifyManagerApproval'])->name('manager.verify');
+        Route::post('/held-sales/{sale}/split', [EdgeLocalHeldSalesController::class, 'splitHeldSale'])->name('held.split');
+        Route::post('/manager-approvals/verify', [EdgeLocalManagerApprovalController::class, 'verifyManagerApproval'])->name('manager.verify');
 
         // EDGE-CASHIER-UI-4 — printing: receipt / KOT reprint / Recent Prints / Print Here document / fallback completion / retry.
-        Route::post('/sales/{sale}/receipt', [EdgeLocalPosController::class, 'queueReceipt'])->name('sales.receipt');
-        Route::post('/sales/{sale}/kot-reprint', [EdgeLocalPosController::class, 'reprintKot'])->name('sales.kot-reprint');
-        Route::get('/print-jobs', [EdgeLocalPosController::class, 'printJobs'])->name('print-jobs.index');
-        Route::get('/print-jobs/{job}/document', [EdgeLocalPosController::class, 'printDocument'])->name('print-jobs.document');
-        Route::post('/print-jobs/{job}/printed', [EdgeLocalPosController::class, 'markPrinted'])->name('print-jobs.printed');
-        Route::post('/print-jobs/{job}/retry', [EdgeLocalPosController::class, 'retryPrintJob'])->name('print-jobs.retry');
+        Route::post('/sales/{sale}/receipt', [EdgeLocalPrintJobController::class, 'queueReceipt'])->name('sales.receipt');
+        Route::post('/sales/{sale}/kot-reprint', [EdgeLocalPrintJobController::class, 'reprintKot'])->name('sales.kot-reprint');
+        Route::get('/print-jobs', [EdgeLocalPrintJobController::class, 'printJobs'])->name('print-jobs.index');
+        Route::get('/print-jobs/{job}/document', [EdgeLocalPrintJobController::class, 'printDocument'])->name('print-jobs.document');
+        Route::post('/print-jobs/{job}/printed', [EdgeLocalPrintJobController::class, 'markPrinted'])->name('print-jobs.printed');
+        Route::post('/print-jobs/{job}/retry', [EdgeLocalPrintJobController::class, 'retryPrintJob'])->name('print-jobs.retry');
 
         // EDGE-CASHIER-UI-5 — Quick Report on the canonical report authority (view / print here / network; email = Internet required).
         Route::get('/quick-report/options', [EdgeQuickReportController::class, 'options'])->name('quick-report.options');

@@ -2,31 +2,29 @@
 
 namespace App\Http\Controllers\Edge;
 
-use App\Exceptions\ShiftException;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Edge\Concerns\ResolvesEdgePosContext;
 use App\Models\Tenant\Branch;
 use App\Models\Tenant\Category;
 use App\Models\Tenant\Combo;
 use App\Models\Tenant\PaymentMethod;
-use App\Models\Tenant\PrintJob;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\RestaurantWaiter;
-use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\Shift;
 use App\Models\Tenant\Terminal;
 use App\Services\Edge\EdgeBranchContext;
 use App\Services\Edge\EdgeLocalPosService;
 use App\Services\Edge\EdgeOperationalBaselineService;
-use App\Services\Sales\ShiftService;
 use App\Services\Security\UserDataScope;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
- * EDGE-LOCAL-POS-1 — the branch_server-only local POS HTTP surface.
+ * EDGE-LOCAL-POS-1 — the branch_server-only local POS HTTP surface (page, catalogue view-model, terminal, sale).
  *
  * Registered ONLY in routes/edge_runtime.php (absent — genuine 404 — on Cloud), behind `edge.auth`
  * (authenticated local tenant session) + `edge.branch` (bound appliance; request tenant/branch ids can never
@@ -35,19 +33,20 @@ use RuntimeException;
  * It never calls Cloud finance/inventory mutators (fenced anyway) and cannot bypass the accepted
  * operational-stock baseline (the service refuses before mutation). activation_ready stays false.
  *
- * The selected terminal is per-session (`edge_pos_terminal_id`) and re-validated on every use.
+ * W0c (20 Sep 2026): the former single controller is split by team ownership — shifts (EdgeLocalShiftController),
+ * tables/reservations (EdgeLocalRestaurantController), held checks (EdgeLocalHeldSalesController), manager approval
+ * (EdgeLocalManagerApprovalController), returns (EdgeLocalReturnController), printing (EdgeLocalPrintJobController).
+ * The shared authority helpers (selected terminal, route-permission gate, terminal authority, Complete Sale gate)
+ * live in Concerns\ResolvesEdgePosContext. Team 2 owns this file (menu + sale).
  */
 class EdgeLocalPosController extends Controller
 {
-    public const TERMINAL_SESSION_KEY = 'edge_pos_terminal_id';
+    use ResolvesEdgePosContext;
 
     public function __construct(
         private readonly EdgeBranchContext $context,
         private readonly EdgeLocalPosService $pos,
-        private readonly ShiftService $shifts,
         private readonly EdgeOperationalBaselineService $baselines,
-        private readonly \App\Services\Edge\EdgeTableReservationService $reservations,
-        private readonly \App\Services\Printing\PrintJobService $printJobs,
     ) {
     }
 
@@ -185,7 +184,7 @@ class EdgeLocalPosController extends Controller
         ];
         // W0: the bootstrap view-model the page's JS reads (`#edge-pos-data`) — built here, not in Blade, so the
         // control-census and any future partial see ONE definition. Header-only flags (finance entry points) stay out.
-        $page['vm'] = \Illuminate\Support\Arr::only($page, [
+        $page['vm'] = Arr::only($page, [
             'branchId', 'branchName', 'userName', 'terminals', 'defaultTerminalId', 'canChangeTerminal',
             'orderTypes', 'defaultOrderType', 'orderTypeLabels', 'categories', 'products', 'combos', 'waiters',
             'paymentMethods', 'operationalStockReady', 'canCompleteSale',
@@ -229,59 +228,6 @@ class EdgeLocalPosController extends Controller
         return response()->json($preview);
     }
 
-    /** ONLINE-POS PARITY — reserve a table (walk-in or existing customer, booking time, note). */
-    public function reserveTable(Request $request, int $table): JsonResponse
-    {
-        $data = $request->validate([
-            'customer_id' => ['nullable', 'integer'],
-            'customer_name' => ['nullable', 'string', 'max:190'],
-            'customer_phone' => ['nullable', 'string', 'max:40'],
-            'reserved_for' => ['nullable', 'date'],
-            'note' => ['nullable', 'string', 'max:1000'],
-        ]);
-        try {
-            $r = $this->reservations->reserve($table, $data, auth('tenant')->user());
-        } catch (\Throwable $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
-        }
-
-        return response()->json($this->reservationView($r), 201);
-    }
-
-    /** ONLINE-POS PARITY — view the active reservation on a table. */
-    public function tableReservation(int $table): JsonResponse
-    {
-        $r = $this->reservations->activeFor($table);
-
-        return response()->json(['reservation' => $r ? $this->reservationView($r) : null]);
-    }
-
-    /** ONLINE-POS PARITY — cancel the active reservation on a table. */
-    public function cancelReservation(int $table): JsonResponse
-    {
-        try {
-            $this->reservations->cancel($table, auth('tenant')->user());
-        } catch (\Throwable $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
-        }
-
-        return response()->json(['status' => 'cancelled']);
-    }
-
-    private function reservationView(\App\Models\Edge\EdgeTableReservation $r): array
-    {
-        return [
-            'reservation_uuid' => $r->reservation_uuid,
-            'restaurant_table_id' => (int) $r->restaurant_table_id,
-            'customer_id' => $r->customer_id !== null ? (int) $r->customer_id : null,
-            'customer_name' => $r->customer_name,
-            'customer_phone' => $r->customer_phone,
-            'reserved_for' => $r->reserved_for?->toIso8601String(),
-            'note' => $r->note,
-            'status' => $r->status,
-        ];
-    }
-
     /** Terminal-selection data: the bound branch's active terminals + open-shift state + current selection. */
     public function terminals(Request $request): JsonResponse
     {
@@ -318,7 +264,7 @@ class EdgeLocalPosController extends Controller
         ]);
     }
 
-    /** Select the operating terminal for this session (must belong to the bound branch and be active). */
+    /** Select the operating terminal for this session (must belong to the bound branch, be active, and be the operator's). */
     public function selectTerminal(Request $request): JsonResponse
     {
         $data = $request->validate(['terminal_id' => ['required', 'integer']]);
@@ -337,158 +283,6 @@ class EdgeLocalPosController extends Controller
         $request->session()->put(self::TERMINAL_SESSION_KEY, $terminal->id);
 
         return response()->json(['selected_terminal_id' => $terminal->id]);
-    }
-
-    /** Current shift state for the selected terminal. */
-    public function shiftStatus(Request $request): JsonResponse
-    {
-        $terminal = $this->selectedTerminal($request);
-        if ($terminal instanceof JsonResponse) {
-            return $terminal;
-        }
-        $open = Shift::on('tenant')->where('terminal_id', $terminal->id)->where('status', 'open')->latest('id')->first();
-        // HIDE-AMOUNTS parity (W0b, audit R1.1/R1.4): the SAME AmountVisibility rule as the shift summary — figures are
-        // STRIPPED for an operator the branch hides them from, never merely hidden in the page.
-        $branch = Branch::on('tenant')->find((int) $this->context->requireCurrent()->branch_id);
-        $maySeeAmounts = app(\App\Support\AmountVisibility::class)->allows(auth('tenant')->user(), $branch);
-
-        return response()->json([
-            'terminal_id' => $terminal->id,
-            'may_see_amounts' => $maySeeAmounts,
-            'shift' => $open ? [
-                'id' => $open->id,
-                'shift_uuid' => $open->shift_uuid,
-                'business_date' => $open->business_date?->toDateString(),
-                'opened_at' => $open->opened_at?->toIso8601String(),
-                'total_sales' => $maySeeAmounts ? (float) $open->total_sales : null,
-                'expected_cash' => $maySeeAmounts ? (float) $open->expected_cash : null,
-            ] : null,
-        ]);
-    }
-
-    /** Open a shift on the selected terminal (the authenticated cashier is the opener). */
-    public function openShift(Request $request): JsonResponse
-    {
-        if ($denied = $this->denyUnlessCan('tenant.shifts.store', 'Opening a shift needs the Open Shift permission.')) {
-            return $denied;
-        }
-        $data = $request->validate(['opening_cash' => ['nullable', 'numeric', 'min:0']]);
-        $terminal = $this->selectedTerminal($request);
-        if ($terminal instanceof JsonResponse) {
-            return $terminal;
-        }
-        $branch = Branch::on('tenant')->find((int) $this->context->requireCurrent()->branch_id);
-        try {
-            $shift = $this->shifts->open($branch, $terminal, (int) auth('tenant')->id(), (float) ($data['opening_cash'] ?? 0));
-        } catch (ShiftException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
-        }
-
-        return response()->json(['shift_id' => $shift->id, 'shift_uuid' => $shift->shift_uuid, 'business_date' => $shift->business_date?->toDateString()], 201);
-    }
-
-    /**
-     * SHIFT parity — what the Online Shift screens show, for this terminal and the branch: the operating
-     * business date (OPERATING-DATE-1: the open shift's business_date, never the wall clock), the open shift
-     * with its tender breakup and cancellations (SHIFT-CANCELLATIONS-1 / SHIFT-RECONCILE), the branch's other
-     * open shifts (terminal lock), and HIDE-AMOUNTS (blind count) decided ONCE by the shared AmountVisibility
-     * rule — figures are STRIPPED here, never merely hidden in the page.
-     */
-    public function shiftSummary(Request $request): JsonResponse
-    {
-        $terminal = $this->selectedTerminal($request);
-        if ($terminal instanceof JsonResponse) {
-            return $terminal;
-        }
-        $branch = Branch::on('tenant')->findOrFail((int) $this->context->requireCurrent()->branch_id);
-        $user = auth('tenant')->user();
-        $maySeeAmounts = app(\App\Support\AmountVisibility::class)->allows($user, $branch);
-        $money = fn ($v) => $maySeeAmounts ? (float) $v : null;
-
-        $open = Shift::on('tenant')->where('terminal_id', $terminal->id)->where('status', 'open')->latest('id')->first();
-        $breakup = null;
-        if ($open) {
-            $cancelled = SalesOrder::on('tenant')->where('shift_id', $open->id)->where('status', 'cancelled')
-                ->selectRaw('COUNT(*) as bills, COALESCE(SUM(grand_total), 0) as amount')->first();
-            $voided = DB::connection('tenant')->table('sales_order_line_cancellations as c')
-                ->join('sales_orders as o', 'o.id', '=', 'c.sales_order_id')
-                ->where('o.shift_id', $open->id)
-                ->selectRaw('COUNT(*) as lines_count, COALESCE(SUM(c.quantity), 0) as units')->first();
-            $breakup = [
-                'opening_cash' => $money($open->opening_cash),
-                'total_sales' => $money($open->total_sales),
-                'cash' => $money($open->total_cash),
-                'card' => $money($open->total_card),
-                'bank' => $money($open->total_bank_transfer),
-                'cheque' => $money($open->total_cheque),
-                'expected_cash' => $money($open->expected_cash),
-                // cancellation COUNTS stay visible to an operator (a bill was thrown away); amounts follow the rule.
-                'cancelled_bills' => (int) ($cancelled->bills ?? 0),
-                'cancelled_amount' => $money($cancelled->amount ?? 0),
-                'voided_lines' => (int) ($voided->lines_count ?? 0),
-                'voided_units' => (float) ($voided->units ?? 0),
-            ];
-        }
-
-        $branchOpen = Shift::on('tenant')->with('terminal:id,name')->where('branch_id', $branch->id)->where('status', 'open')
-            ->orderBy('terminal_id')->get()->map(fn (Shift $s) => [
-                'terminal_id' => (int) $s->terminal_id, 'terminal_name' => $s->terminal?->name,
-                'business_date' => $s->business_date?->toDateString(), 'opened_at' => $s->opened_at?->toIso8601String(),
-                'is_current' => (int) $s->terminal_id === (int) $terminal->id,
-            ])->values();
-
-        return response()->json([
-            'terminal_id' => $terminal->id,
-            'operating_business_date' => app(\App\Support\TenantClock::class)->operatingBusinessDate($branch),
-            'current_business_date' => app(\App\Support\TenantClock::class)->currentBusinessDate($branch),
-            'may_see_amounts' => $maySeeAmounts,
-            'shift' => $open ? [
-                'id' => $open->id, 'shift_uuid' => $open->shift_uuid,
-                'business_date' => $open->business_date?->toDateString(),
-                'opened_at' => $open->opened_at?->toIso8601String(),
-                'zero_drawer' => abs((float) $open->expected_cash) < 0.005, // ZERO-DRAWER-1: nothing to count
-            ] : null,
-            'breakup' => $breakup,
-            'branch_open_shifts' => $branchOpen,
-        ]);
-    }
-
-    /**
-     * Close the selected terminal's open shift — the SHARED ShiftService::closeShift operation.
-     * ZERO-DRAWER-1: an omitted count is passed down as NULL and resolved under the row lock (an
-     * empty drawer closes; a drawer holding cash demands a typed count — 0 must be typed deliberately).
-     */
-    public function closeShift(Request $request): JsonResponse
-    {
-        if ($denied = $this->denyUnlessCan('tenant.shifts.close', 'Closing a shift needs the Close Shift permission.')) {
-            return $denied;
-        }
-        $data = $request->validate([
-            'counted_cash' => ['nullable', 'numeric', 'min:0'],
-            'closing_notes' => ['nullable', 'string', 'max:1000'],
-        ]);
-        $terminal = $this->selectedTerminal($request);
-        if ($terminal instanceof JsonResponse) {
-            return $terminal;
-        }
-        $open = Shift::on('tenant')->where('terminal_id', $terminal->id)->where('status', 'open')->latest('id')->first();
-        if (! $open) {
-            return response()->json(['message' => 'No open shift on this terminal.'], 422);
-        }
-        try {
-            $counted = $request->filled('counted_cash') ? (float) $data['counted_cash'] : null;
-            $closed = $this->shifts->closeShift($open, (int) auth('tenant')->id(), $counted, $data['closing_notes'] ?? null);
-        } catch (ShiftException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
-        }
-
-        return response()->json([
-            'shift_id' => $closed->id,
-            'status' => $closed->status,
-            'expected_cash' => (float) $closed->expected_cash,
-            'counted_cash' => (float) $closed->counted_cash,
-            'cash_variance' => (float) $closed->cash_variance,
-        ]);
     }
 
     /** Local paid Direct Pay (quick_sale/takeaway, cash) through EdgeLocalPosService. */
@@ -551,315 +345,6 @@ class EdgeLocalPosController extends Controller
         ], 201);
     }
 
-    // ═══════════════════════ EDGE-LOCAL-POS-1 — restaurant layer (dine-in / held / KOT) ═══════════════════════
-
-    /** Table board data for the bound branch: floors → tables → open session + open-check summary. */
-    public function restaurantBoard(): JsonResponse
-    {
-        $branchId = (int) $this->context->requireCurrent()->branch_id;
-        $floors = \App\Models\Tenant\RestaurantFloor::on('tenant')->where('branch_id', $branchId)
-            ->where('status', 'active')->orderBy('sort_order')->orderBy('name')
-            ->with(['tables' => fn ($q) => $q->where('status', '!=', 'inactive')->orderBy('sort_order')->orderBy('table_no')
-                ->with(['openSession' => fn ($s) => $s->with('waiter')])])
-            ->get()
-            ->map(fn ($floor) => [
-                'id' => $floor->id, 'name' => $floor->name,
-                'tables' => $floor->tables->map(function ($t) {
-                    $session = $t->openSession;
-                    $held = $session ? SalesOrder::on('tenant')->where('restaurant_table_session_id', $session->id)
-                        ->where('status', 'held')->get(['id', 'sale_no', 'sale_uuid', 'grand_total']) : collect();
-
-                    // ONLINE-POS PARITY: a free table carrying an ACTIVE Edge reservation shows as reserved
-                    // (reservations live in the Edge-owned table, never on restaurant_tables config).
-                    $reservation = $session ? null : $this->reservations->activeFor((int) $t->id);
-
-                    return [
-                        'id' => $t->id, 'table_no' => $t->table_no, 'name' => $t->name, 'capacity' => $t->capacity,
-                        'status' => $session ? ($session->status === 'bill_requested' ? 'bill_requested' : 'occupied') : ($reservation ? 'reserved' : $t->status),
-                        'reservation' => $reservation ? $this->reservationView($reservation) : null,
-                        'session' => $session ? [
-                            'id' => $session->id, 'session_uuid' => $session->session_uuid, 'session_no' => $session->session_no,
-                            'guest_count' => $session->guest_count, 'status' => $session->status,
-                            'business_date' => $session->business_date?->toDateString(),
-                            'waiter_name' => $session->waiter?->name,
-                            'held_orders' => $held->values(),
-                        ] : null,
-                    ];
-                })->values(),
-            ])->values();
-
-        return response()->json(['branch_id' => $branchId, 'floors' => $floors]);
-    }
-
-    /** Open a dine-in table session on the selected terminal. */
-    public function openTable(Request $request, int $table): JsonResponse
-    {
-        if ($denied = $this->denyUnlessCan('tenant.restaurant.table-sessions.open', 'Opening a table needs the Open Table permission.')) {
-            return $denied;
-        }
-        $data = $request->validate([
-            'restaurant_waiter_id' => ['nullable', 'integer'],
-            'guest_count' => ['nullable', 'integer', 'min:1', 'max:100'],
-            'notes' => ['nullable', 'string', 'max:500'],
-        ]);
-        $terminal = $this->selectedTerminal($request);
-        if ($terminal instanceof JsonResponse) {
-            return $terminal;
-        }
-        try {
-            $session = $this->pos->openTableSession($table, $data, auth('tenant')->user(), $terminal->id);
-        } catch (RuntimeException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
-        }
-
-        return response()->json([
-            'session_id' => $session->id, 'session_uuid' => $session->session_uuid, 'session_no' => $session->session_no,
-            'table_id' => $session->restaurant_table_id, 'status' => $session->status,
-            'business_date' => $session->business_date?->toDateString(),
-        ], 201);
-    }
-
-    /** Close/cancel a table session that has no remaining open orders. */
-    public function closeTableSession(Request $request, int $session): JsonResponse
-    {
-        if ($denied = $this->denyUnlessCan('tenant.restaurant.table-sessions.close', 'Closing a table needs the Close Table permission.')) {
-            return $denied;
-        }
-        $data = $request->validate(['status' => ['nullable', 'string', 'in:closed,cancelled']]);
-        try {
-            $closed = $this->pos->closeTableSession($session, $data['status'] ?? 'closed', auth('tenant')->user());
-        } catch (RuntimeException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
-        }
-
-        return response()->json(['session_id' => $closed->id, 'status' => $closed->status]);
-    }
-
-    /** Create or revise (Add Round) a HELD sale. */
-    public function storeHeldSale(Request $request): JsonResponse
-    {
-        if ($denied = $this->denyUnlessCan('tenant.held-sales.store', 'Holding or revising an order needs the Hold Sale permission.')) {
-            return $denied;
-        }
-        $data = $request->validate([
-            'held_sale_id' => ['nullable', 'integer'],
-            'order_type' => ['required', 'string'],
-            'restaurant_table_session_id' => ['nullable', 'integer'],
-            'notes' => ['nullable', 'string', 'max:1000'],
-            'discount_type' => ['nullable', 'string'],
-            'discount_value' => ['nullable', 'numeric'],
-            'promo_code' => ['nullable', 'string'],
-            'manager_approval_id' => ['nullable', 'integer'],
-            'customer_id' => ['nullable', 'integer'],
-            'customer_name' => ['nullable', 'string', 'max:190'],
-            'customer_phone' => ['nullable', 'string', 'max:50'],
-            'delivery_channel_id' => ['nullable', 'integer'],
-            'delivery_rider_id' => ['nullable', 'integer'],
-            'delivery_address' => ['nullable', 'string', 'max:500'],
-            'delivery_charge_amount' => ['nullable', 'numeric', 'min:0', 'max:99999'],
-            // POS-DRAFT-1 + PHASE 2b parity (offline): park as draft; quick-sale vehicle + waiter attribution.
-            'save_as_draft' => ['nullable', 'boolean'],
-            'vehicle_number' => ['nullable', 'string', 'max:50', 'required_if:order_type,quick_sale'],
-            'restaurant_waiter_id' => ['nullable', 'integer', 'required_if:order_type,quick_sale'],
-            'lines' => ['required', 'array', 'min:1'],
-            'lines.*.sales_order_line_id' => ['nullable', 'integer'],
-            'lines.*.product_id' => ['required_without:lines.*.combo_id', 'nullable', 'integer'],
-            'lines.*.combo_id' => ['nullable', 'integer'],
-            'lines.*.product_variant_id' => ['nullable', 'integer'],
-            'lines.*.quantity' => ['required', 'numeric', 'gt:0'],
-            'lines.*.modifiers' => ['nullable', 'array'],
-            'void_items' => ['nullable', 'array'],
-            'void_items.*.old_line_id' => ['required_with:void_items', 'integer'],
-            'void_items.*.quantity' => ['required_with:void_items', 'numeric', 'gt:0'],
-            'void_items.*.reason_id' => ['required_with:void_items', 'integer'],
-            'void_items.*.manager_approval_id' => ['nullable', 'integer'],
-        ]);
-        $terminal = $this->selectedTerminal($request);
-        if ($terminal instanceof JsonResponse) {
-            return $terminal;
-        }
-        try {
-            $sale = $this->pos->holdOrReviseSale($data, auth('tenant')->user(), $terminal->id);
-        } catch (RuntimeException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
-        }
-
-        return response()->json([
-            'sale_id' => $sale->id, 'sale_no' => $sale->sale_no, 'sale_uuid' => $sale->sale_uuid,
-            'status' => $sale->status, 'is_draft' => (bool) $sale->is_draft, 'grand_total' => (float) $sale->grand_total,
-            'restaurant_table_session_id' => $sale->restaurant_table_session_id,
-            'lines' => $sale->lines()->get(['id', 'line_uuid', 'product_id', 'quantity', 'unit_price', 'kot_sent', 'kot_sent_quantity']),
-        ], empty($data['held_sale_id']) ? 201 : 200);
-    }
-
-    /** Record the KOT business event for a held sale's unsent delta. */
-    public function queueKot(Request $request, int $sale): JsonResponse
-    {
-        $terminal = $this->selectedTerminal($request);
-        if ($terminal instanceof JsonResponse) {
-            return $terminal;
-        }
-        try {
-            $result = $this->pos->queueKotEvents($sale, auth('tenant')->user(), $terminal->id);
-        } catch (RuntimeException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
-        }
-        $batch = $result['batch'];
-
-        return response()->json([
-            'batch' => $batch ? [
-                'id' => $batch->id, 'event_uuid' => $batch->event_uuid, 'sequence_no' => $batch->sequence_no,
-                'event_type' => $batch->event_type,
-                'lines' => $batch->lines()->get(['id', 'kot_line_uuid', 'source_line_uuid', 'product_name', 'quantity']),
-            ] : null,
-            'jobs' => collect($result['jobs'])->map(fn ($j) => ['id' => $j->id, 'logical_key' => $j->logical_key, 'print_status' => $j->fresh()->print_status])->values(),
-            'message' => $batch ? null : 'No new items to send to kitchen.',
-        ]);
-    }
-
-    /** Settle (pay) a held sale with cash — closes the table session when it was the last open check. */
-    public function settleHeldSale(Request $request, int $sale): JsonResponse
-    {
-        $data = $request->validate([
-            'client_uuid' => ['required', 'string', 'max:36'],
-            'payments' => ['required', 'array', 'min:1'],
-            'payments.*.payment_method_id' => ['required', 'integer'],
-            'payments.*.amount' => ['required', 'numeric', 'gt:0'],
-            'payments.*.tendered_amount' => ['nullable', 'numeric'],
-        ]);
-        $terminal = $this->selectedTerminal($request);
-        if ($terminal instanceof JsonResponse) {
-            return $terminal;
-        }
-        if ($denied = $this->denyUnlessMayCompleteSale()) {
-            return $denied;
-        }
-        try {
-            $settled = $this->pos->settleHeldSale($sale, $data, auth('tenant')->user(), $terminal->id);
-        } catch (\App\Exceptions\SaleIdempotencyConflictException $e) {
-            throw $e; // renders its own 409/503
-        } catch (RuntimeException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
-        }
-
-        return response()->json([
-            'sale_id' => $settled->id, 'sale_no' => $settled->sale_no, 'sale_uuid' => $settled->sale_uuid,
-            'status' => $settled->status, 'grand_total' => (float) $settled->grand_total,
-            'paid_amount' => (float) $settled->paid_amount,
-            'change_amount' => (float) $settled->payments()->first()?->change_amount,
-            'edge_sync_state' => $settled->edge_sync_state,
-        ]);
-    }
-
-    /** Cancel a whole held order (reason + branch-mode manager approval enforced by the real Cloud service). */
-    public function cancelHeldSale(Request $request, int $sale): JsonResponse
-    {
-        if ($denied = $this->denyUnlessCan('tenant.held-sales.cancel', 'Cancelling an order needs the Cancel Held Sale permission.')) {
-            return $denied;
-        }
-        $data = $request->validate([
-            'reason_id' => ['required', 'integer'],
-            'manager_approval_id' => ['nullable', 'integer'],
-        ]);
-        // POS-CANCEL-TERMINAL-1: the cancellation prints at the CURRENT counter (the operator's selected
-        // terminal), while the order keeps its original terminal_id. No selection → no override.
-        $current = (int) $request->session()->get(self::TERMINAL_SESSION_KEY, 0);
-        try {
-            $result = $this->pos->cancelHeldSale($sale, (int) $data['reason_id'], isset($data['manager_approval_id']) ? (int) $data['manager_approval_id'] : null, auth('tenant')->user(), $current > 0 ? $current : null);
-        } catch (RuntimeException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
-        }
-
-        return response()->json(['sale_id' => $result['sale']->id, 'status' => $result['sale']->status]);
-    }
-
-    /**
-     * Manager re-auth: the manager presents THEIR OWN Edge-local credential (employee code + local
-     * password — never a Cloud manager PIN, which does not exist on an appliance) and receives a
-     * single-use approval consumed by the action that needs it. The cashier session is untouched.
-     */
-    public function verifyManagerApproval(Request $request): JsonResponse
-    {
-        if ($denied = $this->denyUnlessCan('tenant.api.manager-approvals.verify', 'Requesting a manager approval needs the Manager Approval permission.')) {
-            return $denied;
-        }
-        $data = $request->validate([
-            'manager_employee_code' => ['required', 'string', 'max:64'],
-            'manager_credential' => ['required', 'string', 'max:255'],
-            'action_type' => ['required', 'string', 'max:80'],
-            'payload' => ['nullable', 'array'],
-        ]);
-        try {
-            $approval = $this->pos->verifyManagerApproval(
-                $data['manager_employee_code'], $data['manager_credential'], $data['action_type'],
-                auth('tenant')->user(), $data['payload'] ?? null
-            );
-        } catch (RuntimeException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
-        }
-
-        return response()->json(['approval_id' => $approval->id, 'approval_no' => $approval->approval_no, 'approval_uuid' => $approval->approval_uuid], 201);
-    }
-
-    /** The session-selected terminal, re-validated against the bound branch on EVERY use. */
-    /** SPLIT BILL parity — move selected quantities onto a new held check on the same table (each pays on its own). */
-    public function splitHeldSale(Request $request, int $sale): JsonResponse
-    {
-        if ($denied = $this->denyUnlessCan('tenant.sales-orders.split-bill.store', 'Splitting a bill needs the Split Bill permission.')) {
-            return $denied;
-        }
-        $data = $request->validate([
-            'notes' => ['nullable', 'string', 'max:500'],
-            'lines' => ['required', 'array', 'min:1'],
-            'lines.*.sales_order_line_id' => ['required', 'integer'],
-            'lines.*.quantity' => ['required', 'numeric', 'gt:0'],
-        ]);
-        $terminal = $this->selectedTerminal($request);
-        if ($terminal instanceof JsonResponse) {
-            return $terminal;
-        }
-        try {
-            $result = $this->pos->splitHeldSale($sale, $data['lines'], auth('tenant')->user(), $terminal->id, $data['notes'] ?? null);
-        } catch (RuntimeException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
-        }
-        $parent = $result['parent']->load(['restaurantTable:id,table_no,name', 'restaurantWaiter:id,name', 'lines']);
-        $child = $result['child']->load(['restaurantTable:id,table_no,name', 'restaurantWaiter:id,name', 'lines']);
-
-        return response()->json([
-            'child' => $this->heldSaleView($child, true),
-            'parent' => $parent->status === 'held' ? $this->heldSaleView($parent, true) : ['id' => (int) $parent->id, 'status' => $parent->status],
-        ], 201);
-    }
-
-    // ═══════════════════════ EDGE-CASHIER-UI-2 — Recall / Dine-In browser workflow data ═══════════════════════
-
-    /** RECALL parity — the open checks (held + draft) on the bound branch, limited to the order types this operator may run. */
-    public function heldSales(): JsonResponse
-    {
-        $branchId = (int) $this->context->requireCurrent()->branch_id;
-        $allowed = auth('tenant')->user()?->effectiveAllowedOrderTypes() ?? [];
-        $sales = SalesOrder::on('tenant')->with(['restaurantTable:id,table_no,name', 'restaurantWaiter:id,name', 'lines:id,sales_order_id,quantity'])
-            ->where('branch_id', $branchId)->where('status', 'held')
-            ->when($allowed, fn ($q) => $q->whereIn('order_type', $allowed))
-            ->orderByDesc('id')->limit(100)->get();
-
-        return response()->json(['held_sales' => $sales->map(fn (SalesOrder $s) => $this->heldSaleView($s))->values()]);
-    }
-
-    /** One open check with its lines — what Recall / Add Round / Review & Pay load into the cart. */
-    public function heldSale(int $sale): JsonResponse
-    {
-        $branchId = (int) $this->context->requireCurrent()->branch_id;
-        $row = SalesOrder::on('tenant')->with(['restaurantTable:id,table_no,name', 'restaurantWaiter:id,name', 'lines'])
-            ->where('branch_id', $branchId)->where('status', 'held')->find($sale);
-        if (! $row) {
-            return response()->json(['message' => 'No open check found.'], 404);
-        }
-
-        return response()->json(['held_sale' => $this->heldSaleView($row, true)]);
-    }
-
     /**
      * CUSTOMER-UX parity: customers are looked up on demand (never the whole book in the page) from the SYNCED
      * customer book, with their saved addresses (ADDRESS-ATTACH: picking one attaches it to the order).
@@ -880,57 +365,6 @@ class EdgeLocalPosController extends Controller
             'id' => (int) $c->id, 'name' => $c->name, 'phone' => $c->phone, 'address' => $c->address,
             'addresses' => ($addresses->get($c->id) ?? collect())->map(fn ($a) => ['id' => (int) $a->id, 'label' => $a->label, 'address' => $a->address, 'is_default' => (bool) $a->is_default])->values(),
         ])->values()]);
-    }
-
-    /** Active cancellation reasons (the shared VoidReason book) for cancel-order / void flows. */
-    public function voidReasons(): JsonResponse
-    {
-        return response()->json(['reasons' => \App\Models\Tenant\VoidReason::on('tenant')->where('is_active', true)
-            ->orderBy('name')->get(['id', 'name', 'reason_type', 'requires_manager_approval'])]);
-    }
-
-    private function heldSaleView(SalesOrder $s, bool $withLines = false): array
-    {
-        $out = [
-            'id' => (int) $s->id, 'sale_no' => $s->sale_no, 'sale_uuid' => $s->sale_uuid,
-            'order_type' => $s->order_type, 'is_draft' => (bool) $s->is_draft, 'status' => $s->status,
-            'subtotal' => (float) $s->subtotal, 'discount_amount' => (float) $s->discount_amount,
-            'tax_amount' => (float) $s->tax_amount, 'service_charge_amount' => (float) $s->service_charge_amount,
-            'grand_total' => (float) $s->grand_total,
-            'customer_id' => $s->customer_id ? (int) $s->customer_id : null,
-            'customer_name' => $s->customer_name, 'customer_phone' => $s->customer_phone,
-            // The ORIGINAL counter — Recall never rewrites it (POS-RECALL-TERMINAL-1 / POS-CANCEL-TERMINAL-1).
-            'terminal_id' => (int) $s->terminal_id,
-            'vehicle_number' => $s->vehicle_number,
-            'restaurant_table_session_id' => $s->restaurant_table_session_id ? (int) $s->restaurant_table_session_id : null,
-            'table_no' => $s->restaurantTable?->table_no,
-            'waiter_id' => $s->restaurant_waiter_id ? (int) $s->restaurant_waiter_id : null,
-            'waiter_name' => $s->restaurantWaiter?->name,
-            'item_count' => (float) $s->lines->sum('quantity'),
-            'created_at' => $s->created_at?->toIso8601String(),
-        ];
-        if ($withLines) {
-            $out['lines'] = $s->lines->map(fn ($l) => [
-                'id' => (int) $l->id, 'product_id' => (int) $l->product_id,
-                'product_variant_id' => $l->product_variant_id ? (int) $l->product_variant_id : null,
-                'product_name' => $l->product_name, 'quantity' => (float) $l->quantity,
-                'unit_price' => (float) $l->unit_price, 'line_total' => (float) $l->line_total,
-                'kot_sent_quantity' => (float) $l->kot_sent_quantity,
-                // DEAL parity: the page rebuilds a deal as ONE cart row from its header; components ride underneath.
-                'line_kind' => (string) ($l->line_kind ?? 'standard'),
-                'combo_id' => $l->combo_id ? (int) $l->combo_id : null,
-                'parent_line_id' => $l->parent_sales_order_line_id ? (int) $l->parent_sales_order_line_id : null,
-            ])->values();
-            $out['discount_type'] = (string) ($s->discount_type ?? 'none');
-            $out['discount_value'] = (float) $s->discount_value;
-            $out['promo_code'] = $s->promo_code;
-            $out['delivery_channel_id'] = $s->delivery_channel_id ? (int) $s->delivery_channel_id : null;
-            $out['delivery_rider_id'] = $s->delivery_rider_id ? (int) $s->delivery_rider_id : null;
-            $out['delivery_address'] = $s->delivery_address;
-            $out['delivery_charge_amount'] = (float) ($s->delivery_charge_amount ?? 0);
-        }
-
-        return $out;
     }
 
     /**
@@ -960,277 +394,5 @@ class EdgeLocalPosController extends Controller
                 ? 'Some sales need attention before they can sync — tell your manager.'
                 : ($pending > 0 ? "{$pending} sale(s) waiting to sync — they are saved here and will sync when the connection returns." : 'All sales synced.'),
         ]);
-    }
-
-    // ═══════════════ F1 — SALES RETURNS (post-settlement void = return; cash refund out of this till) ═══════════════
-
-    /** Returnable sales by number / customer — local sales and mirrored Online sales alike. */
-    public function returnsSearch(Request $request): JsonResponse
-    {
-        $this->denyUnlessMayReturn($request);
-
-        return response()->json(['sales' => app(\App\Services\Edge\EdgeLocalReturnService::class)->search((string) $request->query('q', ''), 20, $request->user('tenant'))]);
-    }
-
-    /** The return screen's data for one sale (what the Online create screen shows + the offline facts). */
-    public function returnableSale(Request $request, int $sale): JsonResponse
-    {
-        $this->denyUnlessMayReturn($request);
-        try {
-            return response()->json(app(\App\Services\Edge\EdgeLocalReturnService::class)->returnable($sale, $request->user('tenant')));
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json(['message' => collect($e->errors())->flatten()->first(), 'errors' => $e->errors()], 422);
-        }
-    }
-
-    /** Post a return. Business messages for every refusal; nothing is ever half-posted. */
-    public function storeReturn(Request $request): JsonResponse
-    {
-        $this->denyUnlessMayReturn($request);
-        $data = $request->validate([
-            'sales_order_id' => ['required', 'integer'],
-            'reason' => ['nullable', 'string', 'max:500'],
-            'refund_method' => ['required', 'string', 'in:cash,bank_transfer,card,other'],
-            'refund_amount' => ['nullable', 'numeric', 'min:0'],
-            'lines' => ['required', 'array', 'min:1'],
-            'lines.*.sales_order_line_id' => ['required', 'integer'],
-            'lines.*.quantity' => ['required', 'numeric', 'min:0'],
-            'manager_approval_id' => ['nullable', 'integer'],
-        ]);
-        $terminalId = (int) $request->session()->get(self::TERMINAL_SESSION_KEY, 0);
-        if ($terminalId <= 0) {
-            return response()->json(['message' => 'Select a terminal before posting a return.'], 422);
-        }
-        try {
-            $view = app(\App\Services\Edge\EdgeLocalReturnService::class)->processReturn(
-                (int) $data['sales_order_id'], $data['lines'], $data['reason'] ?? null, (string) $data['refund_method'],
-                isset($data['refund_amount']) ? (float) $data['refund_amount'] : null, $request->user('tenant'), $terminalId,
-                isset($data['manager_approval_id']) ? (int) $data['manager_approval_id'] : null
-            );
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json(['message' => collect($e->errors())->flatten()->first(), 'errors' => $e->errors()], 422);
-        } catch (\RuntimeException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
-        }
-
-        return response()->json(['return' => $view], 201);
-    }
-
-    public function showReturn(Request $request, int $return): JsonResponse
-    {
-        $this->denyUnlessMayReturn($request);
-
-        return response()->json(['return' => app(\App\Services\Edge\EdgeLocalReturnService::class)->show($return)]);
-    }
-
-    /** Online's return permission, resolved from the synced effective permission set (fail closed). */
-    private function denyUnlessMayReturn(Request $request): void
-    {
-        $user = $request->user('tenant');
-        if (! $user || ! $user->can('tenant.sales-returns.store')) {
-            abort(403, 'You are not allowed to post sales returns.');
-        }
-    }
-
-    // ═══════════════ EDGE-CASHIER-UI-4 — printing: receipt / KOT reprint / Recent Prints / Print Here ═══════════════
-
-    /**
-     * Queue the customer receipt through the SHARED PrintJobService — auto after payment is ensure-once
-     * (a retry never duplicates the bill); `reprint` forces a fresh job. RECALL-REPRINT-TERMINAL parity:
-     * routed at the CURRENT counter's receipt printer; the sale row keeps its own terminal.
-     */
-    public function queueReceipt(Request $request, int $sale): JsonResponse
-    {
-        $branchId = (int) $this->context->requireCurrent()->branch_id;
-        $order = SalesOrder::on('tenant')->where('id', $sale)->where('branch_id', $branchId)->first();
-        if (! $order) {
-            return response()->json(['message' => 'No sale found.'], 404);
-        }
-        $terminal = $this->selectedTerminal($request);
-        if ($terminal instanceof JsonResponse) {
-            return $terminal;
-        }
-        $reprint = $request->boolean('reprint');
-        $job = $this->printJobs->queueReceipt($order, terminalId: (string) $terminal->id, ensureOnce: ! $reprint);
-
-        return response()->json($this->printJobView($job->fresh()), 201);
-    }
-
-    /** Reprint the kitchen ticket (duplicate event) — the shared KOT path, so the stored copy fallback applies. */
-    public function reprintKot(Request $request, int $sale): JsonResponse
-    {
-        $branchId = (int) $this->context->requireCurrent()->branch_id;
-        $order = SalesOrder::on('tenant')->where('id', $sale)->where('branch_id', $branchId)->first();
-        if (! $order) {
-            return response()->json(['message' => 'No sale found.'], 404);
-        }
-        $terminal = $this->selectedTerminal($request);
-        if ($terminal instanceof JsonResponse) {
-            return $terminal;
-        }
-        $jobs = $this->printJobs->queueKot($order, null, [], (string) $terminal->id, true);
-
-        return response()->json(['jobs' => collect($jobs)->map(fn (PrintJob $j) => $this->printJobView($j->fresh()))->values()], 201);
-    }
-
-    /** Recent Prints — the branch's latest print jobs (optionally one sale's), newest first. */
-    public function printJobs(Request $request): JsonResponse
-    {
-        $branchId = (int) $this->context->requireCurrent()->branch_id;
-        $q = PrintJob::on('tenant')->with('printer')->where('branch_id', $branchId)->orderByDesc('id')->limit(50);
-        if ($request->filled('sale_id')) {
-            $q->where('reference_type', 'sales_order')->where('reference_id', (int) $request->input('sale_id'));
-        }
-        // USER DATA SCOPE parity (W0b, Online PrintJobController::assertSaleAccess): a terminal / order-type scoped
-        // operator sees only the print jobs of sales inside that scope.
-        $user = $request->user('tenant');
-        $scope = app(UserDataScope::class);
-        if ($scope->isScoped($user)) {
-            $q->where('reference_type', 'sales_order')->whereIn('reference_id',
-                $scope->applyToSales(SalesOrder::on('tenant')->where('branch_id', $branchId)->select('id'), $user));
-        }
-
-        return response()->json(['jobs' => $q->get()->map(fn (PrintJob $j) => $this->printJobView($j))->values()]);
-    }
-
-    /**
-     * Print Here — the document rendered for the browser (receipt / KOT / reminder) by the CANONICAL
-     * renderer, so the appliance prints the same paper as Online (KOT deal names, snapshot fallback, layout).
-     */
-    public function printDocument(int $job)
-    {
-        $branchId = (int) $this->context->requireCurrent()->branch_id;
-        $printJob = PrintJob::on('tenant')->where('id', $job)->where('branch_id', $branchId)->firstOrFail();
-        // The canonical documents carry a "Mark Printed" form aimed at the Cloud print-jobs route; on the
-        // appliance that button must land on the Edge endpoint instead (the Blade reads this when set).
-        view()->share('edgeMarkPrintedUrl', url('/edge/local/pos/print-jobs/' . $printJob->id . '/printed'));
-
-        return app(\App\Http\Controllers\Tenant\PrintDocumentController::class)->preview($printJob);
-    }
-
-    /** The operator confirms a browser (fallback) print — network jobs are completed by the print worker only. */
-    public function markPrinted(Request $request, int $job)
-    {
-        $branchId = (int) $this->context->requireCurrent()->branch_id;
-        $printJob = PrintJob::on('tenant')->where('id', $job)->where('branch_id', $branchId)->first();
-        if (! $printJob) {
-            return response()->json(['message' => 'No print job found.'], 404);
-        }
-        if ($printJob->printer_id) {
-            return response()->json(['message' => 'This job prints on a network printer — the print worker completes it.'], 422);
-        }
-        $this->printJobs->markPrinted($printJob);
-
-        // The document's own "Mark Printed" form (a plain POST from the print window) returns to the document.
-        if (! $request->expectsJson()) {
-            return redirect(url('/edge/local/pos/print-jobs/' . $printJob->id . '/document'));
-        }
-
-        return response()->json($this->printJobView($printJob->fresh()));
-    }
-
-    /** Retry a terminally-failed local network delivery (Edge print authority). */
-    public function retryPrintJob(int $job): JsonResponse
-    {
-        $branchId = (int) $this->context->requireCurrent()->branch_id;
-        $printJob = PrintJob::on('tenant')->where('id', $job)->where('branch_id', $branchId)->first();
-        if (! $printJob) {
-            return response()->json(['message' => 'No print job found.'], 404);
-        }
-        try {
-            app(\App\Services\Edge\EdgeLocalPrintDeliveryService::class)->retryTerminalFailed($printJob->id);
-        } catch (RuntimeException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
-        }
-
-        return response()->json($this->printJobView($printJob->fresh()));
-    }
-
-    private function printJobView(PrintJob $j): array
-    {
-        $j->loadMissing('printer');
-
-        return [
-            'id' => (int) $j->id, 'job_no' => $j->job_no,
-            'document_type' => $j->document_type, 'print_status' => $j->print_status,
-            'event_type' => data_get($j->payload, 'kot_event_type'),
-            'printer_name' => $j->printer?->name ?? 'Print here (browser)',
-            'printer_type' => $j->printer?->printer_type ?? 'browser',
-            'fallback' => empty($j->printer_id),
-            'terminal_id' => $j->terminal_id !== null ? (int) $j->terminal_id : null,
-            'reference_no' => $j->reference_no,
-            'reference_id' => $j->reference_id ? (int) $j->reference_id : null,
-            'preview_url' => url('/edge/local/pos/print-jobs/' . $j->id . '/document'),
-            'created_at' => $j->created_at?->toIso8601String(),
-        ];
-    }
-
-    /**
-     * COMPLETE SALE PERMISSION parity (canonical f12f1fc): taking payment is gated on `tenant.pos.store`,
-     * separately from discount/approval permissions. The page hides the button; the SERVER refuses regardless.
-     * `User::can()` resolves from the synced per-user effective permission set (EDGE_OFFLINE_PERMISSION_AUTHORITY).
-     */
-    private function denyUnlessMayCompleteSale(): ?JsonResponse
-    {
-        if (auth('tenant')->user()?->can('tenant.pos.store')) {
-            return null;
-        }
-
-        return response()->json(['message' => 'Taking payment needs the Complete Sale permission — apply any discount, then Hold; a counter will close the bill.'], 403);
-    }
-
-    /**
-     * ONLINE ROUTE-PERMISSION parity (W0b): the permission that gates the Online route (EnsureRoutePermission by
-     * route name) gates the Edge endpoint that performs the same action. Resolved from the synced per-user
-     * effective set; the refusal names the permission so the page can explain it the way Online does.
-     */
-    private function denyUnlessCan(string $permission, string $message): ?JsonResponse
-    {
-        if (auth('tenant')->user()?->can($permission)) {
-            return null;
-        }
-
-        return response()->json(['message' => $message, 'permission' => $permission], 403);
-    }
-
-    /**
-     * TERMINAL AUTHORITY parity (Online UserDataScope): a pinned operator (no `tenant.pos.change-terminal`, default
-     * terminal set) works on that terminal only; a terminal-assigned operator only on an assigned terminal.
-     */
-    private function denyUnlessMayOperateTerminal(Terminal $terminal): ?JsonResponse
-    {
-        $user = auth('tenant')->user();
-        if ($user && ! $user->can(UserDataScope::CHANGE_TERMINAL_PERMISSION)) {
-            $pinned = (int) ($user->default_terminal_id ?? 0);
-            if ($pinned > 0 && $pinned !== (int) $terminal->id) {
-                return response()->json(['message' => 'You can only work on your own terminal.', 'permission' => UserDataScope::CHANGE_TERMINAL_PERMISSION], 403);
-            }
-        }
-        if (! app(UserDataScope::class)->canOperateTerminal($user, (int) $terminal->id)) {
-            return response()->json(['message' => 'You can only work on a terminal assigned to you.'], 403);
-        }
-
-        return null;
-    }
-
-    private function selectedTerminal(Request $request): Terminal|JsonResponse
-    {
-        $terminalId = (int) $request->session()->get(self::TERMINAL_SESSION_KEY, 0);
-        if ($terminalId <= 0) {
-            return response()->json(['message' => 'Select a terminal first.'], 422);
-        }
-        $branchId = (int) $this->context->requireCurrent()->branch_id;
-        $terminal = Terminal::on('tenant')->where('id', $terminalId)->where('branch_id', $branchId)->where('status', 'active')->first();
-        if (! $terminal) {
-            $request->session()->forget(self::TERMINAL_SESSION_KEY);
-
-            return response()->json(['message' => 'The selected terminal is no longer available — select a terminal.'], 422);
-        }
-        // re-validated on EVERY use: an assignment or pin that changed after selection takes effect at once.
-        if ($denied = $this->denyUnlessMayOperateTerminal($terminal)) {
-            return $denied;
-        }
-
-        return $terminal;
     }
 }
