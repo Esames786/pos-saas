@@ -169,6 +169,12 @@ class EdgeLocalPosController extends Controller
             'operationalStockReady' => $this->baselines->currentAccepted() !== null,
             // COMPLETE SALE PERMISSION parity: the button follows tenant.pos.store; the server enforces it too.
             'canCompleteSale' => (bool) $user?->can('tenant.pos.store'),
+            // ONLINE BUTTON-GATING parity (audit R3.1 / R5.1 / A40): Online hides Return / Quick Report / approval entry points
+            // without the permission; the server enforces the same keys (EdgeLocalReturnController, EdgeQuickReportController).
+            'canSalesReturn' => (bool) $user?->can('tenant.sales-returns.store'),
+            'canQuickReport' => (bool) $user?->can('tenant.pos.quick-report-send'),
+            'canRequestManagerApproval' => (bool) $user?->can('tenant.api.manager-approvals.verify'),
+            'canChangeOrderDetails' => (bool) $user?->can('tenant.held-sales.store'),
             // F2 SUPPLIER FINANCE parity: the header entry points follow the Online permissions; the server enforces them too.
             'canSupplierFinance' => (bool) ($user?->can(\App\Services\Edge\EdgeLocalSupplierFinanceService::PERM_LEDGER) || $user?->can(\App\Services\Edge\EdgeLocalSupplierFinanceService::PERM_PAYMENT)),
             'canManualJournal' => (bool) $user?->can(\App\Services\Edge\EdgeLocalSupplierFinanceService::PERM_JOURNAL),
@@ -188,6 +194,7 @@ class EdgeLocalPosController extends Controller
             'branchId', 'branchName', 'userName', 'terminals', 'defaultTerminalId', 'canChangeTerminal',
             'orderTypes', 'defaultOrderType', 'orderTypeLabels', 'categories', 'products', 'combos', 'waiters',
             'paymentMethods', 'operationalStockReady', 'canCompleteSale',
+            'canSalesReturn', 'canQuickReport', 'canRequestManagerApproval', 'canChangeOrderDetails',
             'deliveryChannels', 'deliveryRiders', 'deliveryChargeLocked', 'defaultDeliveryCharge', 'manualDiscountNeedsManager',
         ]);
 
