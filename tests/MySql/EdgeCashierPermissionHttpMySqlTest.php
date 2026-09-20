@@ -66,9 +66,11 @@ class EdgeCashierPermissionHttpMySqlTest extends MySqlTenantTestCase
         $this->cashMethodId = $this->makePaymentMethod(['method_type' => 'cash']);
         $this->bindEdgeLocalMeta($this->branchId, 1);
         $this->acceptTestBaseline([['product_id' => $this->productId, 'product_variant_id' => null, 'quantity' => 20]]);
-        // The shared fixture grants tenant.pos.store to every seeded cashier — this restricted operator has it REVOKED.
+        // The shared fixture grants the Online cashier permission set to every seeded cashier — this restricted
+        // operator has ONLY tenant.pos.store REVOKED (may open the POS, hold, open tables; may not take payment).
         $this->seedEdgeCredential($this->userId, $this->branchId, 1);
-        DB::connection('tenant')->table('model_has_permissions')->where('model_id', $this->userId)->delete();
+        $storePermId = (int) DB::connection('tenant')->table('permissions')->where('name', 'tenant.pos.store')->where('guard_name', 'tenant')->value('id');
+        DB::connection('tenant')->table('model_has_permissions')->where('model_id', $this->userId)->where('permission_id', $storePermId)->delete();
         app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
         $this->actingAs(User::on('tenant')->find($this->userId), 'tenant');
         Auth::shouldUse('tenant');

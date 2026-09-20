@@ -68,6 +68,8 @@ class EdgeLocalPosController extends Controller
         $branchId = (int) $meta->branch_id;
         $branch = Branch::on('tenant')->findOrFail($branchId);
         $user = auth('tenant')->user();
+        // ONLINE ROUTE-PERMISSION parity (W0b): the Online POS page is `tenant.pos.index` behind EnsureRoutePermission.
+        abort_unless((bool) $user?->can('tenant.pos.index'), 403, 'Permission denied — your account may not open the POS.');
 
         // DEFAULT-TERMINAL + TERMINAL-SWITCH-AUTH parity: a pinned operator (no change-terminal permission)
         // is offered ONLY his assigned terminal; the page auto-selects the default rather than "first seen".
@@ -326,6 +328,12 @@ class EdgeLocalPosController extends Controller
         if (! $terminal) {
             return response()->json(['message' => 'Select an active terminal on this branch.'], 422);
         }
+        // TERMINAL-SWITCH-AUTH + assignment parity (W0b, Online UserDataScope): a pinned operator (no change-terminal
+        // permission, default terminal set) may only work on that terminal; a terminal-assigned operator only on
+        // an assigned terminal. Enforced HERE (not only hidden in the page) and re-checked on every use.
+        if ($denied = $this->denyUnlessMayOperateTerminal($terminal)) {
+            return $denied;
+        }
         $request->session()->put(self::TERMINAL_SESSION_KEY, $terminal->id);
 
         return response()->json(['selected_terminal_id' => $terminal->id]);
@@ -339,16 +347,21 @@ class EdgeLocalPosController extends Controller
             return $terminal;
         }
         $open = Shift::on('tenant')->where('terminal_id', $terminal->id)->where('status', 'open')->latest('id')->first();
+        // HIDE-AMOUNTS parity (W0b, audit R1.1/R1.4): the SAME AmountVisibility rule as the shift summary — figures are
+        // STRIPPED for an operator the branch hides them from, never merely hidden in the page.
+        $branch = Branch::on('tenant')->find((int) $this->context->requireCurrent()->branch_id);
+        $maySeeAmounts = app(\App\Support\AmountVisibility::class)->allows(auth('tenant')->user(), $branch);
 
         return response()->json([
             'terminal_id' => $terminal->id,
+            'may_see_amounts' => $maySeeAmounts,
             'shift' => $open ? [
                 'id' => $open->id,
                 'shift_uuid' => $open->shift_uuid,
                 'business_date' => $open->business_date?->toDateString(),
                 'opened_at' => $open->opened_at?->toIso8601String(),
-                'total_sales' => (float) $open->total_sales,
-                'expected_cash' => (float) $open->expected_cash,
+                'total_sales' => $maySeeAmounts ? (float) $open->total_sales : null,
+                'expected_cash' => $maySeeAmounts ? (float) $open->expected_cash : null,
             ] : null,
         ]);
     }
@@ -356,6 +369,9 @@ class EdgeLocalPosController extends Controller
     /** Open a shift on the selected terminal (the authenticated cashier is the opener). */
     public function openShift(Request $request): JsonResponse
     {
+        if ($denied = $this->denyUnlessCan('tenant.shifts.store', 'Opening a shift needs the Open Shift permission.')) {
+            return $denied;
+        }
         $data = $request->validate(['opening_cash' => ['nullable', 'numeric', 'min:0']]);
         $terminal = $this->selectedTerminal($request);
         if ($terminal instanceof JsonResponse) {
@@ -444,6 +460,9 @@ class EdgeLocalPosController extends Controller
      */
     public function closeShift(Request $request): JsonResponse
     {
+        if ($denied = $this->denyUnlessCan('tenant.shifts.close', 'Closing a shift needs the Close Shift permission.')) {
+            return $denied;
+        }
         $data = $request->validate([
             'counted_cash' => ['nullable', 'numeric', 'min:0'],
             'closing_notes' => ['nullable', 'string', 'max:1000'],
@@ -575,6 +594,9 @@ class EdgeLocalPosController extends Controller
     /** Open a dine-in table session on the selected terminal. */
     public function openTable(Request $request, int $table): JsonResponse
     {
+        if ($denied = $this->denyUnlessCan('tenant.restaurant.table-sessions.open', 'Opening a table needs the Open Table permission.')) {
+            return $denied;
+        }
         $data = $request->validate([
             'restaurant_waiter_id' => ['nullable', 'integer'],
             'guest_count' => ['nullable', 'integer', 'min:1', 'max:100'],
@@ -600,6 +622,9 @@ class EdgeLocalPosController extends Controller
     /** Close/cancel a table session that has no remaining open orders. */
     public function closeTableSession(Request $request, int $session): JsonResponse
     {
+        if ($denied = $this->denyUnlessCan('tenant.restaurant.table-sessions.close', 'Closing a table needs the Close Table permission.')) {
+            return $denied;
+        }
         $data = $request->validate(['status' => ['nullable', 'string', 'in:closed,cancelled']]);
         try {
             $closed = $this->pos->closeTableSession($session, $data['status'] ?? 'closed', auth('tenant')->user());
@@ -613,6 +638,9 @@ class EdgeLocalPosController extends Controller
     /** Create or revise (Add Round) a HELD sale. */
     public function storeHeldSale(Request $request): JsonResponse
     {
+        if ($denied = $this->denyUnlessCan('tenant.held-sales.store', 'Holding or revising an order needs the Hold Sale permission.')) {
+            return $denied;
+        }
         $data = $request->validate([
             'held_sale_id' => ['nullable', 'integer'],
             'order_type' => ['required', 'string'],
@@ -726,6 +754,9 @@ class EdgeLocalPosController extends Controller
     /** Cancel a whole held order (reason + branch-mode manager approval enforced by the real Cloud service). */
     public function cancelHeldSale(Request $request, int $sale): JsonResponse
     {
+        if ($denied = $this->denyUnlessCan('tenant.held-sales.cancel', 'Cancelling an order needs the Cancel Held Sale permission.')) {
+            return $denied;
+        }
         $data = $request->validate([
             'reason_id' => ['required', 'integer'],
             'manager_approval_id' => ['nullable', 'integer'],
@@ -749,6 +780,9 @@ class EdgeLocalPosController extends Controller
      */
     public function verifyManagerApproval(Request $request): JsonResponse
     {
+        if ($denied = $this->denyUnlessCan('tenant.api.manager-approvals.verify', 'Requesting a manager approval needs the Manager Approval permission.')) {
+            return $denied;
+        }
         $data = $request->validate([
             'manager_employee_code' => ['required', 'string', 'max:64'],
             'manager_credential' => ['required', 'string', 'max:255'],
@@ -771,6 +805,9 @@ class EdgeLocalPosController extends Controller
     /** SPLIT BILL parity — move selected quantities onto a new held check on the same table (each pays on its own). */
     public function splitHeldSale(Request $request, int $sale): JsonResponse
     {
+        if ($denied = $this->denyUnlessCan('tenant.sales-orders.split-bill.store', 'Splitting a bill needs the Split Bill permission.')) {
+            return $denied;
+        }
         $data = $request->validate([
             'notes' => ['nullable', 'string', 'max:500'],
             'lines' => ['required', 'array', 'min:1'],
@@ -932,7 +969,7 @@ class EdgeLocalPosController extends Controller
     {
         $this->denyUnlessMayReturn($request);
 
-        return response()->json(['sales' => app(\App\Services\Edge\EdgeLocalReturnService::class)->search((string) $request->query('q', ''))]);
+        return response()->json(['sales' => app(\App\Services\Edge\EdgeLocalReturnService::class)->search((string) $request->query('q', ''), 20, $request->user('tenant'))]);
     }
 
     /** The return screen's data for one sale (what the Online create screen shows + the offline facts). */
@@ -1044,6 +1081,14 @@ class EdgeLocalPosController extends Controller
         if ($request->filled('sale_id')) {
             $q->where('reference_type', 'sales_order')->where('reference_id', (int) $request->input('sale_id'));
         }
+        // USER DATA SCOPE parity (W0b, Online PrintJobController::assertSaleAccess): a terminal / order-type scoped
+        // operator sees only the print jobs of sales inside that scope.
+        $user = $request->user('tenant');
+        $scope = app(UserDataScope::class);
+        if ($scope->isScoped($user)) {
+            $q->where('reference_type', 'sales_order')->whereIn('reference_id',
+                $scope->applyToSales(SalesOrder::on('tenant')->where('branch_id', $branchId)->select('id'), $user));
+        }
 
         return response()->json(['jobs' => $q->get()->map(fn (PrintJob $j) => $this->printJobView($j))->values()]);
     }
@@ -1134,6 +1179,40 @@ class EdgeLocalPosController extends Controller
         return response()->json(['message' => 'Taking payment needs the Complete Sale permission — apply any discount, then Hold; a counter will close the bill.'], 403);
     }
 
+    /**
+     * ONLINE ROUTE-PERMISSION parity (W0b): the permission that gates the Online route (EnsureRoutePermission by
+     * route name) gates the Edge endpoint that performs the same action. Resolved from the synced per-user
+     * effective set; the refusal names the permission so the page can explain it the way Online does.
+     */
+    private function denyUnlessCan(string $permission, string $message): ?JsonResponse
+    {
+        if (auth('tenant')->user()?->can($permission)) {
+            return null;
+        }
+
+        return response()->json(['message' => $message, 'permission' => $permission], 403);
+    }
+
+    /**
+     * TERMINAL AUTHORITY parity (Online UserDataScope): a pinned operator (no `tenant.pos.change-terminal`, default
+     * terminal set) works on that terminal only; a terminal-assigned operator only on an assigned terminal.
+     */
+    private function denyUnlessMayOperateTerminal(Terminal $terminal): ?JsonResponse
+    {
+        $user = auth('tenant')->user();
+        if ($user && ! $user->can(UserDataScope::CHANGE_TERMINAL_PERMISSION)) {
+            $pinned = (int) ($user->default_terminal_id ?? 0);
+            if ($pinned > 0 && $pinned !== (int) $terminal->id) {
+                return response()->json(['message' => 'You can only work on your own terminal.', 'permission' => UserDataScope::CHANGE_TERMINAL_PERMISSION], 403);
+            }
+        }
+        if (! app(UserDataScope::class)->canOperateTerminal($user, (int) $terminal->id)) {
+            return response()->json(['message' => 'You can only work on a terminal assigned to you.'], 403);
+        }
+
+        return null;
+    }
+
     private function selectedTerminal(Request $request): Terminal|JsonResponse
     {
         $terminalId = (int) $request->session()->get(self::TERMINAL_SESSION_KEY, 0);
@@ -1146,6 +1225,10 @@ class EdgeLocalPosController extends Controller
             $request->session()->forget(self::TERMINAL_SESSION_KEY);
 
             return response()->json(['message' => 'The selected terminal is no longer available — select a terminal.'], 422);
+        }
+        // re-validated on EVERY use: an assignment or pin that changed after selection takes effect at once.
+        if ($denied = $this->denyUnlessMayOperateTerminal($terminal)) {
+            return $denied;
         }
 
         return $terminal;

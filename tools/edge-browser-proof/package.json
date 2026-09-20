@@ -1,0 +1,13 @@
+{
+  "name": "edge-browser-proof",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "W7 browser-executing proof of the Edge cashier page (Playwright on the installed Edge/Chrome; no browser download)",
+  "scripts": {
+    "proof": "node edge-pos-proof.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.63.0"
+  }
+}

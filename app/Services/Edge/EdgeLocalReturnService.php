@@ -49,11 +49,15 @@ class EdgeLocalReturnService
     }
 
     /** Sales the till may return, by number / customer (local + mirrored Cloud). */
-    public function search(string $q, int $limit = 20): array
+    public function search(string $q, int $limit = 20, ?User $user = null): array
     {
         $branchId = (int) $this->context->requireCurrent()->branch_id;
         $q = trim($q);
+        // USER DATA SCOPE parity (Online SalesReturnController@create): an operator assigned to terminals / order
+        // types only ever finds the sales inside that scope — the same rule, applied to the same sales query.
+        $scope = app(\App\Services\Security\UserDataScope::class);
         $rows = SalesOrder::on('tenant')->where('branch_id', $branchId)->whereIn('status', self::RETURNABLE_STATUSES)
+            ->when($user && $scope->isScoped($user), fn ($query) => $scope->applyToSales($query, $user))
             ->when($q !== '', fn ($query) => $query->where(function ($w) use ($q) {
                 $w->where('sale_no', 'like', "%{$q}%")->orWhere('customer_name', 'like', "%{$q}%")->orWhere('customer_phone', 'like', "%{$q}%");
             }))

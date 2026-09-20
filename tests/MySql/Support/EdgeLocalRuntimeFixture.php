@@ -66,11 +66,34 @@ trait EdgeLocalRuntimeFixture
      * Seed a genuine ACTIVE Edge local credential (what enrollment produces) so the slice-1.1
      * session-freshness guard (EnsureEdgeAuthenticated) accepts the user's session. Returns the row id.
      */
+    /**
+     * ONLINE ROUTE-PERMISSION parity (W0b, owner directive 20 Sep 2026): the Online cashier reaches these routes only
+     * with these permissions (EnsureRoutePermission by route name); the Edge endpoints enforce the SAME names, so every
+     * seeded cashier holds the set — a test that models a restricted operator revokes the one it studies.
+     */
+    protected function onlinePosParityPermissions(): array
+    {
+        return [
+            'tenant.pos.index',                            // open the POS page
+            'tenant.pos.store',                            // Complete Sale (canonical f12f1fc)
+            'tenant.held-sales.store',                     // Hold / Draft / Add Round
+            'tenant.held-sales.cancel',                    // Cancel order
+            'tenant.sales-orders.split-bill.store',        // Split Bill
+            'tenant.restaurant.table-sessions.open',       // Open table
+            'tenant.restaurant.table-sessions.close',      // Close table session
+            'tenant.shifts.store',                         // Open shift
+            'tenant.shifts.close',                         // Close shift
+            'tenant.api.manager-approvals.verify',         // ask a manager to approve
+        ];
+    }
+
     protected function seedEdgeCredential(int $userId, int $branchId, int $activationEpoch = 1, string $password = 'CashierPass1'): int
     {
-        // COMPLETE SALE PERMISSION parity: every seeded cashier holds the synced `tenant.pos.store` grant (the
-        // effective per-user set the Cloud exports) — a test that models a restricted operator revokes it.
-        $this->grantEdgePermission($userId, 'tenant.pos.store');
+        // Every seeded cashier holds the synced Online cashier permission set (the effective per-user set the Cloud
+        // exports) — a test that models a restricted operator revokes the permission it studies.
+        foreach ($this->onlinePosParityPermissions() as $permission) {
+            $this->grantEdgePermission($userId, $permission);
+        }
 
         return (int) DB::connection('tenant')->table('edge_local_user_credentials')->insertGetId([
             'user_id' => $userId, 'branch_id' => $branchId, 'activation_epoch' => $activationEpoch,
@@ -90,6 +113,13 @@ trait EdgeLocalRuntimeFixture
             'permission_id' => $permId, 'model_type' => \App\Models\Tenant\User::class, 'model_id' => $userId,
         ]);
         app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
+        // The acting user model may already have lazily loaded its permissions (every gated endpoint calls can());
+        // a real request re-resolves the user from the session, so mirror that here by dropping the stale relations.
+        $acting = auth('tenant')->user();
+        if ($acting && (int) $acting->getKey() === $userId) {
+            $acting->unsetRelation('permissions');
+            $acting->unsetRelation('roles');
+        }
     }
 
     /** Accept a TEST operational-stock baseline for the current binding. $items: [[product_id, variant, qty]]. */
