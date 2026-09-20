@@ -29,6 +29,8 @@ Thumbs.db
 /tools/print-agent/node_modules/
 /tools/edge-browser-proof/node_modules/
 /tools/edge-browser-proof/evidence/
+# dev Edge instance (tools/edge-dev-instance): machine-local env with a generated dev app key — never committed
+.env.edgedev
 
 # EDGE-RUNTIME-BOUNDARY-HARDEN-1: artifact marker is generated into a built artifact, never the source tree
 edge-build-manifest.json
