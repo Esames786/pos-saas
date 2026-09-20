@@ -61,6 +61,17 @@ NORMAL_OPERATOR_POS_PARITY_PERCENT = 26 / 29 = 90%   (all rows a branch operator
 FULL_OFFLINE_PARITY_PERCENT        = 26 / 30 = 87%   (every row in the matrix)
 ```
 
+## SUPERSEDED BY THE FULL SCREEN AUDIT (20 Sep 2026)
+
+This matrix measured workflow/API parity for a curated list and never inventoried the screen. The owner-directed full audit
+(`docs/status/edge-online-vs-edge-screen-audit-2026-09-20.md`, appendices `docs/status/audit-2026-09-20/team-{a..e}-*.md`) rebuilt the
+inventory from routes/controllers/view ids and produced 149 records: ~9 MATCHED_AND_PROVEN, ~60 FUNCTIONAL_BUT_UI_DIFFERENT, ~35
+MISSING_IN_EDGE, ~22 PARTIALLY_IMPLEMENTED, ~8 NOT_VERIFIED/NOT_BROWSER_PROVEN, ~13 ACCEPTED_ONLINE_REQUIRED, 2 CANONICAL_DRIFT,
+1 PRESENT_IN_SOURCE_NOT_INSTALLED. The 26 FULL rows above are re-classified there (most as FUNCTIONAL_BUT_UI_DIFFERENT); the gap count
+below (8) is the pre-audit figure and is superseded by section E of the master report, whose section 9 explains why this register
+reported zero gaps. The percentages above are withdrawn (no denominator from an inventory). Until the inventory-driven register from the
+audit's regression strategy exists, no FULL claim in this file is authoritative.
+
 ## Rows missing until 20 Sep 2026 (owner UI comparison; verified in code — docs/status/edge-cashier-architecture-clarification-2026-09-20.md)
 
 The Phase C matrix was built from the owner's workflow list; the cashier page's own note ("per-tile availability / variants /
