@@ -149,7 +149,7 @@ class EdgeLocalPosController extends Controller
             ->where(fn ($q) => $q->whereNull('branch_id')->orWhere('branch_id', $branchId))
             ->where('status', 'active')->orderBy('name')->get(['id', 'name']);
 
-        return view('edge.pos.index', [
+        $page = [
             'branchId' => $branchId,
             'branchName' => $branch->name,
             'userName' => $user?->name,
@@ -180,7 +180,17 @@ class EdgeLocalPosController extends Controller
             'deliveryChargeLocked' => (bool) $branch->delivery_charge_locked,
             'defaultDeliveryCharge' => (float) ($branch->default_delivery_charge ?? 0),
             'manualDiscountNeedsManager' => ($branch->manual_discount_approval_mode ?? Branch::MANUAL_DISCOUNT_MANAGER_REQUIRED) !== Branch::MANUAL_DISCOUNT_AUTO_APPROVE,
+        ];
+        // W0: the bootstrap view-model the page's JS reads (`#edge-pos-data`) — built here, not in Blade, so the
+        // control-census and any future partial see ONE definition. Header-only flags (finance entry points) stay out.
+        $page['vm'] = \Illuminate\Support\Arr::only($page, [
+            'branchId', 'branchName', 'userName', 'terminals', 'defaultTerminalId', 'canChangeTerminal',
+            'orderTypes', 'defaultOrderType', 'orderTypeLabels', 'categories', 'products', 'combos', 'waiters',
+            'paymentMethods', 'operationalStockReady', 'canCompleteSale',
+            'deliveryChannels', 'deliveryRiders', 'deliveryChargeLocked', 'defaultDeliveryCharge', 'manualDiscountNeedsManager',
         ]);
+
+        return view('edge.pos.index', $page);
     }
 
     /** ONLINE-POS PARITY — Preview Bill: the running bill on the same sale truth, ZERO mutation. */
