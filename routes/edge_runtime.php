@@ -117,5 +117,13 @@ Route::prefix('edge/local')->name('edge.local.')->group(function () {
         Route::post('/quick-report/email', [EdgeQuickReportController::class, 'email'])->name('quick-report.email');
         // P4 §11 — the ONE operator/admin health page (non-secret; same report as edge:local:health).
         Route::get('/health', [\App\Http\Controllers\Edge\EdgeLocalHealthController::class, 'view'])->name('health.view');
+
+        // ═══════════════ PARITY WORKSTREAM ROUTES (owner directive 20 Sep 2026) — one block per team, append-only ═══════════════
+        // Every new URI must ALSO be added, deliberately, to the approved census in tests/Feature/Edge/EdgeBranchServerRegistrationTest.
+        // ── W1 (Team 1) — shell / navigation ──
+        // ── W2 (Team 2) — menu & sale ──
+        // ── W3 (Team 3) — tables & order lifecycle ──
+        // ── W4 (Team 4) — shifts / permissions / finance ──
+        // ── W5 (Team 5) — printing ──
     });
 });

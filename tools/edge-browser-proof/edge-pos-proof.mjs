@@ -289,7 +289,12 @@ try {
       await page.waitForSelector('#cm-cust-results [data-cid]', { timeout: 8000 }).catch(() => {});
       if (await page.locator('#cm-cust-results [data-cid]').count() === 0) { report.skipped.push('customer-address-pick: no customer matched "Ah" in the synced book'); await closeModal(); return; }
       await page.locator('#cm-cust-results [data-cid]').first().click();
-      await page.waitForTimeout(900); // Review & Pay re-opens on the server's new totals with the customer attached
+      // Review & Pay re-opens on the server's new totals with the customer attached — wait for the picked name to change
+      for (let i = 0; i < 40; i++) {
+        const picked = (await page.locator('#cm-cust-picked').textContent().catch(() => '')).trim();
+        if (picked && picked !== 'Walk-in') break;
+        await page.waitForTimeout(250);
+      }
       await censusNow('customer-attached', { picked: await page.locator('#cm-cust-picked').textContent().catch(() => null), address_picker: await page.locator('#cm-addr-pick').count() > 0 });
       await shot('dialog-review-pay-customer-attached');
       await closeModal();

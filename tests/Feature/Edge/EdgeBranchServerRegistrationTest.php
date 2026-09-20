@@ -154,6 +154,12 @@ class EdgeBranchServerRegistrationTest extends TestCase
             // Shift parity + business-friendly sync state (deliberately approved).
             'edge/local/pos/shift/summary',
             'edge/local/pos/sync/summary',
+            // ═══ PARITY WORKSTREAMS (owner directive 20 Sep 2026) — one block per team, append-only, mirrors routes/edge_runtime.php ═══
+            // ── W1 (Team 1) — shell / navigation ──
+            // ── W2 (Team 2) — menu & sale ──
+            // ── W3 (Team 3) — tables & order lifecycle ──
+            // ── W4 (Team 4) — shifts / permissions / finance ──
+            // ── W5 (Team 5) — printing ──
         ];
 
         $uris = collect(\Illuminate\Support\Facades\Route::getRoutes()->getRoutes())

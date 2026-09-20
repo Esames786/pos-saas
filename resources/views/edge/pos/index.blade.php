@@ -44,8 +44,10 @@
     (function () {
         'use strict';
 @include('edge.pos.js.core')
+@include('edge.pos.js.context')
 @include('edge.pos.js.catalog')
 @include('edge.pos.js.cart')
+@include('edge.pos.js.actions')
 @include('edge.pos.js.commercial')
 @include('edge.pos.js.returns')
 @include('edge.pos.js.held')
