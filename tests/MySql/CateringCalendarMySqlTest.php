@@ -248,7 +248,7 @@ class CateringCalendarMySqlTest extends MySqlTenantTestCase
         $this->assertStringContainsString('Quotation sent — awaiting reply', $html);
 
         // And they are buttons, one per tone, each carrying its own key.
-        $this->assertSame(6, substr_count($html, 'class="badge fw-normal fs-12 border-0 cal-tone"'),
+        $this->assertSame(6, substr_count($html, 'cal-tone" data-tone='),
             'every status in the legend is clickable');
         foreach (['overdue', 'confirmed', 'quoted', 'draft', 'done', 'cancelled'] as $tone) {
             $this->assertStringContainsString('data-tone="'.$tone.'"', $html);
