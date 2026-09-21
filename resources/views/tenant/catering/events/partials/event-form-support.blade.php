@@ -57,7 +57,7 @@
             return true;
         };
 
-        root.addEventListener('keydown', function (e) {
+        const onEnterWalksNext = function (e) {
             if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
 
             // The date and time boxes handle their own Enter — they have to
@@ -85,7 +85,17 @@
             // On the last field, let Enter do what it always did and submit —
             // stopping there would take away the shortcut rather than add one.
             if (focusNextAfter(el)) e.preventDefault();
-        });
+        };
+
+        // This initialiser can run a SECOND time over a node that is already
+        // on the page — workspace-ajax's reinit() re-runs it across every
+        // [data-event-form-root] after a swap, and the select2 setup just
+        // below guards against the same thing. Two copies of the handler
+        // would walk two fields per press.
+        if (root.dataset.enterWalksBound !== '1') {
+            root.dataset.enterWalksBound = '1';
+            root.addEventListener('keydown', onEnterWalksNext);
+        }
 
 
         var $customer = $root.find('.customer-select');
