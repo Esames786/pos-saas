@@ -139,7 +139,7 @@
                                                     <div class="d-flex justify-content-center px-1 pb-1">
                                                         <button type="button"
                                                                 class="border-0 rounded-pill cal-day-count fw-semibold"
-                                                                style="background:{{ $t['bg'] }};color:{{ $t['fg'] }};font-size:.68rem;line-height:1.1;padding:.05rem .4rem"
+                                                                style="background:{{ $t['bg'] }};color:{{ $t['fg'] }};font-size:.78rem;line-height:1.15;padding:.1rem .45rem"
                                                                 data-bs-toggle="modal"
                                                                 data-bs-target="#calDayModal"
                                                                 data-date-label="{{ $dayLabel }}"
