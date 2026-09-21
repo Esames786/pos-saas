@@ -29,6 +29,64 @@
     window.initCateringEventForm = function (root) {
         var $root = $(root);
 
+        // ── CATERING-EVENT-FORM-ENTER-1 ────────────────────────────────
+        //
+        // Enter moves to the next field, exactly like Tab. Asked for on the
+        // live trial: operators fill a booking top to bottom and reach for
+        // Enter out of habit, and HTML's answer to Enter in a form is to
+        // SUBMIT it — so the form fired half-filled.
+        //
+        // The order is the DOM's own, which is the same order Tab uses, so
+        // the two keys can never disagree about what comes next.
+        const focusableFields = function () {
+            return [...root.querySelectorAll('input, select, textarea, button')]
+                .filter(f => ! f.disabled && f.type !== 'hidden' && f.offsetParent !== null);
+        };
+
+        const focusNextAfter = function (el) {
+            const fields = focusableFields();
+            const at = fields.indexOf(el);
+            if (at === -1 || at >= fields.length - 1) return false;
+
+            const next = fields[at + 1];
+            next.focus();
+            // Landing on a box that already has something in it should offer
+            // to replace it, the way Tab does.
+            if (next.select && typeof next.select === 'function' && next.value) next.select();
+
+            return true;
+        };
+
+        root.addEventListener('keydown', function (e) {
+            if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+
+            // The date and time boxes handle their own Enter — they have to
+            // parse what was typed and close a calendar first. They run on the
+            // element and call preventDefault, so by the time this bubbles up
+            // the work is done.
+            if (e.defaultPrevented) return;
+
+            const el = e.target;
+            if (! el || ! el.tagName) return;
+
+            const tag = el.tagName.toLowerCase();
+
+            // A textarea is the one place Enter means Enter: the address is
+            // two lines on purpose.
+            if (tag === 'textarea') return;
+
+            // A button is being pressed, not left.
+            if (tag === 'button' || el.type === 'submit') return;
+
+            // select2 owns Enter inside its own search box — that is how a
+            // customer gets picked, and how a NEW name is accepted.
+            if (el.classList.contains('select2-search__field') || el.closest('.select2-container')) return;
+
+            // On the last field, let Enter do what it always did and submit —
+            // stopping there would take away the shortcut rather than add one.
+            if (focusNextAfter(el)) e.preventDefault();
+        });
+
 
         var $customer = $root.find('.customer-select');
         if ($customer.length && ! $customer.hasClass('select2-hidden-accessible')) {

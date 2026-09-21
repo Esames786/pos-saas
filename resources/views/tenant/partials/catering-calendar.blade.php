@@ -45,7 +45,7 @@
         </div>
         <div class="d-flex align-items-center gap-3 flex-wrap">
             <div class="text-end">
-                <div class="fs-12 text-muted">Upcoming</div>
+                <div class="fs-13 fw-semibold text-body-secondary">Upcoming</div>
                 <div class="fw-bold">{{ $cal['totals']['upcoming'] }}</div>
             </div>
             @if($cal['totals']['past_open'] > 0)
@@ -55,7 +55,7 @@
                 </div>
             @endif
             <div class="text-end">
-                <div class="fs-12 text-muted">Upcoming value</div>
+                <div class="fs-13 fw-semibold text-body-secondary">Upcoming value</div>
                 <div class="fw-bold">{{ number_format($cal['totals']['value'], 2) }}</div>
             </div>
         </div>
@@ -93,7 +93,7 @@
              puts it back. Several can be on at once. --}}
         <div class="d-flex flex-wrap gap-2 mb-3 align-items-center cal-legend">
             @foreach($tones as $key => $t)
-                <button type="button" class="badge fw-normal fs-12 border-0 cal-tone" data-tone="{{ $key }}"
+                <button type="button" class="badge fw-semibold fs-12 border-0 cal-tone" data-tone="{{ $key }}"
                         aria-pressed="false" title="Sirf {{ $t['label'] }} dikhayein"
                         style="background:{{ $t['bg'] }};color:{{ $t['fg'] }};box-shadow:inset 0 0 0 1px {{ $t['fg'] }}33;cursor:pointer">
                     {{ $t['label'] }}
@@ -111,9 +111,9 @@
                         <div class="px-2 py-1 border-bottom fw-semibold fs-13">{{ $month['label'] }}</div>
                         <table class="table table-sm mb-0 cal-grid" style="table-layout:fixed">
                             <thead>
-                                <tr class="text-muted" style="font-size:.68rem">
+                                <tr class="text-body-secondary" style="font-size:.78rem">
                                     @foreach(['M','T','W','T','F','S','S'] as $d)
-                                        <th class="text-center px-0 py-1 fw-normal">{{ $d }}</th>
+                                        <th class="text-center px-0 py-1 fw-semibold">{{ $d }}</th>
                                     @endforeach
                                 </tr>
                             </thead>
@@ -124,7 +124,7 @@
                                             <td class="p-0 align-top text-center position-relative
                                                        {{ $day['in_month'] ? '' : 'opacity-25' }}"
                                                 style="height:2.5rem;{{ $day['is_today'] ? 'outline:2px solid var(--bs-primary);outline-offset:-2px' : '' }}">
-                                                <div class="fs-12 pt-1 {{ $day['is_today'] ? 'fw-bold' : 'text-muted' }}">{{ $day['day'] }}</div>
+                                                <div class="fs-13 pt-1 {{ $day['is_today'] ? 'fw-bold' : 'text-body-secondary' }}">{{ $day['day'] }}</div>
                                                 @if($day['events'])
                                                     {{-- One indicator with a count — a busy date must not
                                                          fill its square with every booking. The strongest
@@ -198,7 +198,7 @@
                 <div class="table-responsive">
                     <table class="table table-sm mb-0 align-middle">
                         <thead>
-                            <tr class="text-muted fs-12">
+                            <tr class="fs-13 fw-semibold text-body-secondary">
                                 <th class="ps-3">Booking</th>
                                 <th>Customer</th>
                                 <th>Phone</th>
