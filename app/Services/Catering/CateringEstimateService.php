@@ -64,6 +64,7 @@ class CateringEstimateService
                 'created_by_user_id' => $userId,
             ]);
 
+            $this->enrolCustomer($event);
             $this->rememberCustomerUrduName($event);
 
             return $event;
@@ -77,6 +78,7 @@ class CateringEstimateService
         }
 
         $event->update($eventData);
+        $this->enrolCustomer($event);
         $this->rememberCustomerUrduName($event);
 
         return $event;
@@ -707,6 +709,43 @@ class CateringEstimateService
      * translation row (optional, spec §4) so future documents reuse it. Base
      * customers table is never modified here.
      */
+    /**
+     * CATERING-CUSTOMER-ENROL-1 — a new client booked here lands in the book.
+     *
+     * Reported from the live trial: a walk-in was booked, the quotation went
+     * out, and the customer could not be found in Customers afterwards. Nothing
+     * had gone wrong in the sense of an error — the booking simply carries its
+     * own copy of the name and phone, and a typed name was never enrolled.
+     * KASHIF-EVENT-FORM-3 made that path WORK (a non-numeric id is dropped so
+     * the booking is not refused); it never made the person exist.
+     *
+     * The phone is the identity. A name alone cannot identify anybody, and
+     * guessing from one is how a book fills with near-duplicates — so with no
+     * phone this does nothing and the booking keeps its own copy, exactly as
+     * before.
+     *
+     * DELIBERATELY ONLY FILLS A BLANK. When the booking already names a
+     * customer, that link is left alone even if the phone now disagrees. A
+     * catering booking legitimately carries somebody else's contact number —
+     * the secretary, the son, the venue manager — and silently re-pointing the
+     * booking at whoever owns that number would invent a different wrong
+     * answer. A disagreement is the OPERATOR's to resolve, and the form says so
+     * on screen before it is saved.
+     */
+    private function enrolCustomer(CateringEvent $event): void
+    {
+        if ($event->customer_id || empty($event->customer_phone) || empty($event->customer_name)) {
+            return;
+        }
+
+        $customer = app(\App\Services\Tenant\CustomerDirectory::class)
+            ->findOrCreateByPhone((string) $event->customer_phone, (string) $event->customer_name);
+
+        if ($customer) {
+            $event->forceFill(['customer_id' => $customer->id])->save();
+        }
+    }
+
     private function rememberCustomerUrduName(CateringEvent $event): void
     {
         if (! $event->customer_id || empty($event->customer_name_ur)) {

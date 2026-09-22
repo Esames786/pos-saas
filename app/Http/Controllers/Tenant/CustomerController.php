@@ -167,38 +167,17 @@ class CustomerController extends Controller
         return response()->json(['ok' => true, 'address' => $address]);
     }
 
+    // CUSTOMER-DIRECTORY-1: the rule moved to App\Services\Tenant\CustomerDirectory
+    // so catering asks the same question and cannot answer it differently. These
+    // two stay as the names the rest of this controller already calls.
     private function normalizePhone(string $phone): string
     {
-        return preg_replace('/\D+/', '', $phone) ?? '';
+        return app(\App\Services\Tenant\CustomerDirectory::class)->normalizePhone($phone);
     }
 
     private function customerByPhone(string $phone, bool $lock = false): ?Customer
     {
-        $normalized = $this->normalizePhone($phone);
-        if ($normalized === '') {
-            return null;
-        }
-
-        // The exact normalized lookup uses the phone index. Under InnoDB's normal repeatable-read
-        // isolation, lockForUpdate also locks the missing key gap, preventing two simultaneous POS
-        // requests from inserting the same newly-normalized phone.
-        $exact = Customer::where('phone', $normalized);
-        if ($lock) {
-            $exact->lockForUpdate();
-        }
-        if ($customer = $exact->first()) {
-            return $customer;
-        }
-
-        $query = Customer::whereNotNull('phone')->whereRaw(
-            "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '(', ''), ')', ''), '+', '') = ?",
-            [$normalized]
-        );
-        if ($lock) {
-            $query->lockForUpdate();
-        }
-
-        return $query->first();
+        return app(\App\Services\Tenant\CustomerDirectory::class)->findByPhone($phone, $lock);
     }
 
     private function storeAddressOnce(Customer $customer, string $address, ?string $label = null, ?bool $makeDefault = null)

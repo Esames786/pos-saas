@@ -30,7 +30,12 @@
                             <i class="ti ti-eraser me-1"></i>Clear customer
                         </button>
                     </div>
-                    <select name="customer_id" class="form-select form-select-lg customer-select">
+                    {{-- CATERING-CUSTOMER-MISMATCH-1: the linked customer's OWN name and
+                         phone travel with the box, so the warning below can tell the
+                         operator who this booking is really attached to. --}}
+                    <select name="customer_id" class="form-select form-select-lg customer-select"
+                            data-linked-name="{{ $event?->customer?->name }}"
+                            data-linked-phone="{{ $event?->customer?->phone }}">
                         @if(old('customer_id', $event?->customer_id))
                             <option value="{{ old('customer_id', $event?->customer_id) }}" selected>
                                 {{ $event?->customer?->name ?? 'Selected customer' }}
@@ -40,6 +45,30 @@
                     <div class="form-text">
                         Phone ya naam likhein — mil jaye to neeche sab khud bhar jayega;
                         naya ho to wohi naam likh kar Enter, aur neeche detail poori kar dein.
+                    </div>
+
+                    {{-- CATERING-CUSTOMER-MISMATCH-1 — the booking says one person, the
+                         link says another.
+
+                         Two live bookings were found attached to somebody else entirely:
+                         the operator picked a customer from the list (or one got picked
+                         for them), then corrected the name and phone below by hand. The
+                         visible fields obeyed. The hidden id did not, and the booking
+                         stayed filed under a stranger. Nothing on screen said so.
+
+                         This is a WARNING, not a block: a booking can legitimately carry
+                         somebody else's number. But it can no longer happen silently. --}}
+                    <div class="alert alert-warning py-2 px-3 mt-2 mb-0 d-none customer-link-mismatch" role="alert">
+                        <div class="fw-semibold fs-13 mb-1">
+                            <i class="ti ti-alert-triangle me-1"></i>Ye booking kisi aur customer se judi hai
+                        </div>
+                        <div class="fs-13">
+                            Upar chuna gaya customer: <strong class="mismatch-linked"></strong><br>
+                            Neeche likha hua: <strong class="mismatch-typed"></strong>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-warning mt-2 customer-unlink">
+                            <i class="ti ti-unlink me-1"></i>Link hataayein — naya customer banayein
+                        </button>
                     </div>
                 </div>
                 <div class="col-md-4">

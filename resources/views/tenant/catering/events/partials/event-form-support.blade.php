@@ -150,6 +150,10 @@
                     set('customer_name', typed);
                     ['customer_phone', 'customer_email', 'customer_address'].forEach(n => set(n, ''));
                     renderAddressChoices([]);
+                    // CATERING-CUSTOMER-MISMATCH-1: a typed name links to nobody,
+                    // so there is nobody left to disagree with.
+                    forgetLinked();
+                    checkCustomerMismatch();
                     $root.find('[name=customer_phone]').trigger('focus');
 
                     return;
@@ -170,6 +174,11 @@
                 // CATERING-ADDRESS-PICKER-1: offer the rest only when there ARE
                 // others. A link promising a choice that does not exist is noise.
                 renderAddressChoices(c.addresses || []);
+
+                // CATERING-CUSTOMER-MISMATCH-1: remember WHO was linked, so that
+                // editing the fields below can be seen to disagree with them.
+                rememberLinked(c);
+                checkCustomerMismatch();
             });
 
             // Clearing means CLEARING: the search box AND everything it filled.
@@ -232,10 +241,86 @@
                 $customer.val(null).trigger('change');
                 ['customer_name', 'customer_name_ur', 'customer_phone', 'customer_email', 'customer_address']
                     .forEach(n => $root.find('[name=' + n + ']').val(''));
+                forgetLinked();
                 $root.find('[name=customer_name]').trigger('focus');
             }
             $customer.on('select2:clear select2:unselect', clearCustomer);
             $root.find('.customer-reset').on('click', clearCustomer);
+
+            // ── CATERING-CUSTOMER-MISMATCH-1 ──────────────────────────────
+            //
+            // The booking's visible name and phone can be edited after a
+            // customer has been picked, and the hidden id does not follow. Two
+            // live bookings were found filed under a stranger that way, one of
+            // them carrying 70,000 in advances. The fields obeyed; the link did
+            // not; nothing on screen disagreed.
+            //
+            // So the form now says it out loud, the moment the two part company.
+            const sel = $customer.get(0);
+            const digits = s => (s || '').replace(/\D+/g, '');
+            const norm = s => (s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+            function rememberLinked(c) {
+                if (! sel) return;
+                sel.dataset.linkedName = (c && c.name) || '';
+                sel.dataset.linkedPhone = (c && c.phone) || '';
+            }
+            function forgetLinked() { rememberLinked(null); }
+
+            function checkCustomerMismatch() {
+                const box = $root.find('.customer-link-mismatch');
+                if (! box.length || ! sel) return;
+
+                const id = $customer.val();
+                const linkedName = sel.dataset.linkedName || '';
+                const linkedPhone = sel.dataset.linkedPhone || '';
+
+                // No link, or nothing known about who was linked, means there is
+                // nothing to disagree with.
+                if (! id || ! /^\d+$/.test(String(id)) || (! linkedName && ! linkedPhone)) {
+                    box.addClass('d-none');
+
+                    return;
+                }
+
+                const typedName = $root.find('[name=customer_name]').val();
+                const typedPhone = $root.find('[name=customer_phone]').val();
+
+                // A phone is an identity, so any difference counts. A name is
+                // compared only when BOTH sides have one, and only loosely —
+                // spacing and case are not a different person.
+                const phoneDiffers = digits(typedPhone) !== '' && digits(linkedPhone) !== ''
+                    && digits(typedPhone) !== digits(linkedPhone);
+                const nameDiffers = norm(typedName) !== '' && norm(linkedName) !== ''
+                    && norm(typedName) !== norm(linkedName);
+
+                if (! phoneDiffers && ! nameDiffers) {
+                    box.addClass('d-none');
+
+                    return;
+                }
+
+                box.find('.mismatch-linked').text(linkedName + (linkedPhone ? ' — ' + linkedPhone : ''));
+                box.find('.mismatch-typed').text((typedName || '(naam khali)') + (typedPhone ? ' — ' + typedPhone : ''));
+                box.removeClass('d-none');
+            }
+
+            $root.on('input change', '[name=customer_name], [name=customer_phone]', checkCustomerMismatch);
+
+            // Unlinking keeps what the operator TYPED and drops only the link —
+            // clearCustomer() would wipe the fields they just corrected, which
+            // is the opposite of helpful here.
+            $root.on('click', '.customer-unlink', function () {
+                $customer.val(null).trigger('change');
+                forgetLinked();
+                checkCustomerMismatch();
+                $root.find('[name=customer_name]').trigger('focus');
+            });
+
+            // An event opened for editing already carries a link, and the
+            // disagreement may already exist — say so on arrival, not only after
+            // the next keystroke.
+            checkCustomerMismatch();
 
             // KASHIF-EVENT-FORM-3 — a typed name is not a customer id.
             // Leaving typed text in the box used to post it AS the id and the
