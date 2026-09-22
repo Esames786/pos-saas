@@ -158,11 +158,10 @@
     </div>
     <div class="d-flex gap-2 flex-wrap">
         {{-- KASHIF-LEGACY-ALIGN-6: full-width working screen, like the POS —
-             the sidebar hides on entry, this button brings it back. --}}
-        <button type="button" class="btn btn-light" id="catering-sidebar-toggle"
-                title="Show navigation" aria-label="Show navigation">
-            <i class="ti ti-layout-sidebar-left-expand"></i>
-        </button>
+             the sidebar hides on entry, this button brings it back.
+             CATERING-SIDEBAR-COLLAPSE-1: button aur uska script ab ek sanjhe
+             partial me hain, kyunke fehrist wali screen bhi yehi chahti thi. --}}
+        @include('tenant.catering.partials.sidebar-collapse')
         {{-- KASHIF-EVENT-HISTORY-1: the booking's memory, one click away. --}}
         <button type="button" class="btn btn-light" data-bs-toggle="offcanvas" data-bs-target="#eventHistoryOffcanvas">
             <i class="ti ti-history me-1"></i>History
@@ -1612,20 +1611,10 @@
 
 @push('scripts')
 <script>
-// KASHIF-LEGACY-ALIGN-6: the event WORKSPACE goes full-width like the POS.
-// It starts collapsed EVERY visit. A revision once remembered the operator's
-// last choice in localStorage, which meant a single click months ago left the
-// navigation open on this screen forever after — reported from the floor on
-// 2026-09-09. The button still opens it, for as long as you are on the page.
-// Delegated, because the header (and its toggle) lives inside the swapped
-// workspace.
-document.body.classList.remove('mini-sidebar', 'expand-menu');
-document.body.classList.add('nosidebar');
-$(document).on('click', '#catering-sidebar-toggle', function () {
-    const hidden = document.body.classList.toggle('nosidebar');
-    $(this).find('i').attr('class', hidden ? 'ti ti-layout-sidebar-left-expand' : 'ti ti-layout-sidebar-left-collapse');
-    $(this).attr('title', hidden ? 'Show navigation' : 'Hide navigation');
-});
+// KASHIF-LEGACY-ALIGN-6 ka sidebar wala hissa ab
+// tenant.catering.partials.sidebar-collapse me hai — wohi partial upar header
+// me shamil hai aur wohi fehrist wali screen bhi istemaal karti hai. Us ka
+// sabaq (yaad NAHI rakhna) wahin likha hai.
 
 // A silent JS failure at the counter reads as "Enter did nothing". Any
 // uncaught error surfaces IN the punch bar, red, with file:line — so the
