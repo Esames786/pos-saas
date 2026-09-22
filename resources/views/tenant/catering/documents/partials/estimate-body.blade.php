@@ -32,16 +32,18 @@
              a customer ever sees them together: the quotation says whether it
              is still being written or has been agreed, and the booking says
              whether the business has committed to it. Either is enough. --}}
-        @php($docKind = $estimate->isDraft() ? 'draft' : ((
-            $estimate->status === \App\Models\Tenant\CateringEstimate::STATUS_ACCEPTED
-            || in_array($event->status, [
-                \App\Models\Tenant\CateringEvent::STATUS_CONFIRMED,
-                \App\Models\Tenant\CateringEvent::STATUS_PRODUCTION_READY,
-                \App\Models\Tenant\CateringEvent::STATUS_RELEASED,
-                \App\Models\Tenant\CateringEvent::STATUS_COMPLETED,
-                \App\Models\Tenant\CateringEvent::STATUS_CLOSED,
-            ], true)
-        ) ? 'booking' : 'quotation'))
+        @php
+            $docKind = $estimate->isDraft() ? 'draft' : ((
+                $estimate->status === \App\Models\Tenant\CateringEstimate::STATUS_ACCEPTED
+                || in_array($event->status, [
+                    \App\Models\Tenant\CateringEvent::STATUS_CONFIRMED,
+                    \App\Models\Tenant\CateringEvent::STATUS_PRODUCTION_READY,
+                    \App\Models\Tenant\CateringEvent::STATUS_RELEASED,
+                    \App\Models\Tenant\CateringEvent::STATUS_COMPLETED,
+                    \App\Models\Tenant\CateringEvent::STATUS_CLOSED,
+                ], true)
+            ) ? 'booking' : 'quotation');
+        @endphp
         <h2>@switch($docKind)
             @case('draft'){{ $t('DRAFT ESTIMATE', 'مسودہ تخمینہ') }}@break
             @case('booking'){{ $t('BOOKING CONFIRMATION', 'بکنگ کنفرمیشن') }}@break
@@ -102,6 +104,35 @@
 {{-- KASHIF-LEGACY-ALIGN-5 print order, as the client reads a bill: serial,
      then the ITEM, its material detail directly beneath on its own full-width
      row, and only then the figures. --}}
+
+{{-- CATERING-COURSE-ORDER-1: lines ab khane ki tarteeb me chhapti hain
+     (starter → biryani → gravy → BBQ → ... → pan), na ke us tarteeb me jis me
+     operator ne punch kiya tha. Tarteeb `categories.sort_order` se aati hai;
+     dekhein App\Support\Catering\CourseOrder — wohi class kitchen sheet bhi
+     istemaal karti hai, is liye dono kaghaz kabhi mukhtalif tarteeb nahi de
+     sakte.
+
+     Course ke UNWAAN yahan jaan-boojh kar NAHI daale: ye customer ka kaghaz
+     hai aur client ne sirf TARTEEB maangi thi, shakl badalne ko nahi kaha.
+     Kitchen sheet par unwaan hain, kyunke bawarchi course-dar-course pakata
+     hai. --}}
+{{-- Is file me PHP ki har shakl ab open/close wali BLOCK shakl hai, aur ye
+     ittefaq nahi:
+
+     Blade sab se pehle raw PHP blocks nikalta hai, ek aisi lazy regex se jo
+     pehle khulne wale tag se PEHLE band hone wale tag tak sab kuch utha leti
+     hai. Is file me pehle koi band karne wala tag tha hi nahi, is liye upar
+     wala parentheses-wala inline tag (docKind) bara aaram se chal raha tha.
+     Jis lamhe neeche ek band karne wala tag aaya, wo DONO aapas me jud gaye
+     aur beech ka poora document — heading, meta boxes, draft banner — ek hi
+     raw PHP block ban gaya. Safha lint to saaf karta tha, magar chalta nahi
+     tha: assignment kabhi hoti hi nahi thi.
+
+     Is liye qaida saada hai: ek hi file me dono shaklein mat milao. Sab block
+     shakl me. --}}
+@php
+    $orderedLines = \App\Support\Catering\CourseOrder::sort($estimate->lines);
+@endphp
 <table class="items">
     <thead>
         <tr>
@@ -115,7 +146,7 @@
         </tr>
     </thead>
     <tbody>
-        @foreach($estimate->lines as $line)
+        @foreach($orderedLines as $line)
         <tr>
             <td>{{ $loop->iteration }}</td>
             <td>
