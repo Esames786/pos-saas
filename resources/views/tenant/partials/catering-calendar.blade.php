@@ -20,6 +20,18 @@
     $cal = $cateringCalendar;
     $fragment = $fragment ?? false;
 
+    // HIDE-AMOUNTS-CATERING-1 — "Upcoming value" paisa hai, is liye wohi mask jo dashboard
+    // tiles par lagta hai. Booking ki GINTI (upcoming / needs attention) paisa nahi, wo khuli
+    // rehti hai — operator ko kaam ka pata chalna chahiye, raqam ka nahi.
+    //
+    // Ye partial DO jagah se render hota hai: dashboard ke @include se, aur mahina badalne wale
+    // AJAX endpoint se. "Upcoming value" `@unless($fragment)` ke andar hai, is liye AJAX wale
+    // raaste par abhi koi raqam jaati hi nahi. Dono callers phir bhi `maySeeAmounts` bhejte
+    // hain, aur `?? false` bhi rakha hai — agar kal koi raqam fragment me aa gayi ya koi teesra
+    // caller flag bhoola, to wo raqam LEAK nahi hogi. Fail CLOSED.
+    $money = fn ($value, $decimals = 2) => app(\App\Support\AmountVisibility::class)
+        ->format($maySeeAmounts ?? false, $value, $decimals);
+
     $tones = [
         'overdue'   => ['bg' => '#F8E3E0', 'fg' => '#8E2E24', 'label' => 'Date passed, still open'],
         'confirmed' => ['bg' => '#E3F0E8', 'fg' => '#22684C', 'label' => 'Confirmed'],
@@ -56,7 +68,7 @@
             @endif
             <div class="text-end">
                 <div class="fs-13 fw-semibold text-body-secondary">Upcoming value</div>
-                <div class="fw-bold">{{ number_format($cal['totals']['value'], 2) }}</div>
+                <div class="fw-bold">{{ $money($cal['totals']['value']) }}</div>
             </div>
         </div>
     </div>

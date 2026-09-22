@@ -34,6 +34,29 @@ class DashboardController extends Controller
     }
 
     /**
+     * HIDE-AMOUNTS-CATERING-1 — ONE arithmetic for "may this person read the money?", shared by
+     * BOTH dashboard entry points.
+     *
+     * `catering-calendar` partial DO jagah se render hota hai: dashboard ke `@include` se, aur
+     * is controller ke `cateringCalendar()` AJAX endpoint se. Us ka wahid paisa wala figure
+     * ("Upcoming value") `@unless($fragment)` ke andar hai, is liye **AJAX fragment me abhi koi
+     * raqam nahi jaati** — yani wahan koi leak nahi tha, aur ye daawa karna ghalat hoga.
+     *
+     * Phir bhi flag dono jagah bheja jata hai, do wajahon se: partial ka `$money` helper fail
+     * CLOSED hai, aur kal koi raqam fragment ke andar aa gayi to wo khud-ba-khud mask hogi,
+     * bhoolne ki gunjaish ke baghair. Ek hisaab, do caller — drift mumkin nahi.
+     */
+    private function maySeeAmounts(?int $selectedBranch): bool
+    {
+        return app(\App\Support\AmountVisibility::class)->allowsAcross(
+            auth('tenant')->user(),
+            $selectedBranch
+                ? Branch::where('id', $selectedBranch)->get()
+                : Branch::where('status', 'active')->get()
+        );
+    }
+
+    /**
      * Older months, fetched only when the operator steps back past the default
      * three-month window. Keeps the first dashboard paint small on a kitchen
      * terminal with years of history behind it.
@@ -48,10 +71,15 @@ class DashboardController extends Controller
             ? \Carbon\CarbonImmutable::createFromFormat('Y-m', $request->string('month')->toString())->startOfMonth()
             : null;
 
+        $branchId = $request->integer('branch_id') ?: null;
+
         return view('tenant.partials.catering-calendar', [
             'cateringCalendar' => app(\App\Services\Catering\CateringCalendarService::class)
-                ->window($anchor, $request->integer('branch_id') ?: null),
+                ->window($anchor, $branchId),
             'fragment' => true,
+            // Bina is ke partial fail-closed ho kar mask kar deta (jo mehfooz hai magar owner se
+            // bhi chhupa deta). Is liye yahan bhejna lazmi hai.
+            'maySeeAmounts' => $this->maySeeAmounts($branchId),
         ]);
     }
 
@@ -229,12 +257,10 @@ class DashboardController extends Controller
         // Branches" there is no single branch to ask about, so allowsAcross() fails CLOSED — one
         // restricted branch in view masks the tiles. Showing the money because the question was
         // ambiguous is the one answer that cannot be defended.
-        $maySeeAmounts = app(\App\Support\AmountVisibility::class)->allowsAcross(
-            auth('tenant')->user(),
-            $selectedBranch
-                ? \App\Models\Tenant\Branch::where('id', $selectedBranch)->get()
-                : $branches
-        );
+        //
+        // HIDE-AMOUNTS-CATERING-1: ab wohi hisaab `maySeeAmounts()` me hai, taake AJAX se
+        // render hone wala calendar fragment bhi bilkul yehi jawab paye.
+        $maySeeAmounts = $this->maySeeAmounts($selectedBranch);
 
         return view('tenant.dashboard', compact(
             'branches', 'selectedBranch', 'today',
