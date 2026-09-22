@@ -47,8 +47,16 @@
     .meta-grid { display: flex; gap: 20px; margin: 10px 0; }
     .meta-box { flex: 1; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; }
     .meta-box h4 { margin: 0 0 6px; font-size: {{ $isUr ? '15px' : '11px' }}; text-transform: uppercase; color: #6b7280; letter-spacing: 1px; }
+    {{-- CATERING-DOC-META-1 — same fix as the quotation, stated again because
+         this document keeps its own stylesheet rather than including
+         estimate-style. Padding on the label, never flex `gap`: dompdf draws
+         this sheet too and implements no gap, so a gap-only fix would look
+         right on screen and still print "Addresssaima royal residency…". --}}
     .meta-row { display: flex; justify-content: space-between; padding: 2px 0; }
-    .meta-row .k { color: #6b7280; }
+    .meta-row .k { color: #6b7280; flex: 0 0 auto; white-space: nowrap;
+                   padding-{{ $isUr ? 'left' : 'right' }}: 14px; }
+    .meta-row .v { min-width: 0; text-align: {{ $isUr ? 'left' : 'right' }}; word-wrap: break-word; }
+    .meta-box .cap, .meta-box .name { text-transform: uppercase; }
     table.items { width: 100%; border-collapse: collapse; margin-top: 6px; }
     table.items th { background: #111827; color: #fff; padding: 8px; font-size: {{ $isUr ? '15px' : '12px' }}; text-align: {{ $isUr ? 'right' : 'left' }}; }
     table.items th.num, table.items td.num { text-align: {{ $isUr ? 'left' : 'right' }}; }
@@ -94,7 +102,7 @@
 <div class="meta-grid">
     <div class="meta-box">
         <h4>{{ $t('Customer', 'کسٹمر') }}</h4>
-        <div style="font-weight:bold; font-size: 15px;">
+        <div class="name" style="font-weight:bold; font-size: 15px;">
             @if($isUr && !empty($s['customer_name_ur']))
                 <span class="ur">{{ $s['customer_name_ur'] }}</span>
             @else
@@ -104,15 +112,15 @@
                 @endif
             @endif
         </div>
-        @if(!empty($s['customer_phone']))<div class="meta-row"><span class="k">{{ $t('Phone', 'فون') }}</span><span dir="ltr">{{ $s['customer_phone'] }}</span></div>@endif
-        @if(!empty($s['customer_address']))<div class="meta-row"><span class="k">{{ $t('Address', 'پتہ') }}</span><span>{{ $s['customer_address'] }}</span></div>@endif
+        @if(!empty($s['customer_phone']))<div class="meta-row"><span class="k">{{ $t('Phone', 'فون') }}</span><span class="v" dir="ltr">{{ $s['customer_phone'] }}</span></div>@endif
+        @if(!empty($s['customer_address']))<div class="meta-row"><span class="k">{{ $t('Address', 'پتہ') }}</span><span class="v cap">{{ $s['customer_address'] }}</span></div>@endif
     </div>
     <div class="meta-box">
         <h4>{{ $t('Event', 'تقریب') }}</h4>
-        @if(!empty($s['event_type']))<div class="meta-row"><span class="k">{{ $t('Type', 'قسم') }}</span><span>{{ $s['event_type'] }}</span></div>@endif
+        @if(!empty($s['event_type']))<div class="meta-row"><span class="k">{{ $t('Type', 'قسم') }}</span><span class="v cap">{{ $s['event_type'] }}</span></div>@endif
         <div class="meta-row"><span class="k">{{ $t('Date', 'تاریخ') }}</span><span>{{ \Carbon\Carbon::parse($s['event_date'])->format('l, d F Y') }}</span></div>
         @if(!empty($s['service_time']))<div class="meta-row"><span class="k">{{ $t('Time', 'وقت') }}</span><span>{{ \Carbon\Carbon::parse($s['service_time'])->format('g:i A') }}</span></div>@endif
-        @if(!empty($s['venue']))<div class="meta-row"><span class="k">{{ $t('Venue', 'مقام') }}</span><span>{{ $s['venue'] }}</span></div>@endif
+        @if(!empty($s['venue']))<div class="meta-row"><span class="k">{{ $t('Venue', 'مقام') }}</span><span class="v cap">{{ $s['venue'] }}</span></div>@endif
         <div class="meta-row"><span class="k">{{ $t('Guests (PAX)', 'مہمان') }}</span><span><strong>{{ number_format($s['pax'] ?? 0) }}</strong></span></div>
     </div>
 </div>

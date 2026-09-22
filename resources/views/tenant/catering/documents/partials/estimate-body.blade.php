@@ -78,7 +78,7 @@
 <div class="meta-grid">
     <div class="meta-box">
         <h4>{{ $t('Customer', 'کسٹمر') }}</h4>
-        <div style="font-weight:bold; font-size: 15px;">
+        <div class="name" style="font-weight:bold; font-size: 15px;">
             @if($isUr && $event->customer_name_ur)
                 <span class="ur">{{ $event->customer_name_ur }}</span>
             @else
@@ -88,15 +88,15 @@
                 @endif
             @endif
         </div>
-        @if($event->customer_phone)<div class="meta-row"><span class="k">{{ $t('Phone', 'فون') }}</span><span dir="ltr">{{ $event->customer_phone }}</span></div>@endif
-        @if($event->customer_address)<div class="meta-row"><span class="k">{{ $t('Address', 'پتہ') }}</span><span>{{ $event->customer_address }}</span></div>@endif
+        @if($event->customer_phone)<div class="meta-row"><span class="k">{{ $t('Phone', 'فون') }}</span><span class="v" dir="ltr">{{ $event->customer_phone }}</span></div>@endif
+        @if($event->customer_address)<div class="meta-row"><span class="k">{{ $t('Address', 'پتہ') }}</span><span class="v cap">{{ $event->customer_address }}</span></div>@endif
     </div>
     <div class="meta-box">
         <h4>{{ $t('Event', 'تقریب') }}</h4>
-        @if($event->event_type)<div class="meta-row"><span class="k">{{ $t('Type', 'قسم') }}</span><span>{{ $event->event_type }}</span></div>@endif
+        @if($event->event_type)<div class="meta-row"><span class="k">{{ $t('Type', 'قسم') }}</span><span class="v cap">{{ $event->event_type }}</span></div>@endif
         <div class="meta-row"><span class="k">{{ $t('Date', 'تاریخ') }}</span><span>{{ $event->event_date->format('l, d F Y') }}</span></div>
         @if($event->service_time)<div class="meta-row"><span class="k">{{ $t('Time', 'وقت') }}</span><span>{{ \Carbon\Carbon::parse($event->service_time)->format('g:i A') }}</span></div>@endif
-        @if($event->venue)<div class="meta-row"><span class="k">{{ $t('Venue', 'مقام') }}</span><span>{{ $event->venue }}</span></div>@endif
+        @if($event->venue)<div class="meta-row"><span class="k">{{ $t('Venue', 'مقام') }}</span><span class="v cap">{{ $event->venue }}</span></div>@endif
         <div class="meta-row"><span class="k">{{ $t('Guests (PAX)', 'مہمان') }}</span><span><strong>{{ number_format($event->pax) }}</strong></span></div>
     </div>
 </div>
