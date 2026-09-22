@@ -116,8 +116,16 @@ class CateringEventAjaxMySqlTest extends MySqlTenantTestCase
      * nobody has yet. The second case posted the typed text as customer_id and
      * the booking was refused — "The selected customer id is invalid" — even
      * though the name, phone and address underneath were all filled in. A
-     * non-numeric id means "no existing customer": the booking is made, with
-     * its own copy of the customer, and nothing is linked.
+     * non-numeric id means "no existing customer", so it is dropped and the
+     * booking is made with its own copy of the customer.
+     *
+     * CATERING-CUSTOMER-ENROL-1 (2026-09-22) changed what happens NEXT, and
+     * this test changed with it. It used to assert that nothing was linked —
+     * true then, and exactly the complaint from the live trial: the booking
+     * went out and Customers had never heard of the person. A typed name with
+     * a PHONE now enrols them, so the assertion below states the new rule
+     * rather than being softened. What this test is really for is unchanged:
+     * a typed name BOOKS instead of being refused.
      */
     public function test_a_typed_customer_name_books_instead_of_being_refused(): void
     {
@@ -130,9 +138,21 @@ class CateringEventAjaxMySqlTest extends MySqlTenantTestCase
         $this->assertInstanceOf(JsonResponse::class, $response);
 
         $event = CateringEvent::firstOrFail();
-        $this->assertSame('Asad Walk-in', $event->customer_name);
-        $this->assertSame('0300-9998887', $event->customer_phone);
-        $this->assertNull($event->customer_id, 'nothing is linked to a customer that does not exist');
+        $this->assertSame('Asad Walk-in', $event->customer_name,
+            'the booking still carries its own copy, exactly as before');
+        $this->assertSame('0300-9998887', $event->customer_phone,
+            'including the phone as the operator typed it');
+
+        // The typed text was never a customer id — that part of the old rule
+        // stands, and 'ad' must not have become one.
+        $this->assertNotSame('ad', (string) $event->customer_id);
+
+        $enrolled = \App\Models\Tenant\Customer::where('phone', '03009998887')->first();
+        $this->assertNotNull($enrolled,
+            'a walk-in booked here can be found in Customers afterwards — the live-trial complaint');
+        $this->assertSame('Asad Walk-in', $enrolled->name);
+        $this->assertSame($enrolled->id, $event->customer_id,
+            'and the booking is filed under them, not left floating');
     }
 
     public function test_ajax_create_validation_failure_creates_nothing(): void
