@@ -206,8 +206,15 @@
                            value="{{ old('venue', $event?->venue) }}">
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label">PAX (guests) <span class="text-danger">*</span></label>
-                    <input type="number" name="pax" class="form-control" min="0" required
+                    {{-- CATERING-PAX-OPTIONAL-1: an inquiry often arrives before the
+                         guest count does. The browser's own "Please fill out this
+                         field" was refusing those bookings, so `required` and the
+                         asterisk are gone and the server takes a blank as zero.
+                         The 100 stays as a STARTING point for a new booking — the
+                         operator sees it and can clear it, which is the difference
+                         between a suggestion and a fabrication. --}}
+                    <label class="form-label">PAX (guests)</label>
+                    <input type="number" name="pax" class="form-control" min="0"
                            value="{{ old('pax', $event?->pax ?? 100) }}">
                 </div>
                 <div class="col-12">

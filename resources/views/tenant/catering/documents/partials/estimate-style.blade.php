@@ -66,8 +66,25 @@
     .meta-grid { display: flex; gap: 20px; margin: 10px 0; }
     .meta-box { flex: 1; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; }
     .meta-box h4 { margin: 0 0 6px; font-size: {{ $isUr ? '15px' : '11px' }}; text-transform: uppercase; color: #6b7280; letter-spacing: 1px; }
+    /* CATERING-DOC-META-1 — the label and the value ran into each other.
+       A long address printed as "Addresssaima royal residency…": both are flex
+       items, and with only space-between there is nothing keeping them apart
+       once the value wraps and fills its line. The gap is the fix; the label is
+       stopped from shrinking so it cannot be squeezed into the value; and the
+       value is allowed to break so a long address wraps instead of pushing the
+       box wide. */
     .meta-row { display: flex; justify-content: space-between; padding: 2px 0; }
-    .meta-row .k { color: #6b7280; }
+    /* The separation is PADDING on the label, not `gap`: this same markup is
+       rendered by dompdf for the PDF, and dompdf does not implement flex gap —
+       a gap-only fix would look right on screen and still print joined up. */
+    .meta-row .k { color: #6b7280; flex: 0 0 auto; white-space: nowrap;
+                   padding-{{ $isUr ? 'left' : 'right' }}: 14px; }
+    .meta-row .v { min-width: 0; text-align: {{ $isUr ? 'left' : 'right' }}; word-wrap: break-word; }
+    /* The operator types these in whatever case the moment allows. On a document
+       that goes to a customer they read as one block, so the free text is lifted
+       here rather than by rewriting what was typed — the record keeps the
+       operator's own spelling. Urdu is unaffected by a case change. */
+    .meta-box .cap, .meta-box .name { text-transform: uppercase; }
     table.items { width: 100%; border-collapse: collapse; margin-top: 6px; }
     table.items th { background: #111827; color: #fff; padding: 8px; font-size: {{ $isUr ? '15px' : '12px' }}; text-align: {{ $isUr ? 'right' : 'left' }}; }
     table.items th.num, table.items td.num { text-align: {{ $isUr ? 'left' : 'right' }}; }
