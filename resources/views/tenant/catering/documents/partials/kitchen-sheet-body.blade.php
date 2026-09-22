@@ -50,19 +50,58 @@
      bar. The owner asked for the bars to go, and the grouping goes with them —
      several tables each repeating the same header for no stated reason reads
      worse than the bars did. The station is still recorded on the line; it is
-     simply not this sheet's business. --}}
+     simply not this sheet's business.
+
+     CATERING-COURSE-ORDER-1 (21 Sep) course ki tarteeb wapas laata hai, magar
+     us shikayat ko dohraye baghair jo upar likhi hai. Wo aitraaz GROUPING par
+     nahi tha — wo KAALI PATTI par tha aur un ALAG TABLES par jo har baar wohi
+     header dobara chhapti thin. Is liye:
+       • table ab bhi EK hi hai, header ek hi baar,
+       • course ka unwaan usi tbody ke andar ek halki patti hai, kaali nahi,
+       • aur us patti par `break-after: avoid` hai taake unwaan safhe ke
+         aakhir me akela na reh jaye jab ke us ka khana agle safhe par ho.
+     Tarteeb `categories.sort_order` se aati hai — wohi class jo customer ki
+     quotation chalati hai, is liye dono kaghaz hamesha ek jaise hain. --}}
+{{-- DO baatein yahan sikhi gayin, dono ne is file ko chupke se toda:
+
+     1. Is Laravel par PHP ki INLINE shakl — yani parentheses wali — toota hua
+        PHP deti hai. Wo `<?php` khol kar expression ko literal chhod deti hai
+        aur band karne wala tag likhti hi nahi, jis se neeche ke tamam loop
+        saada text ban jate hain. Isi liye yahan hamesha block shakl
+        (open/close) hai. Generated PHP lint kiya gaya — 450 views, 0 kharab.
+
+     2. Blade statements ko comments se PEHLE compile karta hai, is liye comment
+        ke ANDAR likha hua directive bhi asli directive ki tarah chal jata hai.
+        Sirf tashreeh ke liye ek directive ka naam likhne se hi ye file compile
+        hona band ho gayi thi. Is liye upar ki saari baatein lafzon me hain,
+        misaal ki shakl me nahi. --}}
+@php
+    $courses = \App\Support\Catering\CourseOrder::groups($release->lines);
+@endphp
     <table class="items">
         <thead>
             <tr>
-                <th class="num" style="width: 110px;">{{ $t('Qty', 'مقدار') }}</th>
+                <th class="sr" style="width: 30px;">#</th>
+                <th class="num" style="width: 104px;">{{ $t('Qty', 'مقدار') }}</th>
                 <th>{{ $t('Item', 'آئٹم') }}</th>
-                <th style="width: 38%;">{{ $t('Instructions', 'ہدایات') }}</th>
-                <th style="width: 70px;">{{ $t('Done', 'مکمل') }}</th>
+                <th style="width: 34%;">{{ $t('Instructions', 'ہدایات') }}</th>
+                <th style="width: 58px;">{{ $t('Done', 'مکمل') }}</th>
             </tr>
         </thead>
         <tbody>
-            @foreach($release->lines as $line)
+            @php $sr = 0; @endphp
+            @foreach($courses as $course)
+            {{-- Bawarchi ek waqt me ek course banata hai; ye patti us ko batati
+                 hai ke ye hissa kahan se shuru hota hai aur kitne item hain. --}}
+            <tr class="course">
+                <td colspan="5">
+                    <span class="course-name">{{ $course['name'] }}</span>
+                    <span class="course-count">{{ $course['lines']->count() }}</span>
+                </td>
+            </tr>
+            @foreach($course['lines'] as $line)
             <tr>
+                <td class="sr">{{ ++$sr }}</td>
                 <td class="num"><span class="qty">{{ rtrim(rtrim(number_format($line->quantity, 3), '0'), '.') }} {{ $line->unit_code }}</span></td>
                 <td>
                     @if($isUr && $line->item_name_ur)
@@ -85,6 +124,7 @@
                 <td class="instructions">{{ $line->instructions }}</td>
                 <td style="text-align:center; font-size: 18px;">☐</td>
             </tr>
+            @endforeach
             @endforeach
         </tbody>
     </table>
