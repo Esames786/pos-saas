@@ -12,7 +12,13 @@
 <meta charset="utf-8">
 <title>{{ $invoice->invoice_no }} — Final Invoice</title>
 <style>
-    @page { size: A4 portrait; margin: 14mm; }
+    /* CATERING-A4-FIT-1 — wohi geometry jo quotation par lagai gayi.
+       Ye document usi booking se banta hai, is liye is me utni hi lines hoti
+       hain. 19 line wali booking ki invoice bilkul usi tarah doosre safhe par
+       phatt-ti — ye andaza nahi, dono ka items table aur uski spacing bilkul
+       aik jaisi hai. Aaj sirf is liye bach rahi thi ke maujooda tanha invoice
+       chhoti hai. Tafseeli wajah estimate-style me likhi hai. */
+    @page { size: A4 portrait; margin: 10mm; }
     * { box-sizing: border-box; }
     /* @page margin applies to PAPER only — on screen the sheet is drawn at real
        A4 size on a grey desk so the preview matches the printed output. Undone
@@ -21,11 +27,11 @@
     body {
         font-family: {{ $isUr ? "'Jameel Noori Nastaleeq', 'Urdu Typesetting', 'Noto Nastaliq Urdu', serif" : "Arial, Helvetica, sans-serif" }};
         color: #111827; font-size: {{ $isUr ? '16px' : '13px' }}; line-height: 1.5;
-        width: 210mm; min-height: 297mm; margin: 12px auto; padding: 14mm;
+        width: 210mm; min-height: 297mm; margin: 12px auto; padding: 10mm;
         background: #fff; box-shadow: 0 2px 14px rgba(0,0,0,.18);
     }
     @media screen and (max-width: 230mm) {
-        body { width: 100%; min-height: 0; margin: 0; padding: 10mm; box-shadow: none; }
+        body { width: 100%; min-height: 0; margin: 0; padding: 8mm; box-shadow: none; }
     }
     @media print {
         html { background: #fff; }
@@ -33,31 +39,31 @@
     }
     /* Nastaliq descenders clip at the body's Latin leading. */
     .ur { font-family: 'Jameel Noori Nastaleeq', 'Urdu Typesetting', 'Noto Nastaliq Urdu', serif; direction: rtl; line-height: 2; font-size: {{ $isUr ? '1em' : '1.28em' }}; }
-    .doc-header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #111827; padding-bottom: 12px; }
+    .doc-header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #111827; padding-bottom: 9px; }
     .brand { font-size: 26px; font-weight: bold; }
     .brand-sub { color: #6b7280; font-size: {{ $isUr ? '16px' : '12px' }}; }
     .doc-title { text-align: {{ $isUr ? 'left' : 'right' }}; }
     .doc-title h2 { margin: 0; font-size: 20px; }
-    .meta-grid { display: flex; gap: 24px; margin: 14px 0; }
-    .meta-box { flex: 1; border: 1px solid #d1d5db; border-radius: 6px; padding: 10px 14px; }
+    .meta-grid { display: flex; gap: 20px; margin: 10px 0; }
+    .meta-box { flex: 1; border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 12px; }
     .meta-box h4 { margin: 0 0 6px; font-size: {{ $isUr ? '15px' : '11px' }}; text-transform: uppercase; color: #6b7280; letter-spacing: 1px; }
     .meta-row { display: flex; justify-content: space-between; padding: 2px 0; }
     .meta-row .k { color: #6b7280; }
-    table.items { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    table.items { width: 100%; border-collapse: collapse; margin-top: 6px; }
     table.items th { background: #111827; color: #fff; padding: 8px; font-size: {{ $isUr ? '15px' : '12px' }}; text-align: {{ $isUr ? 'right' : 'left' }}; }
     table.items th.num, table.items td.num { text-align: {{ $isUr ? 'left' : 'right' }}; }
-    table.items td { padding: 7px 8px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+    table.items td { padding: 4px 8px; border-bottom: 1px solid #e5e7eb; vertical-align: top; line-height: 1.35; }
     table.items tr:nth-child(even) td { background: #f9fafb; }
     .item-ur { color: #374151; font-size: 18px; }
     .totals { width: 46%; margin-{{ $isUr ? 'right' : 'left' }}: auto; margin-top: 10px; border-collapse: collapse; }
-    .totals td { padding: 5px 8px; }
+    .totals td { padding: 3px 8px; }
     .totals .k { color: #6b7280; }
     .totals .num { text-align: {{ $isUr ? 'left' : 'right' }}; }
     .totals .grand td { font-weight: bold; font-size: 15px; border-top: 2px solid #111827; }
     .totals .due td { font-weight: bold; font-size: 16px; border-top: 3px double #111827; }
     .paid-stamp { display: inline-block; border: 3px solid #15803d; color: #15803d; padding: 4px 18px; border-radius: 6px; font-size: 18px; font-weight: bold; transform: rotate(-4deg); }
-    .adv { margin-top: 14px; width: 46%; margin-{{ $isUr ? 'right' : 'left' }}: auto; font-size: 12px; color: #6b7280; }
-    .footer { margin-top: 26px; display: flex; justify-content: space-between; font-size: 12px; }
+    .adv { margin-top: 10px; width: 46%; margin-{{ $isUr ? 'right' : 'left' }}: auto; font-size: 12px; color: #6b7280; }
+    .footer { margin-top: 16px; display: flex; justify-content: space-between; font-size: 12px; }
     .sig { border-top: 1px solid #9ca3af; padding-top: 4px; width: 200px; text-align: center; color: #6b7280; }
     /* Sits in the grey gutter beside the sheet; it used to overlap the header. */
     .print-bar { position: fixed; top: 10px; {{ $isUr ? 'left' : 'right' }}: 10px; z-index: 10; }
