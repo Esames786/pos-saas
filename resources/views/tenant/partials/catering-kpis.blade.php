@@ -8,7 +8,17 @@
     the same SalesReportService the Report Centre uses; catering does not get a
     second, competing version of that number.)
 --}}
-@php $k = $cateringKpis; @endphp
+@php
+    $k = $cateringKpis;
+    // HIDE-AMOUNTS-CATERING-1 — paisa wale figure usi EK authority se guzarte hain jo dashboard
+    // tiles, Close Shift aur Close Branch use karte hain. Ginti wale card (events, drafts,
+    // production pending) paisa NAHI hain, wo khule rehte hain.
+    //
+    // ⚠️ Fail CLOSED: variable na pahunche to mask lagta hai. Chhupa hua figure ghalti se dikh
+    // jane se behtar hai ke dikhne wala figure ghalti se chhup jaye.
+    $money = fn ($value, $decimals = 2) => app(\App\Support\AmountVisibility::class)
+        ->format($maySeeAmounts ?? false, $value, $decimals);
+@endphp
 <div class="row g-3 mb-3">
     <div class="col-6 col-lg">
         <div class="card h-100">
@@ -47,7 +57,7 @@
         <div class="card h-100">
             <div class="card-body py-3">
                 <div class="fs-13 fw-semibold text-body-secondary">Outstanding Customer Balance</div>
-                <div class="fs-3 fw-bold lh-1 mt-1">{{ number_format($k['outstanding_balance'], 2) }}</div>
+                <div class="fs-3 fw-bold lh-1 mt-1">{{ $money($k['outstanding_balance']) }}</div>
                 <div class="fs-12 text-body-secondary">open bookings, net of refunds</div>
             </div>
         </div>
