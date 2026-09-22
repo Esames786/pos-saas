@@ -6,11 +6,20 @@
 @php $q = $q ?? ''; @endphp
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
     <h1 class="mb-0">Catering Events &amp; Estimates</h1>
-    @can('tenant.catering.events.create')
-        <a href="{{ url('/catering/events/create') }}" class="btn btn-primary">
-            <i class="ti ti-plus me-1"></i>New Event
-        </a>
-    @endcan
+    <div class="d-flex gap-2 flex-wrap">
+        {{-- CATERING-SIDEBAR-COLLAPSE-1 (22 Sep) — fehrist bhi kaam wali screen
+             hai. Is ki table ke das column hain (Event #, Customer, Date, Venue,
+             PAX, Quotation, Position, Status, Next Action, actions), aur khuli
+             navigation ke saath dahina kinara katt jata tha. Ab ye screen bhi
+             event wali screen ki tarah band navigation ke saath khulti hai, aur
+             yehi button usay wapas laata hai. --}}
+        @include('tenant.catering.partials.sidebar-collapse')
+        @can('tenant.catering.events.create')
+            <a href="{{ url('/catering/events/create') }}" class="btn btn-primary">
+                <i class="ti ti-plus me-1"></i>New Event
+            </a>
+        @endcan
+    </div>
 </div>
 
 @include('tenant.catering.partials.tooltips')
