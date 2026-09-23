@@ -90,6 +90,42 @@
     @endif
 </div>
 
+{{-- CATERING-RATE-PARITY-1 — recorded, dated, and not in force yet.
+
+     These used to sit in the table above as though they were today's rate,
+     because "current" was the highest id rather than the latest date that had
+     arrived. The costing never agreed: it has always resolved by date. So the
+     screen said one number and every quotation used another. --}}
+@if(isset($scheduled) && $scheduled->isNotEmpty())
+<div class="card mt-3 border-warning-subtle">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="ti ti-clock-hour-4 me-1"></i>Aage ki tareekh wali rates</h5>
+        <span class="fs-13 text-body-secondary">abhi nafiz nahi — costing in ko istemaal nahi karti</span>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+            <thead>
+                <tr class="fs-13 fw-semibold text-body-secondary">
+                    <th>Material</th><th class="text-end">Rate</th><th>Per Unit</th>
+                    <th>Effective From</th><th>Note</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach($scheduled as $row)
+                    <tr>
+                        <td>{{ $row->product?->name }}</td>
+                        <td class="text-end">{{ number_format((float) $row->rate, 2) }}</td>
+                        <td>{{ $row->unit?->code ?? $row->product?->unit?->code }}</td>
+                        <td>{{ \Illuminate\Support\Carbon::parse($row->effective_from)->format('d M Y') }}</td>
+                        <td class="text-body-secondary">{{ $row->note }}</td>
+                    </tr>
+                @endforeach
+            </tbody>
+        </table>
+    </div>
+</div>
+@endif
+
 @if($history && $history->isNotEmpty())
 <div class="card mt-3">
     <div class="card-header"><h5 class="mb-0">Rate History — {{ $history->first()->product->name }}</h5></div>
@@ -115,7 +151,14 @@
 {{-- New rate modal --}}
 <div class="modal fade" id="rateModal" tabindex="-1">
     <div class="modal-dialog">
-        <form method="POST" action="{{ url('/catering/material-rates') }}" class="modal-content">
+        {{-- `?? []` because the history panel is a CONVENIENCE, not part of the
+             page's meaning: a caller that renders this view without it (an older
+             guard does) should get the screen, not a 500. The controller always
+             passes it, and CateringRateBookParityMySqlTest asserts the attribute
+             is present when the page is rendered through the controller — so a
+             controller that stopped passing it would still be caught. --}}
+        <form method="POST" action="{{ url('/catering/material-rates') }}" class="modal-content"
+              data-rate-history='@json($historyByMaterial ?? [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)'>
             @csrf
             <div class="modal-header">
                 <h5 class="modal-title">New Material Rate</h5>
@@ -124,7 +167,23 @@
             <div class="modal-body">
                 <div class="mb-3">
                     <label class="form-label">Material <span class="text-danger">*</span></label>
-                    <select name="product_id" id="rate-product" class="form-select" required></select>
+                    {{-- CATERING-RATE-PARITY-1: a plain list of MATERIALS, not a
+                         search across the whole catalogue. The catalogue search is
+                         how the DISH "Chatni" acquired a material cost rate — it
+                         offered 900 products of which six are materials. The
+                         server refuses the rest now as well; this stops offering
+                         them in the first place. --}}
+                    <select name="product_id" id="rate-product" class="form-select" required>
+                        <option value="">Choose a material…</option>
+                        {{-- `?? collect()` for the same reason as the history above:
+                             an older guard renders this view with a minimal data set
+                             to check its wording, and it should get the screen rather
+                             than a 500. The picker being empty is visible; a blank
+                             page is not. --}}
+                        @foreach($materials ?? collect() as $material)
+                            <option value="{{ $material->id }}">{{ $material->name }} ({{ $material->sku }})</option>
+                        @endforeach
+                    </select>
                 </div>
                 <div class="row g-3">
                     <div class="col-6">
@@ -132,13 +191,16 @@
                         <input type="number" step="0.01" min="0" name="rate" class="form-control" required>
                     </div>
                     <div class="col-6">
-                        <label class="form-label">Per Unit</label>
-                        <select name="unit_id" class="form-select">
-                            <option value="">Product unit</option>
+                        <label class="form-label">Per Unit <span class="text-danger">*</span></label>
+                        <select name="unit_id" class="form-select" required>
+                            <option value="">Choose a unit…</option>
                             @foreach($units as $unit)
                                 <option value="{{ $unit->id }}">{{ $unit->code }}</option>
                             @endforeach
                         </select>
+                        <div class="form-text">
+                            A rate of 450 means nothing until it says 450 per what.
+                        </div>
                     </div>
                     <div class="col-6">
                         <label class="form-label">Effective From <span class="text-danger">*</span></label>
@@ -147,7 +209,15 @@
                     <div class="col-6">
                         <label class="form-label">Note</label>
                         <input type="text" name="note" class="form-control" placeholder="e.g. market price update">
+                        <div class="form-text">
+                            Har rate mehfooz rehti hai — ek hi din ki doosri bhi. Jo aaj nafiz ho,
+                            wohi current hai.
+                        </div>
                     </div>
+
+                    @include('tenant.catering.partials.rate-history-panel', [
+                        'historyLabel' => 'Is material ki pichli cost rates',
+                    ])
                 </div>
             </div>
             <div class="modal-footer">
@@ -162,17 +232,14 @@
 @push('scripts')
 <script>
 $(function () {
+    // CATERING-RATE-PARITY-1: select2 over the MATERIALS already in the box.
+    // It used to search /ajax/products — the whole catalogue — which is how a
+    // dish came to hold a material cost rate. No ajax now: there are six
+    // materials, and they are already on the page.
     $('#rate-product').select2({
         width: '100%',
         dropdownParent: $('#rateModal'),
-        placeholder: 'Search materials…',
-        ajax: {
-            url: '{{ url('/ajax/products') }}',
-            dataType: 'json',
-            delay: 200,
-            data: params => ({ q: params.term, page: params.page || 1 }),
-            processResults: data => ({ results: data.results || [], pagination: data.pagination || {} }),
-        },
+        placeholder: 'Choose a material…',
     });
 });
 </script>

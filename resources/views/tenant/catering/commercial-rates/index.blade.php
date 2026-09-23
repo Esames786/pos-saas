@@ -187,7 +187,8 @@
 @can('tenant.catering.commercial-rates.store')
 <div class="modal fade" id="rateModal" tabindex="-1">
     <div class="modal-dialog">
-        <form method="POST" action="{{ url('/catering/commercial-rates') }}" class="modal-content">
+        <form method="POST" action="{{ url('/catering/commercial-rates') }}" class="modal-content"
+              data-rate-history='@json($historyByMaterial ?? [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)'>
             @csrf
             <div class="modal-header">
                 <h5 class="modal-title">Set a commercial rate</h5>
@@ -241,6 +242,10 @@
                             The most recent one is the current one.
                         </div>
                     </div>
+
+                    @include('tenant.catering.partials.rate-history-panel', [
+                        'historyLabel' => 'Is material ki pichli house rates',
+                    ])
                 </div>
             </div>
             <div class="modal-footer">
