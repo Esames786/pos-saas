@@ -81,7 +81,44 @@ class CateringCommercialRateController extends Controller
                 ->orderBy('name')
                 ->get(['id', 'name', 'sku', 'unit_id']),
             'units' => Unit::where('is_active', true)->orderBy('code')->get(['id', 'code']),
+            // CATERING-RATE-HISTORY-1: what the house has charged before, in the
+            // modal itself. Asked for on 24 Sep: a caterer prices chicken against
+            // what it was yesterday, and having to close the box, read the table
+            // at the bottom of the page and open the box again is how the wrong
+            // number gets typed.
+            'historyByMaterial' => $this->recentHistory(),
         ]);
+    }
+
+    /**
+     * The last few house rates per material, keyed by product id.
+     *
+     * Travels with the page rather than being fetched: there are a handful of
+     * materials, so a second request would buy nothing and would cost a new
+     * route — which on this system means a permission every non-Owner role has
+     * to be granted separately, by hand, after the deploy.
+     */
+    private function recentHistory(): array
+    {
+        $materialIds = Product::query()
+            ->whereIn('product_kind', self::MATERIAL_KINDS)
+            ->pluck('id');
+
+        return CateringMaterialCommercialRate::with('unit:id,code')
+            ->whereIn('product_id', $materialIds)
+            ->orderByDesc('effective_from')->orderByDesc('id')
+            ->get()
+            ->groupBy('product_id')
+            ->map(fn ($rows) => $rows->take(10)->map(fn ($r) => [
+                'rate' => (float) $r->rate,
+                'unit_id' => $r->unit_id,
+                'unit' => $r->unit?->code,
+                'effective_from' => $r->effective_from instanceof \DateTimeInterface
+                    ? $r->effective_from->format('Y-m-d')
+                    : (string) $r->effective_from,
+                'note' => $r->note,
+            ])->values()->all())
+            ->all();
     }
 
     /**
