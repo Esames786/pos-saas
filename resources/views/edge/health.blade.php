@@ -14,6 +14,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta http-equiv="refresh" content="30">
     <title>Bingoo Edge — Status</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23CAA23F'/%3E%3Cpath d='M18 14h17c8 0 13 4 13 10 0 4-2 7-6 8 5 1 8 5 8 10 0 7-6 12-15 12H18z' fill='%23fff'/%3E%3C/svg%3E">{{-- W1: inline icon — no /favicon.ico 404 on the appliance --}}
     <style>
         :root { --bg:#0f172a; --panel:#1e293b; --panel2:#172033; --line:#334155; --ink:#e2e8f0; --muted:#94a3b8; --accent:#4f46e5; --ok:#16a34a; --warn:#d97706; --danger:#dc2626; }
         * { box-sizing:border-box; }
