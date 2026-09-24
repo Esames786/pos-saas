@@ -481,6 +481,10 @@ return [
             'resources/views/tenant/reports/purchases',
             'public/assets/img/supplier',
             'app/Console/Commands/DispatchCateringRemindersCommand.php',
+            // W6 reconcile (canonical b529c95): Catering job + support classes sit under basenames / directories the
+            // globs above do not reach (SendCateringCustomerMailJob, CourseOrder); no Edge runtime path references them.
+            'app/Jobs/Catering',
+            'app/Support/Catering',
             'catering-*',
             'resources/views/emails/catering',
             'resources/views/central/subscription-requests',

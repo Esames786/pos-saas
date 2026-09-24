@@ -318,6 +318,12 @@ class EdgeCashierTablesWorkspaceHttpMySqlTest extends MySqlTenantTestCase
         $this->assertNotNull($bp->json('html'), 'the receipt document renders');
         $this->assertStringContainsString((string) $detail->json('session.session_no'), (string) $bp->json('html'), 'the table bill is numbered by the check (session) number');
         $this->assertStringContainsString('Naan', (string) $bp->json('html'));
+        // W6 reconcile (canonical TABLE-BILL-PREVIEW-PARITY-1, receipt.blade `@isset($tableBill)`): the printed document itself
+        // now carries the previously-paid round (its own number + total) and the "Already settled" line — not only the modal.
+        $childNo = (string) DB::connection('tenant')->table('sales_orders')->where('id', $child)->value('sale_no');
+        $this->assertStringContainsString('Previously paid (1):', (string) $bp->json('html'));
+        $this->assertStringContainsString($childNo, (string) $bp->json('html'));
+        $this->assertStringContainsString('Already settled:', (string) $bp->json('html'));
         $this->assertSame(0, DB::connection('tenant')->table('print_jobs')->where('reference_id', $saleId)->where('document_type', 'receipt')->count(), 'a preview queues nothing');
 
         // R21/A28 — the Change Order table picker (Online /api/pos/table-sessions shape).

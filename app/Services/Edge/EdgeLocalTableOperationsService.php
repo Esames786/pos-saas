@@ -463,7 +463,7 @@ class EdgeLocalTableOperationsService
         try {
             return view('tenant.printing.documents.receipt', [
                 'job' => null, 'salesOrder' => $sale, 'layout' => $layout, 'isPreview' => true,
-                // Dormant until the canonical 243e01d receipt block (`@isset($tableBill)`) is reconciled (Team 6).
+                // The canonical receipt block (`@isset($tableBill)`, TABLE-BILL-PREVIEW-PARITY-1) renders rounds + previously paid (W6 reconcile b529c95).
                 'tableBill' => ['session' => $session, 'rounds' => $held, 'paid' => $paid],
             ])->render();
         } catch (\Throwable $e) {

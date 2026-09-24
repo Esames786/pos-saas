@@ -300,6 +300,8 @@ class EdgeArtifactTest extends TestCase
             'app/Http/Controllers/Tenant/PurchaseOrderController.php', 'app/Http/Controllers/Tenant/SupplierController.php',
             'app/Models/Master/Subscription.php', 'app/Http/Controllers/Tenant/TenantBillingController.php',
             'app/Console/Commands/DispatchCateringRemindersCommand.php',
+            // W6 reconcile (canonical b529c95) — Catering job + support classes under non-Catering basenames.
+            'app/Jobs/Catering/SendCateringCustomerMailJob.php', 'app/Support/Catering/CourseOrder.php',
             // F2 — Cloud supplier-finance authority, projection and ingestion never ship.
             'app/Services/Finance/ManualJournalService.php', 'app/Services/Edge/EdgeSupplierFinanceProjectionService.php',
             'app/Services/Edge/EdgeInboundSupplierFinanceIngestionService.php', 'app/Http/Controllers/Edge/EdgeInboundSupplierFinanceApiController.php',
