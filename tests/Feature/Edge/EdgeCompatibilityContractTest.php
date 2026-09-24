@@ -60,6 +60,22 @@ class EdgeCompatibilityContractTest extends TestCase
         }
     }
 
+    /** W6 (0.7.0-edge): the installed 0.6.0 appliance reports bootstrap v6 — once the Cloud exports v7 it must update. */
+    public function test_a_v6_appliance_is_update_required_and_a_v7_appliance_is_compatible(): void
+    {
+        $this->assertSame('edge-bootstrap-v7', \App\Services\Edge\EdgeBootstrapService::SCHEMA_VERSION);
+        $svc = app(EdgeCompatibilityService::class);
+
+        $old = $svc->classify($this->currentManifest(['bootstrap_schema_version' => 'edge-bootstrap-v6']));
+        $this->assertSame(EdgeCompatibilityService::SOFTWARE_UPDATE_REQUIRED, $old['overall']);
+        $this->assertSame(EdgeCompatibilityService::SOFTWARE_UPDATE_REQUIRED, $old['features']['config_refresh']);
+        $this->assertSame('edge-bootstrap-v7', $old['current_bootstrap_schema']);
+
+        $new = $svc->classify($this->currentManifest(['bootstrap_schema_version' => 'edge-bootstrap-v7']));
+        $this->assertSame(EdgeCompatibilityService::COMPATIBLE, $new['overall']);
+        $this->assertSame(EdgeCompatibilityService::COMPATIBLE, $new['features']['config_refresh']);
+    }
+
     public function test_stale_config_schema_requires_software_update(): void
     {
         $result = app(EdgeCompatibilityService::class)->classify(

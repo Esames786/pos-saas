@@ -176,8 +176,13 @@ class SalesService
      * line COGS by the caller). Runs only inside the inventory_posted guard, so a
      * repeated finalize cannot double-post. Throws (rolls back the sale) when a
      * stock-consuming modifier is misconfigured or its linked product is short on stock.
+     *
+     * PUBLIC (W6, 0.7.0-edge): the ONE shared modifier-stock rule — Cloud finalizePaidSale above AND the Cloud
+     * ingestion of an `edge-sale-envelope-v2` (EdgeInboundSaleIngestionService) call it, so an offline sale with a
+     * stock-consuming option posts exactly what the Online POS posts. Visibility change only; behaviour identical.
+     * The caller owns the exactly-once guard (inventory_posted here; the ingestion registry transaction there).
      */
-    private function consumeLineModifiers(SalesOrder $sale, SalesOrderLine $line): float
+    public function consumeLineModifiers(SalesOrder $sale, SalesOrderLine $line): float
     {
         $modifiers = $line->modifiers ?? [];
 

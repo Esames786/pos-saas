@@ -46,7 +46,13 @@ use Throwable;
  */
 class EdgeInboundSaleIngestionService
 {
-    private const SUPPORTED_ENVELOPE_SCHEMA = 'edge-sale-envelope-v1';
+    /**
+     * W6 (0.7.0-edge): v1 = every pre-W6 sale shape (+ additive optional keys: tip, line discounts, notes);
+     * v2 = a sale with a stock-consuming modifier — the ONLY shape whose modifier linked stock is posted here.
+     * v1 semantics stay FROZEN (a v1 envelope never consumes modifier stock, exactly as before).
+     */
+    public const ENVELOPE_SCHEMA_V1 = 'edge-sale-envelope-v1';
+    public const ENVELOPE_SCHEMA_V2 = 'edge-sale-envelope-v2';
     private const SUPPORTED_ORDER_TYPES = ['quick_sale', 'takeaway', 'dine_in', 'delivery'];
     private const SUPPORTED_METHOD_TYPES = ['cash'];
 
@@ -81,7 +87,7 @@ class EdgeInboundSaleIngestionService
         if (! EdgeIdentity::isValid($saleUuid, EdgeIdentity::FORMAT_ULID)) {
             return $this->refuse($envelope, 'SALE_UUID_INVALID', 'the envelope has no valid canonical sale_uuid');
         }
-        if ((string) ($envelope['envelope_schema_version'] ?? '') !== self::SUPPORTED_ENVELOPE_SCHEMA) {
+        if (! in_array((string) ($envelope['envelope_schema_version'] ?? ''), $this->supportedEnvelopeSchemas(), true)) {
             return $this->refuse($envelope, 'SCHEMA_UNSUPPORTED', 'unsupported envelope schema version');
         }
         if (! $this->hashMatches($envelope, $contentHash)) {
@@ -182,6 +188,18 @@ class EdgeInboundSaleIngestionService
         }
     }
 
+    /**
+     * The envelope schemas this Cloud accepts. A method (not a constant) so a test can stand in an OLDER Cloud
+     * (v1 only) and prove the Cloud-first deploy ordering: a v2 row refused SCHEMA_UNSUPPORTED is re-attempted
+     * with the SAME content after the upgrade and applies exactly once.
+     *
+     * @return list<string>
+     */
+    protected function supportedEnvelopeSchemas(): array
+    {
+        return [self::ENVELOPE_SCHEMA_V1, self::ENVELOPE_SCHEMA_V2];
+    }
+
     /** TEST-ONLY seam (see ingest): production no-op; a subclass may throw to prove atomic rollback. */
     protected function afterOfficialStock(): void
     {
@@ -279,6 +297,8 @@ class EdgeInboundSaleIngestionService
             'customer_phone' => $envelope['customer']['phone'] ?? null,
             'restaurant_waiter_id' => $envelope['restaurant_waiter_id'] ?? null,
             'vehicle_number' => $envelope['vehicle_number'] ?? null,
+            // W6 (B5): the held-check / Direct-Pay note — additive optional key (older envelopes lack it => null).
+            'notes' => isset($envelope['notes']) && is_string($envelope['notes']) && trim($envelope['notes']) !== '' ? mb_substr(trim($envelope['notes']), 0, 1000) : null,
             'order_source' => in_array((string) ($envelope['order_source'] ?? 'pos'), ['pos', 'manual'], true) ? (string) $envelope['order_source'] : 'pos', // enum(pos,manual); edge-origin marked by edge_sync_state
             'order_type' => (string) $envelope['order_type'],
             'sale_date' => $envelope['sale_date'] ?? now(),
@@ -317,6 +337,8 @@ class EdgeInboundSaleIngestionService
 
     private function projectLinesWithOfficialStock(array $envelope, SalesOrder $sale, Branch $branch): void
     {
+        $consumeModifiers = (string) ($envelope['envelope_schema_version'] ?? '') === self::ENVELOPE_SCHEMA_V2;
+        $sale->setRelation('branch', $branch);
         foreach (($envelope['lines'] ?? []) as $line) {
             $product = Product::on('tenant')->findOrFail((int) $line['product_id']);
             $variant = ($line['product_variant_id'] ?? null)
@@ -383,6 +405,23 @@ class EdgeInboundSaleIngestionService
                 $newLine->update(['unit_cost' => $qty > 0 ? $costTotal / $qty : 0, 'cost_total' => $costTotal]);
             }
             // 'none' (service/non-stock): no official stock movement, no COGS.
+
+            // W6 (B1) — envelope v2 ONLY: official modifier linked-stock consumption through the SAME shared rule the
+            // Cloud POS runs (SalesService::consumeLineModifiers — Cloud's CURRENT modifier book, unit conversion,
+            // FEFO, branch negative-stock policy), inside this ingestion transaction (a replay is already_applied with
+            // zero further effects). Its cost is added on top of the line COGS exactly as Cloud finalize does. A deal
+            // header never carries modifiers. Any failure rolls the WHOLE ingestion back as a retryable exception.
+            if ($consumeModifiers && (($line['line_kind'] ?? 'standard') !== 'combo_header')) {
+                try {
+                    $modifierCost = $this->sales->consumeLineModifiers($sale, $newLine);
+                } catch (Throwable $e) {
+                    throw new IngestionRefusal('MODIFIER_STOCK_FAILED', "modifier stock cannot be posted for line product {$line['product_id']}: " . $e->getMessage());
+                }
+                if ($modifierCost > 0) {
+                    $costTotal = round((float) $newLine->cost_total + $modifierCost, 4);
+                    $newLine->update(['cost_total' => $costTotal, 'unit_cost' => $qty > 0 ? round($costTotal / $qty, 4) : 0]);
+                }
+            }
         }
 
         $sale->update(['inventory_posted' => true]);

@@ -73,6 +73,10 @@ class EdgeLocalConfigRefreshApplier
         'terminals' => ['flag', 'status', 'inactive'],
         'modifier_groups' => ['flag', 'status', 'inactive'],
         'modifiers' => ['flag', 'status', 'inactive'],
+        'product_modifier_group' => ['delete'],          // W6 v7: pure composition (no inbound FKs)
+        // W6 v7: denominations are referenced by local cash_count_lines (FK cascade) — never deleted, only deactivated.
+        'currencies' => ['flag', 'is_active', 0],
+        'currency_denominations' => ['flag', 'is_active', 0],
         'combos' => ['flag', 'status', 'inactive'],
         'combo_components' => ['delete'],
         'payment_methods' => ['flag', 'is_active', 0],
@@ -172,7 +176,7 @@ class EdgeLocalConfigRefreshApplier
                 'source_revision' => (string) ($manifest['source_revision'] ?? ''),
                 'manifest_hash' => $manifestHash,
                 'last_error' => null,
-            ]);
+            ] + EdgeLocalBootstrapImporter::tenantMetaFields($sections));
 
             Log::info('[edge-config-refresh] applied', [
                 'revision' => $revision, 'from_revision' => $applied,

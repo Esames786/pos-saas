@@ -53,6 +53,9 @@ class EdgeLocalBootstrapImporter
     public const PLAN = [
         ['branch', 'branches', false],               // the appliance's own branch row (id preserved)
         ['units', 'units', false],
+        // W6 bootstrap v7 (Team 4 C-3): the denomination book the shift-close count grid reads (CashCountService).
+        ['currencies', 'currencies', false],
+        ['currency_denominations', 'currency_denominations', false],
         ['categories', 'categories', true],          // self-referential — topologically ordered on insert; NULL branch_id = shared
         ['products', 'products', false],
         ['product_variants', 'product_variants', false],
@@ -61,6 +64,7 @@ class EdgeLocalBootstrapImporter
         ['terminals', 'terminals', true],
         ['modifier_groups', 'modifier_groups', true],
         ['modifiers', 'modifiers', false],
+        ['product_modifier_group', 'product_modifier_group', false], // W6 v7: which groups apply to which product
         ['combos', 'combos', true],
         ['combo_components', 'combo_components', false],
         ['payment_methods', 'payment_methods', false],
@@ -86,6 +90,9 @@ class EdgeLocalBootstrapImporter
         ['roles', 'roles', false],
         ['users', 'users', false],                   // roles/permissions arrays handled specially
     ];
+
+    /** The validated sections of the package being imported (read by markImporting for display metadata). */
+    private array $pendingSections = [];
 
     public function __construct(
         private readonly EdgeLocalConfigRefreshApplier $refresh,
@@ -122,6 +129,7 @@ class EdgeLocalBootstrapImporter
 
         $this->assertBranchScoping($sections, $branchId);
         $this->assertNoSecretFields($sections);
+        $this->pendingSections = $sections;
 
         // Idempotency + immutability + refresh boundary (N/H).
         $existing = EdgeLocalMeta::current();
@@ -309,7 +317,21 @@ class EdgeLocalBootstrapImporter
             'last_applied_config_revision' => (int) $manifest['config_revision'],
             'config_schema_version' => (string) $manifest['config_schema_version'],
             'runtime_state' => EdgeLocalMeta::STATE_IMPORTING,
-        ]);
+        ] + self::tenantMetaFields($this->pendingSections));
+    }
+
+    /**
+     * W6 bootstrap v7 (Team 4 C-4): the informational `tenant` section's business name, persisted on the binding row so the
+     * Quick Report header (EdgeQuickReportController::businessName) prints the tenant name like Online. Display metadata
+     * only — never an identity/binding field. Empty when the section lacks it (older package shapes / tests).
+     *
+     * @return array<string, string|null>
+     */
+    public static function tenantMetaFields(array $sections): array
+    {
+        $name = trim((string) ($sections['tenant'][0]['business_name'] ?? ''));
+
+        return ['tenant_business_name' => $name !== '' ? mb_substr($name, 0, 190) : null];
     }
 
     /** Clear migration-seeded config so the package's authoritative rows import cleanly (children first). */

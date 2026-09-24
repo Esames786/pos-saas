@@ -180,6 +180,32 @@ class EdgeSyncOutboxService
         });
     }
 
+    /**
+     * W6 — bounded-backoff release: the row stays LEASED under a non-worker backoff token until `now + seconds`, after
+     * which lease()/leaseSpecific() reclaim it exactly like an expired lease. Other rows keep flowing meanwhile (the
+     * claim query skips a live lease), the envelope bytes / identity never change, and no worker token can ever
+     * acknowledge a deferred row (markAcknowledged requires the current lease_owner). Only the CURRENT owner may defer.
+     */
+    public function deferLease(EdgeSyncOutbox $row, int $seconds, ?string $error = null): void
+    {
+        if ($row->state !== EdgeSyncOutbox::STATE_LEASED) {
+            throw new RuntimeException('OUTBOX_STATE: only a leased row can be deferred.');
+        }
+        $affected = DB::connection(self::CONN)->table('edge_sync_outbox')
+            ->where('id', $row->id)
+            ->where('state', EdgeSyncOutbox::STATE_LEASED)
+            ->where('lease_owner', $row->lease_owner)
+            ->update([
+                'lease_owner' => 'backoff:' . (string) Str::ulid(),
+                'lease_expires_at' => now()->addSeconds(max(1, $seconds)),
+                'last_error' => $error !== null ? mb_substr($error, 0, 2000) : $row->last_error,
+                'updated_at' => now(),
+            ]);
+        if ($affected !== 1) {
+            throw new RuntimeException('OUTBOX_LEASE_LOST: the row is no longer leased by this worker.');
+        }
+    }
+
     /** Retryable release: leased -> pending (the row becomes eligible again immediately). */
     public function releaseLease(EdgeSyncOutbox $row, ?string $error = null): void
     {

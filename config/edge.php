@@ -26,7 +26,7 @@ return [
     'app_version'             => env('EDGE_APP_VERSION') ?: (\App\Support\EdgeRuntime::artifactVersion() ?? '0.1.0-edge'),
     'git_commit'              => env('EDGE_GIT_COMMIT'), // stamped into a built artifact's manifest
     'artifact_format_version' => '1',
-    'bootstrap_schema'        => EdgeBootstrapService::SCHEMA_VERSION,        // edge-bootstrap-v6
+    'bootstrap_schema'        => EdgeBootstrapService::SCHEMA_VERSION,        // edge-bootstrap-v7 (W6)
     'config_schema'           => EdgeBootstrapService::CONFIG_SCHEMA_VERSION, // edge-config-v1
     'sync_protocol'           => 'edge-sync-v0', // placeholder ONLY — offline sync is not built yet
     'min_php'                 => '8.2.0',
@@ -128,6 +128,10 @@ return [
         'device_secret'   => env('EDGE_SYNC_DEVICE_SECRET'),  // paired device bearer secret
         'connect_timeout' => (int) env('EDGE_SYNC_CONNECT_TIMEOUT', 10),
         'timeout'         => (int) env('EDGE_SYNC_TIMEOUT', 20),
+        // W6: a Cloud that answers SCHEMA_UNSUPPORTED (not upgraded yet — Cloud-first deploy ordering) is retried with a
+        // bounded exponential backoff (base·2^(attempts−1), capped) instead of parking the row failed_permanent.
+        'schema_retry_base_seconds' => (int) env('EDGE_SYNC_SCHEMA_RETRY_BASE_SECONDS', 60),
+        'schema_retry_max_seconds'  => (int) env('EDGE_SYNC_SCHEMA_RETRY_MAX_SECONDS', 900),
     ],
 
     /*

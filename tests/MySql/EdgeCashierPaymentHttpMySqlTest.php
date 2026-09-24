@@ -119,7 +119,7 @@ class EdgeCashierPaymentHttpMySqlTest extends MySqlTenantTestCase
         $this->assertSame('Card / provider payments run on the Online POS (accepted Cloud-only).', $card['hint']);
         $this->assertFalse($bank['offline']);
         $this->assertStringStartsWith('Awaiting owner decision', $bank['hint']);
-        $this->assertFalse($vm['tipsSyncable']);
+        $this->assertTrue($vm['tipsSyncable'], 'W6: the sync contract carries tips');
         foreach (['payment_method_id', 'tendered_amount', 'quick-cash-buttons', 'transaction_ref', 'change-view', 'short-tender-row', 'short-tender-message',
                   'discount-shortfall-btn', 'promo-code-input', 'apply-promo-btn', 'remove-promo-btn', 'promo-feedback', 'manual-discount-panel',
                   'manual-discount-type', 'manual-discount-value', 'apply-discount-btn', 'remove-discount-btn', 'manual-discount-feedback',
@@ -167,7 +167,7 @@ class EdgeCashierPaymentHttpMySqlTest extends MySqlTenantTestCase
         $this->postJson('/edge/local/pos/sales', array_merge($p, ['receipt_print_intent' => 'print']))->assertStatus(409);
     }
 
-    public function test_preview_answers_the_promo_like_online_and_quotes_a_tip_that_a_paid_sale_cannot_carry_yet(): void
+    public function test_preview_answers_the_promo_like_online_and_a_quoted_tip_rides_the_paid_sale_and_envelope(): void
     {
         $lines = [['product_id' => $this->productId, 'quantity' => 2]];
         $bad = $this->postJson('/edge/local/pos/preview-bill', ['order_type' => 'takeaway', 'lines' => $lines, 'promo_code' => 'NOPE'])->assertOk()->json();
@@ -185,12 +185,17 @@ class EdgeCashierPaymentHttpMySqlTest extends MySqlTenantTestCase
         $tipped = $this->postJson('/edge/local/pos/preview-bill', ['order_type' => 'takeaway', 'lines' => $lines, 'tip_amount' => 25])->assertOk()->json('totals');
         $this->assertEquals(25.0, (float) $tipped['tip_amount']);
         $this->assertEquals(525.0, (float) $tipped['grand_total']);
-        // …but a paid sale with a tip is refused before any mutation (the envelope refuses tips; W6 contract requirement).
-        $this->postJson('/edge/local/pos/sales', $this->payload(['tip_amount' => 25], 0, 275, 300))->assertStatus(422)
-            ->assertJsonFragment(['message' => 'A tip cannot be recorded on a Branch Server sale until the Cloud sync contract carries tips — remove the tip to complete this sale.']);
+        // …and W6 (0.7.0-edge): a paid sale carries it — persisted on the sale and in the envelope's totals.tip_amount
+        // (Cloud ingestion projects it and credits the tips account; proven in EdgeW6ContractIngestionMySqlTest).
+        $tippedSale = $this->postJson('/edge/local/pos/sales', $this->payload(['tip_amount' => 25], 0, 275, 300))->assertStatus(201)->json();
+        $row = DB::connection('tenant')->table('sales_orders')->find($tippedSale['sale_id']);
+        $this->assertEquals(25.0, (float) $row->tip_amount);
+        $this->assertEquals(275.0, (float) $row->grand_total);
+        $env = json_decode((string) DB::connection('tenant')->table('edge_sync_outbox')->where('sale_uuid', $row->sale_uuid)->value('envelope'), true);
+        $this->assertEquals(25.0, (float) data_get($env, 'totals.tip_amount'));
         $this->postJson('/edge/local/pos/sales', $this->payload(['tip_amount' => -1]))->assertStatus(422);
-        $this->assertSame(0, DB::connection('tenant')->table('sales_orders')->count());
-        $this->assertSame(0, DB::connection('tenant')->table('edge_sync_outbox')->count());
+        $this->assertSame(1, DB::connection('tenant')->table('sales_orders')->count());
+        $this->assertSame(1, DB::connection('tenant')->table('edge_sync_outbox')->count());
     }
 
     public function test_customer_lookup_answers_from_the_synced_book_with_saved_addresses(): void

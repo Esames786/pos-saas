@@ -395,17 +395,25 @@ class EdgeCashierMenuHttpMySqlTest extends MySqlTenantTestCase
         $this->assertNull($back->restaurant_table_session_id);
     }
 
-    public function test_line_discounts_ride_the_shared_totals_and_stop_at_the_contract_boundary(): void
+    public function test_line_discounts_ride_the_shared_totals_and_the_sync_envelope(): void
     {
         $line = ['product_id' => $this->drink, 'quantity' => 2, 'discount_amount' => 30];
         $q = $this->postJson('/edge/local/pos/preview-bill', ['order_type' => 'takeaway', 'lines' => [$line]])->assertOk()->json('totals');
         $this->assertEquals(30.0, (float) $q['manual_discount_amount'], 'SalesTotalsService folds the line discount into the manual discount (same approval gate)');
         $this->assertEquals(170.0, (float) $q['grand_total']);
 
-        // a line-only discount cannot be carried by the sync envelope → refused up front with a business message, nothing written
-        $this->sale([$line], [], 170)->assertStatus(422)
-            ->assertJsonFragment(['message' => 'A line discount on a paid Branch Server sale must be taken together with an order discount type (Fixed or Percent) until the Cloud sync contract carries line-only discounts.']);
-        $this->assertSame(0, DB::connection('tenant')->table('sales_orders')->count());
+        // W6 (0.7.0-edge): a line-ONLY discount is now carried by the sync envelope — lines[].discount_amount explains
+        // totals.discount_amount (discount_type stays 'none'); the Cloud posts the same header discount it always did.
+        $lineOnly = $this->sale([$line], [], 170)->assertStatus(201)->json();
+        $lineOnlyRow = DB::connection('tenant')->table('sales_orders')->find($lineOnly['sale_id']);
+        $this->assertEquals(30.0, (float) $lineOnlyRow->discount_amount);
+        $this->assertSame('none', (string) $lineOnlyRow->discount_type);
+        $lineOnlyEnv = json_decode((string) DB::connection('tenant')->table('edge_sync_outbox')->where('sale_uuid', $lineOnlyRow->sale_uuid)->value('envelope'), true);
+        $this->assertSame('edge-sale-envelope-v1', $lineOnlyEnv['envelope_schema_version']);
+        $this->assertSame('none', data_get($lineOnlyEnv, 'totals.discount_type'));
+        $this->assertEquals(30.0, (float) data_get($lineOnlyEnv, 'totals.discount_amount'));
+        $this->assertEquals(30.0, (float) data_get($lineOnlyEnv, 'lines.0.discount_amount'));
+        $this->assertSame(1, DB::connection('tenant')->table('sales_orders')->count());
         // negative line discount → Online min:0
         $this->sale([['product_id' => $this->drink, 'quantity' => 1, 'discount_amount' => -5]])->assertStatus(422);
 

@@ -217,13 +217,20 @@ class EdgeQuickReportController extends Controller
 
     /**
      * R5.3 — the report header name. Online prints the TENANT business name (PosQuickReportController::businessName,
-     * `app('tenant')->business_name`). The config bootstrap carries it in its informational `tenant` section, but the
-     * appliance importer does not persist it yet (request to Team 6 / coordinator in the W4 report), so on a branch server
-     * without a bound tenant the header falls back to the bound branch's name — never an invented label.
+     * `app('tenant')->business_name`). W6 bootstrap v7 (C-4): the importer / config refresh persist the bootstrap's
+     * `tenant.business_name` on the binding row (edge_local_meta.tenant_business_name), which a branch server reads here;
+     * before the first v7 import it falls back to the bound branch's name — never an invented label.
      */
     private function businessName(Branch $branch): string
     {
         $tenantName = app()->bound('tenant') ? (string) (app('tenant')->business_name ?? '') : '';
+        if ($tenantName === '') {
+            try {
+                $tenantName = trim((string) (\App\Models\Edge\EdgeLocalMeta::current()?->tenant_business_name ?? ''));
+            } catch (\Throwable $e) {
+                $tenantName = ''; // an appliance DB before the v7 migration: fall back honestly
+            }
+        }
 
         return $tenantName !== '' ? $tenantName : (string) $branch->name;
     }

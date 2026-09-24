@@ -67,13 +67,11 @@ class EdgeLocalPosService
     private const OFFLINE_ORDER_TYPES = ['quick_sale', 'takeaway', 'dine_in', 'delivery'];
 
     /**
-     * W2 CONTRACT BOUNDARY (A17 tips): the sync envelope refuses a paid sale with a tip (EdgeSaleEnvelopeBuilder::assertSupported
-     * — "tips are not supported offline"), and the outbox row is written in the SAME transaction as the sale, so a tipped sale
-     * could never commit. Until Team 6 lands the envelope/ingestion field (docs/status/edge-w2-team2-report.md CONTRACT_REQUIREMENTS)
-     * a tip is quoted (Preview Bill / Review & Pay) but a paid sale carrying one is refused up front with a business message.
-     * Flip to true in the SAME change that makes the envelope carry `totals.tip_amount` — the persistence path below is wired.
+     * A17 tips — the sync contract carries them since W6 (0.7.0-edge): EdgeSaleEnvelopeBuilder no longer refuses a tipped
+     * sale (`totals.tip_amount` was always emitted) and Cloud ingestion projects it (GL tips account). Kept as a named
+     * switch so the boundary stays explicit (docs/status/edge-w6-contract-and-reconcile-plan.md §B4).
      */
-    public const TIPS_SYNC_CONTRACT_READY = false;
+    public const TIPS_SYNC_CONTRACT_READY = true;
 
     /** Order types a HELD (open-check) workflow exists for offline — dine_in additionally requires a table session. */
     private const OFFLINE_HELD_ORDER_TYPES = ['quick_sale', 'takeaway', 'dine_in', 'delivery'];
@@ -178,8 +176,8 @@ class EdgeLocalPosService
         }
         // (A) Hash the EFFECTIVE authoritative intent, not spoofable/ignored request fields: bound branch,
         // validated terminal, order_source=pos, no discounts/promo, and strip the unit_price/tax Edge ignores.
-        $payloadHash = $this->idempotency->buildPayloadHash($this->idempotency->canonicalSalePayload(
-            $this->effectiveIntent($data, $branchId, $terminal->id, $orderType, $lines, $payments)
+        $payloadHash = $this->idempotency->buildPayloadHash($this->edgeCanonicalIntent(
+            $data, $this->effectiveIntent($data, $branchId, $terminal->id, $orderType, $lines, $payments), $lines
         ));
 
         if ($existing = $this->idempotency->findFinalized($clientUuid)) {
@@ -386,20 +384,41 @@ class EdgeLocalPosService
     }
 
     /**
-     * W2 CONTRACT BOUNDARY (line discounts): the sync envelope carries every line's discount_amount and the order's
-     * discount_type, but refuses a sale whose discount money has neither a discount type nor a promotion
-     * (EdgeSaleEnvelopeBuilder::assertSupported). A paid sale discounted ONLY at line level would therefore roll back at
-     * the outbox insert with an engineering message — refuse it here, before any mutation, with a business message.
+     * Line discounts — W6 (0.7.0-edge) lifted the contract boundary: EdgeSaleEnvelopeBuilder accepts discount money
+     * explained by per-line discounts (the envelope always carried lines[].discount_amount; Cloud folds it into the
+     * header discount it posts). Kept as the single call site so the boundary history stays readable; it no longer
+     * refuses anything (the shared SalesTotalsService + manual-discount approval gate still apply upstream).
      */
     private function assertEnvelopeCanCarryLineDiscounts(iterable $lines, string $discountType, $promotionId): void
     {
-        $lineDiscount = 0.0;
-        foreach ($lines as $r) {
-            $lineDiscount += (float) (is_array($r) ? ($r['discount_amount'] ?? 0) : ($r->discount_amount ?? 0));
+    }
+
+    /**
+     * W6 (B0.3) — the Edge Direct-Pay idempotency fingerprint = the shared canonicalizer (tip, both print intents and
+     * per-line discounts are already in it) PLUS the client-controlled text fields the shared canonical form does not
+     * know: the sale note and per-line kitchen notes. They are appended ONLY when non-empty, so every pre-W6 retry key
+     * (no note) keeps its exact hash, while a retry with a DIFFERENT note is a conflict — never a silent replay.
+     */
+    private function edgeCanonicalIntent(array $data, array $intent, array $lines): array
+    {
+        $canonical = $this->idempotency->canonicalSalePayload($intent);
+        $notes = isset($data['notes']) && trim((string) $data['notes']) !== '' ? mb_substr(trim((string) $data['notes']), 0, 1000) : null;
+        if ($notes !== null) {
+            $canonical['edge_notes'] = $notes;
         }
-        if ($lineDiscount > 0.009 && $discountType === 'none' && $promotionId === null) {
-            throw ValidationException::withMessages(['lines' => 'A line discount on a paid Branch Server sale must be taken together with an order discount type (Fixed or Percent) until the Cloud sync contract carries line-only discounts.']);
+        $kitchen = [];
+        foreach ($lines as $l) {
+            $note = isset($l['kitchen_note']) ? trim((string) $l['kitchen_note']) : '';
+            if ($note !== '') {
+                $kitchen[] = implode('|', [$l['product_id'] ?? '', $l['product_variant_id'] ?? '', $l['combo_id'] ?? '', $note]);
+            }
         }
+        if ($kitchen !== []) {
+            sort($kitchen);
+            $canonical['edge_kitchen_notes'] = $kitchen;
+        }
+
+        return $canonical;
     }
 
     /** A17 — the requested tip (Online `tip_amount`, min:0); a PAID sale with a tip waits for the sync contract. */

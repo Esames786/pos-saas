@@ -18,8 +18,9 @@ use Throwable;
  * The Edge outbox row is marked ACKNOWLEDGED only on a VERIFIED terminal-success ACK for the SAME sale_uuid
  * + content_hash (never merely because HTTP returned 200). Transient failures (network/DNS/TLS/connect
  * timeout, HTTP 5xx, a Cloud EXCEPTION result) release the lease for bounded-backoff retry; terminal
- * verdicts (hash conflict, wrong binding, revoked device, stale epoch, unsupported schema/feature, invalid
+ * verdicts (hash conflict, wrong binding, revoked device, stale epoch, unsupported feature, invalid
  * payload) move the row to failed_permanent for 1E operator handling — never an infinite hot loop.
+ * W6: an unsupported envelope SCHEMA (a Cloud not yet upgraded) is retried with a bounded backoff instead.
  */
 class EdgeSyncSender
 {
@@ -30,8 +31,21 @@ class EdgeSyncSender
     private const TERMINAL_FAILURES = EdgeIngestionVerdicts::TERMINAL_FAILURE_CODES;
 
 
+    /** W6: the one refusal the appliance retries (Cloud-first deploy ordering) instead of parking as failed_permanent. */
+    public const SCHEMA_RETRY_CODE = 'SCHEMA_UNSUPPORTED';
+
     public function __construct(private readonly EdgeSyncOutboxService $outbox)
     {
+    }
+
+    /** Bounded exponential backoff for SCHEMA_UNSUPPORTED: base·2^(attempts−1), capped (config edge.sync.schema_retry_*). */
+    public static function schemaRetryDelaySeconds(int $attempts): int
+    {
+        $base = max(1, (int) config('edge.sync.schema_retry_base_seconds', 60));
+        $max = max($base, (int) config('edge.sync.schema_retry_max_seconds', 900));
+        $exp = min(max($attempts, 1) - 1, 16);
+
+        return (int) min($max, $base * (2 ** $exp));
     }
 
     /**
@@ -137,6 +151,25 @@ class EdgeSyncSender
         }
 
         $code = (string) ($ack['failure_code'] ?? '');
+
+        // W6 (coordinator-approved, 25 Sep 2026) — CLOUD-FIRST DEPLOY ORDERING: a Cloud that does not (yet) speak this
+        // envelope's schema answers SCHEMA_UNSUPPORTED. For the appliance that is NOT a terminal verdict about the
+        // envelope — the Cloud will be upgraded and the identical immutable bytes will then apply (the Cloud registry
+        // re-attempts a refused, never-applied row with the SAME content). Park it with a BOUNDED exponential backoff
+        // instead of failed_permanent. The shared EdgeIngestionVerdicts list is unchanged (the Cloud still answers
+        // `refused` with the envelope identity).
+        if ($code === self::SCHEMA_RETRY_CODE && $status === 'refused') {
+            $delay = self::schemaRetryDelaySeconds((int) $row->attempts);
+            try {
+                $this->outbox->deferLease($row, $delay, $status . ':' . $code . ' (Cloud not upgraded yet; retry in ' . $delay . 's)');
+            } catch (Throwable $e) {
+                $this->outbox->releaseLease($row->fresh() ?? $row, 'defer: ' . mb_substr($e->getMessage(), 0, 200));
+            }
+            $this->audit('schema_unsupported_deferred', $row, ['status' => $status, 'failure_code' => $code, 'retry_in_seconds' => $delay]);
+
+            return 'retry';
+        }
+
         if ($status === 'conflict' || in_array($code, self::TERMINAL_FAILURES, true)) {
             $this->outbox->markFailedPermanent($row, $status . ':' . $code);
             $this->audit('terminal_failure', $row, ['status' => $status, 'failure_code' => $code]);

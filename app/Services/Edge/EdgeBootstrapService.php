@@ -32,7 +32,15 @@ class EdgeBootstrapService
     // of the manifest hash), so ONE package format serves the initial bootstrap AND every subsequent
     // config refresh. No real appliance consumes v4 yet (EDGE_FEATURE_ENABLED=false, none deployed),
     // so this is a clean forward bump, not a compat break.
-    public const SCHEMA_VERSION = 'edge-bootstrap-v6'; // v6: + promotions, promotion_targets, customers, customer_addresses (a v5 export lacks them and must be refused)
+    // v6: + promotions, promotion_targets, customers, customer_addresses (a v5 export lacks them and must be refused).
+    // v7 (W6, 0.7.0-edge): + product_modifier_group, GLOBAL (branch_id NULL) modifier groups + their modifiers, modifiers
+    // whose linked product is not POS-visible (the linked product ships as a bare config row), currencies +
+    // currency_denominations (the shift-close count grid), every ACTIVE payment method (non-cash rows are DISPLAY-ONLY —
+    // every Edge posting path and the sale envelope still accept cash only), and the tenant business name the appliance
+    // persists (edge_local_meta.tenant_business_name). A v6 appliance cannot import a v7 export (exact-match importer) and
+    // is classified software_update_required by EdgeCompatibilityService.
+    public const SCHEMA_VERSION = 'edge-bootstrap-v7';
+
 
     // EDGE-CONFIG-REFRESH-1: the CONFIG payload contract (which sections exist, their column sets, and
     // the upsert/tombstone semantics the refresh applier applies). Versioned separately from the wire
@@ -578,7 +586,12 @@ class EdgeBootstrapService
 
         $add('branches', 'id'); $add('terminals', 'branch_id'); $add('categories'); $add('units');
         $add('products'); $add('product_variants'); $add('product_barcodes'); $add('product_branch_prices', 'branch_id');
-        $add('modifier_groups', 'branch_id'); $add('modifiers'); $add('combos', 'branch_id'); $add('combo_components');
+        $add('modifier_groups'); $add('modifiers'); $add('combos', 'branch_id'); $add('combo_components');
+        // W6 bootstrap v7: product<->group links, global groups (above, no branch filter) and the denomination book.
+        $add('product_modifier_group'); $add('currencies'); $add('currency_denominations');
+        // W6: the contract generation is part of the watermark, so a schema bump always mints a NEW config revision (an
+        // already-bootstrapped appliance applies it as a newer revision instead of a same-revision content conflict).
+        $wm[] = 'bootstrap_schema=' . self::SCHEMA_VERSION;
         $add('payment_methods'); $add('restaurant_floors', 'branch_id'); $add('restaurant_tables', 'branch_id');
         $add('restaurant_waiters', 'branch_id'); $add('delivery_channels'); $add('delivery_riders', 'branch_id');
         $add('printers', 'branch_id'); $add('receipt_layout_settings', 'branch_id'); $add('category_printer_mappings', 'branch_id');
@@ -621,7 +634,8 @@ class EdgeBootstrapService
         $rows = fn ($q, array $cols) => collect($q->orderBy('id')->get($cols))->map(fn ($r) => (array) $r)->all();
 
         $terminalIds = $conn->table('terminals')->where('branch_id', $b)->pluck('id')->all();
-        $groupIds    = $conn->table('modifier_groups')->where('branch_id', $b)->pluck('id')->all();
+        // W6 v7: the branch's groups PLUS the global ones (branch_id NULL) — the same set the Online POS offers.
+        $groupIds    = $conn->table('modifier_groups')->where(fn ($q) => $q->where('branch_id', $b)->orWhereNull('branch_id'))->pluck('id')->all();
 
         // Included product set + included ACTIVE variant set (everything else is constrained to these).
         $productIds = $conn->table('products')->where('is_sellable', 1)->where('is_pos_visible', 1)->where('status', 'active')->pluck('id')->all();
@@ -657,8 +671,17 @@ class EdgeBootstrapService
         $ingredientProductIds = $ingredientRows->pluck('product_id')->filter()->map(fn ($x) => (int) $x)->unique()->values()->all();
         $ingredientVariantIds = $ingredientRows->pluck('product_variant_id')->filter()->map(fn ($x) => (int) $x)->unique()->values()->all();
 
-        // Full product/variant coverage the appliance must know about = sellable + recipe raw materials.
-        $allProductIds = array_values(array_unique(array_merge($productIds, $ingredientProductIds)));
+        // W6 v7: modifiers of the shipped groups ship whole; a modifier's linked product (often a raw ingredient that is not
+        // POS-visible) ships as a bare config row so Edge operational stock can consume it. A modifier whose linked product
+        // no longer exists is dropped (FK-coherent import).
+        $modifierRows = $conn->table('modifiers')->whereIn('modifier_group_id', $groupIds ?: [0])
+            ->where(fn ($q) => $q->whereNull('linked_product_id')->orWhereIn('linked_product_id', $conn->table('products')->select('id')))
+            ->orderBy('id')
+            ->get(['id', 'modifier_group_id', 'name', 'price_delta', 'linked_product_id', 'consume_stock', 'linked_quantity', 'linked_unit_id', 'is_default', 'sort_order', 'status']);
+        $modifierProductIds = $modifierRows->pluck('linked_product_id')->filter()->map(fn ($x) => (int) $x)->unique()->values()->all();
+
+        // Full product/variant coverage the appliance must know about = sellable + recipe raw materials + modifier-linked.
+        $allProductIds = array_values(array_unique(array_merge($productIds, $ingredientProductIds, $modifierProductIds)));
         $apid = $allProductIds ?: [0];
         $ingredientVariantRows = $ingredientVariantIds
             ? $conn->table('product_variants')->whereIn('id', $ingredientVariantIds)->orderBy('id')
@@ -674,6 +697,8 @@ class EdgeBootstrapService
             ->concat($ingredientRows->pluck('unit_id'))
             ->concat($unitConversionRows->pluck('from_unit_id'))
             ->concat($unitConversionRows->pluck('to_unit_id'))
+            ->concat($modifierRows->pluck('linked_unit_id'))
+            ->concat($conn->table('products')->whereIn('id', $apid)->pluck('unit_id'))
             ->filter()->map(fn ($x) => (int) $x)->unique()->values()->all();
 
         return [
@@ -712,18 +737,24 @@ class EdgeBootstrapService
             'product_branch_prices' => $rows($conn->table('product_branch_prices')->where('branch_id', $b)->whereIn('product_id', $pid)
                 ->where(fn ($q) => $q->whereNull('product_variant_id')->orWhereIn('product_variant_id', $vid)),
                 ['id', 'branch_id', 'product_id', 'product_variant_id', 'selling_price', 'minimum_selling_price', 'is_available']),
-            'modifier_groups' => $rows($conn->table('modifier_groups')->where('branch_id', $b),
+            'modifier_groups' => $rows($conn->table('modifier_groups')->whereIn('id', $groupIds ?: [0]),
                 ['id', 'branch_id', 'name', 'min_select', 'max_select', 'is_required', 'sort_order', 'status']),
-            // Modifiers only ship when their linked product (if any) is included.
-            'modifiers' => $rows($conn->table('modifiers')->whereIn('modifier_group_id', $groupIds ?: [0])
-                ->where(fn ($q) => $q->whereNull('linked_product_id')->orWhereIn('linked_product_id', $pid)),
-                ['id', 'modifier_group_id', 'name', 'price_delta', 'linked_product_id', 'consume_stock', 'linked_quantity', 'linked_unit_id', 'is_default', 'sort_order', 'status']),
+            // W6 v7: every modifier of a shipped group (its linked product ships in `products` above).
+            'modifiers' => $modifierRows->map(fn ($r) => (array) $r)->all(),
+            // W6 v7: which groups apply to which SELLABLE product (Online resolves options through this pivot).
+            'product_modifier_group' => $rows($conn->table('product_modifier_group')->whereIn('product_id', $pid)->whereIn('modifier_group_id', $groupIds ?: [0]),
+                ['id', 'product_id', 'modifier_group_id', 'sort_order']),
             'combos' => $rows($conn->table('combos')->where('branch_id', $b)->whereIn('id', $cid),
                 ['id', 'branch_id', 'code', 'name', 'price', 'sort_order', 'status', 'description']),
             'combo_components' => $rows($conn->table('combo_components')->whereIn('combo_id', $cid),
                 ['id', 'combo_id', 'product_id', 'product_variant_id', 'quantity', 'sort_order']),
-            'payment_methods' => $rows($conn->table('payment_methods')->where('is_active', 1)->whereIn('method_type', self::PHASE1_PAYMENT_TYPES),
+            // W6 v7: every active method — non-cash rows are DISPLAY-ONLY (Online lists them; Edge shows them disabled). The
+            // offline tender rule is unchanged: EdgeLocalPosService::assertPaymentsOffline + the sale envelope accept cash only.
+            'payment_methods' => $rows($conn->table('payment_methods')->where('is_active', 1),
                 ['id', 'code', 'name', 'method_type', 'requires_reference', 'is_cash_drawer', 'is_active']),
+            // W6 v7 (Team 4 C-3): the denomination book for the shift-close count grid (CashCountService reads the default currency).
+            'currencies' => $rows($conn->table('currencies'), ['id', 'code', 'name', 'symbol', 'decimal_places', 'is_default', 'is_active']),
+            'currency_denominations' => $rows($conn->table('currency_denominations'), ['id', 'currency_id', 'denomination_value', 'denomination_type', 'is_active']),
             'restaurant_floors' => $rows($conn->table('restaurant_floors')->where('branch_id', $b), ['id', 'branch_id', 'name', 'code', 'status', 'sort_order']),
             'restaurant_tables' => $rows($conn->table('restaurant_tables')->where('branch_id', $b), ['id', 'branch_id', 'restaurant_floor_id', 'table_no', 'name', 'capacity', 'status', 'sort_order']),
             'restaurant_waiters' => $rows($conn->table('restaurant_waiters')->where('branch_id', $b), ['id', 'branch_id', 'name', 'code', 'phone', 'status']),

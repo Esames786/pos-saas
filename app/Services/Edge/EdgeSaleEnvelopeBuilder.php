@@ -20,8 +20,20 @@ use RuntimeException;
  * `content_hash = sha256(canonicalJson(envelope minus content_hash))`.
  *
  * FAIL-CLOSED (defense in depth, §8): only the offline-supported commercial shape may become a
- * syncable envelope — paid status, quick_sale/takeaway/dine_in, cash-only payments, no
- * discount/promo/tip, no combo lines. Anything else refuses loudly; nothing is silently dropped.
+ * syncable envelope — paid status, quick_sale/takeaway/dine_in/delivery, cash-only payments, a
+ * discount explained by its type / promotion / line discounts, coherent deal rows. Anything else
+ * refuses loudly; nothing is silently dropped.
+ *
+ * W6 CONTRACT (0.7.0-edge, docs/status/edge-w6-contract-and-reconcile-plan.md §B0.2):
+ *   - v1 stays the byte shape of every plain sale. Additive optional keys ride v1 because an old Cloud
+ *     hashes the whole envelope and ignores unknown keys with the SAME money/stock outcome:
+ *     tips (`totals.tip_amount`, already carried), line-only discounts (`lines[].discount_amount`,
+ *     already carried), the held/Direct-Pay note (top-level `notes`, emitted ONLY when non-empty).
+ *   - `edge-sale-envelope-v2` is emitted ONLY for a sale with a selected modifier that consumes linked
+ *     stock (consume_stock=1): an old Cloud ignoring it would post WRONG official stock/COGS, so it must
+ *     refuse (SCHEMA_UNSUPPORTED — the appliance keeps the row pending, EdgeSyncSender) rather than guess.
+ *   - Direct-Pay print intents (kot/receipt_print_intent, direct_pay_print_state) are LOCAL ONLY — never a
+ *     key here (Cloud ingestion creates no print job; EdgeW6ContractEnvelopeMySqlTest asserts absence).
  *
  * Field authority: every value is read from the PERSISTED rows of the sale transaction (never the
  * request), and parents are referenced by canonical identity (sale/line/payment/shift/session/KOT
@@ -32,6 +44,9 @@ use RuntimeException;
 class EdgeSaleEnvelopeBuilder
 {
     public const SCHEMA_VERSION = 'edge-sale-envelope-v1';
+
+    /** W6: emitted only when a line carries a stock-consuming modifier (see class doc). */
+    public const SCHEMA_VERSION_V2 = 'edge-sale-envelope-v2';
 
     /** V1 offline-supported commercial shape (mirrors the EdgeLocalPosService gates). */
     private const SUPPORTED_ORDER_TYPES = ['quick_sale', 'takeaway', 'dine_in', 'delivery'];
@@ -61,7 +76,7 @@ class EdgeSaleEnvelopeBuilder
         $user = \App\Models\Tenant\User::on('tenant')->find((int) $sale->created_by_user_id);
 
         $envelope = [
-            'envelope_schema_version' => self::SCHEMA_VERSION,
+            'envelope_schema_version' => $this->consumesModifierStock($sale) ? self::SCHEMA_VERSION_V2 : self::SCHEMA_VERSION,
 
             // Frozen binding + config context (§5 / §9 of the design).
             'tenant_id' => (int) $meta->tenant_id,
@@ -180,6 +195,13 @@ class EdgeSaleEnvelopeBuilder
             ],
         ];
 
+        // W6 (B5): the held-check / Direct-Pay note (Online persists it on the sale). Additive v1 key, present ONLY
+        // when there is a note, so a plain sale keeps its exact pre-W6 byte shape.
+        $notes = $sale->notes !== null ? trim((string) $sale->notes) : '';
+        if ($notes !== '') {
+            $envelope['notes'] = mb_substr($notes, 0, 1000);
+        }
+
         $this->assertNoSecretFields($envelope);
 
         $envelope['content_hash'] = hash('sha256', EdgeCanonicalJson::encode($envelope));
@@ -236,17 +258,21 @@ class EdgeSaleEnvelopeBuilder
         if (! EdgeIdentity::isValid((string) $sale->sale_uuid, EdgeIdentity::FORMAT_ULID)) {
             throw new RuntimeException('ENVELOPE_UNSUPPORTED: the sale is missing its canonical sale_uuid.');
         }
+        $sale->loadMissing(['lines', 'payments.method']);
         // DISCOUNT/PROMO parity: a manual discount / promotion is a legitimate offline outcome now (shared totals
         // service + branch approval mode); the envelope carries how it was reached. A discount must still be
-        // coherent with its type — money without a stated reason is refused.
-        if ((float) $sale->discount_amount > 0 && (string) ($sale->discount_type ?? 'none') === 'none' && $sale->promotion_id === null) {
-            throw new RuntimeException('ENVELOPE_UNSUPPORTED: a discount without a discount type or promotion is not syncable.');
+        // coherent — money without a stated reason is refused. W6 (B3): per-line discounts are a stated reason
+        // (Online folds them into the manual discount; the envelope carries every lines[].discount_amount).
+        $lineDiscounts = (float) $sale->lines->sum(fn ($l) => (float) ($l->discount_amount ?? 0));
+        if ((float) $sale->discount_amount > 0 && (string) ($sale->discount_type ?? 'none') === 'none' && $sale->promotion_id === null && $lineDiscounts <= 0.0) {
+            throw new RuntimeException('ENVELOPE_UNSUPPORTED: a discount without a discount type, promotion or line discount is not syncable.');
         }
-        if ((float) ($sale->tip_amount ?? 0) > 0) {
-            throw new RuntimeException('ENVELOPE_UNSUPPORTED: tips are not supported offline (defense in depth).');
+        // W6 (B4): a tip is carried in totals.tip_amount (Cloud projects it and credits the tips account) — the
+        // pre-W6 "tips are not supported offline" guard is lifted; a negative tip is still incoherent.
+        if ((float) ($sale->tip_amount ?? 0) < 0) {
+            throw new RuntimeException('ENVELOPE_UNSUPPORTED: a negative tip is not syncable.');
         }
 
-        $sale->loadMissing(['lines', 'payments.method']);
         if ($sale->lines->isEmpty() || $sale->payments->isEmpty()) {
             throw new RuntimeException('ENVELOPE_UNSUPPORTED: a syncable sale needs persisted lines and payments.');
         }
@@ -275,6 +301,29 @@ class EdgeSaleEnvelopeBuilder
                 throw new RuntimeException("ENVELOPE_UNSUPPORTED: payment method type [{$type}] is not offline-syncable.");
             }
         }
+    }
+
+    /**
+     * W6 (B1): does any line carry a selected modifier whose SYNCED config consumes linked stock? Read from the
+     * appliance's replicated modifier book (bootstrap v7) — the same book the local operational stock consumed.
+     */
+    private function consumesModifierStock(SalesOrder $sale): bool
+    {
+        $ids = [];
+        foreach ($sale->lines as $line) {
+            foreach ((is_array($line->modifiers) ? $line->modifiers : []) as $entry) {
+                $id = (int) (is_array($entry) ? ($entry['modifier_id'] ?? 0) : 0);
+                if ($id > 0) {
+                    $ids[$id] = true;
+                }
+            }
+        }
+        if ($ids === []) {
+            return false;
+        }
+
+        return \App\Models\Tenant\Modifier::on('tenant')->whereIn('id', array_keys($ids))
+            ->where('consume_stock', true)->where('linked_quantity', '>', 0)->exists();
     }
 
     private function assertNoSecretFields(array $node): void
