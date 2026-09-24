@@ -148,10 +148,16 @@ class EdgeTableReservationService
     {
         $customerId = isset($data['customer_id']) && $data['customer_id'] !== null && $data['customer_id'] !== '' ? (int) $data['customer_id'] : null;
         if ($customerId !== null) {
+            // R15 — Online validates `reserved_customer_id` with exists:customers: an unknown book id is refused, never
+            // silently turned into a walk-in. Online snapshot rule: a TYPED name/phone wins, else the book customer's.
             $customer = Customer::on('tenant')->find($customerId);
-            if ($customer) {
-                return [$customerId, $customer->customer_uuid ?? null, $customer->name ?? ($data['customer_name'] ?? null), $customer->phone ?? ($data['customer_phone'] ?? null)];
+            if (! $customer) {
+                throw ValidationException::withMessages(['customer_id' => 'The selected customer is not in the customer book on this Branch Server.']);
             }
+            $typedName = trim((string) ($data['customer_name'] ?? ''));
+            $typedPhone = trim((string) ($data['customer_phone'] ?? ''));
+
+            return [$customerId, $customer->customer_uuid ?? null, $typedName !== '' ? $typedName : $customer->name, $typedPhone !== '' ? $typedPhone : $customer->phone];
         }
 
         return [null, null, $data['customer_name'] ?? null, $data['customer_phone'] ?? null];

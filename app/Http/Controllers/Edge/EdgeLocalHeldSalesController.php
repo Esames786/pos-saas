@@ -8,7 +8,9 @@ use App\Http\Controllers\Edge\Concerns\ResolvesEdgePosContext;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\VoidReason;
 use App\Services\Edge\EdgeBranchContext;
+use App\Services\Edge\EdgeLocalOrderLifecycleService;
 use App\Services\Edge\EdgeLocalPosService;
+use App\Services\Edge\EdgeLocalTableOperationsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use RuntimeException;
@@ -25,6 +27,8 @@ class EdgeLocalHeldSalesController extends Controller
     public function __construct(
         private readonly EdgeBranchContext $context,
         private readonly EdgeLocalPosService $pos,
+        private readonly EdgeLocalOrderLifecycleService $lifecycle,
+        private readonly EdgeLocalTableOperationsService $tables,
     ) {
     }
 
@@ -52,6 +56,8 @@ class EdgeLocalHeldSalesController extends Controller
             'delivery_charge_amount' => ['nullable', 'numeric', 'min:0', 'max:99999'],
             // POS-DRAFT-1 + PHASE 2b parity (offline): park as draft; quick-sale vehicle + waiter attribution.
             'save_as_draft' => ['nullable', 'boolean'],
+            // R21 (Team 2 EdgeLocalPosService): a revision may re-target the check's order type / table session.
+            'change_order_details' => ['nullable', 'boolean'],
             'vehicle_number' => ['nullable', 'string', 'max:50', 'required_if:order_type,quick_sale'],
             'restaurant_waiter_id' => ['nullable', 'integer', 'required_if:order_type,quick_sale'],
             'lines' => ['required', 'array', 'min:1'],
@@ -61,6 +67,9 @@ class EdgeLocalHeldSalesController extends Controller
             'lines.*.product_variant_id' => ['nullable', 'integer'],
             'lines.*.quantity' => ['required', 'numeric', 'gt:0'],
             'lines.*.modifiers' => ['nullable', 'array'],
+            // W2 (Online lines.*.kitchen_note / lines.*.discount_amount) — validated by EdgeLocalPosService; not stripped on Hold.
+            'lines.*.kitchen_note' => ['nullable', 'string', 'max:500'],
+            'lines.*.discount_amount' => ['nullable', 'numeric', 'min:0'],
             'void_items' => ['nullable', 'array'],
             'void_items.*.old_line_id' => ['required_with:void_items', 'integer'],
             'void_items.*.quantity' => ['required_with:void_items', 'numeric', 'gt:0'],
@@ -71,13 +80,22 @@ class EdgeLocalHeldSalesController extends Controller
         if ($terminal instanceof JsonResponse) {
             return $terminal;
         }
+        // T3-3 (D-06): remember the newest KOT batch BEFORE a revision that voids sent lines, so the correction
+        // Reminder is planned for exactly the cancel batch this save creates (Team 5 EdgeLocalPrintKotService).
+        $hasVoids = ! empty($data['held_sale_id']) && ! empty($data['void_items']);
+        $batchBefore = $hasVoids ? (int) \App\Models\Tenant\KotBatch::on('tenant')->where('sales_order_id', (int) $data['held_sale_id'])->max('id') : null;
         try {
             $sale = $this->pos->holdOrReviseSale($data, auth('tenant')->user(), $terminal->id);
         } catch (RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
+        $voidJobs = [];
+        if ($hasVoids) {
+            $voidJobs = app(\App\Services\Edge\EdgeLocalPrintKotService::class)->queueLineVoidCorrectionReminders($sale, (int) $terminal->id, $batchBefore);
+        }
 
         return response()->json([
+            'void_print_jobs' => collect($voidJobs)->filter(fn ($j) => $j instanceof \App\Models\Tenant\PrintJob)->map(fn ($j) => $this->jobView($j))->values(),
             'sale_id' => $sale->id, 'sale_no' => $sale->sale_no, 'sale_uuid' => $sale->sale_uuid,
             'status' => $sale->status, 'is_draft' => (bool) $sale->is_draft, 'grand_total' => (float) $sale->grand_total,
             'restaurant_table_session_id' => $sale->restaurant_table_session_id,
@@ -163,7 +181,24 @@ class EdgeLocalHeldSalesController extends Controller
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
-        return response()->json(['sale_id' => $result['sale']->id, 'status' => $result['sale']->status]);
+        // T3-2 (D-05): the CANCEL KOT (+ Reminder) jobs this cancel created — a browser/fallback one opens Print Here on the page.
+        $jobs = collect(array_merge($result['jobs'] ?? [], $result['reminder_jobs'] ?? []))
+            ->filter(fn ($j) => $j instanceof \App\Models\Tenant\PrintJob)->map(fn ($j) => $this->jobView($j))->values();
+
+        return response()->json(['sale_id' => $result['sale']->id, 'status' => $result['sale']->status, 'jobs' => $jobs]);
+    }
+
+    /** The print-job fields the page's handlePrintJobs() reads (same names as EdgeLocalPrintJobController::printJobView). */
+    private function jobView(\App\Models\Tenant\PrintJob $j): array
+    {
+        $j = $j->fresh() ?? $j;
+        $j->loadMissing('printer');
+
+        return [
+            'id' => (int) $j->id, 'document_type' => $j->document_type, 'print_status' => $j->print_status,
+            'printer_name' => $j->printer?->name ?? 'Print here (browser)', 'fallback' => empty($j->printer_id),
+            'preview_url' => url('/edge/local/pos/print-jobs/' . $j->id . '/document'),
+        ];
     }
 
     /** SPLIT BILL parity — move selected quantities onto a new held check on the same table (each pays on its own). */
@@ -199,14 +234,12 @@ class EdgeLocalHeldSalesController extends Controller
     // ═══════════════════════ EDGE-CASHIER-UI-2 — Recall / Dine-In browser workflow data ═══════════════════════
 
     /** RECALL parity — the open checks (held + draft) on the bound branch, limited to the order types this operator may run. */
-    public function heldSales(): JsonResponse
+    public function heldSales(Request $request): JsonResponse
     {
-        $branchId = (int) $this->context->requireCurrent()->branch_id;
-        $allowed = auth('tenant')->user()?->effectiveAllowedOrderTypes() ?? [];
-        $sales = SalesOrder::on('tenant')->with(['restaurantTable:id,table_no,name', 'restaurantWaiter:id,name', 'lines:id,sales_order_id,quantity'])
-            ->where('branch_id', $branchId)->where('status', 'held')
-            ->when($allowed, fn ($q) => $q->whereIn('order_type', $allowed))
-            ->orderByDesc('id')->limit(100)->get();
+        // A26 — Online HeldSaleController::ajaxList scoping: allowed order types, the optional type filter (narrows, never
+        // widens) and UserDataScope (branch / terminal / order-type assignments).
+        $sales = $this->lifecycle->heldSalesQuery(auth('tenant')->user(), $request->query('order_type'))
+            ->orderByDesc('updated_at')->orderByDesc('id')->limit(100)->get();
 
         return response()->json(['held_sales' => $sales->map(fn (SalesOrder $s) => $this->heldSaleView($s))->values()]);
     }
@@ -221,14 +254,63 @@ class EdgeLocalHeldSalesController extends Controller
             return response()->json(['message' => 'No open check found.'], 404);
         }
 
-        return response()->json(['held_sale' => $this->heldSaleView($row, true)]);
+        $view = $this->heldSaleView($row, true);
+        // R10 — the session bar data (Online HeldSaleController::sessionPayload); A29/R31 — the dead-session facts the
+        // Online POS computes on recall (a held bill whose table session is closed/cancelled → deadSessionModal).
+        $session = $row->restaurant_table_session_id ? \App\Models\Tenant\RestaurantTableSession::on('tenant')->find((int) $row->restaurant_table_session_id) : null;
+        $view['table_session'] = $session && in_array($session->status, ['open', 'bill_requested'], true) ? $this->tables->sessionPayload($session) : null;
+        $view['dead_session'] = $this->tables->deadSessionInfo($row);
+
+        return response()->json(['held_sale' => $view]);
+    }
+
+    // ═══════════════════════ W3 — order lifecycle (Team 3) ═══════════════════════
+
+    /** A27 — Recent / Completed Orders (Online POSController::recentSales; tenant.api.pos.* is permission-free on Online). */
+    public function recentSales(Request $request): JsonResponse
+    {
+        return response()->json(['sales' => $this->lifecycle->recentSales(auth('tenant')->user(), $request->query('order_type'))]);
+    }
+
+    /** A29/R31 — dead-session recovery: a held bill on a closed session moves to a NEW session on a free table. */
+    public function reattachTable(Request $request, int $sale): JsonResponse
+    {
+        if ($denied = $this->denyUnlessCan('tenant.held-sales.reattach-table', 'Moving a bill off a closed table needs the Reattach Table permission.')) {
+            return $denied;
+        }
+        $data = $request->validate(['restaurant_table_id' => ['required', 'integer']]);
+        $terminal = $this->selectedTerminal($request);
+        if ($terminal instanceof JsonResponse) {
+            return $terminal;
+        }
+        try {
+            $r = $this->tables->reattachTable($sale, (int) $data['restaurant_table_id'], $terminal, auth('tenant')->user());
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'ok' => true, 'sale_id' => (int) $r['sale']->id,
+            'restaurant_table_session_id' => (int) $r['session']->id,
+            'restaurant_table_id' => (int) $r['session']->restaurant_table_id,
+            'table_no' => $r['session']->table?->table_no,
+            'message' => 'Bill moved to table ' . ($r['session']->table?->table_no ?? '') . '.',
+        ]);
     }
 
     /** Active cancellation reasons (the shared VoidReason book) for cancel-order / void flows. */
     public function voidReasons(): JsonResponse
     {
+        // R25/R27 — the branch approval modes the Online page embeds (branchCancellationModes / branchLineCancellationModes)
+        // so the reason picker can say "Manager code required" before the cashier commits; the shared
+        // KotCancellationService still decides on the server (same line-falls-back-to-order rule).
+        $branch = \App\Models\Tenant\Branch::on('tenant')->find((int) $this->context->requireCurrent()->branch_id);
+        $orderMode = (string) ($branch?->held_kot_cancellation_approval_mode ?: \App\Models\Tenant\Branch::KOT_CANCELLATION_MANAGER_REQUIRED);
+        $lineMode = (string) ($branch?->held_kot_line_cancellation_approval_mode ?: $orderMode);
+
         return response()->json(['reasons' => VoidReason::on('tenant')->where('is_active', true)
-            ->orderBy('name')->get(['id', 'name', 'reason_type', 'requires_manager_approval'])]);
+            ->orderBy('name')->get(['id', 'name', 'reason_type', 'requires_manager_approval']),
+            'order_approval_mode' => $orderMode, 'line_approval_mode' => $lineMode]);
     }
 
     private function heldSaleView(SalesOrder $s, bool $withLines = false): array
@@ -250,6 +332,7 @@ class EdgeLocalHeldSalesController extends Controller
             'waiter_name' => $s->restaurantWaiter?->name,
             'item_count' => (float) $s->lines->sum('quantity'),
             'created_at' => $s->created_at?->toIso8601String(),
+            'updated_at' => $s->updated_at?->toIso8601String(),
         ];
         if ($withLines) {
             $out['lines'] = $s->lines->map(fn ($l) => [
@@ -262,7 +345,12 @@ class EdgeLocalHeldSalesController extends Controller
                 'line_kind' => (string) ($l->line_kind ?? 'standard'),
                 'combo_id' => $l->combo_id ? (int) $l->combo_id : null,
                 'parent_line_id' => $l->parent_sales_order_line_id ? (int) $l->parent_sales_order_line_id : null,
+                // W2 re-hydration on Recall / Add Round (Online ajaxList line payload): options, variant, unit, kitchen note, line discount.
+                'modifiers' => is_array($l->modifiers) ? $l->modifiers : [],
+                'variant_name' => $l->variant_name, 'unit_code' => $l->unit_code, 'kitchen_note' => $l->kitchen_note,
+                'discount_amount' => (float) $l->discount_amount,
             ])->values();
+            $out['notes'] = $s->notes;
             $out['discount_type'] = (string) ($s->discount_type ?? 'none');
             $out['discount_value'] = (float) $s->discount_value;
             $out['promo_code'] = $s->promo_code;
