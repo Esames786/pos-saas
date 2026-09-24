@@ -238,16 +238,47 @@ class EdgeLocalPrintDeliveryService
             // ONE lock order everywhere: print_job FIRST, then its delivery row.
             $job = PrintJob::where('id', $printJobId)->lockForUpdate()->first();
             $delivery = EdgeLocalPrintDelivery::where('print_job_id', $printJobId)->lockForUpdate()->first();
-            if (! $job || ! $delivery || $delivery->delivery_state !== EdgeLocalPrintDelivery::STATE_TERMINAL_FAILED) {
+            // W5 D-14: a DISMISSED job (shared `cancelled`) is retryable too — Online requeueFailed accepts
+            // failed|cancelled and the Online Retry offers it; its delivery row (if any) is not live.
+            $dismissed = $job && $job->print_status === 'cancelled' && ! ($delivery && $this->leaseIsLive($delivery));
+            if (! $job || (! $dismissed && (! $delivery || $delivery->delivery_state !== EdgeLocalPrintDelivery::STATE_TERMINAL_FAILED))) {
                 throw new RuntimeException('Only a terminally-failed local delivery can be retried.');
             }
             $this->printJobs->requeueFailed($job); // shared eligibility + field contract (failed|cancelled only)
-            $delivery->update([
+            $delivery?->update([
                 'delivery_state' => EdgeLocalPrintDelivery::STATE_WAITING,
                 'failure_count' => 0, 'worker_uuid' => null, 'lease_token' => null,
                 'claimed_at' => null, 'lease_expires_at' => null, 'next_attempt_at' => null,
             ]);
         });
+    }
+
+    /**
+     * W5 D-14 — DISMISS (Online PrintJobController::dismiss → the ONE shared PrintJobService::cancelObsolete):
+     * abandon a queued/failed job that will never be wanted, with NO print counters or KOT bookkeeping. The
+     * appliance adds one transport guard: a job the local worker is writing to the printer RIGHT NOW (a live
+     * lease) cannot be dismissed — its paper may already be coming out. The shared service refuses printed jobs.
+     */
+    public function dismiss(int $printJobId, string $reason): void
+    {
+        DB::connection('tenant')->transaction(function () use ($printJobId, $reason) {
+            // ONE lock order everywhere: print_job FIRST, then its delivery row.
+            $job = PrintJob::where('id', $printJobId)->lockForUpdate()->first();
+            $delivery = EdgeLocalPrintDelivery::where('print_job_id', $printJobId)->lockForUpdate()->first();
+            if (! $job) {
+                throw new RuntimeException('No print job found.');
+            }
+            if ($delivery && $this->leaseIsLive($delivery)) {
+                throw new RuntimeException('This job is being sent to the printer right now — wait a moment, then dismiss it if it did not print.');
+            }
+            $this->printJobs->cancelObsolete($job, $reason); // shared: queued|failed only, no counters
+        });
+    }
+
+    private function leaseIsLive(EdgeLocalPrintDelivery $delivery): bool
+    {
+        return $delivery->delivery_state === EdgeLocalPrintDelivery::STATE_LEASED
+            && $delivery->lease_expires_at !== null && $delivery->lease_expires_at->isFuture();
     }
 
     /**
