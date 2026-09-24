@@ -359,6 +359,84 @@ without owner review.
 
 ## PART C — Release plan for 0.7.0-edge (for owner approval BEFORE the LAB is touched)
 
+### C0. Wave-2 status (25 Sep 2026) — what landed, what the release is cut from
+
+```
+RECONCILED_TO        b529c95 (merge 1baa34c, 0 conflicts)
+W6_CODE_COMMIT       06bb53b  (contract code + tests; see docs/status/edge-w6-team6-report.md)
+RELEASE_CANDIDATE    the W6 docs commit on top of 06bb53b (the branch tip handed back)  = tip of feat/edge-config-refresh-v1 after the W6 docs commit (app/config/database/resources/routes
+                     byte-identical to 06bb53b; docs are excluded from the artifact). NOT pushed yet — the coordinator pushes, then the
+                     C1 build runs from a `git archive` export of exactly this commit. Any later commit re-opens gates C10.2–C10.5.
+ENVELOPES            edge-sale-envelope-v1 (unchanged shape for plain sales; + optional `notes`; tips / line-only discounts now accepted)
+                     edge-sale-envelope-v2 (ONLY sales with a stock-consuming modifier; Cloud posts modifier FEFO via SalesService::consumeLineModifiers)
+BOOTSTRAP            edge-bootstrap-v7 (config schema stays edge-config-v1; sync_protocol placeholder unchanged 'edge-sync-v0')
+OUTBOX               SCHEMA_UNSUPPORTED = retryable, bounded backoff 60 s·2^(n−1) capped 900 s (edge.sync.schema_retry_*)
+```
+
+### C5a. Migration list for 0.7.0-edge (`git diff --name-only 623f887..the W6 docs commit on top of 06bb53b (the branch tip handed back) -- database/migrations`)
+
+| Path | Where it runs | Origin | Nature |
+|---|---|---|---|
+| `database/migrations/tenant/2026_09_17_000001_add_customer_email_switch_to_catering_settings.php` | appliance DB at update (tenant path) **and** LAB Cloud tenant DB `pos_lab_tenant_edge` (`tenants:migrate`, owner-gated) | canonical reconcile | additive boolean, `hasColumn` guard |
+| `database/migrations/edge/2026_09_25_000001_add_tenant_business_name_to_edge_local_meta.php` | appliance DB only (edge path, after the tenant path) | W6 bootstrap v7 (Team 4 C-4) | additive nullable `edge_local_meta.tenant_business_name`, `hasColumn` guard |
+
+Cloud master: **none**. Cloud tenant (besides the canonical catering column): **none** (the v2 ingestion reuses `edge_inbound_sale_ingestions`;
+`envelope_schema_version` is string(64)). No down-migration is ever run (forward-only upgrader).
+
+### C6a. LAB pre-update steps (add to C6; all BEFORE the update, owner-approved, nothing done by W6)
+
+The LAB Cloud serves THIS worktree and has been DOWN since the 22 Sep reboot — W6 did not start it. When the owner restarts it, it runs whatever
+commit the worktree is at; from `06bb53b` on that is **bootstrap v7**.
+
+1. **Bootstrap v7 sequencing warning.** A 0.6.0 appliance cannot import a v7 export (`SCHEMA_UNSUPPORTED`) and the Cloud classifies it
+   `software_update_required`. The moment the LAB Cloud is started on a v7 commit, the installed 0.6.0 appliance's config refresh is refused and its
+   CONFIG_COMPATIBLE readiness can leave STANDBY_READY. Therefore EITHER start the LAB Cloud on v7 only immediately before the approved update window
+   (C8) OR serve the LAB Cloud from an export of the last v6 commit (`30105df`) until the update, then switch to the release commit (owner choice,
+   C6.6). After the update the first refresh is a NEW config revision (the watermark carries `bootstrap_schema=edge-bootstrap-v7`) — applied as a
+   normal revision, not a re-bootstrap. Verify after update: `product_modifier_group`, global modifier groups, currencies/denominations, non-cash
+   (display-only) payment methods and `edge_local_meta.tenant_business_name` imported.
+2. **LAB cashier permissions (NEW, from the integration board).** Every POS action on 0.7.0 is gated by the Online route permission, incl.
+   `tenant.pos.index` for the page. The LAB Cloud seed grants LAB2C5D only `tenant.pos.store / view / hold / recall`. On the LAB Cloud tenant, grant the
+   LAB cashier (and the LAB manager where applicable) the Online cashier set — exactly `onlinePosParityPermissions()` in
+   `tests/MySql/Support/EdgeLocalRuntimeFixture.php` = `tenant.pos.index`, `tenant.pos.store`, `tenant.held-sales.store`, `tenant.held-sales.cancel`,
+   `tenant.sales-orders.split-bill.store`, `tenant.restaurant.table-sessions.open`, `tenant.restaurant.table-sessions.close`, `tenant.shifts.store`,
+   `tenant.shifts.close`, `tenant.api.manager-approvals.verify` (+ `tenant.pos.void-kot-item` for anyone approving/voiding sent food) — BEFORE the update, then let a config refresh carry it (it rides the `users[].permissions` export). Check
+   the same for every real cashier role before any production pairing.
+3. **Cloud first, appliance second.** Upgrade/start the LAB Cloud on the release commit BEFORE the appliance update. If an updated appliance ever meets
+   an older Cloud, v2 rows are deferred (backoff, not failed_permanent) and apply once the Cloud is upgraded — but do not rely on it for the LAB run.
+4. LAB Cloud tenant DB: run the canonical catering migration (`tenants:migrate`) on `pos_lab_tenant_edge` — owner-gated DB mutation.
+5. Unchanged from C6: STANDBY_READY + authority standby, outbox 0/0/0 (a deferred row would show as `leased`), no open shift / held check / open table,
+   fresh verified backup, record version/manifest/pointer/Cloud head, snapshot LAB Cloud DBs into the evidence folder.
+
+### C10a. Gate status at `06bb53b` (wave 2)
+
+```
+Feature (SQLite)  vendor/bin/phpunit tests/Feature/Edge                               OK 137 tests / 32,883 assertions
+                  (route census, artifact boundary incl. Catering job/support absent, dependency closure, Blade gate,
+                   compatibility v6/v7, build info v7, log hygiene)
+Unit              CancellationPolicyRegressionTest + TableBillDecimalRegressionTest  OK 3 / 12
+MySQL targeted    EdgeW6ContractEnvelopeHttp (5) + EdgeW6ContractIngestion (6) + EdgeBootstrapV7 (3) + EdgeComboVoidReconcileHttp (2)
+                  + Menu/Payment/TablesWorkspace/ControlCensus (EDGE_NODE_BIN set; node --check of the composed script)  all OK
+MySQL regression  --filter 'Edge|ManagerApprovalComboVoid|CancelFreesTable|ReceiptProformaVsFinal|BillPreviewPrintTarget|
+                  ComboModifierKotIntegrity|SteakSideModifier|RecipeConsumptionReference|CloudManagerApproval'
+                  589 tests / 6,246 assertions, 1 skipped, 1 error = EdgeBackupRecoveryAuthorityMySqlTest::test_a_dead_appliance_is_replaced…
+                  -> PRE-EXISTING test-order isolation defect, NOT W6: green alone (4/4); fails only when CloudManagerApprovalMySqlTest or
+                  DeliveryChargeMySqlTest ran before it in the same process (both files, EdgeRestoreService and the harness are
+                  unchanged since 30105df). Side effect found: that test leaves a master tenant_databases row ('edgerecov') for the
+                  shared test tenant DB, which makes the canonical BillPreviewPrintTargetMySqlTest fail with a 1062 if it runs later
+                  against the same DB (row removed by hand on _edgewt_t6). Coordinator: harness fix, not a product defect.
+Dry artifact      php artisan edge:build-package <scratch> --no-sign --allow-dirty --vendor-junction=vendor  (dev, UNSIGNED, git_commit
+                  06bb53b, source_dirty false): boundary_audit ok, forbidden_hits [], cloud_only_present [], edge_runtime_missing [],
+                  marker branch_server; edge:audit-package -> PACKAGE OK (2,068 files); app/Jobs/Catering, app/Support/Catering,
+                  app/Services/Catering, EdgeInboundSaleIngestionService physically absent; the new edge migration is present.
+                  Scratch package deleted (junction unlinked first). No release build, no signing, custody keystore untouched.
+Not run here      full `phpunit --testsuite Feature,Unit` and the full MySQL suite (C10.2 — coordinator's release gate), release-mode
+                  EdgeCleanMachineInstallMySqlTest with EDGE_PROOF_VENDOR_FROM (needs the no-dev closure of the release commit).
+```
+
+
+### Original wave-1 release plan (C1–C10 still apply; C0/C5a/C6a/C10a above supersede where they differ)
+
 ### C1. Release commit
 From the coordinator's integration commit on `feat/edge-config-refresh-v1` AFTER: the reconcile (A3), Teams 1–5 integrated, W6 wave-2
 contract code (Cloud + Edge halves together), census re-baseline, and BOTH suites green (Feature/Unit SQLite + full MySQL). The commit
@@ -391,7 +469,7 @@ On the dev Edge instance / clean-machine proof: signature verifies with the cust
 (`EDGE_PROOF_VENDOR_FROM=<closure>`) green with an A(0.6.0-shaped)→B(0.7.0) update.
 
 ### C5. Migrations / schema on the appliance DB
-- Tenant path: `2026_09_17_000001_add_customer_email_switch_to_catering_settings` (from the reconcile). Edge path: **none planned by W6**;
+- Tenant path: `2026_09_17_000001_add_customer_email_switch_to_catering_settings` (from the reconcile). Edge path: `2026_09_25_000001_add_tenant_business_name_to_edge_local_meta` (W6 wave 2, see C5a);
   any `database/migrations/edge/*` a team adds must be listed here by the coordinator at release time
   (`git diff --name-only 623f887..<release> -- database/migrations`) — at d82612f the list is exactly the one tenant migration above.
 - Bootstrap `edge-bootstrap-v7` (B0.4) is NOT a DB migration but a config-contract jump: after the update the appliance must pull a fresh v7
