@@ -10,6 +10,7 @@ use App\Exceptions\ShiftException;
 use App\Models\Tenant\SalesOrder;
 use App\Models\Tenant\Shift;
 use App\Models\Tenant\Terminal;
+use App\Services\Sales\CashCountService;
 use App\Services\Sales\ShiftService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -579,44 +580,13 @@ class ShiftController extends Controller
         return redirect('/shifts')->with('status', $msg . '.');
     }
 
+    /**
+     * The denomination count is the SHARED rule (App\Services\Sales\CashCountService) — the Branch Server's shift close
+     * runs the very same code, so Online and Edge can never drift on what "a count" is: an untouched grid is NO count
+     * (null), never a zero count; the previous lines for this source are replaced; total = Σ quantity × face value.
+     */
     private function calculateCashCount(array $data, string $sourceType, int $sourceId): ?float
     {
-        // The close form submits the denominations array even when every field is blank. That
-        // used to come back as a "count" of 0.00, sailing past any blank-count guard — an
-        // untouched form is NO count, not a zero count.
-        $anyQuantity = collect($data['denominations'] ?? [])->contains(fn ($q) => (int) $q > 0);
-        if (empty($data['denominations']) || ! $anyQuantity) {
-            return null;
-        }
-
-        CashCountLine::where('source_type', $sourceType)
-            ->where('source_id', $sourceId)
-            ->delete();
-
-        $total = 0;
-
-        $denominations = Currency::where('is_default', true)
-            ->with('denominations')
-            ->first()
-            ?->denominations ?? collect();
-
-        foreach ($denominations as $denomination) {
-            $quantity = (int) ($data['denominations'][$denomination->id] ?? 0);
-            $amount   = $quantity * (float) $denomination->denomination_value;
-
-            if ($quantity > 0) {
-                CashCountLine::create([
-                    'source_type'              => $sourceType,
-                    'source_id'                => $sourceId,
-                    'currency_denomination_id' => $denomination->id,
-                    'quantity'                 => $quantity,
-                    'amount'                   => $amount,
-                ]);
-            }
-
-            $total += $amount;
-        }
-
-        return $total;
+        return app(CashCountService::class)->record((array) ($data['denominations'] ?? []), $sourceType, $sourceId);
     }
 }

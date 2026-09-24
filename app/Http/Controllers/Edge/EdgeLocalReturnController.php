@@ -29,7 +29,14 @@ class EdgeLocalReturnController extends Controller
     {
         $this->denyUnlessMayReturn($request);
 
-        return response()->json(['sales' => $this->returns->search((string) $request->query('q', ''), 20, $request->user('tenant'))]);
+        $user = $request->user('tenant');
+
+        return response()->json([
+            'sales' => $this->returns->search((string) $request->query('q', ''), 20, $user),
+            // W4 R3.6: the Online Sales Returns list entry (shown only with its own permission).
+            'can_view_list' => (bool) $user->can('tenant.sales-returns.index'),
+            'list_url' => url('/edge/local/pos/sales-returns'),
+        ]);
     }
 
     /** The return screen's data for one sale (what the Online create screen shows + the offline facts). */
@@ -73,6 +80,9 @@ class EdgeLocalReturnController extends Controller
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
+        // W4 R3.6: Online lands on the posted return (/sales-returns/{id}); the Edge detail screen when the operator may open it.
+        $view['detail_url'] = $request->user('tenant')->can('tenant.sales-returns.show') ? url('/edge/local/pos/sales-returns/' . $view['id']) : null;
+
         return response()->json(['return' => $view], 201);
     }
 
@@ -81,6 +91,66 @@ class EdgeLocalReturnController extends Controller
         $this->denyUnlessMayReturn($request);
 
         return response()->json(['return' => $this->returns->show($return)]);
+    }
+
+    /**
+     * W4 R3.6 — SALES RETURNS list screen (Online SalesReturnController@index, gated `tenant.sales-returns.index`):
+     * Return No / Sale No / Branch / Return Date / Grand Total / Refund Method / Status (+ sync) / View, the Online
+     * date-range filter with Today / Yesterday, and the operator's UserDataScope on the underlying order.
+     */
+    public function listScreen(Request $request): \Illuminate\Contracts\View\View
+    {
+        $user = $request->user('tenant');
+        abort_unless((bool) $user?->can('tenant.sales-returns.index'), 403, 'Viewing sales returns needs the Sales Returns permission (tenant.sales-returns.index).');
+        $filters = $request->validate([
+            'range' => ['nullable', 'in:today,yesterday'],
+            'date_from' => ['nullable', 'date_format:Y-m-d'],
+            'date_to' => ['nullable', 'date_format:Y-m-d'],
+        ]);
+        $branch = \App\Models\Tenant\Branch::on('tenant')->find((int) $this->context->requireCurrent()->branch_id);
+        $clock = app(\App\Support\TenantClock::class);
+        $today = $clock->now($clock->businessTimezone($branch))->toDateString();
+        [$from, $to] = match ($filters['range'] ?? null) {
+            'today' => [$today, $today],
+            'yesterday' => [($y = \Illuminate\Support\Carbon::parse($today)->subDay()->toDateString()), $y],
+            default => [$filters['date_from'] ?? null, $filters['date_to'] ?? null],
+        };
+
+        return view('edge.finance.sales-returns-index', [
+            'branchName' => $branch?->name,
+            'userName' => $user->name,
+            'returns' => $this->returns->listReturns($user, ['date_from' => $from, 'date_to' => $to]),
+            'dateFrom' => $from,
+            'dateTo' => $to,
+            'today' => $today,
+            'clock' => $clock,
+            'tz' => $clock->businessTimezone($branch),
+            'canShow' => (bool) $user->can('tenant.sales-returns.show'),
+            'canCreate' => (bool) $user->can('tenant.sales-returns.store'),
+        ]);
+    }
+
+    /** W4 R3.6 — one SALES RETURN (Online SalesReturnController@show, gated `tenant.sales-returns.show`). */
+    public function detailScreen(Request $request, int $salesReturn): \Illuminate\Contracts\View\View
+    {
+        $user = $request->user('tenant');
+        abort_unless((bool) $user?->can('tenant.sales-returns.show'), 403, 'Viewing a sales return needs the Sales Return detail permission (tenant.sales-returns.show).');
+        try {
+            $return = $this->returns->returnDetail($salesReturn, $user);
+        } catch (ValidationException $e) {
+            abort(404, 'No such sales return on this branch server.');
+        }
+        $branch = \App\Models\Tenant\Branch::on('tenant')->find((int) $this->context->requireCurrent()->branch_id);
+        $clock = app(\App\Support\TenantClock::class);
+
+        return view('edge.finance.sales-returns-show', [
+            'branchName' => $branch?->name,
+            'userName' => $user->name,
+            'salesReturn' => $return,
+            'clock' => $clock,
+            'tz' => $clock->businessTimezone($branch),
+            'canIndex' => (bool) $user->can('tenant.sales-returns.index'),
+        ]);
     }
 
     /** Online's return permission, resolved from the synced effective permission set (fail closed). */

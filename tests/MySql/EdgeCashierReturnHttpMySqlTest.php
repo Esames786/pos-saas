@@ -76,7 +76,7 @@ class EdgeCashierReturnHttpMySqlTest extends MySqlTenantTestCase
     public function test_the_page_carries_the_return_entry_point_and_the_online_return_ux(): void
     {
         $html = $this->get('/edge/local/pos')->assertOk()->getContent();
-        $this->assertStringContainsString('id="returns-btn"', $html);
+        $this->assertStringContainsString('id="pos-return-btn"', $html); // W1 adopted the Online id (was #returns-btn)
         foreach (['/returns/search', '/returns/sales/', "'/returns'", 'rt-step', 'qty_step', 'outstanding_delivery', 'needs_manager_approval', 'sales_return', 'needs the Online POS'] as $needle) {
             $this->assertStringContainsString($needle, $html, "the real cashier page must carry {$needle}");
         }

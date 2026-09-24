@@ -67,6 +67,9 @@
         <span class="chip" id="fresh-chip">loading…</span>
         <span class="chip" id="mode-chip" hidden></span>
         <a class="navbtn" href="{{ url('/edge/local/pos') }}">POS</a>
+        @if(auth('tenant')->user()?->can('tenant.finance.manual-journals.index'))
+            <a class="navbtn" id="manual-journals-link" href="{{ url('/edge/local/pos/finance/manual-journals') }}">Manual Journals</a>
+        @endif
         @if($canViewLedger)
             <a class="navbtn" id="suppliers-link" href="{{ url('/edge/local/pos/suppliers') }}">Suppliers</a>
         @endif

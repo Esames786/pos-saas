@@ -81,6 +81,9 @@
         <span class="chip" id="fresh-chip">loading…</span>
         <span class="chip" id="mode-chip" hidden></span>
         <a class="navbtn" href="{{ url('/edge/local/pos') }}">POS</a>
+        @if(auth('tenant')->user()?->can('tenant.purchase-returns.index'))
+            <a class="navbtn" id="purchase-return-list-link" href="{{ url('/edge/local/pos/purchase-return-list') }}">Purchase Returns list</a>
+        @endif
         <a class="navbtn" href="{{ url('/edge/local/pos/suppliers') }}">Suppliers</a>
         <form method="POST" action="{{ url('/edge/local/logout') }}" style="margin:0">@csrf<button class="ghost">Logout</button></form>
     </header>

@@ -118,6 +118,55 @@ class EdgeLocalSupplierFinanceService
         ];
     }
 
+    // ── W4 R8.4 / R8.6 — Edge-local LIST / DETAIL screens (Online supplier-payments index/show, manual-journals index/show) ──
+
+    /**
+     * Supplier payments recorded on THIS branch server (Online SupplierPaymentController@index: Payment No / Supplier /
+     * Bill / Date / Method / Amount; supplier filter). Cloud-official payments made on the Online POS are not local
+     * events — they appear in the Supplier Ledger's official rows, not in this list.
+     *
+     * @param  array{supplier_id?: ?int, date_from?: ?string, date_to?: ?string}  $filters
+     */
+    public function listEvents(string $eventType, array $filters, int $perPage = 15): \Illuminate\Contracts\Pagination\LengthAwarePaginator
+    {
+        $branchId = (int) $this->context->requireCurrent()->branch_id;
+        $conn = DB::connection('tenant');
+        $query = $conn->table(EdgeSupplierFinanceCacheService::T_EVENTS)->where('branch_id', $branchId)->where('event_type', $eventType)
+            ->when(! empty($filters['supplier_id']), fn ($q) => $q->whereIn('event_uuid', fn ($e) => $e->select('event_uuid')->from(EdgeSupplierFinanceCacheService::T_EFFECTS)->where('cloud_supplier_id', (int) $filters['supplier_id'])))
+            ->when(! empty($filters['date_from']), fn ($q) => $q->whereDate('business_date', '>=', $filters['date_from']))
+            ->when(! empty($filters['date_to']), fn ($q) => $q->whereDate('business_date', '<=', $filters['date_to']))
+            ->when(! empty($filters['q']), function ($q) use ($filters) {
+                $term = '%' . trim((string) $filters['q']) . '%';
+                $q->where(fn ($w) => $w->where('reference_no', 'like', $term)->orWhere('description', 'like', $term)->orWhere('event_uuid', 'like', $term));
+            })
+            ->orderByDesc('business_date')->orderByDesc('id');
+        $page = $query->paginate($perPage)->withQueryString();
+        $users = \App\Models\Tenant\User::on('tenant')->whereIn('id', collect($page->items())->pluck('user_id')->filter()->unique()->all() ?: [0])->pluck('name', 'id');
+        $page->setCollection(collect($page->items())->map(fn ($row) => $this->cache->eventView($row) + ['user_name' => $users[$row->user_id] ?? null]));
+
+        return $page;
+    }
+
+    /** One local event of the given type on this branch (detail screens); a business 404 otherwise. */
+    public function eventOfType(string $eventUuid, string $eventType): array
+    {
+        $branchId = (int) $this->context->requireCurrent()->branch_id;
+        $row = DB::connection('tenant')->table(EdgeSupplierFinanceCacheService::T_EVENTS)->where('event_uuid', $eventUuid)
+            ->where('branch_id', $branchId)->where('event_type', $eventType)->first();
+        if (! $row) {
+            throw ValidationException::withMessages(['event' => 'No such record on this branch server.']);
+        }
+        $name = $row->user_id ? \App\Models\Tenant\User::on('tenant')->where('id', $row->user_id)->value('name') : null;
+
+        return $this->cache->eventView($row) + ['user_name' => $name];
+    }
+
+    /** The supplier filter book for the list screen (the warm projection's suppliers). */
+    public function supplierBook(): array
+    {
+        return array_map(fn ($s) => ['cloud_supplier_id' => $s['cloud_supplier_id'], 'name' => $s['name'], 'code' => $s['code']], $this->cache->suppliers());
+    }
+
     // ── SUPPLIER_PAYMENT ─────────────────────────────────────────────────────────────────────────────────────────
 
     /**

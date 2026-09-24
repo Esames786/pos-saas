@@ -86,6 +86,53 @@ class EdgeLocalPurchaseReturnController extends Controller
         }
     }
 
+    /** W4 R9.4 — Purchase Returns list (Online PurchaseReturnController@index, `tenant.purchase-returns.index`). */
+    public function listScreen(Request $request): View
+    {
+        $user = $request->user('tenant');
+        abort_unless((bool) $user?->can('tenant.purchase-returns.index'), 403, 'Viewing purchase returns needs the Purchase Returns permission (tenant.purchase-returns.index).');
+        $filters = $request->validate([
+            'supplier_id' => ['nullable', 'integer'],
+            'date_from' => ['nullable', 'date_format:Y-m-d'],
+            'date_to' => ['nullable', 'date_format:Y-m-d'],
+        ]);
+        $meta = $this->context->requireCurrent();
+        $branch = Branch::on('tenant')->find((int) $meta->branch_id);
+
+        return view('edge.finance.purchase-returns-index', [
+            'branchName' => $branch?->name ?? ('Branch ' . $meta->branch_id),
+            'userName' => $user->name,
+            'returns' => $this->returns->listReturns($filters),
+            'suppliers' => $this->returns->supplierBook(),
+            'filters' => $filters,
+            'canShow' => (bool) $user->can('tenant.purchase-returns.show'),
+            'canCreate' => $this->returns->permissionsFor($user)['can_view'],
+        ]);
+    }
+
+    /** W4 R9.4 — one Purchase Return (Online PurchaseReturnController@show, `tenant.purchase-returns.show`). No Edit/Cancel Draft offline (R9.2). */
+    public function detailScreen(Request $request, string $event): View
+    {
+        $user = $request->user('tenant');
+        abort_unless((bool) $user?->can('tenant.purchase-returns.show'), 403, 'Viewing a purchase return needs the Purchase Return detail permission (tenant.purchase-returns.show).');
+        try {
+            $return = $this->returns->returnDetail($event);
+        } catch (ValidationException $e) {
+            abort(404, 'No such purchase return on this branch server.');
+        }
+        $meta = $this->context->requireCurrent();
+        $branch = Branch::on('tenant')->find((int) $meta->branch_id);
+        $products = \App\Models\Tenant\Product::on('tenant')->whereIn('id', collect($return['lines'])->pluck('product_id')->all() ?: [0])->get(['id', 'name', 'sku'])->keyBy('id');
+
+        return view('edge.finance.purchase-returns-show', [
+            'branchName' => $branch?->name ?? ('Branch ' . $meta->branch_id),
+            'userName' => $user->name,
+            'return' => $return,
+            'products' => $products,
+            'canIndex' => (bool) $user->can('tenant.purchase-returns.index'),
+        ]);
+    }
+
     private function requireView(Request $request): \App\Models\Tenant\User
     {
         $user = $request->user('tenant');

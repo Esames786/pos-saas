@@ -74,7 +74,7 @@ class EdgeLocalReturnService
     public function returnable(int $saleId, User $user): array
     {
         $meta = $this->context->requireCurrent();
-        $sale = $this->loadSale($saleId, (int) $meta->branch_id, lock: false);
+        $sale = $this->loadSale($saleId, (int) $meta->branch_id, lock: false, user: $user);
         $branch = Branch::on('tenant')->find((int) $meta->branch_id);
         $shadow = $this->cache->isShadow($sale);
         $freshness = $shadow ? $this->cache->freshness() : ['ok' => true, 'reasons' => [], 'watermark' => null, 'as_of' => null];
@@ -165,7 +165,7 @@ class EdgeLocalReturnService
         }
 
         return DB::connection('tenant')->transaction(function () use ($saleId, $branchId, $branch, $lines, $reason, $refundMethod, $refundAmount, $user, $terminalId, $approvalId, $needsManager, $meta) {
-            $sale = $this->loadSale($saleId, $branchId, lock: true);
+            $sale = $this->loadSale($saleId, $branchId, lock: true, user: $user);
             $shadow = $this->cache->isShadow($sale);
             $freshness = ['watermark' => null, 'as_of' => null];
             if ($shadow) {
@@ -308,6 +308,75 @@ class EdgeLocalReturnService
         return $this->view($return, $sale, $this->cache->isShadow($sale));
     }
 
+    /**
+     * W4 R3.6 — the SALES RETURNS list (Online SalesReturnController@index): this branch's returns held on the appliance —
+     * the ones posted HERE (edge_origin local, with their sync state) and the Cloud returns mirrored for the warm window
+     * (status cloud_mirror, labelled Online) — newest first, the operator's UserDataScope applied to the underlying order
+     * exactly as Online does, and the Online date range on the RETURN date in the branch's local day.
+     *
+     * @param  array{date_from?: ?string, date_to?: ?string}  $range
+     */
+    public function listReturns(User $user, array $range, int $perPage = 15): \Illuminate\Contracts\Pagination\LengthAwarePaginator
+    {
+        $branchId = (int) $this->context->requireCurrent()->branch_id;
+        $branch = Branch::on('tenant')->find($branchId);
+        $scope = app(\App\Services\Security\UserDataScope::class);
+        $query = SalesReturn::on('tenant')->with(['order:id,sale_no,terminal_id,order_type,status', 'createdBy:id,name'])
+            ->where('branch_id', $branchId)
+            ->orderByDesc('return_date')->orderByDesc('id');
+        if ($scope->isScoped($user)) {
+            $query->whereHas('order', fn ($q) => $scope->applyToSales($q, $user));
+        }
+        if (! empty($range['date_from']) && ! empty($range['date_to'])) {
+            $tz = app(\App\Support\TenantClock::class)->businessTimezone($branch);
+            $query->whereBetween('return_date', [
+                \Illuminate\Support\Carbon::parse($range['date_from'] . ' 00:00:00', $tz)->utc(),
+                \Illuminate\Support\Carbon::parse($range['date_to'] . ' 23:59:59', $tz)->utc(),
+            ]);
+        }
+        $page = $query->paginate($perPage)->withQueryString();
+        $uuids = collect($page->items())->pluck('edge_return_uuid')->filter()->values()->all();
+        $states = $uuids ? DB::connection('tenant')->table('edge_sync_outbox')->whereIn('sale_uuid', $uuids)->pluck('state', 'sale_uuid') : collect();
+        foreach ($page->items() as $r) {
+            $r->setAttribute('edge_sync_label', $this->syncLabel($r, $states[$r->edge_return_uuid] ?? null));
+        }
+
+        return $page;
+    }
+
+    /** W4 R3.6 — one return for the detail screen (Online SalesReturnController@show), same scope and branch fence as the list. */
+    public function returnDetail(int $returnId, User $user): SalesReturn
+    {
+        $branchId = (int) $this->context->requireCurrent()->branch_id;
+        $scope = app(\App\Services\Security\UserDataScope::class);
+        $return = SalesReturn::on('tenant')->with(['order', 'createdBy:id,name', 'lines.product:id,name', 'lines.variant:id,name'])
+            ->where('branch_id', $branchId)->where('id', $returnId)
+            ->when($scope->isScoped($user), fn ($q) => $q->whereHas('order', fn ($o) => $scope->applyToSales($o, $user)))
+            ->first();
+        if (! $return) {
+            throw ValidationException::withMessages(['return' => 'No such sales return on this branch server.']);
+        }
+        $state = $return->edge_return_uuid ? DB::connection('tenant')->table('edge_sync_outbox')->where('sale_uuid', $return->edge_return_uuid)->value('state') : null;
+        $return->setAttribute('edge_sync_label', $this->syncLabel($return, $state));
+
+        return $return;
+    }
+
+    /** Business-friendly sync state of a return row (never an engineering internal). */
+    private function syncLabel(SalesReturn $return, ?string $outboxState): array
+    {
+        if ((string) $return->status === EdgeReturnableSaleCacheService::SHADOW_STATUS || (string) $return->edge_origin === 'cloud_mirror') {
+            return ['state' => 'online', 'label' => 'Online return (posted at the Cloud)'];
+        }
+
+        return match ($outboxState) {
+            'acknowledged' => ['state' => 'synced', 'label' => 'Synced to the Cloud'],
+            'failed_permanent' => ['state' => 'failed', 'label' => 'Refused by the Cloud — needs a supervisor'],
+            null => ['state' => 'missing', 'label' => 'Not queued — needs a supervisor'],
+            default => ['state' => 'pending', 'label' => 'Pending sync'],
+        };
+    }
+
     private function view(SalesReturn $return, SalesOrder $sale, bool $shadow): array
     {
         $return->loadMissing('lines');
@@ -338,9 +407,13 @@ class EdgeLocalReturnService
         return ($branch?->sales_return_approval_mode ?? Branch::SALES_RETURN_AUTO_APPROVE) !== Branch::SALES_RETURN_AUTO_APPROVE;
     }
 
-    private function loadSale(int $saleId, int $branchId, bool $lock): SalesOrder
+    private function loadSale(int $saleId, int $branchId, bool $lock, ?User $user = null): SalesOrder
     {
-        $query = SalesOrder::on('tenant')->where('id', $saleId)->where('branch_id', $branchId)->whereIn('status', self::RETURNABLE_STATUSES);
+        // USER DATA SCOPE parity (Online SalesReturnController@create/@store, USER-DATA-SCOPE-1): a terminal/order-type
+        // restricted operator cannot open or post a return for a sale outside his scope, even by a hand-typed sale id.
+        $scope = app(\App\Services\Security\UserDataScope::class);
+        $query = SalesOrder::on('tenant')->where('id', $saleId)->where('branch_id', $branchId)->whereIn('status', self::RETURNABLE_STATUSES)
+            ->when($user && $scope->isScoped($user), fn ($q) => $scope->applyToSales($q, $user));
         $sale = ($lock ? $query->lockForUpdate() : $query)->first();
         if (! $sale) {
             throw ValidationException::withMessages(['sale' => 'That sale is not returnable here (not found, not paid, or already fully returned).']);

@@ -95,6 +95,49 @@ class EdgeLocalPurchaseReturnService
     }
 
     /**
+     * W4 R9.4 — the PURCHASE RETURNS list (Online PurchaseReturnController@index: Return No / Date / Branch / Supplier /
+     * Source GRN / Lines / Total / Status / Posted; supplier filter): the returns posted on THIS branch server with their
+     * sync state. There is no draft state offline (drafts are owner-dependent — R9.2), so every row is posted-pending-sync
+     * until the Cloud posts it officially.
+     *
+     * @param  array{supplier_id?: ?int, date_from?: ?string, date_to?: ?string}  $filters
+     */
+    public function listReturns(array $filters, int $perPage = 15): \Illuminate\Contracts\Pagination\LengthAwarePaginator
+    {
+        $branchId = (int) $this->context->requireCurrent()->branch_id;
+        $page = DB::connection('tenant')->table(EdgePurchaseReturnCacheService::T_EVENTS)->where('branch_id', $branchId)
+            ->when(! empty($filters['supplier_id']), fn ($q) => $q->where('cloud_supplier_id', (int) $filters['supplier_id']))
+            ->when(! empty($filters['date_from']), fn ($q) => $q->whereDate('return_date', '>=', $filters['date_from']))
+            ->when(! empty($filters['date_to']), fn ($q) => $q->whereDate('return_date', '<=', $filters['date_to']))
+            ->orderByDesc('return_date')->orderByDesc('id')
+            ->paginate($perPage)->withQueryString();
+        $users = User::on('tenant')->whereIn('id', collect($page->items())->pluck('user_id')->filter()->unique()->all() ?: [0])->pluck('name', 'id');
+        $page->setCollection(collect($page->items())->map(fn ($row) => $this->cache->eventView($row) + ['user_name' => $users[$row->user_id] ?? null]));
+
+        return $page;
+    }
+
+    /** One purchase return of THIS branch for the detail screen, with the product names of its lines. */
+    public function returnDetail(string $uuid): array
+    {
+        $branchId = (int) $this->context->requireCurrent()->branch_id;
+        $row = DB::connection('tenant')->table(EdgePurchaseReturnCacheService::T_EVENTS)->where('event_uuid', $uuid)->where('branch_id', $branchId)->first();
+        if (! $row) {
+            throw ValidationException::withMessages(['event' => 'No such purchase return on this branch server.']);
+        }
+        $view = $this->cache->eventView($row);
+        $view['user_name'] = $row->user_id ? User::on('tenant')->where('id', $row->user_id)->value('name') : null;
+
+        return $view;
+    }
+
+    /** Supplier filter book (the purchase projection's suppliers). */
+    public function supplierBook(): array
+    {
+        return $this->cache->suppliers();
+    }
+
+    /**
      * @param array $data cloud_grn_id, return_date?, reason_code?, notes?, lines[] {cloud_grn_line_id, quantity, reason_code?}
      */
     public function postReturn(array $data, User $user, ?int $terminalId = null): array

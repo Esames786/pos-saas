@@ -126,6 +126,75 @@ class EdgeLocalSupplierFinanceController extends Controller
         }
     }
 
+    // ── W4 R8.4 / R8.6 — list / detail screens (Online route permissions: *.index / *.show) ────────────────────────
+
+    /** Supplier Payments list (Online SupplierPaymentController@index, `tenant.supplier-payments.index`). */
+    public function paymentsIndex(Request $request): View
+    {
+        $user = $this->requireAny($request, ['tenant.supplier-payments.index']);
+        $filters = $request->validate([
+            'supplier_id' => ['nullable', 'integer'],
+            'date_from' => ['nullable', 'date_format:Y-m-d'],
+            'date_to' => ['nullable', 'date_format:Y-m-d'],
+        ]);
+
+        return view('edge.finance.supplier-payments-index', $this->pageVars($user) + [
+            'payments' => $this->finance->listEvents(\App\Services\Edge\EdgeSupplierFinanceEnvelopeBuilder::EVENT_PAYMENT, $filters),
+            'suppliers' => $this->finance->supplierBook(),
+            'filters' => $filters,
+            'canShow' => (bool) $user->can('tenant.supplier-payments.show'),
+        ]);
+    }
+
+    /** One supplier payment (Online SupplierPaymentController@show, `tenant.supplier-payments.show`). */
+    public function paymentShow(Request $request, string $event): View
+    {
+        $user = $this->requireAny($request, ['tenant.supplier-payments.show']);
+        try {
+            $payment = $this->finance->eventOfType($event, \App\Services\Edge\EdgeSupplierFinanceEnvelopeBuilder::EVENT_PAYMENT);
+        } catch (ValidationException $e) {
+            abort(404, 'No such supplier payment on this branch server.');
+        }
+
+        return view('edge.finance.supplier-payments-show', $this->pageVars($user) + [
+            'payment' => $payment,
+            'canIndex' => (bool) $user->can('tenant.supplier-payments.index'),
+        ]);
+    }
+
+    /** Manual Journals list (Online ManualJournalController@index, `tenant.finance.manual-journals.index`): date range + search. */
+    public function journalsIndex(Request $request): View
+    {
+        $user = $this->requireAny($request, ['tenant.finance.manual-journals.index']);
+        $filters = $request->validate([
+            'date_from' => ['nullable', 'date_format:Y-m-d'],
+            'date_to' => ['nullable', 'date_format:Y-m-d'],
+            'q' => ['nullable', 'string', 'max:100'],
+        ]);
+
+        return view('edge.finance.manual-journals-index', $this->pageVars($user) + [
+            'journals' => $this->finance->listEvents(\App\Services\Edge\EdgeSupplierFinanceEnvelopeBuilder::EVENT_AP_JOURNAL, $filters),
+            'filters' => $filters,
+            'canShow' => (bool) $user->can('tenant.finance.manual-journals.show'),
+        ]);
+    }
+
+    /** One manual journal (Online ManualJournalController@show, `tenant.finance.manual-journals.show`). Reverse: owner-dependent, not offered. */
+    public function journalShow(Request $request, string $event): View
+    {
+        $user = $this->requireAny($request, ['tenant.finance.manual-journals.show']);
+        try {
+            $journal = $this->finance->eventOfType($event, \App\Services\Edge\EdgeSupplierFinanceEnvelopeBuilder::EVENT_AP_JOURNAL);
+        } catch (ValidationException $e) {
+            abort(404, 'No such journal on this branch server.');
+        }
+
+        return view('edge.finance.manual-journals-show', $this->pageVars($user) + [
+            'journal' => $journal,
+            'canIndex' => (bool) $user->can('tenant.finance.manual-journals.index'),
+        ]);
+    }
+
     private function pageVars(\App\Models\Tenant\User $user): array
     {
         $meta = $this->context->requireCurrent();

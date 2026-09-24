@@ -81,6 +81,9 @@
         <span class="chip" id="fresh-chip">loading…</span>
         <span class="chip" id="mode-chip" hidden></span>
         <a class="navbtn" href="{{ url('/edge/local/pos') }}">POS</a>
+        @if(auth('tenant')->user()?->can('tenant.supplier-payments.index'))
+            <a class="navbtn" id="supplier-payments-link" href="{{ url('/edge/local/pos/supplier-payments') }}">Supplier Payments</a>
+        @endif
         @if($canJournal)
             <a class="navbtn" id="journal-link" href="{{ url('/edge/local/pos/finance/journal') }}">General Journal</a>
         @endif

@@ -99,6 +99,10 @@ class EdgeQuickReportController extends Controller
             'categories' => Category::on('tenant')->forBranch((int) $branch->id)->where('is_active', true)->orderBy('sort_order')->orderBy('name')->get(['id', 'parent_id', 'name']),
             'waiters' => RestaurantWaiter::on('tenant')->where('status', 'active')->where(fn ($q) => $q->whereNull('branch_id')->orWhere('branch_id', $branch->id))->orderBy('name')->get(['id', 'name']),
             'order_types' => User::ORDER_TYPES,
+            // R5.2 item picker (Online filters the on-page products by name / SKU): the branch's sellable items.
+            'items' => \App\Models\Tenant\Product::on('tenant')->where('status', 'active')->where('is_sellable', true)->orderBy('name')->get(['id', 'name', 'sku']),
+            // R5.3 report header: the business name Online prints (tenant business name) — see businessName().
+            'business_name' => $this->businessName($branch),
             'printers' => Printer::on('tenant')->where('is_active', true)->where('printer_type', 'network')->whereNotNull('ip_address')
                 ->where(fn ($q) => $q->whereNull('branch_id')->orWhere('branch_id', $branch->id))->orderBy('name')->get(['id', 'name', 'paper_size']),
             'email' => ['available' => false, 'reason' => 'Internet required — the branch server cannot email reports offline.'],
@@ -114,7 +118,7 @@ class EdgeQuickReportController extends Controller
         $data = $this->document->data($filters, $sections, false);
         $data['mode'] = 'thermal';
         $data['paper'] = in_array($request->input('paper'), ['58mm', '80mm'], true) ? $request->input('paper') : '80mm';
-        $data['business_name'] = $branch->name;
+        $data['business_name'] = $this->businessName($branch);
 
         return view('tenant.reports.center.print', $data);
     }
@@ -144,7 +148,7 @@ class EdgeQuickReportController extends Controller
             'cancellations' => $data['cancellations'],
             'cashBank' => $data['cashBank'],
             'meta' => [
-                'business_name' => $branch->name,
+                'business_name' => $this->businessName($branch),
                 'label' => 'Z / End of Day',
                 'date_from' => $date,
                 'date_to' => $date,
@@ -170,6 +174,59 @@ class EdgeQuickReportController extends Controller
         return response()->json(['ok' => true, 'job_id' => $job->id, 'printer' => $printer->name]);
     }
 
+    /**
+     * R5.2 SAVED SELECTION — Online PosQuickReportController@saveSettings / @settings, same validation, same per-user
+     * payload shape, same table (pos_quick_report_settings) — held in the branch server's LOCAL database. This table is
+     * NOT part of the config bootstrap/refresh: a selection saved on the Online POS is not seen here and one saved here
+     * does not reach the Cloud (each side remembers its own; documented in docs/status/edge-w4-team4-report.md).
+     */
+    public function saveSettings(Request $request): JsonResponse
+    {
+        $this->guard();
+        $data = $request->validate([
+            'sections' => ['array'],
+            'sections.*' => ['string'],
+            'category_ids' => ['array'],
+            'product_ids' => ['array'],
+            'waiter_ids' => ['array'],
+            'order_types' => ['array'],
+            'all_items' => ['nullable', 'boolean'],
+        ]);
+        \App\Models\Tenant\PosQuickReportSetting::on('tenant')->updateOrCreate(
+            ['user_id' => auth('tenant')->id()],
+            ['payload' => [
+                'sections' => array_values(array_intersect((array) ($data['sections'] ?? []), self::SECTIONS)),
+                'category_ids' => array_values(array_filter(array_map('intval', (array) ($data['category_ids'] ?? [])))),
+                'product_ids' => array_values(array_filter(array_map('intval', (array) ($data['product_ids'] ?? [])))),
+                'waiter_ids' => array_values((array) ($data['waiter_ids'] ?? [])),
+                'order_types' => array_values((array) ($data['order_types'] ?? [])),
+                'all_items' => $request->boolean('all_items'),
+            ]]
+        );
+
+        return response()->json(['ok' => true, 'stored' => 'branch_server']);
+    }
+
+    public function settings(): JsonResponse
+    {
+        $this->guard();
+        $row = \App\Models\Tenant\PosQuickReportSetting::on('tenant')->where('user_id', auth('tenant')->id())->first();
+
+        return response()->json(['ok' => true, 'settings' => $row->payload ?? null, 'stored' => 'branch_server']);
+    }
+
+    /**
+     * R5.3 — the report header name. Online prints the TENANT business name (PosQuickReportController::businessName,
+     * `app('tenant')->business_name`). The config bootstrap carries it in its informational `tenant` section, but the
+     * appliance importer does not persist it yet (request to Team 6 / coordinator in the W4 report), so on a branch server
+     * without a bound tenant the header falls back to the bound branch's name — never an invented label.
+     */
+    private function businessName(Branch $branch): string
+    {
+        $tenantName = app()->bound('tenant') ? (string) (app('tenant')->business_name ?? '') : '';
+
+        return $tenantName !== '' ? $tenantName : (string) $branch->name;
+    }
     /** EMAIL — ONLINE_REQUIRED on the appliance. Never a fake "sent". */
     public function email(): JsonResponse
     {
