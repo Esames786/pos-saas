@@ -174,6 +174,14 @@ return [
         'operational_stock_baseline', // EDGE operational stock (device-bound baseline; not official stock)
         'local_manager_approval',     // offline manager re-auth (verifyManager)
         'config_refresh',             // EDGE-CONFIG-REFRESH-1 (revisioned upsert/tombstone refresh)
+        // W4 (audit side finding: shipped but undeclared). Names are deliberately NOT the Cloud's broader feature words
+        // ('returns' / 'purchasing' in EdgeCompatibilityService::CLOUD_OFFLINE_FEATURES): each declares exactly what this
+        // build does offline. Mapping them onto the Cloud classifier is a Team 6 / coordinator change (W4 report).
+        'sales_returns_cash',         // F1: returns of local + warm-cached Online sales, CASH refund from this till only
+        'supplier_finance_events',    // F2: supplier payment (cash/bank/cheque/other) + AP journal as pending-sync events
+        'purchase_returns_grn',       // F3: purchase return against a mirrored goods receipt, posted pending sync (no drafts)
+        'quick_report',               // Quick Report view / print here / network on the canonical engine (e-mail = Internet)
+        'shift_denomination_count',   // W4: shift close with the Online denomination count + closing notes (no shortage voucher)
     ],
 
     /*
@@ -266,6 +274,39 @@ return [
         'edge.local.pos.quick-report.email',
         // P4 — the ONE operator/admin health page (non-secret).
         'edge.local.pos.health.view',
+        // ── W1 (Team 1, parity directive 20 Sep 2026) — shell (each name deliberate; mirrors routes/edge_runtime.php W1) ──
+        'edge.local.assets',   // whitelisted public/assets streamer (EdgeLocalAssetController; unauthenticated, no session)
+        // ── W3 (Team 3, parity directive 20 Sep 2026) — tables & order lifecycle (each name deliberate; mirrors routes/edge_runtime.php W3) ──
+        'edge.local.pos.restaurant.sessions.index',
+        'edge.local.pos.restaurant.session.show',
+        'edge.local.pos.restaurant.session.bill-preview',
+        'edge.local.pos.restaurant.session.bill-requested',
+        'edge.local.pos.restaurant.session.move',
+        'edge.local.pos.restaurant.session.merge',
+        'edge.local.pos.held.reattach-table',
+        'edge.local.pos.recent-sales',
+        // ── W4 (Team 4, parity directive 20 Sep 2026) — shifts / finance list+detail screens, Quick Report saved selection
+        //    (each name deliberate; mirrors routes/edge_runtime.php W4; each action enforces the Online route permission) ──
+        'edge.local.pos.shifts.index',
+        'edge.local.pos.shifts.show',
+        'edge.local.pos.sales-returns.index',
+        'edge.local.pos.sales-returns.show',
+        'edge.local.pos.supplier-payments.index',
+        'edge.local.pos.supplier-payments.show',
+        'edge.local.pos.finance.manual-journals.index',
+        'edge.local.pos.finance.manual-journals.show',
+        'edge.local.pos.purchase-returns.list',
+        'edge.local.pos.purchase-returns.detail',
+        'edge.local.pos.quick-report.settings',
+        'edge.local.pos.quick-report.save-settings',
+        // ── W5 (Team 5, parity directive 20 Sep 2026) — printing (each name deliberate; mirrors routes/edge_runtime.php W5) ──
+        'edge.local.pos.sales.kot',
+        'edge.local.pos.sales.reminders.confirm',
+        'edge.local.pos.print-jobs.reminder-reprint',
+        'edge.local.pos.print-jobs.dismiss',
+        'edge.local.pos.sales.printing.retry',
+        'edge.local.pos.bill-preview.document',
+        'edge.local.pos.print-preferences',
     ],
 
     /*

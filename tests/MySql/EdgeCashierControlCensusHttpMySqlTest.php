@@ -172,7 +172,7 @@ class EdgeCashierControlCensusHttpMySqlTest extends MySqlTenantTestCase
     {
         $fixture = $this->fixture();
         $matches = array_map(fn ($d) => $d['match'], $fixture['deferrals']);
-        $pattern = '/not yet available|later milestone|needs the Online POS/i';
+        $pattern = '/not yet available|later milestone|needs the Online POS|awaiting owner decision/i';
         $unregistered = [];
         foreach (['app/Services/Edge', 'app/Http/Controllers/Edge', 'resources/views/edge'] as $dir) {
             foreach ($this->phpFiles(base_path($dir)) as $file) {

@@ -123,7 +123,11 @@ class EdgeCleanMachineInstallMySqlTest extends MySqlTenantTestCase
         $conn->table('stock_balances')->insert(['balance_key' => "{$this->branchId}-{$burger}-0-{$batchId}", 'branch_id' => $this->branchId, 'product_id' => $burger, 'inventory_batch_id' => $batchId, 'quantity_on_hand' => 100, 'average_cost' => 40, 'created_at' => now(), 'updated_at' => now()]);
         $printer = $this->makePrinter(['branch_id' => $this->branchId, 'printer_type' => 'network', 'print_role' => 'both', 'ip_address' => '192.168.1.60', 'port' => 9100, 'is_active' => 1, 'name' => 'Counter LAN']);
         $conn->table('terminal_printer_settings')->insert(['terminal_id' => $terminalId, 'receipt_printer_id' => $printer, 'kot_printer_id' => $printer, 'auto_print_receipt' => 1, 'auto_print_kot' => 1, 'created_at' => now(), 'updated_at' => now()]);
-        $this->grantEdgePermission($this->userId, 'tenant.pos.store');
+        // The Cloud-side cashier carries the Online cashier permission set (W0b: the appliance gates each POS action by the same
+        // Online route permission, incl. tenant.pos.index for the page itself) — exactly what a real Online cashier role holds.
+        foreach ($this->onlinePosParityPermissions() as $permission) {
+            $this->grantEdgePermission($this->userId, $permission);
+        }
 
         // ── the Cloud's master registration (tenant + its database; NO device — pairing creates it) ──
         $m = DB::connection('master');
@@ -365,7 +369,8 @@ class EdgeCleanMachineInstallMySqlTest extends MySqlTenantTestCase
             $this->assertSame(1, preg_match('/name="_token" value="([^"]+)"/', $login['body'], $tok), 'login form carries the CSRF token');
             $post = $this->http('POST', $base . '/edge/local/login', ['_token' => $tok[1], 'employee_code' => $this->employeeCode, 'credential' => 'CashierPass1'], true, $jar, false);
             $this->assertSame(302, $post['status'], $post['body']);
-            $this->assertStringContainsString('/edge/local/status', (string) $post['location']);
+            // ONLINE PARITY (25 Sep 2026): a cashier who may open the POS lands on it; other accounts land on the status page.
+            $this->assertMatchesRegularExpression('#/edge/local/(pos|status)$#', (string) $post['location']);
             $pos = $this->http('GET', $base . '/edge/local/pos', null, true, $jar);
             $this->assertSame(200, $pos['status'], substr($pos['body'], 0, 400));
             $this->assertStringContainsString('Cashier POS', $pos['body']);

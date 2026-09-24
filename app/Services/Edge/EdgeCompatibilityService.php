@@ -30,7 +30,11 @@ class EdgeCompatibilityService
         // Implemented offline today (must match config/edge.php capabilities on a current build).
         'local_auth', 'local_pos_cash_sales', 'held_sales', 'dine_in_tables', 'kot',
         'local_printing', 'operational_stock_baseline', 'local_manager_approval', 'config_refresh',
-        // Known Cloud features with NO offline implementation (explicitly unavailable offline).
+        // Parity directive 20 Sep 2026 (W4): the EXACT offline scope of the F1/F2/F3/report/shift work, named narrowly on
+        // purpose — 'sales_returns_cash' is cash refunds only, so the broad Cloud 'returns' feature (card/bank/provider
+        // refunds included) stays explicitly unavailable offline below; likewise 'purchase_returns_grn' vs 'purchasing'.
+        'sales_returns_cash', 'supplier_finance_events', 'purchase_returns_grn', 'quick_report', 'shift_denomination_count',
+        // Known Cloud features with NO (full) offline implementation (explicitly unavailable offline).
         'returns', 'card_payments', 'aggregator_delivery', 'customer_credit',
         'purchasing', 'manufacturing', 'stock_operations', 'cloud_manager_approval',
     ];

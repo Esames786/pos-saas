@@ -121,9 +121,56 @@ Route::prefix('edge/local')->name('edge.local.')->group(function () {
         // ═══════════════ PARITY WORKSTREAM ROUTES (owner directive 20 Sep 2026) — one block per team, append-only ═══════════════
         // Every new URI must ALSO be added, deliberately, to the approved census in tests/Feature/Edge/EdgeBranchServerRegistrationTest.
         // ── W1 (Team 1) — shell / navigation ──
+        //    (no authenticated W1 route; the one W1 route — local static assets — must answer the login page too, so it
+        //     sits OUTSIDE this edge.auth group: see the "W1 (Team 1) — local static assets" block below the group.)
         // ── W2 (Team 2) — menu & sale ──
         // ── W3 (Team 3) — tables & order lifecycle ──
+        // Table Workspace operations (Online RestaurantTableSessionController / HeldSaleController / POSController::recentSales).
+        Route::get('/restaurant/table-sessions', [EdgeLocalRestaurantController::class, 'tableSessions'])->name('restaurant.sessions.index');
+        Route::get('/restaurant/table-sessions/{session}', [EdgeLocalRestaurantController::class, 'showSession'])->name('restaurant.session.show');
+        Route::get('/restaurant/table-sessions/{session}/bill-preview', [EdgeLocalRestaurantController::class, 'sessionBillPreview'])->name('restaurant.session.bill-preview');
+        Route::post('/restaurant/table-sessions/{session}/bill-requested', [EdgeLocalRestaurantController::class, 'requestBill'])->name('restaurant.session.bill-requested');
+        Route::post('/restaurant/table-sessions/{session}/move', [EdgeLocalRestaurantController::class, 'moveSession'])->name('restaurant.session.move');
+        Route::post('/restaurant/table-sessions/{session}/merge', [EdgeLocalRestaurantController::class, 'mergeSessions'])->name('restaurant.session.merge');
+        Route::post('/held-sales/{sale}/reattach-table', [EdgeLocalHeldSalesController::class, 'reattachTable'])->name('held.reattach-table');
+        Route::get('/recent-sales', [EdgeLocalHeldSalesController::class, 'recentSales'])->name('recent-sales');
         // ── W4 (Team 4) — shifts / permissions / finance ──
+        // Edge-local LIST / DETAIL screens (Online route permission enforced in each action) + Quick Report saved selection.
+        Route::get('/shifts', [EdgeLocalShiftController::class, 'historyScreen'])->name('shifts.index');
+        Route::get('/shifts/{shift}', [EdgeLocalShiftController::class, 'showScreen'])->whereNumber('shift')->name('shifts.show');
+        Route::get('/sales-returns', [EdgeLocalReturnController::class, 'listScreen'])->name('sales-returns.index');
+        Route::get('/sales-returns/{salesReturn}', [EdgeLocalReturnController::class, 'detailScreen'])->whereNumber('salesReturn')->name('sales-returns.show');
+        Route::get('/supplier-payments', [\App\Http\Controllers\Edge\EdgeLocalSupplierFinanceController::class, 'paymentsIndex'])->name('supplier-payments.index');
+        Route::get('/supplier-payments/{event}', [\App\Http\Controllers\Edge\EdgeLocalSupplierFinanceController::class, 'paymentShow'])->name('supplier-payments.show');
+        Route::get('/finance/manual-journals', [\App\Http\Controllers\Edge\EdgeLocalSupplierFinanceController::class, 'journalsIndex'])->name('finance.manual-journals.index');
+        Route::get('/finance/manual-journals/{event}', [\App\Http\Controllers\Edge\EdgeLocalSupplierFinanceController::class, 'journalShow'])->name('finance.manual-journals.show');
+        Route::get('/purchase-return-list', [\App\Http\Controllers\Edge\EdgeLocalPurchaseReturnController::class, 'listScreen'])->name('purchase-returns.list');
+        Route::get('/purchase-return-list/{event}', [\App\Http\Controllers\Edge\EdgeLocalPurchaseReturnController::class, 'detailScreen'])->name('purchase-returns.detail');
+        Route::get('/quick-report/settings', [EdgeQuickReportController::class, 'settings'])->name('quick-report.settings');
+        Route::post('/quick-report/save-settings', [EdgeQuickReportController::class, 'saveSettings'])->name('quick-report.save-settings');
         // ── W5 (Team 5) — printing ──
+        // Online tenant.printing.jobs.* / tenant.printing.documents.* are permission-free + UserDataScope-scoped — mirrored.
+        Route::post('/sales/{sale}/kot', [EdgeLocalPrintJobController::class, 'queueKot'])->name('sales.kot');                                   // printing.jobs.kot (+ Reminder plan)
+        Route::post('/sales/{sale}/reminders/confirm', [EdgeLocalPrintJobController::class, 'confirmReminders'])->name('sales.reminders.confirm'); // printing.jobs.reminder.confirm
+        Route::post('/print-jobs/{job}/reminder-reprint', [EdgeLocalPrintJobController::class, 'reprintReminder'])->name('print-jobs.reminder-reprint');
+        Route::post('/print-jobs/{job}/dismiss', [EdgeLocalPrintJobController::class, 'dismissPrintJob'])->name('print-jobs.dismiss');
+        Route::post('/sales/{sale}/printing/retry', [EdgeLocalPrintJobController::class, 'retryDirectPayPrinting'])->name('sales.printing.retry'); // Direct Pay printing retry
+        Route::post('/bill-preview/document', [EdgeLocalPrintJobController::class, 'billPreviewDocument'])->name('bill-preview.document');      // canonical BILL PREVIEW
+        Route::get('/print-preferences', [EdgeLocalPrintJobController::class, 'printPreferences'])->name('print-preferences');                  // terminal auto-print prefs
     });
+
+    // ── W1 (Team 1) — local static assets (UNAUTHENTICATED on purpose: the login page needs them too) ──
+    // Streams a WHITELISTED file from public/assets only (css/js/woff/woff2/ttf/svg/png/ico; no '..', no dot-files, no
+    // absolute path, no symlink; real path must stay inside public/assets) — so the Edge pages load the SAME locally
+    // packaged Bootstrap 5.3.8 / SweetAlert2 / Tabler icons as the Online POS with NO Internet. No session is started
+    // for an asset request (no session-file churn on the appliance); everything else in the web stack still applies,
+    // including the branch_server route allowlist (config/edge.php must list `edge.local.assets`).
+    Route::get('/assets/{path}', [\App\Http\Controllers\Edge\EdgeLocalAssetController::class, 'show'])
+        ->where('path', '.*')
+        ->withoutMiddleware([
+            \Illuminate\Session\Middleware\StartSession::class,
+            \Illuminate\View\Middleware\ShareErrorsFromSession::class,
+            \Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class,
+        ])
+        ->name('assets');
 });

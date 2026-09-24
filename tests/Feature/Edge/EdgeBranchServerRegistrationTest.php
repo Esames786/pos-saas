@@ -156,10 +156,38 @@ class EdgeBranchServerRegistrationTest extends TestCase
             'edge/local/pos/sync/summary',
             // ═══ PARITY WORKSTREAMS (owner directive 20 Sep 2026) — one block per team, append-only, mirrors routes/edge_runtime.php ═══
             // ── W1 (Team 1) — shell / navigation ──
+            'edge/local/assets/{path}', // W1: whitelisted public/assets streamer (unauthenticated; tests/Feature/Edge/EdgeLocalAssetRouteTest)
             // ── W2 (Team 2) — menu & sale ──
             // ── W3 (Team 3) — tables & order lifecycle ──
+            'edge/local/pos/restaurant/table-sessions',
+            'edge/local/pos/restaurant/table-sessions/{session}',
+            'edge/local/pos/restaurant/table-sessions/{session}/bill-preview',
+            'edge/local/pos/restaurant/table-sessions/{session}/bill-requested',
+            'edge/local/pos/restaurant/table-sessions/{session}/move',
+            'edge/local/pos/restaurant/table-sessions/{session}/merge',
+            'edge/local/pos/held-sales/{sale}/reattach-table',
+            'edge/local/pos/recent-sales',
             // ── W4 (Team 4) — shifts / permissions / finance ──
+            'edge/local/pos/shifts',                              // R1.8 shift history (tenant.shifts.index)
+            'edge/local/pos/shifts/{shift}',                      // R1.9 shift detail (tenant.shifts.show)
+            'edge/local/pos/sales-returns',                       // R3.6 returns list (tenant.sales-returns.index)
+            'edge/local/pos/sales-returns/{salesReturn}',         // R3.6 return detail (tenant.sales-returns.show)
+            'edge/local/pos/supplier-payments',                   // R8.4 (tenant.supplier-payments.index)
+            'edge/local/pos/supplier-payments/{event}',           // R8.4 (tenant.supplier-payments.show)
+            'edge/local/pos/finance/manual-journals',             // R8.6 (tenant.finance.manual-journals.index)
+            'edge/local/pos/finance/manual-journals/{event}',     // R8.6 (tenant.finance.manual-journals.show)
+            'edge/local/pos/purchase-return-list',                // R9.4 (tenant.purchase-returns.index)
+            'edge/local/pos/purchase-return-list/{event}',        // R9.4 (tenant.purchase-returns.show)
+            'edge/local/pos/quick-report/settings',               // R5.2 saved selection (tenant.pos.quick-report-send)
+            'edge/local/pos/quick-report/save-settings',
             // ── W5 (Team 5) — printing ──
+            'edge/local/pos/sales/{sale}/kot',
+            'edge/local/pos/sales/{sale}/reminders/confirm',
+            'edge/local/pos/print-jobs/{job}/reminder-reprint',
+            'edge/local/pos/print-jobs/{job}/dismiss',
+            'edge/local/pos/sales/{sale}/printing/retry',
+            'edge/local/pos/bill-preview/document',
+            'edge/local/pos/print-preferences',
         ];
 
         $uris = collect(\Illuminate\Support\Facades\Route::getRoutes()->getRoutes())

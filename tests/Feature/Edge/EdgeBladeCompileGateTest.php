@@ -28,7 +28,9 @@ class EdgeBladeCompileGateTest extends TestCase
             glob('/usr/bin/node') ?: [],
             glob('/usr/local/bin/node') ?: [],
         ));
-        $node = $candidates ? reset($candidates) : ((new \Symfony\Component\Process\ExecutableFinder())->find('node') ?: null);
+        rsort($candidates); // the newest packaged runtime first (node-v20 over node-v18)
+        $node = getenv('EDGE_NODE_BIN') && is_file(getenv('EDGE_NODE_BIN')) ? getenv('EDGE_NODE_BIN')
+            : ($candidates ? reset($candidates) : ((new \Symfony\Component\Process\ExecutableFinder())->find('node') ?: null));
         if (! $node) {
             $this->markTestSkipped('no Node runtime available to syntax-check the cashier script');
         }
@@ -42,6 +44,15 @@ class EdgeBladeCompileGateTest extends TestCase
             $end = strrpos($html, '</script>');
             $this->assertNotFalse($start, "{$page} must carry its inline script");
             $js = substr($html, $start + 8, $end - $start - 8);
+            // W0 (20 Sep 2026): the cashier shell concatenates one Blade fragment per feature area INSIDE its IIFE —
+            // resolve every `@include('edge.pos.js.<name>')` to that fragment's text (minus Blade comments), exactly
+            // as Blade composes the script at runtime, so node checks the whole page script and not a directive.
+            $js = preg_replace_callback('/^\s*@include\(\'edge\.pos\.js\.([a-z0-9_-]+)\'\)\s*$/m', function (array $m) {
+                $fragment = file_get_contents(resource_path('views/edge/pos/js/' . $m[1] . '.blade.php'));
+                $this->assertNotFalse($fragment, "missing js fragment {$m[1]}");
+
+                return preg_replace('/\{\{--[\s\S]*?--\}\}/', '', $fragment);
+            }, $js);
             $js = preg_replace('/@json\(.*\);/', 'null;', $js);            // server-injected JSON literal → a JS literal
             $js = preg_replace('/\{\{[\s\S]*?\}\}/', 'X', $js);
 

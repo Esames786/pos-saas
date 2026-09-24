@@ -1,382 +1,2649 @@
 {
-  "_doc": [
-    "EDGE CONTROL CENSUS (W0, 20 Sep 2026) — the inventory-driven register of every Online POS control (element id in",
-    "resources/views/tenant/pos/index.blade.php) against the Edge cashier page. Consumed by",
-    "tests/MySql/EdgeCashierControlCensusHttpMySqlTest.php. States: present = same control, same id on Edge;",
-    "equivalent = same capability under another id/text; partial = an Edge counterpart exists but the audit record is",
-    "PARTIALLY_IMPLEMENTED / UI-different in a way that changes what the operator can do; planned = MISSING on Edge,",
-    "owned by a workstream (record + workstream REQUIRED); online_required = accepted Cloud-only, `decision` REQUIRED.",
-    "Selectors: '#id' (id attribute or a quoted 'id' string in the page script), 'text:…' / 'js:…' (raw substring).",
-    "Records reference docs/status/edge-online-vs-edge-screen-audit-2026-09-20.md (A = Team A, R = Team B/C, D = Team D, E = Team E).",
-    "A control moving state (a planned selector appearing, a present selector vanishing) FAILS the census until this file is updated:",
-    "that is the point — the register can no longer drift from the screen."
-  ],
-  "online_view": "resources/views/tenant/pos/index.blade.php",
-  "online_view_sha1": "5ff44838b41f9b7b4beff58dec54de5e68016213",
-  "edge_view": "resources/views/edge/pos/index.blade.php",
-  "groups": {
-    "header-shell": {
-      "label": "POS header / session bar / order type / context",
-      "record": "A1", "workstream": "W1", "state": "planned",
-      "ids": ["pos-sidebar-toggle", "view-tables-btn", "pos-session-bar", "pos-session-details", "pos-session-table-no", "pos-session-no", "pos-session-waiter", "pos-session-guests", "pos-session-open-check", "pos-session-actions", "pos-session-bill-preview", "pos-session-request-bill-form", "mode-tabs-wrapper", "order-controls-row", "ctx-branch-name", "ctx-terminal-name", "pos-shift-status", "pos-shift-badge", "pos-shift-detail", "pos-shift-open-link", "no-terminal-warning", "order_type"],
-      "overrides": {
-        "view-tables-btn": {"state": "present", "edge": ["#view-tables-btn"], "record": "R1"},
-        "pos-session-bar": {"state": "equivalent", "edge": ["#check-chip"], "record": "R10", "workstream": "W3"},
-        "pos-session-bill-preview": {"state": "partial", "edge": ["#preview-bill-btn"], "record": "R14", "workstream": "W3", "note": "cart totals only — per-table bill document planned"},
-        "pos-session-request-bill-form": {"state": "planned", "record": "R11", "workstream": "W3"},
-        "pos-session-details": {"state": "equivalent", "edge": ["#check-chip"], "record": "R10", "workstream": "W3"},
-        "pos-session-table-no": {"state": "equivalent", "edge": ["#check-chip"], "record": "R10", "workstream": "W3"},
-        "pos-session-no": {"state": "planned", "record": "R10", "workstream": "W3", "note": "session number not shown on Edge"},
-        "pos-session-waiter": {"state": "equivalent", "edge": ["#check-chip"], "record": "R10", "workstream": "W3"},
-        "pos-session-guests": {"state": "planned", "record": "R10", "workstream": "W3"},
-        "pos-session-open-check": {"state": "equivalent", "edge": ["#check-chip"], "record": "R10", "workstream": "W3"},
-        "pos-session-actions": {"state": "planned", "record": "R10", "workstream": "W3", "note": "Request Bill / Move / Merge live here on Online (R11–R13)"},
-        "mode-tabs-wrapper": {"state": "equivalent", "edge": ["#order-type"], "record": "A2", "note": "tabs on Online, a <select> on Edge — W1 restores tabs"},
-        "order-controls-row": {"state": "equivalent", "edge": ["#terminal"], "record": "A1"},
-        "ctx-branch-name": {"state": "present", "edge": ["#ctx-branch-name"], "record": "A33"},
-        "ctx-terminal-name": {"state": "equivalent", "edge": ["#terminal"], "record": "A33"},
-        "pos-shift-status": {"state": "partial", "edge": ["#shift-btn"], "record": "R1.1", "workstream": "W4", "note": "entry button only — no badge/poll"},
-        "pos-shift-badge": {"state": "planned", "record": "R1.1", "workstream": "W4"},
-        "pos-shift-detail": {"state": "planned", "record": "R1.1", "workstream": "W4"},
-        "pos-shift-open-link": {"state": "partial", "edge": ["#shift-btn"], "record": "R1.2", "workstream": "W4"},
-        "no-terminal-warning": {"state": "planned", "record": "E-06", "workstream": "W1"},
-        "order_type": {"state": "equivalent", "edge": ["#order-type"], "record": "A2"}
-      }
+    "_doc": [
+        "EDGE CONTROL CENSUS (W0, 20 Sep 2026) — the inventory-driven register of every Online POS control (element id in",
+        "resources/views/tenant/pos/index.blade.php) against the Edge cashier page. Consumed by",
+        "tests/MySql/EdgeCashierControlCensusHttpMySqlTest.php. States: present = same control, same id on Edge;",
+        "equivalent = same capability under another id/text; partial = an Edge counterpart exists but the audit record is",
+        "PARTIALLY_IMPLEMENTED / UI-different in a way that changes what the operator can do; planned = MISSING on Edge,",
+        "owned by a workstream (record + workstream REQUIRED); online_required = accepted Cloud-only, `decision` REQUIRED.",
+        "Selectors: '#id' (id attribute or a quoted 'id' string in the page script), 'text:…' / 'js:…' (raw substring).",
+        "Records reference docs/status/edge-online-vs-edge-screen-audit-2026-09-20.md (A = Team A, R = Team B/C, D = Team D, E = Team E).",
+        "A control moving state (a planned selector appearing, a present selector vanishing) FAILS the census until this file is updated:",
+        "that is the point — the register can no longer drift from the screen."
+    ],
+    "online_view": "resources/views/tenant/pos/index.blade.php",
+    "online_view_sha1": "5ff44838b41f9b7b4beff58dec54de5e68016213",
+    "edge_view": "resources/views/edge/pos/index.blade.php",
+    "groups": {
+        "header-shell": {
+            "label": "POS header / session bar / order type / context",
+            "record": "A1",
+            "workstream": "W1",
+            "state": "planned",
+            "ids": [
+                "pos-sidebar-toggle",
+                "view-tables-btn",
+                "pos-session-bar",
+                "pos-session-details",
+                "pos-session-table-no",
+                "pos-session-no",
+                "pos-session-waiter",
+                "pos-session-guests",
+                "pos-session-open-check",
+                "pos-session-actions",
+                "pos-session-bill-preview",
+                "pos-session-request-bill-form",
+                "mode-tabs-wrapper",
+                "order-controls-row",
+                "ctx-branch-name",
+                "ctx-terminal-name",
+                "pos-shift-status",
+                "pos-shift-badge",
+                "pos-shift-detail",
+                "pos-shift-open-link",
+                "no-terminal-warning",
+                "order_type"
+            ],
+            "overrides": {
+                "view-tables-btn": {
+                    "state": "present",
+                    "edge": [
+                        "#view-tables-btn"
+                    ],
+                    "record": "R1"
+                },
+                "pos-session-bar": {
+                    "state": "present",
+                    "edge": [
+                        "#pos-session-bar"
+                    ],
+                    "record": "R10",
+                    "workstream": "W3",
+                    "note": "W3 25 Sep 2026"
+                },
+                "pos-session-bill-preview": {
+                    "state": "present",
+                    "edge": [
+                        "#pos-session-bill-preview"
+                    ],
+                    "record": "R14",
+                    "workstream": "W3",
+                    "note": "W3 25 Sep 2026: per-table document; rounds/previously-paid print block awaits the canonical reconcile (R14)"
+                },
+                "pos-session-request-bill-form": {
+                    "state": "present",
+                    "record": "R11",
+                    "workstream": "W3",
+                    "edge": [
+                        "#pos-session-request-bill-form"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "pos-session-details": {
+                    "state": "present",
+                    "edge": [
+                        "#pos-session-details"
+                    ],
+                    "record": "R10",
+                    "workstream": "W3",
+                    "note": "W3 25 Sep 2026"
+                },
+                "pos-session-table-no": {
+                    "state": "present",
+                    "edge": [
+                        "#pos-session-table-no"
+                    ],
+                    "record": "R10",
+                    "workstream": "W3",
+                    "note": "W3 25 Sep 2026"
+                },
+                "pos-session-no": {
+                    "state": "present",
+                    "record": "R10",
+                    "workstream": "W3",
+                    "note": "W3 25 Sep 2026",
+                    "edge": [
+                        "#pos-session-no"
+                    ]
+                },
+                "pos-session-waiter": {
+                    "state": "present",
+                    "edge": [
+                        "#pos-session-waiter"
+                    ],
+                    "record": "R10",
+                    "workstream": "W3",
+                    "note": "W3 25 Sep 2026"
+                },
+                "pos-session-guests": {
+                    "state": "present",
+                    "record": "R10",
+                    "workstream": "W3",
+                    "edge": [
+                        "#pos-session-guests"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "pos-session-open-check": {
+                    "state": "present",
+                    "edge": [
+                        "#pos-session-open-check"
+                    ],
+                    "record": "R10",
+                    "workstream": "W3",
+                    "note": "W3 25 Sep 2026"
+                },
+                "pos-session-actions": {
+                    "state": "present",
+                    "record": "R10",
+                    "workstream": "W3",
+                    "note": "W3 25 Sep 2026: Request Bill / Move / Merge live here",
+                    "edge": [
+                        "#pos-session-actions"
+                    ]
+                },
+                "mode-tabs-wrapper": {
+                    "state": "present",
+                    "edge": [
+                        "#mode-tabs-wrapper"
+                    ],
+                    "record": "A2",
+                    "note": "W1 25 Sep 2026: Online-style order-type tabs; #order-type select hidden + kept in sync"
+                },
+                "order-controls-row": {
+                    "state": "present",
+                    "edge": [
+                        "#order-controls-row"
+                    ],
+                    "record": "A1",
+                    "note": "W1 25 Sep 2026"
+                },
+                "ctx-branch-name": {
+                    "state": "present",
+                    "edge": [
+                        "#ctx-branch-name"
+                    ],
+                    "record": "A33"
+                },
+                "ctx-terminal-name": {
+                    "state": "present",
+                    "edge": [
+                        "#ctx-terminal-name"
+                    ],
+                    "record": "A33",
+                    "note": "W1 25 Sep 2026"
+                },
+                "pos-shift-status": {
+                    "state": "present",
+                    "edge": [
+                        "#pos-shift-status"
+                    ],
+                    "record": "R1.1",
+                    "workstream": "W4",
+                    "note": "W1 25 Sep 2026: polls GET /shift"
+                },
+                "pos-shift-badge": {
+                    "state": "present",
+                    "record": "R1.1",
+                    "workstream": "W4",
+                    "edge": [
+                        "#pos-shift-badge"
+                    ],
+                    "note": "W1 25 Sep 2026"
+                },
+                "pos-shift-detail": {
+                    "state": "present",
+                    "record": "R1.1",
+                    "workstream": "W4",
+                    "edge": [
+                        "#pos-shift-detail"
+                    ],
+                    "note": "W1 25 Sep 2026"
+                },
+                "pos-shift-open-link": {
+                    "state": "present",
+                    "edge": [
+                        "#pos-shift-open-link"
+                    ],
+                    "record": "R1.2",
+                    "workstream": "W4",
+                    "note": "W1 25 Sep 2026: opens the in-page shift dialog (Team 4 openShiftDialog)"
+                },
+                "no-terminal-warning": {
+                    "state": "present",
+                    "record": "E-06",
+                    "workstream": "W1",
+                    "edge": [
+                        "#no-terminal-warning"
+                    ],
+                    "note": "W1 25 Sep 2026"
+                },
+                "order_type": {
+                    "state": "equivalent",
+                    "edge": [
+                        "#order-type"
+                    ],
+                    "record": "A2"
+                },
+                "pos-sidebar-toggle": {
+                    "state": "present",
+                    "edge": [
+                        "#pos-sidebar-toggle"
+                    ],
+                    "note": "W1 25 Sep 2026: toggles the Edge navigation strip"
+                }
+            }
+        },
+        "customer-chip": {
+            "label": "Customer chip on the cart header",
+            "record": "A12",
+            "workstream": "W1",
+            "state": "equivalent",
+            "edge": [
+                "#customer-chip"
+            ],
+            "ids": [
+                "pos-customer-slot",
+                "pos-customer-chip",
+                "pos-customer-btn",
+                "chip-cust-name",
+                "chip-cust-phone",
+                "chip-cust-address",
+                "chip-cust-clear",
+                "customer_id",
+                "customer_name",
+                "customer_phone"
+            ],
+            "overrides": {
+                "pos-customer-btn": {
+                    "state": "present",
+                    "edge": [
+                        "#pos-customer-btn"
+                    ],
+                    "record": "A12",
+                    "note": "W1 25 Sep 2026: header Add / Search Customer → Team 2 openCustomerModal()"
+                },
+                "chip-cust-phone": {
+                    "state": "present",
+                    "record": "A12",
+                    "workstream": "W1",
+                    "edge": [
+                        "#chip-cust-phone"
+                    ],
+                    "note": "W1 25 Sep 2026"
+                },
+                "chip-cust-address": {
+                    "state": "present",
+                    "record": "A12",
+                    "workstream": "W1",
+                    "edge": [
+                        "#chip-cust-address"
+                    ],
+                    "note": "W1 25 Sep 2026"
+                },
+                "chip-cust-clear": {
+                    "state": "present",
+                    "edge": [
+                        "#chip-cust-clear"
+                    ],
+                    "record": "A12",
+                    "note": "W1 25 Sep 2026"
+                },
+                "customer_id": {
+                    "state": "equivalent",
+                    "edge": [
+                        "js:out.customer_id"
+                    ],
+                    "record": "A12"
+                },
+                "customer_name": {
+                    "state": "equivalent",
+                    "edge": [
+                        "#customer-name"
+                    ],
+                    "record": "A12"
+                },
+                "customer_phone": {
+                    "state": "equivalent",
+                    "edge": [
+                        "js:out.customer_phone"
+                    ],
+                    "record": "A12"
+                },
+                "chip-cust-name": {
+                    "state": "present",
+                    "edge": [
+                        "#chip-cust-name"
+                    ],
+                    "note": "W1 25 Sep 2026"
+                },
+                "pos-customer-slot": {
+                    "state": "present",
+                    "edge": [
+                        "#pos-customer-slot"
+                    ],
+                    "note": "W1 25 Sep 2026"
+                },
+                "pos-customer-chip": {
+                    "state": "present",
+                    "edge": [
+                        "#pos-customer-chip"
+                    ],
+                    "note": "W1 25 Sep 2026"
+                }
+            }
+        },
+        "sale-form-state": {
+            "label": "Hidden sale-form carriers (Edge keeps them in JS state)",
+            "record": "A23",
+            "workstream": "W2",
+            "state": "equivalent",
+            "ids": [
+                "pos-sale-form",
+                "pos-order-source",
+                "client_uuid",
+                "restaurant_table_session_id",
+                "restaurant_table_id",
+                "create_separate_order",
+                "pos-discount-type",
+                "pos-discount-value",
+                "pos-promo-code",
+                "pos-tip-amount",
+                "pos-manager-approval-id",
+                "dynamic-pos-inputs"
+            ],
+            "overrides": {
+                "pos-sale-form": {
+                    "edge": [
+                        "js:cartLines()"
+                    ]
+                },
+                "pos-order-source": {
+                    "edge": [
+                        "js:'/sales'"
+                    ],
+                    "note": "origin is stamped by the Edge server"
+                },
+                "client_uuid": {
+                    "edge": [
+                        "js:client_uuid"
+                    ]
+                },
+                "restaurant_table_session_id": {
+                    "edge": [
+                        "js:restaurant_table_session_id"
+                    ]
+                },
+                "restaurant_table_id": {
+                    "edge": [
+                        "js:table_id"
+                    ]
+                },
+                "create_separate_order": {
+                    "state": "equivalent",
+                    "record": "R21",
+                    "workstream": "W3",
+                    "note": "W3 25 Sep 2026: new separate check on an occupied table",
+                    "edge": [
+                        "js:continueOpenCheckWithCart"
+                    ]
+                },
+                "pos-discount-type": {
+                    "edge": [
+                        "js:discount_type"
+                    ]
+                },
+                "pos-discount-value": {
+                    "edge": [
+                        "js:discount_value"
+                    ]
+                },
+                "pos-promo-code": {
+                    "edge": [
+                        "js:promo_code"
+                    ]
+                },
+                "pos-tip-amount": {
+                    "state": "equivalent",
+                    "record": "A17",
+                    "workstream": "W2",
+                    "note": "W2 25 Sep 2026: tip carried in the commercial payload",
+                    "edge": [
+                        "js:tip_amount"
+                    ]
+                },
+                "pos-manager-approval-id": {
+                    "edge": [
+                        "js:manager_approval_id"
+                    ]
+                },
+                "dynamic-pos-inputs": {
+                    "edge": [
+                        "js:commercial()"
+                    ]
+                }
+            }
+        },
+        "quick-sale": {
+            "label": "Quick Sale vehicle + waiter",
+            "record": "A39",
+            "workstream": "W1",
+            "state": "equivalent",
+            "ids": [
+                "vehicle-wrap",
+                "vehicle_number",
+                "qs-waiter-wrap",
+                "qs-waiter-select"
+            ],
+            "overrides": {
+                "vehicle-wrap": {
+                    "edge": [
+                        "#vehicle-wrap"
+                    ],
+                    "state": "present",
+                    "note": "W2 25 Sep 2026: inline quick-sale fields"
+                },
+                "vehicle_number": {
+                    "edge": [
+                        "#vehicle_number"
+                    ],
+                    "state": "present",
+                    "note": "W2 25 Sep 2026: inline quick-sale fields"
+                },
+                "qs-waiter-wrap": {
+                    "edge": [
+                        "#qs-waiter-wrap"
+                    ],
+                    "state": "present",
+                    "note": "W2 25 Sep 2026: inline quick-sale fields"
+                },
+                "qs-waiter-select": {
+                    "edge": [
+                        "#qs-waiter-select"
+                    ],
+                    "state": "present",
+                    "note": "W2 25 Sep 2026: inline quick-sale fields"
+                }
+            }
+        },
+        "pos-context": {
+            "label": "Branch & Terminal context modal",
+            "record": "A33",
+            "workstream": "W1",
+            "state": "partial",
+            "ids": [
+                "posContextModal",
+                "branch_id",
+                "terminal_id"
+            ],
+            "overrides": {
+                "posContextModal": {
+                    "edge": [
+                        "#posContextModal"
+                    ],
+                    "note": "W1 25 Sep 2026: Branch & Terminal dialog; branch fixed (bound appliance)",
+                    "state": "present"
+                },
+                "branch_id": {
+                    "state": "equivalent",
+                    "edge": [
+                        "js:branchId"
+                    ],
+                    "note": "the appliance is bound to ONE branch — no selector by design (E-06)"
+                },
+                "terminal_id": {
+                    "state": "equivalent",
+                    "edge": [
+                        "#terminal"
+                    ]
+                }
+            }
+        },
+        "delivery": {
+            "label": "Delivery panel",
+            "record": "A14",
+            "workstream": "W1",
+            "state": "present",
+            "ids": [
+                "delivery-panel",
+                "delivery_channel_id",
+                "delivery-rider-wrap",
+                "delivery_rider_id",
+                "delivery_address",
+                "delivery_charge_amount"
+            ],
+            "overrides": {
+                "delivery_charge_amount": {
+                    "state": "present",
+                    "edge": [
+                        "#delivery_charge_amount"
+                    ],
+                    "note": "W2 25 Sep 2026: main-pane delivery panel"
+                },
+                "delivery-panel": {
+                    "edge": [
+                        "#delivery-panel"
+                    ],
+                    "note": "W2 25 Sep 2026: main-pane delivery panel",
+                    "state": "present"
+                },
+                "delivery_channel_id": {
+                    "state": "present",
+                    "edge": [
+                        "#delivery_channel_id"
+                    ],
+                    "note": "W2 25 Sep 2026: main-pane delivery panel"
+                },
+                "delivery-rider-wrap": {
+                    "state": "present",
+                    "edge": [
+                        "#delivery-rider-wrap"
+                    ],
+                    "note": "W2 25 Sep 2026: main-pane delivery panel"
+                },
+                "delivery_rider_id": {
+                    "state": "present",
+                    "edge": [
+                        "#delivery_rider_id"
+                    ],
+                    "note": "W2 25 Sep 2026: main-pane delivery panel"
+                },
+                "delivery_address": {
+                    "state": "present",
+                    "edge": [
+                        "#delivery_address"
+                    ],
+                    "note": "W2 25 Sep 2026: main-pane delivery panel"
+                }
+            },
+            "edge": [
+                "#delivery-panel"
+            ]
+        },
+        "catalog": {
+            "label": "Search / categories / product grid",
+            "record": "A4",
+            "workstream": "W2",
+            "state": "partial",
+            "ids": [
+                "pos_search",
+                "parent-category-strip",
+                "child-category-wrap",
+                "child-category-strip",
+                "products_heading",
+                "product-grid"
+            ],
+            "overrides": {
+                "pos_search": {
+                    "edge": [
+                        "#pos_search"
+                    ],
+                    "record": "A5",
+                    "note": "W2 25 Sep 2026",
+                    "state": "present"
+                },
+                "parent-category-strip": {
+                    "edge": [
+                        "#parent-category-strip"
+                    ],
+                    "record": "A3",
+                    "state": "present",
+                    "note": "W2 25 Sep 2026"
+                },
+                "child-category-wrap": {
+                    "state": "present",
+                    "record": "A3",
+                    "workstream": "W2",
+                    "edge": [
+                        "#child-category-wrap"
+                    ],
+                    "note": "W2 25 Sep 2026"
+                },
+                "child-category-strip": {
+                    "state": "present",
+                    "record": "A3",
+                    "workstream": "W2",
+                    "edge": [
+                        "#child-category-strip"
+                    ],
+                    "note": "W2 25 Sep 2026"
+                },
+                "products_heading": {
+                    "state": "present",
+                    "record": "A4",
+                    "workstream": "W1",
+                    "edge": [
+                        "#products_heading"
+                    ],
+                    "note": "W1 25 Sep 2026"
+                },
+                "product-grid": {
+                    "edge": [
+                        "#product-grid"
+                    ],
+                    "record": "A4",
+                    "note": "W2 25 Sep 2026",
+                    "state": "present"
+                }
+            },
+            "edge": [
+                "#product-grid"
+            ]
+        },
+        "cart": {
+            "label": "Cart pane + actions",
+            "record": "A10",
+            "workstream": "W2",
+            "state": "partial",
+            "ids": [
+                "cart_heading",
+                "toggle-calc-btn",
+                "clear-cart-btn",
+                "start-fresh-btn",
+                "start-fresh-label",
+                "new-sale-btn",
+                "cart-items",
+                "pos-charge-total",
+                "review-pay-btn",
+                "calculator-panel",
+                "calculator_heading",
+                "calc-display",
+                "recalled-order-bar",
+                "recalled-order-no",
+                "pos-draft-badge",
+                "hold-sale-btn",
+                "save-draft-btn",
+                "cancel-order-btn",
+                "split-bill-wrap",
+                "split-bill-link"
+            ],
+            "overrides": {
+                "new-sale-btn": {
+                    "state": "present",
+                    "record": "A37",
+                    "workstream": "W3",
+                    "edge": [
+                        "#new-sale-btn"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "recalled-order-bar": {
+                    "state": "present",
+                    "edge": [
+                        "#recalled-order-bar"
+                    ],
+                    "record": "A38",
+                    "note": "W3 25 Sep 2026"
+                },
+                "save-draft-btn": {
+                    "state": "present",
+                    "edge": [
+                        "#draft-btn"
+                    ],
+                    "record": "A25"
+                },
+                "cart_heading": {
+                    "state": "present",
+                    "record": "A1",
+                    "workstream": "W1",
+                    "edge": [
+                        "#cart_heading"
+                    ],
+                    "note": "W1 25 Sep 2026"
+                },
+                "toggle-calc-btn": {
+                    "state": "present",
+                    "record": "A32",
+                    "workstream": "W1",
+                    "edge": [
+                        "#toggle-calc-btn"
+                    ],
+                    "note": "W1 25 Sep 2026"
+                },
+                "clear-cart-btn": {
+                    "state": "present",
+                    "record": "A37",
+                    "workstream": "W3",
+                    "edge": [
+                        "#clear-cart-btn"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "start-fresh-btn": {
+                    "state": "present",
+                    "record": "A37",
+                    "workstream": "W3",
+                    "edge": [
+                        "#start-fresh-btn"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "start-fresh-label": {
+                    "state": "present",
+                    "record": "A37",
+                    "workstream": "W3",
+                    "edge": [
+                        "#start-fresh-label"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "cart-items": {
+                    "edge": [
+                        "#cart-lines"
+                    ],
+                    "record": "A10",
+                    "note": "W2 25 Sep 2026: direct qty, remove, options edit, sent-line Cancel via voidSentLine",
+                    "state": "equivalent"
+                },
+                "pos-charge-total": {
+                    "state": "equivalent",
+                    "edge": [
+                        "#t-grand"
+                    ],
+                    "record": "A19"
+                },
+                "review-pay-btn": {
+                    "state": "present",
+                    "edge": [
+                        "#review-pay-btn"
+                    ],
+                    "record": "A19"
+                },
+                "calculator-panel": {
+                    "state": "present",
+                    "record": "A32",
+                    "workstream": "W1",
+                    "edge": [
+                        "#calculator-panel"
+                    ],
+                    "note": "W1 25 Sep 2026"
+                },
+                "calculator_heading": {
+                    "state": "present",
+                    "record": "A32",
+                    "workstream": "W1",
+                    "edge": [
+                        "#calculator_heading"
+                    ],
+                    "note": "W1 25 Sep 2026"
+                },
+                "calc-display": {
+                    "state": "present",
+                    "record": "A32",
+                    "workstream": "W1",
+                    "edge": [
+                        "#calc-display"
+                    ],
+                    "note": "W1 25 Sep 2026"
+                },
+                "recalled-order-no": {
+                    "state": "present",
+                    "edge": [
+                        "#recalled-order-no"
+                    ],
+                    "record": "A38",
+                    "note": "W3 25 Sep 2026"
+                },
+                "pos-draft-badge": {
+                    "state": "present",
+                    "edge": [
+                        "#pos-draft-badge"
+                    ],
+                    "record": "A25",
+                    "note": "W3 25 Sep 2026"
+                },
+                "hold-sale-btn": {
+                    "state": "present",
+                    "edge": [
+                        "#hold-sale-btn"
+                    ],
+                    "record": "A24"
+                },
+                "cancel-order-btn": {
+                    "state": "present",
+                    "edge": [
+                        "#cancel-order-btn"
+                    ],
+                    "record": "R27",
+                    "workstream": "W3",
+                    "note": "W3 25 Sep 2026: approval prompt in manager_required mode done"
+                },
+                "split-bill-wrap": {
+                    "state": "equivalent",
+                    "edge": [
+                        "#split-bill-btn"
+                    ],
+                    "record": "A42"
+                },
+                "split-bill-link": {
+                    "state": "equivalent",
+                    "edge": [
+                        "#split-bill-btn"
+                    ],
+                    "record": "A42"
+                }
+            }
+        },
+        "payment-modal": {
+            "label": "Review & Pay / payment modal",
+            "record": "A20",
+            "workstream": "W2",
+            "state": "partial",
+            "ids": [
+                "paymentModal",
+                "paymentModalLabel",
+                "payment_heading",
+                "payment_method_id",
+                "tendered_amount",
+                "quick-cash-buttons",
+                "transaction_ref",
+                "promo-row",
+                "promo-code-input",
+                "apply-promo-btn",
+                "remove-promo-btn",
+                "promo-feedback",
+                "manual-discount-panel",
+                "remove-discount-btn",
+                "manual-discount-type",
+                "manual-discount-prefix",
+                "manual-discount-value",
+                "manual-discount-suffix",
+                "apply-discount-btn",
+                "short-tender-row",
+                "short-tender-message",
+                "discount-shortfall-btn",
+                "manual-discount-feedback",
+                "print-pref-panel",
+                "print-terminal-label",
+                "auto-kot-toggle",
+                "kot-status-hint",
+                "auto-receipt-toggle",
+                "receipt-status-hint",
+                "subtotal-view",
+                "promo-discount-row",
+                "promo-discount-label",
+                "promo-discount-view",
+                "discount-view",
+                "tax-view",
+                "service-charge-row",
+                "service-charge-view",
+                "tip-row",
+                "tip-view",
+                "delivery-charge-row",
+                "delivery-charge-view",
+                "grand-total-view",
+                "change-view",
+                "complete-sale-btn",
+                "payment-bill-preview-btn"
+            ],
+            "overrides": {
+                "paymentModal": {
+                    "edge": [
+                        "text:Review &amp; Pay"
+                    ]
+                },
+                "paymentModalLabel": {
+                    "state": "equivalent",
+                    "edge": [
+                        "text:Review &amp; Pay"
+                    ]
+                },
+                "payment_heading": {
+                    "state": "equivalent",
+                    "edge": [
+                        "text:Review &amp; Pay"
+                    ]
+                },
+                "payment_method_id": {
+                    "state": "present",
+                    "edge": [
+                        "#payment_method_id"
+                    ],
+                    "record": "A21",
+                    "note": "W2 25 Sep 2026: full method list; card = Cloud-only hint; bank/cheque/other disabled awaiting owner decision"
+                },
+                "tendered_amount": {
+                    "state": "present",
+                    "edge": [
+                        "#tendered_amount"
+                    ],
+                    "note": "W2 25 Sep 2026: full method list; card = Cloud-only hint; bank/cheque/other disabled awaiting owner decision"
+                },
+                "quick-cash-buttons": {
+                    "state": "present",
+                    "record": "A20",
+                    "workstream": "W2",
+                    "edge": [
+                        "#quick-cash-buttons"
+                    ],
+                    "note": "W2 25 Sep 2026: full method list; card = Cloud-only hint; bank/cheque/other disabled awaiting owner decision"
+                },
+                "transaction_ref": {
+                    "state": "present",
+                    "record": "A21",
+                    "workstream": "W2",
+                    "note": "W2 25 Sep 2026: full method list; card = Cloud-only hint; bank/cheque/other disabled awaiting owner decision",
+                    "edge": [
+                        "#transaction_ref"
+                    ]
+                },
+                "promo-row": {
+                    "state": "present",
+                    "edge": [
+                        "#promo-row"
+                    ],
+                    "record": "A16",
+                    "note": "W2 25 Sep 2026"
+                },
+                "promo-code-input": {
+                    "state": "present",
+                    "edge": [
+                        "#promo-code-input"
+                    ],
+                    "record": "A16",
+                    "note": "W2 25 Sep 2026"
+                },
+                "apply-promo-btn": {
+                    "state": "present",
+                    "edge": [
+                        "#apply-promo-btn"
+                    ],
+                    "record": "A16",
+                    "note": "W2 25 Sep 2026"
+                },
+                "remove-promo-btn": {
+                    "state": "present",
+                    "edge": [
+                        "#remove-promo-btn"
+                    ],
+                    "record": "A16",
+                    "note": "W2 25 Sep 2026"
+                },
+                "promo-feedback": {
+                    "state": "present",
+                    "record": "A16",
+                    "workstream": "W2",
+                    "edge": [
+                        "#promo-feedback"
+                    ],
+                    "note": "W2 25 Sep 2026"
+                },
+                "manual-discount-panel": {
+                    "state": "present",
+                    "edge": [
+                        "#manual-discount-panel"
+                    ],
+                    "record": "A15",
+                    "note": "W2 25 Sep 2026"
+                },
+                "remove-discount-btn": {
+                    "state": "present",
+                    "edge": [
+                        "#remove-discount-btn"
+                    ],
+                    "record": "A15",
+                    "note": "W2 25 Sep 2026"
+                },
+                "manual-discount-type": {
+                    "state": "present",
+                    "edge": [
+                        "#manual-discount-type"
+                    ],
+                    "record": "A15",
+                    "note": "W2 25 Sep 2026"
+                },
+                "manual-discount-prefix": {
+                    "state": "present",
+                    "edge": [
+                        "#manual-discount-prefix"
+                    ],
+                    "record": "A15",
+                    "note": "W2 25 Sep 2026"
+                },
+                "manual-discount-value": {
+                    "state": "present",
+                    "edge": [
+                        "#manual-discount-value"
+                    ],
+                    "record": "A15",
+                    "note": "W2 25 Sep 2026"
+                },
+                "manual-discount-suffix": {
+                    "state": "present",
+                    "edge": [
+                        "#manual-discount-suffix"
+                    ],
+                    "record": "A15",
+                    "note": "W2 25 Sep 2026"
+                },
+                "apply-discount-btn": {
+                    "state": "present",
+                    "edge": [
+                        "#apply-discount-btn"
+                    ],
+                    "record": "A15",
+                    "note": "W2 25 Sep 2026"
+                },
+                "short-tender-row": {
+                    "state": "present",
+                    "record": "R2.2",
+                    "workstream": "W2",
+                    "edge": [
+                        "#short-tender-row"
+                    ],
+                    "note": "W2 25 Sep 2026"
+                },
+                "short-tender-message": {
+                    "state": "present",
+                    "record": "R2.2",
+                    "workstream": "W2",
+                    "edge": [
+                        "#short-tender-message"
+                    ],
+                    "note": "W2 25 Sep 2026"
+                },
+                "discount-shortfall-btn": {
+                    "state": "present",
+                    "record": "R2.2",
+                    "workstream": "W2",
+                    "edge": [
+                        "#discount-shortfall-btn"
+                    ],
+                    "note": "W2 25 Sep 2026"
+                },
+                "manual-discount-feedback": {
+                    "state": "present",
+                    "record": "A15",
+                    "workstream": "W2",
+                    "edge": [
+                        "#manual-discount-feedback"
+                    ],
+                    "note": "W2 25 Sep 2026"
+                },
+                "print-pref-panel": {
+                    "state": "present",
+                    "record": "A22",
+                    "workstream": "W5",
+                    "edge": [
+                        "#print-pref-panel"
+                    ],
+                    "note": "W5 25 Sep 2026: printPrefsHtml() — on screen once Team 2 renders it in Review & Pay (T2-1)"
+                },
+                "print-terminal-label": {
+                    "state": "present",
+                    "record": "A22",
+                    "workstream": "W5",
+                    "edge": [
+                        "#print-terminal-label"
+                    ],
+                    "note": "W5 25 Sep 2026"
+                },
+                "auto-kot-toggle": {
+                    "state": "present",
+                    "record": "D-24",
+                    "workstream": "W5",
+                    "edge": [
+                        "#auto-kot-toggle"
+                    ],
+                    "note": "W5 25 Sep 2026"
+                },
+                "kot-status-hint": {
+                    "state": "present",
+                    "record": "D-24",
+                    "workstream": "W5",
+                    "edge": [
+                        "#kot-status-hint"
+                    ],
+                    "note": "W5 25 Sep 2026"
+                },
+                "auto-receipt-toggle": {
+                    "state": "present",
+                    "record": "D-24",
+                    "workstream": "W5",
+                    "edge": [
+                        "#auto-receipt-toggle"
+                    ],
+                    "note": "W5 25 Sep 2026"
+                },
+                "receipt-status-hint": {
+                    "state": "present",
+                    "record": "D-24",
+                    "workstream": "W5",
+                    "edge": [
+                        "#receipt-status-hint"
+                    ],
+                    "note": "W5 25 Sep 2026"
+                },
+                "subtotal-view": {
+                    "state": "present",
+                    "edge": [
+                        "#subtotal-view"
+                    ],
+                    "record": "A18",
+                    "note": "W2 25 Sep 2026"
+                },
+                "promo-discount-row": {
+                    "state": "present",
+                    "edge": [
+                        "#promo-discount-row"
+                    ],
+                    "record": "A18",
+                    "note": "W2 25 Sep 2026"
+                },
+                "promo-discount-label": {
+                    "state": "present",
+                    "edge": [
+                        "#promo-discount-label"
+                    ],
+                    "record": "A18",
+                    "note": "W2 25 Sep 2026"
+                },
+                "promo-discount-view": {
+                    "state": "present",
+                    "edge": [
+                        "#promo-discount-view"
+                    ],
+                    "record": "A18",
+                    "note": "W2 25 Sep 2026"
+                },
+                "discount-view": {
+                    "state": "present",
+                    "edge": [
+                        "#discount-view"
+                    ],
+                    "record": "A18",
+                    "note": "W2 25 Sep 2026"
+                },
+                "tax-view": {
+                    "state": "present",
+                    "edge": [
+                        "#tax-view"
+                    ],
+                    "record": "A18",
+                    "note": "W2 25 Sep 2026"
+                },
+                "service-charge-row": {
+                    "state": "present",
+                    "edge": [
+                        "#service-charge-row"
+                    ],
+                    "record": "A18",
+                    "note": "W2 25 Sep 2026"
+                },
+                "service-charge-view": {
+                    "state": "present",
+                    "edge": [
+                        "#service-charge-view"
+                    ],
+                    "record": "A18",
+                    "note": "W2 25 Sep 2026"
+                },
+                "tip-row": {
+                    "state": "present",
+                    "record": "A17",
+                    "workstream": "W2",
+                    "edge": [
+                        "#tip-row"
+                    ],
+                    "note": "W2 25 Sep 2026: tip quoted; paid sale with a tip refused until Team 6 lifts the envelope guard"
+                },
+                "tip-view": {
+                    "state": "present",
+                    "record": "A17",
+                    "workstream": "W2",
+                    "edge": [
+                        "#tip-view"
+                    ],
+                    "note": "W2 25 Sep 2026: tip quoted; paid sale with a tip refused until Team 6 lifts the envelope guard"
+                },
+                "delivery-charge-row": {
+                    "state": "present",
+                    "edge": [
+                        "#delivery-charge-row"
+                    ],
+                    "record": "A18",
+                    "note": "W2 25 Sep 2026"
+                },
+                "delivery-charge-view": {
+                    "state": "present",
+                    "edge": [
+                        "#delivery-charge-view"
+                    ],
+                    "record": "A18",
+                    "note": "W2 25 Sep 2026"
+                },
+                "grand-total-view": {
+                    "state": "present",
+                    "edge": [
+                        "#grand-total-view"
+                    ],
+                    "record": "A18",
+                    "note": "W2 25 Sep 2026"
+                },
+                "change-view": {
+                    "state": "present",
+                    "edge": [
+                        "#change-view"
+                    ],
+                    "record": "A20",
+                    "note": "W2 25 Sep 2026: full method list; card = Cloud-only hint; bank/cheque/other disabled awaiting owner decision"
+                },
+                "complete-sale-btn": {
+                    "state": "present",
+                    "edge": [
+                        "#complete-sale-btn"
+                    ],
+                    "record": "A23",
+                    "note": "W2 25 Sep 2026: full method list; card = Cloud-only hint; bank/cheque/other disabled awaiting owner decision"
+                },
+                "payment-bill-preview-btn": {
+                    "state": "equivalent",
+                    "edge": [
+                        "#preview-bill-btn"
+                    ],
+                    "record": "A30"
+                }
+            }
+        },
+        "table-workspace": {
+            "label": "Table workspace (board / open / held / move / split / manage)",
+            "record": "R1",
+            "workstream": "W3",
+            "state": "partial",
+            "ids": [
+                "tableWorkspaceModal",
+                "tableWorkspaceModalLabel",
+                "table-workspace-back",
+                "table-workspace-board",
+                "table-board-body",
+                "table-workspace-open",
+                "open-table-form",
+                "open-table-terminal-id",
+                "open-table-no",
+                "restaurant_waiter_id",
+                "waiter-roster",
+                "guest_count",
+                "table_notes",
+                "open-table-submit",
+                "table-workspace-held",
+                "table-workspace-held-body",
+                "table-workspace-move",
+                "table-workspace-move-body",
+                "table-workspace-split",
+                "table-workspace-split-body",
+                "table-workspace-manage",
+                "table-management-frame",
+                "open-table-error"
+            ],
+            "overrides": {
+                "tableWorkspaceModal": {
+                    "edge": [
+                        "#tableWorkspaceModal"
+                    ],
+                    "state": "present",
+                    "note": "W3 25 Sep 2026"
+                },
+                "tableWorkspaceModalLabel": {
+                    "state": "present",
+                    "edge": [
+                        "#tableWorkspaceModalLabel"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "table-workspace-back": {
+                    "state": "present",
+                    "record": "R1",
+                    "workstream": "W3",
+                    "edge": [
+                        "#table-workspace-back"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "table-workspace-board": {
+                    "state": "present",
+                    "edge": [
+                        "#table-workspace-board"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "table-board-body": {
+                    "state": "present",
+                    "edge": [
+                        "#table-board-body"
+                    ],
+                    "record": "R2",
+                    "note": "W3 25 Sep 2026"
+                },
+                "table-workspace-open": {
+                    "state": "present",
+                    "edge": [
+                        "#table-workspace-open"
+                    ],
+                    "record": "R3",
+                    "note": "W3 25 Sep 2026"
+                },
+                "open-table-form": {
+                    "state": "present",
+                    "edge": [
+                        "#open-table-form"
+                    ],
+                    "record": "R3",
+                    "note": "W3 25 Sep 2026"
+                },
+                "open-table-terminal-id": {
+                    "state": "equivalent",
+                    "edge": [
+                        "#terminal"
+                    ],
+                    "record": "R5"
+                },
+                "open-table-no": {
+                    "state": "present",
+                    "edge": [
+                        "#open-table-no"
+                    ],
+                    "record": "R3",
+                    "note": "W3 25 Sep 2026"
+                },
+                "restaurant_waiter_id": {
+                    "state": "present",
+                    "edge": [
+                        "#restaurant_waiter_id"
+                    ],
+                    "record": "R4",
+                    "note": "W3 25 Sep 2026"
+                },
+                "waiter-roster": {
+                    "state": "present",
+                    "record": "R4",
+                    "workstream": "W3",
+                    "edge": [
+                        "#waiter-roster"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "guest_count": {
+                    "state": "present",
+                    "edge": [
+                        "#guest_count"
+                    ],
+                    "record": "R3",
+                    "note": "W3 25 Sep 2026"
+                },
+                "table_notes": {
+                    "state": "present",
+                    "record": "R3",
+                    "workstream": "W3",
+                    "note": "W3 25 Sep 2026",
+                    "edge": [
+                        "#table_notes"
+                    ]
+                },
+                "open-table-submit": {
+                    "state": "present",
+                    "edge": [
+                        "#open-table-submit"
+                    ],
+                    "record": "R3",
+                    "note": "W3 25 Sep 2026"
+                },
+                "table-workspace-held": {
+                    "state": "present",
+                    "edge": [
+                        "#table-workspace-held"
+                    ],
+                    "record": "R7",
+                    "note": "W3 25 Sep 2026"
+                },
+                "table-workspace-held-body": {
+                    "state": "present",
+                    "edge": [
+                        "#table-workspace-held-body"
+                    ],
+                    "record": "R7",
+                    "note": "W3 25 Sep 2026"
+                },
+                "table-workspace-move": {
+                    "state": "present",
+                    "record": "R12",
+                    "workstream": "W3",
+                    "edge": [
+                        "#table-workspace-move"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "table-workspace-move-body": {
+                    "state": "present",
+                    "record": "R12",
+                    "workstream": "W3",
+                    "edge": [
+                        "#table-workspace-move-body"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "table-workspace-split": {
+                    "state": "present",
+                    "edge": [
+                        "#table-workspace-split"
+                    ],
+                    "record": "R29",
+                    "note": "W3 25 Sep 2026"
+                },
+                "table-workspace-split-body": {
+                    "state": "present",
+                    "edge": [
+                        "#table-workspace-split-body"
+                    ],
+                    "record": "R29",
+                    "note": "W3 25 Sep 2026"
+                },
+                "table-workspace-manage": {
+                    "state": "online_required",
+                    "record": "R32",
+                    "decision": "audit §C Team B R32–R35 ACCEPTED: floors/tables/waiters CRUD is Cloud configuration (not needed during an outage)"
+                },
+                "table-management-frame": {
+                    "state": "online_required",
+                    "record": "R32",
+                    "decision": "audit §C Team B R32–R35 ACCEPTED: floors/tables/waiters CRUD is Cloud configuration (not needed during an outage)"
+                },
+                "open-table-error": {
+                    "state": "present",
+                    "record": "E-08",
+                    "workstream": "W1",
+                    "note": "W3 25 Sep 2026: inline refusal slot in #open-table-form (showInlineError)",
+                    "edge": [
+                        "#open-table-error"
+                    ]
+                }
+            },
+            "edge": [
+                "#tableWorkspaceModal"
+            ]
+        },
+        "bill-preview": {
+            "label": "Bill Preview modal + per-table document",
+            "record": "R14",
+            "workstream": "W3",
+            "state": "partial",
+            "ids": [
+                "billPreviewModal",
+                "billPreviewModalLabel",
+                "bill-preview-modal-body",
+                "bill-preview-frame",
+                "bill-preview-btn",
+                "print-bill-preview-btn"
+            ],
+            "overrides": {
+                "billPreviewModal": {
+                    "edge": [
+                        "text:Preview Bill"
+                    ]
+                },
+                "bill-preview-btn": {
+                    "state": "present",
+                    "edge": [
+                        "#preview-bill-btn"
+                    ],
+                    "record": "A30"
+                },
+                "print-bill-preview-btn": {
+                    "state": "present",
+                    "record": "D-10",
+                    "workstream": "W5",
+                    "edge": [
+                        "#print-bill-preview-btn"
+                    ],
+                    "note": "W5 25 Sep 2026: canonical bill preview document, Print here / Send to network"
+                },
+                "billPreviewModalLabel": {
+                    "state": "equivalent",
+                    "edge": [
+                        "text:Preview Bill"
+                    ],
+                    "record": "A30"
+                },
+                "bill-preview-modal-body": {
+                    "edge": [
+                        "text:Running bill"
+                    ],
+                    "record": "A30",
+                    "note": "cart-level totals only; rounds / previously paid / print planned"
+                },
+                "bill-preview-frame": {
+                    "state": "present",
+                    "record": "D-10",
+                    "workstream": "W5",
+                    "edge": [
+                        "#bill-preview-frame"
+                    ],
+                    "note": "W5 25 Sep 2026"
+                }
+            }
+        },
+        "split-bill-modal": {
+            "label": "Split Bill modal",
+            "record": "R29",
+            "workstream": "W3",
+            "state": "equivalent",
+            "edge": [
+                "#sb-ok"
+            ],
+            "ids": [
+                "splitBillModal",
+                "splitBillModalLabel",
+                "split-bill-modal-body"
+            ]
+        },
+        "held-sales-modal": {
+            "label": "Held Orders / Recall modal",
+            "record": "A26",
+            "workstream": "W3",
+            "state": "partial",
+            "edge": [
+                "#heldSalesModal"
+            ],
+            "ids": [
+                "heldSalesModal",
+                "heldSalesModalLabel",
+                "held-type-filters",
+                "held-sales-modal-body",
+                "held-orders-btn"
+            ],
+            "overrides": {
+                "held-orders-btn": {
+                    "state": "present",
+                    "edge": [
+                        "#held-orders-btn"
+                    ],
+                    "record": "A26",
+                    "note": "W1 25 Sep 2026: header Held Orders → Team 3 openHeldOrders()"
+                },
+                "held-type-filters": {
+                    "state": "present",
+                    "record": "A26",
+                    "workstream": "W3",
+                    "edge": [
+                        "#held-type-filters"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "held-sales-modal-body": {
+                    "edge": [
+                        "#held-sales-modal-body"
+                    ],
+                    "note": "W3 25 Sep 2026",
+                    "state": "present"
+                },
+                "heldSalesModal": {
+                    "state": "present",
+                    "edge": [
+                        "#heldSalesModal"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "heldSalesModalLabel": {
+                    "state": "present",
+                    "edge": [
+                        "#heldSalesModalLabel"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                }
+            }
+        },
+        "completed-orders": {
+            "label": "Recent / Completed Orders modal",
+            "record": "A27",
+            "workstream": "W3",
+            "state": "present",
+            "ids": [
+                "completedOrdersModal",
+                "completedOrdersModalLabel",
+                "recent-type-filters",
+                "completed-orders-modal-body",
+                "completed-orders-btn"
+            ],
+            "overrides": {
+                "completedOrdersModal": {
+                    "state": "present",
+                    "edge": [
+                        "#completedOrdersModal"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "completedOrdersModalLabel": {
+                    "state": "present",
+                    "edge": [
+                        "#completedOrdersModalLabel"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "recent-type-filters": {
+                    "state": "present",
+                    "edge": [
+                        "#recent-type-filters"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "completed-orders-modal-body": {
+                    "state": "present",
+                    "edge": [
+                        "#completed-orders-modal-body"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "completed-orders-btn": {
+                    "state": "present",
+                    "edge": [
+                        "#completed-orders-btn"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                }
+            }
+        },
+        "dead-session": {
+            "label": "Held bill on a closed table session (recover / move)",
+            "record": "A29",
+            "workstream": "W3",
+            "state": "present",
+            "ids": [
+                "deadSessionModal",
+                "deadSessionModalLabel",
+                "dead-table-pick",
+                "dead-move",
+                "dead-reopen"
+            ],
+            "overrides": {
+                "deadSessionModal": {
+                    "state": "present",
+                    "edge": [
+                        "#deadSessionModal"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "deadSessionModalLabel": {
+                    "state": "present",
+                    "edge": [
+                        "#deadSessionModalLabel"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "dead-table-pick": {
+                    "state": "present",
+                    "edge": [
+                        "#dead-table-pick"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "dead-move": {
+                    "state": "present",
+                    "edge": [
+                        "#dead-move"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "dead-reopen": {
+                    "state": "present",
+                    "edge": [
+                        "#dead-reopen"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                }
+            }
+        },
+        "last-print": {
+            "label": "Last Print / reprint modal",
+            "record": "A31",
+            "workstream": "W5",
+            "state": "present",
+            "edge": [
+                "#lastPrintModal"
+            ],
+            "ids": [
+                "lastPrintModal",
+                "lastPrintModalLabel",
+                "last-print-btn",
+                "last-print-sale-no",
+                "last-print-modal-body",
+                "reprint-all-kot-btn",
+                "reprint-receipt-btn",
+                "send-network-receipt-btn"
+            ],
+            "overrides": {
+                "last-print-btn": {
+                    "state": "present",
+                    "edge": [
+                        "#last-print-btn"
+                    ],
+                    "record": "A31",
+                    "note": "W1 25 Sep 2026: header Prints → Team 5 openLastPrint()"
+                },
+                "send-network-receipt-btn": {
+                    "state": "present",
+                    "edge": [
+                        "#send-network-receipt-btn"
+                    ],
+                    "record": "D-09",
+                    "note": "W5 25 Sep 2026: bill preview to the network printer"
+                },
+                "last-print-sale-no": {
+                    "state": "present",
+                    "record": "A31",
+                    "workstream": "W5",
+                    "note": "W5 25 Sep 2026",
+                    "edge": [
+                        "#last-print-sale-no"
+                    ]
+                },
+                "reprint-all-kot-btn": {
+                    "state": "present",
+                    "edge": [
+                        "#reprint-all-kot-btn"
+                    ],
+                    "record": "D-03",
+                    "note": "W5 25 Sep 2026: DUPLICATE KOT copies proven over HTTP"
+                },
+                "reprint-receipt-btn": {
+                    "state": "present",
+                    "edge": [
+                        "#reprint-receipt-btn"
+                    ],
+                    "record": "D-09",
+                    "note": "W5 25 Sep 2026"
+                },
+                "lastPrintModal": {
+                    "state": "present",
+                    "edge": [
+                        "#lastPrintModal"
+                    ],
+                    "note": "W5 25 Sep 2026: openLastPrint(saleId)"
+                },
+                "lastPrintModalLabel": {
+                    "state": "present",
+                    "edge": [
+                        "#lastPrintModalLabel"
+                    ],
+                    "note": "W5 25 Sep 2026"
+                },
+                "last-print-modal-body": {
+                    "state": "present",
+                    "edge": [
+                        "#last-print-modal-body"
+                    ],
+                    "note": "W5 25 Sep 2026"
+                }
+            }
+        },
+        "change-order": {
+            "label": "Change Order Details modal",
+            "record": "A28",
+            "workstream": "W3",
+            "state": "present",
+            "ids": [
+                "changeOrderModal",
+                "changeOrderModalLabel",
+                "edit-order-btn",
+                "co-type-btns",
+                "co-order-type",
+                "co-table-wrap",
+                "co-table-session",
+                "co-terminal",
+                "co-branch",
+                "co-apply-btn"
+            ],
+            "overrides": {
+                "changeOrderModal": {
+                    "state": "present",
+                    "edge": [
+                        "#changeOrderModal"
+                    ],
+                    "note": "W3 25 Sep 2026 (order-type change of a held check awaits Team 2 — R21 partial)"
+                },
+                "changeOrderModalLabel": {
+                    "state": "present",
+                    "edge": [
+                        "#changeOrderModalLabel"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "edit-order-btn": {
+                    "state": "present",
+                    "edge": [
+                        "#edit-order-btn"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "co-type-btns": {
+                    "state": "present",
+                    "edge": [
+                        "#co-type-btns"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "co-order-type": {
+                    "state": "present",
+                    "edge": [
+                        "#co-order-type"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "co-table-wrap": {
+                    "state": "present",
+                    "edge": [
+                        "#co-table-wrap"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "co-table-session": {
+                    "state": "present",
+                    "edge": [
+                        "#co-table-session"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "co-terminal": {
+                    "state": "present",
+                    "edge": [
+                        "#co-terminal"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "co-branch": {
+                    "state": "present",
+                    "edge": [
+                        "#co-branch"
+                    ],
+                    "note": "W3 25 Sep 2026: bound branch, disabled"
+                },
+                "co-apply-btn": {
+                    "state": "present",
+                    "edge": [
+                        "#co-apply-btn"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                }
+            }
+        },
+        "pos-report": {
+            "label": "Report window (Sales Report Center)",
+            "record": "A44",
+            "state": "online_required",
+            "decision": "audit §G: Reports Center is Cloud (accepted P4/P5); owner directive 20 Sep 2026 §7: the accepted Cloud-only reporting scope is unchanged",
+            "ids": [
+                "posReportModal",
+                "posReportModalLabel",
+                "pos-report-btn",
+                "pos-report-newtab",
+                "pos-report-frame"
+            ]
+        },
+        "pos-return": {
+            "label": "Return entry (Online opens the returns page in a modal)",
+            "record": "R3.3",
+            "workstream": "W4",
+            "state": "equivalent",
+            "edge": [
+                "text:Sales Return"
+            ],
+            "ids": [
+                "posReturnModal",
+                "posReturnModalLabel",
+                "pos-return-btn",
+                "pos-return-newtab",
+                "pos-return-frame"
+            ],
+            "overrides": {
+                "pos-return-btn": {
+                    "state": "present",
+                    "edge": [
+                        "#pos-return-btn"
+                    ],
+                    "record": "R3.1",
+                    "note": "W4/W1 25 Sep 2026: Online id adopted; gated on DATA.canSalesReturn; server refuses without tenant.sales-returns.store"
+                },
+                "pos-return-newtab": {
+                    "state": "equivalent",
+                    "record": "R3.6",
+                    "workstream": "W4",
+                    "note": "W4 25 Sep 2026: links the Edge Sales Returns list (Online opens the returns page in a new tab)",
+                    "edge": [
+                        "#pos-return-newtab"
+                    ]
+                },
+                "pos-return-frame": {
+                    "edge": [
+                        "#rt-q"
+                    ]
+                }
+            }
+        },
+        "quick-report": {
+            "label": "Quick Report modal",
+            "record": "R5.2",
+            "workstream": "W4",
+            "state": "partial",
+            "edge": [
+                "text:Quick Report"
+            ],
+            "ids": [
+                "quickReportModal",
+                "quickReportModalLabel",
+                "pos-quick-report-btn",
+                "qr-toast",
+                "qr-date",
+                "qr-branch",
+                "qr-save",
+                "qr-panel-categories",
+                "qr-panel-items",
+                "qr-all-items",
+                "qr-item-picker",
+                "qr-item-search",
+                "qr-item-suggest",
+                "qr-item-chips",
+                "qr-panel-waiters",
+                "qr-panel-order_types",
+                "qr-printer",
+                "qr-print",
+                "qr-network",
+                "qr-email"
+            ],
+            "overrides": {
+                "pos-quick-report-btn": {
+                    "state": "present",
+                    "edge": [
+                        "#pos-quick-report-btn"
+                    ],
+                    "record": "R5.1",
+                    "note": "W1 25 Sep 2026: gated on DATA.canQuickReport → Team 4 openQuickReport()"
+                },
+                "qr-toast": {
+                    "state": "present",
+                    "record": "E-08",
+                    "workstream": "W1",
+                    "edge": [
+                        "#qr-toast"
+                    ],
+                    "note": "W4 25 Sep 2026: in-dialog notice"
+                },
+                "qr-date": {
+                    "state": "present",
+                    "edge": [
+                        "#qr-date"
+                    ],
+                    "record": "R5.3"
+                },
+                "qr-branch": {
+                    "state": "present",
+                    "edge": [
+                        "#qr-branch"
+                    ],
+                    "record": "R5.3",
+                    "note": "W4 25 Sep 2026: bound branch shown"
+                },
+                "qr-save": {
+                    "state": "present",
+                    "record": "R5.2",
+                    "workstream": "W4",
+                    "edge": [
+                        "#qr-save"
+                    ],
+                    "note": "W4 25 Sep 2026: saved per-user selection in local pos_quick_report_settings (not synced)"
+                },
+                "qr-panel-categories": {
+                    "state": "present",
+                    "edge": [
+                        "#qr-panel-categories"
+                    ],
+                    "record": "R5.2",
+                    "note": "W4 25 Sep 2026 (#qr-cats kept)"
+                },
+                "qr-panel-items": {
+                    "state": "present",
+                    "record": "R5.2",
+                    "workstream": "W4",
+                    "edge": [
+                        "#qr-panel-items"
+                    ],
+                    "note": "W4 25 Sep 2026"
+                },
+                "qr-all-items": {
+                    "state": "present",
+                    "record": "R5.2",
+                    "workstream": "W4",
+                    "edge": [
+                        "#qr-all-items"
+                    ],
+                    "note": "W4 25 Sep 2026"
+                },
+                "qr-item-picker": {
+                    "state": "present",
+                    "record": "R5.2",
+                    "workstream": "W4",
+                    "edge": [
+                        "#qr-item-picker"
+                    ],
+                    "note": "W4 25 Sep 2026"
+                },
+                "qr-item-search": {
+                    "state": "present",
+                    "record": "R5.2",
+                    "workstream": "W4",
+                    "edge": [
+                        "#qr-item-search"
+                    ],
+                    "note": "W4 25 Sep 2026"
+                },
+                "qr-item-suggest": {
+                    "state": "present",
+                    "record": "R5.2",
+                    "workstream": "W4",
+                    "edge": [
+                        "#qr-item-suggest"
+                    ],
+                    "note": "W4 25 Sep 2026"
+                },
+                "qr-item-chips": {
+                    "state": "present",
+                    "record": "R5.2",
+                    "workstream": "W4",
+                    "edge": [
+                        "#qr-item-chips"
+                    ],
+                    "note": "W4 25 Sep 2026"
+                },
+                "qr-panel-waiters": {
+                    "state": "present",
+                    "record": "R5.2",
+                    "workstream": "W4",
+                    "edge": [
+                        "#qr-panel-waiters"
+                    ],
+                    "note": "W4 25 Sep 2026"
+                },
+                "qr-panel-order_types": {
+                    "state": "present",
+                    "record": "R5.2",
+                    "workstream": "W4",
+                    "edge": [
+                        "#qr-panel-order_types"
+                    ],
+                    "note": "W4 25 Sep 2026"
+                },
+                "qr-printer": {
+                    "state": "present",
+                    "edge": [
+                        "#qr-printer"
+                    ],
+                    "record": "R5.4"
+                },
+                "qr-print": {
+                    "state": "present",
+                    "edge": [
+                        "#qr-print"
+                    ],
+                    "record": "R5.3",
+                    "note": "W4 25 Sep 2026: prints automatically like Online (#qr-view kept for view-only)"
+                },
+                "qr-network": {
+                    "state": "present",
+                    "edge": [
+                        "#qr-network"
+                    ],
+                    "record": "R5.4"
+                },
+                "qr-email": {
+                    "state": "present",
+                    "edge": [
+                        "#qr-email"
+                    ],
+                    "record": "R5.5",
+                    "note": "button present; sending is accepted ONLINE_REQUIRED (truthful 422)"
+                },
+                "quickReportModalLabel": {
+                    "state": "present",
+                    "edge": [
+                        "#quickReportModalLabel"
+                    ],
+                    "note": "W4 25 Sep 2026"
+                }
+            }
+        },
+        "print-here": {
+            "label": "Print Here modal (browser print)",
+            "record": "D-11",
+            "workstream": "W5",
+            "state": "present",
+            "edge": [
+                "#printHereModal"
+            ],
+            "ids": [
+                "printHereModal",
+                "printHereModalLabel",
+                "print-here-frame",
+                "print-here-print-btn"
+            ],
+            "overrides": {
+                "print-here-print-btn": {
+                    "state": "present",
+                    "edge": [
+                        "#print-here-print-btn"
+                    ],
+                    "note": "W5 25 Sep 2026"
+                },
+                "printHereModal": {
+                    "state": "present",
+                    "edge": [
+                        "#printHereModal"
+                    ],
+                    "note": "W5 25 Sep 2026: same-screen frame instead of window.open"
+                },
+                "printHereModalLabel": {
+                    "state": "present",
+                    "edge": [
+                        "#printHereModalLabel"
+                    ],
+                    "note": "W5 25 Sep 2026"
+                },
+                "print-here-frame": {
+                    "state": "present",
+                    "edge": [
+                        "#print-here-frame"
+                    ],
+                    "note": "W5 25 Sep 2026"
+                }
+            }
+        },
+        "reserve": {
+            "label": "Reserve table modal",
+            "record": "R15",
+            "workstream": "W3",
+            "state": "present",
+            "edge": [
+                "#reserveTableModal"
+            ],
+            "ids": [
+                "reserveTableModal",
+                "reserve-table-no",
+                "reserve-table-id",
+                "reserve-customer-id",
+                "reserve-toast",
+                "reserve-customer-search",
+                "reserve-customer-suggest",
+                "reserve-customer-chip",
+                "reserve-customer-name",
+                "reserve-customer-clear",
+                "reserve-name",
+                "reserve-phone",
+                "reserve-for",
+                "reserve-note",
+                "reserve-save-btn"
+            ],
+            "overrides": {
+                "reserve-table-no": {
+                    "state": "present",
+                    "edge": [
+                        "#reserve-table-no"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "reserve-table-id": {
+                    "state": "present",
+                    "edge": [
+                        "#reserve-table-id"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "reserve-customer-id": {
+                    "state": "present",
+                    "record": "R15",
+                    "workstream": "W3",
+                    "note": "W3 25 Sep 2026",
+                    "edge": [
+                        "#reserve-customer-id"
+                    ]
+                },
+                "reserve-toast": {
+                    "state": "present",
+                    "record": "E-08",
+                    "workstream": "W1",
+                    "edge": [
+                        "#reserve-toast"
+                    ],
+                    "note": "W3 25 Sep 2026: inline notice slot in #reserveTableModal (showInlineToast)"
+                },
+                "reserve-customer-search": {
+                    "state": "present",
+                    "record": "R15",
+                    "workstream": "W3",
+                    "edge": [
+                        "#reserve-customer-search"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "reserve-customer-suggest": {
+                    "state": "present",
+                    "record": "R15",
+                    "workstream": "W3",
+                    "edge": [
+                        "#reserve-customer-suggest"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "reserve-customer-chip": {
+                    "state": "present",
+                    "record": "R15",
+                    "workstream": "W3",
+                    "edge": [
+                        "#reserve-customer-chip"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "reserve-customer-name": {
+                    "state": "present",
+                    "record": "R15",
+                    "workstream": "W3",
+                    "edge": [
+                        "#reserve-customer-name"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "reserve-customer-clear": {
+                    "state": "present",
+                    "record": "R15",
+                    "workstream": "W3",
+                    "edge": [
+                        "#reserve-customer-clear"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "reserve-name": {
+                    "state": "present",
+                    "edge": [
+                        "#reserve-name"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "reserve-phone": {
+                    "state": "present",
+                    "edge": [
+                        "#reserve-phone"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "reserve-for": {
+                    "state": "present",
+                    "edge": [
+                        "#reserve-for"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "reserve-note": {
+                    "state": "present",
+                    "edge": [
+                        "#reserve-note"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "reserve-save-btn": {
+                    "state": "present",
+                    "edge": [
+                        "#reserve-save-btn"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "reserveTableModal": {
+                    "state": "present",
+                    "edge": [
+                        "#reserveTableModal"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                }
+            }
+        },
+        "reservation-details": {
+            "label": "Reservation details modal",
+            "record": "R16",
+            "workstream": "W3",
+            "state": "equivalent",
+            "edge": [
+                "text:Reserved",
+                "#ta-unreserve"
+            ],
+            "ids": [
+                "reservationDetailsModal",
+                "reservation-details-body"
+            ],
+            "overrides": {
+                "reservationDetailsModal": {
+                    "state": "present",
+                    "edge": [
+                        "#reservationDetailsModal"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                },
+                "reservation-details-body": {
+                    "state": "present",
+                    "edge": [
+                        "#reservation-details-body"
+                    ],
+                    "note": "W3 25 Sep 2026"
+                }
+            }
+        },
+        "customer-modal": {
+            "label": "Customer modal (search / attach / quick-add / addresses)",
+            "record": "A12",
+            "workstream": "W2",
+            "state": "present",
+            "edge": [
+                "#customerModal"
+            ],
+            "ids": [
+                "customerModal",
+                "customerModalLabel",
+                "cust-search-input",
+                "cust-search-results",
+                "cust-quick-add",
+                "qa-phone",
+                "qa-name",
+                "qa-address-wrap",
+                "qa-address",
+                "qa-save",
+                "qa-error",
+                "cust-selected-panel",
+                "sel-cust-name",
+                "sel-cust-phone",
+                "cust-attach-btn",
+                "cust-address-list",
+                "new-addr-label",
+                "new-addr-text",
+                "new-addr-save"
+            ],
+            "overrides": {
+                "customerModalLabel": {
+                    "state": "present",
+                    "edge": [
+                        "#customerModalLabel"
+                    ],
+                    "note": "W2 25 Sep 2026: openCustomerModal()"
+                },
+                "cust-search-input": {
+                    "state": "present",
+                    "edge": [
+                        "#cust-search-input"
+                    ],
+                    "note": "W2 25 Sep 2026: openCustomerModal()"
+                },
+                "cust-search-results": {
+                    "state": "present",
+                    "edge": [
+                        "#cust-search-results"
+                    ],
+                    "note": "W2 25 Sep 2026: openCustomerModal()"
+                },
+                "cust-quick-add": {
+                    "state": "online_required",
+                    "record": "A13",
+                    "decision": "parity register (Q, 8 Sep 2026) + audit §G: till-created customer/address = ONLINE_REQUIRED, flagged 'not inherent — next Edge build item'; owner directive 20 Sep 2026 §7 keeps customer administration owner-dependent"
+                },
+                "qa-phone": {
+                    "state": "online_required",
+                    "record": "A13",
+                    "decision": "as cust-quick-add"
+                },
+                "qa-name": {
+                    "state": "online_required",
+                    "record": "A13",
+                    "decision": "as cust-quick-add"
+                },
+                "qa-address-wrap": {
+                    "state": "online_required",
+                    "record": "A13",
+                    "decision": "as cust-quick-add"
+                },
+                "qa-address": {
+                    "state": "online_required",
+                    "record": "A13",
+                    "decision": "as cust-quick-add"
+                },
+                "qa-save": {
+                    "state": "online_required",
+                    "record": "A13",
+                    "decision": "as cust-quick-add"
+                },
+                "qa-error": {
+                    "state": "online_required",
+                    "record": "A13",
+                    "decision": "as cust-quick-add"
+                },
+                "cust-selected-panel": {
+                    "state": "present",
+                    "edge": [
+                        "#cust-selected-panel"
+                    ],
+                    "note": "W2 25 Sep 2026: openCustomerModal()"
+                },
+                "sel-cust-name": {
+                    "state": "present",
+                    "edge": [
+                        "#sel-cust-name"
+                    ],
+                    "note": "W2 25 Sep 2026: openCustomerModal()"
+                },
+                "sel-cust-phone": {
+                    "state": "present",
+                    "edge": [
+                        "#sel-cust-phone"
+                    ],
+                    "note": "W2 25 Sep 2026: openCustomerModal()"
+                },
+                "cust-attach-btn": {
+                    "state": "present",
+                    "edge": [
+                        "#cust-attach-btn"
+                    ],
+                    "note": "W2 25 Sep 2026: openCustomerModal()"
+                },
+                "cust-address-list": {
+                    "state": "present",
+                    "edge": [
+                        "#cust-address-list"
+                    ],
+                    "note": "W2 25 Sep 2026: openCustomerModal()"
+                },
+                "new-addr-label": {
+                    "state": "online_required",
+                    "record": "A13",
+                    "decision": "as cust-quick-add"
+                },
+                "new-addr-text": {
+                    "state": "online_required",
+                    "record": "A13",
+                    "decision": "as cust-quick-add"
+                },
+                "new-addr-save": {
+                    "state": "online_required",
+                    "record": "A13",
+                    "decision": "as cust-quick-add"
+                },
+                "customerModal": {
+                    "state": "present",
+                    "edge": [
+                        "#customerModal"
+                    ],
+                    "note": "W2 25 Sep 2026: openCustomerModal()"
+                }
+            }
+        },
+        "qty-entry": {
+            "label": "Quantity entry modal (measurable / weighted items)",
+            "record": "A6",
+            "workstream": "W2",
+            "state": "present",
+            "ids": [
+                "qtyEntryModal",
+                "qtyEntryModalLabel",
+                "qty-modal-product-name",
+                "qty-modal-price-hint",
+                "qty-modal-input",
+                "qty-modal-amount-input",
+                "qty-modal-unit",
+                "qty-modal-confirm"
+            ],
+            "overrides": {
+                "qtyEntryModal": {
+                    "state": "present",
+                    "edge": [
+                        "#qtyEntryModal"
+                    ],
+                    "note": "W2 25 Sep 2026: measurable qty entry"
+                },
+                "qtyEntryModalLabel": {
+                    "state": "present",
+                    "edge": [
+                        "#qtyEntryModalLabel"
+                    ],
+                    "note": "W2 25 Sep 2026: measurable qty entry"
+                },
+                "qty-modal-product-name": {
+                    "state": "present",
+                    "edge": [
+                        "#qty-modal-product-name"
+                    ],
+                    "note": "W2 25 Sep 2026: measurable qty entry"
+                },
+                "qty-modal-price-hint": {
+                    "state": "present",
+                    "edge": [
+                        "#qty-modal-price-hint"
+                    ],
+                    "note": "W2 25 Sep 2026: measurable qty entry"
+                },
+                "qty-modal-input": {
+                    "state": "present",
+                    "edge": [
+                        "#qty-modal-input"
+                    ],
+                    "note": "W2 25 Sep 2026: measurable qty entry"
+                },
+                "qty-modal-amount-input": {
+                    "state": "present",
+                    "edge": [
+                        "#qty-modal-amount-input"
+                    ],
+                    "note": "W2 25 Sep 2026: measurable qty entry"
+                },
+                "qty-modal-unit": {
+                    "state": "present",
+                    "edge": [
+                        "#qty-modal-unit"
+                    ],
+                    "note": "W2 25 Sep 2026: measurable qty entry"
+                },
+                "qty-modal-confirm": {
+                    "state": "present",
+                    "edge": [
+                        "#qty-modal-confirm"
+                    ],
+                    "note": "W2 25 Sep 2026: measurable qty entry"
+                }
+            }
+        },
+        "modifier-entry": {
+            "label": "Modifier entry modal",
+            "record": "A7",
+            "workstream": "W2",
+            "state": "present",
+            "ids": [
+                "modifierEntryModal",
+                "modifierEntryModalLabel",
+                "modifier-modal-product-name",
+                "modifier-modal-price-hint",
+                "modifier-modal-groups",
+                "modifier-modal-confirm"
+            ],
+            "overrides": {
+                "modifierEntryModal": {
+                    "state": "present",
+                    "edge": [
+                        "#modifierEntryModal"
+                    ],
+                    "note": "W2 25 Sep 2026: options (modifiers) — bootstrap v7 needed on a real appliance"
+                },
+                "modifierEntryModalLabel": {
+                    "state": "present",
+                    "edge": [
+                        "#modifierEntryModalLabel"
+                    ],
+                    "note": "W2 25 Sep 2026: options (modifiers) — bootstrap v7 needed on a real appliance"
+                },
+                "modifier-modal-product-name": {
+                    "state": "present",
+                    "edge": [
+                        "#modifier-modal-product-name"
+                    ],
+                    "note": "W2 25 Sep 2026: options (modifiers) — bootstrap v7 needed on a real appliance"
+                },
+                "modifier-modal-price-hint": {
+                    "state": "present",
+                    "edge": [
+                        "#modifier-modal-price-hint"
+                    ],
+                    "note": "W2 25 Sep 2026: options (modifiers) — bootstrap v7 needed on a real appliance"
+                },
+                "modifier-modal-groups": {
+                    "state": "present",
+                    "edge": [
+                        "#modifier-modal-groups"
+                    ],
+                    "note": "W2 25 Sep 2026: options (modifiers) — bootstrap v7 needed on a real appliance"
+                },
+                "modifier-modal-confirm": {
+                    "state": "present",
+                    "edge": [
+                        "#modifier-modal-confirm"
+                    ],
+                    "note": "W2 25 Sep 2026: options (modifiers) — bootstrap v7 needed on a real appliance"
+                }
+            }
+        },
+        "manager-pin": {
+            "label": "Manager PIN prompt (SweetAlert)",
+            "record": "A40",
+            "workstream": "W1",
+            "state": "equivalent",
+            "edge": [
+                "#ma-cred"
+            ],
+            "ids": [
+                "swal-manager-pin"
+            ]
+        }
     },
-    "customer-chip": {
-      "label": "Customer chip on the cart header",
-      "record": "A12", "workstream": "W1", "state": "equivalent", "edge": ["#customer-chip"],
-      "ids": ["pos-customer-slot", "pos-customer-chip", "pos-customer-btn", "chip-cust-name", "chip-cust-phone", "chip-cust-address", "chip-cust-clear", "customer_id", "customer_name", "customer_phone"],
-      "overrides": {
-        "pos-customer-btn": {"state": "partial", "edge": ["#cm-cust-q"], "record": "A12", "note": "no header Customer button — picker lives inside Review & Pay"},
-        "chip-cust-phone": {"state": "planned", "record": "A12", "workstream": "W1"},
-        "chip-cust-address": {"state": "planned", "record": "A12", "workstream": "W1"},
-        "chip-cust-clear": {"state": "partial", "edge": ["#cm-cust-clear"], "record": "A12", "note": "clear lives inside Review & Pay only"},
-        "customer_id": {"state": "equivalent", "edge": ["js:out.customer_id"], "record": "A12"},
-        "customer_name": {"state": "equivalent", "edge": ["#customer-name"], "record": "A12"},
-        "customer_phone": {"state": "equivalent", "edge": ["js:out.customer_phone"], "record": "A12"}
-      }
-    },
-    "sale-form-state": {
-      "label": "Hidden sale-form carriers (Edge keeps them in JS state)",
-      "record": "A23", "workstream": "W2", "state": "equivalent",
-      "ids": ["pos-sale-form", "pos-order-source", "client_uuid", "restaurant_table_session_id", "restaurant_table_id", "create_separate_order", "pos-discount-type", "pos-discount-value", "pos-promo-code", "pos-tip-amount", "pos-manager-approval-id", "dynamic-pos-inputs"],
-      "overrides": {
-        "pos-sale-form": {"edge": ["js:cartLines()"]},
-        "pos-order-source": {"edge": ["js:'/sales'"], "note": "origin is stamped by the Edge server"},
-        "client_uuid": {"edge": ["js:client_uuid"]},
-        "restaurant_table_session_id": {"edge": ["js:restaurant_table_session_id"]},
-        "restaurant_table_id": {"edge": ["js:table_id"]},
-        "create_separate_order": {"state": "planned", "record": "R21", "workstream": "W3", "note": "new separate check on an occupied table"},
-        "pos-discount-type": {"edge": ["js:discount_type"]},
-        "pos-discount-value": {"edge": ["js:discount_value"]},
-        "pos-promo-code": {"edge": ["js:promo_code"]},
-        "pos-tip-amount": {"state": "planned", "record": "A17", "workstream": "W2", "note": "storeSale has no tip; envelope contract (W6)"},
-        "pos-manager-approval-id": {"edge": ["js:manager_approval_id"]},
-        "dynamic-pos-inputs": {"edge": ["js:commercial()"]}
-      }
-    },
-    "quick-sale": {
-      "label": "Quick Sale vehicle + waiter", "record": "A39", "workstream": "W1", "state": "equivalent",
-      "ids": ["vehicle-wrap", "vehicle_number", "qs-waiter-wrap", "qs-waiter-select"],
-      "overrides": {"vehicle-wrap": {"edge": ["#qs-vehicle"]}, "vehicle_number": {"edge": ["#qs-vehicle"]}, "qs-waiter-wrap": {"edge": ["#qs-waiter"]}, "qs-waiter-select": {"edge": ["#qs-waiter"]}}
-    },
-    "pos-context": {
-      "label": "Branch & Terminal context modal", "record": "A33", "workstream": "W1", "state": "partial",
-      "ids": ["posContextModal", "branch_id", "terminal_id"],
-      "overrides": {
-        "posContextModal": {"edge": ["#terminal"], "note": "header select, no modal"},
-        "branch_id": {"state": "equivalent", "edge": ["js:branchId"], "note": "the appliance is bound to ONE branch — no selector by design (E-06)"},
-        "terminal_id": {"state": "equivalent", "edge": ["#terminal"]}
-      }
-    },
-    "delivery": {
-      "label": "Delivery panel", "record": "A14", "workstream": "W1", "state": "partial",
-      "ids": ["delivery-panel", "delivery_channel_id", "delivery-rider-wrap", "delivery_rider_id", "delivery_address", "delivery_charge_amount"],
-      "overrides": {
-        "delivery_charge_amount": {"state": "equivalent", "edge": ["#cm-charge"]},
-        "delivery-panel": {"edge": ["#cm-channel"], "note": "folded into Review & Pay; Online shows it on the main pane"},
-        "delivery_channel_id": {"state": "equivalent", "edge": ["#cm-channel"]},
-        "delivery-rider-wrap": {"state": "equivalent", "edge": ["#cm-rider"]},
-        "delivery_rider_id": {"state": "equivalent", "edge": ["#cm-rider"]},
-        "delivery_address": {"state": "equivalent", "edge": ["#cm-address"]}
-      }
-    },
-    "catalog": {
-      "label": "Search / categories / product grid", "record": "A4", "workstream": "W2", "state": "partial",
-      "ids": ["pos_search", "parent-category-strip", "child-category-wrap", "child-category-strip", "products_heading", "product-grid"],
-      "overrides": {
-        "pos_search": {"edge": ["#search"], "record": "A5", "note": "name-only filter; barcode/SKU planned (W2)"},
-        "parent-category-strip": {"edge": ["#category-tabs"], "record": "A3"},
-        "child-category-wrap": {"state": "planned", "record": "A3", "workstream": "W2"},
-        "child-category-strip": {"state": "planned", "record": "A3", "workstream": "W2"},
-        "products_heading": {"state": "planned", "record": "A4", "workstream": "W1"},
-        "product-grid": {"edge": ["#tiles"], "record": "A4", "note": "name+price tiles; image/sku/stock/unavailable badges planned"}
-      }
-    },
-    "cart": {
-      "label": "Cart pane + actions", "record": "A10", "workstream": "W2", "state": "partial",
-      "ids": ["cart_heading", "toggle-calc-btn", "clear-cart-btn", "start-fresh-btn", "start-fresh-label", "new-sale-btn", "cart-items", "pos-charge-total", "review-pay-btn", "calculator-panel", "calculator_heading", "calc-display", "recalled-order-bar", "recalled-order-no", "pos-draft-badge", "hold-sale-btn", "save-draft-btn", "cancel-order-btn", "split-bill-wrap", "split-bill-link"],
-      "overrides": {
-        "new-sale-btn": {"state": "planned", "record": "A37", "workstream": "W3"},
-        "recalled-order-bar": {"state": "equivalent", "edge": ["#check-chip"], "record": "A38"},
-        "save-draft-btn": {"state": "present", "edge": ["#draft-btn"], "record": "A25"},
-        "cart_heading": {"state": "planned", "record": "A1", "workstream": "W1"},
-        "toggle-calc-btn": {"state": "planned", "record": "A32", "workstream": "W1"},
-        "clear-cart-btn": {"state": "planned", "record": "A37", "workstream": "W3"},
-        "start-fresh-btn": {"state": "planned", "record": "A37", "workstream": "W3"},
-        "start-fresh-label": {"state": "planned", "record": "A37", "workstream": "W3"},
-        "cart-items": {"edge": ["#cart-lines"], "record": "A10", "note": "qty ± / remove only; notes, direct qty, modifiers edit planned"},
-        "pos-charge-total": {"state": "equivalent", "edge": ["#t-grand"], "record": "A19"},
-        "review-pay-btn": {"state": "present", "edge": ["#review-pay-btn"], "record": "A19"},
-        "calculator-panel": {"state": "planned", "record": "A32", "workstream": "W1"},
-        "calculator_heading": {"state": "planned", "record": "A32", "workstream": "W1"},
-        "calc-display": {"state": "planned", "record": "A32", "workstream": "W1"},
-        "recalled-order-no": {"state": "equivalent", "edge": ["#check-chip"], "record": "A38"},
-        "pos-draft-badge": {"state": "equivalent", "edge": ["#check-chip"], "record": "A25"},
-        "hold-sale-btn": {"state": "present", "edge": ["#hold-sale-btn"], "record": "A24"},
-        "cancel-order-btn": {"state": "partial", "edge": ["#cancel-order-btn"], "record": "R27", "workstream": "W3", "note": "dead-ends in manager_required mode — approval prompt planned"},
-        "split-bill-wrap": {"state": "equivalent", "edge": ["#split-bill-btn"], "record": "A42"},
-        "split-bill-link": {"state": "equivalent", "edge": ["#split-bill-btn"], "record": "A42"}
-      }
-    },
-    "payment-modal": {
-      "label": "Review & Pay / payment modal", "record": "A20", "workstream": "W2", "state": "partial",
-      "ids": ["paymentModal", "paymentModalLabel", "payment_heading", "payment_method_id", "tendered_amount", "quick-cash-buttons", "transaction_ref", "promo-row", "promo-code-input", "apply-promo-btn", "remove-promo-btn", "promo-feedback", "manual-discount-panel", "remove-discount-btn", "manual-discount-type", "manual-discount-prefix", "manual-discount-value", "manual-discount-suffix", "apply-discount-btn", "short-tender-row", "short-tender-message", "discount-shortfall-btn", "manual-discount-feedback", "print-pref-panel", "print-terminal-label", "auto-kot-toggle", "kot-status-hint", "auto-receipt-toggle", "receipt-status-hint", "subtotal-view", "promo-discount-row", "promo-discount-label", "promo-discount-view", "discount-view", "tax-view", "service-charge-row", "service-charge-view", "tip-row", "tip-view", "delivery-charge-row", "delivery-charge-view", "grand-total-view", "change-view", "complete-sale-btn", "payment-bill-preview-btn"],
-      "overrides": {
-        "paymentModal": {"edge": ["text:Review &amp; Pay"]},
-        "paymentModalLabel": {"state": "equivalent", "edge": ["text:Review &amp; Pay"]},
-        "payment_heading": {"state": "equivalent", "edge": ["text:Review &amp; Pay"]},
-        "payment_method_id": {"state": "partial", "edge": ["#rp-tendered"], "record": "A21", "note": "cash only; card = accepted ONLINE_REQUIRED; bank transfer / cheque / other = OWNER DECISION (isolated backlog)"},
-        "tendered_amount": {"state": "equivalent", "edge": ["#rp-tendered"]},
-        "quick-cash-buttons": {"state": "planned", "record": "A20", "workstream": "W2"},
-        "transaction_ref": {"state": "planned", "record": "A21", "workstream": "W2", "note": "owner decision: non-cash tenders offline"},
-        "promo-row": {"state": "equivalent", "edge": ["#cm-promo"], "record": "A16"},
-        "promo-code-input": {"state": "equivalent", "edge": ["#cm-promo"], "record": "A16"},
-        "apply-promo-btn": {"state": "equivalent", "edge": ["#cm-apply"], "record": "A16"},
-        "remove-promo-btn": {"state": "partial", "edge": ["#cm-promo"], "record": "A16", "note": "cleared by emptying the field"},
-        "promo-feedback": {"state": "planned", "record": "A16", "workstream": "W2"},
-        "manual-discount-panel": {"state": "equivalent", "edge": ["#cm-disc-type"], "record": "A15"},
-        "remove-discount-btn": {"state": "partial", "edge": ["#cm-disc-type"], "record": "A15", "note": "removed by choosing None"},
-        "manual-discount-type": {"state": "equivalent", "edge": ["#cm-disc-type"], "record": "A15"},
-        "manual-discount-prefix": {"state": "equivalent", "edge": ["#cm-disc-type"], "record": "A15"},
-        "manual-discount-value": {"state": "equivalent", "edge": ["#cm-disc-value"], "record": "A15"},
-        "manual-discount-suffix": {"state": "equivalent", "edge": ["#cm-disc-type"], "record": "A15"},
-        "apply-discount-btn": {"state": "equivalent", "edge": ["#cm-apply"], "record": "A15"},
-        "short-tender-row": {"state": "planned", "record": "R2.2", "workstream": "W2"},
-        "short-tender-message": {"state": "planned", "record": "R2.2", "workstream": "W2"},
-        "discount-shortfall-btn": {"state": "planned", "record": "R2.2", "workstream": "W2"},
-        "manual-discount-feedback": {"state": "planned", "record": "A15", "workstream": "W2"},
-        "print-pref-panel": {"state": "planned", "record": "A22", "workstream": "W5"},
-        "print-terminal-label": {"state": "planned", "record": "A22", "workstream": "W5"},
-        "auto-kot-toggle": {"state": "planned", "record": "D-24", "workstream": "W5"},
-        "kot-status-hint": {"state": "planned", "record": "D-24", "workstream": "W5"},
-        "auto-receipt-toggle": {"state": "planned", "record": "D-24", "workstream": "W5"},
-        "receipt-status-hint": {"state": "planned", "record": "D-24", "workstream": "W5"},
-        "subtotal-view": {"state": "equivalent", "edge": ["text:Subtotal"], "record": "A18"},
-        "promo-discount-row": {"state": "equivalent", "edge": ["text:Discount"], "record": "A18"},
-        "promo-discount-label": {"state": "equivalent", "edge": ["text:Discount"], "record": "A18"},
-        "promo-discount-view": {"state": "equivalent", "edge": ["text:Discount"], "record": "A18"},
-        "discount-view": {"state": "equivalent", "edge": ["text:Discount"], "record": "A18"},
-        "tax-view": {"state": "equivalent", "edge": ["text:Tax"], "record": "A18"},
-        "service-charge-row": {"state": "equivalent", "edge": ["text:Service charge"], "record": "A18"},
-        "service-charge-view": {"state": "equivalent", "edge": ["text:Service charge"], "record": "A18"},
-        "tip-row": {"state": "planned", "record": "A17", "workstream": "W2"},
-        "tip-view": {"state": "planned", "record": "A17", "workstream": "W2"},
-        "delivery-charge-row": {"state": "equivalent", "edge": ["text:Delivery charge"], "record": "A18"},
-        "delivery-charge-view": {"state": "equivalent", "edge": ["text:Delivery charge"], "record": "A18"},
-        "grand-total-view": {"state": "equivalent", "edge": ["text:Grand total"], "record": "A18"},
-        "change-view": {"state": "partial", "edge": ["js:change_amount"], "record": "A20", "note": "change appears in a toast, not in the modal"},
-        "complete-sale-btn": {"state": "present", "edge": ["#rp-complete"], "record": "A23"},
-        "payment-bill-preview-btn": {"state": "equivalent", "edge": ["#preview-bill-btn"], "record": "A30"}
-      }
-    },
-    "table-workspace": {
-      "label": "Table workspace (board / open / held / move / split / manage)", "record": "R1", "workstream": "W3", "state": "partial",
-      "ids": ["tableWorkspaceModal", "tableWorkspaceModalLabel", "table-workspace-back", "table-workspace-board", "table-board-body", "table-workspace-open", "open-table-form", "open-table-terminal-id", "open-table-no", "restaurant_waiter_id", "waiter-roster", "guest_count", "table_notes", "open-table-submit", "table-workspace-held", "table-workspace-held-body", "table-workspace-move", "table-workspace-move-body", "table-workspace-split", "table-workspace-split-body", "table-workspace-manage", "table-management-frame", "open-table-error"],
-      "overrides": {
-        "tableWorkspaceModal": {"edge": ["text:Table Board"]},
-        "tableWorkspaceModalLabel": {"state": "equivalent", "edge": ["text:Table Board"]},
-        "table-workspace-back": {"state": "planned", "record": "R1", "workstream": "W3"},
-        "table-workspace-board": {"state": "equivalent", "edge": ["text:Table Board"]},
-        "table-board-body": {"state": "equivalent", "edge": ["text:<div class=\"board\">"], "record": "R2"},
-        "table-workspace-open": {"state": "equivalent", "edge": ["#ta-open"], "record": "R3"},
-        "open-table-form": {"state": "equivalent", "edge": ["#ta-open"], "record": "R3"},
-        "open-table-terminal-id": {"state": "equivalent", "edge": ["#terminal"], "record": "R5"},
-        "open-table-no": {"state": "equivalent", "edge": ["text:Open table"], "record": "R3"},
-        "restaurant_waiter_id": {"state": "equivalent", "edge": ["#ta-waiter"], "record": "R4"},
-        "waiter-roster": {"state": "planned", "record": "R4", "workstream": "W3"},
-        "guest_count": {"state": "equivalent", "edge": ["#ta-guests"], "record": "R3"},
-        "table_notes": {"state": "planned", "record": "R3", "workstream": "W3", "note": "server accepts notes; no field on screen"},
-        "open-table-submit": {"state": "equivalent", "edge": ["#ta-open"], "record": "R3"},
-        "table-workspace-held": {"state": "equivalent", "edge": ["text:Open check"], "record": "R7"},
-        "table-workspace-held-body": {"state": "equivalent", "edge": ["text:Open check"], "record": "R7"},
-        "table-workspace-move": {"state": "planned", "record": "R12", "workstream": "W3"},
-        "table-workspace-move-body": {"state": "planned", "record": "R12", "workstream": "W3"},
-        "table-workspace-split": {"state": "equivalent", "edge": ["#sb-ok"], "record": "R29"},
-        "table-workspace-split-body": {"state": "equivalent", "edge": ["#sb-ok"], "record": "R29"},
-        "table-workspace-manage": {"state": "online_required", "record": "R32", "decision": "audit §C Team B R32–R35 ACCEPTED: floors/tables/waiters CRUD is Cloud configuration (not needed during an outage)"},
-        "table-management-frame": {"state": "online_required", "record": "R32", "decision": "audit §C Team B R32–R35 ACCEPTED: floors/tables/waiters CRUD is Cloud configuration (not needed during an outage)"},
-        "open-table-error": {"state": "planned", "record": "E-08", "workstream": "W1", "note": "Edge toasts; Online shows inline"}
-      }
-    },
-    "bill-preview": {
-      "label": "Bill Preview modal + per-table document", "record": "R14", "workstream": "W3", "state": "partial",
-      "ids": ["billPreviewModal", "billPreviewModalLabel", "bill-preview-modal-body", "bill-preview-frame", "bill-preview-btn", "print-bill-preview-btn"],
-      "overrides": {
-        "billPreviewModal": {"edge": ["text:Preview Bill"]},
-        "bill-preview-btn": {"state": "present", "edge": ["#preview-bill-btn"], "record": "A30"},
-        "print-bill-preview-btn": {"state": "planned", "record": "D-10", "workstream": "W5"},
-        "billPreviewModalLabel": {"state": "equivalent", "edge": ["text:Preview Bill"], "record": "A30"},
-        "bill-preview-modal-body": {"edge": ["text:Running bill"], "record": "A30", "note": "cart-level totals only; rounds / previously paid / print planned"},
-        "bill-preview-frame": {"state": "planned", "record": "D-10", "workstream": "W5"}
-      }
-    },
-    "split-bill-modal": {
-      "label": "Split Bill modal", "record": "R29", "workstream": "W3", "state": "equivalent", "edge": ["#sb-ok"],
-      "ids": ["splitBillModal", "splitBillModalLabel", "split-bill-modal-body"]
-    },
-    "held-sales-modal": {
-      "label": "Held Orders / Recall modal", "record": "A26", "workstream": "W3", "state": "partial", "edge": ["text:Recall"],
-      "ids": ["heldSalesModal", "heldSalesModalLabel", "held-type-filters", "held-sales-modal-body", "held-orders-btn"],
-      "overrides": {
-        "held-orders-btn": {"state": "equivalent", "edge": ["#recall-btn"], "record": "A26"},
-        "held-type-filters": {"state": "planned", "record": "A26", "workstream": "W3"},
-        "held-sales-modal-body": {"edge": ["text:No open checks."], "note": "no cancel from the list; no type filters"}
-      }
-    },
-    "completed-orders": {
-      "label": "Recent / Completed Orders modal", "record": "A27", "workstream": "W3", "state": "planned",
-      "ids": ["completedOrdersModal", "completedOrdersModalLabel", "recent-type-filters", "completed-orders-modal-body", "completed-orders-btn"]
-    },
-    "dead-session": {
-      "label": "Held bill on a closed table session (recover / move)", "record": "A29", "workstream": "W3", "state": "planned",
-      "ids": ["deadSessionModal", "deadSessionModalLabel", "dead-table-pick", "dead-move", "dead-reopen"]
-    },
-    "last-print": {
-      "label": "Last Print / reprint modal", "record": "A31", "workstream": "W5", "state": "partial", "edge": ["text:Recent Prints"],
-      "ids": ["lastPrintModal", "lastPrintModalLabel", "last-print-btn", "last-print-sale-no", "last-print-modal-body", "reprint-all-kot-btn", "reprint-receipt-btn", "send-network-receipt-btn"],
-      "overrides": {
-        "last-print-btn": {"state": "equivalent", "edge": ["#recent-prints-btn"], "record": "A31"},
-        "send-network-receipt-btn": {"state": "equivalent", "edge": ["js:data-reprint"], "record": "D-09", "note": "Reprint queues on the counter's network receipt printer"},
-        "last-print-sale-no": {"state": "planned", "record": "A31", "workstream": "W5", "note": "per-sale print view"},
-        "reprint-all-kot-btn": {"state": "equivalent", "edge": ["js:data-reprint"], "record": "D-03"},
-        "reprint-receipt-btn": {"state": "equivalent", "edge": ["js:data-reprint"], "record": "D-09"}
-      }
-    },
-    "change-order": {
-      "label": "Change Order Details modal", "record": "A28", "workstream": "W3", "state": "planned",
-      "ids": ["changeOrderModal", "changeOrderModalLabel", "edit-order-btn", "co-type-btns", "co-order-type", "co-table-wrap", "co-table-session", "co-terminal", "co-branch", "co-apply-btn"]
-    },
-    "pos-report": {
-      "label": "Report window (Sales Report Center)", "record": "A44", "state": "online_required",
-      "decision": "audit §G: Reports Center is Cloud (accepted P4/P5); owner directive 20 Sep 2026 §7: the accepted Cloud-only reporting scope is unchanged",
-      "ids": ["posReportModal", "posReportModalLabel", "pos-report-btn", "pos-report-newtab", "pos-report-frame"]
-    },
-    "pos-return": {
-      "label": "Return entry (Online opens the returns page in a modal)", "record": "R3.3", "workstream": "W4", "state": "equivalent", "edge": ["text:Sales Return"],
-      "ids": ["posReturnModal", "posReturnModalLabel", "pos-return-btn", "pos-return-newtab", "pos-return-frame"],
-      "overrides": {
-        "pos-return-btn": {"state": "partial", "edge": ["#returns-btn"], "record": "R3.1", "note": "button shown to everyone on Edge; Online hides it without the permission"},
-        "pos-return-newtab": {"state": "planned", "record": "R3.6", "workstream": "W4", "note": "returns list page"},
-        "pos-return-frame": {"edge": ["#rt-q"]}
-      }
-    },
-    "quick-report": {
-      "label": "Quick Report modal", "record": "R5.2", "workstream": "W4", "state": "partial", "edge": ["text:Quick Report"],
-      "ids": ["quickReportModal", "quickReportModalLabel", "pos-quick-report-btn", "qr-toast", "qr-date", "qr-branch", "qr-save", "qr-panel-categories", "qr-panel-items", "qr-all-items", "qr-item-picker", "qr-item-search", "qr-item-suggest", "qr-item-chips", "qr-panel-waiters", "qr-panel-order_types", "qr-printer", "qr-print", "qr-network", "qr-email"],
-      "overrides": {
-        "pos-quick-report-btn": {"state": "partial", "edge": ["#quick-report-btn"], "record": "R5.1", "note": "button shown to everyone on Edge; Online hides it without the permission"},
-        "qr-toast": {"state": "planned", "record": "E-08", "workstream": "W1"},
-        "qr-date": {"state": "present", "edge": ["#qr-date"], "record": "R5.3"},
-        "qr-branch": {"state": "equivalent", "edge": ["js:branchId"], "record": "R5.3", "note": "bound branch"},
-        "qr-save": {"state": "planned", "record": "R5.2", "workstream": "W4"},
-        "qr-panel-categories": {"state": "equivalent", "edge": ["#qr-cats"], "record": "R5.2"},
-        "qr-panel-items": {"state": "planned", "record": "R5.2", "workstream": "W4"},
-        "qr-all-items": {"state": "planned", "record": "R5.2", "workstream": "W4"},
-        "qr-item-picker": {"state": "planned", "record": "R5.2", "workstream": "W4"},
-        "qr-item-search": {"state": "planned", "record": "R5.2", "workstream": "W4"},
-        "qr-item-suggest": {"state": "planned", "record": "R5.2", "workstream": "W4"},
-        "qr-item-chips": {"state": "planned", "record": "R5.2", "workstream": "W4"},
-        "qr-panel-waiters": {"state": "planned", "record": "R5.2", "workstream": "W4"},
-        "qr-panel-order_types": {"state": "planned", "record": "R5.2", "workstream": "W4"},
-        "qr-printer": {"state": "present", "edge": ["#qr-printer"], "record": "R5.4"},
-        "qr-print": {"state": "equivalent", "edge": ["#qr-view"], "record": "R5.3"},
-        "qr-network": {"state": "present", "edge": ["#qr-network"], "record": "R5.4"},
-        "qr-email": {"state": "present", "edge": ["#qr-email"], "record": "R5.5", "note": "button present; sending is accepted ONLINE_REQUIRED (truthful 422)"}
-      }
-    },
-    "print-here": {
-      "label": "Print Here modal (browser print)", "record": "D-11", "workstream": "W5", "state": "partial", "edge": ["js:window.open(job.preview_url"],
-      "ids": ["printHereModal", "printHereModalLabel", "print-here-frame", "print-here-print-btn"],
-      "overrides": {"print-here-print-btn": {"state": "equivalent", "edge": ["text:Print here"]}}
-    },
-    "reserve": {
-      "label": "Reserve table modal", "record": "R15", "workstream": "W3", "state": "partial", "edge": ["#ta-reserve-form"],
-      "ids": ["reserveTableModal", "reserve-table-no", "reserve-table-id", "reserve-customer-id", "reserve-toast", "reserve-customer-search", "reserve-customer-suggest", "reserve-customer-chip", "reserve-customer-name", "reserve-customer-clear", "reserve-name", "reserve-phone", "reserve-for", "reserve-note", "reserve-save-btn"],
-      "overrides": {
-        "reserve-table-no": {"state": "equivalent", "edge": ["text:Reserve table"]},
-        "reserve-table-id": {"state": "equivalent", "edge": ["js:'/reserve'"]},
-        "reserve-customer-id": {"state": "planned", "record": "R15", "workstream": "W3", "note": "attach a book customer to the reservation"},
-        "reserve-toast": {"state": "planned", "record": "E-08", "workstream": "W1"},
-        "reserve-customer-search": {"state": "planned", "record": "R15", "workstream": "W3"},
-        "reserve-customer-suggest": {"state": "planned", "record": "R15", "workstream": "W3"},
-        "reserve-customer-chip": {"state": "planned", "record": "R15", "workstream": "W3"},
-        "reserve-customer-name": {"state": "planned", "record": "R15", "workstream": "W3"},
-        "reserve-customer-clear": {"state": "planned", "record": "R15", "workstream": "W3"},
-        "reserve-name": {"state": "equivalent", "edge": ["#rs-name"]},
-        "reserve-phone": {"state": "equivalent", "edge": ["#rs-phone"]},
-        "reserve-for": {"state": "equivalent", "edge": ["#rs-when"]},
-        "reserve-note": {"state": "equivalent", "edge": ["#rs-note"]},
-        "reserve-save-btn": {"state": "equivalent", "edge": ["#ta-reserve"]}
-      }
-    },
-    "reservation-details": {
-      "label": "Reservation details modal", "record": "R16", "workstream": "W3", "state": "equivalent", "edge": ["text:Reserved", "#ta-unreserve"],
-      "ids": ["reservationDetailsModal", "reservation-details-body"]
-    },
-    "customer-modal": {
-      "label": "Customer modal (search / attach / quick-add / addresses)", "record": "A12", "workstream": "W2", "state": "partial", "edge": ["#cm-cust-q"],
-      "ids": ["customerModal", "customerModalLabel", "cust-search-input", "cust-search-results", "cust-quick-add", "qa-phone", "qa-name", "qa-address-wrap", "qa-address", "qa-save", "qa-error", "cust-selected-panel", "sel-cust-name", "sel-cust-phone", "cust-attach-btn", "cust-address-list", "new-addr-label", "new-addr-text", "new-addr-save"],
-      "overrides": {
-        "customerModalLabel": {"state": "equivalent", "edge": ["text:Customer"]},
-        "cust-search-input": {"state": "equivalent", "edge": ["#cm-cust-q"]},
-        "cust-search-results": {"state": "equivalent", "edge": ["#cm-cust-results"]},
-        "cust-quick-add": {"state": "online_required", "record": "A13", "decision": "parity register (Q, 8 Sep 2026) + audit §G: till-created customer/address = ONLINE_REQUIRED, flagged 'not inherent — next Edge build item'; owner directive 20 Sep 2026 §7 keeps customer administration owner-dependent"},
-        "qa-phone": {"state": "online_required", "record": "A13", "decision": "as cust-quick-add"},
-        "qa-name": {"state": "online_required", "record": "A13", "decision": "as cust-quick-add"},
-        "qa-address-wrap": {"state": "online_required", "record": "A13", "decision": "as cust-quick-add"},
-        "qa-address": {"state": "online_required", "record": "A13", "decision": "as cust-quick-add"},
-        "qa-save": {"state": "online_required", "record": "A13", "decision": "as cust-quick-add"},
-        "qa-error": {"state": "online_required", "record": "A13", "decision": "as cust-quick-add"},
-        "cust-selected-panel": {"state": "equivalent", "edge": ["#cm-cust-picked"]},
-        "sel-cust-name": {"state": "equivalent", "edge": ["#cm-cust-picked"]},
-        "sel-cust-phone": {"state": "equivalent", "edge": ["#cm-cust-picked"]},
-        "cust-attach-btn": {"state": "equivalent", "edge": ["js:data-cid"], "note": "clicking the result row attaches"},
-        "cust-address-list": {"state": "partial", "edge": ["#cm-addr-pick"], "note": "saved addresses only offered on a delivery order"},
-        "new-addr-label": {"state": "online_required", "record": "A13", "decision": "as cust-quick-add"},
-        "new-addr-text": {"state": "online_required", "record": "A13", "decision": "as cust-quick-add"},
-        "new-addr-save": {"state": "online_required", "record": "A13", "decision": "as cust-quick-add"}
-      }
-    },
-    "qty-entry": {
-      "label": "Quantity entry modal (measurable / weighted items)", "record": "A6", "workstream": "W2", "state": "planned",
-      "ids": ["qtyEntryModal", "qtyEntryModalLabel", "qty-modal-product-name", "qty-modal-price-hint", "qty-modal-input", "qty-modal-amount-input", "qty-modal-unit", "qty-modal-confirm"]
-    },
-    "modifier-entry": {
-      "label": "Modifier entry modal", "record": "A7", "workstream": "W2", "state": "planned",
-      "ids": ["modifierEntryModal", "modifierEntryModalLabel", "modifier-modal-product-name", "modifier-modal-price-hint", "modifier-modal-groups", "modifier-modal-confirm"]
-    },
-    "manager-pin": {
-      "label": "Manager PIN prompt (SweetAlert)", "record": "A40", "workstream": "W1", "state": "equivalent", "edge": ["#ma-cred"],
-      "ids": ["swal-manager-pin"]
-    }
-  },
-  "deferrals": [
-    {"match": "Order type [", "record": "A2", "workstream": "W2", "where": "EdgeLocalPosService — unsupported order type refused with 'not yet available'"},
-    {"match": "Line discounts are not yet available", "record": "A10", "workstream": "W2", "where": "EdgeLocalPosService:356"},
-    {"match": "later milestone", "record": "A7", "workstream": "W2", "where": "EdgeLocalPosController@screen comment — variants/modifiers/availability"},
-    {"match": "Adding a new customer needs the Online POS", "record": "A13", "workstream": "owner-decision", "where": "js/commercial — accepted ONLINE_REQUIRED (audit §G)"},
-    {"match": "needs the Online POS", "record": "R3.4/R8.3/R9.3", "workstream": "owner-decision", "where": "refund / supplier payment method labels + purchase-return source comments — card accepted; bank/other = owner decision"}
-  ]
+    "deferrals": [
+        {
+            "match": "Order type [",
+            "record": "A2",
+            "workstream": "W2",
+            "where": "EdgeLocalPosService — unsupported order type refused with 'not yet available'"
+        },
+        {
+            "match": "Adding a new customer needs the Online POS",
+            "record": "A13",
+            "workstream": "owner-decision",
+            "where": "js/commercial — accepted ONLINE_REQUIRED (audit §G)"
+        },
+        {
+            "match": "needs the Online POS",
+            "record": "R3.4/R8.3/R9.3",
+            "workstream": "owner-decision",
+            "where": "refund / supplier payment method labels + purchase-return source comments — card accepted; bank/other = owner decision"
+        },
+        {
+            "match": "waiting owner decision",
+            "record": "A21/R2.1/R3.4",
+            "workstream": "owner-decision",
+            "where": "payment modal tender rows (bank transfer / cheque / other) and refund methods — presented like Online, disabled until the owner decides — matches both \"Awaiting\" and \"awaiting\""
+        }
+    ]
 }

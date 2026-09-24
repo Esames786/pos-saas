@@ -80,6 +80,13 @@ class EdgeBackupRecoveryAuthorityMySqlTest extends MySqlTenantTestCase
         ]);
         $m->table('edge_backup_recovery_audits')->where('tenant_id', $this->tenantId)->delete();
         $m->table('edge_backup_recovery_keys')->where('tenant_id', $this->tenantId)->delete();
+        // The master test DB is migrated, never refreshed, while the tenant DB IS refreshed — so a branch id repeats across runs
+        // under a new tenant id. The assertions below count by branch, so clean by branch too (rows from earlier runs otherwise
+        // accumulate: 30 keys were found on 25 Sep 2026 from runs since 14 Sep).
+        foreach ([$this->branchId, $this->otherBranchId] as $branchId) {
+            $m->table('edge_backup_recovery_audits')->where('branch_id', $branchId)->delete();
+            $m->table('edge_backup_recovery_keys')->where('branch_id', $branchId)->delete();
+        }
         $this->seedDevice($this->deviceUuid, $this->secret, $this->branchId);
         $this->seedDevice($this->otherUuid, $this->otherSecret, $this->otherBranchId);
     }

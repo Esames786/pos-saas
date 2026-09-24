@@ -25,10 +25,20 @@ class EdgeLocalAuthController extends Controller
     public function showLogin()
     {
         if (auth('tenant')->check()) {
-            return redirect('/edge/local/status');
+            return redirect($this->landingUrl(auth('tenant')->user()));
         }
 
         return view('edge.auth.login', ['branchId' => $this->context->boundBranchId()]);
+    }
+
+    /**
+     * ONLINE PARITY (W1 hand-back, 25 Sep 2026): a signed-in cashier lands on the POS, like Online lands the operator on
+     * the app, not on a JSON status document. An account that may not open the POS (no `tenant.pos.index`) keeps the
+     * status page as its landing.
+     */
+    private function landingUrl($user): string
+    {
+        return $user && $user->can('tenant.pos.index') ? '/edge/local/pos' : '/edge/local/status';
     }
 
     public function login(Request $request)
@@ -47,7 +57,7 @@ class EdgeLocalAuthController extends Controller
         $this->auth->login($user);
         $request->session()->regenerate(); // migrate session id, keep auth — prevents fixation
 
-        return redirect('/edge/local/status');
+        return redirect($this->landingUrl($user));
     }
 
     public function logout(Request $request)
